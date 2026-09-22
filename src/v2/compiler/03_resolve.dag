@@ -56,7 +56,13 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   rejected_with_pending
 }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_snoc }
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_from_node,
+  qualified_name_last_segment,
+  qualified_name_snoc,
+  qualified_name_spine_node
+}
 import v2.std.resolution_policy {
   ImportScoped,
   NameResolutionPolicy,
@@ -64,18 +70,18 @@ import v2.std.resolution_policy {
   default_name_resolution_policy
 }
 import v2.std.symbol_index {
-  GlobalBareHit,
-  GlobalBareLookupAmbiguous,
-  GlobalBareLookupUnbound,
   LexicalAmbiguous,
   LexicalBindingCandidate,
   LexicalHit,
   LexicalUnbound,
   SymbolIndex,
   empty_symbol_index,
+  GlobalBareHit,
+  GlobalBareLookupAmbiguous,
+  GlobalBareLookupUnbound,
+  symbol_index_absolute_candidates,
   symbol_index_global_unique_lookup,
-  symbol_index_lexical_lookup,
-  symbol_index_lookup
+  symbol_index_lexical_lookup
 }
 import v2.std.node {
   Arrow,
@@ -402,18 +408,48 @@ fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
-// A QUALIFIED HIT ON A NON-ATOM DECLARATION HAS NO IDENTITY THIS RESOLVER CAN CARRY, SO IT REFUSES.
-// The resolved value here is a canonical Atom -- one Symbol -- and a fn (an Arrow) or a record
-// found by its full path is a DECLARATION, not a symbol: collapsing it to its leaf name would make
-// `a.run` and `b.run` indistinguishable downstream, which is an identity fork the import cut's
-// replacement graph cannot be built on. Until resolution answers with an exact declaring-identity
-// carrier (the unique-on-chain lane's changeover), the hit is refused with this located reason
-// rather than minted from a leaf. Enrolled: v2.test.claim.namespace_xl0.cross_module_reference_resolution.
-fn qualified_target_identity_unrepresentable_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^resolve_reason_qualified_target_identity_unrepresentable,
-    at: node_locus(node: n),
-    correction: Unavailable { reason: UserInputBoundary }
+// AN UNBOUND NAME THE CORPUS DOES DECLARE IS A MISSING BINDING, NOT A TYPO, AND THE REFUSAL SAYS SO.
+// Deleting the corpus-wide spelling search makes a reference refuse when nothing on its chain binds
+// it -- correct, and the point of the package -- but on its own it hands the author of a module
+// that was quietly relying on that search a bare "unbound symbol here". That population is not
+// hypothetical: a lane with no knowledge of this work (gunbc#12035) found a production reference
+// resolving with nothing importing it, confirmed by a mutation that reds. Every such module starts
+// refusing when the search goes, and the difference between a diagnostic they can act on and a
+// puzzle is whether the refusal names where the name IS declared.
+//
+// THE ORACLE IS THE RIGHT SOURCE FOR THIS AND THE WRONG SOURCE FOR RESOLUTION, which is the whole
+// distinction docs/plans/namespace-resolution-design.md section 13 draws when it keeps global_bare
+// as a migration oracle after deleting it as a mechanism. Asking the corpus "does this spelling
+// exist anywhere" may not CHOOSE a meaning -- that is the defect -- but it is exactly the right
+// question for explaining an absence. So the advisory rides in front and the fatal stays last, the
+// carriage order every consumer folds to; the advisory carries a DeclarationLocus so the author is
+// pointed at a declaration rather than a spelling.
+//
+// IT DISCRIMINATES THE TWO CAUSES, which is why the third arm exists rather than defaulting: a name
+// no module declares gets NO advisory, because the honest reading there is a typo or a deleted
+// declaration and pointing anywhere would be fabrication.
+fn unbound_symbol_diagnostics(ctx: ResolveContext, n: Node, name: Symbol) -> NonEmptyDiagnostics {
+  let fatal = unbound_symbol_diagnostic(n: n)
+  match symbol_index_global_unique_lookup(index: ctx.namespace.symbol_index, name: name) {
+    GlobalBareHit { node: _, path: path } =>
+      NonEmptyDiagnostics {
+        head: Diagnostic {
+          reason: ^resolve_unbound_name_is_declared_elsewhere,
+          at: declaration_locus(declaration: path),
+          correction: Unavailable { reason: UserInputBoundary }
+        },
+        tail: [fatal]
+      }
+    GlobalBareLookupAmbiguous =>
+      NonEmptyDiagnostics {
+        head: Diagnostic {
+          reason: ^resolve_unbound_name_is_declared_in_several_modules,
+          at: node_locus(node: n),
+          correction: Unavailable { reason: UserInputBoundary }
+        },
+        tail: [fatal]
+      }
+    GlobalBareLookupUnbound => NonEmptyDiagnostics { head: fatal, tail: [] }
   }
 }
 
@@ -439,14 +475,18 @@ fn ambiguous_symbol_diagnostic(n: Node) -> Diagnostic {
 // whole path also hits absolutely -- and a reader repairing the reference needs to know which
 // one, because the repair differs (qualify the reference; rename one declaration; drop the
 // shadowing binder). The competing declarations ride WHERE THE LOOKUP RETAINED THEM: the lexical
-// collector keeps every candidate's path; the global-bare index collapsed its binders to one
-// GlobalBareAmbiguous state at fill time and has nothing to name, which this arm says by carrying
-// nothing rather than by naming a list it does not have; the qualified case names the absolute
-// path that competed. Collapsing all three to one bare SymbolIndexAtomAmbiguous was where the
-// class and the candidates were dropped -- one symbol standing where the resolver had a list.
+// collector keeps every candidate's path; the qualified case names the absolute path that
+// competed. Collapsing them to one bare SymbolIndexAtomAmbiguous was where the class and the
+// candidates were dropped -- one symbol standing where the resolver had a list.
+//
+// THE THIRD ARM IS GONE WITH ITS MECHANISM. AmbiguousOnGlobalBare reported an ambiguity found by
+// searching the corpus for a spelling, and it was the one arm that could name NO competing
+// declaration, because the bare index had already collapsed its binders at fill time. Deleting the
+// search deleted the arm: every ambiguity the resolver can now reach was found among candidates it
+// still holds, so "competing declarations where available" is no longer a caveat this type needs.
 type AmbiguousLookupClass
   = AmbiguousOnLexicalChain { candidates: FreeMonoid<LexicalBindingCandidate> }
-  | AmbiguousOnGlobalBare
+  | AmbiguousAtBindingPosition { candidates: FreeMonoid<LexicalBindingCandidate> }
   | AmbiguousQualifiedHeadShadowsAbsolute { path: QualifiedName }
 
 fn ambiguous_lookup_class_diagnostic(n: Node, reason: Symbol) -> Diagnostic {
@@ -492,10 +532,19 @@ fn ambiguous_symbol_diagnostics(n: Node, class: AmbiguousLookupClass) -> NonEmpt
           item: fatal
         )
       }
-    AmbiguousOnGlobalBare =>
+    AmbiguousAtBindingPosition { candidates: candidates } =>
       NonEmptyDiagnostics {
-        head: ambiguous_lookup_class_diagnostic(n: n, reason: ^resolve_ambiguous_on_global_bare),
-        tail: [fatal]
+        head: ambiguous_lookup_class_diagnostic(n: n, reason: ^resolve_ambiguous_at_binding_position),
+        tail: list_snoc_item(
+          xs: fold_list(
+            xs: candidates,
+            empty: Empty,
+            cons: fn(acc, candidate) {
+              list_snoc_item(xs: acc, item: ambiguous_competing_declaration_diagnostic(path: candidate.path))
+            }
+          ),
+          item: fatal
+        )
       }
     AmbiguousQualifiedHeadShadowsAbsolute { path: path } =>
       NonEmptyDiagnostics {
@@ -524,18 +573,71 @@ fn symbol_index_lookup_position(ctx: ResolveContext) -> QualifiedName {
   }
 }
 
-fn symbol_index_node_identity(node: Node, fallback: Symbol) -> Symbol {
-  match node.kind {
-    TypeNode { connective: Atom { identity: sym } } => sym
-    _ => fallback
+// WHAT A RESOLVED REFERENCE IS, DECIDED ONCE. A reference that binds to a corpus declaration is
+// carried as that declaration's containment path -- the identity the index key, the candidate
+// rows, DeclarationLocus and DeclarationRef already name -- and never as its leaf: two declarations
+// spelled `run` in two modules are two paths, and a leaf would collapse them silently (the class
+// gunbc.recurring_failure_mode refusal_reason_minted_as_canonical_identity records, whose interim
+// refusal resolve_reason_qualified_target_identity_unrepresentable stood where this carrier now
+// stands). A reference whose LEAF is a kernel canonical symbol resolves to the kernel atom, as it did
+// before this carrier: the language model owns those names, they are not free for the corpus to
+// re-declare, and every downstream kernel judgment (infer's Bool and Int checks, translate's
+// binding spellings) is keyed on the canonical symbol. That arm is the whole of what stays
+// spelling-keyed here, on a closed set the language model declares; a corpus twin of a kernel name
+// is a pre-existing fork beside this seam, not one this decision widens.
+type ResolvedReferenceIdentity
+  = ResolvedToKernelSymbol { symbol: Symbol }
+  | ResolvedToDeclaration { path: QualifiedName }
+
+fn resolved_reference_identity(ctx: ResolveContext, path: QualifiedName) -> ResolvedReferenceIdentity {
+  match qualified_name_last_segment(qn: path) {
+    Present { value: leaf } =>
+      if namespace_has_canonical_symbol(namespace: ctx.namespace, name: leaf) {
+        ResolvedToKernelSymbol { symbol: leaf }
+      } else {
+        ResolvedToDeclaration { path: path }
+      }
+    Absent => ResolvedToDeclaration { path: path }
+  }
+}
+
+// THE ONE PRODUCER OF A RESOLVED CORPUS REFERENCE. Both doors that bind a module-level name -- the
+// bare door (resolve_atom_bound) and the qualified door (try_resolve_qualified_name_node) -- mint
+// through here, so the carrier cannot differ by how the reference was spelled. The rung this buys
+// (DESIGN section 4b) is structurally guaranteed, not impossible: an Atom naming a corpus
+// declaration is still constructible by a fixture or a hand-built node, but no Accepted resolved
+// body contains one, because this module is the only producer of resolved bodies and its remaining
+// canonical_atom sites are the frame-local binder, the literal, and the kernel arm above.
+fn resolved_reference_node(identity: ResolvedReferenceIdentity, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  match identity {
+    ResolvedToKernelSymbol { symbol: symbol } => canonical_atom(identity: symbol, occurrence_id: occurrence_id)
+    ResolvedToDeclaration { path: path } => qualified_name_spine_node(qn: path, occurrence_id: occurrence_id)
   }
 }
 
 type SymbolIndexAtomLookup
-  = SymbolIndexAtomHit { canonical: Symbol, path: QualifiedName }
+  = SymbolIndexAtomHit { path: QualifiedName }
   | SymbolIndexAtomAmbiguous { class: AmbiguousLookupClass }
   | SymbolIndexAtomUnbound
 
+// NOTHING FOLLOWS AN EXHAUSTED CHAIN, which is what the LexicalUnbound arm below now says by
+// answering SymbolIndexAtomUnbound. That arm used to ask the corpus-wide bare-name index under
+// NamespaceOnlyY, and that question has no answer it is entitled to give: a name the reference's
+// own ancestor chain does not bind has no meaning AT THE REFERENCE, whatever else the corpus spells
+// the same way. docs/plans/namespace-resolution-design.md section 13 deletes the tier by name --
+// "global_bare dies as a mechanism" -- and the reference model this corpus grounds lookup in agrees
+// by ABSENCE: [basic.lookup.unqual] walks outward to the parent scope and, exhausted, the program
+// is ill-formed; there is no clause that searches a whole program for a unique declaration.
+//
+// WHAT REPLACES THE TIER IS NOT A WEAKER ANSWER BUT A BINDING THE AUTHOR WROTE. An import is
+// transmuted into a row at the importing position (v2.extdeps.languages.dag
+// import_binding_rows_from_decl_node, bound by v2.compiler.symbol_index_fill), so the names a
+// module actually uses are ON its chain and the lexical collector finds them there. Deleting the
+// tier without that transmutation would not have made these references resolve; it would have made
+// them unbound, which is why the two are one change.
+//
+// THE INDEX'S global_bare MAP SURVIVES, and only as what section 13 leaves it: a migration oracle
+// for the divergence census. No resolution path reaches it.
 fn lookup_symbol_index_atom_identity(
   ctx: ResolveContext,
   name: Symbol
@@ -545,30 +647,10 @@ fn lookup_symbol_index_atom_identity(
     position: symbol_index_lookup_position(ctx: ctx),
     name: name
   ) {
-    LexicalHit { node: node, path: path } =>
-      SymbolIndexAtomHit {
-        canonical: symbol_index_node_identity(node: node, fallback: name),
-        path: path
-      }
+    LexicalHit { node: _, path: path } => SymbolIndexAtomHit { path: path }
     LexicalAmbiguous { candidates: candidates } =>
       SymbolIndexAtomAmbiguous { class: AmbiguousOnLexicalChain { candidates: candidates } }
-    LexicalUnbound =>
-      match ctx.policy {
-        NamespaceOnlyY =>
-          match symbol_index_global_unique_lookup(
-            index: ctx.namespace.symbol_index,
-            name: name
-          ) {
-            GlobalBareHit { node: node, path: path } =>
-              SymbolIndexAtomHit {
-                canonical: symbol_index_node_identity(node: node, fallback: name),
-                path: path
-              }
-            GlobalBareLookupAmbiguous => SymbolIndexAtomAmbiguous { class: AmbiguousOnGlobalBare }
-            GlobalBareLookupUnbound => SymbolIndexAtomUnbound
-          }
-        ImportScoped => SymbolIndexAtomUnbound
-      }
+    LexicalUnbound => SymbolIndexAtomUnbound
   }
 }
 
@@ -581,9 +663,13 @@ fn lookup_symbol_index_atom_identity(
 // began to (see body_lower_dotted_reference_optional). One revision of gunbc#11582 replaced the
 // reason with the path's last segment; the side-chat ruling on that head found the leaf equally
 // fabricated -- two declarations named `run` in two modules collapse to one Atom -- so a hit whose
-// declaration is not itself an Atom now REFUSES (qualified_target_identity_unrepresentable_diagnostic)
-// until resolution carries exact declaring identity. Measured: a cross-module reference to a fn
-// came back Accepted with identity resolve_reason_unbound_symbol before the first repair.
+// declaration was not itself an Atom REFUSED (resolve_reason_qualified_target_identity_unrepresentable)
+// until resolution carried exact declaring identity. It now does: the hit is minted through
+// resolved_reference_node as the declaration's path, the same producer the bare door uses, and the
+// interim refusal is deleted with nothing left for it to guard -- every index hit IS a path, so a
+// control for a refusal with no authorable red would be a decoration (DESIGN section 4b). Measured:
+// a cross-module reference to a fn came back Accepted with identity resolve_reason_unbound_symbol
+// before the first repair.
 // THE HALF OF UNIQUE-ON-CHAIN THAT CAN BE HONEST BEFORE THE PROJECTION EXISTS (review 67651 on
 // gunbc#11582). Section 13 resolves a chain's FIRST segment on the ancestor chain and projects the
 // rest; the projection is unfired here, and this arm reads the whole path as corpus-root
@@ -627,53 +713,8 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
           Rejected { diagnostics: r } =>
             optional_present(value: Rejected { diagnostics: rejected_with_pending(pending: pending, rejected: r) })
           Accepted { value: head_bound, diagnostics: chain_pending } =>
-        match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
-          Present { value: resolved_node } =>
-            if head_bound {
-              optional_present(
-                value: Rejected {
-                  diagnostics: rejected_with_pending(
-                    pending: diagnostics_merge(outer: pending, inner: chain_pending),
-                    rejected: ambiguous_symbol_diagnostics(
-                      n: n,
-                      class: AmbiguousQualifiedHeadShadowsAbsolute { path: path }
-                    )
-                  )
-                }
-              )
-            } else {
-            match test_code_reach(index: ctx.namespace.test_code, path: path) {
-              ReachesTestMarkedDeclaration =>
-                optional_present(
-                  value: Rejected {
-                    diagnostics: rejected_with_pending(
-                      pending: diagnostics_merge(outer: pending, inner: chain_pending),
-                      rejected: diagnostics_singleton(d: test_code_referenced_diagnostic(reason: ^resolve_reason_test_code_referenced, n: n))
-                    )
-                  }
-                )
-              ReachesNoTestCode =>
-            match resolved_node.kind {
-              TypeNode { connective: Atom { identity: declared } } =>
-                optional_present(
-                  value: Accepted {
-                    value: canonical_atom(identity: declared, occurrence_id: n.occurrence_id),
-                    diagnostics: diagnostics_merge(outer: pending, inner: chain_pending)
-                  }
-                )
-              _ =>
-                optional_present(
-                  value: Rejected {
-                    diagnostics: rejected_with_pending(
-                      pending: diagnostics_merge(outer: pending, inner: chain_pending),
-                      rejected: diagnostics_singleton(d: qualified_target_identity_unrepresentable_diagnostic(n: n))
-                    )
-                  }
-                )
-            }
-            }
-            }
-          Absent =>
+        match symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path) {
+          Empty =>
             optional_present(
               value: Rejected {
                 diagnostics: rejected_with_pending(
@@ -682,6 +723,46 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
                 )
               }
             )
+          Cons { head: candidate, tail: rest } =>
+            match rest {
+              Empty =>
+                if head_bound {
+                  optional_present(
+                    value: Rejected {
+                      diagnostics: rejected_with_pending(
+                        pending: diagnostics_merge(outer: pending, inner: chain_pending),
+                        rejected: ambiguous_symbol_diagnostics(
+                          n: n,
+                          class: AmbiguousQualifiedHeadShadowsAbsolute { path: path }
+                        )
+                      )
+                    }
+                  )
+                } else {
+                  optional_present(
+                    value: resolve_atom_bound(
+                      ctx: ctx,
+                      n: n,
+                      path: candidate.path,
+                      pending: diagnostics_merge(outer: pending, inner: chain_pending)
+                    )
+                  )
+                }
+              Cons { head: _, tail: _ } =>
+                optional_present(
+                  value: Rejected {
+                    diagnostics: rejected_with_pending(
+                      pending: diagnostics_merge(outer: pending, inner: chain_pending),
+                      rejected: ambiguous_symbol_diagnostics(
+                        n: n,
+                        class: AmbiguousAtBindingPosition {
+                          candidates: Cons { head: candidate, tail: rest }
+                        }
+                      )
+                    )
+                  }
+                )
+            }
         }
         }
       } else {
@@ -708,26 +789,31 @@ fn test_code_referenced_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
 // THE WALL (owner ruling 2026-09-16/17): `test` segregates test code from serving code, and no code
 // may reference a test-marked declaration, a test fn in the same module included. It is decided here,
 // where the reference binds, from the path it bound to, and it refuses with the reference's own locus.
-// TWO ENFORCEMENT SITES, ONE DECISION. This function is reached by the doors whose accepted result is
-// a canonical atom -- the root scope and the symbol index. The qualified-path door
-// (try_resolve_qualified_name_node) cannot route through it, because its accepted arm must first read
-// the resolved node's kind and carry the chain's own pending diagnostics, so it refuses inline
-// instead. Both sites decide from ONE authority, test_code_reach over ctx.namespace.test_code, and
-// raise the same reason through the same test_code_referenced_diagnostic: a change to the RULE is a
-// change to that fold, not to either site. What a later door must not do is bind a module-level name
-// without asking test_code_reach at all -- the per-door reds in
+// ONE ENFORCEMENT SITE, ONE DECISION. Every door that binds a module-level name -- the root scope,
+// the symbol index, and the qualified-path door (try_resolve_qualified_name_node) -- accepts through
+// this function, which asks test_code_reach over ctx.namespace.test_code and then mints the resolved
+// reference through the one producer, resolved_reference_node, from the DECLARING path the door
+// selected. The qualified door used to refuse inline because its accepted arm had to read the
+// resolved node's kind first; the carrier no longer depends on the kind, so that second site is
+// gone. The path a door hands in is the declaration's own (the candidate rows name claimants by
+// declaring path, v2.std.symbol_index symbol_index_candidates_at), never the binding position it
+// was seen at -- an import or alias position would have minted one declaration into as many
+// identities as it has importers. What a later door must not do is bind a module-level name
+// without passing through here -- the per-door reds in
 // v2.test.claim.name_resolve.test_code_reference_wall are what hold that, one per door.
 fn resolve_atom_bound(
   ctx: ResolveContext,
   n: Node,
-  canonical: Symbol,
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
   match test_code_reach(index: ctx.namespace.test_code, path: path) {
     ReachesNoTestCode =>
       Accepted {
-        value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
+        value: resolved_reference_node(
+          identity: resolved_reference_identity(ctx: ctx, path: path),
+          occurrence_id: n.occurrence_id
+        ),
         diagnostics: pending
       }
     ReachesTestMarkedDeclaration =>
@@ -755,18 +841,17 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node>
             value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
             diagnostics: pending
           }
-        BoundAtRoot { canonical: canonical } =>
+        BoundAtRoot { canonical: _ } =>
           resolve_atom_bound(
             ctx: ctx,
             n: n,
-            canonical: canonical,
             path: qualified_name_snoc(qn: root_binding_origin(namespace: ctx.namespace, name: identity), segment: identity),
             pending: pending
           )
         ScopeUnbound =>
           match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
-            SymbolIndexAtomHit { canonical: canonical, path: path } =>
-              resolve_atom_bound(ctx: ctx, n: n, canonical: canonical, path: path, pending: pending)
+            SymbolIndexAtomHit { path: path } =>
+              resolve_atom_bound(ctx: ctx, n: n, path: path, pending: pending)
             SymbolIndexAtomAmbiguous { class: class } =>
               Rejected {
                 diagnostics: rejected_with_pending(
@@ -787,7 +872,7 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node>
                 Rejected {
                   diagnostics: rejected_with_pending(
                     pending: pending,
-                    rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
+                    rejected: unbound_symbol_diagnostics(ctx: ctx, n: n, name: identity)
                   )
                 }
               }
