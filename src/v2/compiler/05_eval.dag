@@ -23,6 +23,7 @@ import v2.std.collection {
   list_at_optional,
   list_nth
 }
+import v2.std.qualified_name { declaration_reference_path_optional }
 import v2.std.optional {
   Absent,
   Optional,
@@ -1235,11 +1236,27 @@ fn eval_runtime_binding_lookup(node: Node, environment: EvaluationEnvironment) -
   )
 }
 
+// A RESOLVED CORPUS-DECLARATION REFERENCE IS REFUSED HERE AS A BINDING MISS, NEVER ALLOCATED.
+// Resolution carries a reference to a declaration as its declaring path (v2.compiler.resolve
+// resolved_reference_node), a Conj-shaped spine; the default TypeNode arm below allocates a literal
+// from any non-Atom type node, which for the spine would fabricate a two-field record of the
+// reference's own segments. The evaluator binds frame-local names and parameters by symbol and
+// binds no module-level declaration at all (a callee that is not an Arrow already falls to the
+// primitive table and refuses there), so a declaration reference in value position is what a bare
+// Atom miss was before the carrier: unbound in this environment, refused with the miss reason at
+// the reference's own locus. Binding module-level declarations by their path is the evaluator's
+// own next step and is not taken here.
 fn eval_type_node_atom(
   node: Node,
   interpretation: InterpretationAlgebra,
   environment: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
+  match declaration_reference_path_optional(node: node) {
+    Present { value: _ } =>
+      outcome_rejected(
+        d: eval_diagnostic(reason: ^eval_rejected_runtime_binding_lookup_miss, node: node)
+      )
+    Absent =>
   match node.kind {
     TypeNode { connective: Atom { identity: _ } } =>
       if v2_eval_is_literal_shaped_node(node: node) {
@@ -1261,6 +1278,7 @@ fn eval_type_node_atom(
       interpretation.value.allocate_literal(node, environment)
     ComputationNode { behavior: _ } =>
       outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+  }
   }
 }
 

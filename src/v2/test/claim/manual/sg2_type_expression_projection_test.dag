@@ -261,7 +261,8 @@ fn sg2_wrong_arrow_projection() -> TargetTypeExpressionProjection {
       param_list_separator: row.arrow_form.param_list_separator
     },
     cardinality_form: row.cardinality_form,
-    instantiation_form: row.instantiation_form
+    instantiation_form: row.instantiation_form,
+    declaration_reference_form: row.declaration_reference_form
   }
 }
 

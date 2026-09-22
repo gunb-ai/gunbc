@@ -183,7 +183,8 @@ import std.operator_realization {
   HostRealizedOperand, KernelMintedType, GenericTypeParameter, HostContainer, UnnamedSynthesizedType,
   OperandShapeFacts, OperandDeclaration,
   StructuralOrderingBinding, OrderingTest, OrderingIs, OrderingIsNot,
-  operator_realization_for, operator_realization_refusal_message
+  OperandDemand, DemandsBothOperands, DemandsRightOnlyWhenLeftIs, DemandsRightOnlyWhenLeftIsAbsent,
+  operator_realization_for, operator_realization_refusal_message, operand_demand, binop_label
 }
 import gunbc.structural_realization_bindings { structural_ordering_rows, structural_connective_rows }
 import v1.compiler.infer_types {
@@ -12942,21 +12943,6 @@ fn freemonoid_match_arm_for(arms: List<Node>, variant: String) -> Node? {
   }) |> first
 }
 
-fn freemonoid_cons_binding(cons_arm: Node, field: String, source_indices: Map<String, NewlineIndex>) -> String {
-  match arm_pattern(n: cons_arm) {
-    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
-      match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: source_indices) == field) |> first {
-        Present { value: fb } =>
-          match field_binding_pattern(n: fb) {
-            Bind { declaration: declaration } => declaration.name
-            _ => "_"
-          }
-        Absent => "_"
-      }
-    _ => "_"
-  }
-}
-
 fn arm_resolved_parent_enum(arm: Node, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> String? {
   match arm_pattern(n: arm) {
     VariantPattern { name: n, parent_enum: pe, field_bindings: _ } =>
@@ -12984,13 +12970,6 @@ fn freemonoid_catchall_arm(arms: List<Node>) -> Node? {
   }) |> first
 }
 
-fn freemonoid_catchall_bind_name(arm: Node) -> String {
-  match arm_pattern(n: arm) {
-    Bind { declaration: declaration } => declaration.name
-    _ => ""
-  }
-}
-
 fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summaries: Map<String, TypeSummary>) -> Bool {
   let has_empty = match freemonoid_match_arm_for(arms: arms, variant: "Empty") { Present { value: _ } => true  Absent => false }
   let has_cons = match freemonoid_match_arm_for(arms: arms, variant: "Cons") { Present { value: _ } => true  Absent => false }
@@ -13009,58 +12988,340 @@ fn arms_are_freemonoid_coproduct(arms: List<Node>, scrut_type: String, type_summ
   is_fm && empty_fillable && cons_fillable
 }
 
-// THE TAIL IS A STRUCTURAL SKIP, NEVER A COPY. `im::Vector::skip` is O(log n) — it shares the
-// RRB tree — while `iter().skip(1).cloned().collect()` materializes the whole tail: every
-// cons-match in every emitted program paid O(n) per step, so every fold over a FreeMonoid was
-// quadratic. Measured on the required-v2-native lane's first run (2026-09-09): the self-hosted
-// lexer, which tails the remaining source per character and per rule attempt, parsed a 22KB
-// file in 23.3s against 70ms for 899B (333x time for 25x size), projecting a multi-hour
-// whole-corpus context fold — the lane's dominant term, ahead of the cargo build the envelope
-// had priced as dominant. DESIGN section 6 prices a copied accumulator as always-fixed.
-fn freemonoid_tail_let_from_fm(tail_bind: String) -> String {
-  if tail_bind == "_" { "" } else { concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new(__fm.skip(1)); ") }
+// ONE FreeMonoid MATCH IS A LENGTH DECISION OVER ITS ARMS IN ORDER, NOT A TWO-WAY is_empty SPLIT.
+//
+// The previous lowering asked two questions -- which arm mentions `Empty`, which arm mentions
+// `Cons` -- kept the FIRST answer to each, and emitted `if __fm.is_empty() { A } else { B }`. That
+// is faithful for exactly one shape: each variant appearing once, with irrefutable field
+// sub-patterns.
+//
+// THE ADMISSION DECIDES, AND THERE IS NO SENTINEL LEFT FOR IT TO DECIDE THROUGH. This lowering
+// used to answer `""` to mean "I decline, use the generic path", and both callers tested
+// `!= ""`. The empty string was doing two jobs at once -- the admission predicate's own verdict
+// and the lowering's -- so a lowering that legitimately produced no text was indistinguishable
+// from one that declined. The refusal is a typed cause now, the lowering ALWAYS answers, and the
+// callers branch on `arms_are_freemonoid_coproduct` directly. Review 69977 caught the residue:
+// the first cut of this change left both `!= ""` tests standing over a function that could no
+// longer return `""`, which is a dead escape hatch on the admission path and an annotation
+// describing a deletion that had not happened. Every other shape was lowered into a program that RUNS AND ANSWERS WRONGLY, which
+// is outside the ladder rather than low on it (DESIGN section 4b, section 5):
+//
+//   - a REFUTABLE field sub-pattern degraded to a wildcard, because the binding reader returned
+//     "_" for anything that was not a `Bind`, so `Cons { head: _, tail: Empty }` -- the ONE-element
+//     case -- lowered as `Cons { head: _, tail: _ }` and matched every non-empty list; and
+//   - every arm after the first `Cons` arm was DISCARDED, because nothing read past `first`. An
+//     arm guard was dropped on the same reasoning: no branch body ever read `arm_guard`.
+//
+// MEASURED IN THE EMITTED BINARY rather than the interpreter (witty-cat-84, Pkg12): v2.std.algebra
+// `list_init` -- `Empty => Empty | Cons { head: _, tail: Empty } => Empty | Cons { head: h, tail: t }
+// => Cons { head: h, tail: list_init(xs: t) }` -- emitted as `if __fm.is_empty() { vec![] } else {
+// vec![] }`, so `qualified_name_init(["v2", "acp_user", "acp_row"])` returned `[]` instead of
+// `["v2", "acp_user"]`, and the native resolver's ancestor walk skipped every intermediate
+// ancestor. v2.lens.cost.copied_port_derivation is the same class read rather than executed: it
+// reports "exactly one" for a three-element list. THE INTERPRETER LOWERS ALL OF THESE CORRECTLY,
+// which is why no interpreted claim discriminates the class, and why it survived unseen in every
+// emitted binary this seed has ever produced.
+//
+// THE CONSTRUCTION. A FreeMonoid pattern is a spine of `Cons` levels terminating either in `Empty`
+// (an EXACT length) or in a binding/wildcard tail (a length FLOOR). So each arm carries a decidable
+// length predicate, and its head bindings are decidable index reads. The arms are then an ordered
+// chain of those predicates, which is what a match MEANS -- the arm count and the nesting depth are
+// carried rather than assumed, so the class is closed at any depth rather than at the two shapes
+// the old pair of lookups could name. Exhaustiveness is decidable on the same facts -- every length
+// below the smallest floor must be covered by an exact arm -- so the chain's final `else` is PROVEN
+// total, and no `unreachable!` is fabricated to stand in for the proof.
+//
+// WHAT IT REFUSES RATHER THAN MIS-LOWERING (DESIGN section 5: a failure arm refuses, never widens):
+// a guard on an arm; a refutable `head` sub-pattern, which asks a question about the ELEMENT and
+// not about the FreeMonoid; a variant that is neither `Empty` nor `Cons`; and an arm set this
+// analysis cannot prove exhaustive. Each emits a located `compile_error!` naming the shape and the
+// span, so the line stops at the emitter with a typed, located cause instead of shipping.
+//
+// SELF-HOSTING NOTE, AND IT IS LOAD-BEARING. This module is emitted BY THE SEED THIS CHANGE FIXES,
+// so no function added here may use the shape the old lowering breaks, or the regenerated mirror
+// would be built from a miscompilation of the repair itself. Every FreeMonoid match below is two
+// arms with irrefutable field bindings, and the spine recursion is expressed with `count` on the
+// tail rather than with a `tail: Empty` sub-pattern. Written that way, ONE regeneration round
+// reaches the fixed point rather than two.
+// A REFUSAL IS A TYPED CAUSE, NOT A SENTINEL STRING. An earlier revision of this block carried
+// `FmArmPlan { supported: Bool, reason: String }` and answered "is this lowerable" with `""` meaning
+// yes -- which is the same in-band protocol this very change deleted from the caller, where `""`
+// from the lowering meant "fall through to the generic path", reintroduced one layer up. It made
+// illegal states representable: a `supported: true` plan carrying a reason, an unsupported plan
+// whose zeroed `len` was still readable by the coverage fold, and a bottom spelled `1000000`. The
+// analysis is a coproduct instead, so an unsupported arm HAS NO spine fields to misread and the
+// bottom is an absent Optional (DESIGN section 5: make the wrong state unwritable rather than
+// checking for it afterwards; section 2: the concept count must not grow by re-invention).
+type FmLoweringRefusal
+  = FmArmCarriesGuard
+  | FmRefutableHeadSubPattern
+  | FmNonListVariant { variant: String }
+  | FmLiteralAgainstList
+  | FmSpineDeeperThanFuel
+  | FmNoArmAcceptsUnboundedLength
+  | FmLengthMatchedByNoArm { len: Int }
+
+// One message function over the cause, so the wording of a refusal lives in exactly one place and
+// every caller renders the same sentence (the shape `std.operator_realization` already uses for
+// `OperatorRealizationRefused` / `operator_realization_refusal_message`, which this module consumes).
+fn fm_lowering_refusal_message(cause: FmLoweringRefusal) -> String {
+  match cause {
+    FmArmCarriesGuard => "a guard on a FreeMonoid match arm"
+    FmRefutableHeadSubPattern => "a refutable `head` sub-pattern under `Cons`, which discriminates the ELEMENT rather than the list"
+    FmNonListVariant { variant: v } => concat("the variant `", v, "` in a FreeMonoid pattern")
+    FmLiteralAgainstList => "a literal pattern against a FreeMonoid"
+    FmSpineDeeperThanFuel => "a FreeMonoid pattern spine deeper than the emitter's nesting fuel"
+    FmNoArmAcceptsUnboundedLength => "a FreeMonoid match no arm proves exhaustive: no arm accepts a list of unbounded length"
+    FmLengthMatchedByNoArm { len: n } => concat("a FreeMonoid match no arm proves exhaustive: a list of length ", to_string(value: n), " is matched by no arm")
+  }
 }
 
-fn freemonoid_empty_branch_body(empty_arm: Node?, catchall: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  match empty_arm {
-    Present { value: ea } => emit_typed_expr(texpr: arm_body(n: ea), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-    Absent => match catchall {
-      Present { value: wa } =>
-        let bn = freemonoid_catchall_bind_name(arm: wa)
-        let bind_let = if bn == "" { "" } else { concat("let ", bn, " = __fm.clone(); ") }
-        concat(bind_let, emit_typed_expr(texpr: arm_body(n: wa), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
-      Absent => ""
+fn fm_located_refusal(cause: FmLoweringRefusal, arm: Node) -> String {
+  concat("v1.compiler.emit_rust will not lower ", fm_lowering_refusal_message(cause: cause),
+    " at ", arm.span.file, ":", to_string(value: arm.span.start),
+    " -- the FreeMonoid match lowering refuses this shape rather than dropping the arm")
+}
+
+// An arm is EITHER a spine with its bindings OR an unsupported shape with its cause. There is no
+// third state and no field readable in the wrong one.
+type FmArmAnalysis
+  = FmSpine { exact: Bool, len: Int, head_binds: List<String>, tail_bind: String }
+  | FmUnsupportedArm { cause: FmLoweringRefusal }
+
+type FmArmPlan {
+  arm: Node
+  analysis: FmArmAnalysis
+}
+
+// A `head` sub-pattern may only NAME the element, never discriminate it: `Cons { head: Present { .. } }`
+// asks a question about the element type, which this lowering does not answer and therefore refuses.
+fn fm_head_bind_name(p: MatchPattern) -> String? {
+  match p {
+    Wildcard => Present { value: "_" }
+    Bind { declaration: d } => Present { value: d.name }
+    LitPattern { value: _ } => none
+    VariantPattern { name: _, parent_enum: _, field_bindings: _ } => none
+  }
+}
+
+// An omitted field in a record pattern binds nothing and selects nothing, which is a wildcard.
+fn fm_field_sub_pattern(fbs: List<Node>, field: String, si: Map<String, NewlineIndex>) -> MatchPattern {
+  match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: si) == field) |> first {
+    Present { value: fb } => field_binding_pattern(n: fb)
+    Absent => Wildcard
+  }
+}
+
+fn fm_analyze_pattern(pattern: MatchPattern, si: Map<String, NewlineIndex>, fuel: Int) -> FmArmAnalysis {
+  if fuel <= 0 {
+    FmUnsupportedArm { cause: FmSpineDeeperThanFuel }
+  } else {
+    match pattern {
+      Wildcard => FmSpine { exact: false, len: 0, head_binds: [], tail_bind: "_" }
+      Bind { declaration: d } => FmSpine { exact: false, len: 0, head_binds: [], tail_bind: d.name }
+      LitPattern { value: _ } => FmUnsupportedArm { cause: FmLiteralAgainstList }
+      VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
+        let bare = qualified_last_segment(name: n)
+        if bare == "Empty" {
+          FmSpine { exact: true, len: 0, head_binds: [], tail_bind: "" }
+        } else if bare == "Cons" {
+          let head_pat = fm_field_sub_pattern(fbs: fbs, field: "head", si: si)
+          let tail_pat = fm_field_sub_pattern(fbs: fbs, field: "tail", si: si)
+          match fm_head_bind_name(p: head_pat) {
+            Absent => FmUnsupportedArm { cause: FmRefutableHeadSubPattern }
+            Present { value: hb } =>
+              match fm_analyze_pattern(pattern: tail_pat, si: si, fuel: fuel - 1) {
+                FmUnsupportedArm { cause: c } => FmUnsupportedArm { cause: c }
+                FmSpine { exact: e, len: l, head_binds: hbs, tail_bind: tb } =>
+                  FmSpine { exact: e, len: l + 1, head_binds: concat([hb], hbs), tail_bind: tb }
+              }
+          }
+        } else {
+          FmUnsupportedArm { cause: FmNonListVariant { variant: bare } }
+        }
     }
   }
 }
 
-fn freemonoid_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map<String, NewlineIndex>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  match cons_arm {
-    Present { value: ca } =>
-      let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
-      let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
-      let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
-      let tail_let = freemonoid_tail_let_from_fm(tail_bind: tail_bind)
-      concat(head_let, tail_let, emit_typed_expr(texpr: arm_body(n: ca), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
-    Absent => match catchall {
-      Present { value: wa } =>
-        let bn = freemonoid_catchall_bind_name(arm: wa)
-        let bind_let = if bn == "" { "" } else { concat("let ", bn, " = __fm.clone(); ") }
-        concat(bind_let, emit_typed_expr(texpr: arm_body(n: wa), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
-      Absent => ""
+fn fm_arm_plan(arm: Node, si: Map<String, NewlineIndex>) -> FmArmPlan {
+  match arm_guard(n: arm) {
+    Present { value: _ } => FmArmPlan { arm: arm, analysis: FmUnsupportedArm { cause: FmArmCarriesGuard } }
+    Absent => FmArmPlan { arm: arm, analysis: fm_analyze_pattern(pattern: arm_pattern(n: arm), si: si, fuel: 64) }
+  }
+}
+
+fn fm_plan_is_exact_at(plan: FmArmPlan, k: Int) -> Bool {
+  match plan.analysis {
+    FmSpine { exact: e, len: l, head_binds: _, tail_bind: _ } => e && l == k
+    FmUnsupportedArm { cause: _ } => false
+  }
+}
+
+fn fm_plan_open_len(plan: FmArmPlan) -> Int? {
+  match plan.analysis {
+    FmSpine { exact: e, len: l, head_binds: _, tail_bind: _ } => if e { none } else { Present { value: l } }
+    FmUnsupportedArm { cause: _ } => none
+  }
+}
+
+// The smallest length FLOOR any arm accepts. ABSENT means no arm accepts an unbounded length, which
+// is a refusal rather than a large number -- the earlier `1000000` bottom was a magic value standing
+// where an Optional says the same thing without being readable as a length.
+fn fm_min_open_len(plans: List<FmArmPlan>) -> Int? {
+  plans |> fold(init: none, f: (acc, p) =>
+    match fm_plan_open_len(plan: p) {
+      Absent => acc
+      Present { value: l } =>
+        match acc {
+          Absent => Present { value: l }
+          Present { value: best } => if l < best { Present { value: l } } else { acc }
+        }
+    })
+}
+
+// Every length strictly below the smallest floor must be named by an exact arm, or some list matches
+// nothing and the chain's final `else` would be a fabrication. Returns the FIRST uncovered length.
+fn fm_first_uncovered_len(plans: List<FmArmPlan>, k: Int, limit: Int, fuel: Int) -> Int? {
+  if k >= limit {
+    none
+  } else if fuel <= 0 {
+    Present { value: k }
+  } else if !(plans |> any(p => fm_plan_is_exact_at(plan: p, k: k))) {
+    Present { value: k }
+  } else {
+    fm_first_uncovered_len(plans: plans, k: k + 1, limit: limit, fuel: fuel - 1)
+  }
+}
+
+// ABSENT means the arm set is lowerable. A cause means it is not, and the caller renders it located.
+fn fm_plans_refusal(plans: List<FmArmPlan>) -> FmArmPlan? {
+  match plans |> filter(p => match p.analysis {
+    FmUnsupportedArm { cause: _ } => true
+    FmSpine { exact: _, len: _, head_binds: _, tail_bind: _ } => false
+  }) |> first {
+    Present { value: bad } => Present { value: bad }
+    Absent =>
+      match fm_min_open_len(plans: plans) {
+        Absent =>
+          match plans |> first {
+            Present { value: anchor } => Present { value: FmArmPlan { arm: anchor.arm, analysis: FmUnsupportedArm { cause: FmNoArmAcceptsUnboundedLength } } }
+            Absent => none
+          }
+        Present { value: limit } =>
+          match fm_first_uncovered_len(plans: plans, k: 0, limit: limit, fuel: limit + 1) {
+            Absent => none
+            Present { value: missing } =>
+              match plans |> first {
+                Present { value: anchor } => Present { value: FmArmPlan { arm: anchor.arm, analysis: FmUnsupportedArm { cause: FmLengthMatchedByNoArm { len: missing } } } }
+                Absent => none
+              }
+          }
+      }
+  }
+}
+
+fn fm_plan_refusal_text(plan: FmArmPlan) -> String {
+  match plan.analysis {
+    FmUnsupportedArm { cause: c } => fm_located_refusal(cause: c, arm: plan.arm)
+    FmSpine { exact: _, len: _, head_binds: _, tail_bind: _ } => "v1.compiler.emit_rust internal: refusal requested for a supported FreeMonoid arm"
+  }
+}
+
+type FmChainPiece {
+  cond: String
+  binds: String
+  body: String
+}
+
+// A head binding at spine level i reads index i. `_` names nothing, so it emits nothing.
+type FmBindAcc {
+  index: Int
+  out: String
+}
+
+fn fm_head_bind_lets(head_binds: List<String>) -> String {
+  let folded = head_binds |> fold(init: FmBindAcc { index: 0, out: "" }, f: (acc, hb) =>
+    FmBindAcc {
+      index: acc.index + 1,
+      out: if hb == "_" { acc.out } else { concat(acc.out, "let ", hb, " = (*__fm)[", to_string(value: acc.index), "].clone(); ") }
+    })
+  folded.out
+}
+
+// THE TAIL IS A STRUCTURAL SKIP, NEVER A COPY. `im::Vector::skip` is O(log n) -- it shares the
+// RRB tree -- while `iter().skip(n).cloned().collect()` materializes the whole tail: every
+// cons-match in every emitted program would pay O(n) per step, so every fold over a FreeMonoid
+// would be quadratic. Measured on the required-v2-native lane's first run (2026-09-09): the
+// self-hosted lexer, which tails the remaining source per character and per rule attempt, parsed a
+// 22KB file in 23.3s against 70ms for 899B (333x time for 25x size), projecting a multi-hour
+// whole-corpus context fold -- the lane's dominant term, ahead of the cargo build the envelope had
+// priced as dominant. DESIGN section 6 prices a copied accumulator as always-fixed. The skip is now
+// by the arm's own spine depth rather than always by one, which is what makes a deeper spine
+// expressible at all.
+fn fm_spine_binds(len: Int, head_binds: List<String>, tail_bind: String, exact: Bool) -> String {
+  let head_lets = fm_head_bind_lets(head_binds: head_binds)
+  let tail_let = if exact || tail_bind == "_" || tail_bind == "" {
+    ""
+  } else if len == 0 {
+    concat("let ", tail_bind, " = __fm.clone(); ")
+  } else {
+    concat("let ", tail_bind, ": Rc<Vec<_>> = Rc::new(__fm.skip(", to_string(value: len), ")); ")
+  }
+  concat(head_lets, tail_let)
+}
+
+fn fm_spine_condition(len: Int, exact: Bool) -> String {
+  if exact {
+    if len == 0 { "__fm.is_empty()" } else { concat("__fm.len() == ", to_string(value: len)) }
+  } else {
+    if len == 0 { "true" } else { concat("__fm.len() >= ", to_string(value: len)) }
+  }
+}
+
+// TOTAL ON PURPOSE. `fm_plans_refusal` has already established that every arm is a spine before this
+// runs, so the unsupported arm is unreachable in production -- and it still emits a located refusal
+// rather than a fabricated branch, because a total function that cannot lie is worth more than an
+// unreachable! that asserts the caller checked (DESIGN section 5).
+fn fm_chain_piece(plan: FmArmPlan, body: String) -> FmChainPiece {
+  match plan.analysis {
+    FmSpine { exact: e, len: l, head_binds: hbs, tail_bind: tb } =>
+      FmChainPiece {
+        cond: fm_spine_condition(len: l, exact: e),
+        binds: fm_spine_binds(len: l, head_binds: hbs, tail_bind: tb, exact: e),
+        body: body
+      }
+    FmUnsupportedArm { cause: c } =>
+      FmChainPiece { cond: "true", binds: "", body: emit_rust_compile_error_expr(message: fm_located_refusal(cause: c, arm: plan.arm)) }
+  }
+}
+
+// The LAST piece carries no condition: `fm_plans_refusal` has already established that the arms
+// cover every length, so whatever reaches the final `else` is exactly that arm's population.
+fn fm_chain_from(pieces: List<FmChainPiece>, fuel: Int) -> String {
+  if fuel <= 0 {
+    emit_rust_compile_error_expr(message: "a FreeMonoid match with more arms than the emitter's chain fuel")
+  } else {
+    match pieces {
+      Empty => emit_rust_compile_error_expr(message: "a FreeMonoid match with no arms")
+      Cons { head: p, tail: rest } =>
+        if (rest |> count) == 0 {
+          concat("{ ", p.binds, p.body, " }")
+        } else {
+          concat("if ", p.cond, " { ", p.binds, p.body, " } else ", fm_chain_from(pieces: rest, fuel: fuel - 1))
+        }
     }
   }
 }
 
 fn emit_native_freemonoid_match(scrut_str: String, arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
-  let empty_arm = freemonoid_match_arm_for(arms: arms, variant: "Empty")
-  let cons_arm = freemonoid_match_arm_for(arms: arms, variant: "Cons")
-  let catchall = freemonoid_catchall_arm(arms: arms)
-  let empty_body = freemonoid_empty_branch_body(empty_arm: empty_arm, catchall: catchall, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let nonempty_body = freemonoid_nonempty_branch_body(cons_arm: cons_arm, catchall: catchall, si: si, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  if empty_body == "" || nonempty_body == "" { "" } else {
-    concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", nonempty_body, " } }")
+  let plans = arms |> map(arm => fm_arm_plan(arm: arm, si: si))
+  match fm_plans_refusal(plans: plans) {
+    Present { value: bad } => emit_rust_compile_error_expr(message: fm_plan_refusal_text(plan: bad))
+    Absent =>
+      let pieces = plans |> map(p => fm_chain_piece(plan: p,
+        body: emit_typed_expr(texpr: arm_body(n: p.arm), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)))
+      concat("{ let __fm = ", scrut_str, "; ", fm_chain_from(pieces: pieces, fuel: 256), " }")
   }
 }
 
@@ -13308,10 +13569,9 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
       } else { authored_name_at(source_indices: scope.type_env.source_indices, node: rt) }
     _ => ""
   }
-  let native_fm = if arms_are_freemonoid_coproduct(arms: arms, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) {
-    emit_native_freemonoid_match(scrut_str: scrut_str, arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  } else { "" }
-  if native_fm != "" { return native_fm }
+  if arms_are_freemonoid_coproduct(arms: arms, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) {
+    return emit_native_freemonoid_match(scrut_str: scrut_str, arms: arms, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+  }
   let rc_match = analyze_rc_match(scrutinee: scrutinee, arms: arms, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: scope.type_env.source_indices)
   let match_result_type = match arms |> first {
     Present { value: first_arm } => resolved_type(n: arm_body(n: first_arm))
@@ -14186,8 +14446,75 @@ fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, operand: Opera
       StructuralEquality { declaration: _ } =>
         emit_rust_host_bin_op(op: op, algebra_field: algebra_field, left: left, right: right, l_str: l_str, r_str: r_str, scope: scope)
       HostOperator =>
-        emit_rust_host_bin_op(op: op, algebra_field: algebra_field, left: left, right: right, l_str: l_str, r_str: r_str, scope: scope)
+        emit_rust_demanded_host_bin_op(op: op, algebra_field: algebra_field, left: left, right: right, l_str: l_str, r_str: r_str, scope: scope)
     }
+  }
+}
+
+// WHICH OPERANDS THE HOST TOKEN ASKS FOR, which is a fact about Rust and therefore lives here and
+// not in std.operator_realization. Rust evaluates both operands of every binary operator except
+// `&&` and `||`, whose right operand is a conditionally-evaluated expression.
+fn rust_host_token_demands_both_operands(op: BinOp) -> Bool {
+  match op {
+    And => false
+    Or => false
+    NullCoalesce => false
+    Add => true
+    Sub => true
+    Mul => true
+    Div => true
+    Mod => true
+    Eq => true
+    Ne => true
+    Lt => true
+    Gt => true
+    Le => true
+    Ge => true
+  }
+}
+
+// THE RENDERING IS DERIVED FROM THE DECLARED DEMAND, NOT ASSUMED FROM THE SPELLING. Before this
+// fold the emitter spliced `l && r` because `&&` is what binop_label says And renders as, and the
+// interpreter evaluated both operands because that is what its expression arm did; neither
+// consulted a fact about WHICH OPERANDS THE OPERATOR ASKS FOR, because none was declared. That is
+// the class filed as gunbc.recurring_failure_mode
+// realization_arms_diverge_on_whether_the_program_refuses, and std.operator_realization
+// operand_demand is the carrier its next-rung trigger named. Both realizations now read it: the
+// interpreter derives whether to evaluate the right operand, and this fold derives whether the
+// host token is a faithful lowering of that demand.
+//
+// THREE OUTCOMES, and each is reachable by changing the row rather than the source, which is what
+// makes this a derivation and not a decoration (DESIGN section 4b):
+//   AGREE            the token asks for exactly what the operator declares. Splice it, as before.
+//                    This is every operator on main today, so the emitted bytes do not move.
+//   DECLARED STRICT, TOKEN LAZY   an operator declaring DemandsBothOperands whose Rust token would
+//                    skip the right operand. The operands are bound to temporaries first, so both
+//                    are demanded and the token then combines two values.
+//   DECLARED LAZY, TOKEN STRICT   an operator whose right operand must be conditional and whose
+//                    Rust token cannot express that. An infix form cannot carry it and guessing one
+//                    would be the silent wrongness DESIGN section 5 forbids, so the line stops.
+fn emit_rust_demanded_host_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, right: Node, l_str: String, r_str: String, scope: InferScope) -> String {
+  let token_demands_both = rust_host_token_demands_both_operands(op: op)
+  match operand_demand(op: op) {
+    DemandsBothOperands =>
+      if token_demands_both {
+        emit_rust_host_bin_op(op: op, algebra_field: algebra_field, left: left, right: right, l_str: l_str, r_str: r_str, scope: scope)
+      } else {
+        let op_str = emit_bin_op_symbol(op: op, target: Rust, algebra_field: algebra_field)
+        concat(concat(concat(concat(concat("{ let __dag_lhs = ", l_str), "; let __dag_rhs = "), r_str), concat("; __dag_lhs ", op_str)), " __dag_rhs }")
+      }
+    DemandsRightOnlyWhenLeftIs { deciding: _ } =>
+      if token_demands_both {
+        emit_rust_compile_error_expr(message: concat(concat("operand demand: `", binop_label(op: op)), "` declares its right operand conditional and the Rust token for it evaluates both, so no infix lowering is faithful (std.operator_realization operand_demand)"))
+      } else {
+        emit_rust_host_bin_op(op: op, algebra_field: algebra_field, left: left, right: right, l_str: l_str, r_str: r_str, scope: scope)
+      }
+    DemandsRightOnlyWhenLeftIsAbsent =>
+      if token_demands_both {
+        emit_rust_compile_error_expr(message: concat(concat("operand demand: `", binop_label(op: op)), "` declares its right operand conditional on the left being absent and the Rust token for it evaluates both (std.operator_realization operand_demand)"))
+      } else {
+        emit_rust_host_bin_op(op: op, algebra_field: algebra_field, left: left, right: right, l_str: l_str, r_str: r_str, scope: scope)
+      }
   }
 }
 
@@ -14541,46 +14868,21 @@ fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, regist
   }
 }
 
-fn freemonoid_tco_empty_branch_body(empty_arm: Node?, catchall: Node?, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  match empty_arm {
-    Present { value: ea } => emit_typed_tco_expr(texpr: arm_body(n: ea), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-    Absent => match catchall {
-      Present { value: wa } =>
-        let bn = freemonoid_catchall_bind_name(arm: wa)
-        let bind_let = if bn == "" { "" } else { concat("let ", bn, " = __fm.clone(); ") }
-        concat(bind_let, emit_typed_tco_expr(texpr: arm_body(n: wa), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
-      Absent => ""
-    }
-  }
-}
-
-fn freemonoid_tco_nonempty_branch_body(cons_arm: Node?, catchall: Node?, si: Map<String, NewlineIndex>, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  match cons_arm {
-    Present { value: ca } =>
-      let head_bind = freemonoid_cons_binding(cons_arm: ca, field: "head", source_indices: si)
-      let tail_bind = freemonoid_cons_binding(cons_arm: ca, field: "tail", source_indices: si)
-      let head_let = if head_bind == "_" { "" } else { concat("let ", head_bind, " = (*__fm)[0].clone(); ") }
-      let tail_let = freemonoid_tail_let_from_fm(tail_bind: tail_bind)
-      concat(head_let, tail_let, emit_typed_tco_expr(texpr: arm_body(n: ca), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
-    Absent => match catchall {
-      Present { value: wa } =>
-        let bn = freemonoid_catchall_bind_name(arm: wa)
-        let bind_let = if bn == "" { "" } else { concat("let ", bn, " = __fm.clone(); ") }
-        concat(bind_let, emit_typed_tco_expr(texpr: arm_body(n: wa), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
-      Absent => ""
-    }
-  }
-}
-
+// THE TAIL-CALL TWIN OF THE SAME LOWERING, and it carried the same defect for the same reason: it
+// asked for the first `Empty` arm and the first `Cons` arm and emitted a two-way split. It differs
+// from the ordinary lowering in ONE fact -- an arm body is emitted as a tail-call continuation
+// rather than as a value -- so the analysis, the refusal and the chain are shared authorities here
+// and the body emitter is the only thing that varies. Fixing one and not the other would have left
+// the class alive in exactly the self-recursive folds it most often appears in.
 fn emit_native_freemonoid_tco_match(scrut_str: String, arms: List<Node>, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
-  let empty_arm = freemonoid_match_arm_for(arms: arms, variant: "Empty")
-  let cons_arm = freemonoid_match_arm_for(arms: arms, variant: "Cons")
-  let catchall = freemonoid_catchall_arm(arms: arms)
-  let empty_body = freemonoid_tco_empty_branch_body(empty_arm: empty_arm, catchall: catchall, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let nonempty_body = freemonoid_tco_nonempty_branch_body(cons_arm: cons_arm, catchall: catchall, si: si, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  if empty_body == "" || nonempty_body == "" { "" } else {
-    concat("{ let __fm = ", scrut_str, "; if __fm.is_empty() { ", empty_body, " } else { ", nonempty_body, " } }")
+  let plans = arms |> map(arm => fm_arm_plan(arm: arm, si: si))
+  match fm_plans_refusal(plans: plans) {
+    Present { value: bad } => emit_rust_compile_error_expr(message: fm_plan_refusal_text(plan: bad))
+    Absent =>
+      let pieces = plans |> map(p => fm_chain_piece(plan: p,
+        body: emit_typed_tco_expr(texpr: arm_body(n: p.arm), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)))
+      concat("{ let __fm = ", scrut_str, "; ", fm_chain_from(pieces: pieces, fuel: 256), " }")
   }
 }
 
@@ -14598,10 +14900,9 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
           } else { authored_name_at(source_indices: frame.scope.type_env.source_indices, node: rt) }
         _ => ""
       }
-      let native_tco_fm = if arms_are_freemonoid_coproduct(arms: arm_list, scrut_type: tco_scrut_type, type_summaries: emit_info.type_summaries) {
+      if arms_are_freemonoid_coproduct(arms: arm_list, scrut_type: tco_scrut_type, type_summaries: emit_info.type_summaries) {
         emit_native_freemonoid_tco_match(scrut_str: scrut_str, arms: arm_list, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
-      } else { "" }
-      if native_tco_fm != "" { native_tco_fm } else {
+      } else {
       let rc_match = analyze_rc_match(scrutinee: s, arms: arm_list, scrut_type: tco_scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: frame.scope.type_env.source_indices)
       let arm_strs = arm_list |> map(arm =>
         emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type))

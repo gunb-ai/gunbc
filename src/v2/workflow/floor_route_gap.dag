@@ -868,13 +868,16 @@ fn floor_route_gap_expectation_chunk_06() -> List<FloorRouteGapExpectation> {
 // unverified. Enrolment WITHOUT that schedule would be the other thing entirely: a subject that
 // executes nowhere, with the roster standing in for its evidence.
 //
-// The chunk carries NINE identities, and their evidence is NOT uniform, so the distinctions are
-// drawn here rather than left to a reader counting rows. The five test.claim.eval_model_probe
+// The chunk carries TEN identities, and their evidence is NOT uniform, so the distinctions are
+// drawn here rather than left to a reader counting rows. The six test.claim.eval_model_probe
 // identities were observed executing and holding on the wet lane by the same required-floor run
-// that produced their route gaps. The sixth (self_host_logic_seed_unavailable_receipt_holds)
-// and seventh through ninth (the three self_host_logic_seed_unavailable_check_fixture identities)
+// that produced their route gaps. The seventh (self_host_logic_seed_unavailable_receipt_holds)
+// and eighth through tenth (the three self_host_logic_seed_unavailable_check_fixture identities)
 // are enrolled beside their own WetScheduledClaim rows, all observed passing wet.
-// Anyone adding a tenth owns this sentence:
+// The sixth eval_model_probe identity, a_let_bound_effect_still_runs, arrived with the operand
+// demand row (std.operator_realization operand_demand) as the control for the two short-circuit
+// probes whose polarity that row inverted.
+// Anyone adding an eleventh owns this sentence:
 // an annotation that describes a population is invalidated by the edit that changes the population,
 // and nothing in the substrate will ever red to tell you so.
 //
@@ -886,9 +889,11 @@ fn floor_route_gap_expectation_chunk_06() -> List<FloorRouteGapExpectation> {
 // wet lane and held wet. This records only the hermetic unreachability.
 fn floor_route_gap_expectation_chunk_07() -> List<FloorRouteGapExpectation> {
   Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.and_demands_right_even_when_left_false", operation: "Dir", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.and_does_not_demand_right_when_left_false", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.and_short_circuit_direct_probe", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.a_let_bound_effect_still_runs", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.eval_model_probe.and_with_true_left_removes_file", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
@@ -904,6 +909,7 @@ fn floor_route_gap_expectation_chunk_07() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.self_host_logic_seed_unavailable_check_fixture.directory_with_v1_rt_containing_calls_passes", operation: "Dir", ground: NoMockResponse {} },
     tail: Empty {}
+  }
   }
   }
   }
@@ -1464,8 +1470,62 @@ fn floor_route_gap_expectation_chunk_20() -> List<FloorRouteGapExpectation> {
   }
 }
 
+// THE FIVE test.claim.compute.host_capacity_wet_witness IDENTITIES THAT REACH A REAL HOST POOL.
+// Landed by gunbc#11962 with TWO of the three rows chunk_06's header names -- the WetScheduledClaim
+// rows in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, and the
+// gunbc.ci_layer_roots witness_exclusion_frontier row classifying the file LocalRepoWetLane -- and
+// without this one. Nothing refused the incomplete triple, exactly as that header says nothing
+// will; what happened instead is the state it predicts, five red floors later. The immediate cost
+// is recorded because it is the argument for the wall that header asks for: these five blocked the
+// merge queue for gunbc#11829 (queue run 35673852146, composed revision on 3ab9d319c02), and the
+// floor receipt that run published read route_gap_unenrolled=5 route_gap_held=7 -- the seven being
+// every OTHER wet identity in the same run, enrolled and therefore held rather than blocking.
+//
+// THE OPERATION AND GROUND ARE READ FROM THAT RUN, NOT INFERRED, on the standard chunk_06 states:
+// each of the five refused with "the hermetic route has no arm for DirWithTemplate (operation
+// declares no mock_response)". DirWithTemplate is shell.Mktemp's templated directory operation and
+// is a DIFFERENT string from the Dir carried by the chunks above; writing Dir here from the
+// neighbouring rows would have produced a floor_route_gap_expectation_mismatch instead of a
+// discharge, which is the second half of the guard shape that header names.
+//
+// THE EXCLUSION ROW WAS NEVER GOING TO REMOVE THESE FROM THE NOMINAL PLAN, and the receipt says so
+// at identity grain: disposition=planned_as_changed_witness. The changed-witness sublane admits a
+// changed witness REGARDLESS of any exclusion (required_floor_runner cause=ChangedWitnessOutside
+// PreparedSubject), deliberately, so that an exclusion list cannot be the way a witness opts out of
+// the commit that introduces it. So for a witness whose file is being edited, enrolment here is not
+// one of several remedies -- it is the only one that is not a weakening.
+//
+// WHAT DISCHARGES THE HOLD IS THE WET TERMINAL, NEVER THIS ENROLMENT. The same run recorded all
+// seven identities of this module passing on the local-repo wet lane ([local-repo-wet]
+// expected=passed observed=passed), and the changed-witness projection already read
+// standing=hermetic-route-gap-held-and-wet-passed for exactly these five.
+//
+// THE OTHER TWO IDENTITIES OF THIS FILE ARE DELIBERATELY ABSENT. the_real_observation_reads_this_
+// machine and two_instances_on_one_host_resolve_to_one_pool_at_one_root reached their subjects
+// hermetically in the same run (standing=planned-and-passed), so a row for either would be a stale
+// enrolment -- an expectation of a gap that does not occur -- which the floor counts as
+// stale_route_gap and which is its own red.
+fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.a_request_the_machine_cannot_back_refuses_below_the_live_floor", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.a_reused_reference_is_a_ledger_refusal_and_never_reported_as_a_full_pool", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.an_appropriation_larger_than_the_machine_refuses_rather_than_admitting", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.competing_reservations_cannot_over_reserve_and_a_release_returns_the_capacity", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.two_requests_summing_past_the_observed_headroom_cannot_both_admit", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {}
+  }
+  }
+  }
+  }
+  }
+}
+
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Cons { head: floor_route_gap_expectation_chunk_21(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {
