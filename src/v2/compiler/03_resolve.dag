@@ -943,15 +943,59 @@ fn resolve_transform_children(
 // construct_tag_optional is the existing authority for the distinction: Present exactly for a
 // construct (first child is the tag self-edge, label == target atom identity), Absent for a
 // declared payload, whose first edge labels a FIELD and targets that field's TYPE.
-fn resolve_pattern_node_is_constructor(node: Node) -> Bool {
+// A DECLARED PAYLOAD IS IDENTIFIED POSITIVELY, NOT BY NOT BEING SOMETHING ELSE. The first repair
+// of this predicate (gunbc#12033, review 69994) excluded the construct shape and left `Absent =>
+// true`, so every Conj that is not a construct was still answered "constructor". That default is
+// the widening arm DESIGN section 5 forbids, arriving inside the remedy: parse mints Conj for
+// ordinary sequence nodes (v2.std.grammar grammar_expr_node, the 02_parse sequence snoc), the
+// namespace graft binds a data or alias NAME to its declaration parse node, and symbol_index_fill
+// puts that Conj in the index under the name -- so a match-arm binder spelling a module-level
+// data or alias name was classified a constructor, skipped by resolve_pattern_binders, and
+// resolved as a reference to that declaration. Silently, because the name resolves.
+//
+// So the test asks what a declared payload IS: a Conj that is nullary (a bare variant arm) or
+// whose every child is a declared field (v2.std.node_query declared_field_list, Named edges to
+// type expressions). A construct is excluded on top of that, because its tag self-edge reads as a
+// field of the same name and would otherwise satisfy the field test.
+//
+// WHICH ARM HAS A SPECIMEN, STATED RATHER THAN IMPLIED, BECAUSE ONE OF THEM DOES NOT. The
+// construct arm has an enrolled red. The parse-rest-node arm does NOT, and two attempts to author
+// one both failed for reasons worth recording so the next reader does not repeat them.
+//
+// FIRST ATTEMPT, same module: an outer data name tainted by test code, so a skipped binder would
+// refuse at the root wall. The probe came back ACCEPTED and its no-binder control REFUSED
+// resolve_reason_test_code_referenced -- instrument live, arm unreached, so the binder really did
+// bind. SECOND ATTEMPT, following gunbc#12057's reading that the reachable path is the global
+// branch rather than the lexical one: the same shape with the data row in a SECOND module, so the
+// name is globally unique and not lexically bound. That probe also passed, but its control FAILED
+// -- a test-tainted data row referenced across modules is accepted, so the wall does not fire
+// cross-module and the instrument is INERT there. The second probe therefore establishes nothing,
+// and is not enrolled; a green beside a control that cannot go red is not evidence.
+//
+// So this arm is carried WITHOUT a discriminating red, deliberately and visibly. The test is
+// positive anyway, on DESIGN section 4b's reasoning: an unreachable widen is what bites when the
+// graft changes shape, and an unreachable refusal costs nothing. gunbc#12057 reports the chain
+// against a head predating the first repair, and its author confirmed the structural reading that
+// construct_tag_optional cannot close it -- the 02_parse snoc node's first edge targets the item,
+// not an atom of the label's name, so the old default admitted it.
+fn resolve_pattern_node_is_declared_payload(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
-      match construct_tag_optional(n: node) {
-        Absent => true
-        Present { value: _ } => false
+      if count(node.children) == 0 {
+        true
+      } else {
+        count(declared_field_list(payload: node)) == count(node.children)
       }
     _ => false
   }
+}
+
+fn resolve_pattern_node_is_constructor(node: Node) -> Bool {
+  resolve_pattern_node_is_declared_payload(node: node)
+    && (match construct_tag_optional(n: node) {
+      Absent => true
+      Present { value: _ } => false
+    })
 }
 
 // The seed's rule, at this resolver's grain: a field-target atom is a constructor when the symbol
