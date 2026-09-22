@@ -2,6 +2,7 @@ module test.claim.github_authenticated_user_read
 
 import std.logic { Bool }
 import std.types { String, Secret }
+import std.resources { Network }
 import extdeps.transports.rest {
   RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
   classify_rest_outcome,
@@ -129,7 +130,7 @@ test fn an_undecodable_body_on_a_mutation_is_commit_ambiguous() -> Bool {
 // THE MOCK GREEN IS THE FIXTURE LOGIN, NOT A LIVE USER. GetAuthenticatedUser publishes one
 // hermetic result (decoded 200). Asserting that exact spelling is what keeps this from being
 // the wet 401 / live-login witness in disguise.
-test fn perform_authenticated_user_read_binds_the_hermetic_fixture_login() -> Bool {
+test fn perform_authenticated_user_read_binds_the_hermetic_fixture_login() -> Bool uses net: Network {
   match perform_github_authenticated_user_read(auth_token: "hermetic-fixture-token" as Secret) {
     GitHubAuthenticatedUserObserved { user } =>
       user.login == hermetic_get_authenticated_user_login

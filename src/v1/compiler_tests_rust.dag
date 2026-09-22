@@ -1775,7 +1775,7 @@ fn ct_generic_param_declines_fail_closed_unwrap_test() -> String {
     "            module_name: \"v2.std.diagnostic\".to_string(),\n",
     "            kind: crate::v1_compiler_infer_items::ItemKind::FnItem,\n",
     "            service_names: std::rc::Rc::new(im::Vector::new()),\n",
-    "            resource_names: std::rc::Rc::new(im::Vector::new()),\n",
+    "            resource_requirements: std::rc::Rc::new(im::Vector::new()),\n",
     "            params: std::rc::Rc::new(vec![param].into()),\n",
     "            is_self_recursive: false,\n",
     "            has_non_tail_self_call: false,\n",

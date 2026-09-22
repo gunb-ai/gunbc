@@ -51,7 +51,7 @@ import v1.std.core { Unmarked,
   ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
   AlgebraApplicationEvidenceUnavailable,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, ResourceRequirementUnestablished, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   EqualityOnFunctionMember, EqualityMemberUnjudgeable,
   TypeArgumentArityMismatch,
@@ -188,7 +188,8 @@ import v1.compiler.infer_items {
   ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem,
   ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface, leaf_owner_modules_from_registry,
   ModuleTypecheckProgress, ItemsChecked, AbandonedBeforeItems,
-  inferred_to_outputs, item_kind
+  inferred_to_outputs, item_kind,
+  ResourceRequirement, resource_requirements_of_uses
 }
 import v1.compiler.infer_service {
   UniqueAccum, OpEntry, ServiceMethodResult,
@@ -220,7 +221,7 @@ import v1.compiler.infer_lookup {
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
   lookup_in_scope, lookup_func_sig,
   resolved_plain_call_target_for_outcome, resolved_declaration_call_target, census_declaration_identity,
-  global_bare_callable_node, func_decl_binding_for_call,
+  global_bare_callable_node, func_decl_binding_for_call, constructor_declaration_for_admission,
   ConstructorDeclarationLookup, ExactConstructorDeclaration,
   NotAdmissionBearingReference, AdmissionBearingDeclarationUnavailable,
   ExactDeclarationIdentity, DeclarationLookupFailure, DeclarationNotIndexedAtQualifiedName
@@ -1075,6 +1076,124 @@ fn constructor_call_admission_diags(
           )
         ]
     }
+  }
+}
+
+// A CALL SITE MUST ESTABLISH EVERY RESOURCE ITS CALLEE DECLARES THROUGH `uses`. The callee's
+// requirements are read from ITS DECLARATION, reached by the identity the resolver selected
+// (the DeclaredCallableIdentity on the call target, through the same exact-identity read the
+// admit_callers wall uses) -- never by re-looking-up the spelling. The caller's establishment is
+// read from its own registry row (module + caller_decl_name), i.e. its own `uses` clause. The two
+// sides are compared as RESOURCE DECLARATIONS: each authored resource type is resolved in this
+// module's environment to the declaration node it names, and two requirements agree only when
+// both resolve and resolve to the same declaration. A resource that fails to resolve on either
+// side matches nothing, so the call refuses rather than admitting a spelling coincidence.
+//
+// WHY THIS IS THE EARLIEST UNJUSTIFIED BOUNDARY (DESIGN section 6b): the interpreter serves
+// resources ambiently and never consulted the caller, and the Rust realization passes each
+// resource as a parameter -- so before this check nothing in the chain established that the
+// caller HAS the resource, and the emitter published a call whose extra argument named the
+// callee's binding in a scope that never bound it. The fact is a source-level fact about the
+// program, so its home is the typecheck, and because emission is gated on blocking diagnostics
+// (v1.compiler.compile emittable_graph) an accepted program cannot carry the state; the emitter's
+// own refusal arm stays as the realization-side wall for a path that bypasses this gate.
+// Services are deliberately NOT covered here: a service requirement propagates transitively by
+// inference (v1.compiler.infer_service expand_transitive_services) and the caller's own row grows
+// to carry it, so there is no authored establishment to compare against.
+fn resource_declaration_identity(scope: InferScope, resource: Node) -> Node? {
+  lookup_type_by_name(env: scope.type_env, name: type_node_label(n: resource, source_indices: scope.type_env.source_indices))
+}
+
+// THE ONE MATCHING AUTHORITY, read by the typecheck (a Bool) and by the Rust emitter (the caller's
+// binding name to pass). It answers the caller's binding for a callee requirement, so the emitter
+// can never pass a spelling the typecheck did not establish: both consult this fold.
+fn established_resource_binding(scope: InferScope, required: ResourceRequirement, established: List<ResourceRequirement>) -> String? {
+  match resource_declaration_identity(scope: scope, resource: required.resource) {
+    Absent => none
+    Present { value: required_decl } =>
+      match established |> filter(e =>
+        match resource_declaration_identity(scope: scope, resource: e.resource) {
+          Present { value: e_decl } => e_decl == required_decl
+          Absent => false
+        }
+      ) |> first {
+        Present { value: e } => Present { value: e.binding_name }
+        Absent => none
+      }
+  }
+}
+
+fn resource_requirement_established(scope: InferScope, required: ResourceRequirement, established: List<ResourceRequirement>) -> Bool {
+  established_resource_binding(scope: scope, required: required, established: established) != none
+}
+
+fn caller_resource_requirements(scope: InferScope) -> List<ResourceRequirement> {
+  match map_get(scope.item_registry, callable_identity(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: scope.caller_decl_name })) {
+    Present { value: info } => info.resource_requirements
+    Absent => []
+  }
+}
+
+fn callee_declaration_for_target(scope: InferScope, call_target: CallTargetOutcome) -> Node? {
+  match call_target {
+    DeclaredCallableResolved { sig: _, declared: declared } =>
+      match constructor_declaration_for_admission(type_env: scope.type_env, owner_module_path: declared.owner_module_path, name: declared.decl_name) {
+        ExactConstructorDeclaration { identity: _, declaration: declaration } => Present { value: declaration }
+        _ => none
+      }
+    DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: declaration } => Present { value: declaration }
+    _ => none
+  }
+}
+
+fn resource_requirement_diags(scope: InferScope, call_target: CallTargetOutcome, span: SourceSpan) -> List<ErrorNode> {
+  let callee_identity = match call_target {
+    DeclaredCallableResolved { sig: _, declared: declared } => Present { value: declared }
+    DeclaredCallableIdentityResolved { declared: declared, borrowed_declaration: _ } => Present { value: declared }
+    _ => none
+  }
+  match callee_identity {
+    Absent => []
+    Present { value: callee } =>
+      match callee_declaration_for_target(scope: scope, call_target: call_target) {
+        Absent => []
+        Present { value: declaration } =>
+          let required = resource_requirements_of_uses(uses: declaration.uses, source_indices: scope.type_env.source_indices)
+          if required |> count == 0 { [] }
+          else {
+            let established = caller_resource_requirements(scope: scope)
+            required
+              |> filter(r => !resource_requirement_established(scope: scope, required: r, established: established))
+              |> map(r =>
+                make_error_node(
+                  diagnostic: ResourceRequirementUnestablished {
+                    callee_module_path: callee.owner_module_path,
+                    callee_decl_name: callee.decl_name,
+                    resource: type_node_label(n: r.resource, source_indices: scope.type_env.source_indices),
+                    caller_module_path: scope.module_name,
+                    caller_decl_name: if scope.caller_decl_name == "" { "<module scope>" } else { scope.caller_decl_name },
+                    span: span
+                  },
+                  module_name: scope.module_name
+                )
+              )
+          }
+      }
+  }
+}
+
+fn resource_requirement_refusal(func_name: String, scope: InferScope, call_target: CallTargetOutcome, span: SourceSpan) -> InferResult? {
+  let diags = resource_requirement_diags(scope: scope, call_target: call_target, span: span)
+  match diags |> first {
+    Absent => none
+    Present { value: _ } =>
+      Present { value: InferResult {
+        typed: semantic_expr_error_node(
+          message: concat("resource requirement unestablished for call to '", func_name, "'"),
+          span: span
+        ),
+        diagnostics: diags
+      } }
   }
 }
 
@@ -6780,6 +6899,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       match constructor_reference_admission_unshadowed(callee_name: func_name, span: span, scope: scope) {
         Present { value: refusal } => refusal
         Absent =>
+      match resource_requirement_refusal(func_name: func_name, scope: scope, call_target: call_target, span: span) {
+        Present { value: refusal } => refusal
+        Absent =>
       let sig = call_target_declared_sig(outcome: call_target)
       let sig_params = match sig {
         Present { value: s } => s.params
@@ -7313,6 +7435,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
         }
         }
+      }
       }
       }
       }
@@ -13421,7 +13544,7 @@ fn refresh_direct_service_names(
 
 fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module_name: String) -> ItemInfo {
   let kind = item_kind(item: item)
-  let res_names = item.uses |> map(u => resource_use_name_at(n: u, source_indices: source_indices))
+  let requirements = resource_requirements_of_uses(uses: item.uses, source_indices: source_indices)
   let item_name_str = authored_name_at(source_indices: source_indices, node: item)
   match kind {
     FnItem =>
@@ -13430,7 +13553,7 @@ fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module
         module_name: module_name,
         kind: kind,
         service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value, source_indices: source_indices) },
-        resource_names: res_names,
+        resource_requirements: requirements,
         params: item.params,
         is_self_recursive: if item.body == none { false } else { expr_has_self_call(texpr: item.body.value, fn_name: item_name_str, source_indices: source_indices) },
         has_non_tail_self_call: if item.body == none { false } else { expr_has_non_tail_self_call(texpr: item.body.value, fn_name: item_name_str, in_tail: true, source_indices: source_indices) }
@@ -13441,7 +13564,7 @@ fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module
         module_name: module_name,
         kind: kind,
         service_names: [],
-        resource_names: res_names,
+        resource_requirements: requirements,
         params: item.params,
         is_self_recursive: false,
         has_non_tail_self_call: false

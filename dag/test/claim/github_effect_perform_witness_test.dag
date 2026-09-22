@@ -2,6 +2,7 @@ module test.claim.github_effect_perform_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.integer { UInt8 }
+import std.resources { Network }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.auth.jws { jws_rs256_signing_input, jws_compact_serialization }
 import extdeps.github.org_admin_auth { github_app_jwt_claims_json }
@@ -112,7 +113,7 @@ test fn witness_generate_step_delivers_refuses_or_reports_ambiguity_by_what_gith
 // for the wrong App refuses before any I/O -- no key read, no request. Without this the custody
 // guard would be a wall nothing executes: dropping it while the key still points at the CI App's
 // pem would leave every other witness green (review 68748).
-test fn witness_a_dispatch_for_another_app_is_refused_before_signing() -> Bool {
+test fn witness_a_dispatch_for_another_app_is_refused_before_signing() -> Bool uses net: Network {
   match perform_organization_jit_mint(dispatch: dispatched(owned: true, perms: runner_grant)) {
     JitMintAppKeyNotCustodied { app: a } => a == gunbai_bot_declared && a != lifecycle_controller_app
     _ => false
@@ -122,7 +123,7 @@ test fn witness_a_dispatch_for_another_app_is_refused_before_signing() -> Bool {
 // A REFUSED DISPATCH PERFORMS NOTHING: no key is read and no request is sent, and the refusal the
 // plan reached is what comes back. This executes the real perform function, which reaches no
 // effect on this arm.
-test fn witness_a_refused_dispatch_performs_no_mint() -> Bool {
+test fn witness_a_refused_dispatch_performs_no_mint() -> Bool uses net: Network {
   match perform_organization_jit_mint(dispatch: dispatched(owned: false, perms: runner_grant)) {
     JitMintReceived { delivery: JitCredentialNotDispatched { refusal: _ } } => true
     _ => false
