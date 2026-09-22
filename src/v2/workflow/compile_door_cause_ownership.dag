@@ -144,6 +144,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "body-lowering stage frontier on the self-host critical path: a record-literal field initializer whose shape is not `name: value`. Measured 2026-09-22 at fatal grain by the workload adjudicate over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
+    cause: ^body_lowering_reason_postfix_suffix_carried,
+    grain: HeadGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a postfix chain step whose suffix is neither empty nor a parenthesised argument row -- today the module-qualified record construction `a.b.C { f: v }` and an `as` suffix. gunbc#12057 deleted body_lower_try_postfix_projection and with it the unowned FATAL cause postfix_field_access_refused, which had refused these shapes loudly on base; refusing them from the new one-walk door instead was MEASURED to turn 32 modules that ACCEPT on base into refusals (28 directly, 4 as match_arm_navigation_refused propagating out of a match scrutinee), so the door declines them to the pre-existing arms as gunbc#11683 did for the call-before-end class. This row is what keeps that decline ON the ladder rather than below it (review 70078): the residue is located and counted at head grain instead of vanishing silently, the file still Accepts, and 8 of the 42 base-refusing files carry this shape so the population is real. Flips to Blocking when a construct tag can carry a qualified name, which is what the brace-suffix shape needs to LOWER and is a wider package than gunbc#12057. Measured 2026-09-22 at head grain by the workload adjudicate over dag + src/v2 (count on the PR)"
+  },
+  CauseOwnership {
     cause: ^body_lowering_reason_value_carried_unlowered,
     grain: HeadGrain,
     lane: SharedSelfHostCriticalPath,

@@ -5,7 +5,6 @@ import v2.compiler.body_lowering_fold {
   ParseSubtreeFound,
   PostfixChainFound,
   PostfixChainNotThisShape,
-  PostfixChainStepSuffixUnlowered,
   body_lower_dotted_chain_lowered_optional,
   body_lower_find_captured,
   body_lower_postfix_chain_read,
@@ -331,7 +330,6 @@ test fn body_lowering_local_receiver_call_callee_is_the_whole_path() -> Bool {
 test fn body_lowering_call_before_end_is_found_as_two_steps() -> Bool {
   match body_lower_postfix_chain_read(node: dotted_fixture_call_before_end()) {
     PostfixChainNotThisShape => false
-    PostfixChainStepSuffixUnlowered { at: _ } => false
     PostfixChainFound { steps: steps } => length(xs: steps) == 2
   }
 }
