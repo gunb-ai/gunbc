@@ -1,0 +1,158 @@
+module extdeps.vllm.engram_layout
+
+import std.types { Bool, List, Int, String }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// ── vLLM's ENGRAM BUCKET LAYOUT AND ITS TENSOR-PARALLEL ROW SHARDING, AT d2d649e6 ─────────────────
+//
+// The authority is upstream's own code, cited by path at the pinned revision, and every function
+// below is that code's arithmetic rather than a figure copied out of it:
+//
+//   vllm/models/deepseek_v4_1/common/engram.py
+//     _is_prime / find_next_prime   -- deterministic Miller-Rabin (witnesses 2, 7, 61) for n < 2^32
+//     EngramLayout.__init__         -- per layer, per n-gram order 2..max_ngram_size, n_heads primes:
+//                                      each the smallest prime above vocab_size - 1 not yet handed out,
+//                                      the `seen` set spanning ALL layers, so no bucket size repeats
+//     BaseParallelEngramEmbedding   -- num_shards = tp_size; part_n_hash_cols = cdiv(n_hash_cols,
+//                                      num_shards); rank k owns the CONTIGUOUS bucket rows
+//                                      [sum(head_sizes[:k*p]), sum(head_sizes[:(k+1)*p])), and the
+//                                      weight loader narrows the published table to exactly that range
+//
+// A layer's head sizes sum to that layer's table rows by construction, which makes the published
+// safetensors shapes an independent check on this derivation rather than an input to it.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vllm-project/vllm/blob/d2d649e674c75425d2d6975c87eb89fd4d55fff8/vllm/models/deepseek_v4_1/common/engram.py"
+  },
+}
+
+data vllm_engram_small_prime_divisors: List<Int> = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37]
+data vllm_engram_miller_rabin_witnesses: List<Int> = [2, 7, 61]
+
+fn vllm_engram_pow_mod(base: Int, exp: Int, m: Int) -> Int {
+  if exp == 0 {
+    1 % m
+  } else {
+    let half = vllm_engram_pow_mod(base: base, exp: exp / 2, m: m)
+    let sq = (half * half) % m
+    if exp % 2 == 0 { sq } else { (sq * (base % m)) % m }
+  }
+}
+
+type VllmEngramOddPart {
+  d: Int
+  r: Int
+}
+
+fn vllm_engram_odd_part(d: Int, r: Int) -> VllmEngramOddPart {
+  if d % 2 == 0 { vllm_engram_odd_part(d: d / 2, r: r + 1) } else { VllmEngramOddPart { d: d, r: r } }
+}
+
+// The inner squaring loop: does x reach n - 1 within `left` squarings?
+fn vllm_engram_reaches_minus_one(x: Int, n: Int, left: Int) -> Bool {
+  if left <= 0 {
+    false
+  } else {
+    let y = (x * x) % n
+    if y == n - 1 { true } else { vllm_engram_reaches_minus_one(x: y, n: n, left: left - 1) }
+  }
+}
+
+fn vllm_engram_witness_passes(a: Int, n: Int, odd: VllmEngramOddPart) -> Bool {
+  let x = vllm_engram_pow_mod(base: a, exp: odd.d, m: n)
+  x == 1 || x == n - 1 || vllm_engram_reaches_minus_one(x: x, n: n, left: odd.r - 1)
+}
+
+// upstream _is_prime, arm for arm.
+fn vllm_engram_is_prime(n: Int) -> Bool {
+  if n < 2 {
+    false
+  } else {
+    match first(filter(vllm_engram_small_prime_divisors, p => n % p == 0)) {
+      Present { value: p } => n == p
+      Absent => {
+        let odd = vllm_engram_odd_part(d: n - 1, r: 0)
+        all(vllm_engram_miller_rabin_witnesses, a => vllm_engram_witness_passes(a: a, n: n, odd: odd))
+      }
+    }
+  }
+}
+
+// upstream find_next_prime: the smallest prime ABOVE `start` not already handed out.
+fn vllm_engram_next_prime(start: Int, seen: List<Int>) -> Int {
+  let c = start + 1
+  if vllm_engram_is_prime(n: c) && !any(seen, s => s == c) { c } else { vllm_engram_next_prime(start: c, seen: seen) }
+}
+
+type VllmEngramPrimeDraw {
+  seen: List<Int>
+  drawn: List<Int>
+}
+
+// One n-gram order's n_heads primes: `current` restarts at vocab_size - 1 for every order and every
+// layer, and advances only within the order; `seen` carries across all of them.
+fn vllm_engram_draw_order(acc: VllmEngramPrimeDraw, vocab_size: Int, n_heads: Nat) -> VllmEngramPrimeDraw {
+  let order = fold(nat_range_count(n: n_heads), init: VllmEngramPrimeDraw { seen: acc.seen, drawn: [] as List<Int> }, f: (st, _) => {
+    let current = match first(reverse(st.drawn)) {
+      Present { value: p } => p
+      Absent => vocab_size - 1
+    }
+    let p = vllm_engram_next_prime(start: current, seen: st.seen)
+    VllmEngramPrimeDraw { seen: concat(st.seen, [p]), drawn: concat(st.drawn, [p]) }
+  })
+  VllmEngramPrimeDraw { seen: order.seen, drawn: concat(acc.drawn, order.drawn) }
+}
+
+fn nat_range_count(n: Nat) -> List<Nat> {
+  if n == 0 { [] as List<Nat> } else { concat(nat_range_count(n: n - 1), [n - 1]) }
+}
+
+// THE FLAT HEAD SIZES OF EVERY LAYER, in layer order: per layer, (max_ngram_size - 1) orders of
+// n_heads primes each, flattened order-major exactly as EngramLayout flattens them.
+fn vllm_engram_head_sizes(layer_count: Nat, max_ngram_size: Nat, n_heads: Nat, vocab_size: Nat) -> List<List<Int>> {
+  let orders = if max_ngram_size == 0 { 0 } else { max_ngram_size - 1 }
+  let done = fold(nat_range_count(n: layer_count), init: VllmEngramLayoutDraw { seen: [] as List<Int>, layers: [] as List<List<Int>> }, f: (acc, _) => {
+    let layer = fold(nat_range_count(n: orders), init: VllmEngramPrimeDraw { seen: acc.seen, drawn: [] as List<Int> }, f: (st, _) => vllm_engram_draw_order(acc: st, vocab_size: vocab_size, n_heads: n_heads))
+    VllmEngramLayoutDraw { seen: layer.seen, layers: concat(acc.layers, [layer.drawn]) }
+  })
+  done.layers
+}
+
+type VllmEngramLayoutDraw {
+  seen: List<Int>
+  layers: List<List<Int>>
+}
+
+fn vllm_engram_sum(xs: List<Int>) -> Int {
+  fold(xs, init: 0, f: (acc, x) => acc + x)
+}
+
+// cdiv(n_hash_cols, tp_size): the hash columns one rank owns.
+fn vllm_engram_part_hash_cols(n_hash_cols: Nat, tp_size: Nat) -> Nat {
+  if tp_size == 0 { 0 } else { (n_hash_cols + tp_size - 1) / tp_size }
+}
+
+// A RANK'S CONTIGUOUS ROW RANGE in one layer's table: [start, end).
+type VllmEngramRankRows {
+  rank: Nat
+  start: Int
+  end: Int
+}
+
+fn vllm_engram_rank_rows(head_sizes: List<Int>, tp_size: Nat) -> List<VllmEngramRankRows> {
+  let p = vllm_engram_part_hash_cols(n_hash_cols: length(head_sizes), tp_size: tp_size)
+  map(nat_range_count(n: tp_size), k => VllmEngramRankRows {
+    rank: k,
+    start: vllm_engram_sum(xs: head_sizes |> take(n: k * p)),
+    end: vllm_engram_sum(xs: head_sizes |> take(n: (k + 1) * p)),
+  })
+}
+
+// upstream's own sharding assertion: no rank may be left without a hash head.
+fn vllm_engram_every_rank_has_heads(n_hash_cols: Nat, tp_size: Nat) -> Bool {
+  tp_size > 0 && (tp_size - 1) * vllm_engram_part_hash_cols(n_hash_cols: n_hash_cols, tp_size: tp_size) < n_hash_cols
+}

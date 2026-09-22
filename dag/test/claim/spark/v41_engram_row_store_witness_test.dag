@@ -1,0 +1,263 @@
+module test.claim.spark.v41_engram_row_store_witness
+
+import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.nat { Nat }
+import std.integer { UInt8, qualified_octet_members }
+import std.content_hash { ContentHash, Sha256Hash, Fnv1a64, content_hash_of_value, serialize_content_hash, sha256_hex_digest }
+import std.measure { byte_size_count }
+import v2.std.optional { Present, Absent }
+import extdeps.numeric.base16 { base16_decode_lower }
+import extdeps.toolchain.architecture_profile { BigEndian }
+import extdeps.safetensors.format { SafetensorsEntry, safetensors_entry, SafeF8E4M3, SafeF8E8M0, SafeF16 }
+import extdeps.vllm.engram_layout { vllm_engram_rank_rows }
+import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_engram,
+  deepseek_v4_1_flash_engram_entries_layer_1, deepseek_v4_1_flash_engram_entries_layer_14,
+}
+import gunbc.spark.v41_runtime_candidate { V41EngramResidencyPartition, v41_candidate_partition }
+import gunbc.spark.v41_engram_row_store {
+  V41RowStoreEncodingSpec, V41SourceRow, V41RankStoreIdentity,
+  V41RowStoreSpecStanding, V41RowStoreSpecAdmitted, V41RowStoreSpecRefused,
+  V41Placement, V41Placed, V41PlacementRefused,
+  V41FixtureRows, V41PublishedEngramShards, V41FixtureCorrespondenceHolds, V41PublishedTransformUnestablished, V41TransformUnfaithful,
+  V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
+  RankMapReservedUninhabited, RowOrderReservedUninhabited,
+  v41_row_store_spec, v41_encoding_spec_of_layers, v41_layer_table, v41_row_geometry_of, v41_row_bytes,
+  v41_source_row, v41_place_row, v41_row_address, v41_transform_fixture, v41_fixture_encoding,
+  v41_tampered_record_is_unfaithful, v41_dropped_source_row_is_unfaithful,
+  v41_identify_row_store, v41_rank_store_identity, v41_rank_digest_of, v41_rank_stores_of,
+  v41_encoding_spec_key, v41_encoding_spec_inputs, v41_encoding_spec_override_endianness,
+  v41_encoding_spec_override_rank_map, v41_encoding_spec_override_row_order,
+  v41_published_transform_standing, v41_layer_index_from_tensor_name,
+  v41_row_store_magic, v41_row_store_magic_size,
+}
+
+// ── THE FIXTURE: EIGHT ROWS, FOUR RANKS OF TWO, THREE-BYTE RECORDS ─────────────────────────────
+
+fn w_tiny_spec() -> V41RowStoreEncodingSpec {
+  v41_encoding_spec_of_layers(
+    partition: v41_candidate_partition,
+    layers: [v41_layer_table(layer: 1, weight: "layers.1.engram.embed.weight" as NonEmptyStr, scale: "layers.1.engram.embed.scale" as NonEmptyStr, rows: 8, ranks: vllm_engram_rank_rows(head_sizes: [2, 2, 2, 2], tp_size: 4))],
+    geometry: v41_row_geometry_of(weight_dtype: SafeF8E4M3, scale_dtype: SafeF8E8M0, weight_width: 2, scale_width: 1),
+  )
+}
+
+fn w_row(i: Nat) -> V41SourceRow {
+  v41_source_row(layer: 1, global_row: i, weight: [i, i + 16], scale: [i + 32])
+}
+
+fn w_source() -> List<V41SourceRow> {
+  [w_row(i: 0), w_row(i: 1), w_row(i: 2), w_row(i: 3), w_row(i: 4), w_row(i: 5), w_row(i: 6), w_row(i: 7)]
+}
+
+// The store digests an INDEPENDENT implementation computed (Python hashlib over b"ENGR1\n" followed
+// by the rank's two records): the oracle is not this module.
+data w_independent_store_sha256: List<String> = [
+  "3e17ab5e78214d961c8ff395020ee135f485c7f5e84f635877e8058dbad7c435",
+  "0e0a94d216b8c94770b60f2973d4ce78ae31c2ba3450067dca75090cfe3b39cf",
+  "7aebdf40b7a66cbc67d5bf8cd66a9303cb285e0cb3e7dfdad59a3e96bc064b98",
+  "e59f87dcfb6e424d59f9ba27c42101318a3caa3761d8b1b6a2528258f2c16050",
+]
+
+fn w_hex_is(h: ContentHash?, hex: String) -> Bool {
+  match h {
+    Present { value: c } => match c {
+      Sha256Hash(d) => (d.hex as String) == hex
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+test fn every_fixture_store_is_the_sha256_of_magic_then_its_records() -> Bool {
+  match v41_fixture_encoding(source: w_source(), spec: w_tiny_spec()) {
+    Absent => false
+    Present { value: e } =>
+      length(v41_rank_stores_of(e: e)) == 4
+        && all(enumerate(w_independent_store_sha256), p => w_hex_is(h: v41_rank_digest_of(e: e, layer: 1, rank: p.first), hex: p.second))
+  }
+}
+
+// Supply order does not reach a store: the same rows reversed give the same digests.
+test fn supply_order_does_not_change_any_store() -> Bool {
+  match v41_fixture_encoding(source: reverse(w_source()), spec: w_tiny_spec()) {
+    Absent => false
+    Present { value: e } => all(enumerate(w_independent_store_sha256), p => w_hex_is(h: v41_rank_digest_of(e: e, layer: 1, rank: p.first), hex: p.second))
+  }
+}
+
+// RED: a tampered record or a dropped row is unfaithful; an untampered record is not.
+test fn a_tampered_or_dropped_row_is_unfaithful() -> Bool {
+  v41_tampered_record_is_unfaithful(source: w_source(), spec: w_tiny_spec(), tamper: [9, 9, 9])
+    && !v41_tampered_record_is_unfaithful(source: w_source(), spec: w_tiny_spec(), tamper: [0, 16, 32])
+    && v41_dropped_source_row_is_unfaithful(source: w_source(), spec: w_tiny_spec())
+}
+
+// RED: a row whose bytes do not match the geometry is refused at placement, never padded or cut.
+test fn a_row_of_the_wrong_width_is_refused_at_placement() -> Bool {
+  match v41_place_row(row: v41_source_row(layer: 1, global_row: 0, weight: [1, 2, 3], scale: [4]), spec: w_tiny_spec()) {
+    V41PlacementRefused { defect: d } => (d as String).contains("weight bytes")
+    V41Placed { row: _ } => false
+  }
+    && match v41_place_row(row: v41_source_row(layer: 1, global_row: 8, weight: [1, 2], scale: [4]), spec: w_tiny_spec()) {
+      V41PlacementRefused { defect: d } => (d as String).contains("no declared rank range")
+      V41Placed { row: _ } => false
+    }
+}
+
+// An empty or partial source builds no store: completeness is per store, every local row once.
+test fn an_incomplete_source_does_not_mint_identified_stores() -> Bool {
+  match v41_transform_fixture(source: [] as List<V41SourceRow>, spec: w_tiny_spec()) {
+    V41TransformUnfaithful { defects: d } => any(d, x => (x as String).contains("not each local row exactly once"))
+    V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: _ } => false
+    V41PublishedTransformUnestablished { obligation: _ } => false
+  }
+    && match v41_fixture_encoding(source: [w_row(i: 0), w_row(i: 1)], spec: w_tiny_spec()) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+// ── IDENTIFICATION: EXACT (LAYER, RANK) POPULATION, SHA-256 ONLY ───────────────────────────────
+
+fn w_sha(c: String) -> ContentHash {
+  match sha256_hex_digest(hex: join([c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c], "")) {
+    Present { value: d } => Sha256Hash(d)
+    Absent => content_hash_of_value(value: "unreachable" as NonEmptyStr)
+  }
+}
+
+test fn identification_refuses_a_missing_foreign_or_non_sha256_store() -> Bool {
+  let four = map([0, 1, 2, 3], k => v41_rank_store_identity(layer: 1, rank: k, digest: w_sha(c: "a")))
+  (match v41_identify_row_store(spec: w_tiny_spec(), rank_stores: four) {
+    V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: _, content_digest: _ } => true
+    _ => false
+  })
+    && (match v41_identify_row_store(spec: w_tiny_spec(), rank_stores: four |> take(n: 3)) {
+      V41RowStoreEncodingRefused { defects: d } => any(d, x => (x as String).contains("layer.1.rank.3"))
+      _ => false
+    })
+    && (match v41_identify_row_store(spec: w_tiny_spec(), rank_stores: concat(four, [v41_rank_store_identity(layer: 14, rank: 0, digest: w_sha(c: "b"))])) {
+      V41RowStoreEncodingRefused { defects: d } => any(d, x => (x as String).contains("not declared"))
+      _ => false
+    })
+    && (match v41_identify_row_store(spec: w_tiny_spec(), rank_stores: concat(four |> take(n: 3), [v41_rank_store_identity(layer: 1, rank: 3, digest: content_hash_of_value(value: "r3" as NonEmptyStr))])) {
+      V41RowStoreEncodingRefused { defects: d } => any(d, x => (x as String).contains("not a SHA-256"))
+      _ => false
+    })
+}
+
+test fn a_reserved_rank_map_or_row_order_refuses_rather_than_minting_identity() -> Bool {
+  (match v41_identify_row_store(spec: v41_encoding_spec_override_rank_map(spec: w_tiny_spec(), rank_map: RankMapReservedUninhabited), rank_stores: [] as List<V41RankStoreIdentity>) {
+    V41RowStoreEncodingRefused { defects: d } => any(d, x => (x as String).contains("ReservedUninhabited"))
+    _ => false
+  })
+    && (match v41_transform_fixture(source: w_source(), spec: v41_encoding_spec_override_row_order(spec: w_tiny_spec(), row_order: RowOrderReservedUninhabited)) {
+      V41TransformUnfaithful { defects: d } => any(d, x => (x as String).contains("ReservedUninhabited"))
+      _ => false
+    })
+}
+
+test fn the_spec_key_moves_with_geometry_endianness_and_rank_ranges_and_carries_the_magic() -> Bool {
+  let base = w_tiny_spec()
+  let other_dtype = v41_encoding_spec_of_layers(partition: v41_candidate_partition, layers: base.layers, geometry: v41_row_geometry_of(weight_dtype: SafeF16, scale_dtype: SafeF8E8M0, weight_width: 2, scale_width: 1))
+  let other_ranges = v41_encoding_spec_of_layers(partition: v41_candidate_partition, layers: [v41_layer_table(layer: 1, weight: "layers.1.engram.embed.weight" as NonEmptyStr, scale: "layers.1.engram.embed.scale" as NonEmptyStr, rows: 8, ranks: vllm_engram_rank_rows(head_sizes: [1, 3, 2, 2], tp_size: 4))], geometry: base.geometry)
+  let k = serialize_content_hash(hash: v41_encoding_spec_key(spec: base)) as String
+  k != serialize_content_hash(hash: v41_encoding_spec_key(spec: other_dtype)) as String
+    && k != serialize_content_hash(hash: v41_encoding_spec_key(spec: v41_encoding_spec_override_endianness(spec: base, endianness: BigEndian))) as String
+    && k != serialize_content_hash(hash: v41_encoding_spec_key(spec: other_ranges)) as String
+    && any(v41_encoding_spec_inputs(spec: base), i => (i.identity as String) == "magic")
+    && (v41_row_store_magic as String).starts_with(prefix: "ENGR1")
+}
+
+// ── THE LIVE SPEC, FROM THE PUBLISHED POPULATION ───────────────────────────────────────────────
+
+fn w_live_population() -> List<SafetensorsEntry> {
+  concat(deepseek_v4_1_flash_engram_entries_layer_1, deepseek_v4_1_flash_engram_entries_layer_14)
+}
+
+// The published shapes give a 264-byte record (256 F8_E4M3 weight + 8 F8_E8M0 scale), and vLLM's
+// derived bucket layout tiles each layer's published rows exactly into four contiguous ranges.
+test fn the_live_spec_derives_a_264_byte_record_and_grounded_rank_ranges() -> Bool {
+  match v41_row_store_spec(population: w_live_population(), partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram) {
+    V41RowStoreSpecRefused { defects: _ } => false
+    V41RowStoreSpecAdmitted { spec: s } =>
+      byte_size_count(b: v41_row_bytes(g: s.geometry)) == 264
+        && length(s.layers) == 2
+        && all(s.layers, t => length(t.ranks) == 4)
+        && all(s.layers, t => match first(reverse(t.ranks)) { Present { value: r } => r.end == t.rows  Absent => false })
+  }
+}
+
+// RED: a published row count the derived layout does not reach refuses -- the two authorities are
+// compared, never reconciled by picking one.
+test fn a_table_whose_rows_disagree_with_the_derived_layout_refuses() -> Bool {
+  let short = [
+    safetensors_entry(name: "layers.1.engram.embed.weight" as NonEmptyStr, dtype: SafeF8E4M3, shape: [384006167, 256], begin_offset: 0, end_offset: 98305578752),
+    safetensors_entry(name: "layers.1.engram.embed.scale" as NonEmptyStr, dtype: SafeF8E8M0, shape: [384006167, 8], begin_offset: 98305578752, end_offset: 101377628088),
+  ]
+  match v41_row_store_spec(population: concat(short, deepseek_v4_1_flash_engram_entries_layer_14), partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram) {
+    V41RowStoreSpecRefused { defects: d } => any(d, x => (x as String).contains("derived bucket layout"))
+    V41RowStoreSpecAdmitted { spec: _ } => false
+  }
+}
+
+test fn a_missing_or_unnamed_storage_member_refuses() -> Bool {
+  (match v41_row_store_spec(population: deepseek_v4_1_flash_engram_entries_layer_1, partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram) {
+    V41RowStoreSpecRefused { defects: d } => any(d, x => (x as String).contains("layers.14.engram.embed.weight") && (x as String).contains("not in the supplied population"))
+    V41RowStoreSpecAdmitted { spec: _ } => false
+  })
+    && (match v41_layer_index_from_tensor_name(name: "engram.embed.weight" as NonEmptyStr) { Absent => true  Present { value: _ } => false })
+    && (match v41_layer_index_from_tensor_name(name: "layers.14.engram.embed.weight" as NonEmptyStr) { Present { value: n } => n == 14  Absent => false })
+}
+
+// ── THE INHABITANCE CLAIM: REAL PUBLISHED ROWS ENCODE TO THE BYTES THE PATCH READS ─────────────
+//
+// Rows 96000563 and 96000564 of layers.1.engram.embed.{weight,scale}, read by HTTP range from
+// model-00047-of-00048.safetensors at dba1be0a (weight at header_end + row*256, scale at
+// header_end + 98305579008 + row*8; header_end = 8 + 656) on 2026-09-22. They straddle rank 0's end
+// under the derived layout, so the claim reaches the partition as well as the record.
+data w_real_weight_96000563: String = "5b71726d69725c6567cfea6ae069776871e87873eaf254f26a7458ebf2f7736c75f2eef17048f1ec63c356eef2646e51ecf5de6072ececf2737361e56ee349f979d8e2f96edd6c61f063dfefe96c6ff3f0f572d17afa5eec6b66dce47767f0fadcf7eb57cb7074696ae36dd46761f16e666072e0e46b69dbf362ec6ef4e17cf576ebe3dde9f0f17775e84ae3ccdad0f16b746c4d735ee75076ede2e96df1f7f4f0f67af2ddea67d7edda6ee9e871755cf6ebf660ede966f36eecf064636a66645b71f6637366dc60f0e6f27af7726c706ef971ae72de6bc8f473ecdbe2e75de0737566ec6b6be9d9f4da6f5376696f6ce761c4eeeb5d61eff8f44a766b7a6a60"
+data w_real_scale_96000563: String = "7878787878787878"
+data w_real_weight_96000564: String = "e9f6f3e17de9685271f57bf1f7fdfb71e679ea76f9fbfdeed2f67174fa78f17bc162eb5578f3f8696d66626f6def35f375f069e16072f5c0f1746a346ee969ddd0eb57f1f5f26f68ecf8e65c70f1e865dcddfbdb586cfad479f8f1f27bedf67662625ce2696de3ef70ebec72fcd366e9edd3e15aee61e9eadb7072f3e66b5b6c5cf0707262ed644877666869e664eee06071c760eae5d36c6a7560dcfb6a63eb79c178756af1687c45eb63f4f0f3f0f1e9f6555df4f8f1f16c6d6ff1e37d72efe35d71d2605cf26de1ebf3f469f96bf1d36ff768ef5ff270eced6c53e6de6ef4d9e96cebeb4c6eecefed7261e4ecbe73456d70ed635cf95972dfd1e8e0eaf070"
+data w_real_scale_96000564: String = "7778777878777878"
+
+fn w_octets(hex: String) -> List<UInt8> {
+  match base16_decode_lower(hex: hex) {
+    Present { value: q } => qualified_octet_members(q: q)
+    Absent => [] as List<UInt8>
+  }
+}
+
+fn w_real_placed_as(spec: V41RowStoreEncodingSpec, global_row: Nat, weight_hex: String, scale_hex: String, rank: Nat, local_row: Nat) -> Bool {
+  let weight = w_octets(hex: weight_hex)
+  let scale = w_octets(hex: scale_hex)
+  match v41_place_row(row: v41_source_row(layer: 1, global_row: global_row, weight: weight, scale: scale), spec: spec) {
+    V41PlacementRefused { defect: _ } => false
+    V41Placed { row: p } =>
+      p.rank == rank && p.local_row == local_row
+        && byte_size_count(b: p.offset) == byte_size_count(b: v41_row_store_magic_size()) + local_row * 264
+        && length(p.record) == 264
+        // what fetch_rows copies from [offset, offset + nbytes): the weight row, then the scale row
+        && (p.record |> take(n: 256)) == weight
+        && (p.record |> skip(n: 256)) == scale
+  }
+}
+
+test fn real_published_rows_encode_to_the_record_the_patch_reads_at_their_offset() -> Bool {
+  match v41_row_store_spec(population: w_live_population(), partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram) {
+    V41RowStoreSpecRefused { defects: _ } => false
+    V41RowStoreSpecAdmitted { spec: s } =>
+      w_real_placed_as(spec: s, global_row: 96000563, weight_hex: w_real_weight_96000563, scale_hex: w_real_scale_96000563, rank: 0, local_row: 96000563)
+        && w_real_placed_as(spec: s, global_row: 96000564, weight_hex: w_real_weight_96000564, scale_hex: w_real_scale_96000564, rank: 1, local_row: 0)
+  }
+}
+
+// THE PUBLISHED STORES HAVE NO CONSTRUCTOR HERE; the obligation names the only admitted producer.
+test fn the_published_stores_remain_unestablished_and_name_their_producer() -> Bool {
+  match v41_published_transform_standing() {
+    V41PublishedTransformUnestablished { obligation: o } => (o as String).contains("host realization of v41_place_row") && (o as String).contains("differential claim")
+    V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: _ } => false
+    V41TransformUnfaithful { defects: _ } => false
+  }
+}
