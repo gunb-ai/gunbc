@@ -12,7 +12,10 @@ import gunbc.compiler_gate_workflow {
   compiler_gate_emit_build_job_id,
   compiler_gate_emit_build_bound_steps,
   compiler_gate_emit_build_capability_closure_holds,
-  compiler_gate_lane_result_expression
+  compiler_gate_lane_result_expression,
+  compiler_gate_aggregate_step_env,
+  compiler_gate_aggregate_script_lines,
+  compiler_gate_blocking_rows, compiler_gate_lane_rows
 }
 import gunbc.emitted_subject_build_gate {
   emitted_subject_build_rows,
@@ -195,4 +198,59 @@ test fn a_hyphenated_lane_result_renders_as_an_index() -> Bool {
 // claim that makes the consolidation safe rather than merely tidy.
 test fn a_dot_safe_lane_result_still_renders_as_a_dereference() -> Bool {
   compiler_gate_lane_result_expression(job_id: "compiler") == "${{ needs.compiler.result }}"
+}
+
+// ═══ THE GATE IS DERIVED, WHICH IS WHAT `needs` ALONE COULD NOT ESTABLISH (review 69973) ═══
+//
+// This job is `if: always()`, so a `needs` edge only ORDERS it: the verdict is computed from the
+// env bindings and the shell conditionals. A roster joined against `needs` alone therefore moved
+// the silent absence from the `needs` list to the ENV list rather than removing it. These claims
+// are over the surfaces that actually decide.
+
+// EVERY BLOCKING LANE BINDS A VARIABLE AND NOTHING ELSE DOES. The `+ 1` is SAME_REPO, which is
+// not a lane result; asserting the exact count is what refuses a stray binding as well as a
+// missing one.
+test fn the_env_block_binds_exactly_the_blocking_lanes_and_same_repo() -> Bool {
+  let env = compiler_gate_aggregate_step_env()
+  length(xs: env) == length(xs: compiler_gate_blocking_rows()) + 1
+    && all(compiler_gate_blocking_rows(), row =>
+      any(env, e => e.key == row.var_name))
+}
+
+// EVERY BLOCKING LANE IS READ BY A CONDITIONAL. A variable bound and never read is the same
+// fail-open one surface further in: the gate would carry the lane's result and never consult it.
+test fn every_blocking_lane_is_read_by_a_conditional() -> Bool {
+  let script = join(compiler_gate_aggregate_script_lines(), "\n")
+  all(compiler_gate_blocking_rows(), row =>
+    string_contains(s: script, pattern: join(["\"$", row.var_name, "\" = failure"], "")))
+}
+
+// AND THE ANNOUNCED LANE REACHES NEITHER SURFACE. Without this the two claims above would be
+// satisfied by a gate that also read a lane it must not yet block on -- whose variable would
+// render EMPTY, compare unequal to `success`, and refuse every run.
+test fn w_RED_an_announced_lane_binds_no_variable_and_is_read_by_no_clause() -> Bool {
+  let script = join(compiler_gate_aggregate_script_lines(), "\n")
+  let env = compiler_gate_aggregate_step_env()
+  (any(env, e => e.key == "EMIT_BUILD") == false)
+    && (string_contains(s: script, pattern: "EMIT_BUILD") == false)
+}
+
+// THE FORK CARVE-OUT IS A ROW FIELD, SO IT TRAVELS WITH ITS LANE. The fleet lane legitimately
+// skips on a fork pull request; the two strict lanes do not, and a script that applied the
+// carve-out to all three would admit an unobserved head.
+test fn only_the_fork_skippable_lane_carries_the_skip_notice() -> Bool {
+  let script = join(compiler_gate_aggregate_script_lines(), "\n")
+  string_contains(s: script, pattern: "$SAME_REPO\" = false ] && [ \"$FLOOR\" = skipped")
+    && (string_contains(s: script, pattern: "\"$COMPILER\" = skipped") == false)
+    && (string_contains(s: script, pattern: "\"$CLIPPY\" = skipped") == false)
+}
+
+// THE COMPARISON IS `!= success`, NOT AN ENUMERATION OF BAD STATES. Run 32883390033 read
+// FLOOR="abandoned", a needs-result value nobody knew was reachable; an enumerated guard would
+// have greened over two lanes that never ran. Derivation must not have quietly widened it.
+test fn the_unobserved_arm_refuses_every_state_but_success() -> Bool {
+  let script = join(compiler_gate_aggregate_script_lines(), "\n")
+  string_contains(s: script, pattern: "\"$COMPILER\" != success")
+    && (string_contains(s: script, pattern: "= cancelled") == false)
+    && (string_contains(s: script, pattern: "= abandoned") == false)
 }
