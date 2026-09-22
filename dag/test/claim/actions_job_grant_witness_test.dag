@@ -7,6 +7,12 @@ import gunbc.action_use_admission { checkout_action, upload_artifact_action }
 import extdeps.github.action_release { ActionRelease }
 import extdeps.github.app {
   GitHubAppPermission,
+  GitHubAccessSet,
+  GitHubAccessReadOrWrite,
+  GitHubAccessWriteOnly,
+  GitHubAccessReadOnly,
+  GitHubAccessNeither,
+  github_access_set_admits,
   GitHubPermissionAxis,
   ActionsAxis,
   ArtifactMetadataAxis,
@@ -54,13 +60,7 @@ import extdeps.github.actions_token {
   ActionsGrantAxisNotModeled,
   ActionsGrantDeclaredAccessInvalid,
   ActionsGrantForkPolicyUnobserved,
-  ActionsAccessSet,
-  ActionsAccessReadOrWrite,
-  ActionsAccessWriteOnly,
-  ActionsAccessReadOnly,
-  ActionsAccessNotAvailable,
   axis_allowed_actions_access,
-  actions_access_set_admits,
   actions_token_may_declare_permission,
   permission_level_access,
   effective_actions_grant
@@ -361,12 +361,12 @@ test fn witness_two_access_vocabularies_differ_only_by_the_absence_level() -> Bo
 }
 
 test fn witness_cited_access_levels_are_not_uniformly_read_write() -> Bool {
-  actions_access_set_admits(set: axis_allowed_actions_access(axis: IdTokenAxis), access: AppAccessWrite)
-    && !actions_access_set_admits(set: axis_allowed_actions_access(axis: IdTokenAxis), access: AppAccessRead)
-    && actions_access_set_admits(set: axis_allowed_actions_access(axis: VulnerabilityAlertsAxis), access: AppAccessRead)
-    && !actions_access_set_admits(set: axis_allowed_actions_access(axis: VulnerabilityAlertsAxis), access: AppAccessWrite)
-    && actions_access_set_admits(set: axis_allowed_actions_access(axis: ContentsAxis), access: AppAccessWrite)
-    && actions_access_set_admits(set: axis_allowed_actions_access(axis: ContentsAxis), access: AppAccessRead)
+  github_access_set_admits(set: axis_allowed_actions_access(axis: IdTokenAxis), access: AppAccessWrite)
+    && !github_access_set_admits(set: axis_allowed_actions_access(axis: IdTokenAxis), access: AppAccessRead)
+    && github_access_set_admits(set: axis_allowed_actions_access(axis: VulnerabilityAlertsAxis), access: AppAccessRead)
+    && !github_access_set_admits(set: axis_allowed_actions_access(axis: VulnerabilityAlertsAxis), access: AppAccessWrite)
+    && github_access_set_admits(set: axis_allowed_actions_access(axis: ContentsAxis), access: AppAccessWrite)
+    && github_access_set_admits(set: axis_allowed_actions_access(axis: ContentsAxis), access: AppAccessRead)
 }
 
 data workflow_effect: GitHubEffect = AdvanceRepositoryBranch {
@@ -416,13 +416,13 @@ test fn witness_invalid_declared_access_refuses_rather_than_capping() -> Bool {
   match effective_actions_grant(grant: id_token_read, name: IdTokenAxis) {
     ActionsGrantDeclaredAccessInvalid { axis: _, declared, allowed } =>
       match declared { AppAccessRead => true  _ => false }
-        && match allowed { ActionsAccessWriteOnly => true  _ => false }
+        && match allowed { GitHubAccessWriteOnly => true  _ => false }
     _ => false
   } && match axis_allowed_actions_access(axis: ModelsAxis) {
-    ActionsAccessReadOnly => true
+    GitHubAccessReadOnly => true
     _ => false
   } && match axis_allowed_actions_access(axis: ContentsAxis) {
-    ActionsAccessReadOrWrite => true
+    GitHubAccessReadOrWrite => true
     _ => false
   }
 }
