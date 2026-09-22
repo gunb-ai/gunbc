@@ -970,6 +970,19 @@ type SparkBuildHostWork sole_constructor {
   converged: Bool
 }
 
+// THE ONLY MINT, AND WHY IT HAS TO EXIST. `SparkBuildHostWork` is what the `use` body of
+// `with_spark_build_host` hands back, so EVERY caller of that bracket is in another module by
+// construction -- the bracket exists precisely so a mode entry elsewhere can borrow this one. But
+// the type is `sole_constructor`, which the compiler enforces by refusing construction outside this
+// file (*sole_constructor type 'SparkBuildHostWork' cannot be constructed outside its defining
+// module*), so the bracket's own interface was unusable from where it is meant to be used: a caller
+// could name the type in its `use` signature and could not produce a value of it. That is not a
+// preference for a helper -- without this function the seal and the bracket contradict each other,
+// and the contradiction is invisible until something RESOLVES the caller's module.
+fn spark_build_host_work(receipt: String, converged: Bool) -> SparkBuildHostWork {
+  SparkBuildHostWork { receipt: receipt, converged: converged }
+}
+
 type SparkBuildHostSession
   = SparkBuildHostRan {
       work: SparkBuildHostWork
@@ -1094,13 +1107,13 @@ fn vllm_runtime_image_build_entry(r: VllmContainerBuildRecipe) -> ProcessExit
               identity_file_name: "gunbc-vllm-image-build-admin-password" as NonEmptyStr,
               use: fn(target, context, ctx) {
                 let build = converge_vllm_image_for_recipe(target: target, context: context, ctx: ctx, r: r)
-                SparkBuildHostWork {
+                spark_build_host_work(
                   receipt: join([
                     join(["recipe arch_list=", vllm_torch_cuda_arch_list_wire(archs: r.torch_cuda_arch_list), " cuda=", r.cuda_version as String, " base=", r.build_base_image as String, "\n"], ""),
                     vllm_image_receipt_line(b: build),
                   ], ""),
                   converged: vllm_image_build_succeeded(b: build),
-                }
+                )
               },
             ) {
               SparkBuildHostRefused { cause: c } => exit_failure(reason: c)

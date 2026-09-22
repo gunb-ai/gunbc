@@ -23,14 +23,16 @@ import gunbc.fleet_multi_principal_probe {
   SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused,
   spark_converge_target_selection,
 }
-import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host_live, release_host_effect_live }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.serving_subject { PairServingUnitOn }
+import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_host_held_by_subject, claim_host_effect_live, release_host_effect_live }
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
 import gunbc.spark.remote_step_sequence {
   run_remote_step_sequence, remote_step_sequence_failed, remote_step_failure_causes_wire,
 }
 import gunbc.spark.vllm_runtime_image_build {
   VllmImageBuild, VllmImageBuilt, VllmImageBuildRefused, VllmImageIdentity,
-  SparkBuildHostWork, SparkBuildHostSession, SparkBuildHostRan, SparkBuildHostRefused, with_spark_build_host,
+  SparkBuildHostSession, SparkBuildHostRan, SparkBuildHostRefused, with_spark_build_host, spark_build_host_work,
   vllm_build_root, vllm_build_host_effect_term, vllm_build_host_purpose, vllm_build_host_residue,
   vllm_image_receipt_line,
 }
@@ -324,6 +326,25 @@ fn v41_production_succeeded(p: V41ProducedRuntime) -> Bool {
 // gunbc.spark.vllm_runtime_image_build, because what this mode does to a host is a vLLM source build
 // -- three hours before an unreleased claim reads OVERDUE, and the source directory on the command
 // line of every leg as the residue a crashed lane leaves.
+//
+// THE ADMISSION IS THE GROUP A PAIR SUBJECT HOLDING THE HOST, NOT THE UNPLACED RELATION, and that
+// is a correction to what #12008 landed. `admit_unplaced_host_live` answers "is this host spoken
+// for by nobody"; `spark_unplaced_hosts` is EMPTY and srv5-srv8 are members of FabricGroupA, which
+// gunbc.spark.pair_serving_desired claims -- so the unplaced seam REFUSES every host this mode can
+// legitimately run on, and that refusal is not an obstacle to route around: it is the authority
+// relation docs/plans/dsv41-cut-d-redesign.md protects, and a build admitted through it would have
+// asserted that a committed Group A host is unclaimed. What this mode actually needs is the weaker
+// and true relation -- the host is one the Group A pair subject HOLDS -- which is
+// gunbc.spark.host_commitment `admit_host_held_by_subject`, the same seam
+// gunbc.spark.v41_checkpoint_materialize admits by (proud-deer-538 ruling, 2026-09-21). A source
+// build is bytes at rest plus a compiler; the plan admits that on Group A before displacement.
+//
+// AND IT STILL CLAIMS THE HOST, WHICH THE CHECKPOINT MODE DOES NOT. A three-hour source build must
+// not run concurrently with another three-hour source build on the same box, so the host-effect
+// claim is not optional here the way it is for a file transfer. That is why `claim_host_effect_live`
+// exists beside the admission rather than fused into it: this mode admits by one relation and
+// claims by the seam that only claims. Concurrency at the workflow layer is Group A's arm domain in
+// gunbc.fleet_converge_workflow, so a dispatch also queues behind D0 and the pair-serving apply.
 data v41_production_attempt_raw: String = "v41-runtime-image-produce"
 data v41_production_receipt_path: String = "target/v41-runtime-image-produce-receipt.txt"
 
@@ -336,39 +357,43 @@ fn v41_runtime_image_produce_ci_wet() -> ProcessExit
     SparkConvergeTargetAllObserveOnly =>
       exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: producing this image occupies one host for hours, so it refuses rather than choosing one")
     SparkConvergeTargetSingle { host: build_host } =>
-      match admit_unplaced_host_live(term: vllm_build_host_effect_term, raw: build_host as String, purpose: vllm_build_host_purpose, residue: vllm_build_host_residue()) {
-        SparkHostRefused { cause: why } => exit_failure(reason: why as String)
-        SparkHostAdmitted { host: _, claim: claim } =>
-          release_host_effect_live(handle: claim, exit: {
-            match with_spark_build_host(
-              host: build_host,
-              attempt_raw: v41_production_attempt_raw,
-              identity_file_name: "gunbc-v41-runtime-image-produce-admin-password" as NonEmptyStr,
-              use: fn(target, context, ctx) {
-                let produced = converge_v41_produced_runtime_image(target: target, context: context, ctx: ctx)
-                SparkBuildHostWork {
-                  receipt: v41_production_receipt(p: produced),
-                  converged: v41_production_succeeded(p: produced),
-                }
-              },
-            ) {
-              SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
-              SparkBuildHostRan { work: work, endpoint: endpoint, executor: executor, trust_receipt: trust_receipt } => {
-                let body = join([
-                  join(["v41 runtime image produce probed_at=", probed_at_word(reading: now) as String, " host=", build_host as String, " endpoint=", endpoint as String, " executor=", executor, "\n"], ""),
-                  trust_receipt,
-                  work.receipt,
-                ], "")
-                let w = Filesystem.Write(path: v41_production_receipt_path, content: body)
-                if !w.success {
-                  exit_failure(reason: join(["v41 runtime image produce receipt write failed: ", w.error], ""))
-                } else if work.converged {
-                  ExitSuccess
-                } else {
-                  exit_failure(reason: join(["the V4.1 runtime image was not produced and admitted:\n", body], ""))
-                }
-              }
-            }})
+      match admit_host_held_by_subject(raw: build_host, subject: PairServingUnitOn { group: FabricGroupA }) {
+        Present { value: why } => exit_failure(reason: why)
+        Absent =>
+          match claim_host_effect_live(host: build_host, term: vllm_build_host_effect_term, purpose: vllm_build_host_purpose, residue: vllm_build_host_residue()) {
+            SparkHostRefused { cause: why } => exit_failure(reason: why as String)
+            SparkHostAdmitted { host: _, claim: claim } =>
+              release_host_effect_live(handle: claim, exit: {
+                match with_spark_build_host(
+                  host: build_host,
+                  attempt_raw: v41_production_attempt_raw,
+                  identity_file_name: "gunbc-v41-runtime-image-produce-admin-password" as NonEmptyStr,
+                  use: fn(target, context, ctx) {
+                    let produced = converge_v41_produced_runtime_image(target: target, context: context, ctx: ctx)
+                    spark_build_host_work(
+                      receipt: v41_production_receipt(p: produced),
+                      converged: v41_production_succeeded(p: produced),
+                    )
+                  },
+                ) {
+                  SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
+                  SparkBuildHostRan { work: work, endpoint: endpoint, executor: executor, trust_receipt: trust_receipt } => {
+                    let body = join([
+                      join(["v41 runtime image produce probed_at=", probed_at_word(reading: now) as String, " host=", build_host as String, " endpoint=", endpoint as String, " executor=", executor, "\n"], ""),
+                      trust_receipt,
+                      work.receipt,
+                    ], "")
+                    let w = Filesystem.Write(path: v41_production_receipt_path, content: body)
+                    if !w.success {
+                      exit_failure(reason: join(["v41 runtime image produce receipt write failed: ", w.error], ""))
+                    } else if work.converged {
+                      ExitSuccess
+                    } else {
+                      exit_failure(reason: join(["the V4.1 runtime image was not produced and admitted:\n", body], ""))
+                    }
+                  }
+                }})
+          }
       }
   }
 }
