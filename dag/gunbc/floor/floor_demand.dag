@@ -8,6 +8,7 @@ import std.measure {
   GrainRounding, GrainRounded, GrainUnrepresentable, round_up_to_grain, gibibyte_grain,
 }
 import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.checked_arithmetic {
   CheckedInt, CheckedIntReady, CheckedIntOverflow, IntegerOverflow, checked_int_add, checked_add_results,
 }
@@ -436,10 +437,18 @@ fn receipt_peak_beat(r: FloorHeldSetReceipt) -> FloorMemoryStatBeat? {
 }
 
 // WHICH SEAM ESTABLISHED THE PEAK, DERIVED FROM THE RECEIPT AND REFUSING WHERE IT CANNOT BE SAID.
-// This is the whole point of carrying the seam: a consumer asking what to reduce needs the phase
-// the demand was established in, and until now that answer came from a reader eyeballing which
-// heartbeat line sat above which stat line. The fold takes the peak beat the existing held-set
-// fold already selects -- one derivation of "the peak", not a second one -- and reports its seam.
+// The fold takes the peak beat the existing held-set fold already selects -- one derivation of
+// "the peak", not a second one -- and reports its seam, where until now that answer came from a
+// reader eyeballing which heartbeat line sat above which stat line.
+//
+// ITS CONSUMER IS A DECLARED FRONTIER, NOT AN EXECUTING ROUTE, AND SAYING SO IS THE POINT
+// (DESIGN 3c, review 69834). Today receipt_peak_seam and receipt_peak_reading_standing are
+// reached only by test.claim.floor_demand_witness_test. An earlier revision of this note named
+// the consumer as "a consumer asking what to reduce", which is a READER and not a route, and
+// carried no trigger -- so it claimed consumption it did not have. The frontier below states the
+// consumer and the change that lands it instead. The seam FIELD is a different matter and is
+// consumed now: the receipts carry it and the peak fold reads it, and the re-typed stall reaches
+// production through receipt_last_unstalled_beat into the guest cache allowance.
 //
 // IT REFUSES ON THE TWO NON-SEAM ARMS RATHER THAN NAMING THEM AS PHASES. A receipt whose peak beat
 // is SeamUnrecorded cannot attribute its peak at all, and saying so is the honest answer; the
@@ -461,6 +470,10 @@ fn receipt_peak_beat(r: FloorHeldSetReceipt) -> FloorMemoryStatBeat? {
 // pre-instrument log: the remedy is a new run. ReceiptHasNoBeats is an unmeasured receipt.
 // ReceiptTorn carries the overflow from the beat whose held set does not sum. Different facts,
 // different remedies, no prose to parse.
+data floor_peak_attribution_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the reduction lane's before/after receipt, which states WHICH SEAM a landed reduction moved by evaluating receipt_peak_seam over the standing receipt on each side of the change -- the measurement gunbc.floor_demand exists to make possible and the reason the seam is carried at all. TRIGGER: the change that lands the first measured floor-memory reduction, whose receipt cites a PeakAttributedTo seam on both sides; that change reads these folds from a production declaration rather than from a claim. SUFFICIENT FOR deleting this row. NOT satisfied by another witness calling the folds, nor by a reader of the receipt's prose -- DESIGN 3c asks for a route by which a declaration reaches a consumer AT EXECUTION, and a claim is not that route. If the reduction lane instead derives its attribution some other way, these two folds and their cause vocabulary are unconsumed and are deleted rather than kept." as NonEmptyStr,
+)
+
 type PeakUnattributableCause
   = PeakBeatSampledBeforeAnySeam { beat: Int }
   | PeakBeatSeamUnrecorded { beat: Int }
