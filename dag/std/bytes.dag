@@ -72,6 +72,17 @@ fn bytes_octets(b: Bytes) -> List<UInt8> {
 // downstream holder of a QualifiedOctets receives a carrier that was actually inspected and does
 // no checking of its own.
 //
+// WHY ROUTING THROUGH A SHARED FOLD DOES NOT WEAKEN THE ONE-BOUNDARY CLAIM, stated because it is
+// the natural worry: uint8_octets_of_ints is reachable from anywhere, so this function holds no
+// exclusive access to the carrier. It does not need one. The fold is CHECKED -- it scans every
+// member and mints only from a list it has proved in full -- so every path through it is
+// qualified by construction rather than by permission. std.integer's admit_callers roster names
+// who may call the mint DIRECTLY, bypassing that scan (word_to_octets does, on its own
+// in-corpus derivation); this function is not on that roster and does not want to be. The
+// property here is that the host value is inspected before it is sealed, and that rests on the
+// fold's own behaviour rather than on nobody else calling it -- which is the version that would
+// have rotted the first time the roster grew.
+//
 // RUNG, STATED HONESTLY AND NOT INFLATED: MITIGATABLE at a declared boundary. This is not
 // construction and must not be described as such -- the wrong value can still arrive, and what
 // changes is that it is refused with a located observation instead of sealed. What section 5
