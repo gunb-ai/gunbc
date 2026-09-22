@@ -15,7 +15,7 @@ import gunbc.fleet_converge_workflow {
   FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy,
   RunnerPasswordSessionToolConverge,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
-  fleet_converge_reset_observer_dispatch_admission_step, fleet_converge_build_job_steps,
+  fleet_converge_reset_observer_dispatch_admission_step, fleet_converge_build_job_steps, fleet_converge_jobs,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
   fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0, SparkServingApply, SparkNativeServingApply, FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
@@ -214,21 +214,29 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // that mutates a host without that edge would be installing whatever happened to be lying around.
 // `host-reset-return` is held to it for a sharper reason than the others -- it POWER-CYCLES its
 // subject, so a stale binary there would drive a real machine from a model nobody reviewed.
+// THE ROSTER IS READ, NOT THE WHOLE WORKFLOW. This claim's subject is the job partition and its
+// needs edges. Reading them off fleet_converge_workflow forced the entire row -- every job's steps
+// AND every DispatchInput description under `on`, one of which is thousands of characters -- for
+// seven ids: 521845 eval steps against a 72300 budget, rising with every job or input any lane
+// added. gunbc.fleet_converge_workflow fleet_converge_jobs is now the declaration the workflow
+// derives its jobs from, so this reads the authority and the workflow is one consumer of it rather
+// than the only route to the fact.
 test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
-  fleet_converge_workflow.jobs.length() == 7
-    && fleet_converge_workflow.jobs[0].id == "build"
-    && fleet_converge_workflow.jobs[1].id == "fleet-converge"
-    && fleet_converge_workflow.jobs[1].needs == ["build"]
-    && fleet_converge_workflow.jobs[2].id == "host-reset-return"
-    && fleet_converge_workflow.jobs[2].needs == ["build"]
-    && fleet_converge_workflow.jobs[3].id == "dashboard-deploy"
-    && fleet_converge_workflow.jobs[3].needs == ["build"]
-    && fleet_converge_workflow.jobs[4].id == "approval-broker-dark-install"
-    && fleet_converge_workflow.jobs[4].needs == ["build"]
-    && fleet_converge_workflow.jobs[5].id == "microvm-controller-install"
-    && fleet_converge_workflow.jobs[5].needs == ["build"]
-    && fleet_converge_workflow.jobs[6].id == "rlm-launch-deployment-receipt"
-    && fleet_converge_workflow.jobs[6].needs == ["build"]
+  let jobs = fleet_converge_jobs()
+  jobs.length() == 7
+    && jobs[0].id == "build"
+    && jobs[1].id == "fleet-converge"
+    && jobs[1].needs == ["build"]
+    && jobs[2].id == "host-reset-return"
+    && jobs[2].needs == ["build"]
+    && jobs[3].id == "dashboard-deploy"
+    && jobs[3].needs == ["build"]
+    && jobs[4].id == "approval-broker-dark-install"
+    && jobs[4].needs == ["build"]
+    && jobs[5].id == "microvm-controller-install"
+    && jobs[5].needs == ["build"]
+    && jobs[6].id == "rlm-launch-deployment-receipt"
+    && jobs[6].needs == ["build"]
 }
 
 fn expected_fleet_converge_yml_content() -> String {
@@ -401,7 +409,7 @@ test fn a_whitespace_only_observer_is_refused_as_unnamed() -> Bool {
 //
 // IT ASKS THE STEP LIST, NOT THE WHOLE WORKFLOW, and that is a cost fact rather than a style one:
 // fleet_converge_build_job_steps() is the single authority the job's `steps:` field consumes, so
-// folding it answers the same question as indexing fleet_converge_workflow.jobs[0] while building one
+// folding it answers the same question as indexing jobs[0] while building one
 // job's steps instead of five jobs. The first draft indexed the workflow and was interrupted at
 // cpu_at_least=507ms against the 500ms line, producing no verdict at all.
 test fn the_build_job_carries_the_reset_observer_dispatch_admission() -> Bool {
