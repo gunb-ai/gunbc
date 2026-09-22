@@ -8,7 +8,6 @@ import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import std.upsert_decision {
   ObservationVerdict,
   Converged,
@@ -563,7 +562,6 @@ fn census_app_acquire_receipt() -> ProcessExit {
 }
 
 fn census_app_acquire_for(record: GitHubAppAcquisitionRecord) -> ProcessExit
-  uses net: Network, fs: std.resources.Filesystem
 {
   let observation = observe_census_app_live(
     address: census_app_read_address(record: record),
@@ -818,7 +816,6 @@ fn census_app_acquisition_receipt() -> ProcessExit {
 }
 
 fn census_app_acquisition_receipt_for(record: GitHubAppAcquisitionRecord) -> ProcessExit
-  uses net: Network, fs: std.resources.Filesystem
 {
   let standing = census_app_acquisition_standing(record: record)
   match standing {
@@ -983,7 +980,6 @@ fn persist_then_read_back(
   custody_name: NonEmptyStr,
   issuance: GitHubAppCredentialIssuance,
 ) -> ProcessExit
-  uses net: Network, fs: std.resources.Filesystem
 {
   match persist_issued_credentials(custody_name: custody_name, issuance: issuance) {
     CredentialNameUnsafe { name: s } =>
