@@ -183,15 +183,21 @@ type SubjectAuthorityBinding
   = AuthorityBound { subject: BehaviorSubject }
   | AuthorityMissing { subject_id: BehaviorSubjectIdentity, area: CoverageArea }
 
+// EACH ROUTE CARRIES ITS OWN EFFECT RECEIPT, because an ordered receipt is an observation OF A ROUTE
+// and a receipt attributed to no route cannot say which realization produced it. With one shared
+// receipt, the interpreter and the emitted binary disagreeing on effect order had nowhere to land but
+// HostRealizationDefect -- an arm naming the host, not the routes that disagree. The split makes that
+// observation attributable; it does not decide it: no expected order is consulted to detect it.
 type DifferentialRecord {
   binding: SubjectAuthorityBinding
   native_v2: ObservedResult
+  native_v2_effects: List<EffectReceiptEntry>
   v2_evaluator: ObservedResult
+  v2_evaluator_effects: List<EffectReceiptEntry>
   legacy_v1: LegacyObservation
-  effect_receipt: List<EffectReceiptEntry>
 }
 
-// The nine total dispositions. Every arm names WHICH component is defective, because the remedies
+// The ten total dispositions. Every arm names WHICH component is defective, because the remedies
 // are different and a disposition that collapses them is total at the level examined and blind one
 // level down. LegacyV1Defect is the arm that makes v1 a probe: v1 diverging from an authority the
 // v2 routes both satisfy is a fact about v1, and it does not block anything.
@@ -200,6 +206,7 @@ type ConformanceDisposition
   | NativeV2Defect { detail: NonEmptyStr }
   | V2EvaluatorDefect { detail: NonEmptyStr }
   | HostRealizationDefect { detail: NonEmptyStr }
+  | RouteEffectDisagreement { detail: NonEmptyStr }
   | SemanticAuthorityMissing { subject_id: BehaviorSubjectIdentity }
   | SemanticAuthorityConflict { subject_id: BehaviorSubjectIdentity, detail: NonEmptyStr }
   | WitnessDefect { detail: NonEmptyStr }
@@ -337,52 +344,83 @@ fn classify_bound_record(
       detail: "no v2 route was observed: the record carries no measurement of the subject under judgment" as NonEmptyStr
     }
   } else {
-    if !effect_receipt_matches_expected_order(
-         expected: subject.expected,
-         receipt: record.effect_receipt
-       ) {
-      HostRealizationDefect {
-        detail: "ordered effect receipt does not match the effect order the authority requires" as NonEmptyStr
+    if route_effect_receipts_disagree(record: record) {
+      RouteEffectDisagreement {
+        detail: "the native v2 route and the v2 evaluator recorded different ordered effect receipts" as NonEmptyStr
       }
     } else {
-      if !observed_was_run(observed: record.native_v2) {
-        Unclassified {
-          detail: "the native v2 route was not observed, so no statement about it is available" as NonEmptyStr
+      if !effect_receipt_matches_expected_order(
+           expected: subject.expected,
+           receipt: observed_route_effects(record: record)
+         ) {
+        HostRealizationDefect {
+          detail: "ordered effect receipt does not match the effect order the authority requires" as NonEmptyStr
         }
       } else {
-        if !observed_satisfies_expected(
-             expected: subject.expected,
-             observed: record.native_v2
-           ) {
-          NativeV2Defect {
-            detail: "the native v2 result does not satisfy the subject's primary authority" as NonEmptyStr
+        if !observed_was_run(observed: record.native_v2) {
+          Unclassified {
+            detail: "the native v2 route was not observed, so no statement about it is available" as NonEmptyStr
           }
         } else {
-          if !evaluator_satisfies_or_is_excused(subject: subject, record: record) {
-            V2EvaluatorDefect {
-              detail: "the v2 evaluator result does not satisfy the subject's primary authority" as NonEmptyStr
+          if !observed_satisfies_expected(
+               expected: subject.expected,
+               observed: record.native_v2
+             ) {
+            NativeV2Defect {
+              detail: "the native v2 result does not satisfy the subject's primary authority" as NonEmptyStr
             }
           } else {
-            if !evaluator_observation_is_sufficient(record: record, route: route) {
-              Unclassified {
-                detail: "the v2 evaluator was not observed while it is still on the promoted route" as NonEmptyStr
+            if !evaluator_satisfies_or_is_excused(subject: subject, record: record) {
+              V2EvaluatorDefect {
+                detail: "the v2 evaluator result does not satisfy the subject's primary authority" as NonEmptyStr
               }
             } else {
-              if legacy_diverges_from_authority(
-                   expected: subject.expected,
-                   legacy: record.legacy_v1
-                 ) {
-                LegacyV1Defect {
-                  detail: "v1 diverges from the authority both v2 routes satisfy" as NonEmptyStr
+              if !evaluator_observation_is_sufficient(record: record, route: route) {
+                Unclassified {
+                  detail: "the v2 evaluator was not observed while it is still on the promoted route" as NonEmptyStr
                 }
               } else {
-                Conforms
+                if legacy_diverges_from_authority(
+                     expected: subject.expected,
+                     legacy: record.legacy_v1
+                   ) {
+                  LegacyV1Defect {
+                    detail: "v1 diverges from the authority both v2 routes satisfy" as NonEmptyStr
+                  }
+                } else {
+                  Conforms
+                }
               }
             }
           }
         }
       }
     }
+  }
+}
+
+// ROUTES ARE JOINED AGAINST EACH OTHER, NOT AGAINST AN EXPECTED ORDER. When both v2 routes ran, a
+// receipt pair that differs at identity grain (operation and ordinal) is a located disagreement
+// between the routes whatever the authority says, and it is decidable without any authored order --
+// which is the point: no row in the corpus says which sibling-effect order is correct, and this arm
+// must not need one. A route that was not run recorded nothing, so its empty receipt is not compared.
+fn route_effect_receipts_disagree(record: DifferentialRecord) -> Bool {
+  observed_was_run(observed: record.native_v2)
+    && observed_was_run(observed: record.v2_evaluator)
+    && !effect_receipts_agree(
+         expected: record.native_v2_effects,
+         receipt: record.v2_evaluator_effects
+       )
+}
+
+// The receipt judged against the authority's order: the native route's when it was run, else the
+// evaluator's. Only reached once the two routes' receipts agree (or only one route ran), so which
+// route supplies it cannot change the answer.
+fn observed_route_effects(record: DifferentialRecord) -> List<EffectReceiptEntry> {
+  if observed_was_run(observed: record.native_v2) {
+    record.native_v2_effects
+  } else {
+    record.v2_evaluator_effects
   }
 }
 
@@ -461,6 +499,7 @@ fn disposition_blocks_cutover(
       }
     NativeV2Defect { detail: _ } => true
     HostRealizationDefect { detail: _ } => true
+    RouteEffectDisagreement { detail: _ } => true
     SemanticAuthorityMissing { subject_id: _ } => true
     SemanticAuthorityConflict { subject_id: _, detail: _ } => true
     WitnessDefect { detail: _ } => true
