@@ -14,6 +14,27 @@ import gunbc.primitive_egress.disposition {
 // the operation computes, under which authority (declared or merely required), and whether its
 // refusals are modeled; the class is derived in gunbc.primitive_egress.disposition. That the seed
 // realizes most of them in Rust today is a route fact carried on the census standing, not evidence.
+// ONE ROW'S PROSE IS NOW AN INTERFACE, AND ITS NEXT EDITOR CANNOT SEE THAT FROM THE ROW.
+// The bytes_octets row's result text, "List<Int> of octets 0..255; total", is LOAD-BEARING
+// beyond this census: std.bytes bytes_qualified_octets is admitted to std.integer
+// qualified_octets' caller roster on the ground that its members are octets by construction, and
+// that ground is established by THIS ROW and by nothing that module can see -- bytes_octets' own
+// .dag body is the divergent seam, unlike word_to_octets, whose members run through uint8_of_int
+// where a reader can follow them.
+//
+// test.claim.bytes_qualified_octets_range_contract_witness_test asserts that join, and it
+// discriminates LEXICALLY over this text. So "0 through 255", "octets in [0,255]", or a reflow
+// that splits the range across a line will RED it while the declared range is unchanged. That is
+// the safe direction to fail -- loud and false rather than quiet and true -- and it is stated
+// here rather than only in the witness because the person who trips it is someone tidying this
+// row, who has no reason to go looking for a consumer in a witness module. A wall whose subject
+// cannot see that it is walled is a trap for its next editor.
+//
+// Changing the RANGE is a real change and the red is correct: the mint's admission stops holding
+// and it owes the uint8_octets_of_ints fold. Changing only the WORDING means updating the witness
+// in the same edit. The structural repair -- carrying the range as a modeled field rather than as
+// prose, so the join is over a value and not a spelling -- is not done here and is the honest
+// next step for whoever owns this census.
 fn dispositions_text_rows() -> List<PrimitiveEvidence> {
   [
     evidence_row(name: "length", category: TextOps, external_subject: NoExternalSubject, computation: computes(authority: declared_authority(module_path: "std.algebra", decl_name: "free_monoid_scalar_templates"), inputs: "xs: FreeMonoid<T> (String is FreeMonoid<Char>: code points, never bytes -- measured on v1_rt::string_length)", result: "Int, the element count; total", body: body_at(module_path: "v2.std.algebra", decl_name: "length")), refusals: RefusalsTyped, realization: NoNativeRealizationClaim, compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "length: the realization surfaces the census joins (registry row / contract row / algebra template / rt bridge / interpreter arm as present) and the authority named in the computation standing", next: "the owning lane lands the .dag body under the declared authority and switches one production consumer; the interpreter arm and bridge then delete for that consumer"),
