@@ -125,10 +125,25 @@ fn dotted_fixture_bare_step(segment: Symbol) -> Node {
   dotted_fixture_step(segment: segment, suffix: dotted_fixture_empty())
 }
 
+// `()` IS NOT seq(lparen, rparen), AND THIS FILE ASSERTED THAT IT WAS FOR AS LONG AS IT HAD NO
+// INHABITANCE CLAIM. The real prepared-grammar parse of `a.first()` emits an EMPTY ARGUMENT
+// INTERIOR between the parens -- seq(lparen, seq(<empty conj>, rparen)) -- which is why the
+// argument reader sees a readable empty list rather than an absent one. The shape here is DERIVED
+// from that parse by the probes below (right_is_a_sequence, inner_left_is_empty_conj, each with
+// a control asserting the walk found a suffix at all), not assumed, and
+// body_lowering_supplied_call_suffix_inhabits_the_parser holds it to the producer by content_hash
+// from here on.
+fn dotted_fixture_empty_arg_interior() -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+}
+
 fn dotted_fixture_call_suffix_no_args() -> Node {
   dotted_fixture_seq(
     left: dotted_fixture_atom(identity: ^dag_token_lparen),
-    right: dotted_fixture_atom(identity: ^dag_token_rparen)
+    right: dotted_fixture_seq(
+      left: dotted_fixture_empty_arg_interior(),
+      right: dotted_fixture_atom(identity: ^dag_token_rparen)
+    )
   )
 }
 
