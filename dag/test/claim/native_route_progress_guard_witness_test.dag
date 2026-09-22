@@ -21,7 +21,14 @@ import gunbc.native_route_progress_guard {
   NativeProgressObservedRow, NativeProgressObservedReading,
   native_progress_read_observed,
   native_progress_report, native_progress_verdict,
-  ProgressPreserved, ProgressLost,
+  ProgressPreserved, ProgressLost, ProgressUnobserved,
+  NativeRunReach, ReachEmissionAttempted, ReachSourceEmitted, ReachCrateBuilt, ReachExecutableStarted,
+  native_run_reach_rank, native_run_reached_the_population,
+  NativeObservationProvenance, LiveRunOnHead, HistoricalAgainstTree,
+  native_progress_baseline_advance,
+  BaselineMayAdvance, BaselineAdvanceRefusedHistorical,
+  BaselineAdvanceRefusedUnreached, BaselineAdvanceRefusedProgressLost,
+  AttainUnreached, SubjectUnreachedEarlierRungFailed,
   NativeProgressFinding,
   ProgressRegressed, BaselineMemberMissingUndisposed, DispositionContradictedByRun,
   RenameTargetAbsent, RenameTargetBelowBaseline, DisposedSubjectHasNoBaselineRow,
@@ -71,13 +78,33 @@ fn baseline_of(
   NativeProgressBaseline { rows: rows, dispositions: dispositions }
 }
 
+data head_sha: String = "0123456789abcdef0123456789abcdef01234567"
+
+// THE DEFAULT SUBJECT OF A CLAIM HERE IS A LIVE RUN THAT REACHED THE POPULATION, because that is
+// the only condition under which the per-identity comparison is asked at all. The claims that
+// vary either field say so at their own call site.
+fn live_report(
+  baseline: NativeProgressBaseline,
+  readings: List<NativeProgressObservedReading>,
+  build: NativeRouteEmittedBuild
+) -> NativeProgressReport {
+  native_progress_report(
+    baseline: baseline,
+    readings: readings,
+    build: build,
+    reach: ReachExecutableStarted,
+    provenance: LiveRunOnHead { head: head_sha }
+  )
+}
+
 fn preserved(
   baseline: NativeProgressBaseline,
   readings: List<NativeProgressObservedReading>
 ) -> Bool {
-  match native_progress_verdict(report: native_progress_report(baseline: baseline, readings: readings, build: clean_build)) {
+  match native_progress_verdict(report: live_report(baseline: baseline, readings: readings, build: clean_build)) {
     ProgressPreserved => true
     ProgressLost { findings: _ } => false
+    ProgressUnobserved { reach: _, findings: _ } => false
   }
 }
 
@@ -85,7 +112,7 @@ fn findings_of(
   baseline: NativeProgressBaseline,
   readings: List<NativeProgressObservedReading>
 ) -> List<NativeProgressFinding> {
-  native_progress_report(baseline: baseline, readings: readings, build: clean_build).findings
+  live_report(baseline: baseline, readings: readings, build: clean_build).findings
 }
 
 // ═══ THE ORDER ═══
@@ -192,6 +219,7 @@ test fn w_RED_a_subject_refused_earlier_than_before_is_a_regression() -> Bool {
       DisposedSubjectHasNoBaselineRow { identity: _ } => false
       ArtifactProductionFailed { detail: _ } => false
       ObservedMemberReadingMalformed { identity: _ } => false
+      SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
     }
   })
 }
@@ -318,6 +346,7 @@ test fn w_RED_a_rename_whose_target_attains_less_reds() -> Bool {
       DisposedSubjectHasNoBaselineRow { identity: _ } => false
       ArtifactProductionFailed { detail: _ } => false
       ObservedMemberReadingMalformed { identity: _ } => false
+      SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
     }
   })
 }
@@ -343,6 +372,7 @@ test fn w_RED_a_rename_to_a_target_the_run_never_saw_reds() -> Bool {
       DisposedSubjectHasNoBaselineRow { identity: _ } => false
       ArtifactProductionFailed { detail: _ } => false
       ObservedMemberReadingMalformed { identity: _ } => false
+      SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
     }
   })
 }
@@ -361,7 +391,7 @@ test fn w_RED_a_build_that_did_not_produce_its_artifact_reds_a_clean_population(
     exit_status: 101,
     warning_count: 0
   }
-  let report = native_progress_report(
+  let report = live_report(
     baseline: baseline_of(
       rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
       dispositions: []
@@ -372,6 +402,7 @@ test fn w_RED_a_build_that_did_not_produce_its_artifact_reds_a_clean_population(
   match native_progress_verdict(report: report) {
     ProgressPreserved => false
     ProgressLost { findings: fs } => length(xs: fs) == 1
+    ProgressUnobserved { reach: _, findings: _ } => false
   }
 }
 
@@ -386,7 +417,7 @@ test fn w_RED_a_zero_status_build_carrying_warnings_reds() -> Bool {
     exit_status: 0,
     warning_count: 3
   }
-  let report = native_progress_report(
+  let report = live_report(
     baseline: baseline_of(rows: [], dispositions: []),
     readings: [],
     build: warned
@@ -394,6 +425,7 @@ test fn w_RED_a_zero_status_build_carrying_warnings_reds() -> Bool {
   match native_progress_verdict(report: report) {
     ProgressPreserved => false
     ProgressLost { findings: _ } => true
+    ProgressUnobserved { reach: _, findings: _ } => false
   }
 }
 
@@ -428,7 +460,7 @@ test fn an_exclusion_that_names_its_stage_reads_cleanly_at_that_stage() -> Bool 
 // THE TWO NUMBERS COME APART IN BOTH DIRECTIONS, and a lane that printed one would answer
 // neither. A head where nothing agrees and nothing regressed is GREEN with no good news in it.
 test fn a_report_with_no_agreements_can_still_preserve_progress() -> Bool {
-  let report = native_progress_report(
+  let report = live_report(
     baseline: baseline_of(
       rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainRefused { stage: NativeTestStagePrepare } }],
       dispositions: []
@@ -440,13 +472,14 @@ test fn a_report_with_no_agreements_can_still_preserve_progress() -> Bool {
     && match native_progress_verdict(report: report) {
       ProgressPreserved => true
       ProgressLost { findings: _ } => false
+      ProgressUnobserved { reach: _, findings: _ } => false
     }
 }
 
 // AND THE OTHER DIRECTION, WHICH IS THE ONE THAT MATTERS: a head where agreements RISE and one
 // position is lost is RED, and the encouraging number cannot green it.
 test fn w_RED_a_rising_agreement_count_cannot_green_a_lost_position() -> Bool {
-  let report = native_progress_report(
+  let report = live_report(
     baseline: baseline_of(
       rows: [
         NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed },
@@ -464,5 +497,201 @@ test fn w_RED_a_rising_agreement_count_cannot_green_a_lost_position() -> Bool {
     && match native_progress_verdict(report: report) {
       ProgressPreserved => false
       ProgressLost { findings: fs } => length(xs: fs) == 1
+      ProgressUnobserved { reach: _, findings: _ } => false
     }
+}
+
+// ═══ THE PRE-CONTEXT RUNGS, WHICH ARE WHERE THE LIVE FRONTIER ACTUALLY SITS ═══
+
+test fn the_reach_ladder_orders_the_pre_context_rungs() -> Bool {
+  native_run_reach_rank(r: ReachEmissionAttempted) < native_run_reach_rank(r: ReachSourceEmitted)
+    && native_run_reach_rank(r: ReachSourceEmitted) < native_run_reach_rank(r: ReachCrateBuilt)
+    && native_run_reach_rank(r: ReachCrateBuilt) < native_run_reach_rank(r: ReachExecutableStarted)
+}
+
+// ONLY THE TOP RUNG HAS A POPULATION TO HAVE AN OPINION ABOUT. Three of the four reaches produce
+// no subject verdicts at all, which is why the comparison is gated on this rather than on whether
+// the population happens to be empty.
+test fn only_the_top_rung_reaches_the_population() -> Bool {
+  native_run_reached_the_population(r: ReachExecutableStarted)
+    && (native_run_reached_the_population(r: ReachCrateBuilt) == false)
+    && (native_run_reached_the_population(r: ReachSourceEmitted) == false)
+    && (native_run_reached_the_population(r: ReachEmissionAttempted) == false)
+}
+
+// THE STATE EVERY CONTEMPORARY HEAD IS ACTUALLY IN, and the claim that decides whether this model
+// is honest. main at c4464fc75d9 with no diff emits its source and then refuses at the emitted
+// cargo build; gunbc#12043's `emit-build` lane reproduces it on every head. A two-state verdict
+// would read that as a corpus-wide REGRESSION -- every baseline row vanished, each owing a
+// disposition -- which is loud, wrong, and wrong in the direction that rots.
+test fn w_RED_a_run_that_died_at_the_emitted_build_is_unobserved_not_lost() -> Bool {
+  let report = native_progress_report(
+    baseline: baseline_of(
+      rows: [
+        NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed },
+        NativeProgressBaselineRow { identity: subject_b, attained: AttainRefused { stage: NativeTestStageEntry } }
+      ],
+      dispositions: []
+    ),
+    readings: [],
+    build: NativeRouteEmittedBuild {
+      cargo_argv: ["cargo", "build", "--release"],
+      rustflags: "-D warnings",
+      compiler_path: "/opt/rust/bin/rustc",
+      rustc_identity: "rustc 1.93.0",
+      exit_status: 101,
+      warning_count: 0
+    },
+    reach: ReachSourceEmitted,
+    provenance: LiveRunOnHead { head: head_sha }
+  )
+  match native_progress_verdict(report: report) {
+    ProgressUnobserved { reach: r, findings: _ } => native_run_reach_rank(r: r) == native_run_reach_rank(r: ReachSourceEmitted)
+    ProgressPreserved => false
+    ProgressLost { findings: _ } => false
+  }
+}
+
+// AND AN UNOBSERVED RUN IS STILL RED. A merge candidate that established nothing is not a pass;
+// the third state changes the CAUSE a reader is sent to, never the blocking.
+test fn an_unobserved_run_does_not_report_progress_preserved() -> Bool {
+  let report = native_progress_report(
+    baseline: baseline_of(rows: [], dispositions: []),
+    readings: [],
+    build: clean_build,
+    reach: ReachCrateBuilt,
+    provenance: LiveRunOnHead { head: head_sha }
+  )
+  match native_progress_verdict(report: report) {
+    ProgressPreserved => false
+    ProgressLost { findings: _ } => false
+    ProgressUnobserved { reach: _, findings: _ } => true
+  }
+}
+
+// A SUBJECT THE RUN COULD NOT LOOK AT IS NOT A REGRESSED SUBJECT. Per-identity, this time: the
+// run reached the population but the driver never reported on this member.
+test fn w_RED_an_unreached_subject_reds_as_unreached_and_not_as_a_regression() -> Bool {
+  let fs = findings_of(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainUnreached { blocked_at: ReachCrateBuilt })]
+  )
+  length(xs: fs) == 1
+    && any(xs: fs, predicate: fn(f) {
+      match f {
+        SubjectUnreachedEarlierRungFailed { identity: i, blocked_at: _ } => i.module == "v2.test.alpha"
+        ProgressRegressed { identity: _, baseline: _, observed: _ } => false
+        BaselineMemberMissingUndisposed { identity: _ } => false
+        DispositionContradictedByRun { identity: _ } => false
+        RenameTargetAbsent { identity: _, target: _ } => false
+        RenameTargetBelowBaseline { identity: _, target: _, baseline: _, observed: _ } => false
+        DisposedSubjectHasNoBaselineRow { identity: _ } => false
+        ArtifactProductionFailed { detail: _ } => false
+        ObservedMemberReadingMalformed { identity: _ } => false
+        SubjectUnreachedEarlierRungFailed { identity: _, blocked_at: _ } => false
+      }
+    })
+}
+
+// ═══ WHAT MAY ADVANCE THE RATCHET ═══
+
+test fn a_live_run_that_preserved_progress_may_advance_the_baseline() -> Bool {
+  let report = live_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: clean_build
+  )
+  match native_progress_baseline_advance(report: report) {
+    BaselineMayAdvance { head: h } => h == head_sha
+    BaselineAdvanceRefusedHistorical { tree: _ } => false
+    BaselineAdvanceRefusedUnreached { reach: _ } => false
+    BaselineAdvanceRefusedProgressLost => false
+  }
+}
+
+// A HISTORICAL MEASUREMENT IS EVIDENCE TO KEEP AND NEVER TO ADVANCE FROM. The reading is
+// otherwise perfect -- it would advance the ratchet if it were live -- so nothing but the
+// provenance can refuse it, which is the discrimination. A3: a baseline advanced from a tree that
+// no longer exists asserts a position no current head can be held to.
+test fn w_RED_a_historical_measurement_cannot_advance_the_ratchet() -> Bool {
+  let report = native_progress_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: HistoricalAgainstTree {
+      tree: "b1f83a32f36",
+      note: "measured against a named stale tree; retained as evidence of where the frontier was"
+    }
+  )
+  match native_progress_baseline_advance(report: report) {
+    BaselineAdvanceRefusedHistorical { tree: t } => t == "b1f83a32f36"
+    BaselineMayAdvance { head: _ } => false
+    BaselineAdvanceRefusedUnreached { reach: _ } => false
+    BaselineAdvanceRefusedProgressLost => false
+  }
+}
+
+// READING IS NOT ADVANCING. The same historical report still produces a verdict, so an operator
+// can see where the frontier was; what it may not do is move the roster.
+test fn a_historical_measurement_is_still_read_and_reported() -> Bool {
+  let report = native_progress_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: HistoricalAgainstTree { tree: "b1f83a32f36", note: "retained" }
+  )
+  match native_progress_verdict(report: report) {
+    ProgressPreserved => true
+    ProgressLost { findings: _ } => false
+    ProgressUnobserved { reach: _, findings: _ } => false
+  }
+}
+
+test fn w_RED_an_unreached_run_cannot_advance_the_ratchet() -> Bool {
+  let report = native_progress_report(
+    baseline: baseline_of(rows: [], dispositions: []),
+    readings: [],
+    build: clean_build,
+    reach: ReachSourceEmitted,
+    provenance: LiveRunOnHead { head: head_sha }
+  )
+  match native_progress_baseline_advance(report: report) {
+    BaselineAdvanceRefusedUnreached { reach: _ } => true
+    BaselineMayAdvance { head: _ } => false
+    BaselineAdvanceRefusedHistorical { tree: _ } => false
+    BaselineAdvanceRefusedProgressLost => false
+  }
+}
+
+// A LOST POSITION MUST NOT BE FROZEN INTO THE NEW FLOOR, which is the way a ratchet quietly
+// becomes a record of whatever happened last.
+test fn w_RED_a_run_that_lost_a_position_cannot_advance_the_ratchet() -> Bool {
+  let report = live_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainDiverged)],
+    build: clean_build
+  )
+  match native_progress_baseline_advance(report: report) {
+    BaselineAdvanceRefusedProgressLost => true
+    BaselineMayAdvance { head: _ } => false
+    BaselineAdvanceRefusedHistorical { tree: _ } => false
+    BaselineAdvanceRefusedUnreached { reach: _ } => false
+  }
 }

@@ -92,6 +92,118 @@ import gunbc.witness_v2_native_route {
 // vocabulary it is minted into.
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
+// WHERE THE LIVE FRONTIER ACTUALLY IS, AND WHY THE PRE-CONTEXT RUNGS COME FIRST
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// THE MEASURED FACT THIS SECTION IS BUILT ON. No contemporary head executes the native route end
+// to end. It dies at the EMITTED CARGO BUILD: main at c4464fc75d9 with no diff refuses with
+// `cause=EmittedCompilerBuildFailed`, four E0425 in the emitted `src/extdeps_numeric_base16.rs`,
+// on a pure-main control; gunbc#12043's `emit-build` lane reproduces it on every head it has run.
+// The cause is a rostered substrate class -- a phantom `Compose` carrier spelled where values are
+// put -- spanning seven-plus modules, not a missing import anyone can add.
+//
+// SO THE ROUTE IS NOT `Context -> Prepare -> Entry -> Eval -> Pass` WITH A PREAMBLE. It is
+//
+//     emission attempted -> source emitted -> emitted crate built -> executable started
+//                                                                          |
+//                                                        and only THEN the per-test stages
+//
+// and a guard whose lowest rung is `refused at prepare` presupposes a binary that RAN, which on
+// main is not true.
+//
+// AND HOW FAR A RUN GETS IS A PER-HEAD FACT THAT FLIPS, WHICH IS WHY `reach` IS A FIELD ON THE
+// REPORT AND NOT A CEILING IN THIS MODULE. Measured within an hour of each other: main stops at
+// the emitted build, and `session/sharp-bear-756` at 6032d50be7d builds the emitted crate clean
+// (`exit_status=0`, `warning_count=0` under `RUSTFLAGS=-D warnings`, wall 575s). So "unreached on
+// main, reached on that head" is two runs with two `NativeRunReach` values and one model, with no
+// observation fabricated for main and no ceiling written down. That is the whole test of whether
+// the rungs are drawn in the right place, and the day that branch lands nothing here changes.
+//
+// WHAT A GREEN EMITTED BUILD DOES NOT ESTABLISH, said here because the temptation is immediate:
+// it establishes `ReachCrateBuilt`, and nothing above it. Context, Prepare, Entry, Eval and Pass
+// have produced no observations on any head yet, and this module may not promote them on the
+// strength of a build -- a stage advances from what a run observed, which is the same rule
+// `native_progress_baseline_advance` enforces against historical measurements one paragraph down.
+//
+// WHY THAT IS A REPRESENTATION BUG AND NOT MERELY A SCOPE ONE. With only the stage ladder, a run
+// that never produced a binary yields an EMPTY population, and an empty population makes every
+// baseline row read as "vanished, owing a disposition". That is loud, so it is not the silent
+// version of the failure -- but it is the WRONG CAUSE, and wrong in the direction that rots: it
+// says the subjects went away when the truth is that nothing could look at them. A stage nothing
+// could observe must never read the same as a stage that observed nothing wrong. That is
+// absence-conflated-with-success (DESIGN section 5), and it is the specific way a progress
+// ratchet lies.
+//
+// THE TEST OF WHETHER THIS REPRESENTATION IS RIGHT, and it is the reason the rungs land now
+// rather than after the substrate class clears: THE SAME RUN CROSSES INTO `Context` BY ITSELF
+// WHEN THE BUILD STARTS WORKING, with no edit to this model. If a change to these types were
+// needed on that day, the rungs were drawn in the wrong place.
+//
+// AND THE PRE-CONTEXT RUNGS ARE THE ONLY PART WITH A REAL INHABITANCE SOURCE TODAY. gunbc#12043's
+// `emit-build` lane executes exactly them -- on main it attempts emission, emits 194 files, and
+// refuses at the cargo build; on the head above it reaches `ReachCrateBuilt` -- so this vocabulary
+// is not a frontier waiting on a consumer the way the stage ladder above it still is. It is the
+// part of the guard that can be read against a real run now, and it is read against two runs that
+// disagree, which is better evidence than either alone.
+
+// THE REACH OF ONE RUN, ORDERED. This is a WHOLE-RUN fact and deliberately not a per-identity one:
+// no subject has an individual answer to "did the crate build".
+type NativeRunReach
+  = ReachEmissionAttempted
+  | ReachSourceEmitted
+  | ReachCrateBuilt
+  | ReachExecutableStarted
+
+fn native_run_reach_rank(r: NativeRunReach) -> Int {
+  match r {
+    ReachEmissionAttempted => 0
+    ReachSourceEmitted => 1
+    ReachCrateBuilt => 2
+    ReachExecutableStarted => 3
+  }
+}
+
+fn native_run_reach_text(r: NativeRunReach) -> String {
+  match r {
+    ReachEmissionAttempted => "emission attempted"
+    ReachSourceEmitted => "source emitted"
+    ReachCrateBuilt => "emitted crate built"
+    ReachExecutableStarted => "executable started"
+  }
+}
+
+// THE PER-TEST STAGES ARE REACHABLE ONLY FROM THE TOP RUNG. Below it there is no population to
+// have an opinion about, and this predicate is what the report consults before comparing anything.
+fn native_run_reached_the_population(r: NativeRunReach) -> Bool {
+  native_run_reach_rank(r: r) >= native_run_reach_rank(r: ReachExecutableStarted)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// PROVENANCE: WHAT MAY ADVANCE A RATCHET, AND WHAT MAY ONLY BE KEPT
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// A measurement taken against a NAMED STALE TREE is real evidence and is worth retaining -- it is
+// how anyone reconstructs where the frontier was. It must not move the live ratchet, for the
+// reason A3 gives: agreement holds only on what stays stable across time, and a baseline advanced
+// from a tree that no longer exists asserts a position no current head can be held to. The next
+// regression would then be measured against a bar nothing ever cleared here.
+//
+// SO PROVENANCE IS A FIELD ON THE OBSERVATION RATHER THAN A CONVENTION AROUND IT, and
+// `native_progress_baseline_advance` is a typed refusal rather than a comment asking nicely. A
+// historical reading can still be compared -- reading is not advancing -- and its verdict is
+// reported with its tree named, so an operator can see where the frontier WAS without the roster
+// moving.
+type NativeObservationProvenance
+  = LiveRunOnHead { head: String }
+  | HistoricalAgainstTree { tree: String, note: String }
+
+type NativeBaselineAdvance
+  = BaselineMayAdvance { head: String }
+  | BaselineAdvanceRefusedHistorical { tree: String }
+  | BaselineAdvanceRefusedUnreached { reach: NativeRunReach }
+  | BaselineAdvanceRefusedProgressLost
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
 // THE ORDER
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //
@@ -120,8 +232,13 @@ import gunbc.witness_v2_native_route {
 // not the emitted compiler's reach, and a guard that read it as progress would then read the
 // reverse change as a regression and red a lane for a legitimate edit to the expected-red roster.
 // The identity-grain REFERENCE change is a different question and is not this module's.
+//   AttainUnreached          the run never got far enough to have an opinion about this subject.
+//                            It is NOT a position on the ladder and is deliberately not ranked --
+//                            see `native_attainment_at_least` for why asking "is unreached at
+//                            least prepare" is a question with no honest answer.
 type NativeRouteAttainment
-  = AttainRefused { stage: NativeTestStage }
+  = AttainUnreached { blocked_at: NativeRunReach }
+  | AttainRefused { stage: NativeTestStage }
   | AttainDiverged
   | AttainAgreed
 
@@ -140,11 +257,26 @@ fn native_stage_rank(stage: NativeTestStage) -> Int {
 }
 
 // THE BAND RANK. Refusals occupy 0..3 by stage, so the two bands above them start at 4.
+// THE RANK IS PARTIAL AND THE MISSING ELEMENT IS THE POINT. `AttainUnreached` has no rank: it is
+// not a low position, it is the ABSENCE of a position, and giving it -1 would make every
+// comparison against it answer "regressed" -- true-sounding, useless, and exactly the empty-equals-
+// failed conflation the pre-Context section refuses. The bottom sentinel here is only ever reached
+// for ranked arms; `native_attainment_at_least` never calls it on an unreached reading.
 fn native_attainment_rank(a: NativeRouteAttainment) -> Int {
   match a {
+    AttainUnreached { blocked_at: _ } => 0
     AttainRefused { stage: s } => native_stage_rank(stage: s)
     AttainDiverged => 4
     AttainAgreed => 5
+  }
+}
+
+fn native_attainment_is_unreached(a: NativeRouteAttainment) -> Bool {
+  match a {
+    AttainUnreached { blocked_at: _ } => true
+    AttainRefused { stage: _ } => false
+    AttainDiverged => false
+    AttainAgreed => false
   }
 }
 
@@ -184,11 +316,20 @@ fn native_attainment_of_with_stage(
   }
 }
 
+// THE COMPARISON IS ASKED ONLY OF RANKED READINGS, and callers route an unreached one to its own
+// finding before reaching here. The guard clause is kept rather than assumed because a total
+// function that quietly answered `false` for an unreached observation would report a REGRESSION
+// for a subject nothing looked at -- the report a reader learns to wave through, and the reason
+// the arm exists at all.
 fn native_attainment_at_least(
   observed: NativeRouteAttainment,
   baseline: NativeRouteAttainment
 ) -> Bool {
-  native_attainment_rank(a: observed) >= native_attainment_rank(a: baseline)
+  if native_attainment_is_unreached(a: observed) {
+    false
+  } else {
+    native_attainment_rank(a: observed) >= native_attainment_rank(a: baseline)
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -243,6 +384,10 @@ type NativeProgressBaseline {
 // EVERY REFUSAL NAMES THE IDENTITY IT IS ABOUT. A guard that reported "3 regressions" would send
 // a reader to diff two receipts by hand, which is the report doing arithmetic instead of saying
 // what happened (DESIGN section 5: every degradation a typed, LOCATED, countable diagnostic).
+// `SubjectUnreachedEarlierRungFailed` IS NEITHER A REGRESSION NOR A MISSING SUBJECT. The run
+// stopped below the rung at which that subject could have been looked at, so its baseline is
+// neither met nor lost: it is unjudged. It reds -- a merge candidate that established nothing is
+// not a pass -- under a cause that sends a reader to the earlier rung rather than into a diff.
 type NativeProgressFinding
   = ProgressRegressed {
       identity: NativeRouteTestIdentity
@@ -261,6 +406,10 @@ type NativeProgressFinding
   | DisposedSubjectHasNoBaselineRow { identity: NativeRouteTestIdentity }
   | ArtifactProductionFailed { detail: String }
   | ObservedMemberReadingMalformed { identity: NativeRouteTestIdentity }
+  | SubjectUnreachedEarlierRungFailed {
+      identity: NativeRouteTestIdentity
+      blocked_at: NativeRunReach
+    }
 
 // ARTIFACT PRODUCTION IS PART OF THE GUARD, NOT A PRECONDITION OF IT.
 //
@@ -424,6 +573,17 @@ fn native_progress_disposition_for(
   map_lookup(m: dispositions, key: native_route_identity_qualified(identity: identity))
 }
 
+fn native_progress_rank_comparison(
+  row: NativeProgressBaselineRow,
+  seen: NativeRouteAttainment
+) -> List<NativeProgressFinding> {
+  if native_attainment_at_least(observed: seen, baseline: row.attained) {
+    []
+  } else {
+    [ProgressRegressed { identity: row.identity, baseline: row.attained, observed: seen }]
+  }
+}
+
 // ONE BASELINE ROW, DECIDED WHOLE. Present in the run: compare attainment. Absent from the run:
 // the row owes a disposition, and the disposition owes a fact the run agrees with.
 fn native_progress_row_findings(
@@ -433,10 +593,12 @@ fn native_progress_row_findings(
 ) -> List<NativeProgressFinding> {
   match native_progress_observed_for(identity: row.identity, observed: observed) {
     Present { value: seen } =>
-      if native_attainment_at_least(observed: seen, baseline: row.attained) {
-        []
-      } else {
-        [ProgressRegressed { identity: row.identity, baseline: row.attained, observed: seen }]
+      match seen {
+        AttainUnreached { blocked_at: r } =>
+          [SubjectUnreachedEarlierRungFailed { identity: row.identity, blocked_at: r }]
+        AttainRefused { stage: _ } => native_progress_rank_comparison(row: row, seen: seen)
+        AttainDiverged => native_progress_rank_comparison(row: row, seen: seen)
+        AttainAgreed => native_progress_rank_comparison(row: row, seen: seen)
       }
     Absent =>
       match native_progress_disposition_for(identity: row.identity, dispositions: dispositions) {
@@ -514,6 +676,8 @@ fn native_progress_disposition_findings(
 // under a rising pass count; a report carrying only the second tells a reader nothing about
 // whether the frontier ADVANCED, which is the point of running it.
 type NativeProgressReport {
+  reach: NativeRunReach
+  provenance: NativeObservationProvenance
   baseline_size: Int
   observed_size: Int
   agreed: Int
@@ -523,7 +687,9 @@ type NativeProgressReport {
 fn native_progress_report(
   baseline: NativeProgressBaseline,
   readings: List<NativeProgressObservedReading>,
-  build: NativeRouteEmittedBuild
+  build: NativeRouteEmittedBuild,
+  reach: NativeRunReach,
+  provenance: NativeObservationProvenance
 ) -> NativeProgressReport {
   let observed_rows = native_progress_observed_rows(readings: readings)
   let observed = native_progress_observed_index(observed: observed_rows)
@@ -534,6 +700,8 @@ fn native_progress_report(
     f: fn(row) { native_progress_row_findings(row: row, observed: observed, dispositions: dispositions) }
   )
   NativeProgressReport {
+    reach: reach,
+    provenance: provenance,
     baseline_size: length(xs: baseline.rows),
     observed_size: length(xs: observed_rows),
     agreed: count_where(xs: observed_rows, predicate: fn(r) {
@@ -541,6 +709,7 @@ fn native_progress_report(
         AttainAgreed => true
         AttainDiverged => false
         AttainRefused { stage: _ } => false
+        AttainUnreached { blocked_at: _ } => false
       }
     }),
     findings: list_flat_map(
@@ -558,15 +727,49 @@ fn native_progress_report(
 // THE VERDICT IS THE EMPTINESS OF THE FINDINGS AND NOTHING ELSE. Not a threshold, not a ratio,
 // not "no worse than last time by more than k" -- a single regressed identity is a lost position
 // and the lane says so.
+// THREE STATES, AND THE THIRD IS THE ONE A TWO-STATE VERDICT GETS WRONG.
+//
+// `ProgressUnobserved` is a run that never reached the population: nothing regressed and nothing
+// was preserved, because nothing was looked at. It BLOCKS -- a merge candidate that established
+// nothing is not a pass, which is the whole of DESIGN section 5's refusal to let an empty
+// observation stand in for a clean one -- and it is a DIFFERENT RED from `ProgressLost`, because
+// it sends a reader to the earlier rung rather than into a diff. It also may not advance the
+// ratchet, which `native_progress_baseline_advance` enforces rather than trusting.
+//
+// This is not a hypothetical arm waiting for a bad day: it is the state EVERY head is in right
+// now, and a two-state verdict would report today's reality as a corpus-wide regression.
 type NativeProgressVerdict
   = ProgressPreserved
   | ProgressLost { findings: List<NativeProgressFinding> }
+  | ProgressUnobserved { reach: NativeRunReach, findings: List<NativeProgressFinding> }
 
 fn native_progress_verdict(report: NativeProgressReport) -> NativeProgressVerdict {
-  if is_empty(xs: report.findings) {
-    ProgressPreserved
+  if native_run_reached_the_population(r: report.reach) {
+    if is_empty(xs: report.findings) {
+      ProgressPreserved
+    } else {
+      ProgressLost { findings: report.findings }
+    }
   } else {
-    ProgressLost { findings: report.findings }
+    ProgressUnobserved { reach: report.reach, findings: report.findings }
+  }
+}
+
+// THE RATCHET ADVANCES FROM ONE KIND OF RUN ONLY, and this is a typed refusal rather than a note
+// asking the consumer nicely. Three ways to be told no, kept apart because they have different
+// remedies: a historical measurement is evidence to KEEP and never to advance from (A3 -- a
+// baseline advanced from a tree that no longer exists asserts a position no current head can be
+// held to); an unreached run observed nothing to advance from; and a run that lost a position
+// must not have that loss frozen into the new floor.
+fn native_progress_baseline_advance(report: NativeProgressReport) -> NativeBaselineAdvance {
+  match report.provenance {
+    HistoricalAgainstTree { tree: t, note: _ } => BaselineAdvanceRefusedHistorical { tree: t }
+    LiveRunOnHead { head: h } =>
+      match native_progress_verdict(report: report) {
+        ProgressUnobserved { reach: r, findings: _ } => BaselineAdvanceRefusedUnreached { reach: r }
+        ProgressLost { findings: _ } => BaselineAdvanceRefusedProgressLost
+        ProgressPreserved => BaselineMayAdvance { head: h }
+      }
   }
 }
 
@@ -590,5 +793,10 @@ fn native_progress_finding_text(f: NativeProgressFinding) -> String {
       join(["ARTIFACT PRODUCTION FAILED ", d], "")
     ObservedMemberReadingMalformed { identity: id } =>
       join(["OBSERVED MEMBER READING MALFORMED ", native_route_identity_qualified(identity: id)], "")
+    SubjectUnreachedEarlierRungFailed { identity: id, blocked_at: r } =>
+      join([
+        "UNREACHED (the run stopped at '", native_run_reach_text(r: r), "', so this subject was never looked at) ",
+        native_route_identity_qualified(identity: id)
+      ], "")
   }
 }
