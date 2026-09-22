@@ -66,31 +66,87 @@ fn mab_assemble(src: String) -> Outcome<Node> {
   assemble_program_from_ingest(ingest: mab_ingest_for(src: src), admission: mab_admission(), lm: dag_language_model())
 }
 
-fn mab_accepts(src: String) -> Bool {
-  match mab_assemble(src: src) {
+// THE RESOLVED OUTCOME IS THE SHARE POINT, NOT THE LANGUAGE MODEL. Each claim here reaches its
+// verdict through assemble_program_from_ingest, whose cost is dominated by dag_language_model()
+// -- measured at 90028 eval steps ALONE against the floor's 72300 per-claim ceiling, so a claim
+// that only calls it is already over. The model itself cannot be shared: gunbc run 35327371663
+// refused exactly that as ServeCacheValueNotPortable at .value.lm.canonical_symbols.member
+// kind=Closure, because a LanguageModel carries a function and the store serves values. So these
+// rows take the seam v2.workflow.floor_pure_producer_share already uses for resolve subjects --
+// the RESOLVED Outcome<Node> per subject, nullary, pure, over an inline source, Nodes and located
+// diagnostics with no closure at any depth.
+//
+// THE REAL PATH STILL EXECUTES. Preparation runs each producer once, for real, and is REFUSED
+// there if it cannot run; the rows then read it. That is the DESIGN section 3 pairing obligation
+// discharged by the mechanism rather than by an extra claim -- delete the integration and
+// preparation breaks, not just an assertion.
+fn mab_outcome_accepts(o: Outcome<Node>) -> Bool {
+  match o {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn mab_refuses_with(src: String, reason: Symbol) -> Bool {
-  match mab_assemble(src: src) {
+fn mab_outcome_refuses_with(o: Outcome<Node>, reason: Symbol) -> Bool {
+  match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
   }
 }
 
+
+
+fn mab_resolved_0() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\ntest fn x() -> Int { 1 }\n\nfn pick(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_1() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\ntest fn x() -> Int { 1 }\n\nfn pick(c: C) -> Int {\n  match c {\n    A(_) => x\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_2() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_3() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => z\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_4() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    Aa(y) => y\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_5() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    B => y\n  }\n}\n")
+}
+
+fn mab_resolved_6() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype Opt = Present { value: Int } | Absent\ntype C = A(Opt) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(Present { value: y }) => y\n    A(Absent) => 0\n    B => 1\n  }\n}\n")
+}
+
+fn mab_resolved_7() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype Opt = Present { value: Int } | Absent\n\nfn get(o: Opt) -> Int {\n  match o {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n")
+}
+
+fn mab_resolved_8() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype Opt = Present { value: Int } | Absent\n\nfn get(o: Opt) -> Int {\n  match o {\n    Present { value } => value\n    Absent => 0\n  }\n}\n")
+}
+
+fn mab_resolved_9() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn tag(c: C) -> Int {\n  match c {\n    A(_) => 1\n    B => 0\n  }\n}\n")
+}
+
 // (1) A binder shadowing an outer name binds the ARM's binding: the outer `x` is test code, and
 // the arm's `x` never reaches it.
 test fn mab_shadowing_binder_binds_the_arm() -> Bool {
-  mab_accepts(src: "module p\n\ntype C = A(Int) | B\n\ntest fn x() -> Int { 1 }\n\nfn pick(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n")
+  mab_outcome_accepts(o: mab_resolved_0())
 }
 
 // The wall the frame bypasses is real: the same outer test-code name, referenced from an arm that
 // binds no `x`, refuses through the root exactly as the frame-less reading of (1) would.
 test fn mab_outer_test_code_name_still_refuses_without_a_binder() -> Bool {
-  mab_refuses_with(
-    src: "module p\n\ntype C = A(Int) | B\n\ntest fn x() -> Int { 1 }\n\nfn pick(c: C) -> Int {\n  match c {\n    A(_) => x\n    B => 0\n  }\n}\n",
+  mab_outcome_refuses_with(
+    o: mab_resolved_1(),
     reason: ^resolve_reason_test_code_referenced
   )
 }
@@ -98,12 +154,12 @@ test fn mab_outer_test_code_name_still_refuses_without_a_binder() -> Bool {
 // A binder with no outer name at all binds through the frame (green) -- and the body naming a
 // different, unbound name refuses (red): the frame binds exactly the binder.
 test fn mab_fresh_binder_binds() -> Bool {
-  mab_accepts(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    B => 0\n  }\n}\n")
+  mab_outcome_accepts(o: mab_resolved_2())
 }
 
 test fn mab_unbound_name_in_arm_body_refuses() -> Bool {
-  mab_refuses_with(
-    src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => z\n    B => 0\n  }\n}\n",
+  mab_outcome_refuses_with(
+    o: mab_resolved_3(),
     reason: ^resolve_reason_unbound_symbol
   )
 }
@@ -111,16 +167,16 @@ test fn mab_unbound_name_in_arm_body_refuses() -> Bool {
 // (3) The constructor tag is not a binder: a misspelled variant refuses as an unbound reference
 // instead of becoming a fresh binder that matches everything.
 test fn mab_misspelled_tag_refuses() -> Bool {
-  mab_refuses_with(
-    src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    Aa(y) => y\n    B => 0\n  }\n}\n",
+  mab_outcome_refuses_with(
+    o: mab_resolved_4(),
     reason: ^resolve_reason_unbound_symbol
   )
 }
 
 // (4) The binder does not leak: a sibling arm naming it is unbound.
 test fn mab_binder_does_not_leak_to_a_sibling_arm() -> Bool {
-  mab_refuses_with(
-    src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    B => y\n  }\n}\n",
+  mab_outcome_refuses_with(
+    o: mab_resolved_5(),
     reason: ^resolve_reason_unbound_symbol
   )
 }
@@ -128,8 +184,8 @@ test fn mab_binder_does_not_leak_to_a_sibling_arm() -> Bool {
 // Nested constructs bind at depth, braced and shorthand spellings bind their field's binder, and
 // a wildcard binds nothing.
 test fn mab_nested_braced_and_shorthand_binders_bind() -> Bool {
-  mab_accepts(src: "module p\n\ntype Opt = Present { value: Int } | Absent\ntype C = A(Opt) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(Present { value: y }) => y\n    A(Absent) => 0\n    B => 1\n  }\n}\n")
-    && mab_accepts(src: "module p\n\ntype Opt = Present { value: Int } | Absent\n\nfn get(o: Opt) -> Int {\n  match o {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n")
-    && mab_accepts(src: "module p\n\ntype Opt = Present { value: Int } | Absent\n\nfn get(o: Opt) -> Int {\n  match o {\n    Present { value } => value\n    Absent => 0\n  }\n}\n")
-    && mab_accepts(src: "module p\n\ntype C = A(Int) | B\n\nfn tag(c: C) -> Int {\n  match c {\n    A(_) => 1\n    B => 0\n  }\n}\n")
+  mab_outcome_accepts(o: mab_resolved_6())
+    && mab_outcome_accepts(o: mab_resolved_7())
+    && mab_outcome_accepts(o: mab_resolved_8())
+    && mab_outcome_accepts(o: mab_resolved_9())
 }
