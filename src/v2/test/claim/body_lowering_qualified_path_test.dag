@@ -266,7 +266,7 @@ fn body_lowering_body_is_call_through_path(body: Node, dotted: String) -> Bool {
 }
 
 // The door answers Outcome<Optional<Node>> since the argument list is read with diagnostics
-// (gunbc PR_NUMBER); these shape rows read only the lowered node, and a Rejected reads as Absent.
+// (gunbc#12033); these shape rows read only the lowered node, and a Rejected reads as Absent.
 fn body_lowering_door_lowered_optional(node: Node) -> Optional<Node> {
   match body_lower_dotted_chain_lowered_optional(node: node) {
     Rejected { diagnostics: _ } => Absent

@@ -219,7 +219,7 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 // THE LOSSES BELOW ARE THREE CAPABILITIES, NOT ONE, AND NOTHING THAT RESTORES ONE RESTORES ANOTHER:
 //
 //   call argument, callee name          -> LANDED for the plain shapes (callee: gunbc#11595 /
-//                                          #11683; argument: gunbc PR_NUMBER, the comma list read
+//                                          #11683; argument: gunbc#12033, the comma list read
 //                                          whole). The rows below flipped to "reaches" and stay
 //                                          enrolled; what is still erased is listed on
 //                                          gunbc.recurring_failure_mode
@@ -259,7 +259,7 @@ test fn a_parameter_reference_reaches_the_collector_holds() -> Bool {
   sites_mention(sites: fixture_sites(), spelling: "probe")
 }
 
-// MEASURED DEFICIENCY 1, RESTORED (gunbc PR_NUMBER): a reference occurring only as a call
+// MEASURED DEFICIENCY 1, RESTORED (gunbc#12033): a reference occurring only as a call
 // ARGUMENT reaches the collector. This row was authored "is absent today" and went red exactly
 // when the argument list started being read whole (v2.compiler.body_lowering_fold
 // body_lower_call_args_from_capture: the first item of a call's comma list is no longer skipped

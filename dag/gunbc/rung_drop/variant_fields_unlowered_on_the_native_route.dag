@@ -17,7 +17,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // silently lost; that loss is now the typed refusal
 // body_lowering_reason_positional_pattern_binder_unlowered.
 
-// RETIRED 2026-09-22 (gunbc#PR_NUMBER), BY BOTH HALVES OF THE TRIGGER, EXECUTED. Lowering:
+// RETIRED 2026-09-22 (gunbc#12033), BY BOTH HALVES OF THE TRIGGER, EXECUTED. Lowering:
 // v2.compiler.body_lowering_fold body_lower_type_variant / body_lower_record_type_decl declare the
 // fields (v2.std.node_query DeclaredField, "0" for the positional spelling), the graft skip is
 // deleted, and body_lower_pattern_lowered lowers `A(x) =>`, `A { v: x } =>` and `A { v } =>` to the
@@ -41,7 +41,7 @@ data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
   subject: "native route lowers variant fields, named and positional, into declared field identities and binds pattern binders from them, the way the seed does",
   declared: "2026-09-21",
   standing: Retired {
-    trigger_fired: "2026-09-22 (gunbc#PR_NUMBER): a v2 stage (normalize: body_lower_type_variant, body_lower_record_type_decl, body_lower_pattern_lowered) lowers variant fields into declared field identities, named and positional \"0\", and the match-arm path binds a pattern binder, braced or positional, from the field it names -- structurally at normalize and lexically at resolve (resolve_match_node). Executed: v2.test.parse.variant_field_lowering, v2.test.claim.match_arm_binder_frame, their mutations, and the native workload adjudicate on the PR." as NonEmptyStr
+    trigger_fired: "2026-09-22 (gunbc#12033): a v2 stage (normalize: body_lower_type_variant, body_lower_record_type_decl, body_lower_pattern_lowered) lowers variant fields into declared field identities, named and positional \"0\", and the match-arm path binds a pattern binder, braced or positional, from the field it names -- structurally at normalize and lexically at resolve (resolve_match_node). Executed: v2.test.parse.variant_field_lowering, v2.test.claim.match_arm_binder_frame, their mutations, and the native workload adjudicate on the PR." as NonEmptyStr
   },
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
