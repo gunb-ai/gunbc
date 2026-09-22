@@ -188,7 +188,7 @@ different one.** This paragraph said "no SHA-256 *computation* exists in `.dag`
 do not hash bytes)". That was true when written. `extdeps.crypto.sha2` now computes SHA-256 in the
 substrate (`sha256`, `sha256_hex`, FIPS 180-4), witnessed by `test.claim.sha256_fips_witness` — and
 the witness discriminates rather than restating the type, because `sha2` routes every 32-bit
-operation through `std.bitwise`, whose `word32_add` takes the modulus explicitly, so the
+operation through `std.bitwise`, whose `word32_add` wraps by comparison against `word32_modulus` so no value transits above 2^32-1, and the
 interpreter's unbounded-`Int` evaluation yields the same residues and a wrong wrap changes the
 digest.
 
