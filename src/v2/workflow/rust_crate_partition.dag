@@ -1109,12 +1109,20 @@ fn stage0_package_sets_agree(left: List<String>, right: List<String>) -> Bool {
 }
 
 // DRIVABLE FROM SUPPLIED INPUTS, so the detector can be exercised over a fixture carrying a
-// PLANTED disagreement. That control is not optional decoration: the subset assertion is green
-// when the disagreement set is empty AND green when this fold is broken and finds nothing, and
-// those are the same observation. Today v1-stage0-v1-artifact inhabits the set and masks the
-// difference; the day the edge list is derived the set empties and the mask goes with it, leaving
-// a permanently green assertion with no evidence it can still see anything -- the inert lens
-// DESIGN section 5 warns about.
+// PLANTED disagreement, and the reason that control is needed is worth stating exactly rather than
+// generally, because the equality contract changed it.
+//
+// WHILE THE LEDGER IS NON-EMPTY the contract already catches a broken detector: a detector that
+// finds nothing yields a derived set that is missing the ledger's entries, and the
+// no_stale_ledger_entry arm reds. Measured, not assumed -- forcing the comparison to agree reds
+// BOTH the contract and this fixture guard today.
+//
+// THE HOLE IS THE FUTURE STATE, and it is why the guard is not redundant. Once the divergence is
+// repaired the ledger empties, and then a detector that finds nothing yields [] against a ledger of
+// [] -- equality holds, the contract goes green, and nothing else would be looking. That is the
+// inert lens DESIGN section 5 warns about, arriving exactly when the debt this file tracks is
+// finally paid. The guard is built now because that is when it stops being buildable from a live
+// example.
 type ReexportDisagreementScan
   = ReexportDisagreementScanOk { packages: List<String> }
   | ReexportDisagreementScanUnitHasNoRow { unit_id: CompilationUnitId }
@@ -1203,7 +1211,7 @@ fn stage0_reexport_derivation_disagreements() -> Stage0ReexportDerivationDisagre
   }
 }
 
-data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — the balanced policy has landed (resolve_partition_outcome PolicyPartitionParam, policy_partition_assignment), so it is no longer what holds stage0 on the explicit arm. What does: stage0_module_dag's edges and module lists are authored (stage0_cross_unit_import_edges, the stage0_*_modules lists) over v1 mirror basenames, not derived, so a policy over them would balance an incomplete graph. THE SIZE OF 'incomplete' IS DERIVED, NOT TRANSCRIBED (DESIGN 6: name the instrument, never copy its output). stage0_reexport_derivation_disagreements is the producer: it folds the authored edges through the assignment into CompilationUnit.deps, closes them transitively, maps them back to package names and returns the package names whose DERIVED dependency set differs from their AUTHORED reexport_packages. An earlier revision of this row carried the counts in prose; they were removed because they go stale the moment an edge row is appended and nothing would notice. The population is pinned at IDENTITY grain by test.claim.rust_crate_partition_witness stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit, which asserts the disagreeing set is a SUBSET of the one unit known to diverge -- so a NEW divergence reds, a repair stays green, and DESIGN 5's membership-not-count rule for a monotone debt contract is satisfied. WHICH SIDE IS WRONG is not symmetric: the reexports are correct and the authored edge list is what is missing them, established off this graph by the unit's real Cargo.toml and its real lib.rs. Crate dependency is therefore answered by TWO authorities, and deriving the edges dissolves the second rather than reconciling them -- which is why the trigger below is the derivation and not a hand completion, since completing the list by hand re-authors the fork.")
+data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — the balanced policy has landed (resolve_partition_outcome PolicyPartitionParam, policy_partition_assignment), so it is no longer what holds stage0 on the explicit arm. What does: stage0_module_dag's edges and module lists are authored (stage0_cross_unit_import_edges, the stage0_*_modules lists) over v1 mirror basenames, not derived, so a policy over them would balance an incomplete graph. THE SIZE OF 'incomplete' IS DERIVED, NOT TRANSCRIBED (DESIGN 6: name the instrument, never copy its output). stage0_reexport_derivation_disagreements is the producer: it folds the authored edges through the assignment into CompilationUnit.deps, closes them transitively, maps them back to package names and returns the package names whose DERIVED dependency set differs from their AUTHORED reexport_packages. An earlier revision of this row carried the counts in prose; they were removed because they go stale the moment an edge row is appended and nothing would notice. The population is pinned at IDENTITY grain against the ledger stage0_reexport_derivation_known_divergent_packages by test.claim.rust_crate_partition_witness stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit, and the contract that claim enforces is NOT restated here: it is the claim's to state, and an earlier revision of this row described a subset check the claim had already stopped performing, which is the one-fact-two-statements fork DESIGN 3 forbids inside a single change. WHICH SIDE IS WRONG is not symmetric: the reexports are correct and the authored edge list is what is missing them, established off this graph by the unit's real Cargo.toml and its real lib.rs. Crate dependency is therefore answered by TWO authorities, and deriving the edges dissolves the second rather than reconciling them -- which is why the trigger below is the derivation and not a hand completion, since completing the list by hand re-authors the fork.")
 
 data stage0_compilation_units_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (§5 List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only.")
 

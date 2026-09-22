@@ -388,7 +388,7 @@ test fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> B
   stage0_module_dag_interface_grounding_is_debt()
 }
 
-// ── THE TWO AUTHORITIES FOR "WHAT DOES THIS CRATE DEPEND ON", AND WHY THE BOUND IS A SUBSET ──
+// ── THE TWO AUTHORITIES FOR "WHAT DOES THIS CRATE DEPEND ON", AND WHY THE BOUND IS AN EQUALITY ──
 //
 // rust_crate_partition_dissolve_on declares stage0's edges authored rather than derived. The size
 // of that gap is DERIVED by stage0_reexport_derivation_disagreements rather than transcribed into
@@ -438,7 +438,7 @@ test fn stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit()
 // is the inert lens DESIGN section 5 names. So the detector is run over SUPPLIED units and rows
 // carrying a PLANTED disagreement: "probe-diverging" authors a dependency the unit graph does not
 // give it, "probe-agreeing" authors exactly what it derives. Removing the comparison from
-// reexport_derivation_disagreements_over reds this and leaves the subset claim above untouched.
+// reexport_derivation_disagreements_over reds this and leaves the OTHER two claims untouched.
 fn probe_edge(from: String, to: String) -> UnitDepEdge {
   UnitDepEdge { from: from as CompilationUnitId, to: to as CompilationUnitId }
 }
