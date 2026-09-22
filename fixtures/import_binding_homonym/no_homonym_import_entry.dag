@@ -1,0 +1,18 @@
+module fixture.import_binding_homonym.no_homonym_import_entry
+
+import std.types { Int }
+import v2.std.integer { OverflowDisposition, Wrapping, Saturating, UndefinedBehavior, Trapping }
+import fixture.import_binding_homonym.consumer { count_octets }
+import fixture.import_binding_homonym.bystander_no_homonym_import { bystander_disposition }
+
+// ARM C: v2.std.integer IS in the closure and IS imported, but no module in the closure names
+// `UInt8` from it. Held against ARM B, the single variable is whether the colliding SPELLING
+// appears in some other module's import list.
+fn no_homonym_import_probe() -> Int {
+  count_octets(xs: []) + match bystander_disposition() {
+    Wrapping => 1
+    Saturating => 2
+    UndefinedBehavior => 3
+    Trapping => 4
+  }
+}
