@@ -1,0 +1,125 @@
+module test.claim.spark.v41_checkpoint_materialize_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { byte_size }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import v2.std.optional { Present, Absent }
+import extdeps.huggingface.hub { hub_resolve_url }
+import extdeps.deepseek.deepseek_v4_1_flash {
+  DeepseekV41PublishedFile, deepseek_v4_1_flash_published_file_row,
+  deepseek_v4_1_flash_hub_repo, deepseek_v4_1_flash_revision, deepseek_v4_1_flash_safetensors_shard_count,
+}
+import gunbc.artifact_acquisition {
+  AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch, AcquisitionProbeFailed,
+  ContentDigestSha256, SourceArgv, SourceUrl,
+}
+import gunbc.spark.v41_checkpoint_materialize {
+  V41CheckpointPopulationAdmitted, V41CheckpointPopulationRefused, v41_checkpoint_population,
+  V41FileObservation, v41_checkpoint_subject,
+  V41CheckpointPlan, V41PlanFetch, V41PlanRefused, v41_checkpoint_decide,
+  V41FreeSpaceRead, V41FreeSpaceUnread,
+  v41_parent_directory,
+}
+
+// THE DECISION IS WITNESSED OVER SUPPLIED OBSERVATIONS (DESIGN §3, a witness discriminates at one
+// interface): v41_checkpoint_decide is pure over what the host answered, so each arm is reached by
+// constructing the answer, not by contacting a host. The inhabitance pairing is the population claim
+// below, which runs the real admission the wet door runs.
+
+data w_root: NonEmptyStr = "/models/v41" as NonEmptyStr
+
+fn w_file(path: String, bytes: Nat) -> DeepseekV41PublishedFile {
+  deepseek_v4_1_flash_published_file_row(
+    path: path as NonEmptyStr,
+    file_bytes: byte_size(count: bytes),
+    sha256_hex: "886aebdafa08cc27bbae2165ed35bdfe0de9370bf88c1411283c155c6ae4ff89" as Sha256DigestHex,
+  )
+}
+
+fn w_obs(path: String, bytes: Nat, o: AcquisitionObservation) -> V41FileObservation {
+  let f = w_file(path: path, bytes: bytes)
+  V41FileObservation { file: f, subject: v41_checkpoint_subject(root: w_root, file: f), observation: o }
+}
+
+// THE REAL POPULATION: both admissions admit, every shard plus the index plus the three tokenizer
+// files, each one its own digest-keyed subject whose only source is the Hub resolve URL at the
+// pinned revision.
+test fn the_admitted_population_is_the_shards_the_index_and_the_tokenizer_files() -> Bool {
+  match v41_checkpoint_population() {
+    V41CheckpointPopulationRefused { defects: _ } => false
+    V41CheckpointPopulationAdmitted { files: fs, install_root: root } =>
+      length(fs) == deepseek_v4_1_flash_safetensors_shard_count + 1 + 3
+        && any(fs, f => (f.path as String) == "model.safetensors.index.json")
+        && any(fs, f => (f.path as String) == "encoding/encoding.py")
+        && (root as String).contains((deepseek_v4_1_flash_revision as String))
+        && all(fs, f => {
+          let s = v41_checkpoint_subject(root: root, file: f)
+          match s.key {
+            ContentDigestSha256 { hex: h } => (h as String) == (f.sha256.hex as String)
+            _ => false
+          } && match first(s.sources) {
+            Present { value: src } => match src.locator {
+              SourceArgv { argv: a } => any(a, w => w == (hub_resolve_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision, path_in_repo: f.path) as String))
+              SourceUrl { url: _ } => false
+            }
+            Absent => false
+          }
+        })
+  }
+}
+
+test fn a_nested_path_publishes_under_its_own_directory() -> Bool {
+  (v41_parent_directory(root: w_root, file: w_file(path: "encoding/encoding.py", bytes: 1)) as String) == "/models/v41/encoding"
+    && (v41_parent_directory(root: w_root, file: w_file(path: "tokenizer.json", bytes: 1)) as String) == "/models/v41"
+}
+
+// ALL PRESENT AND RIGHT IS A NOOP: nothing missing, nothing fetched, and free space is not consulted.
+test fn everything_verified_is_a_noop_plan() -> Bool {
+  match v41_checkpoint_decide(observed: [w_obs(path: "a", bytes: 10, o: AcquisitionVerified), w_obs(path: "b", bytes: 20, o: AcquisitionVerified)], free: V41FreeSpaceUnread { reason: "not asked" }) {
+    V41PlanFetch { present: p, missing: m, missing_bytes: n, available_bytes: _ } => length(p) == 2 && length(m) == 0 && n == 0
+    V41PlanRefused { reason: _, observed: _ } => false
+  }
+}
+
+// ONLY THE MISSING BYTES ARE REQUIRED, and they fit.
+test fn missing_files_that_fit_are_planned_with_their_byte_sum() -> Bool {
+  match v41_checkpoint_decide(observed: [w_obs(path: "a", bytes: 10, o: AcquisitionVerified), w_obs(path: "b", bytes: 20, o: AcquisitionAbsent), w_obs(path: "c", bytes: 30, o: AcquisitionAbsent)], free: V41FreeSpaceRead { bytes: 50 }) {
+    V41PlanFetch { present: p, missing: m, missing_bytes: n, available_bytes: a } => length(p) == 1 && length(m) == 2 && n == 50 && a == 50
+    V41PlanRefused { reason: _, observed: _ } => false
+  }
+}
+
+// RED: one byte short refuses before fetching, naming both figures.
+test fn one_byte_short_refuses_before_fetching() -> Bool {
+  match v41_checkpoint_decide(observed: [w_obs(path: "b", bytes: 20, o: AcquisitionAbsent), w_obs(path: "c", bytes: 30, o: AcquisitionAbsent)], free: V41FreeSpaceRead { bytes: 49 }) {
+    V41PlanRefused { reason: r, observed: _ } => r.contains("49") && r.contains("50") && r.contains("nothing was fetched")
+    V41PlanFetch { present: _, missing: _, missing_bytes: _, available_bytes: _ } => false
+  }
+}
+
+// RED: an unreadable free-space figure is a refusal, never an assumption that the disk is big enough.
+test fn unread_free_space_refuses_when_anything_is_missing() -> Bool {
+  match v41_checkpoint_decide(observed: [w_obs(path: "b", bytes: 20, o: AcquisitionAbsent)], free: V41FreeSpaceUnread { reason: "df unreachable" }) {
+    V41PlanRefused { reason: r, observed: _ } => r.contains("df unreachable")
+    V41PlanFetch { present: _, missing: _, missing_bytes: _, available_bytes: _ } => false
+  }
+}
+
+// RED: a wrong installed file refuses the whole run, even with ample space and other files missing,
+// and names the path it left in place.
+test fn a_wrong_installed_digest_refuses_everything_and_removes_nothing() -> Bool {
+  match v41_checkpoint_decide(observed: [w_obs(path: "a", bytes: 10, o: AcquisitionDigestMismatch), w_obs(path: "b", bytes: 20, o: AcquisitionAbsent)], free: V41FreeSpaceRead { bytes: 1000 }) {
+    V41PlanRefused { reason: r, observed: _ } => r.contains("/models/v41/a") && r.contains("left in place")
+    V41PlanFetch { present: _, missing: _, missing_bytes: _, available_bytes: _ } => false
+  }
+}
+
+// RED: an installed file that could not be read is not absence and not a mismatch; the population is
+// unobserved and nothing is fetched.
+test fn an_unread_installed_file_refuses_rather_than_reading_as_absent() -> Bool {
+  match v41_checkpoint_decide(observed: [w_obs(path: "a", bytes: 10, o: AcquisitionProbeFailed { reason: "sha256sum exited 1" as NonEmptyStr })], free: V41FreeSpaceRead { bytes: 1000 }) {
+    V41PlanRefused { reason: r, observed: _ } => r.contains("sha256sum exited 1") && r.contains("unobserved")
+    V41PlanFetch { present: _, missing: _, missing_bytes: _, available_bytes: _ } => false
+  }
+}

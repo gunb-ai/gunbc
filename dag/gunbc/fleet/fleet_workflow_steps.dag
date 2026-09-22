@@ -48,6 +48,7 @@ import gunbc.ci_spec {
 }
 import gunbc.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
 import gunbc.spark.vllm_runtime_image_build { vllm_build_host_effect_term }
+import gunbc.spark.v41_checkpoint_materialize { v41_checkpoint_host_effect_term }
 import std.types { List, String, Int }
 
 import gunbc.roadmap_execution_contract {
@@ -469,6 +470,22 @@ fn gunbc_ci_spark_runtime_image_build_step_timeout_minutes() -> Int {
   second_count(s: vllm_build_host_effect_term) / 60
 }
 
+// THE CHECKPOINT MATERIALIZE STEP, grounded the same way: its budget IS the term of the host-effect
+// claim that fences its host (gunbc.spark.v41_checkpoint_materialize v41_checkpoint_host_effect_term).
+fn gunbc_ci_spark_v41_checkpoint_materialize_step_timeout_minutes() -> Int {
+  second_count(s: v41_checkpoint_host_effect_term) / 60
+}
+
+// THE LONGEST SINGLE-HOST SPARK STEP. The build and the materialize are gated on different modes, so
+// one dispatch runs at most one of them and the worst-case branch is the larger, not the sum.
+fn gunbc_ci_spark_longest_host_step_timeout_minutes() -> Int {
+  if gunbc_ci_spark_v41_checkpoint_materialize_step_timeout_minutes() > gunbc_ci_spark_runtime_image_build_step_timeout_minutes() {
+    gunbc_ci_spark_v41_checkpoint_materialize_step_timeout_minutes()
+  } else {
+    gunbc_ci_spark_runtime_image_build_step_timeout_minutes()
+  }
+}
+
 data gunbc_ci_spark_serving_step_timeout_note: String = "Spark serving converge/observe step budget, raised from the shared aux 5m (operator authorization 2026-08-19). STATED AS AN ENVELOPE, NOT A MEASUREMENT, because the neighbouring gates in this module earn their numbers and this one cannot yet. What IS modeled: the ollama runtime archive at 1542416321 bytes, cited on extdeps.ollama.binary_release. What is NOT: the model blob closure has no modeled byte size at all — the desired model is identified by its manifest digest rather than a size — and throughput from the executor to a spark target has never been measured. So a cold install downloads a ~1.5GB runtime plus a model of unmodeled size over a link of unmeasured bandwidth, and no honest derivation produces a minute count from that. 5m was not a considered budget for this step, it was the shared aux default, and it cannot cover a cold install under any plausible bandwidth.
 
 WHAT IS OBSERVED, and why this is not a hypothetical envelope: run 32213195686 (2026-08-19T03:49:56Z, read-only spark_observe) reports state=absent for BOTH spark targets — on srv6 the user unit is-active exits 4, the api/version and api/tags probes exit 7 against a refused connection, and the runtime receipt file does not exist. So the first canary is a guaranteed cold install of the full closure rather than a converged no-op, and the step budget has to cover acquisition of an unmodeled model closure on a host observed to hold none of it. The 5m default would have killed that install mid-download every time, and because publication is split from acquisition it would have done so silently-safely — dying in the attempt workspace, publishing nothing, and looking like a timeout rather than a budget defect.
@@ -742,6 +759,6 @@ fn gunbc_ci_fleet_job_backstop_timeout_minutes() -> Int {
     + (gunbc_ci_fleet_converge_plan_step_timeout_minutes - gunbc_ci_aux_step_timeout_minutes)
     + (gunbc_ci_fleet_job_always_run_artifact_transfer_step_count * gunbc_ci_artifact_transfer_step_timeout_minutes)
     + (gunbc_ci_fleet_job_worst_case_mode_spark_step_count * gunbc_ci_spark_serving_step_timeout_minutes)
-    + gunbc_ci_spark_runtime_image_build_step_timeout_minutes()
+    + gunbc_ci_spark_longest_host_step_timeout_minutes()
 }
 

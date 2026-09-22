@@ -1008,6 +1008,15 @@ data gunbc_ci_spark_v41_runtime_image_build_target: GunbcRunStepTarget = GunbcRu
   function: "v41_runtime_image_produce_ci_wet",
 }
 
+// THE PUBLISHED V4.1 FILES ON ONE SPARK: observe by sha256, refuse on a wrong installed file or too
+// little disk, fetch the missing ones and keep each only after its digest matches the manifest row.
+// Its legs are privileged for the same reason the build's are (the install root is written as root
+// under sudo), so it takes the same prelude.
+data gunbc_ci_spark_v41_checkpoint_materialize_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_checkpoint_materialize.dag",
+  function: "v41_checkpoint_materialize_ci_wet",
+}
+
 data gunbc_ci_collect_fleet_convergence_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_receipt_collector.dag",
   function: "collect_fleet_convergence_wet",
@@ -2521,6 +2530,17 @@ fn gunbc_ci_spark_v41_runtime_image_build_invoke() -> String {
     function: gunbc_ci_spark_v41_runtime_image_build_target.function,
     claim_run: false,
     receipt_rel: "target/v41-runtime-image-produce-receipt.txt"
+  )
+}
+
+fn gunbc_ci_spark_v41_checkpoint_materialize_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_v41_checkpoint_materialize_target.entry,
+    function: gunbc_ci_spark_v41_checkpoint_materialize_target.function,
+    claim_run: false,
+    receipt_rel: "target/v41-checkpoint-materialize-receipt.txt"
   )
 }
 

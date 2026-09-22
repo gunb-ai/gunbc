@@ -2,6 +2,7 @@ module gunbc.spark.model_snapshot_acquisition
 
 import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_native_manifest }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_hub_repo, deepseek_v4_1_flash_revision }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address, ipv4_address, ipv4_address_eq }
 import extdeps.huggingface.hub {
   HubRepoId, HubModelRepo, hub_repo_cache_directory_name, hub_cli_program,
@@ -77,6 +78,20 @@ data glm_5_3_flash_snapshot: ModelSnapshotDesired = ModelSnapshotPinned {
   revision: glm_5_3_flash_native_manifest.revision,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
   revision_provenance: "resolved from the Hub model API for zai-org/GLM-5.3-Flash on 2026-09-07; the same response reported lastModified 2026-09-07T12:13:47Z, so the branch was moving when this was taken" as NonEmptyStr,
+}
+
+// THE DEEPSEEK V4.1 FLASH SNAPSHOT. The revision is the extdeps module's pin, never re-spelled. Its
+// placement is a local directory, not the Hub cache: the file population is keyed by the
+// publisher's per-file sha256 (extdeps.deepseek.deepseek_v4_1_flash
+// deepseek_v4_1_flash_weight_manifest_standing), so each file is its own ContentDigestSha256 subject
+// fetched and verified by gunbc.spark.v41_checkpoint_materialize -- the stronger form this module
+// names below -- and a plain tree is what those per-file subjects publish into.
+data deepseek_v4_1_flash_snapshot: ModelSnapshotDesired = ModelSnapshotPinned {
+  identity: "deepseek-v4.1-flash" as NonEmptyStr,
+  repo: deepseek_v4_1_flash_hub_repo,
+  revision: deepseek_v4_1_flash_revision,
+  placement: LocalDirectoryPlacement { host_path: "/home/briansrls/models/deepseek-ai/DeepSeek-V4.1-Flash/dba1be0a40aa45a94ad051997016db3960a90277" as NonEmptyStr },
+  revision_provenance: "extdeps.deepseek.deepseek_v4_1_flash deepseek_v4_1_flash_revision, the revision the admitted weight manifest and tokenizer population were read at" as NonEmptyStr,
 }
 
 fn model_snapshot_identity(snapshot: ModelSnapshotDesired) -> NonEmptyStr {
