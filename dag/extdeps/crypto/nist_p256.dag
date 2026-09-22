@@ -71,10 +71,6 @@ data p256_gy: BigNat = bignat_from_octets(octets: p256_gy_octets)
 // 256-bit moduli in 24-bit limbs: the family fold derives 11 from the coordinate width.
 data p256_curve: PrimeCurve = prime_curve(p_octets: p256_p_octets, n_octets: p256_n_octets, b_octets: p256_b_octets, gx_octets: p256_gx_octets, gy_octets: p256_gy_octets, coordinate_octets: 32)
 
-fn p256_is_infinity(p: JacobianPoint) -> Bool {
-  jacobian_is_infinity(p: p)
-}
-
 fn p256_affine(x: BigNat, y: BigNat) -> JacobianPoint {
   curve_affine(c: p256_curve, x: x, y: y)
 }
