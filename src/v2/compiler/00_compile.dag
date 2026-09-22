@@ -2776,8 +2776,17 @@ fn native_lane_closure_ingest(
 // timer improvement, and only a POPULATION with a discriminating RED catches it.
 //
 // TWO POPULATIONS, NAMED SEPARATELY BECAUSE THEY COST DIFFERENT THINGS. `scanned` is what the route
-// OPENED for textual discovery — the corpus, because discovery is a floor authority whose subject
-// is the corpus and a `test`-marked declaration outside a sidecar must still be found. `ingested`
+// OPENED for textual discovery — still the corpus, and THE REASON IS NO LONGER THE ONE THIS NOTE
+// USED TO GIVE. It read "because discovery is a floor authority whose subject is the corpus and a
+// `test`-marked declaration outside a sidecar must still be found". That clause is now FALSE for
+// this lane: after `native_lane_discovery_for`, a `test`-marked declaration in a non-member module
+// is exactly what this lane no longer finds -- it is handed to the required floor, which reaches
+// the same `floor_discovery_finalize_source_outcomes` over the full inventory. The population is
+// unchanged; only the justification rotted, which is the stale-rationale tell this same change
+// renames `the_out_of_selection_source_is_discovered_not_refused` to avoid one file over. THE
+// SURVIVING REASON is the one stated at `native_lane_source_facts` above: the header and import
+// scans stay corpus-wide to protect THIS LANE'S OWN CLOSURE COMPLETENESS, because a malformed
+// import line in any module the closure walk can reach would silently narrow the closure. `ingested`
 // is what it TOKENIZED, PARSED AND FOLDED, and the acceptance is an identity join on that one: it
 // equals the transitive import closure of the universe's modules plus the controls' module,
 // exactly. The RED is a module OUTSIDE that closure, malformed or expensive, whose edits change
