@@ -1,0 +1,36 @@
+module test.claim.named_argument_binding_two_route_witness_test
+
+import std.types { String, Bool, Int }
+import v2.compiler.compile { compile_dag_source_to_target_text }
+import v2.std.diagnostic { Accepted, Rejected }
+import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
+
+data nab_inorder_source: String = "module nab_inorder\n\nfn nab_pick(a: Int, b: Bool) -> Int \{\n  a\n}\n\nfn nab_use() -> Int \{\n  nab_pick(a: 1, b: true)\n}\n"
+
+data nab_reordered_source: String = "module nab_reordered\n\nfn nab_pick(a: Int, b: Bool) -> Int \{\n  a\n}\n\nfn nab_use() -> Int \{\n  nab_pick(b: true, a: 1)\n}\n"
+
+fn nab_v2_accepts(source: String) -> Bool {
+  match compile_dag_source_to_target_text(source_text: source) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn nab_v1_blocking(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn a_named_argument_call_in_declaration_order_compiles_on_both_routes() -> Bool {
+  nab_v2_accepts(source: nab_inorder_source) && nab_v1_blocking(source: nab_inorder_source) == 0
+}
+
+test fn a_named_argument_call_out_of_declaration_order_binds_by_name_on_v1() -> Bool {
+  nab_v1_blocking(source: nab_reordered_source) == 0
+}
+
+test fn a_named_argument_call_out_of_declaration_order_binds_by_position_on_v2() -> Bool {
+  !nab_v2_accepts(source: nab_reordered_source)
+}
