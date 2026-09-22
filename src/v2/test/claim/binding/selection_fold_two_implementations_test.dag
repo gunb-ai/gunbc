@@ -192,3 +192,93 @@ test fn the_two_selection_folds_agree_on_the_supplied_population_holds() -> Bool
     )
   })
 }
+
+// THE PAIRING OBLIGATION FOR THE SUPPLIED BOUNDARY (DESIGN section 3). Every claim above hands
+// symbol_index_lexical_selection a population it constructed, so those claims are hypotheses about
+// a boundary until one claim establishes that the REAL producer emits that shape and still runs.
+// This one does both, and it asserts the ROUTE rather than only the answer: it builds a real module
+// root, fills a real SymbolIndex, walks the real containment chain with
+// symbol_index_lexical_collect, and then feeds THAT population -- not a fixture -- into the same
+// selection fold the claims above supply. So deleting the walk cannot leave the suite green.
+
+data binding_inhabitance_module_qn: List<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.binding_inhabitance"
+)
+
+fn binding_inhabitance_qn_spine(segments: List<Symbol>) -> Node {
+  fold_list_node(
+    xs: segments,
+    item_node: fn(sym) { binding_fixture_node(name: sym) }
+  )
+}
+
+fn binding_inhabitance_variant_edge(type_sym: Symbol, variants: List<Symbol>) -> Edge {
+  Edge {
+    label: Named { name: type_sym },
+    target: Node {
+      kind: TypeNode { connective: Disj },
+      children: fold(variants, init: [], f: fn(acc, variant_sym) {
+        concat(acc, [
+          Edge {
+            label: Named { name: variant_sym },
+            target: binding_fixture_node(name: variant_sym)
+          }
+        ])
+      }),
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+
+data binding_inhabitance_module_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: concat(
+    [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: binding_inhabitance_qn_spine(segments: binding_inhabitance_module_qn)
+      )
+    ],
+    [
+      binding_inhabitance_variant_edge(type_sym: ^Mood, variants: [^Shadowed]),
+      binding_inhabitance_variant_edge(type_sym: ^Classical, variants: [^Shadowed])
+    ]
+  ),
+  occurrence_id: OccurrenceSynthetic
+}
+
+data binding_inhabitance_index: SymbolIndex = symbol_index_fill_module_root(
+  index: empty_symbol_index(),
+  root: binding_inhabitance_module_root
+)
+
+// The real chain walk, executed. Its result is the population the fixtures above only assert the
+// shape of.
+fn binding_inhabitance_real_population() -> List<LexicalBindingCandidate> {
+  symbol_index_lexical_collect(
+    index: binding_inhabitance_index,
+    position: qualified_name_snoc(qn: binding_inhabitance_module_qn, segment: ^Classical),
+    name: ^Shadowed,
+    acc: Empty
+  )
+}
+
+// INHABITANCE: the real producer emits a multi-candidate population of the shape the supplied
+// fixtures use, and the selection fold classifies THAT population -- so the fixtures are a reading
+// of a boundary the program actually reaches, not a designed field of their own.
+test fn the_real_chain_walk_emits_the_population_the_fixtures_supply_holds() -> Bool {
+  let real_population = binding_inhabitance_real_population()
+  (length(xs: real_population) == 2)
+    && binding_selection_class_equal(
+      left: match symbol_index_lexical_selection(candidates: real_population) {
+        LexicalUnbound => SelectionUnbound
+        LexicalHit { node: _, path: _ } => SelectionBound
+        LexicalAmbiguous { candidates: _ } => SelectionAmbiguous
+      },
+      right: SelectionAmbiguous
+    )
+}
