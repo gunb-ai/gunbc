@@ -980,13 +980,15 @@ fn stage0_partition_fold_ok() -> Bool {
 // the module edges projected through the assignment, which is the fact partition_fold_outcome
 // derives as CompilationUnit.deps.
 //
-// WHY THIS ROUTE AND NOT THE FOLD, measured rather than assumed. Asking
-// stage0_partition_receipt_outcome for units cost 190,226 eval steps while the comparison built on
-// top of it cost 1,640 -- so 99% of the claim's cost was a CompilationUnit interface saturation it
-// never inspected. That is the shape DESIGN section 3 names exactly: a claim dominated by one call
-// whose RESULT SHAPE is all it looks at, whose cost does not move when its assertions change. The
-// earliest unjustified boundary was demanding a whole CompilationUnit for a dependency question,
-// so the derivation is re-taken here rather than the symptom optimized.
+// WHY THIS ROUTE AND NOT THE FOLD. Asking stage0_partition_receipt_outcome for units dominated
+// the claim's cost, and what it bought was a CompilationUnit interface saturation the claim never
+// inspects -- it reads deps only. That is the shape DESIGN section 3 names exactly: a claim
+// dominated by one call whose RESULT SHAPE is all it looks at, whose cost does not move when its
+// assertions change. The earliest unjustified boundary was demanding a whole CompilationUnit for a
+// dependency question, so the derivation is re-taken here rather than the symptom optimized.
+// The figures are NOT copied here: claim_batch reports eval_steps per witness and re-derives them
+// on demand, and DESIGN section 6 asks for the producer to be named rather than its output
+// transcribed -- a number copied into prose rots without anyone touching either end.
 type UnitDepEdge {
   from: CompilationUnitId
   to: CompilationUnitId
@@ -1140,12 +1142,32 @@ fn reexport_derivation_disagreements_over(
   })
 }
 
-// THE DEBT POPULATION IS A NAMED ROW, NOT A LITERAL INSIDE THE ASSERTION. A subset assertion on
-// its own notices nothing when the set shrinks -- it just stays green -- so an inline literal
-// would let the debt evaporate with no record that it was ever paid. As a row, removing a package
-// is an edit someone must make and justify, which is where DESIGN section 5's required typed
-// disposition for a removal from a monotone debt contract lives.
+// THE DEBT POPULATION IS A NAMED ROW, AND THE CONTRACT IS EQUALITY AGAINST IT, NOT A SUBSET OF IT.
+// A one-way subset notices a NEW divergence and nothing else: when v1-stage0-v1-artifact is finally
+// repaired the derived set empties, the subset still holds, and the row keeps naming a unit that no
+// longer diverges. A stale entry then quietly re-admits that unit to diverge again with the claim
+// still green, which is the silent regression DESIGN 4b(3) forbids -- and it would falsify this
+// row's own promise that removing a package is an edit someone must make and justify.
+//
+// Equality in BOTH directions is what makes that edit forced, and the objection to equality does
+// not apply here: it is equality against this LEDGER, not against the derived set, so it does not
+// stop any lane over debt the ledger already declares. It reds in exactly one situation -- the
+// ledger disagreeing with reality -- which is the situation nobody would otherwise notice.
+//
+// A REMOVAL CARRIES A TYPED DISPOSITION (DESIGN section 5), so a repaired divergence does not just
+// vanish from the ledger: it moves to the repaired roster below, which records what repaired it and
+// is itself asserted against -- a package recorded as repaired that starts diverging again reds.
+type Stage0ReexportDivergenceRepaired {
+  package_name: String
+  repaired_by: String
+}
+
 data stage0_reexport_derivation_known_divergent_packages: List<String> = ["v1-stage0-v1-artifact"]
+
+// Empty today: no divergence has been repaired yet. It is not decoration -- the claim asserts no
+// entry here has returned to the derived set, so the roster is a regression control the moment it
+// has a row, and the edge-list derivation is what will put the first one in it.
+data stage0_reexport_derivation_repaired_divergences: List<Stage0ReexportDivergenceRepaired> = []
 
 // THE REFUSAL ARM MAY NOT ANSWER []. An empty list reads as "no unit disagrees", the strongest
 // possible answer, and a partition that refused to resolve has established nothing about any unit.

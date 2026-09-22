@@ -49,6 +49,7 @@ import v2.workflow.rust_crate_partition {
   reexport_derivation_disagreements_over,
   stage0_reexport_derivation_disagreements,
   stage0_reexport_derivation_known_divergent_packages,
+  stage0_reexport_derivation_repaired_divergences,
   stage0_module_dag_interface_grounding_is_debt,
   stage0_module_bearing_unit_count,
   stage0_module_id,
@@ -394,18 +395,38 @@ test fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> B
 // prose (DESIGN 6), and this pins its population at IDENTITY grain rather than by count: a count
 // equality would stay green if one unit were repaired while another began to diverge.
 //
-// SUBSET, not equality, and the direction is deliberate. Equality would red the floor on debt this
-// row already declares, which stops every lane to tell them something the row already says. Subset
-// reds only on a NEW divergence -- the thing nothing would otherwise notice -- and stays green when
-// the authored edge list is finally derived and the set empties, at which point this claim becomes
-// the DESIGN 4b(4) regression control that keeps the climb real rather than retiring with it.
+// EQUALITY AGAINST THE LEDGER, IN BOTH DIRECTIONS, plus the repaired roster. A one-way subset --
+// which this claim used to be -- catches a NEW divergence and nothing else: once
+// v1-stage0-v1-artifact is repaired the derived set empties, the subset still holds, and the ledger
+// keeps naming a unit that no longer diverges. A stale entry then silently re-admits that unit to
+// diverge again with this claim green, which is the regression DESIGN 4b(3) forbids.
+//
+// The objection to equality does not apply, because this is equality against the LEDGER rather than
+// against the derived set: it cannot stop a lane over debt the ledger already declares, and it reds
+// in exactly one situation -- the ledger disagreeing with reality.
+//
+// Three arms, each with its own red. no_new_divergence: a unit outside the ledger started
+// diverging. no_stale_ledger_entry: a ledger unit stopped diverging and nobody recorded it, which
+// is what forces the removal edit and its typed disposition (DESIGN section 5). And
+// no_repaired_divergence_returned: something recorded as repaired came back -- the 4b(4) regression
+// control, which keeps the climb real rather than retiring with it.
 test fn stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit() -> Bool {
   match stage0_reexport_derivation_disagreements() {
     Stage0ReexportDisagreementsUnavailable { cause: _ } => false
-    Stage0ReexportDisagreementsDerived { packages: packages } =>
-      packages |> fold(init: true, f: fn(ok, pkg) {
+    Stage0ReexportDisagreementsDerived { packages: packages } => {
+      let no_new_divergence = packages |> fold(init: true, f: fn(ok, pkg) {
         ok && (stage0_reexport_derivation_known_divergent_packages |> any(known => known == pkg))
       })
+      let no_stale_ledger_entry = stage0_reexport_derivation_known_divergent_packages
+        |> fold(init: true, f: fn(ok, known) {
+          ok && (packages |> any(pkg => pkg == known))
+        })
+      let no_repaired_divergence_returned = stage0_reexport_derivation_repaired_divergences
+        |> fold(init: true, f: fn(ok, repaired) {
+          ok && !(packages |> any(pkg => pkg == repaired.package_name))
+        })
+      no_new_divergence && no_stale_ledger_entry && no_repaired_divergence_returned
+    }
   }
 }
 
