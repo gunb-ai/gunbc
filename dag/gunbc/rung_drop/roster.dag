@@ -42,6 +42,7 @@ import gunbc.rung_drop.text_boundary_identity_wall { text_boundary_identity_wall
 import gunbc.rung_drop.fabric_evidence_gating { fabric_evidence_gating }
 import gunbc.rung_drop.rust_unit_tests_off_the_merge_path { rust_unit_tests_off_the_merge_path }
 import gunbc.rung_drop.witness_floor_off_the_required_gate { witness_floor_off_the_required_gate }
+import gunbc.rung_drop.the_job_user_holds_a_path_unrestricted_root_grant { the_job_user_holds_a_path_unrestricted_root_grant }
 import gunbc.rung_drop.required_lanes_do_not_resolve_product_layer_modules { required_lanes_do_not_resolve_product_layer_modules }
 import gunbc.rung_drop.emit_copy_qualification_without_a_consumer { emit_copy_qualification_without_a_consumer }
 import gunbc.rung_drop.floor_cost_high_cpu_withheld { floor_cost_high_cpu_withheld }
@@ -63,6 +64,7 @@ import gunbc.rung_drop.floor_cost_debt_straddling_produced_decl { floor_cost_deb
 import gunbc.rung_drop.determinism_transitive_reachability { determinism_transitive_reachability }
 import gunbc.rung_drop.transitional_admission_exception { transitional_admission_exception }
 import gunbc.rung_drop.v2_native_route_off_the_merge_path { v2_native_route_off_the_merge_path }
+import gunbc.rung_drop.native_lane_live_pair_expected_red { native_lane_live_pair_expected_red }
 import gunbc.rung_drop.consumed_row_owner_charge_unenforced { consumed_row_owner_charge_unenforced }
 import gunbc.rung_drop.approval_store_single_writer_by_agreement { approval_store_single_writer_by_agreement }
 import gunbc.rung_drop.owner_deletion_follow_up_charge_removed { owner_deletion_follow_up_charge_removed }
@@ -117,6 +119,7 @@ data rung_drop_roster: List<RungDrop> = [
   fabric_evidence_gating,
   rust_unit_tests_off_the_merge_path,
   witness_floor_off_the_required_gate,
+  the_job_user_holds_a_path_unrestricted_root_grant,
   required_lanes_do_not_resolve_product_layer_modules,
   emit_copy_qualification_without_a_consumer,
   floor_cost_high_cpu_withheld,
@@ -138,6 +141,7 @@ data rung_drop_roster: List<RungDrop> = [
   determinism_transitive_reachability,
   transitional_admission_exception(),
   v2_native_route_off_the_merge_path,
+  native_lane_live_pair_expected_red,
   consumed_row_owner_charge_unenforced,
   owner_deletion_follow_up_charge_removed,
   main_per_commit_floor_verdict,
