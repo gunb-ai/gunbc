@@ -1430,12 +1430,21 @@ fn compute_request_cli(repo_root: String, commit: String, operation: String, ent
 // ── THE RECOVERY DOOR (criteria 4, 5, 6) ─────────────────────────────────────────────────────
 //
 // THIS IS THE CAPABILITY gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge
-// NAMED AS ITS TRIGGER, and PR 1's compute_release_on says in its own annotation what had to exist
+// NAMES AS ITS TRIGGER, and PR 1's compute_release_on says in its own annotation what had to exist
 // before a discharge could ship: a termination decision bound to the unit, an attempt-to-unit
 // binding that cannot release another attempt's live reservation, and a settled state a retry
 // consumes. All three are here -- observe_unit_lifecycle decides from the manager, the unit name
 // comes from the attempt record rather than from an identity or a listing, and the terminal
 // generation IS the settled state.
+//
+// THAT DOES NOT DISCHARGE THE TRIGGER AND THE ROW NO LONGER SAYS IT DOES (review round four on
+// gunbc#12040). The trigger asks for the capability CONSUMED BY A REAL CALLER, and this door has one
+// call site -- compute_recover_cli -- with nothing executing it: the wet witnesses reach
+// attempt_open, attempt_begin_launch and attempt_terminate, never this fold, and the only test-side
+// mention of the door is a string_contains over the remedy TEXT. The obstacle is visible in this
+// function's own first line: the attempts root is DERIVED from a HostDashboardInstance, so no
+// fixture can point the door at a temporary store, and the control cannot be written before the
+// store is a parameter. That parameterization is the row's trigger now.
 //
 // EVERY REFUSAL ARM BELOW EXISTS BECAUSE ITS OPPOSITE FREES A SEAT THAT SHOULD STAY HELD, so none
 // of them widens toward "release anyway". An unreadable slot is NOT an absent one (criterion 4): a
