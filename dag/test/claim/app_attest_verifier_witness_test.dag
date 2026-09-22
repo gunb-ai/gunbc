@@ -9,7 +9,8 @@ import extdeps.apple.app_attest {
   AttestationCounterNonZero, AttestationEnvironmentUnexpected, AttestationCredentialIdMismatch, AttestationValidationCategoryAbsent,
   AttestationUndecodable,
   AssertionExpectation, verify_assertion, AssertionAuthentic, AssertionRefused, AssertionAppIdMismatch, AssertionValidationCategoryAbsent,
-  assertion_signature_verifies_for, chain_link_verifies, apple_app_attestation_root_ca_pem,
+  assertion_signature_verifies_for, chain_link_verifies, apple_app_attestation_root_ca_pem, base64_of,
+  assertion_parts, AssertionPartsOk, AssertionPartsRefused,
 }
 import extdeps.standards.rfc_8949 { CborValue, CborSimple, CborDocumentDecoded, CborDocumentRefused, cbor_decode_document, CborMemberFound, cbor_map_unique_text_member, cbor_byte_string_octets, cbor_array_items }
 import extdeps.standards.rfc_5280 { X509Certificate, X509TbsFields, X509Decoded, X509Refused, decode_certificate }
@@ -94,14 +95,35 @@ test fn a_malformed_object_refuses_before_any_step() -> Bool {
   }
 }
 
-fn assertion_expectation() -> AssertionExpectation {
-  AssertionExpectation {
-    key_id: sample_key_id_b64 as AttestKeyId,
-    public_key_point_b64url: "BIjANKGQqn28WgYVAcZUKAOUJYIZiz8cxUZzyjua0gtBUoJnpU9f26BGn6-0a7aZCjlr8E-UpJ1DIMgcerJAo5g=" as NonEmptyStr,
-    client_data: sample_client_data,
-    app_id: app_attest_app_id(prefix: sample_team_identifier as AppIdPrefix, bundle_id: sample_bundle_identifier),
-    admitted_validation_categories: [2, 3, 4],
-    expected_bundle_version: "1" as NonEmptyStr,
+// THE CREDENTIAL KEY IS READ FROM THE ATTESTATION, NOT TRANSCRIBED (review 69803 of gunbc#11989):
+// the assertion's expectation carries the leaf's SubjectPublicKey rendered by the same base64_of
+// verify_attestation emits, so the attestation-output -> assertion-input join is one chain rather
+// than two islands agreeing by hand. Absent when the sample's leaf does not decode.
+fn assertion_expectation() -> AssertionExpectation? {
+  match vf_x5c(i: 0) {
+    Absent => none
+    Present { value: leaf } =>
+      match base64_of(octets: leaf.tbs.spki_public_key, url_safe: true) {
+        Absent => none
+        Present { value: point } => Present { value: AssertionExpectation {
+          key_id: sample_key_id_b64 as AttestKeyId,
+          public_key_point_b64url: point as NonEmptyStr,
+          client_data: sample_client_data,
+          app_id: app_attest_app_id(prefix: sample_team_identifier as AppIdPrefix, bundle_id: sample_bundle_identifier),
+          admitted_validation_categories: [2, 3, 4],
+          expected_bundle_version: "1" as NonEmptyStr,
+        } }
+      }
+  }
+}
+
+// THE COUNTER THE FOLD CARRIES OUT: the sample assertion's authenticatorData signCount is the
+// corpus's published counter, read at the parts grain because the whole fold refuses on absent
+// extensions before it can hand the counter to step 5.
+test fn the_sample_assertion_counter_is_the_published_one() -> Bool {
+  match assertion_parts(object: sample_assertion_octets) {
+    AssertionPartsOk { parts: p } => p.auth.prefix.sign_count == sample_assertion_counter
+    AssertionPartsRefused { cause: _ } => false
   }
 }
 
@@ -109,7 +131,9 @@ fn assertion_expectation() -> AssertionExpectation {
 // 37-octet prefix carries no extensions); the counter is carried out as 1 either way; a wrong App
 // ID reds step 4 by name.
 test fn the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions() -> Bool {
-  let e = assertion_expectation()
+  match assertion_expectation() {
+    Absent => false
+    Present { value: e } =>
   match verify_assertion(object: sample_assertion_octets, e: e) {
     AssertionRefused { cause: AssertionValidationCategoryAbsent } =>
       match verify_assertion(object: sample_assertion_octets, e: AssertionExpectation { key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, client_data: e.client_data, app_id: "6MURL8TA57.de.other" as NonEmptyStr, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) {
@@ -118,6 +142,7 @@ test fn the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions() -> 
       }
     _ => false
   }
+  }
 }
 
 // STEPS 1-3 ON REAL BYTES: Apple's assertion signature verifies under the credential key for
@@ -125,17 +150,24 @@ test fn the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions() -> 
 // data. One interpreted P-256 verification each (gunbc#11645's cost shape) -- executable on a
 // quiet host, budget-refused by the floor, native row is the enrolled evidence.
 test fn the_sample_assertion_signature_verifies_under_the_credential_key() -> Bool {
-  match assertion_signature_verifies_for(object: sample_assertion_octets, e: assertion_expectation()) {
-    Present { value: v } => v
+  match assertion_expectation() {
     Absent => false
+    Present { value: e } =>
+      match assertion_signature_verifies_for(object: sample_assertion_octets, e: e) {
+        Present { value: v } => v
+        Absent => false
+      }
   }
 }
 
 test fn the_sample_assertion_signature_is_false_for_other_client_data() -> Bool {
-  let e = assertion_expectation()
+  match assertion_expectation() {
+    Absent => false
+    Present { value: e } =>
   match assertion_signature_verifies_for(object: sample_assertion_octets, e: AssertionExpectation { key_id: e.key_id, public_key_point_b64url: e.public_key_point_b64url, client_data: "wurzelpfropg" as NonEmptyStr, app_id: e.app_id, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) {
     Present { value: v } => !v
     Absent => false
+  }
   }
 }
 
@@ -144,10 +176,13 @@ test fn the_sample_assertion_signature_is_false_for_other_client_data() -> Bool 
 // verdict (review 69773 of gunbc#11989: the mapper carries it as AssertionUndecodable, not as
 // AssertionSignatureInvalid) -- and it is cheap, refusing before any curve arithmetic.
 test fn an_undecodable_stored_key_is_absent_not_a_false_verdict() -> Bool {
-  let e = assertion_expectation()
+  match assertion_expectation() {
+    Absent => false
+    Present { value: e } =>
   match assertion_signature_verifies_for(object: sample_assertion_octets, e: AssertionExpectation { key_id: e.key_id, public_key_point_b64url: "not*base64url" as NonEmptyStr, client_data: e.client_data, app_id: e.app_id, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) {
     Present { value: _ } => false
     Absent => true
+  }
   }
 }
 
