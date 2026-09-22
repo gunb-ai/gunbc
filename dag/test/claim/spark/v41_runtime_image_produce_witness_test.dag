@@ -1,11 +1,6 @@
 module test.claim.spark.v41_runtime_image_produce_witness
 
-import std.types { Bool, String, List, NonEmptyStr }
-import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity }
-import gunbc.spark.fabric_switch_observed { FabricGroupA }
-import gunbc.spark.serving_subject { PairServingUnitOn }
-import gunbc.spark.host_commitment { spark_serving_admissible_hosts, admit_host_held_by_subject_among }
+import std.types { Bool, String, NonEmptyStr }
 import gunbc.spark.v41_runtime_image_converge {
   V41ProducedRuntime, V41KernelWheelsVerified, V41KernelWheelVerificationRefused,
   V41RuntimeProductionStopped,
