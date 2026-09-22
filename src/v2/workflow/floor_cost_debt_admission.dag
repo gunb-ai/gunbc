@@ -42,11 +42,15 @@ type FloorCostDebtTypedAdmission {
 // live reading and must be deleted, which is the whole point of carrying no figure here. The
 // measurement that established each row is the merge-queue required floor run 35678328407 of
 // gunbc#11981 and the PR floor run that follows it, artifact required-ci-measurement-receipt,
-// enrolment-margin lines. The three published SHA-384 vectors are ONE identity here, not three
-// (review 69978): split, each single-block vector measured inside the gate's coin-flip band rather
-// than decisively above the per-subject line, so no per-vector admission is stable. Folded, the
-// claim bills their sum, which is necessarily above the line, and one admission covers it -- which
-// is what keeps the empty-message padding path executing instead of demoted off the floor.
+// enrolment-margin lines. The three published SHA-384 vectors are THREE identities here, one per
+// vector, each PAIRED WITH THE MUTATION THAT DISCRIMINATES IT. An earlier cut folded them into one
+// claim so the summed bill cleared the per-subject line; that was enrolment-gate avoidance by
+// aggregation, and the counterfactual shows it: removing one vector changed no semantic fact about
+// the others yet could make the admission stale, and adding an unrelated fourth would have
+// strengthened nothing yet stabilised the admission. A cost ground that moves with its neighbours
+// does not ground the subject it admits. Paired instead, each claim's cost is caused by its own
+// subject -- the second evaluation is the RED that DESIGN section 4b requires of the rung anyway,
+// not ballast bought to clear a budget -- and each measured decisively above the line.
 fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
   [
   FloorCostDebtTypedAdmission {
@@ -74,12 +78,16 @@ fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
     reason: "the seed interpreter evaluates one Jacobian doubling and one projective curve-equation check as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
   },
   FloorCostDebtTypedAdmission {
-    identity: "test.claim.sha384_fips_witness_test.sha384_reproduces_the_published_fips_180_2_vectors",
-    reason: "the seed interpreter evaluates the three published FIPS 180-2 SHA-384 vectors -- the empty message, one single block and one two-block message -- as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+    identity: "test.claim.sha384_fips_witness_test.sha384_of_the_empty_message_is_the_published_value_and_one_octet_discriminates",
+    reason: "the seed interpreter evaluates the published empty-message SHA-384 vector and the one-octet message that discriminates it as Word64 pairs, two single-block compressions on an interpreter that reifies no machine width; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
   },
   FloorCostDebtTypedAdmission {
-    identity: "test.claim.sha384_fips_witness_test.sha384_of_a_one_octet_change_is_a_different_digest",
-    reason: "the seed interpreter evaluates two single-block SHA-384 digests compared for the discriminating red as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+    identity: "test.claim.sha384_fips_witness_test.sha384_of_abc_is_the_published_value_and_one_octet_discriminates",
+    reason: "the seed interpreter evaluates the published abc SHA-384 vector and the abd message that discriminates it as Word64 pairs, two single-block compressions on an interpreter that reifies no machine width; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.sha384_fips_witness_test.sha384_of_the_896_bit_message_is_the_published_two_block_value_and_one_octet_discriminates",
+    reason: "the seed interpreter evaluates the published 896-bit two-block SHA-384 vector and the last-block mutation that discriminates its padding path as Word64 pairs, four block compressions on an interpreter that reifies no machine width; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
   },
   ]
 }
