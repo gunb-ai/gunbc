@@ -156,29 +156,33 @@ fn coproduct_arm_payload_pair_from_arm(arm: CoproductArm) -> CoproductArmPayload
 // second spelling in the tree and so forked the authority std.constructors already holds
 // (DESIGN section 3: each fact lives in exactly one place).
 //
-// THE COLLISION THIS ANNOTATION ONCE CLAIMED IS REAL, BUT NOT WHERE IT SAID, AND THE DIFFERENCE
-// DECIDES WHERE THE DECODER CAN LIVE. The earlier text said std.constructors Cardinality could not
-// be imported because v2.std.node binds that name as the CONNECTIVE. That is wrong: both names are
-// imported here, both are used in declared_field_cardinality_of_target -- the connective in the
-// match pattern, the type in the return -- and this module resolves.
+// THE COLLISION THIS ANNOTATION ONCE CLAIMED IS REAL, BUT NOT WHERE IT SAID, AND IT IS NOT THIS
+// MODULE'S. The earlier text said std.constructors Cardinality could not be imported because
+// v2.std.node binds that name as the CONNECTIVE. That is wrong: both names are imported here, both
+// are used in declared_field_cardinality_of_target -- the connective in the match pattern, the type
+// in the return -- and this module resolves.
 //
-// What is TRUE, and was found by executing the move rather than by reading: `.dag` variant names
-// resolve CORPUS-WIDE, and std.constructors Cardinality's arms collide with an arm of
-// v2.std.grammar GrammarExpr. Hoisting this decoder into v2.std.node -- the module that owns the
-// connective, and the obvious home for it -- refuses the whole corpus with
-// `variant 'Optional' appears in both 'Cardinality' and 'GrammarExpr'`. So the decoder stays HERE,
-// not because this is its natural home but because v2.std.node_query never sees GrammarExpr and
-// v2.std.node does. That is a constraint on placement, and it is the reason a reader should not
-// "tidy" this function into the module that owns the connective.
+// WHAT IS TRUE IS A STANDING THREE-WAY FORK ON THE NAME `Optional`, and `.dag` resolves variant
+// names CORPUS-WIDE. Three authorities: the generic v2.std.optional Optional; the Cardinality arm
+// of std.constructors; and the GrammarExpr arm `Optional { element: GrammarExpr }` in
+// v2.std.grammar. The last two collide, so ANY module reachable to both refuses --
+// `variant 'Optional' appears in both 'Cardinality' and 'GrammarExpr'`. This is not a fact about
+// node_query's suitability: v2.std.grammar already carries TWO of the three by itself, importing
+// the generic at its head and declaring the arm at line 227, and did so before this PR existed.
+// Found by executing the move rather than by reading it: hoisting this decoder into v2.std.node --
+// the module that OWNS the connective and the obvious home for it -- refuses the whole corpus.
 //
-// THE ARMS ARE THEREFORE CONFINED BY REACHABILITY RATHER THAN BY INTENT, which is weaker than
-// construction and is stated rather than hidden: any module that binds both this Cardinality and
-// GrammarExpr breaks, and nothing prevents a future import from doing that. The capability that
-// would dissolve the constraint is a `.dag` import able to disambiguate two same-named authorities;
-// there is none today (`git grep import_alias src/v2` finds only target-language emitters). Until
-// then the corpus has one receipt for this exact class already -- the `ambiguous reference 'Unit':
-// 2 candidates` refusal recorded at gunbc.recurring_failure_mode
-// resolution_scope_conflated_with_ownership_scope.
+// SO THE DECODER'S PLACEMENT IS A CONFINEMENT, NOT A CHOICE, and a reader should not tidy it into
+// the owning module. It lives where nothing reaches GrammarExpr. That is reachability rather than
+// construction, which is weaker, and it is stated rather than hidden.
+//
+// AND THE REPAIR IS PROBABLY UNIFICATION RATHER THAN RENAMING, which is why no lane should "fix"
+// this by renaming an arm to dodge it. GrammarExpr's Optional is EBNF's `?` -- zero-or-one
+// OCCURRENCE. Cardinality's Optional is a field that may be absent -- zero-or-one OCCUPANCY. Those
+// may not be two concepts colliding but ONE concept at two scales, which is DESIGN section 2's
+// horizontal move in its textbook form, and the substrate has been saying so by refusing to let
+// them coexist. If that reading holds, the answer is that one of the two should not exist. Whoever
+// picks this up should start from unification and treat a rename as the thing to justify.
 type DeclaredField {
   name: Symbol
   type_node: Node
