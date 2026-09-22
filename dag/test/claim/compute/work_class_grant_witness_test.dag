@@ -68,15 +68,13 @@ test fn an_absent_peak_is_not_reported_and_a_byte_figure_is_exact() -> Bool {
   let absent = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "Finished with result: exit-code\nMain processes terminated with: code=exited/status=1\n")
   let small = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "Finished with result: success\nMemory peak: 512B\n")
   let garbled = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "Finished with result: frobnicated\nMemory peak: lots\n")
-  match absent.memory_peak { MemoryPeakNotReported { absence } => match absence { SummaryLineAbsent => true  _ => false }  _ => false }
-    && !compute_summary_is_oom_kill(summary: absent)
+  !compute_summary_is_oom_kill(summary: absent)
     && match small.memory_peak {
       MemoryPeakRead { peak: b } => match b { FormattedBytesExact { bytes } => byte_size_count(b: bytes) == 512  _ => false }
       _ => false
     }
     && match garbled.result { ServiceResultUnrecognized { wire } => wire == "frobnicated"  _ => false }
     && match garbled.memory_peak { MemoryPeakUnparseable { text } => text == "lots"  _ => false }
-    && match systemd_run_wait_summary(launcher: fixture_launcher, stderr: "").result { ServiceResultNotReported { absence } => match absence { SummaryCaptureEmpty => true  _ => false }  _ => false }
 }
 
 // ── THE RESOLUTION: rows to a grant ──────────────────────────────────────────────────────────
@@ -220,10 +218,10 @@ data four_gib_lower_bytes: Int = 4294967296
 data four_gib_upper_bytes: Int = 4509715661
 
 test fn the_peak_is_unreported_by_absence_and_an_untrimmed_summary_still_reads() -> Bool {
-  let empty = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "")
+  let no_peak_line = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "Finished with result: exit-code\nMain processes terminated with: code=exited/status=1\n")
   let unit_output_only = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "error: linking with `cc` failed\nrustc exited 1\n")
   let trimmed = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "Finished with result: success\nMemory peak: 4.0G")
-  match empty.memory_peak { MemoryPeakNotReported { absence } => match absence { SummaryCaptureEmpty => true  _ => false }  _ => false }
+  match no_peak_line.memory_peak { MemoryPeakNotReported { absence } => match absence { SummaryLineAbsent => true  _ => false }  _ => false }
     && match unit_output_only.memory_peak { MemoryPeakNotReported { absence } => match absence { SummaryLineAbsent => true  _ => false }  _ => false }
     && match unit_output_only.result { ServiceResultNotReported { absence } => match absence { SummaryLineAbsent => true  _ => false }  _ => false }
     && match trimmed.result { ServiceResultRead { result: r } => match r { ServiceResultSuccess => true  _ => false }  _ => false }
@@ -265,4 +263,24 @@ test fn a_quiet_launcher_reports_no_peak_rather_than_the_one_in_the_text() -> Bo
       PeakSampleNotTaken { reason: _ } => true
       PeakSampleTaken { class: _, sample: _ } => false
     }
+}
+
+
+// ── ONE CLAIM PER ABSENCE CAUSE, BECAUSE MIXING THEM MADE TWO CLAIMS INSEPARABLE ──────────────
+//
+// MEASURED, AND IT FALSIFIED WHAT I EXPECTED (loyal-swift-608, 2026-09-22: run the other collapse
+// arm). Typing the absence made three claims stop passing on ONE defect, but it did not make each
+// claim pinned to ONE cause: the two absence claims each asserted BOTH CaptureEmpty and LineAbsent,
+// so collapsing every absence to either cause reds THE SAME TWO CLAIMS. Pairwise discrimination
+// held; per-claim separability did not, and the second is the property worth having -- a red that
+// names which cause collapsed, rather than a red that says some cause did.
+//
+// So each cause is now asserted in exactly one place: LineAbsent above, CaptureEmpty here,
+// SuppressedByQuietLauncher below. A collapse to any one cause now reds exactly the claims for the
+// OTHER causes, which is what makes the red legible.
+test fn an_empty_capture_is_reported_as_capture_empty_not_as_a_missing_line() -> Bool {
+  let empty = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "")
+  match empty.memory_peak { MemoryPeakNotReported { absence } => match absence { SummaryCaptureEmpty => true  _ => false }  _ => false }
+    && match empty.result { ServiceResultNotReported { absence } => match absence { SummaryCaptureEmpty => true  _ => false }  _ => false }
+    && !compute_summary_is_oom_kill(summary: empty)
 }
