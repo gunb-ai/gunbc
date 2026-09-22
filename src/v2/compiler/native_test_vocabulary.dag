@@ -96,6 +96,44 @@ fn native_test_stage_text(stage: NativeTestStage) -> String {
   }
 }
 
+// STAGE EQUALITY IS STRUCTURAL AND ENUMERATED. Comparing the rendered stage text would let a
+// label rename or collision decide a semantic question (the ruling recorded at
+// gunbc.instruments.body_lowering_population_probe); a wildcard arm would let a fifth stage compile
+// and silently compare false. Enumerated, adding a stage fails to typecheck here until its
+// equality is decided. Consumer: gunbc.witness_v2_native_route's live-pair enrollment.
+fn native_test_stage_eq(a: NativeTestStage, b: NativeTestStage) -> Bool {
+  match a {
+    NativeTestStageContext =>
+      match b {
+        NativeTestStageContext => true
+        NativeTestStagePrepare => false
+        NativeTestStageEntry => false
+        NativeTestStageEval => false
+      }
+    NativeTestStagePrepare =>
+      match b {
+        NativeTestStageContext => false
+        NativeTestStagePrepare => true
+        NativeTestStageEntry => false
+        NativeTestStageEval => false
+      }
+    NativeTestStageEntry =>
+      match b {
+        NativeTestStageContext => false
+        NativeTestStagePrepare => false
+        NativeTestStageEntry => true
+        NativeTestStageEval => false
+      }
+    NativeTestStageEval =>
+      match b {
+        NativeTestStageContext => false
+        NativeTestStagePrepare => false
+        NativeTestStageEntry => false
+        NativeTestStageEval => true
+      }
+  }
+}
+
 // ONE LINE PER NON-PASSING VERDICT, FOR THE OPERATOR. The rendered driver prints this beside the
 // JSON row it persists, so the command an operator runs names the failing subject, the stage,
 // the cause and its position -- the same value the row carries, projected once here rather than

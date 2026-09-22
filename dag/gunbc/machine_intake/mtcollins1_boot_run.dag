@@ -11,7 +11,7 @@ import std.temporal_effect {
   held_lease_observed_verdict,
 }
 import std.algebra { trim }
-import std.measure { Second, second, second_count, Minute, minute, hardware_thread_count_value }
+import std.measure { Second, second, second_count, Minute, minute, HardwareThreadCount, hardware_thread_count_value }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.scoped_authorization {
   AttemptIdentity, AuthorizationRequest,
@@ -354,9 +354,10 @@ type MtCollins1BootTerminalCause
   = TerminalSubjectMediumDisjoint { subject_image: NonEmptyStr, subject_sha256: NonEmptyStr, medium_image: NonEmptyStr, medium_sha256: NonEmptyStr }
   | TerminalCaptureUnbound { reason: String }
   | TerminalSectionAbsent { name: String }
+  | TerminalSectionUnterminated { name: String }
   | TerminalSectionFailed { name: String, exit_code: String }
   | TerminalSectionMalformed { name: String, reason: String }
-  | HardwareThreadCountMismatch { expected: String, observed: String }
+  | HardwareThreadCountMismatch { expected: HardwareThreadCount, observed: String }
   | BootMediaLabelAbsent { label: NonEmptyStr }
   | EdacCountersNotClean { name: String }
   | WorkloadWriteFailed { rc: String }
@@ -365,7 +366,7 @@ type MtCollins1BootTerminalCause
 type MtCollins1BootTerminalVerdict
   = TerminalPending { reason: String }
   | TerminalRefused { causes: List<MtCollins1BootTerminalCause> }
-  | TerminalAccepted { run: HostCaptureRunIdentity, threads: String }
+  | TerminalAccepted { run: HostCaptureRunIdentity, threads: HardwareThreadCount }
 
 // ONE QUALIFICATION READ AS ONE OF THREE: still being written, refused with a cause, or held.
 type TerminalQualification
@@ -386,7 +387,7 @@ fn qualification_judged(name: String, exit_code: String, cause: MtCollins1BootTe
   }
 }
 
-fn nproc_qualification(envelope: BoundHostCaptureEnvelope, expected: String) -> TerminalQualification {
+fn nproc_qualification(envelope: BoundHostCaptureEnvelope, expected: HardwareThreadCount) -> TerminalQualification {
   match host_capture_section_reading(envelope: envelope, name: "nproc") {
     SectionAbsent => QualificationPending
     SectionPending { output: _ } => QualificationPending
@@ -413,10 +414,12 @@ fn edac_qualification(envelope: BoundHostCaptureEnvelope, name: String) -> Termi
   }
 }
 
-// nproc's reading is the WHOLE last output line; anything else beside it is not a count.
-fn nproc_judge(expected: String, out: List<String>) -> MtCollins1BootTerminalCause? {
+// nproc's reading is the WHOLE last output line; anything else beside it is not a count. The
+// expectation is the modeled HardwareThreadCount and is rendered only for the comparison against
+// the capture line; the observed side stays the raw text the host printed.
+fn nproc_judge(expected: HardwareThreadCount, out: List<String>) -> MtCollins1BootTerminalCause? {
   let observed = fold(out, init: "", f: (acc, l) => if l == "" { acc } else { l })
-  if observed == expected { none } else { Present { value: HardwareThreadCountMismatch { expected: expected, observed: observed } } }
+  if observed == (hardware_thread_count_value(t: expected) as String) { none } else { Present { value: HardwareThreadCountMismatch { expected: expected, observed: observed } } }
 }
 
 fn boot_media_judge(label: NonEmptyStr, out: List<String>) -> MtCollins1BootTerminalCause? {
@@ -469,6 +472,11 @@ fn workload_qualification(envelope: BoundHostCaptureEnvelope) -> TerminalQualifi
   }
 }
 
+type NamedQualification {
+  name: String
+  qualification: TerminalQualification
+}
+
 type TerminalFold {
   causes: List<MtCollins1BootTerminalCause>
   pending: Bool
@@ -482,37 +490,53 @@ fn terminal_fold_step(acc: TerminalFold, q: TerminalQualification) -> TerminalFo
   }
 }
 
-fn mtcollins1_boot_qualifications(envelope: BoundHostCaptureEnvelope, threads: String, label: NonEmptyStr) -> TerminalFold {
-  fold(
-    [
-      nproc_qualification(envelope: envelope, expected: threads),
-      boot_media_qualification(envelope: envelope, label: label),
-      edac_qualification(envelope: envelope, name: "edac-before"),
-      workload_qualification(envelope: envelope),
-      edac_qualification(envelope: envelope, name: "edac-after"),
-    ],
+fn mtcollins1_boot_qualifications(envelope: BoundHostCaptureEnvelope, threads: HardwareThreadCount, label: NonEmptyStr) -> List<NamedQualification> {
+  [
+    NamedQualification { name: "nproc", qualification: nproc_qualification(envelope: envelope, expected: threads) },
+    NamedQualification { name: "boot-media", qualification: boot_media_qualification(envelope: envelope, label: label) },
+    NamedQualification { name: "edac-before", qualification: edac_qualification(envelope: envelope, name: "edac-before") },
+    NamedQualification { name: "workload", qualification: workload_qualification(envelope: envelope) },
+    NamedQualification { name: "edac-after", qualification: edac_qualification(envelope: envelope, name: "edac-after") },
+  ]
+}
+
+// A CLOSED envelope owes every section, so a qualification still pending there is a refusal and
+// says which kind: the section never opened (absent) or opened and never printed its EXIT line
+// (unterminated). A qualification that already refused on the section's printed output keeps that
+// cause alone -- the unterminated fact is not reported a second time beside it (review 69667).
+fn closed_qualification(envelope: BoundHostCaptureEnvelope, q: NamedQualification) -> TerminalQualification {
+  match q.qualification {
+    QualificationPending =>
+      match host_capture_section_reading(envelope: envelope, name: q.name) {
+        SectionAbsent => QualificationRefused { cause: TerminalSectionAbsent { name: q.name } }
+        SectionPending { output: _ } => QualificationRefused { cause: TerminalSectionUnterminated { name: q.name } }
+        SectionMalformed { reason: r } => QualificationRefused { cause: TerminalSectionMalformed { name: q.name, reason: r } }
+        SectionComplete { exit_code: _, output: _ } => QualificationRefused { cause: TerminalSectionUnterminated { name: q.name } }
+      }
+    other => other
+  }
+}
+
+fn terminal_over_closed(envelope: BoundHostCaptureEnvelope, threads: HardwareThreadCount, label: NonEmptyStr) -> MtCollins1BootTerminalVerdict {
+  let f = fold(
+    map(mtcollins1_boot_qualifications(envelope: envelope, threads: threads, label: label), q => closed_qualification(envelope: envelope, q: q)),
     init: TerminalFold { causes: [], pending: false },
     f: (acc, q) => terminal_fold_step(acc: acc, q: q),
   )
+  if count(f.causes) == 0 { TerminalAccepted { run: envelope.run, threads: threads } } else { TerminalRefused { causes: f.causes } }
 }
 
-// A closed envelope owes every section: a missing one is a refusal, not a pending. An open
-// envelope's missing or unfinished section is pending, because the program may still write it.
-fn terminal_over_closed(envelope: BoundHostCaptureEnvelope, threads: String, label: NonEmptyStr) -> MtCollins1BootTerminalVerdict {
-  let f = mtcollins1_boot_qualifications(envelope: envelope, threads: threads, label: label)
-  let absent = filter(["nproc", "boot-media", "edac-before", "workload", "edac-after"], n =>
-    match host_capture_section_reading(envelope: envelope, name: n) { SectionComplete { exit_code: _, output: _ } => false  SectionMalformed { reason: _ } => false  SectionAbsent => true  SectionPending { output: _ } => true })
-  let causes = concat(f.causes, map(absent, n => TerminalSectionAbsent { name: n }))
-  if count(causes) == 0 { TerminalAccepted { run: envelope.run, threads: threads } } else { TerminalRefused { causes: causes } }
-}
-
-fn terminal_over_open(envelope: BoundHostCaptureEnvelope, threads: String, label: NonEmptyStr) -> MtCollins1BootTerminalVerdict {
-  let f = mtcollins1_boot_qualifications(envelope: envelope, threads: threads, label: label)
+fn terminal_over_open(envelope: BoundHostCaptureEnvelope, threads: HardwareThreadCount, label: NonEmptyStr) -> MtCollins1BootTerminalVerdict {
+  let f = fold(
+    map(mtcollins1_boot_qualifications(envelope: envelope, threads: threads, label: label), q => q.qualification),
+    init: TerminalFold { causes: [], pending: false },
+    f: (acc, q) => terminal_fold_step(acc: acc, q: q),
+  )
   if count(f.causes) == 0 { TerminalPending { reason: "envelope open; no complete section refuses" } } else { TerminalRefused { causes: f.causes } }
 }
 
 fn mtcollins1_boot_terminal_verdict(capture: String, subject: MtCollins1BootSubject, medium: MtCollins1BootMedium) -> MtCollins1BootTerminalVerdict {
-  let threads = hardware_thread_count_value(t: mtcollins1_nproc) as String
+  let threads = mtcollins1_nproc
   let medium_image = mtcollins1_boot_medium_image_name(medium: medium)
   let medium_sha256 = mtcollins1_boot_medium_image_sha256(medium: medium)
   let joined = (subject.image_name as String) == (medium_image as String)
@@ -539,9 +563,10 @@ fn mtcollins1_boot_terminal_cause_text(cause: MtCollins1BootTerminalCause) -> St
       }
     TerminalCaptureUnbound { reason: r } => concat("capture does not bind: ", r)
     TerminalSectionAbsent { name: n } => concat("closed envelope carries no ", n, " section")
+    TerminalSectionUnterminated { name: n } => concat("closed envelope's ", n, " section never printed its EXIT line")
     TerminalSectionFailed { name: n, exit_code: c } => concat(n, " exited ", c)
     TerminalSectionMalformed { name: _, reason: r } => r
-    HardwareThreadCountMismatch { expected: e, observed: o } => concat("nproc observed ", o, ", qualification expects ", e)
+    HardwareThreadCountMismatch { expected: e, observed: o } => concat("nproc observed ", o, ", qualification expects ", hardware_thread_count_value(t: e) as String)
     BootMediaLabelAbsent { label: l } => concat("boot-media does not name the census volume ", l as String)
     EdacCountersNotClean { name: n } => concat(n, ": mc0 ce_count/ue_count not both 0")
     WorkloadWriteFailed { rc: rc } => concat("workload write rc=", rc)

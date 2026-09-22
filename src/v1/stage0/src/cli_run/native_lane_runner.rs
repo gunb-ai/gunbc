@@ -77,6 +77,133 @@ const MALFORMED_SPECIMEN_COMMITTED: &str = "fixtures/native_lane_malformed/poiso
 const MALFORMED_CONTROL_ROOT: &str = "target/v2-native-lane/malformed-control-root";
 const MALFORMED_MATERIALIZED_PATH: &str = "target/v2-native-lane/malformed-control-root/poison.dag";
 
+/// THE TWO DOORS' CONTROL INPUTS, AS THE THREE FACTS THEIR ARGV IS BUILT FROM.
+///
+/// The root is named for its PROPERTY and not for one of its readers, because both walks use it:
+/// the CLI door emits this subject, and the eval driver's accepting control censuses it. A
+/// `CLI_DOOR_` prefix would have been a fact about which caller was written first.
+///
+/// The source root is a directory of its own because the CLI walks a root RECURSIVELY for every
+/// `.dag` file under it: a control sharing a directory with other fixtures would ingest whatever
+/// their authors add next, so what the door compiled would stop being a fact this harness states.
+/// The subject is the module that directory's one file declares.
+///
+/// `CLI_DOOR_EMITTED_WITNESS` IS NOT READ BY ANY CONTROL TODAY, and an earlier version of this
+/// paragraph said it was — that it made "the positive control an assertion about THIS subject's
+/// emission". There is no such control: the door cannot emit, so the admitting arm is
+/// `PinnedRefusalHeld`, which requires stdout to be EMPTY. The constant is held for the FLIP
+/// INSTRUCTION only, as the assertion a future regression control must make once the door emits.
+/// Describing a control no code runs is the rung inflation DESIGN section 4b(1) forbids, and it is
+/// the same defect this file's own annotations were corrected for once already (review 69621).
+const WELL_FORMED_CONTROL_ROOT: &str = "fixtures/native_cli_door";
+const CLI_DOOR_ENTRY_MODULE: &str = "fixture.native_cli_door.door_probe";
+const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
+
+/// THE EMIT PROBE'S EXPECTED REFUSAL, AND WHY THIS CONSTANT IS THE PROBE'S WHOLE POINT.
+///
+/// The built door CANNOT EMIT A CLOSURE TODAY. Measured on the artifact this preparation produces:
+/// over the fixture root it refuses with a chain of `infer_grounding_not_derived` ADVISORIES whose
+/// LAST link -- the fatal -- is `translate_rejected_grounding_not_derived`; over
+/// the real corpus it answers a LOCATED `parse_g0_tokens_remain` at
+/// `dag/extdeps/access/posix_effective_principal_read_op.dag`, whose bytes at that offset are the
+/// `service ... { operation ... }` form. Those are COMPILER LIMITATIONS in the emitted front end,
+/// not defects in this instrument, and `v2.cli.compile_cli` already records the same shape measured
+/// at gunbc#11507 on three different entries.
+///
+/// SO THE PROBE EXPECTS RED, AND IT IS ENROLLED RATHER THAN DELETED (DESIGN section 4b(4)). A probe
+/// that is removed because its subject cannot pass yet leaves nothing to notice when the subject
+/// starts passing. This one pins the limitation by its CAUSE, so the day the door can ground a
+/// closure the probe stops matching and this instrument REFUSES -- which is the signal to flip it
+/// into a permanent regression control asserting the door emits. It is deliberately NOT satisfied
+/// by any non-zero exit: a door that refused for some other reason, or crashed, would establish
+/// nothing about the limitation this row pins.
+/// THIS CONSTANT PINNED THE ADVISORY UNTIL 2026-09-21, AND THE SUBSTRING DECODER HID IT. It read
+/// `infer_grounding_not_derived` -- what the chain is FULL of, and never the fatal. The original
+/// measurement printed only the chain's HEAD, so the tail was never seen: exactly the error
+/// `v2.cli.compile_cli`'s own annotation warns about ("the head is not the cause"), kept invisible
+/// by a `contains()` that matched the advisory anywhere in the line. Decoding the LAST link
+/// surfaced it on the first real run against the built binary. The corpus already held the answer:
+/// `v2.test.claim.translate_underived_refusal` `translate_refused_canonical_grounding` asserts BOTH
+/// halves -- the fatal is `translate_rejected_grounding_not_derived`, and it is NOT the advisory.
+const CLI_DOOR_EMIT_LIMITATION: &str = "translate_rejected_grounding_not_derived";
+
+/// THE EXACT STATUS A CLI REFUSAL TAKES, AND ANY-NONZERO IS NOT IT.
+///
+/// `v2.cli.compile_cli` `v2_cli_exit` maps every `CliRunRefused` through `std.process`
+/// `exit_failure`, which is `ExitFailure { code: exit_code_general_error }` -- and
+/// `extdeps.process.posix_exit` declares that as `1`. So a refusal this harness pins takes exactly
+/// 1. Accepting any non-zero admitted `101` (a Rust panic's status) beside plausible stderr, which
+/// is a crash wearing a refusal's clothes. Both door arms compare against this.
+const CLI_DOOR_REFUSAL_EXIT: i32 = 1;
+
+/// THE THREE MARKERS OF THE CLI'S REFUSAL RECORD, named so each is required rather than sought.
+/// The rendered main prints `REFUSED: <reason>`; for an emit refusal that reason is
+/// `v2.cli.compile_cli`'s `the closure did not emit; diagnostic chain: <links> | FATAL AT <locus>`.
+const CLI_REFUSAL_PREFIX: &str = "REFUSED: ";
+
+/// THE NO-ENTRY DETAIL'S OTHER TWO PARTS. `v2.cli.compile_cli` `cli_parse_finish` renders
+/// `concat("emit needs the module to resolve as its subject -- ", cli_usage)`, so the record is the
+/// detail, a ` -- ` boundary, and the module's DECLARED usage line -- not the detail alone.
+const CLI_DETAIL_USAGE_BOUNDARY: &str = " -- ";
+const CLI_DOOR_DECLARED_USAGE: &str =
+    "usage: <binary> emit --entry <module.path> --source-root <dir> [--source-root <dir>]...";
+const CLI_EMIT_REFUSAL_HEAD: &str = "the closure did not emit; diagnostic chain: ";
+const CLI_FATAL_AT_MARKER: &str = " | FATAL AT ";
+
+/// The refusal control's expected cause, quoted from `v2.cli.compile_cli` `cli_parse_finish`'s
+/// `cli_no_entry` arm. It is the DETAIL and not the reason symbol because the rendered main prints
+/// the `ProcessExit` reason string and nothing else, so the detail is the only part of the refusal
+/// that crosses the process boundary — the gap `compile_cli`'s own annotation records having been
+/// measured on a built binary. Matching the sentence therefore establishes that the arm the door
+/// took is the one this control asked for; matching only "REFUSED" would be satisfied by every
+/// other refusal the door has.
+const CLI_DOOR_REFUSAL_DETAIL: &str = "emit needs the module to resolve as its subject";
+
+/// What one spawn of the built CLI observed. Returned rather than adjudicated so the step that
+/// knows which control it was running decides what the observation means — the same split
+/// `run_self_host` and `run_v2_native_cli` make against the instrument seam.
+struct CliDoorRun {
+    status: Option<i32>,
+    stdout: String,
+    stderr: String,
+}
+
+/// THE PROBE-ROOT EXCLUSION, HELD FOR THE WHOLE TRANSACTION AND RELEASED ON EVERY EXIT PATH.
+///
+/// `gunbc.recurring_failure_mode` `a_shared_probe_root_lets_one_run_compile_anothers_source` names
+/// THIS CALLER by name: the exclusion exists in `emitted_closure_compile_host`
+/// `acquire_probe_root_lock`, `run_required_emit_compile` takes it, and the v2-native route
+/// "selects the same root through `lane_emit_compile_probe_root` and passes it to emission without
+/// acquiring anything". That row's specimen (gunbc#10940) is a run that refused `E0063` against an
+/// innocent tree because a concurrent run had overwritten the emitted source.
+///
+/// ADDING THE MUTATION MADE THAT WINDOW WORSE, WHICH IS WHY THE LOCK LANDS IN THE SAME CHANGE. The
+/// fault-and-restore deliberately writes a BROKEN tree and then repairs it. Unlocked, a peer's
+/// baseline can read the faulted bytes -- its `Discriminated` verdict then quotes our injected
+/// symbol -- or a peer's restore can erase our red before we read it. The lock's own annotation
+/// already measured that exact shape. So the transaction this guard spans is: materialize the
+/// crate, build the baseline, inject the fault, build the faulted arm, restore, and re-read the
+/// binary identity.
+///
+/// A GUARD RATHER THAN A CALL PAIR, because the function it protects returns early on nine refusal
+/// paths and each one would otherwise leak the lock, turning a transient failure into a permanent
+/// one for every later run on that host.
+///
+/// IT IS CARRIED OUT OF THAT FUNCTION IN `EmittedPreparation`, AND AN EARLIER CUT WAS NOT. Bound
+/// locally, it dropped at the preparation's return -- before the entrypoint walks spawned the
+/// artifact. The span stated above stopped at the identity re-read, one step short of the readers
+/// this same change introduces (review 69715). It now ends when the CALLER drops the preparation,
+/// after every spawn.
+struct ProbeRootLockGuard {
+    lock: PathBuf,
+}
+
+impl Drop for ProbeRootLockGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.lock);
+    }
+}
+
 /// The emitted compiler, prepared: where the binary is, what its bytes are, and the identity of
 /// the closure it was emitted from.
 struct EmittedPreparation {
@@ -85,6 +212,23 @@ struct EmittedPreparation {
     closure_identity: String,
     seed_identity: String,
     build: EmittedBuildObserved,
+    /// THE PROBE-ROOT EXCLUSION TRAVELS WITH THE PREPARATION, so it outlives the function that
+    /// took it (review 69715).
+    ///
+    /// It was bound inside `prepare_emitted_compiler_for_entry` and therefore DROPPED AT ITS
+    /// RETURN -- before either entrypoint walk spawned `binary_path`. The probe build uses a shared
+    /// `CARGO_TARGET_DIR` (`<workspace>/target`) and the executable's name is derived from the
+    /// ENTRY (`probe_package_name`), so two runs of one entry write the SAME path: a peer taking
+    /// the freed lock could rebuild and replace the executable between the drop and our spawn, and
+    /// the two steps this change exists for would then report about an artifact whose identity was
+    /// checked before it was swapped. That is the invalid state
+    /// `a_shared_probe_root_lets_one_run_compile_anothers_source` files -- a verdict computed
+    /// against somebody else's tree.
+    ///
+    /// Holding it here extends the transaction to emission, build, fault, restore, the identity
+    /// re-read AND every spawn of the artifact, and it is released when the caller drops the
+    /// preparation. Underscore-prefixed because nothing reads it; its lifetime IS its behaviour.
+    _probe_lock: ProbeRootLockGuard,
 }
 
 /// The emitted compiler's build as the receipt records it — mirror of
@@ -155,6 +299,17 @@ fn prepare_emitted_compiler_for_entry(
     // host temp locally) — the selection's authority and its receipt live beside the required
     // phase's own root policy in `emitted_closure_compile_host`.
     let probe_root = super::lane_emit_compile_probe_root();
+    // TAKEN BEFORE THE EMISSION, because the emission is what WRITES the shared root. Acquiring it
+    // after would leave the write this lock exists to serialize outside the transaction.
+    let probe_lock = ProbeRootLockGuard {
+        lock: super::emitted_closure_compile_host::acquire_probe_root_lock(&probe_root).map_err(
+            |cause| format!("V2-NATIVE REFUSAL cause=ProbeRootHeldByAnotherRun — {cause}"),
+        )?,
+    };
+    eprintln!(
+        "v2-native-route: probe root {} held for emit+build+fault+restore+spawn",
+        probe_root.display()
+    );
     eprintln!("v2-native-route: emitting {entry} (seed, in-process)");
     let run = super::compile_entry_emission(
         source_roots,
@@ -206,10 +361,16 @@ fn prepare_emitted_compiler_for_entry(
         super::emitted_closure_compile_host::probe_cargo_invocation(&crate_dir, &workspace)
             .map_err(|cause| format!("V2-NATIVE REFUSAL cause={cause}"))?;
     let rustc = invocation.rustc_identity.clone();
+    // THE BASELINE IS ATTRIBUTED TO THE SAME PROBE SYMBOL THE FAULTED ARM WILL CARRY. This
+    // argument used to be the literal `"v2_native_lane_carries_no_mutation_probe"`, which was a
+    // true statement about this lane and is now a false one: the discriminating red below is
+    // established on every preparation, so the baseline and the faulted arm are two runs of one
+    // pair and must be read against one symbol. A second spelling here would let the green arm
+    // search for a symbol the red arm never injects.
     let verdict = super::emitted_closure_compile_host::run_cargo(
         &crate_dir,
         &workspace,
-        "v2_native_lane_carries_no_mutation_probe",
+        super::emitted_closure_compile_host::MUTATION_PROBE_SYMBOL,
     );
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
         return Err(format!(
@@ -266,12 +427,65 @@ fn prepare_emitted_compiler_for_entry(
         "v2-native-route: emitted compiler at {} (sha256 {binary_identity})",
         binary_path.display()
     );
+
+    // THE PLANTED DEFECT, ON THE ARTIFACT THIS PREPARATION IS ABOUT TO HAND ON.
+    //
+    // Until this block landed, both retained native build subjects -- the test driver
+    // (`v2.compiler.compile`) and the CLI (`v2.cli.compile_cli`) -- were admitted on a GREEN CARGO
+    // RUN ALONE, and this call site passed the literal
+    // `"v2_native_lane_carries_no_mutation_probe"` where the required emit-compile phase passes its
+    // probe symbol. A cargo phase that is green because nothing was measured is the decoration
+    // DESIGN section 4b calls worse than absent: a fingerprint alias, a replayed cached verdict or
+    // an emitter that stopped reaching rustc all report `Completed status=0` byte-identically to a
+    // real compile, and the instrument would carry the green under the subject's name.
+    //
+    // IT IS THE SAME PRODUCER THE REQUIRED PHASE USES, NOT A SECOND ONE.
+    // `emitted_closure_compile_host` `establish_discriminating_red` injects ONE type error into the
+    // ENTRY'S OWN emitted module, requires cargo to fail ALONE on it with a diagnostic NAMING the
+    // injected symbol, restores the bytes byte-exactly, and returns a typed non-discriminating
+    // verdict for every other shape. Calling it here rather than copying its shape is what keeps
+    // "the emitted tree is really being compiled" one fact with one home (DESIGN section 3).
+    //
+    // IT RUNS AFTER THE BINARY IS IDENTIFIED AND THE IDENTITY IS RE-READ AFTERWARDS. The faulted
+    // arm is a cargo run over the same crate and target directory, so the artifact this function
+    // returns must be shown to be the one the GREEN baseline produced rather than assumed to be:
+    // a mutation that somehow left a different executable at that path would otherwise be handed
+    // to the entrypoint step as though it were the baseline's.
+    let entry_module = super::emitted_closure_compile_host::entry_rust_module(entry, &workspace)
+        .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EntryModuleUnreadable — {cause}"))?;
+    eprintln!("v2-native-route: establishing the discriminating red on {entry_module}");
+    let mutation = super::emitted_closure_compile_host::establish_discriminating_red(
+        &crate_dir,
+        &workspace,
+        &entry_module,
+    );
+    if !super::emitted_closure_compile_host::mutation_verdict_discriminated(&mutation) {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=EmittedBuildNotDiscriminating — {}",
+            super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
+        ));
+    }
+    eprintln!(
+        "v2-native-route: discriminating red established — {}",
+        super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
+    );
+    let identity_after_mutation = sha256_file(&binary_path)?;
+    if identity_after_mutation != binary_identity {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=EmittedCompilerReplacedByFaultedArm — {} was {binary_identity} \
+             when the clean baseline built it and is {identity_after_mutation} after the fault was \
+             injected and removed; the executable handed on is not the one the green build produced",
+            binary_path.display()
+        ));
+    }
+
     Ok(EmittedPreparation {
         binary_path,
         binary_identity,
         closure_identity,
         seed_identity,
         build,
+        _probe_lock: probe_lock,
     })
 }
 
@@ -853,7 +1067,9 @@ fn write_host_facts(
 /// because only one of them decides it.
 ///
 /// WHAT THIS DOES NOT ESTABLISH, named so the green is not read for more than it carries. It is
-/// EMISSION AND COMPILATION, not behavioural equivalence: DESIGN section 7 asks that the emitted
+/// EMISSION, COMPILATION AND A BOUNDED EXECUTION — `walk_eval_driver_door` starts the built driver
+/// and requires it to accept a well-formed root and refuse a malformed one — and it is still not
+/// behavioural equivalence: DESIGN section 7 asks that the emitted
 /// module also behave as the seed does on a discriminating corpus, and that half
 /// (`--behavioral-receipt-*`) is a declared drop that no required run performs. Nor is it the
 /// second generation: the built binary emitting the same closure is the v2 -> v2 boundary, and it
@@ -870,6 +1086,136 @@ pub struct SelfHostHeld {
     pub seed_identity: String,
     pub exit_status: i64,
     pub warning_count: i64,
+    /// The cause the built driver gave for refusing the poison specimen when this instrument
+    /// STARTED it. Carried as the refusal's own sentence rather than as a Bool, so a receipt reader
+    /// can see WHICH refusal fired — the flattening this file's `run_native_binary` annotation
+    /// records having already cost one unanswerable question.
+    ///
+    /// A `door_universe` FIELD STOOD BESIDE THIS AND IS DELETED (review 69673). It read
+    /// `clean.terminal.universe` from a CENSUS marker, and the census arm of this file's own
+    /// decoder fills `universe: 0` unconditionally because census markers carry no such key — its
+    /// annotation says so in terms: "THE CENSUS ARM'S ZEROS ARE NOT A MEASUREMENT AND NOTHING READS
+    /// THEM ... If a future consumer wants a count from a census marker, the honest change is a
+    /// per-mode marker type, not a zero that has quietly become load-bearing." This field was that
+    /// consumer, and its doc called the struct fill "the size of the universe its accepting control
+    /// derived". That is the fabricated plausible output DESIGN section 5 forbids outright, and
+    /// section 4b(1)'s rung inflation in a receipt. It is REMOVED rather than re-described, because
+    /// the accepting arm's real evidence is the assertion the control already makes -- mode is
+    /// `census` and there are ZERO per-file refusals over a well-formed root -- and a receipt field
+    /// that restates a required constant adds nothing a reader can act on.
+    pub door_refusal_reason: String,
+}
+
+/// WALK THROUGH THE TEST DRIVER'S DOOR, BOTH WAYS.
+///
+/// WHAT THIS CLOSES, AND WHY IT IS NOT THE SAME GAP THE CLI HAD. The eval driver's entrypoint IS
+/// spawned somewhere — by `run_required_v2_native`, which the operator invokes with
+/// `--required-v2-native` — but nothing spawned it from `//gunbc/instruments:self-host`, so that
+/// instrument's green said "the closure emitted and cargo accepted it" about an executable it never
+/// started. An artifact admitted without being run is the specification-without-execution shape
+/// DESIGN section 5 names, and it is that shape whether or not a DIFFERENT route happens to run the
+/// same program: the instrument is the thing reporting, and its evidence has to be its own.
+///
+/// THIS CONTROL IS A SECOND READER OF THE EVAL DRIVER'S VERB SURFACE, AND SAYS SO RATHER THAN
+/// LEAVING IT TO BE DISCOVERED. The argv below spells `census` as a literal. The driver itself is
+/// the first reader and the authority: it decides what verbs it accepts. So there are two places
+/// that know this driver's argv, which is the §3 fork in its mildest form -- mild because the
+/// literal is one word in one call, and real because a change to the driver's surface makes this
+/// control spawn an argv the driver no longer accepts, and the failure would look like a broken
+/// door rather than a stale spelling.
+///
+/// IT IS ADMITTED RATHER THAN REPAIRED HERE BECAUSE THE JOIN HAS ANOTHER OWNER. gunbc#11952 turns
+/// that verb surface into a plan -- `native_driver_parse` and the plan it returns -- which is
+/// exactly the authority this control should ASK instead of spelling. That PR is OPEN and its
+/// symbols DO NOT RESOLVE in this tree; they are named here as provenance for the trigger, not as
+/// citations of declarations that exist (`gunbc.recurring_failure_mode`
+/// `unlanded_citation_indistinguishable_at_the_citing_end`). Consuming it from here would invert
+/// the dependency and block this instrument on an unlanded PR.
+///
+/// RETIREMENT TRIGGER, AT CAPABILITY GRAIN AND NOT ARTIFACT GRAIN: this literal is retired when THE
+/// ENTRYPOINT CONTROL DERIVES ITS ARGV FROM THE DRIVER'S OWN PLAN, once that plan is on main --
+/// sufficient that no spelling of any verb survives in this file. It is deliberately NOT "when
+/// #11952 lands": that PR could land with the plan reachable and this call still spelling `census`,
+/// which would satisfy an artifact-grain trigger while the second reader stood (DESIGN §4b(3) --
+/// a trigger naming less than the capability is satisfied while the capability stays dead).
+///
+/// THE PAIR IS TWO CENSUS RUNS DIFFERING ONLY IN THEIR ROOT. Over `fixtures/native_cli_door` — one
+/// well-formed module — the driver must reach `census` and report NO per-file refusal; over the
+/// materialized poison specimen it must report one naming that path. A binary that refused
+/// everything would pass the second alone, and one whose front-end refusal arm is dead would pass
+/// the first alone; only the pair discriminates. It is `census` rather than `adjudicate` because
+/// the question is whether the ENTRYPOINT executes and the front end answers, and adjudication
+/// would additionally derive and judge the whole `v2.test.*` universe — the hours-long subject of
+/// the required-v2-native route, and a different claim.
+fn walk_eval_driver_door(binary: &Path, workspace: &Path) -> Result<String, String> {
+    let clean_root = workspace.join(WELL_FORMED_CONTROL_ROOT);
+    if !clean_root.is_dir() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorControlRootAbsent — {} is not a directory, so \
+             the accepting control has no input",
+            clean_root.display()
+        ));
+    }
+    eprintln!(
+        "self-host: walking the driver — census over {}",
+        clean_root.display()
+    );
+    let clean = run_native_binary(
+        binary,
+        &["census".to_string(), clean_root.display().to_string()],
+        None,
+    )?;
+    if clean.terminal.mode != "census" {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeRunFailed — the accepting control reported mode {}, not census",
+            clean.terminal.mode
+        ));
+    }
+    if !clean.file_refusals.is_empty() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=EvalDriverRefusedItsAcceptingControl — the driver reported {} \
+             per-file refusal(s) over {}, whose one file is well formed; a front end that refuses \
+             this input makes the refusal beside it uninformative",
+            clean.file_refusals.len(),
+            clean_root.display()
+        ));
+    }
+    // WHAT IS PRINTED IS WHAT THE MARKER ACTUALLY CARRIES. A census marker is
+    // `{"_terminal":"complete","mode":"census","file_refusals":N}`; `rows`, `universe`, `admitted`
+    // and `summary` are struct fill for fields this mode does not have.
+    eprintln!(
+        "self-host: driver accepted the clean root — mode={} file_refusals={}",
+        clean.terminal.mode, clean.terminal.file_refusals
+    );
+
+    // THE ROOT IS ABSOLUTE HERE AND RELATIVE IN `run_required_v2_native`, and the difference is the
+    // caller's cwd rather than a preference. That lane anchors at the workspace root before it
+    // spawns; an instrument producer is invoked from wherever the operator ran `gunbc test`, so a
+    // workspace-relative root would name a directory that does not exist and the refusal control
+    // would report "no refusal" for a reason that has nothing to do with the front end.
+    let poison_root = workspace
+        .join(materialize_malformed_specimen(workspace)?)
+        .display()
+        .to_string();
+    eprintln!("self-host: refusal control — the same mode over the materialized poison specimen");
+    let poisoned = run_native_binary(binary, &["census".to_string(), poison_root], None)?;
+    let Some(refusal) = poisoned
+        .file_refusals
+        .iter()
+        .find(|fr| fr.path.contains(MALFORMED_MATERIALIZED_PATH))
+    else {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=EvalDriverAcceptedThePoisonSpecimen — the driver reported no \
+             per-file refusal naming {MALFORMED_MATERIALIZED_PATH}; a route that accepts a source \
+             whose string never terminates has a dead front-end refusal arm, and every refusal \
+             verdict it reports elsewhere is then worthless"
+        ));
+    };
+    eprintln!(
+        "self-host: driver refused the poison specimen — path=\"{}\" reason=\"{}\"",
+        refusal.path, refusal.fatal_reason
+    );
+    Ok(refusal.fatal_reason.clone())
 }
 
 pub fn run_self_host(source_roots: &[String]) -> Result<SelfHostHeld, String> {
@@ -891,12 +1237,15 @@ pub fn run_self_host(source_roots: &[String]) -> Result<SelfHostHeld, String> {
     // NOT HOLD, and a refusal above is the subject never having been reached; those are different
     // terminations with different exit statuses, and the instrument seam is the one place that
     // knows the vocabulary. Deciding it here too would give one fact two homes.
+    let door_refusal_reason =
+        walk_eval_driver_door(&prepared.binary_path, &super::process_workspace_root())?;
     Ok(SelfHostHeld {
         closure_identity: prepared.closure_identity,
         binary_identity: prepared.binary_identity,
         seed_identity: prepared.seed_identity,
         exit_status: prepared.build.exit_status,
         warning_count: prepared.build.warning_count,
+        door_refusal_reason,
     })
 }
 
@@ -910,6 +1259,38 @@ pub struct V2NativeCliHeld {
     pub seed_identity: String,
     pub exit_status: i64,
     pub warning_count: i64,
+    /// The status the built binary itself took on the EMIT PROBE, and the length of what it wrote on
+    /// stdout. Carried rather than folded into a Bool because a receipt that says only "the probe
+    /// held" cannot be read afterwards for what the door actually did — the flattening
+    /// `run_native_binary`'s annotation records paying for once already.
+    ///
+    /// `door_emitted_bytes` IS ZERO BY CONSTRUCTION, AND AN EARLIER VERSION OF THIS DOC CLAIMED
+    /// OTHERWISE. It said a nonzero value would become "visible in the receipt on the day the door
+    /// starts emitting". No path produces that: `adjudicate_cli_emit_probe` returns `StdoutNotEmpty`
+    /// before `PinnedRefusalHeld` whenever stdout is non-empty, `walk_cli_door` binds this field only
+    /// in the admitting arm, and an emitting door answers `ProbeGreened`, which is an `Err` — so the
+    /// receipt is never built at all. The field records the probe's stdout length, which the
+    /// admitting arm requires to be zero, and that is all it records. Describing an observation the
+    /// code cannot make is the inflation DESIGN section 4b(1) forbids, and this file has now carried
+    /// that shape four times (reviews 69621, 69654, 69673, and the `CLI_DOOR_EMITTED_WITNESS`
+    /// paragraph).
+    ///
+    /// AND BOTH STATUSES ARE CONFIRMATIONS RATHER THAN VARIABLES, said here so the next reader does
+    /// not mistake them for measurements either. `door_exit_status` and `door_refusal_exit_status`
+    /// are each required to equal `CLI_DOOR_REFUSAL_EXIT`, so a written receipt always shows 1 in
+    /// both. They are recorded because the receipt should state what the door was OBSERVED to do
+    /// rather than assert it silently — not because either can differ in a receipt that exists.
+    pub door_exit_status: i64,
+    pub door_emitted_bytes: i64,
+    /// The status the same binary took when `--entry` was removed from the emit probe's argv.
+    ///
+    /// THIS IS THE ARM THAT ESTABLISHES THE ENTRYPOINT EXECUTES, and it is recorded beside the emit
+    /// probe's status because the PAIR is the evidence: one argument differs between the two spawns,
+    /// and they reach DIFFERENT located causes, which is what distinguishes a door that decides from
+    /// one that fails uniformly. An earlier version of this doc called the emit arm "the green" and
+    /// spoke of "the one argument the positive control supplies" -- both wrong since that arm became
+    /// an expecting-red probe, and corrected rather than left standing (review 69621).
+    pub door_refusal_exit_status: i64,
 }
 
 /// THE V2-EXCLUSIVE CLI, EMITTED AND BUILT. This is the door the self-host step stops in front of.
@@ -928,11 +1309,403 @@ pub struct V2NativeCliHeld {
 /// green there are two facts about two compilations, and collapsing them would let one subject's
 /// regression be reported under the other's name.
 ///
-/// WHAT A GREEN DOES NOT ESTABLISH. It is EMISSION AND COMPILATION of the CLI's closure. It is not
-/// the second generation either: that is this built binary emitting a closure, which is the next
-/// position and needs this binary to exist first. The `.dag` folds the CLI decides with are
-/// separately executed by `v2.test.cli.v2_native_cli`, so a green here plus those witnesses is
-/// "the decisions hold and the door compiles", not "the door has been walked through".
+/// WHAT A GREEN ESTABLISHES, CORRECTED BY THIS CHANGE RATHER THAN RESTATED. The paragraph here
+/// used to end "a green here plus those witnesses is 'the decisions hold and the door compiles',
+/// not 'the door has been walked through'" — an accurate description of an instrument that stopped
+/// at cargo. It no longer stops there: `walk_cli_door` below spawns the binary this preparation
+/// produced, twice, and admits it only on a refusal whose determining reason is pinned and a refusal that
+/// names its cause. So the door IS walked through, on a fixture closure.
+///
+/// WHAT IS STILL NOT CLAIMED, and the distinction is the whole reason the door exists. This is not
+/// the second generation: that is this binary emitting the COMPILER'S OWN closure, and the subject
+/// walked here is `fixture.native_cli_door.door_probe`, a single import-free module. What the walk
+/// establishes is that argv parsing, the source-root read, ingest, resolution, emission and the
+/// process exit all execute in the built artifact — the inhabitance obligation beside
+/// `v2.test.cli.v2_native_cli`, whose rows supply their argv and their ingest and are claims about
+/// the folds rather than about the program.
+/// SPAWN THE BUILT CLI ONCE, BY EXPLICIT PATH, AND CARRY WHAT IT DID.
+///
+/// IT IS NOT `run_native_binary`, AND THE DIFFERENCE IS THE PROTOCOL RATHER THAN THE PROCESS. That
+/// function decodes the SourceRootEvalDriver's stdout — population rows and a terminal marker —
+/// and every check it performs is about that stream. The CLI driver's rendered main prints the
+/// EMITTED TEXT on stdout and `REFUSED: <reason>` on stderr, so handing its output to that parser
+/// would report a working door as an unparseable one. Two drivers, two stdout contracts; sharing
+/// the reader would be a fork of the contract, not a saving.
+///
+/// BOTH STREAMS ARE CHECKED UTF-8, on the rule `run_native_binary` already states: a lossy decode
+/// substitutes U+FFFD and would let this harness assert about bytes the child did not write.
+///
+/// AN EARLIER VERSION OF THIS PARAGRAPH SAID STDERR WAS "diagnostic relay rather than a subject"
+/// AND DECODED IT LOSSILY. That is false about which stream carries the claim: both door arms read
+/// their ENTIRE verdict out of stderr -- the located chain, the determining reason, the no-entry
+/// frame. The safety consequence was small (U+FFFD cannot fabricate the pinned ASCII, so a mangled
+/// stream would refuse rather than pass) but the stated REASON was wrong about the subject, in a
+/// change whose whole business is retracting annotations that describe what the code does not do
+/// (review 69687). Corrected by making the DECODE match the claim, not by rewriting the sentence:
+/// the sibling's own words are "a receipt surface cannot transform its own subject".
+fn run_cli_door(binary: &Path, args: &[String]) -> Result<CliDoorRun, String> {
+    let output = Command::new(binary).args(args).output().map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorSpawnFailed — spawning {} {args:?}: {e}",
+            binary.display()
+        )
+    })?;
+    let stdout = String::from_utf8(output.stdout.clone()).map_err(|cause| {
+        format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorStdoutNotUtf8 — {} {args:?} wrote {} byte(s) that are not valid UTF-8: {cause}",
+            binary.display(),
+            output.stdout.len()
+        )
+    })?;
+    // STDERR IS CHECKED TOO, BECAUSE STDERR IS THIS DOOR'S SUBJECT. Both arms read their entire
+    // verdict out of it -- `cli_refusal_determining_reason` decodes the located chain from it and
+    // `cli_no_entry_refusal_framed` reads its frame -- so `run_native_binary`'s rule applies here
+    // verbatim, and a lossy decode would substitute U+FFFD into the very bytes those functions
+    // adjudicate.
+    let stderr = String::from_utf8(output.stderr.clone()).map_err(|cause| {
+        format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorStderrNotUtf8 — {} {args:?} wrote {} stderr byte(s) that are not valid UTF-8: {cause}",
+            binary.display(),
+            output.stderr.len()
+        )
+    })?;
+    Ok(CliDoorRun {
+        status: output.status.code(),
+        stdout,
+        stderr,
+    })
+}
+
+/// WHAT THE EMIT PROBE OBSERVED, as a closed partition rather than a chain of early returns.
+///
+/// IT IS A SEPARATE PURE FUNCTION SO ITS ARMS CAN BE DISCRIMINATED WITHOUT A BUILT COMPILER. The
+/// probe's subject is a process TERMINATION plus a rendered refusal, and both are values; running a
+/// ten-minute emit to find out whether a signal is admitted would make the arms untestable in
+/// practice, which is how the first cut of this probe shipped with a hole in it.
+#[derive(Debug)]
+enum CliEmitProbeVerdict {
+    /// The one admitting arm: a normal termination, the CLI's own refusal status, no stdout, and a
+    /// fully rendered refusal whose DETERMINING reason equals the pinned limitation. The locus is
+    /// carried because the located chain supplies it and a reader needs where the fatal sat.
+    PinnedRefusalHeld {
+        exit_status: i64,
+        determining_locus: String,
+    },
+    /// A non-zero status that is not the one a CLI refusal takes -- 101 for a panic, say.
+    UnexpectedExitCode { status: i32 },
+    /// The door emitted. The probe has outlived its subject and must be flipped, not relaxed.
+    ProbeGreened { stdout_bytes: usize },
+    /// No exit status at all: killed by a signal. NOT a refusal, and the reason this partition
+    /// exists -- the previous cut compared `status == Some(0)`, so a signal fell through to the
+    /// stderr test, and `unwrap_or_default()` then recorded the run as `exit 0`. A process killed
+    /// after printing its diagnostic would have been admitted as the expected red AND filed under a
+    /// status it never took.
+    TerminatedBySignal,
+    /// A refusal was rendered, but the DETERMINING diagnostic is not the pinned one.
+    DeterminingReasonDiffers { determining: String, locus: String },
+    /// Non-zero, but nothing matching the CLI's refusal contract reached stderr.
+    RefusalNotRendered,
+    /// A refusal that also wrote to stdout: the CLI writes emitted text there and nothing else, so
+    /// bytes on a refusal mean this is not the termination the probe pins.
+    StdoutNotEmpty { stdout_bytes: usize },
+}
+
+/// What the CLI's refusal rendering decoded to: the determining reason and where it was located.
+struct CliRefusalRendering {
+    determining_reason: String,
+    determining_locus: String,
+}
+
+/// THE DETERMINING REASON, READ THROUGH THE CLI'S CURRENT CONTRACT.
+///
+/// `v2.cli.compile_cli` renders `REFUSED: the closure did not emit; diagnostic chain: <links> |
+/// FATAL AT <locus>`, and `diagnostics_fatal` folds the chain to its LAST link -- that module's
+/// annotation states why: the head answers `parse_grammar_choice_overlap_residue` for every entry
+/// tried, a grammar-global ADVISORY that is never the fatal.
+///
+/// EVERY LINK IS NOW LOCATED, AND THIS DECODER DID NOT KNOW THAT. gunbc#11965/#11985 moved the chain
+/// to `lens_verdict_diagnostics_located_chain_text`, so a link is
+/// `<reason> @ <locus>` (`lens_verdict_diagnostic_located_text`) rather than a bare reason. The
+/// previous decoder compared the WHOLE last link against the bare constant, so a CORRECT current
+/// refusal decoded as `DeterminingReasonDiffers` -- and the controls did not catch it because their
+/// fixture still fed the OLD unlocated rendering. That is the designed-fixture failure DESIGN
+/// section 3 names: the claim stayed green while the world it was written against moved. The reason
+/// is now split off the locus and the LOCATION IS KEPT, because where the fatal sits is the part a
+/// reader needs when the pinned limitation changes.
+///
+/// THE WHOLE RENDERING IS REQUIRED, NOT A PREFIX OF IT. `split(" | FATAL AT").next()` succeeds when
+/// the delimiter is ABSENT -- it returns the input -- so a truncated or malformed refusal would have
+/// decoded as if it were complete. Each marker is located explicitly and a missing one is `None`.
+fn cli_refusal_determining_reason(stderr: &str) -> Option<CliRefusalRendering> {
+    // THE PREFIX MUST FRAME THE LINE, NOT MERELY OCCUR IN THE STREAM. `contains("REFUSED: ")` is a
+    // presence test: a stray `REFUSED:` anywhere -- in a relayed child log, in a quoted sentence --
+    // followed by an unframed chain satisfied it. The refusal is ONE LINE that STARTS with the
+    // prefix, so the line is located and stripped.
+    let body = stderr
+        .lines()
+        .find_map(|line| line.trim_start().strip_prefix(CLI_REFUSAL_PREFIX))?;
+    // The whole record, in order, with every marker required rather than sought.
+    let chain_and_fatal = body.trim_start().strip_prefix(CLI_EMIT_REFUSAL_HEAD)?;
+    let (chain, fatal_locus) = chain_and_fatal.split_once(CLI_FATAL_AT_MARKER)?;
+    // THE TAIL IS NOT DISCARDED. `split_once` gave it to us and the previous cut threw it away, so
+    // `... | FATAL AT` with NOTHING after it parsed as a complete record.
+    let fatal_locus = fatal_locus.trim();
+    if fatal_locus.is_empty() {
+        return None;
+    }
+    let last_link = chain.split(" -> ").last()?.trim();
+    // A located link is `<reason> @ <locus>`. An unlocated one is not this contract.
+    let (reason, locus) = last_link.split_once(" @ ")?;
+    let locus = locus.trim();
+    // THE TWO HALVES MUST AGREE. `diagnostics_fatal` picks the last link and
+    // `lens_verdict_diagnostic_locus_text` renders THAT diagnostic's locus, so a record whose
+    // `FATAL AT` names somewhere else is self-contradictory and is not this door's rendering --
+    // whatever produced it, the probe cannot claim to have read the fatal from it.
+    if locus != fatal_locus {
+        return None;
+    }
+    Some(CliRefusalRendering {
+        determining_reason: reason.trim().to_string(),
+        determining_locus: locus.to_string(),
+    })
+}
+
+/// THE NO-ENTRY ARM VALIDATES ITS OWN COMPLETE RECORD, and deliberately not through the chain
+/// decoder.
+///
+/// `cli_no_entry` is a PARSE refusal: `v2_cli_run` never runs, so there is no diagnostic chain and
+/// no `FATAL AT` -- the rendering is `REFUSED: <detail>` and nothing else. Routing it through the
+/// emit decoder would demand markers this arm's contract does not have; testing it with
+/// `contains(detail)` accepted the sentence occurring anywhere in the stream, including inside a
+/// longer refusal that failed for another reason. So the prefix must FRAME the line and the detail
+/// must be what that line carries.
+fn cli_no_entry_refusal_framed(stderr: &str) -> bool {
+    // THE COMPLETE RECORD, NOT A PREFIX OF IT. `starts_with(detail)` admitted the detail TRUNCATED
+    // (nothing after it) and the detail followed by ANY continuation -- `<detail>; instead the fatal
+    // is ...` would have passed while describing a different refusal. The rendered line is exactly
+    // the detail, the boundary and the declared usage, so that is what is required.
+    let expected =
+        format!("{CLI_DOOR_REFUSAL_DETAIL}{CLI_DETAIL_USAGE_BOUNDARY}{CLI_DOOR_DECLARED_USAGE}");
+    stderr.lines().any(|line| {
+        line.trim_start()
+            .strip_prefix(CLI_REFUSAL_PREFIX)
+            .is_some_and(|body| body.trim() == expected)
+    })
+}
+
+fn adjudicate_cli_emit_probe(run: &CliDoorRun) -> CliEmitProbeVerdict {
+    // THE TERMINATION IS DECIDED FIRST AND `None` IS ITS OWN ARM. A signal is not a refusal, and it
+    // must not reach any test over the child's output: a killed process can have already printed a
+    // complete, correct-looking diagnostic.
+    let Some(status) = run.status else {
+        return CliEmitProbeVerdict::TerminatedBySignal;
+    };
+    if status == 0 {
+        return CliEmitProbeVerdict::ProbeGreened {
+            stdout_bytes: run.stdout.len(),
+        };
+    }
+    // THE STATUS IS THE ONE THE CLI'S OWN EXIT AUTHORITY PRODUCES, not merely "not success". A
+    // panic exits 101 and can carry plausible text on stderr; admitting it would file a crash as
+    // the pinned refusal.
+    if status != CLI_DOOR_REFUSAL_EXIT {
+        return CliEmitProbeVerdict::UnexpectedExitCode { status };
+    }
+    if !run.stdout.is_empty() {
+        return CliEmitProbeVerdict::StdoutNotEmpty {
+            stdout_bytes: run.stdout.len(),
+        };
+    }
+    match cli_refusal_determining_reason(&run.stderr) {
+        None => CliEmitProbeVerdict::RefusalNotRendered,
+        Some(rendering) if rendering.determining_reason == CLI_DOOR_EMIT_LIMITATION => {
+            CliEmitProbeVerdict::PinnedRefusalHeld {
+                exit_status: i64::from(status),
+                determining_locus: rendering.determining_locus,
+            }
+        }
+        Some(rendering) => CliEmitProbeVerdict::DeterminingReasonDiffers {
+            determining: rendering.determining_reason,
+            locus: rendering.determining_locus,
+        },
+    }
+}
+
+/// One refusal sentence per non-admitting arm, so the operator is told which distinction failed.
+fn cli_emit_probe_refusal(verdict: &CliEmitProbeVerdict, run: &CliDoorRun) -> String {
+    match verdict {
+        CliEmitProbeVerdict::PinnedRefusalHeld { .. } => String::new(),
+        CliEmitProbeVerdict::UnexpectedExitCode { status } => format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorUnexpectedExitCode — the built CLI exited \
+             {status}, and a refusal from this door exits {CLI_DOOR_REFUSAL_EXIT}: `v2_cli_exit` \
+             sends every `CliRunRefused` through `std.process` `exit_failure`, whose code is \
+             `exit_code_general_error`. A different non-zero status is a crash or another \
+             convention wearing a refusal's clothes. stderr: {}",
+            run.stderr.trim()
+        ),
+        CliEmitProbeVerdict::ProbeGreened { stdout_bytes } => format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorEmitProbeGreened — the built CLI EMITTED {stdout_bytes} \
+             byte(s) and exited 0. This probe expects the determining reason \
+             `{CLI_DOOR_EMIT_LIMITATION}` because the emitted front end could not ground a closure; \
+             that limitation is gone. FLIP THIS PROBE into a regression control that requires exit 0 \
+             and requires the emitted text to name `{CLI_DOOR_EMITTED_WITNESS}` — do not delete it, \
+             and do not relax this arm."
+        ),
+        CliEmitProbeVerdict::TerminatedBySignal => format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorTerminatedBySignal — the built CLI produced NO EXIT \
+             STATUS, so it was killed rather than having refused. A signal is not this probe's \
+             subject however complete the diagnostic on stderr looks. stderr: {}",
+            run.stderr.trim()
+        ),
+        CliEmitProbeVerdict::DeterminingReasonDiffers { determining, locus } => format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorRefusedForAnUnpinnedReason — the built CLI's \
+             DETERMINING diagnostic is `{determining}` at {locus}, not `{CLI_DOOR_EMIT_LIMITATION}`. \
+             This probe pins ONE limitation by the LAST link of the located chain, so a different \
+             fatal — even one whose chain also mentions the pinned word — is a change in the subject \
+             and is read rather than absorbed. stderr: {}",
+            run.stderr.trim()
+        ),
+        CliEmitProbeVerdict::RefusalNotRendered => format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorRefusalNotRendered — the built CLI exited {:?} \
+             without the FULL refusal rendering its contract specifies: a `REFUSED: ` prefix, a \
+             `diagnostic chain: ` section, a ` | FATAL AT ` delimiter, and a last link of the form \
+             `<reason> @ <locus>`. A truncated or malformed render has no determining reason to \
+             compare and must not be decoded as though it were complete. stderr: {}",
+            run.status,
+            run.stderr.trim()
+        ),
+        CliEmitProbeVerdict::StdoutNotEmpty { stdout_bytes } => format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorRefusedWithOutput — the built CLI refused but wrote \
+             {stdout_bytes} byte(s) to stdout, where it writes emitted text and nothing else. A \
+             refusal carrying output is not the termination this probe pins."
+        ),
+    }
+}
+
+/// WALK THROUGH THE DOOR, BOTH WAYS.
+///
+/// WHAT THIS CLOSES. Before it, `//gunbc/instruments:v2-native-cli` emitted the CLI's closure and
+/// built it, and stopped — the door compiled and nothing ever opened it. DESIGN section 5 names
+/// that exactly: a typecheck is not a consumer, and "done" is a real consumer green BY EXECUTION
+/// plus a discriminating input that goes red. `v2.test.cli.v2_native_cli` executes the door's
+/// FOLDS over supplied argv and a supplied ingest, which is the right subject for those claims and
+/// is not this one; the inhabitance obligation beside them is that the REAL PATH runs, and the real
+/// path is the built process reading real argv and real files.
+///
+/// AND THE FIRST THING IT ESTABLISHED WAS THAT THE DOOR DOES NOT EMIT, which is the point rather
+/// than a disappointment. An entrypoint-execution control exists to find out what the program
+/// actually does, and on its first real run it found a limitation the instrument had been silently
+/// carrying: the emitted front end cannot ground a closure. The probe is enrolled around that fact
+/// instead of being tuned until it passes.
+///
+/// WHAT THE PAIR ESTABLISHES, AND IT IS NOT WHAT AN EARLIER DRAFT OF THIS COMMENT CLAIMED. The
+/// door CANNOT EMIT yet, so there is no arm here that ends in a successful emission. What the pair
+/// does establish is that THE BUILT BINARY'S ENTRYPOINT EXECUTES: the `cli_no_entry` arm reaches a
+/// LOCATED refusal that only this program's own `.dag` fold can produce, which means the process
+/// started, read argv, parsed it, decided, rendered its own cause and set its own exit status.
+/// That is the inhabitance claim `v2.test.cli.v2_native_cli` cannot make, because its rows supply
+/// argv and ingest rather than running the program.
+///
+/// TWO SPAWNS, ONE BINARY, DIFFERING IN ONE ARGUMENT. The emit probe hands the door a complete
+/// argv and pins the named limitation that stops it (`CLI_DOOR_EMIT_LIMITATION`). The refusal
+/// control removes ONLY `--entry` and requires `cli_no_entry`'s located sentence. One argument
+/// differs, so the second arm's cause is information about THAT argument rather than about the door
+/// being broken in general — and the two causes being DIFFERENT is itself the evidence that the
+/// door is deciding rather than failing uniformly.
+///
+/// NEITHER ARM IS SATISFIED BY A NON-ZERO EXIT. A door that panicked, could not find its source
+/// root, or refused for any of its other causes also exits non-zero, and admitting those would
+/// green this control on a broken door. Both arms match the CAUSE, and a non-zero exit with the
+/// wrong cause refuses the instrument rather than passing it.
+fn walk_cli_door(binary: &Path, workspace: &Path) -> Result<(i64, usize, i64), String> {
+    let root = workspace.join(WELL_FORMED_CONTROL_ROOT);
+    if !root.is_dir() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorControlRootAbsent — {} is not a directory, so \
+             neither control has an input and a green here would describe nothing",
+            root.display()
+        ));
+    }
+    let root_arg = root.display().to_string();
+
+    eprintln!(
+        "v2-native-cli: walking the door — emit --entry {CLI_DOOR_ENTRY_MODULE} --source-root {root_arg}"
+    );
+    let emitted = run_cli_door(
+        binary,
+        &[
+            "emit".to_string(),
+            "--entry".to_string(),
+            CLI_DOOR_ENTRY_MODULE.to_string(),
+            "--source-root".to_string(),
+            root_arg.clone(),
+        ],
+    )?;
+    let (door_exit_status, emitted_bytes) = match adjudicate_cli_emit_probe(&emitted) {
+        CliEmitProbeVerdict::PinnedRefusalHeld {
+            exit_status,
+            ref determining_locus,
+        } => {
+            eprintln!(
+                "v2-native-cli: door refused the emit as expected — determining reason \
+                 {CLI_DOOR_EMIT_LIMITATION} @ {determining_locus}, exit {exit_status}, stdout {} byte(s)",
+                emitted.stdout.len()
+            );
+            (exit_status, emitted.stdout.len())
+        }
+        other => return Err(cli_emit_probe_refusal(&other, &emitted)),
+    };
+
+    eprintln!("v2-native-cli: refusal control — the same argv with --entry removed");
+    let refused = run_cli_door(
+        binary,
+        &[
+            "emit".to_string(),
+            "--source-root".to_string(),
+            root_arg.clone(),
+        ],
+    )?;
+    // THE SAME EXIT RULE AS THE EMIT ARM. `cli_no_entry` is a `CliRunRefused` like any other, so it
+    // exits `exit_code_general_error`; accepting any non-zero here would admit a panic or a spawn
+    // convention as the located refusal this arm exists to observe.
+    match refused.status {
+        Some(CLI_DOOR_REFUSAL_EXIT) => {}
+        other => {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativeCliDoorRefusalNotDiscriminating — the built CLI \
+                 exited {other:?} on an argv naming no --entry, and this door's refusals exit \
+                 {CLI_DOOR_REFUSAL_EXIT}. A zero accepts the argv its own `cli_no_entry` arm exists \
+                 to refuse; a signal or any other status is not a refusal at all."
+            ))
+        }
+    }
+    // THE REFUSAL MUST BE THE WHOLE OUTPUT, not merely present in it. A `cli_no_entry` refusal is a
+    // PARSE refusal: `v2_cli_run` never runs, so nothing is emitted and stdout is empty.
+    if !refused.stdout.is_empty() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorRefusedWithOutput — the built CLI refused the \
+             no-entry argv but wrote {} byte(s) to stdout. `cli_no_entry` is decided during the \
+             PARSE, before `v2_cli_run` is reached, so nothing can have been emitted; bytes there \
+             mean this is not the termination this control observes.",
+            refused.stdout.len()
+        ));
+    }
+    if !cli_no_entry_refusal_framed(&refused.stderr) {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=NativeCliDoorRefusedForAnotherReason — the built CLI exited \
+             {:?} without a line FRAMED as `{CLI_REFUSAL_PREFIX}{CLI_DOOR_REFUSAL_DETAIL}...`. A \
+             `contains` would accept that sentence occurring anywhere in the stream — inside a \
+             longer refusal that failed for another reason, or in relayed child output — so the \
+             prefix must start the line and the detail must be what that line carries. stderr: {}",
+            refused.status,
+            refused.stderr.trim()
+        ));
+    }
+    let refusal_status = i64::from(refused.status.unwrap_or_default());
+    eprintln!("v2-native-cli: door refused as cli_no_entry — exit {refusal_status}");
+    Ok((door_exit_status, emitted_bytes, refusal_status))
+}
+
 pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, String> {
     let started = std::time::Instant::now();
     eprintln!(
@@ -944,6 +1717,14 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
         "v2-native-cli: emit and build completed — exit_status={} warning_count={} wall_s={wall_s}",
         prepared.build.exit_status, prepared.build.warning_count,
     );
+    // THE ENTRYPOINT EXECUTES, OR THE SUBJECT WAS NEVER REACHED. A refusal from the walk is a
+    // `SubjectUnreached` at the instrument seam for the same reason a refusal from the preparation
+    // is: the door failing to spawn, to find its control root or to emit says the observation could
+    // not be taken, which is a different termination from the build having reported non-zero
+    // counters. The one arm that is deliberately NOT a "did not hold" is the refusal control going
+    // green — a door that accepts everything is a broken instrument, not a broken build.
+    let (door_exit_status, door_emitted_bytes, door_refusal_exit_status) =
+        walk_cli_door(&prepared.binary_path, &super::process_workspace_root())?;
     // The counters are carried and not adjudicated here, on the same rule `run_self_host` follows:
     // a non-clean build is an observation that did not hold, a refusal above is the subject never
     // having been reached, and the instrument seam is the one place that knows the difference.
@@ -953,6 +1734,9 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
         seed_identity: prepared.seed_identity,
         exit_status: prepared.build.exit_status,
         warning_count: prepared.build.warning_count,
+        door_exit_status,
+        door_emitted_bytes: door_emitted_bytes as i64,
+        door_refusal_exit_status,
     })
 }
 
@@ -1043,7 +1827,15 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     // 5. THE LANE RUN. The emitted binary, by explicit path, over the real source roots: it
     // derives the universe, executes it, mints the receipt and judges it.
     eprintln!("v2-native-route: adjudicating through the emitted compiler");
-    let mut args = vec!["adjudicate".to_string(), facts_file.display().to_string()];
+    // THE LANE ADJUDICATES ITS WHOLE UNIVERSE, so it passes the default pattern: this literal is the
+    // seed's mirror of `gunbc.witness_v2_native_route` `native_route_default_pattern`
+    // (`//v2/test/...`, which narrows nothing within the floor's universe). A narrower pattern is an
+    // operator's argument to the emitted binary, never this runner's.
+    let mut args = vec![
+        "adjudicate".to_string(),
+        facts_file.display().to_string(),
+        "//v2/test/...".to_string(),
+    ];
     args.extend(source_roots.iter().cloned());
     let rows_file = workspace
         .join("target")
@@ -1246,5 +2038,278 @@ mod tests {
         let stdout =
             "{\"identity\":{\"module\":\"v2.test.a\",\"declaration\":\"t\"},\"verdict\":\"NativeTestPassed\"}\n";
         assert!(parse_native_run_output(stdout).is_err());
+    }
+}
+
+/// THE EMIT PROBE'S OWN DISCRIMINATING EVIDENCE.
+///
+/// These are SUPPLIED-VALUE claims over one interface -- `adjudicate_cli_emit_probe` decides a
+/// termination plus a rendered refusal, and both are values, so constructing them IS the mechanism
+/// (DESIGN section 3). The pairing obligation is discharged by the instrument itself: the real path
+/// spawns the built binary and feeds this same function its real output, and deleting that spawn
+/// makes `//gunbc/instruments:v2-native-cli` stop observing the door entirely.
+///
+/// EACH ARM EXISTS BECAUSE THE PREVIOUS CUT ADMITTED IT. The first version compared
+/// `status == Some(0)` and then tested `stderr.contains(...)`, so a signal-killed run that had
+/// already printed a plausible diagnostic passed both tests and was recorded as `exit 0` by
+/// `unwrap_or_default()`.
+#[cfg(test)]
+mod cli_emit_probe_tests {
+    use super::*;
+
+    fn run(status: Option<i32>, stdout: &str, stderr: &str) -> CliDoorRun {
+        CliDoorRun {
+            status,
+            stdout: stdout.to_string(),
+            stderr: stderr.to_string(),
+        }
+    }
+
+    /// THE CURRENT RENDERING, AND THE FIXTURE THAT USED TO BE HERE WAS THE OLD ONE.
+    ///
+    /// gunbc#11965/#11985 located every link: `lens_verdict_diagnostic_located_text` emits
+    /// `<reason> @ <locus>`. The previous fixture fed bare reasons, so these controls stayed green
+    /// while a CORRECT refusal from the built binary decoded as `DeterminingReasonDiffers` -- the
+    /// designed-fixture failure DESIGN section 3 names, where the claim survives the world it was
+    /// written against moving.
+    fn located_pinned_refusal() -> String {
+        // THE REAL SHAPE, transcribed from the built binary's own stderr: a run of
+        // `infer_grounding_not_derived` ADVISORIES and a final
+        // `translate_rejected_grounding_not_derived` FATAL. The advisory in front is what makes this
+        // fixture discriminating -- a decoder matching anywhere in the chain would accept it while
+        // pinning the wrong symbol, which is the defect the first real run exposed.
+        "REFUSED: the closure did not emit; diagnostic chain: infer_grounding_not_derived @ <node occurrence #15> -> infer_grounding_not_derived @ <synthetic node occurrence> -> translate_rejected_grounding_not_derived @ <synthetic node occurrence> | FATAL AT <synthetic node occurrence>"
+            .to_string()
+    }
+
+    /// ACCEPTED: current chain + exit 1 + empty stdout.
+    #[test]
+    fn the_current_located_refusal_at_exit_one_passes() {
+        match adjudicate_cli_emit_probe(&run(Some(1), "", &located_pinned_refusal())) {
+            CliEmitProbeVerdict::PinnedRefusalHeld {
+                exit_status,
+                determining_locus,
+            } => {
+                assert_eq!(exit_status, 1);
+                assert_eq!(determining_locus, "<synthetic node occurrence>");
+            }
+            other => panic!("expected PinnedRefusalHeld, got {other:?}"),
+        }
+    }
+
+    /// REFUSED: the same output with a SIGNAL. Byte-identical stderr; only the termination differs.
+    #[test]
+    fn the_same_output_with_a_signal_fails() {
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(None, "", &located_pinned_refusal())),
+            CliEmitProbeVerdict::TerminatedBySignal
+        ));
+    }
+
+    /// REFUSED: the same output with an UNEXPECTED CODE. 101 is a Rust panic's status, and plausible
+    /// stderr beside it is exactly the crash-as-refusal this arm exists to reject.
+    #[test]
+    fn the_same_output_with_an_unexpected_code_fails() {
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(101), "", &located_pinned_refusal())),
+            CliEmitProbeVerdict::UnexpectedExitCode { status: 101 }
+        ));
+    }
+
+    /// REFUSED: a DIFFERENT determining reason, whose chain still mentions the pinned word.
+    #[test]
+    fn a_different_determining_reason_fails() {
+        // THE PINNED REASON SITS IN A NON-FINAL LINK. This is the control's whole point: the fatal
+        // is the LAST link, so a record that mentions `translate_rejected_grounding_not_derived`
+        // earlier and ends somewhere else must REFUSE. Using the old advisory here tested nothing
+        // about the current pin -- it could not distinguish "reads the last link" from "matches the
+        // pinned word anywhere".
+        let stderr = "REFUSED: the closure did not emit; diagnostic chain: translate_rejected_grounding_not_derived @ <synthetic node occurrence> -> parse_g0_tokens_remain @ dag/extdeps/access/posix_effective_principal_read_op.dag bytes 1295..1302 | FATAL AT dag/extdeps/access/posix_effective_principal_read_op.dag bytes 1295..1302";
+        match adjudicate_cli_emit_probe(&run(Some(1), "", stderr)) {
+            CliEmitProbeVerdict::DeterminingReasonDiffers { determining, locus } => {
+                assert_eq!(determining, "parse_g0_tokens_remain");
+                assert!(locus.contains("posix_effective_principal_read_op.dag"));
+            }
+            other => panic!("expected DeterminingReasonDiffers, got {other:?}"),
+        }
+    }
+
+    /// REFUSED: the record is TRUNCATED AFTER THE MARKER — ` | FATAL AT` with nothing following.
+    /// `split_once` hands back an empty tail, and the previous cut discarded that tail entirely, so
+    /// this parsed as a complete record with a fatal location nobody wrote.
+    #[test]
+    fn a_record_truncated_after_the_fatal_marker_fails() {
+        let stderr = "REFUSED: the closure did not emit; diagnostic chain: translate_rejected_grounding_not_derived @ <synthetic node occurrence> | FATAL AT ";
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(1), "", stderr)),
+            CliEmitProbeVerdict::RefusalNotRendered
+        ));
+    }
+
+    /// REFUSED: a CONTRADICTING suffix. `diagnostics_fatal` picks the last link and the locus is
+    /// rendered from THAT diagnostic, so a `FATAL AT` naming somewhere else is self-contradictory —
+    /// the probe cannot claim to have read the fatal from a record that disagrees with itself.
+    #[test]
+    fn a_contradicting_fatal_location_fails() {
+        let stderr = "REFUSED: the closure did not emit; diagnostic chain: translate_rejected_grounding_not_derived @ <synthetic node occurrence> | FATAL AT other.dag bytes 1..2";
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(1), "", stderr)),
+            CliEmitProbeVerdict::RefusalNotRendered
+        ));
+    }
+
+    /// REFUSED: a STRAY prefix. `contains("REFUSED: ")` is a presence test, not framing: a relayed
+    /// line mentioning it, followed by an unframed chain, satisfied the old check.
+    #[test]
+    fn a_stray_refused_prefix_with_an_unframed_chain_fails() {
+        let stderr = "note: the child said REFUSED: earlier\n                      the closure did not emit; diagnostic chain: translate_rejected_grounding_not_derived @ <synthetic node occurrence> | FATAL AT <synthetic node occurrence>";
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(1), "", stderr)),
+            CliEmitProbeVerdict::RefusalNotRendered
+        ));
+    }
+
+    /// REFUSED: a TRUNCATED render. `split(" | FATAL AT").next()` returns the whole input when the
+    /// delimiter is absent, so this decoded as complete before the delimiter was required.
+    #[test]
+    fn a_truncated_render_without_the_fatal_delimiter_fails() {
+        let stderr = "REFUSED: the closure did not emit; diagnostic chain: translate_rejected_grounding_not_derived @ <synthetic node occurrence>";
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(1), "", stderr)),
+            CliEmitProbeVerdict::RefusalNotRendered
+        ));
+    }
+
+    /// REFUSED: a MALFORMED render -- an unlocated last link is not the current contract.
+    #[test]
+    fn an_unlocated_last_link_fails() {
+        let stderr = "REFUSED: the closure did not emit; diagnostic chain: translate_rejected_grounding_not_derived | FATAL AT <synthetic node occurrence>";
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(1), "", stderr)),
+            CliEmitProbeVerdict::RefusalNotRendered
+        ));
+    }
+
+    /// REFUSED: no `REFUSED: ` prefix at all.
+    #[test]
+    fn output_without_the_refused_prefix_fails() {
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(1), "", "thread 'main' panicked at src/main.rs")),
+            CliEmitProbeVerdict::RefusalNotRendered
+        ));
+    }
+
+    /// SUCCESS TRIGGERS THE FLIP: the door emitting fails the PROBE, not the door.
+    #[test]
+    fn an_emitting_door_triggers_the_flip() {
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(Some(0), "pub const x: i64 = 1;", "")),
+            CliEmitProbeVerdict::ProbeGreened { .. }
+        ));
+    }
+
+    /// THE NO-ENTRY ARM'S OWN FRAME, validated separately from the chain decoder because
+    /// `cli_no_entry` is a PARSE refusal: it renders `REFUSED: <detail>` with no chain and no
+    /// `FATAL AT`, so routing it through the emit decoder would demand markers its contract lacks.
+    #[test]
+    fn the_no_entry_refusal_frame_is_required() {
+        let genuine = format!(
+            "{CLI_REFUSAL_PREFIX}{CLI_DOOR_REFUSAL_DETAIL}{CLI_DETAIL_USAGE_BOUNDARY}{CLI_DOOR_DECLARED_USAGE}"
+        );
+        // ACCEPTED: the rendering `cli_parse_finish` actually produces.
+        assert!(cli_no_entry_refusal_framed(&genuine));
+
+        // REFUSED: TRUNCATED AFTER THE DETAIL. `starts_with` accepted this; the declared usage is
+        // part of the record, so a line that stops at the detail is not that record.
+        assert!(!cli_no_entry_refusal_framed(&format!(
+            "{CLI_REFUSAL_PREFIX}{CLI_DOOR_REFUSAL_DETAIL}"
+        )));
+
+        // REFUSED: A MISLEADING CONTINUATION beside the genuine opening. The detail is present and
+        // the line begins exactly as the real one does, but it goes on to describe a DIFFERENT
+        // refusal -- which `starts_with` would have read as the one this control asked for.
+        assert!(!cli_no_entry_refusal_framed(&format!(
+            "{CLI_REFUSAL_PREFIX}{CLI_DOOR_REFUSAL_DETAIL}; instead the fatal is cli_unknown_option"
+        )));
+
+        // REFUSED: the detail present but NOT framed -- the shape a `contains` accepted.
+        assert!(!cli_no_entry_refusal_framed(&format!(
+            "some other refusal mentioning {CLI_DOOR_REFUSAL_DETAIL} in passing"
+        )));
+
+        // REFUSED: a framed line carrying a DIFFERENT cause.
+        assert!(!cli_no_entry_refusal_framed(
+            "REFUSED: unknown verb emitx -- usage: <binary> emit --entry <module.path> --source-root <dir> [--source-root <dir>]..."
+        ));
+
+        // REFUSED: no refusal at all.
+        assert!(!cli_no_entry_refusal_framed("thread 'main' panicked"));
+    }
+
+    /// REFUSED: a refusal that also wrote emitted text is not the termination being pinned.
+    #[test]
+    fn a_refusal_carrying_stdout_fails() {
+        assert!(matches!(
+            adjudicate_cli_emit_probe(&run(
+                Some(1),
+                "some emitted text",
+                &located_pinned_refusal()
+            )),
+            CliEmitProbeVerdict::StdoutNotEmpty { .. }
+        ));
+    }
+}
+
+/// THE PROBE-ROOT EXCLUSION, EXERCISED.
+///
+/// WHAT THIS ESTABLISHES AND WHAT IT DOES NOT, stated first because the gap matters. The operator's
+/// control was two overlapping PREPARATIONS with one paused mid-fault. That is not staged here: a
+/// preparation is a whole-corpus emit plus two cargo builds, so pausing one at a chosen instant is
+/// not something this suite can do honestly. What IS established is the property the interleaving
+/// control would rest on -- that a second holder is REFUSED rather than admitted -- plus the release
+/// on drop that decides whether a refusal is transient or permanent.
+///
+/// The real path is `prepare_emitted_compiler_for_entry`, which takes this lock before the emission
+/// writes the shared root and holds it through fault and restore; deleting that acquisition returns
+/// the v2-native route to the exact state
+/// `gunbc.recurring_failure_mode` `a_shared_probe_root_lets_one_run_compile_anothers_source`
+/// files against it by name.
+#[cfg(test)]
+mod probe_root_exclusion_tests {
+    use super::*;
+
+    #[test]
+    fn a_second_holder_is_refused_and_the_first_release_readmits() {
+        let root = std::env::temp_dir().join(format!(
+            "gunbc-probe-lock-control-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default()
+        ));
+
+        // FIRST HOLDER TAKES IT.
+        let first = super::super::emitted_closure_compile_host::acquire_probe_root_lock(&root)
+            .expect("the first acquisition on a fresh root holds");
+        let guard = ProbeRootLockGuard { lock: first };
+
+        // SECOND HOLDER IS REFUSED WHILE THE FIRST IS LIVE. This is the arm that decides whether two
+        // runs can interleave their faulted and restored trees at all.
+        let second = super::super::emitted_closure_compile_host::acquire_probe_root_lock(&root);
+        let cause = second.expect_err("a second concurrent holder must be refused, not admitted");
+        assert!(
+            cause.contains("another emitted-closure compile run holds"),
+            "the refusal must name a concurrent run so the operator investigates one, got: {cause}"
+        );
+
+        // THE RELEASE IS PART OF THE CLAIM. A lock that refuses correctly but never releases turns a
+        // transient overlap into a permanent refusal for every later run on the host, which is worse
+        // than the defect it prevents.
+        drop(guard);
+        let readmitted = super::super::emitted_closure_compile_host::acquire_probe_root_lock(&root)
+            .expect("the root is re-admissible once the holder drops");
+        let _ = std::fs::remove_file(&readmitted);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

@@ -200,6 +200,7 @@ pub struct CliBootstrapDagOperationBinding {
 #[serde(tag = "_variant")]
 pub enum CliOperandValue {
     CliAbsoluteLabelOperand,
+    CliTargetPatternOperand,
     CliScmReadVerbOperand,
     CliProgramOperand,
 }
@@ -815,13 +816,13 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }), Rc::new(CliSubcommandRow {
     verb: "test".to_string(),
     variant: "Test".to_string(),
-    doc: Rc::new(vec!["Run one target by its absolute label and report the standing its own".to_string(), "producer answers in. The label is exact: a target PATTERN refuses, and".to_string(), "an unbound or unknown target refuses rather than reporting a pass.".to_string()]),
+    doc: Rc::new(vec!["Run a target named by an absolute label or a bazel-style target PATTERN, and".to_string(), "report the standing its own producer answers in. An exact label routes to".to_string(), "its bound producer. A set form (`//pkg:all`, `//pkg:*`, `//pkg/...`) is".to_string(), "admitted and refused with status 2: it runs only through the native test".to_string(), "route, never the interpreter. A form the pattern grammar does not admit, or".to_string(), "an unbound or unknown target, refuses rather than reporting a pass.".to_string()]),
     operands: Rc::new(vec![Rc::new(CliOperandRow {
     field: "target".to_string(),
-    placeholder: "LABEL".to_string(),
-    value: CliOperandValue::CliAbsoluteLabelOperand {},
+    placeholder: "TARGET_PATTERN".to_string(),
+    value: CliOperandValue::CliTargetPatternOperand {},
     arity: CliOperandArity::CliExactlyOneOperand {},
-    doc: Rc::new(vec!["Absolute label of exactly one target, e.g.".to_string(), "`//gunbc/instruments:heads-reading-differential`.".to_string()]),
+    doc: Rc::new(vec!["Absolute label of one target, or a pattern denoting a set:".to_string(), "`//gunbc/instruments:heads-reading-differential`,".to_string(), "`//dag/test/claim/roadmap:all`, `//dag/test/claim/roadmap/...`.".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })]),
     options: Rc::new(vec![]),
@@ -983,6 +984,8 @@ pub struct GunbcProductBuildBootstrapOperation;
 pub struct GunbcFleetConvergeOperation;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CliAbsoluteLabelOperand;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CliTargetPatternOperand;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CliScmReadVerbOperand;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

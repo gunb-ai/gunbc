@@ -24,7 +24,7 @@ import extdeps.systemd.unit_file {
   Description,
   After,
   Wants,
-  ServiceType,
+  ServiceType, SimpleMode,
   ExecStart,
   Restart,
   Installable,
@@ -188,7 +188,7 @@ data site_pxe_edge_unit: SystemdUnitFile = ServiceUnitFile {
     Wants { target: "network-online.target" },
   ],
   service: [
-    ServiceType { mode: "simple" },
+    ServiceType { mode: SimpleMode },
     ExecStart { command: join([site_pxe_edge_dnsmasq_binary as String, " --keep-in-foreground --conf-file=", site_pxe_edge_config_path as String], "") as NonEmptyStr },
     Restart { policy: "on-failure" },
   ],

@@ -4,7 +4,15 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
+import extdeps.cloud.gcp.secret_ref {
+  SecretRef, secret_ref_version_resource,
+  ExactVersion, AliasLatest, classify_version_selector,
+  SecretRefVersionResolvedExact,
+  SecretRefVersionResolvedAlias,
+  SecretRefVersionResolutionRefused,
+  resolve_returned_version,
+}
 import extdeps.cloud.gcp.secret_manager {
   SmResolvedVersionIdentity,
   SmResolvedVersionIdentityRefusal,
@@ -21,7 +29,6 @@ import gunbc.auth.github_apps {
   gunbai_ci_app_pem_secret,
   app_key_settings_locator,
 }
-import gunbc.auth.secret_ref_credential { resolved_identity_matches_request }
 import gunbc.auth.secret_rotation {
   SecretRotationIntent,
   ReceivedOutOfBand,
@@ -29,9 +36,6 @@ import gunbc.auth.secret_rotation {
   ConsumerVerificationRequirement,
   RotationConsumer,
   ConsumerId,
-  ExactVersion,
-  AliasLatest,
-  classify_version_selector,
   secret_version_at,
   ConsumerVersionEvidence,
   ResolvedVersionObserved,
@@ -216,6 +220,13 @@ fn status_line_is_created(line: String) -> Bool {
 // The order is the order of the evidence: a version that could not be read has no resolved name to
 // check, and a resolved name that is not the requested version has signed nothing worth reporting
 // on. Each arm names what the operator must inspect, and none reports `unverified` as a pass.
+//
+// THE ALIAS RESOLUTION IS REFUSED HERE RATHER THAN ADMITTED, and that is this consumer's policy and
+// not the resolver's. A rotation proves a mint on ONE named version, so the subject it verifies is
+// always an exact number -- verify_app_key_version is reached only after the selector refused an
+// alias -- and an answer that arrived by alias semantics would mean the request was not the one this
+// verdict claims to be about. The shared resolver admits both because the credential FETCH legitimately
+// asks for `latest`; deciding what each arm MEANS is the caller's, which is why it is a match here.
 fn verify_app_key_version(
   secret: SecretRef,
   version: NonEmptyStr,
@@ -240,23 +251,32 @@ fn verify_app_key_version(
           SmResolvedVersionIdentityDecodeRefused { cause: c } =>
             AppKeyVersionRefused { cause: AppKeyResolvedVersionUndecodable { cause: c } }
           SmResolvedVersionIdentityDecoded { identity: identity } =>
-            if !resolved_identity_matches_request(identity: identity, requested: requested) {
-              AppKeyVersionRefused {
-                cause: AppKeyResolvedVersionDiffers {
-                  requested: secret_ref_version_resource(ref: requested),
-                  resolved: identity as String,
-                },
-              }
-            } else {
-              match observation.token_status_line {
-                Absent => AppKeyVersionRefused { cause: AppKeyInstallationTokenUnobserved }
-                Present { value: line } =>
-                  if status_line_is_created(line: line) {
-                    AppKeyVersionMints { version: identity }
-                  } else {
-                    AppKeyVersionRefused { cause: AppKeyInstallationTokenRefused { status_line: line } }
-                  }
-              }
+            match resolve_returned_version(
+              returned: identity,
+              ref: requested,
+              project_number: fleet_secrets_project_number,
+            ) {
+              SecretRefVersionResolutionRefused { requested: req, returned: ret } =>
+                AppKeyVersionRefused {
+                  cause: AppKeyResolvedVersionDiffers { requested: req, resolved: ret },
+                }
+              SecretRefVersionResolvedAlias { alias: _, version: _ } =>
+                AppKeyVersionRefused {
+                  cause: AppKeyResolvedVersionDiffers {
+                    requested: secret_ref_version_resource(ref: requested),
+                    resolved: identity as String,
+                  },
+                }
+              SecretRefVersionResolvedExact { version: _ } =>
+                match observation.token_status_line {
+                  Absent => AppKeyVersionRefused { cause: AppKeyInstallationTokenUnobserved }
+                  Present { value: line } =>
+                    if status_line_is_created(line: line) {
+                      AppKeyVersionMints { version: identity }
+                    } else {
+                      AppKeyVersionRefused { cause: AppKeyInstallationTokenRefused { status_line: line } }
+                    }
+                }
             }
         }
       }
