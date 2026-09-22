@@ -2035,6 +2035,17 @@ fn resource_frontier_occurrence_budget_diags(module_name: String, module_span: S
     |> flat_map(r => resource_frontier_row_budget_diags(row: r, diagnostics: diagnostics, module_name: module_name, module_span: module_span))
 }
 
+// AN IDENTIFIED CALLEE WHOSE DECLARATION CANNOT BE READ IS A REFUSAL, NOT AN ADMISSION (review
+// 70193). The inner Absent arm below returned [] and was a fail-open: the resolver had already
+// selected a declaration identity, so reaching it means the `uses` clause exists and this fold
+// cannot see it -- exactly the state where admitting fabricates a success, which the frontier
+// roster's own note says this wall exists to prevent. DESIGN section 5 rules that a failure arm
+// must REFUSE, never widen, and that every degradation is a typed, located, countable diagnostic.
+// It refuses as InternalError, the vocabulary this file already uses for the sibling state -- a
+// resolved call whose declared formal authority is unavailable (formal_authority_diags) -- rather
+// than a second name for one condition.
+// THE OUTER Absent ARM STAYS [] AND IS NOT THE SAME STATE: there the target is not a declared
+// callable at all, so there is no `uses` clause to have missed.
 fn resource_requirement_diags(scope: InferScope, call_target: CallTargetOutcome, span: SourceSpan) -> List<ErrorNode> {
   let callee_identity = match call_target {
     DeclaredCallableResolved { sig: _, declared: declared } => Present { value: declared }
@@ -2045,7 +2056,18 @@ fn resource_requirement_diags(scope: InferScope, call_target: CallTargetOutcome,
     Absent => []
     Present { value: callee } =>
       match callee_declaration_for_target(scope: scope, call_target: call_target) {
-        Absent => []
+        Absent =>
+          [make_error_node(
+            diagnostic: InternalError {
+              message: concat(
+                "resource requirement contract unreadable for resolved callee '",
+                callee.owner_module_path, ".", callee.decl_name,
+                "': the call resolved to a declaration identity but its declaration could not be read, so its `uses` clause cannot be compared against the caller's. Admitting the call here would fabricate a success over a contract this fold cannot see"
+              ),
+              span: span
+            },
+            module_name: scope.module_name
+          )]
         Present { value: declaration } =>
           let required = resource_requirements_of_uses(uses: declaration.uses, source_indices: scope.type_env.source_indices)
           if required |> count == 0 { [] }

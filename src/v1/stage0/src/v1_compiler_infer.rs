@@ -2411,48 +2411,28 @@ pub fn resource_requirement_diags(
             _ => std::option::Option::None,
         };
         match callee_identity.clone() {
-            std::option::Option::None => Rc::new(vec![]),
-            Some(callee) => match callee_declaration_for_target(scope.clone(), call_target.clone())
-            {
-                std::option::Option::None => Rc::new(vec![]),
-                Some(declaration) => {
-                    let required = crate::v1_compiler_infer_items::resource_requirements_of_uses(
-                        declaration.uses.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    );
-                    if ((required.clone().len() as i64) == 0) {
-                        Rc::new(vec![])
-                    } else {
-                        if caller_is_test_root(scope.clone()) {
-                            Rc::new(vec![])
+    std::option::Option::None => Rc::new(vec![]),
+    Some(callee) => match callee_declaration_for_target(scope.clone(), call_target.clone()) {
+    std::option::Option::None => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    message: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("resource requirement contract unreadable for resolved callee '".to_string(), callee.owner_module_path.clone()), ".".to_string()), callee.decl_name.clone()), "': the call resolved to a declaration identity but its declaration could not be read, so its `uses` clause cannot be compared against the caller's. Admitting the call here would fabricate a success over a contract this fold cannot see".to_string()),
+    span: span.clone(),
+}), scope.module_name.clone())]),
+    Some(declaration) => {
+            let required = crate::v1_compiler_infer_items::resource_requirements_of_uses(declaration.uses.clone(), scope.type_env.clone().source_indices.clone());
+if ((required.clone().len() as i64) == 0) {
+                Rc::new(vec![])
+            } else {
+                if caller_is_test_root(scope.clone()) {
+                    Rc::new(vec![])
+                } else {
+                    {
+                        let established = caller_resource_requirements(scope.clone());
+let caller_name = if (scope.caller_decl_name.clone() == "".to_string()) {
+                            "<module scope>".to_string()
                         } else {
-                            {
-                                let established = caller_resource_requirements(scope.clone());
-                                let caller_name =
-                                    if (scope.caller_decl_name.clone() == "".to_string()) {
-                                        "<module scope>".to_string()
-                                    } else {
-                                        scope.caller_decl_name.clone()
-                                    };
-                                Rc::new({
-                                    let mut __result = Vec::new();
-                                    for r in Rc::new({
-                                        let mut __result = Vec::new();
-                                        for r in required.iter().cloned() {
-                                            if !resource_requirement_established(
-                                                scope.clone(),
-                                                r.clone(),
-                                                established.clone(),
-                                            ) {
-                                                __result.push(r);
-                                            }
-                                        }
-                                        __result
-                                    })
-                                    .iter()
-                                    .cloned()
-                                    {
-                                        __result.push({
+                            scope.caller_decl_name.clone()
+                        };
+Rc::new({ let mut __result = Vec::new(); for r in Rc::new({ let mut __result = Vec::new(); for r in required.iter().cloned() { if !resource_requirement_established(scope.clone(), r.clone(), established.clone()) { __result.push(r); } } __result }).iter().cloned() { __result.push({
                             let resource_label = resource_identity_label(scope.clone(), r.resource.clone());
 match resource_requirement_frontier_trigger(scope.module_name.clone(), caller_name.clone(), callee.owner_module_path.clone(), callee.decl_name.clone(), resource_label.clone()) {
     Some(trigger) => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::ResourceRequirementFrontierAdmitted {
@@ -2473,16 +2453,13 @@ match resource_requirement_frontier_trigger(scope.module_name.clone(), caller_na
     span: span.clone(),
 }), scope.module_name.clone()),
 }
-});
-                                    }
-                                    __result
-                                })
-                            }
-                        }
-                    }
+}); } __result })
+}
                 }
-            },
-        }
+            }
+},
+},
+}
     }
 }
 
