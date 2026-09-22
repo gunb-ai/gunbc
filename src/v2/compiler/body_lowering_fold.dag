@@ -3163,22 +3163,21 @@ fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
   }
 }
 
-// THE PAREN-SUFFIX ARM WITH AN UNREADABLE INTERIOR REFUSES, AND AN EMPTY INTERIOR IS NOT WHAT
-// REACHES IT. Stated explicitly because a lane read this arm the other way and spent a round on
-// it (gunbc#12057): the question "is an empty interior representable here" has an answer and the
-// arm did not carry it. IT IS NOT. A zero-argument call does not arrive here with an ABSENT
-// interior -- it reaches body_lower_call_args_from_capture with an empty conj, which
-// is_empty_conj_root answers Present(Empty). Two independent measurements say so: flipping this
-// arm to a refusal leaves a zero-arg specimen lowering unchanged at identical eval steps, and
-// gunbc#12057's own pairing rows -- parsed zero-arg call TRUE, hand-supplied seq(lparen, rparen)
-// FALSE over the same door and the same assertion -- establish that the real parser does not emit
-// the absent-interior shape at all. A fixture that builds `()` as seq(lparen, rparen) is an
-// unfaithful hypothesis about this boundary, not a reachable program.
+// A PAREN CALL SUFFIX WITH NO INTERIOR IS A ZERO-ARGUMENT CALL, NOT AN UNREADABLE ONE. This is the
+// same three-shape reading the comma-list reader above carries, one level up: `(` `)` with nothing
+// between them means ARITY ZERO, and answering it with a refusal rejects every zero-argument call
+// that reaches this door. gunbc#12033 briefly refused here and it broke three enrolled rows in
+// v2.test.claim.body_lowering_qualified_path that pass on main -- qualified_call_callee_is_the_
+// whole_path, block_body_site_keeps_the_whole_call and real_parser_emits_the_supplied_dotted_shape
+// -- all of which reach the door with a suffix built as seq(lparen, rparen).
 //
-// So what this arm sees is a paren call suffix whose interior is present but not the expected
-// spine, and an accepted empty argument list there would drop arguments silently. An unreachable
-// refusal costs nothing; an unreachable widen is the one that bites when the grammar moves
-// (DESIGN section 5: refuse, never widen).
+// WHAT THE PARSER EMITS IS A SEPARATE QUESTION FROM WHAT THIS DOOR ACCEPTS, and conflating them is
+// what made the refusal look safe. gunbc#12057 established by a self-interpreting pair -- the same
+// assertion over a parsed node (TRUE) and over a hand-supplied seq(lparen, rparen) (FALSE) -- that
+// the real prepared-grammar parse does NOT emit the absent-interior shape for `()`. That makes the
+// SUPPLIED shape unfaithful as a hypothesis about the parser; it does not make it an invalid input
+// to this door, which is reached by supplied nodes in enrolled rows and must total over what it is
+// handed. A door that refuses a shape its own callers construct is not fail-closed, it is wrong.
 fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Outcome<Optional<List<Node>>> {
   match body_lower_call_suffix_is_paren_list(call_suffix: call_suffix) {
     false => outcome_accepted(value: optional_absent())
@@ -3187,10 +3186,7 @@ fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Outcome<Optional<Li
         Absent => outcome_accepted(value: optional_absent())
         Present { value: pair } =>
           match sugar_sequence_pair_optional(node: pair.right) {
-            Absent =>
-              outcome_rejected(
-                d: body_lower_diagnostic(reason: ^body_lowering_reason_call_args_unlowered, n: call_suffix)
-              )
+            Absent => outcome_accepted(value: optional_present(value: Empty))
             Present { value: inner } =>
               match body_lower_call_args_from_capture(
                 args_capture: body_lower_postfix_optional_unwrap(node: inner.left)
