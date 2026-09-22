@@ -6623,12 +6623,19 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
   let deduped_names = unique_strings(items: filtered_names
     |> filter(n => local_names |> all(ln => ln != n))
     |> filter(n => !import_name_resolves_to_host_realized_kernel_scalar(name: n, module_env: module_env)))
+  // WHICH IMPORTED NAMES ARE MARKER STRUCTS IS THE PROVIDER'S FACT, NOT THE IMPORTER'S. The provider
+  // mints a zero-sized marker for a unit variant by collect_phantom_zst_marker_names over ITS OWN env,
+  // where the owning coproduct is visible. Re-deciding here against the importer's env asked the same
+  // question of a scope that need not see the coproduct at all: std.integer imports PointerWidth
+  // without WidthResolution, so the lookup answered Absent, the name took the variant route, and the
+  // emitted MachineWidth<PointerWidth> named an enum variant where a type was required (E0573).
+  let provider_marker_names = match typed_module_by_name(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+    Present { value: tm } => collect_phantom_zst_marker_names(items: tm.items, env: module_emit_scope(typed_module: tm).type_env)
+    Absent => []
+  }
   let marker_type_names = unique_strings(items: deduped_names |> filter(n =>
-    (type_position_names |> any(name => name == n)) &&
-    match module_env {
-      Present { value: env } => is_phantom_unit_variant_type_arg(env: env, variant_name: n)
-      Absent => false
-    }
+    (type_position_names |> any(name => name == n))
+    && (provider_marker_names |> any(name => name == n))
   ))
   let non_marker_names = deduped_names |> filter(n => marker_type_names |> all(name => name != n))
   if deduped_names |> count == 0 {
