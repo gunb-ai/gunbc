@@ -1275,7 +1275,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "gcp_oauth_access_token",
       callee_module_path: "gunbc.auth.credentials",
       callee_decl_name: "gcp_oauth_access_token_adc_for_path",
-      resource: "std.resources.Network",
+      resource: "Network",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1285,7 +1285,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "acquire_subject_token",
       callee_module_path: "gunbc.auth.patterns",
       callee_decl_name: "github_oidc",
-      resource: "std.resources.Network",
+      resource: "Network",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1295,7 +1295,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "acquire_subject_token",
       callee_module_path: "gunbc.auth.patterns",
       callee_decl_name: "metadata_oidc",
-      resource: "std.resources.Network",
+      resource: "Network",
       occurrences: 2,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1375,7 +1375,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "census_app_acquisition_standing",
       callee_module_path: "gunbc.github_app_acquisition",
       callee_decl_name: "live_custody_standing",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1415,7 +1415,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "census_app_acquire_for",
       callee_module_path: "gunbc.instruments.github_app_acquire",
       callee_decl_name: "census_app_acquire_with_code",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1425,7 +1425,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "census_app_acquire_for",
       callee_module_path: "gunbc.instruments.github_app_acquire",
       callee_decl_name: "read_handoff_value",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 3,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1435,7 +1435,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "census_app_acquire_receipt",
       callee_module_path: "gunbc.instruments.github_app_acquire",
       callee_decl_name: "census_app_acquire_for",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1445,7 +1445,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "census_app_acquire_receipt",
       callee_module_path: "gunbc.instruments.github_app_acquire",
       callee_decl_name: "observed_acquisition_reading",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1455,7 +1455,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "census_app_acquire_with_code",
       callee_module_path: "gunbc.instruments.github_app_acquire",
       callee_decl_name: "custody_preflight",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1465,7 +1465,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "census_app_acquire_with_code",
       callee_module_path: "gunbc.instruments.github_app_acquire",
       callee_decl_name: "persist_then_read_back",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1475,7 +1475,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "census_app_acquisition_receipt",
       callee_module_path: "gunbc.instruments.github_app_acquire",
       callee_decl_name: "census_app_acquisition_receipt_for",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1485,7 +1485,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "census_app_acquisition_receipt",
       callee_module_path: "gunbc.instruments.github_app_acquire",
       callee_decl_name: "observed_acquisition_reading",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1495,7 +1495,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "census_app_acquisition_receipt_for",
       callee_module_path: "gunbc.github_app_acquisition",
       callee_decl_name: "census_app_acquisition_standing",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1505,7 +1505,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "census_app_installations_receipt",
       callee_module_path: "gunbc.instruments.github_app_acquire",
       callee_decl_name: "installations_read_exit",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1515,7 +1515,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "census_app_observe_receipt",
       callee_module_path: "gunbc.instruments.github_app_acquire",
       callee_decl_name: "observed_acquisition_reading",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1525,7 +1525,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "census_app_registration_instruction_receipt",
       callee_module_path: "gunbc.instruments.github_app_acquire",
       callee_decl_name: "observed_acquisition_reading",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1535,7 +1535,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "census_app_registration_instruction_receipt",
       callee_module_path: "gunbc.instruments.github_app_acquire",
       callee_decl_name: "read_handoff_value",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1545,7 +1545,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "custody_preflight_receipt",
       callee_module_path: "gunbc.instruments.github_app_acquire",
       callee_decl_name: "custody_preflight",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 2,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1555,7 +1555,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "custody_write_receipt",
       callee_module_path: "gunbc.instruments.github_app_acquire",
       callee_decl_name: "persist_issued_credentials",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1565,7 +1565,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "persist_then_read_back",
       callee_module_path: "gunbc.instruments.github_app_acquire",
       callee_decl_name: "persist_issued_credentials",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1585,7 +1585,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "mtcollins1_boot_after_gate",
       callee_module_path: "gunbc.authorization_claim_slot",
       callee_decl_name: "claim_authorization_slot",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1595,7 +1595,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "mtcollins1_boot_after_gate",
       callee_module_path: "gunbc.machine_intake_mtcollins1_boot_run",
       callee_decl_name: "mtcollins1_boot_settle_from_fresh_clock",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 2,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1605,7 +1605,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "mtcollins1_boot_settle_from_fresh_clock",
       callee_module_path: "gunbc.authorization_claim_slot",
       callee_decl_name: "settle_authorization_claim",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1615,7 +1615,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "mtcollins1_census_image_publish_wet",
       callee_module_path: "gunbc.machine_intake_mtcollins1_census_image",
       callee_decl_name: "mtcollins1_census_image_publish_admitted",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1635,7 +1635,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "converge_drive_half",
       callee_module_path: "gunbc.review_sheet_spreadsheet_actuator",
       callee_decl_name: "converge_review_spreadsheet",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1645,7 +1645,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "converge_drive_half_cli",
       callee_module_path: "gunbc.review_sheet_converge_cli",
       callee_decl_name: "drive_half_exit",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1655,7 +1655,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "converge_review_sheet_all",
       callee_module_path: "gunbc.review_sheet_spreadsheet_actuator",
       callee_decl_name: "converge_review_spreadsheet",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1665,7 +1665,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "converge_review_spreadsheet",
       callee_module_path: "gunbc.review_sheet_legacy_extent_producer",
       callee_decl_name: "read_operator_legacy_declaration",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1815,7 +1815,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "srv3_boot_once_cd",
       callee_module_path: "gunbc.srv3_boot_once_cd",
       callee_decl_name: "srv3_boot_once_cd_gated",
-      resource: "std.resources.Clock",
+      resource: "Clock",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1825,7 +1825,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "srv3_boot_once_cd_gated",
       callee_module_path: "gunbc.authorization_claim_slot",
       callee_decl_name: "claim_authorization_slot",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1835,7 +1835,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "srv3_boot_once_cd_gated",
       callee_module_path: "gunbc.authorization_claim_slot",
       callee_decl_name: "settle_authorization_claim",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1845,7 +1845,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "srv3_boot_once_cd_operator_approved",
       callee_module_path: "gunbc.srv3_boot_once_cd",
       callee_decl_name: "srv3_boot_once_cd_gated",
-      resource: "std.resources.Clock",
+      resource: "Clock",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1855,7 +1855,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "gcp_oauth_access_token_dispatch_swapped",
       callee_module_path: "gunbc.auth.credentials",
       callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
-      resource: "std.resources.Network",
+      resource: "Network",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1865,7 +1865,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "witness_adc_refresh_absent_routes_to_adc_leaf",
       callee_module_path: "gunbc.auth.credentials",
       callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
-      resource: "std.resources.Network",
+      resource: "Network",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1875,7 +1875,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "witness_adc_refresh_null_optional_routes_to_adc_leaf",
       callee_module_path: "gunbc.auth.credentials",
       callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
-      resource: "std.resources.Network",
+      resource: "Network",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1885,7 +1885,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "witness_adc_refresh_present_routes_to_adc_leaf",
       callee_module_path: "gunbc.auth.credentials",
       callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
-      resource: "std.resources.Network",
+      resource: "Network",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1895,7 +1895,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "witness_leaves_are_distinguishable",
       callee_module_path: "gunbc.auth.credentials",
       callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
-      resource: "std.resources.Network",
+      resource: "Network",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1905,7 +1905,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "witness_swapped_gcloud_hits_adc_leaf",
       callee_module_path: "gunbc.auth.credentials",
       callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
-      resource: "std.resources.Network",
+      resource: "Network",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1935,7 +1935,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "candidacy_over_declaration_file",
       callee_module_path: "gunbc.review_sheet_legacy_extent_producer",
       callee_decl_name: "read_operator_legacy_declaration",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1945,7 +1945,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "decision_over_declaration_file",
       callee_module_path: "gunbc.review_sheet_legacy_extent_producer",
       callee_decl_name: "read_operator_legacy_declaration",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
@@ -1955,7 +1955,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       caller_decl_name: "mint_a_receipt_from_authored_standings",
       callee_module_path: "gunbc.github_app_acquisition",
       callee_decl_name: "census_app_acquisition_standing",
-      resource: "std.resources.Filesystem",
+      resource: "Filesystem",
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
