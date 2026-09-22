@@ -63,7 +63,7 @@ test fn a_refutable_head_sub_pattern_refuses_rather_than_becoming_a_wildcard() -
     "module fmhead\n\nimport std.types { List, Int }\n\ntype Box\n  = Zero\n  | One { v: Int }\n\nfn first_one(xs: List<Box>) -> Int {\n  match xs {\n    Empty => 0\n    Cons { head: One { v: n }, tail: _ } => n\n    Cons { head: _, tail: _ } => 0\n  }\n}\n",
     "src/fmhead.rs",
     ["compile_error!", "will not lower"],
-    []
+    ["__fm.is_empty()"]
   )
 }
 
@@ -75,6 +75,6 @@ test fn a_guarded_arm_refuses_rather_than_running_unguarded() -> Bool {
     "module fmguard\n\nimport std.types { List, Int }\n\nfn big_head(xs: List<Int>) -> Int {\n  match xs {\n    Empty => 0\n    Cons { head: h, tail: _ } if h > 10 => h\n    Cons { head: _, tail: _ } => 0\n  }\n}\n",
     "src/fmguard.rs",
     ["compile_error!", "will not lower"],
-    []
+    ["__fm.is_empty()"]
   )
 }
