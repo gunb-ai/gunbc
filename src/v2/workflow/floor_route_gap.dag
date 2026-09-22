@@ -1464,8 +1464,59 @@ fn floor_route_gap_expectation_chunk_20() -> List<FloorRouteGapExpectation> {
   }
 }
 
+// test.claim.compute.attempt_lifecycle_wet_witness: these six reach shell.Mktemp.DirWithTemplate,
+// which declares no mock_response, so the nominal floor refuses there and each identity is held.
+//
+// WHY THE ROSTER IS SIX AND NOT THE FILE'S NINE, which is the opposite of how the same file is
+// enrolled on the wet lane and is not an inconsistency. An enrolled row whose identity does NOT gap
+// is a STALE-ROUTE-GAP and refuses the run in the other direction, so this roster must name exactly
+// the identities that gap -- it is an observation of one run, not a policy about a file. The wet
+// schedule names all nine because it is a policy about an effect. The six are the ones the floor run
+// on gunbc#12040 at 9d9f0747 reported, and a hermetic claim_batch over the same tree reported the
+// same six; the CI run at the PREVIOUS head reported five, which is why the wet roster is not scoped
+// this way.
+//
+// THE EXCLUSION ROW DOES NOT COVER THESE, and that is the fact that made the first remedy
+// incomplete. gunbc.ci.ci_layer_roots excludes the file from DISCOVERY, which is what keeps the
+// file's siblings off the nominal floor -- but a CHANGED witness is selected regardless of discovery
+// exclusion, so a PR that edits this file plans its identities anyway. The exclusion holds for every
+// run that does not touch the file, and this roster plus the wet terminal is what holds for the run
+// that does.
+//
+// WHAT RE-OBSERVES THIS ROSTER, STATED BECAUSE NOTHING ELSE WOULD SAY IT. A six-row observation can
+// go stale, and the staleness refuses from the other direction, so the obligation is named here
+// rather than left for whoever meets the refusal. It is NARROWER than it first looks and the reason
+// is the same exclusion: these identities are planned ONLY on a run that edits this file. An
+// ordinary run never observes them, and an enrolled identity that does not execute does not red the
+// floor -- the evidence is main itself, which carries ninety-nine wet-witness rows for files that
+// are likewise discovery-excluded and is green. So this roster cannot rot quietly between heads.
+//
+// THE OBLIGATION IS THEREFORE ON THE NEXT CHANGE THAT TOUCHES THIS FILE, and it is one of two
+// mechanical repairs, each named by the run that reports it: an identity that gaps and is not
+// enrolled arrives as ROUTE-GAP and wants a row added; an identity enrolled here that reaches its
+// verdict arrives as STALE-ROUTE-GAP and wants its row deleted. Both are the floor telling the
+// author what the current subset is, which is the only authority for it -- the subset is a property
+// of evaluation order, and the five-at-one-head against six-at-the-next measured on gunbc#12040 is
+// what rules out predicting it.
+fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_lifecycle_wet_witness.a_launch_that_won_refuses_a_recovery_arriving_behind_it", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_lifecycle_wet_witness.a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_lifecycle_wet_witness.an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_lifecycle_wet_witness.an_undecodable_slot_is_unreadable_and_never_absent", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_lifecycle_wet_witness.settling_records_why_and_does_not_erase_what_it_settled", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_lifecycle_wet_witness.the_unit_binding_is_read_back_from_the_record_the_attempt_wrote", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {}
+  }  }  }  }  }  }
+}
+
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Cons { head: floor_route_gap_expectation_chunk_21(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {
