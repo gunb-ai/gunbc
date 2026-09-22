@@ -48,7 +48,7 @@ fn section_1_central_decision() -> List<MarkdownBlock> {
 fn section_2_forms() -> List<MarkdownBlock> {
   [
     h2(text: "2. The forms"),
-    p(text: "The spellings are proposals; the grammar row decides them (§10). The *meanings* are the design."),
+    p(text: "The spellings are proposals; the grammar row decides them (§12, Q2). The *meanings* are the design."),
     table4(
       header: r4("surface form", "canonical meaning", "carrier", "termination"),
       rows: [
@@ -93,7 +93,7 @@ fn section_3_for() -> List<MarkdownBlock> {
         r2("an immutable binder and immutable captures", "reading a preceding iteration's result: `for_body_requires_loop_carried_state`, naming `fold` and stateful `while`"),
         r2("a pure body", "a body with any effect, in the first version (effects arrive with §7's ordering evidence)"),
         r2("results assembled by domain position", "a result that depends on which iteration finishes first"),
-        r2("", "`break`, `continue`, early `return`: there is nothing for them to mean in a pointwise form"),
+        r2("every member runs to completion", "`break`, `continue`, early `return`: there is nothing for them to mean in a pointwise form"),
       ]
     ),
     p(text: "The compiler must **not** silently turn a reduction-shaped `for` into a `fold`. That would be surface syntax reinterpreted by analysis, which the rule forbids."),
