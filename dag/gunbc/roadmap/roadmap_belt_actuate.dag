@@ -453,7 +453,13 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   AttemptOrigin, FreshFromBase, ContinueFromAttempt, PriorAttemptFacts,
   ContinuationTurnRead, ContinuationTurnAbsent, ContinuationTurnKnown, ContinuationTurnUnreadable,
   ContinuationDecision, ContinuationFresh, ContinuationContinue, ContinuationRefused, ContinuationHold,
+  ContinuationEscalate, ContinuationPlanDefect, ContinuationStuck,
   continuation_decision, attempt_origin_turn,
+}
+import gunbc.roadmap.roadmap_supervisor {
+  SupervisorVerdictObservation, SupervisorVerdictAbsent, SupervisorVerdictBound, SupervisorVerdictUnreadable,
+  supervisor_verdict_basename, supervisor_verdict_decode, VerdictDecoded, VerdictNotDecodable,
+  supervisor_escalation_line,
 }
 import gunbc.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity }
 import extdeps.version { VersionIdentity }
@@ -1909,6 +1915,30 @@ fn belt_actuate_spawn_exec_modeled(
         provider: provider_wire_label,
         launch: launch,
       }
+    ContinuationEscalate { escalation } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "supervisor-escalation",
+        detail: supervisor_escalation_line(e: escalation),
+        provider: provider_wire_label,
+        launch: launch,
+      }
+    ContinuationPlanDefect { defect } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "supervisor-plan-defect",
+        detail: join(["the supervisor adjudicated this lineage a plan defect, routed to the node's owner -- no worker is re-dispatched against a known-bad plan: ", defect], ""),
+        provider: provider_wire_label,
+        launch: launch,
+      }
+    ContinuationStuck { cause } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "supervisor-stuck",
+        detail: join(["the supervisor adjudicated this lineage stuck; the task cannot advance: ", cause], ""),
+        provider: provider_wire_label,
+        launch: launch,
+      }
     ContinuationFresh { reason: _ } =>
       belt_actuate_spawn_with_origin(
         instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt,
@@ -1933,7 +1963,8 @@ fn belt_actuate_spawn_exec_modeled(
 // The capture observation is the same head-grain read the verify gate makes: a terminal worker
 // whose submission declared blocked or needs-context, or whose commit was preservation only, is
 // unfinished work the next turn continues from the prior branch -- not a candidate, and not a
-// reason to start over from base.
+// reason to start over from base. The node's identity and the decomposition edges ride along so a
+// capped lineage derives its supervisor rather than refusing.
 fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node: RoadmapNode) -> ContinuationDecision {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } =>
@@ -1945,10 +1976,13 @@ fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node
         Present { value: p } =>
           continuation_decision(
             prior: Present { value: PriorAttemptFacts {
+              node_id: node.node as String,
+              edges: declared_roadmap_edges(),
               attempt_key: p.attempt_key,
               branch: p.branch,
               worker_terminal: belt_provider_is_terminal(provider: p.provider),
               capture: belt_prior_attempt_capture(instance: instance, node_id: node.node, attempt_key: p.attempt_key),
+              supervisor_verdict: belt_supervisor_verdict_observe(instance: instance, node_id: node.node, attempt_key: p.attempt_key),
               verification: belt_verification_segment(progress: p),
               review: belt_review_segment(progress: p),
               goal_audit: belt_goal_audit_segment(progress: p),
@@ -1957,6 +1991,44 @@ fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node
           )
       }
     }
+  }
+}
+
+// THE SUPERVISOR VERDICT AT THE ATTEMPT'S OWN PATH, read the way the continuation-turn file is
+// read: absence established by a successful listing, content decoded through the verdict's own
+// codec, and a receipt that names a DIFFERENT attempt read as unexplained state rather than this
+// attempt's adjudication. The decision consumes the observation; it never touches the filesystem
+// itself.
+fn belt_supervisor_verdict_observe(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> SupervisorVerdictObservation {
+  let dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let path = join([dir, "/", supervisor_verdict_basename as String], "")
+  let listing = Filesystem.List(path: dir)
+  let read = Filesystem.Read(path: path)
+  match filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+    name: supervisor_verdict_basename as String,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  ) {
+    FilesystemFileAbsent(_) => SupervisorVerdictAbsent
+    FilesystemFileRead { path: _, content } =>
+      match supervisor_verdict_decode(text: content) {
+        VerdictNotDecodable { reason } => SupervisorVerdictUnreadable { reason: reason }
+        VerdictDecoded { receipt } =>
+          if receipt.attempt_key != attempt_key {
+            SupervisorVerdictUnreadable {
+              reason: join([
+                "the supervisor verdict at this attempt's path names attempt ", receipt.attempt_key,
+                ", which is unexplained state rather than this attempt's adjudication",
+              ], ""),
+            }
+          } else {
+            SupervisorVerdictBound { receipt: receipt }
+          }
+      }
+    FilesystemFileIndeterminate { cause } => SupervisorVerdictUnreadable { reason: cause }
+    FilesystemFileObservationsDisagree { path: _, cause } => SupervisorVerdictUnreadable { reason: cause }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => SupervisorVerdictUnreadable { reason: cause }
   }
 }
 

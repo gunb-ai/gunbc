@@ -24,6 +24,7 @@ import gunbc.compute.test_run {
   compile_process_command, compile_process_receipt_path, compile_process_entry_placeholder,
 }
 import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, review_guidance_prose }
+import gunbc.harness.harness_supervisor_guidance { supervisor_system_prompt_at }
 import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
 import gunbc.harness.harness_wire { harness_context_budget_for }
@@ -759,6 +760,93 @@ fn harness_auditor_cli(
         ),
         prompt: brief,
         step_budget: harness_reviewer_step_budget,
+      )
+      let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
+      harness_turn_exit_released(outcome: outcome, seat: seat_release)
+    }
+  }
+}
+
+// THE SUPERVISOR ENTRY: the reviewer's harness under the supervisor's own prompt
+// (gunbc.harness.harness_supervisor_guidance) and one typed output -- the verdict receipt the
+// belt's continuation decision reads on the next dispatch evaluation. Same seat admission, same
+// completion-by-artifact: the verdict file IS the session's product, so the turn completes when it
+// appears, exactly as the reviewer's does.
+//
+// THE BUDGET IS A DECLARED POLICY ROW, NOT A LITERAL (docs/plans/harness-work-lifecycle.md,
+// "Resource policy": escalation sessions run one to two magnitudes above the leaf budget they
+// supervise -- the supervisor must re-read the checkpoint, adjudicate, and still have runway to
+// act, which a same-size budget cannot do). The multiplier is the low end of the declared band,
+// applied to the worker's own row so the two budgets can never drift apart silently.
+data harness_supervisor_budget_multiplier: Int = 10
+
+data harness_supervisor_step_budget: Int = harness_worker_step_budget * harness_supervisor_budget_multiplier
+
+fn harness_supervisor_config(
+  worktree: FilePath,
+  timeout_program: FilePath,
+  request_scratch_path: FilePath,
+  events_path: FilePath,
+  verdict_dir: String,
+  verdict_name: String,
+  backend_url: String,
+  model: NonEmptyStr,
+  unit: HarnessServingUnit,
+  system_prompt: String,
+) -> HarnessTurnConfig {
+  HarnessTurnConfig {
+    backend_url: backend_url,
+    model: model as String,
+    max_tokens: harness_default_max_tokens,
+    serving_unit: unit,
+    reasoning_mode: harness_reasoning_mode,
+    wire_shape: harness_default_wire_shape,
+    system_prompt: system_prompt,
+    request_scratch_path: request_scratch_path,
+    events_path: events_path,
+    context_budget: harness_context_budget_for(unit: unit),
+    request_deadline: harness_request_deadline,
+    environment: HarnessToolEnvironment {
+      working_directory: worktree,
+      timeout_program: timeout_program,
+      duration_limit_seconds: harness_default_duration_limit_seconds,
+    },
+    completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
+  }
+}
+
+fn harness_supervisor_cli(
+  worktree: String,
+  brief: String,
+  timeout_program: String,
+  request_scratch_path: String,
+  events_path: String,
+  verdict_dir: String,
+  verdict_name: String,
+  attempt_identity: String,
+) -> ProcessExit {
+  let verdict_path = join([verdict_dir, "/", verdict_name], "")
+  let system_prompt = supervisor_system_prompt_at(worktree: worktree, verdict_path: verdict_path)
+  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "supervisor", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["supervisor:", verdict_path], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, policy: harness_seat_policy)
+  match binding {
+    HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
+    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, layout: _, model: bound_model, unit: bound_unit, class: _ } => {
+      let outcome = harness_run_turn(
+        config: harness_supervisor_config(
+          worktree: worktree as FilePath,
+          timeout_program: timeout_program as FilePath,
+          request_scratch_path: request_scratch_path as FilePath,
+          events_path: events_path as FilePath,
+          verdict_dir: verdict_dir,
+          verdict_name: verdict_name,
+          backend_url: url,
+          model: bound_model,
+          unit: bound_unit,
+          system_prompt: system_prompt,
+        ),
+        prompt: brief,
+        step_budget: harness_supervisor_step_budget,
       )
       let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
       harness_turn_exit_released(outcome: outcome, seat: seat_release)

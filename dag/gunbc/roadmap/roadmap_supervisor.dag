@@ -1,0 +1,211 @@
+module gunbc.roadmap.roadmap_supervisor
+
+import std.types { String, Int, List, NonEmptyStr }
+import gunbc.roadmap_model { RoadmapEdge }
+import gunbc.roadmap.roadmap_project { node_project_membership, project_member_ids, MembershipStandalone, MembershipMember, MembershipAmbiguous }
+import extdeps.languages.json.emit {
+  JsonValue,
+  json_string,
+  json_int,
+  json_object,
+  json_kv,
+  serialize_json,
+}
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
+}
+import gunbc.roadmap_publish { publication_receipt_member, publication_receipt_int_member, ReceiptMemberRead, ReceiptMemberUnreadable }
+
+// THE SUPERVISOR IS A MODELED SESSION ROLE, NOT A HUMAN PAGER (docs/plans/harness-work-lifecycle.md,
+// "Resource policy"). A budget is the alignment cadence, never a failure measure: when a lineage
+// spends its turn cap the question is "is the work still aligned", and the supervisor's
+// adjudication IS that verdict. Three routes exist and no fourth: Nominal issues a continuation
+// with a renewed budget on stated evidence; PlanDefect routes to the node's owner and never
+// re-dispatches a worker against a known-bad plan; Stuck is the typed cause that the task cannot
+// advance. This module is the one authority for the escalation target, the verdict vocabulary,
+// its codec, and the supervisor's budget policy.
+type SupervisorVerdict
+  = VerdictNominal { basis: String }
+  | VerdictPlanDefect { defect: String }
+  | VerdictStuck { cause: String }
+
+// THE TARGET IS DERIVED FROM THE DECOMPOSITION DAG, NEVER ROSTERED. A leaf escalates to the
+// supervisor of the arc that depends on it (its project, per gunbc.roadmap.roadmap_project); a
+// project-of-one leaf has no arc above it, so its own node's supervisor convenes; a root arc --
+// standalone with members of its own -- has no supervisor but the top. Ambiguous membership has no
+// derivation at all: the authority must say which arc owns the delivery before anyone can
+// supervise it, so the derivation returns Absent and the caller refuses with the ambiguity named.
+type SupervisorTarget
+  = SupervisorForNode { node_id: String }
+  | SupervisorAtTop
+
+fn supervisor_target_for(node_id: String, edges: List<RoadmapEdge>) -> SupervisorTarget? {
+  match node_project_membership(node_id: node_id, edges: edges) {
+    MembershipMember { arc } => Present { value: SupervisorForNode { node_id: arc } }
+    MembershipStandalone =>
+      if count(project_member_ids(arc: node_id, edges: edges)) > 0 {
+        Present { value: SupervisorAtTop }
+      } else {
+        Present { value: SupervisorForNode { node_id: node_id } }
+      }
+    MembershipAmbiguous { arcs: _ } => none
+  }
+}
+
+fn supervisor_target_line(target: SupervisorTarget) -> String {
+  match target {
+    SupervisorForNode { node_id } => join(["the supervisor of node ", node_id], "")
+    SupervisorAtTop => "the top (a root arc has no supervisor above it)"
+  }
+}
+
+// THE ESCALATION RECORD: what the continuation decision hands the dispatch lane when a capped
+// lineage has no verdict yet. Everything the supervisor session needs to convene from the
+// checkpoint is named here -- which node, which attempt, which branch, how many turns the lineage
+// spent, why it did not converge, and whose supervisor adjudicates.
+type SupervisorEscalation {
+  node_id: String
+  attempt_key: String
+  branch: String
+  turn: Int
+  target: SupervisorTarget
+  reason: String
+}
+
+fn supervisor_escalation_line(e: SupervisorEscalation) -> String {
+  join([
+    "attempt ", e.attempt_key, " of node ", e.node_id, " spent its ", to_string(value: e.turn),
+    "-turn lineage cap (", e.reason, ") and escalates to ", supervisor_target_line(target: e.target),
+  ], "")
+}
+
+// THE VERDICT RECEIPT IS BOUND TO THE TURN IT ADJUDICATES. A Nominal verdict authorizes exactly
+// one renewal: the continuation after the turn the supervisor read. The next cap-hit needs a NEW
+// verdict for THAT turn -- the old receipt cannot authorize it, which is what makes a stale or
+// fabricated verdict inert: the route reads the receipt's adjudicated turn against the lineage's,
+// never the label.
+type SupervisorVerdictReceipt {
+  attempt_key: String
+  adjudicated_turn: Int
+  verdict: SupervisorVerdict
+}
+
+// THE SCHEMA IS A WALL, on the same precedent as the submission artifact: a document whose schema
+// is not exactly this string is refused, so a future shape cannot be silently read as this one.
+data supervisor_verdict_schema: NonEmptyStr = "roadmap-supervisor-verdict/v1" as NonEmptyStr
+
+data supervisor_verdict_basename: NonEmptyStr = "supervisor-verdict.json" as NonEmptyStr
+
+fn supervisor_verdict_route_key(verdict: SupervisorVerdict) -> String {
+  match verdict {
+    VerdictNominal { basis: _ } => "nominal"
+    VerdictPlanDefect { defect: _ } => "plan-defect"
+    VerdictStuck { cause: _ } => "stuck"
+  }
+}
+
+fn supervisor_verdict_statement(verdict: SupervisorVerdict) -> String {
+  match verdict {
+    VerdictNominal { basis } => basis
+    VerdictPlanDefect { defect } => defect
+    VerdictStuck { cause } => cause
+  }
+}
+
+fn supervisor_verdict_from_route_key(key: String, statement: String) -> SupervisorVerdict? {
+  if key == "nominal" {
+    Present { value: VerdictNominal { basis: statement } }
+  } else if key == "plan-defect" {
+    Present { value: VerdictPlanDefect { defect: statement } }
+  } else if key == "stuck" {
+    Present { value: VerdictStuck { cause: statement } }
+  } else {
+    none
+  }
+}
+
+fn supervisor_verdict_json(receipt: SupervisorVerdictReceipt) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: supervisor_verdict_schema as String)),
+    json_kv(key: "attempt_key", value: json_string(s: receipt.attempt_key)),
+    json_kv(key: "adjudicated_turn", value: json_int(n: receipt.adjudicated_turn)),
+    json_kv(key: "route", value: json_string(s: supervisor_verdict_route_key(verdict: receipt.verdict))),
+    json_kv(key: "statement", value: json_string(s: supervisor_verdict_statement(verdict: receipt.verdict))),
+  ])
+}
+
+fn supervisor_verdict_text(receipt: SupervisorVerdictReceipt) -> String {
+  serialize_json(v: supervisor_verdict_json(receipt: receipt))
+}
+
+type SupervisorVerdictDecode
+  = VerdictDecoded { receipt: SupervisorVerdictReceipt }
+  | VerdictNotDecodable { reason: String }
+
+fn supervisor_verdict_decode_document(doc: JsonValue) -> SupervisorVerdictDecode {
+  match publication_receipt_member(doc: doc, key: "schema") {
+    ReceiptMemberUnreadable { reason: r } => VerdictNotDecodable { reason: r }
+    ReceiptMemberRead { value: schema } =>
+      if schema != (supervisor_verdict_schema as String) {
+        VerdictNotDecodable {
+          reason: join(["supervisor verdict schema is ", schema, ", not ", supervisor_verdict_schema as String], ""),
+        }
+      } else {
+        match publication_receipt_member(doc: doc, key: "attempt_key") {
+          ReceiptMemberUnreadable { reason: r } => VerdictNotDecodable { reason: r }
+          ReceiptMemberRead { value: attempt_key } =>
+            match publication_receipt_int_member(doc: doc, key: "adjudicated_turn") {
+              Absent =>
+                VerdictNotDecodable {
+                  reason: "supervisor verdict adjudicated_turn member is absent, duplicated or not an integer",
+                }
+              Present { value: adjudicated_turn } =>
+                match publication_receipt_member(doc: doc, key: "route") {
+                  ReceiptMemberUnreadable { reason: r } => VerdictNotDecodable { reason: r }
+                  ReceiptMemberRead { value: route } =>
+                    match publication_receipt_member(doc: doc, key: "statement") {
+                      ReceiptMemberUnreadable { reason: r } => VerdictNotDecodable { reason: r }
+                      ReceiptMemberRead { value: statement } =>
+                        match supervisor_verdict_from_route_key(key: route, statement: statement) {
+                          Absent =>
+                            VerdictNotDecodable {
+                              reason: join(["supervisor verdict route is ", route, ", which is not nominal, plan-defect or stuck"], ""),
+                            }
+                          Present { value: verdict } =>
+                            VerdictDecoded {
+                              receipt: SupervisorVerdictReceipt {
+                                attempt_key: attempt_key,
+                                adjudicated_turn: adjudicated_turn,
+                                verdict: verdict,
+                              },
+                            }
+                        }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn supervisor_verdict_decode(text: String) -> SupervisorVerdictDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } =>
+      VerdictNotDecodable {
+        reason: concat("the supervisor verdict is ", json_document_gap_text(gap: gap)),
+      }
+    JsonDocumentParsed { value: doc } => supervisor_verdict_decode_document(doc: doc)
+  }
+}
+
+// WHAT THE BELT OBSERVED AT THE ATTEMPT'S VERDICT PATH. Absence is established by a successful
+// listing, never a failed read -- the same rule the submission capture carries, and for the same
+// reason: a failed read answers both "no verdict yet" and "verdict unreadable", and the two
+// worlds have opposite correct actions (escalate versus refuse).
+type SupervisorVerdictObservation
+  = SupervisorVerdictAbsent
+  | SupervisorVerdictBound { receipt: SupervisorVerdictReceipt }
+  | SupervisorVerdictUnreadable { reason: String }

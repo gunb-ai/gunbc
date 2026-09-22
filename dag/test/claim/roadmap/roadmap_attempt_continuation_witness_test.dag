@@ -1,20 +1,55 @@
 module test.claim.roadmap.roadmap_attempt_continuation_witness_test
 
 import std.types { Bool, String, Int }
+import gunbc.roadmap_model { RoadmapEdge, RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_continuation {
   AttemptOrigin, FreshFromBase, ContinueFromAttempt, PriorAttemptFacts,
   ContinuationTurnRead, ContinuationTurnAbsent, ContinuationTurnKnown, ContinuationTurnUnreadable,
   ContinuationDecision, ContinuationFresh, ContinuationContinue, ContinuationRefused, ContinuationHold,
+  ContinuationEscalate, ContinuationPlanDefect, ContinuationStuck,
   continuation_decision, continuation_turn_cap, attempt_origin_base_ref, attempt_origin_turn, continuation_brief_prefix,
   continuation_alignment_l0_pointer, continuation_alignment_ask,
 }
 import gunbc.roadmap.roadmap_submission {
   WorkerSubmission, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
   SubmissionCapture, submission_digest,
+  SubmissionCaptureObservation,
   CaptureForHead, CaptureAbsent, CaptureUnreadable,
+}
+import gunbc.roadmap.roadmap_supervisor {
+  SupervisorVerdict, VerdictNominal, VerdictPlanDefect, VerdictStuck,
+  SupervisorVerdictReceipt, supervisor_verdict_text, supervisor_verdict_decode, VerdictDecoded, VerdictNotDecodable,
+  SupervisorVerdictObservation, SupervisorVerdictAbsent, SupervisorVerdictBound, SupervisorVerdictUnreadable,
+  SupervisorTarget, SupervisorForNode, SupervisorAtTop, supervisor_target_for,
+  supervisor_verdict_schema,
 }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, VerificationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment, WorkflowSegmentFailed, WorkflowSegmentComplete, WorkflowSegmentPending,
+}
+
+fn te(child: String, parent: String) -> RoadmapEdge {
+  RoadmapEdge { child: child as RoadmapNodeId, parent: parent as RoadmapNodeId }
+}
+
+fn pri(
+  capture: SubmissionCaptureObservation,
+  verdict: SupervisorVerdictObservation,
+  verification: WorkflowSegment?,
+  review: WorkflowSegment?,
+  goal_audit: WorkflowSegment?,
+) -> PriorAttemptFacts {
+  PriorAttemptFacts {
+    node_id: "n1",
+    edges: [te(child: "arc-1", parent: "n1")],
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    worker_terminal: true,
+    capture: capture,
+    supervisor_verdict: verdict,
+    verification: verification,
+    review: review,
+    goal_audit: goal_audit,
+  }
 }
 
 fn capture_for(submission: WorkerSubmission) -> CaptureForHead {
@@ -38,15 +73,13 @@ fn ready_capture() -> CaptureForHead {
 }
 
 fn failed_prior() -> PriorAttemptFacts {
-  PriorAttemptFacts {
-    attempt_key: "a1",
-    branch: "roadmap/n1/a1",
-    worker_terminal: true,
+  pri(
     capture: ready_capture(),
+    verdict: SupervisorVerdictAbsent,
     verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentFailed, detail: "sandbox render red at roadmap_sandbox.dag" } },
     review: none,
     goal_audit: none,
-  }
+  )
 }
 
 test fn no_prior_attempt_starts_fresh() -> Bool {
@@ -70,16 +103,13 @@ test fn a_failed_verdict_continues_on_the_prior_branch_with_the_verdict_in_the_b
 }
 
 test fn a_green_verdict_starts_fresh() -> Bool {
-  let p = failed_prior()
-  let green = PriorAttemptFacts {
-    attempt_key: p.attempt_key,
-    branch: p.branch,
-    worker_terminal: true,
+  let green = pri(
     capture: ready_capture(),
+    verdict: SupervisorVerdictAbsent,
     verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations" } },
     review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved" } },
     goal_audit: Present { value: WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved" } },
-  }
+  )
   match continuation_decision(prior: Present { value: green }, prior_turn: ContinuationTurnAbsent) {
     ContinuationFresh { reason: _ } => attempt_origin_base_ref(origin: FreshFromBase, instance_base_ref: "origin/main") == "origin/main"
     _ => false
@@ -89,12 +119,11 @@ test fn a_green_verdict_starts_fresh() -> Bool {
 // DISCRIMINATING: a green verification hands the decision to the review. Changes requested continues
 // with the reviewer's reasons in the brief; a pending review holds rather than spawning anything.
 test fn a_green_verification_with_changes_requested_continues_and_a_pending_review_holds() -> Bool {
-  let p = failed_prior()
   let verified = Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations" } }
-  let changes = PriorAttemptFacts { attempt_key: p.attempt_key, branch: p.branch, worker_terminal: true, capture: ready_capture(), verification: verified,
-    review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentFailed, detail: "dag/a.dag: the arm is missing" } }, goal_audit: none }
-  let pending = PriorAttemptFacts { attempt_key: p.attempt_key, branch: p.branch, worker_terminal: true, capture: ready_capture(), verification: verified,
-    review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } }, goal_audit: none }
+  let changes = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: verified,
+    review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentFailed, detail: "dag/a.dag: the arm is missing" } }, goal_audit: none)
+  let pending = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: verified,
+    review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } }, goal_audit: none)
   let a = match continuation_decision(prior: Present { value: changes }, prior_turn: ContinuationTurnAbsent) {
     ContinuationContinue { origin } => string_contains(s: continuation_brief_prefix(origin: origin), pattern: "review requested changes: dag/a.dag: the arm is missing")
     _ => false
@@ -106,9 +135,10 @@ test fn a_green_verification_with_changes_requested_continues_and_a_pending_revi
   a && b
 }
 
-// DISCRIMINATING: at the cap the decision refuses rather than starting fresh, and an unreadable turn
-// file refuses rather than being read as 1.
-test fn the_turn_cap_and_an_unreadable_turn_both_refuse_rather_than_restart() -> Bool {
+// DISCRIMINATING: at the cap the decision ESCALATES to the derived supervisor rather than
+// refusing (the cap is a cadence, not a failure), and an unreadable turn file still refuses
+// rather than being read as 1.
+test fn the_turn_cap_escalates_and_an_unreadable_turn_still_refuses() -> Bool {
   let at_cap = continuation_decision(
     prior: Present { value: failed_prior() },
     prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
@@ -118,8 +148,10 @@ test fn the_turn_cap_and_an_unreadable_turn_both_refuse_rather_than_restart() ->
     prior_turn: ContinuationTurnUnreadable { reason: "permission denied" },
   )
   match at_cap {
-    ContinuationRefused { reason } =>
-      string_contains(s: reason, pattern: "turns")
+    ContinuationEscalate { escalation } =>
+      escalation.attempt_key == "a1"
+        && escalation.branch == "roadmap/n1/a1"
+        && escalation.turn == continuation_turn_cap
         && match unreadable {
           ContinuationRefused { reason: r } => string_contains(s: r, pattern: "permission denied")
           _ => false
@@ -131,13 +163,12 @@ test fn the_turn_cap_and_an_unreadable_turn_both_refuse_rather_than_restart() ->
 // DISCRIMINATING: an approved review hands the decision to the goal audit; changes requested there
 // continue with the auditor's reasons, and a pending audit holds.
 test fn an_approved_review_with_audit_changes_continues_and_a_pending_audit_holds() -> Bool {
-  let p = failed_prior()
   let verified = Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations" } }
   let approved = Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "all approved" } }
-  let changes = PriorAttemptFacts { attempt_key: p.attempt_key, branch: p.branch, worker_terminal: true, capture: ready_capture(), verification: verified, review: approved,
-    goal_audit: Present { value: WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentFailed, detail: "the check could pass with the goal unmet" } } }
-  let pending = PriorAttemptFacts { attempt_key: p.attempt_key, branch: p.branch, worker_terminal: true, capture: ready_capture(), verification: verified, review: approved,
-    goal_audit: Present { value: WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } } }
+  let changes = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: verified, review: approved,
+    goal_audit: Present { value: WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentFailed, detail: "the check could pass with the goal unmet" } })
+  let pending = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: verified, review: approved,
+    goal_audit: Present { value: WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } })
   let a = match continuation_decision(prior: Present { value: changes }, prior_turn: ContinuationTurnAbsent) {
     ContinuationContinue { origin } => string_contains(s: continuation_brief_prefix(origin: origin), pattern: "goal audit requested changes: the check could pass with the goal unmet")
     _ => false
@@ -153,15 +184,13 @@ test fn an_approved_review_with_audit_changes_continues_and_a_pending_audit_hold
 // production shape of attempt cd172fe81b806160: the worker ended truthfully blocked, the belt
 // bound the capture, and a segment-only reading answered Fresh, discarding the implementation.
 fn declared_prior(readiness_explanation: WorkerSubmission) -> PriorAttemptFacts {
-  PriorAttemptFacts {
-    attempt_key: "a1",
-    branch: "roadmap/n1/a1",
-    worker_terminal: true,
+  pri(
     capture: capture_for(submission: readiness_explanation),
+    verdict: SupervisorVerdictAbsent,
     verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } },
     review: none,
     goal_audit: none,
-  }
+  )
 }
 
 fn blocked_prior() -> PriorAttemptFacts {
@@ -205,15 +234,13 @@ test fn a_needs_context_submission_continues_with_its_explanation_carried() -> B
 // DISCRIMINATING: a terminal prior with no capture at its head yielded -- the belt's commit was
 // preservation only -- and the next turn continues from the prior branch to finish and submit.
 test fn a_yielded_prior_continues_with_the_yield_reason_carried() -> Bool {
-  let p = PriorAttemptFacts {
-    attempt_key: "a1",
-    branch: "roadmap/n1/a1",
-    worker_terminal: true,
+  let p = pri(
     capture: CaptureAbsent,
+    verdict: SupervisorVerdictAbsent,
     verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } },
     review: none,
     goal_audit: none,
-  }
+  )
   match continuation_decision(prior: Present { value: p }, prior_turn: ContinuationTurnAbsent) {
     ContinuationContinue { origin } =>
       attempt_origin_turn(origin: origin) == 2
@@ -238,9 +265,10 @@ test fn a_ready_candidate_starts_fresh_and_never_continues() -> Bool {
   }
 }
 
-// DISCRIMINATING: the capture arm pays the same two refusals as a failed verdict -- an unreadable
-// turn file is never guessed as turn 1, and a lineage at the cap refuses with the cap named.
-test fn a_blocked_submission_at_the_cap_or_with_an_unreadable_turn_refuses() -> Bool {
+// DISCRIMINATING: the capture arm pays the same cap cadence and the same refusal as a failed
+// verdict -- a blocked lineage at the cap escalates with its stall named, and an unreadable turn
+// file is never guessed as turn 1.
+test fn a_blocked_submission_at_the_cap_escalates_and_an_unreadable_turn_refuses() -> Bool {
   let at_cap = continuation_decision(
     prior: Present { value: blocked_prior() },
     prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
@@ -250,9 +278,9 @@ test fn a_blocked_submission_at_the_cap_or_with_an_unreadable_turn_refuses() -> 
     prior_turn: ContinuationTurnUnreadable { reason: "permission denied" },
   )
   match at_cap {
-    ContinuationRefused { reason } =>
-      string_contains(s: reason, pattern: join([" of ", to_string(value: continuation_turn_cap), " turns"], ""))
-        && string_contains(s: reason, pattern: "blocked")
+    ContinuationEscalate { escalation } =>
+      escalation.turn == continuation_turn_cap
+        && string_contains(s: escalation.reason, pattern: "blocked")
         && match unreadable {
           ContinuationRefused { reason: r } => string_contains(s: r, pattern: "permission denied")
           _ => false
@@ -264,15 +292,13 @@ test fn a_blocked_submission_at_the_cap_or_with_an_unreadable_turn_refuses() -> 
 // DISCRIMINATING: a capture that cannot be established is refused, never read as a yield and
 // never as a candidate -- the decision does not guess over possibly-committed work.
 test fn an_unreadable_capture_refuses_with_its_reason() -> Bool {
-  let p = PriorAttemptFacts {
-    attempt_key: "a1",
-    branch: "roadmap/n1/a1",
-    worker_terminal: true,
+  let p = pri(
     capture: CaptureUnreadable { reason: "the capture record does not decode" },
+    verdict: SupervisorVerdictAbsent,
     verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } },
     review: none,
     goal_audit: none,
-  }
+  )
   match continuation_decision(prior: Present { value: p }, prior_turn: ContinuationTurnAbsent) {
     ContinuationRefused { reason } => string_contains(s: reason, pattern: "does not decode")
     _ => false
@@ -290,4 +316,158 @@ test fn the_alignment_ask_is_bounded_and_names_the_drift_route() -> Bool {
     && string_contains(s: continuation_alignment_ask, pattern: "not a failure")
     && string_contains(s: continuation_alignment_l0_pointer, pattern: "DESIGN.md")
     && string_contains(s: continuation_alignment_l0_pointer, pattern: "fail-closed")
+}
+
+// ------------------------------------------------------------------------------------------------
+// The supervisor escalation: the cap is a cadence, and the verdict receipt is the only route back.
+// ------------------------------------------------------------------------------------------------
+
+fn capped_prior(verdict: SupervisorVerdictObservation) -> PriorAttemptFacts {
+  pri(
+    capture: ready_capture(),
+    verdict: verdict,
+    verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentFailed, detail: "sandbox render red" } },
+    review: none,
+    goal_audit: none,
+  )
+}
+
+fn nominal_receipt(turn: Int) -> SupervisorVerdictObservation {
+  SupervisorVerdictBound {
+    receipt: SupervisorVerdictReceipt {
+      attempt_key: "a1",
+      adjudicated_turn: turn,
+      verdict: VerdictNominal { basis: "the worker was two files into a four-file port with every edit green" },
+    },
+  }
+}
+
+// THE TARGET IS DERIVED FROM THE DECOMPOSITION DAG: a leaf escalates to its arc's supervisor, a
+// project-of-one leaf to its own node's supervisor, a root arc (standalone with members) to the
+// top, and an ambiguous membership derives nothing at all.
+test fn the_escalation_target_is_derived_never_rostered() -> Bool {
+  match supervisor_target_for(node_id: "leaf", edges: [te(child: "arc", parent: "leaf")]) {
+    Present { value: SupervisorForNode { node_id } } =>
+      node_id == "arc"
+        && (match supervisor_target_for(node_id: "solo", edges: [te(child: "arc", parent: "leaf")]) {
+          Present { value: SupervisorForNode { node_id: own } } => own == "solo"
+          _ => false
+        })
+        && (match supervisor_target_for(node_id: "arc", edges: [te(child: "arc", parent: "leaf")]) {
+          Present { value: SupervisorAtTop } => true
+          _ => false
+        })
+        && (match supervisor_target_for(node_id: "leaf", edges: [te(child: "arc", parent: "leaf"), te(child: "arc2", parent: "leaf")]) {
+          Absent => true
+          Present { value: _ } => false
+        })
+    _ => false
+  }
+}
+
+// THE CAPPED LINEAGE ESCALATES TO ITS ARC'S SUPERVISOR with the whole checkpoint named -- never a
+// refusal, never a fresh start.
+test fn a_capped_lineage_escalates_to_the_derived_supervisor() -> Bool {
+  match continuation_decision(prior: Present { value: capped_prior(verdict: SupervisorVerdictAbsent) }, prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap }) {
+    ContinuationEscalate { escalation } =>
+      escalation.node_id == "n1"
+        && escalation.attempt_key == "a1"
+        && escalation.branch == "roadmap/n1/a1"
+        && escalation.turn == continuation_turn_cap
+        && (match escalation.target {
+          SupervisorForNode { node_id } => node_id == "arc-1"
+          _ => false
+        })
+    _ => false
+  }
+}
+
+// A NOMINAL VERDICT FOR THIS TURN RENEWS THE LINEAGE EXACTLY ONCE, on the supervisor's stated
+// evidence: the continuation runs at the next turn from the prior branch with the basis leading
+// the brief.
+test fn a_nominal_verdict_for_this_turn_issues_the_renewed_continuation() -> Bool {
+  match continuation_decision(
+    prior: Present { value: capped_prior(verdict: nominal_receipt(turn: continuation_turn_cap)) },
+    prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
+  ) {
+    ContinuationContinue { origin } =>
+      attempt_origin_turn(origin: origin) == continuation_turn_cap + 1
+        && attempt_origin_base_ref(origin: origin, instance_base_ref: "origin/main") == "roadmap/n1/a1"
+        && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "adjudicated this lineage Nominal")
+        && string_contains(s: continuation_brief_prefix(origin: origin), pattern: "two files into a four-file port")
+    _ => false
+  }
+}
+
+// RED CONTROL: a Nominal verdict bound to a DIFFERENT turn authorizes nothing -- the route reads
+// the receipt's adjudicated turn, never the label, so a stale or fabricated Nominal escalates
+// rather than issuing a continuation.
+test fn a_nominal_verdict_for_another_turn_does_not_continue() -> Bool {
+  match continuation_decision(
+    prior: Present { value: capped_prior(verdict: nominal_receipt(turn: 1)) },
+    prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
+  ) {
+    ContinuationEscalate { escalation } =>
+      string_contains(s: escalation.reason, pattern: "adjudicates a different turn")
+    _ => false
+  }
+}
+
+// PLANDEFECT AND STUCK ARE TERMINAL TYPED STATES OF THEIR OWN -- surfaced as themselves, never
+// spelled "failed": a budget spent is not a task failed.
+test fn plan_defect_and_stuck_verdicts_are_terminal_typed_states() -> Bool {
+  let defect = continuation_decision(
+    prior: Present { value: capped_prior(verdict: SupervisorVerdictBound { receipt: SupervisorVerdictReceipt { attempt_key: "a1", adjudicated_turn: continuation_turn_cap, verdict: VerdictPlanDefect { defect: "the brief scopes four files as one edit" } } }) },
+    prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
+  )
+  let stuck = continuation_decision(
+    prior: Present { value: capped_prior(verdict: SupervisorVerdictBound { receipt: SupervisorVerdictReceipt { attempt_key: "a1", adjudicated_turn: continuation_turn_cap, verdict: VerdictStuck { cause: "the emitter lacks the lowering this contract needs" } } }) },
+    prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
+  )
+  match defect {
+    ContinuationPlanDefect { defect: d } =>
+      string_contains(s: d, pattern: "scopes four files")
+        && match stuck {
+          ContinuationStuck { cause } => string_contains(s: cause, pattern: "lacks the lowering")
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// AN UNDECODABLE VERDICT REFUSES, never guessed: the decision does not invent an adjudication over
+// a lineage it cannot read.
+test fn an_unreadable_supervisor_verdict_refuses() -> Bool {
+  match continuation_decision(
+    prior: Present { value: capped_prior(verdict: SupervisorVerdictUnreadable { reason: "the verdict does not decode" }) },
+    prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
+  ) {
+    ContinuationRefused { reason } => string_contains(s: reason, pattern: "does not decode")
+    _ => false
+  }
+}
+
+// THE RECEIPT CODEC ROUND TRIPS, and the schema wall refuses a document that is not exactly this
+// shape -- the same discipline the submission artifact carries, because both are consumed by a
+// decision that must never guess.
+test fn the_verdict_receipt_round_trips_and_the_schema_wall_holds() -> Bool {
+  let receipt = SupervisorVerdictReceipt {
+    attempt_key: "a1",
+    adjudicated_turn: 3,
+    verdict: VerdictStuck { cause: "missing capability" },
+  }
+  match supervisor_verdict_decode(text: supervisor_verdict_text(receipt: receipt)) {
+    VerdictNotDecodable { reason: _ } => false
+    VerdictDecoded { receipt: r } =>
+      r.attempt_key == "a1"
+        && r.adjudicated_turn == 3
+        && (match r.verdict {
+          VerdictStuck { cause } => cause == "missing capability"
+          _ => false
+        })
+        && (match supervisor_verdict_decode(text: "{\"route\": \"stuck\", \"statement\": \"x\", \"attempt_key\": \"a1\", \"adjudicated_turn\": 3}") {
+          VerdictNotDecodable { reason } => string_contains(s: reason, pattern: "schema")
+          VerdictDecoded { receipt: _ } => false
+        })
+  }
 }

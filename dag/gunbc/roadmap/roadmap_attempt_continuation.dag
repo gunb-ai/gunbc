@@ -1,9 +1,16 @@
 module gunbc.roadmap.roadmap_attempt_continuation
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
+import gunbc.roadmap_model { RoadmapEdge }
 import gunbc.roadmap.roadmap_submission {
   SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable,
   SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
+}
+import gunbc.roadmap.roadmap_supervisor {
+  SupervisorVerdict, VerdictNominal, VerdictPlanDefect, VerdictStuck,
+  SupervisorVerdictReceipt,
+  SupervisorVerdictObservation, SupervisorVerdictAbsent, SupervisorVerdictBound, SupervisorVerdictUnreadable,
+  SupervisorTarget, SupervisorEscalation, supervisor_target_for,
 }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, VerificationWorkflowSegment,
@@ -31,18 +38,23 @@ type AttemptOrigin
     }
 
 // THE FACTS THE DECISION READS, and nothing else. The belt's progress carrier holds far more
-// (reconciliation, the round ledger, the admission receipt); the decision needs the prior attempt's
-// key and branch, whether its worker has ended, what its submission capture says the terminal state
-// meant, and what verification said, so it takes exactly those and a witness can author them without
-// building a whole progress row. The capture is the same head-grain observation the verify gate
-// reads: a terminal worker whose capture declares blocked or needs-context, or whose commit was
-// preservation only, has UNFINISHED work on its branch -- not a candidate -- and the next turn
-// continues from that branch rather than starting over from base.
+// (reconciliation, the round ledger, the admission receipt); the decision needs the node's identity
+// (the escalation target derives from it), the decomposition edges, the prior attempt's key and
+// branch, whether its worker has ended, what its submission capture says the terminal state meant,
+// what verification said, and whether a supervisor has adjudicated the lineage, so it takes
+// exactly those and a witness can author them without building a whole progress row. The capture
+// is the same head-grain observation the verify gate reads: a terminal worker whose capture
+// declares blocked or needs-context, or whose commit was preservation only, has UNFINISHED work on
+// its branch -- not a candidate -- and the next turn continues from that branch rather than
+// starting over from base.
 type PriorAttemptFacts {
+  node_id: String
+  edges: List<RoadmapEdge>
   attempt_key: String
   branch: String
   worker_terminal: Bool
   capture: SubmissionCaptureObservation
+  supervisor_verdict: SupervisorVerdictObservation
   verification: WorkflowSegment?
   review: WorkflowSegment?
   goal_audit: WorkflowSegment?
@@ -60,21 +72,34 @@ type ContinuationTurnRead
 // there would duplicate work the belt is about to judge, and continuing would act on a verdict that
 // does not exist; the honest move is to spawn nothing this tick and say why.
 //
-// THREE OUTCOMES BECAUSE THREE REMEDIES. Fresh starts from the base ref as before, with the reason
-// a fresh start was right (no prior, prior still running, prior verified green). Continue carries
-// the origin the spawn uses. Refused is the arm that must not widen: a lineage at its turn cap or a
-// prior attempt whose turn cannot be read does NOT fall back to a fresh start -- that would discard
-// committed work silently and restart the same loop -- it refuses with a located reason the
-// dashboard shows, and the operator decides.
+// THREE SPAWN OUTCOMES BECAUSE THREE REMEDIES, PLUS THE SUPERVISOR'S THREE. Fresh starts from the
+// base ref as before; Continue carries the origin the spawn uses; Hold spawns nothing while a
+// verdict is owed. Refused is the arm that must not widen: a prior attempt whose turn cannot be
+// read, a verdict receipt that cannot be decoded, or a membership the authority leaves ambiguous
+// does NOT fall back to a fresh start -- that would discard committed work silently -- it refuses
+// with a located reason the dashboard shows, and the operator decides.
+//
+// THE CAP IS A CADENCE, NOT A REFUSAL (owner ruling 2026-09-22; docs/plans/harness-work-lifecycle.md
+// "Resource policy"): a lineage that reaches its turn cap ESCALATES to the supervisor derived from
+// the decomposition DAG, and the supervisor's adjudication is the alignment verdict. Escalate
+// carries the escalation record when no verdict exists yet; a bound Nominal verdict for THIS turn
+// issues the renewed continuation on the supervisor's stated evidence; PlanDefect and Stuck are
+// terminal typed states of their own -- they are never spelled "failed", because a budget spent is
+// not a task failed.
 type ContinuationDecision
   = ContinuationFresh { reason: String }
   | ContinuationContinue { origin: AttemptOrigin }
   | ContinuationRefused { reason: String }
   | ContinuationHold { reason: String }
+  | ContinuationEscalate { escalation: SupervisorEscalation }
+  | ContinuationPlanDefect { defect: String }
+  | ContinuationStuck { cause: String }
 
-// THREE TURNS PER LINEAGE. The first turn does the work, the second acts on the verdict, the third
-// is the last chance before a human looks; a lineage that has not converged in three turns is
-// evidence about the brief or the contract, not a reason for a fourth worker.
+// THREE TURNS PER LINEAGE BEFORE THE SUPERVISOR HEARS IT. The first turn does the work, the second
+// acts on the verdict, the third is the last before the lineage escalates; a lineage that has not
+// converged in three turns is evidence about the brief or the contract, which is exactly the
+// supervisor's subject. The cap remains tunable policy attached to the anchor -- a cap hit
+// escalates again each time rather than failing silently.
 data continuation_turn_cap: Int = 3
 
 fn continuation_turn_label(turn: Int) -> String {
@@ -237,10 +262,11 @@ fn continuation_from_failed(prior: PriorAttemptFacts, verdict_detail: String, pr
 }
 
 // THE ONE PLACE A LINEAGE ADVANCES. Every route that continues -- a failed verdict, a blocked or
-// needs-context declaration, a yield -- pays the same two refusals before it mints the next turn:
-// an unreadable turn file refuses (never guessed as 1, or a lineage would run past its cap one
-// unreadable file at a time), and a lineage at the cap refuses with the cap named. `stall` is the
-// caller's one-clause account of why the prior turn did not converge, projected into the refusal.
+// needs-context declaration, a yield -- pays the same refusal before it mints the next turn: an
+// unreadable turn file refuses (never guessed as 1, or a lineage would run past its cap one
+// unreadable file at a time). Below the cap the next turn is issued; at the cap the lineage
+// escalates rather than refusing. `stall` is the caller's one-clause account of why the prior turn
+// did not converge, projected into the escalation's reason.
 fn continuation_continue_next_turn(prior: PriorAttemptFacts, verdict_detail: String, stall: String, prior_turn: ContinuationTurnRead) -> ContinuationDecision {
   match continuation_prior_turn(read: prior_turn) {
     Absent =>
@@ -251,13 +277,7 @@ fn continuation_continue_next_turn(prior: PriorAttemptFacts, verdict_detail: Str
       }
     Present { value: t } =>
       if t >= continuation_turn_cap {
-        ContinuationRefused {
-          reason: join([
-            "the lineage ending at attempt ", prior.attempt_key, " has spent ", to_string(value: t),
-            " of ", to_string(value: continuation_turn_cap),
-            " turns and ", stall, "; a fourth worker is not the remedy -- the operator decides",
-          ], ""),
-        }
+        continuation_at_cap(prior: prior, turn: t, stall: stall)
       } else {
         ContinuationContinue { origin: ContinueFromAttempt {
           parent_attempt_key: prior.attempt_key,
@@ -265,6 +285,72 @@ fn continuation_continue_next_turn(prior: PriorAttemptFacts, verdict_detail: Str
           turn: t + 1,
           verdict_detail: verdict_detail,
         } }
+      }
+  }
+}
+
+// THE CADENCE POINT ITSELF. A lineage at its cap asks the supervisor's question, and the answer is
+// read from the verdict receipt and nothing else: a receipt that does not decode is refused (never
+// guessed), a receipt for a DIFFERENT turn is stale and cannot authorize this one (the route reads
+// the receipt's adjudicated turn, never the label), and no receipt at all is the escalation
+// itself. A Nominal verdict for THIS turn renews the lineage exactly once, on the supervisor's
+// stated evidence; PlanDefect and Stuck are terminal typed states, surfaced as themselves.
+fn continuation_at_cap(prior: PriorAttemptFacts, turn: Int, stall: String) -> ContinuationDecision {
+  match prior.supervisor_verdict {
+    SupervisorVerdictUnreadable { reason } =>
+      ContinuationRefused {
+        reason: join([
+          "the lineage ending at attempt ", prior.attempt_key,
+          " reached its turn cap and its supervisor verdict could not be read: ", reason,
+          " -- the decision does not guess an adjudication",
+        ], ""),
+      }
+    SupervisorVerdictBound { receipt } =>
+      if receipt.adjudicated_turn == turn {
+        match receipt.verdict {
+          VerdictNominal { basis } =>
+            ContinuationContinue { origin: ContinueFromAttempt {
+              parent_attempt_key: prior.attempt_key,
+              branch: prior.branch,
+              turn: turn + 1,
+              verdict_detail: join([
+                "the supervisor adjudicated this lineage Nominal at turn ", to_string(value: turn),
+                ": ", basis, " -- a renewed budget is issued on that evidence",
+              ], ""),
+            } }
+          VerdictPlanDefect { defect } => ContinuationPlanDefect { defect: defect }
+          VerdictStuck { cause } => ContinuationStuck { cause: cause }
+        }
+      } else {
+        continuation_escalate(prior: prior, turn: turn, stall: join([stall, " (a supervisor verdict for turn ", to_string(value: receipt.adjudicated_turn), " exists but adjudicates a different turn and cannot authorize this one)"], ""))
+      }
+    SupervisorVerdictAbsent => continuation_escalate(prior: prior, turn: turn, stall: stall)
+  }
+}
+
+// THE ESCALATION RECORD, OR THE REFUSAL THE AUTHORITY OWES. The target derives from the
+// decomposition edges; a node whose membership is ambiguous has no supervisor to derive, and the
+// decision refuses with the ambiguity named rather than guessing one.
+fn continuation_escalate(prior: PriorAttemptFacts, turn: Int, stall: String) -> ContinuationDecision {
+  match supervisor_target_for(node_id: prior.node_id, edges: prior.edges) {
+    Absent =>
+      ContinuationRefused {
+        reason: join([
+          "the lineage ending at attempt ", prior.attempt_key,
+          " reached its turn cap, but the decomposition edges give node ", prior.node_id,
+          " more than one project; the authority must say which arc owns the delivery before a supervisor can be derived",
+        ], ""),
+      }
+    Present { value: target } =>
+      ContinuationEscalate {
+        escalation: SupervisorEscalation {
+          node_id: prior.node_id,
+          attempt_key: prior.attempt_key,
+          branch: prior.branch,
+          turn: turn,
+          target: target,
+          reason: stall,
+        },
       }
   }
 }
