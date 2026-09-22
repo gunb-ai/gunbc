@@ -958,6 +958,45 @@ fn native_route_member_termination(
   }
 }
 
+// THE LANE'S QUALIFICATION GATES A POSITIVE ANSWER AND NOTHING ELSE (review 70107).
+//
+// THE ARC THIS CLOSES IS WORTH STATING, because both ends of it were wrong. The first shape
+// consumed the lane's whole-route admission bit AS the operand's verdict, which is the scope
+// conflation rostered at `gunbc.recurring_failure_mode`
+// `route_scoped_qualification_read_as_one_members_verdict`. The repair removed that bit from the
+// decision ENTIRELY -- and that over-corrected: a refused qualification beside an all-passing
+// population answered `ObservationHeld`, exit 0, with the refusal demoted to a sentence. Ruling out
+// "qualification IS the verdict" never licensed "qualification may be IGNORED".
+//
+// WHY A REFUSED ROUTE CANNOT YIELD A PASS. Several qualification clauses are precisely the ones
+// establishing that the verdict surface is trustworthy at all: the false and true controls prove
+// the verdict path is live, and `MalformedSpecimenAccepted` means the route accepted poisoned
+// source -- the lane's own note says that when those fail, every verdict in the census is
+// WORTHLESS. Reporting a pass off rows with no established provenance is the fabricated plausible
+// output DESIGN section 5 forbids, and section 4b puts silent wrongness outside the ladder
+// entirely.
+//
+// AND WHY IT IS A CLAMP RATHER THAN AN OVERRIDE. A definite member failure still passes through
+// unchanged: a test that evaluated and returned false is a real observation whose provenance does
+// not depend on the route's integrity clauses, and demoting it would bury a located defect behind
+// an infrastructure problem. The gate is one-directional -- it can only ever make an answer weaker,
+// never stronger, and it can never manufacture a failure that no member reported.
+fn native_route_termination_under_qualification(
+  members: InvocationTermination,
+  lane_qualified: Bool
+) -> InvocationTermination {
+  if lane_qualified {
+    members
+  } else {
+    match members {
+      InvocationObservationHeld => InvocationSubjectUnreached {}
+      InvocationObservationDidNotHold => InvocationObservationDidNotHold {}
+      InvocationSubjectUnreached => InvocationSubjectUnreached {}
+      InvocationRefused => InvocationRefused {}
+    }
+  }
+}
+
 fn bare_reference_channel_termination(s: BareReferenceChannelStanding) -> InvocationTermination {
   match s {
     BareReferenceChannelRead { readings: r } =>

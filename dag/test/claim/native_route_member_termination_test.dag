@@ -167,3 +167,43 @@ test fn a_definite_failure_outranks_an_incomplete_population() -> Bool {
     row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestReturnedFalse {}),
   ], universe: 9, file_refusals: 7)) == "did_not_hold"
 }
+
+// THE LANE'S QUALIFICATION GATES A PASS AND NOTHING ELSE (review 70107). A refused route beside an
+// all-passing population used to answer "held", exit 0, with the refusal demoted to a sentence --
+// and several qualification clauses are exactly the ones establishing the verdict surface is
+// trustworthy at all, so those rows had no established provenance.
+test fn a_refused_qualification_cannot_yield_a_pass() -> Bool {
+  termination_name(t: native_route_termination_under_qualification(
+    members: InvocationObservationHeld {},
+    lane_qualified: false
+  )) == "subject_unreached"
+}
+
+// AND A QUALIFIED ROUTE CHANGES NOTHING, which is what makes the clamp a gate rather than a
+// constant. Without this arm an implementation that always answered SubjectUnreached would pass
+// the one above.
+test fn a_qualified_route_passes_the_member_standing_through() -> Bool {
+  termination_name(t: native_route_termination_under_qualification(
+    members: InvocationObservationHeld {},
+    lane_qualified: true
+  )) == "held"
+}
+
+// A DEFINITE FAILURE PASSES THROUGH A REFUSED QUALIFICATION UNCHANGED. Its provenance does not
+// depend on the route's integrity clauses, and demoting it would bury a located defect behind an
+// infrastructure problem. This is the arm that makes the gate one-directional.
+test fn a_refused_qualification_does_not_demote_a_definite_failure() -> Bool {
+  termination_name(t: native_route_termination_under_qualification(
+    members: InvocationObservationDidNotHold {},
+    lane_qualified: false
+  )) == "did_not_hold"
+}
+
+// THE GATE CANNOT MANUFACTURE A FAILURE NOBODY REPORTED. A refused route over an unreached
+// population stays unreached rather than becoming a failing test.
+test fn a_refused_qualification_does_not_invent_a_failure() -> Bool {
+  termination_name(t: native_route_termination_under_qualification(
+    members: InvocationSubjectUnreached {},
+    lane_qualified: false
+  )) == "subject_unreached"
+}

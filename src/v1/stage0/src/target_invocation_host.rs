@@ -1252,10 +1252,12 @@ pub fn native_route_default_pattern_text() -> String {
 /// still carried and still reported, because a route-integrity refusal is something an operator
 /// needs to see -- but it no longer decides this verb's exit status.
 ///
-/// WHY THE LANE SUMMARY STILL RIDES ON EVERY ARM. A population can hold while the route did not
-/// qualify (a job name, an unrecorded identity, an unattributed file refusal), and a reader given
-/// only "held" would not know the run around their tests was itself refused. Both facts are
-/// reported; only the member one decides the status.
+/// THE LANE'S QUALIFICATION GATES A PASS, AND THE SUMMARY RIDES ON EVERY ARM. An earlier shape of
+/// this function said "only the member one decides the status", which over-corrected the original
+/// conflation: ruling out "qualification IS the verdict" never licensed "qualification may be
+/// IGNORED", and a refused route beside an all-passing population answered exit 0 with the refusal
+/// demoted to a sentence (review 70107). A refused qualification now clamps a `held` to
+/// `SubjectUnreached` while letting a definite member failure through unchanged.
 fn run_native_test_route(pattern: &TargetPattern) -> InvocationOutcome {
     let rendered = render_target_pattern(pattern);
     match cli_run::run_required_v2_native(&self_host_source_roots(), &rendered) {
@@ -1263,6 +1265,7 @@ fn run_native_test_route(pattern: &TargetPattern) -> InvocationOutcome {
             native_member_outcome(
                 &rendered,
                 members,
+                true,
                 "the lane's qualification held",
                 &summary,
             )
@@ -1271,6 +1274,7 @@ fn run_native_test_route(pattern: &TargetPattern) -> InvocationOutcome {
             native_member_outcome(
                 &rendered,
                 members,
+                false,
                 "the lane's qualification REFUSED",
                 &summary,
             )
@@ -1290,15 +1294,32 @@ fn run_native_test_route(pattern: &TargetPattern) -> InvocationOutcome {
 fn native_member_outcome(
     rendered: &str,
     members: cli_run::NativeMemberTermination,
+    lane_qualified: bool,
     lane_note: &str,
     summary: &str,
 ) -> InvocationOutcome {
-    let termination = match members {
+    let member_termination = match members {
         cli_run::NativeMemberTermination::ObservationHeld => Termination::ObservationHeld,
         cli_run::NativeMemberTermination::ObservationDidNotHold => {
             Termination::ObservationDidNotHold
         }
         cli_run::NativeMemberTermination::SubjectUnreached => Termination::SubjectUnreached,
+    };
+    // `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored: the
+    // lane's qualification GATES a positive answer and nothing else. Several of its clauses are
+    // what establish the verdict surface is trustworthy at all -- the false and true controls, and
+    // MalformedSpecimenAccepted, whose own note says that when they fail every verdict in the
+    // census is worthless -- so a pass read off rows with no established provenance is the
+    // fabricated plausible output DESIGN section 5 forbids. The clamp is ONE-DIRECTIONAL: it can
+    // only weaken an answer, never strengthen one, and it never manufactures a failure no member
+    // reported.
+    let termination = if lane_qualified {
+        member_termination
+    } else {
+        match member_termination {
+            Termination::ObservationHeld => Termination::SubjectUnreached,
+            other => other,
+        }
     };
     let members_note = match members {
         cli_run::NativeMemberTermination::ObservationHeld => "every selected test passed",
@@ -1720,5 +1741,57 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
                  recognise as a FloorMemoryQualification: {other:?}"
             ),
         },
+    }
+}
+
+#[cfg(test)]
+mod native_route_termination_tests {
+    use super::*;
+
+    /// `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored here and
+    /// given its own red. The `.dag` witness pins the fold; this pins that THIS host applies it.
+    ///
+    /// A REFUSED QUALIFICATION CANNOT YIELD A PASS (review 70107). Several qualification clauses
+    /// are what establish the verdict surface is trustworthy at all, so a pass read off rows with
+    /// no established provenance is fabricated plausible output.
+    #[test]
+    fn a_refused_qualification_clamps_a_pass_to_unreached() {
+        let out = native_member_outcome(
+            "//v2/test/parse:all",
+            cli_run::NativeMemberTermination::ObservationHeld,
+            false,
+            "refused",
+            "s",
+        );
+        assert_eq!(out.termination, Termination::SubjectUnreached);
+    }
+
+    /// AND A QUALIFIED ROUTE PASSES THE MEMBER STANDING THROUGH, which is what makes the clamp a
+    /// gate rather than a constant: without this, always answering SubjectUnreached would pass the
+    /// arm above.
+    #[test]
+    fn a_qualified_route_passes_a_pass_through() {
+        let out = native_member_outcome(
+            "//v2/test/parse:all",
+            cli_run::NativeMemberTermination::ObservationHeld,
+            true,
+            "held",
+            "s",
+        );
+        assert_eq!(out.termination, Termination::ObservationHeld);
+    }
+
+    /// A DEFINITE FAILURE SURVIVES A REFUSED QUALIFICATION. Demoting it would bury a located defect
+    /// behind an infrastructure problem, and the gate is one-directional by construction.
+    #[test]
+    fn a_refused_qualification_does_not_demote_a_failure() {
+        let out = native_member_outcome(
+            "//v2/test/parse:all",
+            cli_run::NativeMemberTermination::ObservationDidNotHold,
+            false,
+            "refused",
+            "s",
+        );
+        assert_eq!(out.termination, Termination::ObservationDidNotHold);
     }
 }
