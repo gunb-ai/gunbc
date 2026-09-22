@@ -66,9 +66,11 @@ import gunbc.compile_census_probe { total_blocking_count_for }
 //
 // WHAT THIS DOES NOT ESTABLISH. It measures the SOURCE-to-refusal path on v2 and the source-to-
 // diagnostic-census path on v1. It does not compare emitted bytes, and it says nothing about which
-// of the 171 corpus call sites written out of declaration order would change binding -- that census
-// is in the pull request that carried this file, derived by a stated method over the corpus rather
-// than by an enrolled instrument, and it is a reading rather than a wall.
+// corpus call sites written out of declaration order would change binding. NO COUNT IS CARRIED HERE
+// ON PURPOSE (DESIGN section 6: name the instrument, never transcribe its output -- and declaring a
+// figure un-instrumented makes it the rotting number the rule forbids rather than exempting it).
+// The corpus population is a reading rather than a wall, and it has no producer that re-derives it;
+// when one exists it is named here and the sentence stops being qualitative.
 //
 // THE CLASS is `gunbc.recurring_failure_mode.an_application_binds_by_position_where_the_model_binds_by_name`,
 // whose next-rung trigger names the capability: the lowered application carries the argument NAME on
