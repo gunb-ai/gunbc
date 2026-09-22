@@ -663,6 +663,12 @@ pub enum CompilerDiagnostic {
         type_name: String,
         span: Rc<SourceSpan>,
     },
+    SiblingOperandEffectOrderUndetermined {
+        construct: String,
+        first_operand: String,
+        second_operand: String,
+        span: Rc<SourceSpan>,
+    },
     NonExhaustiveMatch {
         missing: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
@@ -992,6 +998,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::TestCodeReferenceBudgetMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::TestCodeReferenceRowOrphaned { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingField { span: s, .. } => s.clone(),
+        CompilerDiagnostic::SiblingOperandEffectOrderUndetermined { span: s, .. } => s.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::CircularDependency { span: s, .. } => s.clone(),
         CompilerDiagnostic::DuplicateModule { span: s, .. } => s.clone(),
@@ -1067,6 +1074,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::TestCodeReferenceRowOrphaned { referrer: r, .. } => v1_rt::concat(v1_rt::concat("the test-reference debt row for '".to_string(), r.clone()), "' names a module that no longer exists in the corpus: it is neither compiled here nor in the loaded name census. A row that can never be observed again must be deleted, not left to persist".to_string()),
     CompilerDiagnostic::TestCodeReferenceBudgetMismatch { referrer: r, declared: d, observed: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the test-reference debt row for '".to_string(), r.clone()), "' declares ".to_string()), (d.clone()).to_string()), " reference(s) but ".to_string()), (o.clone()).to_string()), " were observed. The count is an equality in both directions: more means new test-code references appeared and must be removed; fewer means debt was paid and the row must be lowered or deleted".to_string()),
     CompilerDiagnostic::MissingField { field: f, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("missing required field '".to_string(), f.clone()), "' in literal of type '".to_string()), t.clone()), "'".to_string()),
+    CompilerDiagnostic::SiblingOperandEffectOrderUndetermined { construct: c, first_operand: a, second_operand: b, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("two sibling operands of '".to_string(), c.clone()), "' each reach a declared effect ('".to_string()), a.clone()), "' and '".to_string()), b.clone()), "'), and nothing in the model orders them: sibling position is not a sequencing authority, and two realizations of this program may run them in opposite orders. Bind them with let, in the order this program needs, before constructing '".to_string()), c.clone()), "'".to_string()),
     CompilerDiagnostic::NonExhaustiveMatch { missing: ms, .. } => v1_rt::concat("non-exhaustive match: missing variant(s) ".to_string(), ms.clone().join(&", ".to_string())),
     CompilerDiagnostic::CircularDependency { modules: ms, .. } => v1_rt::concat("circular dependency detected: ".to_string(), ms.clone().join(&" -> ".to_string())),
     CompilerDiagnostic::DuplicateModule { name: n, .. } => v1_rt::concat(v1_rt::concat("duplicate module declaration: '".to_string(), n.clone()), "'".to_string()),
@@ -1229,6 +1237,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::MissingField { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::SiblingOperandEffectOrderUndetermined { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
