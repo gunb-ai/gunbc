@@ -12,13 +12,14 @@ import gunbc.primitive_egress.disposition {
 // THE WALL UNDER std.bytes bytes_qualified_octets, AND IT EXISTS BECAUSE THE ANNOTATION ALONE WAS
 // A READER OBLIGATION WEARING A MECHANISM'S CLOTHES.
 //
-// bytes_qualified_octets is admitted to std.integer qualified_octets' caller roster on the ground
-// that its members are octets by construction, so the uint8_octets_of_ints fold's refusal arm is
-// unreachable for it. That ground is NOT computed in this corpus the way word_to_octets' is:
+// bytes_qualified_octets OBSERVES its host value through the uint8_octets_of_ints fold rather than
+// sealing it, precisely because the range it would otherwise have asserted is not computed in this
+// corpus the way word_to_octets' is:
 // word_to_octets runs its members through uint8_of_int where a reader can follow it, while
 // bytes_octets' own .dag body is the divergent seam. The range is therefore established by ONE
 // declared row -- gunbc.primitive_egress.dispositions_text, the bytes_octets evidence row, whose
-// result reads "List<Int> of octets 0..255; total" -- and by nothing the mint's own module can see.
+// result reads "List<Int> of octets 0..255; total" -- and by nothing that module can see. The fold
+// is what makes the received value honest; this claim is about the DECLARED contract beside it.
 //
 // The annotation on the mint said that if the row stops saying 0..255 the mint owes the fold. In
 // prose that sentence is an obligation on whoever happens to read it, and DESIGN section 4c is

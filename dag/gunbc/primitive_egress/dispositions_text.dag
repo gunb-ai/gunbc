@@ -16,11 +16,12 @@ import gunbc.primitive_egress.disposition {
 // realizes most of them in Rust today is a route fact carried on the census standing, not evidence.
 // ONE ROW'S PROSE IS NOW AN INTERFACE, AND ITS NEXT EDITOR CANNOT SEE THAT FROM THE ROW.
 // The bytes_octets row's result text, "List<Int> of octets 0..255; total", is LOAD-BEARING
-// beyond this census: std.bytes bytes_qualified_octets is admitted to std.integer
-// qualified_octets' caller roster on the ground that its members are octets by construction, and
-// that ground is established by THIS ROW and by nothing that module can see -- bytes_octets' own
-// .dag body is the divergent seam, unlike word_to_octets, whose members run through uint8_of_int
-// where a reader can follow them.
+// beyond this census: std.bytes bytes_qualified_octets hands base64_encode's sealed QualifiedOctets
+// carrier to its callers, and the only statement anywhere that the members are in range is THIS
+// ROW -- bytes_octets' own .dag body is the divergent seam, unlike word_to_octets, whose members
+// run through uint8_of_int where a reader can follow them. bytes_qualified_octets therefore
+// OBSERVES the value through the admission fold rather than asserting the range; this row is what
+// says the range it is checking against is the declared one.
 //
 // test.claim.bytes_qualified_octets_range_contract_witness_test asserts that join, and it
 // discriminates LEXICALLY over this text. So "0 through 255", "octets in [0,255]", or a reflow
