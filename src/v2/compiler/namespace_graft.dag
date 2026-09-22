@@ -28,7 +28,7 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.qualified_name { QualifiedName }
-import v2.std.compilers.lexing { symbol_lexeme }
+import v2.compiler.parse { parse_tree_projection_edge }
 import v2.std.grammar {
   GrammarExpr,
   GrammarExprFold,
@@ -99,10 +99,11 @@ fn namespace_graft_is_module_shell(root: Node) -> Bool {
   }
 }
 
+// Consumes the parser's own roster of projection edges (v2.compiler.parse
+// parse_tree_projection_edge). The former lexeme-suffix test dissolved authored members named
+// `*_node_projection`; the roster is the producer's, so an authored name cannot match it.
 fn namespace_graft_parse_projection_edge(name: Symbol) -> Bool {
-  (name == ^grammar_production_identity_node_projection)
-    || (name == ^grammar_production_captured_node_projection)
-    || ends_with(s: symbol_lexeme(sym: name), suffix: "_node_projection")
+  parse_tree_projection_edge(name: name)
 }
 
 fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {

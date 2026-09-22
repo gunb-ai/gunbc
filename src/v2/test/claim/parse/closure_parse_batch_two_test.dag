@@ -3,6 +3,8 @@ module v2.test.parse.closure_parse_batch_two
 import v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse { cp_normalized, cp_normalizes, cp_parses }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.logic { Bool }
+import v2.std.node { Node, NodeFold, fold_node, name_occurrences }
+import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -49,6 +51,14 @@ test fn admit_callers_clause_parses_holds() -> Bool {
   )
 }
 
+// The clause is consumed at fn lowering: the declaration normalizes to an Arrow with the clause
+// discarded, which is the rung drop's population, so a retained clause shell would fail here.
+test fn admit_callers_clause_normalizes_holds() -> Bool {
+  cp_normalizes(
+    text: "module m.t\n\nfn q(m: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"a\", decl_name: \"c\")]\n{\n  m\n}\n"
+  )
+}
+
 test fn empty_admit_callers_refuses_as_in_v1_holds() -> Bool {
   match cp_parses(text: "module m.t\n\nfn q(m: Int) -> Int\n  admit_callers: []\n{\n  m\n}\n") {
     true => false
@@ -63,5 +73,44 @@ test fn else_less_if_refuses_at_lowering_with_its_cause_holds() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
       diagnostics_fatal_reason(d: d) == ^body_lowering_reason_else_less_if_unlowered
+  }
+}
+
+// F -- namespace_graft_parse_projection_edge consumes the parser's closed projection roster
+// (v2.compiler.parse parse_tree_projection_edge) instead of a "_node_projection" lexeme-suffix
+// test (v2.std.runtime runtime_value_node_projection and siblings). The two-declaration form is the
+// loud face of the defect (an ill-formed Conj); the single-declaration form is the silent one: the
+// member was dissolved and the module normalized WITHOUT it.
+fn named_edge_count_anywhere(root: Node, name: Symbol) -> Int {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(n) { name_occurrences(name: name, children: n.children) },
+      step: fn(acc, _, sub) { acc + sub }
+    }
+  )
+}
+
+test fn two_declarations_named_node_projection_normalize_holds() -> Bool {
+  cp_normalizes(
+    text: "module m.t\n\nfn a_value_node_projection(x: V) -> P {\n  x\n}\n\nfn b_node_projection(v: V) -> P {\n  v\n}\n"
+  )
+}
+
+test fn declaration_named_node_projection_is_kept_holds() -> Bool {
+  match cp_normalized(text: "module m.t\n\nfn a_node_projection(x: V) -> P {\n  x\n}\n") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      named_edge_count_anywhere(root: tree.root, name: ^a_node_projection) == 1
+  }
+}
+
+// The roster still sees through real projection structure: an ordinary module normalizes and
+// its authored member is reachable once, exactly as above, so the change is not a blanket accept.
+test fn ordinary_declaration_is_kept_once_holds() -> Bool {
+  match cp_normalized(text: "module m.t\n\nfn a(x: V) -> P {\n  x\n}\n") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      named_edge_count_anywhere(root: tree.root, name: ^a) == 1
   }
 }
