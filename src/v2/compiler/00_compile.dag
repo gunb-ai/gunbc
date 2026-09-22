@@ -2244,16 +2244,34 @@ fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse>
 // THE SOURCE FACTS ARE DERIVED ONCE AND CARRIED, BECAUSE THE LANE'S MAIN ALREADY HOLDS THEM.
 //
 // `native_lane_source_facts` is a fold over the WHOLE ingest that, per read, splits the file into
-// lines, scans for the module header, scans for imports, scans for the first malformed import, and
-// runs `discover_floor_rows_for_source`. It is corpus-wide BY DESIGN -- discovery is a corpus-wide
-// question and its refusals must hold outside any selection -- which is exactly what makes paying
-// for it twice expensive rather than merely untidy.
+// lines, scans for the module header, scans for imports, and scans for the first malformed import.
+// Those three scans stay corpus-wide, because they protect THIS LANE'S OWN COMPLETENESS: a
+// malformed import line in any module the closure walk can reach would silently narrow the
+// closure. Discovery no longer joins them for every read -- native_lane_discovery_for walks a
+// universe member or a module-less source and hands a zero state for anything else.
+//
+// THE PIPELINE AS IT NOW STANDS, because a reader meeting this function should not have to
+// assemble it:
+//
+//     read the supplied inventory, scan module and import facts   (corpus-wide)
+//         -> run discovery for native-universe members and module-less sources
+//         -> finalize those discovery outcomes
+//         -> apply the requested target pattern
+//         -> prepare the selected tests' dependency closure
+//
+// THE NATIVE-UNIVERSE BOUNDARY IS NOT THE SEVEN-TEST BOUNDARY, and conflating them would overstate
+// what this buys. Discovery is scoped to `v2.test.*` membership, not to the requested pattern, so
+// a run naming one package still walks every other native test module before the pattern narrows
+// the population -- and acquisition and the import scans remain broader still. This is an
+// incremental reduction with a boundary that is visible on purpose, not the focused path's final
+// shape.
 //
 // MEASURED, on the first native run of a selected pattern (2026-09-21, seven identities of
 // `v2.test.parse.expression_bodied_fn_decl_parse` at `//v2/test/parse/...:all`): the lane's own
 // `[native-cost-partition]` receipt reports `universe_derivation` at 23.35 s of a 121.4 s wall,
-// over `corpus_reads` 6482 while `closure_reads` was 133. So this is the phase that does NOT
-// narrow with the pattern, and it was being entered twice per run.
+// over `corpus_reads` 6482 while `closure_reads` was 133. That figure is the OLD PHASE COST, not a
+// saving demonstrated by this change: it says the phase did not narrow with the pattern and was
+// entered twice per run. What the saving actually is has to come from an integrated native run.
 //
 // The rendered adjudicate main binds `source_facts` for the closure derivation --
 // `native_lane_closure_modules`, `native_lane_closure_ingest`, `native_lane_ingest_receipt` and
@@ -2267,8 +2285,14 @@ fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse>
 // THE SPLIT IS WHERE THE VALUE ALREADY WAS. The body took `facts` after its first line, so
 // `native_lane_universe_of_facts` IS that body and this stays the ingest-taking entry for callers
 // that do not already hold the facts. The PATTERN is threaded rather than defaulted, so the entry
-// the main calls is the same one a caller naming a narrower pattern reaches -- when the argv
-// operand lands, that call site changes its pattern argument and nothing else.
+// the main calls is the same one a caller naming a narrower pattern reaches, so a call site
+// naming a different pattern changes that argument and nothing else.
+//
+// WHAT A NATIVE BUILD WOULD AND WOULD NOT ESTABLISH: that the rendered main passes the facts it
+// already bound is a property of emitted Rust, and no `.dag` arm holds it -- but a SUCCESSFUL
+// BUILD ALONE PROVES COMPILATION, NOT THE ABSENCE OF A SECOND FOLD. Establishing that needs the
+// produced main and its call path inspected for the carried binding, with the runtime claim read
+// off the lane's existing `[native-cost-partition]` observations.
 fn native_lane_universe_selected(ingest: SourceRootIngest, pattern: TargetPattern) -> Outcome<NativeLaneUniverse> {
   native_lane_universe_of_facts(facts: native_lane_source_facts(ingest: ingest), pattern: pattern)
 }
