@@ -315,8 +315,14 @@ fn mab_record_declarations(src: String) -> Outcome<FreeMonoid<Symbol>> {
   }
 }
 
+// NULLARY AND PURE so the floor prepares it once (v2.workflow.floor_pure_producer_share), for the
+// same reason the mab_resolved_* specimens are.
+fn mab_record_declarations_specimen() -> Outcome<FreeMonoid<Symbol>> {
+  mab_record_declarations(src: "module p\n\ntype R { f: Int }\ntype W = Int where non_empty\ntype C = A { v: Int } | B\ntype U {}\n")
+}
+
 test fn mab_where_alias_is_not_a_record() -> Bool {
-  match mab_record_declarations(src: "module p\n\ntype R { f: Int }\ntype W = Int where non_empty\ntype C = A { v: Int } | B\ntype U {}\n") {
+  match mab_record_declarations_specimen() {
     Rejected { diagnostics: _ } => false
     Accepted { value: names, diagnostics: _ } =>
       names == Cons { head: ^R, tail: Cons { head: ^U, tail: Empty } }
