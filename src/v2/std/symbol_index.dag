@@ -1,10 +1,12 @@
 module v2.std.symbol_index
 
 
-import std.algebra { Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra {
   HeadAbsent,
   HeadFound,
+  contains,
+  fold_list,
   is_empty,
   length,
   list_head,
@@ -52,22 +54,87 @@ type LexicalLookup
   | LexicalAmbiguous { candidates: FreeMonoid<LexicalBindingCandidate> }
   | LexicalUnbound
 
+// A BINDING POSITION IS NOT THE SAME FACT AS A DECLARING POSITION, AND THE THIRD FIELD IS WHERE
+// THEY COME APART. `entries` answers "what declaration lives at this qualified path" -- one
+// declaration, because a path names a place in the containment tree. A BINDING position is where a
+// reference may see a name, and a transmuted import binds a name at the importing module's position
+// whose declaration lives somewhere else entirely. Two things can therefore claim one binding
+// position -- a module that imports `N` from two places, or declares `N` and also imports it -- and
+// a map keyed by that position has exactly one slot, so the second writer would silently take it.
+// That is nearest-wins at distance zero, which docs/plans/namespace-resolution-design.md section 13
+// rejects as a class, and it is invisible: the loser leaves no trace to refuse over.
+//
+// SO CLAIMANTS ARE COUNTED BY DECLARING PATH, NOT BY NODE. The obvious cheaper test -- treat a
+// second writer as the same binding when the node it carries equals the one already there -- is
+// wrong, and wrong in the direction that reports a green: two DISTINCT declarations in two modules
+// are routinely structurally identical (`type NcrTwin = Bool` in each of two namespaces builds the
+// same node), so node equality silently merges two binders into one and the ambiguity disappears.
+// It was measured doing exactly that. A declaration's identity is WHERE IT IS DECLARED, so that is
+// what this map holds: every declaring path claiming a binding position, the first one included,
+// which is also what the refusal must name.
 type SymbolIndex {
   entries: Map<QualifiedName, Node>
   global_bare: Map<Symbol, GlobalBareBindingState>
+  bound_declarings: Map<QualifiedName, FreeMonoid<QualifiedName>>
 }
 
 fn empty_symbol_index() -> SymbolIndex {
   SymbolIndex {
     entries: empty_map(),
-    global_bare: empty_map()
+    global_bare: empty_map(),
+    bound_declarings: empty_map()
+  }
+}
+
+// A CONTESTED POSITION ANSWERS NOTHING, AND THAT IS THE WHOLE REASON THIS IS NOT A PLAIN MAP READ.
+// `entries` holds ONE node per path, so when two declarations claim one binding position it holds
+// whichever was applied first -- a fill-order winner. That is harmless only if nothing reads it
+// without asking who else claimed the position, and review 69760 on gunbc#12009 found the readers
+// that did: the qualified-path door in v2.compiler.resolve read `entries` directly, so an absolute
+// reference to a doubly-bound name resolved to the first binder with NO diagnostic, while the same
+// name spelled bare refused as ambiguous. One rule, two answers, decided by how the reference was
+// spelled.
+//
+// So the CONTEST IS CHECKED HERE, at the single read every consumer already goes through, rather
+// than at each door. A contested path reads as ABSENT: no consumer can be handed a pick. The door
+// that must say WHY -- the qualified one -- asks symbol_index_absolute_candidates first and refuses
+// with both binders named; every other reader gets an absence and refuses at its own boundary,
+// which is fail-closed rather than a silent winner.
+// THE RAW SLOT, READ BY THE THINGS THAT ARE ASKING ABOUT STORAGE RATHER THAN ABOUT MEANING. The
+// candidate collector needs the node behind EACH claimant of a contested position, and the
+// contest-aware answer below would hand it an absence for exactly those -- which silently collapsed
+// a two-binder refusal back to one binder the first time this split was written. `entries` is where
+// a declaration is stored; `symbol_index_lookup` is what a reference is entitled to be told.
+fn symbol_index_entry_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Node> {
+  match v2.std.collection.map_get(index.entries, qualified_path) {
+    Accepted { value: opt, diagnostics: _ } => opt
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
 fn symbol_index_lookup(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Node> {
-  match v2.std.collection.map_get(index.entries, qualified_path) {
-    Accepted { value: opt, diagnostics: _ } => opt
-    Rejected { diagnostics: _ } => optional_absent()
+  if length(xs: symbol_index_bound_declarings(index: index, binding_path: qualified_path)) > 1 {
+    optional_absent()
+  } else {
+    symbol_index_entry_at(index: index, qualified_path: qualified_path)
+  }
+}
+
+// THE CLAIMANTS OF AN ABSOLUTE PATH, for the door that binds by the whole path rather than by
+// walking a chain. Same fold the chain collector uses, asked at the path's own position, so the two
+// doors cannot disagree about who claims a position.
+fn symbol_index_absolute_candidates(
+  index: SymbolIndex,
+  qualified_path: QualifiedName
+) -> FreeMonoid<LexicalBindingCandidate> {
+  match qualified_name_last_segment(qn: qualified_path) {
+    Absent => Empty
+    Present { value: leaf } =>
+      symbol_index_candidates_at(
+        index: index,
+        position: qualified_name_init(qn: qualified_path),
+        name: leaf
+      )
   }
 }
 
@@ -92,7 +159,8 @@ fn symbol_index_track_global_bare(
                   m: index.global_bare,
                   key: leaf,
                   value: GlobalBareAmbiguous
-                )
+                ),
+                bound_declarings: index.bound_declarings
               }
             }
           Absent =>
@@ -102,7 +170,8 @@ fn symbol_index_track_global_bare(
                 m: index.global_bare,
                 key: leaf,
                 value: GlobalBareUnique { node: resolved, path: qualified_path }
-              )
+              ),
+              bound_declarings: index.bound_declarings
             }
         }
         Rejected { diagnostics: _ } => index
@@ -117,7 +186,8 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
       key: qualified_path,
       value: resolved
     ),
-    global_bare: index.global_bare
+    global_bare: index.global_bare,
+    bound_declarings: index.bound_declarings
   }
   symbol_index_track_global_bare(
     index: with_entry,
@@ -137,13 +207,125 @@ fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> Global
   }
 }
 
-fn symbol_index_try_lexical_at(
+
+// BINDING A NAME AT A POSITION IS A DIFFERENT OPERATION FROM RECORDING A DECLARATION, and this is
+// the one writer for it. `symbol_index_insert` answers "this declaration lives at this path", where
+// binding position and declaring position are the same thing and a second writer at one path is a
+// containment-tree impossibility. A BINDING may be minted at a position that is not the
+// declaration's own -- an alias row, a transmuted import -- and there two claimants at one position
+// are ordinary. The first claimant takes the slot and every later DIFFERENT claimant is recorded as
+// contested rather than dropped, because the alternative is that the index answers with whichever
+// declaration happened to be written last: a silent pick made by fill order, which is the class
+// docs/plans/namespace-resolution-design.md section 13 refuses. Re-binding the SAME declaration is
+// idempotent and contests nothing -- fill is run over roots whose bindings legitimately repeat, and
+// a position contested with itself would refuse every reference to a name bound exactly once.
+// THE INCUMBENT COUNTS EVEN THOUGH IT NEVER REGISTERED. Pass A writes a module's own declarations
+// through symbol_index_insert, which records no claimant -- it does not need one, because a
+// containment path names one place in the tree and cannot be claimed twice. But that leaves a
+// position a DECLARATION holds looking, to bind_at, exactly like a position nothing holds: `prior`
+// is empty either way. A module that declares `N` and also imports `N` therefore had its own
+// declaration overwritten by the import, silently, which is precisely the pick this machinery
+// exists to refuse -- it shipped that way and a reviewer of gunbc#12009 found it.
+//
+// The repair reads the incumbent rather than registering every declaration as it is written: an
+// occupied position with no recorded claimant was written by pass A, where the binding path IS the
+// declaring path, so that path is the incumbent's name. Recording all of them up front would double
+// the index for the one case in a thousand where a second claimant ever arrives.
+fn symbol_index_claimants_at(
+  index: SymbolIndex,
+  binding_path: QualifiedName
+) -> FreeMonoid<QualifiedName> {
+  let recorded = symbol_index_bound_declarings(index: index, binding_path: binding_path)
+  if is_empty(xs: recorded) {
+    match symbol_index_entry_at(index: index, qualified_path: binding_path) {
+      Present { value: _ } => Cons { head: binding_path, tail: Empty }
+      Absent => Empty
+    }
+  } else {
+    recorded
+  }
+}
+
+fn symbol_index_bind_at(
+  index: SymbolIndex,
+  binding_path: QualifiedName,
+  declaring_path: QualifiedName,
+  resolved: Node
+) -> SymbolIndex {
+  let prior = symbol_index_claimants_at(index: index, binding_path: binding_path)
+  if contains(xs: prior, item: declaring_path, eq: fn(a, b) { a == b }) {
+    index
+  } else {
+    let recorded = SymbolIndex {
+      entries: index.entries,
+      global_bare: index.global_bare,
+      bound_declarings: map_insert(
+        m: index.bound_declarings,
+        key: binding_path,
+        value: list_snoc_item(xs: prior, item: declaring_path)
+      )
+    }
+    if is_empty(xs: prior) {
+      symbol_index_insert(index: recorded, qualified_path: binding_path, resolved: resolved)
+    } else {
+      recorded
+    }
+  }
+}
+
+fn symbol_index_bound_declarings(
+  index: SymbolIndex,
+  binding_path: QualifiedName
+) -> FreeMonoid<QualifiedName> {
+  match v2.std.collection.map_get(index.bound_declarings, binding_path) {
+    Accepted { value: opt, diagnostics: _ } => match opt {
+      Present { value: declarings } => declarings
+      Absent => Empty
+    }
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+// EVERY CLAIMANT OF ONE BINDING POSITION, NOT THE ONE THAT WON THE SLOT. The collector below walks
+// positions, and at each position it must learn how MANY things bind the name there, not merely
+// whether something does -- a position that answers "one" while two declarations claim it is the
+// silent pick this index exists not to make. The occupant is named by the binding path, which is a
+// spelling the author can actually write; each contested claimant is named by its DECLARING path,
+// which is what a reader must see to tell the two apart (naming the binding path twice would report
+// one spelling as competing with itself). A contested claimant whose declaration has since left the
+// index contributes nothing rather than a candidate with no node behind it.
+fn symbol_index_candidates_at(
   index: SymbolIndex,
   position: QualifiedName,
   name: Symbol
-) -> Optional<Node> {
-  let candidate_path = qualified_name_snoc(qn: position, segment: name)
-  symbol_index_lookup(index: index, qualified_path: candidate_path)
+) -> FreeMonoid<LexicalBindingCandidate> {
+  let binding_path = qualified_name_snoc(qn: position, segment: name)
+  let bound = symbol_index_bound_declarings(index: index, binding_path: binding_path)
+  if is_empty(xs: bound) {
+    match symbol_index_entry_at(index: index, qualified_path: binding_path) {
+      Present { value: node } =>
+        Cons {
+          head: LexicalBindingCandidate { path: binding_path, node: node },
+          tail: Empty
+        }
+      Absent => Empty
+    }
+  } else {
+    fold_list(
+      xs: bound,
+      empty: Empty,
+      cons: fn(acc, declaring) {
+        match symbol_index_entry_at(index: index, qualified_path: declaring) {
+          Present { value: node } =>
+            list_snoc_item(
+              xs: acc,
+              item: LexicalBindingCandidate { path: declaring, node: node }
+            )
+          Absent => acc
+        }
+      }
+    )
+  }
 }
 
 fn symbol_index_lexical_collect(
@@ -152,17 +334,11 @@ fn symbol_index_lexical_collect(
   name: Symbol,
   acc: FreeMonoid<LexicalBindingCandidate>
 ) -> FreeMonoid<LexicalBindingCandidate> {
-  let with_current = match symbol_index_try_lexical_at(index: index, position: position, name: name) {
-    Present { value: node } =>
-      list_snoc_item(
-        xs: acc,
-        item: LexicalBindingCandidate {
-          path: qualified_name_snoc(qn: position, segment: name),
-          node: node
-        }
-      )
-    Absent => acc
-  }
+  let with_current = fold_list(
+    xs: symbol_index_candidates_at(index: index, position: position, name: name),
+    empty: acc,
+    cons: fn(a, candidate) { list_snoc_item(xs: a, item: candidate) }
+  )
   if is_empty(xs: position) {
     with_current
   } else {

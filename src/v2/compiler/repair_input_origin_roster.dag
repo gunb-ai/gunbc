@@ -41,7 +41,7 @@ import v2.compiler.resolution_provenance {
   module_roster_from_roots,
   resolve_reference_sites
 }
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root_nodes }
 
 // NAMESPACE-XL STAGE XL-0: THE REPAIR-INPUT ORIGIN DENOMINATOR, ON THE v2 ROUTE.
 //
@@ -186,7 +186,7 @@ fn repair_input_origin_roster_over_roots(
   let collected = collect_reference_sites(roots: roots)
   RepairInputOriginRoster {
     carriers: repair_input_origin_roster_from_sites(
-      index: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: roots),
+      index: symbol_index_fill_module_root_nodes(index: empty_symbol_index(), roots: roots),
       module_roster: module_roster_from_roots(roots: roots),
       sites: collected.sites
     ),

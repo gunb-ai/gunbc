@@ -38,7 +38,7 @@ import v2.compiler.resolution_provenance {
   resolve_reference_sites
 }
 import v2.compiler.source_authority { SourceRootIngest }
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root_nodes }
 
 // XL-3 PRODUCER: one mention, one spelling row, over the production ingest route.
 //
@@ -115,7 +115,7 @@ fn spelling_census_over_roots(roots: FreeMonoid<Node>) -> DeclaringIdentitySpell
   DeclaringIdentitySpellingCensus {
     rows: fold_list(
       xs: resolve_reference_sites(
-        index: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: roots),
+        index: symbol_index_fill_module_root_nodes(index: empty_symbol_index(), roots: roots),
         roster: module_roster_from_roots(roots: roots),
         sites: collected.sites
       ),
