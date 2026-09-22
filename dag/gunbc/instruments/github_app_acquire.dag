@@ -312,7 +312,6 @@ fn census_app_observe_receipt() -> ProcessExit {
 }
 
 fn census_app_observe_classified(record: GitHubAppAcquisitionRecord) -> ProcessExit
- 
 {
   let observation = observe_census_app_live(
     address: census_app_read_address(record: record),

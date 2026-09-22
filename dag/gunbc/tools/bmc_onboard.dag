@@ -202,7 +202,6 @@ fn netrc_failure_reason(outcome: NetrcWriteOutcome, stage: NonEmptyStr) -> Strin
 // while proving nothing about the rotation it exists to confirm -- a green that means the opposite
 // of what it reads as.
 fn bmc_rotate_credential(plan: BmcOnboardingPlan, current_password: String, new_credential: Secret) -> ProcessExit
- 
 {
   let host = plan.bmc.host
   let account = plan.factory_login.username
@@ -306,7 +305,6 @@ type BmcCustodyContainer
   | BmcCustodyRefused { reason: String }
 
 fn bmc_establish_custody_container(secret_id: NonEmptyStr, token: Secret) -> BmcCustodyContainer
- 
 {
   match observe_secret_container(project: fleet_secrets_gcp_project, secret_id: secret_id, token: token) {
     SecretContainerObserved { container: _ } => BmcCustodyEstablished
@@ -328,7 +326,6 @@ fn bmc_establish_custody_container(secret_id: NonEmptyStr, token: Secret) -> Bmc
 // -- because the rule is the same for both: a credential the BMC accepts but custody cannot return
 // is a lockout, so nothing is sent to the BMC until custody has proven it holds these bytes.
 fn bmc_store_credential_verified(secret_id: NonEmptyStr, token: Secret, credential: Secret, host_label: String) -> BmcCustodyContainer
- 
 {
   match bmc_establish_custody_container(secret_id: secret_id, token: token) {
     BmcCustodyRefused { reason: r } => return BmcCustodyRefused { reason: r }
@@ -371,7 +368,6 @@ fn bmc_store_credential_verified(secret_id: NonEmptyStr, token: Secret, credenti
 }
 
 fn bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSource, credential: Secret, current_password: String) -> ProcessExit
- 
 {
   match ensure_access_token(source: token_source) {
     AccessTokenUpsertRequired { plan: upsert_plan } =>
@@ -390,7 +386,6 @@ fn bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSource
 }
 
 fn bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> ProcessExit
- 
 {
   let host = plan.bmc.host
   let account = plan.factory_login.username
@@ -423,7 +418,6 @@ fn bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenS
 
 
 fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> BmcCredentialProbeResult
- 
 {
   let host = plan.bmc.host
   let account = plan.factory_login.username
@@ -472,7 +466,6 @@ fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessToken
 }
 
 fn bmc_converge_credential(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> ProcessExit
- 
 {
   root_resp = redfish.Http.GetServiceRoot(bmc_host: plan.bmc.host)
   if root_resp.success == false {
@@ -495,19 +488,16 @@ fn bmc_converge_credential(plan: BmcOnboardingPlan, token_source: AccessTokenSou
 }
 
 fn srv3_probe_credential_phase() -> BmcCredentialProbeResult
- 
 {
   bmc_probe_credential_phase(plan: srv3_onboarding_plan, token_source: GcloudPrintToken)
 }
 
 fn srv3_converge_credential() -> ProcessExit
- 
 {
   bmc_converge_credential(plan: srv3_onboarding_plan, token_source: GcloudPrintToken)
 }
 
 fn srv4_converge_credential() -> ProcessExit
- 
 {
   bmc_converge_credential(plan: srv4_onboarding_plan, token_source: GcloudPrintToken)
 }
@@ -516,7 +506,6 @@ fn srv4_converge_credential() -> ProcessExit
 // workflow, or an operator token file in a session -- through the one selection authority, rather
 // than the gcloud CLI the older srv3/srv4 entries hard-code.
 fn bmc_converge_credential_selected(plan: BmcOnboardingPlan) -> ProcessExit
- 
 {
   match select_access_token_source() {
     AccessTokenSourceUnavailable { cause: c } => return exit_failure(reason: c as String)
@@ -534,7 +523,6 @@ fn bmc_converge_credential_selected(plan: BmcOnboardingPlan) -> ProcessExit
 data bmc_takeover_password_file_env: NonEmptyStr = "GUNBC_BMC_TAKEOVER_PASSWORD_FILE" as NonEmptyStr
 
 fn bmc_takeover_credential(plan: BmcOnboardingPlan) -> ProcessExit
- 
 {
   let path = match shell.Env.Get(name: bmc_takeover_password_file_env).value {
     Absent => ""
@@ -567,25 +555,21 @@ fn bmc_takeover_credential(plan: BmcOnboardingPlan) -> ProcessExit
 }
 
 fn srv1_takeover_credential() -> ProcessExit
- 
 {
   bmc_takeover_credential(plan: srv1_onboarding_plan)
 }
 
 fn srv2_takeover_credential() -> ProcessExit
- 
 {
   bmc_takeover_credential(plan: srv2_onboarding_plan)
 }
 
 fn srv1_converge_credential() -> ProcessExit
- 
 {
   bmc_converge_credential_selected(plan: srv1_onboarding_plan)
 }
 
 fn srv2_converge_credential() -> ProcessExit
- 
 {
   bmc_converge_credential_selected(plan: srv2_onboarding_plan)
 }
