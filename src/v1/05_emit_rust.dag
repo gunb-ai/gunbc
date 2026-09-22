@@ -176,7 +176,7 @@ import v1.compiler.trait_bound_witness {
 import std.types { is_container_type, is_kernel_type, container_template_algebra }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, binding_declares_span, type_reference_declaration_ref }
+  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, binding_declares_span, type_reference_declaration_ref }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -6618,6 +6618,52 @@ fn import_name_resolves_to_host_realized_kernel_scalar(name: String, module_env:
   }
 }
 
+// WHICH DECLARATION AN AUTHORED IMPORT NAMES IS THE RESOLVER'S ANSWER, NOT A SPELLING'S. The
+// variant arm of emit_specific_import_block's non_variant_top filter asks is_known_variant, a
+// bare-name scan over the CLOSURE-WIDE type_summaries, so any unit variant with the same spelling in
+// any module of the crate reclassified an authored type import as a variant and dropped its use-line
+// while the signature still spelled the type -- rustc E0425 on a crate the emitter reported clean.
+// Measured 2026-09-22: `import std.integer { UInt8 }` lost its line whenever v2.std.integer (whose
+// StandardIntegerType carries a `UInt8` variant) reached the closure through a module the consumer
+// did not import; a second ALIAS declarer of the spelling kept the line and a second VARIANT declarer
+// dropped it (test.claim.forked_spelling_mechanism_probe_test), so the discriminating fact is the
+// variant, not the fork (gunbc.recurring_failure_mode an_authored_import_emits_no_use_line_when_its_spelling_is_forked).
+//
+// So the question is put to the module's own binding: the name is the provider's declaration exactly
+// when the binding the resolver established for it IS the type declaration of that spelling in the
+// module the author named -- or in the module that module re-exports it from -- compared by
+// declaration identity through v1.compiler.infer_env binding_declares_span, the same exact-identity
+// reader the renderer already consumes. Absent env, absent binding or no such declaration answers
+// false, which leaves the variant arm exactly as it was: ignorance never widens a line.
+fn authored_import_binds_provider_declaration(name: String, import_module: String, module_env: TypeEnv?, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
+  match module_env {
+    Absent => false
+    Present { value: env } =>
+      match lookup_binding_by_name(env: env, name: name) {
+        Absent => false
+        Present { value: binding } =>
+          let defining_module = match reexport_source_module_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+            Present { value: src } => src
+            Absent => import_module
+          }
+          match typed_module_by_name(module_name: defining_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+            Absent => false
+            Present { value: tm } =>
+              tm.items |> any(item =>
+                authored_name_at(source_indices: source_indices, node: item) == name
+                && (is_type_def_item(item: item)
+                  || is_type_alias_item(item: item, source_indices: source_indices)
+                  || is_type_decl_item(item: item, source_indices: source_indices))
+                && match item.ident_span {
+                  Present { value: sp } => binding_declares_span(binding: binding, sp: sp)
+                  Absent => false
+                }
+              )
+          }
+      }
+  }
+}
+
 fn emit_specific_import_block(import_module: String, mod_name: String, filtered_names: List<String>, type_position_names: List<String>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, module_env: TypeEnv?) -> String {
   let type_summaries = emit_info.type_summaries
   let deduped_names = unique_strings(items: filtered_names
@@ -6654,7 +6700,8 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
     let non_variant_top = top_level |> filter(n =>
       if import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums) != "" {
         false
-      } else if is_known_variant(type_summaries: type_summaries, name: n) {
+      } else if is_known_variant(type_summaries: type_summaries, name: n)
+        && authored_import_binds_provider_declaration(name: n, import_module: import_module, module_env: module_env, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) == false {
         import_module_enums |> any(e => e == n)
       } else { true }
     )
