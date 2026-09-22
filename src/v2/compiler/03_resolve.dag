@@ -134,12 +134,6 @@ type ResolveContext {
   under_module_root: Bool
 }
 
-type EdgeResolveAcc
-  = EdgeResolveAccMk { have_seen_first: Bool, acc: Outcome<List<Edge>> }
-
-type BindEdgeAcc
-  = BindEdgeAccMk { idx: Int, acc: Outcome<List<Edge>> }
-
 type DeclaredBinding {
   name: Symbol
 }
@@ -916,70 +910,114 @@ fn resolve_transform_operator_child(
   }
 }
 
+// ── MEASUREMENT BRANCH ONLY — NOT FOR LANDING ────────────────────────────────────────────────
+//
+// WHAT THIS IS FOR. The four child walks below stop after the first rejected child, so a module
+// with two independent post-cut refusals records the first and never observes the second. That is
+// truthful at MODULE grain and an undercount at OCCURRENCE grain, which is the grain XL-2's
+// rehearsal residual needs (gunbc.compiler_frontend_program_status ExactOccurrenceResidualCensus).
+//
+// WHY IT MUST NOT LAND AS WRITTEN. It concatenates independent refusals into ONE
+// NonEmptyDiagnostics, which breaks that carrier's contract: v2.std.diagnostic diagnostics_fatal
+// reads the LAST diagnostic as the cause, on the premise that a chain is pending advisories
+// followed by exactly one fatal. Concatenating N independent failures makes the Nth arbitrarily
+// "the" cause. The landing design keeps NonEmptyDiagnostics at the grain where that contract is
+// true — one chain per independent failure — and carries an ORDERED POPULATION of chains, with the
+// FIRST projected back to Outcome so ordinary resolve consumers (the CLI's fatal pick, the native
+// test route's fatal reason) keep today's answer exactly.
+//
+// THIS VERSION EXISTS TO MEASURE WHICH CONSUMERS MOVE when a walk stops hiding refusals after the
+// first, so the typed carrier lands with its blast radius counted rather than estimated.
+//
+// STRUCTURAL NOTE THAT MAKES CONTINUING SOUND HERE, and it is checkable rather than assumed: in all
+// four walks every child's scope is fixed BEFORE the fold runs — resolve_transform_children uses one
+// ctx, resolve_children_homogeneous_scope computes child_ctx once above its fold, and both edge
+// walks take scope_outer/scope_inner as PARAMETERS. No child's scope is derived from another child's
+// resolution result, so continuing past a refusal cannot manufacture a spurious refusal from a
+// binding that failed to establish. Where that ceases to hold, the walk must report observation
+// INCOMPLETENESS rather than resolve under a guessed scope.
+// ORDINAL IS CARRIED INDEPENDENTLY OF THE EDGE LIST, and that is load-bearing rather than tidy:
+// resolve_transform_children used `length(done) == 0` to mean "this is the operator child". Once a
+// refused child stops appending an edge, that proxy silently promotes the SECOND child to operator
+// whenever the first refuses. The ordinal is incremented on every step, refused or not.
+type ChildWalk {
+  ordinal: Int
+  edges: List<Edge>
+  pending: Diagnostics
+  refusals: Diagnostics
+}
+
+fn child_walk_init() -> ChildWalk {
+  ChildWalk { ordinal: 0, edges: empty_edge_list(), pending: None, refusals: None }
+}
+
+fn child_walk_step(w: ChildWalk, e: Edge, r: Outcome<Node>) -> ChildWalk {
+  match r {
+    Rejected { diagnostics: rd } =>
+      ChildWalk {
+        ordinal: w.ordinal + 1,
+        edges: w.edges,
+        pending: w.pending,
+        refusals: diagnostics_merge(outer: w.refusals, inner: Some { diagnostics: rd })
+      }
+    Accepted { value: t, diagnostics: ed } =>
+      ChildWalk {
+        ordinal: w.ordinal + 1,
+        edges: list_snoc_item(xs: w.edges, item: Edge { label: e.label, target: t }),
+        pending: diagnostics_merge(outer: w.pending, inner: ed),
+        refusals: w.refusals
+      }
+  }
+}
+
+fn child_walk_step_edge(w: ChildWalk, r: Outcome<Edge>) -> ChildWalk {
+  match r {
+    Rejected { diagnostics: rd } =>
+      ChildWalk {
+        ordinal: w.ordinal + 1,
+        edges: w.edges,
+        pending: w.pending,
+        refusals: diagnostics_merge(outer: w.refusals, inner: Some { diagnostics: rd })
+      }
+    Accepted { value: resolved_edge, diagnostics: ed } =>
+      ChildWalk {
+        ordinal: w.ordinal + 1,
+        edges: list_snoc_item(xs: w.edges, item: resolved_edge),
+        pending: diagnostics_merge(outer: w.pending, inner: ed),
+        refusals: w.refusals
+      }
+  }
+}
+
+// THE ACCEPTED ARM IS REACHABLE ONLY WHEN NOTHING REFUSED, so "never return a partial accepted
+// tree" is structural here rather than a rule a caller has to remember.
+fn child_walk_finish(w: ChildWalk) -> Outcome<List<Edge>> {
+  match w.refusals {
+    Some { diagnostics: rs } =>
+      Rejected { diagnostics: rejected_with_pending(pending: w.pending, rejected: rs) }
+    None => Accepted { value: w.edges, diagnostics: w.pending }
+  }
+}
+
 fn resolve_transform_children(
   ctx: ResolveContext,
   n: Node
 ) -> Outcome<Node> {
-  match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
-    match acc {
-      Rejected { diagnostics: r } =>
-        Rejected { diagnostics: r }
-      Accepted { value: done, diagnostics: ad } =>
-        match e.label {
-          Positional =>
-
-            if length(xs: done) == 0 {
-              match resolve_transform_operator_child(
-                ctx: ctx,
-                n: e.target
-              ) {
-                Rejected { diagnostics: r } =>
-                  Rejected {
-                    diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                  }
-                Accepted { value: resolved_target, diagnostics: ed } =>
-                  Accepted {
-                    value: list_snoc_item(xs: done, item: Edge {
-                      label: e.label,
-                      target: resolved_target
-                    }),
-                    diagnostics: diagnostics_merge(outer: ad, inner: ed)
-                  }
-              }
-            } else {
-              match resolve_node(ctx: ctx, n: e.target) {
-                Rejected { diagnostics: r } =>
-                  Rejected {
-                    diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                  }
-                Accepted { value: resolved_target, diagnostics: ed } =>
-                  Accepted {
-                    value: list_snoc_item(xs: done, item: Edge {
-                      label: e.label,
-                      target: resolved_target
-                    }),
-                    diagnostics: diagnostics_merge(outer: ad, inner: ed)
-                  }
-              }
-            }
-          _ =>
-            match resolve_node(ctx: ctx, n: e.target) {
-              Rejected { diagnostics: r } =>
-                Rejected {
-                  diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                }
-              Accepted { value: resolved_target, diagnostics: ed } =>
-                Accepted {
-                  value: list_snoc_item(xs: done, item: Edge {
-                    label: e.label,
-                    target: resolved_target
-                  }),
-                  diagnostics: diagnostics_merge(outer: ad, inner: ed)
-                }
-            }
-        }
-    }
-  }) {
+  match child_walk_finish(w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+    child_walk_step(
+      w: acc,
+      e: e,
+      r: match e.label {
+        Positional =>
+          if acc.ordinal == 0 {
+            resolve_transform_operator_child(ctx: ctx, n: e.target)
+          } else {
+            resolve_node(ctx: ctx, n: e.target)
+          }
+        _ => resolve_node(ctx: ctx, n: e.target)
+      }
+    )
+  })) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: resolved_children, diagnostics: d } =>
       Accepted {
@@ -1135,24 +1173,9 @@ fn resolve_children_homogeneous_scope(
     ctx: resolve_ctx_with_under_module_root(ctx: ctx, under_module_root: at_module_root),
     scope: scope_here
   )
-  match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
-    match acc {
-      Rejected { diagnostics: r } =>
-        Rejected { diagnostics: r }
-      Accepted { value: done, diagnostics: ad } =>
-        match resolve_child_edge(ctx: child_ctx, e: e) {
-          Rejected { diagnostics: r } =>
-            Rejected {
-              diagnostics: rejected_with_pending(pending: ad, rejected: r)
-            }
-          Accepted { value: resolved_edge, diagnostics: ed } =>
-            Accepted {
-              value: list_snoc_item(xs: done, item: resolved_edge),
-              diagnostics: diagnostics_merge(outer: ad, inner: ed)
-            }
-        }
-    }
-  }) {
+  match child_walk_finish(w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+    child_walk_step_edge(w: acc, r: resolve_child_edge(ctx: child_ctx, e: e))
+  })) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: resolved_children, diagnostics: d } =>
       Accepted {
@@ -1168,77 +1191,19 @@ fn resolve_edges_first_outer_then_inner(
   scope_outer: Scope,
   scope_inner: Scope
 ) -> Outcome<List<Edge>> {
-  match fold(
-    edges,
-    init: EdgeResolveAccMk {
-      have_seen_first: false,
-      acc: Accepted { value: empty_edge_list(), diagnostics: None }
-    },
-    f: fn(state, e) {
-      match state {
-        EdgeResolveAccMk { have_seen_first: seen, acc: acc_state } =>
-          match acc_state {
-            Rejected { diagnostics: r } =>
-              EdgeResolveAccMk {
-                have_seen_first: true,
-                acc: Rejected { diagnostics: r }
-              }
-            Accepted { value: done, diagnostics: ad } =>
-              if seen {
-                match resolve_node(
-                  ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_inner),
-                  n: e.target
-                ) {
-                  Rejected { diagnostics: r } =>
-                    EdgeResolveAccMk {
-                      have_seen_first: true,
-                      acc: Rejected {
-                        diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                      }
-                    }
-                  Accepted { value: resolved_target, diagnostics: ed } =>
-                    EdgeResolveAccMk {
-                      have_seen_first: true,
-                      acc: Accepted {
-                        value: list_snoc_item(xs: done, item: Edge {
-                            label: e.label,
-                            target: resolved_target
-                          }),
-                        diagnostics: diagnostics_merge(outer: ad, inner: ed)
-                      }
-                    }
-                }
-              } else {
-                match resolve_node(
-                  ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_outer),
-                  n: e.target
-                ) {
-                  Rejected { diagnostics: r } =>
-                    EdgeResolveAccMk {
-                      have_seen_first: true,
-                      acc: Rejected {
-                        diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                      }
-                    }
-                  Accepted { value: resolved_target, diagnostics: ed } =>
-                    EdgeResolveAccMk {
-                      have_seen_first: true,
-                      acc: Accepted {
-                        value: list_snoc_item(xs: done, item: Edge {
-                            label: e.label,
-                            target: resolved_target
-                          }),
-                        diagnostics: diagnostics_merge(outer: ad, inner: ed)
-                      }
-                    }
-                }
-              }
-          }
-      }
-    }
-  ) {
-    EdgeResolveAccMk { acc: acc_state, have_seen_first: _ } => acc_state
-  }
+  child_walk_finish(w: fold(edges, init: child_walk_init(), f: fn(acc, e) {
+    child_walk_step(
+      w: acc,
+      e: e,
+      r: resolve_node(
+        ctx: resolve_ctx_with_scope(
+          ctx: ctx,
+          scope: if acc.ordinal == 0 { scope_outer } else { scope_inner }
+        ),
+        n: e.target
+      )
+    )
+  }))
 }
 
 fn resolve_bind_binder_target(t: Node) -> Outcome<Node> {
@@ -1256,100 +1221,23 @@ fn resolve_bind_edges(
   scope_outer: Scope,
   scope_inner: Scope
 ) -> Outcome<List<Edge>> {
-  match fold(
-    edges,
-    init: BindEdgeAccMk {
-      idx: 0,
-      acc: Accepted { value: empty_edge_list(), diagnostics: None }
-    },
-    f: fn(state, e) {
-      match state {
-        BindEdgeAccMk { idx: i, acc: acc_state } =>
-          match acc_state {
-            Rejected { diagnostics: r } =>
-              BindEdgeAccMk {
-                idx: i + 1,
-                acc: Rejected { diagnostics: r }
-              }
-            Accepted { value: done, diagnostics: ad } =>
-              if i == 0 {
-                match resolve_bind_binder_target(t: e.target) {
-                  Rejected { diagnostics: r } =>
-                    BindEdgeAccMk {
-                      idx: i + 1,
-                      acc: Rejected {
-                        diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                      }
-                    }
-                  Accepted { value: rt, diagnostics: ed } =>
-                    BindEdgeAccMk {
-                      idx: i + 1,
-                      acc: Accepted {
-                        value: list_snoc_item(xs: done, item: Edge {
-                            label: e.label,
-                            target: rt
-                          }),
-                        diagnostics: diagnostics_merge(outer: ad, inner: ed)
-                      }
-                    }
-                }
-              } else {
-                if i == 1 {
-                  match resolve_node(
-                    ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_outer),
-                    n: e.target
-                  ) {
-                    Rejected { diagnostics: r } =>
-                      BindEdgeAccMk {
-                        idx: i + 1,
-                        acc: Rejected {
-                          diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                        }
-                      }
-                    Accepted { value: rt, diagnostics: ed } =>
-                      BindEdgeAccMk {
-                        idx: i + 1,
-                        acc: Accepted {
-                          value: list_snoc_item(xs: done, item: Edge {
-                              label: e.label,
-                              target: rt
-                            }),
-                          diagnostics: diagnostics_merge(outer: ad, inner: ed)
-                        }
-                      }
-                  }
-                } else {
-                  match resolve_node(
-                    ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_inner),
-                    n: e.target
-                  ) {
-                    Rejected { diagnostics: r } =>
-                      BindEdgeAccMk {
-                        idx: i + 1,
-                        acc: Rejected {
-                          diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                        }
-                      }
-                    Accepted { value: rt, diagnostics: ed } =>
-                      BindEdgeAccMk {
-                        idx: i + 1,
-                        acc: Accepted {
-                          value: list_snoc_item(xs: done, item: Edge {
-                              label: e.label,
-                              target: rt
-                            }),
-                          diagnostics: diagnostics_merge(outer: ad, inner: ed)
-                        }
-                      }
-                  }
-                }
-              }
-          }
+  child_walk_finish(w: fold(edges, init: child_walk_init(), f: fn(acc, e) {
+    child_walk_step(
+      w: acc,
+      e: e,
+      r: if acc.ordinal == 0 {
+        resolve_bind_binder_target(t: e.target)
+      } else {
+        resolve_node(
+          ctx: resolve_ctx_with_scope(
+            ctx: ctx,
+            scope: if acc.ordinal == 1 { scope_outer } else { scope_inner }
+          ),
+          n: e.target
+        )
       }
-    }
-  ) {
-    BindEdgeAccMk { acc: acc_state, idx: _ } => acc_state
-  }
+    )
+  }))
 }
 
 fn resolve_bind_node(
