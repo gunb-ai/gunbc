@@ -246,6 +246,21 @@ fn symbol_index_claimants_at(
   }
 }
 
+// THE GLOBAL-BARE ORACLE IS DELIBERATELY NOT WRITTEN HERE, and the reason is what the oracle
+// MEANS: how many DECLARATIONS spell this leaf. A binding is not a declaration -- it is a second
+// PATH to one that already exists -- so recording it there answers a different question with the
+// same map. symbol_index_track_global_bare cannot tell the difference on its own: its uniqueness
+// test demands `existing_path == qualified_path && existing == resolved`, so a transmuted import
+// carrying the IDENTICAL declaration node under a different path flips the leaf to Ambiguous.
+//
+// MEASURED, on the emitted route: with `v2.acp_home` declaring `AcDisposition` and `v2.acp_user`
+// importing it, global_bare[AcDisposition] read AMBIGUOUS although exactly one module declares it.
+// That is the oracle answering "two declarations" about one. It matters beyond tidiness because
+// the oracle has a live reader: gunbc#12033's pattern classifier asks global_unique_lookup whether
+// a bare atom names a constructor, and treats Ambiguous as YES -- so every leaf this polluted
+// would have pushed a fresh match-arm BINDER toward being read as a constructor and refused.
+// Writing a spelling census from a binding is the global-spelling-search defect wearing a
+// different hat, which is the one thing this package exists to remove.
 fn symbol_index_bind_at(
   index: SymbolIndex,
   binding_path: QualifiedName,
@@ -266,7 +281,11 @@ fn symbol_index_bind_at(
       )
     }
     if is_empty(xs: prior) {
-      symbol_index_insert(index: recorded, qualified_path: binding_path, resolved: resolved)
+      SymbolIndex {
+        entries: map_insert(m: recorded.entries, key: binding_path, value: resolved),
+        global_bare: recorded.global_bare,
+        bound_declarings: recorded.bound_declarings
+      }
     } else {
       recorded
     }

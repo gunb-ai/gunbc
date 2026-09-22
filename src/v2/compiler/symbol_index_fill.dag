@@ -374,9 +374,6 @@ fn symbol_index_fill_module_declarations(index: SymbolIndex, root: Node) -> Symb
   }
 }
 
-// PASS B -- WHAT THIS ROOT BINDS FROM ELSEWHERE. Every row here reads ANOTHER root's declarations
-// out of the index, so it can only be run once every root's pass A has been. The two sources of
-// rows differ only in where they SURVIVED: an `alias` decl is grafted into the tree as an ordinary
 // THE NODE-ONLY DOOR, AND ITS NAME SAYS WHAT IT CANNOT DO. A caller holding only a grafted Node has
 // no import rows to offer -- the graft dissolved them and they are not recoverable from what is
 // left -- so this fills declarations and the alias rows still present in the tree, and no import
