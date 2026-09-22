@@ -152,6 +152,13 @@ fn vf_arm_payload_optional(root: Node, type_lexeme: String, arm_lexeme: String) 
   }
 }
 
+// ONE NORMALIZE PER CLAIM. The *_from_tree readers take the normalized tree a claim already has,
+// so a claim asserting three facts about one specimen pays the route once instead of three times
+// -- the copied-accumulator shape DESIGN section 6 says is always fixed regardless of realized n.
+fn vf_arm_payload_from_tree(nt: NormalizedTree, type_lexeme: String, arm_lexeme: String) -> Optional<Node> {
+  vf_arm_payload_optional(root: nt.root, type_lexeme: type_lexeme, arm_lexeme: arm_lexeme)
+}
+
 fn vf_arm_payload_of(tokens: TokenStream, type_lexeme: String, arm_lexeme: String) -> Optional<Node> {
   match vf_normalized(tokens: tokens) {
     Rejected { diagnostics: _ } => Absent
@@ -280,18 +287,21 @@ test fn vf_bare_alias_is_not_a_sum() -> Bool {
   }
 }
 
+fn vf_fn_body_from_tree(nt: NormalizedTree, fn_lexeme: String) -> Optional<Node> {
+  match vf_named_member_optional(root: nt.root, lexeme: fn_lexeme) {
+    Absent => Absent
+    Present { value: arrow } =>
+      match find_arrow_body_child(root: arrow) {
+        Accepted { value: body, diagnostics: _ } => Present { value: body }
+        Rejected { diagnostics: _ } => Absent
+      }
+  }
+}
+
 fn vf_fn_body_of(tokens: TokenStream, fn_lexeme: String) -> Optional<Node> {
   match vf_normalized(tokens: tokens) {
     Rejected { diagnostics: _ } => Absent
-    Accepted { value: nt, diagnostics: _ } =>
-      match vf_named_member_optional(root: nt.root, lexeme: fn_lexeme) {
-        Absent => Absent
-        Present { value: arrow } =>
-          match find_arrow_body_child(root: arrow) {
-            Accepted { value: body, diagnostics: _ } => Present { value: body }
-            Rejected { diagnostics: _ } => Absent
-          }
-      }
+    Accepted { value: nt, diagnostics: _ } => vf_fn_body_from_tree(nt: nt, fn_lexeme: fn_lexeme)
   }
 }
 
@@ -331,7 +341,14 @@ test fn vf_record_construction_is_the_construct_shape() -> Bool {
 }
 
 fn vf_first_arm_pattern_of(tokens: TokenStream, fn_lexeme: String) -> Optional<Node> {
-  match vf_fn_body_of(tokens: tokens, fn_lexeme: fn_lexeme) {
+  match vf_normalized(tokens: tokens) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: nt, diagnostics: _ } => vf_first_arm_pattern_from_tree(nt: nt, fn_lexeme: fn_lexeme)
+  }
+}
+
+fn vf_first_arm_pattern_from_tree(nt: NormalizedTree, fn_lexeme: String) -> Optional<Node> {
+  match vf_fn_body_from_tree(nt: nt, fn_lexeme: fn_lexeme) {
     Absent => Absent
     Present { value: body } =>
       match body.kind {
@@ -454,29 +471,25 @@ test fn vf_where_beside_payload_refuses() -> Bool {
 
 // std.content_hash's own declarations and its positional match, verbatim: the module the native
 // workload stopped on. This is the seed-run half of that receipt; the native run is on the PR.
-data vf_content_hash_declarations: String = "module std.content_hash\n\ntype HashFamily =\n  | Fnv1a64StructuralFamily\n  | Sha256Family\n\ntype Fnv1a64Structural {\n  digest: Fnv1a64StructuralDigestHex\n}\n\ntype Sha256Digest {\n  hex: Sha256DigestHex\n}\n\ntype ContentHash =\n  | Fnv1a64(Fnv1a64Structural)\n  | Sha256Hash(Sha256Digest)\n\nfn structural_content_hash(digest: Fnv1a64StructuralDigestHex) -> Fnv1a64Structural {\n  Fnv1a64Structural { digest: digest }\n}\n\nfn as_content_hash_structural(structural: Fnv1a64Structural) -> ContentHash {\n  Fnv1a64(structural)\n}\n\nfn compare_content_hash(left: ContentHash, right: ContentHash) -> ContentHashComparison {\n  match left {\n    Fnv1a64(left_structural) =>\n      match right {\n        Fnv1a64(right_structural) =>\n          if content_hash_eq_structural(left: left_structural, right: right_structural) {\n            ContentHashEqual\n          } else {\n            ContentHashDifferent\n          }\n        Sha256Hash(_) => ContentHashCrossFamilyIncomparable\n      }\n    Sha256Hash(left_digest) =>\n      match right {\n        Sha256Hash(right_digest) =>\n          if content_hash_eq_cryptographic(left: left_digest, right: right_digest) {\n            ContentHashEqual\n          } else {\n            ContentHashDifferent\n          }\n        Fnv1a64(_) => ContentHashCrossFamilyIncomparable\n      }\n  }\n}\n"
 
 test fn vf_content_hash_declarations_and_positional_match_normalize() -> Bool {
-  vf_normalizes(tokens: vfs_stream_15())
-    && (match vf_first_arm_pattern_of(tokens: vfs_stream_15(), fn_lexeme: "compare_content_hash") {
-      Absent => false
-      Present { value: pat } => vf_pattern_binds(pat: pat, tag: "Fnv1a64", field: "0", binder: "left_structural")
-    })
-    && (match vf_arm_payload_of(tokens: vfs_stream_15(), type_lexeme: "ContentHash", arm_lexeme: "Fnv1a64") {
-      Absent => false
-      Present { value: payload } =>
-        match declared_field_named(payload: payload, name: positional_payload_field_name()) {
+  match vf_normalized(tokens: vfs_stream_15()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: nt, diagnostics: _ } =>
+      (match vf_first_arm_pattern_from_tree(nt: nt, fn_lexeme: "compare_content_hash") {
+        Absent => false
+        Present { value: pat } => vf_pattern_binds(pat: pat, tag: "Fnv1a64", field: "0", binder: "left_structural")
+      })
+        && (match vf_arm_payload_from_tree(nt: nt, type_lexeme: "ContentHash", arm_lexeme: "Fnv1a64") {
           Absent => false
-          Present { value: f } => vf_field_is(f: f, name: "0", type_lexeme: "Fnv1a64Structural", required: true)
-        }
-    })
+          Present { value: payload } =>
+            match declared_field_named(payload: payload, name: positional_payload_field_name()) {
+              Absent => false
+              Present { value: f } => vf_field_is(f: f, name: "0", type_lexeme: "Fnv1a64Structural", required: true)
+            }
+        })
+  }
 }
-
-// confirm one reading: that the fixed route cost (grammar preparation) dominates every claim in
-// this module, so no assertion tuning can bring one under the floor budget.
-
-
-// parse_module_prepared accepts a constructed stream and what the supplied-token route costs.
 
 fn vfs_stream_0() -> TokenStream {
   token_stream_new(all: [
@@ -1068,172 +1081,51 @@ fn vfs_stream_15() -> TokenStream {
     Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 10, end: 11 },
     Token { class: ^dag_token_ident, lexeme: "content_hash", file: ^variant_field_probe, start: 11, end: 23 },
     Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 25, end: 29 },
-    Token { class: ^dag_token_ident, lexeme: "HashFamily", file: ^variant_field_probe, start: 30, end: 40 },
-    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 41, end: 42 },
-    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 45, end: 46 },
-    Token { class: ^dag_token_ident, lexeme: "Fnv1a64StructuralFamily", file: ^variant_field_probe, start: 47, end: 70 },
-    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 73, end: 74 },
-    Token { class: ^dag_token_ident, lexeme: "Sha256Family", file: ^variant_field_probe, start: 75, end: 87 },
-    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 89, end: 93 },
-    Token { class: ^dag_token_ident, lexeme: "Fnv1a64Structural", file: ^variant_field_probe, start: 94, end: 111 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 112, end: 113 },
-    Token { class: ^dag_token_ident, lexeme: "digest", file: ^variant_field_probe, start: 116, end: 122 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 122, end: 123 },
-    Token { class: ^dag_token_ident, lexeme: "Fnv1a64StructuralDigestHex", file: ^variant_field_probe, start: 124, end: 150 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 151, end: 152 },
-    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 154, end: 158 },
-    Token { class: ^dag_token_ident, lexeme: "Sha256Digest", file: ^variant_field_probe, start: 159, end: 171 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 172, end: 173 },
-    Token { class: ^dag_token_ident, lexeme: "hex", file: ^variant_field_probe, start: 176, end: 179 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 179, end: 180 },
-    Token { class: ^dag_token_ident, lexeme: "Sha256DigestHex", file: ^variant_field_probe, start: 181, end: 196 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 197, end: 198 },
-    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 200, end: 204 },
-    Token { class: ^dag_token_ident, lexeme: "ContentHash", file: ^variant_field_probe, start: 205, end: 216 },
-    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 217, end: 218 },
-    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 221, end: 222 },
-    Token { class: ^dag_token_ident, lexeme: "Fnv1a64", file: ^variant_field_probe, start: 223, end: 230 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 230, end: 231 },
-    Token { class: ^dag_token_ident, lexeme: "Fnv1a64Structural", file: ^variant_field_probe, start: 231, end: 248 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 248, end: 249 },
-    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 252, end: 253 },
-    Token { class: ^dag_token_ident, lexeme: "Sha256Hash", file: ^variant_field_probe, start: 254, end: 264 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 264, end: 265 },
-    Token { class: ^dag_token_ident, lexeme: "Sha256Digest", file: ^variant_field_probe, start: 265, end: 277 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 277, end: 278 },
-    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^variant_field_probe, start: 280, end: 282 },
-    Token { class: ^dag_token_ident, lexeme: "structural_content_hash", file: ^variant_field_probe, start: 283, end: 306 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 306, end: 307 },
-    Token { class: ^dag_token_ident, lexeme: "digest", file: ^variant_field_probe, start: 307, end: 313 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 313, end: 314 },
-    Token { class: ^dag_token_ident, lexeme: "Fnv1a64StructuralDigestHex", file: ^variant_field_probe, start: 315, end: 341 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 341, end: 342 },
-    Token { class: ^dag_token_arrow, lexeme: "->", file: ^variant_field_probe, start: 343, end: 345 },
-    Token { class: ^dag_token_ident, lexeme: "Fnv1a64Structural", file: ^variant_field_probe, start: 346, end: 363 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 364, end: 365 },
-    Token { class: ^dag_token_ident, lexeme: "Fnv1a64Structural", file: ^variant_field_probe, start: 368, end: 385 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 386, end: 387 },
-    Token { class: ^dag_token_ident, lexeme: "digest", file: ^variant_field_probe, start: 388, end: 394 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 394, end: 395 },
-    Token { class: ^dag_token_ident, lexeme: "digest", file: ^variant_field_probe, start: 396, end: 402 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 403, end: 404 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 405, end: 406 },
-    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^variant_field_probe, start: 408, end: 410 },
-    Token { class: ^dag_token_ident, lexeme: "as_content_hash_structural", file: ^variant_field_probe, start: 411, end: 437 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 437, end: 438 },
-    Token { class: ^dag_token_ident, lexeme: "structural", file: ^variant_field_probe, start: 438, end: 448 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 448, end: 449 },
-    Token { class: ^dag_token_ident, lexeme: "Fnv1a64Structural", file: ^variant_field_probe, start: 450, end: 467 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 467, end: 468 },
-    Token { class: ^dag_token_arrow, lexeme: "->", file: ^variant_field_probe, start: 469, end: 471 },
-    Token { class: ^dag_token_ident, lexeme: "ContentHash", file: ^variant_field_probe, start: 472, end: 483 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 484, end: 485 },
-    Token { class: ^dag_token_ident, lexeme: "Fnv1a64", file: ^variant_field_probe, start: 488, end: 495 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 495, end: 496 },
-    Token { class: ^dag_token_ident, lexeme: "structural", file: ^variant_field_probe, start: 496, end: 506 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 506, end: 507 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 508, end: 509 },
-    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^variant_field_probe, start: 511, end: 513 },
-    Token { class: ^dag_token_ident, lexeme: "compare_content_hash", file: ^variant_field_probe, start: 514, end: 534 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 534, end: 535 },
-    Token { class: ^dag_token_ident, lexeme: "left", file: ^variant_field_probe, start: 535, end: 539 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 539, end: 540 },
-    Token { class: ^dag_token_ident, lexeme: "ContentHash", file: ^variant_field_probe, start: 541, end: 552 },
-    Token { class: ^dag_token_comma, lexeme: ",", file: ^variant_field_probe, start: 552, end: 553 },
-    Token { class: ^dag_token_ident, lexeme: "right", file: ^variant_field_probe, start: 554, end: 559 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 559, end: 560 },
-    Token { class: ^dag_token_ident, lexeme: "ContentHash", file: ^variant_field_probe, start: 561, end: 572 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 572, end: 573 },
-    Token { class: ^dag_token_arrow, lexeme: "->", file: ^variant_field_probe, start: 574, end: 576 },
-    Token { class: ^dag_token_ident, lexeme: "ContentHashComparison", file: ^variant_field_probe, start: 577, end: 598 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 599, end: 600 },
-    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^variant_field_probe, start: 603, end: 608 },
-    Token { class: ^dag_token_ident, lexeme: "left", file: ^variant_field_probe, start: 609, end: 613 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 614, end: 615 },
-    Token { class: ^dag_token_ident, lexeme: "Fnv1a64", file: ^variant_field_probe, start: 620, end: 627 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 627, end: 628 },
-    Token { class: ^dag_token_ident, lexeme: "left_structural", file: ^variant_field_probe, start: 628, end: 643 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 643, end: 644 },
-    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 645, end: 647 },
-    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^variant_field_probe, start: 654, end: 659 },
-    Token { class: ^dag_token_ident, lexeme: "right", file: ^variant_field_probe, start: 660, end: 665 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 666, end: 667 },
-    Token { class: ^dag_token_ident, lexeme: "Fnv1a64", file: ^variant_field_probe, start: 676, end: 683 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 683, end: 684 },
-    Token { class: ^dag_token_ident, lexeme: "right_structural", file: ^variant_field_probe, start: 684, end: 700 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 700, end: 701 },
-    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 702, end: 704 },
-    Token { class: ^dag_token_kw_if, lexeme: "if", file: ^variant_field_probe, start: 715, end: 717 },
-    Token { class: ^dag_token_ident, lexeme: "content_hash_eq_structural", file: ^variant_field_probe, start: 718, end: 744 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 744, end: 745 },
-    Token { class: ^dag_token_ident, lexeme: "left", file: ^variant_field_probe, start: 745, end: 749 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 749, end: 750 },
-    Token { class: ^dag_token_ident, lexeme: "left_structural", file: ^variant_field_probe, start: 751, end: 766 },
-    Token { class: ^dag_token_comma, lexeme: ",", file: ^variant_field_probe, start: 766, end: 767 },
-    Token { class: ^dag_token_ident, lexeme: "right", file: ^variant_field_probe, start: 768, end: 773 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 773, end: 774 },
-    Token { class: ^dag_token_ident, lexeme: "right_structural", file: ^variant_field_probe, start: 775, end: 791 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 791, end: 792 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 793, end: 794 },
-    Token { class: ^dag_token_ident, lexeme: "ContentHashEqual", file: ^variant_field_probe, start: 807, end: 823 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 834, end: 835 },
-    Token { class: ^dag_token_kw_else, lexeme: "else", file: ^variant_field_probe, start: 836, end: 840 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 841, end: 842 },
-    Token { class: ^dag_token_ident, lexeme: "ContentHashDifferent", file: ^variant_field_probe, start: 855, end: 875 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 886, end: 887 },
-    Token { class: ^dag_token_ident, lexeme: "Sha256Hash", file: ^variant_field_probe, start: 896, end: 906 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 906, end: 907 },
-    Token { class: ^dag_token_ident, lexeme: "_", file: ^variant_field_probe, start: 907, end: 908 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 908, end: 909 },
-    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 910, end: 912 },
-    Token { class: ^dag_token_ident, lexeme: "ContentHashCrossFamilyIncomparable", file: ^variant_field_probe, start: 913, end: 947 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 954, end: 955 },
-    Token { class: ^dag_token_ident, lexeme: "Sha256Hash", file: ^variant_field_probe, start: 960, end: 970 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 970, end: 971 },
-    Token { class: ^dag_token_ident, lexeme: "left_digest", file: ^variant_field_probe, start: 971, end: 982 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 982, end: 983 },
-    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 984, end: 986 },
-    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^variant_field_probe, start: 993, end: 998 },
-    Token { class: ^dag_token_ident, lexeme: "right", file: ^variant_field_probe, start: 999, end: 1004 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 1005, end: 1006 },
-    Token { class: ^dag_token_ident, lexeme: "Sha256Hash", file: ^variant_field_probe, start: 1015, end: 1025 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 1025, end: 1026 },
-    Token { class: ^dag_token_ident, lexeme: "right_digest", file: ^variant_field_probe, start: 1026, end: 1038 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 1038, end: 1039 },
-    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 1040, end: 1042 },
-    Token { class: ^dag_token_kw_if, lexeme: "if", file: ^variant_field_probe, start: 1053, end: 1055 },
-    Token { class: ^dag_token_ident, lexeme: "content_hash_eq_cryptographic", file: ^variant_field_probe, start: 1056, end: 1085 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 1085, end: 1086 },
-    Token { class: ^dag_token_ident, lexeme: "left", file: ^variant_field_probe, start: 1086, end: 1090 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 1090, end: 1091 },
-    Token { class: ^dag_token_ident, lexeme: "left_digest", file: ^variant_field_probe, start: 1092, end: 1103 },
-    Token { class: ^dag_token_comma, lexeme: ",", file: ^variant_field_probe, start: 1103, end: 1104 },
-    Token { class: ^dag_token_ident, lexeme: "right", file: ^variant_field_probe, start: 1105, end: 1110 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 1110, end: 1111 },
-    Token { class: ^dag_token_ident, lexeme: "right_digest", file: ^variant_field_probe, start: 1112, end: 1124 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 1124, end: 1125 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 1126, end: 1127 },
-    Token { class: ^dag_token_ident, lexeme: "ContentHashEqual", file: ^variant_field_probe, start: 1140, end: 1156 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 1167, end: 1168 },
-    Token { class: ^dag_token_kw_else, lexeme: "else", file: ^variant_field_probe, start: 1169, end: 1173 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 1174, end: 1175 },
-    Token { class: ^dag_token_ident, lexeme: "ContentHashDifferent", file: ^variant_field_probe, start: 1188, end: 1208 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 1219, end: 1220 },
-    Token { class: ^dag_token_ident, lexeme: "Fnv1a64", file: ^variant_field_probe, start: 1229, end: 1236 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 1236, end: 1237 },
-    Token { class: ^dag_token_ident, lexeme: "_", file: ^variant_field_probe, start: 1237, end: 1238 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 1238, end: 1239 },
-    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 1240, end: 1242 },
-    Token { class: ^dag_token_ident, lexeme: "ContentHashCrossFamilyIncomparable", file: ^variant_field_probe, start: 1243, end: 1277 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 1284, end: 1285 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 1288, end: 1289 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 1290, end: 1291 }
+    Token { class: ^dag_token_ident, lexeme: "ContentHash", file: ^variant_field_probe, start: 30, end: 41 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 42, end: 43 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 46, end: 47 },
+    Token { class: ^dag_token_ident, lexeme: "Fnv1a64", file: ^variant_field_probe, start: 48, end: 55 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 55, end: 56 },
+    Token { class: ^dag_token_ident, lexeme: "Fnv1a64Structural", file: ^variant_field_probe, start: 56, end: 73 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 73, end: 74 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 77, end: 78 },
+    Token { class: ^dag_token_ident, lexeme: "Sha256Hash", file: ^variant_field_probe, start: 79, end: 89 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 89, end: 90 },
+    Token { class: ^dag_token_ident, lexeme: "Sha256Digest", file: ^variant_field_probe, start: 90, end: 102 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 102, end: 103 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^variant_field_probe, start: 105, end: 107 },
+    Token { class: ^dag_token_ident, lexeme: "compare_content_hash", file: ^variant_field_probe, start: 108, end: 128 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 128, end: 129 },
+    Token { class: ^dag_token_ident, lexeme: "left", file: ^variant_field_probe, start: 129, end: 133 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 133, end: 134 },
+    Token { class: ^dag_token_ident, lexeme: "ContentHash", file: ^variant_field_probe, start: 135, end: 146 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 146, end: 147 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^variant_field_probe, start: 148, end: 150 },
+    Token { class: ^dag_token_ident, lexeme: "ContentHashComparison", file: ^variant_field_probe, start: 151, end: 172 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 173, end: 174 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^variant_field_probe, start: 177, end: 182 },
+    Token { class: ^dag_token_ident, lexeme: "left", file: ^variant_field_probe, start: 183, end: 187 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 188, end: 189 },
+    Token { class: ^dag_token_ident, lexeme: "Fnv1a64", file: ^variant_field_probe, start: 194, end: 201 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 201, end: 202 },
+    Token { class: ^dag_token_ident, lexeme: "left_structural", file: ^variant_field_probe, start: 202, end: 217 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 217, end: 218 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 219, end: 221 },
+    Token { class: ^dag_token_ident, lexeme: "ContentHashEqual", file: ^variant_field_probe, start: 222, end: 238 },
+    Token { class: ^dag_token_ident, lexeme: "Sha256Hash", file: ^variant_field_probe, start: 243, end: 253 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 253, end: 254 },
+    Token { class: ^dag_token_ident, lexeme: "left_digest", file: ^variant_field_probe, start: 254, end: 265 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 265, end: 266 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 267, end: 269 },
+    Token { class: ^dag_token_ident, lexeme: "ContentHashDifferent", file: ^variant_field_probe, start: 270, end: 290 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 293, end: 294 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 295, end: 296 }
   ])
 }
 
 test fn vfs_fidelity_15() -> Bool {
   supplied_stream_matches_tokenize(
-    text: "module std.content_hash\n\ntype HashFamily =\n  | Fnv1a64StructuralFamily\n  | Sha256Family\n\ntype Fnv1a64Structural {\n  digest: Fnv1a64StructuralDigestHex\n}\n\ntype Sha256Digest {\n  hex: Sha256DigestHex\n}\n\ntype ContentHash =\n  | Fnv1a64(Fnv1a64Structural)\n  | Sha256Hash(Sha256Digest)\n\nfn structural_content_hash(digest: Fnv1a64StructuralDigestHex) -> Fnv1a64Structural {\n  Fnv1a64Structural { digest: digest }\n}\n\nfn as_content_hash_structural(structural: Fnv1a64Structural) -> ContentHash {\n  Fnv1a64(structural)\n}\n\nfn compare_content_hash(left: ContentHash, right: ContentHash) -> ContentHashComparison {\n  match left {\n    Fnv1a64(left_structural) =>\n      match right {\n        Fnv1a64(right_structural) =>\n          if content_hash_eq_structural(left: left_structural, right: right_structural) {\n            ContentHashEqual\n          } else {\n            ContentHashDifferent\n          }\n        Sha256Hash(_) => ContentHashCrossFamilyIncomparable\n      }\n    Sha256Hash(left_digest) =>\n      match right {\n        Sha256Hash(right_digest) =>\n          if content_hash_eq_cryptographic(left: left_digest, right: right_digest) {\n            ContentHashEqual\n          } else {\n            ContentHashDifferent\n          }\n        Fnv1a64(_) => ContentHashCrossFamilyIncomparable\n      }\n  }\n}\n",
+    text: "module std.content_hash\n\ntype ContentHash =\n  | Fnv1a64(Fnv1a64Structural)\n  | Sha256Hash(Sha256Digest)\n\nfn compare_content_hash(left: ContentHash) -> ContentHashComparison {\n  match left {\n    Fnv1a64(left_structural) => ContentHashEqual\n    Sha256Hash(left_digest) => ContentHashDifferent\n  }\n}\n",
     file: ^variant_field_probe,
     supplied: vfs_stream_15()
   )
@@ -1292,3 +1184,6 @@ test fn vfs_fidelity_16() -> Bool {
     supplied: vfs_stream_16()
   )
 }
+
+
+
