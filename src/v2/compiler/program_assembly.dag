@@ -173,40 +173,6 @@ fn program_assembly_phase_tokenize(
   }
 }
 
-// THE MEASURED PARSE PHASE, AND THE PLAIN ONE AS ITS PROJECTION. The memo accounting is a
-// realization fact about one execution, so it rides beside the outcome rather than inside the
-// artifact (see ParseProductionMeasured); a caller that does not report counters takes `.outcome`
-// and is byte-for-byte the fold it was before.
-//
-// THE REJECTED-INPUT ARM REPRODUCES bind_outcome EXACTLY, and is spelled out rather than reused
-// because bind_outcome cannot carry a second value out of the bound function: a Rejected token
-// stream passes its diagnostics through untouched and reports empty accounting, because no parse
-// ran -- an answer, not a missing measurement. The Accepted arm merges the incoming diagnostics
-// through bind_outcome_accepted, which is what bind_outcome itself calls.
-fn program_assembly_phase_parse_measured(
-  tokens: Outcome<TokenStream>,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
-) -> ParseProductionMeasured {
-  match tokens {
-    Rejected { diagnostics: d } =>
-      ParseProductionMeasured {
-        outcome: Rejected { diagnostics: d },
-        memo: parse_memo_stats_empty()
-      }
-    Accepted { value: token_stream, diagnostics: od } =>
-      let measured = parse_module_prepared_measured(
-        tokens: token_stream,
-        prepared: prepared,
-        validation_residue: residue
-      )
-      ParseProductionMeasured {
-        outcome: bind_outcome_accepted(od: od, inner: measured.outcome),
-        memo: measured.memo
-      }
-  }
-}
-
 // THE SEEDED MEASURED PHASE, AND THE MARK READ BACK OUT AS A SCALAR. These two exist for the
 // emitted `SourceRootEvalDriver`, which does not call the composed per-file fold: it open-codes the
 // sequence so a clock can sit between the phases, which is admitted debt filed at
@@ -214,6 +180,14 @@ fn program_assembly_phase_parse_measured(
 // That respelling is exactly why the driver needs its own seam -- it cannot inherit the threading
 // the composition does internally, so the threading has to be reachable phase by phase or the
 // driver silently keeps the per-file reset while the modeled fold no longer has it.
+//
+// THE REJECTED-INPUT ARM REPRODUCES bind_outcome EXACTLY, and is spelled out rather than reused
+// because bind_outcome cannot carry a second value out of the bound function: a Rejected token
+// stream passes its diagnostics through untouched and reports empty accounting, because no parse
+// ran -- an answer, not a missing measurement. The Accepted arm merges the incoming diagnostics
+// through bind_outcome_accepted, which is what bind_outcome itself calls. (That reasoning arrived
+// here with the unseeded twin this phase replaced; the twin is deleted, so the reasoning moves to
+// the survivor rather than being deleted with it.)
 //
 // THE FALLBACK ON A REFUSAL IS THE SEED ITSELF, NOT ZERO, AND NOT THE MARK THE ATTEMPT REACHED.
 // Returning `occurrence_id_allocator_initial()` would silently rewind the whole ingest to the
@@ -271,18 +245,6 @@ fn program_assembly_measured_alloc(
     Rejected { diagnostics: _ } => seed
     Accepted { value: artifact, diagnostics: _ } => artifact.alloc
   }
-}
-
-fn program_assembly_phase_parse(
-  tokens: Outcome<TokenStream>,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
-) -> Outcome<ParseArtifact> {
-  program_assembly_phase_parse_measured(
-    tokens: tokens,
-    prepared: prepared,
-    residue: residue
-  ).outcome
 }
 
 // The three counters, read out one at a time because the driver prints scalars and a record does
