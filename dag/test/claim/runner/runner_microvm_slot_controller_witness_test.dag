@@ -269,8 +269,15 @@ test fn the_controller_selects_only_a_fabric_member_out_of_its_instance_name() -
     Absent => false
   }
   let github_slot = match slot_of_instance(instance: "srv1-01") { Present { value: _ } => false  Absent => true }
-  let member_count = fabric_execution_slot_identities().count()
-  shakedown && github_slot && member_count == 5
+  // EVERY ROSTER MEMBER SELECTS ITSELF BY ITS OWN INSTANCE NAME, as an identity join over the
+  // roster rather than a count of it (review 69823, DESIGN 5: a live-population count is not an
+  // oracle) -- a member the selection cannot reach is the defect, however many members there are.
+  let every_member_selects = fold(fabric_execution_slot_identities(), init: true, f: (acc, m) =>
+    acc && match slot_of_instance(instance: runner_slot_instance_name(slot: m)) {
+      Present { value: s } => (s.host as String) == (m.host as String) && s.slot_index == m.slot_index
+      Absent => false
+    })
+  shakedown && github_slot && every_member_selects
 }
 
 // --- a refused plan is reconciled only when a registration was minted ---
