@@ -220,7 +220,7 @@ fn mercurial_decode_node_identity(
         } else {
           MercurialNodeIdentityDecodeRefused {
             cause: MercurialNodeIdentityWrongLength {
-              observed: count(octets) * 2,
+              observed: count(qualified_octet_members(q: qualified)) * 2,
             },
           }
         }
