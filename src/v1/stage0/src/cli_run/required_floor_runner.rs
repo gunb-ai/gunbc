@@ -5600,6 +5600,22 @@ pub(crate) fn floor_cgroup_stat_beat(
     stall: Option<&crate::memory_governor::MemoryStallObservation>,
 ) {
     let leaf = floor_cgroup_dir();
+    // THE SEAM IS READ BEFORE AND AFTER THE SAMPLE, AND A TRANSITION IS NAMED RATHER THAN PICKED.
+    //
+    // Putting the seam on the beat's own line removed the LOG-ADJACENCY join; it did not bind the
+    // two observations IN TIME, and those are different fixes. This function reads memory.stat and
+    // memory.current from procfs and then renders; the floor thread can call `floor_seam` at any
+    // point in between, so a single read taken after the sample would label a beat with a seam the
+    // sampled memory was not taken under -- confidently, and with nothing in the line to say so.
+    // A transition beat is exactly the one a reader most wants to trust, because it is where a
+    // phase's cost is attributed.
+    //
+    // Bracketing is preferred over holding the seam lock across the reads: the lock is written by
+    // the floor thread on every phase change, and blocking that thread on two procfs reads would
+    // let the instrument perturb the workload it is measuring. Bracketing cannot do that, and it
+    // makes the uncertainty EXPLICIT (`transition:A>B`) instead of resolving it silently -- which
+    // is the difference between a typed refusal and a fabricated plausible reading (DESIGN 5).
+    let seam_before = floor_seam_current();
     let body = std::fs::read_to_string(format!("{leaf}/memory.stat")).ok();
     let key = |k: &str| -> String {
         body.as_deref()
@@ -5615,14 +5631,26 @@ pub(crate) fn floor_cgroup_stat_beat(
     let current = std::fs::read_to_string(format!("{leaf}/memory.current"))
         .map(|v| v.trim().to_string())
         .unwrap_or_else(|_| "na".to_string());
-    // The beat line's own spelling of the three states -- one token each, no spaces, because
-    // this line is parsed field-by-field into a typed receipt. `none` is the unset slot and maps
-    // to `SeamNotYetEntered`; `unreadable` is a poisoned lock and maps to nothing that can size
-    // or attribute anything.
-    let seam = match floor_seam_current() {
-        None => "unreadable".to_string(),
-        Some(s) if s.is_empty() => "none".to_string(),
-        Some(s) => s,
+    let seam_after = floor_seam_current();
+    // The beat line's own spelling, one token each and no spaces, because this line is parsed
+    // field-by-field into a typed receipt. `none` is the unset slot and maps to
+    // `SeamNotYetEntered`; `unreadable` is a poisoned lock; `transition:A>B` is a seam that MOVED
+    // while this sample was being taken, and maps to a `FloorSeam` arm that can neither size nor
+    // attribute anything. Only a seam that was the SAME before and after the sample is reported
+    // as that seam.
+    let spell = |r: &Option<String>| -> String {
+        match r {
+            None => "unreadable".to_string(),
+            Some(s) if s.is_empty() => "none".to_string(),
+            Some(s) => s.clone(),
+        }
+    };
+    let before = spell(&seam_before);
+    let after = spell(&seam_after);
+    let seam = if before == after {
+        before
+    } else {
+        format!("transition:{before}>{after}")
     };
     // THE STALL CLAUSE ON THE BEAT'S OWN LINE, for the same reason as the seam. It is the
     // heartbeat's quantity and used to be readable only from the heartbeat line printed BESIDE

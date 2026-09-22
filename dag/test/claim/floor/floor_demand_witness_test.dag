@@ -22,10 +22,11 @@ import gunbc.floor_demand {
   receipt_peak_seam, PeakAttributedTo, PeakSeamUnattributable,
   PeakUnattributableCause, PeakBeatSampledBeforeAnySeam, PeakBeatSeamUnrecorded, ReceiptHasNoBeats, ReceiptTorn,
   gunbc_floor_memory_stat_receipt_2026_09_21, receipt_peak_reading_standing, PeakReadingStanding,
-  PeakIsDemand, PeakIsLowerBound, PeakUnreadable, PeakLowerBoundCause, RunDidNotComplete,
+  PeakIsUncensoredSampledMaximum, PeakIsLowerBound, PeakUnreadable, PeakLowerBoundCause, RunDidNotComplete,
   PeakBeatWasStalling, SwapCouldAbsorbAnonymousPages, SwapPolicyIsRead,
   RunSwapPolicy, SwapMaxRead, SwapMaxDeclaredUnread, SwapDisabled,
   BeatStall, StallRead, StallUnread, SeamUnreadable, PeakBeatStallUnread, PeakBeatSeamUnreadable,
+  SeamMovedDuringSample, PeakBeatSeamMovedDuringSample,
   beat_stall_is_zero, beat_stall_is_positive,
 }
 import gunbc.fabric_witness_run { floor_execution_requirements }
@@ -465,11 +466,11 @@ test fn neither_standing_receipt_reads_an_uncensored_demand() -> Bool {
   old_one && new_one
 }
 
-// THE POSITIVE CONTROL FOR PeakIsDemand, so the arm that would let a figure SIZE something is not
+// THE POSITIVE CONTROL FOR PeakIsUncensoredSampledMaximum, so the arm that would let a figure SIZE something is not
 // a permanently unreachable decoration. A completed run whose peak beat did not stall, under a
 // policy that cannot spill, reads a demand -- and no receipt in this corpus satisfies that today,
 // which is precisely why the arm needs a supplied-input control to prove it is inhabitable.
-test fn a_completed_unstalled_run_without_swap_reads_a_demand() -> Bool {
+test fn a_completed_unstalled_run_without_swap_reads_an_uncensored_sampled_maximum() -> Bool {
   let clean = FloorHeldSetReceipt {
     run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
     beats: [seamed_beat(n: 1, seam: SeamClaimEvaluationFold, anon: 900, file: 100, shmem: 90, unevictable: 0, stall: 0)],
@@ -477,7 +478,7 @@ test fn a_completed_unstalled_run_without_swap_reads_a_demand() -> Bool {
     swap_policy: SwapDisabled,
   }
   match receipt_peak_reading_standing(r: clean) {
-    PeakIsDemand => true
+    PeakIsUncensoredSampledMaximum => true
     _ => false
   }
 }
@@ -541,7 +542,7 @@ test fn an_unreadable_seam_on_the_peak_beat_is_its_own_cause() -> Bool {
 
 // AN UNREAD STALL ON THE PEAK BEAT IS REPORTED AS SUCH, not silently accepted as calm. Without
 // this arm a beat whose stall window did not read would reach the swap test and could answer
-// PeakIsDemand -- a figure allowed to SIZE a guest, resting on a beat nobody observed.
+// PeakIsUncensoredSampledMaximum -- a figure allowed to SIZE a guest, resting on a beat nobody observed.
 test fn a_peak_beat_whose_stall_did_not_read_is_not_a_demand() -> Bool {
   let unread_peak = FloorMemoryStatBeat {
     beat: 9, seam: SeamClaimEvaluationFold, charge: byte_size(100),
@@ -591,8 +592,35 @@ test fn both_swap_arms_censor_and_a_read_zero_ceiling_does_not() -> Bool {
     _ => false
   }
   let c = match receipt_peak_reading_standing(r: read_zero) {
-    PeakIsDemand => true
+    PeakIsUncensoredSampledMaximum => true
     _ => false
   }
   a && b && c
+}
+
+// A BEAT WHOSE SEAM MOVED WHILE IT WAS SAMPLED ATTRIBUTES TO NEITHER PHASE, AND CARRIES BOTH.
+// The instrument reads the seam slot before and after it reads procfs; when they differ, the
+// beat's memory was sampled ACROSS a phase boundary and belongs wholly to neither side. Reporting
+// either one would be a confident label on memory that was not taken under it -- and a transition
+// beat is exactly the one a reader most wants to trust, since it is where a phase's cost gets
+// attributed. The claim asserts BOTH endpoints survive into the cause, because a transition that
+// forgot which two phases it sat between would be no more useful than an unattributed beat.
+test fn a_beat_whose_seam_moved_during_the_sample_attributes_to_neither_phase() -> Bool {
+  let moved = FloorMemoryStatBeat {
+    beat: 5, seam: SeamMovedDuringSample { before: "strict-preparation", after: "discovery-authority" },
+    charge: byte_size(100),
+    anon: byte_size(900), file: byte_size(100), shmem: byte_size(90), unevictable: byte_size(0),
+    slab_unreclaimable: byte_size(4), slab_reclaimable: byte_size(1000), kernel_stack: byte_size(3),
+    pagetables: byte_size(2), percpu: byte_size(1), sock: byte_size(0), file_dirty: byte_size(0),
+    stall: StallRead { rate: events_per_minute(count: 0) },
+  }
+  let r = FloorHeldSetReceipt {
+    run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
+    beats: [moved], run_completed: true, swap_policy: SwapDisabled,
+  }
+  match receipt_peak_seam(r: r) {
+    PeakSeamUnattributable { cause: PeakBeatSeamMovedDuringSample { beat: b, before: x, after: y } } =>
+      b == 5 && (x as String) == "strict-preparation" && (y as String) == "discovery-authority"
+    _ => false
+  }
 }

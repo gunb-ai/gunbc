@@ -234,7 +234,7 @@ fn gunbc_floor_cgroup_charge_ceiling() -> ByteSize {
 // only by the order the lines happened to appear in -- a positional citation (DESIGN 3), which any
 // line emitted between them by another thread invalidates silently.
 //
-// THREE ARMS ARE NOT SEAMS AND THAT IS THE POINT. SeamNotYetEntered is a beat taken before the first
+// FOUR ARMS ARE NOT SEAMS AND THAT IS THE POINT. SeamNotYetEntered is a beat taken before the first
 // floor_seam call -- genuinely un-attributed, and rendering it as the first seam would attribute
 // entry-time memory to preparation. SeamUnrecorded is a beat transcribed from a line that carried
 // no seam field at all, which is every beat taken before the instrument grew one: the 2026-09-19
@@ -243,7 +243,16 @@ fn gunbc_floor_cgroup_charge_ceiling() -> ByteSize {
 // ITSELF could not be read -- a poisoned lock -- which is a third distinct fact and exists because
 // the instrument can print it (review 69767): a vocabulary that cannot receive a token its own
 // producer emits forces the transcriber to map it onto some OTHER arm, and that mapping is a
-// fabrication no reader can see. None of the three may size or attribute anything.
+// fabrication no reader can see.
+//
+// SeamMovedDuringSample IS THE FOURTH AND IT IS A DIFFERENT KIND OF NOT-KNOWING. The other three
+// say the seam was absent or unreadable; this one says the seam WAS READABLE AND CHANGED WHILE
+// THE SAMPLE WAS BEING TAKEN. The instrument reads the slot before and after it reads procfs and,
+// when the two differ, reports BOTH rather than choosing -- the beat's memory was sampled ACROSS
+// the boundary and belongs wholly to neither phase. Putting the seam on the beat's own line
+// removed the log-adjacency join; it did NOT bind the two observations in time, and those are
+// different fixes. A transition beat is precisely the one a reader most wants to trust, because
+// it is where a phase's cost gets attributed. None of the four may size or attribute anything.
 //
 // WHAT THIS VOCABULARY DOES NOT COVER, stated so its absence is not read as a reading: checkout and
 // the toolchain build are JOB STEPS BEFORE THIS PROCESS EXISTS, so no in-process beat can carry
@@ -259,6 +268,7 @@ type FloorSeam
   | SeamNotYetEntered
   | SeamUnrecorded
   | SeamUnreadable
+  | SeamMovedDuringSample { before: NonEmptyStr, after: NonEmptyStr }
 
 type FloorMemoryStatBeat {
   beat: Int
@@ -500,6 +510,7 @@ type PeakUnattributableCause
   = PeakBeatSampledBeforeAnySeam { beat: Int }
   | PeakBeatSeamUnrecorded { beat: Int }
   | PeakBeatSeamUnreadable { beat: Int }
+  | PeakBeatSeamMovedDuringSample { beat: Int, before: NonEmptyStr, after: NonEmptyStr }
   | ReceiptHasNoBeats
   | ReceiptTorn { overflow: IntegerOverflow }
 
@@ -519,6 +530,8 @@ fn receipt_peak_seam(r: FloorHeldSetReceipt) -> PeakSeamAttribution {
         SeamNotYetEntered => PeakSeamUnattributable { cause: PeakBeatSampledBeforeAnySeam { beat: b.beat } }
         SeamUnrecorded => PeakSeamUnattributable { cause: PeakBeatSeamUnrecorded { beat: b.beat } }
         SeamUnreadable => PeakSeamUnattributable { cause: PeakBeatSeamUnreadable { beat: b.beat } }
+        SeamMovedDuringSample { before: x, after: y } =>
+          PeakSeamUnattributable { cause: PeakBeatSeamMovedDuringSample { beat: b.beat, before: x, after: y } }
         SeamStrictPreparation => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamPublishedMockProjection => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamSiteProjection => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
@@ -651,6 +664,14 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
 // is FLAT across every preparation beat and then FALLS during the fold. That is reclaim giving the
 // cache back to make room for anonymous memory, which is the opposite of cache accumulation -- a
 // direction, readable off the rows, that no single beat could establish.
+//
+// PROCESS OVERLAP IS NOT RULED OUT BY THESE ROWS AND MUST NOT BE SAID TO BE. The anonymous set
+// falling after the peak is CONSISTENT with the fold releasing retained state, but consistency is
+// not discrimination: these counters are per-cgroup totals and say nothing about which processes
+// held what, so no reading here separates one process growing from two overlapping. Overlap is
+// recorded as UNOBSERVED in floor_receipt_uncarried_observation_frontier, and its line there names
+// a missing INSTRUMENT rather than a missing transcription. The cache arm is excluded by the rows;
+// the overlap arm is simply not measured, and those are different states.
 //
 // SWITCHING THE STANDING MOVES TWO DERIVED QUANTITIES, NOT ONE, and the second is easy to miss
 // because nothing reds when it changes. The demand is the obvious one: floor_memory_requirement
@@ -887,8 +908,23 @@ type PeakLowerBoundCause
   | SwapCouldAbsorbAnonymousPages { declared_swap_max: ByteSize }
   | SwapPolicyIsRead { swap_max: ByteSize }
 
+// THE SUCCESSFUL ARM IS NAMED FOR WHAT IT ESTABLISHES, WHICH IS NOT EXACT DEMAND. It used to be
+// called PeakIsUncensoredSampledMaximum, and that name asserted past its evidence in the way DESIGN 4d forbids: the
+// arm is reached when the workload completed, the SAMPLED peak showed no stall, and swap could
+// not spill. Those remove two CENSORING mechanisms -- they do not make a sampled maximum the true
+// maximum. memory.stat carries no high-water counter, so this receipt's peak is the largest value
+// a PERIODIC sample caught, and a spike that rose and fell between two beats is invisible to it.
+// This module's own beat-cadence note has said exactly that from the start; the fold promoted
+// past it anyway, and the ARM NAME was the assertion, because a later reader consumes an arm
+// called PeakIsUncensoredSampledMaximum as a fact rather than as the bet it is.
+//
+// SO EVERY ARM OF THIS TYPE IS A LOWER BOUND, and they differ only in WHY. The uncensored arm is
+// the strongest reading available from this instrument and it is still a floor on demand. An
+// exact-demand standing would need a persistent high-water observation of the same held-set
+// quantity, or some other construction that cannot miss an intermediate maximum; neither exists
+// here, so neither is claimed.
 type PeakReadingStanding
-  = PeakIsDemand
+  = PeakIsUncensoredSampledMaximum
   | PeakIsLowerBound { cause: PeakLowerBoundCause }
   | PeakUnreadable { cause: PeakUnattributableCause }
 
@@ -912,9 +948,9 @@ fn receipt_peak_reading_standing(r: FloorHeldSetReceipt) -> PeakReadingStanding 
           PeakIsLowerBound { cause: PeakBeatStallUnread { beat: b.beat } }
         } else {
           match r.swap_policy {
-            SwapDisabled => PeakIsDemand
+            SwapDisabled => PeakIsUncensoredSampledMaximum
             SwapMaxRead { swap_max: m } =>
-              if byte_size_count(b: m) == 0 { PeakIsDemand } else { PeakIsLowerBound { cause: SwapPolicyIsRead { swap_max: m } } }
+              if byte_size_count(b: m) == 0 { PeakIsUncensoredSampledMaximum } else { PeakIsLowerBound { cause: SwapPolicyIsRead { swap_max: m } } }
             SwapMaxDeclaredUnread { declared: d, declaring_authority: _ } =>
               PeakIsLowerBound { cause: SwapCouldAbsorbAnonymousPages { declared_swap_max: d } }
           }
