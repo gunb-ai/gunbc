@@ -100,3 +100,25 @@ fn w_forked_nominal_record_keeps_its_use_line() -> Bool {
 test fn a_forked_nominal_record_keeps_its_authored_use_line() -> Bool {
   w_forked_nominal_record_keeps_its_use_line()
 }
+
+// TEMPORARY DECOMPOSITION PROBES. compile_dag_rust_emit_check answers one Bool over a conjunction
+// of (compiles clean AND every include present AND every exclude absent), so a false verdict names
+// none of the three. These split it. They are diagnostics, not claims, and are removed once the
+// expecting-red arm above is either confirmed or corrected.
+data aiulb_forked_source: String = "module aiulb_forked\n\nimport std.types { Int, List }\nimport std.integer { UInt8 }\nimport v2.std.integer { OverflowDisposition }\n\nfn count_octets(xs: List<UInt8>) -> Int {\n  count(xs)\n}\n\nfn disposition_is_ignored(d: OverflowDisposition) -> Int {\n  0\n}\n"
+
+fn diag_forked_compiles_clean_at_all() -> Bool {
+  compile_dag_rust_emit_check(aiulb_forked_source, "src/aiulb_forked.rs", [], [])
+}
+
+fn diag_forked_spells_uint8() -> Bool {
+  compile_dag_rust_emit_check(aiulb_forked_source, "src/aiulb_forked.rs", ["UInt8"], [])
+}
+
+fn diag_forked_has_the_std_integer_use_line() -> Bool {
+  compile_dag_rust_emit_check(aiulb_forked_source, "src/aiulb_forked.rs", ["pub use crate::std_integer::"], [])
+}
+
+fn diag_forked_has_a_v2_std_integer_use_line() -> Bool {
+  compile_dag_rust_emit_check(aiulb_forked_source, "src/aiulb_forked.rs", ["pub use crate::v2_std_integer::"], [])
+}
