@@ -1,0 +1,39 @@
+module gunbc.recurring_failure_mode.a_termination_contract_is_met_by_a_trimming_transport
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_termination_contract_is_met_by_a_trimming_transport: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_termination_contract_is_met_by_a_trimming_transport" as NonEmptyStr,
+
+  receipts: [
+    "**a reader whose contract is LINE TERMINATION is fed through a transport whose contract is TRIMMING** (each contract is sound in isolation and they compose to a false reading: the producer really finished, and the reader really reports unfinished.",
+
+    "THE SHAPE. A reader of a stream being written concurrently must decide what counts as evidence, and the sound answer is TERMINATED LINES ONLY -- a final fragment with no newline is half a statement and reading it would let a partially written value be read as a whole one. Independently, a capture transport normalizes what it hands back, and trailing-whitespace trimming is the near-universal convention for captured process output, because a caller comparing a captured word against a literal does not want the shell's newline. Neither party is wrong about its own subject. But the trim REMOVES THE EXACT BYTE the reader's contract depends on, so the producer's last line -- which is where terminators live: an END marker, a total, a verdict -- is silently dropped, and the reader reports the state it reserves for a producer that has not finished.",
+
+    "WHY IT IS QUIET. Nothing refuses. The transport succeeded, the exit code is zero, the reader returned one of its ordinary declared arms. The stream is intact to every eye that looks at it as text, because the missing byte is invisible in a terminal and in a diff. And the reader's arm is PLAUSIBLE -- `still being written` is exactly what you would expect from a live capture -- so the reading is not merely wrong, it is wrong in the direction that explains itself.",
+
+    "THE MEDIUM IS THE SUBJECT, WHICH IS WHY IT PRESENTS AS A TEST DEFECT. Production usually feeds the reader the real medium (a file the collector wrote) and is unaffected; the claim that stands a pipe in for that medium is the one that reds. So the natural diagnosis -- `the claim is flaky` or `the parser regressed` -- is wrong twice over, and the correct repair is neither to weaken the reader nor to flip the claim's expectation but to make the claim's medium an instance of the medium the reader's contract is over.",
+
+    "SPECIMEN, gunbc main, 2026-09-21/22. `gunbc.machine_intake_host_capture_envelope` `host_capture_bind` gained `host_capture_terminated_lines` in #11987 -- drop the final line unless the capture ends in a newline -- for a grounded reason: the mtcollins1 census capture is bound while the host is still writing it over serial, and boot 23 had a half-written `workload-write-rc=` fragment. Production (`gunbc.machine_intake_mtcollins1_boot_run` `mtcollins1_boot_await_capture_terminal`) reads that capture with `Filesystem.Read`, so the newline survives and every fixture and every file-fed claim kept passing.",
+
+    "ONE CONSUMER FED IT A PIPE: `test.claim.mtcollins1_census_image_local_wet` `the_rendered_program_runs_and_its_output_parses_by_real_execution` rendered the capture program with `console_device: \"/dev/stdout\"` and bound `obs.stdout`. `extdeps.shell.exec` `Exec.RunArgv` is realized by `retained_utf8_lossy_trimmed`, which is `trim_end`. The program's final `echo` of the envelope END marker really wrote its newline; the trim removed it; the binder correctly declined to read an unterminated final line; the envelope bound OPEN; the claim went false. RENDERER UNCHANGED, WORLD UNCHANGED, READER MOVED.",
+
+    "WHAT IT COST, AND IT IS THE PART WORTH CARRYING: the red landed on main in a lane that was FAIL-OPEN, so it was reported by the merge queue as a refusal only once the receipt adjudicator was bound (gunbc#11829), after which it blocked every landing. One dropped byte, six sibling claims over the same grammar still green, and the only discriminating signal was the ONE claim whose medium differed from the other six.",
+
+    "RECOGNITION RULE. Ask, at every hop between a producer and a reader with a framing contract, WHAT THE TRANSPORT IS ENTITLED TO REWRITE. The tells are mechanical: a reader that treats an unterminated tail specially, anywhere downstream of captured process output; a claim that binds `obs.stdout` where production binds file bytes; a reader returning its `incomplete` / `pending` / `open` arm for a producer that has demonstrably exited; and a parser whose fixtures (authored strings, which keep their newline) all pass while its one real-execution claim does not.",
+
+    "IT IS NOT `printed_remedy_is_mangled_by_the_medium_that_prints_it`: there the medium SUBSTITUTES or EXECUTES a span, arbitrary characters are at risk, and the remedy is quoting at the send site. Here the medium removes exactly the framing byte, deterministically and as specified, and no quoting rule addresses it -- the remedy is choosing a medium whose contract preserves what the reader's contract reads. It is not `empty_capture_read_as_clean_result`: the capture is not empty and the reader does not consume an emptiness; it reads a complete stream and correctly reports one line less than was written. It is not `transport_close_read_as_completion`: there the transport's end-of-stream is mistaken for the producer's completion; here the producer's completion MARKER is deleted by the transport and its absence is read as incompletion -- the opposite direction.",
+
+    "RUNG FOUND AT: SILENT WRONGNESS at the composition -- neither party reports anything and the reader's answer is a declared arm -- caught only because one claim over the affected route happened to be a wall. MITIGATABLE once a claim binds the real medium, which is where this repair puts it.",
+
+    "ATTAINABLE CEILING: STRUCTURALLY IMPOSSIBLE, and the reason is that the invalid state is a TYPE confusion that the model currently does not carry. A capture whose trailing terminator is guaranteed and a capture that has been normalized are two different things wearing one `String`; a carrier that distinguishes them lets a reader with a termination contract accept only the first, and the trimming transport then cannot be handed to it at all. Nothing about this is undecidable -- the transport's normalization is declared at its own boundary.",
+
+    "NEXT-RUNG TRIGGER, AT CAPABILITY GRAIN: A CAPTURED-TEXT CARRIER THAT DECLARES WHAT ITS TRANSPORT NORMALIZED, sufficient for a reader whose contract reads line termination to REFUSE a capture whose terminator was normalized away, at the type boundary rather than in a reviewer's head. A trigger naming only `stop trimming in extdeps.shell.exec` is the artifact-grained version and is the wrong repair besides: trimming is correct for the consumers that have it, and a corpus-wide untrim would change every one of them while leaving the next termination-contracted reader free to be fed a normalized stream.)",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.mtcollins1_census_image_local_wet", decl_name: "the_rendered_program_runs_and_its_output_parses_by_real_execution", field: WholeDeclaration },
+  ],
+}
