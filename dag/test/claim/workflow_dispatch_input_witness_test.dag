@@ -15,7 +15,8 @@ import gunbc.fleet_converge_workflow {
   FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy,
   RunnerPasswordSessionToolConverge,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
-  fleet_converge_reset_observer_dispatch_admission_step, fleet_converge_build_job_steps, fleet_converge_jobs,
+  fleet_converge_reset_observer_dispatch_admission_step, fleet_converge_build_job_steps,
+  fleet_converge_job_edges, fleet_converge_release_bins_job_id,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
   fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0, SparkServingApply, SparkNativeServingApply, FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
@@ -214,32 +215,44 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // that mutates a host without that edge would be installing whatever happened to be lying around.
 // `host-reset-return` is held to it for a sharper reason than the others -- it POWER-CYCLES its
 // subject, so a stale binary there would drive a real machine from a model nobody reviewed.
-// THE ROSTER IS READ, NOT THE WHOLE WORKFLOW -- FOR AUTHORITY, NOT FOR COST, AND THE DIFFERENCE IS
-// MEASURED. This claim's subject is the job partition and its needs edges, and
-// gunbc.fleet_converge_workflow fleet_converge_jobs is now the declaration the workflow derives its
-// jobs from, so this reads that authority rather than the only route to the fact.
+// THE EDGE ROSTER IS READ, AND THAT IS A DIFFERENT MECHANISM FROM THE ATTEMPT BEFORE IT.
 //
-// IT IS STILL OVER BUDGET AND THE ROSTER DID NOT CHANGE THAT: 521845 eval steps against the whole
-// Workflow row, 521510 against the roster, budget 72300 -- 335 steps, 0.06%. The cost is
-// constructing the seven Job values with their step bodies, not the `on` descriptions that were
-// the suspect, so a List<Job> projection cannot help. What would is a roster of ids and needs
-// edges alone, consumed by the job functions; that restructures all seven and is not done here.
+// This claim's subject is the job partition and its dependency edges. It first read them off
+// fleet_converge_workflow (521845 eval steps, budget 72300), then off a lifted List<Job>
+// (521510 -- 335 steps, 0.06%), because forcing a list of Jobs forces every Job including every
+// step body: the projection WAS the construction, filed as gunbc.recurring_failure_mode
+// extracting_a_collection_whose_elements_are_the_cost.
+//
+// gunbc.fleet_converge_workflow fleet_converge_job_edges is ids and lists of strings, built
+// independently of any Job and CONSUMED BY the seven builders for their `needs`, so reading it
+// forces no job body. The partition is still exact -- every row named, and the count pinned so an
+// eighth cannot appear unobserved -- and the property the witness is really about is unchanged:
+// every job that touches a host waits for `build`, because the release binaries are produced once
+// and a job without that edge installs whatever was lying around. host-reset-return is held to it
+// most sharply, since it POWER-CYCLES its subject.
+//
+// THE INHABITANCE OBLIGATION IS DISCHARGED ELSEWHERE AND DELIBERATELY: the rendered-yaml claims in
+// this file run the real workflow end to end, so the edges asserted here are known to reach the
+// emitted jobs. Reading the roster alone would otherwise establish the graph a builder was TOLD,
+// never the graph the workflow emits.
 test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
-  let jobs = fleet_converge_jobs()
-  jobs.length() == 7
-    && jobs[0].id == "build"
-    && jobs[1].id == "fleet-converge"
-    && jobs[1].needs == ["build"]
-    && jobs[2].id == "host-reset-return"
-    && jobs[2].needs == ["build"]
-    && jobs[3].id == "dashboard-deploy"
-    && jobs[3].needs == ["build"]
-    && jobs[4].id == "approval-broker-dark-install"
-    && jobs[4].needs == ["build"]
-    && jobs[5].id == "microvm-controller-install"
-    && jobs[5].needs == ["build"]
-    && jobs[6].id == "rlm-launch-deployment-receipt"
-    && jobs[6].needs == ["build"]
+  let edges = fleet_converge_job_edges
+  let build = [fleet_converge_release_bins_job_id as String]
+  edges.length() == 7
+    && edges[0].id == ("build" as NonEmptyStr)
+    && edges[0].needs == []
+    && edges[1].id == ("fleet-converge" as NonEmptyStr)
+    && edges[1].needs == build
+    && edges[2].id == ("host-reset-return" as NonEmptyStr)
+    && edges[2].needs == build
+    && edges[3].id == ("dashboard-deploy" as NonEmptyStr)
+    && edges[3].needs == build
+    && edges[4].id == ("approval-broker-dark-install" as NonEmptyStr)
+    && edges[4].needs == build
+    && edges[5].id == ("microvm-controller-install" as NonEmptyStr)
+    && edges[5].needs == build
+    && edges[6].id == ("rlm-launch-deployment-receipt" as NonEmptyStr)
+    && edges[6].needs == build
 }
 
 fn expected_fleet_converge_yml_content() -> String {
