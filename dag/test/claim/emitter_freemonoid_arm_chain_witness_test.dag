@@ -110,3 +110,33 @@ test fn a_guarded_arm_refuses_rather_than_running_unguarded() -> Bool {
     ["__fm.is_empty()"]
   )
 }
+
+// THE SECOND SPECIMEN FROM THE ASSIGNMENT, ENROLLED RATHER THAN READ ONCE. v2.lens.cost
+// copied_port_derivation carries `Empty => Absent | Cons { head: only, tail: Empty } => Present |
+// _ => Absent`, and pre-repair it emitted `if is_empty { None } else { Some(first) }` -- which
+// answers Present for a list of ANY non-zero length, so it reported `exactly one` for a
+// three-element list. That is the same class as list_init with a different consequence: one
+// silently truncates a list, the other silently widens a cardinality claim, which is what makes
+// this a defect in the RULE rather than at either site.
+//
+// THE DISCRIMINATION IS THE CHAIN, so the three-way answer is readable in the emitted text: the
+// arm conditions are exactly is_empty, len() == 1, and else, so length 0 answers Absent, length 1
+// answers Present, and length 3 falls past both and answers Absent. A two-way split cannot express
+// that, which is why the pre-repair emission cannot distinguish 1 from 3 at all.
+//
+// INHABITANCE, so this fixture is not the only thing standing: the REAL site is in the emitted
+// 00_compile closure as v2_lens_cost_copied_port_derivation
+// derive_copied_port_index_from_arrow, and its repaired emission is
+// `if __fm.is_empty() { None } else if __fm.len() == 1 { let only = (*__fm)[0].clone();
+// Some(only.clone()) } else { None }` against a retained pre-repair emission of
+// `if __fm.is_empty() { None } else { let only = (*__fm)[0].clone(); Some(only.clone()) }`.
+// The fixture supplies the shape; the real site attests the producer emits it.
+test fn the_one_element_arm_answers_only_for_length_one() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fmcard\n\nimport std.types { List, Int }\n\nfn exactly_one(xs: List<Int>) -> Int? {\n  match xs {\n    Empty => none\n    Cons { head: only, tail: Empty } => Present { value: only }\n    _ => none\n  }\n}\n",
+    "src/fmcard.rs",
+    ["__fm.len() == 1", "(*__fm)[0].clone()"],
+    []
+  )
+}
+
