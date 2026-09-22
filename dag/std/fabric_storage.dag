@@ -1,7 +1,7 @@
 module std.fabric_storage
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
-import std.content_hash { ContentHash, content_hash_of_value_cryptographic, serialize_content_hash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, parse_content_hash }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, content_hash_from_structural_digest }
 import std.durable_compare_and_set { CasGeneration, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_unreadable_slot_detail }
 
 // THE FABRIC DB INTERFACE: IMMUTABLE CONTENT-ADDRESSED OBJECTS AND COMPARE-AND-SET NAMED HEADS.
@@ -53,35 +53,30 @@ fn fabric_object_preimage(object: FabricObject) -> NonEmptyStr {
   join(["fabric_storage.object;", link_words, "B", to_string(length(object.body as String)), ":", object.body as String], "") as NonEmptyStr
 }
 
-// THE DIGEST IS NOW CRYPTOGRAPHIC, AND THE SIGNATURE CHANGED BECAUSE OF IT.
+// THE DIGEST IS THE STRUCTURAL FAMILY, AND THAT IS A DECLARED STALL, NOT A CHOICE.
 //
-// This minted Fnv1a64Structural through content_hash_of_value until now: sixty-four
-// non-cryptographic bits. Against an adversary that is a LOCATOR, not an identity -- a second
-// preimage is findable at birthday work no attacker would notice paying -- so a store built on it
-// can say "these are the bytes I have" and cannot say "these are the bytes you asked for". The
-// verified-cache guarantee this module exists to support is exactly the second sentence, so minting
-// a locator and calling the check verification would be rung inflation in the DESIGN 4b(1) sense.
+// Fnv1a64Structural is sixty-four non-cryptographic bits. Against an adversary that is a LOCATOR,
+// not an identity -- a second preimage is findable at birthday work no attacker would notice paying
+// -- so a store built on it can say "these are the bytes I have" and cannot say "these are the
+// bytes you asked for". The verified-cache guarantee this module exists to support is exactly the
+// second sentence, so minting a locator and calling the check verification would be rung inflation
+// in the DESIGN 4b(1) sense, and this module does not call it that.
 //
-// IT STAYS PURE, WHICH IS THE WHOLE REASON THE KERNEL AND NOT THE SHELL ARM SERVES HERE.
-// extdeps.crypto.hash carries a shell-out digest (crypto.Sha256Sum.File, sha256sum_line_digest) and
-// it does not fit this seam for a reason stronger than its cost: that operation takes a PATH, and
-// fabric_object_preimage produces a NonEmptyStr in memory. Reaching it would mean writing every
-// object to a file before hashing it, which re-opens the custody gap verification exists to close --
-// hash one file, store another -- and turns ref-minting into an effect, which is what makes
-// fabric_object_verified a pure check today. std.content_hash content_hash_of_value_cryptographic
-// reaches the same FIPS 180-4 digest with neither a write nor a spawn.
-//
-// THE OPTIONAL IS PROPAGATED RATHER THAN ABSORBED. content_hash_of_value_cryptographic can refuse,
-// for the reason stated at its own declaration, and the tempting repair -- fall back to the
-// structural digest so the signature stays total -- is precisely the absorbing fallback DESIGN 5
-// forbids: it would answer with a locator in the one case where the identity could not be
-// established, and no caller could tell the two apart. So the refusal travels, and every consumer
-// says what it does with it.
-fn fabric_object_ref_of(object: FabricObject) -> FabricObjectRef? {
-  match content_hash_of_value_cryptographic(value: fabric_object_preimage(object: object)) {
-    Present { value: h } => Present { value: FabricObjectRef { digest: h } }
-    Absent => none
-  }
+// The cryptographic mint EXISTS and was TRIED HERE: std.content_hash content_hash_of_value_cryptographic
+// reaches the FIPS 180-4 digest through extdeps.crypto.sha2 with neither a write nor a spawn, and
+// gunbc#11996 bound it to this function. It was measured on this module's real consumers and
+// withdrawn: interpreted SHA-256 on every put, every verified get and every closure step made each
+// consumer of gunbc.fabric.fabric_storage_file_store two to three hundred times slower and cancelled
+// the required floor at its cap. The row is gunbc.recurring_failure_mode
+// fabric_object_identity_is_a_structural_locator: rung, ceiling, the receipt, and the trigger --
+// native emission of the sha2 closure SUFFICIENT FOR those consumers to run at floor rate. Until
+// that capability lands, this mint stays structural and the refusal to call it verification stays
+// in force. The mint is pure, which is what keeps fabric_object_verified a pure check; the shell arm
+// (extdeps.crypto.hash sha256sum over a PATH) was refused for the same reason under either family:
+// it would write every in-memory preimage to a file before hashing it, re-opening the custody gap
+// verification exists to close.
+fn fabric_object_ref_of(object: FabricObject) -> FabricObjectRef {
+  FabricObjectRef { digest: content_hash_of_value(value: fabric_object_preimage(object: object)) }
 }
 
 // BYTES TOGETHER WITH THE REF THAT NAMES THEM, AND THE ONLY WAY TO BUILD ONE IS TO MINT IT.
@@ -97,32 +92,29 @@ fn fabric_object_ref_of(object: FabricObject) -> FabricObjectRef? {
 // one producer derives the ref FROM the object it stores beside it. So a mismatched pair has no
 // constructor rather than being refused by a check somebody has to remember to write
 // (DESIGN 5: construction over validation). Consumers that need both halves take this one value,
-// which is why the store's put path no longer passes them separately.
+// which is why the store's put path no longer passes them separately. It stands on its own and
+// does not depend on which family the ref is minted in.
 type FabricAddressedObject sole_constructor {
   object: FabricObject
   ref: FabricObjectRef
 }
 
-fn fabric_object_addressed(object: FabricObject) -> FabricAddressedObject? {
-  match fabric_object_ref_of(object: object) {
-    Absent => none
-    Present { value: r } => Present { value: FabricAddressedObject { object: object, ref: r } }
-  }
+fn fabric_object_addressed(object: FabricObject) -> FabricAddressedObject {
+  FabricAddressedObject { object: object, ref: fabric_object_ref_of(object: object) }
 }
 
 fn fabric_object_ref_wire(object: FabricObjectRef) -> NonEmptyStr {
   serialize_content_hash(hash: object.digest)
 }
 
-// THE INVERSE MOVED WITH THE MINT, AND IT HAD TO. This read content_hash_from_structural_digest,
-// which admits sixteen hex digits and nothing else, while fabric_object_ref_wire now serializes a
-// Sha256Hash as `sha256:<64 hex>`. Left alone it would refuse every ref this module now mints --
-// the round trip would be broken in the one direction a READ depends on. parse_content_hash is the
-// std.content_hash authority for that wire in both directions and carries its own re-serialization
-// check, so a candidate that does not re-serialize to the text it was read from is refused rather
-// than guessed at.
+// The inverse of fabric_object_ref_wire for a READ. It admits exactly the family this module mints
+// -- sixteen hex digits of the structural family -- so a ref this module could not have produced
+// is refused at the wire rather than parsed into a value fabric_object_verified would then reject as
+// cross-family. When the mint changes family (the row named above), this parse changes with it: the
+// two are one fact read in two directions, and gunbc#11996 recorded the failure mode of moving one
+// without the other (gunbc.recurring_failure_mode a_carrier_swap_moves_the_mint_and_strands_the_parser).
 fn fabric_object_ref_of_wire(wire: String) -> FabricObjectRef? {
-  match parse_content_hash(wire: wire) {
+  match content_hash_from_structural_digest(digest: wire) {
     Present { value: h } => Present { value: FabricObjectRef { digest: h } }
     Absent => none
   }
@@ -173,12 +165,6 @@ fn fabric_head_admits(expected: FabricHeadExpectation, observed: FabricHeadReadi
 //
 // A lost race is NOT a fault and has no arm here: it is FabricHeadMoved, an outcome carrying both
 // sides. The git realization answered both "lost race" and "unreachable" with exit 128.
-// FabricObjectDigestUnavailable: THE MINT ITSELF COULD NOT ANSWER. Distinct from
-// FabricObjectCorrupt, which says the held bytes hash to something else -- a real, reportable
-// disagreement. This says no digest was computed at all, so nothing was compared. Collapsing the
-// two would report a corruption that was never observed, which is a fabricated plausible output
-// (DESIGN 5); keeping them apart is what lets a reader tell a store that lied from a digest that
-// was not available.
 type FabricStorageFault
   = FabricStoreUnreachable { detail: NonEmptyStr }
   | FabricStoreRefused { cause: CasStoreFailure }
@@ -186,7 +172,6 @@ type FabricStorageFault
   | FabricObjectCorrupt { object: FabricObjectRef, detail: NonEmptyStr }
   | FabricReplyUndecodable { detail: NonEmptyStr }
   | FabricHeadNameRefused { name: NonEmptyStr }
-  | FabricObjectDigestUnavailable { detail: NonEmptyStr }
 
 type FabricPut
   = FabricObjectStored { object: FabricObjectRef }
@@ -236,24 +221,16 @@ type FabricObjectVerification
   | FabricObjectVerificationFailed { fault: FabricStorageFault }
 
 fn fabric_object_verified(asked: FabricObjectRef, content: FabricObject) -> FabricObjectVerification {
-  match fabric_object_ref_of(object: content) {
-    Absent =>
-      FabricObjectVerificationFailed {
-        fault: FabricObjectDigestUnavailable {
-          detail: "the held bytes could not be reduced to a digest, so nothing was compared" as NonEmptyStr
-        }
+  let actual = fabric_object_ref_of(object: content)
+  if fabric_object_ref_eq(a: asked, b: actual) {
+    FabricObjectVerified { stored: FabricStoredObject { object: asked, content: content } }
+  } else {
+    FabricObjectVerificationFailed {
+      fault: FabricObjectCorrupt {
+        object: asked,
+        detail: join(["held bytes hash to ", fabric_object_ref_wire(object: actual) as String], "") as NonEmptyStr,
       }
-    Present { value: actual } =>
-      if fabric_object_ref_eq(a: asked, b: actual) {
-        FabricObjectVerified { stored: FabricStoredObject { object: asked, content: content } }
-      } else {
-        FabricObjectVerificationFailed {
-          fault: FabricObjectCorrupt {
-            object: asked,
-            detail: join(["held bytes hash to ", fabric_object_ref_wire(object: actual) as String], "") as NonEmptyStr,
-          }
-        }
-      }
+    }
   }
 }
 
@@ -268,7 +245,6 @@ fn fabric_storage_fault_wire(fault: FabricStorageFault) -> String {
     FabricObjectCorrupt { object: o, detail: d } => join(["object corrupt: ", fabric_object_ref_wire(object: o) as String, " ", d as String], "")
     FabricReplyUndecodable { detail: d } => join(["reply undecodable: ", d as String], "")
     FabricHeadNameRefused { name: n } => join(["head name refused: ", n as String], "")
-    FabricObjectDigestUnavailable { detail: d } => join(["object digest unavailable: ", d as String], "")
   }
 }
 

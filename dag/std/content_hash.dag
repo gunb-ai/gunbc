@@ -170,6 +170,19 @@ fn as_content_hash_sha512(digest: Sha512Digest) -> ContentHash {
 // bounded_natural_arithmetic_evaluated_as_unbounded_int). A class's rung is the minimum across its
 // in-scope paths, so the honest rung of this mint is the EMITTED one, which is silent. Citing the
 // interpreted path alone would be rung inflation.
+//
+// A DECLARED FRONTIER, NOT A DANGLING SEAM (DESIGN 3c). This mint has no production consumer today,
+// and that is stated rather than hidden. Its consumer is named: std.fabric_storage fabric_object_ref_of,
+// which bound to it in gunbc#11996 and was measured on that module's real consumers -- interpreted
+// SHA-256 on every put, every verified get and every closure step made each consumer of
+// gunbc.fabric.fabric_storage_file_store two to three hundred times slower and cancelled the
+// required floor at its cap -- so the binding was withdrawn and the ref stays structural. The row
+// carrying the receipt, the rung and the trigger is gunbc.recurring_failure_mode
+// fabric_object_identity_is_a_structural_locator; the trigger is native emission of the sha2 closure
+// SUFFICIENT FOR those consumers to run at floor rate, and the binding returns when it fires. Until
+// then the one claim that runs this real path is test.claim.content_hash_family_grounded_witness
+// the_computing_mint_reaches_the_published_digest_of_a_fabric_preimage, whose oracle was computed
+// outside this corpus; it is what keeps the seam inhabited rather than merely declared.
 
 // The canonical byte preimage of a text value: its UTF-8 encoding, through the same two seams every
 // other byte-length and byte-digest consumer in the corpus uses (std.materialization_object reaches

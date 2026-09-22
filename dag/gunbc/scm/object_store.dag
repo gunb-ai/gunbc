@@ -52,7 +52,10 @@ import v2.std.node {
 // That was true when written and is now FALSE: extdeps.crypto.sha2 computes FIPS 180-4 SHA-256 over
 // List<UInt8> in the substrate, witnessed by test.claim.sha256_fips_witness_test, and
 // std.content_hash content_hash_of_value_cryptographic mints a Sha256Hash through it.
-// std.fabric_storage's object refs moved onto it in that change.
+// std.fabric_storage's object refs were bound to it in that change and the binding was withdrawn
+// in the same change: interpreted, it made every store consumer two to three hundred times slower
+// and cancelled the required floor (gunbc.recurring_failure_mode
+// fabric_object_identity_is_a_structural_locator carries the receipt and the trigger).
 //
 // AND THE OLD TRIGGER HAD TO BE REPLACED, NOT JUST THE REASON -- this is the DESIGN 4b(3) defect the
 // row was one merge away from committing. The dissolve-on read "a computing cryptographic digest
