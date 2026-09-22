@@ -638,34 +638,42 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
 // receipt is RETAINED, not deleted, because it is the evidence the 26/25 GiB row was argued from
 // and a superseded reading is history rather than a mistake.
 //
-// WHAT IT SHOWS, AND IT IS NOT WHAT A PEAK SNAPSHOT WOULD HAVE SAID. The peak is beat 18, in
-// claim-evaluation-fold, at 26142809464 bytes held. But preparation alone reaches 23.01 GiB by
-// beat 14 and NEVER RELEASES IT: anon climbs monotonically from 8.35 GiB with no drop, and the
-// fold adds only about 1.3 GiB of working state on top of everything preparation is still
-// holding. So the peak SEAM and the demand's CAUSE are different answers -- the maximum occurs in
-// the fold, and 95% of it was built before the fold began. A reduction aimed at the peak's seam
-// would chase the last 5%; the retained preparation set is the subject.
+// WHAT IT SHOWS, AND IT IS NOT WHAT A PEAK SNAPSHOT WOULD HAVE SAID -- the SHAPE of the rows
+// below, which is the part a reader cannot get by looking up one number. receipt_peak_seam names
+// the peak's seam: it is in the claim-evaluation fold. But the held set rises MONOTONICALLY across
+// every preparation beat and never falls, so almost all of the peak is built before the fold
+// begins and is still held while the fold runs; the fold adds a comparatively small working set on
+// top. The peak SEAM and the demand's CAUSE are therefore different answers, and a reduction aimed
+// at the seam where the maximum occurs would chase the smaller term. The retained preparation set
+// is the subject.
 //
-// IT IS NOT A CACHE STORY AND THE BEATS SAY SO DIRECTLY rather than by inference. The file cache
-// sits flat at 1.90 GiB through all fourteen preparation beats and is then SQUEEZED to 0.26 GiB
-// during the fold -- reclaim giving the cache back to make room for anonymous memory, the
-// opposite of cache accumulation.
+// IT IS NOT A CACHE STORY AND THE ROWS SAY SO DIRECTLY rather than by inference: the file counter
+// is FLAT across every preparation beat and then FALLS during the fold. That is reclaim giving the
+// cache back to make room for anonymous memory, which is the opposite of cache accumulation -- a
+// direction, readable off the rows, that no single beat could establish.
 //
-// SWITCHING THE STANDING MOVES TWO DERIVED FIGURES, NOT ONE, and the second is easy to miss
-// because nothing reds when it changes. The demand falls (26725773568 -> 26142809464). The GUEST
-// CACHE ALLOWANCE also moves, because gunbc.runner_microvm gunbc_runner_microvm_guest_cache_allowance
-// is derived from receipt_last_unstalled_beat: on the 2026-09-19 receipt that was beat 13, whose
-// reclaimable cache rounds to 2 GiB; on this one it is beat 17, whose cache rounds to 1 GiB. The
-// allowance HALVES.
+// SWITCHING THE STANDING MOVES TWO DERIVED QUANTITIES, NOT ONE, and the second is easy to miss
+// because nothing reds when it changes. The demand is the obvious one: floor_memory_requirement
+// reads this receipt's peak. The other is the GUEST CACHE ALLOWANCE -- gunbc.runner_microvm
+// gunbc_runner_microvm_guest_cache_allowance derives it from receipt_last_unstalled_beat, which
+// selects a different beat on this receipt than on its predecessor, so the allowance moves with
+// the standing and in the opposite direction to the demand.
 //
-// Both consequences are stated here rather than discovered later, because every claim over them is
-// derivation-relative and therefore stays green through the change -- including the production
-// shape's expecting-red probe, which still refuses: need plus allowance 27216551288 against a
-// remainder of 26843545600, an overshoot of 373005688 bytes where the 2026-09-19 figures
-// overshot by 2029711616. The bytes are given because they are the quantities the fold compares;
-// in binary units that is 356 MiB against 1.89 GiB, and the narrowing is the whole point. A
-// figure that moves a fleet's sizing without reddening anything is exactly the change that lands
-// unnoticed, so it is named at the row that moves it.
+// THE PRODUCERS ARE NAMED AND THE FIGURES ARE NOT COPIED HERE (DESIGN 6; review 69874). An earlier
+// revision of this note carried both moves as byte counts, which is the same defect this change
+// REMOVES from gunbc.runner_microvm's allowance note one file over -- deleting a transcribed beat
+// figure there and minting transcribed figures here would have moved the rot rather than ending
+// it, and the next standing switch would falsify these sentences exactly as it falsified that one.
+// Each quantity lives in its one home: the demand in this receipt's rows through
+// floor_memory_requirement, the allowance in gunbc_runner_microvm_guest_cache_allowance, the
+// remainder comparison in the shape-fit fold and its expecting-red probe.
+//
+// WHY THE CONSEQUENCE IS STATED AT ALL, given the figures are not: every claim over these
+// quantities is derivation-relative and stays green through the change -- including the production
+// shape's expecting-red probe, which still refuses, by a narrower margin than before. A quantity
+// that moves a fleet's sizing without reddening anything is exactly the change that lands
+// unnoticed, so the FACT that it moves is named at the row that moves it, and a reader who wants
+// the margin evaluates the fold.
 //
 // ITS WORKLOAD RAN TO ITS END, WHICH IS WHY run_completed IS TRUE ON A RUN THAT REFUSED. The
 // floor executed preparation and the whole claim-evaluation fold -- twenty-three beats, the
@@ -674,11 +682,13 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
 // test.claim.mtcollins1_census_image_local_wet, a module this change does not touch). The peak is
 // therefore not truncated, which is the only question that field's consumer asks.
 //
-// STILL CENSORED, AND THE POLICY IS WHY. This ran at the live 26 GiB / 25 GiB row with swap
-// available, and its own beats record the consequence: the peak beat carries a stall of 11
-// faults/min, beat 19 reads 77, and beat 22 reads 3225 while the run's heartbeat shows host
-// swap-in rising. So 26142809464 is a LOWER BOUND on what the run wanted to hold, for the same
-// reason the 2026-09-19 figure was. A cell whose MemoryHigh sits under the workload cannot
+// STILL CENSORED, AND THE POLICY IS WHY. This ran at the live 26/25 GiB row with swap available,
+// and its own rows record the consequence: the peak beat's stall is NON-ZERO and the stalls rise
+// steeply across the beats after it, while the run's heartbeat shows host swap-in climbing. So
+// this receipt's peak is a LOWER BOUND on what the run wanted to hold, for the same reason the
+// 2026-09-19 figure was -- and receipt_peak_reading_standing DERIVES exactly that, answering
+// PeakIsLowerBound with the stalling peak beat as its cause rather than leaving a reader to
+// compare stall figures by eye. A cell whose MemoryHigh sits under the workload cannot
 // produce an uncensored demand reading by construction; only a run with no throttle line and no
 // swap can, which is the shape gunbc.runner_slot_allocation's shakedown slot declares and which
 // nothing can dispatch yet.
