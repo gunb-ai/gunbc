@@ -1,6 +1,6 @@
 module gunbc.github_app_acquisition
 
-import std.types { NonEmptyStr, String, Bool, List, Secret }
+import std.types { NonEmptyStr, String, Bool, List, Int, Secret }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.human_intervention {
@@ -382,7 +382,12 @@ data census_app_declared_adoption: GitHubAppAcquisitionRecord = AppNeverAcquired
 
 type AcquisitionRecordReading
   = AcquisitionRecordRead { record: GitHubAppAcquisitionRecord, source: NonEmptyStr }
-  | AcquisitionRecordConflict { declared_slug: NonEmptyStr, handoff_slug: NonEmptyStr }
+  | AcquisitionRecordConflict {
+      declared_app_id: GitHubAppId
+      declared_slug: NonEmptyStr
+      handoff_app_id: GitHubAppId
+      handoff_slug: NonEmptyStr
+    }
   | AcquisitionRecordUnparseable { path: String, cause: NonEmptyStr }
 
 fn acquisition_record_field(document: String, key: String) -> String? {
@@ -434,6 +439,14 @@ fn acquisition_record_from_document(path: String, content_document: String) -> A
       }
   }
 }
+//
+// APP IDENTITY IS THE PAIR (app id, slug), AND TWO SOURCES AGREE ONLY WHEN BOTH AGREE. An earlier cut
+// reconciled on the slug alone, so a declared adoption naming App A and a handoff naming App B under
+// one slug resolved with the handoff winning -- the precedence rule the sentence above says does
+// not exist, applied to half of the identity (side-chat review of d12b76dd190). The id is not
+// incidental metadata beside the slug: it selects the installation population and is what the
+// receipt certifies, so a disagreement in EITHER half is the conflict, and the conflict carries
+// both halves of both sources so the operator reconciling it sees what disagreed.
 
 fn reconcile_acquisition_record(
   declared: GitHubAppAcquisitionRecord,
@@ -449,19 +462,22 @@ fn reconcile_acquisition_record(
       match reading {
         AcquisitionRecordUnparseable { path: p, cause: c } =>
           AcquisitionRecordUnparseable { path: p, cause: c }
-        AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
-          AcquisitionRecordConflict { declared_slug: d, handoff_slug: h }
+        AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
+          AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h }
         AcquisitionRecordRead { record: handoff_record, source: src } =>
           match declared {
             AppNeverAcquired => AcquisitionRecordRead { record: handoff_record, source: src }
-            AppAcquired { app_id: _, slug: declared_slug } =>
+            AppAcquired { app_id: declared_id, slug: declared_slug } =>
               match handoff_record {
                 AppNeverAcquired => AcquisitionRecordRead { record: declared, source: src }
-                AppAcquired { app_id: _, slug: handoff_slug } =>
-                  if (declared_slug as String) == (handoff_slug as String) {
+                AppAcquired { app_id: handoff_id, slug: handoff_slug } =>
+                  if (declared_id.value == handoff_id.value) && ((declared_slug as String) == (handoff_slug as String)) {
                     AcquisitionRecordRead { record: handoff_record, source: src }
                   } else {
-                    AcquisitionRecordConflict { declared_slug: declared_slug, handoff_slug: handoff_slug }
+                    AcquisitionRecordConflict {
+                      declared_app_id: declared_id, declared_slug: declared_slug,
+                      handoff_app_id: handoff_id, handoff_slug: handoff_slug,
+                    }
                   }
               }
           }
@@ -873,14 +889,35 @@ type CensusAppAgreement
   | AppPermissionDrift { agreement: PermissionAgreement }
   | AppEventDrift { agreement: EventAgreement }
   | AppPermissionsUnreadable { decode: ObservedPermissionMapDecode }
-  | AppIdentityDrift { expected_slug: NonEmptyStr, observed_slug: String }
+  | AppIdentityDrift {
+      expected_app_id: GitHubAppId
+      observed_app_id: Int
+      expected_slug: NonEmptyStr
+      observed_slug: String
+    }
 
+// IDENTITY AGREEMENT IS ON THE APP ID AND THE SLUG, BECAUSE THE PUBLIC RECORD CARRIES BOTH. An
+// earlier cut compared the slug alone: census_app_read_address discarded the record's app id,
+// this fold never looked at GitHubAppPublicRecord.id, and registration_standing then rebuilt
+// RegistrationEstablished with the id straight from the record -- so the id that selected the
+// installation population and was copied into the sealed receipt was the fleet's own note, never
+// joined to any read. The judgment's app-id agreement between registration and installation was
+// vacuous there, both sides deriving from the same unverified value, and the factory accepted by
+// type a record naming App A under App B's slug: B's public record agreed with the manifest, an
+// installation of A was admitted, and the receipt named A with B's slug (side-chat review of
+// d12b76dd190). Every field of the record that affects admission is joined here to its own
+// observation; the drift arm carries both ids as well as both slugs so the refusal says which
+// half disagreed.
 fn census_app_agreement(
+  expected_app_id: GitHubAppId,
   expected_slug: NonEmptyStr,
   record: GitHubAppPublicRecord,
 ) -> CensusAppAgreement {
-  if record.slug != (expected_slug as String) {
-    AppIdentityDrift { expected_slug: expected_slug, observed_slug: record.slug }
+  if (record.id != expected_app_id.value) || (record.slug != (expected_slug as String)) {
+    AppIdentityDrift {
+      expected_app_id: expected_app_id, observed_app_id: record.id,
+      expected_slug: expected_slug, observed_slug: record.slug,
+    }
   } else {
     match observed_permissions_from_wire_map(m: record.permissions) {
       ObservedPermissionAccessUnreadable { wire_name: n, access: a } =>
@@ -990,15 +1027,18 @@ fn classify_census_app(
               ) as NonEmptyStr
             },
           }
-        AppAcquired { app_id: _, slug: s } =>
-          match census_app_agreement(expected_slug: s, record: observed) {
+        AppAcquired { app_id: id, slug: s } =>
+          match census_app_agreement(expected_app_id: id, expected_slug: s, record: observed) {
             AppAgreesWithManifest =>
               UpsertClassification { verdict: Converged, decision: Noop }
-            AppIdentityDrift { expected_slug: e, observed_slug: o } =>
+            AppIdentityDrift { expected_app_id: ei, observed_app_id: oi, expected_slug: e, observed_slug: o } =>
               UpsertClassification {
                 verdict: Conflict,
                 decision: Refuse {
-                  reason: join(["public app record answers for slug ", o, " which is not the recorded ", e as String], "") as NonEmptyStr
+                  reason: join([
+                    "public app record answers as app id ", to_string(oi), " slug ", o,
+                    " which is not the recorded app id ", to_string(ei.value), " slug ", e as String,
+                  ], "") as NonEmptyStr
                 },
               }
             AppPermissionsUnreadable { decode: _ } =>
@@ -1193,7 +1233,7 @@ fn census_app_readback(
   observation: CensusAppObservation,
 ) -> CensusAppReadback {
   match issuance {
-    CredentialIssuedOnce { app_id: _, slug: slug, pem: _, webhook_secret: _, client_id: _, client_secret: _ } =>
+    CredentialIssuedOnce { app_id: issued_id, slug: slug, pem: _, webhook_secret: _, client_id: _, client_secret: _ } =>
       match observation {
         AppNotYetAddressable =>
           ReadbackUnavailable { reason: "readback was not addressed at the issued slug" as NonEmptyStr }
@@ -1210,11 +1250,13 @@ fn census_app_readback(
           }
         AppRecordUnreadable { reason: r } => ReadbackUnavailable { reason: r }
         AppRecordObserved { record: observed } =>
-          match census_app_agreement(expected_slug: slug, record: observed) {
+          match census_app_agreement(expected_app_id: issued_id, expected_slug: slug, record: observed) {
             AppAgreesWithManifest =>
               ReadbackConverged { record: acquisition_record_from_issuance(issuance: issuance) }
-            AppIdentityDrift { expected_slug: e, observed_slug: o } =>
-              ReadbackDisagrees { agreement: AppIdentityDrift { expected_slug: e, observed_slug: o } }
+            AppIdentityDrift { expected_app_id: ei, observed_app_id: oi, expected_slug: e, observed_slug: o } =>
+              ReadbackDisagrees {
+                agreement: AppIdentityDrift { expected_app_id: ei, observed_app_id: oi, expected_slug: e, observed_slug: o }
+              }
             AppPermissionDrift { agreement: a } =>
               ReadbackDisagrees { agreement: AppPermissionDrift { agreement: a } }
             AppEventDrift { agreement: a } =>

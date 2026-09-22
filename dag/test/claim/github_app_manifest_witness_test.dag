@@ -1,6 +1,6 @@
 module test.claim.github_app_manifest_witness
 
-import std.types { NonEmptyStr, String, Bool, List, Map, Secret }
+import std.types { NonEmptyStr, String, Bool, List, Map, Int, Secret }
 import std.upsert_decision {
   UpsertClassification,
   Converged,
@@ -1096,6 +1096,80 @@ test fn w_only_a_converged_classification_establishes_registration() -> Bool {
   established && refused
 }
 
+// A PUBLIC RECORD AT THE RECORDED SLUG IS NOT THE RECORDED APP UNLESS ITS ID AGREES TOO. This is the
+// counterexample the factory accepted by type after d12b76dd190: a record naming App A under App
+// B's slug, a public read at slug B that agrees with the manifest, an installation of A admitted,
+// and a receipt naming A with B's slug -- three real reads that never established one App. The
+// agreement now joins GitHubAppPublicRecord.id to the record's app id, so this reads as a Conflict
+// and registration is NOT established, with both ids in the reason.
+fn public_record_of_id(id: Int, slug: String) -> GitHubAppPublicRecord {
+  GitHubAppPublicRecord {
+    id: id,
+    slug: slug,
+    node_id: "MDM6QXBwNDI0Mg==",
+    name: census_app_name as String,
+    html_url: "https://github.com/apps/gunbc-global-census",
+    permissions: declared_permission_wire_map,
+    events: declared_event_wire_list,
+  }
+}
+
+fn registration_over_public_record(record: GitHubAppAcquisitionRecord, observed: GitHubAppPublicRecord) -> RegistrationStanding {
+  registration_standing(
+    record: record,
+    classification: classify_census_app(
+      policy: EnsureObserveOnly,
+      record: record,
+      observation: AppRecordObserved { record: observed },
+      code: none,
+    ),
+  )
+}
+
+test fn w_a_public_app_at_the_recorded_slug_with_another_id_does_not_establish_registration() -> Bool {
+  match registration_over_public_record(
+    record: AppAcquired { app_id: GitHubAppId { value: 7 }, slug: "gunbc-global-census" as NonEmptyStr },
+    observed: public_record_of_id(id: 8, slug: "gunbc-global-census"),
+  ) {
+    RegistrationEstablished { app_id: _, slug: _ } => false
+    RegistrationNotEstablished { reason: r } =>
+      string_contains(s: r as String, pattern: "app id 8")
+        && string_contains(s: r as String, pattern: "recorded app id 7")
+  }
+}
+
+// THE POSITIVE CONTROL, WHICH MATTERS AS MUCH AS THE REFUSAL: without it the join could be an
+// over-prohibition that refuses a legitimate acquisition (DESIGN 4d). Same id, same slug, agreeing
+// manifest -- registration is established and carries the id the read confirmed.
+test fn w_a_public_app_with_the_recorded_id_and_slug_establishes_registration() -> Bool {
+  match registration_over_public_record(
+    record: AppAcquired { app_id: GitHubAppId { value: 7 }, slug: "gunbc-global-census" as NonEmptyStr },
+    observed: public_record_of_id(id: 7, slug: "gunbc-global-census"),
+  ) {
+    RegistrationEstablished { app_id: id, slug: s } => (id.value == 7) && ((s as String) == "gunbc-global-census")
+    RegistrationNotEstablished { reason: _ } => false
+  }
+}
+
+// TWO SOURCES SHARING A SLUG AND NAMING DIFFERENT APP IDS ARE STILL TWO APPS. An earlier cut
+// reconciled on the slug alone and let the handoff win here; the module's own rule is that two
+// sources naming different Apps conflict, and the id is half of the name.
+test fn w_an_adoption_row_and_a_handoff_with_one_slug_and_different_app_ids_conflict() -> Bool {
+  let handoff = acquisition_record_from_document(
+    path: ".gunbc/probe.identity",
+    content_document: custody_identity_document(issuance: probe_issuance),
+  )
+  match reconcile_acquisition_record(
+    declared: AppAcquired { app_id: GitHubAppId { value: 9 }, slug: "gunbc-global-census" as NonEmptyStr },
+    from_handoff: Present { value: handoff },
+  ) {
+    AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
+      (da.value == 9) && (ha.value == 4242) && ((d as String) == (h as String))
+    AcquisitionRecordRead { record: _, source: _ } => false
+    AcquisitionRecordUnparseable { path: _, cause: _ } => false
+  }
+}
+
 // ----- the permission wire vocabulary -----
 
 test fn w_permission_access_round_trips_and_refuses_a_foreign_access() -> Bool {
@@ -1532,8 +1606,8 @@ test fn w_a_readback_at_a_different_slug_disagrees() -> Bool {
   ) {
     ReadbackDisagrees { agreement: a } =>
       match a {
-        AppIdentityDrift { expected_slug: e, observed_slug: o } =>
-          ((e as String) == "gunbc-global-census") && (o == "someone-elses-app")
+        AppIdentityDrift { expected_app_id: ei, observed_app_id: oi, expected_slug: e, observed_slug: o } =>
+          (ei.value == 4242) && (oi == 4242) && ((e as String) == "gunbc-global-census") && (o == "someone-elses-app")
         AppAgreesWithManifest => false
         AppPermissionDrift { agreement: _ } => false
         AppEventDrift { agreement: _ } => false
@@ -1711,7 +1785,7 @@ test fn w_the_written_identity_document_parses_back_into_the_acquisition_record(
           (id.value == 4242) && ((s as String) == "gunbc-global-census")
         AppNeverAcquired => false
       }
-    AcquisitionRecordConflict { declared_slug: _, handoff_slug: _ } => false
+    AcquisitionRecordConflict { declared_app_id: _, declared_slug: _, handoff_app_id: _, handoff_slug: _ } => false
     AcquisitionRecordUnparseable { path: _, cause: _ } => false
   }
 }
@@ -1724,7 +1798,7 @@ test fn w_a_handoff_missing_its_app_id_refuses_rather_than_reading_as_never_acqu
     AcquisitionRecordUnparseable { path: _, cause: c } =>
       string_contains(s: c as String, pattern: "app_id")
     AcquisitionRecordRead { record: _, source: _ } => false
-    AcquisitionRecordConflict { declared_slug: _, handoff_slug: _ } => false
+    AcquisitionRecordConflict { declared_app_id: _, declared_slug: _, handoff_app_id: _, handoff_slug: _ } => false
   }
 }
 
@@ -1739,8 +1813,8 @@ test fn w_an_adoption_row_and_a_handoff_naming_different_apps_conflict() -> Bool
     declared: AppAcquired { app_id: GitHubAppId { value: 9 }, slug: "some-other-app" as NonEmptyStr },
     from_handoff: Present { value: handoff },
   ) {
-    AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
-      ((d as String) == "some-other-app") && ((h as String) == "gunbc-global-census")
+    AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
+      (da.value == 9) && ((d as String) == "some-other-app") && (ha.value == 4242) && ((h as String) == "gunbc-global-census")
     AcquisitionRecordRead { record: _, source: _ } => false
     AcquisitionRecordUnparseable { path: _, cause: _ } => false
   }
@@ -1753,7 +1827,7 @@ test fn w_an_adoption_row_and_a_handoff_naming_different_apps_conflict() -> Bool
         AppAcquired { app_id: _, slug: s } => (s as String) == "adopted-app"
         AppNeverAcquired => false
       }
-    AcquisitionRecordConflict { declared_slug: _, handoff_slug: _ } => false
+    AcquisitionRecordConflict { declared_app_id: _, declared_slug: _, handoff_app_id: _, handoff_slug: _ } => false
     AcquisitionRecordUnparseable { path: _, cause: _ } => false
   }
   conflicting && adoption_alone

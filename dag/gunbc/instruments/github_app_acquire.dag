@@ -220,10 +220,10 @@ fn acquisition_reading_exit(reading: AcquisitionRecordReading) -> ProcessExit {
   match reading {
     AcquisitionRecordRead { record: _, source: _ } =>
       exit_failure(reason: "acquisition_reading_exit reached with a successful reading")
-    AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
+    AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
       exit_failure(reason: join([
-        "census_app_declared_adoption names App ", d as String,
-        " and the custody handoff names ", h as String,
+        "census_app_declared_adoption names App id ", to_string(da.value), " slug ", d as String,
+        " and the custody handoff names App id ", to_string(ha.value), " slug ", h as String,
         "; two answers to which App this converge is about, and neither is preferred silently. Reconcile them before any converge is authorized.",
       ], ""))
     AcquisitionRecordUnparseable { path: p, cause: c } =>
@@ -240,8 +240,10 @@ fn acquisition_reading_exit(reading: AcquisitionRecordReading) -> ProcessExit {
 // all - which is the adoption path seen from the human's side.
 fn census_app_registration_instruction_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
   match observed_acquisition_reading() {
-    AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
-      acquisition_reading_exit(reading: AcquisitionRecordConflict { declared_slug: d, handoff_slug: h })
+    AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
+      acquisition_reading_exit(
+        reading: AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h }
+      )
     AcquisitionRecordUnparseable { path: p, cause: c } =>
       acquisition_reading_exit(reading: AcquisitionRecordUnparseable { path: p, cause: c })
     AcquisitionRecordRead { record: record, source: _ } =>
@@ -299,8 +301,10 @@ fn verdict_text(verdict: ObservationVerdict) -> String {
 // The acquiring entry below passes EnsureMayApply for the same reason.
 fn census_app_observe_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
   match observed_acquisition_reading() {
-    AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
-      acquisition_reading_exit(reading: AcquisitionRecordConflict { declared_slug: d, handoff_slug: h })
+    AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
+      acquisition_reading_exit(
+        reading: AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h }
+      )
     AcquisitionRecordUnparseable { path: p, cause: c } =>
       acquisition_reading_exit(reading: AcquisitionRecordUnparseable { path: p, cause: c })
     AcquisitionRecordRead { record: record, source: _ } =>
@@ -548,8 +552,10 @@ fn readback_exit(readback: CensusAppReadback, paths: CustodyHandoffPaths) -> Pro
 // read the observation used, not through the exchange's own reply.
 fn census_app_acquire_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
   match observed_acquisition_reading() {
-    AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
-      acquisition_reading_exit(reading: AcquisitionRecordConflict { declared_slug: d, handoff_slug: h })
+    AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
+      acquisition_reading_exit(
+        reading: AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h }
+      )
     AcquisitionRecordUnparseable { path: p, cause: c } =>
       acquisition_reading_exit(reading: AcquisitionRecordUnparseable { path: p, cause: c })
     AcquisitionRecordRead { record: record, source: _ } => census_app_acquire_for(record: record)
@@ -800,8 +806,10 @@ fn installations_read_exit(installations: List<GitHubAppInstallation>) -> Proces
 // sealed input (side-chat review, 2026-09-21); the reads moved rather than being copied.
 fn census_app_acquisition_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
   match observed_acquisition_reading() {
-    AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
-      acquisition_reading_exit(reading: AcquisitionRecordConflict { declared_slug: d, handoff_slug: h })
+    AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
+      acquisition_reading_exit(
+        reading: AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h }
+      )
     AcquisitionRecordUnparseable { path: p, cause: c } =>
       acquisition_reading_exit(reading: AcquisitionRecordUnparseable { path: p, cause: c })
     AcquisitionRecordRead { record: record, source: _ } =>
