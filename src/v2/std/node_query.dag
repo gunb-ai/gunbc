@@ -288,6 +288,123 @@ fn construct_field_edges(n: Node) -> List<Edge> {
   }
 }
 
+// FIELD PROJECTION OFF A COMPUTED RECEIVER: THE ELIMINATOR OF THE DECLARED FIELD ABOVE.
+//
+// `expr.f` where `expr` is a computed value rather than a name. It is a SEPARATE construct from
+// the qualified-name spine, and the reason is structural rather than stylistic: v2.std.qualified_name
+// QualifiedName is `FreeMonoid<Symbol>`, so a spine cannot carry a computed root at all -- there is
+// no slot in it for a Node. `a.b.c` over bare segments stays the spine and the resolver decides
+// what its head denotes (v2.compiler.body_lowering_fold body_lower_dotted_chain_lowered_optional
+// states that contract); only a receiver the spine cannot represent reaches this shape.
+//
+// The relation is the seed's: v1.compiler.core ExprFieldAccess carries a base child and the
+// field's authored name, and the emission side already reads exactly that pair
+// (v2.std.compilers.target_model target_value_expr_field_access_base_from_wire /
+// _field_from_wire, rendered through TargetFieldAccessShape). So the core shape is the same two
+// facts and no third: a Conj with a BASE edge to the receiver's lowered node and a FIELD edge to
+// the field-name atom.
+//
+// WHY THIS CANNOT BE CONFUSED WITH A CONSTRUCT, which is the only neighbouring Conj-of-Named
+// shape: construct_tag_optional admits a Conj whose FIRST edge names the atom it targets, and
+// `field_projection_base` never targets an atom named `field_projection_base`. Read in the other
+// direction, field_projection_optional requires BOTH reserved labels, which construct_field_edges
+// never produces because its labels are the declared field identities.
+//
+// WHAT THIS DOES NOT DO, stated because 12033's header promised the other half here: it does not
+// check that `f` IS a declared field of the receiver's type. That check reads declared_field_named
+// against the receiver's payload and needs a TYPE, which normalize does not have -- it is the
+// typecheck stage's, over this node, and it is the declared frontier this shape exists to give a
+// subject. Until it lands, a misspelled field is a resolve/typecheck-stage question and NOT
+// silently answered here.
+fn field_projection_base_name() -> Symbol {
+  ^field_projection_base
+}
+
+fn field_projection_field_name() -> Symbol {
+  ^field_projection_field
+}
+
+fn field_projection_node(base: Node, field: Symbol, source: Node) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: field_projection_base_name() }, target: base },
+      Edge {
+        label: Named { name: field_projection_field_name() },
+        target: node_with_occurrence_id(
+          kind: TypeNode { connective: Atom { identity: field } },
+          children: [],
+          occurrence_id: source.occurrence_id
+        )
+      }
+    ],
+    occurrence_id: source.occurrence_id
+  )
+}
+
+type FieldProjection {
+  base: Node
+  field: Symbol
+}
+
+fn field_projection_edge_base_optional(e: Edge) -> Optional<Node> {
+  match e.label {
+    Named { name: n } =>
+      if n == field_projection_base_name() {
+        optional_present(value: e.target)
+      } else {
+        optional_absent()
+      }
+    Positional => optional_absent()
+  }
+}
+
+fn field_projection_edge_field_optional(e: Edge) -> Optional<Symbol> {
+  match e.label {
+    Named { name: n } =>
+      if n == field_projection_field_name() {
+        match e.target.kind {
+          TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+          _ => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+    Positional => optional_absent()
+  }
+}
+
+// The reader: a two-edge Conj carrying exactly the base edge then the field edge. Anything else
+// -- a construct, a payload, a spine, a one-edge variant declaration -- is not a projection, and
+// the reader says so rather than guessing at a partial match.
+fn field_projection_optional(n: Node) -> Optional<FieldProjection> {
+  match n.kind {
+    TypeNode { connective: Conj } =>
+      match list_at_optional(xs: n.children, index: 0) {
+        Absent => optional_absent()
+        Present { value: base_edge } =>
+          match list_at_optional(xs: n.children, index: 1) {
+            Absent => optional_absent()
+            Present { value: field_edge } =>
+              match list_at_optional(xs: n.children, index: 2) {
+                Present { value: _ } => optional_absent()
+                Absent =>
+                  match field_projection_edge_base_optional(e: base_edge) {
+                    Absent => optional_absent()
+                    Present { value: base } =>
+                      match field_projection_edge_field_optional(e: field_edge) {
+                        Absent => optional_absent()
+                        Present { value: field } =>
+                          optional_present(value: FieldProjection { base: base, field: field })
+                      }
+                  }
+              }
+          }
+      }
+    _ => optional_absent()
+  }
+}
+
 // A DECLARED VARIANT, before the coproduct fold joins it to its siblings: one Named edge from the
 // variant's label to its payload Conj, carried on a one-edge Conj so the sugar fold
 // (v2.std.compilers.sugar sugar_variant_to_disj_edge) can read label and payload off it without

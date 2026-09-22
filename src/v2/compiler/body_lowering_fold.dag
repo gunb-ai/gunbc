@@ -102,6 +102,7 @@ import v2.std.node {
 import v2.std.node_query {
   construct_node,
   construct_tag_optional,
+  field_projection_node,
   find_named_child,
   positional_payload_field_name,
   variant_declaration_node
@@ -2009,33 +2010,12 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                   diagnostics: pcd
                                 )
                               Absent =>
-                                match body_lower_try_postfix_projection(node: node) {
-                                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                                  Accepted { value: projection, diagnostics: pd } =>
-                                    match projection {
-                                      Present { value: lowered } =>
-                                        outcome_with_diagnostics(
-                                          value: optional_present(value: lowered),
-                                          diagnostics: pd
-                                        )
-                                      Absent =>
-                                        match body_lower_try_infix_transform(node: node) {
+                                match body_lower_try_infix_transform(node: node) {
                                           Present { value: lowered } =>
                                             outcome_accepted(value: optional_present(value: lowered))
                                           Absent =>
                                                     let stripped = body_lower_unwrap_surface_shell(node: node)
-                                                    match body_lower_try_postfix_projection(node: stripped) {
-                                                      Rejected { diagnostics: r } =>
-                                                        Rejected { diagnostics: r }
-                                                      Accepted { value: stripped_proj, diagnostics: spd } =>
-                                                        match stripped_proj {
-                                                          Present { value: lowered } =>
-                                                            outcome_with_diagnostics(
-                                                              value: optional_present(value: lowered),
-                                                              diagnostics: spd
-                                                            )
-                                                          Absent =>
-                                                            match body_lower_try_fold_loop(node: stripped) {
+                                                    match body_lower_try_fold_loop(node: stripped) {
                                                               Rejected { diagnostics: r } =>
                                                                 Rejected { diagnostics: r }
                                                               Accepted { value: stripped_fold, diagnostics: sfd } =>
@@ -2069,11 +2049,7 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                                             }
                                                             }
                                                         }
-                                                    }
-                                                }
                                         }
-                                    }
-                                }
                             }
                         }
                             }
@@ -3260,84 +3236,105 @@ fn body_lower_dotted_suffix_slot_is_empty(repeat_elem: Node) -> Bool {
   }
 }
 
-// ONE WALK OVER THE CHAIN'S TAIL, READ BY BOTH DOTTED READERS. Every repeat element must be a
-// dot-projection step; every suffix slot must be empty EXCEPT the last, which may carry a call
-// suffix -- then the chain is a call THROUGH the path (`a.b.f(x)`), the whole path is the
-// callee and its argument row is read from that element. A call anywhere else is named by the
-// read below and declined; any other suffix kind is not this shape and the walk declines so the
-// existing arms run unchanged.
-// A second walker for the call class would be a second authority for "this is a dotted chain"
-// (review 67903 on gunbc#11612 refused exactly that fork), so the call reading and the value
-// reading share this one and differ only in what they build from its answer.
-type DottedChainTail {
-  segments: List<Symbol>
+// ONE WALK OVER THE CHAIN'S TAIL, READ BY EVERY DOTTED READER. Every repeat element must be a
+// dot-projection step; its suffix slot is either EMPTY (a bare segment) or a PAREN CALL (an
+// argument row). Any other suffix kind -- a brace suffix `a.b.C { f: v }`, an `as` suffix -- is
+// not this shape and the walk declines so the existing arms run unchanged.
+//
+// WHAT CHANGED HERE AND WHY (gunbc#12033's PR2, DESIGN 6b). The walk used to admit a call ONLY on
+// the FINAL segment and answered DottedChainCallBeforeEnd for anything else, which the readers
+// declined to the pre-existing arms. Those arms read ONE repeat element and then decided, so the
+// declined chains lost everything after the first step: `shell.Env.Get(name: n).value` reached the
+// old body_lower_try_postfix_projection, whose first element `.Env` carries no call suffix, and
+// REFUSED postfix_field_access_refused; `fields.skip(n: i).first()` built Transform(skip, fields, i)
+// and DROPPED `.first()` with no diagnostic at all. One boundary, two outcomes, and the silent one
+// is the worse: DESIGN 4b puts silent wrongness below the ladder rather than on it. The repair is
+// not a guard at either symptom -- it is that a postfix chain is a SEQUENCE of steps and was being
+// read as one step. This walk now collects the whole sequence and body_lower_postfix_chain_fold
+// folds it left-associatively, so both outcomes are removed by the same construction.
+//
+// A SECOND WALKER WOULD BE A SECOND AUTHORITY for "this is a dotted chain" (review 67903 on
+// gunbc#11612 refused exactly that fork), so the operand reading, the spine reading and the
+// general fold all consume THIS answer and differ only in what they build from it.
+type PostfixStep {
+  segment: Symbol
   call_elem: Optional<Node>
 }
 
-// A CALL SLOT ON A NON-FINAL SEGMENT (`a.f().b`) IS NAMED, AND DECLINED. It is the method-on-a-value
-// class -- a call result projected by a further segment -- which no lowering models yet, and it is
-// live corpus idiom in exactly this position (review 68280 on gunbc#11683 named four sites:
-// v2.workflow.floor_diff_observe floor_env_optional `shell.Env.Get(name: env_name).value`,
-// v2.workflow.floor_terminal_ledger_wire ledger_wire_field_at `fields.skip(n: index).first()`,
-// v2.test.claim.cargo_build_run_argv_witness `argv.skip(n: index).first()`, and the registered
-// lens v2.lens.schedule_lens `plan.schedule.skip(n: 1).first()`). Refusing it here made normalize
-// of those modules red where it Accepted, so the door DECLINES it to the existing arms, which still
-// erase it to the head atom with no diagnostic -- stated so erasure is not read as refusal (review
-// 68165): that erasure is a receipt on gunbc.recurring_failure_mode
-// call_expression_erased_at_v2_body_lowering and is pinned as a today-row by
-// v2.test.claim.body_lowering_qualified_path, so the day it is lowered or refused the row flips
-// loudly. The arm is kept as a named verdict rather than folded into NotThisShape so the reader
-// that finally models it has its hook.
-type DottedChainTailRead
-  = DottedChainTailFound { tail: DottedChainTail }
-  | DottedChainTailNotThisShape
-  | DottedChainCallBeforeEnd { call_elem: Node }
+// THE THIRD ARM IS WHY DELETING THE OLD READER IS NOT A WIDEN. A dot-projection step whose suffix
+// slot is neither empty nor a paren call -- today that is the BRACE suffix, the module-qualified
+// record construction `a.b.C { f: v }`, and an `as` suffix -- was refused by the old
+// body_lower_try_postfix_projection, because its has_call_suffix test answered false and fell into
+// the refusal. That shape is NOT lowered by this change: a construct's tag is a Symbol
+// (v2.std.node_query construct_node) and a module-qualified tag has no representation in it, so
+// lowering it would mean changing the construct shape, which is a wider package than this one.
+// DESIGN section 5 therefore requires it to keep refusing rather than fall through to the arms
+// that erase it, and it refuses HERE, located at the offending step, under a reason that says what
+// is actually wrong with it instead of calling it a field access.
+type PostfixChainRead
+  = PostfixChainFound { steps: List<PostfixStep> }
+  | PostfixChainNotThisShape
+  | PostfixChainStepSuffixUnlowered { at: Node }
 
-fn body_lower_dotted_chain_rest_is_empty(rest: Optional<Node>) -> Bool {
-  match rest {
-    Absent => true
-    Present { value: n } => is_empty_conj_root(n: n)
-  }
-}
-
-fn body_lower_dotted_chain_tail_read(
+fn body_lower_postfix_chain_steps_read(
   repeat_capture: Node,
-  acc: List<Symbol>
-) -> DottedChainTailRead {
+  acc: List<PostfixStep>
+) -> PostfixChainRead {
   if is_empty_conj_root(n: repeat_capture) {
-    DottedChainTailFound { tail: DottedChainTail { segments: acc, call_elem: optional_absent() } }
+    PostfixChainFound { steps: acc }
   } else {
     match body_lower_postfix_repeat_head_optional(repeat_capture: repeat_capture) {
-      Absent => DottedChainTailNotThisShape
+      Absent => PostfixChainNotThisShape
       Present { value: repeat_elem } =>
         match body_lower_postfix_projection_step(repeat_elem: repeat_elem) {
-          Absent => DottedChainTailNotThisShape
+          Absent => PostfixChainNotThisShape
           Present { value: segment } =>
-            let grown = list_snoc_item(xs: acc, item: segment)
-            let rest = body_lower_seq_child(node: repeat_capture, name: ^grammar_sequence_right_node_projection)
-            if body_lower_dotted_suffix_slot_is_empty(repeat_elem: repeat_elem) {
-              match rest {
-                Present { value: rest_capture } =>
-                  body_lower_dotted_chain_tail_read(repeat_capture: rest_capture, acc: grown)
-                Absent =>
-                  DottedChainTailFound {
-                    tail: DottedChainTail { segments: grown, call_elem: optional_absent() }
-                  }
-              }
-            } else if body_lower_postfix_projection_has_call_suffix(repeat_elem: repeat_elem) {
-              if body_lower_dotted_chain_rest_is_empty(rest: rest) {
-                DottedChainTailFound {
-                  tail: DottedChainTail { segments: grown, call_elem: optional_present(value: repeat_elem) }
-                }
+            let call_elem =
+              if body_lower_dotted_suffix_slot_is_empty(repeat_elem: repeat_elem) {
+                optional_absent()
+              } else if body_lower_postfix_projection_has_call_suffix(repeat_elem: repeat_elem) {
+                optional_present(value: repeat_elem)
               } else {
-                DottedChainCallBeforeEnd { call_elem: repeat_elem }
+                optional_absent()
+              }
+            let suffix_is_readable =
+              body_lower_dotted_suffix_slot_is_empty(repeat_elem: repeat_elem)
+                || body_lower_postfix_projection_has_call_suffix(repeat_elem: repeat_elem)
+            if suffix_is_readable {
+              let grown = list_snoc_item(
+                xs: acc,
+                item: PostfixStep { segment: segment, call_elem: call_elem }
+              )
+              match body_lower_seq_child(node: repeat_capture, name: ^grammar_sequence_right_node_projection) {
+                Present { value: rest_capture } =>
+                  body_lower_postfix_chain_steps_read(repeat_capture: rest_capture, acc: grown)
+                Absent => PostfixChainFound { steps: grown }
               }
             } else {
-              DottedChainTailNotThisShape
+              PostfixChainStepSuffixUnlowered { at: repeat_elem }
             }
         }
     }
   }
+}
+
+fn body_lower_postfix_step_is_bare(step: PostfixStep) -> Bool {
+  match step.call_elem {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn body_lower_postfix_steps_all_bare(steps: List<PostfixStep>) -> Bool {
+  fold(steps, init: true, f: fn(acc, step) {
+    acc && body_lower_postfix_step_is_bare(step: step)
+  })
+}
+
+fn body_lower_postfix_step_segments(steps: List<PostfixStep>) -> List<Symbol> {
+  fold(steps, init: Empty, f: fn(acc, step) {
+    list_snoc_item(xs: acc, item: step.segment)
+  })
 }
 
 fn body_lower_qualified_name_spine_node(segments: List<Symbol>, source: Node) -> Node {
@@ -3350,104 +3347,207 @@ fn body_lower_qualified_name_spine_node(segments: List<Symbol>, source: Node) ->
   node_with_occurrence_id(kind: spine.kind, children: spine.children, occurrence_id: source.occurrence_id)
 }
 
-fn body_lower_dotted_chain_read(node: Node) -> DottedChainTailRead {
+fn body_lower_postfix_chain_read(node: Node) -> PostfixChainRead {
   let stripped = body_lower_unwrap_surface_shell(node: node)
   match sugar_sequence_pair_optional(node: stripped) {
-    Absent => DottedChainTailNotThisShape
+    Absent => PostfixChainNotThisShape
     Present { value: pair } =>
-      match body_lower_dotted_head_symbol_optional(node: pair.left) {
-        Absent => DottedChainTailNotThisShape
-        Present { value: head } =>
-          match body_lower_dotted_chain_tail_read(repeat_capture: pair.right, acc: Empty) {
-            DottedChainTailNotThisShape => DottedChainTailNotThisShape
-            DottedChainCallBeforeEnd { call_elem: call_elem } =>
-              DottedChainCallBeforeEnd { call_elem: call_elem }
-            DottedChainTailFound { tail: tail } =>
-              match tail.segments {
-                Empty => DottedChainTailNotThisShape
-                Cons { head: _, tail: _ } =>
-                  DottedChainTailFound {
-                    tail: DottedChainTail {
-                      segments: Cons { head: head, tail: tail.segments },
-                      call_elem: tail.call_elem
-                    }
-                  }
-              }
+      match body_lower_postfix_chain_steps_read(repeat_capture: pair.right, acc: Empty) {
+        PostfixChainNotThisShape => PostfixChainNotThisShape
+        PostfixChainStepSuffixUnlowered { at: at } => PostfixChainStepSuffixUnlowered { at: at }
+        PostfixChainFound { steps: steps } =>
+          match steps {
+            Empty => PostfixChainNotThisShape
+            Cons { head: _, tail: _ } => PostfixChainFound { steps: steps }
           }
       }
   }
 }
 
 // The operand reader's presentation: the spine alone. A call is an expression, not
-// an operand reference, and the expression sites read those through body_lower_dotted_chain_lowered_optional.
+// an operand reference, and the expression sites read those through
+// body_lower_dotted_chain_lowered_optional. A chain with a computed head is likewise not an
+// operand reference: the head is an expression.
 fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
-  match body_lower_dotted_chain_read(node: node) {
-    DottedChainTailNotThisShape => optional_absent()
-    DottedChainCallBeforeEnd { call_elem: _ } => optional_absent()
-    DottedChainTailFound { tail: chain } =>
-      match chain.call_elem {
-        Present { value: _ } => optional_absent()
-        Absent =>
-          optional_present(
-            value: body_lower_qualified_name_spine_node(segments: chain.segments, source: node)
-          )
+  match body_lower_postfix_chain_read(node: node) {
+    PostfixChainNotThisShape => optional_absent()
+    PostfixChainStepSuffixUnlowered { at: _ } => optional_absent()
+    PostfixChainFound { steps: steps } =>
+      if body_lower_postfix_steps_all_bare(steps: steps) {
+        match body_lower_dotted_head_symbol_optional(
+          node: body_lower_postfix_chain_head_or_self(node: node)
+        ) {
+          Absent => optional_absent()
+          Present { value: head } =>
+            optional_present(
+              value: body_lower_qualified_name_spine_node(
+                segments: Cons { head: head, tail: body_lower_postfix_step_segments(steps: steps) },
+                source: node
+              )
+            )
+        }
+      } else {
+        optional_absent()
       }
   }
 }
 
-// THE ONE DOOR THE EXPRESSION SITES CONSULT, AND IT SITS ABOVE THE FIRST-ATOM FALLBACK. ITS
-// POPULATION IS TWO SHAPES AND NOT "EVERY DOTTED CHAIN": a BARE chain lowers to its spine, and a
-// chain whose ONLY call is on its FINAL segment lowers to a call through that spine. A call on a
-// NON-FINAL segment (`a.f().b`) is named by the walk and DECLINED to the pre-existing arms, where
-// it stays erased (see DottedChainTailRead, and the today-row on
-// gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering). Nothing else claims a
-// chain this door admits before it has answered. The order is the
-// construction (review 67903 on gunbc#11612): body_lower_pattern_first_atom_optional, consulted
-// first, claimed the chain's head atom and the rest of the chain vanished, so a guard beside the
-// fallback asking "is this dotted?" would have been a second authority for what this reader
-// already decides. Measured on the normalize route before this door existed:
-// `fn f() -> Bool { x.step(a: 1) }` reached the arrow body as Transform(x) -- operator `x`, method
-// and argument erased -- and `= x.field` as `x`, with no diagnostic. That covers all THREE sites:
-// in body_lower_postfix_expr and body_lower_primary_expr the first-atom fallback preempts
-// body_lower_try_postfix_projection, and in body_lower_try_body_lowered (the brace-body route)
-// body_lower_try_primary_ident_call preempts it, so the receiver-method reading and the
-// field-access refusal of that matcher were never reached on the route, only by the claims that
-// call it directly (review 68231 on gunbc#11683 read the third site statically as reachable;
-// v2.test.claim.body_lowering_qualified_path body_lowering_block_body_site_keeps_the_whole_call
-// is the executed answer, calling body_lower_try_body_lowered over a supplied chain, and
-// body_lowering_first_atom_fallback_would_truncate_the_chain is what it discriminates against).
-// Those direct-call claims keep their subject; the route now lowers the two shapes this door
-// admits -- bare chains, and chains whose only call is on the final segment -- to one spine, and
-// leaves what the head denotes to v2.compiler.resolve
-// try_resolve_qualified_name_node, which refuses a chain whose head is a local binder as Unbound
-// (its own header states that standing) -- loud where the route was silent.
-fn body_lower_dotted_chain_lowered_optional(node: Node) -> Outcome<Optional<Node>> {
-  match body_lower_dotted_chain_read(node: node) {
-    DottedChainTailNotThisShape => outcome_accepted(value: optional_absent())
-    DottedChainCallBeforeEnd { call_elem: _ } => outcome_accepted(value: optional_absent())
-    DottedChainTailFound { tail: chain } =>
-      match chain.call_elem {
+fn body_lower_postfix_chain_head_or_self(node: Node) -> Node {
+  let stripped = body_lower_unwrap_surface_shell(node: node)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => stripped
+    Present { value: pair } => pair.left
+  }
+}
+
+// THE ACCUMULATOR. A chain is read left to right and each step folds onto what precedes it.
+// While no call has been seen and the head was a bare symbol the accumulator is a SPINE of
+// segments -- that is today's contract, and it is kept exactly: `a.b.c` is one qualified name and
+// v2.compiler.resolve try_resolve_qualified_name_node decides what its head denotes, because
+// deciding here would be a second resolver with no scope to consult. The FIRST call suffix closes
+// the spine into a Transform through it (`a.b.f(x)`: the whole path is the callee, today's
+// final-segment rule applied to the prefix instead of only to the whole chain). After that the
+// accumulator is a VALUE, and every further step is an elimination of it: a call suffix is a
+// method call whose first operand is the accumulated value, an empty suffix is a FIELD PROJECTION
+// (v2.std.node_query field_projection_node).
+//
+// WHY A PROJECTION OFF A VALUE CANNOT BE A SPINE CASE, which is the cheaper repair a reader will
+// reach for: v2.std.qualified_name QualifiedName is FreeMonoid<Symbol>. It has no slot for a Node,
+// so a computed root is not representable in it at all. This is a separate construct by the
+// structure of the carrier, not by preference.
+type PostfixAccum
+  = PostfixAccumSpine { segments: List<Symbol> }
+  | PostfixAccumValue { node: Node }
+
+fn body_lower_postfix_accum_node(acc: PostfixAccum, source: Node) -> Node {
+  match acc {
+    PostfixAccumSpine { segments: segments } =>
+      body_lower_qualified_name_spine_node(segments: segments, source: source)
+    PostfixAccumValue { node: n } => n
+  }
+}
+
+fn body_lower_postfix_chain_fold_step(
+  acc: Outcome<PostfixAccum>,
+  step: PostfixStep,
+  source: Node
+) -> Outcome<PostfixAccum> {
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: state, diagnostics: ad } =>
+      match step.call_elem {
         Absent =>
-          outcome_accepted(
-            value: optional_present(
-              value: body_lower_qualified_name_spine_node(segments: chain.segments, source: node)
-            )
-          )
+          match state {
+            PostfixAccumSpine { segments: segments } =>
+              outcome_with_diagnostics(
+                value: PostfixAccumSpine {
+                  segments: list_snoc_item(xs: segments, item: step.segment)
+                },
+                diagnostics: ad
+              )
+            PostfixAccumValue { node: base } =>
+              outcome_with_diagnostics(
+                value: PostfixAccumValue {
+                  node: field_projection_node(base: base, field: step.segment, source: source)
+                },
+                diagnostics: ad
+              )
+          }
         Present { value: call_elem } =>
           match body_lower_postfix_projection_args(repeat_elem: call_elem) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: args, diagnostics: d } =>
-              outcome_with_diagnostics(
-                value: optional_present(
-                  value: body_lower_transform_call(
-                    operator: body_lower_qualified_name_spine_node(segments: chain.segments, source: node),
-                    args: args
+            Accepted { value: args, diagnostics: cd } =>
+              match state {
+                PostfixAccumSpine { segments: segments } =>
+                  outcome_with_diagnostics(
+                    value: PostfixAccumValue {
+                      node: body_lower_transform_call(
+                        operator: body_lower_qualified_name_spine_node(
+                          segments: list_snoc_item(xs: segments, item: step.segment),
+                          source: source
+                        ),
+                        args: args
+                      )
+                    },
+                    diagnostics: list_append(left: ad, right: cd)
                   )
-                ),
-                diagnostics: d
+                PostfixAccumValue { node: receiver } =>
+                  outcome_with_diagnostics(
+                    value: PostfixAccumValue {
+                      node: body_lower_transform_call(
+                        operator: body_lower_method_operator_atom(sym: step.segment),
+                        args: list_append(left: [receiver], right: args)
+                      )
+                    },
+                    diagnostics: list_append(left: ad, right: cd)
+                  )
+              }
+          }
+      }
+  }
+}
+
+// THE ONE DOOR THE EXPRESSION SITES CONSULT, AND IT SITS ABOVE THE FIRST-ATOM FALLBACK. Its
+// population is now EVERY postfix chain whose steps are dot projections with an empty or a paren
+// call suffix -- the bare chain, the call through a path, the method on a value, the field off a
+// computed receiver, and any interleaving of them. Nothing else claims a chain this door admits
+// before it has answered. The order is the construction (review 67903 on gunbc#11612):
+// body_lower_pattern_first_atom_optional, consulted first, claimed the chain's head atom and the
+// rest of the chain vanished, so a guard beside the fallback asking "is this dotted?" would have
+// been a second authority for what this reader already decides.
+//
+// A HEAD THE READER CANNOT LOWER IS DECLINED, NOT REFUSED, so the existing arms run unchanged for
+// it and this change introduces no new refusal class. That is the honest statement of the
+// remaining gap: an arbitrary parenthesised expression in head position is still read by whatever
+// arm claims it, and body_lower_operand_ref_optional is the boundary of what this door admits as
+// a computed head.
+fn body_lower_dotted_chain_lowered_optional(node: Node) -> Outcome<Optional<Node>> {
+  match body_lower_postfix_chain_read(node: node) {
+    PostfixChainNotThisShape => outcome_accepted(value: optional_absent())
+    PostfixChainStepSuffixUnlowered { at: at } =>
+      outcome_rejected(
+        d: body_lower_diagnostic(
+          reason: ^body_lowering_reason_postfix_suffix_unlowered,
+          n: at
+        )
+      )
+    PostfixChainFound { steps: steps } =>
+      let head_node = body_lower_postfix_chain_head_or_self(node: node)
+      match body_lower_dotted_head_symbol_optional(node: head_node) {
+        Present { value: head } =>
+          body_lower_postfix_chain_fold_from(
+            steps: steps,
+            init: PostfixAccumSpine { segments: [head] },
+            source: node
+          )
+        Absent =>
+          match body_lower_operand_ref_optional(node: head_node) {
+            Absent => outcome_accepted(value: optional_absent())
+            Present { value: head_value } =>
+              body_lower_postfix_chain_fold_from(
+                steps: steps,
+                init: PostfixAccumValue { node: head_value },
+                source: node
               )
           }
       }
+  }
+}
+
+fn body_lower_postfix_chain_fold_from(
+  steps: List<PostfixStep>,
+  init: PostfixAccum,
+  source: Node
+) -> Outcome<Optional<Node>> {
+  match fold(steps, init: outcome_accepted(value: init), f: fn(acc, step) {
+    body_lower_postfix_chain_fold_step(acc: acc, step: step, source: source)
+  }) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: state, diagnostics: d } =>
+      outcome_with_diagnostics(
+        value: optional_present(value: body_lower_postfix_accum_node(acc: state, source: source)),
+        diagnostics: d
+      )
   }
 }
 
@@ -3537,51 +3637,6 @@ fn body_lower_postfix_repeat_head_optional(repeat_capture: Node) -> Optional<Nod
           Rejected { diagnostics: _ } => optional_absent()
         }
     }
-  }
-}
-
-fn body_lower_try_postfix_projection(node: Node) -> Outcome<Optional<Node>> {
-  let stripped = body_lower_unwrap_surface_shell(node: node)
-  match sugar_sequence_pair_optional(node: stripped) {
-    Absent => outcome_accepted(value: optional_absent())
-    Present { value: pair } =>
-      match body_lower_operand_ref_optional(node: pair.left) {
-        Absent => outcome_accepted(value: optional_absent())
-        Present { value: receiver } =>
-          match body_lower_postfix_repeat_head_optional(repeat_capture: pair.right) {
-            Absent => outcome_accepted(value: optional_absent())
-            Present { value: repeat_elem } =>
-              match body_lower_postfix_projection_step(repeat_elem: repeat_elem) {
-                Absent => outcome_accepted(value: optional_absent())
-                Present { value: method } =>
-                  if body_lower_postfix_projection_has_call_suffix(repeat_elem: repeat_elem) {
-                    match body_lower_postfix_projection_args(repeat_elem: repeat_elem) {
-                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                      Accepted { value: args, diagnostics: d } =>
-                        outcome_with_diagnostics(
-                          value: optional_present(
-                            value: body_lower_transform_call(
-                              operator: body_lower_method_operator_atom(sym: method),
-                              args: list_append(
-                                left: [receiver],
-                                right: args
-                              )
-                            )
-                          ),
-                          diagnostics: d
-                        )
-                    }
-                  } else {
-                    outcome_rejected(
-                      d: body_lower_diagnostic(
-                        reason: ^body_lowering_reason_postfix_field_access_refused,
-                        n: node
-                      )
-                    )
-                  }
-              }
-          }
-      }
   }
 }
 
@@ -5758,22 +5813,7 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
       match body_lower_pattern_first_atom_optional(node: captured) {
         Present { value: atom } => outcome_accepted(value: atom)
         Absent =>
-      match body_lower_try_postfix_projection(node: captured) {
-        Rejected { diagnostics: r } =>
-          match body_lower_literal_bool_atom_optional(node: captured) {
-            Present { value: lit } => outcome_accepted(value: lit)
-            Absent =>
-              match body_lower_pattern_first_atom_optional(node: captured) {
-                Present { value: atom } => outcome_accepted(value: atom)
-                Absent => Rejected { diagnostics: r }
-              }
-          }
-        Accepted { value: found, diagnostics: d } =>
-          match found {
-            Present { value: transform } =>
-              Accepted { value: transform, diagnostics: d }
-            Absent =>
-              match body_lower_try_infix_transform(node: captured) {
+      match body_lower_try_infix_transform(node: captured) {
                 Present { value: transform } => outcome_accepted(value: transform)
                 Absent =>
                   match body_lower_try_fold_loop(node: captured) {
@@ -5796,8 +5836,6 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
                       }
                   }
               }
-          }
-      }
       }
   }
       }
@@ -5956,22 +5994,7 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
       match body_lower_pattern_first_atom_optional(node: captured) {
         Present { value: atom } => outcome_accepted(value: atom)
         Absent =>
-      match body_lower_try_postfix_projection(node: captured) {
-        Rejected { diagnostics: r } =>
-          match body_lower_literal_bool_atom_optional(node: captured) {
-            Present { value: lit } => outcome_accepted(value: lit)
-            Absent =>
-              match body_lower_pattern_first_atom_optional(node: captured) {
-                Present { value: atom } => outcome_accepted(value: atom)
-                Absent => Rejected { diagnostics: r }
-              }
-          }
-        Accepted { value: found, diagnostics: d2 } =>
-          match found {
-            Present { value: transform } =>
-              Accepted { value: transform, diagnostics: d2 }
-            Absent =>
-              match body_lower_try_infix_transform(node: captured) {
+      match body_lower_try_infix_transform(node: captured) {
                 Present { value: transform } => outcome_accepted(value: transform)
                 Absent =>
                   match body_lower_try_fold_loop(node: captured) {
@@ -5994,8 +6017,6 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
                       }
                   }
               }
-          }
-      }
       }
       }
       }

@@ -1,14 +1,14 @@
 module v2.test.claim.body_lowering_qualified_path
 
 import v2.compiler.body_lowering_fold {
-  DottedChainCallBeforeEnd,
-  DottedChainTailFound,
-  DottedChainTailNotThisShape,
   ParseSubtreeAbsent,
   ParseSubtreeFound,
+  PostfixChainFound,
+  PostfixChainNotThisShape,
+  PostfixChainStepSuffixUnlowered,
   body_lower_dotted_chain_lowered_optional,
-  body_lower_dotted_chain_read,
   body_lower_find_captured,
+  body_lower_postfix_chain_read,
   body_lower_pattern_first_atom_optional,
   body_lower_postfix_expr,
   body_lower_try_body_lowered
@@ -38,6 +38,7 @@ import v2.std.node {
   node_synthetic
 }
 import v2.std.node_query {
+  field_projection_optional,
   find_arrow_body_child,
   find_named_child,
   node_positional_child_targets
@@ -76,15 +77,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // so the door is established to sit above the first-atom fallback ON THE ROUTE and not only in
 // the source order of the fold. Delete either integration and a control here goes red.
 //
-// THE MID-CALL TODAY-ROW IS KEPT, DELIBERATELY, AND IT MOVED TO THE SUPPLIED BOUNDARY RATHER THAN
-// BEING DROPPED. An earlier sketch of this rewrite would have replaced it with a single control
-// that the declined shape still normalizes, which trades away the one thing that flips loudly the
-// day `a.f().b` is lowered or refused -- and gunbc.recurring_failure_mode
-// call_expression_erased_at_v2_body_lowering leans on exactly that flip. So
-// body_lowering_call_before_end_is_erased_today_holds stays, reading the head atom the
-// expression-body site still answers, and body_lowering_call_before_end_is_named_and_declined
-// stays beside it reading the DECLINED verdict BY NAME -- a reader that merely stopped
-// recognising the shape would answer Absent too and must not satisfy that row.
+// THE MID-CALL TODAY-ROW WAS THE DISCRIMINATOR ALL ALONG, AND PR2 FLIPPED IT RATHER THAN DELETING
+// IT. It asserted that `a.f().b` reaches the expression body as the bare atom `a` -- the silent
+// drop -- and it was kept precisely so it would flip loudly the day the shape was lowered or
+// refused. That day is this change: body_lowering_call_before_end_keeps_every_step now asserts the
+// whole chain survives, and it is RED against the pre-repair fold, which is what makes it evidence
+// that the single-step reader is gone rather than merely evidence that a new fold works.
 // WHAT NO FIXTURE HERE REPRODUCES, stated rather than implied: that normalize still ACCEPTS the
 // four live corpus sites the decline exists to protect. Those are production modules, so the lanes
 // that compile them are the execution of that fact; a fixture copy of it would be a second,
@@ -325,22 +323,17 @@ test fn body_lowering_local_receiver_call_callee_is_the_whole_path() -> Bool {
   }
 }
 
-// The declined arm, read as the NAMED verdict and not merely as Absent: a reader that stopped
-// recognising the shape at all would answer Absent too, and this row must not be satisfied by
-// that.
-test fn body_lowering_call_before_end_is_named_and_declined() -> Bool {
-  let named = match body_lower_dotted_chain_read(node: dotted_fixture_call_before_end()) {
-    DottedChainCallBeforeEnd { call_elem: _ } => true
-    DottedChainTailFound { tail: _ } => false
-    DottedChainTailNotThisShape => false
+// THE DECLINED ARM IS GONE, AND THIS ROW IS ITS DISCRIMINATOR. `a.f().b` -- a call before the end
+// of the chain -- used to be NAMED and DECLINED by the walk, which handed it to arms that read one
+// step and erased the rest. It is now read as a chain of STEPS and lowered whole. The row asserts
+// the walk's own verdict (the chain is FOUND, with both steps present) so that a reader which
+// simply stopped recognising the shape cannot satisfy it by answering NotThisShape.
+test fn body_lowering_call_before_end_is_found_as_two_steps() -> Bool {
+  match body_lower_postfix_chain_read(node: dotted_fixture_call_before_end()) {
+    PostfixChainNotThisShape => false
+    PostfixChainStepSuffixUnlowered { at: _ } => false
+    PostfixChainFound { steps: steps } => length(xs: steps) == 2
   }
-  let declined = match body_lowering_door_lowered_optional(
-    node: dotted_fixture_call_before_end()
-  ) {
-    Absent => true
-    Present { value: _ } => false
-  }
-  named && declined
 }
 
 // THE POSITIVE CONTROL: a bare local name is not a chain, the door does not claim it, and the
@@ -417,19 +410,60 @@ test fn body_lowering_first_atom_fallback_would_truncate_the_chain() -> Bool {
   }
 }
 
-// THE TODAY-ROW ON THE DECLINED SHAPE. Declining is not refusing (review 68165): the pre-existing
-// arms still erase `a.f().b` to the head atom with no diagnostic. That erasure is a receipt on
-// gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering, and this row flips
-// loudly the day the shape is lowered or refused.
-test fn body_lowering_call_before_end_is_erased_today_holds() -> Bool {
+// THE DISCRIMINATING RED FOR THE SILENT DROP, AND IT IS THE ROW THAT USED TO ASSERT THE DROP.
+//
+// Until gunbc#12033's PR2 this row was body_lowering_call_before_end_is_erased_today_holds and it
+// asserted, as a today-row, that `a.f().b` reaches the expression body as the bare atom `a`: the
+// call and the trailing projection gone, with no diagnostic. That is silent wrongness, which
+// DESIGN section 4b places BELOW the ladder rather than on it, and it was the more serious half of
+// the single-step reader's damage -- the refusal half at least printed something.
+//
+// The row now asserts the whole chain survives, and it is the control that can DETECT the
+// single-step reader: run it against the pre-repair fold and it is RED, because the pre-repair
+// answer is the atom `a` and this predicate demands a projection whose base is a call. A row
+// asserting only that the repaired fold builds a good tree would be green either way once the
+// fold exists, which is why the subject here is the shape the OLD reader could not produce.
+// Per DESIGN section 4b(4) it stays enrolled now that it greens: it is the regression control for
+// the fold, not a migration step that retires.
+//
+// The expected shape, left to right: `a.f()` closes the spine `a.f` into a Transform through it,
+// and `.b` is then a FIELD PROJECTION off that computed receiver -- the construct that exists
+// because v2.std.qualified_name QualifiedName is FreeMonoid<Symbol> and therefore has no slot for
+// a computed root at all.
+test fn body_lowering_call_before_end_keeps_every_step() -> Bool {
+  match body_lower_postfix_expr(
+    shell: dotted_fixture_shell(captured: dotted_fixture_call_before_end())
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: body, diagnostics: _ } =>
+      match field_projection_optional(n: body) {
+        Absent => false
+        Present { value: projection } =>
+          (projection.field == ^b)
+            && body_lowering_body_callee_is_path(
+                 body: projection.base,
+                 dotted: body_lowering_call_before_end_callee_dotted
+               )
+      }
+  }
+}
+
+data body_lowering_call_before_end_callee_dotted: String = "a.f"
+
+// THE NEGATIVE HALF OF THE SAME DISCRIMINATOR, STATED SO THE ROW ABOVE CANNOT BE SATISFIED BY A
+// FOLD THAT MERELY WRAPS THE HEAD. The pre-repair answer was the atom `a`; this row asserts the
+// lowered body is NOT an atom at all, so a fold that produced a projection off the bare head
+// instead of off the call would still fail the row above, and a fold that regressed to the head
+// atom fails this one too.
+test fn body_lowering_call_before_end_is_not_the_head_atom() -> Bool {
   match body_lower_postfix_expr(
     shell: dotted_fixture_shell(captured: dotted_fixture_call_before_end())
   ) {
     Rejected { diagnostics: _ } => false
     Accepted { value: body, diagnostics: _ } =>
       match node_atom_identity_optional(node: body) {
-        Present { value: id } => id == ^a
-        Absent => false
+        Present { value: _ } => false
+        Absent => true
       }
   }
 }
