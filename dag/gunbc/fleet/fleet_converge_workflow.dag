@@ -2880,14 +2880,21 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
 // THE JOB ROSTER IS ITS OWN DECLARATION AND THE WORKFLOW IS ONE CONSUMER OF IT.
 //
 // The seven jobs were written inline in the Workflow literal below, which made the workflow the
-// only way to ask what jobs exist. A claim about the job partition then had to force the WHOLE
-// row -- including `on`, whose DispatchInput descriptions run to thousands of characters each --
-// to read seven ids and their needs edges: 521845 eval steps against a 72300 budget for
-// test.claim.workflow_dispatch_input_witness fleet_converge_workflow_has_build_job_needs_release_bins,
-// and rising with every job or input any lane adds.
+// only way to ask what jobs exist. This roster is where they are declared and the workflow reads
+// it -- a single authority with the workflow as one consumer, not a second list to drift. Nothing
+// about the emitted yaml moves.
 //
-// This is a single authority, not a test affordance: the roster is where the jobs are declared and
-// the workflow reads it, so there is no second list to drift. Nothing about the emitted yaml moves.
+// IT DOES NOT BUY THE COST, AND THE MEASUREMENT SAYS SO. The extraction was made to bring
+// test.claim.workflow_dispatch_input_witness fleet_converge_workflow_has_build_job_needs_release_bins
+// under its floor budget on the hypothesis that `on` -- whose DispatchInput descriptions run to
+// thousands of characters each -- dominated. Measured on the required floor across two runs:
+// 521845 eval steps reading the whole Workflow row, 521510 reading this roster, against a budget
+// of 72300. That is 335 steps, 0.06%, so the hypothesis is FALSIFIED: the cost is constructing the
+// seven Job values themselves, and a List<Job> projection forces every one of them including every
+// step body. A roster carrying only ids and needs edges, consumed by the job functions, is the
+// shape that would actually be cheap; it is not attempted here because it restructures all seven.
+// The figure is recorded rather than the claim quietly kept -- an annotation asserting a saving
+// this lane measured away would be the same overclaim reviews flag elsewhere in this change.
 fn fleet_converge_jobs() -> List<Job> {
   [
     fleet_converge_build_job(),

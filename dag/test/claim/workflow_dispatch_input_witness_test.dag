@@ -214,13 +214,16 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // that mutates a host without that edge would be installing whatever happened to be lying around.
 // `host-reset-return` is held to it for a sharper reason than the others -- it POWER-CYCLES its
 // subject, so a stale binary there would drive a real machine from a model nobody reviewed.
-// THE ROSTER IS READ, NOT THE WHOLE WORKFLOW. This claim's subject is the job partition and its
-// needs edges. Reading them off fleet_converge_workflow forced the entire row -- every job's steps
-// AND every DispatchInput description under `on`, one of which is thousands of characters -- for
-// seven ids: 521845 eval steps against a 72300 budget, rising with every job or input any lane
-// added. gunbc.fleet_converge_workflow fleet_converge_jobs is now the declaration the workflow
-// derives its jobs from, so this reads the authority and the workflow is one consumer of it rather
-// than the only route to the fact.
+// THE ROSTER IS READ, NOT THE WHOLE WORKFLOW -- FOR AUTHORITY, NOT FOR COST, AND THE DIFFERENCE IS
+// MEASURED. This claim's subject is the job partition and its needs edges, and
+// gunbc.fleet_converge_workflow fleet_converge_jobs is now the declaration the workflow derives its
+// jobs from, so this reads that authority rather than the only route to the fact.
+//
+// IT IS STILL OVER BUDGET AND THE ROSTER DID NOT CHANGE THAT: 521845 eval steps against the whole
+// Workflow row, 521510 against the roster, budget 72300 -- 335 steps, 0.06%. The cost is
+// constructing the seven Job values with their step bodies, not the `on` descriptions that were
+// the suspect, so a List<Job> projection cannot help. What would is a roster of ids and needs
+// edges alone, consumed by the job functions; that restructures all seven and is not done here.
 test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
   let jobs = fleet_converge_jobs()
   jobs.length() == 7
