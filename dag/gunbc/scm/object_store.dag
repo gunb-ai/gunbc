@@ -448,26 +448,26 @@ fn store_object_count(store: ObjectStore) -> Int {
 // includes its children's locators, so a cycle would have to hash itself -- which is what makes the
 // walk terminate without a separate descent argument.
 //
-// ON COST, because DESIGN section 6 refuses "n is small here": emitted_holds is a linear scan, so
-// this is quadratic in the object count. That is the SAME shape find_object already has, since the
-// carrier is a List, and it is bounded by the same dissolve-on already recorded above for that
-// carrier -- a keyed collection retires both at once. Fixing it here alone would leave the store's
-// own lookup quadratic while adding a second index to maintain.
+// ON COST, because DESIGN section 6 refuses "n is small here": the original emitted_holds was a
+// linear scan, making the dependency-order walk quadratic in the object count -- the same shape
+// find_object had. The keyed collection the original note deferred to has now landed (measured
+// 2026-09-21: at the 7,050-object intake store the walk ran three times per repository save and the
+// scans held a belt tick at 100% CPU for hours), so the scan retires the way that note prescribed:
+// `held` is the same digest-keyed index store_object_index builds, maintained incrementally as
+// objects are emitted.
 type OrderAcc {
   emitted: List<ScmObject>
+  held: Map<String, Bool>
 }
 
 fn emitted_holds(acc: OrderAcc, identity: ObjectId) -> Bool {
-  fold(
-    acc.emitted,
-    init: false,
-    f: fn(seen, object) {
-      seen || object_id_eq(left: scm_object_identity(object: object), right: identity)
-    }
-  )
+  match map_get(acc.held, key: identity.digest as String) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
-fn emit_in_dependency_order(store: ObjectStore, acc: OrderAcc, object: ScmObject) -> OrderAcc {
+fn emit_in_dependency_order(index: Map<String, ScmObject>, acc: OrderAcc, object: ScmObject) -> OrderAcc {
   if emitted_holds(acc: acc, identity: scm_object_identity(object: object)) {
     acc
   } else {
@@ -478,7 +478,7 @@ fn emit_in_dependency_order(store: ObjectStore, acc: OrderAcc, object: ScmObject
           record.children,
           init: acc,
           f: fn(inner, child) {
-            emit_dependency(store: store, acc: inner, identity: child.target.locator)
+            emit_dependency(index: index, acc: inner, identity: child.target.locator)
           }
         )
       CorpusManifestObject(record) =>
@@ -486,33 +486,37 @@ fn emit_in_dependency_order(store: ObjectStore, acc: OrderAcc, object: ScmObject
           record.entries,
           init: acc,
           f: fn(inner, entry) {
-            emit_dependency(store: store, acc: inner, identity: entry.source.locator)
+            emit_dependency(index: index, acc: inner, identity: entry.source.locator)
           }
         )
     }
-    OrderAcc { emitted: concat([object], after_children.emitted) }
+    OrderAcc {
+      emitted: concat([object], after_children.emitted),
+      held: map_insert(after_children.held, scm_object_identity(object: object).digest as String, true),
+    }
   }
 }
 
 // A target whose object this store does not hold contributes nothing -- it is exactly the uncontained
-// case, and the encoder spells it from the digest rather than from a position.
-fn emit_dependency(store: ObjectStore, acc: OrderAcc, identity: ObjectId) -> OrderAcc {
-  match find_object(store: store, identity: identity) {
+// case, and the encoder spells it from the digest rather than from a position. The lookup goes
+// through the one digest-keyed index the walk builds, not a per-dependency full store scan.
+fn emit_dependency(index: Map<String, ScmObject>, acc: OrderAcc, identity: ObjectId) -> OrderAcc {
+  match find_object_via(index: index, identity: identity) {
     Absent => acc
-    Present { value: object } => emit_in_dependency_order(store: store, acc: acc, object: object)
+    Present { value: object } => emit_in_dependency_order(index: index, acc: acc, object: object)
   }
 }
 
 // THE ACCUMULATOR PREPENDS AND IS REVERSED ONCE HERE, which is what preserves child-before-parent
-// output without copying a growing list on every emitted object. `emitted_holds` still scans that
-// list linearly, and that is a DIFFERENT defect with a different retirement -- a keyed collection --
-// so it stays; repeatedly copying an accumulator was never covered by that deferral.
+// output without copying a growing list on every emitted object. The keyed `held` set answers
+// emitted_holds at map cost; the per-dependency resolution rides the same index.
 fn store_records_in_dependency_order(store: ObjectStore) -> List<ScmObject> {
+  let index = store_object_index(store: store)
   reverse(
     fold(
       store.objects,
-      init: OrderAcc { emitted: [] },
-      f: fn(acc, object) { emit_in_dependency_order(store: store, acc: acc, object: object) }
+      init: OrderAcc { emitted: [], held: empty_map() },
+      f: fn(acc, object) { emit_in_dependency_order(index: index, acc: acc, object: object) }
     ).emitted
   )
 }
@@ -535,6 +539,41 @@ fn find_object(store: ObjectStore, identity: ObjectId) -> ScmObject? {
   })
 }
 
+// A DIGEST-KEYED INDEX OF THE STORE, BUILT ONCE PER OBSERVATION THAT ASKS PER ENTRY. The scan-ful
+// find_object above walks the whole object list per question, and two corpus-scale observations --
+// commit-time source completeness (write_spine) and checkout-time recovery (checkout) -- ask it
+// once PER MANIFEST ENTRY: at the 7,050-path intake base measured 2026-09-21 that is ~50M
+// object-identity compares, each a full digest string compare inside an interpreted fold, which
+// held a belt tick inside ONE seed commit for over an hour at 100% CPU. One spine over the store
+// pays for every probe at map cost, and the indexed lookup answers the same question with the same
+// object -- the scan-ful find_object stays for single-question callers, whose one walk is exactly
+// what they need. Digest keys are unique per store (insertion refuses a held identity), so the
+// index cannot collapse two distinct objects.
+fn store_object_index(store: ObjectStore) -> Map<String, ScmObject> {
+  fold(store.objects, init: empty_map(), f: fn(index, object) {
+    map_insert(index, scm_object_identity(object: object).digest as String, object)
+  })
+}
+
+fn find_object_via(index: Map<String, ScmObject>, identity: ObjectId) -> ScmObject? {
+  map_get(index, key: identity.digest as String)
+}
+
+// THE KIND MATCH IS ONE AUTHORITY, PARAMETERIZED BY THE LOOKUP RATHER THAN THE STORE WALK. The
+// scan-ful and the indexed routes must classify a found object identically, and a copy of this
+// match beside the indexed one would be two answers that can drift; both finders delegate here.
+fn authored_source_lookup_of(object: ScmObject?, identity: ObjectId) -> AuthoredSourceLookup {
+  match object {
+    Absent => AuthoredSourceAbsent { identity: identity }
+    Present { value: o } =>
+      match o {
+        AuthoredSourceObject(record) => AuthoredSourceFound(record)
+        SemanticNodeObject(_) => AuthoredSourceIsSemanticNode { identity: identity }
+        CorpusManifestObject(_) => AuthoredSourceIsCorpusManifest { identity: identity }
+      }
+  }
+}
+
 // A CONSUMER THAT NEEDS A NODE ASKS FOR ONE, AND IS TOLD WHEN WHAT IS THERE IS NOT A NODE.
 //
 // The three arms are not two: an identity nothing holds and an identity holding a FILE are
@@ -549,10 +588,19 @@ type NodeRecordLookup
   | NodeRecordIsCorpusManifest { identity: ObjectId }
 
 fn find_node_record(store: ObjectStore, identity: ObjectId) -> NodeRecordLookup {
-  match find_object(store: store, identity: identity) {
+  node_record_lookup_of(
+    object: find_object(store: store, identity: identity),
+    identity: identity,
+  )
+}
+
+// THE NODE-CLASSIFICATION AUTHORITY FOR BOTH THE SCAN-FUL AND THE INDEXED ROUTE, same discipline
+// as authored_source_lookup_of beside it: one kind-match, two finders, no drift.
+fn node_record_lookup_of(object: ScmObject?, identity: ObjectId) -> NodeRecordLookup {
+  match object {
     Absent => NodeRecordAbsent { identity: identity }
-    Present { value: object } =>
-      match object {
+    Present { value: o } =>
+      match o {
         SemanticNodeObject(record) => NodeRecordFound(record)
         AuthoredSourceObject(_) => NodeRecordIsAuthoredSource { identity: identity }
         CorpusManifestObject(_) => NodeRecordIsCorpusManifest { identity: identity }
@@ -596,12 +644,12 @@ type CorpusEntrySourceResolution
   = CorpusEntrySourceResolved(AuthoredSourceRecord)
   | CorpusEntrySourceUnresolved { cause: CorpusEntrySourceRefusal }
 
-fn resolve_manifest_entry_source(
-  store: ObjectStore,
+fn resolve_manifest_entry_source_of(
+  object: ScmObject?,
   entry: CorpusManifestEntry,
 ) -> CorpusEntrySourceResolution {
-  match find_authored_source_record(
-    store: store,
+  match authored_source_lookup_of(
+    object: object,
     identity: authored_source_target_locator(target: entry.source),
   ) {
     AuthoredSourceFound(record) => CorpusEntrySourceResolved(record)
@@ -616,6 +664,19 @@ fn resolve_manifest_entry_source(
         cause: CorpusEntrySourceIsCorpusManifest { path: entry.path, source: id },
       }
   }
+}
+
+fn resolve_manifest_entry_source(
+  store: ObjectStore,
+  entry: CorpusManifestEntry,
+) -> CorpusEntrySourceResolution {
+  resolve_manifest_entry_source_of(
+    object: find_object(
+      store: store,
+      identity: authored_source_target_locator(target: entry.source),
+    ),
+    entry: entry,
+  )
 }
 
 // SOURCE COMPLETENESS: every entry resolves, or the first failure is reported with its path.
@@ -641,14 +702,17 @@ type CorpusSourceCompletenessAcc {
 }
 
 fn corpus_source_completeness_step(
-  store: ObjectStore,
+  index: Map<String, ScmObject>,
   acc: CorpusSourceCompletenessAcc,
   entry: CorpusManifestEntry,
 ) -> CorpusSourceCompletenessAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      match resolve_manifest_entry_source(store: store, entry: entry) {
+      match resolve_manifest_entry_source_of(
+        object: find_object_via(index: index, identity: authored_source_target_locator(target: entry.source)),
+        entry: entry,
+      ) {
         CorpusEntrySourceResolved(_) => acc
         CorpusEntrySourceUnresolved { cause: c } =>
           CorpusSourceCompletenessAcc { refusal: Present { value: c } }
@@ -660,10 +724,11 @@ fn observe_corpus_source_completeness(
   store: ObjectStore,
   entries: List<CorpusManifestEntry>,
 ) -> CorpusSourceCompleteness {
+  let index = store_object_index(store: store)
   match fold(
     entries,
     init: CorpusSourceCompletenessAcc { refusal: none },
-    f: fn(acc, e) { corpus_source_completeness_step(store: store, acc: acc, entry: e) },
+    f: fn(acc, e) { corpus_source_completeness_step(index: index, acc: acc, entry: e) },
   ) {
     CorpusSourceCompletenessAcc { refusal: r } =>
       match r {
@@ -674,15 +739,10 @@ fn observe_corpus_source_completeness(
 }
 
 fn find_authored_source_record(store: ObjectStore, identity: ObjectId) -> AuthoredSourceLookup {
-  match find_object(store: store, identity: identity) {
-    Absent => AuthoredSourceAbsent { identity: identity }
-    Present { value: object } =>
-      match object {
-        AuthoredSourceObject(record) => AuthoredSourceFound(record)
-        SemanticNodeObject(_) => AuthoredSourceIsSemanticNode { identity: identity }
-        CorpusManifestObject(_) => AuthoredSourceIsCorpusManifest { identity: identity }
-      }
-  }
+  authored_source_lookup_of(
+    object: find_object(store: store, identity: identity),
+    identity: identity,
+  )
 }
 
 type CorpusManifestLookup

@@ -27,6 +27,7 @@ import gunbc.scm.object_store {
   SemanticNodeObjectRef,
   SemanticNodeTarget,
   ObjectStore,
+  ScmObject,
   StoredEdge,
   NodeRecordFound,
   NodeRecordAbsent,
@@ -40,6 +41,9 @@ import gunbc.scm.object_store {
   AuthoredSourceIsSemanticNode,
   AuthoredSourceIsCorpusManifest,
   find_authored_source_record,
+  store_object_index,
+  find_object_via,
+  authored_source_target_locator,
   CorpusManifestEntry,
   CorpusManifestObjectRef,
   CorpusManifestFound,
@@ -47,11 +51,11 @@ import gunbc.scm.object_store {
   CorpusManifestIsAuthoredSource,
   CorpusManifestIsSemanticNode,
   find_corpus_manifest_record,
-  authored_source_target_locator,
   CorpusEntrySourceRefusal, CorpusEntrySourceMissing,
   CorpusEntrySourceIsSemanticNode, CorpusEntrySourceIsCorpusManifest,
   CorpusEntrySourceResolution, CorpusEntrySourceResolved, CorpusEntrySourceUnresolved,
   resolve_manifest_entry_source,
+  resolve_manifest_entry_source_of,
 }
 
 // A COMMIT IS A ROOT IDENTITY AND NOTHING ELSE. No parent, no author, no timestamp, no message, no
@@ -274,11 +278,14 @@ type CorpusRecoveryAcc {
   refusal: CorpusEntrySourceRefusal?
 }
 
-fn recover_entry_step(store: ObjectStore, acc: CorpusRecoveryAcc, entry: CorpusManifestEntry) -> CorpusRecoveryAcc {
+fn recover_entry_step(index: Map<String, ScmObject>, acc: CorpusRecoveryAcc, entry: CorpusManifestEntry) -> CorpusRecoveryAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      match resolve_manifest_entry_source(store: store, entry: entry) {
+      match resolve_manifest_entry_source_of(
+        object: find_object_via(index: index, identity: authored_source_target_locator(target: entry.source)),
+        entry: entry,
+      ) {
         CorpusEntrySourceResolved(record) =>
           CorpusRecoveryAcc {
             files: concat([RecoveredSourceFile { path: entry.path, content: record.content }], acc.files),
@@ -302,11 +309,18 @@ fn recover_entry_step(store: ObjectStore, acc: CorpusRecoveryAcc, entry: CorpusM
 // second one is answered. The mint decides only that a commit names a manifest of the required kind;
 // whether that manifest's sources are present is this observation, performed against a particular
 // store at a particular time. A found manifest establishes nothing about its entries.
+//
+// THE PER-ENTRY LOOKUP GOES THROUGH ONE DIGEST-KEYED INDEX OF THE STORE, built once here --
+// gunbc.scm.object_store store_object_index carries the measured reason (2026-09-21: the intake
+// base is 7,050 paths, and a full store scan per entry held a belt tick inside one recovery for
+// over an hour). The prepending accumulator below is the same cost discipline one level up:
+// quadratic shapes stay fixed at every n, not at the n someone first measured.
 fn recover_corpus(store: ObjectStore, entries: List<CorpusManifestEntry>) -> CorpusRecovery {
+  let index = store_object_index(store: store)
   match fold(
     entries,
     init: CorpusRecoveryAcc { files: [], refusal: none },
-    f: fn(acc, e) { recover_entry_step(store: store, acc: acc, entry: e) },
+    f: fn(acc, e) { recover_entry_step(index: index, acc: acc, entry: e) },
   ) {
     CorpusRecoveryAcc { files: files, refusal: refusal } =>
       match refusal {

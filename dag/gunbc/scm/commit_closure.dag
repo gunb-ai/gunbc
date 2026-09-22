@@ -101,7 +101,10 @@ import gunbc.scm.object_store {
   AuthoredSourceIsSemanticNode,
   AuthoredSourceIsCorpusManifest,
   authored_source_target_locator,
-  find_authored_source_record,
+  authored_source_lookup_of,
+  node_record_lookup_of,
+  store_object_index,
+  find_object_via,
   object_id_eq,
   resolve_node_target,
   node_target_locator,
@@ -420,8 +423,13 @@ fn empty_census() -> ClosureCensus {
 
 // Both lists accumulate by prepend and are reversed once at the top, the idiom this module already
 // documents for store_census and then had to be reminded of twice.
-fn census_of_target(store: ObjectStore, acc: ClosureCensus, target: SemanticNodeTarget) -> ClosureCensus {
-  match resolve_node_target(store: store, target: target) {
+//
+// THE PER-TARGET RESOLVE GOES THROUGH ONE DIGEST-KEYED INDEX OF THE STORE, built once by the
+// census that folds this function -- the same corpus-scale repair as gunbc.scm.object_store
+// store_object_index documents (measured 2026-09-21: a full store scan per manifest entry held a
+// belt tick inside one save for hours; the save runs this census on every capture, seed or delta).
+fn census_of_target(index: Map<String, ScmObject>, acc: ClosureCensus, target: SemanticNodeTarget) -> ClosureCensus {
+  match node_record_lookup_of(object: find_object_via(index: index, identity: node_target_locator(target: target)), identity: node_target_locator(target: target)) {
     NodeRecordFound(_) => acc
     NodeRecordAbsent { identity: identity } =>
       ClosureCensus {
@@ -575,27 +583,28 @@ fn derive_semantic_closure(
   }
 }
 
-fn census_in_record(store: ObjectStore, acc: ClosureCensus, record: ObjectRecord) -> ClosureCensus {
+fn census_in_record(index: Map<String, ScmObject>, acc: ClosureCensus, record: ObjectRecord) -> ClosureCensus {
   fold(
     record.children,
     init: acc,
-    f: fn(inner, child) { census_of_target(store: store, acc: inner, target: child.target) }
+    f: fn(inner, child) { census_of_target(index: index, acc: inner, target: child.target) }
   )
 }
 
-fn census_in_object(store: ObjectStore, acc: ClosureCensus, object: ScmObject) -> ClosureCensus {
+fn census_in_object(index: Map<String, ScmObject>, acc: ClosureCensus, object: ScmObject) -> ClosureCensus {
   match object {
     AuthoredSourceObject(_) => acc
     CorpusManifestObject(_) => acc
-    SemanticNodeObject(record) => census_in_record(store: store, acc: acc, record: record)
+    SemanticNodeObject(record) => census_in_record(index: index, acc: acc, record: record)
   }
 }
 
 fn store_census(store: ObjectStore) -> ClosureCensus {
+  let index = store_object_index(store: store)
   match fold(
     store_records_in_dependency_order(store: store),
     init: empty_census(),
-    f: fn(acc, object) { census_in_object(store: store, acc: acc, object: object) }
+    f: fn(acc, object) { census_in_object(index: index, acc: acc, object: object) }
   ) {
     ClosureCensus { absent: a, source_occupied: w, manifest_occupied: m } =>
       ClosureCensus {
@@ -653,12 +662,12 @@ fn empty_manifest_source_census() -> ManifestSourceCensus {
 }
 
 fn manifest_source_census_of_entry(
-  store: ObjectStore,
+  index: Map<String, ScmObject>,
   acc: ManifestSourceCensus,
   entry: CorpusManifestEntry
 ) -> ManifestSourceCensus {
   let identity = authored_source_target_locator(target: entry.source)
-  match find_authored_source_record(store: store, identity: identity) {
+  match authored_source_lookup_of(object: find_object_via(index: index, identity: identity), identity: identity) {
     AuthoredSourceFound(_) => acc
     AuthoredSourceAbsent { identity: absent_identity } =>
       ManifestSourceCensus {
@@ -682,7 +691,7 @@ fn manifest_source_census_of_entry(
 }
 
 fn manifest_source_census_in_object(
-  store: ObjectStore,
+  index: Map<String, ScmObject>,
   acc: ManifestSourceCensus,
   object: ScmObject
 ) -> ManifestSourceCensus {
@@ -694,17 +703,18 @@ fn manifest_source_census_in_object(
         record.entries,
         init: acc,
         f: fn(inner, entry) {
-          manifest_source_census_of_entry(store: store, acc: inner, entry: entry)
+          manifest_source_census_of_entry(index: index, acc: inner, entry: entry)
         }
       )
   }
 }
 
 fn manifest_source_census(store: ObjectStore) -> ManifestSourceCensus {
+  let index = store_object_index(store: store)
   match fold(
     store_records_in_dependency_order(store: store),
     init: empty_manifest_source_census(),
-    f: fn(acc, object) { manifest_source_census_in_object(store: store, acc: acc, object: object) }
+    f: fn(acc, object) { manifest_source_census_in_object(index: index, acc: acc, object: object) }
   ) {
     ManifestSourceCensus { absent: a, node_occupied: n, manifest_occupied: m } =>
       ManifestSourceCensus {
