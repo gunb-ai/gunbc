@@ -38,6 +38,13 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.std.symbol_index {
+  GlobalBareHit,
+  GlobalBareLookupAmbiguous,
+  GlobalBareLookupUnbound,
+  symbol_index_global_unique_lookup
+}
+import v2.compiler.name_resolve { ResolutionContext }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -390,6 +397,17 @@ fn ncr_verdicts_for(ingest: SourceRootIngest, module_name: String) -> Optional<N
   }
 }
 
+fn ncr_context() -> Optional<ResolutionContext> {
+  match native_test_context_from_ingest(ingest: ncr_ingest) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: ctx, diagnostics: _ } =>
+      match ctx.resolution {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: rc, diagnostics: _ } => optional_present(value: rc)
+      }
+  }
+}
+
 fn ncr_outcomes() -> NcrOutcomes {
   match native_test_context_from_ingest(ingest: ncr_ingest) {
     Rejected { diagnostics: _ } => NcrContextRefused
@@ -615,5 +633,39 @@ test fn a_qualified_reference_to_a_contested_position_refuses_naming_both_holds(
         && ncr_verdict_names(v: qual, dotted: "v2.ncr_shadow.NcrTwin")
         && ncr_verdict_names(v: qual, dotted: "v2.ncr_home_a.NcrTwin")
         && ncr_verdict_competing_count(v: qual) == 2
+  }
+}
+
+// A BINDING IS NOT A DECLARATION, AND THE SPELLING CENSUS MUST NOT COUNT IT AS ONE. The
+// global-bare map is no longer a resolution mechanism -- section 13 leaves it as the migration
+// oracle -- and the question it answers is how many DECLARATIONS spell a leaf. A transmuted import
+// mints a second PATH to a declaration that already exists, so counting it would answer "two"
+// about one module's type.
+//
+// THE ARM IS DISCRIMINATING BECAUSE OF WHICH NAME IT PICKS. `NcrDisp` is declared in exactly one
+// module (v2.ncr_disp_home) and IMPORTED by exactly one other (v2.ncr_disp_user). Nothing else in
+// the ingest spells it, so a UNIQUE answer here can only survive if the import binding stayed out
+// of the census -- and before this was fixed the same reading came back AMBIGUOUS on the emitted
+// route. `NcrTwin` is the companion control in the other direction: two modules really do declare
+// it, so it must stay AMBIGUOUS and a fix that simply stopped writing the census would show up
+// here as a false UNIQUE.
+//
+// IT IS NOT HOUSEKEEPING: gunbc#12033's pattern classifier reads this oracle to decide whether a
+// bare atom in a match arm names a constructor, and reads Ambiguous as yes. Every leaf polluted
+// this way would push a fresh arm BINDER toward being classified as a constructor and refused.
+test fn a_transmuted_import_does_not_make_its_leaf_globally_ambiguous_holds() -> Bool {
+  match ncr_context() {
+    Absent => false
+    Present { value: rc } =>
+      (match symbol_index_global_unique_lookup(index: rc.symbol_index, name: ^NcrDisp) {
+        GlobalBareHit { node: _, path: _ } => true
+        GlobalBareLookupAmbiguous => false
+        GlobalBareLookupUnbound => false
+      })
+      && (match symbol_index_global_unique_lookup(index: rc.symbol_index, name: ^NcrTwin) {
+        GlobalBareHit { node: _, path: _ } => false
+        GlobalBareLookupAmbiguous => true
+        GlobalBareLookupUnbound => false
+      })
   }
 }
