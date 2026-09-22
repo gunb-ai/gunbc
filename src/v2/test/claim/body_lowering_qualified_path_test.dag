@@ -18,6 +18,7 @@ import v2.compiler.body_lowering_fold {
 }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
@@ -608,27 +609,34 @@ fn body_lowering_qualified_members(root: Node) -> Outcome<Node> {
   }
 }
 
-test fn body_lowering_qualified_value_reaches_arrow_body_whole() -> Bool {
+// The real parse and normalize of the fixture, as one nullary producer rostered WARM in
+// v2.workflow.floor_pure_producer_share: the front end is preparation's fill, and the claim below
+// is charged only its own reads. The route still executes for real -- this is the inhabitance
+// claim, and supplying its tree would remove the last execution of it.
+fn body_lowering_qualified_value_normalized() -> Outcome<NormalizedTree> {
   match body_lowering_qualified_value_parsed() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: parsed, diagnostics: _ } => normalize(parse_tree: parsed)
+  }
+}
+
+test fn body_lowering_qualified_value_reaches_arrow_body_whole() -> Bool {
+  match body_lowering_qualified_value_normalized() {
     Rejected { diagnostics: _ } => false
-    Accepted { value: parsed, diagnostics: _ } =>
-      match normalize(parse_tree: parsed) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match body_lowering_qualified_members(root: tree.root) {
         Rejected { diagnostics: _ } => false
-        Accepted { value: tree, diagnostics: _ } =>
-          match body_lowering_qualified_members(root: tree.root) {
+        Accepted { value: members, diagnostics: _ } =>
+          match find_named_child(root: members, name: ^uses_qual) {
             Rejected { diagnostics: _ } => false
-            Accepted { value: members, diagnostics: _ } =>
-              match find_named_child(root: members, name: ^uses_qual) {
+            Accepted { value: member, diagnostics: _ } =>
+              match find_arrow_body_child(root: member) {
                 Rejected { diagnostics: _ } => false
-                Accepted { value: member, diagnostics: _ } =>
-                  match find_arrow_body_child(root: member) {
-                    Rejected { diagnostics: _ } => false
-                    Accepted { value: body, diagnostics: _ } =>
-                      body_lowering_body_is_path(
-                        body: body,
-                        dotted: body_lowering_qualified_path_dotted
-                      )
-                  }
+                Accepted { value: body, diagnostics: _ } =>
+                  body_lowering_body_is_path(
+                    body: body,
+                    dotted: body_lowering_qualified_path_dotted
+                  )
               }
           }
       }
