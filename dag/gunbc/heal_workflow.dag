@@ -167,7 +167,7 @@ fn heal_repair_declaration_step() -> Step {
 
 fn heal_regen_step() -> Step {
   RunStep {
-    name: Present { value: "Regenerate every committed generated artifact" },
+    name: Present { value: "Regenerate every registry-rostered generated artifact (not the stage0 mirrors)" },
     id: none,
     run: gunbc_ci_heal_regen_invoke(),
     shell: none,
@@ -270,7 +270,7 @@ fn heal_workflow_bound_steps() -> List<HealBoundStep> {
     HealBoundStep {
       step: heal_regen_step(),
       role: capability_neutral,
-      step_name: "Regenerate every committed generated artifact",
+      step_name: "Regenerate every registry-rostered generated artifact (not the stage0 mirrors)",
     },
     HealBoundStep {
       step: heal_candidate_step(),
