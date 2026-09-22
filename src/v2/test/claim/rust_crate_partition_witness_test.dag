@@ -40,6 +40,7 @@ import v2.workflow.rust_crate_partition {
   stage0_interim_explicit_assignment,
   stage0_module_dag,
   stage0_module_dag_interface_grounding_is_debt,
+  stage0_module_interface_grounding_target,
   stage0_module_bearing_unit_count,
   stage0_module_id,
   stage0_v1_infer_modules,
@@ -375,6 +376,18 @@ test fn witness_stage0_partition_row_lookups_resolved_holds() -> Bool {
 
 test fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> Bool {
   stage0_module_dag_interface_grounding_is_debt()
+}
+
+// The debt row's trigger has now been repointed twice, and BOTH previous targets named an
+// authority that could not carry the fact -- a roster row and then a module-to-location index.
+// This pins the third: the dissolve target must name the module-binding SUPPLY, whose contents
+// half is the capability, and not a carrier that merely sits near it. Repointing it back at
+// ModuleStorageIndex, or at any other declaration, reds this claim -- which is the whole point,
+// because nothing else in the corpus re-reads a dissolve target once it is written.
+test fn witness_interface_grounding_target_names_the_binding_supply_holds() -> Bool {
+  let target = stage0_module_interface_grounding_target()
+  ((target.module_path as String) == "v2.compiler.source_authority")
+    && ((target.decl_name as String) == "module_storage_bindings_for_source_roots")
 }
 
 
