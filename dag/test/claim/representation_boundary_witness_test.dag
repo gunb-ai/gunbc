@@ -242,11 +242,18 @@ test fn representation_boundary_consumer_standing_is_derived_not_authored_holds(
     && !witness_subject_is_inside_gate_closure(w: this_witnesss_own_subject())
 }
 
+// THE POSITIVE HALF NAMES A MODULE THE GATE ROSTER ACTUALLY ADMITS, AND THE FIRST CUT DID NOT.
+// It named v2.test.claim.effect_demand.effect_demand_census_test on the assumption that the v2 test
+// tree is inside the required closure. IT IS NOT: v2.workflow.required_floor required_gate_prefixes
+// carries no v2.test. row at all, so that conjunct was false and THIS WITNESS WENT RED ON ITS OWN
+// FIXTURE -- which is the arm working, not failing. test.claim.occurrence_binding_ IS a row in that
+// roster, and the entry below is the one the bindings boundary already cites, so the positive half
+// is now grounded in a prefix a reader can find rather than in an assumption about tree layout.
 fn a_gate_admitted_subject() -> WitnessSubject {
   witness_subject(
-    entry: "src/v2/test/claim/effect_demand/effect_demand_census_test.dag",
-    function: "effect_demand_witness_control_classifies_every_demand",
-    module_path: "v2.test.claim.effect_demand.effect_demand_census_test"
+    entry: "dag/test/claim/occurrence_binding_witness_test.dag",
+    function: "occurrence_binding_root_only_path_is_nonempty_holds",
+    module_path: "test.claim.occurrence_binding_witness_test"
   )
 }
 
