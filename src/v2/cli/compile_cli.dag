@@ -293,10 +293,16 @@ type CliRunOutcome
 // `parse_grammar_choice_overlap_residue` for every entry tried; that is a grammar-global ADVISORY
 // and never the fatal. The fatal diagnostic is the last one, and `parse_g0_tokens_remain_diagnostic`
 // builds its locus from the first remaining token. The fatal pick is `v2.std.diagnostic`
-// `diagnostics_fatal`, the chain is `lens_verdict_diagnostics_located_chain_text` (every link with
-// its locus, so thirty-five advisories in front of the fatal each say where they are), and
-// file+extent is `lens_verdict_diagnostic_locus_text` — none a second spelling here (DESIGN
-// section 3).
+// `diagnostics_fatal`, the chain is `lens_verdict_diagnostics_located_chain_text_in_spans` (every
+// link with its locus, so thirty-five advisories in front of the fatal each say where they are),
+// and file+extent is `lens_verdict_diagnostic_locus_text_in_spans` — none a second spelling here
+// (DESIGN section 3).
+//
+// BOTH ARE THE `_in_spans` DOORS, WHICH IS THE POINT OF THIS PACKAGE: they take the ingest's
+// SpanIndex, so a NodeLocus resolves to a file and byte range instead of rendering as an
+// occurrence. An earlier revision of this paragraph named the index-free spellings, which this
+// module stopped calling in the same diff -- prose naming symbols its own code does not use
+// (review 70138).
 
 // THE EMPTY INGEST IS A REFUSAL AND NOT AN EMPTY PROGRAM, and this arm is the whole reason
 // `v2_cli_run` does not call the emitter first and ask questions after.

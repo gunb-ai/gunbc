@@ -82,10 +82,9 @@ fn attribution_read_b() -> DagSourceReadWitness {
 }
 
 fn attribution_occurrence_file(index: SpanIndex, node: Node) -> Optional<Symbol> {
-  match node.occurrence_id {
-    OccurrenceSynthetic => optional_absent()
-    OccurrenceMinted { id: id } => attribution_file_of_id(index: index, id: id)
-    OccurrenceProjected { id: id, caused_by: _ } => attribution_file_of_id(index: index, id: id)
+  match node_occurrence_id_optional(node: node) {
+    Absent => optional_absent()
+    Present { value: id } => attribution_file_of_id(index: index, id: id)
   }
 }
 
