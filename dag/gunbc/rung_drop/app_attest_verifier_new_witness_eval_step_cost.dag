@@ -16,13 +16,19 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_app_att
 // still block. Only the eval-step overrun is reported as `EvalStepsOverBudgetUnderDeclaredDrop`
 // rather than refusing. The budget is not raised.
 //
-// WHY THE OVERRUN IS NOT THE CLAIM'S SHAPE. Each claim decodes the sample attestation once
+// WHY THE OVERRUN IS NOT THE CLAIM'S SHAPE, AND WHY THE SIXTH MEMBER IS NOT LIKE THE OTHER FIVE
+// (review 70013). FIVE of the six decode the sample attestation or assertion once
 // (AttestationDecoded carries the parts, three certificates and authenticator data to every step)
-// and asserts one step's verdict; the demand graph has no repeated production to remove. What the
-// budget prices is the seed interpreter walking a real 5 KB attestation object and three DER
+// and assert one step's verdict; the demand graph has no repeated production to remove, and what
+// the budget prices is the seed interpreter walking a real 5 KB attestation object and three DER
 // certificates one octet at a time. Supplying a decoded certificate or a precomputed nonce as a
 // fixture would remove the only execution of the readers over Apple's real bytes on the acceptance
-// path (DESIGN section 3, the pairing obligation), so the claims stay and the wall is declared down.
+// path (DESIGN section 3, the pairing obligation), so those claims stay and the wall is declared
+// down. THE SIXTH, malformed_carriers_refuse_before_the_curve, touches no Apple object at all: it
+// decodes two base64url carriers of the RFC 6979 A.2.5 vectors and is refused on a size check
+// before any curve arithmetic. It is a member for the ONE reason all six share -- the interpreter
+// walking real-sized octet lists byte by byte -- and its row says so in its own words rather than
+// inheriting a sentence about a decode it does not perform.
 //
 // THE P-256 VERIFICATIONS OF THESE WITNESSES ARE NOT MEMBERS: they cross the wall deadline, which
 // this drop does not and may not cover; they left the required floor and run on the native row
@@ -45,6 +51,6 @@ data app_attest_verifier_new_witness_eval_step_cost: RungDrop = RungDrop {
       replacement: "the CBOR, DER and SHA-256 readers executing as natively emitted code over the sample objects rather than as interpreted octet-list folds",
     },
     population: app_attest_verifier_new_witness_eval_step_cost_population,
-    restoration_trigger: "THE CAPABILITY. MachineWidth<N> reification (gunbc#11819) lets the extdeps.apple.app_attest closure emit, and these six identities execute on the natively emitted route -- the gunbc test instrument row the ecdsa_verification_realization_frontier names -- while each still decodes Apple's real object through the production readers; WHAT THAT MUST BE SUFFICIENT FOR: the verifier folds are exercised over the real sample on the acceptance path with no interpreted octet walk inside a claim frame, and the identities then measure under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives, or leave the floor for that native row. Supplying decoded certificates or a precomputed nonce as fixtures, or deleting the identities, satisfies neither.",
+    restoration_trigger: "THE CAPABILITY. MachineWidth<N> reification (gunbc#11819) lets the extdeps.apple.app_attest closure emit, and these six identities execute on the natively emitted route -- the gunbc test instrument row the ecdsa_verification_realization_frontier names -- while each still exercises the production readers over its own real bytes -- Apple's object for the five verifier claims, the RFC 6979 carriers for the carrier-join claim; WHAT THAT MUST BE SUFFICIENT FOR: the verifier folds are exercised over the real sample on the acceptance path, and the carrier join over its real carriers, with no interpreted octet walk inside a claim frame, and the identities then measure under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives, or leave the floor for that native row. Supplying decoded certificates or a precomputed nonce as fixtures, or deleting the identities, satisfies neither.",
   }
 }

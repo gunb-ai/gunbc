@@ -167,12 +167,17 @@ data floor_eval_step_cost_drop_interpreted_crypto_rows: List<EvalStepCostDropMea
 
 
 // SIXTH DROP, SAME MEMBERSHIP TEST: the App Attest VERIFIER claims (`gunbc.rung_drop`
-// `app_attest_verifier_new_witness_eval_step_cost`). Six identities, each decoding Apple's real
-// attestation or assertion object -- one CBOR document, three DER certificates, SHA-256 over the
-// leaf's TBS and the nonce -- through the production folds and asserting a named step's verdict.
-// The decode is done ONCE per claim and carried (AttestationDecoded); what the budget prices is
-// the interpreter walking real-sized octet lists byte by byte. The P-256 verifications of the same
-// witnesses are not members and not on the floor: they cross the wall deadline.
+// `app_attest_verifier_new_witness_eval_step_cost`). Six identities, and they do NOT all bill the
+// same work, so each row states its own (review 70013: one reason pasted across six rows was true
+// of five and false of the sixth). FIVE decode Apple's real attestation or assertion object -- one
+// CBOR document, three DER certificates, SHA-256 over the leaf's TBS and the nonce -- through the
+// production folds and assert a named step's verdict; the decode is done ONCE per claim and carried
+// (AttestationDecoded). The SIXTH, malformed_carriers_refuse_before_the_curve, is the wire-carrier
+// join: two base64url carriers of RFC 6979 A.2.5 vectors refused on a size check before any curve
+// arithmetic. What every member has in common is only the interpreter walking real-sized octet
+// lists byte by byte -- which is the membership test, and is what the row text must say rather than
+// a shared sentence about a decode five of them do. The P-256 verifications of the same witnesses
+// are not members and not on the floor: they cross the wall deadline.
 data floor_eval_step_cost_drop_app_attest_verifier_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
     identity: "test.claim.app_attest_verifier_witness_test.the_sample_passes_every_step_before_the_extension_steps" as NonEmptyStr,
@@ -196,7 +201,7 @@ data floor_eval_step_cost_drop_app_attest_verifier_rows: List<EvalStepCostDropMe
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.signature_verify_join_witness_test.malformed_carriers_refuse_before_the_curve" as NonEmptyStr,
-    measured_by: "claim_batch --hermetic [witness] receipt at session/nimble-eagle-216-step3b 1e567156455 (gunbc#11989 is stacked and no required floor has run it): verdict pass, wall under the 8 s deadline, eval_steps read from that receipt's own line; the billed work is decoding Apple's real attestation object (CBOR, three X.509 certificates, SHA-256 over the TBS and nonce) once per claim on the interpreter" as NonEmptyStr,
+    measured_by: "claim_batch --hermetic [witness] receipt at session/nimble-eagle-216-step3b (gunbc#11989 is stacked and no required floor has run it), re-derived by claim_batch --entry dag/test/claim/signature_verify_join_witness_test.dag --function malformed_carriers_refuse_before_the_curve: verdict pass, wall under the 8 s deadline, eval_steps read from that receipt's own line and over the new-witness budget by more than an order of magnitude. THIS ROW'S BILLED WORK IS NOT THE OTHER FIVE'S (review 70013): it touches no Apple object, no DER certificate and no SHA-256. It decodes two base64url carriers of the RFC 6979 A.2.5 P-256 vectors through extdeps.crypto.signature verify_signature, and curve_admit_point_octets refuses the 33-octet key against the suite's 65 on the SIZE check before any curve arithmetic runs. What the budget prices is the interpreter walking those octet lists byte by byte to decode and size them" as NonEmptyStr,
   },
 ]
 
