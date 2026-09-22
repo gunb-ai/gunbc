@@ -76,8 +76,8 @@ test fn else_less_if_refuses_at_lowering_with_its_cause_holds() -> Bool {
   }
 }
 
-// F -- namespace_graft_parse_projection_edge consumes the parser's closed projection roster
-// (v2.compiler.parse parse_tree_projection_edge) instead of a "_node_projection" lexeme-suffix
+// F -- namespace_graft, name_resolve and symbol_index_fill consume the parser's closed projection
+// roster (v2.compiler.parse parse_tree_projection_edge) instead of a "_node_projection" lexeme-suffix
 // test (v2.std.runtime runtime_value_node_projection and siblings). The two-declaration form is the
 // loud face of the defect (an ill-formed Conj); the single-declaration form is the silent one: the
 // member was dissolved and the module normalized WITHOUT it.

@@ -99,13 +99,6 @@ fn namespace_graft_is_module_shell(root: Node) -> Bool {
   }
 }
 
-// Consumes the parser's own roster of projection edges (v2.compiler.parse
-// parse_tree_projection_edge). The former lexeme-suffix test dissolved authored members named
-// `*_node_projection`; the roster is the producer's, so an authored name cannot match it.
-fn namespace_graft_parse_projection_edge(name: Symbol) -> Bool {
-  parse_tree_projection_edge(name: name)
-}
-
 fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
@@ -117,7 +110,7 @@ fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {
             false
           } else {
             match e.label {
-              Named { name: sym } => namespace_graft_parse_projection_edge(name: sym)
+              Named { name: sym } => parse_tree_projection_edge(name: sym)
               Positional => true
             }
           }
@@ -139,7 +132,7 @@ fn namespace_graft_collect_body_edge(
     Named { name: sym } =>
       if namespace_graft_is_metadata_edge(name: sym) {
         acc
-      } else if namespace_graft_parse_projection_edge(name: sym) {
+      } else if parse_tree_projection_edge(name: sym) {
         concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target, unit_ids: unit_ids))
       } else if dag_resolve_preserve_module_metadata_subtree(node: edge.target) {
         acc
@@ -488,7 +481,7 @@ fn namespace_graft_partition_decl_units(units: List<Node>) -> NamespaceGraftDecl
 fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
   match edge.label {
     Named { name: sym } =>
-      if namespace_graft_parse_projection_edge(name: sym) {
+      if parse_tree_projection_edge(name: sym) {
         false
       } else if namespace_graft_is_metadata_edge(name: sym) {
         false
