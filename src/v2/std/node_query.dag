@@ -16,12 +16,12 @@ import v2.std.algebra { TailAbsent, TailFound, fold_list, is_empty, list_append,
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.node {
+  Cardinality,
   Ambiguous,
   Atom,
   ArmPayload,
   Arrow,
   Behavior,
-  Cardinality,
   ComputationNode,
   Conj,
   CoproductArm,
@@ -148,26 +148,41 @@ fn coproduct_arm_payload_pair_from_arm(arm: CoproductArm) -> CoproductArmPayload
 // declared_field_named and refuses on Absent.
 // CARDINALITY IS CARRIED AS THE MODELLED COPRODUCT, NOT RE-SNIFFED AND NOT REDUCED TO A Bool. An
 // Optional field's edge targets a Cardinality node over its type, so exactly ONE reader decodes
-// that -- declared_field_required_from_target -- and consumers read the decoded value. Two earlier
+// that -- v2.std.node node_target_cardinality, homed with the connective it reads -- and consumers
+// read the decoded value. Two earlier
 // revisions were worse in two different ways: the first had every consumer re-derive it from the
 // target's connective, which is DESIGN section 5's validation standing where construction was
 // available; the second carried the decoded fact as a Bool, which gave Required-versus-Optional a
 // second spelling in the tree and so forked the authority std.constructors already holds
 // (DESIGN section 3: each fact lives in exactly one place).
 //
-// THE REASON THE Bool WAS WRITTEN WAS FALSE, AND IT IS WORTH RECORDING THAT IT WAS NEVER TESTED.
-// The annotation here claimed std.constructors Cardinality could not be imported because
-// v2.std.node already binds that name as the CONNECTIVE and the two would collide. That claim was
-// inherited from an earlier comment and asserted rather than measured. It is wrong: both names are
-// imported here, both are used in declared_field_required_from_target -- the connective in the
-// match pattern, the type in the return -- and the module resolves. The discriminating evidence is
-// v2.test.parse.variant_field_lowering vf_record_declaration_is_named_with_declared_fields, which
-// asserts `v: Int` reads Required and `w: Int?` reads Optional; a decoder that had bound the wrong
-// Cardinality could not satisfy both.
+// THE COLLISION THIS ANNOTATION ONCE CLAIMED IS REAL, BUT NOT WHERE IT SAID, AND THE DIFFERENCE
+// DECIDES WHERE THE DECODER CAN LIVE. The earlier text said std.constructors Cardinality could not
+// be imported because v2.std.node binds that name as the CONNECTIVE. That is wrong: both names are
+// imported here, both are used in declared_field_cardinality_of_target -- the connective in the
+// match pattern, the type in the return -- and this module resolves.
+//
+// What is TRUE, and was found by executing the move rather than by reading: `.dag` variant names
+// resolve CORPUS-WIDE, and std.constructors Cardinality's arms collide with an arm of
+// v2.std.grammar GrammarExpr. Hoisting this decoder into v2.std.node -- the module that owns the
+// connective, and the obvious home for it -- refuses the whole corpus with
+// `variant 'Optional' appears in both 'Cardinality' and 'GrammarExpr'`. So the decoder stays HERE,
+// not because this is its natural home but because v2.std.node_query never sees GrammarExpr and
+// v2.std.node does. That is a constraint on placement, and it is the reason a reader should not
+// "tidy" this function into the module that owns the connective.
+//
+// THE ARMS ARE THEREFORE CONFINED BY REACHABILITY RATHER THAN BY INTENT, which is weaker than
+// construction and is stated rather than hidden: any module that binds both this Cardinality and
+// GrammarExpr breaks, and nothing prevents a future import from doing that. The capability that
+// would dissolve the constraint is a `.dag` import able to disambiguate two same-named authorities;
+// there is none today (`git grep import_alias src/v2` finds only target-language emitters). Until
+// then the corpus has one receipt for this exact class already -- the `ambiguous reference 'Unit':
+// 2 candidates` refusal recorded at gunbc.recurring_failure_mode
+// resolution_scope_conflated_with_ownership_scope.
 type DeclaredField {
   name: Symbol
   type_node: Node
-  required: Cardinality
+  cardinality: Cardinality
 }
 
 fn positional_payload_field_name() -> Symbol {
@@ -179,9 +194,8 @@ fn pattern_wildcard_name() -> Symbol {
   symbol_intern_lexeme(lexeme: "_")
 }
 
-// THE ONE PLACE THE EDGE'S CARDINALITY IS DECODED. Every consumer reads DeclaredField.required
-// rather than matching the target's connective again.
-fn declared_field_required_from_target(target: Node) -> Cardinality {
+
+fn declared_field_cardinality_of_target(target: Node) -> Cardinality {
   match target.kind {
     TypeNode { connective: Cardinality } => Optional
     _ => Required
@@ -195,7 +209,7 @@ fn declared_field_from_edge(e: Edge) -> Optional<DeclaredField> {
         value: DeclaredField {
           name: field_name,
           type_node: e.target,
-          required: declared_field_required_from_target(target: e.target)
+          cardinality: declared_field_cardinality_of_target(target: e.target)
         }
       }
     Positional => Absent
