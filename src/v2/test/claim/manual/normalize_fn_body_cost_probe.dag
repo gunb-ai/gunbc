@@ -145,6 +145,25 @@ fn nfbcp_atom_identity_deep(node: Node) -> Optional<Symbol> {
   }
 }
 
+// THE MARGIN HERE IS THIN, AND THAT IS A STANDING FACT ABOUT THIS FILE RATHER THAN A NUMBER.
+// The most expensive claim below is the disposition arm, because it is the only one that pays
+// parse AND body_lower_fn_decl_to_arrow; it sits just under the per-claim ceiling derived by
+// v2.workflow.required_floor `claim_ceiling_eval_step_budget`. So enlarging a specimen or adding
+// an assertion to that claim is a budget decision, not a free edit. The producer that re-derives
+// the current figures is the required floor itself, which prints eval_steps per claim on every
+// run, and the local recipe at the foot of this file -- neither is transcribed here, because a
+// copied number would rot without anyone touching either end (DESIGN section 6).
+//
+// WHY THE SUPPLIED-TOKEN ROUTE IS NOT USED HERE, since it is the obvious headroom and declining
+// it is a judgement rather than an oversight. v2.test.parse.supplied_token_stream_support exists
+// for claims whose text route exceeds the budget BEFORE they assert anything; it converts one
+// over-budget claim into TWO that must each fit (a fidelity claim costing tokenize, plus the
+// supplied-route claim) and needs a hand-authored TokenStream per specimen. These claims are
+// already under the ceiling, so adopting it would author four token streams and double the claim
+// count to buy speculative margin -- and today it would also mean carrying a second copy of that
+// module, which is the DESIGN section 3 fork. If a later edit pushes the disposition arm over,
+// that is the mechanism to adopt, and the specimens here are small enough for it to work.
+//
 // ===========================================================================
 // ENROLLED REDS for the positional-return-type repair (DESIGN section 4b(4):
 // these stay enrolled as regression controls after they green; they do not retire).
