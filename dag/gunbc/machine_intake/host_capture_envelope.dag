@@ -468,19 +468,46 @@ fn host_capture_section_scan_line(acc: HostCaptureSectionScan, line: String) -> 
   }
 }
 
-// ONLY NEWLINE-TERMINATED LINES ARE EVIDENCE. The capture is read while the host is still writing
-// it, so its final fragment may be half a line: "workload-write-rc=" or "workload-write-rc=1"
-// with the newline not yet arrived. The fragment is dropped before the scan, so nothing -- not a
-// marker, not a section opener, not a refusing statement -- is read before the program finished
-// writing it (review 5269655400).
+// ONLY NEWLINE-TERMINATED LINES ARE EVIDENCE OF A LIVE STREAM. A capture read while the host is
+// still writing it may end in half a line: "workload-write-rc=" or "workload-write-rc=1" with the
+// newline not yet arrived. The fragment is dropped before the scan, so nothing -- not a marker, not
+// a section opener, not a refusing statement -- is read before the program finished writing it
+// (review 5269655400).
 fn host_capture_terminated_lines(capture: String) -> List<String> {
   let parts = split(s: capture, delimiter: "\n")
   if ends_with(s: capture, suffix: "\n") { parts } else { parts.take(n: count(parts) - 1) }
 }
 
+// A COMPLETED TRANSCRIPT HAS NO FRAGMENT: when the process that wrote it has exited, its last line
+// is whole whether or not the transport preserved the final newline (the seed's shell observation
+// trims stdout, so a rendered program's END marker arrives unterminated). Which reading a capture
+// gets is the CALLER's fact -- it knows whether the writer is still running -- and is declared on
+// the input rather than inferred from the bytes, which cannot tell the two apart.
+type HostCaptureText
+  = HostCaptureLiveStream { text: String }
+  | HostCaptureCompletedTranscript { text: String }
+
+fn host_capture_lines(capture: HostCaptureText) -> List<String> {
+  match capture {
+    HostCaptureLiveStream { text: t } => host_capture_terminated_lines(capture: t)
+    HostCaptureCompletedTranscript { text: t } => split(s: t, delimiter: "\n")
+  }
+}
+
+// The one binder. host_capture_bind reads a LIVE stream (the boot's SOL capture, a committed
+// console file that may have been cut mid-line); host_capture_bind_transcript reads a transcript
+// whose writer has exited. Both are this fold over the declared input; neither is a second scan.
 fn host_capture_bind(capture: String, machine: NonEmptyStr) -> HostCaptureBinding {
+  host_capture_bind_text(capture: HostCaptureLiveStream { text: capture }, machine: machine)
+}
+
+fn host_capture_bind_transcript(capture: String, machine: NonEmptyStr) -> HostCaptureBinding {
+  host_capture_bind_text(capture: HostCaptureCompletedTranscript { text: capture }, machine: machine)
+}
+
+fn host_capture_bind_text(capture: HostCaptureText, machine: NonEmptyStr) -> HostCaptureBinding {
   let scan = fold(
-    host_capture_terminated_lines(capture: capture),
+    host_capture_lines(capture: capture),
     init: HostCaptureScan { begun: false, closed: false, restarted: false, machine: machine, run: KernelBootId { boot_id: "unbound" }, body: [] },
     f: (acc, line) => host_capture_scan_line(acc: acc, line: line, machine: machine),
   )
