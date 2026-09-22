@@ -485,6 +485,14 @@ test fn an_arm_claim_commits_only_the_host_it_names() -> Bool {
 // what the deleted hand-maintained producer list could never do.
 //
 // srv10 IS NOW A REFUSAL, AND THAT IS THE HARM THIS SEAM EXISTS TO STOP. This claim used to admit
+// THE HOST IS BOUND INTO THE RENDERED PHRASE, NOT ASSERTED BESIDE THE CAUSE. This read "srv9" and
+// "serving arm" as two free-standing contains over one message, which a refusal naming srv9 in some
+// other clause -- an unplaced list, a neighbouring host -- satisfies without ever saying that srv9 is
+// the host being refused. The phrase admit_unplaced_host_among actually joins is the pair, so the
+// pair is what is asked for. (sleek-bee-348 found this shape on
+// the_microvm_network_step_binds_the_dispatched_host_into_its_environment, where a step carrying the
+// name and the expression in DIFFERENT pairs passed a claim named for the binding.)
+//
 // srv10 for a build, on the ground that a ruling-derived reservation is not a placement -- true, but
 // srv10 was also running the native GLM arm, which had no placement claim, so the seam would have
 // sent a source build or an image pull onto a serving host. Group B's assigned arm now claims it and
@@ -494,7 +502,7 @@ test fn an_arm_claim_commits_only_the_host_it_names() -> Bool {
 test fn the_admission_seam_refuses_a_claimed_host_naming_its_cause() -> Bool {
   (match admit_unplaced_host(raw: "srv9", purpose: "a fixture effect" as NonEmptyStr) {
      SparkHostRefused { cause: why } =>
-       string_contains(s: why as String, pattern: "srv9")
+       string_contains(s: why as String, pattern: "srv9 is not admissible for a fixture effect, because ")
          && string_contains(s: why as String, pattern: "serving arm")
          && string_contains(s: why as String, pattern: "not a held claim")
      SparkHostAdmitted { host: _ } => false
