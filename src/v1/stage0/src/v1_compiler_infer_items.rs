@@ -93,6 +93,11 @@ pub fn item_resource_names(info: Rc<ItemInfo>) -> Rc<Vec<String>> {
     })
 }
 
+pub fn item_is_effectful_callee(info: Rc<ItemInfo>) -> bool {
+    (((info.service_names.clone().len() as i64) > 0)
+        || ((item_resource_names(info.clone()).len() as i64) > 0))
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemInfo {
     pub name: String,

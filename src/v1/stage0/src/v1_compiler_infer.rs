@@ -1558,6 +1558,24 @@ pub fn resource_requirement_established(
         != std::option::Option::None)
 }
 
+pub fn caller_is_test_root(scope: Rc<InferScope>) -> bool {
+    match (*crate::v1_compiler_infer_lookup::constructor_declaration_for_admission(
+        scope.type_env.clone(),
+        scope.module_name.clone(),
+        scope.caller_decl_name.clone(),
+    ))
+    .clone()
+    {
+        ConstructorDeclarationLookup::ExactConstructorDeclaration { declaration, .. } => {
+            match declaration.declaration_marker.clone() {
+                DeclarationMarker::TestMarked => true,
+                DeclarationMarker::Unmarked => false,
+            }
+        }
+        _ => false,
+    }
+}
+
 pub fn caller_resource_requirements(scope: Rc<InferScope>) -> Rc<Vec<Rc<ResourceRequirement>>> {
     match v1_rt::map_get(
         &scope.item_registry.clone(),
@@ -1613,16 +1631,18 @@ pub fn resource_requirement_diags(
         };
         match callee_identity.clone() {
             std::option::Option::None => Rc::new(vec![]),
-            Some(callee) => {
-                match callee_declaration_for_target(scope.clone(), call_target.clone()) {
-                    std::option::Option::None => Rc::new(vec![]),
-                    Some(declaration) => {
-                        let required =
-                            crate::v1_compiler_infer_items::resource_requirements_of_uses(
-                                declaration.uses.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            );
-                        if ((required.clone().len() as i64) == 0) {
+            Some(callee) => match callee_declaration_for_target(scope.clone(), call_target.clone())
+            {
+                std::option::Option::None => Rc::new(vec![]),
+                Some(declaration) => {
+                    let required = crate::v1_compiler_infer_items::resource_requirements_of_uses(
+                        declaration.uses.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    );
+                    if ((required.clone().len() as i64) == 0) {
+                        Rc::new(vec![])
+                    } else {
+                        if caller_is_test_root(scope.clone()) {
                             Rc::new(vec![])
                         } else {
                             {
@@ -1651,10 +1671,10 @@ pub fn resource_requirement_diags(
     resource: type_node_label(r.resource.clone(), scope.type_env.clone().source_indices.clone()),
     caller_module_path: scope.module_name.clone(),
     caller_decl_name: if (scope.caller_decl_name.clone() == "".to_string()) {
-                        "<module scope>".to_string()
-                    } else {
-                        scope.caller_decl_name.clone()
-                    },
+                            "<module scope>".to_string()
+                        } else {
+                            scope.caller_decl_name.clone()
+                        },
     span: span.clone(),
 }), scope.module_name.clone()));
                                     }
@@ -1664,7 +1684,7 @@ pub fn resource_requirement_diags(
                         }
                     }
                 }
-            }
+            },
         }
     }
 }
@@ -21695,7 +21715,7 @@ pub fn local_binding_for_item(
                             params: item.params.clone(),
                             inferred: item.inferred.clone(),
                             return_cardinality: item.return_cardinality.clone(),
-                            uses: Rc::new(vec![]),
+                            uses: item.uses.clone(),
                             body: std::option::Option::None,
                             transport: std::option::Option::None,
                             properties: item.properties.clone(),
