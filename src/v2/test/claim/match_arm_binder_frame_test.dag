@@ -20,7 +20,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
+import v2.std.node { Atom, Node, TypeNode, node_subtree_nodes }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -192,16 +192,65 @@ test fn mab_nested_braced_and_shorthand_binders_bind() -> Bool {
 }
 
 
-// A BINDER SPELLING A MODULE NAME BINDS THE ARM (Pkg16). The shape of the in-tree specimen --
-// `Present { value: node } =>` inside v2.std.symbol_index, where lexical ascent reaches the MODULE
-// v2.std.node -- rebuilt at the smallest size that still has a module on the chain: the arm lives
-// in module p.q, and ascent from it reaches p, where `x` is the MODULE p.x. A module cannot be
-// test-marked, so the taint rides one step further: p.x declares `test fn y`, and the arm body
-// reads `x.y`. If the binder is skipped, `x` resolves to the module and `x.y` to the test fn, which
-// refuses resolve_reason_test_code_referenced; if it binds, `x.y` is a projection off the arm local
-// and never reaches the root. The control beside it spells the binder `w` -- a name nothing outer
-// claims -- so a green on the module row cannot be a projection route that never consults the
-// frame at all, and the no-binder row proves the wall behind `x.y` is live.
+// PKG16: WHAT A BINDER SPELLING AN OUTER NAME BINDS, ASKED OF THE INDEX. The classifier
+// (v2.compiler.resolve resolve_pattern_atom_names_constructor) now reads the declared-payload fact
+// the symbol index holds instead of the node's shape. These rows are the census that repair was
+// measured against, kept enrolled as regression controls. Both readings of `A(W) => W` ACCEPT, so
+// acceptance cannot discriminate; what does is the resolved tree: a frame binder stays the Atom it
+// was spelled as, while a declaration reference resolves to its qualified spine
+// (resolved_reference_node). An Atom surviving is the arm having bound it.
+//
+// WHAT THIS CENSUS FOUND, stated because a reader will otherwise assume these rows are the red for
+// the repair: THEY ARE NOT. On #12033's head, with the old shape predicate, every row below already
+// holds -- a where-alias, a record-literal data row and the fresh control all bind, and the
+// ambiguous route refuses. A module container is never an index entry (the fill descends module
+// spine segments without inserting a path), so the module-name specimen this package was filed on
+// does not reach the classifier by lexical ascent. No shape was found that the old predicate admits
+// and the index rejects, so the repair is construction with no behavioural delta on this corpus.
+fn mab_has_atom(o: Outcome<Node>, id: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: n, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: n), init: false, f: fn(found, m) {
+        found || (match m.kind {
+          TypeNode { connective: Atom { identity: i } } => i == id
+          _ => false
+        })
+      })
+  }
+}
+
+fn mab_resolved_where_alias_binder() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\nfn lower_hex_64(v: Int) -> Bool { true }\n\ntype W = Int where lower_hex_64\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(W) => W\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_unshadowed_binder() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\nfn lower_hex_64(v: Int) -> Bool { true }\n\ntype V = Int where lower_hex_64\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(W) => W\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_record_data_binder() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype Rec { f: Int }\ndata d: Rec = Rec { f: 1 }\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(d) => 0\n    B => 0\n  }\n}\n")
+}
+
+// The instrument is live: with no outer W, the binder's Atom survives.
+test fn mab_unshadowed_binder_atom_survives() -> Bool {
+  mab_has_atom(o: mab_resolved_unshadowed_binder(), id: ^W)
+}
+
+test fn mab_binder_spelling_a_where_alias_binds() -> Bool {
+  mab_outcome_accepts(o: mab_resolved_where_alias_binder())
+    && mab_has_atom(o: mab_resolved_where_alias_binder(), id: ^W)
+}
+
+test fn mab_binder_spelling_a_record_data_row_binds() -> Bool {
+  mab_has_atom(o: mab_resolved_record_data_binder(), id: ^d)
+}
+
+// THE ROUTE THE IN-TREE SPECIMEN ACTUALLY TAKES, at fixture size: `n` is off the arm's lexical
+// chain and two declarations spell it corpus-wide, so the global-bare lookup is Ambiguous and the
+// classifier's LexicalUnbound -> GlobalBareLookupAmbiguous arm answers constructor. The body's `n`
+// then REFUSES, located -- loud, not silent. That arm is the #12009 bridge and is not this
+// package's; this row records its current behaviour so a change to it is seen.
 fn mab_file(src: String, id: Symbol) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: src, fidelity: Lossless },
@@ -211,13 +260,16 @@ fn mab_file(src: String, id: Symbol) -> DagSourceReadWitness {
   }
 }
 
-fn mab_module_assemble(arm_src: String) -> Outcome<Node> {
+fn mab_resolved_ambiguous_binder() -> Outcome<Node> {
   assemble_program_from_ingest(
     ingest: Cons {
-      head: mab_file(src: "module p.x\n\ntest fn y() -> Int { 1 }\n", id: ^match_arm_binder_module_x_cu),
+      head: mab_file(src: "module p.a\n\nfn n() -> Int { 1 }\n", id: ^match_arm_binder_ambiguous_a_cu),
       tail: Cons {
-        head: mab_file(src: arm_src, id: ^match_arm_binder_module_q_cu),
-        tail: Empty
+        head: mab_file(src: "module r.b\n\nfn n() -> Int { 2 }\n", id: ^match_arm_binder_ambiguous_b_cu),
+        tail: Cons {
+          head: mab_file(src: "module p.q\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(n) => n\n    B => 0\n  }\n}\n", id: ^match_arm_binder_ambiguous_q_cu),
+          tail: Empty
+        }
       }
     },
     admission: Admission {
@@ -228,30 +280,10 @@ fn mab_module_assemble(arm_src: String) -> Outcome<Node> {
   )
 }
 
-fn mab_resolved_module_binder() -> Outcome<Node> {
-  mab_module_assemble(arm_src: "module p.q\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(x) => x.y\n    B => 0\n  }\n}\n")
-}
-
-fn mab_resolved_module_fresh_binder() -> Outcome<Node> {
-  mab_module_assemble(arm_src: "module p.q\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(w) => w.y\n    B => 0\n  }\n}\n")
-}
-
-fn mab_resolved_module_no_binder() -> Outcome<Node> {
-  mab_module_assemble(arm_src: "module p.q\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(_) => x.y\n    B => 0\n  }\n}\n")
-}
-
-test fn mab_binder_spelling_a_module_binds_the_arm() -> Bool {
-  mab_outcome_accepts(o: mab_resolved_module_binder())
-}
-
-test fn mab_projection_off_a_fresh_binder_binds() -> Bool {
-  mab_outcome_accepts(o: mab_resolved_module_fresh_binder())
-}
-
-test fn mab_module_member_test_code_refuses_without_a_binder() -> Bool {
+test fn mab_binder_spelling_an_ambiguous_global_name_refuses_unbound() -> Bool {
   mab_outcome_refuses_with(
-    o: mab_resolved_module_no_binder(),
-    reason: ^resolve_reason_test_code_referenced
+    o: mab_resolved_ambiguous_binder(),
+    reason: ^resolve_reason_unbound_symbol
   )
 }
 
