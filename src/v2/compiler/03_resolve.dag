@@ -958,26 +958,26 @@ fn resolve_transform_children(
 // type expressions). A construct is excluded on top of that, because its tag self-edge reads as a
 // field of the same name and would otherwise satisfy the field test.
 //
-// WHICH ARM HAS A SPECIMEN, STATED RATHER THAN IMPLIED, BECAUSE ONE OF THEM DOES NOT. The
-// construct arm has an enrolled red. The parse-rest-node arm does NOT, and two attempts to author
-// one both failed for reasons worth recording so the next reader does not repeat them.
+// WHAT THIS DOES NOT CLOSE, NAMED PRECISELY, BECAUSE A PARTIAL REPAIR WHOSE RESIDUE IS UNSTATED
+// IS THE DANGEROUS KIND. This test is strictly narrower than the fail-open default it replaces
+// and it does NOT close the module-container case. v2.std.node_query declared_field_from_edge
+// accepts ANY Named edge and constrains the target kind not at all, so a module container --
+// every child a Named edge to a declaration -- satisfies the field-coverage test and is still
+// answered "constructor". Reachable and in this tree: src/v2/std/symbol_index.dag:156 is
+// `Present { value: node } =>` inside module v2.std.symbol_index, and lexical ascent from that
+// arm reaches the MODULE v2.std.node. The binder gets no frame local and the arm body's `node`
+// resolves to the module: Accepted, wrong value, no diagnostic. Carried as the narrowed
+// population of gunbc.rung_drop variant_fields_unlowered_on_the_native_route, which is why that
+// row STANDS rather than being retired by this PR.
 //
-// FIRST ATTEMPT, same module: an outer data name tainted by test code, so a skipped binder would
-// refuse at the root wall. The probe came back ACCEPTED and its no-binder control REFUSED
-// resolve_reason_test_code_referenced -- instrument live, arm unreached, so the binder really did
-// bind. SECOND ATTEMPT, following gunbc#12057's reading that the reachable path is the global
-// branch rather than the lexical one: the same shape with the data row in a SECOND module, so the
-// name is globally unique and not lexically bound. That probe also passed, but its control FAILED
-// -- a test-tainted data row referenced across modules is accepted, so the wall does not fire
-// cross-module and the instrument is INERT there. The second probe therefore establishes nothing,
-// and is not enrolled; a green beside a control that cannot go red is not evidence.
-//
-// So this arm is carried WITHOUT a discriminating red, deliberately and visibly. The test is
-// positive anyway, on DESIGN section 4b's reasoning: an unreachable widen is what bites when the
-// graft changes shape, and an unreachable refusal costs nothing. gunbc#12057 reports the chain
-// against a head predating the first repair, and its author confirmed the structural reading that
-// construct_tag_optional cannot close it -- the 02_parse snoc node's first edge targets the item,
-// not an atom of the label's name, so the old default admitted it.
+// AND WHY A FOURTH SHAPE DISCRIMINATOR IS REFUSED RATHER THAN ATTEMPTED. Three have been tried
+// here -- the bare connective, the construct tag, and declared-field coverage -- and each admitted
+// a wider set than its author intended, because a declared payload, a module container and a
+// declaration parse-rest node are ALL Conj with Named edges. The fact this predicate needs is what
+// the NAME DENOTES, which is a declaration-kind fact v2.compiler.symbol_index_fill holds at insert
+// time and the node does not carry. Sniffing the node is asking the wrong carrier (DESIGN section
+// 6b: the earliest unjustified boundary is the link, not the predicate), and the repair is filed
+// as its own subject rather than guessed at again here.
 fn resolve_pattern_node_is_declared_payload(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
