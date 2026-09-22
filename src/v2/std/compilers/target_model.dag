@@ -48,6 +48,7 @@ import v2.std.optional {
 }
 import v2.std.diagnostic {
   Accepted,
+  CorrectionNotModeled,
   Diagnostic,
   Diagnostics,
   ExternalContractUnknown,
@@ -139,7 +140,9 @@ import v2.std.node_query {
 }
 import v2.std.qualified_name {
   QualifiedName,
-  qualified_name_from_node
+  qualified_name_from_node,
+  qualified_name_init,
+  qualified_name_last_segment
 }
 import v2.std.logic {
   Bool
@@ -3413,6 +3416,9 @@ fn decode_type_expression_projection_bundle(
                                                       bundle: inst_bundle
                                                     ),
                                                     f: fn(instantiation_form) {
+                                                      bind_outcome(
+                                                        o: decode_declaration_reference_form_bundle(bundle: bundle),
+                                                        f: fn(declaration_reference_form) {
                                                       outcome_accepted(
                                                         TargetTypeExpressionProjection {
                                                           atom_form: atom_form,
@@ -3420,7 +3426,10 @@ fn decode_type_expression_projection_bundle(
                                                           disj_form: disj_form,
                                                           arrow_form: arrow_form,
                                                           cardinality_form: cardinality_form,
-                                                          instantiation_form: instantiation_form
+                                                          instantiation_form: instantiation_form,
+                                                          declaration_reference_form: declaration_reference_form
+                                                        }
+                                                      )
                                                         }
                                                       )
                                                     }
@@ -9349,6 +9358,186 @@ type TargetTypeExpressionProjection {
   arrow_form: TargetFunctionTypeShape
   cardinality_form: TargetGenericApply
   instantiation_form: TargetGenericApply
+  declaration_reference_form: DeclarationReferenceForm
+}
+
+// HOW A TARGET SPELLS A REFERENCE TO A CORPUS DECLARATION. Resolution carries such a reference as
+// the declaration's qualified path (v2.compiler.resolve resolved_reference_node), never its leaf,
+// because two declarations can share a leaf across modules. A target that scopes declarations by
+// module therefore owes ONE derived spelling of that path -- the seed's crate::<module>::<name>
+// layout, where the module segments are joined into one identifier -- and a target with no
+// module-scoped path form cannot spell the reference at all: it REFUSES (located, typed) rather
+// than printing the leaf, which would be the collapse resolution just refused to make. The three
+// strings are realization facts about how one path token is spelled in the target, stated by the
+// target's own rows in extdeps/languages, and `NoDeclarationReferenceForm` is the honest row for a
+// target that has not modeled scoping -- a fixture target may declare it deliberately, which is
+// what makes the refusal's red authorable (DESIGN section 4b).
+type DeclarationReferenceForm
+  = ModuleScopedPath {
+      root_text: String
+      scope_separator_text: String
+      module_segment_joiner: String
+    }
+  | NoDeclarationReferenceForm
+
+fn declaration_reference_spelling(
+  root_text: String,
+  scope_separator_text: String,
+  module_segment_joiner: String,
+  path: QualifiedName
+) -> Optional<String> {
+  match qualified_name_last_segment(qn: path) {
+    Absent => optional_absent()
+    Present { value: leaf } =>
+      let module_segments = qualified_name_init(qn: path)
+      if is_empty(xs: module_segments) {
+        optional_absent()
+      } else {
+        let module_ident = fold_list(
+          xs: module_segments,
+          empty: "",
+          cons: fn(acc, seg) {
+            if string_length(s: acc) == 0 {
+              symbol_lexeme(sym: seg)
+            } else {
+              concat(acc, concat(module_segment_joiner, symbol_lexeme(sym: seg)))
+            }
+          }
+        )
+        optional_present(
+          value: concat(
+            root_text,
+            concat(scope_separator_text, concat(module_ident, concat(scope_separator_text, symbol_lexeme(sym: leaf))))
+          )
+        )
+      }
+  }
+}
+
+fn target_declaration_reference_form_absent_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_declaration_reference_form_absent,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: CorrectionNotModeled }
+  }
+}
+
+// A ONE-SEGMENT PATH NAMES A DECLARATION IN A ROOT THAT NAMES NO MODULE; a module-scoped form has
+// no module to scope it under and refuses, rather than inventing a root-level spelling.
+fn target_declaration_reference_module_absent_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_declaration_reference_module_absent,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: CorrectionNotModeled }
+  }
+}
+
+// THE EMITTED FORM OF A DECLARATION REFERENCE IS THE TARGET'S ATOM ROW OVER THE DERIVED SPELLING:
+// one identifier token whose lexeme is the scoped path. The spelling is interned as the atom's
+// identity so the same serialization the atom row already has (binding spelling, else the lexeme)
+// prints it; nothing downstream needs a second reference-shaped emitted kind.
+fn target_type_expr_declaration_reference_emitted(
+  projection: TargetTypeExpressionProjection,
+  path: QualifiedName,
+  reference: Node
+) -> Outcome<Node> {
+  match projection.declaration_reference_form {
+    NoDeclarationReferenceForm =>
+      outcome_rejected(target_declaration_reference_form_absent_diagnostic(node: reference))
+    ModuleScopedPath { root_text: root, scope_separator_text: sep, module_segment_joiner: joiner } =>
+      match declaration_reference_spelling(
+        root_text: root,
+        scope_separator_text: sep,
+        module_segment_joiner: joiner,
+        path: path
+      ) {
+        Absent => outcome_rejected(target_declaration_reference_module_absent_diagnostic(node: reference))
+        Present { value: spelling } =>
+          outcome_accepted(
+            target_type_expr_atom_emitted(
+              form: projection.atom_form,
+              identity: symbol_intern_lexeme(lexeme: spelling)
+            )
+          )
+      }
+  }
+}
+
+fn target_type_expr_declaration_reference_form_node(form: DeclarationReferenceForm) -> List<Edge> {
+  match form {
+    NoDeclarationReferenceForm => Empty
+    ModuleScopedPath { root_text: root, scope_separator_text: sep, module_segment_joiner: joiner } =>
+      Cons {
+        head: target_model_named_edge(
+          name: ^target_type_expr_field_declaration_reference,
+          target: Node {
+            kind: TypeNode { connective: Conj },
+            children: [
+              target_model_named_edge(
+                name: ^target_type_expr_field_reference_root,
+                target: target_type_expr_symbol_atom(id: symbol_intern_lexeme(lexeme: root))
+              ),
+              target_model_named_edge(
+                name: ^target_type_expr_field_reference_scope_separator,
+                target: target_type_expr_symbol_atom(id: symbol_intern_lexeme(lexeme: sep))
+              ),
+              target_model_named_edge(
+                name: ^target_type_expr_field_reference_module_joiner,
+                target: target_type_expr_symbol_atom(id: symbol_intern_lexeme(lexeme: joiner))
+              )
+            ],
+            occurrence_id: OccurrenceSynthetic
+          }
+        ),
+        tail: Empty
+      }
+  }
+}
+
+fn projection_bundle_has_child(bundle: Node, name: Symbol) -> Bool {
+  fold(bundle.children, init: false, f: fn(acc, e) {
+    acc || (match e.label {
+      Named { name: sym } => sym == name
+      Positional => false
+    })
+  })
+}
+
+// ABSENT IS A ROW, NOT A MISS. A bundle without the reference child decodes to
+// NoDeclarationReferenceForm, the same value a target declares when it has no scoped path form; a
+// present child that is malformed refuses through the field reader like every other row.
+fn decode_declaration_reference_form_bundle(bundle: Node) -> Outcome<DeclarationReferenceForm> {
+  if projection_bundle_has_child(bundle: bundle, name: ^target_type_expr_field_declaration_reference) {
+    bind_outcome(
+      o: projection_bundle_child(bundle: bundle, name: ^target_type_expr_field_declaration_reference),
+      f: fn(row) {
+        bind_outcome(
+          o: projection_bundle_symbol_field(bundle: row, field: ^target_type_expr_field_reference_root),
+          f: fn(root) {
+            bind_outcome(
+              o: projection_bundle_symbol_field(bundle: row, field: ^target_type_expr_field_reference_scope_separator),
+              f: fn(sep) {
+                bind_outcome(
+                  o: projection_bundle_symbol_field(bundle: row, field: ^target_type_expr_field_reference_module_joiner),
+                  f: fn(joiner) {
+                    outcome_accepted(
+                      ModuleScopedPath {
+                        root_text: symbol_lexeme(sym: root),
+                        scope_separator_text: symbol_lexeme(sym: sep),
+                        module_segment_joiner: symbol_lexeme(sym: joiner)
+                      }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    )
+  } else {
+    outcome_accepted(NoDeclarationReferenceForm)
+  }
 }
 
 fn target_type_expr_surface_edge(surface: Symbol) -> Edge {
@@ -12781,7 +12970,7 @@ fn type_expr_projection_row_shape_envelope(
   )
 }
 
-fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection) -> Node {
+fn type_expr_projection_connective_rows(projection: TargetTypeExpressionProjection) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -12828,6 +13017,18 @@ fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection)
         )
       )
     ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection) -> Node {
+  let rows = type_expr_projection_connective_rows(projection: projection)
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_append(
+      left: rows.children,
+      right: target_type_expr_declaration_reference_form_node(form: projection.declaration_reference_form)
+    ),
     occurrence_id: OccurrenceSynthetic
   }
 }
