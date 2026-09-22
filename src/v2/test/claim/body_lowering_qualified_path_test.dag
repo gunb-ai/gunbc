@@ -485,6 +485,8 @@ test fn body_lowering_call_before_end_is_not_the_head_atom() -> Bool {
 // A SINGLE-FN MODULE, AND THAT IS LOAD-BEARING. body_lower_find_captured returns the FIRST
 // postfix capture in the tree, so a sibling declaration ahead of the one under test would hand
 // this row the wrong body with no diagnostic.
+data body_lowering_single_segment_call_source: String = "module wall.peer\n\nfn uses_one_call(a: Bool) -> Bool = a.first()\n"
+
 data body_lowering_qualified_call_source: String = "module wall.peer\n\nfn uses_qual_call() -> Bool = wall.peer.peer_leaf()\n"
 
 fn body_lowering_source_parsed(text: String, file: Symbol) -> Outcome<Node> {
@@ -669,8 +671,15 @@ test fn body_lowering_supplied_zero_arg_call_lowers_through_its_path() -> Bool {
 // for `wall.peer.peer_leaf()`, by content_hash rather than by both satisfying a predicate. It is
 // the wall that would have caught the drift, and it stays enrolled so the fixture cannot drift
 // again silently.
+fn parsed_single_segment_call_parsed() -> Outcome<Node> {
+  body_lowering_source_parsed(
+    text: body_lowering_single_segment_call_source,
+    file: ^body_lowering_single_call_file
+  )
+}
+
 fn parsed_zero_arg_call_suffix_optional() -> Optional<Node> {
-  match body_lowering_qualified_call_parsed() {
+  match parsed_single_segment_call_parsed() {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: tree, diagnostics: _ } =>
       match body_lower_find_captured(root: tree, emitted: ^dag_surface_postfix_expr) {
@@ -730,5 +739,18 @@ test fn probe_parsed_zero_arg_suffix_inner_left_is_empty_conj() -> Bool {
             Present { value: inner } => is_empty_conj_root(n: inner.left)
           }
       }
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE PROBES ABOVE, and it is the reason they can be read at all.
+// A Bool probe over an extraction answers false for TWO different reasons -- the shape differs,
+// or the walk never found a suffix to look at -- and those are not the same fact. Without this
+// row a false above is uninterpretable, which is the absent-versus-unreadable conflation this
+// very slice has now produced three times in three places. This row asserts the walk FOUND a
+// suffix; only then does a false from a shape probe mean the shape.
+test fn probe_parsed_zero_arg_suffix_is_found_at_all() -> Bool {
+  match parsed_zero_arg_call_suffix_optional() {
+    Absent => false
+    Present { value: _ } => true
   }
 }
