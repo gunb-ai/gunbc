@@ -1,0 +1,25 @@
+module gunbc.recurring_failure_mode.required_floor_runs_at_its_memory_ceiling
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data required_floor_runs_at_its_memory_ceiling: RecurringFailureMode = RecurringFailureMode {
+  identity: "required_floor_runs_at_its_memory_ceiling" as NonEmptyStr,
+
+  receipts: [
+    "the required floor process already peaks AT its runner slot's memory.high, so it is memory-throttled on ordinary landings and has no headroom for its own growth (INVALID STATE: a required lane whose working set equals its slot's throttle line; HARM: the lane's wall time is partly throttling rather than work, so its duration measures nothing clean, and the next change that makes the floor heavier is throttled harder or OOM-killed rather than merely slower, taking a required lane down)",
+
+    "RECEIPT, re-derivable from the instrument rather than copied: the floor job's own [floor-cgroup] beats in merge-queue run 35716368507 (the #12029 landing, slot actions-runner@srv4-03). That slot carried memory.max=27917287424 and memory.high=26843545600. The floor process's slot peak was 26847006720, at the high line, with high=1109 throttle events, max=0 and oom_kill=0 on that run, and the job took about 40 minutes wall. Found in passing while pricing where the stage0 regen phases could run (gunbc.recurring_failure_mode.generated_population_split_across_two_unjoined_rosters); recorded separately because it is a standing property of main, not a consequence of that work.",
+
+    "WHY IT IS A WALL WITH NO MARGIN RATHER THAN A SLOW LANE. The classes of change this repository makes daily -- enrolling claims, widening a prepared population -- grow the floor's working set, and at the throttle line growth does not cost minutes, it costs the lane. And because an unknown share of the wall time is throttling, a speedup or slowdown of the floor cannot currently be attributed to work: the lane's duration is an instrument reading contaminated by the ceiling it runs against.",
+
+    "CONSEQUENCE FOR ANY STEP ADDED TO THE SAME JOB: another memory-heavy pass fits only as a SEPARATE process after the floor process exits (sequential peaks), never inside the floor's invocation (additive). That is a note, not a wall: claim_executor --required-ci with no --required-lane selects every phase in one process (required_ci_phase_selected with no lane answers true), so the additive form remains writable.",
+
+    "RUNG FOUND AT: silent -- no gate or diagnostic refuses a floor at its slot ceiling; the throttling is visible only in [floor-cgroup] beats nobody adjudicates. ATTAINABLE CEILING: mechanically preventable -- a required step can refuse a floor whose measured slot peak comes within a declared margin of memory.high, from the beats the run already writes. NEXT-RUNG TRIGGER, stated as the capability: the required run adjudicates the floor's measured slot peak against a declared headroom budget and refuses a landing that consumes it. UNRANKED: this row records the finding; no lane is dispatched for it.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.compiler_gate_workflow", decl_name: "compiler_gate_floor_run_step", field: WholeDeclaration },
+  ],
+}
