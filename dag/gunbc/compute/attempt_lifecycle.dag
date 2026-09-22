@@ -1,6 +1,7 @@
 module gunbc.compute.attempt_lifecycle
 
-import std.types { String, Bool, Int, NonEmptyStr }
+import std.types { String, Bool, Int, NonEmptyStr, EpochSecs }
+import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import std.content_hash { content_hash_of_value }
 import std.durable_compare_and_set {
   CasAttempt, cas_attempt, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
@@ -120,13 +121,21 @@ fn attempt_state_wire(s: AttemptState) -> String {
 // that owns it; recovery never derives it from the identity, a path spelling or a directory listing.
 // That is not tidiness: a derived name is a second authority for the binding, and a recovery acting
 // on a name it invented can stop a unit that belongs to a different attempt.
+//
+// THE QUANTITIES ARE CARRIED AS WHAT THEY ARE. The grant is a Kibibyte (std.measure), not an Int
+// with the unit in its field name -- gunbc.compute.work_request's note on the stripped carrier was
+// written for exactly that defect, and this record held it anyway from gunbc#12040's first commit
+// until review 69915 read it. The two instants are EpochSecs, the same denomination the pool's own
+// lease terms and now_epoch_seconds carry, so the comparison recovery makes against the deadline is
+// between two values of one type. The unit and the epoch appear as bare numbers only at the JSON
+// boundary below, where the wire keeps its spelling (granted_kib) and the decode re-admits them.
 type AttemptRecord {
   identity: String
   reference: String
   unit: String
-  granted_kib: Int
-  opened_at: Int
-  launch_deadline: Int
+  granted: Kibibyte
+  opened_at: EpochSecs
+  launch_deadline: EpochSecs
   state: AttemptState
 }
 
@@ -135,7 +144,7 @@ fn attempt_record_json(r: AttemptRecord) -> JsonValue {
     json_kv(key: "identity", value: json_string(s: r.identity)),
     json_kv(key: "reference", value: json_string(s: r.reference)),
     json_kv(key: "unit", value: json_string(s: r.unit)),
-    json_kv(key: "granted_kib", value: json_int(n: r.granted_kib)),
+    json_kv(key: "granted_kib", value: json_int(n: kibibyte_count(k: r.granted))),
     json_kv(key: "opened_at", value: json_int(n: r.opened_at)),
     json_kv(key: "launch_deadline", value: json_int(n: r.launch_deadline)),
     json_kv(key: "state", value: json_string(s: attempt_state_wire(s: r.state))),
@@ -148,7 +157,7 @@ fn attempt_record_wire(r: AttemptRecord) -> String {
 }
 
 fn attempt_record_with_state(r: AttemptRecord, state: AttemptState) -> AttemptRecord {
-  AttemptRecord { identity: r.identity, reference: r.reference, unit: r.unit, granted_kib: r.granted_kib, opened_at: r.opened_at, launch_deadline: r.launch_deadline, state: state }
+  AttemptRecord { identity: r.identity, reference: r.reference, unit: r.unit, granted: r.granted, opened_at: r.opened_at, launch_deadline: r.launch_deadline, state: state }
 }
 
 // ── READING THE SLOT, AND UNREADABLE IS NEVER ABSENT ──────────────────────────────────────────
@@ -181,6 +190,22 @@ fn attempt_member_int(doc: JsonValue, key: String) -> Int? {
   }
 }
 
+// AN INSTANT ON THE WIRE IS RE-ADMITTED, NOT CAST: a negative number is not an epoch second, and a
+// record carrying one is unreadable rather than a record whose deadline is before 1970.
+fn attempt_member_epoch(doc: JsonValue, key: String) -> EpochSecs? {
+  match attempt_member_int(doc: doc, key: key) {
+    Absent => none
+    Present { value: n } => if n < 0 { none } else { Present { value: n } }
+  }
+}
+
+fn attempt_member_kibibytes(doc: JsonValue, key: String) -> Kibibyte? {
+  match attempt_member_int(doc: doc, key: key) {
+    Absent => none
+    Present { value: n } => if n < 0 { none } else { Present { value: kibibyte(count: n) } }
+  }
+}
+
 // A RECORD THAT DOES NOT DECODE IS UNREADABLE, NOT EMPTY, for the same reason the slot is. The
 // state word is reconstructed from the same spelling attempt_state_wire emits, and a word this fold
 // does not know is unreadable rather than defaulted -- a future state must not read as Reserved,
@@ -198,13 +223,13 @@ fn attempt_record_decode(text: String) -> AttemptRecord? {
               match attempt_member(doc: doc, key: "unit") {
                 Absent => none
                 Present { value: unit } =>
-                  match attempt_member_int(doc: doc, key: "granted_kib") {
+                  match attempt_member_kibibytes(doc: doc, key: "granted_kib") {
                     Absent => none
                     Present { value: granted } =>
-                      match attempt_member_int(doc: doc, key: "opened_at") {
+                      match attempt_member_epoch(doc: doc, key: "opened_at") {
                         Absent => none
                         Present { value: opened } =>
-                      match attempt_member_int(doc: doc, key: "launch_deadline") {
+                      match attempt_member_epoch(doc: doc, key: "launch_deadline") {
                         Absent => none
                         Present { value: deadline } =>
                           match attempt_member(doc: doc, key: "state") {
@@ -213,7 +238,7 @@ fn attempt_record_decode(text: String) -> AttemptRecord? {
                               match attempt_state_decode(word: word, detail: match attempt_member(doc: doc, key: "detail") { Present { value: d } => d  Absent => "" }) {
                                 Absent => none
                                 Present { value: state } =>
-                                  Present { value: AttemptRecord { identity: identity, reference: reference, unit: unit, granted_kib: granted, opened_at: opened, launch_deadline: deadline, state: state } }
+                                  Present { value: AttemptRecord { identity: identity, reference: reference, unit: unit, granted: granted, opened_at: opened, launch_deadline: deadline, state: state } }
                               }
                           }
                       }
@@ -429,11 +454,11 @@ fn attempt_transition_advanced(t: AttemptTransition) -> Bool {
 // winner; it decides who may enter.
 type RecoveryTrigger
   = RecoveryMayTerminate { reason: String }
-  | RecoveryTooEarly { deadline: Int, now: Int }
+  | RecoveryTooEarly { deadline: EpochSecs, now: EpochSecs }
   | RecoveryUnitNotEnded { lifecycle: UnitLifecycle }
   | RecoveryStateNotRecoverable { state: String }
 
-fn recovery_trigger(record: AttemptRecord, lifecycle: UnitLifecycle, now: Int) -> RecoveryTrigger {
+fn recovery_trigger(record: AttemptRecord, lifecycle: UnitLifecycle, now: EpochSecs) -> RecoveryTrigger {
   match record.state {
     AttemptReserved =>
       if now < record.launch_deadline {

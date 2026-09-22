@@ -1,6 +1,6 @@
 module gunbc.compute.work_provider_local
 
-import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef }
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef, EpochSecs }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import std.measure { byte_size_count }
@@ -18,7 +18,7 @@ import extdeps.linux.cgroup_v2 {
 }
 import extdeps.cache.sccache { sccache_installed_binary_path }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
-import extdeps.clock { Clock }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
 import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal,
@@ -39,7 +39,7 @@ import gunbc.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap_execution_contract {
   ExecutionCapability, GitWorkspaceCapability, CargoCapability, RustcCapability, AttemptStateDirectoryCapability,
 }
-import std.measure { Kibibyte, kibibyte_count, kibibyte_to_byte_size }
+import std.measure { Kibibyte, kibibyte_to_byte_size }
 import gunbc.compute.host_capacity {
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
   ComputeRelease, ComputeReleased, ComputeReleaseRefused, compute_reserve, compute_release, compute_reservation_wire,
@@ -752,22 +752,15 @@ type AttemptGate
 // there moves this declaration with it instead of silently leaving the producer at a stale bound.
 data compute_launch_window_seconds: Int = compute_pre_launch_ceiling_seconds
 
-fn compute_now_seconds() -> Int? {
-  match parse_int(s: trim(s: Clock.UnixSecs().unix_secs)) {
-    Present { value: n } => if n < 0 { none } else { Present { value: n } }
-    Absent => none
-  }
-}
-
 // THE UNIT NAME IS WRITTEN INTO THE RECORD BY THE ATTEMPT THAT OWNS IT, from the same fold the
 // invocation uses. That is the binding criterion 2 is about: recovery reads this field rather than
 // rebuilding the name from the identity, so a recovery can never act on a unit it named itself.
-fn compute_attempt_record(identity: String, reference: NonEmptyStr, granted: Kibibyte, now: Int) -> AttemptRecord {
+fn compute_attempt_record(identity: String, reference: NonEmptyStr, granted: Kibibyte, now: EpochSecs) -> AttemptRecord {
   AttemptRecord {
     identity: identity,
     reference: reference as String,
     unit: compute_unit_name(identity_hex: identity) as String,
-    granted_kib: kibibyte_count(k: granted) as Int,
+    granted: granted,
     opened_at: now,
     launch_deadline: now + compute_launch_window_seconds,
     state: AttemptReserved,
@@ -784,7 +777,7 @@ fn compute_gate_from_transition(t: AttemptTransition, record: AttemptRecord, wha
 }
 
 fn compute_open_attempt(layout: ComputeLayout, identity: String, reference: NonEmptyStr, granted: Kibibyte) -> AttemptGate {
-  match compute_now_seconds() {
+  match now_epoch_seconds() {
     Absent => AttemptGateRefused { detail: "the host clock could not be read as epoch seconds, and an attempt's opened_at and launch deadline are both instants -- a fabricated one would make this attempt look expired to recovery the moment it is written" }
     Present { value: now } => {
       let record = compute_attempt_record(identity: identity, reference: reference, granted: granted, now: now)
@@ -1457,7 +1450,7 @@ fn compute_recover_attempt(instance: HostDashboardInstance, reference: NonEmptyS
       RecoveryRefused { detail: join(["no attempt slot exists for ", reference as String, "; there is no record binding that reference to a unit, and this door will not release a seat it cannot name the attempt of"], "") }
     AttemptSlotHeld { record: rec, generation: g } => {
       let lifecycle = observe_unit_lifecycle(unit: rec.unit as NonEmptyStr)
-      match compute_now_seconds() {
+      match now_epoch_seconds() {
         Absent => RecoveryRefused { detail: "the host clock could not be read as epoch seconds, and the reserved-state trigger is a comparison against a deadline" }
         Present { value: now } =>
           match recovery_trigger(record: rec, lifecycle: lifecycle, now: now) {

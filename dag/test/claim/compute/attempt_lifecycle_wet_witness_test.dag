@@ -4,6 +4,7 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.algebra { trim }
+import std.measure { kibibyte, kibibyte_count }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
 import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal,
@@ -30,7 +31,7 @@ fn record_for(reference: String) -> AttemptRecord {
     identity: "abcdef0123456789",
     reference: reference,
     unit: join(["gunbc-compute-abcdef0123456789-", reference], ""),
-    granted_kib: 27262976,
+    granted: kibibyte(count: 27262976),
     opened_at: 1800,
     launch_deadline: 2000,
     state: AttemptReserved,
@@ -133,7 +134,7 @@ test fn the_unit_binding_is_read_back_from_the_record_the_attempt_wrote() -> Boo
     && recovered.unit == record.unit
     && recovered.identity == record.identity
     && recovered.reference == record.reference
-    && recovered.granted_kib == 27262976
+    && kibibyte_count(k: recovered.granted) == 27262976
     && recovered.unit != record.identity
 }
 
@@ -200,12 +201,12 @@ test fn recovery_cannot_fire_inside_the_window_the_producer_declared() -> Bool {
 test fn a_launched_attempt_is_recovered_only_on_an_ended_unit() -> Bool {
   let launched = AttemptRecord {
     identity: "abcdef0123456789", reference: "attempt-launched",
-    unit: "gunbc-compute-abcdef0123456789-attempt-launched", granted_kib: 27262976,
+    unit: "gunbc-compute-abcdef0123456789-attempt-launched", granted: kibibyte(count: 27262976),
     opened_at: 1800, launch_deadline: 2000, state: AttemptLaunching,
   }
   let terminal = AttemptRecord {
     identity: "abcdef0123456789", reference: "attempt-done",
-    unit: "gunbc-compute-abcdef0123456789-attempt-done", granted_kib: 27262976,
+    unit: "gunbc-compute-abcdef0123456789-attempt-done", granted: kibibyte(count: 27262976),
     opened_at: 1800, launch_deadline: 2000, state: AttemptTerminal { verdict: "released", detail: "done" },
   }
   recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitTerminatedSuccess { detail: "exit 0" }, now: 9999))
@@ -226,9 +227,15 @@ test fn an_undecodable_slot_is_unreadable_and_never_absent() -> Bool {
   let planted = Filesystem.Write(path: join([root as String, "/", reference, ".1"], ""), content: "this is not a json document at all")
   let reading = attempt_slot_read(root: root, reference: reference as NonEmptyStr)
   let absent_reading = attempt_slot_read(root: root, reference: "attempt-never-written" as NonEmptyStr)
+  let negative_instant = attempt_record_decode(text: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-negative\",\"unit\":\"u\",\"granted_kib\":1,\"opened_at\":-5,\"launch_deadline\":100,\"state\":\"reserved\"}")
+  let negative_grant = attempt_record_decode(text: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-negative\",\"unit\":\"u\",\"granted_kib\":-1,\"opened_at\":5,\"launch_deadline\":100,\"state\":\"reserved\"}")
+  let well_formed = attempt_record_decode(text: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-fine\",\"unit\":\"u\",\"granted_kib\":1,\"opened_at\":5,\"launch_deadline\":100,\"state\":\"reserved\"}")
   planted.success
     && (match reading { AttemptSlotUnreadable { detail: d } => string_contains(s: d, pattern: "cannot decode")  AttemptSlotHeld { record: _, generation: _ } => false  AttemptSlotAbsent => false })
     && (match absent_reading { AttemptSlotAbsent => true  AttemptSlotHeld { record: _, generation: _ } => false  AttemptSlotUnreadable { detail: _ } => false })
+    && (match negative_instant { Absent => true  Present { value: _ } => false })
+    && (match negative_grant { Absent => true  Present { value: _ } => false })
+    && (match well_formed { Present { value: r } => kibibyte_count(k: r.granted) == 1 && r.opened_at == 5  Absent => false })
 }
 
 // THE SELF-DECLARED BOUND HAS A BOUND, AND AN OVER-LONG DECLARATION REFUSES RATHER THAN BEING
@@ -245,15 +252,15 @@ test fn an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped()
   let root = fresh_root() as NonEmptyStr
   let base = record_for(reference: "attempt-greedy")
   let greedy = AttemptRecord {
-    identity: base.identity, reference: base.reference, unit: base.unit, granted_kib: base.granted_kib,
+    identity: base.identity, reference: base.reference, unit: base.unit, granted: base.granted,
     opened_at: 1800, launch_deadline: 1800 + compute_pre_launch_ceiling_seconds + 1, state: AttemptReserved,
   }
   let at_ceiling = AttemptRecord {
-    identity: base.identity, reference: "attempt-at-ceiling", unit: base.unit, granted_kib: base.granted_kib,
+    identity: base.identity, reference: "attempt-at-ceiling", unit: base.unit, granted: base.granted,
     opened_at: 1800, launch_deadline: 1800 + compute_pre_launch_ceiling_seconds, state: AttemptReserved,
   }
   let backwards = AttemptRecord {
-    identity: base.identity, reference: "attempt-backwards", unit: base.unit, granted_kib: base.granted_kib,
+    identity: base.identity, reference: "attempt-backwards", unit: base.unit, granted: base.granted,
     opened_at: 1800, launch_deadline: 1799, state: AttemptReserved,
   }
   let refused = attempt_open(root: root, record: greedy)
