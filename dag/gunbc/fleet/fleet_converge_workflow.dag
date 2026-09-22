@@ -640,7 +640,7 @@ fn fleet_converge_host_reset_return_job() -> Job {
       ),
       [fleet_converge_host_reset_return_step(), fleet_converge_host_reset_return_receipt_upload_step()]
     ),
-    needs: ["build"],
+    needs: fleet_converge_job_needs(id: "host-reset-return" as NonEmptyStr),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_host_reset_return_step_if },
@@ -823,7 +823,7 @@ fn fleet_converge_build_job() -> Job {
     name: none,
     runner: gunbc_ci_runner_spec(),
     steps: fleet_converge_build_job_steps(),
-    needs: [],
+    needs: fleet_converge_job_needs(id: "build" as NonEmptyStr),
     env: none,
     outputs: none,
     if_condition: none,
@@ -2341,7 +2341,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
         ),
       ]
     ),
-    needs: ["build"],
+    needs: fleet_converge_job_needs(id: "dashboard-deploy" as NonEmptyStr),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_dashboard_deploy_step_if },
@@ -2435,7 +2435,7 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
         fleet_converge_microvm_controller_install_step(),
       ]
     ),
-    needs: ["build"],
+    needs: fleet_converge_job_needs(id: "microvm-controller-install" as NonEmptyStr),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_microvm_controller_install_step_if },
@@ -2465,7 +2465,7 @@ fn fleet_converge_approval_broker_dark_install_job() -> Job {
         fleet_converge_approval_broker_dark_install_step(),
       ]
     ),
-    needs: ["build"],
+    needs: fleet_converge_job_needs(id: "approval-broker-dark-install" as NonEmptyStr),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_approval_broker_dark_install_step_if },
@@ -2752,7 +2752,7 @@ fn fleet_converge_job() -> Job {
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
-    needs: ["build"],
+    needs: fleet_converge_job_needs(id: "fleet-converge" as NonEmptyStr),
     env: none,
     outputs: none,
     if_condition: none,
@@ -2852,7 +2852,7 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
-    needs: ["build"],
+    needs: fleet_converge_job_needs(id: "rlm-launch-deployment-receipt" as NonEmptyStr),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_rlm_receipt_step_if },
@@ -2875,6 +2875,72 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
       }
     }
   }
+}
+
+// THE WORKFLOW'S DEPENDENCY GRAPH IS ONE AUTHORITY, AND IT IS THE CHEAP FIELDS RATHER THAN THE
+// JOBS THEMSELVES.
+//
+// Each of the seven job builders used to hardcode its own `id` and `needs`, so the graph -- which
+// job exists, and which must wait for the release binaries -- was authored in seven places and
+// owned nowhere. FleetConvergeJobEdge is that graph: one row per job, consumed BY the builders for
+// those two fields, so a job cannot name an id or an edge the roster does not carry.
+//
+// AND IT IS CHEAP TO READ BY CONSTRUCTION, which the previous attempt was not. Lifting the JOBS
+// into their own list bought 335 eval steps of 521845 (measured, gunbc#12011) because forcing a
+// List<Job> forces every Job including every step body -- the projection WAS the construction,
+// filed as gunbc.recurring_failure_mode extracting_a_collection_whose_elements_are_the_cost. These
+// edges are ids and lists of strings built independently of any Job, so a consumer that reads the
+// graph forces no job body at all. That is a different mechanism, not the same attempt twice.
+type FleetConvergeJobEdge { id: NonEmptyStr, needs: List<String> }
+
+data fleet_converge_release_bins_job_id: NonEmptyStr = "build" as NonEmptyStr
+
+// EVERY JOB THAT TOUCHES A HOST WAITS FOR THE RELEASE BINARIES, and `build` is the one that
+// produces them, so it is the only row whose needs are empty. A row added here with no edge is
+// visible as exactly that rather than buried in a builder.
+data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
+  FleetConvergeJobEdge { id: fleet_converge_release_bins_job_id, needs: [] },
+  FleetConvergeJobEdge { id: "fleet-converge" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: "host-reset-return" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: "dashboard-deploy" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: "approval-broker-dark-install" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: "microvm-controller-install" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: "rlm-launch-deployment-receipt" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] },
+]
+
+// A BUILDER ASKS THE ROSTER FOR ITS OWN EDGE BY ID AND THE LOOKUP REFUSES RATHER THAN INVENTS. An
+// absent id would otherwise become an empty needs list, which is the one wrong answer that still
+// emits: a host-touching job with no edge to `build` installs whatever binaries happen to be on
+// the host.
+type FleetConvergeJobEdgeLookup
+  = FleetConvergeJobEdgeFound { edge: FleetConvergeJobEdge }
+  | FleetConvergeJobEdgeAbsent { id: NonEmptyStr }
+
+fn fleet_converge_job_edge_lookup(id: NonEmptyStr) -> FleetConvergeJobEdgeLookup {
+  match filter(fleet_converge_job_edges, e => (e.id as String) == (id as String)).first() {
+    Present { value: e } => FleetConvergeJobEdgeFound { edge: e }
+    Absent => FleetConvergeJobEdgeAbsent { id: id }
+  }
+}
+
+fn fleet_converge_job_needs(id: NonEmptyStr) -> List<String> {
+  match fleet_converge_job_edge_lookup(id: id) {
+    FleetConvergeJobEdgeFound { edge: e } => e.needs
+    FleetConvergeJobEdgeAbsent { id: missing } =>
+      [join(["REFUSED gunbc.fleet_converge_workflow: ", missing as String, " is not a row of fleet_converge_job_edges, so its dependency edges are unknown and no needs list may be invented for it"], "")]
+  }
+}
+
+fn fleet_converge_jobs() -> List<Job> {
+  [
+    fleet_converge_build_job(),
+    fleet_converge_job(),
+    fleet_converge_host_reset_return_job(),
+    fleet_converge_dashboard_deploy_job(),
+    fleet_converge_approval_broker_dark_install_job(),
+    fleet_converge_microvm_controller_install_job(),
+    fleet_converge_rlm_launch_deployment_receipt_job(),
+  ]
 }
 
 data fleet_converge_workflow: Workflow = Workflow {
@@ -2994,7 +3060,7 @@ data fleet_converge_workflow: Workflow = Workflow {
   concurrency: none,
   env: none,
   permissions: none,
-  jobs: [fleet_converge_build_job(), fleet_converge_job(), fleet_converge_host_reset_return_job(), fleet_converge_dashboard_deploy_job(), fleet_converge_approval_broker_dark_install_job(), fleet_converge_microvm_controller_install_job(), fleet_converge_rlm_launch_deployment_receipt_job()],
+  jobs: fleet_converge_jobs(),
 }
 
 type FleetConvergeYamlGenerationOutcome

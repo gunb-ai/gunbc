@@ -537,7 +537,10 @@ pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
 /// is NOT a git checkout, so the walk below refused it and neither unit could start (parent ruling
 /// 2026-09-21, measured on srv1: `gunbc-microvm-slot@srv1-13` exit 101, `gunbc-approval-broker`
 /// dead). Authority for the name and the marker: `gunbc.cli_run_workspace_root_scaffold`
-/// `gunbc_workspace_root_env_name` / `release_locus_tree_receipt_name`; the seed transcribes both.
+/// `gunbc_workspace_root_env_name` / `release_locus_tree_receipt_name`, projected into the seed by
+/// `gunbc.release_locus_seed_constants_emit` and re-exported below. The seed does NOT transcribe
+/// them: a spelling that moves on the .dag side moves here at the next regen, and a hand edit of
+/// the generated file is refused by the generated-artifact drift wall.
 ///
 /// ONE ENV, READ AT ONE SITE, CONSUMED BY BOTH ROOTS: `workspace_root()` and
 /// `process_workspace_root()` are the only readers, through this function, and no caller re-reads
@@ -545,8 +548,9 @@ pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
 /// does not name a locus (no `dag/`, or no tree receipt) refuses naming the path and the missing
 /// member rather than falling back to the walk — a wrong root silently replaced by a walked one is
 /// the class the walk itself was written against. WHEN UNSET nothing changes.
-pub(crate) const GUNBC_WORKSPACE_ROOT_ENV: &str = "GUNBC_WORKSPACE_ROOT";
-pub(crate) const RELEASE_LOCUS_TREE_RECEIPT_NAME: &str = ".gunbc-tree-receipt";
+pub(crate) use crate::release_locus_seed_constants_generated::{
+    GUNBC_WORKSPACE_ROOT_ENV, RELEASE_LOCUS_TREE_RECEIPT_NAME,
+};
 
 fn spawn_workspace_root_env() -> Option<String> {
     std::env::var(GUNBC_WORKSPACE_ROOT_ENV)

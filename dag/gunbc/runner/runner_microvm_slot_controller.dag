@@ -8,13 +8,12 @@ import std.resources { Filesystem, Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.posix.test_utility { test_executable_command, test_exists_command }
 import extdeps.github.actions_jit_runner { JitRunnerGroupId }
 import extdeps.github.effect { GitHubOrganizationRef }
 import product.fabric.sanitation { CellId }
 import product.fabric.work { Work }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
 import gunbc.host_effect { LocalShell }
 import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
@@ -165,27 +164,23 @@ fn bind_slot_host(slot: RunnerSlotIdentity) -> MicrovmHostBinding {
 fn path_is_executable(path: String) -> Bool
   uses net: Network
 {
-  outcome_is_success(outcome: run_shell_command_capture(command: test_executable_command(path: path), transport: LocalExec))
+  process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: path), transport: LocalExec))
 }
 
 fn path_exists(path: String) -> Bool
   uses net: Network
 {
-  outcome_is_success(outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec))
-}
-
-fn outcome_is_success(outcome: ProcessOutcome) -> Bool {
-  match outcome {
-    ProcessOutputPresent { text: _ } => true
-    ProcessOutputAbsent => true
-    ProcessRefused { exit_code: _, stderr: _ } => false
-  }
+  process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec))
 }
 
 // THE VMM AND THE JAILER ARE THE LOCUS'S, root-owned and installed beside this binary by the same
 // deploy (gunbc.live_deploy.emit microvm_controller_vmm_install_steps). The job-user copy under
-// the executor's HOME (gunbc.runner_microvm_host_ready) is never read here: root must not exec what
-// the job user can write.
+// the executor's HOME (gunbc.runner_microvm_host_ready) is never read here, which is what this
+// reference buys: the VMM the controller launches is the locus's, not a binary sitting in the
+// executor's writable HOME. It is NOT a claim that the job user cannot reach the locus -- ghrunner's
+// path-unrestricted sudo install says otherwise on srv1 (gunbc.rung_drop
+// the_job_user_holds_a_path_unrestricted_root_grant), and this is the trusted-workload shakedown
+// that makes no isolation claim, exactly as the guest-image note below states (review 70080).
 type LocusBinaries { firecracker: String, jailer: String }
 
 fn locus_binaries(release_dir: String) -> LocusBinaries {

@@ -21,9 +21,9 @@ data cli_run_workspace_root_discovery_dissolve_trigger: DissolutionCondition = u
 // the authority when set -- no walk, a typed refusal naming the path and the missing member when it
 // holds no dag/ or no tree receipt -- and walks exactly as before when unset. Both unit emitters
 // (gunbc.live_deploy.emit: the approval broker's serve unit and the microVM slot unit) set it from
-// THIS row; the seed transcribes both spellings beside its GUNBC_WORKSPACE_ROOT_ENV and
-// RELEASE_LOCUS_TREE_RECEIPT_NAME constants, and the discriminators below name the executed
-// controls. v1 admission (gunbc.v1_maintenance_standing): this serves the emitted-binary door the
+// THIS row, and so does the SEED -- gunbc.release_locus_seed_constants_emit projects both rows into
+// release_locus_seed_constants_generated.rs and cli_run.rs consumes them, so there is no second
+// authoring of either spelling to drift. The discriminators below name the executed controls. v1 admission (gunbc.v1_maintenance_standing): this serves the emitted-binary door the
 // seed already scaffolded -- a release binary running from its own locus -- and grows v1 nothing.
 data gunbc_workspace_root_env_name: String = "GUNBC_WORKSPACE_ROOT"
 
@@ -35,7 +35,19 @@ data cli_run_workspace_root_spawn_test_discriminator_refusal: String = "spawn_ro
 
 data cli_run_workspace_root_hand_rust_receipt_plan_anchor: String = "docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold"
 
-data cli_run_workspace_root_discovery_loc_delta_net: Int = 12
+// RE-DERIVED FOR THE SPAWN ARM, because the row is bound to `workspace_root_from` at
+// WholeDeclaration and this change grows exactly that declaration's hand-Rust. It was 12 -- the
+// .git-ancestor kernel alone -- and a row left at 12 while the declaration it binds gained the
+// spawn arm would be the parallel-ledger DESIGN section 6 refuses, stating a figure the tree
+// contradicts while its only consumer (`... > 0`) cannot see it move.
+//
+// THE INSTRUMENT, named rather than the count alone (DESIGN section 6): the added non-blank lines
+// of this scaffold's hand-Rust in cli_run.rs, excluding its `#[test]` module, re-derive with
+//   git diff <merge-base>...HEAD -U0 -- src/v1/stage0/src/cli_run.rs \
+//     | awk '/^@@/{h=$0} /^\+[^+]/{c[h]++} END{for (k in c) print c[k], k}'
+// which reports 35 + 20 + 3 = 58 outside the test module (42 more inside it, excluded on the same
+// basis the 12 excluded its own tests). 12 + 58 = 70.
+data cli_run_workspace_root_discovery_loc_delta_net: Int = 70
 
 data cli_run_workspace_root_discovery_test_discriminator_git_toplevel: String = "from_subdirectory_matches_git_toplevel"
 

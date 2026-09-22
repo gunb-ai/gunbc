@@ -1831,8 +1831,23 @@ fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisi
 // grants by design -- so the privileged copy is install(1), the one granted mover, ONE FILE AT A
 // TIME: every directory `install -d -o root`, every file `install -m 0644 -o root` from the job's
 // checkout, driven by find over the same subdirectories and never by a recursive tool root would
-// have to trust. Slower than rsync by the sudo per file, and that is the price of a tree root
-// execs that the job user cannot write.
+// have to trust. Slower than rsync by the sudo per file.
+//
+// WHAT THAT PRICE ACTUALLY BUYS ON srv1 TODAY, stated at the rung the evidence supports rather than
+// the one the shape suggests (review 70080, DESIGN §4b(1): a class's rung is the MINIMUM across its
+// in-scope paths, and citing the strongest while another stays silent is inflation). It removes the
+// UNPRIVILEGED-BY-DEFAULT write path: nothing reaches the locus without going through a granted
+// privileged mover, so an ordinary job step, a stray tool, or a mistaken relative path cannot land
+// bytes there, and the VMM the unit execs is this tree's rather than the job user's HOME copy.
+//
+// WHAT IT DOES NOT BUY, AND MUST NOT BE CITED AS: a tree the job user cannot write. ghrunner holds
+// NOPASSWD over a PATH-UNRESTRICTED /usr/bin/install on every host carrying
+// /etc/sudoers.d/gunbc-deploy -- install(1) being the very mover this step elevates with -- so the
+// same principal can write this locus by the same route. That is the standing drop
+// gunbc.rung_drop the_job_user_holds_a_path_unrestricted_root_grant, and the class is rostered at
+// gunbc.recurring_failure_mode the_grant_a_frontier_refuses_is_already_held_from_another_authority.
+// This change adds no grant and removes none; the stronger claim becomes true when that drop is
+// retired, not when this locus lands.
 type ReleaseLocusCopy
   = LocusCopiedByJobUser
   | LocusInstalledPrivilegedPerFile { owner: NonEmptyStr }

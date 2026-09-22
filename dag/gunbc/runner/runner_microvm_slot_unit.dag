@@ -14,13 +14,13 @@ import extdeps.systemd.unit_file {
   serialize_systemd_unit_file,
 }
 import std.measure { ByteSize, byte_size, byte_size_count }
-import gunbc.runner_slot_allocation { microvm_controller_slice_memory_max_bytes }
+import gunbc.runner_slot_allocation { microvm_controller_slice_memory_max }
 import extdeps.virtualization.firecracker { FirecrackerRelease, firecracker_release_aarch64 }
 import gunbc.cli_invoke { gunbc_run_invocation_words, invocation_words_bare }
 import gunbc.ci_release_bins { gunbc_release_bin_name }
 import gunbc.runner_unit { RunnerUnitLifecycleIntent, gunbc_runner_lifecycle_intent }
 import gunbc.runner_unit_file { runner_unit_teardown_directives }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second, second_count, measure_add }
 import gunbc.runner_microvm_attempt_bounds {
   runner_attempt_vmm_deadline, runner_attempt_vmm_kill_grace, attempt_stop_grace, attempt_force_stop_bound,
   attempt_unit_stop_slack,
@@ -49,7 +49,13 @@ data runner_microvm_slot_unit_disposition: Disposition = SingleAuthority
 // cgroup.kill writes, jailer chroots, and the App key read that mints the attempt's JIT credential
 // (gunbc.microvm_controller_app_key_converge delivers that key root:root 0400). It is therefore
 // NOT the job user, and the locus it execs from is root-owned for the same reason the network
-// frontier gives for staged sources: root must not exec a binary the job user can write.
+// frontier gives for staged sources -- at the rung that reason actually holds today. Root-ownership
+// removes the unprivileged-by-default write path and keeps the unit off the job user's HOME copy of
+// the VMM. It does NOT make the locus unwritable by the job user: ghrunner holds NOPASSWD over a
+// path-unrestricted /usr/bin/install on this host (gunbc.rung_drop
+// the_job_user_holds_a_path_unrestricted_root_grant), so the sentence "root must not exec a binary
+// the job user can write" is the OBLIGATION this ownership serves, not a property srv1 establishes
+// (review 70080). gunbc.live_deploy.emit release_locus_tree_copy_steps carries the full statement.
 data microvm_slot_unit_template_name: NonEmptyStr = "gunbc-microvm-slot@.service" as NonEmptyStr
 
 fn microvm_slot_unit_path() -> NonEmptyStr {
@@ -123,19 +129,12 @@ data microvm_controller_firecracker_release: FirecrackerRelease = firecracker_re
 // discharged: that row's trigger is the seam being carried and read by its own consumers, and a
 // sizing argument citing it retires nothing (loyal-ibex-544, 2026-09-22). When that reduction
 // lands, this row's figure falls with the demand row it reads, and the width charge in
-// gunbc.runner_slot_allocation gunbc_microvm_shakedown_slot_charge_bytes falls with it; nothing
+// gunbc.runner_slot_allocation gunbc_microvm_shakedown_slot_charge falls with it; nothing
 // here should be tuned toward the symptom meanwhile.
 data microvm_controller_slice_unit_name: NonEmptyStr = "gunbc-microvm-controller.slice" as NonEmptyStr
 
 fn microvm_controller_slice_unit_path() -> NonEmptyStr {
   join(["/etc/systemd/system/", microvm_controller_slice_unit_name as String], "") as NonEmptyStr
-}
-
-// THE FIGURE ITSELF LIVES IN gunbc.runner_slot_allocation (microvm_controller_slice_memory_max_bytes)
-// beside the shakedown slot row, because the width that charges it is decided there; this module
-// renders it into the slice unit.
-fn microvm_controller_slice_memory_max() -> ByteSize {
-  byte_size(microvm_controller_slice_memory_max_bytes())
 }
 
 
@@ -215,16 +214,22 @@ fn microvm_slot_lifecycle_intent() -> RunnerUnitLifecycleIntent {
 // gunbc.runner_microvm_attempt_bounds -- so systemd's own SIGKILL of the controller can arrive only
 // after the controller's bounded teardown has had its full declared time. A shorter value would kill the controller mid-readback and leave the cell
 // with no settlement, which is the recovery arm at the next admission rather than a clean stop.
-fn microvm_slot_unit_timeout_stop_seconds() -> Int {
-  second_count(s: runner_attempt_vmm_deadline)
-    + second_count(s: runner_attempt_vmm_kill_grace)
-    + second_count(s: attempt_stop_grace)
-    + second_count(s: attempt_force_stop_bound)
-    + second_count(s: attempt_unit_stop_slack)
+// THE SUM STAYS IN Second AND THE PROJECTION TO A STRING HAPPENS ONCE, AT THE EDGE. This fold used
+// to unwrap all five rows with second_count and add bare Ints (review 70050); Second is
+// Measure<Time, One, Nat>, so std.measure measure_add is the surface that adds them without
+// leaving the carrier, and the only place a scalar is needed is the rendered directive below.
+fn microvm_slot_unit_timeout_stop() -> Second {
+  measure_add(
+    a: measure_add(
+      a: measure_add(a: runner_attempt_vmm_deadline, b: runner_attempt_vmm_kill_grace),
+      b: measure_add(a: attempt_stop_grace, b: attempt_force_stop_bound),
+    ),
+    b: attempt_unit_stop_slack,
+  )
 }
 
 fn microvm_slot_unit_timeout_stop_sec() -> String {
-  to_string(microvm_slot_unit_timeout_stop_seconds())
+  to_string(second_count(s: microvm_slot_unit_timeout_stop()))
 }
 
 fn microvm_slot_unit_file(release_dir: String, timeout_stop_sec: String) -> SystemdUnitFile {

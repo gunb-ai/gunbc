@@ -20,8 +20,8 @@ import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 import gunbc.fabric_cell_converge { fabric_cell_id_for_slot }
 import gunbc.runner_slot_allocation {
   srv1_microvm_shakedown_slot, gunbc_runner_slot_desired, gunbc_runner_slot_desired_for,
-  gunbc_microvm_shakedown_slot_memory_max_bytes, gunbc_runner_slot_memory_max_bytes,
-  memory_admitted_width_of_envelope, fabric_execution_slot_identities, gunbc_microvm_shakedown_slot_charge_bytes,
+  gunbc_microvm_shakedown_slot_memory_max, gunbc_runner_slot_memory_max_bytes,
+  memory_admitted_width_of_envelope, fabric_execution_slot_identities, gunbc_microvm_shakedown_slot_charge,
 }
 import gunbc.fabric_witness_run { gunbc_internal_fleet_trust_domain }
 import gunbc.runner_microvm { gunbc_runner_microvm_shape_for_slot, MicroVmShapeResolved, MicroVmShapeRefused, gunbc_runner_microvm_shape }
@@ -33,7 +33,7 @@ import gunbc.runner_attempt_launch {
   reservation_agreement,
 }
 import gunbc.runner_microvm_slot_unit {
-  microvm_slot_unit_file, microvm_slot_unit_execs_controller, microvm_slot_unit_timeout_stop_seconds,
+  microvm_slot_unit_file, microvm_slot_unit_execs_controller, microvm_slot_unit_timeout_stop,
   microvm_slot_controller_entry_function, microvm_controller_slice_unit_name, microvm_controller_slice_unit_file,
   microvm_controller_slice_memory_max,
 }
@@ -132,17 +132,17 @@ test fn the_controller_unit_joins_its_own_bounded_no_swap_slice_outside_the_cell
       slice_memory_max(bytes: microvm_controller_slice_memory_max()),
       slice_memory_swap_max(bytes: byte_size(0)),
     ])
-    && byte_size_count(b: microvm_controller_slice_memory_max()) < gunbc_microvm_shakedown_slot_memory_max_bytes
+    && byte_size_count(b: microvm_controller_slice_memory_max()) < byte_size_count(b: gunbc_microvm_shakedown_slot_memory_max)
     && byte_size_count(b: microvm_controller_slice_memory_max()) > byte_size_count(b: whole_corpus_compile_public_root_peak)
 }
 
 // THE STOP TIMEOUT IS THE SUM OF THE FIVE DECLARED ROWS, re-derived here from those rows rather
 // than transcribed, so a moved bound moves this claim with it.
 test fn the_unit_stop_timeout_covers_the_controllers_declared_bounds() -> Bool {
-  microvm_slot_unit_timeout_stop_seconds()
+  second_count(s: microvm_slot_unit_timeout_stop())
     == second_count(s: runner_attempt_vmm_deadline) + second_count(s: runner_attempt_vmm_kill_grace)
       + second_count(s: attempt_stop_grace) + second_count(s: attempt_force_stop_bound) + second_count(s: attempt_unit_stop_slack)
-    && microvm_slot_unit_timeout_stop_seconds() > second_count(s: runner_attempt_vmm_deadline)
+    && second_count(s: microvm_slot_unit_timeout_stop()) > second_count(s: runner_attempt_vmm_deadline)
 }
 
 // --- the per-slot envelope and its width cost ---
@@ -154,8 +154,8 @@ fn fleet_slot() -> RunnerSlotIdentity {
 test fn the_shakedown_slot_carries_28_gib_no_swap_and_no_throttle_line_while_the_fleet_row_stands() -> Bool {
   let shakedown = gunbc_runner_slot_desired_for(slot: srv1_microvm_shakedown_slot())
   let fleet = gunbc_runner_slot_desired_for(slot: fleet_slot())
-  byte_size_count(b: shakedown.memory_max) == gunbc_microvm_shakedown_slot_memory_max_bytes
-    && gunbc_microvm_shakedown_slot_memory_max_bytes == byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 28)))
+  byte_size_count(b: shakedown.memory_max) == byte_size_count(b: gunbc_microvm_shakedown_slot_memory_max)
+    && byte_size_count(b: gunbc_microvm_shakedown_slot_memory_max) == byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: 28)))
     && byte_size_count(b: shakedown.memory_swap_max) == 0
     && byte_size_count(b: shakedown.memory_high) == byte_size_count(b: shakedown.memory_max)
     && byte_size_count(b: fleet.memory_max) == byte_size_count(b: gunbc_runner_slot_desired().memory_max)
@@ -167,8 +167,8 @@ test fn the_shakedown_slot_carries_28_gib_no_swap_and_no_throttle_line_while_the
 // cannot hold the charge at all admits zero.
 test fn the_shakedown_slot_is_charged_its_cell_plus_its_controller_before_the_fleet_row_divides() -> Bool {
   let fleet_row = gunbc_runner_slot_memory_max_bytes
-  let charge = gunbc_microvm_shakedown_slot_charge_bytes()
-  charge == gunbc_microvm_shakedown_slot_memory_max_bytes + byte_size_count(b: microvm_controller_slice_memory_max())
+  let charge = byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
+  charge == byte_size_count(b: gunbc_microvm_shakedown_slot_memory_max) + byte_size_count(b: microvm_controller_slice_memory_max())
     && memory_admitted_width_of_envelope(envelope_bytes: 15 * fleet_row, carries_shakedown_slot: false) == 15
     && memory_admitted_width_of_envelope(envelope_bytes: charge + 14 * fleet_row, carries_shakedown_slot: true) == 15
     && memory_admitted_width_of_envelope(envelope_bytes: charge + 14 * fleet_row - 1, carries_shakedown_slot: true) == 14
