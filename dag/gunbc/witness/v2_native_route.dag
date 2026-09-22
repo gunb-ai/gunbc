@@ -118,12 +118,14 @@ fn native_route_identity_label(module_qn: String, declaration: String) -> LabelP
 // is the law: were the default ever narrower than the universe, the lane would silently drop
 // members at its default.
 //
-// CONSUMERS AND FRONTIER. `v2.compiler.compile` `native_lane_universe_selected` consumes the
-// pattern at execution; `native_lane_universe` (the required-v2-native lane's rendered main)
-// consumes it at this default. An OPERATOR-SUPPLIED pattern reaches that same producer when
-// `gunbc test <pattern>` enters the native implementation (v2 foundation package 9); that verb is
-// the trigger for a non-default caller, and until it lands the only non-default callers are the
-// witnesses over the real producer in gunbc.native_lane_import_refusal_witness_test.
+// CONSUMERS. `v2.compiler.compile` `native_lane_universe_selected` consumes the pattern at
+// execution; `native_lane_universe` (the required-v2-native lane's rendered main) consumes it at
+// this default. AN OPERATOR-SUPPLIED PATTERN NOW REACHES THAT SAME PRODUCER: `gunbc test <operand>`
+// admits the operand against THIS row as its universe (`gunbc.target_invocation`
+// `admit_test_operand`, whose containment decides the executor) and hands the operand's own pattern
+// to the emitted binary's `adjudicate` verb. So this declaration is read in two directions -- as
+// the lane's default population, and as the boundary that says which operands the native route
+// owns -- and they are one value, not two spellings of one.
 fn native_route_default_pattern() -> TargetPattern {
   SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr] } }
 }
