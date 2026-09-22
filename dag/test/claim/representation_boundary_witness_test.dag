@@ -9,6 +9,7 @@ import gunbc.derived_obligation_row {
   PathExecution,
   path_execution_is_executing,
   interpreted_standing_of,
+  witness_subject_is_inside_gate_closure,
   HomeAuthority
 }
 import gunbc.representation_boundary {
@@ -27,6 +28,8 @@ import gunbc.representation_boundary {
   InterpretedOnly,
   NoEvidence,
   boundary_is_interpreted_only,
+  boundary_has_an_executing_witness,
+  no_evidence_count,
   boundary_has_unbuilt_local_evidence,
   unbuilt_but_testable_now_count,
   boundary_is_established_fork,
@@ -216,26 +219,43 @@ test fn representation_boundary_production_roster_satisfies_its_own_walls_holds(
     && boundary_roster_size() > 0
 }
 
-// THE PAIRING OBLIGATION, PART TWO: THE DERIVATION RUNS ON A REAL SUBJECT. This is the arm that
-// makes the roster's REAL CONSUMERS field a reading rather than an assertion -- it puts a real
-// witness entry through the real freeze roster, the real exclusion frontier and the real gate
-// closure. It asserts the derivation ANSWERS, deliberately not WHICH answer: the answer is a fact
-// about the live rosters and pinning it here would make an unrelated exclusion edit fail this file
-// instead of moving the number it is supposed to move.
+// THE PAIRING OBLIGATION, PART TWO: THE DERIVATION RUNS ON A REAL SUBJECT AGAINST THE LIVE GATE.
+// This is the arm that makes the roster's REAL CONSUMERS field a reading rather than an assertion:
+// it asks the required floor's own admission function about two real module paths and requires it
+// to answer DIFFERENTLY about them. The discriminating pair is the point -- a predicate that
+// answered "inside" to everything, which is how this derivation would most plausibly rot, passes
+// the third conjunct and fails the fourth.
+//
+// AND THE NEGATIVE HALF IS THIS FILE'S OWN STANDING, which is uncomfortable and is the honest
+// pair: test.claim.representation_boundary_witness_test matches no prefix the gate roster admits,
+// so this witness asserts its own dormancy on an ordinary required floor. Using any other module
+// as the control would have let this file avoid stating that about itself.
+//
+// AN EARLIER CUT OF THIS ARM WAS VACUOUS AND IS WORTH RECORDING. It read `A && B || C` intending
+// `A && (B || C)`, where C was "an empty witness list is not executing" -- constant true. So the
+// whole arm was true regardless of A, which is the decoration this file deletes elsewhere,
+// committed by the file that deletes it. Precedence, not the check, was the defect.
 test fn representation_boundary_consumer_standing_is_derived_not_authored_holds() -> Bool {
-  path_execution_is_executing(
-    p: interpreted_standing_of(
-      ws: [
-        witness_subject(
-          entry: "dag/test/claim/representation_boundary_witness_test.dag",
-          function: "representation_boundary_consumer_standing_is_derived_not_authored_holds",
-          module_path: "v2.test.claim.representation_boundary_witness_test"
-        )
-      ],
-      unverified_premise: a_home()
-    )
+  !boundary_has_an_executing_witness(b: row_with_nothing_testable_now())
+    && !path_execution_is_executing(p: interpreted_standing_of(ws: [], unverified_premise: a_home()))
+    && witness_subject_is_inside_gate_closure(w: a_gate_admitted_subject())
+    && !witness_subject_is_inside_gate_closure(w: this_witnesss_own_subject())
+}
+
+fn a_gate_admitted_subject() -> WitnessSubject {
+  witness_subject(
+    entry: "src/v2/test/claim/effect_demand/effect_demand_census_test.dag",
+    function: "effect_demand_witness_control_classifies_every_demand",
+    module_path: "v2.test.claim.effect_demand.effect_demand_census_test"
   )
-    || !path_execution_is_executing(p: interpreted_standing_of(ws: [], unverified_premise: a_home()))
+}
+
+fn this_witnesss_own_subject() -> WitnessSubject {
+  witness_subject(
+    entry: "dag/test/claim/representation_boundary_witness_test.dag",
+    function: "representation_boundary_consumer_standing_is_derived_not_authored_holds",
+    module_path: "test.claim.representation_boundary_witness_test"
+  )
 }
 
 // THE TWO EVIDENCE GAPS MUST NOT COLLAPSE INTO ONE, and this is the arm that catches it if they
@@ -266,4 +286,6 @@ test fn representation_boundary_counts_are_separate_and_bounded_holds() -> Bool 
     && boundaries_without_an_authority() >= 1
     && unbuilt_but_testable_now_count() >= 2
     && unbuilt_but_testable_now_count() <= interpreted_only_count()
+    && no_evidence_count() >= 1
+    && no_evidence_count() + interpreted_only_count() <= boundary_roster_size()
 }
