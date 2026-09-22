@@ -23,7 +23,7 @@ fn stall_offset(path: String) -> Int {
                     tokens: tokens,
                     all_tokens: tokens,
                     root: validated.root,
-                    table: parse_table_for_production(validated: validated, all_tokens: tokens),
+                    table: parse_table_for_production(validated: validated, all_tokens: tokens, materialization: Memoize),
                     prov: parse_prov_initial()
                   ) {
                     ParseExprRejected { diagnostics: _, table: _ } => 0 - 2

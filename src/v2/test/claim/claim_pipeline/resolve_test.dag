@@ -3,7 +3,7 @@ module v2.test.claim_pipeline.resolve
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.normalize { normalize }
 import v2.std.declaration_marker { test_marker_channel_empty }
-import v2.compiler.normalized_tree { admit_normalized_tree }
+import v2.compiler.normalized_tree { admit_normalized_tree, no_import_bindings}
 import v2.compiler.resolve { resolve }
 import v2.extdeps.languages.dag {
   dag_language_model_surface_empty_prelude,
@@ -68,7 +68,7 @@ data spine_resolve_reject_module_subject: Node = Node {
 // self-bound every Atom node anywhere in the tree -- including this
 // reference -- so it resolved without ever consulting canonical_symbols.
 test fn spine_resolve_rejects_noncanonical_root_atom() -> Bool {
-  match admit_normalized_tree(test_markers: test_marker_channel_empty(), root: spine_resolve_reject_module_subject, diagnostics: None) {
+  match admit_normalized_tree(import_bindings: no_import_bindings(), test_markers: test_marker_channel_empty(), root: spine_resolve_reject_module_subject, diagnostics: None) {
     Accepted { value: normalized, diagnostics: _ } =>
       match resolve(tree: normalized, lm: dag_language_model_surface_empty_prelude()) {
         Accepted { value: _, diagnostics: _ } => false

@@ -101,7 +101,7 @@ type QualifiedOctetsResult
 // already runs this wall and it refuses at resolve, so this is an existing capability being consumed
 // rather than a mechanism invented here.
 //
-// The roster is deliberately TWO, and each entry is a different reason. uint8_octets_of_ints is
+// The roster is deliberately CLOSED AND NAMED, and each entry states its own reason. uint8_octets_of_ints is
 // the admission fold: it runs every member through uint8_of_int and mints ONLY from the list it has
 // just proved in full, so an outside caller cannot reach a QualifiedOctets carrying an unadmitted
 // value at all. It used to be an accumulator with a caller-supplied `admitted` prefix in this slot,
@@ -112,6 +112,16 @@ type QualifiedOctetsResult
 // word_to_octets is admitted because its members are COMPUTED in range -- they are remainders modulo
 // the octet radix, each already through uint8_of_int -- so routing it through the fold would add a
 // refusal arm no input can reach, which is the unreachable-arm trap this change deletes elsewhere.
+//
+// base16_decode_lower, sha256_hex and sha384_hex are admitted on THAT SAME GROUND and on no weaker one, which
+// is why they are named rather than the roster being opened. Each member base16_decode_lower mints
+// is `high * 16 + low` over two digits drawn from base16_digit_rows, so it is computed in [0, 255]
+// by the operation that produced it; each member sha256_hex mints came out of sha256_word_octets,
+// which is the same modulo-radix decomposition word_to_octets performs, and sha384_hex's through
+// word64_octets, which is that decomposition applied to both halves. NONE IS A PROXY, which
+// is the property that decides whether a roster entry is safe: base16_decode_lower's only formal
+// is the hex STRING and sha256_hex's is the message, so no caller can pre-load the member list the
+// mint seals -- the proved list and the minted list are the same value, as they are above.
 //
 // THE RUNG THIS REACHES, MEASURED IN BOTH DIRECTIONS RATHER THAN CLAIMED. Three routes were probed
 // against this carrier as real modules compiled through the real acceptance path:
@@ -141,11 +151,14 @@ type QualifiedOctetsResult
 // accepted a caller's list and handed back the sealed value would be a PROXY, and the seal would be
 // worth nothing. Neither admitted caller is one -- the fold mints only the list it has verified in
 // full, and word_to_octets takes a Word and a width rather than a member list. That is the property a reviewer should check when the roster
-// grows, and it is why the roster is two names rather than a convenience.
+// grows, and it is why the roster is a named list rather than a convenience.
 fn qualified_octets(members: List<Int>) -> QualifiedOctets
   admit_callers: [
     decl_ref(module_path: "std.integer", decl_name: "uint8_octets_of_ints"),
-    decl_ref(module_path: "std.machine_word", decl_name: "word_to_octets")
+    decl_ref(module_path: "std.machine_word", decl_name: "word_to_octets"),
+    decl_ref(module_path: "extdeps.numeric.base16", decl_name: "base16_decode_lower"),
+    decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_hex"),
+    decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha384_hex")
   ]
 {
   QualifiedOctets { members: members }

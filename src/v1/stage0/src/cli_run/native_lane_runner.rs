@@ -649,8 +649,88 @@ struct NativeTerminalMarker {
     summary: String,
 }
 
+/// `v2.compiler.native_test_vocabulary` `NativeTestVerdict`, mirrored at the discriminant only.
+///
+/// The fold this feeds reads ONLY which arm a row carries, so the stage and diagnostics the real
+/// row also holds are deliberately not decoded here: decoding a payload nothing reads would be a
+/// second representation of the row, free to drift from the one the driver serialized.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NativeMemberVerdict {
+    Passed,
+    ReturnedFalse,
+    ReturnedOther,
+    Refused,
+}
+
+/// `gunbc.instrument_targets` `native_route_member_termination`'s result, mirrored.
+///
+/// Three arms rather than four: `InvocationRefused` is not reachable from a population fold, so an
+/// arm for it here would be a constructor nothing can build -- the decoration DESIGN section 4b
+/// warns reads as coverage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeMemberTermination {
+    ObservationHeld,
+    ObservationDidNotHold,
+    SubjectUnreached,
+}
+
+/// `gunbc.instrument_targets` `native_route_member_termination`, mirrored arm for arm INCLUDING the
+/// precedence, which is the one decision in that fold that could have gone the other way.
+///
+/// A definite failure outranks an unobserved sibling; an unobserved member outranks the passes
+/// around it; and an EMPTY population is `SubjectUnreached`, never `ObservationHeld`, because
+/// "every row passed" is vacuously true of no rows and reporting that as a pass is the
+/// absence-is-not-success defect. The `.dag` witness carries a discriminating red for each of those
+/// three, so this mirror drifting from it is detectable there rather than only by reading.
+///
+/// COMPLETENESS IS PASSED IN, NOT ASSUMED. The rows are what the run PRINTED; the run also reports
+/// how many identities the selection held and how many sources it could not read at all. Folding
+/// the printed rows alone answered `ObservationHeld` for a selection where two tests passed and a
+/// third emitted no row because its file refused -- exit 0 beside a lane refusing
+/// `population_omissions_present` (review 70091). Both counts come off the same terminal marker
+/// this function's caller already logs, so nothing new is observed to close it.
+fn native_member_termination(
+    rows: &[NativeMemberVerdict],
+    universe: u64,
+    file_refusals: u64,
+) -> NativeMemberTermination {
+    let observed_failure = rows.iter().any(|v| {
+        matches!(
+            v,
+            NativeMemberVerdict::ReturnedFalse | NativeMemberVerdict::ReturnedOther
+        )
+    });
+    let unobserved = rows
+        .iter()
+        .any(|v| matches!(v, NativeMemberVerdict::Refused));
+    // THE FOUR WAYS A SELECTION GOES UNOBSERVED ARE NAMED SEPARATELY AND THEN JOINED, rather than
+    // written as four `else if` arms returning the same value. They are four distinct facts and the
+    // `.dag` fold keeps them as four arms; here they collapse because Rust arms returning identical
+    // blocks are a clippy refusal (`if_same_then_else`) and this repository treats a warning as an
+    // error. Naming each condition keeps the reasons legible at the site -- which is what the arms
+    // were carrying -- without an `#[allow]`, and an escape hatch for a lint is the shape DESIGN
+    // section 5 refuses. The behaviour is identical and the witnesses that discriminate each reason
+    // are unchanged.
+    let a_member_was_not_observed = unobserved;
+    let the_population_is_short = rows.len() as u64 != universe;
+    let a_source_could_not_be_read = file_refusals != 0;
+    let nothing_was_selected = rows.is_empty();
+    if observed_failure {
+        NativeMemberTermination::ObservationDidNotHold
+    } else if a_member_was_not_observed
+        || the_population_is_short
+        || a_source_could_not_be_read
+        || nothing_was_selected
+    {
+        NativeMemberTermination::SubjectUnreached
+    } else {
+        NativeMemberTermination::ObservationHeld
+    }
+}
+
 struct NativeRunOutput {
     file_refusals: Vec<NativeFileRefusalObserved>,
+    members: Vec<NativeMemberVerdict>,
     terminal: NativeTerminalMarker,
 }
 
@@ -660,6 +740,7 @@ struct NativeRunOutput {
 /// harness re-forming a receipt the authority has already judged.
 fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
     let mut file_refusals = Vec::new();
+    let mut members: Vec<NativeMemberVerdict> = Vec::new();
     let mut terminal: Option<NativeTerminalMarker> = None;
     for line in stdout.lines() {
         if line.trim().is_empty() {
@@ -756,12 +837,35 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
         // undeclared drop of the rule the base states in as many words: the binary's stdout is a
         // receipt surface, and an unrecognized line on it is a harness defect, not noise.
         //
-        // A POPULATION ROW IS RECOGNIZED, NOT DECODED. The adjudication moved into the emitted
-        // binary, so the host no longer needs each verdict — it counts them through the marker.
-        // But the rows are still on this surface, so they are recognized by the shape the
-        // authority gives them (NativeRouteMemberRow: an `identity` and a `verdict`) rather than
-        // waved past by a catch-all, which would re-open exactly the hole this arm closes.
-        if value.get("identity").is_some() && value.get("verdict").is_some() {
+        // A POPULATION ROW IS NOW DECODED AT ITS DISCRIMINANT, because a SECOND consumer wants a
+        // different fact from this surface than the marker carries. The marker answers the LANE'S
+        // whole-route qualification; `gunbc test <operand>` asks what the operator's own selection
+        // did, and only the per-identity verdicts answer that. Recognizing the row and dropping it
+        // was right while nothing asked; it would now be the absent member-scoped standing that
+        // made the verb consume the lane's bit instead.
+        //
+        // AN UNKNOWN VARIANT REFUSES RATHER THAN DEFAULTING. Mapping an unrecognized arm onto one
+        // of the four would be the absorbing fallback DESIGN section 5 forbids, and it would fail
+        // in the worst direction: a new verdict arm silently counted as a pass.
+        if value.get("identity").is_some() {
+            let variant = value
+                .get("verdict")
+                .and_then(|v| v.get("_variant"))
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| format!("population row carries no verdict._variant: {line}"))?;
+            members.push(match variant {
+                "NativeTestPassed" => NativeMemberVerdict::Passed,
+                "NativeTestReturnedFalse" => NativeMemberVerdict::ReturnedFalse,
+                "NativeTestReturnedOther" => NativeMemberVerdict::ReturnedOther,
+                "NativeTestRefused" => NativeMemberVerdict::Refused,
+                other => {
+                    return Err(format!(
+                        "population row carries an unrecognized verdict variant {other:?} — the \
+                         host mirrors v2.compiler.native_test_vocabulary NativeTestVerdict and a \
+                         new arm must be mirrored rather than defaulted: {line}"
+                    ))
+                }
+            });
             continue;
         }
         return Err(format!(
@@ -773,6 +877,7 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
         terminal.ok_or_else(|| "the native run printed no terminal marker".to_string())?;
     Ok(NativeRunOutput {
         file_refusals,
+        members,
         terminal,
     })
 }
@@ -1740,7 +1845,76 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
     })
 }
 
-pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
+/// HOW A NATIVE ROUTE RUN ENDED, AS A TYPED VALUE RATHER THAN A SENTENCE A CALLER RE-READS.
+///
+/// The admission is a BOOLEAN INSIDE THE BINARY (`run.terminal.admitted`, derived with its summary
+/// by `native_lane_run`), and flattening it into `Result<(), String>` made every consumer recover
+/// it by sniffing the rendered text for `cause=AdmissionRefused`. That is a second representation
+/// of a decision this function already holds, free to disagree with it.
+///
+/// THE ARMS ARE NAMED FOR WHAT THE BIT ACTUALLY DECIDES, AND THE NAMING IS THE WHOLE POINT. It is
+/// `gunbc.witness_v2_native_route` `native_route_admission_with`'s WHOLE-ROUTE LANE QUALIFICATION
+/// -- a conjunction over roughly twenty clauses including `JobNameMismatch`,
+/// `PreparationSeedUnrecorded`, `EmittedBuildNotClean`, `MalformedControlAcceptedByRoute`,
+/// `PositivePopulationEmpty` and `RequiredNativePassRegressed`. It is NOT "the targets the operator
+/// asked for were observed and held". An earlier spelling of this enum called the arms
+/// `AdmissionHeld`/`AdmissionRefused`, which invited exactly the misreading that a consumer could
+/// take them for a per-operand verdict -- and one did.
+#[derive(Debug)]
+/// TWO QUESTIONS, CARRIED SEPARATELY, BECAUSE TWO CONSUMERS ASK DIFFERENT ONES. The lane asks
+/// whether the ROUTE qualified; `gunbc test <operand>` asks what the operator's OWN SELECTION did.
+/// Both arms therefore carry `members`, the per-identity fold's answer, beside the lane summary --
+/// and neither consumer has to recover the other's fact from a value that does not hold it.
+pub enum NativeRouteOutcome {
+    /// The emitted binary adjudicated and the LANE'S QUALIFICATION held. Says nothing per target;
+    /// `members` is what does.
+    LaneQualificationHeld {
+        summary: String,
+        members: NativeMemberTermination,
+    },
+    /// The emitted binary adjudicated and the LANE'S QUALIFICATION refused. The cause may be any
+    /// of the route-integrity clauses and need not involve any selected test at all, which is
+    /// exactly why `members` is carried beside it rather than inferred from it.
+    LaneQualificationRefused {
+        summary: String,
+        members: NativeMemberTermination,
+    },
+    /// No adjudication was produced, so there is no population to fold and no member standing.
+    Unreached { cause: String },
+}
+
+pub fn run_required_v2_native(source_roots: &[String], pattern: &str) -> NativeRouteOutcome {
+    // The `?`-carrying body stays one function; only the ADMISSION leaves it as a value, so this
+    // wrapper is the single place the three-way partition is made and no consumer re-derives it.
+    match run_required_v2_native_inner(source_roots, pattern) {
+        Ok(admission) => {
+            if admission.admitted {
+                NativeRouteOutcome::LaneQualificationHeld {
+                    summary: admission.summary,
+                    members: admission.members,
+                }
+            } else {
+                NativeRouteOutcome::LaneQualificationRefused {
+                    summary: admission.summary,
+                    members: admission.members,
+                }
+            }
+        }
+        Err(cause) => NativeRouteOutcome::Unreached { cause },
+    }
+}
+
+/// What the adjudicating run decided, carried out of the body as a value.
+struct NativeRunAdmission {
+    admitted: bool,
+    summary: String,
+    members: NativeMemberTermination,
+}
+
+fn run_required_v2_native_inner(
+    source_roots: &[String],
+    pattern: &str,
+) -> Result<NativeRunAdmission, String> {
     let lane_started = std::time::Instant::now();
     let workspace = super::process_workspace_root();
     // THE TESTED TREE IS OBSERVED OR THE RUN REFUSES (review 64210). This defaulted to the literal
@@ -1827,14 +2001,17 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     // 5. THE LANE RUN. The emitted binary, by explicit path, over the real source roots: it
     // derives the universe, executes it, mints the receipt and judges it.
     eprintln!("v2-native-route: adjudicating through the emitted compiler");
-    // THE LANE ADJUDICATES ITS WHOLE UNIVERSE, so it passes the default pattern: this literal is the
-    // seed's mirror of `gunbc.witness_v2_native_route` `native_route_default_pattern`
-    // (`//v2/test/...`, which narrows nothing within the floor's universe). A narrower pattern is an
-    // operator's argument to the emitted binary, never this runner's.
+    // THE PATTERN IS THE CALLER'S, AND THAT IS WHAT MAKES A FOCUSED RUN POSSIBLE. The lane passes
+    // `gunbc.witness_v2_native_route` `native_route_default_pattern` (`//v2/test/...`, which
+    // narrows nothing within the floor's universe); `gunbc test <operand>` passes the operand's own
+    // pattern, already admitted by `extdeps.bazel.target_pattern` and rendered by its own renderer.
+    // This runner does not parse it, default it, or widen it: a pattern that reached here was
+    // decided by the authority, and substituting one here would let the run adjudicate a population
+    // the caller did not ask for while reporting under the caller's name.
     let mut args = vec![
         "adjudicate".to_string(),
         facts_file.display().to_string(),
-        "//v2/test/...".to_string(),
+        pattern.to_string(),
     ];
     args.extend(source_roots.iter().cloned());
     let rows_file = workspace
@@ -1883,19 +2060,127 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     // value inside the binary (`native_lane_run` derives the summary from the admission it
     // returns), so the terminal line and the admission cannot disagree about what was decided.
     eprintln!("v2-native-route: admission {}", run.terminal.summary);
-    if run.terminal.admitted {
-        Ok(())
-    } else {
-        Err(format!(
-            "V2-NATIVE REFUSAL cause=AdmissionRefused — {}",
-            run.terminal.summary
-        ))
-    }
+    // THE MEMBER FOLD IS APPLIED HERE, ON THE POPULATION THIS RUN ACTUALLY EMITTED, so the value
+    // that leaves this function already answers both questions and no consumer re-derives either.
+    Ok(NativeRunAdmission {
+        admitted: run.terminal.admitted,
+        summary: run.terminal.summary,
+        members: native_member_termination(
+            &run.members,
+            run.terminal.universe,
+            run.terminal.file_refusals,
+        ),
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// THE MEMBER FOLD, HANDED REAL PRODUCER BYTES.
+    ///
+    /// This row is VERBATIM from an executed native run -- `session/sharp-bear-756` at
+    /// `6032d50be7d`, where the emitted compiler built clean under `-D warnings`, adjudicated
+    /// `universe=3992 population=3992`, and persisted 3,483,310 bytes of per-identity rows
+    /// byte-for-byte verified. All 3992 carried `NativeTestRefused`. So this is a reading of the
+    /// shape the real producer emits, not a hypothesis about it, and it needs no closure to run --
+    /// which is the point: a decoder over rows must be reddable by handing it rows.
+    const REAL_REFUSED_ROW: &str = r#"{"identity":{"module":"v2.test.v2_native_route","declaration":"a_divergence_is_refused"},"verdict":{"_variant":"NativeTestRefused","stage":{"_variant":"NativeTestStageContext"},"diagnostics":{"head":{"reason":"parse_g0_tokens_remain","at":{"_variant":"Textual","file":"src/v2/test/v2_native_route_test.dag","extent":{"_variant":"WholeFile"}},"correction":{"_variant":"Unavailable","reason":{"_variant":"UserInputBoundary"}}},"tail":[]}}}"#;
+
+    #[test]
+    fn a_real_refused_row_decodes_and_folds_to_subject_unreached() {
+        let stdout = format!(
+            "{REAL_REFUSED_ROW}\n{}\n",
+            "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":1,\"universe\":1,\
+             \"file_refusals\":0,\"admitted\":false,\"summary\":\"s\"}"
+        );
+        let out = parse_native_run_output(&stdout).expect("the real row must decode");
+        assert_eq!(out.members, vec![NativeMemberVerdict::Refused]);
+        assert_eq!(
+            native_member_termination(&out.members, 1, 0),
+            NativeMemberTermination::SubjectUnreached
+        );
+    }
+
+    /// THE EMPTY POPULATION IS NOT THE ALL-PASSED POPULATION. Vacuous truth reported as a pass is
+    /// the absence-is-not-success defect; this is the arm a reviewer will suggest collapsing.
+    #[test]
+    fn an_empty_population_is_unreached_not_held() {
+        assert_eq!(
+            native_member_termination(&[], 0, 0),
+            NativeMemberTermination::SubjectUnreached
+        );
+        assert_eq!(
+            native_member_termination(&[NativeMemberVerdict::Passed], 1, 0),
+            NativeMemberTermination::ObservationHeld
+        );
+    }
+
+    /// THE REVIEWER'S CASE (review 70091), WHICH FAILED GREEN. Two tests pass and a third identity
+    /// of the selection emits NO ROW because its file refused. Folding the printed rows alone saw
+    /// two passes and answered held -- exit 0 -- beside a lane refusing population_omissions_present.
+    #[test]
+    fn an_incompletely_observed_selection_cannot_hold() {
+        let two_passes = [NativeMemberVerdict::Passed, NativeMemberVerdict::Passed];
+        // universe of three, only two rows printed: one identity was never observed.
+        assert_eq!(
+            native_member_termination(&two_passes, 3, 0),
+            NativeMemberTermination::SubjectUnreached
+        );
+        // counts agree but a source could not be read at all -- the real run's shape
+        // (universe=3992 population=3992 file_refusals=259).
+        assert_eq!(
+            native_member_termination(&two_passes, 2, 259),
+            NativeMemberTermination::SubjectUnreached
+        );
+        // complete and clean is the only way to hold.
+        assert_eq!(
+            native_member_termination(&two_passes, 2, 0),
+            NativeMemberTermination::ObservationHeld
+        );
+    }
+
+    /// THE PRECEDENCE, MIRRORED FROM THE `.dag` FOLD. A definite failure outranks an unobserved
+    /// sibling, and an unobserved member outranks the passes around it.
+    #[test]
+    fn the_precedence_matches_the_modeled_fold() {
+        assert_eq!(
+            native_member_termination(
+                &[
+                    NativeMemberVerdict::Refused,
+                    NativeMemberVerdict::ReturnedFalse
+                ],
+                2,
+                0
+            ),
+            NativeMemberTermination::ObservationDidNotHold
+        );
+        assert_eq!(
+            native_member_termination(
+                &[NativeMemberVerdict::Passed, NativeMemberVerdict::Refused],
+                2,
+                0
+            ),
+            NativeMemberTermination::SubjectUnreached
+        );
+        assert_eq!(
+            native_member_termination(&[NativeMemberVerdict::ReturnedOther], 1, 0),
+            NativeMemberTermination::ObservationDidNotHold
+        );
+    }
+
+    /// AN UNKNOWN VERDICT ARM REFUSES RATHER THAN DEFAULTING. A new arm upstream counted as a pass
+    /// is the failure direction that costs the most.
+    #[test]
+    fn an_unrecognized_verdict_variant_refuses() {
+        let stdout = "{\"identity\":{\"module\":\"m\",\"declaration\":\"d\"},\
+                      \"verdict\":{\"_variant\":\"NativeTestSomethingNew\"}}\n";
+        let err = match parse_native_run_output(stdout) {
+            Ok(_) => panic!("an unknown verdict arm must refuse, not decode"),
+            Err(e) => e,
+        };
+        assert!(err.contains("unrecognized verdict variant"), "{err}");
+    }
 
     /// STORAGE INTEGRITY, BOTH ARMS. The mutation is a SAME-COUNT substitution -- one verdict
     /// flipped, the row count untouched -- which is exactly the case the count check cannot see.

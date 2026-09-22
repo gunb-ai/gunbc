@@ -198,6 +198,8 @@ import v2.std.compilers.target_model {
   ValueProducing,
   derive_bodied_arrow_scaffold,
   TargetAtomRealization,
+  DeclarationReferenceForm,
+  ModuleScopedPath,
   TargetAtomTypeShape,
   TargetTypeExpression,
   target_atom_alias_type_expression,
@@ -4351,7 +4353,24 @@ fn rust_type_expression_projection() -> TargetTypeExpressionProjection {
       separator: ^rust_token_comma,
       field_label_separator: optional_absent(),
       close: ^rust_token_gt
-    }
+    },
+    declaration_reference_form: rust_declaration_reference_form()
+  }
+}
+
+// A CORPUS DECLARATION REFERENCE IS SPELLED AS A CRATE-ROOTED PATH: `crate::<module>::<name>`, with
+// the .dag module's dotted segments joined by `_` into one Rust module identifier. `crate` and `::`
+// are Rust's (The Rust Reference, Paths: `crate` names the crate root, `::` is the path separator);
+// the `_` joining is the layout the seed's emission realizes one Rust module per .dag module
+// under (v1.compiler.emit_core_support module_to_filename), stated here so that a reference this
+// projection spells lands on the same module the seed emits the declaration into. Always crate-rooted
+// rather than bare-when-same-module: a fully qualified path is valid at every use site, so the
+// spelling carries no dependence on where the reference sits.
+fn rust_declaration_reference_form() -> DeclarationReferenceForm {
+  ModuleScopedPath {
+    root_text: "crate",
+    scope_separator_text: "::",
+    module_segment_joiner: "_"
   }
 }
 data rust_sg2_type_alias_text: String = "type Sg2Probe = Rc<FooBar<X, Y>>;"

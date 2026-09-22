@@ -1,0 +1,258 @@
+module v2.test.manual.normalize_fn_body_cost_probe
+
+import v2.compiler.body_lowering_fold {
+  body_lower_fn_decl_to_arrow,
+  body_lower_outcome_is_wrapper_retained,
+  body_lower_return_type_from_fn_captured,
+  body_lower_unwrap_captured
+}
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_lex,
+  parse_production_emitted_identity_optional
+}
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.diagnostic { Accepted, None, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.optional { Absent, Optional, Present, optional_present }
+
+// ---------------------------------------------------------------------------
+// THE ENROLLED REDS AND FALSIFIERS FOR THE POSITIONAL RETURN-TYPE READ.
+//
+// THE NAME IS HISTORICAL AND THE FILE NO LONGER HOLDS A COST PROBE. It began as the cost
+// decomposition that located the fn-body normalize charge; those twelve plain `fn`
+// declarations were DELETED (review 70132) because nothing in the closure called them and
+// their only route to execution was a recipe inside a comment -- which DESIGN section 3c reds
+// as a dangling declaration, and section 6 disposes of outright: a measurement worth
+// re-deriving is worth an entry point, and one that is not is a one-off rather than an
+// instrument. That decomposition was a one-off. It derived the cost-shape reading and
+// falsified two of its own predictions, and the reading it produced is recorded on the
+// carriers it concerns. The file and the claim identities keep their names so that ten floor
+// identities are not churned for a cosmetic rename.
+// ---------------------------------------------------------------------------
+
+// FALSIFIERS FOR THE POSITIONAL READ ITSELF. The spine read relies on opt(generic_params)
+// occupying its position when elided; a generic fn is the case where that assumption, if
+// wrong, shifts every later position. The `= expr` form exercises the OTHER arm of the body
+// choice at the same spine depth. A wrong read here is a regression across the corpus, not an
+// edge case: generic fns and `=`-bodied fns are ordinary.
+data nfbcp_generic_fn_source: String = "module m\nfn f<T>(x: T) -> T { x }\n"
+
+data nfbcp_eq_body_fn_source: String = "module m\nfn f(x: Int) -> Int = x\n"
+
+data nfbcp_ordinary_fn_source: String = "module m\nfn f(x: Int) -> Int { x }\n"
+
+// ARM 1 -- a declared return type. The deleted reading met the parameter's fn-type arrow
+// first and answered Int for a function declared to return Bool: a WRONG CODOMAIN on an
+// otherwise ordinary lowering. This arm has natural instances in the corpus.
+data nfbcp_fn_type_param_source: String = "module m\nfn g(h: fn(Int) -> Int) -> Bool { true }\n"
+
+// ARM 2 -- NO declared return type. The production carries no arrow clause at all, so a
+// positional read is Absent and the consumer must retain the wrapper. The deleted reading
+// instead found the PARAMETER's arrow and minted an Arrow with Int as its codomain, so the
+// defect here is a DISPOSITION FLIP, not only a wrong type.
+//
+// The corpus population for this arm is EMPTY today (sizing scan over 76839 fn declarations
+// across dag/ and src/v2: one apparent candidate, and it is prose inside a String in
+// gunbc.recurring_failure_mode.accepted_source_emits_uncompilable_target). An empty
+// population is a fact about today's corpus and not about the compiler -- the first fn
+// anyone writes in this shape flips -- so this arm has no natural instance protecting it
+// and its red is an AUTHORED fixture. DESIGN section 4b asks whether the forbidden state is
+// authorable before writing the check: it is, so declining the fixture would be
+// specification-without-execution.
+data nfbcp_no_return_type_source: String = "module m\nfn g(h: fn(Int) -> Int) { true }\n"
+
+// The PREPARED grammar, not the whole language model. dag_prepared_grammar is enrolled in
+// floor_cross_claim_pure_producers_warm, so the required floor fills it during strict
+// preparation -- outside every per-claim budget -- and a claim here pays the lookup rather
+// than the construction. Building dag_language_model() per claim instead charged ~107k eval
+// steps to every probe below, which is the parse subject and not this claim's.
+fn nfbcp_parsed(text: String) -> Optional<Node> {
+  match tokenize(text: text, file: ^nfbcp_probe_file, rules: dag_lex()) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: prepared, diagnostics: _ } =>
+          match parse_module_prepared(tokens: ts, prepared: prepared, validation_residue: None) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
+          }
+      }
+  }
+}
+
+fn nfbcp_find_shell(root: Node, emitted: Symbol) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } =>
+      if id == emitted {
+        optional_present(value: root)
+      } else {
+        fold(root.children, init: Absent, f: fn(acc, e) {
+          match acc {
+            Present { value: _ } => acc
+            Absent => nfbcp_find_shell(root: e.target, emitted: emitted)
+          }
+        })
+      }
+    Absent =>
+      fold(root.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => nfbcp_find_shell(root: e.target, emitted: emitted)
+        }
+      })
+  }
+}
+
+fn nfbcp_fn_decl_shell(text: String) -> Optional<Node> {
+  match nfbcp_parsed(text: text) {
+    Absent => Absent
+    Present { value: tree } => nfbcp_find_shell(root: tree, emitted: ^dag_surface_fn_decl)
+  }
+}
+
+fn nfbcp_fn_captured(text: String) -> Optional<Node> {
+  match nfbcp_fn_decl_shell(text: text) {
+    Absent => Absent
+    Present { value: shell } => body_lower_unwrap_captured(shell: shell)
+  }
+}
+
+fn nfbcp_return_atom(text: String) -> Optional<Symbol> {
+  match nfbcp_fn_captured(text: text) {
+    Absent => Absent
+    Present { value: captured } =>
+      match body_lower_return_type_from_fn_captured(captured: captured) {
+        Absent => Absent
+        Present { value: rt } => nfbcp_atom_identity_deep(node: rt)
+      }
+  }
+}
+
+fn nfbcp_atom_identity_deep(node: Node) -> Optional<Symbol> {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => optional_present(value: id)
+    Absent =>
+      fold(node.children, init: Absent, f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => nfbcp_atom_identity_deep(node: e.target)
+        }
+      })
+  }
+}
+
+// THE MARGIN HERE IS THIN, AND THAT IS A STANDING FACT ABOUT THIS FILE RATHER THAN A NUMBER.
+// The most expensive claim below is the disposition arm, because it is the only one that pays
+// parse AND body_lower_fn_decl_to_arrow; it sits just under the per-claim ceiling derived by
+// v2.workflow.required_floor `claim_ceiling_eval_step_budget`. So enlarging a specimen or adding
+// an assertion to that claim is a budget decision, not a free edit. The producer that re-derives
+// the current figures is the required floor itself, which prints eval_steps per claim on every
+// run -- not transcribed here, because a copied number would rot without anyone touching either
+// end (DESIGN section 6).
+//
+// WHY THE SUPPLIED-TOKEN ROUTE IS NOT USED HERE, since it is the obvious headroom and declining
+// it is a judgement rather than an oversight. v2.test.parse.supplied_token_stream_support exists
+// for claims whose text route exceeds the budget BEFORE they assert anything; it converts one
+// over-budget claim into TWO that must each fit (a fidelity claim costing tokenize, plus the
+// supplied-route claim) and needs a hand-authored TokenStream per specimen. These claims are
+// already under the ceiling, so adopting it would author four token streams and double the claim
+// count to buy speculative margin -- and today it would also mean carrying a second copy of that
+// module, which is the DESIGN section 3 fork. If a later edit pushes the disposition arm over,
+// that is the mechanism to adopt, and the specimens here are small enough for it to work.
+//
+// ===========================================================================
+// ENROLLED REDS for the positional-return-type repair (DESIGN section 4b(4):
+// these stay enrolled as regression controls after they green; they do not retire).
+// ===========================================================================
+
+// ARM 1 RED. Fails on the deleted shape-search reading, which answered the PARAMETER
+// fn-type's Int; holds on the positional read, which cannot reach a parameter at all.
+test fn nfbcp_hazard_return_type_is_positional_holds() -> Bool {
+  match nfbcp_return_atom(text: nfbcp_fn_type_param_source) {
+    Absent => false
+    Present { value: id } => id == ^bool_node_symbol
+  }
+}
+
+// ARM 2 RED. With no arrow clause in the production there is no return type to read, so
+// the positional read must be ABSENT. The deleted reading returned the parameter's arrow.
+test fn nfbcp_hazard_no_return_type_reads_absent_holds() -> Bool {
+  match nfbcp_return_atom(text: nfbcp_no_return_type_source) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ARM 2 RED, at the consumer. An Absent return type reaches
+// `Absent => body_lower_wrapper_retained_shell`, so the member is RETAINED rather than
+// lowered to an Arrow carrying a codomain the source never declared. Asserting the
+// disposition and not only the type keeps this a claim about the ROUTE.
+test fn nfbcp_hazard_no_return_type_retains_wrapper_holds() -> Bool {
+  match nfbcp_fn_decl_shell(text: nfbcp_no_return_type_source) {
+    Absent => false
+    Present { value: shell } =>
+      body_lower_outcome_is_wrapper_retained(o: body_lower_fn_decl_to_arrow(shell: shell))
+  }
+}
+
+// POSITIVE CONTROL for the repair: an ordinary fn with a declared return type and no
+// fn-typed parameter still lowers, so the positional read is not a blanket refusal.
+test fn nfbcp_control_ordinary_fn_return_type_holds() -> Bool {
+  match nfbcp_return_atom(text: nfbcp_ordinary_fn_source) {
+    Absent => false
+    Present { value: id } => id == ^dag_binding_type_int
+  }
+}
+
+// FALSIFIER: a generic fn must still read its declared return type. Absent here would mean
+// every generic fn in the corpus retains its wrapper instead of lowering.
+test fn nfbcp_falsifier_generic_fn_return_type_holds() -> Bool {
+  match nfbcp_return_atom(text: nfbcp_generic_fn_source) {
+    Absent => false
+    Present { value: id } => id == ^T
+  }
+}
+
+// FALSIFIER: the `= expr` body arm sits at the same spine depth as the braced body, so the
+// return clause must read identically through it.
+test fn nfbcp_falsifier_eq_body_fn_return_type_holds() -> Bool {
+  match nfbcp_return_atom(text: nfbcp_eq_body_fn_source) {
+    Absent => false
+    Present { value: id } => id == ^dag_binding_type_int
+  }
+}
+
+test fn nfbcp_generic_fn_specimen_parses_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_generic_fn_source) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+test fn nfbcp_eq_body_specimen_parses_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_eq_body_fn_source) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// SPECIMEN CONTROLS. Separate "no hazard" from "the specimen stopped parsing" -- without
+// these, both reds above could go green by the fixture ceasing to compile.
+test fn nfbcp_hazard_specimen_parses_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_fn_type_param_source) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+test fn nfbcp_no_return_type_specimen_parses_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_no_return_type_source) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}

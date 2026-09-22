@@ -166,7 +166,7 @@ test fn a_mention_sits_at_its_containment_position_holds() -> Bool {
   sits_at_its_declaration && none_stamped_with_the_module
 }
 
-data xl0_roster: FreeMonoid<RepairInputOriginCandidate> = repair_input_origin_roster_over_roots(roots: xl0_roots).carriers
+data xl0_roster: FreeMonoid<RepairInputOriginCandidate> = repair_input_origin_roster_over_roots(sources: module_binding_sources_without_imports(roots: xl0_roots)).carriers
 
 fn xl0_roster_has(roster: FreeMonoid<RepairInputOriginCandidate>, f: fn(SourceDeclarationCarrierIdentity) -> Bool) -> Bool {
   fold_list(
@@ -253,12 +253,14 @@ test fn an_unreadable_module_root_is_counted_and_not_silently_dropped_holds() ->
 // THE REFUSAL SURVIVES THE SEAM INTO THE ROSTER. A collector that counted the loss and a producer
 // that dropped it at the next call would be the same silent degradation one layer down.
 test fn the_roster_carries_the_unreadable_roots_it_was_built_over_holds() -> Bool {
-  let roster = repair_input_origin_roster_over_roots(roots: xl0_roots_with_one_unreadable)
+  let roster = repair_input_origin_roster_over_roots(sources: module_binding_sources_without_imports(roots: xl0_roots_with_one_unreadable))
   length(xs: roster.unreadable_roots) == 1
     && !repair_input_origin_roster_is_total(roster: roster)
     && repair_input_origin_roster_is_total(
          roster: repair_input_origin_roster_over_roots(
-           roots: Cons { head: xl0_consumer_root, tail: Empty }
+           sources: module_binding_sources_without_imports(
+             roots: Cons { head: xl0_consumer_root, tail: Empty }
+           )
          )
        )
 }

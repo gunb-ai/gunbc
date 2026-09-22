@@ -12,7 +12,7 @@ fn governed_witness_dummy_entry() -> ParseMemoEntry {
 }
 
 fn parse_table_recompute_fixture() -> ParseTable {
-  let base = parse_table_empty()
+  let base = parse_table_empty(materialization: Memoize)
   ParseTableRealization {
     artifact_kind: base.artifact_kind,
     provider_id: base.provider_id,
@@ -31,7 +31,7 @@ fn parse_table_recompute_fixture() -> ParseTable {
 }
 
 fn parse_table_memoize_fixture() -> ParseTable {
-  let base = parse_table_empty()
+  let base = parse_table_empty(materialization: Memoize)
   ParseTableRealization {
     artifact_kind: base.artifact_kind,
     provider_id: base.provider_id,

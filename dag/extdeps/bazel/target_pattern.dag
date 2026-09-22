@@ -141,6 +141,47 @@ fn target_pattern_matches(pattern: TargetPattern, target: Label) -> Bool {
   }
 }
 
+// THE PACKAGE A PATTERN IS ROOTED AT. All three forms name one, and the single form's is its
+// label's; carrying that here keeps the containment below from re-deciding which field holds it.
+fn target_pattern_package(pattern: TargetPattern) -> PackageName {
+  match pattern {
+    SingleTarget { label } => label.package
+    PackageTargets { package } => package
+    SubtreeTargets { package } => package
+  }
+}
+
+// PATTERN CONTAINMENT: every target `inner` denotes is denoted by `outer`. This is the cited
+// authority's own set semantics over the three forms it admits, asked as a relation between two
+// patterns rather than between a pattern and a target -- `target_pattern_matches` answers the
+// latter and this answers the former, so a caller that must decide WHICH universe an operand
+// belongs to before any universe is derived has an authority to ask (gunbc.target_invocation).
+//
+// THE SUBTREE ARM IS THE ONLY ONE THAT WIDENS. `//a/b/...` contains every form rooted at or under
+// `a/b`, which is exactly `package_within`. A PACKAGE outer contains only forms rooted at that
+// same package, and a SUBTREE inner is NOT among them: a subtree reaches sub-packages the package
+// form does not, and whether any sub-package exists is a fact about a corpus this module does not
+// read. Answering `false` there refuses to claim containment it cannot establish, which is the
+// direction that costs a caller a refusal rather than a wrongly widened route.
+fn target_pattern_within(inner: TargetPattern, outer: TargetPattern) -> Bool {
+  match outer {
+    SubtreeTargets { package } =>
+      package_within(a: target_pattern_package(pattern: inner), b: package)
+    PackageTargets { package } =>
+      match inner {
+        SingleTarget { label } => package_eq(a: label.package, b: package)
+        PackageTargets { package: inner_package } => package_eq(a: inner_package, b: package)
+        SubtreeTargets { package: _ } => false
+      }
+    SingleTarget { label } =>
+      match inner {
+        SingleTarget { label: inner_label } => label_eq(a: inner_label, b: label)
+        PackageTargets { package: _ } => false
+        SubtreeTargets { package: _ } => false
+      }
+  }
+}
+
 fn render_target_pattern(pattern: TargetPattern) -> String {
   match pattern {
     SingleTarget { label } => extdeps.bazel.label.render_label(l: label)
