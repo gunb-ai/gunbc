@@ -595,6 +595,71 @@ data webhook_events_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data app_permissions_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/authentication/permissions-required-for-github-apps"
+  }
+}
+
+// NOT EVERY AXIS ADMITS EVERY ACCESS LEVEL, AND THE MANIFEST VALIDATOR UPSTREAM REFUSES THE PAIRS
+// THAT DO NOT. This module carried the axis and the access as two independent coproducts, so a
+// GitHubAppPermission could spell `workflows: read` -- and the census manifest did, and GitHub's
+// registration page refused the whole manifest with "Default permission records resource
+// (workflows) is a write-only permission" (2026-09-22, the first live submission). That refusal is
+// the grounding for the workflows row; the metadata row is the documented one (app_permissions_citation:
+// metadata admits read only, and every App holds it). Every other axis admits both levels per the
+// same table. administration additionally documents an `admin` level this module's access type
+// does not spell; that is a partiality of GitHubAppPermissionAccess, not of this table.
+fn permission_axis_admitted_accesses(axis: GitHubPermissionAxis) -> List<GitHubAppPermissionAccess> {
+  match axis {
+    MetadataAxis => [AppAccessRead]
+    WorkflowsAxis => [AppAccessWrite]
+    ActionsAxis => [AppAccessRead, AppAccessWrite]
+    ArtifactMetadataAxis => [AppAccessRead, AppAccessWrite]
+    AttestationsAxis => [AppAccessRead, AppAccessWrite]
+    ChecksAxis => [AppAccessRead, AppAccessWrite]
+    CodeQualityAxis => [AppAccessRead, AppAccessWrite]
+    ContentsAxis => [AppAccessRead, AppAccessWrite]
+    DeploymentsAxis => [AppAccessRead, AppAccessWrite]
+    DiscussionsAxis => [AppAccessRead, AppAccessWrite]
+    IdTokenAxis => [AppAccessRead, AppAccessWrite]
+    IssuesAxis => [AppAccessRead, AppAccessWrite]
+    ModelsAxis => [AppAccessRead, AppAccessWrite]
+    PackagesAxis => [AppAccessRead, AppAccessWrite]
+    PagesAxis => [AppAccessRead, AppAccessWrite]
+    PullRequestsAxis => [AppAccessRead, AppAccessWrite]
+    RepositoryProjectsAxis => [AppAccessRead, AppAccessWrite]
+    SecurityEventsAxis => [AppAccessRead, AppAccessWrite]
+    StatusesAxis => [AppAccessRead, AppAccessWrite]
+    VulnerabilityAlertsAxis => [AppAccessRead, AppAccessWrite]
+    AdministrationAxis => [AppAccessRead, AppAccessWrite]
+    OrganizationSelfHostedRunnersAxis => [AppAccessRead, AppAccessWrite]
+  }
+}
+
+fn permission_axis_admits_access(axis: GitHubPermissionAxis, access: GitHubAppPermissionAccess) -> Bool {
+  fold_list(
+    xs: permission_axis_admitted_accesses(axis: axis),
+    empty: false,
+    cons: fn(found, a) { found || a == access }
+  )
+}
+
+fn first_permission_not_admitted(perms: List<GitHubAppPermission>) -> GitHubAppPermission? {
+  fold_list(
+    xs: perms,
+    empty: none,
+    cons: fn(found, p) {
+      match found {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if permission_axis_admits_access(axis: p.name, access: p.access) { none } else { Present { value: p } }
+      }
+    }
+  )
+}
+
 // ACCESS HAS A WIRE SPELLING AND THIS MODULE DID NOT CARRY IT. permission_access_rank ordered the
 // two arms for the narrowing check, which is a different question from what GitHub writes in a
 // default_permissions object; a caller rendering a manifest would otherwise spell "read" itself,
@@ -699,6 +764,54 @@ data all_modeled_webhook_events: List<GitHubWebhookEvent> = [
   WebhookWorkflowJob, WebhookRepository, WebhookPublic
 ]
 
+// AN APP'S OWN LIFECYCLE EVENTS ARE NOT A SUBSCRIPTION. GitHub delivers `installation` and
+// `installation_repositories` to the App they concern without the App asking, so a manifest that
+// lists them under default_events is refused upstream -- measured on the first live submission of
+// the census manifest (2026-09-22): "Default events unsupported: installation and
+// installation_repositories" and "Default events are not supported by permissions". The coproduct
+// keeps those arms because the READ side (an installation's events list, a public App record) still
+// spells them; what is closed here is the WRITE side, by admission below. Only the two arms GitHub
+// refused are classified DeliveredToEveryApp: installation_target and meta are plausibly in the
+// same class and are deliberately NOT asserted so (DESIGN 4d: a plausible inference typed as a
+// fact is the defect), so a manifest naming them reaches GitHub and is judged there.
+type WebhookEventSubscribability
+  = SubscribableByManifest
+  | DeliveredToEveryApp
+
+fn webhook_event_subscribability(event: GitHubWebhookEvent) -> WebhookEventSubscribability {
+  match event {
+    WebhookInstallation => DeliveredToEveryApp
+    WebhookInstallationRepositories => DeliveredToEveryApp
+    WebhookInstallationTarget => SubscribableByManifest
+    WebhookMeta => SubscribableByManifest
+    WebhookPush => SubscribableByManifest
+    WebhookPullRequest => SubscribableByManifest
+    WebhookCheckRun => SubscribableByManifest
+    WebhookCheckSuite => SubscribableByManifest
+    WebhookWorkflowRun => SubscribableByManifest
+    WebhookWorkflowJob => SubscribableByManifest
+    WebhookRepository => SubscribableByManifest
+    WebhookPublic => SubscribableByManifest
+  }
+}
+
+fn first_event_not_subscribable(events: List<GitHubWebhookEvent>) -> GitHubWebhookEvent? {
+  fold_list(
+    xs: events,
+    empty: none,
+    cons: fn(found, e) {
+      match found {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          match webhook_event_subscribability(event: e) {
+            SubscribableByManifest => none
+            DeliveredToEveryApp => Present { value: e }
+          }
+      }
+    }
+  )
+}
+
 fn webhook_event_wire_name(event: GitHubWebhookEvent) -> NonEmptyStr {
   match event {
     WebhookInstallation => "installation"
@@ -786,15 +899,30 @@ type GitHubAppManifestAdmission
   = ManifestAdmitted { manifest: GitHubAppManifest }
   | ManifestDuplicatePermission { axis: GitHubPermissionAxis }
   | ManifestDuplicateEvent { event: GitHubWebhookEvent }
+  | ManifestAccessNotAdmittedOnAxis { axis: GitHubPermissionAxis, access: GitHubAppPermissionAccess }
+  | ManifestEventNotSubscribable { event: GitHubWebhookEvent }
 
-
+// ADMISSION IS WHERE THE UPSTREAM VALIDATOR'S RULES ARE APPLIED BEFORE THE HUMAN CARRIES THE
+// DOCUMENT TO IT. A manifest the browser POST will be refused on is refused here, typed and
+// located, so the operator is never handed a form whose only outcome is GitHub's error page. The
+// rung is mechanically-preventable, not structural: GitHubAppPermission and default_events are
+// still writable with the refused pairs because the same carriers serve the READ side, where
+// `workflows: write` and an installation event are legitimate observations.
 fn admit_app_manifest(m: GitHubAppManifest) -> GitHubAppManifestAdmission {
   match first_duplicated_permission(perms: m.default_permissions) {
     Present { value: dup } => ManifestDuplicatePermission { axis: dup.name }
     Absent =>
-      match first_duplicated_event(events: m.default_events) {
-        Present { value: e } => ManifestDuplicateEvent { event: e }
-        Absent => ManifestAdmitted { manifest: m }
+      match first_permission_not_admitted(perms: m.default_permissions) {
+        Present { value: p } => ManifestAccessNotAdmittedOnAxis { axis: p.name, access: p.access }
+        Absent =>
+          match first_duplicated_event(events: m.default_events) {
+            Present { value: e } => ManifestDuplicateEvent { event: e }
+            Absent =>
+              match first_event_not_subscribable(events: m.default_events) {
+                Present { value: e } => ManifestEventNotSubscribable { event: e }
+                Absent => ManifestAdmitted { manifest: m }
+              }
+          }
       }
   }
 }
@@ -879,6 +1007,10 @@ fn render_app_manifest(m: GitHubAppManifest) -> RenderedAppManifest {
       AppManifestNotRenderable { admission: ManifestDuplicatePermission { axis: a } }
     ManifestDuplicateEvent { event: e } =>
       AppManifestNotRenderable { admission: ManifestDuplicateEvent { event: e } }
+    ManifestAccessNotAdmittedOnAxis { axis: a, access: ac } =>
+      AppManifestNotRenderable { admission: ManifestAccessNotAdmittedOnAxis { axis: a, access: ac } }
+    ManifestEventNotSubscribable { event: e } =>
+      AppManifestNotRenderable { admission: ManifestEventNotSubscribable { event: e } }
   }
 }
 

@@ -42,7 +42,6 @@ import extdeps.github.app {
   MetadataAxis,
   PullRequestsAxis,
   ChecksAxis,
-  WorkflowsAxis,
   ObservedGitHubPermission,
   observed_access_for,
   permission_access_at_least,
@@ -52,7 +51,6 @@ import extdeps.github.app {
   GitHubAppHookAttributes,
   AppPublic,
   GitHubWebhookEvent,
-  WebhookInstallation,
   WebhookInstallationRepositories,
   webhook_event_wire_name,
   webhook_event_from_wire,
@@ -128,26 +126,27 @@ import extdeps.transports.rest {
 
 // THE APP'S SHAPE, DECLARED ONCE. Each permission is here because a specific census read needs it,
 // and the set is what makes an installation worth having: an installation multiplies this fleet's
-// GitHub API budget, and it grants exactly these axes and no more.
+// GitHub API budget, and it grants exactly these axes and no more. There is no workflows axis:
+// workflow RUNS are read under actions and workflow FILES under contents, and `workflows` is a
+// write-only axis upstream (extdeps.github.app permission_axis_admitted_accesses) -- the first live
+// submission of this manifest was refused on exactly that row.
 data census_app_permissions: List<GitHubAppPermission> = [
   GitHubAppPermission { name: MetadataAxis, access: AppAccessRead },
   GitHubAppPermission { name: ContentsAxis, access: AppAccessRead },
   GitHubAppPermission { name: IssuesAxis, access: AppAccessRead },
   GitHubAppPermission { name: PullRequestsAxis, access: AppAccessRead },
   GitHubAppPermission { name: ChecksAxis, access: AppAccessRead },
-  GitHubAppPermission { name: ActionsAxis, access: AppAccessRead },
-  GitHubAppPermission { name: WorkflowsAxis, access: AppAccessRead }
+  GitHubAppPermission { name: ActionsAxis, access: AppAccessRead }
 ]
 
-// THE EVENTS THAT ARE WORTH RECEIVING ARE THE ONES THAT CHANGE THE BUDGET. An installation appearing
-// or its repository selection changing is the only thing about this App that we do not learn by
-// polling, so those two are the subscription and nothing else is. hook_attributes.active is false
-// because no receiver exists yet: the manifest schema REQUIRES a hook URL, so the switch is what
-// carries "nothing listens here" honestly rather than an omitted field.
-data census_app_default_events: List<GitHubWebhookEvent> = [
-  WebhookInstallation,
-  WebhookInstallationRepositories
-]
+// THE EVENTS WORTH RECEIVING ARE THE ONES THAT CHANGE THE BUDGET -- an installation appearing or
+// its repository selection changing -- and GitHub delivers those to every App without a
+// subscription (extdeps.github.app webhook_event_subscribability), so the subscription is EMPTY:
+// listing them here is refused upstream, and nothing else about this App is worth a webhook.
+// hook_attributes.active is false because no receiver exists yet: the manifest schema REQUIRES a
+// hook URL, so the switch is what carries "nothing listens here" honestly rather than an omitted
+// field.
+data census_app_default_events: List<GitHubWebhookEvent> = []
 
 // THE NAME IS THE IDENTITY, AND IT IS A CONSTANT. GitHub App names are unique across GitHub, so a
 // second registration under this name is refused upstream - which is the only reason a duplicate

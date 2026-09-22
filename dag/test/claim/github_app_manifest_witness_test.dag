@@ -48,9 +48,11 @@ import extdeps.github.app {
   AppPrivateToOwner,
   app_visibility_wire_bool,
   GitHubWebhookEvent,
-  WebhookInstallation,
   WebhookInstallationRepositories,
   WebhookPush,
+  WebhookCheckRun,
+  MetadataAxis,
+  WorkflowsAxis,
   webhook_event_wire_name,
   webhook_event_from_wire,
   permission_access_wire_name,
@@ -62,6 +64,8 @@ import extdeps.github.app {
   ManifestAdmitted,
   ManifestDuplicatePermission,
   ManifestDuplicateEvent,
+  ManifestAccessNotAdmittedOnAxis,
+  ManifestEventNotSubscribable,
   admit_app_manifest,
   AppManifestRendered,
   AppManifestNotRenderable,
@@ -237,10 +241,11 @@ data declared_permission_wire_map: Map<String, String> = {
   "pull_requests": "read",
   "checks": "read",
   "actions": "read",
-  "workflows": "read",
 }
 
-data declared_event_wire_list: List<String> = ["installation", "installation_repositories"]
+// EMPTY BECAUSE THE SUBSCRIPTION IS EMPTY: the installation events GitHub delivers unconditionally
+// are not listed on the public record's events, and the census manifest subscribes to nothing else.
+data declared_event_wire_list: List<String> = []
 
 data census_slug: NonEmptyStr = "gunbc-global-census"
 
@@ -280,7 +285,9 @@ test fn w_manifest_renders_every_declared_permission_at_its_wire_name() -> Bool 
       string_contains(s: d, pattern: "\"default_permissions\": {")
         && string_contains(s: d, pattern: "\"metadata\": \"read\"")
         && string_contains(s: d, pattern: "\"pull_requests\": \"read\"")
-        && string_contains(s: d, pattern: "\"workflows\": \"read\"")
+        && string_contains(s: d, pattern: "\"actions\": \"read\"")
+        && !string_contains(s: d, pattern: "\"workflows\"")
+        && string_contains(s: d, pattern: "\"default_events\": []")
         && !string_contains(s: d, pattern: "\"administration\"")
         && !string_contains(s: d, pattern: "\"write\"")
   }
@@ -292,7 +299,7 @@ test fn w_manifest_renders_hook_events_visibility_and_redirect() -> Bool {
     AppManifestRendered { document: d } =>
       string_contains(s: d, pattern: "\"name\": \"gunbc-global-census\"")
         && string_contains(s: d, pattern: "\"hook_attributes\": {\"url\": \"https://github.com/gunb-ai/gunbc/blob/main/DESIGN.md\", \"active\": false}")
-        && string_contains(s: d, pattern: "\"default_events\": [\"installation\", \"installation_repositories\"]")
+        && string_contains(s: d, pattern: "\"default_events\": []")
         && string_contains(s: d, pattern: "\"public\": true")
         && string_contains(s: d, pattern: "\"redirect_url\": \"https://gunb.ai/github-app-manifest-return\"")
         && !string_contains(s: d, pattern: "\"setup_url\"")
@@ -358,14 +365,65 @@ test fn w_manifest_refuses_a_duplicated_permission_axis() -> Bool {
     ManifestDuplicatePermission { axis: a } => a == ContentsAxis
     ManifestAdmitted { manifest: _ } => false
     ManifestDuplicateEvent { event: _ } => false
+    ManifestAccessNotAdmittedOnAxis { axis: _, access: _ } => false
+    ManifestEventNotSubscribable { event: _ } => false
   }
 }
 
 test fn w_manifest_refuses_a_duplicated_event() -> Bool {
-  match admit_app_manifest(m: manifest_with_events(events: [WebhookInstallation, WebhookPush, WebhookInstallation])) {
-    ManifestDuplicateEvent { event: e } => e == WebhookInstallation
+  match admit_app_manifest(m: manifest_with_events(events: [WebhookPush, WebhookCheckRun, WebhookPush])) {
+    ManifestDuplicateEvent { event: e } => e == WebhookPush
     ManifestAdmitted { manifest: _ } => false
     ManifestDuplicatePermission { axis: _ } => false
+    ManifestAccessNotAdmittedOnAxis { axis: _, access: _ } => false
+    ManifestEventNotSubscribable { event: _ } => false
+  }
+}
+
+// THE TWO REFUSALS GITHUB RETURNED ON THE FIRST LIVE SUBMISSION, reproduced over the pure fold so
+// the operator is never handed that form again. Each is the exact pair the census manifest carried.
+test fn w_manifest_refuses_read_on_the_write_only_workflows_axis() -> Bool {
+  match admit_app_manifest(m: manifest_with_permissions(perms: [
+    GitHubAppPermission { name: MetadataAxis, access: AppAccessRead },
+    GitHubAppPermission { name: WorkflowsAxis, access: AppAccessRead },
+  ])) {
+    ManifestAccessNotAdmittedOnAxis { axis: a, access: ac } => a == WorkflowsAxis && ac == AppAccessRead
+    ManifestAdmitted { manifest: _ } => false
+    ManifestDuplicatePermission { axis: _ } => false
+    ManifestDuplicateEvent { event: _ } => false
+    ManifestEventNotSubscribable { event: _ } => false
+  }
+}
+
+test fn w_manifest_admits_write_on_workflows_and_refuses_write_on_metadata() -> Bool {
+  let write_ok = match admit_app_manifest(m: manifest_with_permissions(perms: [
+    GitHubAppPermission { name: WorkflowsAxis, access: AppAccessWrite },
+  ])) {
+    ManifestAdmitted { manifest: _ } => true
+    ManifestDuplicatePermission { axis: _ } => false
+    ManifestDuplicateEvent { event: _ } => false
+    ManifestAccessNotAdmittedOnAxis { axis: _, access: _ } => false
+    ManifestEventNotSubscribable { event: _ } => false
+  }
+  let metadata_write_refused = match admit_app_manifest(m: manifest_with_permissions(perms: [
+    GitHubAppPermission { name: MetadataAxis, access: AppAccessWrite },
+  ])) {
+    ManifestAccessNotAdmittedOnAxis { axis: a, access: ac } => a == MetadataAxis && ac == AppAccessWrite
+    ManifestAdmitted { manifest: _ } => false
+    ManifestDuplicatePermission { axis: _ } => false
+    ManifestDuplicateEvent { event: _ } => false
+    ManifestEventNotSubscribable { event: _ } => false
+  }
+  write_ok && metadata_write_refused
+}
+
+test fn w_manifest_refuses_an_installation_event_as_a_subscription() -> Bool {
+  match admit_app_manifest(m: manifest_with_events(events: [WebhookPush, WebhookInstallationRepositories])) {
+    ManifestEventNotSubscribable { event: e } => e == WebhookInstallationRepositories
+    ManifestAdmitted { manifest: _ } => false
+    ManifestDuplicatePermission { axis: _ } => false
+    ManifestDuplicateEvent { event: _ } => false
+    ManifestAccessNotAdmittedOnAxis { axis: _, access: _ } => false
   }
 }
 
@@ -1193,7 +1251,7 @@ test fn w_permission_map_decode_refuses_an_unreadable_access() -> Bool {
 test fn w_permission_map_decode_reads_every_declared_axis() -> Bool {
   match observed_permissions_from_wire_map(m: declared_permission_wire_map) {
     ObservedPermissionsDecoded { permissions: ps } =>
-      (count(ps) == 7)
+      (count(ps) == count(census_app_permissions))
         && match permission_agreement(declared: census_app_permissions, observed: ps) {
           PermissionsAgree => true
           PermissionAxisMissing { axis: _ } => false
@@ -1245,11 +1303,19 @@ test fn w_webhook_event_round_trips_and_refuses_an_unmodeled_event() -> Bool {
   }
 }
 
+// THE CENSUS SUBSCRIPTION IS EMPTY, SO ITS AGREEMENT CANNOT DISAGREE; the fold is exercised over a
+// SUPPLIED declared list (DESIGN 3, a witness discriminates at one interface), and the census row
+// is asserted to agree with an empty observation, which is the live shape.
 test fn w_event_agreement_flags_a_missing_subscription() -> Bool {
-  match event_agreement(declared: census_app_default_events, observed: ["installation"]) {
-    EventNotSubscribed { event: e } => e == WebhookInstallationRepositories
+  let supplied = match event_agreement(declared: [WebhookPush, WebhookCheckRun], observed: ["push"]) {
+    EventNotSubscribed { event: e } => e == WebhookCheckRun
     EventsAgree => false
   }
+  let census = match event_agreement(declared: census_app_default_events, observed: []) {
+    EventNotSubscribed { event: _ } => false
+    EventsAgree => true
+  }
+  supplied && census
 }
 
 test fn w_visibility_folds_to_the_wire_bool_in_both_directions() -> Bool {
@@ -1364,7 +1430,7 @@ test fn w_permission_drift_on_a_live_app_refuses_and_says_why() -> Bool {
     observation: AppRecordObserved {
       record: public_record(
         slug: "gunbc-global-census",
-        permissions: { "metadata": "read", "contents": "read", "issues": "read", "pull_requests": "read", "checks": "read", "actions": "read" },
+        permissions: { "metadata": "read", "contents": "read", "issues": "read", "pull_requests": "read", "checks": "read" },
         events: declared_event_wire_list,
       )
     },
@@ -1373,30 +1439,8 @@ test fn w_permission_drift_on_a_live_app_refuses_and_says_why() -> Bool {
   match classified.decision {
     Refuse { reason: r } =>
       (classified.verdict == Drifted)
-        && string_contains(s: r as String, pattern: "does not hold declared permission workflows")
+        && string_contains(s: r as String, pattern: "does not hold declared permission actions")
         && string_contains(s: r as String, pattern: "cannot edit one")
-    Apply { plan: _ } => false
-    Noop => false
-  }
-}
-
-test fn w_event_drift_on_a_live_app_refuses() -> Bool {
-  let classified = classify_census_app(
-    policy: EnsureMayApply,
-    record: acquired_record,
-    observation: AppRecordObserved {
-      record: public_record(
-        slug: "gunbc-global-census",
-        permissions: declared_permission_wire_map,
-        events: ["installation"],
-      )
-    },
-    code: none,
-  )
-  match classified.decision {
-    Refuse { reason: r } =>
-      (classified.verdict == Drifted)
-        && string_contains(s: r as String, pattern: "installation_repositories")
     Apply { plan: _ } => false
     Noop => false
   }
@@ -1678,7 +1722,7 @@ test fn w_installation_decode_reads_selection_permissions_and_url() -> Bool {
       (i.installation_id.value == 77)
         && (i.app_id.value == 4242)
         && (i.repository_selection == SelectionSelected)
-        && (count(i.permissions) == 7)
+        && (count(i.permissions) == count(census_app_permissions))
         && ((i.html_url.locator as String) == "github.com/settings/installations/77")
     InstallationSelectionUnreadable { raw: _ } => false
     InstallationPermissionsUnreadable { decode: _ } => false
