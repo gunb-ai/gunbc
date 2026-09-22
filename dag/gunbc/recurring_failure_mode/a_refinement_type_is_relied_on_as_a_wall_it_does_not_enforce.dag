@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.a_refinement_type_is_relied_on_as_a_wall_it_does_not_enforce
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_refinement_type_is_relied_on_as_a_wall_it_does_not_enforce: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_refinement_type_is_relied_on_as_a_wall_it_does_not_enforce" as NonEmptyStr,
+
+  receipts: [
+    "CANDIDATE ROW, FILED AT THE EVIDENCE LEVEL OF ONE OBSERVATION AND NO HIGHER. The invalid state is a refinement type -- a name that asserts a predicate over its inhabitants -- whose cast does not enforce that predicate, while consumers downstream read the name as a guarantee. DESIGN section 4b names this directly: richer type names are not safety, and a brand, wrapper or Validated<T> is cosmetic until CONSTRUCTION AND ACCEPTANCE enforce the distinction. This row is the executed instance of that sentence rather than a new claim.",
+
+    "WHAT WAS OBSERVED, AND IT IS EXACTLY ONE CAST. 2026-09-22, while building the emission-path differential (gunbc.emission_differential_run): the expression `\"\" as NonEmptyStr` DID NOT REFUSE under the interpreter. An empty String was cast to NonEmptyStr and flowed on as `ProducedValue { digest: .. }`, a field whose declared type asserts non-emptiness. The comparison then classified correctly and the run produced its intended located refusal, so nothing downstream misbehaved -- the type simply did not hold the line its name states.",
+
+    "THE PRECISE SCOPE OF THE CLAIM, BECAUSE OVERSTATING IT WOULD MAKE THIS ROW WORTHLESS. Established: ONE cast of the empty string to NonEmptyStr did not refuse, on the interpreter route, at this revision. NOT established: that the emission route behaves the same way, that other refinement types behave the same way, that any consumer is currently harmed, or how large the affected population is. A count was not taken and is not asserted. The population question is the open question this row exists to pose, not one it answers.",
+
+    "WHY THIS CLASS SURVIVES, WHICH IS THE ONLY GENERALIZABLE PART. The finding lane NEEDED the unenforced behaviour: an emission-path differential must be able to represent 'the route produced the empty string', because the broken lowering it exists to catch ANSWERS the empty string, and a refusal at the cast would have turned a detected defect into an instrument failure. So the first consumer to encounter the gap benefited from it and had every incentive to leave it unexamined. A wall that is only ever noticed by the consumers it inconveniences will be noticed late, and the consumer who is helped by its absence is the one who must file it.",
+
+    "THE HONEST OPEN QUESTION, NAMED AS THE CAPABILITY AND NOT AS AN ARTIFACT: WHERE ELSE IS A REFINEMENT TYPE RELIED ON AS A WALL? Answering it needs a census of refinement-typed declarations joined against which of their casts are enforced at construction and at acceptance, on BOTH routes -- source-to-interpretation and source-to-each-emission-target, which DESIGN section 4b(1) makes independently different paths whose minimum is the class's rung. Until that census exists, any rung claimed for a refinement type is claimed from its NAME, which is what this row is the receipt for being insufficient.",
+
+    "RUNG FOUND AT: outside the ladder for the cast observed, since the invalid state was writable, accepted and silent, with no diagnostic. ATTAINABLE CEILING: not derived here. Deriving it requires knowing whether refinement predicates are decidable at construction for the corpus's refinement types, which is the census above; asserting a ceiling without it would be the rung inflation DESIGN section 4b(1) forbids.",
+
+    "NOT STAFFED BY THE FINDING LANE, BY RULING (snappy-deer-443, 2026-09-22). The subject is refinement enforcement, not emission differential, and a lane that widened its own change to cover it would be trading a located finding for an unbounded one. Filed with what was observed and nothing more.",
+  ],
+
+  evidence: [],
+}

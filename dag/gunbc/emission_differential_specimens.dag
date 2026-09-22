@@ -235,3 +235,40 @@ data emission_differential_recipe: NonEmptyStr = "1. Build the compiler whose em
 // BROKEN two-way lowering. Same source, same command, opposite artifacts, and only the second is
 // evidence about the stated revision.
 data emission_differential_attribution_step_note: NonEmptyStr = "Both emissions of this specimen were taken from one source text with the same command. The shared prebuilt compiler emitted the repaired three-way lowering; a compiler built from the revision under judgment emitted the broken two-way lowering. The artifact does not carry its producer's identity, so the producer must be built and named by the run that reads it." as NonEmptyStr
+
+// DECLARED FRONTIER: THE DISCRIMINATING INPUT BELONGS IN THE SUBJECT IDENTITY.
+//
+// gunbc.semantic_conformance BehaviorSubjectIdentity is (retained_consumer, facet). It carries no
+// INPUT axis, so two inputs of one consumer and one facet are two subjects with the SAME identity
+// and different expectations -- which subjects_conflict correctly reports as
+// SemanticAuthorityConflict. That refusal is right and it is not the defect; the consequence is that
+// one subject carries one input's expectation, which is why THIS increment binds ONE executed row
+// and carries the other enrolled rows as data rather than claiming coverage for all three.
+//
+// THIS IS A CONSEQUENCE OF AN EXISTING PRECEDENT, NOT A SPECIAL REQUEST, and naming the precedent is
+// the difference between a trigger that gets built and one that gets read. v2.compiler.effect_demand
+// EffectDemandKey puts the EXECUTION AXES IN THE KEY -- mode: ExecutionMode and subject:
+// EffectDemandSubject -- on exactly this reasoning, stated in its own annotation: NativeV2Wet and
+// NativeV2HermeticReplay are "the SAME disposition asked of two different keys, so they are one arm
+// here and the mode lives in the key". The same module records the failure that follows from leaving
+// such an axis out on one side only: a bare native claim "admitted a realization from ANY runtime as
+// proof of a native claim", because the realization key carried a runtime the demand side never
+// compared. Its repair is the sentence this frontier reuses one axis over -- a demand is satisfied by
+// a realization THE PROGRAM ACTUALLY LINKS, so the linked runtime is part of the claim rather than a
+// field beside it.
+//
+// TRANSPOSED TO CONFORMANCE: a conformance claim is satisfied by an observation of THE INPUT
+// ACTUALLY EXERCISED, so the discriminating input is part of the subject identity rather than a field
+// beside it. Without that axis, a claim measured on a NON-DISCRIMINATING input -- list_init([]) or
+// list_init([1]) above, both of which the broken realization answers correctly -- is indistinguishable
+// at identity grain from a claim measured on a discriminating one, and can be spent as coverage of
+// it. That is the same axis-only-load-bearing-on-one-side defect, and it is why the two rejected rows
+// are carried here with their reasons instead of omitted: today the separation is carried by this
+// module's own vocabulary and read by a human, not by the identity.
+//
+// TRIGGER, NAMED AS THE CAPABILITY: an input axis on BehaviorSubjectIdentity sufficient that two
+// inputs of one consumer and facet are two distinct subjects with independently judged records, and
+// that a record's identity states which input was exercised. NOT BUILT HERE, by ruling
+// (snappy-deer-443, 2026-09-22): it is a change to a load-bearing carrier serving a wider population
+// than this specimen, and it is recorded as a frontier rather than taken.
+data emission_differential_input_axis_frontier: NonEmptyStr = "BehaviorSubjectIdentity is (retained_consumer, facet) with no input axis, so one subject carries one input's expectation and a claim measured on a non-discriminating input is indistinguishable at identity grain from one measured on a discriminating input. The precedent is v2.compiler.effect_demand EffectDemandKey, which carries mode and subject in the key for the same reason and records the axis-only-load-bearing-on-one-side defect that follows from omitting such an axis. Trigger: an input axis on BehaviorSubjectIdentity sufficient that two inputs of one consumer and facet are two independently judged subjects." as NonEmptyStr
