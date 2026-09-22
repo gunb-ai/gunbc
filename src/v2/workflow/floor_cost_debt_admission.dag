@@ -42,9 +42,11 @@ type FloorCostDebtTypedAdmission {
 // live reading and must be deleted, which is the whole point of carrying no figure here. The
 // measurement that established each row is the merge-queue required floor run 35678328407 of
 // gunbc#11981 and the PR floor run that follows it, artifact required-ci-measurement-receipt,
-// enrolment-margin lines. Two SHA-384 single-block vectors are deliberately ABSENT: they measured
-// inside the gate's coin-flip band rather than decisively above the per-subject line, so they left
-// the floor instead of being admitted here.
+// enrolment-margin lines. The three published SHA-384 vectors are ONE identity here, not three
+// (review 69978): split, each single-block vector measured inside the gate's coin-flip band rather
+// than decisively above the per-subject line, so no per-vector admission is stable. Folded, the
+// claim bills their sum, which is necessarily above the line, and one admission covers it -- which
+// is what keeps the empty-message padding path executing instead of demoted off the floor.
 fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
   [
   FloorCostDebtTypedAdmission {
@@ -72,8 +74,8 @@ fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
     reason: "the seed interpreter evaluates one Jacobian doubling and one projective curve-equation check as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
   },
   FloorCostDebtTypedAdmission {
-    identity: "test.claim.sha384_fips_witness_test.sha384_of_the_896_bit_message_is_the_published_two_block_value",
-    reason: "the seed interpreter evaluates one two-block SHA-384 over the published FIPS 180-2 vector as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+    identity: "test.claim.sha384_fips_witness_test.sha384_reproduces_the_published_fips_180_2_vectors",
+    reason: "the seed interpreter evaluates the three published FIPS 180-2 SHA-384 vectors -- the empty message, one single block and one two-block message -- as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
   },
   FloorCostDebtTypedAdmission {
     identity: "test.claim.sha384_fips_witness_test.sha384_of_a_one_octet_change_is_a_different_digest",

@@ -115,9 +115,10 @@ data floor_eval_step_cost_drop_page_style_rows: List<EvalStepCostDropMeasurement
 
 // FIFTH DROP, SAME MEMBERSHIP TEST: the interpreted-crypto claims of the App Attest path
 // (`gunbc.rung_drop` `app_attest_interpreted_crypto_new_witness_eval_step_cost`). Eight identities:
-// four P-384 point checks over real Apple keys, two group-law closure checks, and the two SHA-384
-// FIPS vectors that clear the enrolment margin -- the two single-block published vectors do not,
-// and left the floor with the signature verifications rather than being declared here. Each is ONE
+// four P-384 point checks over real Apple keys, two group-law closure checks, the folded published
+// SHA-384 FIPS vectors and the SHA-384 discriminating red. The three published vectors are ONE
+// identity because split they land in the gate's coin-flip band (review 69978); folded they bill
+// their sum and clear the per-subject line decisively. Each is ONE
 // curve or hash evaluation with no repeated demand to remove -- the cost is 16-limb bignat arithmetic
 // and a 64-bit hash pipeline executed on an interpreter that reifies no machine width, so the
 // budget is exceeded by the primitive's realization and not by the claim's shape. They stay on
@@ -143,8 +144,8 @@ data floor_eval_step_cost_drop_interpreted_crypto_rows: List<EvalStepCostDropMea
     measured_by: "merge-queue required floor run 35678328407 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, wall under 2000ms, over the new-witness eval-step budget: the billed work is interpreted 384-bit field arithmetic (16 limbs) or a SHA-384 block over Word64 pairs" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
-    identity: "test.claim.sha384_fips_witness_test.sha384_of_the_896_bit_message_is_the_published_two_block_value" as NonEmptyStr,
-    measured_by: "merge-queue required floor run 35678328407 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, wall under 2000ms, over the new-witness eval-step budget: the billed work is interpreted 384-bit field arithmetic (16 limbs) or a SHA-384 block over Word64 pairs" as NonEmptyStr,
+    identity: "test.claim.sha384_fips_witness_test.sha384_reproduces_the_published_fips_180_2_vectors" as NonEmptyStr,
+    measured_by: "merge-queue required floor run 35678328407 and PR floor run 35689521635 (gunbc#11981), artifact required-ci-measurement-receipt, enrolment-margin lines: those runs measured the three published vectors as SEPARATE identities, two of them inside the coin-flip band at the per-subject line. This row is the FOLDED identity that replaced them (review 69978); it is not a reading copied from those runs but their sum, which is above the line by construction because each summand was measured at or above it. The PR floor run on this head is what confirms the folded figure; the billed work is three SHA-384 message schedules over Word64 pairs on an interpreter that reifies no machine width" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.sha384_fips_witness_test.sha384_of_a_one_octet_change_is_a_different_digest" as NonEmptyStr,
