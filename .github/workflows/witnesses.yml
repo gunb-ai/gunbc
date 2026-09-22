@@ -430,7 +430,7 @@ jobs:
       - name: Every required lane must have succeeded
         run: |
           echo "required lanes: compiler=$COMPILER clippy=$CLIPPY floor=$FLOOR (same_repo=$SAME_REPO)"
-          if [ "$COMPILER" = failure ] || [ "$CLIPPY" = failure ] || [ "$FLOOR" = failure ]; then echo "::error::a required lane concluded failure (compiler=$COMPILER clippy=$CLIPPY) - open that job's log" >&2; exit 1; fi
+          if [ "$COMPILER" = failure ] || [ "$CLIPPY" = failure ] || [ "$FLOOR" = failure ]; then echo "::error::a required lane concluded failure (compiler=$COMPILER clippy=$CLIPPY floor=$FLOOR) - open that job's log" >&2; exit 1; fi
           if [ "$COMPILER" != success ] || [ "$CLIPPY" != success ]; then echo "::error::a required lane produced no conclusion of its own, so this head is unobserved rather than failed (compiler=$COMPILER clippy=$CLIPPY)" >&2; exit 1; fi
           if [ "$FLOOR" != success ]; then if [ "$SAME_REPO" = false ] && [ "$FLOOR" = skipped ]; then echo "::notice::the fleet lane is skipped for a fork pull request: no witnesses fold and no generated-artifact verdict for this head"; else echo "::error::the fleet lane produced no success (floor=$FLOOR), so this head carries no witnesses fold and no generated-artifact verdict"; exit 1; fi; fi
         env:
