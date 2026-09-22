@@ -970,6 +970,22 @@ type SparkBuildHostWork sole_constructor {
   converged: Bool
 }
 
+// THE ONLY MINT, AND WHY IT HAS TO EXIST. `sole_constructor` refuses construction outside the
+// defining module, so the `use:` callback every caller of `with_spark_build_host` passes -- whose
+// return type IS this type -- had no way to produce a value from the caller's own module. The
+// bracket's contract therefore obliged something its own sealing forbade, and the first entry
+// written in another module (gunbc.spark.v41_runtime_image_converge, landed by #12008) resolved
+// with the literal refused at its position. That was invisible to CI because a fleet-converge mode
+// entry is reached only by a dispatched run and no compiled closure imported the module, so the
+// refusal was waiting for dispatch day rather than standing as a red.
+//
+// A CALLBACK-RETURNED SEALED TYPE OWES ITS CALLERS A MINT. The seal is still worth having: the
+// pair is what crosses the effectful boundary and nothing else may forge one. What the seal must
+// not do is make the boundary unusable from the only side that uses it.
+fn spark_build_host_work(receipt: String, converged: Bool) -> SparkBuildHostWork {
+  SparkBuildHostWork { receipt: receipt, converged: converged }
+}
+
 type SparkBuildHostSession
   = SparkBuildHostRan {
       work: SparkBuildHostWork
@@ -1094,13 +1110,13 @@ fn vllm_runtime_image_build_entry(r: VllmContainerBuildRecipe) -> ProcessExit
               identity_file_name: "gunbc-vllm-image-build-admin-password" as NonEmptyStr,
               use: fn(target, context, ctx) {
                 let build = converge_vllm_image_for_recipe(target: target, context: context, ctx: ctx, r: r)
-                SparkBuildHostWork {
+                spark_build_host_work(
                   receipt: join([
                     join(["recipe arch_list=", vllm_torch_cuda_arch_list_wire(archs: r.torch_cuda_arch_list), " cuda=", r.cuda_version as String, " base=", r.build_base_image as String, "\n"], ""),
                     vllm_image_receipt_line(b: build),
                   ], ""),
                   converged: vllm_image_build_succeeded(b: build),
-                }
+                )
               },
             ) {
               SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
