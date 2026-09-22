@@ -20,7 +20,7 @@ import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted }
 import v2.std.language_model { LanguageModel }
 import v2.std.node { Node }
 import v2.std.symbol_index { empty_symbol_index }
-import v2.compiler.normalized_tree { normalized_tree_roots_to_nodes }
+import v2.compiler.normalized_tree { normalized_tree_roots_to_binding_sources }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.reference_site_collector {
   UnreadableModuleRoot,
@@ -38,7 +38,8 @@ import v2.compiler.resolution_provenance {
   resolve_reference_sites
 }
 import v2.compiler.source_authority { SourceRootIngest }
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_root_nodes }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.std.namespace_alias { ModuleBindingSource, module_binding_source_roots }
 
 // XL-3 PRODUCER: one mention, one spelling row, over the production ingest route.
 //
@@ -110,12 +111,21 @@ fn spelling_from_answer(answer: ResolutionProvenance) -> DeclaringIdentitySpelli
   }
 }
 
-fn spelling_census_over_roots(roots: FreeMonoid<Node>) -> DeclaringIdentitySpellingCensus {
+// THE INSTRUMENT'S INDEX IS BUILT THE WAY PRODUCTION BUILDS ITS OWN, and that is the whole reason
+// this takes ModuleBindingSource rather than Node (review 69997 on gunbc#12009). While the
+// corpus-wide spelling search was a resolution tier, an index missing the transmuted import
+// bindings still answered the same for a cross-module bare reference, so the node-only door was
+// harmless here. That package deletes the tier and replaces it with exactly those bindings, so a
+// census built without them reports "unbound" for every cross-module reference PRODUCTION BINDS --
+// an instrument disagreeing with the route it exists to measure, in the denominator the namespace
+// cut is defined by.
+fn spelling_census_over_roots(sources: FreeMonoid<ModuleBindingSource>) -> DeclaringIdentitySpellingCensus {
+  let roots = module_binding_source_roots(sources: sources)
   let collected = collect_reference_sites(roots: roots)
   DeclaringIdentitySpellingCensus {
     rows: fold_list(
       xs: resolve_reference_sites(
-        index: symbol_index_fill_module_root_nodes(index: empty_symbol_index(), roots: roots),
+        index: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: sources),
         roster: module_roster_from_roots(roots: roots),
         sites: collected.sites
       ),
@@ -137,7 +147,7 @@ fn spelling_census_from_ingest(
     f: fn(normalized) {
       outcome_accepted(
         value: spelling_census_over_roots(
-          roots: normalized_tree_roots_to_nodes(roots: normalized)
+          sources: normalized_tree_roots_to_binding_sources(roots: normalized)
         )
       )
     }

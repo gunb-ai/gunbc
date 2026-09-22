@@ -8,7 +8,7 @@ import v2.compiler.name_resolve {
 }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.resolution_policy { default_name_resolution_policy }
-import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes, normalized_tree_roots_to_binding_sources}
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.repair_input_origin_roster {
   RepairInputOriginRoster,
@@ -521,7 +521,7 @@ test fn a_binder_shadowing_a_root_segment_refuses_ambiguous_holds() -> Bool {
 fn xl0r_roster() -> RepairInputOriginRoster {
   match xl0r_fixture_normalized() {
     Accepted { value: roots, diagnostics: _ } =>
-      repair_input_origin_roster_over_roots(roots: normalized_tree_roots_to_nodes(roots: roots))
+      repair_input_origin_roster_over_roots(sources: normalized_tree_roots_to_binding_sources(roots: roots))
     Rejected { diagnostics: _ } =>
       RepairInputOriginRoster { carriers: Empty, unreadable_roots: Empty }
   }
