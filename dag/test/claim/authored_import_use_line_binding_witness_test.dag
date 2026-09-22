@@ -50,23 +50,25 @@ test fn a_singly_declared_phantom_import_emits_its_use_line() -> Bool {
   w_single_declarer_keeps_the_authored_use_line()
 }
 
-// THE EXPECTING-RED ARM. The ONLY difference from the control is that this module also imports
-// v2.std.integer, which puts a second UInt8 declaration in the crate. Nothing here names UInt8
-// from it -- OverflowDisposition is declared only by v2.std.integer -- and arm C of the
-// measurement established that the bystander's IMPORT LIST is irrelevant: closure membership
-// alone is what moves the verdict. So this asserts the DEFECT AS IT STANDS: the use-line is
-// absent while the signature below it still spells UInt8.
+// THE EXPECTING-RED ARM, AND THE THIRD CONDITION IT ENCODES. The second declarer must reach the
+// closure through a module the consumer DOES NOT IMPORT. Measured 2026-09-22: a consumer that
+// imports std.integer AND v2.std.integer directly gets BOTH use-lines and is correct, so the
+// emitter is right whenever the author named both providers. Here the consumer names only
+// std.integer; extdeps.posix.identity is imported for an unrelated function and itself imports
+// v2.std.integer, so the second UInt8 declaration arrives in the crate without this module ever
+// mentioning it. That is the shape every real occurrence has -- extdeps.numeric.base16 never
+// mentioned v2.std.integer either.
 //
 // WHEN THE REPAIR LANDS THIS CLAIM GOES RED, AND THAT IS ITS JOB. Per DESIGN section 4b(4) it
-// then FLIPS to a permanent regression control -- change the excludes below to includes -- rather
-// than being deleted. It is the only thing in the corpus that fails if this defect returns, and
-// it matters because the symptom that exposed it (extdeps.numeric.base16 refusing the self-host
-// build) has been removed at the source by the sealed-carrier repair, leaving the defect real and
-// silent.
+// then FLIPS to a permanent regression control -- move the string from excludes to includes --
+// rather than being deleted. It is the only thing in the corpus that fails if this defect
+// returns, and it matters because the symptom that exposed it (extdeps.numeric.base16 refusing
+// the self-host build) has been removed at the source by the sealed-carrier repair, leaving the
+// defect real and silent.
 fn w_second_declarer_drops_the_authored_use_line() -> Bool {
   compile_dag_rust_emit_check(
-    "module aiulb_forked\n\nimport std.types { Int, List }\nimport std.integer { UInt8 }\nimport v2.std.integer { OverflowDisposition }\n\nfn count_octets(xs: List<UInt8>) -> Int {\n  count(xs)\n}\n\nfn disposition_is_ignored(d: OverflowDisposition) -> Int {\n  0\n}\n",
-    "src/aiulb_forked.rs",
+    "module aiulb_indirect\n\nimport std.types { Int, List, String }\nimport std.integer { UInt8 }\nimport extdeps.posix.identity { posix_id_value_from_text }\n\nfn count_octets(xs: List<UInt8>) -> Int {\n  count(xs)\n}\n\nfn read_id(text: String) -> Int {\n  0\n}\n",
+    "src/aiulb_indirect.rs",
     ["UInt8"],
     ["pub use crate::std_integer::"]
   )
@@ -74,6 +76,23 @@ fn w_second_declarer_drops_the_authored_use_line() -> Bool {
 
 test fn a_second_declarer_in_the_closure_drops_the_use_line() -> Bool {
   w_second_declarer_drops_the_authored_use_line()
+}
+
+// THE THIRD CONDITION, ISOLATED. Same two declarers in the closure, but the consumer NAMES both
+// providers in its own import list: the use-line returns. Without this arm the row would read as
+// "two declarers anywhere in the closure", which is measurably false and would make the
+// expecting-red arm above look like the general case rather than the specific one.
+fn w_consumer_naming_both_providers_keeps_its_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aiulb_both_named\n\nimport std.types { Int, List }\nimport std.integer { UInt8 }\nimport v2.std.integer { OverflowDisposition }\n\nfn count_octets(xs: List<UInt8>) -> Int {\n  count(xs)\n}\n\nfn disposition_is_ignored(d: OverflowDisposition) -> Int {\n  0\n}\n",
+    "src/aiulb_both_named.rs",
+    ["pub use crate::std_integer::", "pub use crate::v2_std_integer::"],
+    []
+  )
+}
+
+test fn a_consumer_that_names_both_providers_keeps_its_use_line() -> Bool {
+  w_consumer_naming_both_providers_keeps_its_use_line()
 }
 
 // THE DISCRIMINATION IS THE PAIR, not either arm alone, and this states it as one fact so a
@@ -101,24 +120,3 @@ test fn a_forked_nominal_record_keeps_its_authored_use_line() -> Bool {
   w_forked_nominal_record_keeps_its_use_line()
 }
 
-// TEMPORARY DECOMPOSITION PROBES. compile_dag_rust_emit_check answers one Bool over a conjunction
-// of (compiles clean AND every include present AND every exclude absent), so a false verdict names
-// none of the three. These split it. They are diagnostics, not claims, and are removed once the
-// expecting-red arm above is either confirmed or corrected.
-data aiulb_forked_source: String = "module aiulb_forked\n\nimport std.types { Int, List }\nimport std.integer { UInt8 }\nimport v2.std.integer { OverflowDisposition }\n\nfn count_octets(xs: List<UInt8>) -> Int {\n  count(xs)\n}\n\nfn disposition_is_ignored(d: OverflowDisposition) -> Int {\n  0\n}\n"
-
-fn diag_forked_compiles_clean_at_all() -> Bool {
-  compile_dag_rust_emit_check(aiulb_forked_source, "src/aiulb_forked.rs", [], [])
-}
-
-fn diag_forked_spells_uint8() -> Bool {
-  compile_dag_rust_emit_check(aiulb_forked_source, "src/aiulb_forked.rs", ["UInt8"], [])
-}
-
-fn diag_forked_has_the_std_integer_use_line() -> Bool {
-  compile_dag_rust_emit_check(aiulb_forked_source, "src/aiulb_forked.rs", ["pub use crate::std_integer::"], [])
-}
-
-fn diag_forked_has_a_v2_std_integer_use_line() -> Bool {
-  compile_dag_rust_emit_check(aiulb_forked_source, "src/aiulb_forked.rs", ["pub use crate::v2_std_integer::"], [])
-}
