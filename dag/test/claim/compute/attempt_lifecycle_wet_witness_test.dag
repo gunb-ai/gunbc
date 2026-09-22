@@ -5,7 +5,14 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.algebra { trim }
 import std.measure { kibibyte, kibibyte_count }
-import std.durable_compare_and_set { CasGeneration, cas_generation_count }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count, cas_generation_first }
+import gunbc.compute.work_provider_local {
+  ComputeLayout,
+  AttemptGate, AttemptGateReady, AttemptGateRefused, compute_begin_launch,
+  AttemptSettlement, AttemptSettled, AttemptNotSettled, AttemptUnsettleable,
+  compute_settle_attempt, compute_attempt_settlement_wire, attempt_settlement_host_record,
+  host_record_was_written,
+}
 import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
@@ -274,4 +281,52 @@ test fn an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped()
     && string_contains(s: attempt_transition_wire(t: refused), pattern: to_string(value: compute_pre_launch_ceiling_seconds))
     && string_contains(s: attempt_transition_wire(t: closed_window), pattern: "already closed")
     && (match greedy_slot { AttemptSlotAbsent => true  AttemptSlotHeld { record: _, generation: _ } => false  AttemptSlotUnreadable { detail: _ } => false })
+}
+
+
+// THE LOSER OF A LAUNCH RACE MAY NOT REPORT THAT IT SETTLED THE SLOT (review 69967). This is the
+// reachable path: compute_run_leased returns its gate from compute_begin_launch, so a producer whose
+// launch CAS lost carries AttemptGateRefused into compute_settle_attempt, and the string that fold
+// produces is written into the operator-facing consumption receipt. Before the third arm existed the
+// refusal mapped to HostRecordWritten and the receipt read `attempt: settled in the attempt slot` for
+// a producer that settled nothing and observed nothing about the slot's final state.
+//
+// THE RACE IS REAL AND NOT DESCRIBED. Two producers open against one store; the winner advances the
+// generation, so the loser's begin_launch is refused BY THE STORE. The claim then asserts three
+// things that a two-armed carrier could not have kept apart: the winner says settled, the loser's
+// wire denies it and says who to believe instead, and the loser is NOT reported as a host-record
+// LOSS -- because it owed no record, and calling it a loss would manufacture an incident for an
+// operator to chase.
+fn layout_at(root: String) -> ComputeLayout {
+  ComputeLayout {
+    root: root, work_dir: root, checkout: root, out_dir: root,
+    leases_dir: root, lease_path: root, store_dir: root, target_dir: root,
+    log_path: root, outcome_path: root, consumption_path: root,
+    attempts_dir: root,
+  }
+}
+
+test fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot() -> Bool {
+  let root = fresh_root()
+  let layout = layout_at(root: root)
+  let rec = record_for(reference: "attempt-race")
+  let opened = attempt_open(root: root as NonEmptyStr, record: rec)
+  let generation = match opened {
+    AttemptAdvanced { state: _, generation: g } => g
+    AttemptLostRace { expected: _, observed: _ } => cas_generation_first()
+    AttemptTransitionRefused { detail: _ } => cas_generation_first()
+  }
+  let winner = compute_begin_launch(layout: layout, gate: AttemptGateReady { record: rec, generation: generation })
+  let loser = compute_begin_launch(layout: layout, gate: AttemptGateReady { record: rec, generation: generation })
+  let winner_settled = compute_settle_attempt(layout: layout, gate: winner, verdict: "succeeded", detail: "the winner closes the slot")
+  let loser_settled = compute_settle_attempt(layout: layout, gate: loser, verdict: "succeeded", detail: "the loser has no slot to close")
+  attempt_transition_advanced(t: opened)
+    && (match winner { AttemptGateReady { record: _, generation: _ } => true  AttemptGateRefused { detail: _ } => false })
+    && (match loser { AttemptGateReady { record: _, generation: _ } => false  AttemptGateRefused { detail: _ } => true })
+    && (match winner_settled { AttemptSettled => true  AttemptNotSettled { detail: _ } => false  AttemptUnsettleable { detail: _ } => false })
+    && (match loser_settled { AttemptSettled => false  AttemptNotSettled { detail: _ } => false  AttemptUnsettleable { detail: _ } => true })
+    && compute_attempt_settlement_wire(closed: winner_settled) == "settled in the attempt slot"
+    && !string_contains(s: compute_attempt_settlement_wire(closed: loser_settled), pattern: "settled in the attempt slot")
+    && string_contains(s: compute_attempt_settlement_wire(closed: loser_settled), pattern: "NOT SETTLED BY THIS PRODUCER")
+    && host_record_was_written(h: attempt_settlement_host_record(s: loser_settled))
 }
