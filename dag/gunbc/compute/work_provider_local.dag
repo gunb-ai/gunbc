@@ -12,6 +12,7 @@ import extdeps.git { shape_git_worktree_add_detached_argv }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import extdeps.systemd.systemd_run { systemd_run_user_wait_arguments, systemd_run_property }
 import extdeps.systemd.systemctl
+import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_events_path,
   CgroupEventsDecoding, CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
@@ -571,23 +572,42 @@ fn unit_lifecycle_decide(o: UnitLifecycleObservations) -> UnitLifecycle {
 // it invented can stop a unit belonging to a different attempt, and the record is the only
 // authority for that binding.
 fn observe_unit_lifecycle(unit: NonEmptyStr) -> UnitLifecycle {
-  let load = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_load_state_property)
-  let active = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_active_state_property)
-  let result = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_result_property)
-  let cg = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_control_group_property)
-  let events = if cg.success && trim(s: cg.value) != "" {
-    linux.CgroupV2.ReadEvents(events_path: cgroup_v2_events_path(cgroup_path: join([cgroup_v2_mount_point as String, trim(s: cg.value)], "") as NonEmptyStr))
+  let cg = read_user_unit_property(unit: unit, property: unit_control_group_property)
+  unit_lifecycle_decide(o: UnitLifecycleObservations {
+    load_state: read_user_unit_property(unit: unit, property: unit_load_state_property),
+    active_state: read_user_unit_property(unit: unit, property: unit_active_state_property),
+    result: read_user_unit_property(unit: unit, property: unit_result_property),
+    population: unit_population(control_group: cg, events: read_cgroup_events(control_group: cg)),
+  })
+}
+
+// ONE READER FOR A USER-UNIT PROPERTY, AND IT FOLDS THE TRANSPORT'S ANSWER BEFORE THE PROGRAM'S.
+// systemctl answering nonzero and systemctl NOT RUNNING are different facts with different
+// remedies (extdeps.transports.shell ShellOutcome): the first is the manager refusing a question,
+// the second is a host with no manager to ask. Before this reader the second ended the whole
+// evaluation as a shell-spawn-refused runtime error -- the settlement or recovery died mid-route,
+// leaving the seat charged AND the producer lease held with no record saying why, which is the
+// wedged state the recovery door exists to undo, manufactured by the driver itself. The fold's
+// unavailable arm was never reached because the refusal pre-empted it. Now a spawn refusal is a
+// property that was NOT QUERIED, and the fold decides exactly as it does for a manager that could
+// not be read: the charge is kept and the outcome says the manager could not be asked. No caller
+// branched on the difference before, because no field carried it; the difference is that the
+// route now reaches its own unavailable arm instead of a diagnostic about a program.
+fn read_user_unit_property(unit: NonEmptyStr, property: NonEmptyStr) -> UnitPropertyReading {
+  let read = systemd.Systemctl.ShowUserProperty(unit: unit, property: property)
+  match read.outcome {
+    ShellSpawnRefused { program: _, cause: _ } => UnitPropertyReading { queried: false, value: "" }
+    ShellExited => UnitPropertyReading { queried: read.success, value: read.value }
+  }
+}
+
+fn read_cgroup_events(control_group: UnitPropertyReading) -> UnitPropertyReading {
+  let events = if control_group.queried && trim(s: control_group.value) != "" {
+    linux.CgroupV2.ReadEvents(events_path: cgroup_v2_events_path(cgroup_path: join([cgroup_v2_mount_point as String, trim(s: control_group.value)], "") as NonEmptyStr))
   } else {
     linux.CgroupV2.ReadEvents(events_path: cgroup_v2_events_path(cgroup_path: cgroup_v2_mount_point))
   }
-  unit_lifecycle_decide(o: UnitLifecycleObservations {
-    load_state: UnitPropertyReading { queried: load.success, value: load.value },
-    active_state: UnitPropertyReading { queried: active.success, value: active.value },
-    result: UnitPropertyReading { queried: result.success, value: result.value },
-    population: unit_population(
-      control_group: UnitPropertyReading { queried: cg.success, value: cg.value },
-      events: UnitPropertyReading { queried: events.success, value: events.value }),
-  })
+  UnitPropertyReading { queried: events.success, value: events.value }
 }
 
 // THE USER MANAGER IS ASKED, NOT THE SYSTEM ONE. systemctl_show_load_state_argv exists and is
@@ -600,18 +620,12 @@ fn observe_unit_lifecycle(unit: NonEmptyStr) -> UnitLifecycle {
 // property become a conclusion in the first place.
 fn observe_unit_termination(identity_hex: String, attempt_completed: Bool) -> UnitTermination {
   let unit = compute_unit_name(identity_hex: identity_hex)
-  let load = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_load_state_property)
-  let cg = systemd.Systemctl.ShowUserProperty(unit: unit, property: unit_control_group_property)
-  let events = if cg.success && trim(s: cg.value) != "" {
-    linux.CgroupV2.ReadEvents(events_path: cgroup_v2_events_path(cgroup_path: join([cgroup_v2_mount_point as String, trim(s: cg.value)], "") as NonEmptyStr))
-  } else {
-    linux.CgroupV2.ReadEvents(events_path: cgroup_v2_events_path(cgroup_path: cgroup_v2_mount_point))
-  }
+  let cg = read_user_unit_property(unit: unit, property: unit_control_group_property)
   unit_termination_decide(o: UnitObservations {
     attempt_completed: attempt_completed,
-    load_state: UnitPropertyReading { queried: load.success, value: load.value },
-    control_group: UnitPropertyReading { queried: cg.success, value: cg.value },
-    events: UnitPropertyReading { queried: events.success, value: events.value },
+    load_state: read_user_unit_property(unit: unit, property: unit_load_state_property),
+    control_group: cg,
+    events: read_cgroup_events(control_group: cg),
   })
 }
 
