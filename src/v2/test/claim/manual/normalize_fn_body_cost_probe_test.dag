@@ -1,25 +1,16 @@
 module v2.test.manual.normalize_fn_body_cost_probe
 
 import v2.compiler.body_lowering_fold {
-  ParseSubtreeAbsent,
-  ParseSubtreeFound,
-  body_lower_body_subtree_lower,
-  body_lower_find_captured,
   body_lower_fn_decl_to_arrow,
-  body_lower_fold,
   body_lower_outcome_is_wrapper_retained,
   body_lower_return_type_from_fn_captured,
-  body_lower_try_body_lowered,
-  body_lower_try_match_from_captured,
   body_lower_unwrap_captured
 }
-import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_lex,
-  dag_surface_kw_then_ident_from_captured,
   parse_production_emitted_identity_optional
 }
 import v2.std.grammar { node_atom_identity_optional }
@@ -29,13 +20,18 @@ import v2.std.node { Node }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 
 // ---------------------------------------------------------------------------
-// DECOMPOSITION PROBE for the fn-body normalize charge, and the two enrolled REDs
-// for the positional-return-type repair.
+// THE ENROLLED REDS AND FALSIFIERS FOR THE POSITIONAL RETURN-TYPE READ.
 //
-// The cost specimens are a bare type declaration and the same module plus ONE fn with a
-// two-arm match, so the fn body's marginal charge through parse and through normalize is
-// read as a difference rather than attributed by a profiler. The hazard specimens carry a
-// fn-TYPED PARAMETER, which is what makes the deleted shape-search reading reachable.
+// THE NAME IS HISTORICAL AND THE FILE NO LONGER HOLDS A COST PROBE. It began as the cost
+// decomposition that located the fn-body normalize charge; those twelve plain `fn`
+// declarations were DELETED (review 70132) because nothing in the closure called them and
+// their only route to execution was a recipe inside a comment -- which DESIGN section 3c reds
+// as a dangling declaration, and section 6 disposes of outright: a measurement worth
+// re-deriving is worth an entry point, and one that is not is a one-off rather than an
+// instrument. That decomposition was a one-off. It derived the cost-shape reading and
+// falsified two of its own predictions, and the reading it produced is recorded on the
+// carriers it concerns. The file and the claim identities keep their names so that ten floor
+// identities are not churned for a cosmetic rename.
 // ---------------------------------------------------------------------------
 
 // FALSIFIERS FOR THE POSITIONAL READ ITSELF. The spine read relies on opt(generic_params)
@@ -48,10 +44,6 @@ data nfbcp_generic_fn_source: String = "module m\nfn f<T>(x: T) -> T { x }\n"
 data nfbcp_eq_body_fn_source: String = "module m\nfn f(x: Int) -> Int = x\n"
 
 data nfbcp_ordinary_fn_source: String = "module m\nfn f(x: Int) -> Int { x }\n"
-
-data nfbcp_bare_type_source: String = "module m.t\ntype T = A | B\n"
-
-data nfbcp_with_fn_source: String = "module m.t\ntype T = A | B\nfn f(t: T) -> Int {\n  match t {\n    A => 1\n    _ => 2\n  }\n}\n"
 
 // ARM 1 -- a declared return type. The deleted reading met the parameter's fn-type arrow
 // first and answered Int for a function declared to return Bool: a WRONG CODOMAIN on an
@@ -160,8 +152,8 @@ fn nfbcp_atom_identity_deep(node: Node) -> Optional<Symbol> {
 // v2.workflow.required_floor `claim_ceiling_eval_step_budget`. So enlarging a specimen or adding
 // an assertion to that claim is a budget decision, not a free edit. The producer that re-derives
 // the current figures is the required floor itself, which prints eval_steps per claim on every
-// run, and the local recipe at the foot of this file -- neither is transcribed here, because a
-// copied number would rot without anyone touching either end (DESIGN section 6).
+// run -- not transcribed here, because a copied number would rot without anyone touching either
+// end (DESIGN section 6).
 //
 // WHY THE SUPPLIED-TOKEN ROUTE IS NOT USED HERE, since it is the obvious headroom and declining
 // it is a judgement rather than an oversight. v2.test.parse.supplied_token_stream_support exists
@@ -263,165 +255,4 @@ test fn nfbcp_no_return_type_specimen_parses_holds() -> Bool {
     Absent => false
     Present { value: _ } => true
   }
-}
-
-// ===========================================================================
-// COST DECOMPOSITION INSTRUMENT -- DELIBERATELY NOT `test fn`.
-//
-// These are a MEASUREMENT, not a claim: each returns true whenever the stage it isolates
-// completes, so none of them has a discriminating red and enrolling them would put six
-// permanently-green rows on the floor (DESIGN section 4b: a check whose red is not authorable is
-// a decoration, and worse than absent because it will be cited as coverage). They are plain
-// `fn`, so the floor's `test fn ` line scan does not discover them, and they cost 91k-154k eval
-// steps against the 72300 per-claim ceiling -- which is the second reason they must not be
-// enrolled and the reason the ceiling is the right place to notice that.
-//
-// WHAT THEY ARE FOR: marginal eval_steps over P0 decompose the fn-body charge through normalize,
-// which is how the cost-shape reading in this change was derived and falsified. eval_steps are
-// host-independent, so a run here compares directly against a run on another machine.
-//
-// LOCAL RECIPE (name the instrument, never transcribe its output -- DESIGN section 6):
-//   cargo build --release --bin claim_batch
-//   ./target/release/claim_batch --source-root dag --source-root src/v2 \
-//     --entry src/v2/test/claim/manual/normalize_fn_body_cost_probe_test.dag \
-//     --functions nfbcp_p0_parse_only_holds,nfbcp_p1_locate_fn_decl_holds,\
-// nfbcp_p2_one_find_captured_holds,nfbcp_p3_return_type_read_holds,\
-// nfbcp_p4_kw_then_ident_walk_holds,nfbcp_p5_try_body_lowered_holds,\
-// nfbcp_p6_body_lower_fold_holds,nfbcp_p7_body_subtree_lower_holds,\
-// nfbcp_p8_match_from_captured_holds,nfbcp_p9_fn_decl_to_arrow_holds,\
-// nfbcp_bare_type_normalize_holds,nfbcp_with_fn_normalize_holds
-//
-// This is the shape DESIGN section 6 says belongs behind a `gunbc test <label>` instrument row
-// rather than a local recipe in a comment. It is left as a recipe here because adding an
-// instrument row is its own subject, and a recipe that names its producer is still a producer
-// a reader can re-run -- unlike a transcribed number, which is what this replaces.
-// ===========================================================================
-
-fn nfbcp_p0_parse_only_holds() -> Bool {
-  match nfbcp_parsed(text: nfbcp_with_fn_source) {
-    Absent => false
-    Present { value: _ } => true
-  }
-}
-
-fn nfbcp_p1_locate_fn_decl_holds() -> Bool {
-  match nfbcp_fn_decl_shell(text: nfbcp_with_fn_source) {
-    Absent => false
-    Present { value: _ } => true
-  }
-}
-
-fn nfbcp_p2_one_find_captured_holds() -> Bool {
-  match nfbcp_fn_body_captured() {
-    Absent => false
-    Present { value: _ } => true
-  }
-}
-
-fn nfbcp_fn_body_captured() -> Optional<Node> {
-  match nfbcp_fn_captured(text: nfbcp_with_fn_source) {
-    Absent => Absent
-    Present { value: captured } =>
-      match body_lower_find_captured(root: captured, emitted: ^dag_surface_fn_body) {
-        ParseSubtreeAbsent => Absent
-        ParseSubtreeFound { captured: body } => Present { value: body }
-      }
-  }
-}
-
-// The single largest contributor before the repair, and the one the repair replaces.
-fn nfbcp_p3_return_type_read_holds() -> Bool {
-  match nfbcp_fn_captured(text: nfbcp_with_fn_source) {
-    Absent => false
-    Present { value: captured } =>
-      match body_lower_return_type_from_fn_captured(captured: captured) {
-        Absent => false
-        Present { value: _ } => true
-      }
-  }
-}
-
-fn nfbcp_p4_kw_then_ident_walk_holds() -> Bool {
-  match nfbcp_fn_captured(text: nfbcp_with_fn_source) {
-    Absent => false
-    Present { value: captured } =>
-      match dag_surface_kw_then_ident_from_captured(captured: captured) {
-        Absent => false
-        Present { value: _ } => true
-      }
-  }
-}
-
-fn nfbcp_p5_try_body_lowered_holds() -> Bool {
-  match nfbcp_fn_body_captured() {
-    Absent => false
-    Present { value: body } =>
-      match body_lower_try_body_lowered(node: body) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: _, diagnostics: _ } => true
-      }
-  }
-}
-
-fn nfbcp_p6_body_lower_fold_holds() -> Bool {
-  match nfbcp_fn_body_captured() {
-    Absent => false
-    Present { value: body } =>
-      match body_lower_fold(node: body) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: _, diagnostics: _ } => true
-      }
-  }
-}
-
-fn nfbcp_p7_body_subtree_lower_holds() -> Bool {
-  match nfbcp_fn_body_captured() {
-    Absent => false
-    Present { value: body } =>
-      match body_lower_body_subtree_lower(captured: body) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: _, diagnostics: _ } => true
-      }
-  }
-}
-
-fn nfbcp_p8_match_from_captured_holds() -> Bool {
-  match nfbcp_fn_body_captured() {
-    Absent => false
-    Present { value: body } =>
-      match body_lower_try_match_from_captured(captured: body) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: _, diagnostics: _ } => true
-      }
-  }
-}
-
-fn nfbcp_p9_fn_decl_to_arrow_holds() -> Bool {
-  match nfbcp_fn_decl_shell(text: nfbcp_with_fn_source) {
-    Absent => false
-    Present { value: shell } =>
-      match body_lower_fn_decl_to_arrow(shell: shell) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: _, diagnostics: _ } => true
-      }
-  }
-}
-
-fn nfbcp_parse_then_normalize(text: String) -> Bool {
-  match nfbcp_parsed(text: text) {
-    Absent => false
-    Present { value: tree } =>
-      match normalize(parse_tree: tree) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: _, diagnostics: _ } => true
-      }
-  }
-}
-
-fn nfbcp_bare_type_normalize_holds() -> Bool {
-  nfbcp_parse_then_normalize(text: nfbcp_bare_type_source)
-}
-
-fn nfbcp_with_fn_normalize_holds() -> Bool {
-  nfbcp_parse_then_normalize(text: nfbcp_with_fn_source)
 }
