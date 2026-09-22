@@ -2,6 +2,11 @@ module gunbc.instrument_targets
 
 import extdeps.bazel.label { Label, PackageName, PackagePath, TargetName }
 import gunbc.build_target { BuildTarget, TestRule }
+import gunbc.witness_v2_native_route { NativeRouteMemberRow }
+import v2.compiler.native_test_vocabulary {
+  NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
+  NativeTestRefused
+}
 import gunbc.target_binding {
   TargetBinding,
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
@@ -842,6 +847,86 @@ fn bare_reference_channel_unmet_expectations(
 fn bare_reference_channel_holds(readings: List<BareReferenceChannelEntryReading>) -> Bool {
   ((readings |> count) == (bare_reference_channel_expectations() |> count))
     && ((bare_reference_channel_unmet_expectations(readings: readings) |> count) == 0)
+}
+
+// THE NATIVE TEST ROUTE'S TOTAL FUNCTION FROM ITS OWN STANDING INTO THE FOUR TERMINATIONS.
+//
+// `gunbc.target_invocation` `InvocationTermination` states the rule this discharges: each producer
+// owns a total function from its native standing into these four states, so a new producer is a new
+// classifier and never a new arm in a consumer that would otherwise collapse causes it does not
+// distinguish. The native route's standing is its PER-IDENTITY population -- one
+// `NativeRouteMemberRow` per selected test, each carrying that test's own `NativeTestVerdict` --
+// and NOT the lane's whole-route admission bit, which answers a different question at a different
+// scope (`gunbc.recurring_failure_mode` `route_scoped_qualification_read_as_one_members_verdict`
+// is that confusion, filed with both of its arms).
+//
+// THE PRECEDENCE IS A DECISION AND IT IS ARGUED RATHER THAN ASSUMED, because two of the three
+// orderings are defensible and only one is right.
+//
+// A DEFINITE FAILURE OUTRANKS AN UNOBSERVED SIBLING. One identity that evaluated and returned
+// false makes "the selection held" FALSE, and that is a real observation about the selection rather
+// than an absence of one. Ranking refusal above it would hide a known, located defect behind a
+// sibling nobody managed to run, which is the reading that costs an operator a real bug.
+//
+// AN UNOBSERVED IDENTITY OUTRANKS THE PASSES AROUND IT. If nothing failed but something could not
+// be observed, the honest answer is that the selection was not observed -- not that it held. This
+// is the fail-closed direction and it is the arm that keeps a partially-refused population from
+// reading green.
+//
+// AN EMPTY SELECTION IS `SubjectUnreached`, NOT `ObservationHeld`, AND THIS ARM IS DOING REAL WORK.
+// A pattern that selected nothing has produced no evidence about anything; answering "held" would
+// be vacuous truth reported as a passing test, which is the absence-is-not-success distinction
+// DESIGN section 5 keeps. A reviewer will suggest collapsing it into the all-passed arm because
+// "every row passed" is trivially true of no rows; that collapse is the defect.
+type NativeRouteTerminationTally {
+  observed_failure: Bool
+  unobserved: Bool
+  members: Int
+}
+
+fn native_route_termination_step(
+  acc: NativeRouteTerminationTally,
+  row: NativeRouteMemberRow
+) -> NativeRouteTerminationTally {
+  match row.verdict {
+    NativeTestPassed => NativeRouteTerminationTally {
+      observed_failure: acc.observed_failure,
+      unobserved: acc.unobserved,
+      members: acc.members + 1
+    }
+    NativeTestReturnedFalse => NativeRouteTerminationTally {
+      observed_failure: true,
+      unobserved: acc.unobserved,
+      members: acc.members + 1
+    }
+    NativeTestReturnedOther => NativeRouteTerminationTally {
+      observed_failure: true,
+      unobserved: acc.unobserved,
+      members: acc.members + 1
+    }
+    NativeTestRefused { stage: _, diagnostics: _ } => NativeRouteTerminationTally {
+      observed_failure: acc.observed_failure,
+      unobserved: true,
+      members: acc.members + 1
+    }
+  }
+}
+
+fn native_route_member_termination(rows: List<NativeRouteMemberRow>) -> InvocationTermination {
+  let tally = fold(
+    rows,
+    init: NativeRouteTerminationTally { observed_failure: false, unobserved: false, members: 0 },
+    f: (acc, row) => native_route_termination_step(acc: acc, row: row)
+  )
+  if tally.observed_failure {
+    InvocationObservationDidNotHold {}
+  } else if tally.unobserved {
+    InvocationSubjectUnreached {}
+  } else if tally.members == 0 {
+    InvocationSubjectUnreached {}
+  } else {
+    InvocationObservationHeld {}
+  }
 }
 
 fn bare_reference_channel_termination(s: BareReferenceChannelStanding) -> InvocationTermination {
