@@ -1,105 +1,63 @@
 module test.claim.named_argument_binding_two_route_witness_test
 
 import std.types { String, Bool, Int }
-import v2.compiler.compile { compile_dag_source_to_target_text }
-import v2.std.diagnostic { Accepted, Rejected }
 import gunbc.compile_census_probe { total_blocking_count_for }
 
-// ONE FIXTURE SOURCE, TWO COMPILERS, ONE QUESTION: which argument feeds which parameter. The two
-// routes answer it differently, and the disagreement is about whether the children's SEQUENCE is
-// part of the answer.
+// WHAT THIS FILE ESTABLISHES, AND WHAT IT DELIBERATELY NO LONGER CLAIMS.
 //
-// WHAT THE MODEL SAYS, which is what makes one of the two answers wrong rather than merely
-// different. A function's parameter set is the Arrow's DOMAIN, a `TypeNode { connective: Conj }`
-// whose children carry `Edge { label: Named { name } }`. `v2.std.node` `connective_edge_discipline`
-// gives Conj `LabeledEdges`, and `canonicalize_labeled_for_content_hash` SORTS LabeledEdges before
-// hashing -- so a parameter list has no identity-bearing sequence. The parameter set is name-keyed,
-// and the NAME is the binding key. The application is the other side: `behavior_edge_discipline`
-// gives `Transform` `PositionalEdges`, which is not sorted, so it carries an ORDER.
-//
-// WHERE v2 ANSWERS FROM THE ORDER. `v2.compiler.body_lowering_fold` `body_lower_named_arg_value_optional`
-// decodes the `name ^dag_token_colon value` spine, matches the parameter binding as `_binding`, and
-// returns only the operand; `body_lower_transform_call` then builds one `Edge { label: Positional }`
-// per argument. Downstream, `v2.compiler.infer` `infer_application_argument_inhabitance` recovers
-// formals with `infer_formals_from_domain` (the Conj's STORED order) and arguments with
-// `infer_transform_argument_targets` (stored order) and ZIPS them by index. So the same compiler
-// treats the Conj's stored order as a fact in one fold and sorts it away for identity in another.
-//
-// WHERE v1 ANSWERS FROM THE NAME, on BOTH of its routes. `v1.compiler.emit`
-// `order_typed_call_args_from_semantics` selects each argument by `matched_argument_index` from the
-// `application_plan` that `v1.compiler.infer` built by parameter identity, and renders arguments in
-// FORMAL order. And `v1_compiler.interpreter` `eval_call` binds a LABELLED actual by its name after
-// `param_name_matches_declared`, keying only an UNLABELLED actual by position; what it walks in
-// stored order is EVALUATION, which is a different fact from binding. That route is already
-// fail-closed on every conflict the mixed form can produce -- an unknown label, a duplicate label, a
-// positional actual landing on a slot a named actual already bound, a surplus positional -- so the
-// refusal behaviour a name-bound v2 would need is an authority that already exists.
-//
-// THE ARMS. `nab_inorder_source` and `nab_reordered_source` differ in NOTHING but the order the two
+// It establishes ONE HALF of a two-route question by execution: v1 binds a named call argument by
+// NAME. `nab_inorder_source` and `nab_reordered_source` differ in NOTHING but the order the two
 // named arguments are written in, and `nab_pick` declares them at DIFFERENT types (`a: Int`,
-// `b: Bool`) so a position-keyed binding is type-discriminating rather than silent. The in-order
-// pair is the positive control: both routes must compile it. The out-of-order pair is the
-// discriminating fixture, and its two arms are what the divergence IS.
+// `b: Bool`), so a position-keyed binding would be type-discriminating rather than silent. v1
+// carries zero blocking diagnostics on both, which is what binding by parameter identity looks like
+// from outside. That matches the two v1 routes read in source: `v1.compiler.emit`
+// `order_typed_call_args_from_semantics` selects each argument by `matched_argument_index` from the
+// `application_plan` that `v1.compiler.infer` built by parameter identity, and
+// `v1_compiler.interpreter` `eval_call` binds a LABELLED actual by its name after
+// `param_name_matches_declared`, keying only an UNLABELLED actual by position.
 //
-// ONE ARM PER ROUTE PER FIXTURE, AND THE SPLIT IS NOT COSMETIC (review 70029). A conjunction of the
-// two positive controls made one budget pay a full interpreted `compile_dag_source_to_target_text`
-// AND a seed census compile, and -- worse for a file whose entire subject is that two routes
-// disagree -- a red would not have said WHICH route regressed. Splitting them loses no coverage,
-// which is the test DESIGN section 3's witness rule states for exactly this shape.
+// THE v2 HALF IS NOT HERE, AND ITS ABSENCE IS A MEASURED RESULT RATHER THAN AN OMISSION. An earlier
+// version of this file compiled the same two fixtures through `v2.compiler.compile`
+// `compile_dag_source_to_target_text` and asserted a divergence. On the required floor the v2
+// POSITIVE CONTROL returned false: v2 refused the IN-DECLARATION-ORDER call as well. A witness whose
+// control fails cannot tell `v2 binds by position` apart from `v2's standalone driver cannot compile
+// this fixture at all`, so it established nothing about binding and was removed rather than
+// reinterpreted. The same run measured that arm at 220565 eval steps against a 72300 budget and
+// 567ms against a 302ms enrolment margin, so the interpreted whole-corpus compile is not viable as a
+// floor witness even once it reaches its subject -- the v2 half needs a different home, not a tweak.
+// LEADING HYPOTHESIS FOR THE CONTROL FAILURE, UNVERIFIED AND RECORDED AS A HYPOTHESIS:
+// `compile_dag_source_to_target_text` admits a standalone source with `peer_roots: Empty` and
+// `imports: Empty`, and the fixtures name `Int` and `Bool`.
 //
-// THE v1 COUNT IS ASKED AS A TOTAL, NOT PER CLASS. `total_blocking_count_for` returns -1 when the
-// census is not runnable, so a census that never ran cannot read as a clean compile; and asking for
-// the TOTAL rather than for one wanted class means an UPSTREAM refusal cannot satisfy the arm by
-// leaving the class it was looking for at zero.
+// SO THE BINDING DIVERGENCE IS A DECLARED FRONTIER (DESIGN section 3c), NOT A CLAIM THIS FILE MAKES.
+// Its TRIGGER is the capability: a v2 acceptance harness that admits peer roots for a fixture source
+// AND whose cost fits a declared ceiling, at which point the v2 arms land here beside the v1 ones and
+// this paragraph deletes. Until then the v2 side of the argument rests on the source derivation
+// carried by the class row, which needs no run and claims no execution.
 //
-// THE v2 ARM IS AN ENROLLED RED AND IT ASSERTS THE CONTRACT, NOT THE DEFECT.
-// `the_v2_route_accepts_a_named_call_written_out_of_declaration_order` says what SHOULD be true --
-// the NAME is the binding authority, so a call written out of declaration order is an ordinary call
-// and v2 must accept it. It is RED today because v2 is wrong, and it is admitted as a known red
-// through the mechanism the repository already owns: `gunbc.explicit_witness_admission`
-// `known_red_probe`, cadence QuarantineProbeExpectRed, expectation `std.witness_admission`
-// `ExpectAssertionFalse`. When the repair lands the arm GREENS with no edit to it and its admission
-// row deletes in the same change, promoting it to an ordinary permanent regression control.
+// THE DERIVATION THE ROW CARRIES, stated once so this file is readable on its own: a function's
+// parameter set is the Arrow DOMAIN, a `TypeNode { connective: Conj }` whose children carry
+// `Edge { label: Named { name } }`; `v2.std.node` `connective_edge_discipline` gives Conj
+// `LabeledEdges`, and `canonicalize_labeled_for_content_hash` SORTS those before hashing. A parameter
+// list therefore has NO identity-bearing sequence: the parameter set is name-keyed and the NAME is
+// the binding key.
 //
-// AN EARLIER FORM OF THIS FILE ASSERTED THE NEGATION -- that v2 REFUSES the reordered call -- and
-// that was wrong twice over (review 70059). It forked the admission mechanism, so the hole entered
-// no roster and nobody was obliged to revisit it; and it inverted the alert signature, because the
-// repair would have turned the arm RED and made a fix indistinguishable from a regression. It also
-// did not discriminate: `nab_v2_accepts` collapses every `Rejected` to false, so a negated arm
-// stayed green on ANY refusal cause, including one with nothing to do with binding. Asserting
-// ACCEPTANCE has one unambiguous satisfying state and does not have that failure mode. The corpus
-// states the rule against the form I first wrote, at
-// `dag/test/claim/algebra_receiver_callable_witness_test.dag`'s admission rows: the assertion is
-// written in the acceptance direction on purpose, because asserting the refusal would encode the
-// defect as the expected state and the fix would then require rewriting the witness instead of
-// flipping it.
+// ONE ARM PER ROUTE PER FIXTURE (review 70029): a conjunction would make one budget pay two compiles
+// and a red would not say which fixture regressed. THE v1 COUNT IS ASKED AS A TOTAL, NOT PER CLASS --
+// `total_blocking_count_for` returns -1 when the census is not runnable, so a census that never ran
+// cannot read as a clean compile, and asking for the TOTAL means an upstream refusal cannot satisfy
+// an arm by leaving the class it was looking for at zero.
 //
-// WHAT THIS DOES NOT ESTABLISH. It measures the SOURCE-to-refusal path on v2 and the source-to-
-// diagnostic-census path on v1. It does not compare emitted bytes, and it says nothing about which
-// corpus call sites written out of declaration order would change binding. NO COUNT IS CARRIED HERE
-// ON PURPOSE (DESIGN section 6: name the instrument, never transcribe its output -- and declaring a
-// figure un-instrumented makes it the rotting number the rule forbids rather than exempting it).
-// The corpus population is a reading rather than a wall, and it has no producer that re-derives it;
-// when one exists it is named here and the sentence stops being qualitative.
+// NO COUNT OF CORPUS CALL SITES IS CARRIED HERE (DESIGN section 6: name the instrument, never
+// transcribe its output -- and declaring a figure un-instrumented makes it the rotting number the
+// rule forbids rather than exempting it). No producer re-derives that population today; when one
+// exists it is named here.
 //
-// THE CLASS is `gunbc.recurring_failure_mode.an_application_binds_by_position_where_the_model_binds_by_name`,
-// whose next-rung trigger names the capability: the lowered application carries the argument NAME on
-// the carrier that owns the binding, and every consumer reads the binding from that one place.
+// THE CLASS is `gunbc.recurring_failure_mode.an_application_binds_by_position_where_the_model_binds_by_name`.
 
 data nab_inorder_source: String = "module nab_inorder\n\nfn nab_pick(a: Int, b: Bool) -> Int \{\n  a\n}\n\nfn nab_use() -> Int \{\n  nab_pick(a: 1, b: true)\n}\n"
 
 data nab_reordered_source: String = "module nab_reordered\n\nfn nab_pick(a: Int, b: Bool) -> Int \{\n  a\n}\n\nfn nab_use() -> Int \{\n  nab_pick(b: true, a: 1)\n}\n"
-
-fn nab_v2_accepts(source: String) -> Bool {
-  match compile_dag_source_to_target_text(source_text: source) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn the_v2_route_accepts_the_declaration_order_call_which_is_its_positive_control() -> Bool {
-  nab_v2_accepts(source: nab_inorder_source)
-}
 
 test fn the_v1_routes_accept_the_declaration_order_call_which_is_their_positive_control() -> Bool {
   total_blocking_count_for(source: nab_inorder_source) == 0
@@ -107,8 +65,4 @@ test fn the_v1_routes_accept_the_declaration_order_call_which_is_their_positive_
 
 test fn the_v1_routes_bind_out_of_declaration_order_by_name_which_is_the_contract() -> Bool {
   total_blocking_count_for(source: nab_reordered_source) == 0
-}
-
-test fn the_v2_route_accepts_a_named_call_written_out_of_declaration_order() -> Bool {
-  nab_v2_accepts(source: nab_reordered_source)
 }
