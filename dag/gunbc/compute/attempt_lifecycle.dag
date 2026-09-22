@@ -94,6 +94,15 @@ fn unit_lifecycle_wire(u: UnitLifecycle) -> String {
 // THE LIFECYCLE STATE THE SLOT CARRIES. Reserved is the only state a launch may proceed from and
 // the only state recovery may terminate from without observing the unit -- because in Reserved no
 // unit exists yet, which is the whole reason the two transitions must exclude each other.
+//
+// THAT ENTAILMENT IS ENFORCED BY THE ROUTE AND NOT BY AGREEMENT, which is what makes the temporal
+// trigger safe to act on. gunbc.compute.work_provider_local reaches compute_spawn_and_collect from
+// exactly one place: the AttemptGateReady arm of compute_begin_launch. So a unit exists only if
+// Reserved -> Launching was ADMITTED by the store first, and a slot still reading Reserved means
+// no unit was ever spawned for that attempt. Recovery terminating a stale Reserved attempt
+// therefore cannot be stopping anything, and it does not need to look to know that. If some later
+// caller spawned without passing the gate, this entailment would break silently -- which is why
+// the gate is one call site rather than a rule.
 type AttemptState
   = AttemptReserved
   | AttemptLaunching

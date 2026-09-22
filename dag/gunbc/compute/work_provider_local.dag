@@ -824,12 +824,23 @@ fn compute_settle_attempt(layout: ComputeLayout, gate: AttemptGate, verdict: Str
   }
 }
 
+// THE SETTLEMENT LINE HAS ITS OWN WORDS BECAUSE host_record_wire RENDERS SUCCESS AS THE EMPTY
+// STRING -- it is built to be APPENDED to a sentence, so reusing it here produced a receipt line
+// reading "attempt: " with nothing after it. A line that says nothing on the good path cannot be
+// read as evidence that the good path happened, which is the whole reason the line is in the
+// receipt. Found in the first srv1 run at this head.
+fn compute_attempt_settlement_wire(closed: HostRecordStatus) -> String {
+  match closed {
+    HostRecordWritten => "settled in the attempt slot"
+    HostRecordLost { detail: d } => join(["NOT SETTLED -- ", d], "")
+  }
+}
+
 // A GATE REFUSAL RELEASES THE SEAT IT NEVER USED. Nothing was spawned, so the reservation is
 // returned unconditionally rather than through the unit-termination fold -- there is no unit to
 // observe, and routing an unspawned attempt through a termination decision would make the release
 // depend on evidence that cannot exist.
 fn compute_refused_before_launch(
-  instance: HostDashboardInstance,
   identity: String,
   subject: WorkSubject,
   op: WorkOperation,
@@ -863,7 +874,7 @@ fn compute_run_and_settle(
 ) -> ProvideResult {
   match compute_open_attempt(layout: layout, identity: identity, reference: reference, granted: granted) {
     AttemptGateRefused { detail: d } =>
-      compute_refused_before_launch(instance: instance, identity: identity, subject: subject, op: op, layout: layout, reservation: reservation, detail: d)
+      compute_refused_before_launch(identity: identity, subject: subject, op: op, layout: layout, reservation: reservation, detail: d)
     AttemptGateReady { record: rec, generation: g } =>
       compute_run_under_grant(
         instance: instance, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
@@ -913,7 +924,7 @@ fn compute_run_under_grant(
       compute_capacity_standing_wire(s: standing), "\n",
       "unit: ", unit_termination_wire(t: termination), "\n",
       "reservation: ", compute_release_wire(r: returned), "\n",
-      "attempt: ", host_record_wire(h: closed), "\n",
+      "attempt: ", compute_attempt_settlement_wire(closed: closed), "\n",
       match dropped { LeaseDropped => ""  LeaseNotDropped { detail: d } => compute_stale_lease_note(layout: layout, error: d) },
     ], ""))
   provide_result_with_host_record(
