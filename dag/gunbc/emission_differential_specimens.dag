@@ -150,27 +150,6 @@ data list_init_subject_identity: BehaviorSubjectIdentity = BehaviorSubjectIdenti
   facet: ValueResultFacet,
 }
 
-data list_init_subject: BehaviorSubject = BehaviorSubject {
-  subject_id: list_init_subject_identity,
-  authority: AlgebraicLaw {
-    law: list_init_algebraic_law,
-    structure: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"),
-  },
-  authority_producer: decl_ref(
-    module_path: "gunbc.emission_differential_specimens",
-    decl_name: "list_init_algebraic_law"
-  ),
-  expected: ExpectsValue {
-    digest: "v2.std" as NonEmptyStr,
-  },
-  supplementary: [
-    PreviouslyRecordedOutput {
-      observed: "v2.std" as NonEmptyStr,
-      recorded_at_revision: "0f0ee6fa255" as CommitSha,
-    },
-  ],
-}
-
 // THE MUTATION IS NOT AUTHORED, AND THAT IS WHY IT IS EVIDENCE. DESIGN section 4b(1) requires a
 // discriminating RED refused on the real acceptance path, and a hand-written mutation establishes
 // only that the comparison reacts to a hand-written mutation. Here the broken arm is the REAL PRIOR
@@ -185,7 +164,7 @@ data list_init_subject: BehaviorSubject = BehaviorSubject {
 // editing src/v1/05_emit_rust.dag does not change the compiler a build produces; the stage0 mirror
 // does. A lane that edits the .dag, rebuilds, and reports the comparison unchanged has measured
 // nothing. Reported by sunny-ibex-112 from the repair they authored.
-
+//
 // THE TOGGLE, EXECUTED IN BOTH DIRECTIONS, WITH THE PRODUCING ARTIFACT NAMED ON EACH SIDE. DESIGN
 // section 4b(1) asks for a discriminating RED and an accepted positive control on the real path,
 // and section 4b(4) keeps both enrolled once the wall lands: the red arm here does not retire when
@@ -208,7 +187,7 @@ data list_init_subject: BehaviorSubject = BehaviorSubject {
 // GREEN arm is what makes the red one readable: without it the red is equally consistent with a
 // broken probe, and the green arm's observation is the one carried as a supplementary
 // PreviouslyRecordedOutput on the subject above, at the revision that produced it.
-
+//
 // THE INSTRUMENT'S OWN SOUNDNESS, CARRIED ON THE CARRIER BECAUSE A CHAT LOG IS NOT A CAVEAT.
 //
 // (1) THE TWO COLUMNS MUST DERIVE THEIR MATCHING INDEPENDENTLY, OR THIS ORACLE IS GREEN BY
@@ -231,7 +210,7 @@ data list_init_subject: BehaviorSubject = BehaviorSubject {
 // refusal and a real dependency -- if its rendering changes, this observation silently changes
 // meaning and nothing in the repository says so. The dependency is on the host's entry-verdict
 // refusal text, and the row below is what a reader greps for when that text moves.
-
+//
 // (4) THE ARTIFACT WHOSE ANSWER IS BEING READ MUST BE ATTRIBUTED, AND THIS LANE CAUGHT ITSELF ON IT.
 // An emission of this specimen's closure taken with a shared prebuilt compiler of unstated
 // provenance rendered the REPAIRED three-way chain -- `if __fm.is_empty() { .. } else if __fm.len()
@@ -242,7 +221,7 @@ data list_init_subject: BehaviorSubject = BehaviorSubject {
 // spelling grep establishes which realization answered; only the emitter's own string construction
 // does, and only a compiler whose source revision is known may be read as evidence about that
 // revision.
-
+//
 // THE INSTRUMENT, NAMED AS A RECIPE RATHER THAN HAND-AUTHORED AS A SCRIPT. DESIGN section 6 lists a
 // hand-authored workflow script among the out-of-band-actuation tells, and the admitted seam for
 // invoking a v2 measurement is a `gunbc test <label>` row bound through gunbc.target_binding
@@ -259,14 +238,14 @@ data list_init_subject: BehaviorSubject = BehaviorSubject {
 // EVERY STEP NAMES THE ARTIFACT IT PRODUCES, because the comparison is only as good as the
 // attribution of the two binaries. A run that cannot say which compiler emitted the crate it
 // measured has produced a number about an unknown realization.
-
+//
 // WHY STEP 1 IS NOT OPTIONAL, AND THE ONE THAT COSTS A LANE ITS CONCLUSION. A shared prebuilt
 // compiler on a shared path is whatever lane built it last. This specimen's emission was taken twice
 // from one source: once with a shared binary of unstated provenance, which rendered the REPAIRED
 // three-way lowering, and once with a binary built from the stated revision, which rendered the
 // BROKEN two-way lowering. Same source, same command, opposite artifacts, and only the second is
 // evidence about the stated revision.
-
+//
 // DECLARED FRONTIER: THE DISCRIMINATING INPUT BELONGS IN THE SUBJECT IDENTITY.
 //
 // gunbc.semantic_conformance BehaviorSubjectIdentity is (retained_consumer, facet). It carries no
@@ -302,3 +281,23 @@ data list_init_subject: BehaviorSubject = BehaviorSubject {
 // that a record's identity states which input was exercised. NOT BUILT HERE, by ruling
 // (snappy-deer-443, 2026-09-22): it is a change to a load-bearing carrier serving a wider population
 // than this specimen, and it is recorded as a frontier rather than taken.
+data list_init_subject: BehaviorSubject = BehaviorSubject {
+  subject_id: list_init_subject_identity,
+  authority: AlgebraicLaw {
+    law: list_init_algebraic_law,
+    structure: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"),
+  },
+  authority_producer: decl_ref(
+    module_path: "gunbc.emission_differential_specimens",
+    decl_name: "list_init_algebraic_law"
+  ),
+  expected: ExpectsValue {
+    digest: "v2.std" as NonEmptyStr,
+  },
+  supplementary: [
+    PreviouslyRecordedOutput {
+      observed: "v2.std" as NonEmptyStr,
+      recorded_at_revision: "0f0ee6fa255" as CommitSha,
+    },
+  ],
+}
