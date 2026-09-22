@@ -184,6 +184,12 @@ type CapabilityIssuance
   = CapabilityIssued { capability: ApprovalCapability }
   | CapabilityIssuanceRefused { cause: CapabilityIssuanceRefusal }
 
+// THE SECOND ADMISSION IS GONE BECAUSE THE DECODER NOW CARRIES IT. base16_decode_lower returns
+// the sealed std.integer QualifiedOctets, so re-running its members through base64_octets asked
+// the same question twice, and the refusal arm that step needed -- IssuanceImplementationTagNotOctets
+// -- could not be reached by any hex string. An arm reporting a state no input produces is a
+// refusal vocabulary that lies about what can go wrong, so both the step and the arm are deleted;
+// the hex-shape refusal is the one real cause and it stays.
 fn issue_capability(claims: ApprovalCapabilityClaims, key: MacKey) -> CapabilityIssuance {
   if claims.key_id != key.id {
     CapabilityIssuanceRefused {
@@ -194,12 +200,6 @@ fn issue_capability(claims: ApprovalCapabilityClaims, key: MacKey) -> Capability
       MacKeyMaterialNotHex { key_id: k } =>
         CapabilityIssuanceRefused { cause: IssuanceKeyMaterialNotHex { key_id: k } }
       MacSigned { tag: t } =>
-        // THE SECOND ADMISSION IS GONE BECAUSE THE DECODER NOW CARRIES IT. base16_decode_lower
-        // returns the sealed std.integer QualifiedOctets, so re-running its members through
-        // base64_octets asked the same question twice and the refusal arm it needed
-        // (IssuanceImplementationTagNotOctets) could not be reached by any hex string -- an arm
-        // that reports a state no input produces is a refusal vocabulary that lies about what can
-        // go wrong. The hex-shape refusal above is the one real cause and it stays.
         match base16_decode_lower(hex: t.hex as String) {
           Absent => CapabilityIssuanceRefused { cause: IssuanceImplementationTagNotHex { key_id: t.key_id } }
           Present { value: qualified } =>
