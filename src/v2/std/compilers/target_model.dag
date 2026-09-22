@@ -9372,6 +9372,24 @@ type TargetTypeExpressionProjection {
 // target's own rows in extdeps/languages, and `NoDeclarationReferenceForm` is the honest row for a
 // target that has not modeled scoping -- a fixture target may declare it deliberately, which is
 // what makes the refusal's red authorable (DESIGN section 4b).
+//
+// WHY THESE THREE ARE String WHERE EVERY SIBLING ROW CARRIES Symbol, AND WHAT WOULD RETIRE THAT
+// (review 70003 on gunbc#12048, which read the difference as a fork and is right that it is one).
+// A sibling's `open`/`separator` is a TOKEN CLASS, emitted as FixedToken and spelled LATE by
+// fixed_token_spelling_from_model against the target's lex rules. This row spells EARLY: the path
+// collapses into one Atom identity lexeme, so what it needs is a LEXEME and not a class. Retyping
+// these three to Symbol without moving the emission would make them LOOK like token classes while
+// staying pre-spelled lexemes, which is the nickname DESIGN section 3 forbids rather than a repair
+// of it. THE REPAIR IS THE EMISSION, NOT THE FIELD TYPE: a declaration reference emitted as a token
+// SEQUENCE, so the path is readable back through the same rows it was emitted from (DESIGN section
+// 4, one grammar read in both directions). What blocks it here is deliberate -- a
+// TargetTypeExpressionProjection is a PORTABLE BUNDLE, encoded to a node and decoded on the other
+// side (target_type_expr_declaration_reference_form_node,
+// decode_declaration_reference_form_bundle) precisely so the type-expression fold never carries a
+// whole TargetModel, and fixed_token_spelling_from_model needs one. TRIGGER: the capability is a
+// multi-token declaration-reference emission in the type-expression layer -- an atom row takes one
+// identity, so this needs a path form that emits a token sequence; when that exists these three
+// become token classes and the concat here is deleted with it.
 type DeclarationReferenceForm
   = ModuleScopedPath {
       root_text: String

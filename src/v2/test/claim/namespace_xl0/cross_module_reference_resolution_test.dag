@@ -107,6 +107,10 @@ data xl0r_import_consumer_a_source: String = "module v2.test.xl0r_import_consume
 
 data xl0r_import_consumer_b_source: String = "module v2.test.xl0r_import_consumer_b\n\nimport v2.std.logic { Bool }\nimport v2.test.xl0r_provider_b { xl0r_same_leaf }\n\nfn xl0r_import_uses_b() -> Bool { xl0r_same_leaf }\n"
 
+data xl0r_relay_source: String = "module v2.test.xl0r_relay\n\nimport v2.test.xl0r_provider_a { xl0r_same_leaf }\n"
+
+data xl0r_relay_consumer_source: String = "module v2.test.xl0r_relay_consumer\n\nimport v2.std.logic { Bool }\nimport v2.test.xl0r_relay { xl0r_same_leaf }\n\nfn xl0r_relay_uses() -> Bool { xl0r_same_leaf }\n"
+
 data xl0r_field_access_consumer_source: String = "module v2.test.xl0r_field_access_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_projects(r: Bool) -> Bool { r.v }\n"
 
 data xl0r_method_call_consumer_source: String = "module v2.test.xl0r_method_call_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_calls_through(r: Bool, p: Bool) -> Bool { r.v(x: p) }\n"
@@ -185,7 +189,13 @@ data xl0r_ingest: SourceRootIngest = Cons {
                         head: xl0r_read(source: xl0r_import_consumer_a_source, id: ^xl0r_import_consumer_a_read, unit: ^xl0r_import_consumer_a_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_import_consumer_a.dag"),
                         tail: Cons {
                           head: xl0r_read(source: xl0r_import_consumer_b_source, id: ^xl0r_import_consumer_b_read, unit: ^xl0r_import_consumer_b_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_import_consumer_b.dag"),
-                          tail: Empty
+                          tail: Cons {
+                            head: xl0r_read(source: xl0r_relay_source, id: ^xl0r_relay_read, unit: ^xl0r_relay_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_relay.dag"),
+                            tail: Cons {
+                              head: xl0r_read(source: xl0r_relay_consumer_source, id: ^xl0r_relay_consumer_read, unit: ^xl0r_relay_consumer_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_relay_consumer.dag"),
+                              tail: Empty
+                            }
+                          }
                         }
                       }
                     }
@@ -291,6 +301,10 @@ fn xl0r_resolved_import_consumer_b() -> Outcome<Node> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_import_consumer_b")
 }
 
+fn xl0r_resolved_relay_consumer() -> Outcome<Node> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_relay_consumer")
+}
+
 // THE DECLARING PATHS A RESOLVED BODY CARRIES, read through the one reader the carrier has
 // (v2.std.qualified_name declaration_reference_path_optional): every qualified-name spine of two or
 // more segments in the resolved subtree. An Atom is not a reference to a corpus declaration after
@@ -384,6 +398,24 @@ test fn two_same_leaf_targets_in_different_modules_resolve_to_distinct_declaring
 // no refusal anywhere -- one declaration's identity standing silently for another's. Against that
 // resolver this row is RED (xl0r_resolved_reference_paths answers Empty for an Atom); against the
 // carrier it holds: each body carries its own provider's path and not the other's.
+// A RE-EXPORT RESOLVES TO THE HOME, NOT TO THE RELAY IT WAS REACHED THROUGH. `v2.test.xl0r_relay`
+// imports `xl0r_same_leaf` and declares nothing, so its own binding position is what
+// `v2.test.xl0r_relay_consumer` imports -- and the position a row TARGETS is not a declaration when
+// that position is another row's binding. Handing the target back as the declaring path gives one
+// declaration a second identity, one per relay it is reached through, which is the fork this
+// carrier exists to close (review 70003): the same `xl0r_same_leaf` would answer
+// `v2.test.xl0r_provider_a.xl0r_same_leaf` to a direct reference and
+// `v2.test.xl0r_relay.xl0r_same_leaf` to this one, and translate would emit the second as a Rust
+// path into a module the seed puts no item in, because a module that only imports declares nothing.
+// THE NEGATIVE IS THE DISCRIMINATOR, not the positive: an index that stops at the relay still
+// RESOLVES, so "the chain resolves at all" cannot see this. Red before
+// v2.std.symbol_index symbol_index_declaring_path_of, green after.
+test fn a_re_export_resolves_to_the_home_not_the_relay_holds() -> Bool {
+  let c = xl0r_resolved_relay_consumer()
+  xl0r_resolved_carries_reference(o: c, dotted: "v2.test.xl0r_provider_a.xl0r_same_leaf")
+    && !xl0r_resolved_carries_reference(o: c, dotted: "v2.test.xl0r_relay.xl0r_same_leaf")
+}
+
 test fn two_import_bound_same_leaf_targets_resolve_to_distinct_declaring_paths_holds() -> Bool {
   let a = xl0r_resolved_import_consumer_a()
   let b = xl0r_resolved_import_consumer_b()

@@ -14,7 +14,7 @@ import v2.std.diagnostic {
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import v2.std.algebra { HeadAbsent, HeadFound, fold_list_node, fold_list_right, is_empty, length, list_head, list_init, list_snoc_item }
+import v2.std.algebra { HeadAbsent, HeadFound, fold_list_node, fold_list_right, is_empty, list_head, list_init, list_snoc_item }
 import v2.std.collection {
   List
 }

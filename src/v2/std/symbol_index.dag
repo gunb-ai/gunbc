@@ -246,6 +246,28 @@ fn symbol_index_claimants_at(
   }
 }
 
+// A RE-EXPORT'S DECLARING PATH IS THE HOME'S, NOT THE RELAY'S. A row's target names a POSITION
+// the index can answer at, and for a re-export chain that position is another row's BINDING --
+// `v2.compiler.normalize` imports `Absent` from `v2.std.collection`, which imports it from
+// `v2.std.optional` and declares it nowhere. Handing that target back as a declaring path would
+// give one declaration two identities, one per relay it was reached through, which is the fork this
+// index exists to close (review 70003 on gunbc#12048). The chase is one step and needs no new
+// authority: symbol_index_claimants_at ALREADY answers "who declares what lives at this position",
+// returning the position itself when pass A wrote a declaration there and the recorded declaring
+// path when a row bound there -- and a relay's own row was chased the same way when it bound, so
+// one step reaches the terminal home rather than the next link. A caller reaching here through
+// symbol_index_lookup has already been refused a contested position, so the claimant is unique;
+// an unoccupied target is its own name, which is the pass-A reading.
+fn symbol_index_declaring_path_of(
+  index: SymbolIndex,
+  target: QualifiedName
+) -> QualifiedName {
+  match list_head(xs: symbol_index_claimants_at(index: index, binding_path: target)) {
+    HeadFound { value: declaring } => declaring
+    HeadAbsent => target
+  }
+}
+
 // THE GLOBAL-BARE ORACLE IS DELIBERATELY NOT WRITTEN HERE, and the reason is what the oracle
 // MEANS: how many DECLARATIONS spell this leaf. A binding is not a declaration -- it is a second
 // PATH to one that already exists -- so recording it there answers a different question with the
