@@ -127,6 +127,30 @@ fn terminal_matching() -> WetTerminalRow {
   )
 }
 
+// THE ROSTER-UNIQUENESS CLAIM BELONGS BESIDE THESE CLAIMS AND IS NOT LANDING IN THIS CHANGE, which is a
+// deliberate call rather than an omission, recorded so the next reader does not rediscover the
+// same wall and pay for it twice.
+//
+// WHAT IT GUARDS IS REAL AND NOTHING ELSE GUARDS IT. Two branches appending to this schedule
+// conflict textually; the correct resolution is a union, which is right only when the appended
+// rows are INDEPENDENT. A duplicated row survives that union silently, and the join cannot see
+// it: wet_forward_causes walks SCHEDULED, so a row appearing twice finds the same single terminal
+// twice, n == 1 both times, and no refusal is raised. The sibling claims cannot see it either --
+// every_roster_row_spells_its_function_the_same_way_twice reads WITHIN a row, and
+// the_local_roster_is_not_empty compares length(identities) to length(schedule), which is a map
+// and therefore equal over a roster WITH a duplicate in it.
+//
+// WHY IT IS NOT HERE: it costs 346735 eval steps against a 72300 new-witness budget, and the
+// overage is the pairwise comparison itself. It is not made linear by any construction available
+// -- the substrate offers no set and no sort over String -- so the honest routes are a declared
+// ceiling or a reduced subject, and BOTH are decisions about a shared budget that belong to their
+// own change rather than riding in on a compute-lifecycle PR that is already four rounds deep.
+//
+// ONE MEASUREMENT WORTH CARRYING, because it falsified the obvious repair: the first version
+// rebuilt the roster projection inside the inner predicate, which looked like the cost. Hoisting
+// it moved the figure from 343406 to 346735 -- the difference being one row the roster gained, not
+// the repair. The rebuilt projection was never the expense.
+
 // THE ROSTER DOES NOT LAND EMPTY. An empty roster would make this lane's coverage claim vacuously
 // true and leave nothing proving the executor runs anything at all -- permanently green by
 // construction, which DESIGN 4b calls a decoration rather than a wall. This is the witness that
@@ -333,27 +357,3 @@ test fn the_gate_predicate_admits_only_an_exact_identity_and_candidate() -> Bool
       candidate: fixture_candidate
     )
 }
-
-// THE ROSTER-UNIQUENESS CLAIM WAS WRITTEN HERE AND IS NOT LANDING IN THIS CHANGE, which is a
-// deliberate call rather than an omission, recorded so the next reader does not rediscover the
-// same wall and pay for it twice.
-//
-// WHAT IT GUARDS IS REAL AND NOTHING ELSE GUARDS IT. Two branches appending to this schedule
-// conflict textually; the correct resolution is a union, which is right only when the appended
-// rows are INDEPENDENT. A duplicated row survives that union silently, and the join cannot see
-// it: wet_forward_causes walks SCHEDULED, so a row appearing twice finds the same single terminal
-// twice, n == 1 both times, and no refusal is raised. The sibling claims cannot see it either --
-// every_roster_row_spells_its_function_the_same_way_twice reads WITHIN a row, and
-// the_local_roster_is_not_empty compares length(identities) to length(schedule), which is a map
-// and therefore equal over a roster WITH a duplicate in it.
-//
-// WHY IT IS NOT HERE: it costs 346735 eval steps against a 72300 new-witness budget, and the
-// overage is the pairwise comparison itself. It is not made linear by any construction available
-// -- the substrate offers no set and no sort over String -- so the honest routes are a declared
-// ceiling or a reduced subject, and BOTH are decisions about a shared budget that belong to their
-// own change rather than riding in on a compute-lifecycle PR that is already four rounds deep.
-//
-// ONE MEASUREMENT WORTH CARRYING, because it falsified the obvious repair: the first version
-// rebuilt the roster projection inside the inner predicate, which looked like the cost. Hoisting
-// it moved the figure from 343406 to 346735 -- the difference being one row the roster gained, not
-// the repair. The rebuilt projection was never the expense.
