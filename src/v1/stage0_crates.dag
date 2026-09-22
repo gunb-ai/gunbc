@@ -7,6 +7,13 @@ import v1.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep, emit_car
 import v1.compiler.runtime_rust { rust_runtime_cargo_features }
 import extdeps.cargo { CargoDependency, CargoFeature, RegistryDep, LocalPathDep }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
+import v2.workflow.rust_crate_package_ident {
+  PackageIdentRefusalCause,
+  PackageIdentSetOk,
+  package_ident_refusal_message,
+  PackageIdentSetRefused,
+  rust_crate_package_idents
+}
 import gunbc.stage0_partition_package_graph {
   stage0_partition_package_dependency_names,
   stage0_partition_row_is_module_bearing_package
@@ -156,6 +163,7 @@ type Stage0PartitionRowSpecOutcome
 type Stage0CratePlanOutcome
   = Stage0CratePlanOk { plan: Stage0CratePlan }
   | Stage0CratePlanRefused { cause: Stage0PackageCrateDirRefusalCause }
+  | Stage0CratePlanIdentRefused { cause: PackageIdentRefusalCause }
 
 type Stage0CrateLibEmitOutcome
   = Stage0CrateLibEmitOk { file: TextFile }
@@ -164,6 +172,7 @@ type Stage0CrateLibEmitOutcome
 type Stage0CrateBoundaryEmitRefusalCause
   = Stage0CrateBoundaryEmitModuleOwnerMissing { module_basename: String }
   | Stage0CrateBoundaryEmitPackageCrateDirMissing { package_name: String }
+  | Stage0CrateBoundaryEmitPackageIdentRefused { cause: PackageIdentRefusalCause }
 
 type Stage0CrateBoundaryEmitOutcome
   = Stage0CrateBoundaryEmitOk { files: List<TextFile> }
@@ -233,6 +242,8 @@ fn stage0_crate_boundary_emit_refusal_message(
         "stage0 partition emit refused: missing package crate_dir for ",
         package_name
       )
+    Stage0CrateBoundaryEmitPackageIdentRefused { cause: cause } =>
+      concat("stage0 partition emit refused: ", package_ident_refusal_message(cause: cause))
   }
 }
 
@@ -497,12 +508,39 @@ fn emit_stage0_crate_lib_outcome(spec: Stage0CrateSpec) -> Stage0CrateLibEmitOut
   }
 }
 
+// THE IDENT PROJECTION IS ADMITTED ONCE, HERE, BECAUSE THIS IS THE ONE PLACE THE WHOLE PACKAGE-NAME
+// SET IS IN HAND. Each layered crate's lib.rs re-exports the crates below it as `pub use <ident>::*;`,
+// and that ident is the package name with hyphens carried to underscores -- a projection that is NOT
+// injective, since "a-b" and "a_b" share an image. Two packages colliding there means a facade
+// re-exporting the wrong crate, or the same `pub use` twice: a crate wrong at the reference level
+// while every row that produced it is individually well formed.
+//
+// A COLLISION IS A PAIRWISE PROPERTY OF THE SET, so no per-name check can see it -- each colliding
+// name is individually valid. That is why the admission is a fold over the whole set rather than a
+// predicate at each call site, and why it sits at the plan rather than in the renderer: once the set
+// is admitted here, the per-name projection downstream CANNOT be wrong, which is construction rather
+// than the same check repeated (DESIGN section 5).
+//
+// STATED AT ITS ACTUAL STRENGTH: on stage0 today this is LATENT, not live. All six authored package
+// names are hyphen-only and cannot collide, so this admission changes no rendered byte. It is landed
+// because the derived partition will supply names nobody reviewed one at a time.
 fn stage0_crate_plan_outcome() -> Stage0CratePlanOutcome {
+  match rust_crate_package_idents(
+    package_names: generated_partition_crate_rows |> map(row => row.package_name)
+  ) {
+    PackageIdentSetRefused { cause: cause } => Stage0CratePlanIdentRefused { cause: cause }
+    PackageIdentSetOk { idents: _ } => stage0_crate_plan_from_admitted_rows()
+  }
+}
+
+fn stage0_crate_plan_from_admitted_rows() -> Stage0CratePlanOutcome {
   generated_partition_crate_rows
     |> fold(init: Stage0CratePlanOk { plan: Stage0CratePlan { crates: [] } }, f: fn(acc, row) {
       match acc {
         Stage0CratePlanRefused { cause: cause } =>
           Stage0CratePlanRefused { cause: cause }
+        Stage0CratePlanIdentRefused { cause: cause } =>
+          Stage0CratePlanIdentRefused { cause: cause }
         Stage0CratePlanOk { plan: plan } =>
           match stage0_partition_row_to_spec_outcome(row: row) {
             Stage0PartitionRowSpecRefused { cause: cause } =>
@@ -549,6 +587,10 @@ fn stage0_crate_boundary_emit_outcome() -> Stage0CrateBoundaryEmitOutcome {
     Stage0CratePlanRefused { cause: cause } =>
       Stage0CrateBoundaryEmitRefused {
         cause: stage0_map_package_dir_refusal_to_boundary(cause: cause)
+      }
+    Stage0CratePlanIdentRefused { cause: cause } =>
+      Stage0CrateBoundaryEmitRefused {
+        cause: Stage0CrateBoundaryEmitPackageIdentRefused { cause: cause }
       }
     Stage0CratePlanOk { plan: plan } =>
       emit_stage0_crate_boundary_files_outcome(plan: plan)

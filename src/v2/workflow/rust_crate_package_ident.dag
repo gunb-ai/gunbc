@@ -1,0 +1,142 @@
+module v2.workflow.rust_crate_package_ident
+
+import std.types { List, String, Bool }
+import v2.std.algebra { any }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.text { string_all_chars_in, string_is_empty }
+
+// THE PACKAGE-NAME-TO-RUST-IDENTIFIER PROJECTION, WITH THE TWO REFUSALS IT OWES.
+//
+// A partition crate's lib.rs re-exports every crate below it as `pub use <ident>::*;`, and the
+// ident is the package name with hyphens turned into underscores -- the form cargo gives the
+// extern crate. That projection was previously a bare replace() in v1.compiler.stage0_crates,
+// total and silent, and it is NOT INJECTIVE: "a-b" and "a_b" both carry to "a_b". Two packages
+// sharing an image means one crate's facade re-exports the wrong crate, or emits the same
+// `pub use` twice -- a crate wrong at the reference level while every row that produced it is
+// individually well formed. That is DESIGN section 5's silent wrong answer, and the reason it is
+// closed HERE rather than at the call site is that the population is about to grow: stage0
+// supplies six hand-authored hyphen-only names that cannot collide, and the derived partition
+// will supply names nobody reviewed one at a time.
+//
+// STATED AT ITS ACTUAL STRENGTH: on the existing stage0 route this hazard is LATENT, not live.
+// No current package name reaches either refusal, so this module changes no rendered byte today.
+// It is landed because the derived-partition consumer is what makes the collision reachable.
+//
+// THE TWO ARMS ARE DELIBERATELY SEPARATE BECAUSE THEY SEE DIFFERENT THINGS, and one cannot cover
+// for the other. Validity is a property of ONE name -- a character cargo will not accept -- so it
+// is decidable per name. A collision is a PAIRWISE property OF THE SET: no amount of per-name
+// checking can see it, because each colliding name is individually perfectly valid. A per-name
+// predicate standing at this seam would be cited as covering both while being blind to the
+// second, so only the set-level fold may answer for a collision.
+type PackageIdentRefusalCause
+  = PackageNameNotIdentSafe { package_name: String }
+  | PackageIdentCollision { ident: String, first_package: String, second_package: String }
+
+type PackageIdentOutcome
+  = PackageIdentOk { ident: String }
+  | PackageIdentRefused { cause: PackageIdentRefusalCause }
+
+type PackageIdentSetOutcome
+  = PackageIdentSetOk { idents: List<String> }
+  | PackageIdentSetRefused { cause: PackageIdentRefusalCause }
+
+// The characters this projection carries to a rust ident. Narrower than cargo's own package-name
+// rule on purpose: uppercase and dots REFUSE rather than being mapped, because mapping them is
+// the sanitize-and-continue arm that manufactures the collisions this module exists to refuse.
+data package_ident_alphabet: String = "abcdefghijklmnopqrstuvwxyz0123456789-_"
+
+fn rust_crate_package_ident(package_name: String) -> PackageIdentOutcome {
+  if string_is_empty(s: package_name) {
+    PackageIdentRefused { cause: PackageNameNotIdentSafe { package_name: package_name } }
+  } else {
+    if string_all_chars_in(s: package_name, alphabet: package_ident_alphabet) {
+      PackageIdentOk { ident: replace(package_name, "-", "_") }
+    } else {
+      PackageIdentRefused { cause: PackageNameNotIdentSafe { package_name: package_name } }
+    }
+  }
+}
+
+type PackageIdentBinding {
+  package_name: String
+  ident: String
+}
+
+type PackageIdentFold {
+  bindings: List<PackageIdentBinding>
+  refusal: Optional<PackageIdentRefusalCause>
+}
+
+fn package_ident_bound_to(bindings: List<PackageIdentBinding>, ident: String) -> String {
+  bindings
+    |> fold(init: ident, f: fn(found, binding) {
+      if binding.ident == ident { binding.package_name } else { found }
+    })
+}
+
+fn package_ident_step(acc: PackageIdentFold, package_name: String) -> PackageIdentFold {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match rust_crate_package_ident(package_name: package_name) {
+        PackageIdentRefused { cause: cause } =>
+          PackageIdentFold { bindings: acc.bindings, refusal: Present { value: cause } }
+        PackageIdentOk { ident: ident } =>
+          if acc.bindings |> any(binding => binding.ident == ident) {
+            PackageIdentFold {
+              bindings: acc.bindings,
+              refusal: Present { value: PackageIdentCollision {
+                ident: ident,
+                first_package: package_ident_bound_to(bindings: acc.bindings, ident: ident),
+                second_package: package_name
+              } }
+            }
+          } else {
+            PackageIdentFold {
+              bindings: acc.bindings |> concat([PackageIdentBinding { package_name: package_name, ident: ident }]),
+              refusal: Absent
+            }
+          }
+      }
+  }
+}
+
+// THE SET-LEVEL ENTRY, and the only one a renderer may call for more than one package. It refuses
+// on the FIRST cause it reaches rather than accumulating, because a partition whose crate names
+// are ambiguous has no correct rendering to continue toward.
+fn rust_crate_package_idents(package_names: List<String>) -> PackageIdentSetOutcome {
+  let folded = package_names
+    |> fold(init: PackageIdentFold { bindings: [], refusal: Absent }, f: fn(acc, package_name) {
+      package_ident_step(acc: acc, package_name: package_name)
+    })
+  match folded.refusal {
+    Present { value: cause } => PackageIdentSetRefused { cause: cause }
+    Absent => PackageIdentSetOk { idents: folded.bindings |> map(binding => binding.ident) }
+  }
+}
+
+// The refusal reaches a human as a located sentence rather than a variant name, and it names BOTH
+// packages for a collision: an operator reading "two packages share one identifier" without being
+// told which two has to rediscover the pair the fold already knew.
+fn package_ident_refusal_message(cause: PackageIdentRefusalCause) -> String {
+  match cause {
+    PackageNameNotIdentSafe { package_name: package_name } =>
+      concat(
+        "package name is not carriable to a rust identifier: ",
+        package_name,
+        " (admitted characters: ",
+        package_ident_alphabet,
+        ")"
+      )
+    PackageIdentCollision { ident: ident, first_package: first_package, second_package: second_package } =>
+      concat(
+        "two packages project to one rust identifier ",
+        ident,
+        ": ",
+        first_package,
+        " and ",
+        second_package,
+        " -- a crate facade would re-export the wrong crate or emit the same pub use twice"
+      )
+  }
+}

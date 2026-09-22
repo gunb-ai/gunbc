@@ -1,0 +1,108 @@
+module test.claim.rust_crate_package_ident_witness
+
+import std.types { Bool, List, String }
+import v2.workflow.rust_crate_package_ident {
+  PackageIdentCollision,
+  PackageIdentOk,
+  PackageIdentRefused,
+  PackageIdentSetOk,
+  PackageIdentSetRefused,
+  PackageNameNotIdentSafe,
+  package_ident_refusal_message,
+  rust_crate_package_ident,
+  rust_crate_package_idents
+}
+import gunbc.stage0_crate_partition_generated { generated_partition_crate_rows }
+
+// ── THE PROJECTION THAT IS NOT INJECTIVE, AND THE TWO REFUSALS IT OWES ────────────────────────
+//
+// A layered partition crate re-exports the crates below it as `pub use <ident>::*;`, where the
+// ident is the package name with hyphens carried to underscores. That map is not injective, so
+// two distinct packages can share one identifier and the facade re-exports the wrong crate, or
+// emits the same `pub use` twice -- a crate wrong at the REFERENCE level while every row that
+// produced it is individually well formed.
+//
+// VALIDITY AND COLLISION ARE DELIBERATELY SEPARATE CLAIMS BECAUSE THEY SEE DIFFERENT THINGS, and
+// one cannot stand in for the other. Validity is a property of ONE name and is decidable per name.
+// A collision is a PAIRWISE property OF THE SET: each colliding name is individually perfectly
+// valid, so no amount of per-name checking can see it. A per-name predicate placed at this seam
+// would be cited as covering both and would be blind to the second.
+
+test fn a_name_carriable_to_an_identifier_is_admitted() -> Bool {
+  match rust_crate_package_ident(package_name: "v1-stage0-std-core") {
+    PackageIdentOk { ident: ident } => ident == "v1_stage0_std_core"
+    PackageIdentRefused { cause: _ } => false
+  }
+}
+
+// The positive control for the validity arm: without it, a refusal that fired on EVERY name would
+// satisfy the red below and establish nothing.
+test fn a_name_with_a_character_cargo_will_not_take_refuses() -> Bool {
+  match rust_crate_package_ident(package_name: "v1.Stage0") {
+    PackageIdentRefused { cause: cause } =>
+      match cause {
+        PackageNameNotIdentSafe { package_name: package_name } => package_name == "v1.Stage0"
+        PackageIdentCollision { ident: _, first_package: _, second_package: _ } => false
+      }
+    PackageIdentOk { ident: _ } => false
+  }
+}
+
+// THE COLLISION, which is the arm that matters and the one a per-name check cannot reach. Both
+// names below are individually valid; only the SET is wrong.
+test fn two_names_projecting_to_one_identifier_refuse_and_name_both() -> Bool {
+  match rust_crate_package_idents(package_names: ["a-b", "a_b"]) {
+    PackageIdentSetRefused { cause: cause } =>
+      match cause {
+        PackageIdentCollision { ident: ident, first_package: first, second_package: second } =>
+          (ident == "a_b") && (first == "a-b") && (second == "a_b")
+        PackageNameNotIdentSafe { package_name: _ } => false
+      }
+    PackageIdentSetOk { idents: _ } => false
+  }
+}
+
+// THE CONTROL THAT KEEPS THE COLLISION CLAIM FROM PASSING FOR THE WRONG REASON: a set of distinct
+// names must be ADMITTED. A fold that refused every multi-name set would red nothing above.
+test fn distinct_names_are_admitted_as_a_set() -> Bool {
+  match rust_crate_package_idents(package_names: ["v1-stage0-runtime", "v1-stage0-std-core"]) {
+    PackageIdentSetOk { idents: idents } =>
+      (idents |> any(i => i == "v1_stage0_runtime"))
+        && (idents |> any(i => i == "v1_stage0_std_core"))
+    PackageIdentSetRefused { cause: _ } => false
+  }
+}
+
+// The refusal reaches a reader naming BOTH packages, not just the shared identifier. An operator
+// told only that "two packages collide" has to rediscover the pair the fold already knew.
+test fn the_collision_message_names_both_packages() -> Bool {
+  match rust_crate_package_idents(package_names: ["a-b", "a_b"]) {
+    PackageIdentSetRefused { cause: cause } => {
+      let message = package_ident_refusal_message(cause: cause)
+      message.contains("a-b") && message.contains("a_b")
+    }
+    PackageIdentSetOk { idents: _ } => false
+  }
+}
+
+// ── THE INHABITANCE PAIRING (DESIGN §3) ───────────────────────────────────────────────────────
+//
+// Every claim above supplies its inputs at one interface, so this claim feeds the fold the REAL
+// population: stage0's generated partition rows, the same rows v1.compiler.stage0_crates
+// stage0_crate_plan_outcome admits. It asserts every live name is admitted, one ident per row.
+// It deliberately does NOT import the v1 plan: the required witness lane resolves only the dag and
+// src/v2 roots, so a claim reaching src/v1 would never run there. The plan's own wiring runs where
+// the seed renders the workspace-members region.
+//
+// It also states the change's own strength honestly: this admission is LATENT on stage0 today,
+// because all six authored names are hyphen-only and cannot collide. A red here would mean the
+// authored names had changed under it.
+test fn the_live_stage0_package_names_are_admitted() -> Bool {
+  match rust_crate_package_idents(
+    package_names: generated_partition_crate_rows |> map(row => row.package_name)
+  ) {
+    PackageIdentSetRefused { cause: _ } => false
+    PackageIdentSetOk { idents: idents } =>
+      (idents |> count) == (generated_partition_crate_rows |> count)
+  }
+}
