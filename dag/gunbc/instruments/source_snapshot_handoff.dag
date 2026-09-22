@@ -100,8 +100,11 @@ import gunbc.fabric_source_snapshot {
   ProviderRootRefused,
   ProviderBaseLayout,
   TrustedOwners,
+  ProviderPrincipal,
   establish_provider_base,
   observe_trusted_owners,
+  observe_provider_principal,
+  provider_base_layouts,
   provider_root_default,
   allocate_provider_workspace,
   release_provider_workspace,
@@ -876,6 +879,34 @@ fn author_open_directory(path: String) -> Bool {
   }
 }
 
+// THE ADMITTED HALF USES A LAYOUT THE MODULE CONSTRUCTS, NOT ONE THIS CONTROL SPELLS. A control
+// that re-spells the production base is asserting over its own copy: the spelling could drift from
+// provider_base_layouts and the control would keep passing while production admitted something
+// else. It asks the module for its layouts and requires that at least one of them is admissible on
+// this host, which is the same question a real allocation asks.
+fn admit_a_real_provider_layout(trusted: TrustedOwners) -> ProviderRootAdmission {
+  match observe_provider_principal() {
+    Absent =>
+      ProviderRootRefused { root: "", cause: "this process could not name its own uid" }
+    Present { value: principal } =>
+      fold(
+        provider_base_layouts(principal: principal),
+        init: ProviderRootRefused { root: "", cause: "no layout was considered" },
+        f: fn(acc, layout) {
+          match acc {
+            ProviderRootAdmitted { root: r } => ProviderRootAdmitted { root: r }
+            ProviderRootRefused { root: _, cause: previous } =>
+              match establish_provider_base(layout: layout, trusted: trusted) {
+                ProviderRootAdmitted { root: r } => ProviderRootAdmitted { root: r }
+                ProviderRootRefused { root: r2, cause: c } =>
+                  ProviderRootRefused { root: r2, cause: join([previous, "; ", c], "") }
+              }
+          }
+        },
+      )
+  }
+}
+
 // THE UNSAFE-ANCESTRY CONTROL, NOW OVER AN ENUMERATED ANCESTRY RATHER THAN A WALK. The layout is
 // supplied here because production has exactly two literal layouts and neither can be made unsafe
 // on purpose -- which is the point of narrowing to them. What must still discriminate is the level
@@ -914,18 +945,12 @@ fn run_unsafe_allocation_root_scenario(workspace: SnapshotWorkspace) -> Snapshot
               detail: "a base under a world-writable non-sticky ancestor was admitted",
             }
           ProviderRootRefused { root: _, cause: why } =>
-            match establish_provider_base(
-              layout: ProviderBaseLayout {
-                base: join(["/tmp/gunbc-provider-", trusted.me as String], "") as NonEmptyStr,
-                ancestry: [provider_root_default as String, "/"],
-              },
-              trusted: trusted,
-            ) {
+            match admit_a_real_provider_layout(trusted: trusted) {
               ProviderRootRefused { root: _, cause: c } =>
                 SnapshotScenarioFailed {
                   scenario: "unsafe-allocation-root",
                   step: "admit",
-                  detail: join(["the real provider base was refused: ", c], ""),
+                  detail: join(["no real provider layout was admissible: ", c], ""),
                 }
               ProviderRootAdmitted { root: _ } =>
                 SnapshotScenarioPassed {

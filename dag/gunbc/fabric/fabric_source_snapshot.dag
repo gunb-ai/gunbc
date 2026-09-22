@@ -651,11 +651,12 @@ type ProviderWorkspaceAllocation
 // reach. DESIGN section 5's construction-over-validation says what to do instead: remove the state
 // rather than keep checking it. So the provider does not ADMIT a base, it OWNS one.
 //
-// THE BASE IS A FIXED LOCATION WITH A LITERAL ANCESTRY. $XDG_RUNTIME_DIR/gunbc when the runtime
-// directory exists -- /run/user/<uid>, root-provisioned and owner-only -- otherwise
-// /tmp/gunbc-provider-<user> under root-owned sticky /tmp. Neither discriminator applies any more:
-// there is no attacker-supplied prefix to swap, because every component is a literal this module
-// wrote; and the root needs no detection, because the ancestry is enumerated rather than walked.
+// THE BASE IS A CONSTRUCTED LOCATION WITH A DERIVED ANCESTRY. /run/user/<uid>/gunbc, built from the
+// uid this process observes, when that runtime home exists -- it is root-provisioned and owner-only
+// -- otherwise /tmp/gunbc-provider-<user> under root-owned sticky /tmp. Neither discriminator
+// applies any more: there is no attacker-supplied prefix to swap, because every component is a
+// literal this module wrote or a uid it observed; and the root needs no detection, because each
+// ancestry is the chain above its own base, enumerated rather than walked.
 //
 // WHAT IS CHECKED IS STILL CHECKED, AND IT IS SHORT. Each named level must be owned by this process
 // or by root and must not be writable by others unless it is sticky -- the same level rule, over a
@@ -692,32 +693,41 @@ data caller_named_allocation_base_frontier: FrontierRow = frontier_row_decl(
 
 data provider_base_leaf: NonEmptyStr = "gunbc" as NonEmptyStr
 data provider_base_tmp_prefix: NonEmptyStr = "/tmp/gunbc-provider-" as NonEmptyStr
+data provider_base_runtime_prefix: NonEmptyStr = "/run/user/" as NonEmptyStr
 data provider_root_default: NonEmptyStr = "/tmp" as NonEmptyStr
 
-// THE ANCESTRY IS SPELLED OUT BESIDE THE BASE, so what gets checked is visible rather than derived
-// by string surgery at run time. /run/user/<uid> is owner-only and root-provisioned; /run and / are
-// root-owned; /tmp is root-owned and sticky. Each is a literal, and a level nobody can name is a
-// level nobody can substitute.
-fn provider_base_layouts(runtime_dir: String, user: String) -> List<ProviderBaseLayout> {
-  if runtime_dir == "" {
-    [
-      ProviderBaseLayout {
-        base: join([provider_base_tmp_prefix as String, user], "") as NonEmptyStr,
-        ancestry: [provider_root_default as String, "/"],
-      },
-    ]
-  } else {
-    [
-      ProviderBaseLayout {
-        base: join([runtime_dir, "/", provider_base_leaf as String], "") as NonEmptyStr,
-        ancestry: [runtime_dir, "/run/user", "/run", "/"],
-      },
-      ProviderBaseLayout {
-        base: join([provider_base_tmp_prefix as String, user], "") as NonEmptyStr,
-        ancestry: [provider_root_default as String, "/"],
-      },
-    ]
-  }
+// THE ENVIRONMENT IS NOT CONSULTED AT ALL, AND THE REASON IS A DEFECT THIS MODULE ALREADY WROTE
+// DOWN AND THEN COMMITTED AGAIN ONE VARIABLE OVER.
+//
+// The first narrowing dropped TMPDIR because an environment-named directory is a choice with no
+// name on it. It then read XDG_RUNTIME_DIR, spliced that value into the base, AND HARD-CODED THE
+// ANCESTRY AS IF THE VALUE WERE A LITERAL -- ["/run/user", "/run", "/"]. Nothing established that
+// the value WAS /run/user/<uid>. Under XDG_RUNTIME_DIR=/home/me/run the base becomes
+// /home/me/run/gunbc, and the fold then inspects three directories that are not its ancestors
+// while never inspecting /home/me or /home: a world-writable real grandparent passes uninspected
+// while safe irrelevant directories are reported as "the ancestry". That is not a weaker check, it
+// is a FABRICATED one -- the list claims to be the base's ancestry and is not. Found by review
+// 69841 on gunbc#11960.
+//
+// SO THE UID IS OBSERVED AND THE PATH IS CONSTRUCTED, which is the only arrangement where the
+// ancestry list is derivable rather than asserted. /run/user/<uid> is built here from `id -u`, so
+// every component of both layouts is a literal this module wrote and each ancestry is exactly the
+// chain above its own base. A runtime directory that does not exist needs no probe: `mkdir` of the
+// base fails and the layout refuses, and the /tmp layout is tried next.
+type ProviderPrincipal { uid: NonEmptyStr, name: NonEmptyStr }
+
+fn provider_base_layouts(principal: ProviderPrincipal) -> List<ProviderBaseLayout> {
+  let runtime_home = join([provider_base_runtime_prefix as String, principal.uid as String], "")
+  [
+    ProviderBaseLayout {
+      base: join([runtime_home, "/", provider_base_leaf as String], "") as NonEmptyStr,
+      ancestry: [runtime_home, "/run/user", "/run", "/"],
+    },
+    ProviderBaseLayout {
+      base: join([provider_base_tmp_prefix as String, principal.name as String], "") as NonEmptyStr,
+      ancestry: [provider_root_default as String, "/"],
+    },
+  ]
 }
 
 type LevelObservation
@@ -776,6 +786,28 @@ fn observe_trusted_owners() -> TrustedOwners? {
   } else {
     let named = trim(s: me.stdout)
     if named == "" { none } else { Present { value: TrustedOwners { me: named as NonEmptyStr } } }
+  }
+}
+
+fn observe_provider_principal() -> ProviderPrincipal? {
+  let name = shell.Id.UserName()
+  if !name.success {
+    none
+  } else {
+    let id = shell.Id.UserId()
+    if !id.success {
+      none
+    } else {
+      let named = trim(s: name.stdout)
+      let numeric = trim(s: id.stdout)
+      if named == "" || numeric == "" {
+        none
+      } else {
+        Present {
+          value: ProviderPrincipal { uid: numeric as NonEmptyStr, name: named as NonEmptyStr },
+        }
+      }
+    }
   }
 }
 
@@ -916,13 +948,6 @@ type ProviderRootSelection
   = ProviderRootSelected { root: NonEmptyStr }
   | ProviderRootNoneAdmissible { detail: String }
 
-fn runtime_dir_candidate() -> String {
-  match shell.Env.Get(name: "XDG_RUNTIME_DIR" as NonEmptyStr).value {
-    Absent => ""
-    Present { value: v } => trim(s: v)
-  }
-}
-
 fn select_provider_root() -> ProviderRootSelection {
   match observe_trusted_owners() {
     Absent =>
@@ -930,11 +955,14 @@ fn select_provider_root() -> ProviderRootSelection {
         detail: "this process could not name its own principal, so no owner is trusted",
       }
     Present { value: trusted } =>
+      match observe_provider_principal() {
+        Absent =>
+          ProviderRootNoneAdmissible {
+            detail: "this process could not name its own uid, so no base can be constructed",
+          }
+        Present { value: principal } =>
       fold(
-        provider_base_layouts(
-          runtime_dir: runtime_dir_candidate(),
-          user: trusted.me as String,
-        ),
+        provider_base_layouts(principal: principal),
         init: ProviderRootNoneAdmissible { detail: "no provider base was considered" },
         f: fn(acc, layout) {
           match acc {
@@ -948,6 +976,7 @@ fn select_provider_root() -> ProviderRootSelection {
           }
         },
       )
+      }
   }
 }
 

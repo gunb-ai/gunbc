@@ -298,6 +298,21 @@ service shell.Path {
 }
 
 service shell.Id {
+  operation UserId {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["id", "-u"] }
+    exit {
+      0 => Unit "the effective numeric user id is on stdout"
+      nonzero => String "id could not name the effective user id"
+    }
+  }
+
   operation UserName {
     input {}
     output {
