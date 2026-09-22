@@ -1,0 +1,141 @@
+module test.claim.emission_differential_witness
+
+import std.types { String, NonEmptyStr, Bool }
+import std.process { ProcessExit, process_exit_is_success }
+import gunbc.semantic_conformance {
+  ConformanceDisposition, Conforms, NativeV2Defect, V2EvaluatorDefect, WitnessDefect, Unclassified,
+  PromotedRoute, EvaluatorOnPromotedRoute, disposition_blocks_cutover,
+}
+import gunbc.emission_differential_specimens {
+  list_init_enrolled_rows, list_init_rejected_rows,
+  list_init_subject, row_discriminates,
+  EmissionDifferentialRow,
+}
+import gunbc.emission_differential_run {
+  list_init_disposition, compare_list_init, disposition_identity,
+}
+
+// SUPPLIED-BOUNDARY CONTROLS OVER THE CLASSIFICATION. Per DESIGN section 3's witness rule the
+// observations are SUPPLIED here rather than produced by running the emitter: the subject of these
+// claims is the classification of a pair of observations, not the emitter that produces one, and
+// deriving them would re-execute a whole emission per claim. The real executed route is not replaced
+// by this -- it is the instrument run recorded on gunbc.emission_differential_specimens, and these
+// claims deliberately cannot substitute for it.
+
+fn blocks(d: ConformanceDisposition) -> Bool {
+  disposition_blocks_cutover(disposition: d, route: EvaluatorOnPromotedRoute)
+}
+
+fn arm(native_kind: String, native_payload: String, eval_kind: String, eval_payload: String) -> String {
+  disposition_identity(
+    disposition: list_init_disposition(
+      native_kind: native_kind,
+      native_payload: native_payload,
+      eval_kind: eval_kind,
+      eval_payload: eval_payload
+    )
+  )
+}
+
+// POSITIVE CONTROL. Without it, a classifier that blocked every input would satisfy every red below.
+test fn both_routes_satisfying_the_authority_conforms_and_does_not_block() -> Bool {
+  let d = list_init_disposition(
+    native_kind: "value", native_payload: "v2.std",
+    eval_kind: "value", eval_payload: "v2.std"
+  )
+  disposition_identity(disposition: d) == "Conforms" && !blocks(d)
+}
+
+// THE REAL DEFECT'S DISPOSITION. The broken emitter answers the EMPTY STRING for this subject, so
+// this row is also the control that the empty answer is read as a produced value and not as a
+// non-observation -- the misattribution gunbc.emission_differential_run's kind token exists to stop.
+test fn the_broken_emitted_answer_is_a_native_defect_and_blocks() -> Bool {
+  let d = list_init_disposition(
+    native_kind: "value", native_payload: "",
+    eval_kind: "value", eval_payload: "v2.std"
+  )
+  disposition_identity(disposition: d) == "NativeV2Defect" && blocks(d)
+}
+
+// THE SINGLE MOST IMPORTANT PROPERTY OF THIS INSTRUMENT: agreement between the two routes is not a
+// pass. Both routes return the same wrong value and the disposition is a defect, because each route
+// is compared to the subject's independent authority and never to the other route.
+test fn both_routes_agreeing_on_a_wrong_value_is_not_conformance() -> Bool {
+  let d = list_init_disposition(
+    native_kind: "value", native_payload: "wrong",
+    eval_kind: "value", eval_payload: "wrong"
+  )
+  disposition_identity(disposition: d) == "NativeV2Defect" && blocks(d)
+}
+
+// AN INTERPRETER-ONLY DEFECT IS ATTRIBUTED TO THE INTERPRETER, not to the native route. Without this
+// row the classifier could answer NativeV2Defect for every disagreement and both reds above would
+// still pass.
+test fn an_evaluator_only_defect_is_attributed_to_the_evaluator() -> Bool {
+  let d = list_init_disposition(
+    native_kind: "value", native_payload: "v2.std",
+    eval_kind: "value", eval_payload: "wrong"
+  )
+  disposition_identity(disposition: d) == "V2EvaluatorDefect" && blocks(d)
+}
+
+// A MISSING NATIVE OBSERVATION IS NOT AGREEMENT. It blocks, and it is NOT Conforms.
+test fn an_unobserved_native_route_blocks_and_is_not_conformance() -> Bool {
+  let d = list_init_disposition(
+    native_kind: "notobserved", native_payload: "emitted crate did not build",
+    eval_kind: "value", eval_payload: "v2.std"
+  )
+  disposition_identity(disposition: d) == "Unclassified" && blocks(d)
+}
+
+test fn neither_route_observed_is_a_witness_defect_and_blocks() -> Bool {
+  let d = list_init_disposition(
+    native_kind: "notobserved", native_payload: "not attempted",
+    eval_kind: "notobserved", eval_payload: "not attempted"
+  )
+  disposition_identity(disposition: d) == "WitnessDefect" && blocks(d)
+}
+
+// THE ENTRY REFUSES AN UNRECOGNIZED OBSERVATION KIND rather than treating it as a non-observation. A
+// mistyped channel token must not decay into a row that reads as "this route did not run".
+test fn an_unknown_observation_kind_refuses() -> Bool {
+  !process_exit_is_success(
+    exit: compare_list_init(
+      native_kind: "producedvalue", native_payload: "v2.std",
+      eval_kind: "value", eval_payload: "v2.std"
+    )
+  )
+}
+
+test fn the_conforming_pair_exits_success_through_the_entry() -> Bool {
+  process_exit_is_success(
+    exit: compare_list_init(
+      native_kind: "value", native_payload: "v2.std",
+      eval_kind: "value", eval_payload: "v2.std"
+    )
+  )
+}
+
+// THE CONTROL AGAINST THE ONE REPAIR THAT WOULD SILENTLY DESTROY THIS INSTRUMENT. The cheapest way
+// to make a red comparison green is to move the expectation onto whatever the failing route printed.
+// That edit is invisible to every claim above, because they all supply their own payloads. This row
+// reads the SUBJECT's carried expectation and asserts it is not the broken realization's answer, so
+// copying the emitted answer into the expectation reds here.
+test fn the_subjects_expectation_is_not_the_broken_realizations_answer() -> Bool {
+  let d = list_init_disposition(
+    native_kind: "value", native_payload: "",
+    eval_kind: "value", eval_payload: ""
+  )
+  disposition_identity(disposition: d) == "NativeV2Defect"
+}
+
+// THE ENROLLED ROWS MUST ALL DISCRIMINATE, and the rejected ones must all fail to. A row that cannot
+// go red is not coverage, and the two rejected inputs are the ones a later reader is most likely to
+// re-add.
+test fn every_enrolled_row_discriminates() -> Bool {
+  fold(list_init_enrolled_rows, init: true, f: fn(acc, r) { acc && row_discriminates(row: r) })
+}
+
+test fn every_rejected_row_does_not_discriminate() -> Bool {
+  fold(list_init_rejected_rows, init: true, f: fn(acc, r) { acc && !row_discriminates(row: r) })
+}

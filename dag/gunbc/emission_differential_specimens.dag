@@ -1,0 +1,237 @@
+module gunbc.emission_differential_specimens
+
+import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha, list_length }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.semantic_conformance {
+  PrimarySemanticAuthority, AlgebraicLaw,
+  ExpectedOutcome, ExpectsValue,
+  SupplementaryObservation, PreviouslyRecordedOutput,
+  BehaviorSubject, BehaviorSubjectIdentity, ValueResultFacet,
+}
+
+// THE FIRST SPECIMEN WHOSE TWO OBSERVATIONS ARE TAKEN FROM TWO REALIZATIONS OF ONE SOURCE, and the
+// reason this module exists beside gunbc.semantic_conformance_subjects rather than inside it: that
+// module's subject is a REFUSAL facet measured through the acceptance path, and this one is a VALUE
+// facet measured by EXECUTING the emitted native binary. The carrier vocabulary is the same and is
+// deliberately not re-coined here -- BehaviorSubject, PrimarySemanticAuthority, ExpectedOutcome and
+// the disposition algebra all come from gunbc.semantic_conformance, which already makes "the
+// expected value is whatever one route printed" unwritable by keeping SupplementaryObservation in a
+// separate type from PrimarySemanticAuthority. What this module adds is the one fact that carrier
+// could not supply: which INPUTS discriminate a correct realization from a broken one.
+
+// WHY THE AUTHORITY IS AN ALGEBRAIC LAW AND NOT AN AUTHORED VALUE. list_init returns every element
+// but the last, which is not a preference but a consequence of the free monoid the value inhabits:
+// for a nonempty xs, init(xs) ++ [last(xs)] == xs, and therefore length(init(xs)) == length(xs) - 1.
+// The expectation for each input below is DERIVED by applying that law by hand, so it is grounded in
+// the structure rather than transcribed from either route (DESIGN section 4: operations come from
+// inhabitance). An authored expected value would have been the weaker authority available for the
+// same work.
+data list_init_algebraic_law: NonEmptyStr = "For a FreeMonoid xs, list_init is the unique function satisfying: list_init(Empty) == Empty, and for nonempty xs, append(list_init(xs), [last(xs)]) == xs. Hence length(list_init(xs)) == length(xs) - 1 for nonempty xs, and list_init preserves the order and identity of every retained element. The expectation carried for each specimen input below is derived by applying this law to that input; it is not copied from the interpreter, from the emitted binary, or from v1." as NonEmptyStr
+
+// WHETHER AN INPUT CAN TELL THE TWO REALIZATIONS APART, WHICH IS A PROPERTY OF THE INPUT AND NOT OF
+// THE RUN. The broken lowering this specimen exists to catch collapsed the match to
+// `if __fm.is_empty() { empty_arm } else { nonempty_arm }` with BOTH arms rendering the empty
+// result, so it answered [] for every input. An input whose correct answer IS [] therefore agrees
+// with the broken realization, and enrolling it would add a row that cannot go red -- coverage in
+// name and nothing in substance. The two rejected rows are carried rather than omitted, because a
+// later reader looking for more coverage will otherwise re-add exactly them: they look like the most
+// on-point inputs in the set and they are worth nothing.
+//
+// THE REASON IS CARRIED PER ROW rather than as one note, because the two rows fail to discriminate
+// for the same mechanical reason but are rejected at different strengths: the empty input is
+// trivially [] under any lowering, while the singleton is the precise case the DROPPED arm existed
+// to handle, which is what makes it the trap.
+// WHAT THE BROKEN REALIZATION ANSWERED IS A PreviouslyRecordedOutput, NOT A FIELD THIS MODULE
+// COINED. gunbc.semantic_conformance already types "a value some route printed at some revision" as
+// a SupplementaryObservation arm carrying the revision it was recorded at, precisely so such a value
+// can never drift into the authority position. Re-spelling it as a local NonEmptyStr would have been
+// a second name for that fact and would have dropped the revision, which is the half that makes it
+// checkable: a recorded output with no revision is a number with no producer.
+type EmissionRowDiscrimination
+  = RowDiscriminates { broken_realization_recorded: SupplementaryObservation }
+  | RowDoesNotDiscriminate { reason: NonEmptyStr }
+
+type EmissionDifferentialRow {
+  input_rendering: NonEmptyStr
+  expected_digest: NonEmptyStr
+  discrimination: EmissionRowDiscrimination
+}
+
+// THE THREE ENROLLED ROWS. Each expected_digest is the law applied to input_rendering. The
+// broken_realization_recorded field is what the PRIOR REAL REALIZATION returned, measured rather
+// than predicted -- see the mutation note below.
+data list_init_pair_row: EmissionDifferentialRow = EmissionDifferentialRow {
+  input_rendering: "[1, 2]" as NonEmptyStr,
+  expected_digest: "[1]" as NonEmptyStr,
+  discrimination: RowDiscriminates {
+    broken_realization_recorded: PreviouslyRecordedOutput {
+      observed: "[]" as NonEmptyStr,
+      recorded_at_revision: "f5bd9b064ad" as CommitSha,
+    },
+  },
+}
+
+data list_init_triple_row: EmissionDifferentialRow = EmissionDifferentialRow {
+  input_rendering: "[1, 2, 3]" as NonEmptyStr,
+  expected_digest: "[1, 2]" as NonEmptyStr,
+  discrimination: RowDiscriminates {
+    broken_realization_recorded: PreviouslyRecordedOutput {
+      observed: "[]" as NonEmptyStr,
+      recorded_at_revision: "f5bd9b064ad" as CommitSha,
+    },
+  },
+}
+
+data qualified_name_init_three_segment_row: EmissionDifferentialRow = EmissionDifferentialRow {
+  input_rendering: "v2.std.text" as NonEmptyStr,
+  expected_digest: "v2.std" as NonEmptyStr,
+  discrimination: RowDiscriminates {
+    broken_realization_recorded: PreviouslyRecordedOutput {
+      observed: "<empty string>" as NonEmptyStr,
+      recorded_at_revision: "f5bd9b064ad" as CommitSha,
+    },
+  },
+}
+
+// THE TWO REJECTED ROWS, KEPT SO THEY ARE NOT RE-ADDED AS COVERAGE.
+data list_init_empty_row: EmissionDifferentialRow = EmissionDifferentialRow {
+  input_rendering: "[]" as NonEmptyStr,
+  expected_digest: "[]" as NonEmptyStr,
+  discrimination: RowDoesNotDiscriminate {
+    reason: "the correct answer is the empty result, which is also what the broken two-way lowering answered for every input, so this row holds the same value under a correct and a broken realization and cannot go red" as NonEmptyStr,
+  },
+}
+
+data list_init_singleton_row: EmissionDifferentialRow = EmissionDifferentialRow {
+  input_rendering: "[1]" as NonEmptyStr,
+  expected_digest: "[]" as NonEmptyStr,
+  discrimination: RowDoesNotDiscriminate {
+    reason: "THE TRAP ROW. Length one is exactly the case the dropped `Cons { head: _, tail: Empty } => Empty` arm existed to handle, so it reads as the most on-point input in the set -- and its correct answer is the empty result, which the broken lowering also returned. It is the row most likely to be re-added as coverage and it establishes nothing. Reported by sunny-ibex-112 from a measured probe, not predicted." as NonEmptyStr,
+  },
+}
+
+data list_init_enrolled_rows: List<EmissionDifferentialRow> = [
+  list_init_pair_row,
+  list_init_triple_row,
+  qualified_name_init_three_segment_row,
+]
+
+data list_init_rejected_rows: List<EmissionDifferentialRow> = [
+  list_init_empty_row,
+  list_init_singleton_row,
+]
+
+fn row_discriminates(row: EmissionDifferentialRow) -> Bool {
+  match row.discrimination {
+    RowDiscriminates { broken_realization_recorded: _ } => true
+    RowDoesNotDiscriminate { reason: _ } => false
+  }
+}
+
+fn enrolled_row_count() -> Int { list_length(items: list_init_enrolled_rows) }
+
+// THE SUBJECT. The retained consumer is qualified_name_init, which is the site where the defect had
+// an observable consequence: the native resolver's ancestor walk consumed it, so a truncated result
+// silently skipped every intermediate ancestor. list_init is the shared function underneath and the
+// facet is the value it returns.
+data list_init_subject_identity: BehaviorSubjectIdentity = BehaviorSubjectIdentity {
+  retained_consumer: decl_ref(
+    module_path: "v2.std.qualified_name",
+    decl_name: "qualified_name_init"
+  ),
+  facet: ValueResultFacet,
+}
+
+data list_init_subject: BehaviorSubject = BehaviorSubject {
+  subject_id: list_init_subject_identity,
+  authority: AlgebraicLaw {
+    law: list_init_algebraic_law,
+    structure: decl_ref(module_path: "v2.std.algebra", decl_name: "FreeMonoid"),
+  },
+  authority_producer: decl_ref(
+    module_path: "gunbc.emission_differential_specimens",
+    decl_name: "list_init_algebraic_law"
+  ),
+  expected: ExpectsValue {
+    digest: "v2.std" as NonEmptyStr,
+  },
+  supplementary: [],
+}
+
+// THE MUTATION IS NOT AUTHORED, AND THAT IS WHY IT IS EVIDENCE. DESIGN section 4b(1) requires a
+// discriminating RED refused on the real acceptance path, and a hand-written mutation establishes
+// only that the comparison reacts to a hand-written mutation. Here the broken arm is the REAL PRIOR
+// REALIZATION: the seed emitter's stage0 mirror as it stands at the revision this specimen was
+// authored against renders a FreeMonoid match as a TWO-WAY split -- `{ let __fm = <scrut>; if
+// __fm.is_empty() { <empty> } else { <nonempty> } }` -- with no length-discriminating arm anywhere
+// in the emitter, so every arm past the first is discarded. The fixed arm is that same mirror
+// carrying the repair. Swapping the MIRROR and rebuilding is the whole toggle, and the toggle is
+// between two states the repository actually occupied.
+//
+// THE MIRROR IS THE TAINTING ARTIFACT, NOT THE .dag. The emitter is emitted by the seed it fixes, so
+// editing src/v1/05_emit_rust.dag does not change the compiler a build produces; the stage0 mirror
+// does. A lane that edits the .dag, rebuilds, and reports the comparison unchanged has measured
+// nothing. Reported by sunny-ibex-112 from the repair they authored.
+data list_init_mutation_provenance_note: NonEmptyStr = "The red arm is the repository's prior real realization, not an authored mutation: the stage0 emitter mirror renders a FreeMonoid match as a two-way is_empty split with no length-discriminating arm, so arms past the first are discarded and the emitted answer is the empty result for every input. The green arm is the same mirror carrying the repair. The stage0 mirror is what taints a built compiler; editing the .dag alone changes nothing a build produces." as NonEmptyStr
+
+// THE INSTRUMENT'S OWN SOUNDNESS, CARRIED ON THE CARRIER BECAUSE A CHAT LOG IS NOT A CAVEAT.
+//
+// (1) THE TWO COLUMNS MUST DERIVE THEIR MATCHING INDEPENDENTLY, OR THIS ORACLE IS GREEN BY
+// CONSTRUCTION. Emission plans a match statically; the interpreter matches values at runtime and
+// plans nothing. That independence is the entire reason a disagreement here carries information. A
+// later consolidation that gives both routes one shared matching plan would collapse the two
+// columns into one and every row would agree forever, with no test failing to say so. Any such
+// consolidation must exclude the interpreter's runtime matching or replace this specimen's evidence
+// first. Raised by sunny-ibex-112 after reading the slice.
+//
+// (2) TWO EXECUTION PATHS AGREEING IS NOT A DEFINITION, and the nearest existing verdict must not be
+// read as one: v2.lens.vacuity's EmitVsEval arm returns ProvenIndependent UNCONDITIONALLY on the
+// ground that emit and eval are distinct paths. That is sound for vacuity and forbidden here, for
+// the reason gunbc.expected_value_authority_audit already states. This specimen's authority is the
+// algebraic law above; neither route is consulted to establish it.
+//
+// (3) THE OBSERVATION CHANNEL IS A REFUSAL PATH, STATED AS A KNOWN FRAGILITY RATHER THAN HIDDEN. The
+// interpreter's value is read out of the typed refusal `gunbc run` raises when an entry function
+// returns something other than ProcessExit: that refusal prints the value and exits 0. It is a good
+// refusal and a real dependency -- if its rendering changes, this observation silently changes
+// meaning and nothing in the repository says so. The dependency is on the host's entry-verdict
+// refusal text, and the row below is what a reader greps for when that text moves.
+data list_init_interpreter_observation_channel_note: NonEmptyStr = "The interpreter observation is parsed from the host's typed entry-verdict refusal, which prints the returned value and exits 0 when an entry function does not return ProcessExit. This instrument therefore depends on that refusal's rendering. A change to it silently changes what this observation means; it is recorded here so the dependency is discoverable rather than remembered." as NonEmptyStr
+
+// (4) THE ARTIFACT WHOSE ANSWER IS BEING READ MUST BE ATTRIBUTED, AND THIS LANE CAUGHT ITSELF ON IT.
+// An emission of this specimen's closure taken with a shared prebuilt compiler of unstated
+// provenance rendered the REPAIRED three-way chain -- `if __fm.is_empty() { .. } else if __fm.len()
+// == 1 { .. } else { .. }` -- while the emitter in the tree that emission was attributed to contains
+// no `__fm.len()` anywhere. The artifact was correct and the attribution was false: a compiler built
+// from another lane's repaired tree was answering. A grep for `__fm.is_empty()` does not
+// discriminate either, because the repaired form retains that prefix. So neither the artifact nor a
+// spelling grep establishes which realization answered; only the emitter's own string construction
+// does, and only a compiler whose source revision is known may be read as evidence about that
+// revision.
+data list_init_artifact_attribution_note: NonEmptyStr = "An emitted artifact is evidence about the compiler that produced it and about nothing else. A shared prebuilt compiler of unstated provenance emitted the repaired three-way lowering for a tree whose own emitter contains no length-discriminating arm; the artifact was read as evidence about that tree and was evidence about a different one. Grepping the emitter for the is_empty prefix does not discriminate, because the repair retains it." as NonEmptyStr
+
+// THE INSTRUMENT, NAMED AS A RECIPE RATHER THAN HAND-AUTHORED AS A SCRIPT. DESIGN section 6 lists a
+// hand-authored workflow script among the out-of-band-actuation tells, and the admitted seam for
+// invoking a v2 measurement is a `gunbc test <label>` row bound through gunbc.target_binding
+// TargetProducer. That binding is NOT in this increment, and saying so is the point: the recipe
+// below is carried as DATA so a human can run it today and so the label that replaces it has an
+// authority to derive its steps from, rather than a script to be deleted later.
+//
+// DECLARED FRONTIER, WITH ITS TRIGGER STATED BESIDE IT (DESIGN section 3c): the consumer that turns
+// this recipe into one command is a `//gunbc/instruments:emission-differential` label with a
+// TargetProducer arm. Its trigger is that arm plus its seed dispatch; until it lands, the recipe's
+// consumer is a human and the comparison's verdict still comes from
+// gunbc.emission_differential_run compare_list_init, not from the human.
+//
+// EVERY STEP NAMES THE ARTIFACT IT PRODUCES, because the comparison is only as good as the
+// attribution of the two binaries. A run that cannot say which compiler emitted the crate it
+// measured has produced a number about an unknown realization.
+data emission_differential_recipe: NonEmptyStr = "1. Build the compiler whose emission is being judged, into a session-private target dir, and record its source revision: CARGO_TARGET_DIR=/cargo-target/<session>/ CTRL_BUILD_MODE=local /opt/cargo/bin/cargo build --release -p v1-compiler --bin gunbc. 2. Emit the specimen closure with THAT binary: <gunbc> compile --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/emission_differential_probe.dag --target rust --output-dir <emitdir>. 3. Build and run the emitted observer LOCALLY, never remotely -- BuildBuddy runners are amd64 and session containers are arm64, so a remote build yields a binary that cannot execute: copy the observer into <emitdir>/src/bin/probe.rs and cargo build --release --bin probe, then run it. 4. Take the interpreter observation with the SAME binary: <gunbc> run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/emission_differential_probe.dag --function specimen_digest. 5. Classify: <gunbc> run --entry dag/gunbc/emission_differential_run.dag --function compare_list_init --arg native_kind=value --arg native_payload=<emitted> --arg eval_kind=value --arg eval_payload=<interpreted>. A route that did not run is passed as notobserved with a located cause, never as an empty payload." as NonEmptyStr
+
+// WHY STEP 1 IS NOT OPTIONAL, AND THE ONE THAT COSTS A LANE ITS CONCLUSION. A shared prebuilt
+// compiler on a shared path is whatever lane built it last. This specimen's emission was taken twice
+// from one source: once with a shared binary of unstated provenance, which rendered the REPAIRED
+// three-way lowering, and once with a binary built from the stated revision, which rendered the
+// BROKEN two-way lowering. Same source, same command, opposite artifacts, and only the second is
+// evidence about the stated revision.
+data emission_differential_attribution_step_note: NonEmptyStr = "Both emissions of this specimen were taken from one source text with the same command. The shared prebuilt compiler emitted the repaired three-way lowering; a compiler built from the revision under judgment emitted the broken two-way lowering. The artifact does not carry its producer's identity, so the producer must be built and named by the run that reads it." as NonEmptyStr
