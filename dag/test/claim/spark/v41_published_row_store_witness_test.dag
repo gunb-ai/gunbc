@@ -16,6 +16,7 @@ import gunbc.spark.v41_engram_row_store {
   V41PublishedRowStoreKey, V41PublishedRowStoreKeyed, V41PublishedRowStoreUnestablished, V41PublishedRowStoreRefused,
   v41_published_span_plan, v41_published_row_store_key,
 }
+import extdeps.safetensors.format { SafetensorsShardFile }
 
 // THE KEY OVER THE PUBLISHED STORAGE-BACKED SPANS, AT ITS OWN INTERFACE. The span digests are SUPPLIED
 // values -- a fixture of the reading a Spark would return -- because this claim is about what the key
@@ -70,6 +71,27 @@ test fn the_span_plan_names_the_four_storage_backed_regions() -> Bool {
   length(plan) == 4
     && any(plan, sp => (sp.tensor as String) == "layers.1.engram.embed.weight" && (sp.shard as String) == "model-00047-of-00048.safetensors" && byte_size_count(b: sp.file_offset) == 664 && byte_size_count(b: sp.length) == 98305579008)
     && any(plan, sp => (sp.tensor as String) == "layers.14.engram.embed.scale" && (sp.shard as String) == "model-00048-of-00048.safetensors" && byte_size_count(b: sp.file_offset) == 8 + 664 + 98308270592)
+}
+
+fn w_unplannable_with(plan: V41PublishedSpanPlan, fragment: String) -> Bool {
+  match plan {
+    V41PublishedSpansUnplannable { defects: d } => any(d, x => (x as String).contains(fragment))
+    V41PublishedSpansPlanned { spans: _ } => false
+  }
+}
+
+// THE SHARD-BOUNDS ARMS STAY APART. Two rows for one shard is a contradiction in the supplied files;
+// no row is a thing not yet read. Each is refused in its own words and never in the other's.
+test fn duplicated_shard_file_rows_refuse_as_contradicted_not_unread() -> Bool {
+  let plan = v41_published_span_plan(partition: v41_candidate_partition, sharded: deepseek_v4_1_flash_engram_sharded_entries,
+    shards: concat(deepseek_v4_1_flash_engram_shard_files, deepseek_v4_1_flash_engram_shard_files))
+  w_unplannable_with(plan: plan, fragment: "has 2 shard file rows") && !w_unplannable_with(plan: plan, fragment: "has no shard file row")
+}
+
+test fn an_absent_shard_file_row_refuses_as_unread_not_contradicted() -> Bool {
+  let plan = v41_published_span_plan(partition: v41_candidate_partition, sharded: deepseek_v4_1_flash_engram_sharded_entries,
+    shards: [] as List<SafetensorsShardFile>)
+  w_unplannable_with(plan: plan, fragment: "has no shard file row") && !w_unplannable_with(plan: plan, fragment: "shard file rows")
 }
 
 // POSITIVE CONTROL: the exact plan, read, keys.
