@@ -1,0 +1,57 @@
+module test.claim.approval_assertion_counter_wet_witness_test
+
+import extdeps.shell
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, Int }
+import gunbc.auth.approval_assertion_counter {
+  AssertionCounterAdmission, AssertionCounterAdmitted, AssertionCounterReplayed, AssertionCounterRaced, AssertionCounterStoreRefused,
+  admit_assertion_counter, assertion_counter_refusal_status,
+}
+
+// THE ASSERTION COUNTER STANDING, EXECUTED AGAINST A REAL FILESYSTEM through
+// gunbc.durable_cas_file_store: each claim owns a fresh store under a throwaway /tmp directory and
+// removes it before returning. Effects: shell.Mktemp.DirWithTemplate, the CAS store's Filesystem
+// reads and create-new writes, shell.Remove.RecursiveForce. The route wiring that hands
+// AuthenticAssertion.counter to this admission is not executed here: minting AssertionAuthentic
+// needs a real verification, which the device routes refuse to run on the interpreter
+// (gunbc.auth.approval_device_crypto_realization).
+
+fn fresh_counter_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_assertion_counter.XXXXXX").path
+}
+
+fn admitted_at(a: AssertionCounterAdmission, counter: Int) -> Bool {
+  match a {
+    AssertionCounterAdmitted { enrollment_id: _, counter: c } => c == counter
+    _ => false
+  }
+}
+
+fn replayed(a: AssertionCounterAdmission) -> Bool {
+  match a {
+    AssertionCounterReplayed { observed: _, last_admitted: _ } => assertion_counter_refusal_status(a: a) == 403
+    _ => false
+  }
+}
+
+// A REPLAY AT AN ALREADY-ADMITTED COUNTER IS REFUSED, and so is an older one; the positive control
+// at a higher counter is admitted after both refusals, so the refusals did not wedge the slot.
+test fn a_replayed_assertion_counter_is_refused_and_a_higher_one_admitted() -> Bool {
+  let root = fresh_counter_root()
+  let first = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-482913", observed: 5)
+  let same = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-482913", observed: 5)
+  let older = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-482913", observed: 4)
+  let higher = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-482913", observed: 6)
+  let replay_of_higher = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-482913", observed: 6)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  admitted_at(a: first, counter: 5) && replayed(a: same) && replayed(a: older) && admitted_at(a: higher, counter: 6) && replayed(a: replay_of_higher) && removed.success
+}
+
+// THE STANDING IS PER ENROLMENT: one enrolment's admitted counter does not refuse another's.
+test fn the_counter_standing_is_per_enrolment() -> Bool {
+  let root = fresh_counter_root()
+  let a = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-aaaa", observed: 9)
+  let b = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-bbbb", observed: 1)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  admitted_at(a: a, counter: 9) && admitted_at(a: b, counter: 1) && removed.success
+}
