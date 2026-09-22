@@ -35,8 +35,9 @@ import gunbc.runner_attempt_launch {
 import gunbc.runner_microvm_slot_unit {
   microvm_slot_unit_file, microvm_slot_unit_execs_controller, microvm_slot_unit_timeout_stop_seconds,
   microvm_slot_controller_entry_function, microvm_controller_slice_unit_name, microvm_controller_slice_unit_file,
-  microvm_controller_slice_memory_max, microvm_controller_planning_budget,
+  microvm_controller_slice_memory_max,
 }
+import gunbc.whole_corpus_compile_admission { whole_corpus_compile_public_root_demand_peak }
 import extdeps.systemd.unit_file { ServiceSlice, SliceUnitFile, SystemdSliceDirective, MemoryMax, MemorySwapMax, DirectiveByteCount }
 import gunbc.runner_microvm_slot_controller { slot_of_instance, minted_registration }
 import gunbc.github_effect_perform { JitMintReceived, JitMintClockUnread }
@@ -128,11 +129,11 @@ test fn the_controller_unit_joins_its_own_bounded_no_swap_slice_outside_the_cell
   joins
     && (microvm_controller_slice_unit_name as String) != "fabric-cell-srv1-13.slice"
     && slice_bytes(f: microvm_controller_slice_unit_file(), wanted: [
-      slice_memory_max(bytes: microvm_controller_slice_memory_max),
+      slice_memory_max(bytes: microvm_controller_slice_memory_max()),
       slice_memory_swap_max(bytes: byte_size(0)),
     ])
-    && byte_size_count(b: microvm_controller_slice_memory_max) < gunbc_microvm_shakedown_slot_memory_max_bytes
-    && byte_size_count(b: microvm_controller_planning_budget) < byte_size_count(b: microvm_controller_slice_memory_max)
+    && byte_size_count(b: microvm_controller_slice_memory_max()) < gunbc_microvm_shakedown_slot_memory_max_bytes
+    && byte_size_count(b: microvm_controller_slice_memory_max()) > byte_size_count(b: whole_corpus_compile_public_root_demand_peak())
 }
 
 // THE STOP TIMEOUT IS THE SUM OF THE FIVE DECLARED ROWS, re-derived here from those rows rather

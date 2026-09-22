@@ -248,6 +248,17 @@ data whole_corpus_compile_xl1_fixture_root: WholeCorpusCompileRootIdentity = Who
   dependency_pools: ["dag/std" as SourceRootIdentity],
 }
 
+// THE PUBLIC ROOT'S MEASURED PEAK, PROJECTED FOR A CONSUMER THAT SIZES A PROCESS BY IT: the
+// microVM slot controller's slice (gunbc.runner_microvm_slot_unit) bounds a seed process that
+// resolves the same closure this row measured. Reading the peak through this function keeps the
+// number in one place.
+fn whole_corpus_compile_public_root_demand_peak() -> ByteSize {
+  match whole_corpus_compile_public_root_demand {
+    MeasuredForRoot { root: _, census: _, peak: p, receipt: _ } => p
+    UnmeasuredRoot { root: _ } => byte_size(0)
+  }
+}
+
 data whole_corpus_compile_xl1_fixture_root_demand: WholeCorpusCompileDemand = MeasuredForRoot {
   root: whole_corpus_compile_xl1_fixture_root,
   census: WholeCorpusCompileSourceCensus {
