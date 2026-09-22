@@ -6,6 +6,7 @@ import std.measure { Kibibyte, kibibyte, kibibyte_count, byte_size_count }
 import gunbc.compute.work_request { WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, cargo_profile_wire, work_operation_canonical }
 import extdeps.systemd.systemd_run {
   SystemdRunWaitSummary, SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported, systemd_formatted_bytes_upper,
+  MemoryPeakFormatNotGrounded, summary_format_standing_wire,
   SummaryAbsence, summary_absence_wire,
 }
 
@@ -74,6 +75,7 @@ fn work_class_summary_peak_upper(summary: SystemdRunWaitSummary) -> Kibibyte? {
     MemoryPeakRead { peak: b } => Present { value: kibibyte(count: (byte_size_count(b: systemd_formatted_bytes_upper(b: b)) + 1023) / 1024) }
     MemoryPeakUnparseable { text: _ } => none
     MemoryPeakNotReported { absence: _ } => none
+    MemoryPeakFormatNotGrounded { standing: _ } => none
   }
 }
 
@@ -86,6 +88,7 @@ fn work_class_peak_sample(summary: SystemdRunWaitSummary, work_identity: String,
     Absent => PeakSampleNotTaken { reason: match summary.memory_peak {
       MemoryPeakUnparseable { text } => join(["the Memory peak line did not parse: ", text], "")
       MemoryPeakNotReported { absence } => summary_absence_wire(a: absence)
+      MemoryPeakFormatNotGrounded { standing } => summary_format_standing_wire(s: standing)
       MemoryPeakRead { peak: _ } => "the peak was read but produced no upper bound"
     } }
     Present { value: upper } =>

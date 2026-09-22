@@ -15,6 +15,9 @@ import extdeps.systemd.systemd_run {
   SystemdRunWaitSummary, systemd_run_wait_summary, SystemdServiceResultReading, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
   SystemdServiceResult, ServiceResultOomKill, systemd_service_result_wire,
   SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported,
+  SummaryFormatStanding, SummaryFormatGrounded, SummaryFormatUngroundedMajor, SummaryFormatVersionUnreadable,
+  summary_format_standing, summary_format_standing_wire,
+  ServiceResultFormatNotGrounded, MemoryPeakFormatNotGrounded,
   SummaryAbsence, SummaryNoInvocation, SummarySuppressedByQuietLauncher, SummaryCaptureEmpty, SummaryLineAbsent, summary_absence_wire,
   SystemdFormattedBytes, FormattedBytesExact, FormattedBytesBounded, systemd_formatted_bytes_upper,
 }
@@ -368,6 +371,16 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       summary: SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } },
     }
   } else {
+    // THE VERSION IS OBSERVED FROM THE SAME BINARY WHOSE OUTPUT IS PARSED, not from a sibling tool
+    // and not assumed. extdeps.systemd.systemd_run grounds the summary format at specific majors --
+    // down to the USE_IEC flag that makes the figures 1024-based -- so a manager outside that set
+    // must refuse rather than have its figures read against a format nobody has checked. Reading
+    // `systemctl --version` here would answer about a DIFFERENT executable than the one that prints
+    // the line.
+    let standing = summary_format_standing(version_line: match compute_exec(program: systemd_run, workdir: layout.checkout, args: ["--version"]) {
+      ComputeExecOk { stdout: v, stderr: _ } => v
+      ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => ""
+    })
     let launcher = systemd_run_user_wait_arguments(
       unit: compute_unit_name(identity_hex: identity_hex),
       properties: compute_unit_properties(layout: layout, granted: granted),
@@ -384,7 +397,7 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
     )
     ComputeUnitRun {
       exec: r,
-      summary: systemd_run_wait_summary(launcher: launcher, stderr: match r {
+      summary: systemd_run_wait_summary(launcher: launcher, standing: standing, stderr: match r {
         ComputeExecOk { stdout: _, stderr } => stderr
         ComputeExecFailed { exit_code: _, stdout: _, stderr } => stderr
       }),
@@ -1149,6 +1162,7 @@ fn compute_summary_is_oom_kill(summary: SystemdRunWaitSummary) -> Bool {
     ServiceResultRead { result: r } => match r { ServiceResultOomKill => true  _ => false }
     ServiceResultUnrecognized { wire: _ } => false
     ServiceResultNotReported { absence: _ } => false
+    ServiceResultFormatNotGrounded { standing: _ } => false
   }
 }
 
@@ -1161,6 +1175,7 @@ fn compute_summary_peak_wire(summary: SystemdRunWaitSummary) -> String {
       }
     MemoryPeakUnparseable { text } => join(["UNPARSEABLE (", text, ")"], "")
     MemoryPeakNotReported { absence } => join(["NOT REPORTED (", summary_absence_wire(a: absence), ")"], "")
+    MemoryPeakFormatNotGrounded { standing } => join(["REFUSED (", summary_format_standing_wire(s: standing), ")"], "")
   }
 }
 
@@ -1169,6 +1184,7 @@ fn compute_summary_result_wire(summary: SystemdRunWaitSummary) -> String {
     ServiceResultRead { result: r } => systemd_service_result_wire(r: r)
     ServiceResultUnrecognized { wire } => join(["UNRECOGNIZED (", wire, ")"], "")
     ServiceResultNotReported { absence } => join(["NOT REPORTED (", summary_absence_wire(a: absence), ")"], "")
+    ServiceResultFormatNotGrounded { standing } => join(["REFUSED (", summary_format_standing_wire(s: standing), ")"], "")
   }
 }
 

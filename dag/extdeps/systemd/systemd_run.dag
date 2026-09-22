@@ -10,6 +10,9 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
+// The manager's version line has ONE spelling for the whole systemd upstream, so the major is read
+// with the existing parser rather than a second one (DESIGN section 3: no fork of one concept).
+import extdeps.systemd.systemctl { systemd_major_version }
 
 type SystemdRunProperty {
   property: SystemdUnitProperty,
@@ -325,10 +328,56 @@ fn summary_absence_wire(a: SummaryAbsence) -> String {
   }
 }
 
+// THE FORMAT IS VERSION-KEYED, SO A VERSION THIS MODULE HAS NOT READ IS AN UNMODELED EXTERNAL FACT
+// AND THE ANSWER IS A REFUSAL, NOT A BEST-EFFORT PARSE (loyal-swift-608, 2026-09-22).
+//
+// Everything this module knows about the summary comes from reading systemd's source AT ONE MAJOR:
+// the guard, the line spellings, the emission order, and -- the expensive one -- that FORMAT_BYTES
+// passes USE_IEC, so the figures are 1024-based. format_bytes_full DEFAULTS TO SI 1000-BASED
+// FACTORS and only that flag makes it IEC, so a major that dropped the flag would print figures
+// this module reads about 7% HIGH in the whole part and would size every grant BELOW the peak that
+// produced it -- silent, and in the unsafe direction. None of that is checkable from the printed
+// line: "4.0G" is well-formed under either base.
+//
+// So the grounded set is the majors whose run.c and format-util.h were actually read, and it is a
+// LIST rather than a floor: a newer major is not safer, it is merely unread. This is deliberately
+// NOT the same question as extdeps.systemd.systemctl systemd_memory_peak_support, which asks
+// whether the manager REPORTS a peak at all (>= 254, an open-ended feature floor). A manager can
+// report a peak in a format this module has never read; that is precisely the case that must refuse.
+data grounded_summary_format_majors: List<Int> = [255]
+
+type SummaryFormatStanding
+  = SummaryFormatGrounded { major: Int }
+  | SummaryFormatUngroundedMajor { major: Int }
+  | SummaryFormatVersionUnreadable { line: String }
+
+// systemd-run --version opens "systemd <MAJOR> (<package>)" -- the same binary whose output is
+// parsed, so this is the producer's own version rather than a sibling tool's.
+fn summary_format_standing(version_line: String) -> SummaryFormatStanding {
+  match systemd_major_version(version_line: version_line) {
+    Absent => SummaryFormatVersionUnreadable { line: trim(s: version_line) }
+    Present { value: v } =>
+      if fold(grounded_summary_format_majors, init: false, f: (acc, g) => acc || g == v) {
+        SummaryFormatGrounded { major: v }
+      } else {
+        SummaryFormatUngroundedMajor { major: v }
+      }
+  }
+}
+
+fn summary_format_standing_wire(s: SummaryFormatStanding) -> String {
+  match s {
+    SummaryFormatGrounded { major } => join(["systemd ", to_string(value: major), ", a major this module has read"], "")
+    SummaryFormatUngroundedMajor { major } => join(["systemd ", to_string(value: major), " is outside the majors whose summary format this module has read, so its figures are not interpretable here"], "")
+    SummaryFormatVersionUnreadable { line } => join(["the manager's version line did not parse (", line, "), so the summary format is unknown"], "")
+  }
+}
+
 type SystemdServiceResultReading
   = ServiceResultRead { result: SystemdServiceResult }
   | ServiceResultUnrecognized { wire: String }
   | ServiceResultNotReported { absence: SummaryAbsence }
+  | ServiceResultFormatNotGrounded { standing: SummaryFormatStanding }
 
 fn systemd_service_result_parse(wire: String) -> SystemdServiceResultReading {
   let w = trim(s: wire)
@@ -432,6 +481,7 @@ type SystemdMemoryPeakReading
   = MemoryPeakRead { peak: SystemdFormattedBytes }
   | MemoryPeakUnparseable { text: String }
   | MemoryPeakNotReported { absence: SummaryAbsence }
+  | MemoryPeakFormatNotGrounded { standing: SummaryFormatStanding }
 
 type SystemdRunWaitSummary {
   result: SystemdServiceResultReading
@@ -482,7 +532,17 @@ fn systemd_argv_suppresses_summary(argv: List<String>) -> Bool {
 // regression control. THE PATH IS NAMED DELIBERATELY: DESIGN 4b(1) makes a class's rung the minimum
 // across its in-scope paths, and the EMISSION path has not been measured, so closing the
 // interpreter does not by itself restore a rung claimed source-to-emission.
-fn systemd_run_wait_summary(launcher: SystemdSummaryPrintingWait, stderr: String) -> SystemdRunWaitSummary {
+fn systemd_run_wait_summary(launcher: SystemdSummaryPrintingWait, standing: SummaryFormatStanding, stderr: String) -> SystemdRunWaitSummary {
+  match standing {
+    SummaryFormatUngroundedMajor { major: _ } =>
+      SystemdRunWaitSummary { result: ServiceResultFormatNotGrounded { standing: standing }, memory_peak: MemoryPeakFormatNotGrounded { standing: standing } }
+    SummaryFormatVersionUnreadable { line: _ } =>
+      SystemdRunWaitSummary { result: ServiceResultFormatNotGrounded { standing: standing }, memory_peak: MemoryPeakFormatNotGrounded { standing: standing } }
+    SummaryFormatGrounded { major: _ } => systemd_run_grounded_wait_summary(launcher: launcher, stderr: stderr)
+  }
+}
+
+fn systemd_run_grounded_wait_summary(launcher: SystemdSummaryPrintingWait, stderr: String) -> SystemdRunWaitSummary {
   if systemd_argv_suppresses_summary(argv: systemd_summary_printing_wait_argv(w: launcher)) {
     SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummarySuppressedByQuietLauncher }, memory_peak: MemoryPeakNotReported { absence: SummarySuppressedByQuietLauncher } }
   } else {
