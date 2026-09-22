@@ -84,6 +84,32 @@ fn fabric_object_ref_of(object: FabricObject) -> FabricObjectRef? {
   }
 }
 
+// BYTES TOGETHER WITH THE REF THAT NAMES THEM, AND THE ONLY WAY TO BUILD ONE IS TO MINT IT.
+//
+// This exists because the alternative was measured and is a filed defect class: a function taking
+// (object, ref) as PEER PARAMETERS admits a ref for some OTHER object, and every downstream
+// guarantee citing that ref then describes a different value while reading exactly like a guarantee
+// about this one (gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters).
+// sole_constructor on FabricObjectRef does not close it -- that governs how a ref is MINTED, not
+// whether these bytes are the bytes it names.
+//
+// sole_constructor here is what closes it: no module can assemble a FabricAddressedObject, and the
+// one producer derives the ref FROM the object it stores beside it. So a mismatched pair has no
+// constructor rather than being refused by a check somebody has to remember to write
+// (DESIGN 5: construction over validation). Consumers that need both halves take this one value,
+// which is why the store's put path no longer passes them separately.
+type FabricAddressedObject sole_constructor {
+  object: FabricObject
+  ref: FabricObjectRef
+}
+
+fn fabric_object_addressed(object: FabricObject) -> FabricAddressedObject? {
+  match fabric_object_ref_of(object: object) {
+    Absent => none
+    Present { value: r } => Present { value: FabricAddressedObject { object: object, ref: r } }
+  }
+}
+
 fn fabric_object_ref_wire(object: FabricObjectRef) -> NonEmptyStr {
   serialize_content_hash(hash: object.digest)
 }
@@ -193,6 +219,16 @@ type FabricClosureRead
   | FabricClosureBudgetExhausted { at: FabricObjectRef, bound: Int }
   | FabricClosureRefused { fault: FabricStorageFault }
 
+// THE COMPARISON IS INLINE, AND EXTRACTING IT IS A DEFECT RATHER THAN A TIDY-UP. An earlier
+// revision of this change split the equality arm into a helper taking (asked, content, actual) --
+// the bytes and a digest of those bytes as PEER PARAMETERS with no arm relating them. That signature
+// admits a digest of something OTHER than the value beside it: called with A's ref and B's bytes it
+// reports B verified under A's name, having never hashed B. The class is already in this tree as
+// gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters, and sole_constructor
+// on FabricObjectRef does not close it -- that walls how a ref is MINTED, not whether these bytes are
+// the bytes it names. Keeping the comparison inside the arm that just derived `actual` FROM `content`
+// means the relation is carried by the binding rather than by a caller's discipline, so the bad call
+// has no expression (DESIGN 5: construction over validation).
 // VERIFYING FETCHED BYTES AGAINST THE REF THEY WERE ASKED FOR. The single authority every handler
 // routes a fetched object through: a store that answered with other bytes is corrupt, never trusted.
 type FabricObjectVerification
@@ -207,20 +243,17 @@ fn fabric_object_verified(asked: FabricObjectRef, content: FabricObject) -> Fabr
           detail: "the held bytes could not be reduced to a digest, so nothing was compared" as NonEmptyStr
         }
       }
-    Present { value: actual } => fabric_object_compared(asked: asked, content: content, actual: actual)
-  }
-}
-
-fn fabric_object_compared(asked: FabricObjectRef, content: FabricObject, actual: FabricObjectRef) -> FabricObjectVerification {
-  if fabric_object_ref_eq(a: asked, b: actual) {
-    FabricObjectVerified { stored: FabricStoredObject { object: asked, content: content } }
-  } else {
-    FabricObjectVerificationFailed {
-      fault: FabricObjectCorrupt {
-        object: asked,
-        detail: join(["held bytes hash to ", fabric_object_ref_wire(object: actual) as String], "") as NonEmptyStr,
+    Present { value: actual } =>
+      if fabric_object_ref_eq(a: asked, b: actual) {
+        FabricObjectVerified { stored: FabricStoredObject { object: asked, content: content } }
+      } else {
+        FabricObjectVerificationFailed {
+          fault: FabricObjectCorrupt {
+            object: asked,
+            detail: join(["held bytes hash to ", fabric_object_ref_wire(object: actual) as String], "") as NonEmptyStr,
+          }
+        }
       }
-    }
   }
 }
 

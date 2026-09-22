@@ -1,6 +1,8 @@
 module std.machine_constraints
 
 import std.constructors { Phantom }
+import std.types { NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // A TYPE ARGUMENT IS NOT A QUANTITY AND NOT A VALUE. What stands in MachineWidth's parameter
 // position is WHICH width this type is -- a type-level index. std.measure BitWidth
@@ -51,5 +53,27 @@ type WidthResolution
   | PointerWidth
 
 type MachineWidth<bits: WidthResolution>
+
+// THE DECLARED FRONTIER THIS FILE'S HEADER CITES, NOW ACTUALLY DECLARED (review 69766). The header
+// said literal admissibility was "a DECLARED FRONTIER stated at machine_width_literal_roster_frontier
+// below" and no such declaration existed -- the name resolved to exactly one occurrence, the comment
+// claiming it. That is the DESIGN 3 citation defect in its purest form, and DESIGN 4c is why the
+// repair is a carrier rather than a reworded sentence: a dissolution condition belongs in a typed
+// carrier, and one living only in an annotation is unreachable by the census that exists to find it.
+//
+// WHAT IS ACTUALLY OPEN. The kind above rosters the NAMED inhabitants, and the wall checks an
+// argument against them -- witnessed in both directions by
+// test.claim.type_argument_kind_inhabitance_witness_test. A NAT LITERAL is admitted in any kinded
+// position by a LANGUAGE-LEVEL rule, not by matching StaticWidthIndex or any other arm, so this kind
+// cannot say WHICH literals it admits: MachineWidth<32> and MachineWidth<7> are equally accepted and
+// only the first names a real machine width. The five carriers tried for a per-kind literal roster
+// are enumerated in this file's header, and every one fails on the same axis.
+//
+// THE RUNG IS SET BY THIS AXIS AND NOT BY THE NAMED ONE (DESIGN 4b(1): a class's rung is the minimum
+// across its paths). The named half is walled; the literal half is not, so this position is NOT
+// fully grounded and must not be cited as such.
+data machine_width_literal_roster_frontier: DissolutionCondition = unbound_dissolution(
+  description: "Per-kind literal admissibility at a kinded type-argument position. A Nat literal is admitted by a language-level rule rather than by the kind's declared arms, so MachineWidth cannot express WHICH literals it admits and a nonsensical width typechecks exactly as a real one does. DISSOLVES ON a kind being able to declare its admissible literal domain -- SUFFICIENT FOR the wall to refuse a literal outside it at the same position and with the same located diagnostic it already gives a named non-inhabitant, so the literal and named halves reach one rung. Five carriers were tried and enumerated at this module's header; each fails because a literal is not a name, so admitting one needs a compiler-held convention mapping literals to an arm -- the stringly proxy this kind exists to remove. Not dissolved by adding an arm, and not by widening the wall to refuse every literal, which would refuse the four live MachineWidth sites the corpus writes as bare integers." as NonEmptyStr
+)
 
 type Compose<Algebra, MachineConstraint> = Phantom

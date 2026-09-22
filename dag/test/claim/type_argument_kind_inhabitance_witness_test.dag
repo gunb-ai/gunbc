@@ -1,11 +1,13 @@
 module test.claim.type_argument_kind_inhabitance_witness_test
 
 import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensusRow,
   CensusObserved,
   CensusNotRunnable,
   census_blocking_rows,
   census_rows_of_class,
   census_total_count,
+  censuses_differ_by_exactly_the_target_key,
 }
 import std.types { String, Bool, Int }
 
@@ -131,11 +133,46 @@ fn kind_declared_inhabitant_source() -> String {
   "module kindprobe.pos_inhabitant\n\nimport std.types { Int, String }\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\ntype Use = Width<PointerWidth>\n\n"
 }
 
+// ── WHY THE POSITIVES ALSO REQUIRE EMISSION, AND WHY A DIFFERENTIAL DOES NOT WORK HERE ───────
+//
+// AN EXTERNAL REVIEW RAISED A REAL HOLE: a positive control asserting ZERO rows of ONE named class
+// stays green when its fixture is rejected for some OTHER blocking reason. It measures the absence
+// of one diagnostic, not admission. That is this PR's own subject one layer out.
+//
+// THE REPAIR IS compile_dag_rust_emit_check, the same instrument
+// test.claim.optional_at_required_position_witness_test uses on its own positives. Emission cannot
+// succeed over ANY blocking diagnostic, so a fixture rejected for an unrelated reason now fails
+// instead of passing as a control -- and it is the stronger reading besides, since it establishes
+// that the admitted program EMITS rather than merely that one diagnostic is absent.
+//
+// THE REVIEW'S OTHER SUGGESTION -- require zero TOTAL blocking diagnostics -- IS REFUSED, in
+// gunbc.compile_diagnostic_census's own words: the row set is the whole compile's, closure
+// included, so "a witness reading census_total_count == 0 as 'the fixture still compiles' is
+// asserting a property of the corpus, and on any importing fixture that assertion is permanently
+// false: a check whose RED is unauthorable, which DESIGN 4b names a decoration rather than a weak
+// wall." These fixtures import std.types, so they import a closure.
+//
+// A DIFFERENTIAL WAS TRIED AND DOES NOT HOLD HERE. RECORDED SO THE NEXT READER DOES NOT RE-WALK IT.
+// That module names a second exact form: a differential between two censuses whose sources differ
+// on one axis, where the shared closure cancels. Two sources identical but for the type argument
+// were built and compared with censuses_differ_by_exactly_the_target_key. It FAILED, and bisecting
+// it by execution showed the comparator was right and the claim was wrong:
+//   red_has_the_key_once                 PASS  (class, subject 'Width' and blocking are scoped right)
+//   green_has_the_key_zero               PASS  (the wall genuinely admits the inhabitant)
+//   blocking_totals_differ_by_exactly_one FAIL
+//   total_row_counts_differ_by_exactly_one FAIL
+// So the substitution changes MORE than the one key: a refused type argument leaves the declaration
+// that used it unresolved, and that cascades further rows in the same compile. The refusal is not
+// its own only consequence, which is precisely the condition a one-axis differential requires.
+// Anchoring the unused declaration in both sources did not fix it, because the cascade is
+// downstream of the refusal rather than of the spelling. The differential was removed rather than
+// widened -- a comparator tuned until it agrees is the defect this file exists to catch.
 // THE POSITIVE CONTROL, AND THE DEFECT gunbc#11819 LEFT OPEN. Until this passes, every red above
 // is meaningless: a wall that refuses its own declared inhabitant refuses everything, and refusing
 // everything is not discrimination. This claim is what makes the other three citable.
 test fn the_kinds_own_declared_inhabitant_must_be_admitted() -> Bool {
   kind_mismatch_blocking_count(source: kind_declared_inhabitant_source()) == 0
+    && compile_dag_rust_emit_check(kind_declared_inhabitant_source(), "src/kindprobe_pos_inhabitant.rs", [], [])
 }
 
 fn kind_second_arm_source() -> String {
@@ -147,6 +184,7 @@ fn kind_second_arm_source() -> String {
 // kind's children rather than matching a spelling.
 test fn the_kinds_other_arm_is_admitted_too_so_the_wall_is_not_pinned_to_one_name() -> Bool {
   kind_mismatch_blocking_count(source: kind_second_arm_source()) == 0
+    && compile_dag_rust_emit_check(kind_second_arm_source(), "src/kindprobe_pos_other_arm.rs", [], [])
 }
 
 fn generic_fn_positive_source() -> String {
@@ -157,5 +195,5 @@ fn generic_fn_positive_source() -> String {
 // ordinary and must not be caught.
 test fn a_generic_function_not_misusing_its_parameter_still_compiles() -> Bool {
   type_param_value_position_blocking_count(source: generic_fn_positive_source()) == 0
+    && compile_dag_rust_emit_check(generic_fn_positive_source(), "src/kindprobe_pos_generic_fn.rs", [], [])
 }
-
