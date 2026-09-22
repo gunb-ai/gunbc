@@ -245,6 +245,48 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "the_real_observation_reads_this_machine" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "the_real_observation_reads_this_machine",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "two_requests_summing_past_the_observed_headroom_cannot_both_admit" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "two_requests_summing_past_the_observed_headroom_cannot_both_admit",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "a_reused_reference_is_a_ledger_refusal_and_never_reported_as_a_full_pool" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "a_reused_reference_is_a_ledger_refusal_and_never_reported_as_a_full_pool",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "competing_reservations_cannot_over_reserve_and_a_release_returns_the_capacity" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "competing_reservations_cannot_over_reserve_and_a_release_returns_the_capacity",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "a_request_the_machine_cannot_back_refuses_below_the_live_floor" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "a_request_the_machine_cannot_back_refuses_below_the_live_floor",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "an_appropriation_larger_than_the_machine_refuses_rather_than_admitting" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "an_appropriation_larger_than_the_machine_refuses_rather_than_admitting",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "two_instances_on_one_host_resolve_to_one_pool_at_one_root" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "two_instances_on_one_host_resolve_to_one_pool_at_one_root",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.effect_plan_bash_materialize_real_execution_witness", function: "effect_plan_bash_two_declared_operations_execute" },
       entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag",
       function: "effect_plan_bash_two_declared_operations_execute",
