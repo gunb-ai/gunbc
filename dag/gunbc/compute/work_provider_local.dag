@@ -11,7 +11,7 @@ import extdeps.shell
 import extdeps.git { shape_git_worktree_add_detached_argv }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import extdeps.systemd.systemd_run {
-  systemd_run_user_wait_arguments, systemd_run_property,
+  systemd_run_user_wait_arguments, systemd_run_property, SystemdSummaryPrintingWait, systemd_summary_printing_wait_argv,
   SystemdRunWaitSummary, systemd_run_wait_summary, SystemdServiceResultReading, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
   SystemdServiceResult, ServiceResultOomKill, systemd_service_result_wire,
   SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported,
@@ -318,24 +318,69 @@ fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte) -> List<Str
 // GRANTED -- not a ceiling read independently from the instance, which would let the reservation and
 // the enforcement drift apart -- the checkout as working directory, the shared per-host target
 // directory and the sccache wrapper.
-fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, granted: Kibibyte) -> ComputeExec {
+// WHO OWES THE READ, AND WHY A TRUNCATION CANNOT UNDER-REPORT A PEAK HERE. A truncated stderr is the
+// worst-directed hazard in this mechanism: it makes the number SMALLER -- "Memory peak: 11G" cut to
+// "Memory peak: 1G" parses cleanly as a tenth of the real figure -- and under-reporting is the
+// direction that OOMs. No guard in the parser can catch it (gunbc.machine_intake_host_capture_envelope
+// HostCaptureText: line-wholeness is the CALLER's fact, never inferred from the bytes), so the
+// obligation is NAMED here rather than dropped.
+//
+// THE READER IS gunbc.WitnessBin.Run, AND IT CAN RETURN A PREFIX -- its stderr_capture input
+// defaults to BoundedTail { bytes: 16384 }, so a unit that writes more than 16 KiB of stderr has
+// some of it discarded. What closes the hazard is the DIRECTION of that policy: a bounded TAIL
+// discards the OLDEST bytes, and the launcher's summary is the youngest -- it is written after the
+// unit has ended and the pipe has drained (extdeps.systemd.systemd_run, "WHY THE LAST LINE AND NOT
+// THE FIRST"). So what a cut can slice mid-line is the FIRST retained line, which is the unit's own
+// output, never the summary; and a fragment that happened to begin "Memory peak: " would still lose
+// to the real line, because the fold takes the LAST occurrence of each prefix. A head-bounded or
+// middle-eliding policy would NOT have this property, which is why the dependency is on the policy
+// and not on the operation's name.
+//
+// SO THIS IS A NAMED DEPENDENCY ON A CONTRACT SOMEONE ELSE OWNS: if gunbc.WitnessBin.Run's default
+// capture ever becomes anything other than a tail, this provider's peaks may silently under-report
+// and every grant sized from them is undersized. The reading survives because that operation
+// promises a suffix, not because this module checks anything.
+
+// THE UNIT RUN AND ITS SUMMARY ARE ONE RESULT, because the summary may only be read where the
+// INVOCATION is known. extdeps.systemd.systemd_run systemd_run_wait_summary takes a
+// SystemdSummaryPrintingWait, minted only by the builder that omits --quiet, so reading the peak
+// from stderr somewhere further out -- where all that survives is a String -- is no longer
+// expressible. The no-systemd arm reports NOTHING rather than a peak of zero: there was no unit, so
+// there is no unit peak, and no launcher token to read one with.
+type ComputeUnitRun {
+  exec: ComputeExec
+  summary: SystemdRunWaitSummary
+}
+
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, granted: Kibibyte) -> ComputeUnitRun {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
-    ComputeExecFailed { exit_code: 127, stdout: "", stderr: "this instance's toolchain declares no systemd-run; the local provider runs only under systemd" }
+    ComputeUnitRun {
+      exec: ComputeExecFailed { exit_code: 127, stdout: "", stderr: "this instance's toolchain declares no systemd-run; the local provider runs only under systemd" },
+      summary: SystemdRunWaitSummary { result: ServiceResultNotReported, memory_peak: MemoryPeakNotReported },
+    }
   } else {
-    compute_exec(
+    let launcher = systemd_run_user_wait_arguments(
+      unit: compute_unit_name(identity_hex: identity_hex),
+      properties: compute_unit_properties(layout: layout, granted: granted),
+      setenv_bindings: [
+        join(["CARGO_TARGET_DIR=", layout.target_dir], ""),
+        join(["RUSTC_WRAPPER=", sccache_installed_binary_path], ""),
+      ],
+      command_argv: argv,
+    )
+    let r = compute_exec(
       program: systemd_run,
       workdir: layout.checkout,
-      args: systemd_run_user_wait_arguments(
-        unit: compute_unit_name(identity_hex: identity_hex),
-        properties: compute_unit_properties(layout: layout, granted: granted),
-        setenv_bindings: [
-          join(["CARGO_TARGET_DIR=", layout.target_dir], ""),
-          join(["RUSTC_WRAPPER=", sccache_installed_binary_path], ""),
-        ],
-        command_argv: argv,
-      ),
+      args: systemd_summary_printing_wait_argv(w: launcher),
     )
+    ComputeUnitRun {
+      exec: r,
+      summary: systemd_run_wait_summary(launcher: launcher, stderr: match r {
+        ComputeExecOk { stdout: _, stderr } => stderr
+        ComputeExecFailed { exit_code: _, stdout: _, stderr } => stderr
+      }),
+    }
   }
 }
 
@@ -1161,15 +1206,13 @@ fn compute_run_leased(
         summary: SystemdRunWaitSummary { result: ServiceResultNotReported, memory_peak: MemoryPeakNotReported },
       }
     ComputeExecOk { stdout: _, stderr: _ } => {
-      let run = compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency_store: dependency_store), granted: granted)
+      let unit_run = compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency_store: dependency_store), granted: granted)
+      let run = unit_run.exec
       let log = Filesystem.Write(path: layout.log_path, content: match run {
         ComputeExecOk { stdout, stderr } => join([stdout, stderr], "")
         ComputeExecFailed { exit_code: _, stdout, stderr } => join([stdout, stderr], "")
       })
-      let summary = systemd_run_wait_summary(stderr: match run {
-        ComputeExecOk { stdout: _, stderr } => stderr
-        ComputeExecFailed { exit_code: _, stdout: _, stderr } => stderr
-      })
+      let summary = unit_run.summary
       ComputeAttempt {
         outcome: match run {
           ComputeExecFailed { exit_code, stdout: _, stderr: _ } =>

@@ -3,11 +3,12 @@ module test.claim.compute.work_class_grant_witness_test
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.measure { Kibibyte, kibibyte, kibibyte_count, byte_size_count }
 import extdeps.systemd.systemd_run {
-  SystemdRunWaitSummary, systemd_run_wait_summary,
+  SystemdRunWaitSummary, systemd_run_wait_summary, systemd_run_user_wait_arguments,
   SystemdServiceResultReading, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
   SystemdServiceResult, ServiceResultOomKill, ServiceResultSuccess, ServiceResultExitCode,
   SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported,
   SystemdFormattedBytes, FormattedBytesExact, FormattedBytesBounded, systemd_formatted_bytes_upper,
+  SystemdSummaryPrintingWait,
 }
 import gunbc.compute.work_request { WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug, WorkSucceeded, WorkFailed }
 import gunbc.compute.work_class_grant {
@@ -25,6 +26,13 @@ import gunbc.compute.work_provider_local {
 
 // ── THE PRODUCER: what systemd-run --wait said about the unit ─────────────────────────────────
 
+// EVERY FIXTURE BELOW NAMES THE INVOCATION IT IS PRETENDING CAME FROM. systemd_run_wait_summary
+// takes a SystemdSummaryPrintingWait, minted only by the builder that omits --quiet, so a claim
+// cannot read a peak out of stderr that no launcher in this corpus could have printed. Supplying
+// the launcher here is DESIGN 3's supplied input at one interface; the real builder is exercised by
+// the provider's own route (gunbc.compute.work_provider_local compute_run_unit).
+data fixture_launcher: SystemdSummaryPrintingWait = systemd_run_user_wait_arguments(unit: "gunbc-fixture", properties: [], setenv_bindings: [], command_argv: ["true"])
+
 // The unit's own stderr precedes the launcher's summary under --pipe, so a command that prints a
 // "Memory peak:" line of its own must not be read as the unit's peak. The summary text is the v255
 // run.c ordering: result, main process status, runtime, CPU, memory peak.
@@ -36,7 +44,7 @@ data nine_point_seven_gib_upper_bytes: Int = 10630044058
 data nine_point_seven_gib_lower_bytes: Int = 10415295692
 
 test fn the_units_peak_and_result_are_the_summarys_last_lines_not_the_commands() -> Bool {
-  let s = systemd_run_wait_summary(stderr: summary_oom_after_spoof)
+  let s = systemd_run_wait_summary(launcher: fixture_launcher, stderr: summary_oom_after_spoof)
   compute_summary_is_oom_kill(summary: s)
     && match s.memory_peak {
       MemoryPeakRead { peak: b } =>
@@ -56,9 +64,9 @@ test fn the_units_peak_and_result_are_the_summarys_last_lines_not_the_commands()
 // with --quiet. Either must read NotReported, because a recorded zero would size a class at its
 // headroom alone. An exact small figure keeps its exact reading.
 test fn an_absent_peak_is_not_reported_and_a_byte_figure_is_exact() -> Bool {
-  let absent = systemd_run_wait_summary(stderr: "Finished with result: exit-code\nMain processes terminated with: code=exited/status=1\n")
-  let small = systemd_run_wait_summary(stderr: "Finished with result: success\nMemory peak: 512B\n")
-  let garbled = systemd_run_wait_summary(stderr: "Finished with result: frobnicated\nMemory peak: lots\n")
+  let absent = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "Finished with result: exit-code\nMain processes terminated with: code=exited/status=1\n")
+  let small = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "Finished with result: success\nMemory peak: 512B\n")
+  let garbled = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "Finished with result: frobnicated\nMemory peak: lots\n")
   match absent.memory_peak { MemoryPeakNotReported => true  _ => false }
     && !compute_summary_is_oom_kill(summary: absent)
     && match small.memory_peak {
@@ -67,7 +75,7 @@ test fn an_absent_peak_is_not_reported_and_a_byte_figure_is_exact() -> Bool {
     }
     && match garbled.result { ServiceResultUnrecognized { wire } => wire == "frobnicated"  _ => false }
     && match garbled.memory_peak { MemoryPeakUnparseable { text } => text == "lots"  _ => false }
-    && match systemd_run_wait_summary(stderr: "").result { ServiceResultNotReported => true  _ => false }
+    && match systemd_run_wait_summary(launcher: fixture_launcher, stderr: "").result { ServiceResultNotReported => true  _ => false }
 }
 
 // ── THE RESOLUTION: rows to a grant ──────────────────────────────────────────────────────────
@@ -130,8 +138,8 @@ test fn with_the_shipped_rows_every_class_reserves_the_ceiling() -> Bool {
 test fn only_an_oom_kill_below_the_ceiling_retries_at_the_ceiling() -> Bool {
   let below = GrantSized { class: WorkClassCompile, amount: kibibyte(count: 11 * gib), samples: 3, peak_upper: kibibyte(count: 9 * gib), headroom: kibibyte(count: 2 * gib), headroom_authority: "fixture" as NonEmptyStr }
   let at = GrantAtCeiling { class: WorkClassCompile, amount: ceiling(), reason: ClassUnmeasured }
-  let oom = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: systemd_run_wait_summary(stderr: summary_oom_after_spoof) }
-  let clean = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: systemd_run_wait_summary(stderr: "Finished with result: exit-code\nMemory peak: 3.1G\n") }
+  let oom = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: systemd_run_wait_summary(launcher: fixture_launcher, stderr: summary_oom_after_spoof) }
+  let clean = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: systemd_run_wait_summary(launcher: fixture_launcher, stderr: "Finished with result: exit-code\nMemory peak: 3.1G\n") }
   compute_attempt_retries_at_ceiling(grant: below, attempt: oom)
     && !compute_attempt_retries_at_ceiling(grant: at, attempt: oom)
     && !compute_attempt_retries_at_ceiling(grant: below, attempt: clean)
@@ -144,9 +152,9 @@ test fn only_an_oom_kill_below_the_ceiling_retries_at_the_ceiling() -> Bool {
 // No peak line, or no clock, takes no sample.
 test fn a_summary_becomes_a_typed_sample_at_its_upper_bound_or_no_sample() -> Bool {
   let op = CompileEntry { entry: "src/v2/compiler/compile.dag" }
-  let s = systemd_run_wait_summary(stderr: summary_oom_after_spoof)
+  let s = systemd_run_wait_summary(launcher: fixture_launcher, stderr: summary_oom_after_spoof)
   let taken = work_class_peak_sample(summary: s, work_identity: "abc", op: op, host: "srv1", observed_at: Present { value: 1790000000 })
-  let no_peak = work_class_peak_sample(summary: systemd_run_wait_summary(stderr: "Finished with result: success\n"), work_identity: "abc", op: op, host: "srv1", observed_at: Present { value: 1790000000 })
+  let no_peak = work_class_peak_sample(summary: systemd_run_wait_summary(launcher: fixture_launcher, stderr: "Finished with result: success\n"), work_identity: "abc", op: op, host: "srv1", observed_at: Present { value: 1790000000 })
   let no_clock = work_class_peak_sample(summary: s, work_identity: "abc", op: op, host: "srv1", observed_at: none)
   match taken {
     PeakSampleTaken { class, sample } =>
@@ -178,4 +186,46 @@ test fn the_exceedance_count_is_zero_only_when_absence_is_positively_read() -> B
     && match broken { GrantExceededUnreadable { detail } => detail == "EACCES"  _ => false }
     && match never { GrantExceededNeverRecorded => true  _ => false }
     && match blind { GrantExceededUnreadable { detail: _ } => true  _ => false }
+}
+
+// ── HOW ELSE THE PEAK GOES UNREPORTED, AND THE GUARD THAT MUST NOT BE ADDED ───────────────────
+//
+// NotReported is reachable by three ABSENCE shapes, not only by a manager below v254 omitting the
+// line, and absence is the one thing this parser can be interrogated about without ever having seen
+// a real summary: these claims are about the ABSENCE of the format rather than its content
+// (loyal-swift-608, 2026-09-22). Empty stderr; a unit that failed and whose stderr carries only its
+// own output; and neither may read as a peak of zero, because a zero would size the class at its
+// headroom alone.
+//
+// THE THIRD CASE IS THE INVERSE, AND IT IS WHY NO TERMINATION GUARD BELONGS HERE. A truncated read
+// would under-report a peak silently -- "Memory peak: 11G" cut to "Memory peak: 1G" parses cleanly
+// as a tenth of the real figure -- so a trailing-newline requirement suggests itself. It is REFUSED,
+// on the authority that already settled this question: gunbc.machine_intake_host_capture_envelope
+// HostCaptureText rules that whether a capture's last line is whole is the CALLER's fact and is
+// never inferred from the bytes, which cannot tell a truncation from a transport that trimmed. This
+// stderr is a COMPLETED TRANSCRIPT -- systemd-run has exited before the provider reads it -- and the
+// seed's shell observation trims, so a termination guard would drop the summary of every real run
+// while still not detecting a mid-line cut. The claim below pins that an unterminated summary READS.
+// 4.0G against the same factor and rounding as the 9.7G rows above: lower 40 * 1024^3 / 10, upper
+// (40 + 2) * 1024^3 / 10 rounded up.
+data four_gib_lower_bytes: Int = 4294967296
+data four_gib_upper_bytes: Int = 4509715661
+
+test fn the_peak_is_unreported_by_absence_and_an_untrimmed_summary_still_reads() -> Bool {
+  let empty = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "")
+  let unit_output_only = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "error: linking with `cc` failed\nrustc exited 1\n")
+  let trimmed = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "Finished with result: success\nMemory peak: 4.0G")
+  match empty.memory_peak { MemoryPeakNotReported => true  _ => false }
+    && match unit_output_only.memory_peak { MemoryPeakNotReported => true  _ => false }
+    && match unit_output_only.result { ServiceResultNotReported => true  _ => false }
+    && match trimmed.result { ServiceResultRead { result: r } => match r { ServiceResultSuccess => true  _ => false }  _ => false }
+    && match trimmed.memory_peak {
+      MemoryPeakRead { peak: b } =>
+        match b {
+          FormattedBytesBounded { printed, lower, upper } =>
+            printed == "4.0G" && byte_size_count(b: lower) == four_gib_lower_bytes && byte_size_count(b: upper) == four_gib_upper_bytes
+          FormattedBytesExact { bytes: _ } => false
+        }
+      _ => false
+    }
 }

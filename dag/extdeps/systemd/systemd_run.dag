@@ -98,13 +98,30 @@ fn systemd_run_user_transient_arguments(
 // stdio (`--wait --pipe`), so a build or a check runs under the unit's resource bounds while the
 // process that asked for it observes the result directly. `--collect` unloads the unit afterwards
 // whatever its result, so a failed compute unit does not accumulate as a failed unit to reap.
+// WHETHER THERE IS A SUMMARY TO READ IS A FACT ABOUT THE INVOCATION, SO THE INVOCATION CARRIES IT.
+// systemd-run prints the result and peak lines only under `if (arg_wait && !arg_quiet)` (run.c,
+// v255), so --quiet suppresses the summary ENTIRELY: a reader handed a quiet launcher's stderr
+// finds no peak, reports MemoryPeakNotReported forever, and is indistinguishable from a healthy
+// launcher whose manager is below v254. A DEAD PRODUCER THAT LOOKS LIKE A HEALTHY ONE WITH NOTHING
+// TO REPORT is the failure this file is one word away from: RunTransientAndWait and this builder
+// differ by exactly "--quiet", and the next author adds a third by copying whichever they reached
+// first. So the summary reader does not take a loose String. It takes this token, which is minted
+// in exactly one place -- the builder below, the only wait invocation in this module that omits
+// --quiet -- and a launcher that cannot print a peak therefore cannot be handed to the thing whose
+// contract is to observe one.
+type SystemdSummaryPrintingWait { argv: List<String> }
+
+fn systemd_summary_printing_wait_argv(w: SystemdSummaryPrintingWait) -> List<String> {
+  w.argv
+}
+
 fn systemd_run_user_wait_arguments(
   unit: NonEmptyStr,
   properties: List<String>,
   setenv_bindings: List<String>,
   command_argv: List<String>,
-) -> List<String> {
-  concat(["--wait", "--pipe", "--collect"], systemd_run_user_transient_arguments(unit: unit, properties: properties, setenv_bindings: setenv_bindings, command_argv: command_argv))
+) -> SystemdSummaryPrintingWait {
+  SystemdSummaryPrintingWait { argv: concat(["--wait", "--pipe", "--collect"], systemd_run_user_transient_arguments(unit: unit, properties: properties, setenv_bindings: setenv_bindings, command_argv: command_argv)) }
 }
 
 fn systemd_run_property(name: String, value: String) -> String {
@@ -185,6 +202,14 @@ service systemd.SystemdRun {
     }
   }
 
+  // THIS OPERATION CANNOT SERVE PEAK OBSERVATION, AND THE REASON IS THE --quiet BELOW. run.c at v255
+  // prints "Finished with result:" and "Memory peak:" only under `if (arg_wait && !arg_quiet)`, so
+  // this invocation's stderr never carries the summary and a peak read from it is NotReported for
+  // every run. That is why systemd_run_wait_summary takes a SystemdSummaryPrintingWait token this
+  // operation cannot produce: a caller needing the unit's peak takes
+  // systemd_run_user_wait_arguments instead. --quiet stays here because this operation's callers
+  // want the child's own stdio unpolluted by the launcher's chatter, which is a real and different
+  // need -- the fix is that the two cannot be confused, not that one of them loses its flag.
   operation RunTransientAndWait {
     input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
     output {
@@ -400,7 +425,11 @@ fn systemd_run_summary_last_value(stderr: String, prefix: String) -> String? {
     } else { acc })
 }
 
-fn systemd_run_wait_summary(stderr: String) -> SystemdRunWaitSummary {
+// THE READER TAKES THE LAUNCHER, NOT JUST ITS OUTPUT. The launcher argument is not inspected and is
+// not meant to be: it is the evidence that this stderr came from an invocation that prints a
+// summary at all, and its only inhabitant is minted by systemd_run_user_wait_arguments. Dropping it
+// would restore a reader that accepts a quiet launcher's silence as "no peak reported".
+fn systemd_run_wait_summary(launcher: SystemdSummaryPrintingWait, stderr: String) -> SystemdRunWaitSummary {
   SystemdRunWaitSummary {
     result: match systemd_run_summary_last_value(stderr: stderr, prefix: systemd_run_summary_result_prefix) {
       Present { value: v } => systemd_service_result_parse(wire: v)
