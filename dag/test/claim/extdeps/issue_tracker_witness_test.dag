@@ -1,0 +1,592 @@
+module test.claim.extdeps.issue_tracker_witness
+
+import extdeps.google.issue_tracker {
+  Component,
+  ComponentRef,
+  Issue,
+  IssueComment,
+  IssuePriorityP1,
+  IssuePriorityP2,
+  IssuePriorityP3,
+  IssuePriorityP4,
+  IssuePriorityP0,
+  IssueRef,
+  IssueSeverityS1,
+  IssueSeverityS2,
+  IssueSeverityS3,
+  IssueSeverityS4,
+  IssueSeverityS0,
+  IssueStatusAccepted,
+  IssueStatusAssigned,
+  IssueStatusDuplicate,
+  IssueStatusFixed,
+  IssueStatusNew,
+  IssueStatusQueryOpen,
+  IssueStatusQueryStanding,
+  IssueStatusVerified,
+  IssueSubscription,
+  IssueSubscriptionCc,
+  IssueSubscriptionStar,
+  IssueSubscriptionUpvote,
+  Query,
+  QueryAssignee,
+  QueryStatus,
+  QueryText,
+  User,
+  cc_subscribers,
+  issue_priority_wire,
+  issue_ref_list_includes,
+  issue_severity_wire,
+  issue_status_is_open,
+  issue_status_wire,
+  issue_tracker_interface_version,
+  query_run,
+  stock_sidebar_roster,
+  view_assigned_to_me,
+  view_ccd_to_me,
+  view_collaborating,
+  view_reported_by_me,
+  view_starred_by_me,
+  view_to_be_verified,
+  view_upvoted_by_me,
+}
+import std.types { list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURE IS A DESIGNED SESSION SNAPSHOT, not a captured one: nine issues over three users'
+// worth of relations (two users, a three-node component tree, a blocking edge pair, one
+// duplicated issue), constructed so every stock view's expected subset is EXACT — each view claim
+// below pins the real sidebar roster's semantics by deriving the subset from the modeled
+// derivations and comparing identity lists. The subscription facts are the designed per-user
+// state; the issue resources' cc/stars/upvotes display fields are authored to agree with them and
+// claim w_cc_facts_mirror_issue_cc_field pins that agreement.
+
+data fixture_owner: User = User { email: "briansrls@gunb.ai" }
+
+data fixture_teammate: User = User { email: "teammate@gunb.ai" }
+
+data fixture_component_platforms_bmc: Component = Component {
+  id: 1001,
+  path: ["Platforms", "BMC"],
+}
+
+data fixture_component_platforms_bmc_thermal: Component = Component {
+  id: 1002,
+  path: ["Platforms", "BMC", "Thermal"],
+}
+
+data fixture_component_infrastructure_power: Component = Component {
+  id: 1003,
+  path: ["Infrastructure", "Power"],
+}
+
+data fixture_issue_101: Issue = Issue {
+  id: 101,
+  title: "srv2 BMC watchdog reset under load",
+  status: IssueStatusNew,
+  priority: IssuePriorityP1,
+  severity: IssueSeverityS1,
+  assignee: Present { value: fixture_teammate },
+  reporter: fixture_owner,
+  cc: [],
+  stars: 1,
+  upvotes: 0,
+  component: ComponentRef { id: 1001 },
+  blocking: [],
+  blocked_by: [IssueRef { id: 102 }],
+  comments: [],
+  history: [
+    {
+      at: "2026-09-01T09:15:00Z",
+      author: fixture_owner,
+      summary: "Issue created",
+    },
+  ],
+  created: "2026-09-01T09:15:00Z",
+  modified: "2026-09-02T11:00:00Z",
+}
+
+data fixture_issue_102: Issue = Issue {
+  id: 102,
+  title: "Model the issue tracker interface in extdeps",
+  status: IssueStatusAssigned,
+  priority: IssuePriorityP2,
+  severity: IssueSeverityS2,
+  assignee: Present { value: fixture_owner },
+  reporter: fixture_teammate,
+  cc: [fixture_teammate],
+  stars: 0,
+  upvotes: 0,
+  component: ComponentRef { id: 1002 },
+  blocking: [IssueRef { id: 101 }],
+  blocked_by: [],
+  comments: [],
+  history: [
+    {
+      at: "2026-09-03T14:00:00Z",
+      author: fixture_teammate,
+      summary: "Issue created",
+    },
+  ],
+  created: "2026-09-03T14:00:00Z",
+  modified: "2026-09-04T10:30:00Z",
+}
+
+data fixture_issue_103: Issue = Issue {
+  id: 103,
+  title: "Verify fan tach telemetry on srv2",
+  status: IssueStatusAssigned,
+  priority: IssuePriorityP3,
+  severity: IssueSeverityS3,
+  assignee: Present { value: fixture_teammate },
+  reporter: fixture_teammate,
+  cc: [],
+  stars: 1,
+  upvotes: 0,
+  component: ComponentRef { id: 1002 },
+  blocking: [],
+  blocked_by: [],
+  comments: [],
+  history: [
+    {
+      at: "2026-09-05T08:45:00Z",
+      author: fixture_teammate,
+      summary: "Issue created",
+    },
+  ],
+  created: "2026-09-05T08:45:00Z",
+  modified: "2026-09-06T09:00:00Z",
+}
+
+data fixture_issue_104: Issue = Issue {
+  id: 104,
+  title: "Renew colo capacity lease",
+  status: IssueStatusNew,
+  priority: IssuePriorityP2,
+  severity: IssueSeverityS2,
+  assignee: Absent,
+  reporter: fixture_teammate,
+  cc: [],
+  stars: 0,
+  upvotes: 1,
+  component: ComponentRef { id: 1003 },
+  blocking: [],
+  blocked_by: [],
+  comments: [],
+  history: [
+    {
+      at: "2026-09-06T13:20:00Z",
+      author: fixture_teammate,
+      summary: "Issue created",
+    },
+  ],
+  created: "2026-09-06T13:20:00Z",
+  modified: "2026-09-07T16:40:00Z",
+}
+
+data fixture_issue_105: Issue = Issue {
+  id: 105,
+  title: "Roadmap frontend issue table",
+  status: IssueStatusAccepted,
+  priority: IssuePriorityP1,
+  severity: IssueSeverityS2,
+  assignee: Present { value: fixture_owner },
+  reporter: fixture_teammate,
+  cc: [],
+  stars: 0,
+  upvotes: 0,
+  component: ComponentRef { id: 1002 },
+  blocking: [],
+  blocked_by: [],
+  comments: [],
+  history: [
+    {
+      at: "2026-09-08T10:00:00Z",
+      author: fixture_teammate,
+      summary: "Issue created",
+    },
+  ],
+  created: "2026-09-08T10:00:00Z",
+  modified: "2026-09-10T12:00:00Z",
+}
+
+data fixture_issue_106: Issue = Issue {
+  id: 106,
+  title: "Dashboard renders stale observed-at",
+  status: IssueStatusAssigned,
+  priority: IssuePriorityP3,
+  severity: IssueSeverityS4,
+  assignee: Present { value: fixture_teammate },
+  reporter: fixture_teammate,
+  cc: [fixture_owner],
+  stars: 0,
+  upvotes: 0,
+  component: ComponentRef { id: 1002 },
+  blocking: [],
+  blocked_by: [],
+  comments: [
+    IssueComment {
+      author: fixture_teammate,
+      body: "the page body hides how old the region render is",
+      created: "2026-09-11T09:30:00Z",
+    },
+  ],
+  history: [
+    {
+      at: "2026-09-11T09:00:00Z",
+      author: fixture_teammate,
+      summary: "Issue created",
+    },
+  ],
+  created: "2026-09-11T09:00:00Z",
+  modified: "2026-09-11T09:30:00Z",
+}
+
+data fixture_issue_107: Issue = Issue {
+  id: 107,
+  title: "NBD proxy endpoint flake",
+  status: IssueStatusNew,
+  priority: IssuePriorityP3,
+  severity: IssueSeverityS3,
+  assignee: Absent,
+  reporter: fixture_teammate,
+  cc: [],
+  stars: 0,
+  upvotes: 0,
+  component: ComponentRef { id: 1001 },
+  blocking: [],
+  blocked_by: [],
+  comments: [
+    IssueComment {
+      author: fixture_owner,
+      body: "reproduced twice under parallel installs",
+      created: "2026-09-12T15:10:00Z",
+    },
+  ],
+  history: [
+    {
+      at: "2026-09-12T15:00:00Z",
+      author: fixture_teammate,
+      summary: "Issue created",
+    },
+  ],
+  created: "2026-09-12T15:00:00Z",
+  modified: "2026-09-12T15:10:00Z",
+}
+
+data fixture_issue_108: Issue = Issue {
+  id: 108,
+  title: "Bootloader PXE config for srv2 fleet",
+  status: IssueStatusFixed,
+  priority: IssuePriorityP2,
+  severity: IssueSeverityS2,
+  assignee: Present { value: fixture_teammate },
+  reporter: fixture_teammate,
+  cc: [],
+  stars: 0,
+  upvotes: 0,
+  component: ComponentRef { id: 1001 },
+  blocking: [],
+  blocked_by: [],
+  comments: [],
+  history: [
+    {
+      at: "2026-09-13T10:00:00Z",
+      author: fixture_teammate,
+      summary: "Issue created",
+    },
+    {
+      at: "2026-09-15T17:00:00Z",
+      author: fixture_teammate,
+      summary: "Status set to Fixed",
+    },
+  ],
+  created: "2026-09-13T10:00:00Z",
+  modified: "2026-09-15T17:00:00Z",
+}
+
+data fixture_issue_109: Issue = Issue {
+  id: 109,
+  title: "Fan tach telemetry duplicate",
+  status: IssueStatusDuplicate,
+  priority: IssuePriorityP4,
+  severity: IssueSeverityS4,
+  assignee: Absent,
+  reporter: fixture_teammate,
+  cc: [],
+  stars: 0,
+  upvotes: 0,
+  component: ComponentRef { id: 1002 },
+  blocking: [],
+  blocked_by: [],
+  comments: [],
+  history: [
+    {
+      at: "2026-09-14T11:00:00Z",
+      author: fixture_teammate,
+      summary: "Issue created",
+    },
+    {
+      at: "2026-09-16T09:00:00Z",
+      author: fixture_teammate,
+      summary: "Closed as duplicate of 103",
+    },
+  ],
+  created: "2026-09-14T11:00:00Z",
+  modified: "2026-09-16T09:00:00Z",
+}
+
+data fixture_issues: List<Issue> = [
+  fixture_issue_101,
+  fixture_issue_102,
+  fixture_issue_103,
+  fixture_issue_104,
+  fixture_issue_105,
+  fixture_issue_106,
+  fixture_issue_107,
+  fixture_issue_108,
+  fixture_issue_109,
+]
+
+// THE PER-USER SUBSCRIPTION FACTS the views derive from: the owner stars 103, upvotes 104, and is
+// cc'd on 106; the teammate stars 101 and is cc'd on 102. NOTHING about this state lives on the
+// issues themselves beyond the display fields the resource carries.
+data fixture_subscriptions: List<IssueSubscription> = [
+  IssueSubscription { user: fixture_owner, issue: IssueRef { id: 103 }, kind: IssueSubscriptionStar },
+  IssueSubscription { user: fixture_owner, issue: IssueRef { id: 104 }, kind: IssueSubscriptionUpvote },
+  IssueSubscription { user: fixture_owner, issue: IssueRef { id: 106 }, kind: IssueSubscriptionCc },
+  IssueSubscription { user: fixture_teammate, issue: IssueRef { id: 101 }, kind: IssueSubscriptionStar },
+  IssueSubscription { user: fixture_teammate, issue: IssueRef { id: 102 }, kind: IssueSubscriptionCc },
+]
+
+fn issue_ids(issues: List<Issue>) -> List<Int> {
+  issues |> map(i => i.id)
+}
+
+fn w_roster_literal() -> List<String> {
+  [
+    "Assigned to me",
+    "Starred by me",
+    "Upvoted by me",
+    "CC'd to me",
+    "Collaborating",
+    "Reported by me",
+    "To be verified",
+    "Hotlists",
+    "Saved searches",
+    "Bookmark groups",
+    "Browse components",
+  ]
+}
+
+test fn w_stock_sidebar_roster_is_verbatim() -> Bool {
+  let roster: List<String> = stock_sidebar_roster |> map(s => s as String)
+  roster == w_roster_literal()
+}
+
+test fn w_interface_version_cites_capture_date() -> Bool {
+  (issue_tracker_interface_version as String) == "2026-09-22"
+}
+
+test fn w_status_vocabulary_wire_labels_are_ui_spellings() -> Bool {
+  (issue_status_wire(status: IssueStatusNew) == "New")
+    && (issue_status_wire(status: IssueStatusAssigned) == "Assigned")
+    && (issue_status_wire(status: IssueStatusAccepted) == "Accepted")
+    && (issue_status_wire(status: IssueStatusFixed) == "Fixed")
+    && (issue_status_wire(status: IssueStatusVerified) == "Verified")
+    && (issue_status_wire(status: IssueStatusDuplicate) == "Duplicate")
+}
+
+test fn w_priority_and_severity_wire_labels_are_ui_spellings() -> Bool {
+  (issue_priority_wire(priority: IssuePriorityP0) == "P0")
+    && (issue_priority_wire(priority: IssuePriorityP1) == "P1")
+    && (issue_priority_wire(priority: IssuePriorityP2) == "P2")
+    && (issue_priority_wire(priority: IssuePriorityP3) == "P3")
+    && (issue_priority_wire(priority: IssuePriorityP4) == "P4")
+    && (issue_severity_wire(severity: IssueSeverityS0) == "S0")
+    && (issue_severity_wire(severity: IssueSeverityS1) == "S1")
+    && (issue_severity_wire(severity: IssueSeverityS2) == "S2")
+    && (issue_severity_wire(severity: IssueSeverityS3) == "S3")
+    && (issue_severity_wire(severity: IssueSeverityS4) == "S4")
+}
+
+test fn w_open_status_class_is_the_new_assigned_accepted_arms() -> Bool {
+  issue_status_is_open(status: IssueStatusNew)
+    && issue_status_is_open(status: IssueStatusAssigned)
+    && issue_status_is_open(status: IssueStatusAccepted)
+    && !issue_status_is_open(status: IssueStatusFixed)
+    && !issue_status_is_open(status: IssueStatusVerified)
+    && !issue_status_is_open(status: IssueStatusDuplicate)
+}
+
+test fn w_assigned_to_me_derives_the_exact_subset() -> Bool {
+  issue_ids(issues: view_assigned_to_me(issues: fixture_issues, user: fixture_owner)) == [102, 105]
+}
+
+test fn w_starred_by_me_derives_the_exact_subset() -> Bool {
+  issue_ids(
+    issues: view_starred_by_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions)
+  ) == [103]
+}
+
+test fn w_upvoted_by_me_derives_the_exact_subset() -> Bool {
+  issue_ids(
+    issues: view_upvoted_by_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions)
+  ) == [104]
+}
+
+test fn w_ccd_to_me_derives_the_exact_subset() -> Bool {
+  issue_ids(
+    issues: view_ccd_to_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions)
+  ) == [106]
+}
+
+test fn w_collaborating_derives_the_exact_subset() -> Bool {
+  issue_ids(issues: view_collaborating(issues: fixture_issues, user: fixture_owner)) == [107]
+}
+
+test fn w_reported_by_me_derives_the_exact_subset() -> Bool {
+  issue_ids(issues: view_reported_by_me(issues: fixture_issues, user: fixture_owner)) == [101]
+}
+
+test fn w_to_be_verified_derives_the_exact_subset() -> Bool {
+  issue_ids(issues: view_to_be_verified(issues: fixture_issues)) == [108]
+}
+
+test fn w_views_take_the_user_as_a_parameter_not_a_hardcode() -> Bool {
+  (issue_ids(
+    issues: view_starred_by_me(issues: fixture_issues, user: fixture_teammate, subs: fixture_subscriptions)
+  ) == [101])
+    && (issue_ids(
+      issues: view_ccd_to_me(issues: fixture_issues, user: fixture_teammate, subs: fixture_subscriptions)
+    ) == [102])
+    && (issue_ids(issues: view_reported_by_me(issues: fixture_issues, user: fixture_teammate)) == [
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+    ])
+}
+
+type CcMirrorAcc {
+  ok: Bool
+}
+
+test fn w_cc_facts_mirror_issue_cc_field() -> Bool {
+  let acc = fold(fixture_issues, init: CcMirrorAcc { ok: true }, f: fn(a, i) {
+    CcMirrorAcc {
+      ok: a.ok && (cc_subscribers(subs: fixture_subscriptions, issue_id: i.id) == i.cc),
+    }
+  })
+  acc.ok
+}
+
+// THE OWNER'S REAL QUERY, AS THE FIXTURE-LEVEL CONTROL: `assignee:briansrls@gunb.ai status:open`
+// must match exactly the open issues assigned to that user and nothing else — issue 101 is
+// reported by the owner but not assigned to her; 108 is assigned to the teammate and fixed; 109
+// is a duplicate. Each is a different way the naive reading of the query goes wrong.
+test fn w_owner_assignee_open_query_matches_exactly_the_open_assigned_subset() -> Bool {
+  let q = Query {
+    terms: [
+      QueryAssignee { email: "briansrls@gunb.ai" },
+      QueryStatus { status: IssueStatusQueryOpen },
+    ],
+  }
+  issue_ids(issues: query_run(issues: fixture_issues, query: q)) == [102, 105]
+}
+
+test fn w_query_standing_status_term_matches_that_status_alone() -> Bool {
+  let q = Query { terms: [QueryStatus { status: IssueStatusQueryStanding { status: IssueStatusFixed } }] }
+  issue_ids(issues: query_run(issues: fixture_issues, query: q)) == [108]
+}
+
+test fn w_query_text_term_matches_title() -> Bool {
+  let q = Query { terms: [QueryText { text: "watchdog" }] }
+  issue_ids(issues: query_run(issues: fixture_issues, query: q)) == [101]
+}
+
+test fn w_query_text_term_matches_comment_bodies() -> Bool {
+  let q = Query { terms: [QueryText { text: "parallel" }] }
+  issue_ids(issues: query_run(issues: fixture_issues, query: q)) == [107]
+}
+
+test fn w_query_text_term_with_no_match_derives_nothing() -> Bool {
+  let q = Query { terms: [QueryText { text: "zzz-no-such-text-zzz" }] }
+  list_length(items: query_run(issues: fixture_issues, query: q)) == 0
+}
+
+// SUBSCRIPTION FACTS DRIVE THE DERIVATION, NOT THE ISSUE: adding the owner's star on 101 moves
+// 101 INTO Starred by me while the issue resource is untouched, and withdrawing the star on 103
+// moves 103 OUT. The views read the per-user facts; the issue does not carry its own membership.
+data fixture_subscriptions_owner_also_stars_101: List<IssueSubscription> = concat(
+  fixture_subscriptions,
+  [IssueSubscription { user: fixture_owner, issue: IssueRef { id: 101 }, kind: IssueSubscriptionStar }],
+)
+
+data fixture_subscriptions_owner_star_withdrawn: List<IssueSubscription> = [
+  IssueSubscription { user: fixture_owner, issue: IssueRef { id: 104 }, kind: IssueSubscriptionUpvote },
+  IssueSubscription { user: fixture_owner, issue: IssueRef { id: 106 }, kind: IssueSubscriptionCc },
+  IssueSubscription { user: fixture_teammate, issue: IssueRef { id: 101 }, kind: IssueSubscriptionStar },
+  IssueSubscription { user: fixture_teammate, issue: IssueRef { id: 102 }, kind: IssueSubscriptionCc },
+]
+
+test fn w_star_subscription_change_moves_issue_between_views() -> Bool {
+  (issue_ids(
+    issues: view_starred_by_me(
+      issues: fixture_issues,
+      user: fixture_owner,
+      subs: fixture_subscriptions_owner_also_stars_101,
+    )
+  ) == [101, 103])
+    && (issue_ids(
+      issues: view_starred_by_me(
+        issues: fixture_issues,
+        user: fixture_owner,
+        subs: fixture_subscriptions_owner_star_withdrawn,
+      )
+    ) == [])
+    && (issue_ids(
+      issues: view_starred_by_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions)
+    ) == [103])
+}
+
+// RED CONTROL: an issue outside a view's derivation can never be satisfied into it. Issue 101 is
+// not starred by the owner — not in the view — and issue 109 is a duplicate with no relation to
+// the viewer at all, so it appears in NO stock view.
+test fn w_red_unstarred_issue_never_appears_in_starred_by_me() -> Bool {
+  !any(
+    issue_ids(
+      issues: view_starred_by_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions)
+    ),
+    id => id == 101,
+  )
+}
+
+test fn w_red_duplicate_issue_appears_in_no_stock_view() -> Bool {
+  let all_view_memberships: List<List<Issue>> = [
+    view_assigned_to_me(issues: fixture_issues, user: fixture_owner),
+    view_starred_by_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions),
+    view_upvoted_by_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions),
+    view_ccd_to_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions),
+    view_collaborating(issues: fixture_issues, user: fixture_owner),
+    view_reported_by_me(issues: fixture_issues, user: fixture_owner),
+    view_to_be_verified(issues: fixture_issues),
+  ]
+  let every_membership_id = fold(all_view_memberships, init: [], f: fn(acc, view) {
+    concat(acc, issue_ids(issues: view))
+  })
+  !any(every_membership_id, id => id == 109)
+}
+
+test fn w_blocking_edges_are_symmetric_in_the_fixture() -> Bool {
+  issue_ref_list_includes(refs: fixture_issue_101.blocked_by, id: 102)
+    && issue_ref_list_includes(refs: fixture_issue_102.blocking, id: 101)
+    && !issue_ref_list_includes(refs: fixture_issue_103.blocked_by, id: 101)
+    && !issue_ref_list_includes(refs: fixture_issue_101.blocking, id: 102)
+}

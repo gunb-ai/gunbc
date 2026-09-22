@@ -1,0 +1,369 @@
+module extdeps.google.issue_tracker
+
+import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, File, Https }
+
+// Google's Issue Tracker (Buganizer) modeled as an external authority interface, per DESIGN §3:
+// the interface shape lives here in extdeps under the product's real vocabulary; any transport to
+// it and any policy mapped onto it are downstream facts, never authored in this module.
+//
+// SOURCES, stated honestly. (a) The stock sidebar roster below is transcribed VERBATIM from the
+// owner's logged-in session, captured 2026-09-22 in the owner ruling "The frontend as an issue
+// tracker" (docs/plans/harness-work-lifecycle.md): "Assigned to me, Starred by me, Upvoted by me,
+// CC'd to me, Collaborating, Reported by me, To be verified, plus Hotlists and Browse components"
+// — the session also surfaces "Saved searches" and "Bookmark groups" beside Hotlists. (b) The
+// product is PROPRIETARY: there is no public machine-readable specification of its interface, so
+// this module covers the structure publicly visible to a signed-in user — the issue resource's
+// fields, the standing status/priority/severity vocabulary, the sidebar view semantics, and the
+// handful of search operators the owner actually used. Where the full product surface is not
+// publicly documented, the boundary is declared (see the search scope note below and the status
+// vocabulary note) rather than filled from plausible memory.
+//
+// TWO KINDS OF SIDEBAR ENTRIES ARE MODELED DIFFERENTLY, deliberately. The first seven roster
+// entries are DERIVED QUERIES over an issue set — one derivation fn each below, named for the
+// sidebar label it realizes, never a hand-typed list. The remaining four (Hotlists, Saved
+// searches, Bookmark groups, Browse components) are NOT issue-set derivations: they are navigation
+// and curation surfaces (user-curated named lists, persisted personal queries, the component
+// tree). Rostered verbatim, not faked as derivations.
+//
+// STAR/UPVOTE/CC ARE PER-USER SUBSCRIPTION FACTS, typed below as IssueSubscription rows. The
+// sidebar views derive from those facts (and from issue fields), and every view takes the viewing
+// user as a PARAMETER — no viewer identity is hardcoded in this module. Issue.cc / stars / upvotes
+// remain on the issue resource because that is the shape the product renders on an issue page;
+// the witness suite pins that the cc-subscription facts and the issue's cc list agree, so the two
+// are one fact read two ways, not two authorities.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "issuetracker.google.com"
+  }
+}
+
+data issue_tracker_session_capture: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "docs/plans/harness-work-lifecycle.md#the-frontend-as-an-issue-tracker"
+  }
+}
+
+data google_issue_tracker: NonEmptyStr = "Google Issue Tracker (Buganizer)"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.google.issue_tracker",
+      decl_name: "google_issue_tracker",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [issue_tracker_session_capture]
+}
+
+// Versioned by the capture date of the cited session: this interface model states what was
+// publicly visible to the owner's signed-in session on 2026-09-22; a re-capture that changes any
+// vocabulary fact or view semantics bumps this row.
+data issue_tracker_interface_version: NonEmptyStr = "2026-09-22"
+
+// The stock sidebar roster, verbatim from the owner's logged-in session (2026-09-22). The first
+// seven entries each have exactly one derivation fn below; the last four are navigation and
+// curation surfaces, not derivations, and are rostered here so the real product's roster is one
+// pinned fact rather than a comment.
+data stock_sidebar_roster: List<NonEmptyStr> = [
+  "Assigned to me",
+  "Starred by me",
+  "Upvoted by me",
+  "CC'd to me",
+  "Collaborating",
+  "Reported by me",
+  "To be verified",
+  "Hotlists",
+  "Saved searches",
+  "Bookmark groups",
+  "Browse components",
+]
+
+// USERS ARE IDENTIFIED BY THE EMAIL THE PRODUCT DISPLAYS. A display identity, not a verified
+// credential claim: the interface models who a user IS on the surface (the address shown as
+// assignee/reporter/cc), and equality below is email equality for that reason.
+type User {
+  email: String
+}
+
+// COMPONENTS FORM A HIERARCHY, and the hierarchy IS the path: a component is addressed by its
+// path from the tree root, root-first, exactly as the product's Browse components tree renders
+// it. No parent-pointer field: the path is the one grounded shape and a parent is a prefix.
+type Component {
+  id: Int
+  path: List<String>
+}
+
+// REFERENCES BETWEEN ENTITIES ARE BY ID. The issue resource carries references to its component
+// and to the issues it blocks / is blocked by; the referenced entities themselves live in the
+// caller's fixture or store, not duplicated inside each issue.
+type ComponentRef {
+  id: Int
+}
+
+type IssueRef {
+  id: Int
+}
+
+// THE STANDING STATUS VALUES PUBLICLY VISIBLE IN THE PRODUCT'S ISSUE UI, per the captured session:
+// an issue is New, then Assigned / Accepted while open, and leaves the open set via Fixed, Verified,
+// or Duplicate. What is modeled here is exactly that publicly visible standing set — organizations
+// can configure additional or custom statuses upstream, and the product's resolution vocabulary is
+// richer than any one organization's configuration; those are OUT OF SCOPE of this interface model
+// and are declared here rather than minted from plausible memory. The wire labels are the UI
+// spellings.
+type IssueStatus
+  = IssueStatusNew
+  | IssueStatusAssigned
+  | IssueStatusAccepted
+  | IssueStatusFixed
+  | IssueStatusVerified
+  | IssueStatusDuplicate
+
+fn issue_status_wire(status: IssueStatus) -> String {
+  match status {
+    IssueStatusNew => "New"
+    IssueStatusAssigned => "Assigned"
+    IssueStatusAccepted => "Accepted"
+    IssueStatusFixed => "Fixed"
+    IssueStatusVerified => "Verified"
+    IssueStatusDuplicate => "Duplicate"
+  }
+}
+
+// OPEN IS A DERIVED CLASS OF THE STATUS COPRODUCT, not a seventh status: New/Assigned/Accepted
+// are the open arms; Fixed/Verified/Duplicate have left the open set. `status:open` in the query
+// model below means exactly this predicate, matching the product's open/closed split.
+fn issue_status_is_open(status: IssueStatus) -> Bool {
+  match status {
+    IssueStatusNew => true
+    IssueStatusAssigned => true
+    IssueStatusAccepted => true
+    IssueStatusFixed => false
+    IssueStatusVerified => false
+    IssueStatusDuplicate => false
+  }
+}
+
+// PRIORITY AND SEVERITY ARE THE PRODUCT'S P0-P4 / S0-S4 SCALES, carrying the UI spellings as wire
+// labels. Lower number is more urgent on both scales, as the product presents them.
+type IssuePriority
+  = IssuePriorityP0
+  | IssuePriorityP1
+  | IssuePriorityP2
+  | IssuePriorityP3
+  | IssuePriorityP4
+
+fn issue_priority_wire(priority: IssuePriority) -> String {
+  match priority {
+    IssuePriorityP0 => "P0"
+    IssuePriorityP1 => "P1"
+    IssuePriorityP2 => "P2"
+    IssuePriorityP3 => "P3"
+    IssuePriorityP4 => "P4"
+  }
+}
+
+type IssueSeverity
+  = IssueSeverityS0
+  | IssueSeverityS1
+  | IssueSeverityS2
+  | IssueSeverityS3
+  | IssueSeverityS4
+
+fn issue_severity_wire(severity: IssueSeverity) -> String {
+  match severity {
+    IssueSeverityS0 => "S0"
+    IssueSeverityS1 => "S1"
+    IssueSeverityS2 => "S2"
+    IssueSeverityS3 => "S3"
+    IssueSeverityS4 => "S4"
+  }
+}
+
+type IssueComment {
+  author: User
+  body: String
+  created: Timestamp
+}
+
+// THE HISTORY IS CARRIED AT INTERFACE GRAIN. The upstream audit trail records per-field deltas;
+// none of the stock views read it, so this model carries the event shape the interface needs
+// (when, who, what changed in summary) and declares the per-field delta detail out of scope
+// rather than inventing a wire shape for it.
+type HistoryEvent {
+  at: Timestamp
+  author: User
+  summary: String
+}
+
+// THE ISSUE RESOURCE, in the product's vocabulary. cc / stars / upvotes are the display fields
+// the issue page renders; the per-user relations that produce them are the IssueSubscription
+// facts below, and the views derive from those facts (witness-pinned to agree with these
+// fields). assignee is Optional because a New issue may have no assignee; Absent is "unassigned",
+// not "unknown".
+type Issue {
+  id: Int
+  title: String
+  status: IssueStatus
+  priority: IssuePriority
+  severity: IssueSeverity
+  assignee: User?
+  reporter: User
+  cc: List<User>
+  stars: Int
+  upvotes: Int
+  component: ComponentRef
+  blocking: List<IssueRef>
+  blocked_by: List<IssueRef>
+  comments: List<IssueComment>
+  history: List<HistoryEvent>
+  created: Timestamp
+  modified: Timestamp
+}
+
+// PER-USER SUBSCRIPTION FACTS. Star, upvote, and cc membership are relations between a user and
+// an issue — typed here once, parameterized by the user, and it is THESE facts (not anything
+// hardcoded, not the issue's display counters) that the Starred / Upvoted / CC'd views derive
+// from. Changing a user's subscription moves an issue between views; changing the issue does not.
+type IssueSubscriptionKind
+  = IssueSubscriptionStar
+  | IssueSubscriptionUpvote
+  | IssueSubscriptionCc
+
+type IssueSubscription {
+  user: User
+  issue: IssueRef
+  kind: IssueSubscriptionKind
+}
+
+fn user_is_subscribed(
+  subs: List<IssueSubscription>,
+  user: User,
+  issue_id: Int,
+  kind: IssueSubscriptionKind,
+) -> Bool {
+  any(subs, s => s.issue.id == issue_id && s.user.email == user.email && s.kind == kind)
+}
+
+// THE CC LIST AS SUBSCRIPTION FACTS: every user holding a Cc subscription to the issue, in
+// subscription order. The witness pins this against the issue resource's cc field so the two
+// readings of one fact can never silently drift apart.
+fn cc_subscribers(subs: List<IssueSubscription>, issue_id: Int) -> List<User> {
+  subs
+    |> filter(s => s.kind == IssueSubscriptionCc && s.issue.id == issue_id)
+    |> map(s => s.user)
+}
+
+// THE SEVEN DERIVED SIDEBAR VIEWS, one fn per rostered label. Each is a pure query over the issue
+// set parameterized by the viewing user (and the subscription facts where the label's semantics
+// are per-user); a view NEVER hardcodes a viewer and never enumerates its members.
+
+// "Assigned to me": issues whose assignee is the viewing user. Unassigned issues (Absent) are
+// not in anyone's Assigned-to-me view.
+fn view_assigned_to_me(issues: List<Issue>, user: User) -> List<Issue> {
+  issues
+    |> filter(i => match i.assignee {
+      Present { value: a } => a.email == user.email
+      Absent => false
+    })
+}
+
+// "Starred by me": issues the viewing user holds a Star subscription on.
+fn view_starred_by_me(issues: List<Issue>, user: User, subs: List<IssueSubscription>) -> List<Issue> {
+  issues
+    |> filter(i => user_is_subscribed(subs: subs, user: user, issue_id: i.id, kind: IssueSubscriptionStar))
+}
+
+// "Upvoted by me": issues the viewing user holds an Upvote subscription on.
+fn view_upvoted_by_me(issues: List<Issue>, user: User, subs: List<IssueSubscription>) -> List<Issue> {
+  issues
+    |> filter(i => user_is_subscribed(subs: subs, user: user, issue_id: i.id, kind: IssueSubscriptionUpvote))
+}
+
+// "CC'd to me": issues the viewing user holds a Cc subscription on.
+fn view_ccd_to_me(issues: List<Issue>, user: User, subs: List<IssueSubscription>) -> List<Issue> {
+  issues
+    |> filter(i => user_is_subscribed(subs: subs, user: user, issue_id: i.id, kind: IssueSubscriptionCc))
+}
+
+// "Collaborating": issues the viewing user has commented on. Membership comes from the comment
+// authorship the issue resource already carries — no separate subscription kind is minted for it.
+fn view_collaborating(issues: List<Issue>, user: User) -> List<Issue> {
+  issues
+    |> filter(i => any(i.comments, c => c.author.email == user.email))
+}
+
+// "Reported by me": issues the viewing user reported.
+fn view_reported_by_me(issues: List<Issue>, user: User) -> List<Issue> {
+  issues
+    |> filter(i => i.reporter.email == user.email)
+}
+
+// "To be verified": issues whose status is Fixed — the open-but-awaiting-verification standing.
+// (Verified issues have left this view; that is the Fixed/Verified distinction doing work.)
+fn view_to_be_verified(issues: List<Issue>) -> List<Issue> {
+  issues
+    |> filter(i => i.status == IssueStatusFixed)
+}
+
+// SEARCH, at the grain the owner actually used. THE SCOPE NOTE, stated honestly: this models the
+// three term shapes the owner's real queries exercised — `assignee:<email>`, `status:<value>`
+// (including the derived status:open), and plain text — conjunctively, as the product composes
+// space-separated terms. The product's query language is richer (component:, priority:, labels,
+// quoted phrases, negation, disjunction, ...); those operators are OUT OF SCOPE here and are
+// declared rather than fabricated. A term shape the owner never used is not vocabulary this
+// interface model claims.
+type IssueStatusQuery
+  = IssueStatusQueryOpen
+  | IssueStatusQueryStanding { status: IssueStatus }
+
+type QueryAtom
+  = QueryAssignee { email: String }
+  | QueryStatus { status: IssueStatusQuery }
+  | QueryText { text: String }
+
+type Query {
+  terms: List<QueryAtom>
+}
+
+fn query_atom_matches(issue: Issue, atom: QueryAtom) -> Bool {
+  match atom {
+    QueryAssignee { email: e } =>
+      match issue.assignee {
+        Present { value: a } => a.email == e
+        Absent => false
+      }
+    QueryStatus { status: q } =>
+      match q {
+        IssueStatusQueryOpen => issue_status_is_open(issue.status)
+        IssueStatusQueryStanding { status: s } => issue.status == s
+      }
+    QueryText { text: t } =>
+      string_contains(s: issue.title, pattern: t)
+        || any(issue.comments, c => string_contains(s: c.body, pattern: t))
+  }
+}
+
+// CONJUNCTION ACROSS TERMS: every term must match, matching how the product composes
+// space-separated terms (so `assignee:X status:open` means assigned-to-X AND open).
+fn query_matches(issue: Issue, query: Query) -> Bool {
+  fold(query.terms, init: true, f: fn(acc, term) { acc && query_atom_matches(issue: issue, atom: term) })
+}
+
+fn query_run(issues: List<Issue>, query: Query) -> List<Issue> {
+  issues
+    |> filter(i => query_matches(issue: i, query: query))
+}
+
+// BLOCKING-EDGE MEMBERSHIP, the one predicate the interface needs over the reference lists.
+fn issue_ref_list_includes(refs: List<IssueRef>, id: Int) -> Bool {
+  any(refs, r => r.id == id)
+}
