@@ -2236,11 +2236,18 @@ fn native_lane_universe(ingest: SourceRootIngest) -> Outcome<NativeLaneUniverse>
   native_lane_universe_selected(ingest: ingest, pattern: native_route_default_pattern())
 }
 
-// THE SELECTED UNIVERSE: the same derivation, every refusal intact, over the identities `pattern`
-// admits. `native_lane_universe` is this at the default pattern and is what the lane's rendered
-// main calls; a caller naming a narrower pattern gets a narrower population through the same
-// producer -- never a filter applied to the default universe after the fact, so a corpus refusal
-// outside the pattern still refuses (a narrower question does not make a broken corpus sound).
+// THE SELECTED UNIVERSE: the same derivation over the identities `pattern` admits.
+// `native_lane_universe` is this at the default pattern. THE RENDERED MAIN NO LONGER CALLS IT --
+// it calls `native_lane_universe_of_facts` with the facts it already holds and the pattern it was
+// asked for; this entry remains for callers that hold an ingest and not facts.
+//
+// A caller naming a narrower pattern gets a narrower population through the same producer, never a
+// filter applied to the default universe after the fact. So a refusal raised by a source this lane
+// WALKS still refuses even when the pattern excludes that source -- a narrower question does not
+// make a broken corpus sound. What changed is which sources are walked at all, not what selection
+// does with their refusals: discovery is scoped to universe members and module-less sources by
+// `native_lane_discovery_for`, so a violation in a non-member is no longer this lane's to raise.
+// That boundary, and the required floor that still owns it, are argued at the finalize below.
 // THE SOURCE FACTS ARE DERIVED ONCE AND CARRIED, BECAUSE THE LANE'S MAIN ALREADY HOLDS THEM.
 //
 // `native_lane_source_facts` is a fold over the WHOLE ingest that, per read, splits the file into
