@@ -10,12 +10,23 @@ fn sha384_ascii(s: String) -> List<UInt8> {
   bytes_octets(b: utf8_encode_bytes(s: s))
 }
 
+// THE TWO SINGLE-BLOCK PUBLISHED VECTORS ARE NOT FLOOR CLAIMS (merge-queue floor run of
+// gunbc#11981, ENROLMENT-MARGIN-REFUSED lines): each is one SHA-384 block on the seed interpreter
+// and each measured inside the CLIFF the enrolment-margin gate exists for -- above the 302ms
+// margin the runner envelope implies and at or beside the 500ms per-subject line, which is the
+// coin-flip band v2.workflow.floor_enrolment_margin refuses to enrol. A one-block hash is already
+// the cheapest case there is, so there is nothing to reduce: the cost is the interpreter's Word64
+// realization, and the honest disposition is the one the three P-384 verifications took. They are
+// ordinary fns so the floor does not plan them, and their consumer is the native gunbc test row
+// that gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier names.
+// SHA-384 KEEPS ITS EXECUTING EVIDENCE ON THE FLOOR: the two-block published vector and the
+// one-octet discriminating red below both stay floor claims.
 // ── SHA-384: FIPS 180-2 Appendix D, the published examples ────────────────────────────────────
-test fn sha384_of_the_empty_message_is_the_published_value() -> Bool {
+fn sha384_of_the_empty_message_is_the_published_value() -> Bool {
   sha384_hex(message: []) == "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b"
 }
 
-test fn sha384_of_abc_is_the_published_one_block_value() -> Bool {
+fn sha384_of_abc_is_the_published_one_block_value() -> Bool {
   sha384_hex(message: sha384_ascii(s: "abc")) == "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7"
 }
 
