@@ -31,13 +31,31 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // caller's binding and not the callee's spelling: it must contain `&filesystem` and must not
 // contain `&fs`.
 //
-// RUNG, STATED HONESTLY (DESIGN section 4b). Source-to-Rust: the invalid program is still
-// writable, the typecheck refuses it before any file exists (v1.compiler.compile emittable_graph
-// admits no graph carrying a blocking diagnostic), and the emitter carries its own refusal arm for
-// the same state -- rung 3 on this path: no Accepted program contains the call. Interpretation
-// serves resources ambiently and does not consult the caller, so on the source-to-interpretation
-// path the requirement is enforced by this same typecheck and by nothing in the interpreter; the
-// class's rung is the minimum, which is still 3 because the typecheck gates both. The `uses`
+// RUNG, STATED HONESTLY (DESIGN section 4b), AND CORRECTED DOWNWARD AFTER REVIEW 69961. The first
+// version of this paragraph read rung 3 on source-to-Rust -- no Accepted program contains the call
+// -- and that was INFLATION, by this document's own definition: it cited the ordinary-caller path
+// while a second path stayed silent. The paths, separately:
+//   ORDINARY CALLERS: rung 3. The typecheck refuses before any file exists (v1.compiler.compile
+//   emittable_graph admits no graph carrying a blocking diagnostic), so no Accepted program
+//   contains such a call and the emitter's own arm is genuinely unreachable from that door.
+//   TEST ROOTS: rung 2, and this is the path the original claim did not measure. caller_is_test_root
+//   admits a TestMarked caller with NO `uses` row, test roots ARE rendered
+//   (v1.compiler.emit_rust extract_test_projections), so an Accepted program does reach
+//   emit_typed_call's unestablished arm. That arm rendered emit_error_expr, whose Rust template is
+//   panic!({0}); panic! has type `!` and coerces to any parameter type, so rustc ACCEPTED the
+//   artifact and the failure moved to run time. It now renders compile_error!, which makes the
+//   target compiler refuse -- a published artifact that cannot build, which is mitigation, NOT the
+//   refusal-before-publishing the ordinary path gets.
+// THE CLASS'S RUNG IS THE MINIMUM ACROSS ITS IN-SCOPE PATHS, so the class sits at RUNG 2, not 3.
+// NEXT-RUNG TRIGGER, naming the capability rather than an artifact: ONE authority for how a test
+// root obtains its resources, consumed by the interpreter's ambient provision and by the emitted
+// realization alike, sufficient that a rendered test root either carries a binding to pass or is
+// refused before the artifact is written. Until then the interpreter and the emitter answer that
+// question differently, which is the same meaning fork the resource-requirement frontier holds as
+// declared debt rather than ratifies.
+// Interpretation serves resources ambiently and does not consult the caller, so on the
+// source-to-interpretation path the requirement is enforced by this same typecheck and by nothing
+// in the interpreter. The `uses`
 // resource TYPE is compared by the declaration it resolves to in the caller's environment; a
 // resource spelling that resolves nowhere matches nothing and refuses, never admits.
 // TEST ROOTS ARE THE ONE ADMITTED CALLER WITHOUT A `uses` ROW (v1.compiler.infer caller_is_test_root):

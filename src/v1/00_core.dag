@@ -401,6 +401,15 @@ type CompilerDiagnostic
   | ReceiverTypeUnestablished { method: String, span: SourceSpan }
   | AlgebraApplicationEvidenceUnavailable { receiver_type: String, argument_index: Int, span: SourceSpan }
   | FrontierOccurrenceBudgetExceeded { method: String, receiver_type: String, declared: Int, observed: Int, span: SourceSpan }
+  | ResourceFrontierOccurrenceBudgetExceeded {
+      caller_decl_name: String,
+      callee_module_path: String,
+      callee_decl_name: String,
+      resource: String,
+      declared: Int,
+      observed: Int,
+      span: SourceSpan
+    }
   | TestCodeReferenced { referrer: String, target: String, span: SourceSpan }
   | TestCodeReferenceAdmitted { referrer: String, target: String, span: SourceSpan }
   | TestCodeReferenceBudgetMismatch { referrer: String, declared: Int, observed: Int, span: SourceSpan }
@@ -436,6 +445,15 @@ type CompilerDiagnostic
       resource: String,
       caller_module_path: String,
       caller_decl_name: String,
+      span: SourceSpan
+    }
+  | ResourceRequirementFrontierAdmitted {
+      callee_module_path: String,
+      callee_decl_name: String,
+      resource: String,
+      caller_module_path: String,
+      caller_decl_name: String,
+      trigger: String,
       span: SourceSpan
     }
   | DeclaredTypeNotInhabited { position: String, expected: String, got: String, span: SourceSpan }
@@ -634,6 +652,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ReceiverTypeUnestablished { method: _, span: s } => s
     AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: s } => s
     FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: s } => s
+    ResourceFrontierOccurrenceBudgetExceeded { caller_decl_name: _, callee_module_path: _, callee_decl_name: _, resource: _, declared: _, observed: _, span: s } => s
     TestCodeReferenced { referrer: _, target: _, span: s } => s
     TestCodeReferenceAdmitted { referrer: _, target: _, span: s } => s
     TestCodeReferenceBudgetMismatch { referrer: _, declared: _, observed: _, span: s } => s
@@ -664,6 +683,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     } => s
     AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: s } => s
     ResourceRequirementUnestablished { callee_module_path: _, callee_decl_name: _, resource: _, caller_module_path: _, caller_decl_name: _, span: s } => s
+    ResourceRequirementFrontierAdmitted { callee_module_path: _, callee_decl_name: _, resource: _, caller_module_path: _, caller_decl_name: _, trigger: _, span: s } => s
     DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: s } => s
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
@@ -715,6 +735,12 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ReceiverTypeUnestablished { method: _, span: _ } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method"
     FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: _, observed: _, span: _ } =>
       concat(concat(concat("the declared frontier row for '", m), concat("' on receiver type '", t)), "' no longer matches what this module contains: its declared occurrence count and the count observed here differ, and both numbers are carried on this diagnostic. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.")
+    ResourceFrontierOccurrenceBudgetExceeded { caller_decl_name: caller_n, callee_module_path: cm, callee_decl_name: cn, resource: r, declared: _, observed: _, span: _ } =>
+      concat(
+        "the declared resource-requirement frontier row for '", caller_n, "' calling '", cm, ".", cn,
+        "' with resource '", r,
+        "' no longer matches what this module contains: its declared occurrence count and the count observed here differ, and both numbers are carried on this diagnostic. If MORE were observed, a new call site has stopped establishing the resource and the `uses` clause should be authored rather than the count raised. If FEWER were observed, the debt has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions."
+      )
     TestCodeReferenced { referrer: r, target: t, span: _ } => concat("'", r, "' references test code '", t, "': a `test` declaration is entered only by the witness runner, so no declaration may call, name or import it. Move shared logic into an ordinary fn, or delete a test that only re-asserts other tests")
     TestCodeReferenceAdmitted { referrer: r, target: t, span: _ } => concat("'", r, "' references test code '", t, "'; admitted by the declared test-reference debt ledger (v1.compiler.compile test_reference_debt), which may only shrink")
     TestCodeReferenceRowOrphaned { referrer: r, span: _ } => concat("the test-reference debt row for '", r, "' names a module that no longer exists in the corpus: it is neither compiled here nor in the loaded name census. A row that can never be observed again must be deleted, not left to persist")
@@ -766,6 +792,12 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
         "resource requirement unestablished: '", cm, ".", cn, "' requires resource '", r,
         "' and the calling declaration '", caller_m, ".", caller_n,
         "' establishes no binding of that resource -- a call site must establish every resource its callee declares through `uses`, or the realized call has nothing to pass"
+      )
+    ResourceRequirementFrontierAdmitted { callee_module_path: cm, callee_decl_name: cn, resource: r, caller_module_path: caller_m, caller_decl_name: caller_n, trigger: tr, span: _ } =>
+      concat(
+        "resource requirement unestablished, admitted by a declared frontier row: '", cm, ".", cn,
+        "' requires resource '", r, "' and the calling declaration '", caller_m, ".", caller_n,
+        "' establishes no binding of it. The call is admitted at the typecheck as declared, counted debt -- emission still REFUSES it, because there is no binding to pass. Dissolves on: ", tr
       )
     DeclaredTypeNotInhabited { position: pos, expected: e, got: g, span: _ } =>
       concat("value does not inhabit its declared type at the ", pos, ": declared '", e, "', produced '", g, "'")
@@ -822,6 +854,35 @@ fn is_where_refinement_unenforced_advisory_reason(reason: String) -> Bool {
     || reason == "string predicate not implemented"
 }
 
+// The resource-requirement frontier's occurrence key, held HERE for the same reason
+// diagnostic_frontier_occurrence_key is: the CompilerDiagnostic coproduct decides what one of its
+// variants counts against, so a new variant cannot leave a budget fold silently blind to it. It is
+// a SEPARATE key from FrontierOccurrenceKey rather than a widening of it, because the relation is
+// genuinely different: a method-existence row is keyed on a receiver SHAPE, which is evidence about
+// a type, while a resource row is keyed on two DECLARATION IDENTITIES and the resource between
+// them. Forcing both into one record would make the shared field names lie about one of the two.
+type ResourceFrontierOccurrenceKey {
+  caller_module_path: String
+  caller_decl_name: String
+  callee_module_path: String
+  callee_decl_name: String
+  resource: String
+}
+
+fn diagnostic_resource_frontier_key(d: CompilerDiagnostic) -> ResourceFrontierOccurrenceKey? {
+  match d {
+    ResourceRequirementFrontierAdmitted { callee_module_path: cm, callee_decl_name: cn, resource: r, caller_module_path: caller_m, caller_decl_name: caller_n, trigger: _, span: _ } =>
+      Present { value: ResourceFrontierOccurrenceKey {
+        caller_module_path: caller_m,
+        caller_decl_name: caller_n,
+        callee_module_path: cm,
+        callee_decl_name: cn,
+        resource: r
+      } }
+    _ => none
+  }
+}
+
 type FrontierOccurrenceKey {
   method: String
   receiver_shape: String
@@ -875,6 +936,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     ReceiverTypeUnestablished { method: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ResourceFrontierOccurrenceBudgetExceeded { caller_decl_name: _, callee_module_path: _, callee_decl_name: _, resource: _, declared: _, observed: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TestCodeReferenced { referrer: _, target: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TestCodeReferenceAdmitted { referrer: _, target: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     TestCodeReferenceBudgetMismatch { referrer: _, declared: _, observed: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
@@ -907,6 +969,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     ConstructorCallAdmissionRefused { constructor_module_path: _, constructor_decl_name: _, caller_module_path: _, caller_decl_name: _, permitted_callers: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ResourceRequirementUnestablished { callee_module_path: _, callee_decl_name: _, resource: _, caller_module_path: _, caller_decl_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ResourceRequirementFrontierAdmitted { callee_module_path: _, callee_decl_name: _, resource: _, caller_module_path: _, caller_decl_name: _, trigger: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateAdvisoryTypecheck }
     UnlistedImportUse { name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }

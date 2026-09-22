@@ -11883,10 +11883,25 @@ fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
 // identifier emitted is the caller's. Before this the emitter appended `&<callee's name>`
 // unconditionally: arity agreed with the declaration, the argument named nothing in the caller's
 // scope, and the file was published for rustc to refuse. A requirement the fold cannot establish
-// is a located refusal -- the typecheck already blocks it (ResourceRequirementUnestablished), so
-// in an accepted program that arm is unreachable; it stays as the realization's own wall rather
-// than a fallback to the spelling. emit_func_def names the declaration it renders on the body
-// scope (caller_decl_name) so that read has a subject.
+// is a located refusal, and it renders compile_error!, not the emitter's ordinary error expression.
+// THAT DISTINCTION WAS A DEFECT AND IS WORTH KEEPING WRITTEN DOWN (review 69961). The arm first
+// rendered emit_error_expr, whose Rust template is panic!({0}) -- and panic! has type `!`, which
+// coerces to any parameter type, so rustc ACCEPTED the emitted call and the program panicked at
+// run time. That is this file's own recurring class, and the worse half of it: not an artifact the
+// target compiler refuses, but one it compiles and that misbehaves in production.
+// THE ARM IS NOT UNREACHABLE, WHICH IS WHAT THAT DEFECT EXPOSED. An earlier version of this note
+// claimed the typecheck blocks every instance so an accepted program cannot reach here. That is
+// true only of ORDINARY callers. v1.compiler.infer caller_is_test_root admits a TestMarked caller
+// with no `uses` row, because the interpreter serves a test root's resources ambiently and keys
+// that provision on the absence of the clause -- and test roots ARE rendered (extract_test_projections).
+// So an Accepted program does reach this arm, through exactly that door. compile_error! makes it a
+// target-compiler refusal instead of a runtime panic, which is a real improvement and is NOT a
+// refusal before publishing: the artifact is still written. The remaining gap is the interpreter
+// and the emitter disagreeing about how a test root obtains its resources, which is the same
+// meaning fork the resource-requirement frontier exists to hold as declared debt rather than
+// ratify, and it is named as this component's next-rung trigger rather than papered here.
+// emit_func_def names the declaration it renders on the body scope (caller_decl_name) so that read
+// has a subject.
 
 fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call_semantics: CallSemantics?, callee_is_function_value: Bool, call_target: CallTargetIdentity, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   if callee_is_function_value {
@@ -12010,7 +12025,7 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
         let resource_args = info.resource_requirements |> map(rr =>
           match established_resource_binding(scope: scope, required: rr, established: established) {
             Present { value: binding_name } => concat("&", emit_ident(name: binding_name, target: Rust))
-            Absent => emit_error_expr(message: concat("call to ", func, " requires resource ", rr.binding_name, " that the calling declaration does not establish"), target: Rust)
+            Absent => emit_rust_compile_error_expr(message: concat("call to ", func, " requires resource ", rr.binding_name, " that the calling declaration does not establish"))
           }
         )
         let service_args = info.service_names |> map(sn => service_var_name(service_name: sn))

@@ -51,7 +51,8 @@ import v1.std.core { Unmarked,
   ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
   AlgebraApplicationEvidenceUnavailable,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, ResourceRequirementUnestablished, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
+  ResourceFrontierOccurrenceKey, diagnostic_resource_frontier_key,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, ResourceRequirementUnestablished, ResourceRequirementFrontierAdmitted, ResourceFrontierOccurrenceBudgetExceeded, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   EqualityOnFunctionMember, EqualityMemberUnjudgeable,
   TypeArgumentArityMismatch,
@@ -1164,6 +1165,121 @@ fn callee_declaration_for_target(scope: InferScope, call_target: CallTargetOutco
   }
 }
 
+// THE DECLARED FRONTIER FOR CALL SITES THAT DO NOT ESTABLISH THEIR CALLEE'S RESOURCE, and it is
+// the gunbc.roster_registry DeclaredFrontier shape reused rather than a second frontier vocabulary
+// minted beside v1.compiler.infer unresolved_method_frontier (the registration and the
+// DissolutionCondition carrier are literally the same ones; only the KEY differs, because a
+// resource row is keyed on two declaration identities and the resource between them rather than on
+// a receiver shape).
+//
+// WHY A ROSTER AT ALL, stated as the two fabrications it sits between. The wall this file lands
+// refuses a call whose caller establishes none of the resources its callee declares through `uses`.
+// That rule is correct and it is the contract's own rule -- but the corpus predates it, and the
+// measured sites are CORRECT WORKING CODE under the interpreter, which serves resources ambiently
+// and therefore never needed the authored clause. Refusing them outright would fabricate a refusal
+// over code that runs; admitting them silently would fabricate a success, which is exactly the
+// fail-open this wall exists to close. The rows carry the residue as counted
+// ResourceRequirementFrontierAdmitted diagnostics instead.
+//
+// WHAT THE KEY BUYS, and it is condition (2) of the ruling that admitted this shape: the key is
+// (caller module, caller declaration, callee module, callee declaration, resource) -- five
+// DECLARATION-IDENTITY facts, no module prefix and no file path anywhere in it. A prefix key would
+// admit the next undeclared use in the same module for free, which is DESIGN section 5's absorbing
+// fallback wearing a roster's clothes. With this key a newly authored undeclared use matches no row
+// and REDS, and so does the SAME caller acquiring a second, different unestablished callee.
+//
+// EMISSION DOES NOT ADMIT. A rostered row admits the call at the TYPECHECK only. The realization
+// still has no binding to pass, so v1.compiler.emit_rust emit_typed_call refuses it with a located
+// diagnostic before any artifact is published. That is what keeps this from being the meaning fork
+// the roster was chosen over: there is ONE rule about whether a call site establishes its callee's
+// resource, and the roster is declared, counted, dissolving DEBT against enforcing it at the
+// typecheck -- not a second answer to the question.
+type ResourceRequirementFrontierRow {
+  caller_module_path: String
+  caller_decl_name: String
+  callee_module_path: String
+  callee_decl_name: String
+  resource: String
+  occurrences: Int
+  cause: String
+  dissolution: DissolutionCondition
+}
+
+fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
+  []
+}
+
+fn resource_requirement_frontier_trigger(
+  caller_module_path: String,
+  caller_decl_name: String,
+  callee_module_path: String,
+  callee_decl_name: String,
+  resource: String
+) -> DissolutionCondition? {
+  match resource_requirement_frontier()
+    |> filter(r =>
+        r.caller_module_path == caller_module_path
+          && r.caller_decl_name == caller_decl_name
+          && r.callee_module_path == callee_module_path
+          && r.callee_decl_name == callee_decl_name
+          && r.resource == resource)
+    |> first {
+    Present { value: row } => Present { value: row.dissolution }
+    Absent => none
+  }
+}
+
+fn resource_frontier_diag_matches_row(d: CompilerDiagnostic, row: ResourceRequirementFrontierRow) -> Bool {
+  match diagnostic_resource_frontier_key(d: d) {
+    Present { value: key } =>
+      key.caller_module_path == row.caller_module_path
+        && key.caller_decl_name == row.caller_decl_name
+        && key.callee_module_path == row.callee_module_path
+        && key.callee_decl_name == row.callee_decl_name
+        && key.resource == row.resource
+    Absent => false
+  }
+}
+
+fn resource_frontier_row_observed(diagnostics: List<ErrorNode>, row: ResourceRequirementFrontierRow) -> List<ErrorNode> {
+  diagnostics |> filter(e => resource_frontier_diag_matches_row(d: e.diagnostic, row: row))
+}
+
+// THE COUNT IS WHAT MAKES THIS A RATCHET RATHER THAN AN EXEMPTION, and the comparison is EQUALITY
+// in both directions for the reason frontier_occurrence_budget_note records against its own earlier
+// ceiling: a ceiling lets a declared N shrink to N-1 while the headroom stays open, so a
+// reintroduction slips back in silently. With equality, REPAIRING a site reds until its row's count
+// is lowered or the row is deleted, and adding one reds immediately. The check runs per module, and
+// every occurrence of a module's rows is present whenever that module is typechecked at all, so
+// there is no partial-closure case that equality would wrongly red.
+fn resource_frontier_row_budget_diags(row: ResourceRequirementFrontierRow, diagnostics: List<ErrorNode>, module_name: String, module_span: SourceSpan) -> List<ErrorNode> {
+  let observed = resource_frontier_row_observed(diagnostics: diagnostics, row: row)
+  if (observed |> count) == row.occurrences {
+    []
+  } else {
+    [make_error_node(
+      diagnostic: ResourceFrontierOccurrenceBudgetExceeded {
+        caller_decl_name: row.caller_decl_name,
+        callee_module_path: row.callee_module_path,
+        callee_decl_name: row.callee_decl_name,
+        resource: row.resource,
+        declared: row.occurrences,
+        observed: observed |> count,
+        span: match observed |> first {
+          Present { value: witness } => diagnostic_to_span(d: witness.diagnostic)
+          Absent => module_span
+        }
+      },
+      module_name: module_name)]
+  }
+}
+
+fn resource_frontier_occurrence_budget_diags(module_name: String, module_span: SourceSpan, diagnostics: List<ErrorNode>) -> List<ErrorNode> {
+  resource_requirement_frontier()
+    |> filter(r => r.caller_module_path == module_name)
+    |> flat_map(r => resource_frontier_row_budget_diags(row: r, diagnostics: diagnostics, module_name: module_name, module_span: module_span))
+}
+
 fn resource_requirement_diags(scope: InferScope, call_target: CallTargetOutcome, span: SourceSpan) -> List<ErrorNode> {
   let callee_identity = match call_target {
     DeclaredCallableResolved { sig: _, declared: declared } => Present { value: declared }
@@ -1181,28 +1297,68 @@ fn resource_requirement_diags(scope: InferScope, call_target: CallTargetOutcome,
           else if caller_is_test_root(scope: scope) { [] }
           else {
             let established = caller_resource_requirements(scope: scope)
+            let caller_name = if scope.caller_decl_name == "" { "<module scope>" } else { scope.caller_decl_name }
             required
               |> filter(r => !resource_requirement_established(scope: scope, required: r, established: established))
               |> map(r =>
-                make_error_node(
-                  diagnostic: ResourceRequirementUnestablished {
-                    callee_module_path: callee.owner_module_path,
-                    callee_decl_name: callee.decl_name,
-                    resource: type_node_label(n: r.resource, source_indices: scope.type_env.source_indices),
-                    caller_module_path: scope.module_name,
-                    caller_decl_name: if scope.caller_decl_name == "" { "<module scope>" } else { scope.caller_decl_name },
-                    span: span
-                  },
-                  module_name: scope.module_name
-                )
+                let resource_label = type_node_label(n: r.resource, source_indices: scope.type_env.source_indices)
+                match resource_requirement_frontier_trigger(
+                  caller_module_path: scope.module_name,
+                  caller_decl_name: caller_name,
+                  callee_module_path: callee.owner_module_path,
+                  callee_decl_name: callee.decl_name,
+                  resource: resource_label
+                ) {
+                  Present { value: trigger } =>
+                    make_error_node(
+                      diagnostic: ResourceRequirementFrontierAdmitted {
+                        callee_module_path: callee.owner_module_path,
+                        callee_decl_name: callee.decl_name,
+                        resource: resource_label,
+                        caller_module_path: scope.module_name,
+                        caller_decl_name: caller_name,
+                        trigger: dissolution_description(condition: trigger),
+                        span: span
+                      },
+                      module_name: scope.module_name
+                    )
+                  Absent =>
+                    make_error_node(
+                      diagnostic: ResourceRequirementUnestablished {
+                        callee_module_path: callee.owner_module_path,
+                        callee_decl_name: callee.decl_name,
+                        resource: resource_label,
+                        caller_module_path: scope.module_name,
+                        caller_decl_name: caller_name,
+                        span: span
+                      },
+                      module_name: scope.module_name
+                    )
+                }
               )
           }
       }
   }
 }
 
+fn diag_is_resource_requirement_admitted(e: ErrorNode) -> Bool {
+  diagnostic_resource_frontier_key(d: e.diagnostic) != none
+}
+
+// The admitted rows are SPLIT OFF from the blocking ones rather than sharing the refusal path,
+// because an admitted call must still TYPE -- it is correct working code and its result type feeds
+// everything downstream. Returning an error node for it would have turned a declared debt into the
+// cascade the wall is supposed to avoid. The admitted diagnostics are carried instead on the
+// resolved direct-call InferResult, which is the same join that established the callee identity
+// they are keyed on.
+fn resource_requirement_admitted_diags(scope: InferScope, call_target: CallTargetOutcome, span: SourceSpan) -> List<ErrorNode> {
+  resource_requirement_diags(scope: scope, call_target: call_target, span: span)
+    |> filter(e => diag_is_resource_requirement_admitted(e: e))
+}
+
 fn resource_requirement_refusal(func_name: String, scope: InferScope, call_target: CallTargetOutcome, span: SourceSpan) -> InferResult? {
   let diags = resource_requirement_diags(scope: scope, call_target: call_target, span: span)
+    |> filter(e => !diag_is_resource_requirement_admitted(e: e))
   match diags |> first {
     Absent => none
     Present { value: _ } =>
@@ -5692,7 +5848,9 @@ fn frontier_occurrence_budget_diags(module_name: String, module_span: SourceSpan
 data frontier_occurrence_budget_note: String = "THE COUNT IS WHAT MAKES THE FRONTIER A RATCHET INSTEAD OF AN EXEMPTION. Keying admission on (module, method, receiver_shape) bounds WHERE an unresolved call may live but not HOW MANY may live there, so a second call in the same module, on the same method, failing to resolve the same way, inherited the admission — and that is not hypothetical: the measured rows have not all been singletons: v2.compiler.tokenize admitted seven `apply` calls, and the extdeps.mercurial `any` and gunbc.scm_compatibility.mercurial `map` rows cited here were three apiece — every one of them a lambda-parameter receiver, and all three rows are now DELETED at zero observed, tokenize's by the generic-substitution repair method_existence_wall_note describes. NO MULTI-OCCURRENCE ROW SURVIVES TODAY, which is a fact about the current corpus and not a change to this check: the count field is what makes the frontier a ratchet whether or not any row presently exceeds one, so a row admitting seven would silently admit an eighth (codex review 45464). Each row therefore declares its MEASURED occurrence count and this fold refuses the excess, located on the first offending call. THE COMPARISON IS EQUALITY, AND IT WAS FIRST WRITTEN AS A CEILING, WHICH DID NOT RATCHET. `observed > declared` was justified here on the reasoning that a narrower compile closure sees fewer occurrences of a module's rows, so equality would red a partial build. That reasoning is WRONG about this check: it runs per MODULE, and every occurrence of a module's rows is present whenever that module is typechecked at all — a closure that omits the module never runs its rows, so there is no partial-visibility case to protect. What the ceiling actually did was let seven shrink to six while the declared seven stood, so a seventh call could return silently: a static limit, not a ratchet, and the note claimed the ratchet anyway (codex review 45491). Equality closes it in the only way that works — fixing a call reds until the declared count is lowered, which removes the headroom a reintroduction would have slipped into. Both directions are asserted in the witness, because the under-count half is the half that makes it a ratchet and it is the one an author is tempted to relax. WHY NOT A STABLE PER-OCCURRENCE KEY, which would close this exactly: std.occurrence_identity is the corpus authority for occurrence identity and its own scope law forbids filename, SourceSpan, authored name, structural Node equality and content hash as identity inputs, allocating OccurrenceId inside one graph-scoped allocator instead. An allocator-assigned integer cannot appear as a literal in a declared row, because it is not stable across compiles — so a per-occurrence key is not merely unimplemented here, it is unavailable from the authority that owns the concept. The count is the strongest bound the substrate currently supports. Dissolve-on: a content-addressed occurrence identity stable across edits (the namespace lane's containment addressing), at which point rows key on the occurrence itself and the count field deletes."
 
 fn frontier_occurrence_budget_checked(module_name: String, module_span: SourceSpan, diagnostics: List<ErrorNode>) -> List<ErrorNode> {
-  concat(diagnostics, frontier_occurrence_budget_diags(module_name: module_name, module_span: module_span, diagnostics: diagnostics))
+  concat(
+    concat(diagnostics, frontier_occurrence_budget_diags(module_name: module_name, module_span: module_span, diagnostics: diagnostics)),
+    resource_frontier_occurrence_budget_diags(module_name: module_name, module_span: module_span, diagnostics: diagnostics))
 }
 
 fn unresolved_method_frontier_trigger(module_name: String, method: String, receiver_shape: String) -> DissolutionCondition? {
@@ -7117,7 +7275,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             span: span,
             name_span: node_name_span(n: texpr)
           ),
-          diagnostics: concat(formal_authority_diags, concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, concat(inhabitance_arg_diags, generic_type_argument_inhabitance_diags))))))
+          diagnostics: concat(resource_requirement_admitted_diags(scope: scope, call_target: call_target, span: span), concat(formal_authority_diags, concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, concat(inhabitance_arg_diags, generic_type_argument_inhabitance_diags)))))))
         }
         }
       } else {
