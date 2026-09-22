@@ -65,40 +65,9 @@ test fn every_fetched_wheel_is_compared_to_its_keyed_digest() -> Bool {
     && s.contains("| sha256sum -c -")
 }
 
-// ── THE ADMISSION THIS MODE TAKES ─────────────────────────────────────────────────────────────
-//
-// THE BUILD IS ADMITTED BY THE GROUP A PAIR SUBJECT HOLDING THE HOST, not by the unplaced relation
-// #12008 reached for. These rows are over the SAME fold the entry calls, supplied the real held
-// population, so what they establish is what the entry will decide.
-
-// SRV8 IS ADMITTED AND SRV1 IS REFUSED WITH THE HELD LIST. srv1 is the case that matters: it is a
-// real Spark this fleet runs effects on every day, and it is not Group A's.
-test fn srv8_is_admitted_and_srv1_is_refused_naming_the_held_hosts() -> Bool {
-  let held = spark_serving_admissible_hosts(subject: PairServingUnitOn { group: FabricGroupA })
-  (match admit_host_held_by_subject_among(subject: PairServingUnitOn { group: FabricGroupA }, raw: "srv8" as HostIdentity, held: held) { Absent => true  Present { value: _ } => false })
-    && (match admit_host_held_by_subject_among(subject: PairServingUnitOn { group: FabricGroupA }, raw: "srv1" as HostIdentity, held: held) {
-          Absent => false
-          Present { value: why } => why.contains("srv1 is not held by") && why.contains("srv5") && why.contains("srv8")
-        })
-}
-
-// EVERY GROUP B HOST REFUSES. Group B is the population a "just pick a Spark" reading would have
-// admitted, and it is exactly the one this mode may not touch.
-test fn no_group_b_host_is_admitted_for_the_build() -> Bool {
-  let held = spark_serving_admissible_hosts(subject: PairServingUnitOn { group: FabricGroupA })
-  all(["srv9", "srv10", "srv11", "srv12"], h =>
-    match admit_host_held_by_subject_among(subject: PairServingUnitOn { group: FabricGroupA }, raw: h as HostIdentity, held: held) {
-      Absent => false
-      Present { value: why } => why.contains(join([h, " is not held by"], ""))
-    })
-}
-
-// AN EMPTY HELD POPULATION ADMITS NOTHING. The fold's answer is the population, so the degenerate
-// population must refuse rather than fall through -- the absorbing arm DESIGN section 5 forbids.
-test fn an_empty_held_population_admits_no_host() -> Bool {
-  all(["srv5", "srv8", "srv1"], h =>
-    match admit_host_held_by_subject_among(subject: PairServingUnitOn { group: FabricGroupA }, raw: h as HostIdentity, held: [] as List<HostIdentity>) {
-      Absent => false
-      Present { value: _ } => true
-    })
-}
+// WHERE THE ADMISSION ITSELF IS WITNESSED. The host relation this entry takes --
+// `admit_host_held_by_subject` against PairServingUnitOn FabricGroupA -- is gunbc.spark.host_commitment's
+// interface, not this module's, so its discriminating rows live at its home in
+// test.claim.spark.spark_host_commitment_witness: a Group A host admitted, srv1 and every Group B host
+// refused with the held list rendered, and an empty held population admitting nothing. Re-running them
+// here would assert nothing new and pay for all of it again (DESIGN section 3).
