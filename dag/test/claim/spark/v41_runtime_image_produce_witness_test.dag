@@ -1,0 +1,104 @@
+module test.claim.spark.v41_runtime_image_produce_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.serving_subject { PairServingUnitOn }
+import gunbc.spark.host_commitment { spark_serving_admissible_hosts, admit_host_held_by_subject_among }
+import gunbc.spark.v41_runtime_image_converge {
+  V41ProducedRuntime, V41KernelWheelsVerified, V41KernelWheelVerificationRefused,
+  V41RuntimeProductionStopped,
+  v41_wheel_verification_line, v41_production_receipt, v41_production_succeeded,
+  v41_wheel_verify_script,
+}
+
+// WHY THIS FILE EXISTS AT ALL, BEFORE ANY ASSERTION IN IT.
+//
+// gunbc.spark.v41_runtime_image_converge is a FLEET-CONVERGE MODE ENTRY, and a mode entry is reached
+// only by a dispatched `gunbc run`. Until this witness, no compiled closure in the corpus imported
+// it, so the compiler never resolved it -- and it did not resolve: as merged on #12008 it constructed
+// `SparkBuildHostWork`, a sole_constructor type owned by gunbc.spark.vllm_runtime_image_build, across
+// the module boundary. Every required lane was green, because a green lane over a corpus that never
+// compiles a module says nothing about that module (DESIGN section 5: a typecheck that never ran is
+// not a consumer). The error would have surfaced on dispatch day, on a host, at the start of a
+// three-hour build.
+//
+// SO THE IMPORT ABOVE IS THE LOAD-BEARING PART OF THIS FILE and the assertions below are what makes
+// it honest: a claim whose subject is the module's own refusal vocabulary, over the real production
+// folds, rather than a bare `import` with a `true`. The next such error is a red here.
+
+fn w_stopped(step: String, cause: String) -> V41ProducedRuntime {
+  V41RuntimeProductionStopped {
+    step: step as NonEmptyStr,
+    cause: cause,
+    wheels: V41KernelWheelVerificationRefused { step: "wheel-verify" as NonEmptyStr, cause: "sha256sum -c refused" },
+  }
+}
+
+// A STOPPED PRODUCTION NEVER REPORTS SUCCESS, AND ITS RECEIPT CARRIES WHY. The entry writes this
+// receipt and then reads `v41_production_succeeded` for its exit, so a stopped run that rendered a
+// receipt and returned true would be the fabricated-plausible-output failure at the exit code.
+test fn a_stopped_production_never_reports_success() -> Bool {
+  let p = w_stopped(step: "image-readback", cause: "the daemon answered sha256:zz for the produced image")
+  !v41_production_succeeded(p: p)
+    && v41_production_receipt(p: p).contains("production STOPPED step=image-readback")
+    && v41_production_receipt(p: p).contains("the daemon answered sha256:zz for the produced image")
+    && v41_production_receipt(p: p).contains("kernel wheels REFUSED step=wheel-verify")
+}
+
+// THE WHEEL VERIFICATION LINE DISCRIMINATES, rather than rendering the same sentence either way.
+test fn the_wheel_verification_line_says_which_way_it_went() -> Bool {
+  v41_wheel_verification_line(v: V41KernelWheelsVerified { verified: 3 }).contains("kernel wheels verified=3")
+    && !v41_wheel_verification_line(v: V41KernelWheelsVerified { verified: 3 }).contains("REFUSED")
+    && v41_wheel_verification_line(v: V41KernelWheelVerificationRefused { step: "fetch" as NonEmptyStr, cause: "curl exit 22" }).contains("kernel wheels REFUSED step=fetch cause=curl exit 22")
+}
+
+// THE VERIFY SCRIPT COMPARES EVERY WHEEL TO THE DIGEST THE CANDIDATE KEYS, and fetching without
+// comparing would establish nothing -- so the digest and the `sha256sum -c -` are asserted together.
+test fn every_fetched_wheel_is_compared_to_its_keyed_digest() -> Bool {
+  let s = v41_wheel_verify_script()
+  s.contains("set -e\n")
+    && s.contains("adb6d2952b47131138e108bd2999b1fe18b71f1a4c0b2684f168753db9563991")
+    && s.contains("bbacb5b8bbf429e43bf2740bb45551d981f41d0462842e36ee6fb3e3452763ab")
+    && s.contains("860ec5ce11a1d686bde04dbef4bedee15c39e3ec5e10adccb186dfee2e4113f2")
+    && s.contains("| sha256sum -c -")
+}
+
+// ── THE ADMISSION THIS MODE TAKES ─────────────────────────────────────────────────────────────
+//
+// THE BUILD IS ADMITTED BY THE GROUP A PAIR SUBJECT HOLDING THE HOST, not by the unplaced relation
+// #12008 reached for. These rows are over the SAME fold the entry calls, supplied the real held
+// population, so what they establish is what the entry will decide.
+
+// SRV8 IS ADMITTED AND SRV1 IS REFUSED WITH THE HELD LIST. srv1 is the case that matters: it is a
+// real Spark this fleet runs effects on every day, and it is not Group A's.
+test fn srv8_is_admitted_and_srv1_is_refused_naming_the_held_hosts() -> Bool {
+  let held = spark_serving_admissible_hosts(subject: PairServingUnitOn { group: FabricGroupA })
+  (match admit_host_held_by_subject_among(subject: PairServingUnitOn { group: FabricGroupA }, raw: "srv8" as HostIdentity, held: held) { Absent => true  Present { value: _ } => false })
+    && (match admit_host_held_by_subject_among(subject: PairServingUnitOn { group: FabricGroupA }, raw: "srv1" as HostIdentity, held: held) {
+          Absent => false
+          Present { value: why } => why.contains("srv1 is not held by") && why.contains("srv5") && why.contains("srv8")
+        })
+}
+
+// EVERY GROUP B HOST REFUSES. Group B is the population a "just pick a Spark" reading would have
+// admitted, and it is exactly the one this mode may not touch.
+test fn no_group_b_host_is_admitted_for_the_build() -> Bool {
+  let held = spark_serving_admissible_hosts(subject: PairServingUnitOn { group: FabricGroupA })
+  all(["srv9", "srv10", "srv11", "srv12"], h =>
+    match admit_host_held_by_subject_among(subject: PairServingUnitOn { group: FabricGroupA }, raw: h as HostIdentity, held: held) {
+      Absent => false
+      Present { value: why } => why.contains(join([h, " is not held by"], ""))
+    })
+}
+
+// AN EMPTY HELD POPULATION ADMITS NOTHING. The fold's answer is the population, so the degenerate
+// population must refuse rather than fall through -- the absorbing arm DESIGN section 5 forbids.
+test fn an_empty_held_population_admits_no_host() -> Bool {
+  all(["srv5", "srv8", "srv1"], h =>
+    match admit_host_held_by_subject_among(subject: PairServingUnitOn { group: FabricGroupA }, raw: h as HostIdentity, held: [] as List<HostIdentity>) {
+      Absent => false
+      Present { value: _ } => true
+    })
+}
