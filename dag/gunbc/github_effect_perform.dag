@@ -8,6 +8,7 @@ import extdeps.clock {
 }
 import extdeps.auth.jws {
   jws_rs256_signing_input, jws_compact_serialization, JwsSerialized, JwsSignatureNotOctets,
+  JwsEncoded, JwsEncodeNotOctets,
   JwsSigningKeyRef, HostKeyFile, JwsSigned, JwsSignRefused,
 }
 import gunbc.jws_signer_realize { jws_rs256_sign }
@@ -100,17 +101,23 @@ type JitMintPerformance
   | JitMintStepNotSucceeded { step: JitMintStep, performance: RestExchangePerformance }
 
 fn app_jwt_for(dispatch_app_id: Int, key: JwsSigningKeyRef, now_epoch_secs: EpochSecs) -> JitMintAppJwt {
-  let signing_input = jws_rs256_signing_input(
+  match jws_rs256_signing_input(
     payload_json: github_app_jwt_claims_json(app_id: dispatch_app_id, now_epoch_secs: now_epoch_secs),
-  )
-  match jws_rs256_sign(signing_input: signing_input, key: key) {
-    JwsSignRefused { detail: d } => AppJwtUnsigned { detail: d }
-    JwsSigned { signature: sig } =>
-      match jws_compact_serialization(signing_input: signing_input, signature: sig) {
-        JwsSignatureNotOctets { observed: o } =>
-          AppJwtUnsigned { detail: concat("the signer returned a member outside octet range: ", to_string(o)) }
-        JwsSerialized { jwt: jwt } => AppJwtSigned { jwt: jwt }
+  ) {
+    JwsEncodeNotOctets { observed: o } =>
+      AppJwtUnsigned { detail: concat("the signing input carried a member outside octet range: ", to_string(o)) }
+    JwsEncoded { text: jws_signing_text } => {
+      let signing_input = jws_signing_text as NonEmptyStr
+      match jws_rs256_sign(signing_input: signing_input, key: key) {
+        JwsSignRefused { detail: d } => AppJwtUnsigned { detail: d }
+        JwsSigned { signature: sig } =>
+          match jws_compact_serialization(signing_input: signing_input, signature: sig) {
+            JwsSignatureNotOctets { observed: o } =>
+              AppJwtUnsigned { detail: concat("the signer returned a member outside octet range: ", to_string(o)) }
+            JwsSerialized { jwt: jwt } => AppJwtSigned { jwt: jwt }
+          }
       }
+    }
   }
 }
 

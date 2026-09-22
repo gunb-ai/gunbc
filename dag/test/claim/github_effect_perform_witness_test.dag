@@ -3,7 +3,7 @@ module test.claim.github_effect_perform_witness
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.integer { UInt8 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.auth.jws { jws_rs256_signing_input, jws_compact_serialization, JwsSerialized, JwsSignatureNotOctets }
+import extdeps.auth.jws { jws_rs256_signing_input, jws_compact_serialization, JwsSerialized, JwsSignatureNotOctets, JwsEncoded, JwsEncodeNotOctets }
 import extdeps.github.org_admin_auth { github_app_jwt_claims_json }
 import extdeps.tools.openssl { openssl_signature_of, OpensslSigned, OpensslSignRefused }
 import extdeps.github.actions_jit_runner { JitConfigCreatedBody, JitConfigCreatedRunner }
@@ -29,8 +29,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data rs256_jwt_header_b64url: String = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9"
 
 test fn witness_jws_signing_input_leads_with_the_rs256_header_unpadded() -> Bool {
-  let input = jws_rs256_signing_input(payload_json: "x") as String
-  starts_with(s: input, prefix: concat(rs256_jwt_header_b64url, "."))
+  match jws_rs256_signing_input(payload_json: "x") {
+    JwsEncodeNotOctets { observed: _ } => false
+    JwsEncoded { text: jws_signing_text } => starts_with(s: jws_signing_text, prefix: concat(rs256_jwt_header_b64url, "."))
+  }
 }
 
 // 0xFB 0xFF is "+/8=" in the standard alphabet and "-_8" in base64url: one input that goes red for

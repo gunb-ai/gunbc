@@ -32,6 +32,15 @@ import gunbc.primitive_egress.disposition {
 // census is where it is judged. The claim is the JOIN between the mint's assumption and the
 // declared contract, which is the half that was unrecoverable once the annotation was the only
 // place the dependency existed.
+//
+// THIS CLAIM IS LEXICAL AND THAT IS A DECLARED WEAKNESS, NOT AN OVERSIGHT. It matches a substring
+// of a prose field, so a reword or a reflow reds it while the declared range is unchanged -- loud
+// and false, which is the safe direction, and the row's own annotation warns its editor. The
+// structural repair is to carry the range as a modeled field on the census row so the join is
+// over a value; that is ENCODING-0's (gunbc#11629, derived by category_owner_lane from the row's
+// Encoding category), and its trigger is the row's own declared next observation -- the owning
+// lane landing the .dag body, after which bytes_octets is no longer the divergent seam and this
+// claim is superseded by a judgment over values rather than spellings.
 fn bytes_octets_declared_result() -> String {
   dispositions_text_rows() |> fold(init: "", f: (acc, row) =>
     if row.identity == primitive_identity_slug(name: "bytes_octets") {

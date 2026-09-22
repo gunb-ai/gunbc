@@ -32,9 +32,18 @@ import gunbc.primitive_egress.disposition {
 //
 // Changing the RANGE is a real change and the red is correct: the mint's admission stops holding
 // and it owes the uint8_octets_of_ints fold. Changing only the WORDING means updating the witness
-// in the same edit. The structural repair -- carrying the range as a modeled field rather than as
-// prose, so the join is over a value and not a spelling -- is not done here and is the honest
-// next step for whoever owns this census.
+// in the same edit.
+//
+// THE STRUCTURAL REPAIR AND ITS OWNER, NAMED FROM THE MODEL RATHER THAN DEFERRED TO NOBODY.
+// Carrying the range as a modeled field so the join is over a value and not a spelling is the
+// real fix and is not done here. Its owner is not "whoever owns this census": the census DERIVES
+// row ownership, and category_owner_lane sends every Encoding row -- which this is -- to
+// ENCODING-0, gunbc#11629. Its dissolution trigger is this row's OWN declared next observation:
+// the owning lane lands the .dag body under the declared authority, at which point bytes_octets
+// stops being the divergent seam, the octet range becomes computable in corpus exactly as
+// word_to_octets' already is, and both the prose join and the lexical witness dissolve into a
+// judgment over values. Until then the lexical wall is the honest instrument, and it is the
+// weaker one on purpose rather than by omission.
 fn dispositions_text_rows() -> List<PrimitiveEvidence> {
   [
     evidence_row(name: "length", category: TextOps, external_subject: NoExternalSubject, computation: computes(authority: declared_authority(module_path: "std.algebra", decl_name: "free_monoid_scalar_templates"), inputs: "xs: FreeMonoid<T> (String is FreeMonoid<Char>: code points, never bytes -- measured on v1_rt::string_length)", result: "Int, the element count; total", body: body_at(module_path: "v2.std.algebra", decl_name: "length")), refusals: RefusalsTyped, realization: NoNativeRealizationClaim, compiler_query: NotACompilerQuery, conflict: NoMeaningConflict, located: "length: the realization surfaces the census joins (registry row / contract row / algebra template / rt bridge / interpreter arm as present) and the authority named in the computation standing", next: "the owning lane lands the .dag body under the declared authority and switches one production consumer; the interpreter arm and bridge then delete for that consumer"),
