@@ -1235,37 +1235,53 @@ pub fn native_route_default_pattern_text() -> String {
 
 /// THE NATIVE TEST ROUTE, ENTERED WITH THE OPERAND'S OWN PATTERN.
 ///
-/// This is the whole point of the verb for a `v2.test.*` subject: the seed emits the compiler
-/// closure, cargo builds it, and the EMITTED BINARY adjudicates the selected population. Nothing
-/// on this path consults the interpreter, and nothing substitutes a cached or seed-side answer --
-/// what is reported is what that binary printed on its own terminal line.
+/// The seed emits the compiler closure, cargo builds it, and the EMITTED BINARY adjudicates the
+/// selected population. Nothing on this path consults the interpreter, and nothing substitutes a
+/// cached or seed-side answer.
 ///
-/// THE THREE TERMINATIONS ARE THE PARTITION ITS SIBLINGS MAKE. A refusal from the preparation or
-/// the spawn is the subject never having been reached: the emit refused, the crate would not
-/// build, the binary would not run, or the tree has no observable identity. Only a completed
-/// adjudication whose own admission is negative is an observation that did not hold. Collapsing
-/// them would report a compiler that never ran as a test population that failed, which is the
-/// absorbing answer DESIGN section 5 forbids -- and on this route it is the likely state, because
-/// the native front end still refuses constructs the selected population uses. A NATIVE REFUSAL IS
-/// EVIDENCE OF ROUTING, NOT OF TEST SUPPORT, and it is reported as `SubjectUnreached` so that it
-/// can never read as a passing or failing test run.
+/// EVERY TERMINATION HERE IS `SubjectUnreached`, AND THAT IS A STATEMENT ABOUT WHAT THE SEED CAN
+/// OBSERVE RATHER THAN A PLACEHOLDER. The three terminations are distinct by DESIGN's `gunbc test`
+/// law -- 0 held, 1 an observation that did not hold, 2 NO observation -- and answering 0 or 1 here
+/// would require the OPERAND'S own verdict. The seed does not have one. What comes back from the
+/// run is `run.terminal`, carrying `rows`, `universe` and the lane's whole-route QUALIFICATION bit;
+/// the per-identity `NativeTestVerdict` rows the binary writes are its own evidence surface and are
+/// not decoded here.
+///
+/// SO REUSING THAT BIT WOULD CONFLATE IN BOTH DIRECTIONS, and an earlier draft of this function did
+/// exactly that. Mapping a refused qualification to `ObservationDidNotHold` reports `JobNameMismatch`
+/// or `PositivePopulationEmpty` as "your target ran and failed" -- so a TYPO naming no module inside
+/// `//v2/test/...` would exit 1, a nonexistent target reported as a failing test, where the verb
+/// previously refused (the emptiness contract `v2.compiler.compile` explicitly leaves to this
+/// caller). Mapping a held qualification to `ObservationHeld` is worse: it reports the operator's
+/// targets as PASSING when what passed is the lane's route integrity, which is the false green
+/// DESIGN section 5 puts outside the ladder entirely.
+///
+/// A NATIVE REFUSAL IS EVIDENCE OF ROUTING, NOT OF TEST SUPPORT -- and so is a native ACCEPTANCE,
+/// until a per-operand verdict reaches this caller. Exit 2 says the route was entered and no
+/// observation of the operand was obtained, which is exactly true. The summary is carried verbatim
+/// so an operator sees what the lane decided without this function restating it as a verdict it did
+/// not make.
+///
+/// WHAT RETIRES THIS: the per-identity rows decoded into the operand's own termination -- every
+/// selected identity `NativeTestPassed` is `ObservationHeld`, any returning false or other is
+/// `ObservationDidNotHold`, an empty selection or any refused identity stays `SubjectUnreached`.
+/// That needs the rows contract read at this boundary and is not this change.
 fn run_native_test_route(pattern: &TargetPattern) -> InvocationOutcome {
     let rendered = render_target_pattern(pattern);
-    // THE PARTITION IS THE PRODUCER'S, MATCHED AS ARMS. It used to be recovered by testing the
-    // rendered cause for `cause=AdmissionRefused`, which is a second representation of a decision
-    // `run_required_v2_native` already holds -- reword that sentence upstream and a genuinely
-    // failing population reclassifies to "no observation". The producer now returns the decision.
     match cli_run::run_required_v2_native(&self_host_source_roots(), &rendered) {
-        cli_run::NativeRouteOutcome::AdmissionHeld { summary } => InvocationOutcome {
-            termination: Termination::ObservationHeld,
+        cli_run::NativeRouteOutcome::LaneQualificationHeld { summary } => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
             message: format!(
-                "native test route: {rendered} adjudicated, admission held — {summary}"
+                "native test route: {rendered} adjudicated; the LANE'S qualification held, which is \
+                 not an observation of this operand -- no per-target verdict reaches this caller yet \
+                 — {summary}"
             ),
         },
-        cli_run::NativeRouteOutcome::AdmissionRefused { summary } => InvocationOutcome {
-            termination: Termination::ObservationDidNotHold,
+        cli_run::NativeRouteOutcome::LaneQualificationRefused { summary } => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
             message: format!(
-                "native test route: {rendered} adjudicated, admission refused — {summary}"
+                "native test route: {rendered} adjudicated; the LANE'S qualification refused, whose \
+                 causes are route-integrity clauses rather than this operand's verdict — {summary}"
             ),
         },
         cli_run::NativeRouteOutcome::Unreached { cause } => InvocationOutcome {

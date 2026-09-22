@@ -1246,9 +1246,11 @@ fn run() -> Result<ExitCode, ExitCode> {
         let default_pattern =
             v1_compiler::cli_run::target_invocation_host::native_route_default_pattern_text();
         return match v1_compiler::cli_run::run_required_v2_native(&roots, &default_pattern) {
-            v1_compiler::cli_run::NativeRouteOutcome::AdmissionHeld { .. } => Ok(ExitCode::SUCCESS),
-            v1_compiler::cli_run::NativeRouteOutcome::AdmissionRefused { summary } => {
-                eprintln!("v2-native-route: refused: AdmissionRefused — {summary}");
+            v1_compiler::cli_run::NativeRouteOutcome::LaneQualificationHeld { .. } => {
+                Ok(ExitCode::SUCCESS)
+            }
+            v1_compiler::cli_run::NativeRouteOutcome::LaneQualificationRefused { summary } => {
+                eprintln!("v2-native-route: refused: LaneQualificationRefused — {summary}");
                 Err(ExitCode::from(1))
             }
             v1_compiler::cli_run::NativeRouteOutcome::Unreached { cause } => {

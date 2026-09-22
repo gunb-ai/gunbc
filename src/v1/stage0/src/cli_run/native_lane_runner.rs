@@ -1745,22 +1745,24 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
 /// The admission is a BOOLEAN INSIDE THE BINARY (`run.terminal.admitted`, derived with its summary
 /// by `native_lane_run`), and flattening it into `Result<(), String>` made every consumer recover
 /// it by sniffing the rendered text for `cause=AdmissionRefused`. That is a second representation
-/// of a decision this function already holds, free to disagree with it: reword the sentence and a
-/// genuinely failing population silently reclassifies as "no observation" -- the exact conflation
-/// DESIGN section 5 forbids, reached through a string rather than through a type.
+/// of a decision this function already holds, free to disagree with it.
 ///
-/// So the partition is carried. `AdmissionRefused` is a COMPLETED adjudication whose verdict was
-/// negative; `Unreached` is every way the run did not produce one -- the emit refused, the crate
-/// would not build, the binary would not run, the tree has no observable identity. A consumer
-/// matches arms and cannot ask the question wrongly.
+/// THE ARMS ARE NAMED FOR WHAT THE BIT ACTUALLY DECIDES, AND THE NAMING IS THE WHOLE POINT. It is
+/// `gunbc.witness_v2_native_route` `native_route_admission_with`'s WHOLE-ROUTE LANE QUALIFICATION
+/// -- a conjunction over roughly twenty clauses including `JobNameMismatch`,
+/// `PreparationSeedUnrecorded`, `EmittedBuildNotClean`, `MalformedControlAcceptedByRoute`,
+/// `PositivePopulationEmpty` and `RequiredNativePassRegressed`. It is NOT "the targets the operator
+/// asked for were observed and held". An earlier spelling of this enum called the arms
+/// `AdmissionHeld`/`AdmissionRefused`, which invited exactly the misreading that a consumer could
+/// take them for a per-operand verdict -- and one did.
 #[derive(Debug)]
 pub enum NativeRouteOutcome {
-    /// The emitted binary adjudicated and its own admission held.
-    AdmissionHeld { summary: String },
-    /// The emitted binary adjudicated and REFUSED its own admission: an observation that did not
-    /// hold, never an absence of one.
-    AdmissionRefused { summary: String },
-    /// No adjudication was produced at all.
+    /// The emitted binary adjudicated and the LANE'S QUALIFICATION held. Says nothing per target.
+    LaneQualificationHeld { summary: String },
+    /// The emitted binary adjudicated and the LANE'S QUALIFICATION refused. The cause may be any
+    /// of the route-integrity clauses and need not involve any selected test at all.
+    LaneQualificationRefused { summary: String },
+    /// No adjudication was produced.
     Unreached { cause: String },
 }
 
@@ -1770,11 +1772,11 @@ pub fn run_required_v2_native(source_roots: &[String], pattern: &str) -> NativeR
     match run_required_v2_native_inner(source_roots, pattern) {
         Ok(admission) => {
             if admission.admitted {
-                NativeRouteOutcome::AdmissionHeld {
+                NativeRouteOutcome::LaneQualificationHeld {
                     summary: admission.summary,
                 }
             } else {
-                NativeRouteOutcome::AdmissionRefused {
+                NativeRouteOutcome::LaneQualificationRefused {
                     summary: admission.summary,
                 }
             }
