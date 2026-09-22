@@ -551,13 +551,19 @@ fn microvm_network_step_env_text() -> String {
   }
 }
 
+// THE BINDING IS ONE PAIR, READ OFF THE STEP. This claim rendered the WHOLE fleet-converge workflow to
+// grep two substrings out of it: 706,541 eval steps against the 72,300 new-witness budget, and it sits
+// in NEITHER the floor_cost_debt roster nor the grandfathered one, so unlike its two neighbours in this
+// file it is unprotected -- it did not block only because changed-witness selection did not reach it.
+// Found by witty-moth-853 while repairing the same shape on the d0 and materialize claims.
+//
+// The two env conjuncts were also WEAKER than the line they stood beside: asserting the name and the
+// expression separately admits a step that carries both in DIFFERENT pairs. Reading the one rendered
+// pair keeps what the yml line established, and the step id comes off the step rather than the render.
 test fn the_microvm_network_step_binds_the_dispatched_host_into_its_environment() -> Bool {
   let env = microvm_network_step_env_text()
-  let yml = expected_fleet_converge_yml_content()
-  string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST")
-    && string_contains(s: env, pattern: "github.event.inputs.host")
-    && string_contains(s: yml, pattern: "id: microvm_network_observe")
-    && string_contains(s: yml, pattern: "FLEET_CONVERGE_EXPECTED_HOST: $\{\{ github.event.inputs.host \}\}")
+  string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST=$\{\{ github.event.inputs.host \}\}")
+    && step_id_text(step: fleet_converge_microvm_network_observe_step()) == "microvm_network_observe"
 }
 
 // THE MODE IS LOCAL, SO IT CLAIMS NO FLEET KEY. Every effect it has runs on the machine executing it:
