@@ -222,12 +222,53 @@ data list_init_subject_identity: BehaviorSubjectIdentity = BehaviorSubjectIdenti
 // does, and only a compiler whose source revision is known may be read as evidence about that
 // revision.
 //
+// (4a) BUT THE STRONGER FORM IS AN ARTIFACT THAT IDENTIFIES ITS OWN PRODUCER, and for this specimen
+// it exists, so this instrument uses it and does not rest on "the binary was correct when I looked".
+// The two lowerings are distinguishable IN THE EMITTED TEXT by a condition only one of them can
+// write: the repaired emitter renders list_init as `if __fm.is_empty() { .. } else if __fm.len() ==
+// 1 { .. } else { .. }`, and the broken one renders a two-way split containing NO `__fm.len()`
+// anywhere in the closure. So each arm's emitted crate carries the evidence of which emitter wrote
+// it, independent of which binary the runner believes it invoked, and a red arm remains readable
+// after the fact. The `__fm.is_empty()` prefix is NOT that discriminator, because both forms open
+// with it -- the presence or absence of the length condition is.
+//
+// (4b) THE HAZARD THAT MAKES (4a) WORTH THE WORDS, reported by sunny-ibex-112 from their own lane:
+// a shared CARGO_TARGET_DIR is overwritten by any neighbouring session building the same binary, at
+// any moment, so the compiler a step invokes is not necessarily the compiler the previous step
+// built. For a single-arm lane that is a false negative someone chases down. For THIS instrument it
+// is a false GREEN that looks healthy: if a neighbour's build lands between the two emissions, both
+// arms are the same compiler, the differential reports no divergence, and every field of the record
+// is well-formed -- this lane's own subject reproduced inside its own instrument. Each arm therefore
+// builds into a target directory it alone names, and the probe crates do not share one either.
+//
 // THE INSTRUMENT, NAMED AS A RECIPE RATHER THAN HAND-AUTHORED AS A SCRIPT. DESIGN section 6 lists a
 // hand-authored workflow script among the out-of-band-actuation tells, and the admitted seam for
 // invoking a v2 measurement is a `gunbc test <label>` row bound through gunbc.target_binding
-// TargetProducer. That binding is NOT in this increment, and saying so is the point: the recipe
-// below is carried as DATA so a human can run it today and so the label that replaces it has an
-// authority to derive its steps from, rather than a script to be deleted later.
+// TargetProducer. That binding is NOT in this increment, and saying so is the point: the steps are
+// written here so a human can run them today and so the label that replaces them has an authority to
+// derive its steps from, rather than a script to be deleted later.
+//
+// 1. BUILD THE COMPILER WHOSE EMISSION IS BEING JUDGED and record the revision you built it from:
+//    CARGO_TARGET_DIR=<a directory this arm alone names> CTRL_BUILD_MODE=local
+//    /opt/cargo/bin/cargo build --release -p v1-compiler --bin gunbc. NEVER the shared default
+//    target: see (4b) above -- a neighbouring session's build of the same binary lands there and
+//    silently makes both arms the same compiler.
+// 2. EMIT THE SPECIMEN CLOSURE WITH THAT BINARY: <gunbc> compile --source-root dag --source-root
+//    src/v2 --entry dag/gunbc/instruments/emission_differential_probe.dag --target rust
+//    --output-dir <emitdir>.
+// 3. BUILD AND RUN THE EMITTED OBSERVER LOCALLY, never remotely -- the remote runners are amd64 and
+//    session containers are arm64, so a remote build yields a binary that cannot execute. Copy the
+//    observer into <emitdir>/src/bin/probe.rs, build it with a target directory THIS ARM alone
+//    names, and run it.
+// 4. TAKE THE INTERPRETER OBSERVATION WITH THE SAME BINARY: <gunbc> run --source-root dag
+//    --source-root src/v2 --entry dag/gunbc/instruments/emission_differential_probe.dag --function
+//    specimen_digest.
+// 5. CLASSIFY: <gunbc> run --source-root dag --source-root src/v2 --entry
+//    dag/gunbc/emission_differential_run.dag --function compare_list_init --arg native_kind=value
+//    --arg native_payload=<emitted> --arg eval_kind=value --arg eval_payload=<interpreted>. Take the
+//    verdict with NOTHING after it on the command line, so the exit status is the classifier's and
+//    not a pipeline's last stage. A route that did not run is passed as notobserved with a located
+//    cause, never as an empty payload.
 //
 // DECLARED FRONTIER, WITH ITS TRIGGER STATED BESIDE IT (DESIGN section 3c): the consumer that turns
 // this recipe into one command is a `//gunbc/instruments:emission-differential` label with a
