@@ -2,6 +2,7 @@
 // Source module: std.operator_realization
 
 use self::HostRealizationReason::*;
+use self::OperandDemand::*;
 use self::OperandRealization::*;
 use self::OperatorRealization::*;
 use self::OperatorRealizationRefusal::*;
@@ -242,6 +243,46 @@ pub fn binop_label(op: BinOp) -> String {
         BinOp::And => "&&".to_string(),
         BinOp::Or => "||".to_string(),
         BinOp::NullCoalesce => "??".to_string(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum OperandDemand {
+    DemandsBothOperands,
+    DemandsRightOnlyWhenLeftIs { deciding: bool },
+    DemandsRightOnlyWhenLeftIsAbsent,
+}
+impl OperandDemand {
+    pub fn deciding(&self) -> bool {
+        match self {
+            OperandDemand::DemandsBothOperands => panic!("no deciding on unit variant"),
+            OperandDemand::DemandsRightOnlyWhenLeftIs {
+                deciding: __val, ..
+            } => __val.clone(),
+            OperandDemand::DemandsRightOnlyWhenLeftIsAbsent => {
+                panic!("no deciding on unit variant")
+            }
+        }
+    }
+}
+
+pub fn operand_demand(op: BinOp) -> Rc<OperandDemand> {
+    match op.clone() {
+        BinOp::And => Rc::new(OperandDemand::DemandsRightOnlyWhenLeftIs { deciding: true }),
+        BinOp::Or => Rc::new(OperandDemand::DemandsRightOnlyWhenLeftIs { deciding: false }),
+        BinOp::Add => Rc::new(OperandDemand::DemandsBothOperands),
+        BinOp::Sub => Rc::new(OperandDemand::DemandsBothOperands),
+        BinOp::Mul => Rc::new(OperandDemand::DemandsBothOperands),
+        BinOp::Div => Rc::new(OperandDemand::DemandsBothOperands),
+        BinOp::Mod => Rc::new(OperandDemand::DemandsBothOperands),
+        BinOp::Eq => Rc::new(OperandDemand::DemandsBothOperands),
+        BinOp::Ne => Rc::new(OperandDemand::DemandsBothOperands),
+        BinOp::Lt => Rc::new(OperandDemand::DemandsBothOperands),
+        BinOp::Gt => Rc::new(OperandDemand::DemandsBothOperands),
+        BinOp::Le => Rc::new(OperandDemand::DemandsBothOperands),
+        BinOp::Ge => Rc::new(OperandDemand::DemandsBothOperands),
+        BinOp::NullCoalesce => Rc::new(OperandDemand::DemandsRightOnlyWhenLeftIsAbsent),
     }
 }
 
