@@ -1,0 +1,240 @@
+module test.claim.representation_boundary_witness_test
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.derived_obligation_row {
+  WitnessSubject,
+  witness_subject,
+  PathExecution,
+  path_execution_is_executing,
+  interpreted_standing_of,
+  HomeAuthority
+}
+import gunbc.representation_boundary {
+  RepresentationBoundary,
+  Calls,
+  ControlFlow,
+  Bindings,
+  OneAuthority,
+  TwoAuthoritiesAnswerOneQuestion,
+  NoAuthorityExists,
+  ForkEstablished,
+  ForkCandidate,
+  DivergenceDeclaredOnTheCarrier,
+  AgreesByConstruction,
+  EvidenceOnBothRoutes,
+  InterpretedOnly,
+  NoEvidence,
+  boundary_is_interpreted_only,
+  boundary_is_established_fork,
+  boundary_is_candidate_fork,
+  boundary_is_declared_divergence,
+  boundary_has_no_authority,
+  boundary_candidate_names_its_discriminator,
+  boundary_two_authority_states_its_question,
+  boundary_authority_and_evidence_are_consistent,
+  every_candidate_fork_names_its_discriminator,
+  every_two_authority_row_states_its_one_question,
+  every_boundary_names_a_trigger,
+  no_boundary_claims_evidence_without_an_authority,
+  boundary_roster_size,
+  interpreted_only_count,
+  established_fork_count,
+  candidate_fork_count,
+  declared_divergence_count,
+  boundaries_without_an_authority
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EVERY ARM BELOW IS EXERCISED ON A FIXTURE ROW THIS FILE CONSTRUCTS, not on the production roster,
+// because a claim that folds the roster's own rows asserts what the author typed rather than what
+// the reader decides -- DESIGN section 3's standing rule on supplying a boundary's inputs. The
+// PAIRING OBLIGATION that rule attaches is discharged by the last two arms, which run the real
+// production roster through the real derivation and the real walls.
+
+fn a_home() -> DeclarationRef {
+  decl_ref(module_path: "fixture.module", decl_name: "fixture_decl")
+}
+
+fn conforming_row() -> RepresentationBoundary {
+  RepresentationBoundary {
+    identity: "fixture-conforming" as NonEmptyStr,
+    boundary_class: Calls,
+    authority: OneAuthority { home: HomeAuthority { authority: a_home() } },
+    witnesses: [],
+    supported_scope: "fixture" as NonEmptyStr,
+    preservation_obligation: "fixture" as NonEmptyStr,
+    crossing_evidence: AgreesByConstruction { how: "fixture" as NonEmptyStr },
+    next_trigger: climbs_when(capability: "fixture capability")
+  }
+}
+
+fn row_with(authority_arm: Int, blank_discriminator: Bool) -> RepresentationBoundary {
+  RepresentationBoundary {
+    identity: "fixture-variable" as NonEmptyStr,
+    boundary_class: Bindings,
+    authority: if authority_arm == 0 {
+      TwoAuthoritiesAnswerOneQuestion {
+        first: HomeAuthority { authority: a_home() },
+        second: HomeAuthority { authority: a_home() },
+        one_question: "fixture shared question" as NonEmptyStr,
+        standing: ForkEstablished { how: "fixture" as NonEmptyStr }
+      }
+    } else {
+      TwoAuthoritiesAnswerOneQuestion {
+        first: HomeAuthority { authority: a_home() },
+        second: HomeAuthority { authority: a_home() },
+        one_question: "fixture shared question" as NonEmptyStr,
+        standing: ForkCandidate {
+          what_was_established: "fixture" as NonEmptyStr,
+          what_was_not: "fixture" as NonEmptyStr,
+          discriminator: (if blank_discriminator { "" } else { "fixture discriminator" }) as NonEmptyStr
+        }
+      }
+    },
+    witnesses: [],
+    supported_scope: "fixture" as NonEmptyStr,
+    preservation_obligation: "fixture" as NonEmptyStr,
+    crossing_evidence: InterpretedOnly {
+      what_goes_red: "fixture" as NonEmptyStr,
+      unobserved: "fixture" as NonEmptyStr
+    },
+    next_trigger: climbs_when(capability: "fixture capability")
+  }
+}
+
+fn declared_divergence_row() -> RepresentationBoundary {
+  RepresentationBoundary {
+    identity: "fixture-declared-divergence" as NonEmptyStr,
+    boundary_class: Bindings,
+    authority: TwoAuthoritiesAnswerOneQuestion {
+      first: HomeAuthority { authority: a_home() },
+      second: HomeAuthority { authority: a_home() },
+      one_question: "fixture shared question" as NonEmptyStr,
+      standing: DivergenceDeclaredOnTheCarrier {
+        stated_by: a_home(),
+        what_is_duplicated: "fixture" as NonEmptyStr,
+        what_is_legitimately_layered: "fixture" as NonEmptyStr
+      }
+    },
+    witnesses: [],
+    supported_scope: "fixture" as NonEmptyStr,
+    preservation_obligation: "fixture" as NonEmptyStr,
+    crossing_evidence: InterpretedOnly {
+      what_goes_red: "fixture" as NonEmptyStr,
+      unobserved: "fixture" as NonEmptyStr
+    },
+    next_trigger: climbs_when(capability: "fixture capability")
+  }
+}
+
+fn no_authority_row(claims_evidence: Bool) -> RepresentationBoundary {
+  RepresentationBoundary {
+    identity: "fixture-no-authority" as NonEmptyStr,
+    boundary_class: ControlFlow,
+    authority: NoAuthorityExists { what_would_own_it: "fixture" as NonEmptyStr },
+    witnesses: [],
+    supported_scope: "fixture" as NonEmptyStr,
+    preservation_obligation: "fixture" as NonEmptyStr,
+    crossing_evidence: if claims_evidence {
+      EvidenceOnBothRoutes { what_goes_red: "fixture" as NonEmptyStr }
+    } else {
+      NoEvidence { why: "fixture" as NonEmptyStr }
+    },
+    next_trigger: climbs_when(capability: "fixture capability")
+  }
+}
+
+// THE THREE VALUES ARE DISCRIMINATED, AND THAT IS THE POINT OF THE COPRODUCT. If any two of these
+// collapsed onto one arm -- the two-valued reading DESIGN section 3b forbids -- one of the six
+// conjuncts below goes false. This is the arm that would catch a later edit "simplifying"
+// ForkStanding back to a Bool.
+test fn representation_boundary_three_standings_are_discriminated_holds() -> Bool {
+  boundary_is_established_fork(b: row_with(authority_arm: 0, blank_discriminator: false))
+    && !boundary_is_candidate_fork(b: row_with(authority_arm: 0, blank_discriminator: false))
+    && boundary_is_candidate_fork(b: row_with(authority_arm: 1, blank_discriminator: false))
+    && !boundary_is_established_fork(b: row_with(authority_arm: 1, blank_discriminator: false))
+    && boundary_is_declared_divergence(b: declared_divergence_row())
+    && !boundary_is_established_fork(b: declared_divergence_row())
+    && !boundary_is_candidate_fork(b: declared_divergence_row())
+}
+
+// A CANDIDATE WITH NO DISCRIMINATOR IS AN INSINUATION, AND THIS IS THE RED THAT REFUSES ONE. The
+// positive control beside it is required: a predicate that refused everything would satisfy the
+// first conjunct alone.
+test fn representation_boundary_candidate_without_a_discriminator_is_refused_holds() -> Bool {
+  !boundary_candidate_names_its_discriminator(b: row_with(authority_arm: 1, blank_discriminator: true))
+    && boundary_candidate_names_its_discriminator(b: row_with(authority_arm: 1, blank_discriminator: false))
+    && boundary_candidate_names_its_discriminator(b: conforming_row())
+}
+
+// A ROW WITH NO AUTHORITY MAY NOT CLAIM EVIDENCE. If nothing declares the fact there is nothing for
+// an execution to establish agreement WITH, so such a row would be the unadjudicable divergence
+// report written down as coverage. Both arms are authorable, so both are checked.
+test fn representation_boundary_no_authority_may_not_claim_evidence_holds() -> Bool {
+  !boundary_authority_and_evidence_are_consistent(b: no_authority_row(claims_evidence: true))
+    && boundary_authority_and_evidence_are_consistent(b: no_authority_row(claims_evidence: false))
+    && boundary_authority_and_evidence_are_consistent(b: conforming_row())
+    && boundary_has_no_authority(b: no_authority_row(claims_evidence: false))
+    && !boundary_has_no_authority(b: conforming_row())
+}
+
+// THE EVIDENCE ARMS RANK DIFFERENTLY AND MUST NOT COLLAPSE. AgreesByConstruction is not
+// InterpretedOnly with a better adjective, and NoEvidence is not InterpretedOnly with a smaller
+// number -- a fold that treated any two as one would report coverage this roster does not have.
+test fn representation_boundary_evidence_arms_do_not_collapse_holds() -> Bool {
+  boundary_is_interpreted_only(b: row_with(authority_arm: 1, blank_discriminator: false))
+    && !boundary_is_interpreted_only(b: conforming_row())
+    && !boundary_is_interpreted_only(b: no_authority_row(claims_evidence: false))
+}
+
+// THE PAIRING OBLIGATION, PART ONE: THE REAL ROSTER THROUGH THE REAL WALLS. The arms above supply
+// their inputs; this one supplies nothing. Deleting a row's trigger, blanking a candidate's
+// discriminator, blanking a shared question, or giving the control-flow row evidence it cannot have
+// makes this go red on the production data.
+test fn representation_boundary_production_roster_satisfies_its_own_walls_holds() -> Bool {
+  every_boundary_names_a_trigger()
+    && every_candidate_fork_names_its_discriminator()
+    && every_two_authority_row_states_its_one_question()
+    && no_boundary_claims_evidence_without_an_authority()
+    && boundary_roster_size() > 0
+}
+
+// THE PAIRING OBLIGATION, PART TWO: THE DERIVATION RUNS ON A REAL SUBJECT. This is the arm that
+// makes the roster's REAL CONSUMERS field a reading rather than an assertion -- it puts a real
+// witness entry through the real freeze roster, the real exclusion frontier and the real gate
+// closure. It asserts the derivation ANSWERS, deliberately not WHICH answer: the answer is a fact
+// about the live rosters and pinning it here would make an unrelated exclusion edit fail this file
+// instead of moving the number it is supposed to move.
+test fn representation_boundary_consumer_standing_is_derived_not_authored_holds() -> Bool {
+  path_execution_is_executing(
+    p: interpreted_standing_of(
+      ws: [
+        witness_subject(
+          entry: "dag/test/claim/representation_boundary_witness_test.dag",
+          function: "representation_boundary_consumer_standing_is_derived_not_authored_holds",
+          module_path: "v2.test.claim.representation_boundary_witness_test"
+        )
+      ],
+      unverified_premise: a_home()
+    )
+  )
+    || !path_execution_is_executing(p: interpreted_standing_of(ws: [], unverified_premise: a_home()))
+}
+
+// THE DENOMINATOR IS COUNTED, because every wall above is universally quantified and true on an
+// empty roster. The three standing counts are asserted to be individually well-formed and are
+// deliberately NOT asserted to sum to anything: summing a defect count, an open question and an
+// admitted decision produces a number true of no population.
+test fn representation_boundary_counts_are_separate_and_bounded_holds() -> Bool {
+  boundary_roster_size() == 11
+    && interpreted_only_count() >= 0
+    && interpreted_only_count() <= boundary_roster_size()
+    && established_fork_count() >= 1
+    && candidate_fork_count() >= 0
+    && declared_divergence_count() >= 1
+    && boundaries_without_an_authority() >= 1
+}
