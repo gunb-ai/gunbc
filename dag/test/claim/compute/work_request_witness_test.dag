@@ -332,8 +332,12 @@ test fn the_lifecycle_verdict_has_four_states_and_unknown_carries_why() -> Bool 
 // in this change's history. (1) The undropped lease VANISHES -- LeaseNotDropped mapping to
 // HostRecordWritten. (2) The undropped lease becomes a VERDICT -- the outcome or the document
 // changing because a file could not be deleted. (3) The note tells the operator something the
-// contract contradicts: it used to say the next request refuses as ProducerInFlight, which is
-// false for a published success, because the attach is decided BEFORE the lease is consulted.
+// contract contradicts: it used to say THE NEXT REQUEST refuses as ProducerInFlight, which is
+// false for a published success, because the attach is decided BEFORE the lease is consulted. The
+// repair was to SCOPE that sentence, not to delete the word: the note still names ProducerInFlight
+// as what a request that must PRODUCE again will meet, which is true. So the assertion here is on
+// the two clauses that carry the scope -- a note that drops them and states the refusal
+// unconditionally goes red, while the word itself is free to stay.
 //
 // AND THE REMEDY IS ASSERTED TO NAME A ROUTE THAT EXISTS. A refusal whose remedy names a
 // capability nobody built decays into advice; this one names compute_recover_cli, and the
@@ -359,6 +363,7 @@ test fn an_undropped_lease_is_recorded_and_never_becomes_the_works_verdict() -> 
     && provide_result_document(r: carried) == document
     && !host_record_was_written(h: provide_result_host_record(r: carried))
 
-    && !string_contains(s: compute_stale_lease_note(layout: layout, error: "EBUSY"), pattern: "ProducerInFlight")
+    && string_contains(s: compute_stale_lease_note(layout: layout, error: "EBUSY"), pattern: "the attach is decided before this name is consulted")
+    && string_contains(s: compute_stale_lease_note(layout: layout, error: "EBUSY"), pattern: "matters only to a request that must PRODUCE again")
     && string_contains(s: compute_stuck_reservation_remedy, pattern: "compute_recover_cli")
 }
