@@ -122,13 +122,27 @@ test fn a_consumer_that_names_both_providers_keeps_its_use_line() -> Bool {
 // 70079). A permanently-green arm whose verdict is decided by a different term is decoration,
 // which DESIGN section 4b forbids by name.
 //
-// It now takes the arm-B/C shape: the second declarer arrives through gunbc.product.fan_tach_health,
-// a module imported for an unrelated symbol that itself imports v2.std.cardinality and does not
-// mention std.termination. All three terms hold except nominality, so a red here would mean the
-// phantom shape is NOT load-bearing and the class is wider than the row states.
+// It now takes the arm-C shape: the second declarer arrives through v2.extdeps.languages.ptx, a
+// module imported for an unrelated symbol (StateSpace) that itself imports
+// v2.std.cardinality { PositiveUpperBoundedNat } and never names TerminationProof. All three
+// terms hold except nominality, so a red here would mean the phantom shape is NOT load-bearing
+// and the class is wider than the row states.
+//
+// TERM 1 IS VERIFIED PRESENT RATHER THAN ASSUMED, because a green here is worthless if the second
+// declaration never reached the crate -- that would be the baseline again under another name.
+// Measured: this source emits src/v2_std_cardinality.rs CONTAINING TerminationProof, and the
+// no-bystander baseline below emits no such module at all, so the pair varies term 1 rather than
+// holding it constant. Measured in the same probe: a PHANTOM consumer in this exact shape still
+// DROPS its line, so the instrument can detect a drop here and is not one that only ever says yes.
+//
+// THE BYSTANDER'S CLOSURE MUST COMPILE CLEAN, and that is a precondition of every arm in this
+// file rather than a property of this one. compile_dag_rust_emit_check counts hard diagnostics
+// over the WHOLE compile, imported closure included, so a bystander dragging in a module with a
+// hard diagnostic reds the arm for a reason that has nothing to do with its subject. The first
+// bystander tried here, gunbc.product.fan_tach_health, did exactly that.
 fn w_forked_nominal_record_keeps_its_use_line() -> Bool {
   compile_dag_rust_emit_check(
-    "module aiulb_nominal_indirect\n\nimport std.types { Int, List }\nimport std.termination { TerminationProof }\nimport gunbc.product.fan_tach_health { FanTachWindow }\n\nfn proof_dimension_count(p: TerminationProof) -> Int {\n  count(p.dimensions)\n}\n\nfn window_is_ignored(w: FanTachWindow) -> Int {\n  0\n}\n",
+    "module aiulb_nominal_indirect\n\nimport std.types { Int, List }\nimport std.termination { TerminationProof }\nimport v2.extdeps.languages.ptx { StateSpace }\n\nfn proof_dimension_count(p: TerminationProof) -> Int {\n  count(p.dimensions)\n}\n\nfn state_space_is_ignored(s: StateSpace) -> Int {\n  0\n}\n",
     "src/aiulb_nominal_indirect.rs",
     ["pub use crate::std_termination::"],
     []
@@ -137,6 +151,22 @@ fn w_forked_nominal_record_keeps_its_use_line() -> Bool {
 
 test fn a_forked_nominal_record_keeps_its_authored_use_line() -> Bool {
   w_forked_nominal_record_keeps_its_use_line()
+}
+
+// TERM 1 IS PRESENT IN THE NOMINAL ARM, ASSERTED RATHER THAN DESCRIBED. Without this the arm
+// above is "a module that keeps its use-line", which the baseline also is; the pair only varies
+// term 1 if the second declaration really reaches the crate in one and not the other.
+fn w_nominal_arm_really_carries_the_second_declaration() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aiulb_nominal_indirect\n\nimport std.types { Int, List }\nimport std.termination { TerminationProof }\nimport v2.extdeps.languages.ptx { StateSpace }\n\nfn proof_dimension_count(p: TerminationProof) -> Int {\n  count(p.dimensions)\n}\n\nfn state_space_is_ignored(s: StateSpace) -> Int {\n  0\n}\n",
+    "src/v2_std_cardinality.rs",
+    ["TerminationProof"],
+    []
+  )
+}
+
+test fn the_nominal_arm_really_carries_the_second_declaration() -> Bool {
+  w_nominal_arm_really_carries_the_second_declaration()
 }
 
 // THE SAME NOMINAL CONSUMER WITH NO SECOND DECLARER AT ALL, so the arm above is read against a
@@ -157,7 +187,7 @@ test fn a_singly_declared_nominal_record_keeps_its_use_line() -> Bool {
 
 // THE DISCRIMINATION IS THE WHOLE CONJUNCTION, not any arm alone, and this states it as one fact
 // so a reader cannot take the expecting-red arm for a claim that dropping use-lines is correct.
-// All five arms are joined: the condition has THREE terms, and a conjunction over a subset would
+// All six arms are joined: the condition has THREE terms, and a conjunction over a subset would
 // stay green if a term were lost -- which is exactly the state this witness was in twice, once
 // before arm E was measured and once while the nominal arm was confounded with it.
 test fn the_use_line_verdict_turns_on_the_whole_conjunction() -> Bool {
@@ -166,4 +196,5 @@ test fn the_use_line_verdict_turns_on_the_whole_conjunction() -> Bool {
     && w_consumer_naming_both_providers_keeps_its_use_line()
     && w_forked_nominal_record_keeps_its_use_line()
     && w_nominal_record_alone_keeps_its_use_line()
+    && w_nominal_arm_really_carries_the_second_declaration()
 }
