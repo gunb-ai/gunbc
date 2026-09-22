@@ -3,7 +3,7 @@ module test.claim.named_argument_binding_two_route_witness_test
 import std.types { String, Bool, Int }
 import v2.compiler.compile { compile_dag_source_to_target_text }
 import v2.std.diagnostic { Accepted, Rejected }
-import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
+import gunbc.compile_census_probe { total_blocking_count_for }
 
 // ONE FIXTURE SOURCE, TWO COMPILERS, ONE QUESTION: which argument feeds which parameter. The two
 // routes answer it differently, and the disagreement is about whether the children's SEQUENCE is
@@ -41,6 +41,17 @@ import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, cens
 // pair is the positive control: both routes must compile it. The out-of-order pair is the
 // discriminating fixture, and its two arms are what the divergence IS.
 //
+// ONE ARM PER ROUTE PER FIXTURE, AND THE SPLIT IS NOT COSMETIC (review 70029). A conjunction of the
+// two positive controls made one budget pay a full interpreted `compile_dag_source_to_target_text`
+// AND a seed census compile, and -- worse for a file whose entire subject is that two routes
+// disagree -- a red would not have said WHICH route regressed. Splitting them loses no coverage,
+// which is the test DESIGN section 3's witness rule states for exactly this shape.
+//
+// THE v1 COUNT IS ASKED AS A TOTAL, NOT PER CLASS. `total_blocking_count_for` returns -1 when the
+// census is not runnable, so a census that never ran cannot read as a clean compile; and asking for
+// the TOTAL rather than for one wanted class means an UPSTREAM refusal cannot satisfy the arm by
+// leaving the class it was looking for at zero.
+//
 // THE v2 ARM IS A KNOWN-HOLE PROBE, DESIGN section 4b(4), AND WHAT IT ASSERTS IS THE DEFECT RATHER
 // THAN THE CONTRACT. Read that sentence before citing this file. The arm
 // `the_v2_route_binds_out_of_declaration_order_by_position_which_is_the_defect` is GREEN TODAY
@@ -74,19 +85,16 @@ fn nab_v2_accepts(source: String) -> Bool {
   }
 }
 
-fn nab_v1_blocking(source: String) -> Int {
-  match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
-    CensusNotRunnable { cause: _ } => 0 - 1
-  }
+test fn the_v2_route_accepts_the_declaration_order_call_which_is_its_positive_control() -> Bool {
+  nab_v2_accepts(source: nab_inorder_source)
 }
 
-test fn a_named_argument_call_in_declaration_order_compiles_on_both_routes() -> Bool {
-  nab_v2_accepts(source: nab_inorder_source) && nab_v1_blocking(source: nab_inorder_source) == 0
+test fn the_v1_routes_accept_the_declaration_order_call_which_is_their_positive_control() -> Bool {
+  total_blocking_count_for(source: nab_inorder_source) == 0
 }
 
 test fn the_v1_routes_bind_out_of_declaration_order_by_name_which_is_the_contract() -> Bool {
-  nab_v1_blocking(source: nab_reordered_source) == 0
+  total_blocking_count_for(source: nab_reordered_source) == 0
 }
 
 test fn the_v2_route_binds_out_of_declaration_order_by_position_which_is_the_defect() -> Bool {
