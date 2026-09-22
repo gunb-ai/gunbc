@@ -5,6 +5,9 @@ import v2.compiler.body_lowering_fold {
   ParseSubtreeFound,
   PostfixChainFound,
   PostfixChainNotThisShape,
+  body_lower_postfix_method_suffix_optional,
+  is_empty_conj_root,
+  body_lower_postfix_repeat_head_optional,
   PostfixChainSuffixCarried,
   body_lower_dotted_chain_lowered_optional,
   body_lower_find_captured,
@@ -13,6 +16,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_postfix_expr,
   body_lower_try_body_lowered
 }
+import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
@@ -650,4 +654,81 @@ test fn body_lowering_supplied_zero_arg_call_lowers_through_its_path() -> Bool {
     node: dotted_fixture_qualified_call(),
     dotted: body_lowering_qualified_path_dotted
   )
+}
+
+// THE INHABITANCE CLAIM THIS FILE OWED AND DID NOT HAVE (quick-bat-813, 2026-09-22).
+//
+// Every supplied-node row here is a hypothesis about what the parser emits, and DESIGN section 3
+// says a supplied input owes ONE inhabitance claim that the real producer emits that shape. This
+// file had none for the CALL SUFFIX, and the hypothesis was wrong: dotted_fixture_call_suffix_no_args
+// built `()` as seq(lparen, rparen), a shape the parser does not produce, so every row through it
+// exercised an arm the production route never reaches. It cost a cross-session round and a
+// high-priority report against code that was not defective.
+//
+// This row compares the CONSTRUCTED suffix against the one the real prepared-grammar parse emits
+// for `wall.peer.peer_leaf()`, by content_hash rather than by both satisfying a predicate. It is
+// the wall that would have caught the drift, and it stays enrolled so the fixture cannot drift
+// again silently.
+fn parsed_zero_arg_call_suffix_optional() -> Optional<Node> {
+  match body_lowering_qualified_call_parsed() {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: tree, diagnostics: _ } =>
+      match body_lower_find_captured(root: tree, emitted: ^dag_surface_postfix_expr) {
+        ParseSubtreeAbsent => Absent
+        ParseSubtreeFound { captured: captured } =>
+          match sugar_sequence_pair_optional(node: captured) {
+            Absent => Absent
+            Present { value: pair } =>
+              match body_lower_postfix_repeat_head_optional(repeat_capture: pair.right) {
+                Absent => Absent
+                Present { value: elem } =>
+                  body_lower_postfix_method_suffix_optional(repeat_elem: elem)
+              }
+          }
+      }
+  }
+}
+
+test fn body_lowering_supplied_call_suffix_inhabits_the_parser() -> Bool {
+  match parsed_zero_arg_call_suffix_optional() {
+    Absent => false
+    Present { value: parsed_suffix } =>
+      content_hash(n: parsed_suffix)
+        == content_hash(n: dotted_fixture_call_suffix_no_args())
+  }
+}
+
+// SHAPE PROBES, so the fixture is DERIVED from the producer rather than guessed a second time.
+// Each asks one structural question of the suffix the real parser emits for a zero-arg call, and
+// together they say how `()` is actually nested. They are kept rather than deleted once the
+// fixture is corrected: they are cheap, and they name the facts the corrected fixture depends on,
+// so a grammar change that moves the shape reddens them beside the inhabitance row.
+test fn probe_parsed_zero_arg_suffix_right_is_a_sequence() -> Bool {
+  match parsed_zero_arg_call_suffix_optional() {
+    Absent => false
+    Present { value: suffix } =>
+      match sugar_sequence_pair_optional(node: suffix) {
+        Absent => false
+        Present { value: pair } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Absent => false
+            Present { value: _ } => true
+          }
+      }
+  }
+}
+
+test fn probe_parsed_zero_arg_suffix_inner_left_is_empty_conj() -> Bool {
+  match parsed_zero_arg_call_suffix_optional() {
+    Absent => false
+    Present { value: suffix } =>
+      match sugar_sequence_pair_optional(node: suffix) {
+        Absent => false
+        Present { value: pair } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Absent => false
+            Present { value: inner } => is_empty_conj_root(n: inner.left)
+          }
+      }
+  }
 }
