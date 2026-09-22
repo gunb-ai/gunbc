@@ -9,12 +9,11 @@ import extdeps.apple.app_attest {
   AttestationCounterNonZero, AttestationEnvironmentUnexpected, AttestationCredentialIdMismatch, AttestationValidationCategoryAbsent,
   AttestationUndecodable,
   AssertionExpectation, verify_assertion, AssertionAuthentic, AssertionRefused, AssertionAppIdMismatch, AssertionValidationCategoryAbsent,
-  assertion_signature_verifies_for, chain_link_verifies, apple_app_attestation_root_ca_pem, base64_of,
+  assertion_signature_verifies_for, chain_link_verifies, base64_of,
   assertion_parts, AssertionPartsOk, AssertionPartsRefused,
 }
 import extdeps.standards.rfc_8949 { CborValue, CborSimple, CborDocumentDecoded, CborDocumentRefused, cbor_decode_document, CborMemberFound, cbor_map_unique_text_member, cbor_byte_string_octets, cbor_array_items }
 import extdeps.standards.rfc_5280 { X509Certificate, X509TbsFields, X509Decoded, X509Refused, decode_certificate }
-import extdeps.standards.rfc_7468 { pem_decode, PemDecoded, PemRefused, pem_certificate_label }
 import extdeps.apple.app_attest_sample_ios_14_4 {
   sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_team_identifier, sample_bundle_identifier,
   sample_assertion_counter, sample_client_data,
@@ -147,9 +146,16 @@ test fn the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions() -> 
 
 // STEPS 1-3 ON REAL BYTES: Apple's assertion signature verifies under the credential key for
 // nonce = SHA-256(authenticatorData || SHA-256(sample_client_data)); and is false for other client
-// data. One interpreted P-256 verification each (gunbc#11645's cost shape) -- executable on a
-// quiet host, budget-refused by the floor, native row is the enrolled evidence.
-test fn the_sample_assertion_signature_verifies_under_the_credential_key() -> Bool {
+// data. One interpreted P-256 verification each (gunbc#11645's cost shape), and each crosses the
+// floor's 8 s wall deadline -- a crossing the eval-step drop beside this file does not and may not
+// cover, and that drop's own text says these two left the floor. They therefore ARE ordinary fns,
+// so the floor does not plan them (review 69953 of gunbc#11989 found them still declared `test fn`,
+// which made the drop's sentence false and left a wall crossing in no declared population). The
+// same disposition the sibling test.claim.signature_verify_join_witness_test took. Their consumer
+// is the native gunbc test row that gunbc.auth.approval_device_redemption
+// ecdsa_verification_realization_frontier names; until it executes, a quiet host may run them by
+// name through claim_batch's --functions, and they are not evidence the acceptance path has.
+fn the_sample_assertion_signature_verifies_under_the_credential_key() -> Bool {
   match assertion_expectation() {
     Absent => false
     Present { value: e } =>
@@ -160,7 +166,7 @@ test fn the_sample_assertion_signature_verifies_under_the_credential_key() -> Bo
   }
 }
 
-test fn the_sample_assertion_signature_is_false_for_other_client_data() -> Bool {
+fn the_sample_assertion_signature_is_false_for_other_client_data() -> Bool {
   match assertion_expectation() {
     Absent => false
     Present { value: e } =>
@@ -215,15 +221,6 @@ fn vf_x5c(i: Int) -> X509Certificate? {
   }
 }
 
-fn vf_root() -> X509Certificate? {
-  match pem_decode(text: apple_app_attestation_root_ca_pem(), label: pem_certificate_label) {
-    PemRefused { cause: _ } => none
-    PemDecoded { der: der } => match decode_certificate(octets: der) {
-      X509Decoded { certificate: cert } => Present { value: cert }
-      X509Refused { cause: _ } => none
-    }
-  }
-}
 
 // THE REFUSING ARMS, cheap and discriminating over the real leaf and CA: a subject whose signature
 // algorithm is not an ECDSA one the verifier carries is Absent; an issuer whose key names no curve
