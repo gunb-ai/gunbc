@@ -3,6 +3,8 @@
 
 use self::AliasDeclArityVerdict::*;
 use self::ClosedAliasPeelVerdict::*;
+use self::FmArmAnalysis::*;
+use self::FmLoweringRefusal::*;
 use self::IterOwnedReceiverCloneDisposition::*;
 use self::WitnessCtorPathVerdict::*;
 pub use crate::extdeps_cargo::CargoFeature;
@@ -28779,30 +28781,70 @@ pub fn arms_are_freemonoid_coproduct(
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum FmLoweringRefusal {
+    FmArmCarriesGuard,
+    FmRefutableHeadSubPattern,
+    FmNonListVariant { variant: String },
+    FmLiteralAgainstList,
+    FmSpineDeeperThanFuel,
+    FmNoArmAcceptsUnboundedLength,
+    FmLengthMatchedByNoArm { len: i64 },
+}
+
+pub fn fm_lowering_refusal_message(cause: Rc<FmLoweringRefusal>) -> String {
+    match (*cause.clone()).clone() {
+    FmLoweringRefusal::FmArmCarriesGuard => "a guard on a FreeMonoid match arm".to_string(),
+    FmLoweringRefusal::FmRefutableHeadSubPattern => "a refutable `head` sub-pattern under `Cons`, which discriminates the ELEMENT rather than the list".to_string(),
+    FmLoweringRefusal::FmNonListVariant { variant: v, .. } => v1_rt::concat(v1_rt::concat("the variant `".to_string(), v.clone()), "` in a FreeMonoid pattern".to_string()),
+    FmLoweringRefusal::FmLiteralAgainstList => "a literal pattern against a FreeMonoid".to_string(),
+    FmLoweringRefusal::FmSpineDeeperThanFuel => "a FreeMonoid pattern spine deeper than the emitter's nesting fuel".to_string(),
+    FmLoweringRefusal::FmNoArmAcceptsUnboundedLength => "a FreeMonoid match no arm proves exhaustive: no arm accepts a list of unbounded length".to_string(),
+    FmLoweringRefusal::FmLengthMatchedByNoArm { len: n, .. } => v1_rt::concat(v1_rt::concat("a FreeMonoid match no arm proves exhaustive: a list of length ".to_string(), crate::v1_compiler_emit_core_support::to_string(n.clone())), " is matched by no arm".to_string()),
+}
+}
+
+pub fn fm_located_refusal(cause: Rc<FmLoweringRefusal>, arm: Rc<Node>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "v1.compiler.emit_rust will not lower ".to_string(),
+                            fm_lowering_refusal_message(cause.clone()),
+                        ),
+                        " at ".to_string(),
+                    ),
+                    arm.span.clone().file.clone(),
+                ),
+                ":".to_string(),
+            ),
+            crate::v1_compiler_emit_core_support::to_string(arm.span.clone().start.clone()),
+        ),
+        " -- the FreeMonoid match lowering refuses this shape rather than dropping the arm"
+            .to_string(),
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum FmArmAnalysis {
+    FmSpine {
+        exact: bool,
+        len: i64,
+        head_binds: Rc<Vec<String>>,
+        tail_bind: String,
+    },
+    FmUnsupportedArm {
+        cause: Rc<FmLoweringRefusal>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FmArmPlan {
-    pub supported: bool,
-    pub reason: String,
-    pub exact: bool,
-    pub len: i64,
-    pub head_binds: Rc<Vec<String>>,
-    pub tail_bind: String,
     pub arm: Rc<Node>,
-}
-
-pub fn fm_open_len_sentinel() -> i64 {
-    1000000
-}
-
-pub fn fm_unsupported_plan(reason: String, arm: Rc<Node>) -> Rc<FmArmPlan> {
-    Rc::new(FmArmPlan {
-        supported: false,
-        reason: reason.clone(),
-        exact: false,
-        len: 0,
-        head_binds: Rc::new(vec![]),
-        tail_bind: "".to_string(),
-        arm: arm.clone(),
-    })
+    pub analysis: Rc<FmArmAnalysis>,
 }
 
 pub fn fm_head_bind_name(p: Rc<MatchPattern>) -> Option<String> {
@@ -28840,39 +28882,32 @@ pub fn fm_field_sub_pattern(
 pub fn fm_analyze_pattern(
     pattern: Rc<MatchPattern>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    arm: Rc<Node>,
     fuel: i64,
-) -> Rc<FmArmPlan> {
+) -> Rc<FmArmAnalysis> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (fuel.clone() <= 0) {
-            fm_unsupported_plan(
-                "a FreeMonoid pattern spine deeper than the emitter's nesting fuel".to_string(),
-                arm.clone(),
-            )
+            Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                cause: Rc::new(FmLoweringRefusal::FmSpineDeeperThanFuel),
+            })
         } else {
             match (*pattern.clone()).clone() {
-                MatchPattern::Wildcard => Rc::new(FmArmPlan {
-                    supported: true,
-                    reason: "".to_string(),
+                MatchPattern::Wildcard => Rc::new(FmArmAnalysis::FmSpine {
                     exact: false,
                     len: 0,
                     head_binds: Rc::new(vec![]),
                     tail_bind: "_".to_string(),
-                    arm: arm.clone(),
                 }),
-                MatchPattern::Bind { declaration: d, .. } => Rc::new(FmArmPlan {
-                    supported: true,
-                    reason: "".to_string(),
+                MatchPattern::Bind { declaration: d, .. } => Rc::new(FmArmAnalysis::FmSpine {
                     exact: false,
                     len: 0,
                     head_binds: Rc::new(vec![]),
                     tail_bind: d.name.clone(),
-                    arm: arm.clone(),
                 }),
-                MatchPattern::LitPattern { value: _, .. } => fm_unsupported_plan(
-                    "a literal pattern against a FreeMonoid".to_string(),
-                    arm.clone(),
-                ),
+                MatchPattern::LitPattern { value: _, .. } => {
+                    Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                        cause: Rc::new(FmLoweringRefusal::FmLiteralAgainstList),
+                    })
+                }
                 MatchPattern::VariantPattern {
                     name: n,
                     field_bindings: fbs,
@@ -28880,14 +28915,11 @@ pub fn fm_analyze_pattern(
                 } => {
                     let bare = crate::v1_std_core::qualified_last_segment(n.clone());
                     if (bare.clone() == "Empty".to_string()) {
-                        Rc::new(FmArmPlan {
-                            supported: true,
-                            reason: "".to_string(),
+                        Rc::new(FmArmAnalysis::FmSpine {
                             exact: true,
                             len: 0,
                             head_binds: Rc::new(vec![]),
                             tail_bind: "".to_string(),
-                            arm: arm.clone(),
                         })
                     } else {
                         if (bare.clone() == "Cons".to_string()) {
@@ -28903,33 +28935,49 @@ pub fn fm_analyze_pattern(
                                     si.clone(),
                                 );
                                 match fm_head_bind_name(head_pat.clone()) {
-    std::option::Option::None => fm_unsupported_plan("a refutable `head` sub-pattern under `Cons`, which discriminates the ELEMENT rather than the list".to_string(), arm.clone()),
-    Some(hb) => {
-                                let inner = fm_analyze_pattern(tail_pat.clone(), si.clone(), arm.clone(), (fuel.clone() - 1));
-if !inner.supported.clone() {
-                                    inner.clone()
-                                } else {
-                                    Rc::new(FmArmPlan {
-    supported: true,
-    reason: "".to_string(),
-    exact: inner.exact.clone(),
-    len: (inner.len.clone() + 1),
-    head_binds: v1_rt::concat(Rc::new(vec![hb.clone()]), inner.head_binds.clone()),
-    tail_bind: inner.tail_bind.clone(),
-    arm: arm.clone(),
-})
+                                    std::option::Option::None => {
+                                        Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                                            cause: Rc::new(
+                                                FmLoweringRefusal::FmRefutableHeadSubPattern,
+                                            ),
+                                        })
+                                    }
+                                    Some(hb) => match (*fm_analyze_pattern(
+                                        tail_pat.clone(),
+                                        si.clone(),
+                                        (fuel.clone() - 1),
+                                    ))
+                                    .clone()
+                                    {
+                                        FmArmAnalysis::FmUnsupportedArm { cause: c, .. } => {
+                                            Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                                                cause: c.clone(),
+                                            })
+                                        }
+                                        FmArmAnalysis::FmSpine {
+                                            exact: e,
+                                            len: l,
+                                            head_binds: hbs,
+                                            tail_bind: tb,
+                                            ..
+                                        } => Rc::new(FmArmAnalysis::FmSpine {
+                                            exact: e.clone(),
+                                            len: (l.clone() + 1),
+                                            head_binds: v1_rt::concat(
+                                                Rc::new(vec![hb.clone()]),
+                                                hbs.clone(),
+                                            ),
+                                            tail_bind: tb.clone(),
+                                        }),
+                                    },
                                 }
-},
-}
                             }
                         } else {
-                            fm_unsupported_plan(
-                                v1_rt::concat(
-                                    v1_rt::concat("the variant `".to_string(), bare.clone()),
-                                    "` in a FreeMonoid pattern".to_string(),
-                                ),
-                                arm.clone(),
-                            )
+                            Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                                cause: Rc::new(FmLoweringRefusal::FmNonListVariant {
+                                    variant: bare.clone(),
+                                }),
+                            })
                         }
                     }
                 }
@@ -28940,50 +28988,75 @@ if !inner.supported.clone() {
 
 pub fn fm_arm_plan(arm: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<FmArmPlan> {
     match crate::v1_std_core::arm_guard(arm.clone()) {
-        Some(_) => {
-            fm_unsupported_plan("a guard on a FreeMonoid match arm".to_string(), arm.clone())
-        }
-        std::option::Option::None => fm_analyze_pattern(
-            crate::v1_std_core::arm_pattern(arm.clone()),
-            si.clone(),
-            arm.clone(),
-            64,
-        ),
+        Some(_) => Rc::new(FmArmPlan {
+            arm: arm.clone(),
+            analysis: Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                cause: Rc::new(FmLoweringRefusal::FmArmCarriesGuard),
+            }),
+        }),
+        std::option::Option::None => Rc::new(FmArmPlan {
+            arm: arm.clone(),
+            analysis: fm_analyze_pattern(
+                crate::v1_std_core::arm_pattern(arm.clone()),
+                si.clone(),
+                64,
+            ),
+        }),
     }
 }
 
-pub fn fm_min_open_len(plans: Rc<Vec<Rc<FmArmPlan>>>) -> i64 {
+pub fn fm_plan_is_exact_at(plan: Rc<FmArmPlan>, k: i64) -> bool {
+    match (*plan.analysis.clone()).clone() {
+        FmArmAnalysis::FmSpine {
+            exact: e, len: l, ..
+        } => (e.clone() && (l.clone() == k.clone())),
+        FmArmAnalysis::FmUnsupportedArm { cause: _, .. } => false,
+    }
+}
+
+pub fn fm_plan_open_len(plan: Rc<FmArmPlan>) -> Option<i64> {
+    match (*plan.analysis.clone()).clone() {
+        FmArmAnalysis::FmSpine {
+            exact: e, len: l, ..
+        } => {
+            if e.clone() {
+                std::option::Option::None
+            } else {
+                Some(l.clone())
+            }
+        }
+        FmArmAnalysis::FmUnsupportedArm { cause: _, .. } => std::option::Option::None,
+    }
+}
+
+pub fn fm_min_open_len(plans: Rc<Vec<Rc<FmArmPlan>>>) -> Option<i64> {
     plans
         .iter()
         .cloned()
-        .fold(fm_open_len_sentinel(), |acc: i64, p: Rc<FmArmPlan>| {
-            if (!p.exact.clone() && (p.len.clone() < acc.clone())) {
-                p.len.clone()
-            } else {
-                acc.clone()
-            }
-        })
+        .fold(
+            std::option::Option::None,
+            |acc: _, p: Rc<FmArmPlan>| match fm_plan_open_len(p.clone()) {
+                std::option::Option::None => acc.clone(),
+                Some(l) => match acc.clone() {
+                    std::option::Option::None => Some(l.clone()),
+                    Some(best) => {
+                        if (l.clone() < best.clone()) {
+                            Some(l.clone())
+                        } else {
+                            acc.clone()
+                        }
+                    }
+                },
+            },
+        )
 }
 
-pub fn fm_exact_covers_len(plans: Rc<Vec<Rc<FmArmPlan>>>, k: i64) -> bool {
-    {
-        let mut __found = false;
-        for p in plans.iter().cloned() {
-            if (p.exact.clone() && (p.len.clone() == k.clone())) {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
-pub fn fm_covers_below(
+pub fn fm_first_uncovered_len(
     mut __tco_loop_plans: Rc<Vec<Rc<FmArmPlan>>>,
     mut __tco_loop_k: i64,
     mut __tco_loop_limit: i64,
     mut __tco_loop_fuel: i64,
-) -> bool {
+) -> Option<i64> {
     loop {
         #[allow(unused_mut)]
         let mut plans = __tco_loop_plans;
@@ -28994,13 +29067,22 @@ pub fn fm_covers_below(
         #[allow(unused_mut)]
         let mut fuel = __tco_loop_fuel;
         if (k.clone() >= limit.clone()) {
-            break true;
+            break std::option::Option::None;
         } else {
             if (fuel.clone() <= 0) {
-                break false;
+                break Some(k.clone());
             } else {
-                if !fm_exact_covers_len(plans.clone(), k.clone()) {
-                    break false;
+                if !{
+                    let mut __found = false;
+                    for p in plans.iter().cloned() {
+                        if fm_plan_is_exact_at(p.clone(), k.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    break Some(k.clone());
                 } else {
                     {
                         let __tco_0 = plans;
@@ -29019,11 +29101,14 @@ pub fn fm_covers_below(
     }
 }
 
-pub fn fm_plans_refusal(plans: Rc<Vec<Rc<FmArmPlan>>>) -> String {
+pub fn fm_plans_refusal(plans: Rc<Vec<Rc<FmArmPlan>>>) -> Option<Rc<FmArmPlan>> {
     match Rc::new({
         let mut __result = Vec::new();
         for p in plans.iter().cloned() {
-            if !p.supported.clone() {
+            if match (*p.analysis.clone()).clone() {
+                FmArmAnalysis::FmUnsupportedArm { cause: _, .. } => true,
+                FmArmAnalysis::FmSpine { .. } => false,
+            } {
                 __result.push(p);
             }
         }
@@ -29032,39 +29117,45 @@ pub fn fm_plans_refusal(plans: Rc<Vec<Rc<FmArmPlan>>>) -> String {
     .first()
     .cloned()
     {
-        Some(bad) => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                "v1.compiler.emit_rust will not lower ".to_string(),
-                                bad.reason.clone(),
-                            ),
-                            " at ".to_string(),
-                        ),
-                        bad.arm.clone().span.clone().file.clone(),
-                    ),
-                    ":".to_string(),
-                ),
-                crate::v1_compiler_emit_core_support::to_string(
-                    bad.arm.clone().span.clone().start.clone(),
-                ),
-            ),
-            " -- the FreeMonoid match lowering refuses this shape rather than dropping the arm"
-                .to_string(),
-        ),
-        std::option::Option::None => {
-            let limit = fm_min_open_len(plans.clone());
-            if (limit.clone() >= fm_open_len_sentinel()) {
-                "v1.compiler.emit_rust cannot prove this FreeMonoid match exhaustive: no arm accepts a list of unbounded length".to_string()
-            } else {
-                if !fm_covers_below(plans.clone(), 0, limit.clone(), (limit.clone() + 1)) {
-                    "v1.compiler.emit_rust cannot prove this FreeMonoid match exhaustive: a list shorter than every open arm is matched by no arm".to_string()
-                } else {
-                    "".to_string()
+        Some(bad) => Some(bad.clone()),
+        std::option::Option::None => match fm_min_open_len(plans.clone()) {
+            std::option::Option::None => match plans.clone().first().cloned() {
+                Some(anchor) => Some(Rc::new(FmArmPlan {
+                    arm: anchor.arm.clone(),
+                    analysis: Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                        cause: Rc::new(FmLoweringRefusal::FmNoArmAcceptsUnboundedLength),
+                    }),
+                })),
+                std::option::Option::None => std::option::Option::None,
+            },
+            Some(limit) => {
+                match fm_first_uncovered_len(plans.clone(), 0, limit.clone(), (limit.clone() + 1)) {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(missing) => match plans.clone().first().cloned() {
+                        Some(anchor) => Some(Rc::new(FmArmPlan {
+                            arm: anchor.arm.clone(),
+                            analysis: Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                                cause: Rc::new(FmLoweringRefusal::FmLengthMatchedByNoArm {
+                                    len: missing.clone(),
+                                }),
+                            }),
+                        })),
+                        std::option::Option::None => std::option::Option::None,
+                    },
                 }
             }
+        },
+    }
+}
+
+pub fn fm_plan_refusal_text(plan: Rc<FmArmPlan>) -> String {
+    match (*plan.analysis.clone()).clone() {
+        FmArmAnalysis::FmUnsupportedArm { cause: c, .. } => {
+            fm_located_refusal(c.clone(), plan.arm.clone())
+        }
+        FmArmAnalysis::FmSpine { .. } => {
+            "v1.compiler.emit_rust internal: refusal requested for a supported FreeMonoid arm"
+                .to_string()
         }
     }
 }
@@ -29074,28 +29165,6 @@ pub struct FmChainPiece {
     pub cond: String,
     pub binds: String,
     pub body: String,
-}
-
-pub fn fm_arm_condition(plan: Rc<FmArmPlan>) -> String {
-    if plan.exact.clone() {
-        if (plan.len.clone() == 0) {
-            "__fm.is_empty()".to_string()
-        } else {
-            v1_rt::concat(
-                "__fm.len() == ".to_string(),
-                crate::v1_compiler_emit_core_support::to_string(plan.len.clone()),
-            )
-        }
-    } else {
-        if (plan.len.clone() == 0) {
-            "true".to_string()
-        } else {
-            v1_rt::concat(
-                "__fm.len() >= ".to_string(),
-                crate::v1_compiler_emit_core_support::to_string(plan.len.clone()),
-            )
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -29138,29 +29207,81 @@ pub fn fm_head_bind_lets(head_binds: Rc<Vec<String>>) -> String {
     }
 }
 
-pub fn fm_tail_bind_let(plan: Rc<FmArmPlan>) -> String {
-    if ((plan.exact.clone() || (plan.tail_bind.clone() == "_".to_string()))
-        || (plan.tail_bind.clone() == "".to_string()))
+pub fn fm_spine_binds(
+    len: i64,
+    head_binds: Rc<Vec<String>>,
+    tail_bind: String,
+    exact: bool,
+) -> String {
     {
-        "".to_string()
-    } else {
-        if (plan.len.clone() == 0) {
-            v1_rt::concat(
-                v1_rt::concat("let ".to_string(), plan.tail_bind.clone()),
-                " = __fm.clone(); ".to_string(),
-            )
+        let head_lets = fm_head_bind_lets(head_binds.clone());
+        let tail_let = if ((exact.clone() || (tail_bind.clone() == "_".to_string()))
+            || (tail_bind.clone() == "".to_string()))
+        {
+            "".to_string()
         } else {
-            v1_rt::concat(
+            if (len.clone() == 0) {
+                v1_rt::concat(
+                    v1_rt::concat("let ".to_string(), tail_bind.clone()),
+                    " = __fm.clone(); ".to_string(),
+                )
+            } else {
                 v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat("let ".to_string(), plan.tail_bind.clone()),
-                        ": Rc<Vec<_>> = Rc::new(__fm.skip(".to_string(),
+                        v1_rt::concat(
+                            v1_rt::concat("let ".to_string(), tail_bind.clone()),
+                            ": Rc<Vec<_>> = Rc::new(__fm.skip(".to_string(),
+                        ),
+                        crate::v1_compiler_emit_core_support::to_string(len.clone()),
                     ),
-                    crate::v1_compiler_emit_core_support::to_string(plan.len.clone()),
-                ),
-                ")); ".to_string(),
+                    ")); ".to_string(),
+                )
+            }
+        };
+        v1_rt::concat(head_lets.clone(), tail_let.clone())
+    }
+}
+
+pub fn fm_spine_condition(len: i64, exact: bool) -> String {
+    if exact.clone() {
+        if (len.clone() == 0) {
+            "__fm.is_empty()".to_string()
+        } else {
+            v1_rt::concat(
+                "__fm.len() == ".to_string(),
+                crate::v1_compiler_emit_core_support::to_string(len.clone()),
             )
         }
+    } else {
+        if (len.clone() == 0) {
+            "true".to_string()
+        } else {
+            v1_rt::concat(
+                "__fm.len() >= ".to_string(),
+                crate::v1_compiler_emit_core_support::to_string(len.clone()),
+            )
+        }
+    }
+}
+
+pub fn fm_chain_piece(plan: Rc<FmArmPlan>, body: String) -> Rc<FmChainPiece> {
+    match (*plan.analysis.clone()).clone() {
+        FmArmAnalysis::FmSpine {
+            exact: e,
+            len: l,
+            head_binds: hbs,
+            tail_bind: tb,
+            ..
+        } => Rc::new(FmChainPiece {
+            cond: fm_spine_condition(l.clone(), e.clone()),
+            binds: fm_spine_binds(l.clone(), hbs.clone(), tb.clone(), e.clone()),
+            body: body.clone(),
+        }),
+        FmArmAnalysis::FmUnsupportedArm { cause: c, .. } => Rc::new(FmChainPiece {
+            cond: "true".to_string(),
+            binds: "".to_string(),
+            body: emit_rust_compile_error_expr(fm_located_refusal(c.clone(), plan.arm.clone())),
+        }),
     }
 }
 
@@ -29210,13 +29331,6 @@ pub fn fm_chain_from(pieces: Rc<Vec<Rc<FmChainPiece>>>, fuel: i64) -> String {
     })
 }
 
-pub fn fm_arm_binds(plan: Rc<FmArmPlan>) -> String {
-    v1_rt::concat(
-        fm_head_bind_lets(plan.head_binds.clone()),
-        fm_tail_bind_let(plan.clone()),
-    )
-}
-
 pub fn emit_native_freemonoid_match(
     scrut_str: String,
     arms: Rc<Vec<Rc<Node>>>,
@@ -29235,18 +29349,15 @@ pub fn emit_native_freemonoid_match(
             }
             __result
         });
-        let refusal = fm_plans_refusal(plans.clone());
-        if (refusal.clone() != "".to_string()) {
-            emit_rust_compile_error_expr(refusal.clone())
-        } else {
-            {
+        match fm_plans_refusal(plans.clone()) {
+            Some(bad) => emit_rust_compile_error_expr(fm_plan_refusal_text(bad.clone())),
+            std::option::Option::None => {
                 let pieces = Rc::new({
                     let mut __result = Vec::new();
                     for p in plans.iter().cloned() {
-                        __result.push(Rc::new(FmChainPiece {
-                            cond: fm_arm_condition(p.clone()),
-                            binds: fm_arm_binds(p.clone()),
-                            body: emit_typed_expr(
+                        __result.push(fm_chain_piece(
+                            p.clone(),
+                            emit_typed_expr(
                                 crate::v1_std_core::arm_body(p.arm.clone()),
                                 registry.clone(),
                                 scope.clone(),
@@ -29255,7 +29366,7 @@ pub fn emit_native_freemonoid_match(
                                 emit_info.clone(),
                                 1024,
                             ),
-                        }));
+                        ));
                     }
                     __result
                 });
@@ -33446,18 +33557,15 @@ pub fn emit_native_freemonoid_tco_match(
             }
             __result
         });
-        let refusal = fm_plans_refusal(plans.clone());
-        if (refusal.clone() != "".to_string()) {
-            emit_rust_compile_error_expr(refusal.clone())
-        } else {
-            {
+        match fm_plans_refusal(plans.clone()) {
+            Some(bad) => emit_rust_compile_error_expr(fm_plan_refusal_text(bad.clone())),
+            std::option::Option::None => {
                 let pieces = Rc::new({
                     let mut __result = Vec::new();
                     for p in plans.iter().cloned() {
-                        __result.push(Rc::new(FmChainPiece {
-                            cond: fm_arm_condition(p.clone()),
-                            binds: fm_arm_binds(p.clone()),
-                            body: emit_typed_tco_expr(
+                        __result.push(fm_chain_piece(
+                            p.clone(),
+                            emit_typed_tco_expr(
                                 crate::v1_std_core::arm_body(p.arm.clone()),
                                 fn_name.clone(),
                                 params.clone(),
@@ -33467,7 +33575,7 @@ pub fn emit_native_freemonoid_tco_match(
                                 shared_types.clone(),
                                 emit_info.clone(),
                             ),
-                        }));
+                        ));
                     }
                     __result
                 });
