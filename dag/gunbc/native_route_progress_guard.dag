@@ -1,0 +1,571 @@
+module gunbc.native_route_progress_guard
+
+import v2.std.algebra { any, count_where, fold_list, is_empty, length, list_append, list_map }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
+import v2.compiler.native_test_vocabulary {
+  NativeTestStage, NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval
+}
+import gunbc.witness_v2_native_route {
+  NativeRouteTestIdentity, native_route_identity_eq, native_route_identity_qualified,
+  NativeRouteDisposition,
+  NativeAgreementPass, NativeAgreementExpectedRed, NativeAgreementRouteGap,
+  NativeExclusion, NativeDivergence,
+  NativeRouteEmittedBuild
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// WHY A PROGRESS GUARD IS A DIFFERENT QUESTION FROM ADMISSION, AND NOT A SECOND RATCHET
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// `gunbc.witness_v2_native_route` `native_route_admission` answers ONE question about ONE run:
+// is this receipt well-formed, does its population join its universe exactly, and does every
+// reached verdict agree with the floor's reference. It is the right question and it is
+// COMPLETE ON ONE HEAD. What it cannot see is the only thing a frontier lane exists to report:
+// whether the head in front of it can do LESS than the head behind it.
+//
+// That blindness is not theoretical. The emitted-native compiler refuses most of the universe
+// today -- `NativeExclusion` at `prepare`, at `context`, at `entry` -- and admission COUNTS those
+// exclusions rather than refusing them, because a capability limit is not a divergence. So a
+// change that makes the emitter refuse EARLIER for a subject it used to carry to `eval`, or that
+// turns a correctly-observed `ReturnedFalse` on an expected-red subject into a `Passed`, produces
+// a receipt admission accepts. The lane goes green while the frontier moved backwards. A count
+// cannot catch it either: exclusions rise here and fall there and the total is unchanged, which
+// is `matching-total-hides-a-mismatched-partition` in its native habitat.
+//
+// SO THE GUARD IS AT IDENTITY GRAIN, AND THAT IS THE WHOLE DESIGN. DESIGN section 5 admits a
+// monotone debt contract over a closed subject universe only when "the subject universe is
+// independently discovered and closed, membership is checked at identity grain rather than by
+// count, and every removal carries a typed disposition". All three hold here and none of them
+// is new vocabulary: the universe is DERIVED from the tree's `v2.test.*` declarations (it is not
+// a roster anyone edits), the identity is `NativeRouteTestIdentity` (module qualified name plus
+// declaration name, with its own equality), and this module supplies the third.
+//
+// WHAT "SUBSTITUTION CANNOT SATISFY THE BASELINE" MEANS HERE, because it is the clause that makes
+// the guard worth having and it FALLS OUT of identity grain rather than being checked for. A
+// renamed or re-homed subject is a DIFFERENT IDENTITY. It cannot silently inherit the old one's
+// attainment, because the join never matches it; the old identity simply goes missing and owes a
+// disposition. A guard keyed on counts, on module names, or on "some subject that looks like it"
+// would let a rewrite that quietly lowers the bar pass as continuity.
+//
+// AND THE REPORT SEPARATES TWO FACTS A SINGLE VERDICT FUSES. "The requested tests passed" and
+// "no established position was lost" are different claims with different consequences, and a lane
+// that prints one number answers neither: a head where five subjects newly pass and one regressed
+// is a RED with good news in it, and a head where nothing passes and nothing regressed is a GREEN
+// with no good news at all. `NativeProgressReport` carries both and `native_progress_verdict`
+// reads only the second, so the encouraging number can never green the guard.
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// CONSUMPTION: THIS IS A DECLARED FRONTIER, AND HERE IS ITS TRIGGER (DESIGN section 3c)
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// NOTHING IN PRODUCTION CALLS THIS FOLD TODAY, AND THAT IS SAID PLAINLY RATHER THAN LEFT FOR A
+// REVIEWER TO FIND. A declaration nothing consumes is section 2's redundant work in its purest
+// form, and section 3c admits exactly one honest alternative to "consumed in this change": a
+// NAMED consumer landing in a NAMED later change, with the trigger stated beside it. So:
+//
+//   NAMED CONSUMER. The Tier 2 native-lane job of gunbc#12043's programme -- the run that
+//   invokes the native route over the derived `v2.test.*` universe, derives one
+//   `NativeProgressObservedReading` per universe member from the dispositions
+//   `gunbc.witness_v2_native_route` `native_route_disposition` already computes, and adjudicates
+//   `native_progress_verdict` beside `native_route_admission`.
+//
+//   TRIGGER. That job's CADENCE and its COVERAGE DISPOSITION are an operator decision, put on
+//   gunbc#12043 and not yet answered, and both change what gets written: the route's measured
+//   wall (4h06m at 14.8 GB on srv2) does not fit the acceptance path, so the job runs on a
+//   different cadence, which `gunbc.rung_drop` `v2_native_route_off_the_merge_path` pre-authorises
+//   as its third option -- "a job that runs on a different cadence with its own row ... replaces
+//   it with a differently-named drop". Whether that replacement is total or partial decides
+//   whether the old row is replaced or stands beside a new one carrying the uncovered population,
+//   and writing either before the answer would be guessing at a rung declaration.
+//
+//   WHAT IS NOT WAITING ON THAT ANSWER, which is why this module lands ahead of it: the ORDER and
+//   the JOIN are cadence-independent. A regression is a regression whether the run that found it
+//   was required, queued or scheduled.
+//
+// AND THE BASELINE IS NOT AUTHORED HERE ON PURPOSE. A baseline committed before a run that can
+// produce one would be a literal copied from nothing -- the oracle failure DESIGN section 5 names,
+// where automating the literal's update collapses the assertion to `measure() == measure()`. The
+// first baseline is MINTED FROM A RUN, by the consumer above, and this module supplies only the
+// vocabulary it is minted into.
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE ORDER
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// PROGRESS IS A POSITION ON THE ROUTE, NOT A PASS RATE. The route is a pipeline -- prepare,
+// context, entry, eval -- and a subject's attainment is how far along it the emitted compiler
+// carried it, plus whether the verdict it eventually produced AGREED with the floor. Three bands,
+// and the lowest is ordered inside itself by the stage the refusal happened at:
+//
+//   AttainRefused { stage }   the route stopped here. prepare < context < entry < eval, because
+//                             refusing at `eval` means the front end carried the subject through
+//                             three stages that a `prepare` refusal never reached.
+//   AttainDiverged            a verdict was produced and it DISAGREED with the floor reference.
+//                             Strictly further than any refusal -- the whole pipeline ran -- and
+//                             strictly worse than agreement. It is a defect, and the guard's job
+//                             is not to bless it but to refuse its silent appearance BELOW an
+//                             agreement that used to stand.
+//   AttainAgreed              the verdict was produced and matched the reference, whether that
+//                             reference was a pass, a required red, or the route gap.
+//
+// THE THREE AGREEMENT ARMS COLLAPSE TO ONE BAND ON PURPOSE, and this is the subtle call in the
+// module. `NativeAgreementPass`, `NativeAgreementExpectedRed` and `NativeAgreementRouteGap` are
+// different FACTS -- admission keeps them apart and must -- but they are the same ATTAINMENT:
+// each says the route ran to completion and the answer was the expected one. Ordering them
+// against each other would mean claiming that a subject moving from "correctly red" to "correctly
+// passing" is progress on THIS axis, which it is not: it is the floor's reference that changed,
+// not the emitted compiler's reach, and a guard that read it as progress would then read the
+// reverse change as a regression and red a lane for a legitimate edit to the expected-red roster.
+// The identity-grain REFERENCE change is a different question and is not this module's.
+type NativeRouteAttainment
+  = AttainRefused { stage: NativeTestStage }
+  | AttainDiverged
+  | AttainAgreed
+
+// THE STAGE LADDER, AS A RANK. It is spelled here rather than in the vocabulary module because
+// ORDER is not a fact about the stages -- `v2.compiler.native_test_vocabulary` declares what the
+// stages ARE, and nothing there needs them ranked. It is a fact about the route's pipeline, which
+// is this guard's subject. A match rather than a lookup table, so adding a stage refuses to
+// compile until it states its rank.
+fn native_stage_rank(stage: NativeTestStage) -> Int {
+  match stage {
+    NativeTestStagePrepare => 0
+    NativeTestStageContext => 1
+    NativeTestStageEntry => 2
+    NativeTestStageEval => 3
+  }
+}
+
+// THE BAND RANK. Refusals occupy 0..3 by stage, so the two bands above them start at 4.
+fn native_attainment_rank(a: NativeRouteAttainment) -> Int {
+  match a {
+    AttainRefused { stage: s } => native_stage_rank(stage: s)
+    AttainDiverged => 4
+    AttainAgreed => 5
+  }
+}
+
+// THE EXCLUSION'S STAGE IS NOT RECOVERABLE FROM ITS CAUSE, so the caller supplies it.
+//
+// `NativeRouteExclusionCause` is a CLASSIFICATION of why the route stopped -- compiler frontier,
+// entry limit, eval boundary, unattributed -- and `classify_native_refusal` computes it FROM the
+// stage and the reason, discarding the stage on the way. Reconstructing the stage from the cause
+// would be inverting a lossy function, which is exactly the fabricated-plausible-output arm
+// DESIGN section 5 forbids: `excluded_unattributed` is reachable from every stage, so any
+// inverse would have to guess, and a guessed stage in a monotone ladder is a guessed regression.
+//
+// The stage is carried on the `NativeTestRefused` verdict the member row already holds, so the
+// caller that has the row has the stage and no inversion is needed. This function takes both and
+// the row-level fold below supplies them together.
+// A DISPOSITION THAT SAYS "EXCLUDED" OVER A VERDICT THAT NAMES NO STAGE IS A MALFORMED
+// PAIR, and the guard takes the BOTTOM of the ladder for it rather than inventing a
+// position. Bottom is the fail-closed choice in one direction only -- it can never
+// manufacture progress -- and it cannot manufacture a regression either, because a
+// baseline row recorded through this same fold would have taken bottom too. What it
+// WOULD do is mask a real regression from `eval` down to bottom, so the pair is also
+// counted as a malformed reading by the report rather than only absorbed here.
+fn native_attainment_of_with_stage(
+  disposition: NativeRouteDisposition,
+  refused_at: Optional<NativeTestStage>
+) -> NativeRouteAttainment {
+  match disposition {
+    NativeAgreementPass => AttainAgreed
+    NativeAgreementExpectedRed => AttainAgreed
+    NativeAgreementRouteGap => AttainAgreed
+    NativeDivergence { cause: _ } => AttainDiverged
+    NativeExclusion { cause: _ } =>
+      match refused_at {
+        Present { value: s } => AttainRefused { stage: s }
+        Absent => AttainRefused { stage: NativeTestStagePrepare }
+      }
+  }
+}
+
+fn native_attainment_at_least(
+  observed: NativeRouteAttainment,
+  baseline: NativeRouteAttainment
+) -> Bool {
+  native_attainment_rank(a: observed) >= native_attainment_rank(a: baseline)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE BASELINE, AND WHAT MAY REMOVE A ROW FROM IT
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+type NativeProgressBaselineRow {
+  identity: NativeRouteTestIdentity
+  attained: NativeRouteAttainment
+}
+
+// A LEGITIMATE REMOVAL IS A CLAIM ABOUT THE WORLD, AND THE GUARD CHECKS IT RATHER THAN TAKING IT.
+//
+// This is the difference between a disposition and an exemption. An exemption says "do not count
+// this row"; nothing can falsify it, so the debt contract decays into a list of things people
+// stopped wanting to fix. A disposition says something CHECKABLE about the observed run, and the
+// guard refuses the disposition whose claim the run contradicts:
+//
+//   SubjectDeleted            the declaration is gone. CHECKED: the identity must be absent from
+//                             the observed universe. A row claiming deletion for a subject the
+//                             run still discovered is refused.
+//   SubjectLeftTheUniverse    the declaration moved out from under the `v2.test.` prefix. Checked
+//                             the same way and kept SEPARATE from deletion because they are
+//                             different facts with different follow-ups, and a reader of the
+//                             report should not have to guess which happened.
+//   SubjectRenamed            the subject survives under a new identity. CHECKED HARDEST, because
+//                             this is the arm through which a lowered bar would walk: the NEW
+//                             identity must be present in the observed run AND must itself attain
+//                             at least what the OLD identity had. A rename is a continuation of a
+//                             position, so it carries the position; a rename that does not is a
+//                             regression wearing a rename's clothes, and it reds under its own
+//                             refusal name rather than passing as bookkeeping.
+type NativeProgressDisposition
+  = SubjectDeleted { authority: String }
+  | SubjectLeftTheUniverse { moved_to_module: String }
+  | SubjectRenamed { to: NativeRouteTestIdentity, authority: String }
+
+type NativeProgressDispositionRow {
+  identity: NativeRouteTestIdentity
+  disposition: NativeProgressDisposition
+}
+
+type NativeProgressBaseline {
+  rows: List<NativeProgressBaselineRow>
+  dispositions: List<NativeProgressDispositionRow>
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE VERDICT VOCABULARY
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// EVERY REFUSAL NAMES THE IDENTITY IT IS ABOUT. A guard that reported "3 regressions" would send
+// a reader to diff two receipts by hand, which is the report doing arithmetic instead of saying
+// what happened (DESIGN section 5: every degradation a typed, LOCATED, countable diagnostic).
+type NativeProgressFinding
+  = ProgressRegressed {
+      identity: NativeRouteTestIdentity
+      baseline: NativeRouteAttainment
+      observed: NativeRouteAttainment
+    }
+  | BaselineMemberMissingUndisposed { identity: NativeRouteTestIdentity }
+  | DispositionContradictedByRun { identity: NativeRouteTestIdentity }
+  | RenameTargetAbsent { identity: NativeRouteTestIdentity, target: NativeRouteTestIdentity }
+  | RenameTargetBelowBaseline {
+      identity: NativeRouteTestIdentity
+      target: NativeRouteTestIdentity
+      baseline: NativeRouteAttainment
+      observed: NativeRouteAttainment
+    }
+  | DisposedSubjectHasNoBaselineRow { identity: NativeRouteTestIdentity }
+  | ArtifactProductionFailed { detail: String }
+  | ObservedMemberReadingMalformed { identity: NativeRouteTestIdentity }
+
+// ARTIFACT PRODUCTION IS PART OF THE GUARD, NOT A PRECONDITION OF IT.
+//
+// A run whose emitted crate did not build produces a receipt with an EMPTY or truncated
+// population, and an empty population regresses every baseline row at once -- which is true but
+// useless, and worse, it is the shape a reader learns to wave through ("the build broke, ignore
+// the guard"). So the build outcome is READ FIRST and reported as its own finding: a non-zero
+// cargo status, or a warning count admission requires to be zero, is `ArtifactProductionFailed`
+// with the detail on it. The per-identity findings are still computed and still reported -- the
+// guard does not go quiet because one upstream fact failed -- but the reader is told which
+// explanation is available.
+//
+// THE WARNING COUNT IS PART OF IT for the reason the receipt carries it at all: under the
+// repository's warning denial a lint arrives as an ERROR and stops the build, so a non-zero count
+// on a zero status can only be a warning rustc did not own, which is still a warning the receipt
+// would otherwise have swallowed.
+fn native_progress_artifact_findings(build: NativeRouteEmittedBuild) -> List<NativeProgressFinding> {
+  let status_findings =
+    if build.exit_status == 0 {
+      []
+    } else {
+      [ArtifactProductionFailed {
+        detail: join(["the emitted crate did not build: cargo exit status is not zero, compiler ", build.compiler_path], "")
+      }]
+    }
+  if build.warning_count == 0 {
+    status_findings
+  } else {
+    list_append(left: status_findings, right: [ArtifactProductionFailed {
+      detail: "the emitted crate built with warning diagnostics under a denial that makes a lint an error, so the warnings are ones rustc did not own"
+    }])
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE JOIN
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+// THE OBSERVED SIDE, AT THE SAME GRAIN AS THE BASELINE. The caller supplies the per-identity
+// attainment it derived from the run's own dispositions, because deriving it here would mean
+// re-asking `native_route_disposition` -- re-executing admission's own fold, which has its own
+// subject and its own discriminating red (DESIGN section 3: a witness discriminates at one
+// interface, and a claim that re-runs another module's fold asserts nothing new and pays for all
+// of it again). This module's subject is the ORDER and the JOIN, and nothing else.
+type NativeProgressObservedRow {
+  identity: NativeRouteTestIdentity
+  attained: NativeRouteAttainment
+}
+
+// READING ONE OBSERVED MEMBER, WITH ITS MALFORMED PAIR REPORTED RATHER THAN ONLY ABSORBED.
+//
+// `native_attainment_of_with_stage` takes the ladder's bottom for an exclusion whose verdict
+// names no stage, because a fold must be total and inventing a position is worse. But bottom
+// SILENTLY MASKS a real regression from `eval` down, so the pair cannot only be absorbed: the
+// reading reports it, and the report carries it as a finding like any other. That is the
+// difference between a fail-closed default and a fail-closed default nobody hears about.
+type NativeProgressObservedReading {
+  row: NativeProgressObservedRow
+  findings: List<NativeProgressFinding>
+}
+
+fn native_progress_read_observed(
+  identity: NativeRouteTestIdentity,
+  disposition: NativeRouteDisposition,
+  refused_at: Optional<NativeTestStage>
+) -> NativeProgressObservedReading {
+  let attained = native_attainment_of_with_stage(disposition: disposition, refused_at: refused_at)
+  let malformed =
+    match disposition {
+      NativeExclusion { cause: _ } =>
+        match refused_at {
+          Absent => [ObservedMemberReadingMalformed { identity: identity }]
+          Present { value: _ } => []
+        }
+      NativeAgreementPass => []
+      NativeAgreementExpectedRed => []
+      NativeAgreementRouteGap => []
+      NativeDivergence { cause: _ } => []
+    }
+  NativeProgressObservedReading {
+    row: NativeProgressObservedRow { identity: identity, attained: attained },
+    findings: malformed
+  }
+}
+
+fn native_progress_observed_rows(readings: List<NativeProgressObservedReading>) -> List<NativeProgressObservedRow> {
+  list_map(xs: readings, f: fn(r) { r.row })
+}
+
+fn native_progress_reading_findings(readings: List<NativeProgressObservedReading>) -> List<NativeProgressFinding> {
+  fold_list(xs: readings, empty: [], cons: fn(acc, r) { list_append(left: acc, right: r.findings) })
+}
+
+fn native_progress_observed_if_matches(
+  identity: NativeRouteTestIdentity,
+  row: NativeProgressObservedRow
+) -> Optional<NativeRouteAttainment> {
+  if native_route_identity_eq(a: row.identity, b: identity) {
+    optional_present(value: row.attained)
+  } else {
+    optional_absent()
+  }
+}
+
+fn native_progress_observed_for(
+  identity: NativeRouteTestIdentity,
+  observed: List<NativeProgressObservedRow>
+) -> Optional<NativeRouteAttainment> {
+  fold_list(
+    xs: observed,
+    empty: Absent,
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => native_progress_observed_if_matches(identity: identity, row: row)
+      }
+    }
+  )
+}
+
+fn native_progress_disposition_if_matches(
+  identity: NativeRouteTestIdentity,
+  row: NativeProgressDispositionRow
+) -> Optional<NativeProgressDisposition> {
+  if native_route_identity_eq(a: row.identity, b: identity) {
+    optional_present(value: row.disposition)
+  } else {
+    optional_absent()
+  }
+}
+
+fn native_progress_disposition_for(
+  identity: NativeRouteTestIdentity,
+  dispositions: List<NativeProgressDispositionRow>
+) -> Optional<NativeProgressDisposition> {
+  fold_list(
+    xs: dispositions,
+    empty: Absent,
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => native_progress_disposition_if_matches(identity: identity, row: row)
+      }
+    }
+  )
+}
+
+// ONE BASELINE ROW, DECIDED WHOLE. Present in the run: compare attainment. Absent from the run:
+// the row owes a disposition, and the disposition owes a fact the run agrees with.
+fn native_progress_row_findings(
+  row: NativeProgressBaselineRow,
+  observed: List<NativeProgressObservedRow>,
+  dispositions: List<NativeProgressDispositionRow>
+) -> List<NativeProgressFinding> {
+  match native_progress_observed_for(identity: row.identity, observed: observed) {
+    Present { value: seen } =>
+      if native_attainment_at_least(observed: seen, baseline: row.attained) {
+        []
+      } else {
+        [ProgressRegressed { identity: row.identity, baseline: row.attained, observed: seen }]
+      }
+    Absent =>
+      match native_progress_disposition_for(identity: row.identity, dispositions: dispositions) {
+        Absent => [BaselineMemberMissingUndisposed { identity: row.identity }]
+        Present { value: d } =>
+          match d {
+            SubjectDeleted { authority: _ } => []
+            SubjectLeftTheUniverse { moved_to_module: _ } => []
+            SubjectRenamed { to: target, authority: _ } =>
+              match native_progress_observed_for(identity: target, observed: observed) {
+                Absent => [RenameTargetAbsent { identity: row.identity, target: target }]
+                Present { value: seen } =>
+                  if native_attainment_at_least(observed: seen, baseline: row.attained) {
+                    []
+                  } else {
+                    [RenameTargetBelowBaseline {
+                      identity: row.identity,
+                      target: target,
+                      baseline: row.attained,
+                      observed: seen
+                    }]
+                  }
+              }
+          }
+      }
+  }
+}
+
+// A DISPOSITION IS ALSO CHECKED FROM ITS OWN SIDE, in two directions the row fold above cannot
+// see. A disposition for a subject the run DID discover is contradicted by the run -- somebody
+// declared a deletion that did not happen, and leaving it standing would pre-authorize a future
+// removal nobody looked at. A disposition for an identity with no baseline row at all is
+// bookkeeping about nothing, and is the shape a disposition list takes as it rots.
+fn native_progress_disposition_findings(
+  baseline: NativeProgressBaseline,
+  observed: List<NativeProgressObservedRow>
+) -> List<NativeProgressFinding> {
+  fold_list(
+    xs: baseline.dispositions,
+    empty: [],
+    cons: fn(acc, row) {
+      let has_baseline_row = any(
+        xs: list_map(xs: baseline.rows, f: fn(r) { r.identity }),
+        predicate: fn(id) { native_route_identity_eq(a: id, b: row.identity) }
+      )
+      let still_observed =
+        match native_progress_observed_for(identity: row.identity, observed: observed) {
+          Present { value: _ } => true
+          Absent => false
+        }
+      let missing_row = if has_baseline_row { [] } else { [DisposedSubjectHasNoBaselineRow { identity: row.identity }] }
+      let contradicted = if still_observed { [DispositionContradictedByRun { identity: row.identity }] } else { [] }
+      list_append(left: acc, right: list_append(left: missing_row, right: contradicted))
+    }
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE REPORT
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// TWO NUMBERS THAT ARE NOT THE SAME NUMBER, AND THE VERDICT READS ONLY ONE.
+//
+// `agreed` is "the requested tests passed" -- the encouraging figure, the one a reader wants, and
+// the one that must never decide the lane. `findings` is "progress preserved", and it is empty or
+// it is not. A report carrying only the first is the shape that let a frontier move backwards
+// under a rising pass count; a report carrying only the second tells a reader nothing about
+// whether the frontier ADVANCED, which is the point of running it.
+type NativeProgressReport {
+  baseline_size: Int
+  observed_size: Int
+  agreed: Int
+  findings: List<NativeProgressFinding>
+}
+
+fn native_progress_report(
+  baseline: NativeProgressBaseline,
+  readings: List<NativeProgressObservedReading>,
+  build: NativeRouteEmittedBuild
+) -> NativeProgressReport {
+  let observed = native_progress_observed_rows(readings: readings)
+  let row_findings = fold_list(
+    xs: baseline.rows,
+    empty: [],
+    cons: fn(acc, row) {
+      list_append(left: acc, right: native_progress_row_findings(row: row, observed: observed, dispositions: baseline.dispositions))
+    }
+  )
+  NativeProgressReport {
+    baseline_size: length(xs: baseline.rows),
+    observed_size: length(xs: observed),
+    agreed: count_where(xs: observed, predicate: fn(r) {
+      match r.attained {
+        AttainAgreed => true
+        AttainDiverged => false
+        AttainRefused { stage: _ } => false
+      }
+    }),
+    findings: list_append(
+      left: native_progress_artifact_findings(build: build),
+      right: list_append(
+        left: native_progress_reading_findings(readings: readings),
+        right: list_append(
+          left: row_findings,
+          right: native_progress_disposition_findings(baseline: baseline, observed: observed)
+        )
+      )
+    )
+  }
+}
+
+// THE VERDICT IS THE EMPTINESS OF THE FINDINGS AND NOTHING ELSE. Not a threshold, not a ratio,
+// not "no worse than last time by more than k" -- a single regressed identity is a lost position
+// and the lane says so.
+type NativeProgressVerdict
+  = ProgressPreserved
+  | ProgressLost { findings: List<NativeProgressFinding> }
+
+fn native_progress_verdict(report: NativeProgressReport) -> NativeProgressVerdict {
+  if is_empty(xs: report.findings) {
+    ProgressPreserved
+  } else {
+    ProgressLost { findings: report.findings }
+  }
+}
+
+// THE OPERATOR'S LINE FOR ONE FINDING. Each names its subject, because a reader of a red run must
+// reach the identity without opening a second artifact.
+fn native_progress_finding_text(f: NativeProgressFinding) -> String {
+  match f {
+    ProgressRegressed { identity: id, baseline: _, observed: _ } =>
+      join(["REGRESSED ", native_route_identity_qualified(identity: id)], "")
+    BaselineMemberMissingUndisposed { identity: id } =>
+      join(["MISSING WITHOUT A DISPOSITION ", native_route_identity_qualified(identity: id)], "")
+    DispositionContradictedByRun { identity: id } =>
+      join(["DISPOSITION CONTRADICTED BY THE RUN ", native_route_identity_qualified(identity: id)], "")
+    RenameTargetAbsent { identity: id, target: t } =>
+      join(["RENAME TARGET NOT OBSERVED ", native_route_identity_qualified(identity: id), " -> ", native_route_identity_qualified(identity: t)], "")
+    RenameTargetBelowBaseline { identity: id, target: t, baseline: _, observed: _ } =>
+      join(["RENAME TARGET BELOW THE BASELINE ", native_route_identity_qualified(identity: id), " -> ", native_route_identity_qualified(identity: t)], "")
+    DisposedSubjectHasNoBaselineRow { identity: id } =>
+      join(["DISPOSITION FOR A SUBJECT WITH NO BASELINE ROW ", native_route_identity_qualified(identity: id)], "")
+    ArtifactProductionFailed { detail: d } =>
+      join(["ARTIFACT PRODUCTION FAILED ", d], "")
+    ObservedMemberReadingMalformed { identity: id } =>
+      join(["OBSERVED MEMBER READING MALFORMED ", native_route_identity_qualified(identity: id)], "")
+  }
+}
