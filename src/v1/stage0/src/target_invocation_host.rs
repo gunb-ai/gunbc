@@ -1216,8 +1216,21 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
 
 /// `gunbc.witness_v2_native_route` `native_route_default_pattern`, mirrored: the native test
 /// route's whole universe, `//v2/test/...`. An operand CONTAINED in it belongs to that route.
-fn native_route_default_pattern() -> TargetPattern {
+///
+/// THIS IS THE ONLY SEED-SIDE SPELLING OF THAT UNIVERSE, and it is `pub` for exactly that reason.
+/// The lane's runner needs the same fact as TEXT (it is an argv word) and this verb needs it as a
+/// PATTERN, which is two renderings of one value, not two values. A bare `"//v2/test/..."` literal
+/// beside this one would be the second independently editable spelling DESIGN section 3 forbids,
+/// and the drift would be load-bearing rather than cosmetic: narrow one and not the other and the
+/// verb routes an operand native that the lane's default excludes, or the reverse.
+pub fn native_route_default_pattern() -> TargetPattern {
     TargetPattern::SubtreeTargets(vec!["v2".to_string(), "test".to_string()])
+}
+
+/// The universe above as the argv word the emitted binary's `adjudicate` verb takes. Derived from
+/// the one pattern rather than spelled again.
+pub fn native_route_default_pattern_text() -> String {
+    render_target_pattern(&native_route_default_pattern())
 }
 
 /// THE NATIVE TEST ROUTE, ENTERED WITH THE OPERAND'S OWN PATTERN.
@@ -1238,24 +1251,27 @@ fn native_route_default_pattern() -> TargetPattern {
 /// can never read as a passing or failing test run.
 fn run_native_test_route(pattern: &TargetPattern) -> InvocationOutcome {
     let rendered = render_target_pattern(pattern);
+    // THE PARTITION IS THE PRODUCER'S, MATCHED AS ARMS. It used to be recovered by testing the
+    // rendered cause for `cause=AdmissionRefused`, which is a second representation of a decision
+    // `run_required_v2_native` already holds -- reword that sentence upstream and a genuinely
+    // failing population reclassifies to "no observation". The producer now returns the decision.
     match cli_run::run_required_v2_native(&self_host_source_roots(), &rendered) {
-        Ok(()) => InvocationOutcome {
+        cli_run::NativeRouteOutcome::AdmissionHeld { summary } => InvocationOutcome {
             termination: Termination::ObservationHeld,
-            message: format!("native test route: {rendered} adjudicated, admission held"),
+            message: format!(
+                "native test route: {rendered} adjudicated, admission held — {summary}"
+            ),
         },
-        Err(cause) => {
-            // The binary ran and REFUSED ITS OWN ADMISSION: an observation that did not hold.
-            // Every other cause is the route not having been completed at all.
-            let termination = if cause.contains("cause=AdmissionRefused") {
-                Termination::ObservationDidNotHold
-            } else {
-                Termination::SubjectUnreached
-            };
-            InvocationOutcome {
-                termination,
-                message: format!("native test route: {rendered} — {cause}"),
-            }
-        }
+        cli_run::NativeRouteOutcome::AdmissionRefused { summary } => InvocationOutcome {
+            termination: Termination::ObservationDidNotHold,
+            message: format!(
+                "native test route: {rendered} adjudicated, admission refused — {summary}"
+            ),
+        },
+        cli_run::NativeRouteOutcome::Unreached { cause } => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: format!("native test route: {rendered} — {cause}"),
+        },
     }
 }
 

@@ -52,9 +52,16 @@ import gunbc.target_invocation {
   TestOperandExactTarget, TestOperandSetForm, TestOperandNativeRoute, TestOperandRefused,
   admit_test_operand, test_operand_refusal_rendered, test_operand_set_form_refusal_rendered,
 }
+// `TargetPattern` IS DELIBERATELY NOT IMPORTED HERE, and the omission is the point. This module
+// already imports `extdeps.bazel.label`'s `TargetPattern`, which is a `LabelRefusal` CONSTRUCTOR
+// (a single target was expected and a pattern was given) and is matched as one below. The pattern
+// TYPE of the same spelling is a materially different meaning, so importing both would put one
+// name on two meanings in one scope and let import ORDER decide which wins -- the meaning fork
+// DESIGN section 3 names, arriving through a binding table rather than through a type. The type is
+// spelled QUALIFIED at its one use site instead.
 import extdeps.bazel.target_pattern {
   PatternNotAbsolute, PatternAllTargetsUnsupported, PatternLabelRefused,
-  TargetPattern, SingleTarget, PackageTargets, SubtreeTargets,
+  SingleTarget, PackageTargets, SubtreeTargets,
   render_target_pattern, target_pattern_within,
 }
 import gunbc.instrument_targets {
@@ -682,7 +689,7 @@ test fn the_canonicality_cause_reaches_the_rendered_refusal() -> Bool {
 // takes it as a parameter precisely so a claim can author one, and the production caller supplies
 // `gunbc.witness_v2_native_route` `native_route_default_pattern`. Spelling it here means the arms
 // below discriminate the CONTAINMENT decision rather than one compiled-in constant.
-fn native_universe() -> TargetPattern {
+fn native_universe() -> extdeps.bazel.target_pattern.TargetPattern {
   SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr] } }
 }
 

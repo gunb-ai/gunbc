@@ -1740,7 +1740,59 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
     })
 }
 
-pub fn run_required_v2_native(source_roots: &[String], pattern: &str) -> Result<(), String> {
+/// HOW A NATIVE ROUTE RUN ENDED, AS A TYPED VALUE RATHER THAN A SENTENCE A CALLER RE-READS.
+///
+/// The admission is a BOOLEAN INSIDE THE BINARY (`run.terminal.admitted`, derived with its summary
+/// by `native_lane_run`), and flattening it into `Result<(), String>` made every consumer recover
+/// it by sniffing the rendered text for `cause=AdmissionRefused`. That is a second representation
+/// of a decision this function already holds, free to disagree with it: reword the sentence and a
+/// genuinely failing population silently reclassifies as "no observation" -- the exact conflation
+/// DESIGN section 5 forbids, reached through a string rather than through a type.
+///
+/// So the partition is carried. `AdmissionRefused` is a COMPLETED adjudication whose verdict was
+/// negative; `Unreached` is every way the run did not produce one -- the emit refused, the crate
+/// would not build, the binary would not run, the tree has no observable identity. A consumer
+/// matches arms and cannot ask the question wrongly.
+#[derive(Debug)]
+pub enum NativeRouteOutcome {
+    /// The emitted binary adjudicated and its own admission held.
+    AdmissionHeld { summary: String },
+    /// The emitted binary adjudicated and REFUSED its own admission: an observation that did not
+    /// hold, never an absence of one.
+    AdmissionRefused { summary: String },
+    /// No adjudication was produced at all.
+    Unreached { cause: String },
+}
+
+pub fn run_required_v2_native(source_roots: &[String], pattern: &str) -> NativeRouteOutcome {
+    // The `?`-carrying body stays one function; only the ADMISSION leaves it as a value, so this
+    // wrapper is the single place the three-way partition is made and no consumer re-derives it.
+    match run_required_v2_native_inner(source_roots, pattern) {
+        Ok(admission) => {
+            if admission.admitted {
+                NativeRouteOutcome::AdmissionHeld {
+                    summary: admission.summary,
+                }
+            } else {
+                NativeRouteOutcome::AdmissionRefused {
+                    summary: admission.summary,
+                }
+            }
+        }
+        Err(cause) => NativeRouteOutcome::Unreached { cause },
+    }
+}
+
+/// What the adjudicating run decided, carried out of the body as a value.
+struct NativeRunAdmission {
+    admitted: bool,
+    summary: String,
+}
+
+fn run_required_v2_native_inner(
+    source_roots: &[String],
+    pattern: &str,
+) -> Result<NativeRunAdmission, String> {
     let lane_started = std::time::Instant::now();
     let workspace = super::process_workspace_root();
     // THE TESTED TREE IS OBSERVED OR THE RUN REFUSES (review 64210). This defaulted to the literal
@@ -1886,14 +1938,10 @@ pub fn run_required_v2_native(source_roots: &[String], pattern: &str) -> Result<
     // value inside the binary (`native_lane_run` derives the summary from the admission it
     // returns), so the terminal line and the admission cannot disagree about what was decided.
     eprintln!("v2-native-route: admission {}", run.terminal.summary);
-    if run.terminal.admitted {
-        Ok(())
-    } else {
-        Err(format!(
-            "V2-NATIVE REFUSAL cause=AdmissionRefused — {}",
-            run.terminal.summary
-        ))
-    }
+    Ok(NativeRunAdmission {
+        admitted: run.terminal.admitted,
+        summary: run.terminal.summary,
+    })
 }
 
 #[cfg(test)]

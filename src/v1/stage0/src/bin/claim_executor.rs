@@ -1239,13 +1239,20 @@ fn run() -> Result<ExitCode, ExitCode> {
         eprintln!(
             "v2-native-route: emitted-native compiler executes the derived v2.test.* universe (operator-invoked; not a required lane)"
         );
-        // THE LANE ADJUDICATES ITS WHOLE UNIVERSE, so it passes the default pattern: this literal
-        // is the seed's mirror of `gunbc.witness_v2_native_route` `native_route_default_pattern`.
-        // A narrower pattern reaches the same runner through `gunbc test <operand>`.
-        return match v1_compiler::cli_run::run_required_v2_native(&roots, "//v2/test/...") {
-            Ok(()) => Ok(ExitCode::SUCCESS),
-            Err(e) => {
-                eprintln!("v2-native-route: refused: {e}");
+        // THE LANE ADJUDICATES ITS WHOLE UNIVERSE, so it passes the default pattern -- read from
+        // the ONE seed-side accessor rather than spelled as a literal here, so this caller and the
+        // `gunbc test` verb cannot drift about what the native universe is. A narrower pattern
+        // reaches the same runner through `gunbc test <operand>`.
+        let default_pattern =
+            v1_compiler::cli_run::target_invocation_host::native_route_default_pattern_text();
+        return match v1_compiler::cli_run::run_required_v2_native(&roots, &default_pattern) {
+            v1_compiler::cli_run::NativeRouteOutcome::AdmissionHeld { .. } => Ok(ExitCode::SUCCESS),
+            v1_compiler::cli_run::NativeRouteOutcome::AdmissionRefused { summary } => {
+                eprintln!("v2-native-route: refused: AdmissionRefused — {summary}");
+                Err(ExitCode::from(1))
+            }
+            v1_compiler::cli_run::NativeRouteOutcome::Unreached { cause } => {
+                eprintln!("v2-native-route: refused: {cause}");
                 Err(ExitCode::from(1))
             }
         };
