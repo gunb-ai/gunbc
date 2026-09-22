@@ -3,9 +3,10 @@ module test.claim.approval_assertion_counter_wet_witness_test
 import extdeps.shell
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, Int }
+import std.durable_compare_and_set { ExpectSlotGeneration }
 import gunbc.auth.approval_assertion_counter {
   AssertionCounterAdmission, AssertionCounterAdmitted, AssertionCounterReplayed, AssertionCounterRaced, AssertionCounterStoreRefused,
-  admit_assertion_counter, assertion_counter_refusal_status,
+  admit_assertion_counter, assertion_counter_commit, assertion_counter_refusal_status,
 }
 
 // THE ASSERTION COUNTER STANDING, EXECUTED AGAINST A REAL FILESYSTEM through
@@ -54,4 +55,47 @@ test fn the_counter_standing_is_per_enrolment() -> Bool {
   let b = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-bbbb", observed: 1)
   let removed = shell.Remove.RecursiveForce(path: root)
   admitted_at(a: a, counter: 9) && admitted_at(a: b, counter: 1) && removed.success
+}
+
+// A LOST COMPARE-AND-SET RACE IS REFUSED, NOT ADMITTED. Two requests that read the same standing
+// commit against the same generation; the second commit arrives after the first has advanced the
+// slot, so its expectation names a superseded generation and the store's exclusive create decides
+// against it. The positive control is the first commit itself.
+test fn a_lost_counter_race_is_refused_not_admitted() -> Bool {
+  let root = fresh_counter_root()
+  let first = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-race", observed: 5)
+  let winner = assertion_counter_commit(root: root as NonEmptyStr, enrollment_id: "enr-race", expected: ExpectSlotGeneration { generation: 1 }, observed: 6)
+  let loser = assertion_counter_commit(root: root as NonEmptyStr, enrollment_id: "enr-race", expected: ExpectSlotGeneration { generation: 1 }, observed: 7)
+  let after = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-race", observed: 6)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  let raced = match loser {
+    AssertionCounterRaced => assertion_counter_refusal_status(a: loser) == 409
+    _ => false
+  }
+  admitted_at(a: first, counter: 5) && admitted_at(a: winner, counter: 6) && raced && replayed(a: after) && removed.success
+}
+
+fn admit_sequentially(root: NonEmptyStr, enrollment_id: NonEmptyStr, next: Int, last: Int) -> Bool {
+  if next > last { true }
+  else {
+    match admit_assertion_counter(root: root, enrollment_id: enrollment_id, observed: next) {
+      AssertionCounterAdmitted { enrollment_id: _, counter: c } =>
+        if c == next { admit_sequentially(root: root, enrollment_id: enrollment_id, next: next + 1, last: last) } else { false }
+      _ => false
+    }
+  }
+}
+
+// THE CLAIM THAT WOULD HAVE CAUGHT THE CLIFF. One enrolment admits 4200 assertions in sequence --
+// past the 4096 generations at which the store's former linear walk refused every read of the slot
+// -- and every one is admitted. Then the wall still stands at that depth: the last counter again is a
+// replay, and the next one is admitted.
+test fn an_enrolment_keeps_admitting_past_four_thousand_ninety_six_assertions() -> Bool {
+  let root = fresh_counter_root()
+  let all = admit_sequentially(root: root as NonEmptyStr, enrollment_id: "enr-long-lived", next: 1, last: 4200)
+  let again = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-long-lived", observed: 4200)
+  let older = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-long-lived", observed: 17)
+  let next = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-long-lived", observed: 4201)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  all && replayed(a: again) && replayed(a: older) && admitted_at(a: next, counter: 4201) && removed.success
 }

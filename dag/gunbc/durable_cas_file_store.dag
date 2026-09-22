@@ -224,17 +224,51 @@ fn cas_file_slot_path(root: NonEmptyStr, key: NonEmptyStr, generation: CasGenera
 
 // HOW THE SLOT IS OBSERVED, AND THE BOUND IS PART OF THE CONTRACT.
 //
-// Generations are contiguous and append-only, so the head is found by probing
-// upward from 1 until a generation is absent. That needs only Read, no
-// directory listing and no parsing of names back into numbers -- a filesystem
-// layout that had to be re-parsed to be understood would be a second identity
-// authority beside the key.
+// Generations are contiguous and append-only -- a generation N+1 is published only by a writer that
+// observed head N, and this store offers no delete -- so presence is a PREFIX of the generation line:
+// every generation at or below the head exists and none above it does. The head is therefore the
+// boundary of a monotone predicate, and it is found by GALLOPING (read 1, 2, 4, 8 ... until one is
+// absent) and then BISECTING between the last present and the first absent generation. That needs
+// only Read, no directory listing and no parsing of names back into numbers -- a filesystem layout
+// that had to be re-parsed to be understood would be a second identity authority beside the key.
 //
-// THE PROBE IS BOUNDED AND THE BOUND REFUSES RATHER THAN TRUNCATING. Running off
-// the end returns a typed refusal, not "the head is wherever I stopped looking":
-// a walk that silently reported its own patience as the answer would be the
-// bound-shaped closure DESIGN names, where a real number satisfies a question it
-// never measured.
+// WHY NOT A LINEAR WALK FROM 1, which is what this was. The walk read every superseded generation on
+// every observation, so its cost grew with the slot's whole history, and its bound was denominated in
+// GENERATIONS: past 4096 of them every observation of the slot refused, permanently, for a slot whose
+// head was perfectly well formed. The first consumer that advances a slot once per request --
+// gunbc.auth.approval_assertion_counter, one generation per admitted App Attest assertion -- turned
+// that into an availability cliff: an operator phone stopped being able to read after ~4096 admitted
+// requests, and only re-enrolment recovered it. Raising the bound would have moved that cliff and
+// kept it. Nothing reads a superseded generation -- the interface's fact is the HEAD, and
+// std.durable_compare_and_set promises a monotone version, not a history -- so the walk was paying,
+// per observation, for information no consumer demands.
+//
+// WHY THE CHAIN ITSELF STAYS. The chain is not an obligation of the interface; it is THIS
+// realization's exclusion mechanism. An in-place conditional overwrite is not honestly available on a
+// plain filesystem: rename replaces unconditionally, so a compare-then-rename is a check-then-act race
+// that only a lock closes, and flock is exactly the single-host exclusion the interface module exists
+// to replace. O_EXCL on a DISTINCT name per generation is what lets the OS decide the race, so the
+// generations are the price of the exclusion and are kept. What was an artifact is only the READ.
+//
+// THE BOUND IS NOW DENOMINATED IN DOUBLINGS AND REFUSES RATHER THAN TRUNCATING. Running off the end
+// still returns a typed refusal, never "the head is wherever I stopped looking": a walk that silently
+// reported its own patience as the answer would be the bound-shaped closure DESIGN names. But
+// cas_max_generation_doublings = 62 places the refusal at generation 2^62, where CasGeneration's own
+// Int arithmetic ends -- the bound is the carrier's range, not a patience budget a slot outgrows. An
+// observation costs at most 2 * 62 + 1 reads for any reachable slot.
+//
+// A CONCURRENT APPEND DURING THE SEARCH IS SAFE, and the reason is the same one the linear walk had.
+// Every generation the search reports present was read present, and presence is never retracted, so
+// the reported head is a generation that really was committed; a writer that appended meanwhile makes
+// it STALE, never fabricated. A stale head is refused downstream by the exclusive create itself --
+// its successor name is already taken -- which is the read-establishes-eligibility, write-decides-the-
+// winner invariant stated above.
+//
+// WHAT THE SEARCH NO LONGER OBSERVES: superseded generations it does not land on. The linear walk
+// would refuse on an unreadable generation below the head; this reads only O(log n) of them. No
+// consumer reads a superseded generation, so an unreadable one below the head does not affect any
+// answer this store gives, and the head and every generation the search reads are still classified
+// through the host kind channel below.
 //
 // READ CLASSIFICATION IS THE HOST KIND CHANNEL, NEVER THE ERROR TEXT.
 // filesystem_exact_read already partitions NotFound from PermissionDenied /
@@ -249,24 +283,35 @@ type CasSlotProbe
   | ProbedUnreadable { generation: CasGeneration, kind: FilesystemFailureKind }
   | ProbedReadKindUnrecognized { generation: CasGeneration, observed: String }
 
-data cas_max_generation_probe: Int = 4096
+data cas_max_generation_doublings: Int = 62
 
-fn cas_probe_from(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration, previous: NonEmptyStr) -> CasSlotProbe {
-  if cas_generation_count(g: generation) > cas_max_generation_probe {
-    ProbedBeyondBound { bound: cas_max_generation_probe }
-  } else {
-    let path = cas_file_slot_path(root: root, key: key, generation: generation)
-    let read = Filesystem.Read(path: path)
-    cas_probe_from_exact(
-      root: root,
-      key: key,
-      generation: generation,
-      previous: previous,
-      exact: filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind),
-    )
+// One generation read, classified: present with its content, absent, or a typed refusal.
+type CasGenerationRead
+  = GenerationPresent { content: NonEmptyStr }
+  | GenerationAbsent
+  | GenerationRefused { probe: CasSlotProbe }
+
+fn cas_read_generation(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> CasGenerationRead {
+  let path = cas_file_slot_path(root: root, key: key, generation: generation)
+  let read = Filesystem.Read(path: path)
+  cas_classify_generation_read(
+    generation: generation,
+    exact: filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind),
+  )
+}
+
+fn cas_classify_generation_read(generation: CasGeneration, exact: FilesystemExactRead) -> CasGenerationRead {
+  match exact {
+    FilesystemExactPathRead { path: _, content: c } => GenerationPresent { content: c as NonEmptyStr }
+    FilesystemExactPathAbsent { path: _ } => GenerationAbsent
+    FilesystemExactPathUnreadable { path: _, kind: k, error: _ } =>
+      GenerationRefused { probe: ProbedUnreadable { generation: generation, kind: k } }
+    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: _ } =>
+      GenerationRefused { probe: ProbedReadKindUnrecognized { generation: generation, observed: o } }
   }
 }
 
+// The first read, classified. Generation 1 absent is an empty slot; present starts the gallop.
 fn cas_probe_from_exact(
   root: NonEmptyStr,
   key: NonEmptyStr,
@@ -274,24 +319,59 @@ fn cas_probe_from_exact(
   previous: NonEmptyStr,
   exact: FilesystemExactRead,
 ) -> CasSlotProbe {
-  match exact {
-    FilesystemExactPathRead { path: _, content: c } =>
-      cas_probe_from(root: root, key: key, generation: cas_generation_next(g: generation), previous: c as NonEmptyStr)
-    FilesystemExactPathAbsent { path: _ } =>
-      if cas_generation_count(g: generation) == 1 {
-        ProbedAbsent
-      } else {
-        ProbedHead { generation: cas_generation_count(g: generation) - 1, value: previous }
-      }
-    FilesystemExactPathUnreadable { path: _, kind: k, error: _ } =>
-      ProbedUnreadable { generation: generation, kind: k }
-    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: _ } =>
-      ProbedReadKindUnrecognized { generation: generation, observed: o }
+  match cas_classify_generation_read(generation: generation, exact: exact) {
+    GenerationRefused { probe: p } => p
+    GenerationAbsent =>
+      if cas_generation_count(g: generation) == 1 { ProbedAbsent }
+      else { cas_probe_bisect(root: root, key: key, present: 1, present_value: previous, absent: generation) }
+    GenerationPresent { content: c } =>
+      cas_probe_gallop(root: root, key: key, present: generation, present_value: c, doublings: 0)
+  }
+}
+
+// INVARIANT: `present` was read present. Double until a generation reads absent.
+fn cas_probe_gallop(root: NonEmptyStr, key: NonEmptyStr, present: CasGeneration, present_value: NonEmptyStr, doublings: Int) -> CasSlotProbe {
+  if doublings >= cas_max_generation_doublings {
+    ProbedBeyondBound { bound: cas_generation_count(g: present) }
+  } else {
+    let next = cas_generation_count(g: present) * 2
+    match cas_read_generation(root: root, key: key, generation: next) {
+      GenerationRefused { probe: p } => p
+      GenerationPresent { content: c } =>
+        cas_probe_gallop(root: root, key: key, present: next, present_value: c, doublings: doublings + 1)
+      GenerationAbsent =>
+        cas_probe_bisect(root: root, key: key, present: present, present_value: present_value, absent: next)
+    }
+  }
+}
+
+// INVARIANT: `present` read present, `absent` read absent, present < absent. The head is the last
+// present generation, reached when the two are adjacent.
+fn cas_probe_bisect(root: NonEmptyStr, key: NonEmptyStr, present: CasGeneration, present_value: NonEmptyStr, absent: CasGeneration) -> CasSlotProbe {
+  let lo = cas_generation_count(g: present)
+  let hi = cas_generation_count(g: absent)
+  if hi - lo <= 1 {
+    ProbedHead { generation: present, value: present_value }
+  } else {
+    let mid = lo + (hi - lo) / 2
+    match cas_read_generation(root: root, key: key, generation: mid) {
+      GenerationRefused { probe: p } => p
+      GenerationPresent { content: c } =>
+        cas_probe_bisect(root: root, key: key, present: mid, present_value: c, absent: absent)
+      GenerationAbsent =>
+        cas_probe_bisect(root: root, key: key, present: present, present_value: present_value, absent: mid)
+    }
   }
 }
 
 fn cas_observe_slot(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe {
-  cas_probe_from(root: root, key: key, generation: cas_generation_first(), previous: "unread" as NonEmptyStr)
+  let first = cas_generation_first()
+  match cas_read_generation(root: root, key: key, generation: first) {
+    GenerationRefused { probe: p } => p
+    GenerationAbsent => ProbedAbsent
+    GenerationPresent { content: c } =>
+      cas_probe_gallop(root: root, key: key, present: first, present_value: c, doublings: 0)
+  }
 }
 
 // THE PROJECTION TAKES A HEAD, NOT A PROBE, AND THE DELETED ARM IS THE REPAIR.
@@ -621,11 +701,11 @@ fn cas_owner_only_failed_publication(
 //
 // It routed `ProbedBeyondBound` to the publication refusal along with the other two, on the reasoning
 // that the write had failed and the target had not appeared. The second half does not follow. Consider
-// a slot whose head is 4095 and two writers targeting 4096:
+// a slot whose head sits just below the bound and two writers targeting the next generation:
 //
-//   the other writer wins 4096; this writer's create fails
-//   the re-observation reads 4096 successfully and probes 4097
-//   4097 exceeds the bound, so the probe answers ProbedBeyondBound
+//   the other writer wins it; this writer's create fails
+//   the re-observation reads it successfully and searches past it
+//   the search exhausts its bound, so the probe answers ProbedBeyondBound
 //
 // Another writer DID publish. Reporting a publication refusal there invents the wrong cause -- the
 // same fabrication the lost-race repair one screen up exists to remove, reappearing in the arm that
@@ -638,7 +718,7 @@ fn cas_owner_only_failed_publication(
 //
 // AND THE CAUSE IS BOUND EXHAUSTION, NOT A MALFORMED HEAD, which the first version of this repair got
 // wrong in the other direction: it stopped claiming the publication failed and then said the slot's
-// contents were garbage. A slot holding 4096 contiguous, perfectly well formed generations is not
+// contents were garbage. A slot holding a bound's worth of contiguous, perfectly well formed generations is not
 // malformed, and telling an operator it is sends them to repair bytes that are fine. Found by external
 // review, on this function's own repair.
 fn cas_publication_beyond_bound(bound: Int) -> CasOutcome<NonEmptyStr> {
