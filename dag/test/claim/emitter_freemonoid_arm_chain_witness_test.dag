@@ -31,14 +31,46 @@ module test.claim.emitter_freemonoid_arm_chain_witness_test
 
 // THE DISCRIMINATING RED. Three arms where the middle one is a NESTED constructor in a field
 // position. Pre-repair this emitted a two-way split: no length test, and the third arm's body
-// absent entirely. The `__fm.len() == 1` spelling is the narrowest thing only the repaired chain
-// produces, and `list_tail` pins the THIRD arm's body specifically -- without it a lowering that
-// kept two arms and dropped only the last would still pass.
+// absent entirely. `__fm.len() == 1` is the narrowest spelling only the repaired chain produces.
+//
+// THE OTHER TWO INCLUDES PIN THE THIRD ARM, AND THE FIRST ATTEMPT AT THAT WAS A DECORATION. This
+// row originally asserted `drop_last(` for that job. It CANNOT GO RED: `drop_last` is the
+// fixture's own function, so the emitted module carries `pub fn drop_last(` however the match
+// lowers, and compile_dag_rust_emit_check is a substring read over emitted text with no rustc
+// step. Worse, the sentence here named `list_tail` as the pin -- a symbol that appears nowhere in
+// this file -- so the row's stated coverage argument cited a wall that was never built while the
+// assertion standing in its place carried no information. DESIGN section 4b names exactly this:
+// permanently green by construction, and worse than absent because it will be cited as coverage.
+// It was, here and in the PR body. Found by review 70019.
+//
+// The gap it left is the one that matters: a lowering that kept arms one and two and dropped arm
+// THREE would emit `__fm.len() == 1`, carry `pub fn drop_last(`, and pass -- which is the original
+// defect in narrower form, and the exact shape this row exists to catch.
+//
+// The replacements are READ OFF THE EMITTED ARTIFACT rather than predicted, which is the step whose
+// absence produced the decoration. Arm three is the only arm here that binds anything, so
+// `Rc::new(__fm.skip(1))` is its tail binding and `drop_last(t.clone())` is its body -- the
+// recursive call ON that binding. Neither is producible by the definition line, which emits
+// `pub fn drop_last(xs: Rc<Vec<i64>>)`.
+//
+// THE TWO PINS ARE NOT EQUALLY STRONG AND THE WEAKER ONE IS NAMED AS SUCH. `Rc::new(__fm.skip(1))`
+// is the GENERIC tail-binding spelling, and the pre-repair emitter emitted it too -- 10 sites in
+// v2_std_algebra alone -- so it discriminates for THIS fixture rather than in general: the first
+// Cons arm's tail is a nested `Empty` pattern, which the old binding reader degraded to `_`, so
+// that lowering bound nothing and emitted no skip. `drop_last(t.clone())` is the unambiguous one,
+// because only arm three's body carries a recursive call on a bound tail.
+//
+// RED-ABILITY IS MEASURED, NOT ARGUED. v2.std.algebra `list_init` carries this fixture's EXACT arm
+// shape, and its retained pre-repair emission is
+// `{ let __fm = xs.clone(); if __fm.is_empty() { Rc::new(vec![]) } else { Rc::new(vec![]) } }`
+// with `skip(1)` appearing 0 times and `list_init(t` appearing 0 times. So both pins are absent
+// from the broken lowering of this shape, and both are present in the repaired emission of the
+// fixture itself. That is the check the original include never received.
 test fn nested_field_arm_and_its_successor_both_reach_the_emitted_chain() -> Bool {
   compile_dag_rust_emit_check(
     "module fmchain\n\nimport std.types { List, Int }\n\nfn drop_last(xs: List<Int>) -> List<Int> {\n  match xs {\n    Empty => Empty\n    Cons { head: _, tail: Empty } => Empty\n    Cons { head: h, tail: t } => Cons { head: h, tail: drop_last(xs: t) }\n  }\n}\n",
     "src/fmchain.rs",
-    ["__fm.len() == 1", "drop_last("],
+    ["__fm.len() == 1", "Rc::new(__fm.skip(1))", "drop_last(t.clone())"],
     []
   )
 }
