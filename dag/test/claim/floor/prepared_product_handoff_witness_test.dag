@@ -1,0 +1,95 @@
+module test.claim.floor.prepared_product_handoff_witness
+
+import v2.std.logic { Bool }
+import v2.workflow.floor2_prepared_subject {
+  CommitWitnessRosterGate,
+  PreparedClaimScope,
+  PreparedModuleSource,
+  PreparedProductHeld,
+  PreparedProductOutsideSubject,
+  PreparedProductRefused,
+  PreparedProductServed,
+  WitnessClaimFold,
+  prepared_product_for_consumer,
+  prepared_product_outcome,
+  prepared_product_outcome_refuses,
+}
+
+// THE HANDOFF LAW'S EXECUTING EVIDENCE. `v2.workflow.floor2_prepared_subject` declares that a
+// consumer whose prepared product is not held REFUSES rather than rebuilding a universe. A law with
+// no discriminating red is a decoration, so both arms are driven here: the served arm proves the
+// function can say yes (without which the refusal arm is satisfied by a constant), and the refused
+// arm proves it says no on the one observation that used to be answered by a second corpus.
+//
+// THIS IS A SUBSTRATE TEST AND NOT A MEASUREMENT OF THE HOST. It fixes the MODEL's answer; the
+// host's agreement with it is a separate obligation carried by `roster_entry_registry` and by the
+// floor run that exercises it. Saying so here keeps this file from being cited as evidence that the
+// Rust path holds, which it is not.
+
+fn held_outcome_for_roster_gate() -> Bool {
+  match prepared_product_outcome(
+    consumer: CommitWitnessRosterGate,
+    availability: PreparedProductHeld
+  ) {
+    PreparedProductServed { product: p } => match p {
+      PreparedModuleSource => true
+      PreparedClaimScope => false
+    }
+    PreparedProductRefused { product: _, consumer: _, detail: _ } => false
+  }
+}
+
+test fn held_product_serves_the_consumers_own_product() -> Bool {
+  held_outcome_for_roster_gate()
+}
+
+// THE DISCRIMINATING RED. An entry the prepared subject does not hold must reach a refusal, and the
+// refusal must carry the product AND the consumer that wanted it — a refusal naming neither is an
+// unattributed stop, and the floor's ledger cannot act on one.
+fn outside_subject_refuses_and_names_both() -> Bool {
+  match prepared_product_outcome(
+    consumer: CommitWitnessRosterGate,
+    availability: PreparedProductOutsideSubject { detail: ^entry_not_in_prepared_subject }
+  ) {
+    PreparedProductServed { product: _ } => false
+    PreparedProductRefused { product: p, consumer: c, detail: _ } => match p {
+      PreparedModuleSource => match c {
+        CommitWitnessRosterGate => true
+        WitnessClaimFold => false
+      }
+      PreparedClaimScope => false
+    }
+  }
+}
+
+test fn product_outside_the_prepared_subject_refuses() -> Bool {
+  outside_subject_refuses_and_names_both()
+}
+
+test fn refusal_predicate_separates_the_two_arms() -> Bool {
+  !prepared_product_outcome_refuses(
+    outcome: prepared_product_outcome(
+      consumer: WitnessClaimFold,
+      availability: PreparedProductHeld
+    )
+  )
+    && prepared_product_outcome_refuses(
+      outcome: prepared_product_outcome(
+        consumer: WitnessClaimFold,
+        availability: PreparedProductOutsideSubject { detail: ^scope_not_in_prepared_subject }
+      )
+    )
+}
+
+// EACH CONSUMER TAKES ITS OWN PRODUCT, checked at identity rather than by counting rows: the join
+// is what makes the law consumable, and a join that answered the same product for both consumers
+// would pass every assertion above while saying nothing.
+test fn each_consumer_maps_to_its_own_product() -> Bool {
+  match prepared_product_for_consumer(consumer: CommitWitnessRosterGate) {
+    PreparedModuleSource => match prepared_product_for_consumer(consumer: WitnessClaimFold) {
+      PreparedClaimScope => true
+      PreparedModuleSource => false
+    }
+    PreparedClaimScope => false
+  }
+}
