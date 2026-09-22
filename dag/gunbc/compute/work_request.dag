@@ -127,11 +127,17 @@ type WorkOutput {
 // THE FIVE ENDINGS, and only five (compute-exact-work-contract's red control: a machine that killed
 // the work cannot render as the work having failed). Every arm carries the identity so a caller can
 // never attach a verdict to a different request.
+// A CANCELLATION CARRIES WHY, and the arm was a bare identity until a real run made the gap
+// visible. The only producer of this arm is a launch refused by the attempt gate -- somebody else
+// ended this attempt before it spawned -- and an ending of "cancelled" with no cause cannot be
+// told apart from any other cancellation by the caller who reads the document. The detail is in
+// the durable outcome for the same reason every other arm's is: the next reader of this identity
+// gets the same account the first caller got.
 type WorkOutcome
   = WorkSucceeded { identity: String, outputs: List<WorkOutput>, log_path: String }
   | WorkFailed { identity: String, exit_code: Int, log_path: String }
   | WorkRefusedByInfrastructure { identity: String, cause: WorkInfrastructureRefusal }
-  | WorkCancelled { identity: String }
+  | WorkCancelled { identity: String, detail: String }
   | WorkOutputMismatch { identity: String, detail: String }
 
 // Infrastructure refusals are typed and counted, never a widen: a producer already holds the lease
@@ -170,7 +176,7 @@ fn work_outcome_identity(o: WorkOutcome) -> String {
     WorkSucceeded { identity, outputs: _, log_path: _ } => identity
     WorkFailed { identity, exit_code: _, log_path: _ } => identity
     WorkRefusedByInfrastructure { identity, cause: _ } => identity
-    WorkCancelled { identity } => identity
+    WorkCancelled { identity, detail: _ } => identity
     WorkOutputMismatch { identity, detail: _ } => identity
   }
 }
@@ -180,7 +186,7 @@ fn work_outcome_ending(o: WorkOutcome) -> String {
     WorkSucceeded { identity: _, outputs: _, log_path: _ } => "succeeded"
     WorkFailed { identity: _, exit_code: _, log_path: _ } => "failed"
     WorkRefusedByInfrastructure { identity: _, cause: _ } => "refused_by_infrastructure"
-    WorkCancelled { identity: _ } => "cancelled"
+    WorkCancelled { identity: _, detail: _ } => "cancelled"
     WorkOutputMismatch { identity: _, detail: _ } => "output_mismatch"
   }
 }
@@ -228,7 +234,9 @@ fn work_outcome_json(o: WorkOutcome, subject: WorkSubject, op: WorkOperation) ->
     WorkRefusedByInfrastructure { identity: _, cause } => [
       json_kv(key: "cause", value: json_string(s: work_refusal_detail(r: cause))),
     ]
-    WorkCancelled { identity: _ } => []
+    WorkCancelled { identity: _, detail } => [
+      json_kv(key: "detail", value: json_string(s: detail)),
+    ]
     WorkOutputMismatch { identity: _, detail } => [
       json_kv(key: "detail", value: json_string(s: detail)),
     ]

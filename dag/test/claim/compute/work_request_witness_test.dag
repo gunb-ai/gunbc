@@ -169,7 +169,7 @@ test fn the_attempt_completion_fact_is_not_the_works_ending() -> Bool {
   compute_attempt_completed(outcome: WorkSucceeded { identity: "a", outputs: [], log_path: "/l" })
     && compute_attempt_completed(outcome: WorkOutputMismatch { identity: "a", detail: "d" })
     && !compute_attempt_completed(outcome: WorkFailed { identity: "a", exit_code: 1, log_path: "/l" })
-    && !compute_attempt_completed(outcome: WorkCancelled { identity: "a" })
+    && !compute_attempt_completed(outcome: WorkCancelled { identity: "a", detail: "d" })
     && !compute_attempt_completed(outcome: WorkRefusedByInfrastructure { identity: "a", cause: HostComputeCapacityFull { wire: "pool-full" } })
 }
 

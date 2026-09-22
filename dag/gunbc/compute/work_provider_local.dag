@@ -711,7 +711,7 @@ fn compute_attempt_completed(outcome: WorkOutcome) -> Bool {
     WorkOutputMismatch { identity: _, detail: _ } => true
     WorkFailed { identity: _, exit_code: _, log_path: _ } => false
     WorkRefusedByInfrastructure { identity: _, cause: _ } => false
-    WorkCancelled { identity: _ } => false
+    WorkCancelled { identity: _, detail: _ } => false
   }
 }
 
@@ -1275,7 +1275,7 @@ fn compute_run_leased(
       LeasedRun { outcome: WorkRefusedByInfrastructure { identity: identity, cause: CheckoutUnavailable { detail: join(["git worktree add exited ", to_string(value: exit_code), ": ", stderr], "") } }, gate: opened }
     ComputeExecOk { stdout: _, stderr: _ } =>
       match compute_begin_launch(layout: layout, gate: opened) {
-        AttemptGateRefused { detail: d } => LeasedRun { outcome: WorkCancelled { identity: identity }, gate: AttemptGateRefused { detail: d } }
+        AttemptGateRefused { detail: d } => LeasedRun { outcome: WorkCancelled { identity: identity, detail: d }, gate: AttemptGateRefused { detail: d } }
         AttemptGateReady { record: rec2, generation: g2 } =>
           compute_spawn_and_collect(
             instance: instance, layout: layout, identity: identity, op: op, dependency_store: dependency_store,
