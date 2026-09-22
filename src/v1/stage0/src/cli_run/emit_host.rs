@@ -1999,9 +1999,6 @@ pub(crate) fn compile_dag_rust_emit_check_uncached(
     } else {
         match result.files.iter().find(|f| f.path == file_path) {
             Some(f) => {
-                if std::env::var("SFX_DBG").is_ok() {
-                    eprintln!("SFXFILE<<<\n{}\n>>>", f.content);
-                }
                 includes.iter().all(|n| f.content.contains(n.as_str()))
                     && excludes.iter().all(|n| !f.content.contains(n.as_str()))
             }
