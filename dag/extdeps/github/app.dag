@@ -83,6 +83,47 @@ type GitHubAppPermissionAccess
   = AppAccessRead
   | AppAccessWrite
 
+// WHICH SUBSET OF {read, write} A SURFACE ADMITS ON AN AXIS -- ONE SHAPE, BOUND BY SEVERAL TABLES.
+// This was minted twice: once here as List<GitHubAppPermissionAccess> for the App-manifest table,
+// and once in extdeps.github.actions_token as ActionsAccessSet for the GITHUB_TOKEN table. The
+// TABLES are legitimately independent (DESIGN 3 external upstream decomposition governs the rows,
+// which are different upstream facts about different surfaces); the SHAPE is not, and a second
+// representation of it is the failed decomposition DESIGN 2 names. A List also lost the
+// construction guarantee DESIGN 5 asks for first: it could spell [] and [AppAccessRead,
+// AppAccessRead], which are not access subsets. The closed sum cannot.
+//
+// ActionsAccessNotAvailable was the Actions surface's spelling of "admits neither", which is the
+// same fact as an axis that is not declarable there -- an axis admitting neither access cannot be
+// declared -- so lifting it loses no distinction.
+//
+// WHAT THIS DOES NOT UNIFY: the two tables' ANSWERS. axis_allowed_actions_access says id_token is
+// write-only ON THE ACTIONS TOKEN; that is not evidence about what the App-manifest validator
+// admits, and reading it as such would be exactly the promotion permission_axis_admitted_accesses
+// exists to refuse (DESIGN 4d).
+type GitHubAccessSet
+  = GitHubAccessReadOrWrite
+  | GitHubAccessWriteOnly
+  | GitHubAccessReadOnly
+  | GitHubAccessNeither
+
+fn github_access_set_admits(set: GitHubAccessSet, access: GitHubAppPermissionAccess) -> Bool {
+  match set {
+    GitHubAccessNeither => false
+    GitHubAccessReadOrWrite => match access {
+      AppAccessRead => true
+      AppAccessWrite => true
+    }
+    GitHubAccessWriteOnly => match access {
+      AppAccessRead => false
+      AppAccessWrite => true
+    }
+    GitHubAccessReadOnly => match access {
+      AppAccessRead => true
+      AppAccessWrite => false
+    }
+  }
+}
+
 type GitHubPermissionAxis
   = ActionsAxis
   | ArtifactMetadataAxis
@@ -641,15 +682,15 @@ data permission_axis_level_read_obligation: NonEmptyStr = "read a GitHub source 
 // that is a partiality of GitHubAppPermissionAccess, not of this table.
 
 type AxisAccessAdmission
-  = AxisAdmitsExactly { accesses: List<GitHubAppPermissionAccess>, authority: ExternalAuthority }
+  = AxisAdmitsExactly { set: GitHubAccessSet, authority: ExternalAuthority }
   | AxisAccessesUnread { read_obligation: NonEmptyStr }
 
 fn permission_axis_admitted_accesses(axis: GitHubPermissionAxis) -> AxisAccessAdmission {
   match axis {
     MetadataAxis =>
-      AxisAdmitsExactly { accesses: [AppAccessRead], authority: app_permissions_citation }
+      AxisAdmitsExactly { set: GitHubAccessReadOnly, authority: app_permissions_citation }
     WorkflowsAxis =>
-      AxisAdmitsExactly { accesses: [AppAccessWrite], authority: app_permissions_citation }
+      AxisAdmitsExactly { set: GitHubAccessWriteOnly, authority: app_permissions_citation }
     _ => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
   }
 }
@@ -667,8 +708,8 @@ fn permission_axis_access_verdict(
 ) -> AxisAccessVerdict {
   match permission_axis_admitted_accesses(axis: axis) {
     AxisAccessesUnread { read_obligation: o } => AxisAccessUnjudged { read_obligation: o }
-    AxisAdmitsExactly { accesses: xs, authority: auth } =>
-      if fold_list(xs: xs, empty: false, cons: fn(found, a) { found || a == access }) {
+    AxisAdmitsExactly { set: st, authority: auth } =>
+      if github_access_set_admits(set: st, access: access) {
         AxisAccessAdmitted { authority: auth }
       } else {
         AxisAccessRefusedByAuthority { authority: auth }
