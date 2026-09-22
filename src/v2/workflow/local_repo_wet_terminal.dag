@@ -242,17 +242,6 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // bin-witness wet class, whose standing excl_bin_wet_reason carries. Measured wet through
 // `gunbc run --claim-run` over this tree before enrollment: all ten held, and every metacharacter
 // probe failed without output rather than running its payload.
-// ONE CENSUS-IMAGE ROW IS NOT SCHEDULED, AND THE REASON IS ON MAIN, NOT HERE.
-// test.claim.mtcollins1_census_image_local_wet.the_rendered_program_runs_and_its_output_parses_by_real_execution
-// renders the census workload and runs it under a real shell; on the runners it observes failed on
-// every main merge-queue run since #11731 landed it (the rendered program's `test -f
-// .../gunbc-mtcollins1-census-...iso` finds no ISO in the ephemeral temp root), which the fail-open
-// floor reported green over. This lane realizes only ExpectedToHold, so under the sealed floor
-// (gunbc#11993) the row is withdrawn from the schedule rather than scheduled to disagree with its
-// terminal. That withdraws the route's last execution, which is a declared drop and not a note:
-// gunbc.rung_drop census_image_rendered_program_wet_row_withdrawn carries the previous and
-// temporary rung, the reason, the population and the return trigger; the chunk_20 expectation and
-// the exclusion-frontier row stay so the identity is a held route gap rather than an unenrolled one.
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
@@ -619,6 +608,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "the_historical_binding_holds_against_the_committed_capture_by_real_execution" },
       entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
       function: "the_historical_binding_holds_against_the_committed_capture_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "the_rendered_program_runs_and_its_output_parses_by_real_execution" },
+      entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
+      function: "the_rendered_program_runs_and_its_output_parses_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
