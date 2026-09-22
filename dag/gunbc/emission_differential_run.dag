@@ -1,6 +1,6 @@
 module gunbc.emission_differential_run
 
-import std.types { String, NonEmptyStr, Bool }
+import std.types { String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.semantic_conformance {
   DifferentialRecord, SubjectAuthorityBinding, AuthorityBound,
@@ -24,23 +24,50 @@ import gunbc.emission_differential_specimens { list_init_subject }
 // non-observation as an empty or missing payload would therefore read the defect as "this route did
 // not run" -- an Unclassified instead of a NativeV2Defect. Both block, so the gate would stay
 // honest, but the instrument would MISATTRIBUTE the failure to itself and the emitter would be
-// exonerated by a parsing decision. The kind is carried separately for exactly that reason, and an
-// unrecognized kind REFUSES rather than defaulting to any arm (DESIGN section 5: a failure arm must
-// refuse, never widen).
-fn observation_from_kind(kind: String, payload: String) -> ObservedResult {
-  if kind == "value" {
-    ProducedValue { digest: payload as NonEmptyStr }
+// exonerated by a parsing decision. The kind is carried separately for exactly that reason.
+//
+// THE KIND IS A COPRODUCT, NOT A STRING FROM A CLOSED SET CHECKED BY A PREDICATE. The first form of
+// this module carried the kind as a String, gave observation_from_kind an else arm returning NotRun,
+// and put the refusal in a separate membership predicate the entry called. That is validation
+// standing where construction was available (DESIGN section 5), and it fails open exactly where a
+// predicate can be skipped: every consumer that reaches the classifier without calling the predicate
+// -- which every witness claim did -- turned a mistyped token into NotRun, the misattribution the
+// paragraph above says the token exists to prevent. Raised as review 69884 finding 1.
+//
+// SO THE STRING IS PARSED ONCE, AT THE ONE BOUNDARY WHERE A STRING EXISTS AT ALL: argv. Past that
+// boundary no unrecognized kind is representable, observation_from_kind is a total match with no
+// else arm, and the predicate is gone rather than moved.
+type ObservationKind
+  = ObservedValueKind
+  | ObservedRefusalKind
+  | ObservationAbsentKind
+
+type ObservationKindParse
+  = KindRecognized { kind: ObservationKind }
+  | KindUnrecognized { token: String }
+
+fn parse_observation_kind(token: String) -> ObservationKindParse {
+  if token == "value" {
+    KindRecognized { kind: ObservedValueKind }
   } else {
-    if kind == "refused" {
-      RefusedWithDiagnostic { diagnostic_identity: payload as NonEmptyStr }
+    if token == "refused" {
+      KindRecognized { kind: ObservedRefusalKind }
     } else {
-      NotRun
+      if token == "notobserved" {
+        KindRecognized { kind: ObservationAbsentKind }
+      } else {
+        KindUnrecognized { token: token }
+      }
     }
   }
 }
 
-fn observation_kind_is_known(kind: String) -> Bool {
-  kind == "value" || kind == "refused" || kind == "notobserved"
+fn observation_from_kind(kind: ObservationKind, payload: String) -> ObservedResult {
+  match kind {
+    ObservedValueKind => ProducedValue { digest: payload as NonEmptyStr }
+    ObservedRefusalKind => RefusedWithDiagnostic { diagnostic_identity: payload as NonEmptyStr }
+    ObservationAbsentKind => NotRun
+  }
 }
 
 fn disposition_identity(disposition: ConformanceDisposition) -> String {
@@ -75,9 +102,9 @@ fn disposition_detail(disposition: ConformanceDisposition) -> String {
 // absent observation, because "we did not ask v1" and "v1 produced nothing" are different facts and
 // only one of them is a measurement.
 fn list_init_record(
-  native_kind: String,
+  native_kind: ObservationKind,
   native_payload: String,
-  eval_kind: String,
+  eval_kind: ObservationKind,
   eval_payload: String
 ) -> DifferentialRecord {
   DifferentialRecord {
@@ -90,9 +117,9 @@ fn list_init_record(
 }
 
 fn list_init_disposition(
-  native_kind: String,
+  native_kind: ObservationKind,
   native_payload: String,
-  eval_kind: String,
+  eval_kind: ObservationKind,
   eval_payload: String
 ) -> ConformanceDisposition {
   classify_differential_record(
@@ -106,36 +133,43 @@ fn list_init_disposition(
   )
 }
 
-// THE HUMAN-RUN ENTRY. Exit 0 only when the disposition does not block; every other outcome is a
-// located failure naming the disposition arm and its detail. An unknown observation kind refuses
-// before any classification happens, so a caller who mistypes a channel token gets a refusal rather
-// than a silent NotRun that would read as "the route did not run".
+// THE HUMAN-RUN ENTRY, AND THE ONLY PLACE A KIND IS A STRING. It parses both tokens before it
+// classifies anything, and an unrecognized token leaves as a located refusal naming the token it
+// received -- not as a NotRun that would read as "the route did not run". Past the two matches
+// below the kind is an ObservationKind, so no consumer downstream of here, witness or entry, can
+// reach the classifier with a kind that was never recognized.
+//
+// Exit 0 only when the disposition does not block; every other outcome is a located failure naming
+// the disposition arm and its detail.
 fn compare_list_init(
   native_kind: String,
   native_payload: String,
   eval_kind: String,
   eval_payload: String
 ) -> ProcessExit {
-  if !observation_kind_is_known(kind: native_kind) {
-    exit_failure(reason: concat("refused: unknown native observation kind '", native_kind, "' -- expected value, refused or notobserved"))
-  } else {
-    if !observation_kind_is_known(kind: eval_kind) {
-      exit_failure(reason: concat("refused: unknown evaluator observation kind '", eval_kind, "' -- expected value, refused or notobserved"))
-    } else {
-      let d = list_init_disposition(
-        native_kind: native_kind,
-        native_payload: native_payload,
-        eval_kind: eval_kind,
-        eval_payload: eval_payload
-      )
-      if disposition_blocks_cutover(disposition: d, route: EvaluatorOnPromotedRoute) {
-        exit_failure(reason: concat(
-          concat("BLOCKED ", disposition_identity(disposition: d)),
-          concat(": ", disposition_detail(disposition: d))
-        ))
-      } else {
-        ExitSuccess
+  match parse_observation_kind(token: native_kind) {
+    KindUnrecognized { token: t } =>
+      exit_failure(reason: concat("refused: unknown native observation kind '", t, "' -- expected value, refused or notobserved"))
+    KindRecognized { kind: native } =>
+      match parse_observation_kind(token: eval_kind) {
+        KindUnrecognized { token: t } =>
+          exit_failure(reason: concat("refused: unknown evaluator observation kind '", t, "' -- expected value, refused or notobserved"))
+        KindRecognized { kind: evaluator } => {
+          let d = list_init_disposition(
+            native_kind: native,
+            native_payload: native_payload,
+            eval_kind: evaluator,
+            eval_payload: eval_payload
+          )
+          if disposition_blocks_cutover(disposition: d, route: EvaluatorOnPromotedRoute) {
+            exit_failure(reason: concat(
+              concat("BLOCKED ", disposition_identity(disposition: d)),
+              concat(": ", disposition_detail(disposition: d))
+            ))
+          } else {
+            ExitSuccess
+          }
+        }
       }
-    }
   }
 }
