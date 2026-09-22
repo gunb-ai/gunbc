@@ -81,6 +81,9 @@ use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_operator_realization::HostRealizationReason::{
     GenericTypeParameter, HostContainer, KernelMintedType, UnnamedSynthesizedType,
 };
+use crate::std_operator_realization::OperandDemand::{
+    DemandsBothOperands, DemandsRightOnlyWhenLeftIs, DemandsRightOnlyWhenLeftIsAbsent,
+};
 use crate::std_operator_realization::OperandRealization::{
     HostNumericOperand, HostRealizedOperand, OperandIdentityUnavailable, StructuralOperand,
 };
@@ -89,11 +92,11 @@ use crate::std_operator_realization::OperatorRealization::{
 };
 use crate::std_operator_realization::OrderingTest::{OrderingIs, OrderingIsNot};
 pub use crate::std_operator_realization::{
-    operator_realization_for, operator_realization_refusal_message,
+    binop_label, operand_demand, operator_realization_for, operator_realization_refusal_message,
 };
 pub use crate::std_operator_realization::{
-    HostRealizationReason, OperandDeclaration, OperandRealization, OperandShapeFacts,
-    OperatorRealization, OrderingTest, StructuralOrderingBinding,
+    HostRealizationReason, OperandDeclaration, OperandDemand, OperandRealization,
+    OperandShapeFacts, OperatorRealization, OrderingTest, StructuralOrderingBinding,
 };
 pub use crate::std_primitive_projection::{
     primitive_identity_runtime_name, primitive_projection_row_for_declaration,
@@ -32556,7 +32559,7 @@ pub fn emit_typed_bin_op(
                         scope.clone(),
                     )
                 }
-                OperatorRealization::HostOperator => emit_rust_host_bin_op(
+                OperatorRealization::HostOperator => emit_rust_demanded_host_bin_op(
                     op.clone(),
                     algebra_field.clone(),
                     left.clone(),
@@ -32565,6 +32568,108 @@ pub fn emit_typed_bin_op(
                     r_str.clone(),
                     scope.clone(),
                 ),
+            }
+        }
+    }
+}
+
+pub fn rust_host_token_demands_both_operands(op: BinOp) -> bool {
+    match op.clone() {
+        BinOp::And => false,
+        BinOp::Or => false,
+        BinOp::NullCoalesce => false,
+        BinOp::Add => true,
+        BinOp::Sub => true,
+        BinOp::Mul => true,
+        BinOp::Div => true,
+        BinOp::Mod => true,
+        BinOp::Eq => true,
+        BinOp::Ne => true,
+        BinOp::Lt => true,
+        BinOp::Gt => true,
+        BinOp::Le => true,
+        BinOp::Ge => true,
+    }
+}
+
+pub fn emit_rust_demanded_host_bin_op(
+    op: BinOp,
+    algebra_field: Option<AlgebraFieldKind>,
+    left: Rc<Node>,
+    right: Rc<Node>,
+    l_str: String,
+    r_str: String,
+    scope: Rc<InferScope>,
+) -> String {
+    {
+        let token_demands_both = rust_host_token_demands_both_operands(op.clone());
+        match (*crate::std_operator_realization::operand_demand(op.clone())).clone() {
+            OperandDemand::DemandsBothOperands => {
+                if token_demands_both.clone() {
+                    emit_rust_host_bin_op(
+                        op.clone(),
+                        algebra_field.clone(),
+                        left.clone(),
+                        right.clone(),
+                        l_str.clone(),
+                        r_str.clone(),
+                        scope.clone(),
+                    )
+                } else {
+                    {
+                        let op_str = crate::v1_compiler_emit::emit_bin_op_symbol(
+                            op.clone(),
+                            RenderTarget::Rust,
+                            algebra_field.clone(),
+                        );
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            "{ let __dag_lhs = ".to_string(),
+                                            l_str.clone(),
+                                        ),
+                                        "; let __dag_rhs = ".to_string(),
+                                    ),
+                                    r_str.clone(),
+                                ),
+                                v1_rt::concat("; __dag_lhs ".to_string(), op_str.clone()),
+                            ),
+                            " __dag_rhs }".to_string(),
+                        )
+                    }
+                }
+            }
+            OperandDemand::DemandsRightOnlyWhenLeftIs { deciding: _, .. } => {
+                if token_demands_both.clone() {
+                    emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("operand demand: `".to_string(), crate::std_operator_realization::binop_label(op.clone())), "` declares its right operand conditional and the Rust token for it evaluates both, so no infix lowering is faithful (std.operator_realization operand_demand)".to_string()))
+                } else {
+                    emit_rust_host_bin_op(
+                        op.clone(),
+                        algebra_field.clone(),
+                        left.clone(),
+                        right.clone(),
+                        l_str.clone(),
+                        r_str.clone(),
+                        scope.clone(),
+                    )
+                }
+            }
+            OperandDemand::DemandsRightOnlyWhenLeftIsAbsent => {
+                if token_demands_both.clone() {
+                    emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("operand demand: `".to_string(), crate::std_operator_realization::binop_label(op.clone())), "` declares its right operand conditional on the left being absent and the Rust token for it evaluates both (std.operator_realization operand_demand)".to_string()))
+                } else {
+                    emit_rust_host_bin_op(
+                        op.clone(),
+                        algebra_field.clone(),
+                        left.clone(),
+                        right.clone(),
+                        l_str.clone(),
+                        r_str.clone(),
+                        scope.clone(),
+                    )
+                }
             }
         }
     }
