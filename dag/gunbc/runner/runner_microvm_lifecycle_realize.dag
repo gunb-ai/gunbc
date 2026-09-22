@@ -16,6 +16,12 @@ import extdeps.posix.test_utility {
   contained_existence,
 }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import extdeps.tools.gnu_coreutils { cat_command, rm_recursive_force_command }
+import extdeps.util_linux.umount { umount_command }
+import extdeps.linux.proc_self_mountinfo {
+  proc_self_mountinfo_path, mountinfo_line_parse,
+  ProcSelfMountinfoLineParse, MountinfoLineParsed, MountinfoLineRefused,
+}
 import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path,
   cgroup_v2_kill_path, cgroup_v2_kill_trigger_value, cgroup_v2_procs_interface_file, decode_cgroup_procs,
@@ -126,7 +132,7 @@ data runner_microvm_lifecycle_realize_disposition: Disposition = SingleAuthority
 // could not be taken, which is the distinction FactUnobservable exists to carry outward to an
 // operator.
 data attempt_cleanup_realization_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize's teardown, between stop_attempt and the resource-absence readbacks. TRIGGER: a cleanup realization that unmounts the attempt's mounts, deletes the credential device, the workspace and the attempt root, and flushes the slot's conntrack and neighbour entries, each with its own readback. SUFFICIENT FOR deleting this row and for retiring this module's stop-and-observe narrowing. NOT satisfied by a witness supplying absent readbacks, nor by a cleanup whose result is taken on the tool's word." as NonEmptyStr,
+  description: "AMENDED, NOT DELETED, AND THE REMAINDER IS THE WHOLE ROW. The storage half of the original trigger is DISCHARGED: clean_attempt unmounts the attempt's own mounts, deletes the credential device it checked is the attempt's and the attempt root that contains the jail, the workspace and the staged material, and each is proven by its own readback taken after the deletion -- MountsRemoved now off the kernel's mount table rather than off a directory's existence. WHAT REMAINS IS THE NETWORK HALF: the slot's conntrack and neighbour entries are NOT flushed, because they are keyed by a guest address the slot network would assign and that network exists on no host (slot_network_readings_producer_frontier, this module). A flush issued before that lane lands would be a flush of the HOST's shared tables under an attempt's name, which is the widening this row exists to prevent. TRIGGER: the slot network converged on a host, and a per-attempt flush of that attempt's conntrack and neighbour entries with its own readback. SUFFICIENT FOR deleting this row. NOT satisfied by a witness supplying absent readbacks, nor by a flush whose result is taken on the tool's word, nor by the storage half alone." as NonEmptyStr,
 )
 
 // ORIGINAL HEADER, KEPT BECAUSE ITS CLAIM IS STILL TRUE OF WHAT IS HERE:
@@ -591,6 +597,306 @@ fn force_stop_outcome_of_holding(asked: Bool, ask_detail: String, h: CgroupNotQu
   }
 }
 
+// --- the attempt's cleanup, between the stop and the readbacks ---
+
+// WHAT THIS SECTION ADDS IS THE ONLY HOST MUTATION TEARDOWN EVER HAD BESIDE THE KILL.
+//
+// Before it, teardown stopped the cell and then READ BACK resources that nothing had removed, so a
+// teardown could only ever report them present -- correct instruments pointed at a step that did
+// not exist, and every settled attempt quarantined on its own residue. gunbc.runner_microvm_lifecycle
+// owns the verdict and is unchanged by this: MountsRemoved, WritableLayersDeleted and SecretsRemoved
+// were already declared, already joined against the attempt, and already quarantine on a resource
+// that is present OR unreadable. What was missing was the removal they describe.
+//
+// THE SET IS THE ATTEMPT'S AND IS DERIVED, NEVER WIDENED. Two paths are removed: the attempt
+// directory, and the credential device the store recorded for this attempt. Everything else the
+// attempt staged lives UNDER the attempt directory by construction and goes with it --
+// gunbc.runner_microvm_attempt derives the jailer's chroot base as `<attempt dir>/jail`, and
+// gunbc.runner_attempt_launch derives the workspace image and the credential device under that jail
+// root. So the frontier's "the credential device, the workspace and the attempt root" is three names
+// for a containment tree with two roots, and the readbacks still prove each separately.
+//
+// THE CREDENTIAL DEVICE IS THE ONE PATH THIS CONTROLLER DID NOT DERIVE, so it is the one that is
+// CHECKED rather than trusted. It arrives on the store record, and a recursive delete of a path a
+// decoded document supplied is the worst effect in this module: a record naming `/` would have the
+// controller remove the host. It is deleted only when it is at or under the attempt directory this
+// controller derived -- which is where the planner puts it -- and otherwise refused, with the
+// refusal quarantining rather than removing something else instead.
+//
+// AND SHARED HOST STATE IS NOT TOUCHED. The conntrack and neighbour flush the frontier also names is
+// NOT performed here and is not silently dropped: those entries are keyed by the guest address, the
+// slot network that assigns one exists on no host (slot_network_readings_producer_frontier), and a
+// flush issued before that lane lands would be a flush of the HOST's shared tables under an
+// attempt's name. The frontier row is amended for that remainder rather than deleted.
+
+data attempt_cleanup_unmount_round_bound: Int = 8
+
+// ORDERING IS A DATA DEPENDENCY AND NOTHING ELSE, which is why every step below takes the previous
+// step's value as an argument and ignores it. This substrate is a pure dependency graph: two effects
+// with no path between them have no declared order, and `std` carries no effect-sequencing authority
+// (workflow_effect_sequencing_frontier, declared in this module). run_staged_after is the existing
+// shape for chaining one command behind another; this is its sibling for chaining the FIRST command
+// behind the stop, so the cleanup cannot be evaluated before the cell was stopped.
+//
+// WHAT WAS REJECTED HERE, because it is the shape that suggests itself: manufacturing a
+// ProcessOutcome from the stop by running some throwaway command, so that run_staged_after could be
+// reused unchanged. That is an effect executed for its position in the graph rather than for
+// anything it does -- work the host pays for that no consumer reads -- and it hides the sequencing
+// gap instead of naming it.
+fn run_staged_after_stop(after: TeardownStop, command: ArgvCommand) -> ProcessOutcome
+  uses net: Network
+{
+  run_shell_command_capture(command: command, transport: LocalExec)
+}
+
+type MountTableReading
+  = MountTableRead { mount_points: List<NonEmptyStr> }
+  | MountTableUnread { reason: NonEmptyStr }
+
+// THE READING AND THE CHAIN TRAVEL TOGETHER, because the next step needs both: the verdict needs
+// what survived, and the ordering needs the outcome the last unmount produced. Returning only the
+// reading would leave the credential delete with nothing to depend on.
+type MountCleanup { reading: MountTableReading, staged: ProcessOutcome }
+
+fn mount_table_of_outcome(outcome: ProcessOutcome) -> MountTableReading {
+  match outcome {
+    ProcessRefused { exit_code: c, stderr: e } =>
+      MountTableUnread {
+        reason: join([
+          "reading ", proc_self_mountinfo_path as String, " exited ", to_string(i: c), ": ", e,
+        ], "") as NonEmptyStr,
+      }
+    ProcessOutputAbsent =>
+      MountTableUnread {
+        reason: join(["reading ", proc_self_mountinfo_path as String, " produced no output"], "") as NonEmptyStr,
+      }
+    ProcessOutputPresent { text: body } => mount_table_of_body(body: body)
+  }
+}
+
+// A LINE THIS MODULE CANNOT PARSE MAKES THE WHOLE READING UNREADABLE, and skipping it would be the
+// absorbing fallback in its quietest form: the line that fails to parse is exactly as likely to be
+// the attempt's mount as any other, and dropping it reports a SMALLER surviving set than was read.
+// Unreadable quarantines; a silently short list releases.
+fn mount_table_of_body(body: String) -> MountTableReading {
+  let parses = map(
+    filter(split(s: body, delimiter: "\n"), l => trim(s: l) != ""),
+    l => mountinfo_line_parse(fields: filter(split(s: trim(s: l), delimiter: " "), f => f != "")),
+  )
+  match filter(parses, p => mountinfo_parse_is_refused(p: p)).first() {
+    Present { value: _ } =>
+      MountTableUnread {
+        reason: join([proc_self_mountinfo_path as String, " carried a line this model does not parse"], "") as NonEmptyStr,
+      }
+    Absent => MountTableRead { mount_points: mount_points_of_parses(parses: parses) }
+  }
+}
+
+fn mountinfo_parse_is_refused(p: ProcSelfMountinfoLineParse) -> Bool {
+  match p {
+    MountinfoLineParsed { mount_point: _ } => false
+    MountinfoLineRefused { cause: _ } => true
+  }
+}
+
+fn mount_points_of_parses(parses: List<ProcSelfMountinfoLineParse>) -> List<NonEmptyStr> {
+  fold(parses, init: [] as List<NonEmptyStr>, f: (acc, p) =>
+    match p {
+      MountinfoLineParsed { mount_point: mp } => concat(acc, [mp])
+      MountinfoLineRefused { cause: _ } => acc
+    })
+}
+
+// AT OR UNDER, NEVER A BARE PREFIX TEST. `/run/a` is not under `/run/ab`, and `starts_with` alone
+// says it is. The separator is what makes the second path a CHILD rather than a sibling whose name
+// happens to begin the same way.
+fn path_is_at_or_under(path: String, root: String) -> Bool {
+  root != "" && (path == root || path.starts_with(join([root, "/"], "")))
+}
+
+fn attempt_owned_mount_points(points: List<NonEmptyStr>, attempt_root: String) -> List<NonEmptyStr> {
+  filter(points, p => path_is_at_or_under(path: p as String, root: attempt_root))
+}
+
+fn attempt_mount_table_of(outcome: ProcessOutcome, attempt_root: String) -> MountTableReading {
+  match mount_table_of_outcome(outcome: outcome) {
+    MountTableUnread { reason: r } => MountTableUnread { reason: r }
+    MountTableRead { mount_points: ps } =>
+      MountTableRead { mount_points: attempt_owned_mount_points(points: ps, attempt_root: attempt_root) }
+  }
+}
+
+// ONE ROUND DETACHES EVERY MOUNT THE TABLE NAMED AND THE NEXT ROUND RE-READS IT, which is how a
+// NESTED mount comes off without this module sorting paths by depth. umount(8) refuses a mount point
+// that still has a mount under it, so a round peels the innermost layer and leaves the rest; the
+// fixpoint is reached when the attempt owns no mount, and the bound keeps the recursion forward. A
+// set still non-empty at the bound is REPORTED still non-empty -- not retried harder, not reported
+// clean, and never detached with umount(8)'s recursive or lazy flags, which extdeps.util_linux.umount
+// declines to model for exactly this reason.
+fn unmount_attempt_mounts(staged: ProcessOutcome, attempt_root: String, rounds_remaining: Int) -> MountCleanup
+  uses net: Network
+{
+  let reading = attempt_mount_table_of(outcome: staged, attempt_root: attempt_root)
+  match reading {
+    MountTableUnread { reason: r } => MountCleanup { reading: MountTableUnread { reason: r }, staged: staged }
+    MountTableRead { mount_points: ps } =>
+      if (ps |> count) == 0 || rounds_remaining <= 0 {
+        MountCleanup { reading: reading, staged: staged }
+      } else {
+        unmount_attempt_mounts(
+          staged: read_mount_table_after(after: unmount_each(after: staged, points: ps)),
+          attempt_root: attempt_root,
+          rounds_remaining: rounds_remaining - 1,
+        )
+      }
+  }
+}
+
+fn unmount_each(after: ProcessOutcome, points: List<NonEmptyStr>) -> ProcessOutcome
+  uses net: Network
+{
+  fold(points, init: after, f: (acc, p) =>
+    run_staged_after(after: acc, command: umount_command(mount_point: p as String)))
+}
+
+fn read_mount_table_after(after: ProcessOutcome) -> ProcessOutcome
+  uses net: Network
+{
+  run_staged_after(after: after, command: cat_command(path: proc_self_mountinfo_path as String))
+}
+
+// THE SURVIVING MOUNT SET IS THE MountsRemoved READING, and it replaces one that answered a
+// different question. Before this change MountsRemoved was read off the EXISTENCE OF THE JAIL
+// DIRECTORY -- a directory being gone is evidence about storage, not about the kernel's mount table,
+// and the two come apart in both directions: a mount can survive a removed directory entry, and an
+// empty directory that was never mounted reads present. The fact's own name says which interface
+// answers it (DESIGN section 6b: the earliest unjustified boundary was the reading, not the verdict).
+fn mounts_removed_readback(m: MountTableReading) -> ResourceReadback {
+  match m {
+    MountTableUnread { reason: r } => ResourceUnreadable { reason: r }
+    MountTableRead { mount_points: ps } =>
+      match ps.first() {
+        Absent => ResourceAbsent
+        Present { value: p } =>
+          ResourcePresent {
+            detail: join([
+              to_string(i: (ps |> count)), " mount points survive under the attempt, first ", p as String,
+            ], "") as NonEmptyStr,
+          }
+      }
+  }
+}
+
+// THE DELETION IS ASKED FOR AND THE READBACK ANSWERS, and this module never reads the delete's own
+// exit code as the outcome. `rm -rf` exits zero for a path that was already gone and can exit zero
+// having removed only part of a tree it could not traverse, so its status separates neither of the
+// two cases a release depends on. observe_resource_absence, which asks the parent too, establishes
+// absence.
+type AttemptDeletion { path: String, staged: ProcessOutcome }
+
+fn delete_attempt_path(after: ProcessOutcome, path: String) -> AttemptDeletion
+  uses net: Network
+{
+  AttemptDeletion {
+    path: path,
+    staged: run_staged_after(after: after, command: rm_recursive_force_command(path: path)),
+  }
+}
+
+// A RECORDED PATH OUTSIDE THE ATTEMPT IS NOT DELETED AND IS NOT IGNORED. Nothing is removed, and the
+// readback below reports the path as unreadable-by-refusal, which quarantines the slot. Reporting it
+// absent would release a cell whose credential device is still on the host; deleting it anyway would
+// let a decoded document choose what this controller removes.
+type CredentialDeviceCleanup
+  = CredentialDeviceDeleted { deletion: AttemptDeletion }
+  | CredentialDeviceOutsideAttempt { path: String, attempt_root: String }
+
+fn clean_credential_device(after: ProcessOutcome, path: String, attempt_root: String) -> CredentialDeviceCleanup
+  uses net: Network
+{
+  if path_is_at_or_under(path: path, root: attempt_root) {
+    CredentialDeviceDeleted { deletion: delete_attempt_path(after: after, path: path) }
+  } else {
+    CredentialDeviceOutsideAttempt { path: path, attempt_root: attempt_root }
+  }
+}
+
+fn credential_device_readback(c: CredentialDeviceCleanup) -> ResourceReadback
+  uses net: Network
+{
+  match c {
+    CredentialDeviceDeleted { deletion: d } => observe_resource_absence_after(after: d.staged, path: d.path)
+    CredentialDeviceOutsideAttempt { path: p, attempt_root: root } =>
+      ResourceUnreadable {
+        reason: join([
+          "the recorded credential device ", p, " is not at or under this attempt's directory ", root,
+          ", so it was not deleted and this controller cannot report it removed",
+        ], "") as NonEmptyStr,
+      }
+  }
+}
+
+// THE READBACK TAKES THE DELETION'S OUTCOME FOR THE ORDER, and inspects it for ONE thing only: a
+// deletion that could not be ASKED FOR at all. A refused command means no `rm` ran, so the path's
+// state is whatever it was -- reading it as absent would be reading the ground, not the cleanup.
+// Every other outcome hands the question to observe_resource_absence, because a `rm` that RAN says
+// nothing useful with its exit code (see delete_attempt_path).
+fn observe_resource_absence_after(after: ProcessOutcome, path: String) -> ResourceReadback
+  uses net: Network
+{
+  match after {
+    ProcessRefused { exit_code: c, stderr: e } =>
+      ResourceUnreadable {
+        reason: join([
+          "the deletion of ", path, " could not be asked for, exit ", to_string(i: c), ": ", e,
+        ], "") as NonEmptyStr,
+      }
+    ProcessOutputAbsent => observe_resource_absence(path: path)
+    ProcessOutputPresent { text: _ } => observe_resource_absence(path: path)
+  }
+}
+
+// THE WHOLE CLEANUP FOR ONE ATTEMPT, ORDERED BY ITS OWN DATA. It takes the stop, so it cannot be
+// evaluated before the cell was stopped -- the same dependency observe_slot_network_after_stop takes
+// for the same reason -- and every step inside takes the previous step's outcome.
+type AttemptCleanup {
+  attempt_root: String
+  mounts: MountTableReading
+  credential: CredentialDeviceCleanup
+  attempt_storage: AttemptDeletion
+}
+
+fn clean_attempt(after: TeardownStop, attempt_root: String, credential_device_path: String) -> AttemptCleanup
+  uses net: Network
+{
+  let mounts = unmount_attempt_mounts(
+    staged: run_staged_after_stop(after: after, command: cat_command(path: proc_self_mountinfo_path as String)),
+    attempt_root: attempt_root,
+    rounds_remaining: attempt_cleanup_unmount_round_bound,
+  )
+  let credential = clean_credential_device(
+    after: mounts.staged,
+    path: credential_device_path,
+    attempt_root: attempt_root,
+  )
+  AttemptCleanup {
+    attempt_root: attempt_root,
+    mounts: mounts.reading,
+    credential: credential,
+    attempt_storage: delete_attempt_path(
+      after: credential_cleanup_outcome(after: mounts.staged, c: credential),
+      path: attempt_root,
+    ),
+  }
+}
+
+fn credential_cleanup_outcome(after: ProcessOutcome, c: CredentialDeviceCleanup) -> ProcessOutcome {
+  match c {
+    CredentialDeviceDeleted { deletion: d } => d.staged
+    CredentialDeviceOutsideAttempt { path: _, attempt_root: _ } => after
+  }
+}
+
 // --- the teardown observation, assembled for one bound attempt ---
 
 // THE ATTEMPT'S INVOCATION ID IS CARRIED INTO THE UNIT AND READ BACK OUT OF IT, AND THE FIRST CUT
@@ -721,17 +1027,20 @@ fn perform_teardown_and_observe(
   let slice = fabric_cell_slice_name(slot: attempt.slot) as NonEmptyStr
   let invocation = observe_unit_attempt_invocation(unit: unit)
   let outcome = stop_attempt(unit: unit, slice: slice)
-  let jail = runner_microvm_attempt_jail_base(attempt: attempt)
   let dir = runner_microvm_attempt_dir(attempt: attempt)
   let drive = bound.attempt.credential_device_path
+  let cleanup = clean_attempt(after: outcome, attempt_root: dir, credential_device_path: drive)
   ObservedTeardown {
     host: attempt.slot.host as String,
     generation: bound.generation,
     stop: ObservedStop { unit: unit, invocation_id: invocation, outcome: outcome },
     cgroup: ObservedCgroup { root: slice, readback: observe_cgroup_subtree(slice: slice) },
-    mounts: ObservedPath { path: jail, readback: observe_resource_absence(path: jail) },
-    attempt_storage: ObservedPath { path: dir, readback: observe_resource_absence(path: dir) },
-    credential_disk: ObservedPath { path: drive, readback: observe_resource_absence(path: drive) },
+    mounts: ObservedPath { path: cleanup.attempt_root, readback: mounts_removed_readback(m: cleanup.mounts) },
+    attempt_storage: ObservedPath {
+      path: cleanup.attempt_storage.path,
+      readback: observe_resource_absence_after(after: cleanup.attempt_storage.staged, path: cleanup.attempt_storage.path),
+    },
+    credential_disk: ObservedPath { path: drive, readback: credential_device_readback(c: cleanup.credential) },
     network: observe_slot_network_after_stop(subject: subject, after: outcome),
   }
 }

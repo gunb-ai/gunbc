@@ -14,6 +14,13 @@ import gunbc.runner_microvm_lifecycle {
 import gunbc.runner_microvm_lifecycle_realize {
   StopQuiescence, CgroupQuiet, CgroupStillHolding, CgroupNotQuiet, CgroupHoldsTasks, CgroupHoldReadFailed,
   force_stop_outcome_after_ask, absence_of_containment, parent_directory_of,
+  MountTableReading, MountTableRead, MountTableUnread,
+  path_is_at_or_under, attempt_owned_mount_points, mount_table_of_body, mounts_removed_readback,
+}
+import extdeps.linux.proc_self_mountinfo {
+  mountinfo_line_parse, ProcSelfMountinfoLineParse, MountinfoLineParsed, MountinfoLineRefused,
+  MountinfoLineTooFewFields, MountinfoLineMissingSeparator, MountinfoLineEmptyMountPoint,
+  ProcSelfMountinfoLineRefusal,
 }
 
 // THE REALIZE MODULE'S PURE FOLDS, CLAIMED WITHOUT A HOST.
@@ -123,4 +130,114 @@ test fn containment_only_governs_the_false_reading() -> Bool {
 test fn the_parent_of_an_attempt_path_is_its_directory() -> Bool {
   parent_directory_of(path: "/srv/gunbc/cells/srv1-07/attempts/w-42") == "/srv/gunbc/cells/srv1-07/attempts"
     && parent_directory_of(path: "/srv") == "/"
+}
+
+
+// --- the cleanup's deciding folds, claimed without a host ---
+
+// `/run/a` IS NOT UNDER `/run/ab`, AND THIS IS THE WHOLE CLAIM. A bare `starts_with` says it is, and
+// the consequence is not cosmetic in either direction the predicate is used: it decides which mount
+// points this controller detaches and whether a store-recorded credential device is deleted at all.
+// A sibling slot whose name extends this one's would have its mounts torn down by this attempt.
+test fn a_sibling_whose_name_extends_the_root_is_not_under_it() -> Bool {
+  path_is_at_or_under(path: "/srv/gunbc/attempts/w-4", root: "/srv/gunbc/attempts/w-42") == false
+    && path_is_at_or_under(path: "/srv/gunbc/attempts/w-420", root: "/srv/gunbc/attempts/w-42") == false
+    && path_is_at_or_under(path: "/srv/gunbc/attempts/w-42", root: "/srv/gunbc/attempts/w-42")
+    && path_is_at_or_under(path: "/srv/gunbc/attempts/w-42/jail", root: "/srv/gunbc/attempts/w-42")
+}
+
+// AN EMPTY ROOT MATCHES NOTHING, because the alternative is that every path on the host is "under"
+// it -- the widest possible delete set arrived at by an unset field.
+test fn an_empty_attempt_root_owns_no_path() -> Bool {
+  path_is_at_or_under(path: "/", root: "") == false
+    && path_is_at_or_under(path: "/srv/gunbc/attempts/w-42", root: "") == false
+}
+
+fn mountinfo_fields_of(line: String) -> List<String> {
+  filter(split(s: line, delimiter: " "), f => f != "")
+}
+
+fn mountinfo_mount_point_label(line: String) -> String {
+  match mountinfo_line_parse(fields: mountinfo_fields_of(line: line)) {
+    MountinfoLineParsed { mount_point: mp } => mp as String
+    MountinfoLineRefused { cause: c } => mountinfo_refusal_label(cause: c)
+  }
+}
+
+fn mountinfo_refusal_label(cause: ProcSelfMountinfoLineRefusal) -> String {
+  match cause {
+    MountinfoLineTooFewFields => "too-few-fields"
+    MountinfoLineMissingSeparator => "missing-separator"
+    MountinfoLineEmptyMountPoint => "empty-mount-point"
+  }
+}
+
+// THE MOUNT POINT IS FIELD FIVE FROM THE LEFT AND THE OPTIONAL FIELDS ARE WHY THAT MATTERS. The two
+// lines below differ ONLY by an optional field (`shared:1`) before the separator, and proc(5) admits
+// zero or more of them. A reading that counted from the RIGHT -- which is tempting, because the
+// three post-separator fields are fixed -- returns the mount point for the first line and something
+// else for the second, so a claim over one line alone cannot tell the two implementations apart.
+test fn the_mount_point_survives_an_optional_field() -> Bool {
+  mountinfo_mount_point_label(line: "36 35 98:0 / /srv/gunbc/attempts/w-42/jail rw,noatime - ext4 /dev/root rw") == "/srv/gunbc/attempts/w-42/jail"
+    && mountinfo_mount_point_label(line: "36 35 98:0 / /srv/gunbc/attempts/w-42/jail rw,noatime shared:1 - ext4 /dev/root rw") == "/srv/gunbc/attempts/w-42/jail"
+}
+
+// A LINE WITHOUT THE SEPARATOR IS REFUSED RATHER THAN READ AT THE INDEX ANYWAY. Field five exists in
+// both of these -- the index would answer -- and the answer would be a mount point this model cannot
+// establish is a mount point.
+test fn a_line_the_model_cannot_locate_refuses() -> Bool {
+  mountinfo_mount_point_label(line: "36 35 98:0 / /mnt rw ext4 /dev/root rw x") == "missing-separator"
+    && mountinfo_mount_point_label(line: "36 35 98:0 / /mnt rw - ext4") == "too-few-fields"
+}
+
+fn mount_table_label(m: MountTableReading) -> String {
+  match m {
+    MountTableUnread { reason: _ } => "unread"
+    MountTableRead { mount_points: ps } => join(["read:", to_string(i: (ps |> count))], "")
+  }
+}
+
+data mountinfo_two_good_lines: String = "36 35 98:0 / /srv/gunbc/attempts/w-42/jail rw - ext4 /dev/root rw\n37 36 98:1 / /srv/gunbc/attempts/w-42/jail/run rw - tmpfs tmpfs rw\n"
+
+// ONE LINE THIS MODEL CANNOT PARSE MAKES THE WHOLE TABLE UNREADABLE, and this is the discriminating
+// case for the absorbing fallback: the obvious implementation skips the bad line and returns the two
+// good ones, which reads as a SHORTER surviving mount set than the host actually has. Unreadable
+// quarantines the slot; a short list releases it. The body below is the good body plus one truncated
+// line, so the two claims differ by exactly that line.
+test fn an_unparseable_line_makes_the_whole_table_unread() -> Bool {
+  mount_table_label(m: mount_table_of_body(body: mountinfo_two_good_lines)) == "read:2"
+    && mount_table_label(m: mount_table_of_body(body: join([mountinfo_two_good_lines, "38 36 98:2 /\n"], ""))) == "unread"
+}
+
+fn readback_label(r: ResourceReadback) -> String {
+  match r {
+    ResourceAbsent => "absent"
+    ResourcePresent { detail: _ } => "present"
+    ResourceUnreadable { reason: _ } => "unreadable"
+  }
+}
+
+// AN UNREADABLE MOUNT TABLE IS NOT AN EMPTY ONE. Both arms have "no mount points to report" in
+// common, and only one of them is evidence that no mount survived; collapsing them is the fail-open
+// this readback exists to prevent.
+test fn an_unread_mount_table_is_not_a_clean_one() -> Bool {
+  readback_label(r: mounts_removed_readback(m: MountTableRead { mount_points: [] as List<NonEmptyStr> })) == "absent"
+    && readback_label(r: mounts_removed_readback(m: MountTableUnread { reason: "/proc/self/mountinfo exited 1" as NonEmptyStr })) == "unreadable"
+    && readback_label(r: mounts_removed_readback(m: MountTableRead { mount_points: ["/srv/gunbc/attempts/w-42/jail" as NonEmptyStr] })) == "present"
+}
+
+// THE ATTEMPT OWNS ITS OWN SUBTREE AND NOTHING ELSE. The host's own mounts and a SIBLING attempt's
+// are both in this table, and a filter that kept either would have this controller detaching mounts
+// it does not own -- the widening the cleanup's own annotation refuses.
+test fn only_the_attempts_own_mounts_are_selected() -> Bool {
+  (attempt_owned_mount_points(
+    points: [
+      "/" as NonEmptyStr,
+      "/srv" as NonEmptyStr,
+      "/srv/gunbc/attempts/w-4" as NonEmptyStr,
+      "/srv/gunbc/attempts/w-42" as NonEmptyStr,
+      "/srv/gunbc/attempts/w-42/jail" as NonEmptyStr,
+    ],
+    attempt_root: "/srv/gunbc/attempts/w-42",
+  ) |> count) == 2
 }

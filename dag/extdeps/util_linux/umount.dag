@@ -1,0 +1,54 @@
+module extdeps.util_linux.umount
+
+import std.types { NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "man7.org/linux/man-pages/man8/umount.8.html",
+  }
+}
+
+// umount(8) from util-linux, the userspace detacher of a mounted filesystem. Only the plain
+// single-target form is modeled, because it is the only one whose meaning is a single attempt-owned
+// mount point.
+data umount_program: NonEmptyStr = "umount"
+
+// DELIBERATELY NOT MODELED, EACH FOR ONE REASON, so that reaching for one is a change here rather
+// than a flag appended at a call site.
+//
+// `-R` / `--recursive` detaches a mount point AND EVERY MOUNT BELOW IT. That reads like the right
+// thing for a tree of attempt mounts and is not: the set it acts on is whatever is nested at the
+// moment it runs, so a mount another principal made under the attempt's tree is detached by this
+// controller without the controller ever naming it. Enumerating the attempt's own mounts and
+// detaching each is the same work with the set stated (DESIGN section 5: a failure arm must refuse,
+// never widen).
+//
+// `-l` / `--lazy` DETACHES THE NAME AND LEAVES THE FILESYSTEM MOUNTED until its last user goes away.
+// Its whole purpose is to make the mount table say clean while the mount is still live, which is the
+// silent narrow a teardown readback exists to catch.
+//
+// `-f` / `--force` is for an unreachable NFS server and says nothing about a local attempt mount.
+// THE EXIT STATUS IS NOT THE READBACK. umount(8) exits nonzero for "not mounted" as well as for a
+// busy mount, and a caller that cannot tell those apart cannot tell a cleanup that was unnecessary
+// from one that failed. The surviving mount set, re-read after this command, is what establishes the
+// outcome.
+fn umount_command(mount_point: String) -> ArgvCommand {
+  argv_command(program: umount_program, arguments: [mount_point])
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.util_linux.umount",
+      decl_name: "umount_program",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}

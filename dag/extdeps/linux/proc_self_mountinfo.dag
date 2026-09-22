@@ -1,0 +1,78 @@
+module extdeps.linux.proc_self_mountinfo
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Https, Uri }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Int, List, NonEmptyStr, String }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "man7.org/linux/man-pages/man5/proc.5.html#/proc/pid/mountinfo",
+  }
+}
+
+data proc_self_mountinfo_path: NonEmptyStr = "/proc/self/mountinfo"
+
+// THE SEPARATOR IS WHAT MAKES THE LINE PARSABLE AT ALL, and it is the reason a fixed field index
+// is only safe up to it. proc(5) fixes fields 1-6 and then admits ZERO OR MORE optional fields
+// before a literal "-", after which three more follow. So the mount point is field 5 counted from
+// the LEFT (fixed side) and the filesystem type is the first field after the separator, counted
+// from it -- never a fixed index from the right.
+data proc_self_mountinfo_optional_field_separator: NonEmptyStr = "-"
+
+data proc_self_mountinfo_mount_point_field_index: Int = 4
+
+// THE SHORTEST ADMISSIBLE LINE has the six fixed fields, zero optional fields, the separator, and
+// the three post-separator fields: ten. A line with fewer is not a mountinfo line.
+data proc_self_mountinfo_minimum_field_count: Int = 10
+
+type ProcSelfMountinfoLineRefusal
+  = MountinfoLineTooFewFields
+  | MountinfoLineMissingSeparator
+  | MountinfoLineEmptyMountPoint
+
+type ProcSelfMountinfoLineParse
+  = MountinfoLineParsed { mount_point: NonEmptyStr }
+  | MountinfoLineRefused { cause: ProcSelfMountinfoLineRefusal }
+
+// THE MOUNT POINT IS READ IN ITS ENCODED FORM AND IS NOT DECODED HERE, which is a modelled
+// limitation rather than an oversight. The kernel writes space, tab, newline and backslash inside
+// a path as the octal escapes \040, \011, \012 and \134 (fs/proc_namespace.c show_mountinfo via
+// seq_path_root, whose escape set is " \t\n\\"). A consumer comparing this value against a path it
+// constructed is therefore comparing ENCODED against RAW, and the two agree exactly when the path
+// contains none of those four characters. That is the only comparison this module admits today, so
+// a mount point carrying an escape simply does not match -- it is never silently decoded into one
+// that does. A consumer whose subject paths can contain those characters needs a decoder, and that
+// decoder is this module's obligation when such a consumer exists, not before.
+fn mountinfo_line_parse(fields: List<String>) -> ProcSelfMountinfoLineParse {
+  if length(fields) < proc_self_mountinfo_minimum_field_count {
+    MountinfoLineRefused { cause: MountinfoLineTooFewFields }
+  } else {
+    match filter(fields, f => f == (proc_self_mountinfo_optional_field_separator as String)).first() {
+      Absent => MountinfoLineRefused { cause: MountinfoLineMissingSeparator }
+      Present { value: _ } =>
+        match fields.skip(n: proc_self_mountinfo_mount_point_field_index).first() {
+          Absent => MountinfoLineRefused { cause: MountinfoLineEmptyMountPoint }
+          Present { value: p } =>
+            if p == "" {
+              MountinfoLineRefused { cause: MountinfoLineEmptyMountPoint }
+            } else {
+              MountinfoLineParsed { mount_point: p as NonEmptyStr }
+            }
+        }
+    }
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.proc_self_mountinfo",
+      decl_name: "ProcSelfMountinfoLineParse",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
