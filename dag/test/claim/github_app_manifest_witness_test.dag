@@ -116,7 +116,6 @@ import gunbc.github_app_acquisition {
   AppAcquired,
   census_app_manifest,
   census_app_permissions,
-  census_app_default_events,
   census_app_name,
   AppRecordObserved,
   AppRecordAbsent,

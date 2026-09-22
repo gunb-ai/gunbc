@@ -51,7 +51,6 @@ import extdeps.github.app {
   GitHubAppHookAttributes,
   AppPublic,
   GitHubWebhookEvent,
-  WebhookInstallationRepositories,
   GitHubAppRegistrationTarget,
   RegisterUnderOrganization,
   AppManifestSubmissionDocument,
