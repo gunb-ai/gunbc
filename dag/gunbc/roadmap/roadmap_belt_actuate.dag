@@ -3569,6 +3569,7 @@ fn belt_tick_result_json_value(t: BeltTickResult) -> JsonValue {
     json_kv(key: "teardown_outcomes", value: json_array(elements: t.teardown_outcomes |> map(o => belt_teardown_outcome_json(o: o)))),
     json_kv(key: "verified", value: json_int(n: belt_tick_verify_recorded_count(t: t))),
     json_kv(key: "verify_outcomes", value: json_array(elements: t.verify_outcomes |> map(o => belt_verify_outcome_json(o: o)))),
+    json_kv(key: "commit_poisoned", value: json_int(n: belt_tick_commit_poisoned_count(t: t))),
     json_kv(key: "commit_outcomes", value: json_array(elements: t.commit_outcomes |> map(o => belt_commit_outcome_json_value(o: o)))),
     json_kv(key: "publish_outcomes", value: json_array(elements: t.publish_outcomes |> map(o => belt_publish_outcome_json_value(o: o)))),
     json_kv(key: "review_outcomes", value: json_array(elements: t.review_outcomes |> map(o => belt_review_outcome_json(o: o)))),
@@ -3610,6 +3611,22 @@ fn belt_verify_outcome_json(o: BeltVerifyOutcome) -> JsonValue {
         json_kv(key: "detail", value: json_string(s: cause)),
       ])
   }
+}
+
+// A POISONED CAPTURE IS COUNTED BESIDE ITS SIBLINGS' VERDICTS, never instead of them: the number
+// is how many attempts this tick classified capture-poisoned (durable refusal, see
+// BeltScmCapture), the row a human repairs against. Like the verify counts below, the number is
+// the obligation's frequency, not a quality metric.
+fn belt_tick_commit_poisoned_count(t: BeltTickResult) -> Int {
+  count(t.commit_outcomes |> filter(o => match o {
+    CommitCapturePoisoned { node_id: _, detail: _ } => true
+    CommitRecorded { node_id: _, message: _ } => false
+    CandidateCaptured { node_id: _, head_sha: _, message: _ } => false
+    CommitSkipped { node_id: _, reason: _ } => false
+    CommitFailed { node_id: _, detail: _ } => false
+    CommitDeferred { node_id: _, reason: _ } => false
+    CommitSubjectUnaddressable { node_id: _, reason: _ } => false
+  }))
 }
 
 // The tick counts verdicts RECORDED, never verdicts passed: four refusals recorded is the job done
@@ -4592,11 +4609,22 @@ fn belt_workflow_progress_for_attempt_ref(
 // fail the pass, because that is the absorbing arm: one unaddressable legacy row blocking every
 // other attempt forever is strictly worse than the row itself, and it is what kept the pipeline
 // severed. Typed, located, counted, siblings continue.
+//
+// THE SAME ABSORBING ARM, ONE LAYER DEEPER: CommitCapturePoisoned is the durable refusal of the
+// candidate's SCM capture (see BeltScmCapture) rendered as an outcome. One attempt whose capture
+// states a durable fact -- its project is owned by no single arc, its base freezes nothing, its
+// store is damaged -- must not fail the whole commit pass on every tick until a human intervenes;
+// that is the pass-killing failure the 2026-09-21 incident kept paying (commit_pass "one or more
+// attempt worktrees could not be committed" on every tick, verify deferred forever behind it).
+// Like the unaddressable arm it is typed, located, persisted per attempt, counted in the tick
+// result, and its siblings continue; a transient capture refusal stays CommitFailed, because an
+// infra arm that may clear by next tick must stay loud.
 type BeltCommitOutcome
   = CommitRecorded { node_id: String, message: String }
   | CandidateCaptured { node_id: String, head_sha: String, message: String }
   | CommitSkipped { node_id: String, reason: String }
   | CommitFailed { node_id: String, detail: String }
+  | CommitCapturePoisoned { node_id: String, detail: String }
   | CommitDeferred { node_id: String, reason: String }
   | CommitSubjectUnaddressable { node_id: String, reason: String }
 
@@ -4860,9 +4888,18 @@ fn belt_scm_project_entry_name(project_key: String) -> String {
   join([project_key, ".gunbc-repository.json"], "")
 }
 
+// A CAPTURE VERDICT, WITH THE REFUSAL'S DURABILITY CARRIED AT BIRTH. ScmCaptureRefused is a
+// TRANSIENT arm: the same tick's retry, or the next tick's, can succeed (an exec failure, an
+// unreadable file, a full disk). ScmCapturePoisoned is a DURABLE arm: the refusal states a fact
+// about the attempt, its subject, or the store that no retry can change -- a project no arc owns,
+// a base that freezes nothing, store or envelope damage, a staged tree identical to its base.
+// The distinction is born here, at each refusal site, because the site is the one authority on
+// what the refusal means; classifying later, from the detail string, would be a second authority
+// (DESIGN section 3) and the pass would be guessing.
 type BeltScmCapture
   = ScmCandidateCaptured { repository_path: String, commit_ordinal: Int }
   | ScmCaptureRefused { detail: String }
+  | ScmCapturePoisoned { detail: String }
 
 type BeltEnvelopeSource
   = EnvelopeReady { envelope: RepositoryEnvelope }
@@ -4957,9 +4994,13 @@ fn belt_scm_gather_base_texts(
   )
 }
 
+// THE STAGE VERDICT, SAME DURABILITY SPLIT: ManifestBuildRefused is transient (the gather's
+// bridge or read I/O), ManifestBuildPoisoned is durable (a base batch the store refuses, which
+// is store damage and survives every retry).
 type BeltManifestBuild
   = ManifestEntriesBuilt { store: ObjectStore, entries: List<CorpusManifestEntry> }
   | ManifestBuildRefused { detail: String }
+  | ManifestBuildPoisoned { detail: String }
 
 // THE INTAKE BASE IS THE SPAWN ORIGIN'S RECORDED SHA, never a moving ref. The dispatch writes the
 // origin (base_ref + base_sha) before the worker starts; a project envelope's base commit freezes
@@ -5017,7 +5058,7 @@ fn belt_scm_stage_base_tree(
     BaseTextsGathered { texts } =>
       match store_authored_sources_batch(store: store, texts: texts) {
         SourceBatchCollision { identity: _ } =>
-          ManifestBuildRefused {
+          ManifestBuildPoisoned {
             detail: "the object store refuses the base batch: a different source already holds a content identity, which is store damage",
           }
         SourcesBatched { store: next, sources } =>
@@ -5062,9 +5103,14 @@ fn belt_scm_entries_zip(paths: List<NonEmptyStr>, sources: List<AuthoredSourceOb
   ).entries
 }
 
+// THE SEED'S VERDICT CARRIES THE SAME DURABILITY SPLIT AS THE CAPTURE'S (see BeltScmCapture):
+// SeedRefused is transient (gather/exec/read/save I/O), SeedPoisoned is durable (store or
+// envelope damage, an unsatisfiable base). The seed is the capture's first half, so the split
+// is born here rather than re-classified where the seed's verdict joins the capture's.
 type BeltSeedOutcome
   = SeedReady { envelope: RepositoryEnvelope }
   | SeedRefused { detail: String }
+  | SeedPoisoned { detail: String }
 
 // SEED ONCE. The envelope holding any commit at all is already seeded -- the second candidate of a
 // project must never re-read the base tree. The seed is saved before the candidate work begins, so
@@ -5082,7 +5128,10 @@ fn belt_scm_envelope_seeded(
     SeedReady { envelope: envelope }
   } else {
     match belt_scm_base_sha_observe(instance: instance, node_id: node_id, attempt_key: attempt_key) {
-      BaseShaUnobserved { reason } => SeedRefused { detail: reason }
+      // THE SPAWN ORIGIN IS WRITTEN ONCE, BY THE DISPATCH THAT SPAWNED THIS ATTEMPT. No retry of
+      // the capture can create it for this attempt key; only a fresh dispatch can. That is durable
+      // for the attempt, so it poisons rather than refuses.
+      BaseShaUnobserved { reason } => SeedPoisoned { detail: reason }
       BaseShaObserved { base_sha } =>
         match belt_scm_stage_base_tree(
           instance: instance,
@@ -5092,12 +5141,13 @@ fn belt_scm_envelope_seeded(
           base_sha: base_sha,
         ) {
           ManifestBuildRefused { detail } => SeedRefused { detail: detail }
+          ManifestBuildPoisoned { detail } => SeedPoisoned { detail: detail }
           ManifestEntriesBuilt { store, entries } =>
             match store_corpus_manifest(store: store, entries: entries) {
               CorpusManifestDuplicatePath { path: p } =>
-                SeedRefused { detail: join(["the inventory named ", p as String, " twice"], "") }
+                SeedPoisoned { detail: join(["the inventory named ", p as String, " twice"], "") }
               CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
-                SeedRefused { detail: "the object store refuses the base manifest: a different manifest already holds its identity, which is store damage" }
+                SeedPoisoned { detail: "the object store refuses the base manifest: a different manifest already holds its identity, which is store damage" }
               CorpusManifestStored { store: with_manifest, manifest } =>
                 match commit_staged(
                   repository: RepositoryEnvelope {
@@ -5109,16 +5159,19 @@ fn belt_scm_envelope_seeded(
                   },
                   message: join(["project base: ", base_sha], ""),
                 ) {
+                  // THE MINT'S DURABLE REFUSALS. Given the same staged tree and store these
+                  // recompute to the same refusal every time, so retry buys nothing; the
+                  // save arms below them are I/O and stay transient.
                   StagedCommitCandidateRefused { cause: _ } =>
-                    SeedRefused { detail: "the base stage could not be compared against its base" }
+                    SeedPoisoned { detail: "the base stage could not be compared against its base" }
                   StagedCommitNothingToFreeze =>
-                    SeedRefused { detail: "the intake base froze nothing, so the project has no base to merge against" }
+                    SeedPoisoned { detail: "the intake base froze nothing, so the project has no base to merge against" }
                   StagedCommitAllocatorInvalid { next_ordinal } =>
-                    SeedRefused {
+                    SeedPoisoned {
                       detail: join(["the envelope's commit allocator is invalid (next ordinal ", to_string(next_ordinal), ")"], ""),
                     }
                   StagedCommitSourceUnrecoverable { cause: _ } =>
-                    SeedRefused { detail: "a staged base path's source is unrecoverable from the object store" }
+                    SeedPoisoned { detail: "a staged base path's source is unrecoverable from the object store" }
                   StagedCommitMinted { repository: seeded, reference: _ } =>
                     match save_repository(path: path, repo: seeded) {
                       RepositorySaved { path: _, written: _ } => SeedReady { envelope: seeded }
@@ -5164,7 +5217,7 @@ fn belt_scm_capture_candidate_tree(
 ) -> BeltScmCapture {
   match project_key_for_node(node_id: node_id as String, edges: declared_roadmap_edges()) {
     Absent =>
-      ScmCaptureRefused {
+      ScmCapturePoisoned {
         detail: "two or more arcs depend on this node, so its project cannot be derived from the dependency edges: the authority must name one owning arc before a candidate can be captured",
       }
     Present { value: project_key } =>
@@ -5204,7 +5257,7 @@ fn belt_scm_capture_candidate_tree(
             node_id: node_id,
             attempt_key: attempt_key,
           ) {
-            BaseShaUnobserved { reason } => ScmCaptureRefused { detail: reason }
+            BaseShaUnobserved { reason } => ScmCapturePoisoned { detail: reason }
             BaseShaObserved { base_sha } =>
           match belt_commit_git(instance: instance, worktree: worktree, args: worktree_base_inventory_args(base_sha: base_sha)) {
             ExecFailed { program, exit_code, stderr } =>
@@ -5221,7 +5274,9 @@ fn belt_scm_capture_candidate_tree(
             ExecOk { stdout } => {
               let paths = worktree_inventory_parse(stdout_nul: stdout)
               if count(paths) == 0 {
-                ScmCaptureRefused {
+                // THE RECORDED BASE IS A FACT ABOUT THE DISPATCH, not about this tick's I/O: an
+                // inventory that named zero files names zero files on every retry.
+                ScmCapturePoisoned {
                   detail: "the recorded base names zero files, so capturing against it would mint an empty tree as the worker's deliverable",
                 }
               } else {
@@ -5235,10 +5290,11 @@ fn belt_scm_capture_candidate_tree(
                   attempt_key: attempt_key,
                 ) {
                   SeedRefused { detail } => ScmCaptureRefused { detail: detail }
+                  SeedPoisoned { detail } => ScmCapturePoisoned { detail: detail }
                   SeedReady { envelope: seeded } =>
                     match belt_scm_root_commit_ref(envelope: seeded) {
                       Absent =>
-                        ScmCaptureRefused {
+                        ScmCapturePoisoned {
                           detail: "the project envelope holds commits but no root commit, so no candidate can descend from a shared base: envelope damage",
                         }
                       Present { value: base_ref } => {
@@ -5248,7 +5304,7 @@ fn belt_scm_capture_candidate_tree(
                           node_id: node_id,
                           attempt_key: attempt_key,
                         ) {
-                          BaseShaUnobserved { reason } => ScmCaptureRefused { detail: reason }
+                          BaseShaUnobserved { reason } => ScmCapturePoisoned { detail: reason }
                           BaseShaObserved { base_sha } =>
                             belt_scm_delta_capture(
                               instance: instance,
@@ -5358,15 +5414,15 @@ fn belt_scm_delta_capture(
 ) -> BeltScmCapture {
   match commit_at_reference(commits: seeded.commits, reference: base_ref) {
     Absent =>
-      ScmCaptureRefused { detail: "the seeded base commit is not a commit of its own envelope, which is envelope damage" }
+      ScmCapturePoisoned { detail: "the seeded base commit is not a commit of its own envelope, which is envelope damage" }
     Present { value: base_commit } =>
       match find_corpus_manifest_record(store: seeded.store, identity: base_commit.root.locator) {
         CorpusManifestAbsent { identity: _ } =>
-          ScmCaptureRefused { detail: "the seeded base's manifest is absent from the store" }
+          ScmCapturePoisoned { detail: "the seeded base's manifest is absent from the store" }
         CorpusManifestIsAuthoredSource { identity: _ } =>
-          ScmCaptureRefused { detail: "the seeded base's root is an authored source, which is store damage" }
+          ScmCapturePoisoned { detail: "the seeded base's root is an authored source, which is store damage" }
         CorpusManifestIsSemanticNode { identity: _ } =>
-          ScmCaptureRefused { detail: "the seeded base's root is a semantic node, which is store damage" }
+          ScmCapturePoisoned { detail: "the seeded base's root is a semantic node, which is store damage" }
         CorpusManifestFound(base_record) =>
           match belt_commit_git(
             instance: instance,
@@ -5412,11 +5468,13 @@ fn belt_scm_delta_capture(
                     f: (acc, change) => belt_scm_delta_fold_step(instance: instance, worktree: worktree, acc: acc, change: change),
                   )
                   match folded.refused {
+                    // A CHANGED PATH THAT CANNOT BE READ is this tick's I/O; the next tick reads
+                    // again, so it stays transient.
                     Present { value: detail } => ScmCaptureRefused { detail: detail }
                     Absent =>
                       match store_path_unique_manifest(store: folded.store, unique: folded.unique) {
                         UniqueManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
-                          ScmCaptureRefused {
+                          ScmCapturePoisoned {
                             detail: "the object store refuses the candidate manifest: a different manifest already holds its identity, which is store damage, not a capture",
                           }
                         UniqueManifestStored { store: with_manifest, manifest } =>
@@ -5430,23 +5488,26 @@ fn belt_scm_delta_capture(
                             },
                             message: message,
                           ) {
+                            // THE MINT'S DURABLE REFUSALS, the same classification the seed's mint
+                            // carries: identical-to-base, allocator damage, and unrecoverable
+                            // sources recompute to the same refusal on every retry.
                             StagedCommitCandidateRefused { cause: _ } =>
-                              ScmCaptureRefused {
+                              ScmCapturePoisoned {
                                 detail: "the SCM stage could not be compared against its base, so the capture was not minted",
                               }
                             StagedCommitNothingToFreeze =>
-                              ScmCaptureRefused {
+                              ScmCapturePoisoned {
                                 detail: "the declared candidate is identical to the intake base: there is no change to deliver, so there is no candidate to bind",
                               }
                             StagedCommitAllocatorInvalid { next_ordinal } =>
-                              ScmCaptureRefused {
+                              ScmCapturePoisoned {
                                 detail: join([
                                   "the project envelope's commit allocator is invalid (next ordinal ",
                                   to_string(next_ordinal), "), which is envelope damage, not a capture",
                                 ], ""),
                               }
                             StagedCommitSourceUnrecoverable { cause: _ } =>
-                              ScmCaptureRefused {
+                              ScmCapturePoisoned {
                                 detail: "a staged path's source is unrecoverable from the object store, so the candidate must not be published into history",
                               }
                             StagedCommitMinted { repository: with_candidate, reference } => {
@@ -5522,6 +5583,7 @@ fn belt_commit_capture_candidate(
     message: message as String,
   ) {
     ScmCaptureRefused { detail } => CommitFailed { node_id: node_id, detail: detail }
+    ScmCapturePoisoned { detail } => CommitCapturePoisoned { node_id: node_id, detail: detail }
     ScmCandidateCaptured { repository_path, commit_ordinal } =>
       match belt_commit_staged(instance: instance, worktree: worktree, message: message) {
         StagedCommitFailed { detail } => CommitFailed { node_id: node_id, detail: detail }
@@ -5599,6 +5661,8 @@ fn belt_commit_outcome_receipt(o: BeltCommitOutcome, attempt_key: String) -> Bel
       BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "skipped", detail: reason }
     CommitFailed { node_id, detail } =>
       BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "failed", detail: detail }
+    CommitCapturePoisoned { node_id, detail } =>
+      BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "capture-poisoned", detail: detail }
     CommitDeferred { node_id, reason } =>
       BeltCommitOutcomeReceipt { node_id: node_id, attempt_key: attempt_key, outcome: "deferred", detail: reason }
     CommitSubjectUnaddressable { node_id, reason } =>
@@ -5739,6 +5803,8 @@ fn belt_commit_outcome_json_value(o: BeltCommitOutcome) -> JsonValue {
       json_object(members: [json_kv(key: "outcome", value: json_string(s: "skipped")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
     CommitFailed { node_id, detail } =>
       json_object(members: [json_kv(key: "outcome", value: json_string(s: "failed")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "detail", value: json_string(s: detail))])
+    CommitCapturePoisoned { node_id, detail } =>
+      json_object(members: [json_kv(key: "outcome", value: json_string(s: "capture-poisoned")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "detail", value: json_string(s: detail))])
     CommitDeferred { node_id, reason } =>
       json_object(members: [json_kv(key: "outcome", value: json_string(s: "deferred")), json_kv(key: "node_id", value: json_string(s: node_id)), json_kv(key: "reason", value: json_string(s: reason))])
     CommitSubjectUnaddressable { node_id, reason } =>
@@ -5771,6 +5837,7 @@ fn belt_commit_outcome_is_failure(o: BeltCommitOutcome) -> Bool {
     CandidateCaptured { node_id: _, head_sha: _, message: _ } => false
     CommitSkipped { node_id: _, reason: _ } => false
     CommitFailed { node_id: _, detail: _ } => true
+    CommitCapturePoisoned { node_id: _, detail: _ } => false
     CommitDeferred { node_id: _, reason: _ } => false
     CommitSubjectUnaddressable { node_id: _, reason: _ } => false
   }
@@ -5782,6 +5849,7 @@ fn belt_commit_outcome_is_recorded(o: BeltCommitOutcome) -> Bool {
     CandidateCaptured { node_id: _, head_sha: _, message: _ } => true
     CommitSkipped { node_id: _, reason: _ } => false
     CommitFailed { node_id: _, detail: _ } => false
+    CommitCapturePoisoned { node_id: _, detail: _ } => false
     CommitDeferred { node_id: _, reason: _ } => false
     CommitSubjectUnaddressable { node_id: _, reason: _ } => false
   }
@@ -5794,8 +5862,24 @@ fn belt_commit_pass_outcome_from(outcomes: List<BeltCommitOutcome>) -> BeltPassO
     CandidateCaptured { node_id: _, head_sha: _, message: _ } => false
     CommitSkipped { node_id: _, reason: _ } => false
     CommitFailed { node_id: _, detail: _ } => false
+    CommitCapturePoisoned { node_id: _, detail: _ } => false
     CommitSubjectUnaddressable { node_id: _, reason: _ } => false
   })
+  // POISONED ATTEMPTS ARE SKIPS, NOT FAILURES: a durable capture refusal changes what the pass can
+  // report, never whether it failed. The pass defers honestly (nothing was committed for that
+  // attempt until its durable fact is repaired) and the tick result counts the poison separately —
+  // one bad attempt cannot hold the other attempts' verdict hostage, which is the failure the
+  // 2026-09-21 tick kept paying. A transient CommitFailed above still fails the pass, beside any
+  // number of poisoned siblings.
+  let poison_count = count(outcomes |> filter(o => match o {
+    CommitCapturePoisoned { node_id: _, detail: _ } => true
+    CommitRecorded { node_id: _, message: _ } => false
+    CandidateCaptured { node_id: _, head_sha: _, message: _ } => false
+    CommitSkipped { node_id: _, reason: _ } => false
+    CommitFailed { node_id: _, detail: _ } => false
+    CommitDeferred { node_id: _, reason: _ } => false
+    CommitSubjectUnaddressable { node_id: _, reason: _ } => false
+  }))
   if count(ledger_refusals) > 0 {
     match ledger_refusals.first() {
       Present { value: CommitDeferred { node_id: _, reason: r } } => BeltPassRefused { reason: r }
@@ -5805,6 +5889,14 @@ fn belt_commit_pass_outcome_from(outcomes: List<BeltCommitOutcome>) -> BeltPassO
     BeltPassFailed { reason: "one or more attempt worktrees could not be committed" }
   } else if any(outcomes, o => belt_commit_outcome_is_recorded(o: o)) {
     BeltPassRecorded
+  } else if poison_count > 0 {
+    BeltPassDeferred {
+      reason: join([
+        "no attempt needed a commit on this tick; ",
+        to_string(poison_count),
+        " attempt(s) are capture-poisoned and held for repair (see their commit-outcome receipts)",
+      ], ""),
+    }
   } else {
     BeltPassDeferred { reason: "no attempt needed a commit on this tick" }
   }
@@ -9126,6 +9218,10 @@ fn belt_publish_project_materialize(
         f: (acc, f) =>
           match acc {
             ScmCaptureRefused { detail: _ } => acc
+            // NO POISON IS BORN IN MATERIALIZATION (its refusals are all exec/write I/O), but the
+            // verdict type is shared, so a poisoned accumulator propagates as the terminal state
+            // it is rather than being reclassified transient.
+            ScmCapturePoisoned { detail: _ } => acc
             ScmCandidateCaptured { repository_path: _, commit_ordinal: _ } => {
               let write = Filesystem.Write(
                 path: join([worktree, "/", f.path as String], ""),
@@ -9145,6 +9241,7 @@ fn belt_publish_project_materialize(
           },
       ) {
         ScmCaptureRefused { detail } => ScmCaptureRefused { detail: detail }
+        ScmCapturePoisoned { detail } => ScmCapturePoisoned { detail: detail }
         ScmCandidateCaptured { repository_path: _, commit_ordinal: _ } =>
           ScmCandidateCaptured { repository_path: "", commit_ordinal: 0 }
       }
@@ -9239,6 +9336,8 @@ fn belt_publish_project_for_instance(
                                     CorpusRecovered { files } =>
                                       match belt_publish_project_materialize(instance: instance, worktree: worktree, files: files) {
                                         ScmCaptureRefused { detail } =>
+                                          PublishEvidenceUnreadable { node_id: node_id, detail: detail }
+                                        ScmCapturePoisoned { detail } =>
                                           PublishEvidenceUnreadable { node_id: node_id, detail: detail }
                                         ScmCandidateCaptured { repository_path: _, commit_ordinal: _ } =>
                                           match belt_commit_staged(

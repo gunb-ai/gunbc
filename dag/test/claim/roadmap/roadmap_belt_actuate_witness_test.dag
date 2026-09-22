@@ -67,10 +67,11 @@ import std.upsert_decision { ObservationVerdict, Converged }
 import gunbc.roadmap_belt_actuate { belt_tick_receipt_schema, belt_path_parent_dir }
 import gunbc.roadmap_belt_actuate {
   BeltCommitOutcome, CommitRecorded, CommitSkipped, CommitFailed, CommitDeferred,
-  CommitSubjectUnaddressable, CandidateCaptured,
+  CommitSubjectUnaddressable, CandidateCaptured, CommitCapturePoisoned,
   belt_commit_outcome_receipt, belt_commit_outcome_receipt_json,
   belt_commit_outcome_is_failure, belt_commit_outcome_is_recorded,
   belt_commit_pass_outcome_from, belt_commit_outcome_json_value,
+  belt_tick_commit_poisoned_count, belt_tick_result_json_value,
   BeltExecOutcome, ExecOk, ExecFailed, ExecRefused,
   belt_exec,
   belt_exec_all,
@@ -2372,4 +2373,95 @@ test fn the_candidate_receipt_names_the_captured_head() -> Bool {
   )
   r.outcome == "candidate-captured"
     && string_contains(s: r.detail, pattern: "aaaa")
+}
+
+
+// A DURABLE CAPTURE REFUSAL IS A POISONED ATTEMPT, NOT A FAILED PASS. The 2026-09-21 incident:
+// commit_pass answered "one or more attempt worktrees could not be committed" on EVERY tick, and
+// verify deferred behind it forever, because one attempt's SCM capture kept refusing -- for a
+// while because the save was quadratic (a cost defect, fixed at its own layer), and by
+// construction because a durable refusal (no owning arc, a base that freezes nothing, store
+// damage) re-refuses on every retry and was typed CommitFailed, which fails the whole pass. The
+// classification is born at the refusal site (BeltScmCapture carries the durability split), so a
+// poisoned attempt is a typed, located, persisted skip -- the same absorbing-arm repair
+// CommitSubjectUnaddressable carries one seam up.
+test fn a_capture_poisoned_attempt_is_a_skip_not_a_failure() -> Bool {
+  let poisoned = CommitCapturePoisoned { node_id: "n1", detail: "the recorded base names zero files" }
+  !belt_commit_outcome_is_failure(o: poisoned)
+    && !belt_commit_outcome_is_recorded(o: poisoned)
+}
+
+// THE DISCRIMINATOR, in both directions. Without it the arm above would pass equally well if the
+// pass had simply stopped failing on everything: a real transient CommitFailed beside any number
+// of poisoned siblings must still fail the pass (an infra arm that may clear by next tick stays
+// loud), while poison alone defers honestly and names the count.
+test fn a_real_commit_failure_still_fails_the_pass_beside_poisoned_ones() -> Bool {
+  let with_both = belt_commit_pass_outcome_from(outcomes: [
+    CommitCapturePoisoned { node_id: "n1", detail: "the recorded base names zero files" },
+    CommitCapturePoisoned { node_id: "n2", detail: "the seeded base's root is an authored source, which is store damage" },
+    CommitFailed { node_id: "real-node", detail: "commit: git exited 1" },
+  ])
+  let only_poison = belt_commit_pass_outcome_from(outcomes: [
+    CommitCapturePoisoned { node_id: "n1", detail: "the recorded base names zero files" },
+    CommitSkipped { node_id: "n2", reason: "worktree clean" },
+  ])
+  let poison_with_recorded = belt_commit_pass_outcome_from(outcomes: [
+    CommitCapturePoisoned { node_id: "n1", detail: "the recorded base names zero files" },
+    CommitRecorded { node_id: "n2", message: "dispatch checkpoint" },
+  ])
+  let failed = match with_both { BeltPassFailed { reason: _ } => true  _ => false }
+  let deferred_honestly = match only_poison {
+    BeltPassDeferred { reason } => string_contains(s: reason, pattern: "capture-poisoned")
+    _ => false
+  }
+  let recorded_over_poison = match poison_with_recorded { BeltPassRecorded => true  _ => false }
+  failed && deferred_honestly && recorded_over_poison
+}
+
+// A POISONED ATTEMPT IS COUNTED, NOT SILENTLY DROPPED: the number is how many attempts this tick
+// are held for repair, counted in the tick result beside the siblings' verdicts. A zero here
+// would make the poison frequency vanish by construction, the deficit this witness exists to
+// keep visible.
+test fn the_poisoned_attempt_count_counts_only_capture_poisoned_rows() -> Bool {
+  let result = BeltTickResult {
+    wholesale: TickPassesRun,
+    host_refusal: Absent,
+    reconcile: belt_tick_empty_reconcile(state: ManualReady),
+    spawn_outcomes: [],
+    teardown_outcomes: [],
+    commit_outcomes: [
+      CommitCapturePoisoned { node_id: "n1", detail: "the recorded base names zero files" },
+      CommitSkipped { node_id: "n2", reason: "worktree clean" },
+      CommitCapturePoisoned { node_id: "n3", detail: "two or more arcs depend on this node" },
+    ],
+    verify_outcomes: [],
+    publish_outcomes: [],
+    review_outcomes: [],
+    audit_outcomes: [],
+  }
+  belt_tick_commit_poisoned_count(t: result) == 2
+    && string_contains(
+      s: serialize_json(v: belt_tick_result_json_value(t: result)),
+      pattern: "\"commit_poisoned\": 2",
+    )
+}
+
+// THE POISON IS NAMED AT BOTH DURABLE RECORDS, the tick result's outcome row and the per-attempt
+// receipt that survives the pass receipt's collapse -- the operator repairs against the attempt's
+// own row, never against the pass sentence it no longer halts.
+test fn the_poisoned_outcome_is_named_in_the_tick_result_and_the_attempt_receipt() -> Bool {
+  let rendered = serialize_json(v: belt_commit_outcome_json_value(o: CommitCapturePoisoned {
+    node_id: "n1",
+    detail: "the recorded base names zero files",
+  }))
+  let r = belt_commit_outcome_receipt(
+    o: CommitCapturePoisoned { node_id: "n1", detail: "the recorded base names zero files" },
+    attempt_key: "abc",
+  )
+  string_contains(s: rendered, pattern: "capture-poisoned")
+    && string_contains(s: rendered, pattern: "n1")
+    && r.outcome == "capture-poisoned"
+    && r.attempt_key == "abc"
+    && r.node_id == "n1"
+    && string_contains(s: r.detail, pattern: "zero files")
 }
