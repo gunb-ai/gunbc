@@ -1,0 +1,110 @@
+module gunbc.runner_microvm_stop_propagation_probe
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.systemd { SystemdUnitProperty, SliceProperty, PartOf, ActiveState }
+
+data runner_microvm_stop_propagation_probe_disposition: Disposition = SingleAuthority
+
+// THE ONE FACT THE LIFETIME EDGE RESTS ON, PROBED WITHOUT A GUEST.
+//
+// gunbc.runner_microvm_attempt runner_microvm_attempt_part_of_property sets
+// PartOf=gunbc-microvm-slot@<slot>.service on the transient attempt unit, so that stopping the
+// controller's unit stops the VMM that unit supervises. Until this probe runs, that is a directive
+// this repository believes systemd honours -- the argv witness establishes the property is PASSED,
+// which is a different fact from the property WORKING.
+//
+// SO THIS PROBE TESTS SYSTEMD, NOT THE MICROVM. It needs no guest, no credential, no slot network
+// and no Firecracker: a stand-in transient unit carrying the same PartOf relation, a supervising
+// unit stopped EXTERNALLY, and a readback of the stand-in's ActiveState. That is why it does not
+// wait on the slot network (parent ruling 2026-09-22) -- gating it there would be an invented
+// dependency on infrastructure the subject does not touch.
+
+// WHAT THIS PROBE DOES NOT ESTABLISH, DECLARED RATHER THAN LEFT TO A READER'S CHARITY, so that a
+// green here cannot be cited as the external-stop receipt (parent ruling 2026-09-22).
+//
+// It establishes that systemd propagates a stop across PartOf to a transient unit under another
+// slice. It does NOT establish any of the following, which are properties of a REAL attempt and can
+// only be read from one:
+//   - that a live Firecracker process DIES when the propagated stop arrives, rather than ignoring
+//     SIGTERM and surviving to the kill grace or past it;
+//   - that a jailer chroot and its mounted state come apart, which is where a stop that "worked"
+//     still leaves the cell dirty;
+//   - that the teardown READBACKS complete, and that no clean release is fabricated when they do
+//     not -- the arm that decides whether a slot is reusable or quarantined.
+// The stand-in has no VMM, no chroot and no mounts, so it is silent on all three BY CONSTRUCTION
+// rather than by omission.
+// THE LEADING BAR IS LOAD-BEARING ON A SINGLE-ARM TYPE: without it this parses as an ALIAS and the
+// arm is not exported, so the scope could not be matched by any consumer.
+type StopPropagationProbeScope
+  = | PropagationAcrossPartOfOnly
+
+data runner_microvm_stop_propagation_probe_scope: StopPropagationProbeScope = PropagationAcrossPartOfOnly
+
+data runner_microvm_stop_propagation_probe_is_not_the_external_stop_receipt: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the external-stop receipt owed by gunbc#12011's lifetime-edge repair. TRIGGER: a WET run against a REAL attempt -- a live Firecracker under a jailer chroot with mounted state, the controller's unit stopped EXTERNALLY, and afterwards the attempt unit inactive, the cell subtree quiescent, and the teardown readbacks either complete or the slot QUARANTINED rather than released. SUFFICIENT FOR deleting this row. NOT satisfied by this probe: a stand-in transient unit has no VMM to survive a signal, no chroot to come apart and no readbacks to leave incomplete, so a green here is evidence about systemd and not about an attempt." as NonEmptyStr,
+)
+
+// THE STAND-IN'S SUPERVISOR IS ITS OWN UNIT, NEVER A LIVE SLOT UNIT. Probing against
+// gunbc-microvm-slot@<slot>.service would stop a controller that might be supervising a real
+// attempt, so the probe brings its own supervisor and its own stand-in and touches neither the
+// cell's slice nor any slot the fabric has admitted.
+data stop_propagation_probe_supervisor_unit: NonEmptyStr = "gunbc-stop-propagation-probe-supervisor.service" as NonEmptyStr
+
+data stop_propagation_probe_stand_in_unit: NonEmptyStr = "gunbc-stop-propagation-probe-stand-in.service" as NonEmptyStr
+
+type StopPropagationVerdict
+  = StandInStoppedWithItsSupervisor
+  | StandInSurvivedItsSupervisor { active_state: String }
+  | StandInNeverStarted { cause: String }
+  | SupervisorNeverStarted { cause: String }
+  | StandInStateUnreadable { cause: String }
+
+// THE ONLY ADMITTING ARM IS THE ONE THAT READ THE STAND-IN INACTIVE AFTER THE STOP. An unreadable
+// state is NOT admitted: "could not ask systemd what happened" and "systemd says it stopped" are
+// the two facts this probe exists to keep apart, and collapsing them would make an instrument that
+// cannot fail.
+fn stop_propagation_admitted(v: StopPropagationVerdict) -> Bool {
+  match v {
+    StandInStoppedWithItsSupervisor => true
+    StandInSurvivedItsSupervisor { active_state: _ } => false
+    StandInNeverStarted { cause: _ } => false
+    SupervisorNeverStarted { cause: _ } => false
+    StandInStateUnreadable { cause: _ } => false
+  }
+}
+
+// THE VERDICT IS DECIDED BY THE READBACK, NOT BY THE STOP COMMAND'S EXIT. `systemctl stop` exits
+// zero for a unit it stopped and for one that was not running, so its status cannot distinguish a
+// propagation that worked from a stand-in that never started -- which is exactly the false green
+// this probe would otherwise produce.
+fn stop_propagation_verdict(
+  supervisor_started: Bool,
+  stand_in_started: Bool,
+  stand_in_state_after: String,
+) -> StopPropagationVerdict {
+  if supervisor_started == false {
+    SupervisorNeverStarted { cause: "the probe's supervisor unit did not start, so nothing was stopped and no propagation was observed" }
+  } else if stand_in_started == false {
+    StandInNeverStarted { cause: "the probe's stand-in unit did not start, so its absence after the stop says nothing about propagation" }
+  } else if stand_in_state_after == "" {
+    StandInStateUnreadable { cause: "systemd returned no ActiveState for the stand-in unit after the supervisor was stopped" }
+  } else if stand_in_state_after == "inactive" {
+    StandInStoppedWithItsSupervisor
+  } else {
+    StandInSurvivedItsSupervisor { active_state: stand_in_state_after }
+  }
+}
+
+fn stop_propagation_verdict_text(v: StopPropagationVerdict) -> String {
+  match v {
+    StandInStoppedWithItsSupervisor =>
+      "stop-propagation=held: the stand-in went inactive when its supervisor was stopped externally"
+    StandInSurvivedItsSupervisor { active_state: s } =>
+      join(["stop-propagation=LEAKED: the stand-in is ", s, " after its supervisor was stopped -- PartOf did not propagate"], "")
+    StandInNeverStarted { cause: c } => join(["stop-propagation=not-observed (", c, ")"], "")
+    SupervisorNeverStarted { cause: c } => join(["stop-propagation=not-observed (", c, ")"], "")
+    StandInStateUnreadable { cause: c } => join(["stop-propagation=unreadable (", c, ")"], "")
+  }
+}

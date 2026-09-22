@@ -1,0 +1,77 @@
+module test.claim.runner.runner_microvm_stop_propagation_probe_witness_test
+
+import std.types { Bool, String }
+import gunbc.runner_microvm_stop_propagation_probe {
+  StopPropagationVerdict, StandInStoppedWithItsSupervisor, StandInSurvivedItsSupervisor,
+  StandInNeverStarted, SupervisorNeverStarted, StandInStateUnreadable,
+  stop_propagation_verdict, stop_propagation_admitted,
+  StopPropagationProbeScope, PropagationAcrossPartOfOnly,
+  runner_microvm_stop_propagation_probe_scope,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn verdict_label(supervisor: Bool, stand_in: Bool, state: String) -> String {
+  match stop_propagation_verdict(
+    supervisor_started: supervisor,
+    stand_in_started: stand_in,
+    stand_in_state_after: state,
+  ) {
+    StandInStoppedWithItsSupervisor => "held"
+    StandInSurvivedItsSupervisor { active_state: _ } => "leaked"
+    StandInNeverStarted { cause: _ } => "stand-in-never-started"
+    SupervisorNeverStarted { cause: _ } => "supervisor-never-started"
+    StandInStateUnreadable { cause: _ } => "unreadable"
+  }
+}
+
+// THE PROBE'S WHOLE POINT IS THE `active` READING, and it is the one a careless implementation
+// would never produce: if the stop propagated, the stand-in is inactive; if PartOf did nothing, the
+// stand-in is still running with its supervisor gone -- which is the pre-repair leak, observed
+// rather than argued.
+test fn a_stand_in_still_active_after_its_supervisor_stopped_is_a_leak() -> Bool {
+  verdict_label(supervisor: true, stand_in: true, state: "inactive") == "held"
+    && verdict_label(supervisor: true, stand_in: true, state: "active") == "leaked"
+    && verdict_label(supervisor: true, stand_in: true, state: "activating") == "leaked"
+}
+
+// AN UNREADABLE STATE IS NOT A STOP, and this is the arm that keeps the probe falsifiable. "systemd
+// would not tell us" and "systemd says it stopped" both leave no running stand-in to point at, so
+// collapsing them would make an instrument that cannot fail -- the fabricated-green class DESIGN
+// section 5 refuses.
+test fn an_unreadable_state_is_not_read_as_a_stop() -> Bool {
+  verdict_label(supervisor: true, stand_in: true, state: "") == "unreadable"
+    && stop_propagation_admitted(v: stop_propagation_verdict(
+      supervisor_started: true, stand_in_started: true, stand_in_state_after: "",
+    )) == false
+}
+
+// A PROBE THAT NEVER STARTED ITS SUBJECTS PROVES NOTHING, and must not read as a pass. A stand-in
+// that never ran is trivially not running afterwards -- the shape that would turn a broken probe
+// into a permanent green.
+test fn a_probe_whose_subjects_never_started_is_not_admitted() -> Bool {
+  verdict_label(supervisor: false, stand_in: false, state: "inactive") == "supervisor-never-started"
+    && verdict_label(supervisor: true, stand_in: false, state: "inactive") == "stand-in-never-started"
+    && stop_propagation_admitted(v: stop_propagation_verdict(
+      supervisor_started: true, stand_in_started: false, stand_in_state_after: "inactive",
+    )) == false
+}
+
+// ONLY ONE ARM ADMITS, checked in both directions so a later edit that widened the admitting set
+// would go red here rather than quietly release a leak.
+test fn only_the_observed_stop_admits() -> Bool {
+  stop_propagation_admitted(v: StandInStoppedWithItsSupervisor)
+    && stop_propagation_admitted(v: StandInSurvivedItsSupervisor { active_state: "active" }) == false
+    && stop_propagation_admitted(v: StandInNeverStarted { cause: "x" }) == false
+    && stop_propagation_admitted(v: SupervisorNeverStarted { cause: "x" }) == false
+    && stop_propagation_admitted(v: StandInStateUnreadable { cause: "x" }) == false
+}
+
+// THE SCOPE IS A DECLARED VALUE, so "this is not the external-stop receipt" is a fact the corpus
+// carries rather than a sentence in a commit message nobody re-reads.
+test fn the_probe_declares_it_covers_propagation_only() -> Bool {
+  match runner_microvm_stop_propagation_probe_scope {
+    PropagationAcrossPartOfOnly => true
+  }
+}
