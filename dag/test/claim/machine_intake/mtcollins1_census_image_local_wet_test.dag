@@ -11,7 +11,7 @@ import gunbc.machine_intake_host_capture_envelope {
   HostCaptureBound,
   HostCaptureStage,
   HostCaptureUnbound, HostCaptureOpen, HostCaptureNotBegun,
-  host_capture_bind,
+  host_capture_bind, host_capture_bind_transcript,
   host_capture_bound_edac_clean,
   host_capture_bound_nproc_exact,
   host_capture_bound_section_exit_zero,
@@ -126,23 +126,10 @@ data census_round_trip_stages: List<HostCaptureStage> = [
   HostCaptureStage { name: "boot-media", command: "echo 'it'\\''s quoted'; exit 3" },
 ]
 
-// THE CAPTURE IS READ OFF THE CONSOLE DEVICE, NOT OFF THE PIPE, and that is a statement about which
-// medium host_capture_bind's contract is over rather than a convenience. The program's first line is
-// `exec ><device>`, and production binds what a collector wrote there: mtcollins1_boot_run reads its
-// capture with Filesystem.Read and hands those bytes to the binder. Captured process stdout is a
-// DIFFERENT medium -- extdeps.shell.exec's capture is trimmed of trailing whitespace -- and the
-// binder reads only NEWLINE-TERMINATED lines, because it is reading a file the host is still writing
-// and half a line is not yet a fact. Those two contracts are each sound and compose to a lie: the
-// trim removes the newline the program really wrote after its END marker, the binder correctly
-// declines to read an unterminated final line, and a program that finished writing binds OPEN. So
-// the device is a real file here and the capture is read back from it, which is also the route this
-// claim says it asserts -- render, run, parse -- with the same medium at each link as the census.
 test fn the_rendered_program_runs_and_its_output_parses_by_real_execution() -> Bool {
-  let dir = shell.Mktemp.Dir()
-  let console = concat(dir.path as String, "/console") as NonEmptyStr
   let program = host_capture_program(
     machine: "witness",
-    console_device: console,
+    console_device: "/dev/stdout",
     stages: census_round_trip_stages,
     halt_command: "true",
   )
@@ -150,13 +137,9 @@ test fn the_rendered_program_runs_and_its_output_parses_by_real_execution() -> B
     command: posix_sh_program_command(script: program as String),
     transport: LocalExec,
   )
-  let read = Filesystem.Read(path: console as String)
-  let out = read.content
-  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success
-    && obs.exit_code == 0
-    && read.success
-    && match host_capture_bind(capture: out, machine: "witness") {
+  let out = obs.stdout
+  obs.exit_code == 0
+    && match host_capture_bind_transcript(capture: out, machine: "witness") {
       HostCaptureUnbound { reason: _ } => false
       HostCaptureOpen { envelope: _ } => false
       HostCaptureNotBegun => false
