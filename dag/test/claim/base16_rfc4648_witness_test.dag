@@ -40,13 +40,26 @@ data asymmetric_node_octets: List<UInt8> = [1, 35, 69, 103, 137, 171, 205, 239, 
 
 // THE ENCODER'S INPUT IS MINTED THROUGH THE ONE ADMISSION FOLD, never constructed here: the
 // witness must reach base16_encode_lower the way a consumer does, and std.integer QualifiedOctets
-// has no constructor outside its defining module. A vector that refuses admission answers "" and
-// the claim reds, so a fixture the mint rejects cannot pass as an encoding.
+// has no constructor outside its defining module.
+//
+// THE REFUSAL ARM ANSWERS A STRING NO ENCODING CAN PRODUCE, and an earlier cut answered "" --
+// which is a VALID ENCODING, the one base16_encode_lower returns for the empty octet string. So
+// base16_encodes_empty_as_empty compared against "" and stayed green whether the encoder ran or
+// the mint refused: a claim with no discriminating red for its own subject, and an annotation
+// here asserting the opposite (review 70133). This alphabet is 0-9a-f, so "REFUSED" is outside
+// the codec's range by construction and every claim below separates the two outcomes.
 fn encoded(values: List<Int>) -> String {
   match uint8_octets_of_ints(values: values) {
     QualifiedOctetsReady { value: q } => base16_encode_lower(octets: q)
-    QualifiedOctetsRefused { observed: _ } => ""
+    QualifiedOctetsRefused { observed: _ } => "REFUSED"
   }
+}
+
+// THE REFUSAL IS REACHABLE AND DISTINGUISHABLE, asserted rather than assumed: without this, the
+// arm above is a branch nothing executes and "" could have been replaced by anything at all.
+test fn the_encoder_helper_refuses_an_out_of_range_vector() -> Bool {
+  encoded(values: [256]) == "REFUSED"
+    && encoded(values: [0, 255]) == "00ff"
 }
 
 test fn base16_encodes_rfc4648_foobar_vector() -> Bool {
