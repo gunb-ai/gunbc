@@ -652,7 +652,7 @@ type ProviderWorkspaceAllocation
 // rather than keep checking it. So the provider does not ADMIT a base, it OWNS one.
 //
 // THE BASE IS A CONSTRUCTED LOCATION WITH A DERIVED ANCESTRY. /run/user/<uid>/gunbc, built from the
-// uid this process observes, when that runtime home exists -- it is root-provisioned and owner-only
+// uid this process observes, when that runtime home exists -- it is root-PROVISIONED and USER-owned
 // -- otherwise /tmp/gunbc-provider-<user> under root-owned sticky /tmp. Neither discriminator
 // applies any more: there is no attacker-supplied prefix to swap, because every component is a
 // literal this module wrote or a uid it observed; and the root needs no detection, because each
@@ -663,10 +663,6 @@ type ProviderWorkspaceAllocation
 // list this module authored instead of over a path a caller handed it. And the base must be its own
 // canonical spelling: if `realpath` disagrees with the literal, something in the chain is a symlink
 // and the location is not the one this module named, so it refuses rather than following it.
-type ProviderBaseLayout {
-  base: NonEmptyStr
-  ancestry: List<String>
-}
 
 type ProviderRootAdmission
   = ProviderRootAdmitted { root: NonEmptyStr }
@@ -692,41 +688,71 @@ data caller_named_allocation_base_frontier: FrontierRow = frontier_row_decl(
 )
 
 data provider_base_leaf: NonEmptyStr = "gunbc" as NonEmptyStr
-data provider_base_tmp_prefix: NonEmptyStr = "/tmp/gunbc-provider-" as NonEmptyStr
+data provider_base_tmp_leaf_prefix: NonEmptyStr = "gunbc-provider-" as NonEmptyStr
 data provider_base_runtime_prefix: NonEmptyStr = "/run/user/" as NonEmptyStr
 data provider_root_default: NonEmptyStr = "/tmp" as NonEmptyStr
 
+// THE BASE AND ITS ANCESTRY COME FROM ONE CHAIN, so they cannot disagree about which tree they
+// describe.
+//
+// They were two fields a caller filled in separately, and the environment-supplied prefix then got
+// an ancestry that belonged to a different path entirely -- a list that CLAIMED to be the base's
+// ancestors and named three directories above somewhere else. A derived pair removes the state in
+// which that is expressible: `provider_layout` takes the chain root-first, builds the base inside
+// its deepest member, and returns that same chain as the ancestry. There is no way to hand it one
+// and get the other.
+//
+// IT IS ALSO WHAT LETS A CONTROL ENTER THROUGH THE REAL MECHANISM. A scenario that wants a base
+// under an unsafe parent supplies a CHAIN and gets its ancestry derived by this function, rather
+// than authoring an ancestry list a production layout would never produce -- so the control
+// exercises the same construction production does, and a divergence between them is not something
+// the control can paper over.
+type ProviderBaseLayout {
+  base: NonEmptyStr
+  ancestry: List<String>
+}
+
+fn provider_layout(chain: List<String>, leaf: NonEmptyStr) -> ProviderBaseLayout {
+  match get(chain, length(chain) - 1) {
+    Absent =>
+      ProviderBaseLayout { base: leaf, ancestry: ["/"] }
+    Present { value: home } =>
+      ProviderBaseLayout {
+        base: join([home, "/", leaf as String], "") as NonEmptyStr,
+        ancestry: chain,
+      }
+  }
+}
+
 // THE ENVIRONMENT IS NOT CONSULTED AT ALL, AND THE REASON IS A DEFECT THIS MODULE ALREADY WROTE
-// DOWN AND THEN COMMITTED AGAIN ONE VARIABLE OVER.
+// DOWN AND THEN COMMITTED AGAIN ONE VARIABLE OVER. The first narrowing dropped TMPDIR because an
+// environment-named directory is a choice with no name on it, then read XDG_RUNTIME_DIR and
+// hard-coded an ancestry as if that value were a literal. So the uid is OBSERVED and the path is
+// CONSTRUCTED here: every component of both chains is a literal this module wrote or a uid it read
+// from `id -u`.
 //
-// The first narrowing dropped TMPDIR because an environment-named directory is a choice with no
-// name on it. It then read XDG_RUNTIME_DIR, spliced that value into the base, AND HARD-CODED THE
-// ANCESTRY AS IF THE VALUE WERE A LITERAL -- ["/run/user", "/run", "/"]. Nothing established that
-// the value WAS /run/user/<uid>. Under XDG_RUNTIME_DIR=/home/me/run the base becomes
-// /home/me/run/gunbc, and the fold then inspects three directories that are not its ancestors
-// while never inspecting /home/me or /home: a world-writable real grandparent passes uninspected
-// while safe irrelevant directories are reported as "the ancestry". That is not a weaker check, it
-// is a FABRICATED one -- the list claims to be the base's ancestry and is not. Found by review
-// 69841 on gunbc#11960.
-//
-// SO THE UID IS OBSERVED AND THE PATH IS CONSTRUCTED, which is the only arrangement where the
-// ancestry list is derivable rather than asserted. /run/user/<uid> is built here from `id -u`, so
-// every component of both layouts is a literal this module wrote and each ancestry is exactly the
-// chain above its own base. A runtime directory that does not exist needs no probe: `mkdir` of the
-// base fails and the layout refuses, and the /tmp layout is tried next.
+// /run/user/<uid> IS ROOT-PROVISIONED AND USER-OWNED, and the distinction matters to the rule
+// applied to it: the level check trusts this process's own uid as well as root, so a user-owned
+// runtime home is admissible as an ANCESTOR, and the base inside it must be owned by this process
+// under the stricter base rule. An earlier revision of this comment called it root-owned, which
+// would have made the level rule look like it was relying on something it is not.
 type ProviderPrincipal { uid: NonEmptyStr, name: NonEmptyStr }
 
 fn provider_base_layouts(principal: ProviderPrincipal) -> List<ProviderBaseLayout> {
-  let runtime_home = join([provider_base_runtime_prefix as String, principal.uid as String], "")
   [
-    ProviderBaseLayout {
-      base: join([runtime_home, "/", provider_base_leaf as String], "") as NonEmptyStr,
-      ancestry: [runtime_home, "/run/user", "/run", "/"],
-    },
-    ProviderBaseLayout {
-      base: join([provider_base_tmp_prefix as String, principal.name as String], "") as NonEmptyStr,
-      ancestry: [provider_root_default as String, "/"],
-    },
+    provider_layout(
+      chain: [
+        "/",
+        "/run",
+        "/run/user",
+        join([provider_base_runtime_prefix as String, principal.uid as String], ""),
+      ],
+      leaf: provider_base_leaf,
+    ),
+    provider_layout(
+      chain: ["/", provider_root_default as String],
+      leaf: join([provider_base_tmp_leaf_prefix as String, principal.name as String], "") as NonEmptyStr,
+    ),
   ]
 }
 
@@ -827,6 +853,17 @@ fn ancestry_refusal_detail(observed: LevelObservation) -> String {
   }
 }
 
+// A LEVEL MUST ALSO BE ITS OWN CANONICAL SPELLING. `stat` FOLLOWS a symlink, so a level that is one
+// reports the owner and mode of its TARGET while the base is created inside that target -- the
+// enumerated chain would then describe a tree the base does not live in, which is the same
+// disagreement between the base and its ancestry that deriving them from one chain removes at the
+// other end. Checked here rather than assumed of the literals, because /run/user/<uid> is
+// provisioned by the host and this module does not get to decide what it is.
+fn level_spelling_is_canonical(level: String) -> Bool {
+  let resolved = shell.Path.Canonical(path: level as FilePath)
+  if !resolved.success { false } else { trim(s: resolved.stdout) == level }
+}
+
 // THE ENUMERATED LEVELS, FOLDED. There is no walk and no bound: the list is the ancestry, so
 // running out of it is completion rather than exhaustion, and the two cannot be confused.
 fn ancestry_is_safe(levels: List<String>, trusted: TrustedOwners) -> AncestryVerdict {
@@ -838,10 +875,15 @@ fn ancestry_is_safe(levels: List<String>, trusted: TrustedOwners) -> AncestryVer
         AncestryRefused { level: l, detail: d } => AncestryRefused { level: l, detail: d }
         AncestrySafe =>
           let observed = observe_level(path: level)
-          if level_is_safe(observed: observed, trusted: trusted) {
-            AncestrySafe
-          } else {
+          if !level_is_safe(observed: observed, trusted: trusted) {
             AncestryRefused { level: level, detail: ancestry_refusal_detail(observed: observed) }
+          } else if !level_spelling_is_canonical(level: level) {
+            AncestryRefused {
+              level: level,
+              detail: "the level is not its own canonical spelling, so it is a link and what was observed is its target",
+            }
+          } else {
+            AncestrySafe
           }
       }
     },
@@ -900,9 +942,25 @@ fn base_is_admissible(observed: LevelObservation, trusted: TrustedOwners) -> Boo
 // accepted it. The authority for that property is `test.claim.eval_model_probe`
 // `and_short_circuit_direct_probe`; the squatted-base control caught the instance. With the mode
 // applied at creation there is no guarded effect left here to get wrong.
+// THE ANCESTRY IS CHECKED BEFORE THE FIRST MUTATION, AND THE ORDER IS THE CONTRACT.
+//
+// This created the base and then examined the tree above it, so a base under an unprotected
+// ancestry was brought into existence and only afterwards refused -- leaving an owner-only
+// directory inside a tree this module had just decided it does not trust, for anybody watching that
+// parent to act on. A refusal that arrives after the mutation has refused the REPORT and not the
+// act, which is the same ordering argument this module already makes about admitting a composition
+// before any byte is written.
 fn establish_provider_base(layout: ProviderBaseLayout, trusted: TrustedOwners) -> ProviderRootAdmission {
-  let created = shell.Mkdir.NewOwnerOnly(path: layout.base as FilePath).success
-  verify_provider_base(layout: layout, trusted: trusted, created: created)
+  match ancestry_is_safe(levels: layout.ancestry, trusted: trusted) {
+    AncestryRefused { level: l, detail: d } =>
+      ProviderRootRefused {
+        root: layout.base as String,
+        cause: join(["the ancestry is unprotected at ", l, ": ", d, " (refused before creating anything)"], ""),
+      }
+    AncestrySafe =>
+      let created = shell.Mkdir.NewOwnerOnly(path: layout.base as FilePath).success
+      verify_provider_base(layout: layout, trusted: trusted, created: created)
+  }
 }
 
 fn verify_provider_base(
@@ -936,14 +994,7 @@ fn verify_provider_base(
         ], ""),
       }
     } else {
-      match ancestry_is_safe(levels: layout.ancestry, trusted: trusted) {
-        AncestryRefused { level: l, detail: d } =>
-          ProviderRootRefused {
-            root: base,
-            cause: join(["the ancestry is unprotected at ", l, ": ", d], ""),
-          }
-        AncestrySafe => ProviderRootAdmitted { root: layout.base }
-      }
+      ProviderRootAdmitted { root: layout.base }
     }
 }
 

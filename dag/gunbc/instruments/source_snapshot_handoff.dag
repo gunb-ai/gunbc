@@ -105,6 +105,8 @@ import gunbc.fabric_source_snapshot {
   observe_trusted_owners,
   observe_provider_principal,
   provider_base_layouts,
+  provider_layout,
+  provider_base_leaf,
   provider_root_default,
   allocate_provider_workspace,
   release_provider_workspace,
@@ -907,15 +909,22 @@ fn admit_a_real_provider_layout(trusted: TrustedOwners) -> ProviderRootAdmission
   }
 }
 
-// THE UNSAFE-ANCESTRY CONTROL, NOW OVER AN ENUMERATED ANCESTRY RATHER THAN A WALK. The layout is
-// supplied here because production has exactly two literal layouts and neither can be made unsafe
-// on purpose -- which is the point of narrowing to them. What must still discriminate is the level
-// rule they are checked with, so the control hands it a layout whose named ancestor is
-// world-writable and non-sticky and requires a refusal.
+// THE UNSAFE-ANCESTRY CONTROL, AND THE THREE THINGS IT HAS TO GET RIGHT.
 //
-// AND THE ADMITTED HALF MATTERS AS MUCH AS THE REFUSED ONE: the real provider base, under
-// root-owned sticky /tmp, must be ADMITTED. Without that assertion this control would pass for an
-// admission that refuses everything, which is a wall-shaped hole rather than a wall.
+// FIRST, IT ENTERS THROUGH THE REAL CONSTRUCTION. It supplies a CHAIN to `provider_layout` -- the
+// same function `provider_base_layouts` uses -- so the base and the ancestry are derived the way
+// production derives them. A control that authored an ancestry list by hand would be asserting over
+// a shape production never produces, and could keep passing while the two drifted apart.
+//
+// SECOND, THE BASE IS EXACTLY WHAT THE MODULE REQUIRES OF ITS OWN: canonical, owned by this
+// process, and created at 0700 by the very call under test. The ONLY defect is the parent, which is
+// world-writable and non-sticky. So a refusal here can only be the ancestry rule firing -- a
+// fixture that was also mis-owned or mis-moded would pass for the wrong reason.
+//
+// THIRD, THE REFUSAL MUST PRECEDE CREATION. The base must NOT EXIST afterwards: an admission that
+// creates first and refuses second has left an owner-only directory inside a tree it just decided
+// it does not trust, for whoever watches that parent to act on. Asserting only the refusal arm
+// would pass for exactly that implementation, which is the one this control replaced.
 fn run_unsafe_allocation_root_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
   match observe_trusted_owners() {
     Absent =>
@@ -925,38 +934,46 @@ fn run_unsafe_allocation_root_scenario(workspace: SnapshotWorkspace) -> Snapshot
         detail: "this process could not name its own principal",
       }
     Present { value: trusted } =>
-      let open_ancestor = join([workspace.root, "/open-ancestor"], "")
-      let base = join([open_ancestor, "/base"], "")
-      if !author_open_directory(path: open_ancestor) {
+      let open_parent = join([workspace.root, "/open-parent"], "")
+      if !author_open_directory(path: open_parent) {
         SnapshotScenarioFailed {
           scenario: "unsafe-allocation-root",
           step: "author-ancestry",
-          detail: "the unsafe ancestry could not be created",
+          detail: "the unsafe parent could not be created",
         }
       } else {
-        match establish_provider_base(
-          layout: ProviderBaseLayout { base: base as NonEmptyStr, ancestry: [open_ancestor] },
-          trusted: trusted,
-        ) {
+        let layout = provider_layout(
+          chain: ["/", provider_root_default as String, workspace.root, open_parent],
+          leaf: provider_base_leaf,
+        )
+        match establish_provider_base(layout: layout, trusted: trusted) {
           ProviderRootAdmitted { root: _ } =>
             SnapshotScenarioFailed {
               scenario: "unsafe-allocation-root",
               step: "admit",
-              detail: "a base under a world-writable non-sticky ancestor was admitted",
+              detail: "a base under a world-writable non-sticky parent was admitted",
             }
           ProviderRootRefused { root: _, cause: why } =>
-            match admit_a_real_provider_layout(trusted: trusted) {
-              ProviderRootRefused { root: _, cause: c } =>
-                SnapshotScenarioFailed {
-                  scenario: "unsafe-allocation-root",
-                  step: "admit",
-                  detail: join(["no real provider layout was admissible: ", c], ""),
-                }
-              ProviderRootAdmitted { root: _ } =>
-                SnapshotScenarioPassed {
-                  scenario: "unsafe-allocation-root",
-                  detail: join(["refused the unprotected ancestry: ", why], ""),
-                }
+            if shell.Test.IsDirectory(path: layout.base as FilePath).is_directory {
+              SnapshotScenarioFailed {
+                scenario: "unsafe-allocation-root",
+                step: "admit",
+                detail: "the refusal was correct but the base had already been created under the unsafe parent",
+              }
+            } else {
+              match admit_a_real_provider_layout(trusted: trusted) {
+                ProviderRootRefused { root: _, cause: c } =>
+                  SnapshotScenarioFailed {
+                    scenario: "unsafe-allocation-root",
+                    step: "admit",
+                    detail: join(["no real provider layout was admissible: ", c], ""),
+                  }
+                ProviderRootAdmitted { root: _ } =>
+                  SnapshotScenarioPassed {
+                    scenario: "unsafe-allocation-root",
+                    detail: join(["refused before creating anything: ", why], ""),
+                  }
+              }
             }
         }
       }
