@@ -148,8 +148,10 @@ fn coproduct_arm_payload_pair_from_arm(arm: CoproductArm) -> CoproductArmPayload
 // declared_field_named and refuses on Absent.
 // CARDINALITY IS CARRIED AS THE MODELLED COPRODUCT, NOT RE-SNIFFED AND NOT REDUCED TO A Bool. An
 // Optional field's edge targets a Cardinality node over its type, so exactly ONE reader decodes
-// that -- v2.std.node node_target_cardinality, homed with the connective it reads -- and consumers
-// read the decoded value. Two earlier
+// that -- declared_field_cardinality_of_target, below -- and consumers read the decoded value. It
+// is declared HERE rather than beside the connective it reads, for the reason the paragraph below
+// gives; an earlier revision of this sentence named a v2.std.node symbol that the hoist it
+// described never created, and contradicted its own next paragraph. Two earlier
 // revisions were worse in two different ways: the first had every consumer re-derive it from the
 // target's connective, which is DESIGN section 5's validation standing where construction was
 // available; the second carried the decoded fact as a Bool, which gave Required-versus-Optional a
