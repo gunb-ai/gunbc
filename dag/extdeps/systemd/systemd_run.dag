@@ -365,11 +365,20 @@ fn summary_format_standing(version_line: String) -> SummaryFormatStanding {
   }
 }
 
+// A REFUSAL NAMES ITS OWN REMEDY (loyal-swift-608, 2026-09-22). Every new systemd major refuses
+// here until someone reads it, which is correct and WILL happen -- so the diagnostic carries the
+// procedure rather than leaving the next reader to rediscover it. This is the same discipline
+// DESIGN 4b(2) applies to a next-rung trigger: name the capability, not the symptom. The four
+// facts are named because each one is separately load-bearing and the third is the one that would
+// be skipped -- the flags are invisible in the output, and USE_IEC is the difference between
+// 1024-based and 1000-based figures.
+data summary_format_grounding_remedy: String = "to ground it: read src/run/run.c and src/basic/format-util.h at that major and confirm four things -- the `if (arg_wait && !arg_quiet)` guard, the `Memory peak: %s` emit and its UINT64_MAX condition, that FORMAT_BYTES still passes USE_IEC | BELOW_POINT | TRAILING_B (SI vs IEC is ~7% and silent), and the line order -- then add the major to grounded_summary_format_majors"
+
 fn summary_format_standing_wire(s: SummaryFormatStanding) -> String {
   match s {
     SummaryFormatGrounded { major } => join(["systemd ", to_string(value: major), ", a major this module has read"], "")
-    SummaryFormatUngroundedMajor { major } => join(["systemd ", to_string(value: major), " is outside the majors whose summary format this module has read, so its figures are not interpretable here"], "")
-    SummaryFormatVersionUnreadable { line } => join(["the manager's version line did not parse (", line, "), so the summary format is unknown"], "")
+    SummaryFormatUngroundedMajor { major } => join(["systemd ", to_string(value: major), " is outside the majors whose summary format this module has read, so its figures are not interpretable here; ", summary_format_grounding_remedy], "")
+    SummaryFormatVersionUnreadable { line } => join(["the manager's version line did not parse (", line, "), so the summary format is unknown; establish the major first (systemd-run --version opens \"systemd <MAJOR>\"), then ", summary_format_grounding_remedy], "")
   }
 }
 
