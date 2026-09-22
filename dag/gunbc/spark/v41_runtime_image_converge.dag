@@ -117,11 +117,11 @@ fn v41_wheel_verify_dir() -> NonEmptyStr {
 // portable-word wall at gunbc.fleet_known_hosts_anchor refuses a word carrying pipes, and the
 // jit-cache wheel's filename alone carries a `+` the allowlist does not admit. It travels as a
 // typed_remote_file_write payload and the only argv is `sh <path>`.
-fn v41_wheel_verify_script() -> String {
+fn v41_wheel_verify_script(wheels: List<FlashInferWheel>) -> String {
   let dir = v41_wheel_verify_dir() as String
   join([
     "set -e\n",
-    fold(v41_kernel_wheels(), init: "", f: (acc, w) => join([
+    fold(wheels, init: "", f: (acc, w) => join([
       acc,
       "curl -fsSL -o ", dir, "/", w.filename as String, " ", flashinfer_0_6_18_post1_wheel_url(w: w) as String, "\n",
       "echo '", w.sha256.hex as String, "  ", dir, "/", w.filename as String, "' | sha256sum -c -\n",
@@ -136,7 +136,7 @@ fn v41_wheel_verify_script_path() -> NonEmptyStr {
 fn v41_wheel_verify_steps() -> List<PlannedRemoteStep>? {
   match typed_remote_file_write_seal(
     path: v41_wheel_verify_script_path() as FilePath,
-    content: v41_wheel_verify_script(),
+    content: v41_wheel_verify_script(wheels: v41_kernel_wheels()),
     allowed_scope: FileTreeScope { root_path: v41_wheel_verify_dir() },
   ) {
     TypedRemoteFileWriteAdmissionRefused { cause: _ } => none
