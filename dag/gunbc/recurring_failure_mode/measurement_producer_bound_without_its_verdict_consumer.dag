@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.measurement_producer_bound_without_its_verdict_consumer
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data measurement_producer_bound_without_its_verdict_consumer: RecurringFailureMode = RecurringFailureMode {
+  identity: "measurement_producer_bound_without_its_verdict_consumer" as NonEmptyStr,
+
+  receipts: [
+    "**a required lane binds an instrument that RECORDS its verdict instead of returning it, and binds nothing that reads the record back** (INVALID STATE: an instrument is invoked in a mode where a completed measurement carrying blockers is a success -- the blockers go into a receipt and the process exits 0, deliberately, so that a refused subject and a killed runner stay distinguishable. The verdict therefore lives in the receipt, and it becomes a verdict only when something reads it. A lane that binds the producer and omits that reader publishes a green check over a refusal. HARM: every landing through that lane is unverified for as long as the omission stands, and the green check is what a reader consumes, so nothing accumulates that would make the omission rank for fixing.)",
+
+    "MEASURED INSTANCE, dated and joined at identity. gunbc.compiler_gate_workflow's floor job invoked claim_executor --required-ci with --measurement-receipt and bound no D0-ADJUDICATE step. On PR #11821 run 35497139573 the step log read `required-ci: floor refused ... phases_run=2 phases_failed=2` and the step concluded success. The same shape was still live on main days later: merge_group run 35550476069 concluded success on all four jobs over a log carrying `floor refused`. The aggregating job reads job CONCLUSIONS, so it inherited the green rather than correcting it.",
+
+    "THE SECOND HALF OF THE HARM IS WHAT THE DARKNESS ACCUMULATED, and it is the part a one-line repair narrative would lose. When the adjudicator was bound and the lane could refuse, the refusals it surfaced were not one defect but a sediment: a typecheck refusal in gunbc.instruments.fabric_capacity_standing untouched since #11555; two declaration findings; thirteen effect-summary errors whose actual cause was two modules with no import header; seven in-body source annotations that made the floor unable to PLAN a subject at all; a consumer left dangling by a root deleted in #11845; and a citation-debt cluster whose rows had been left keyed to a module their declarations had moved out of. Each was individually loud and had been refusing for as long as it had existed. A fail-open gate does not merely miss the next defect; it converts every defect into a silent one and lets them compose.",
+
+    "RECOGNITION RULE, phrased to fire at authoring time rather than after an incident: for every instrument a lane binds, ask WHERE ITS VERDICT IS. If the invocation names an artifact -- a receipt, a report, a ledger file -- then the exit status is a statement about the PROCESS and not about the SUBJECT, and the lane owes a step that consumes that artifact and can exit nonzero. The tell in a workflow authority is an argv carrying an output path with no sibling step naming the same path as an input. The tell in a log is a refusal sentence under a green check.",
+
+    "THE MODE IS NOT THE DEFECT, which is why the repair is not to stop recording. Separating a refused subject from a killed runner is exactly what the receipt buys, and an instrument that exits nonzero on a refused subject fuses those two, losing the artifact and the distinction together. So the honest arms are to record and adjudicate, or to return and lose the distinction -- and the defect here is having taken the first arm's cost without its second half.",
+
+    "BOUNDARY AGAINST required_evidence_absent_reads_as_evidence_of_pass, WHICH IS THE NEAREST ROW AND IS A DIFFERENT MECHANISM. There a gate admits because NOTHING reported -- it keys on observed failure where it needed observed success, so the repair is to require a positive report. Here the report EXISTS, is complete, is correct, and names its blockers in full; nothing is missing and no absence is misread. The repair is a consumer for a report that was already written. Requiring a positive report discharges that row and leaves this one exactly as it was, because the producer here reports positively and the lane still cannot refuse.",
+
+    "BOUNDARY AGAINST required_lane_green_over_a_population_it_never_offered, WHICH SHARES THE SYMPTOM AND NOT THE DENOMINATOR. There the verdict is true of the subset it adjudicated and silent about the identities it never offered, so the excluded population is the invalid state. Here the denominator is whole -- the receipt names every blocker over the subject the run prepared -- and no part of the verdict is taken at all. Deriving a terminal verdict as a total projection over the declared universe, which is that row's trigger, leaves this class untouched: a total verdict nobody reads is as green as a partial one.",
+
+    "RUNG FOUND AT: silent wrongness, which is not a rung -- a required check attesting the opposite of what its own instrument measured is outside the ladder, and DESIGN section 5 forbids it outright rather than grading it.",
+
+    "CEILING: STRUCTURALLY IMPOSSIBLE. Whether a bound step's declared output artifact is consumed by a later step in the same job is decidable from the workflow authority alone -- both the producing argv and the consuming argv are modeled rows in the same fold -- so a job that binds a receipt-writing invocation without binding its reader can be made to have no constructor, rather than being caught by a claim over the emitted steps after the fact.",
+
+    "NEXT-RUNG TRIGGER, STATED AS A CAPABILITY: a bound step that names an output artifact CARRIES its adjudicating consumer in the same value, so a producer without a reader cannot be constructed. The claim landed beside this row -- test.claim.compiler_gate_workflow_witness_test, asserting over the emitted job that the adjudicator exists and is positioned after the producer -- is the legitimate rung 2 step and must not be reported as the ceiling reached: it is one claim over one job, and the next lane to bind the same instrument in a new job is outside its subject.",
+  ],
+
+  evidence: [],
+}
