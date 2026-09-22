@@ -1740,7 +1740,7 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
     })
 }
 
-pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
+pub fn run_required_v2_native(source_roots: &[String], pattern: &str) -> Result<(), String> {
     let lane_started = std::time::Instant::now();
     let workspace = super::process_workspace_root();
     // THE TESTED TREE IS OBSERVED OR THE RUN REFUSES (review 64210). This defaulted to the literal
@@ -1827,14 +1827,17 @@ pub fn run_required_v2_native(source_roots: &[String]) -> Result<(), String> {
     // 5. THE LANE RUN. The emitted binary, by explicit path, over the real source roots: it
     // derives the universe, executes it, mints the receipt and judges it.
     eprintln!("v2-native-route: adjudicating through the emitted compiler");
-    // THE LANE ADJUDICATES ITS WHOLE UNIVERSE, so it passes the default pattern: this literal is the
-    // seed's mirror of `gunbc.witness_v2_native_route` `native_route_default_pattern`
-    // (`//v2/test/...`, which narrows nothing within the floor's universe). A narrower pattern is an
-    // operator's argument to the emitted binary, never this runner's.
+    // THE PATTERN IS THE CALLER'S, AND THAT IS WHAT MAKES A FOCUSED RUN POSSIBLE. The lane passes
+    // `gunbc.witness_v2_native_route` `native_route_default_pattern` (`//v2/test/...`, which
+    // narrows nothing within the floor's universe); `gunbc test <operand>` passes the operand's own
+    // pattern, already admitted by `extdeps.bazel.target_pattern` and rendered by its own renderer.
+    // This runner does not parse it, default it, or widen it: a pattern that reached here was
+    // decided by the authority, and substituting one here would let the run adjudicate a population
+    // the caller did not ask for while reporting under the caller's name.
     let mut args = vec![
         "adjudicate".to_string(),
         facts_file.display().to_string(),
-        "//v2/test/...".to_string(),
+        pattern.to_string(),
     ];
     args.extend(source_roots.iter().cloned());
     let rows_file = workspace

@@ -1161,28 +1161,121 @@ fn behavioral_outcome(
     }
 }
 
-/// THE ONE SEAM: argv operand -> pattern admission -> route. A SINGLE target builds the registry
+/// `extdeps.bazel.target_pattern` `target_pattern_package`, mirrored.
+fn target_pattern_package(pattern: &TargetPattern) -> &[String] {
+    match pattern {
+        TargetPattern::SingleTarget(label) => &label.package_segments,
+        TargetPattern::PackageTargets(package) => package,
+        TargetPattern::SubtreeTargets(package) => package,
+    }
+}
+
+/// `extdeps.bazel.target_pattern` `package_within`, mirrored: `a` is `b` or lies under it.
+fn package_within(a: &[String], b: &[String]) -> bool {
+    b.len() <= a.len() && b.iter().zip(a.iter()).all(|(outer, inner)| outer == inner)
+}
+
+/// `extdeps.bazel.target_pattern` `target_pattern_within`, mirrored arm for arm, including the
+/// subtree-inside-package arm that answers `false` rather than claiming a containment this side
+/// cannot establish either.
+fn target_pattern_within(inner: &TargetPattern, outer: &TargetPattern) -> bool {
+    match outer {
+        TargetPattern::SubtreeTargets(package) => {
+            package_within(target_pattern_package(inner), package)
+        }
+        TargetPattern::PackageTargets(package) => match inner {
+            TargetPattern::SingleTarget(label) => &label.package_segments == package,
+            TargetPattern::PackageTargets(inner_package) => inner_package == package,
+            TargetPattern::SubtreeTargets(_) => false,
+        },
+        TargetPattern::SingleTarget(label) => match inner {
+            TargetPattern::SingleTarget(inner_label) => inner_label == label,
+            TargetPattern::PackageTargets(_) | TargetPattern::SubtreeTargets(_) => false,
+        },
+    }
+}
+
+/// `extdeps.bazel.target_pattern` `render_target_pattern`, mirrored. This is what reaches the
+/// emitted binary's `adjudicate` operand, so the pattern the operator wrote and the pattern the
+/// native universe is selected by are one value rendered once, never two spellings.
+fn render_target_pattern(pattern: &TargetPattern) -> String {
+    match pattern {
+        TargetPattern::SingleTarget(label) => render_label(label),
+        TargetPattern::PackageTargets(package) => format!("//{}:all", package.join("/")),
+        TargetPattern::SubtreeTargets(package) => {
+            if package.is_empty() {
+                "//...".to_string()
+            } else {
+                format!("//{}/...", package.join("/"))
+            }
+        }
+    }
+}
+
+/// `gunbc.witness_v2_native_route` `native_route_default_pattern`, mirrored: the native test
+/// route's whole universe, `//v2/test/...`. An operand CONTAINED in it belongs to that route.
+fn native_route_default_pattern() -> TargetPattern {
+    TargetPattern::SubtreeTargets(vec!["v2".to_string(), "test".to_string()])
+}
+
+/// THE NATIVE TEST ROUTE, ENTERED WITH THE OPERAND'S OWN PATTERN.
+///
+/// This is the whole point of the verb for a `v2.test.*` subject: the seed emits the compiler
+/// closure, cargo builds it, and the EMITTED BINARY adjudicates the selected population. Nothing
+/// on this path consults the interpreter, and nothing substitutes a cached or seed-side answer --
+/// what is reported is what that binary printed on its own terminal line.
+///
+/// THE THREE TERMINATIONS ARE THE PARTITION ITS SIBLINGS MAKE. A refusal from the preparation or
+/// the spawn is the subject never having been reached: the emit refused, the crate would not
+/// build, the binary would not run, or the tree has no observable identity. Only a completed
+/// adjudication whose own admission is negative is an observation that did not hold. Collapsing
+/// them would report a compiler that never ran as a test population that failed, which is the
+/// absorbing answer DESIGN section 5 forbids -- and on this route it is the likely state, because
+/// the native front end still refuses constructs the selected population uses. A NATIVE REFUSAL IS
+/// EVIDENCE OF ROUTING, NOT OF TEST SUPPORT, and it is reported as `SubjectUnreached` so that it
+/// can never read as a passing or failing test run.
+fn run_native_test_route(pattern: &TargetPattern) -> InvocationOutcome {
+    let rendered = render_target_pattern(pattern);
+    match cli_run::run_required_v2_native(&self_host_source_roots(), &rendered) {
+        Ok(()) => InvocationOutcome {
+            termination: Termination::ObservationHeld,
+            message: format!("native test route: {rendered} adjudicated, admission held"),
+        },
+        Err(cause) => {
+            // The binary ran and REFUSED ITS OWN ADMISSION: an observation that did not hold.
+            // Every other cause is the route not having been completed at all.
+            let termination = if cause.contains("cause=AdmissionRefused") {
+                Termination::ObservationDidNotHold
+            } else {
+                Termination::SubjectUnreached
+            };
+            InvocationOutcome {
+                termination,
+                message: format!("native test route: {rendered} — {cause}"),
+            }
+        }
+    }
+}
+
+/// THE ONE SEAM: argv operand -> pattern admission -> route. Mirrors `gunbc.target_invocation`
+/// `admit_test_operand`, including the containment that decides WHICH executor answers.
+///
+/// An operand inside the native route's universe -- single target or set form alike -- enters the
+/// native implementation carrying that pattern. Outside it, a SINGLE target builds the registry
 /// and looks up EXACTLY — no prefix, suffix or "did you mean": a near miss silently running a
-/// different target is worse than a refusal naming the one asked for. A SET form is ADMITTED by
-/// the grammar and REFUSED by the route (status 2, no observation): its only executor is the
-/// native `gunbc test` route (v2 foundation package 9), and handing it to the interpreter would
-/// let an interpreted run stand in for a native one. Mirrors `gunbc.target_invocation`
+/// different target is worse than a refusal naming the one asked for. A SET form outside it has no
+/// executor and is refused with status 2, no observation; handing it to the interpreter would let
+/// an interpreted run stand in for a native one. Mirrors
 /// `test_operand_set_form_refusal_rendered`.
 fn test_operand_set_form_refusal_rendered(operand: &str) -> String {
     format!(
-        "gunbc test: {operand} denotes a SET of targets; set forms run only through the native test route, which is not yet available, and are never delegated to the interpreter"
+        "gunbc test: {operand} denotes a SET of targets outside the native test route's universe; no executor enumerates that population, and set forms are never delegated to the interpreter"
     )
 }
 
 pub fn test_verb(operand: &str) -> InvocationOutcome {
-    let label = match parse_target_pattern(operand) {
-        Ok(TargetPattern::SingleTarget(label)) => label,
-        Ok(TargetPattern::PackageTargets(_)) | Ok(TargetPattern::SubtreeTargets(_)) => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: test_operand_set_form_refusal_rendered(operand),
-            };
-        }
+    let pattern = match parse_target_pattern(operand) {
+        Ok(pattern) => pattern,
         Err(cause) => {
             return InvocationOutcome {
                 termination: Termination::Refused,
@@ -1190,6 +1283,18 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
                     "gunbc test: operand is not an admitted target pattern: {operand}\n  cause: {}",
                     target_pattern_refusal_text(&cause)
                 ),
+            };
+        }
+    };
+    if target_pattern_within(&pattern, &native_route_default_pattern()) {
+        return run_native_test_route(&pattern);
+    }
+    let label = match pattern {
+        TargetPattern::SingleTarget(label) => label,
+        TargetPattern::PackageTargets(_) | TargetPattern::SubtreeTargets(_) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: test_operand_set_form_refusal_rendered(operand),
             };
         }
     };

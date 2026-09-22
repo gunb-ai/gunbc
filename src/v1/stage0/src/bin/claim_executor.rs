@@ -1239,7 +1239,10 @@ fn run() -> Result<ExitCode, ExitCode> {
         eprintln!(
             "v2-native-route: emitted-native compiler executes the derived v2.test.* universe (operator-invoked; not a required lane)"
         );
-        return match v1_compiler::cli_run::run_required_v2_native(&roots) {
+        // THE LANE ADJUDICATES ITS WHOLE UNIVERSE, so it passes the default pattern: this literal
+        // is the seed's mirror of `gunbc.witness_v2_native_route` `native_route_default_pattern`.
+        // A narrower pattern reaches the same runner through `gunbc test <operand>`.
+        return match v1_compiler::cli_run::run_required_v2_native(&roots, "//v2/test/...") {
             Ok(()) => Ok(ExitCode::SUCCESS),
             Err(e) => {
                 eprintln!("v2-native-route: refused: {e}");
