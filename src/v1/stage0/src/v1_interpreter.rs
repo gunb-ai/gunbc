@@ -9125,6 +9125,46 @@ fn eval_recompute_value_hash(
     }
 }
 
+/// THE PUSH CONSTRUCTOR CARRIES THE LIST KEY FORWARD, because the list content hash is a left
+/// fold with no finalizer: `hash(push(xs, x)) == mix(hash(xs), hash(x))` exactly. A recursion that
+/// threads a growing `list_push` accumulator hands every call a NEW `Rc`, so the identity memo
+/// missed on every step and the key rehashed the whole accumulator: one relation realized at
+/// per-call O(size), the same key-derivation defect #12065 closed for strings. The failing link is
+/// the key derivation, not memo admission -- once the key is O(item), a call that never recurs
+/// costs a bounded constant, so no "can this recur" heuristic is needed to decide admission.
+///
+/// DEMAND-GATED: it extends only a parent hash that a key derivation already paid for (alive in the
+/// memo). An accumulator no call ever keyed is never hashed here, so a program that does not key
+/// lists pays nothing. The item is hashed through the same memo the key would use, so the result is
+/// the value the full fold would compute; a Closure item bails and the result is simply left
+/// unmemoized, to be refused by the ordinary derivation.
+fn eval_recompute_extend_push_hash(
+    ctx: &InterpContext,
+    parent: &Rc<RrbVector<Value>>,
+    item: &Value,
+    pushed: &Value,
+) {
+    let Value::List(child) = pushed else { return };
+    let Ok(mut memo) = ctx.eval_recompute_hash_memo.try_borrow_mut() else {
+        return;
+    };
+    let parent_h = match memo.get(&(Rc::as_ptr(parent) as usize)) {
+        Some((w, h)) if w.alive() => *h,
+        _ => return,
+    };
+    let interner = ctx.symbols.borrow();
+    let Some(item_h) = eval_recompute_value_hash(&mut memo, &interner, item) else {
+        return;
+    };
+    memo.insert(
+        Rc::as_ptr(child) as usize,
+        (
+            CompositeWeak::List(Rc::downgrade(child)),
+            eval_recompute_mix(parent_h, item_h),
+        ),
+    );
+}
+
 fn eval_recompute_arg_key(
     memo: &mut EvalRecomputeHashMemo,
     interner: &SymbolInterner,
@@ -11160,8 +11200,10 @@ macro_rules! v1_algebra_method_arms {
                         counters.list_push_items_copied += copied;
                         drop(counters);
                         let mut result = (*items).clone();
-                        result.push_back(item);
-                        Ok(list_value(result))
+                        result.push_back(item.clone());
+                        let pushed = list_value(result);
+                        eval_recompute_extend_push_hash($ctx, &items, &item, &pushed);
+                        Ok(pushed)
                     }
                     None => Err(InterpError::TypeError {
                         msg: format!("list_push on non-list: {}", $receiver.type_label()),
@@ -20080,7 +20122,9 @@ macro_rules! v1_builtin_arms {
                         drop(counters);
                         let mut result = (*items).clone();
                         result.push_back((*item).clone());
-                        Ok(Some(list_value(result)))
+                        let pushed = list_value(result);
+                        eval_recompute_extend_push_hash($ctx, &items, item, &pushed);
+                        Ok(Some(pushed))
                     }
                     None => Ok(None),
                 },
@@ -25624,5 +25668,88 @@ mod the_emitted_listing_producer_refuses_too {
              assert_eq!(file_content, \"\", \"a refused listing carries no population\");\n    \
              assert_eq!(file_byte_count, 0i64, \"a refused listing counts nothing\");",
         );
+    }
+}
+
+#[cfg(test)]
+mod push_hash_extension_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use super::*;
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+
+    fn test_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn full_fold_hash(ctx: &InterpContext, v: &Value) -> u64 {
+        // A fresh memo: the reference is the whole fold, with nothing served from identity.
+        let mut fresh = EvalRecomputeHashMemo::default();
+        eval_recompute_value_hash(&mut fresh, &ctx.symbols.borrow(), v).expect("keyable")
+    }
+
+    fn push(ctx: &InterpContext, xs: &Rc<RrbVector<Value>>, item: Value) -> Value {
+        let mut r = (**xs).clone();
+        r.push_back(item.clone());
+        let pushed = list_value(r);
+        eval_recompute_extend_push_hash(ctx, xs, &item, &pushed);
+        pushed
+    }
+
+    /// The extended entry must be the value the full fold computes, for scalar and composite
+    /// items alike -- otherwise two equal accumulators would key apart (or two distinct ones
+    /// together). And it must be demand-gated: an unkeyed parent is never extended.
+    #[test]
+    fn pushed_list_hash_is_the_full_fold_and_is_demand_gated() {
+        let ctx = test_ctx();
+        let mut acc = list_value(Vec::<Value>::new());
+        // Unkeyed parent: no entry may appear for the child.
+        let Value::List(rc0) = acc.clone() else {
+            unreachable!()
+        };
+        let child = push(&ctx, &rc0, Value::Int(0));
+        let Value::List(child_rc) = &child else {
+            unreachable!()
+        };
+        assert!(ctx
+            .eval_recompute_hash_memo
+            .borrow()
+            .get(&(Rc::as_ptr(child_rc) as usize))
+            .is_none());
+        // Key the root once, then thread the accumulator.
+        {
+            let mut m = ctx.eval_recompute_hash_memo.borrow_mut();
+            eval_recompute_value_hash(&mut m, &ctx.symbols.borrow(), &acc).unwrap();
+        }
+        for i in 0..64 {
+            let Value::List(rc) = acc.clone() else {
+                unreachable!()
+            };
+            let item = if i % 3 == 0 {
+                list_value(vec![Value::Int(i), str_value(format!("s{i}"))])
+            } else {
+                Value::Int(i)
+            };
+            acc = push(&ctx, &rc, item);
+            let Value::List(now) = &acc else {
+                unreachable!()
+            };
+            let served = ctx
+                .eval_recompute_hash_memo
+                .borrow()
+                .get(&(Rc::as_ptr(now) as usize))
+                .map(|(_, h)| *h)
+                .expect("a keyed lineage is extended on push");
+            assert_eq!(served, full_fold_hash(&ctx, &acc));
+        }
     }
 }
