@@ -17,52 +17,29 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // silently lost; that loss is now the typed refusal
 // body_lowering_reason_positional_pattern_binder_unlowered.
 
-// NOT RETIRED BY gunbc#12033, AND THE POPULATION IS NARROWED TO WHAT REMAINS. The lowering half
-// of the trigger IS executed: v2.compiler.body_lowering_fold declares the fields, the graft skip
-// is deleted, and body_lower_pattern_lowered lowers `A(x) =>`, `A { v: x } =>` and `A { v } =>`
-// to the construct over their binders, so the #11998 positional-binder refusal is retired. The
-// resolver frame is executed too: v2.compiler.resolve resolve_match_node scopes those binders as
-// the arm's lexical frame. What is NOT established is the sentence this row's trigger requires --
-// that a binder BINDS -- because one reachable class of binder still silently does not.
+// NOT RETIRED BY gunbc#12033. The lowering half of the replacement IS executed:
+// v2.compiler.body_lowering_fold declares the fields, the graft skip is deleted, and
+// body_lower_pattern_lowered lowers `A(x) =>`, `A { v: x } =>` and `A { v } =>` to the construct over
+// their binders, so the #11998 positional-binder refusal is retired. The resolver frame is executed
+// too: v2.compiler.resolve resolve_match_node scopes those binders as the arm's lexical frame, and
+// v2.test.claim.match_arm_binder_frame holds that a binder binds. What is NOT established is the
+// capability this row's subject names: that the NATIVE ROUTE, the emitted compiler, lowers fields and
+// binds binders. The emitted compiler does not build today, so nothing observes it there.
 //
-// THE RESIDUE, WITH ITS SPECIMEN. resolve_pattern_node_is_constructor decides binder-versus-
-// constructor by SHAPE, and a module container is a Conj whose every child is a Named edge, which
-// is also what a declared payload looks like to every shape test tried. So a binder spelling a
-// sibling module name is classified a constructor, gets no frame local, and resolves to the
-// MODULE. In this tree the binder is `node`, bound by BOTH `Present { value: node }` arms of
-// v2.std.symbol_index symbol_index_candidates_at -- the unbound-declaring arm that builds a single
-// LexicalBindingCandidate, and the fold arm that snocs one per declaring -- and lexical ascent from
-// either reaches the MODULE v2.std.node.
-// Accepted, wrong value, no diagnostic -- below the ladder, not on it. Found by review 70101 on
-// this PR.
-//
-// WHY THIS SPECIMEN IS CITED BY SYMBOL AND NOT BY LINE, AS A RECEIPT RATHER THAN A PREFERENCE.
-// This row first cited `src/v2/std/symbol_index.dag:156`, and that citation was CORRECT when it
-// was written -- line 156 was the arm, at three successive commits. It was invalidated by one
-// unrelated landing: gunbc#12048, which carries the declaring path to its consumers and took that
-// file from 199 lines to 416. Nobody touched either end of the citation and nobody could have
-// noticed. DESIGN section 3 says an edit ABOVE a cited line silently invalidates it; here that
-// took under a day, across lanes, under somebody else's correct work. So the class is not that a
-// citation was written carelessly -- it is that a position is a SECOND naming scheme for something
-// the containment tree already names, and it decays without either end being edited.
-//
-// AN ABSENCE CLAIM THAT WAS ABOUT WHERE I LOOKED, RECORDED BECAUSE THE NEXT READER MEETS IT HERE.
-// Two commits before this row was narrowed, the annotation beside the classifier stated that this
-// arm had NO corpus specimen, on the strength of two probes that came back green with a live
-// control. Both probes hunted a DATA or ALIAS whose indexed node is a parse-rest node. The
-// reachable shape is a MODULE, so the search was in the wrong place and the absence was a fact
-// about the search rather than about the corpus. gunbc#12057's author pointed one link upstream,
-// at the LOOKUP rather than the node shape, and was closer than either reading.
-//
-// WHY THE REPAIR IS NOT ANOTHER PREDICATE. Three shape discriminators have now been tried on this
-// classifier -- the bare connective, the construct tag, and declared-field coverage -- and each
-// admitted a wider set than its author intended, each looking complete at the time. A declared
-// payload, a module container and a declaration parse-rest node are all Conj with Named edges, so
-// the shape does not carry the distinguishing fact at all; what the classifier needs is what the
-// NAME DENOTES, which v2.compiler.symbol_index_fill knows at insert time. That is this row's
-// restoration trigger and it is filed as its own subject.
+// A HARM SENTENCE THIS ROW USED TO CARRY IS RETRACTED, AND THE RETRACTION IS RECORDED HERE. An
+// earlier revision said the binder `node` in v2.std.symbol_index symbol_index_candidates_at
+// resolved silently to the MODULE v2.std.node because resolve_pattern_node_is_constructor
+// classifies by shape. That came from review 70101's reading and was never executed. Execution
+// falsified it (nimble-boar-636, 2026-09-22, on #12033's head bbc77204a49):
+// v2.test.claim.match_arm_binder_frame mab_binder_spelling_a_sibling_module_binds_the_arm (authored on gunbc#12082), with
+// v2.std.node supplied beside that arm, holds and the binder binds. v2.compiler.symbol_index_fill
+// inserts no path for a module spine, so lexical ascent cannot reach a module, and the global-bare
+// Unbound arm refuses rather than falling back to one. The shape classifier remains a construction
+// deficit (a declared payload, a module container and a declaration parse-rest node are all Conj
+// with Named edges), and gunbc#12082 replaces it with the declaration kind the symbol index records.
+// That is construction with no behavioural delta on this corpus, so it does not retire this row.
 data variant_fields_unlowered_on_the_native_route_population: List<String> = [
-  "v2.compiler.resolve resolve_pattern_node_is_constructor -- a match-arm binder spelling a name the lexical chain resolves to a MODULE container is classified a constructor by shape, gets no frame local, and resolves to the module; specimen: the two `Present { value: node }` arms of v2.std.symbol_index symbol_index_candidates_at, where lexical ascent from the binder `node` reaches the MODULE v2.std.node",
+  "the emitted (native-route) compiler: variant-field lowering and match-arm binder binding are executed by the interpreted v2 stages but unobserved on the native route, because the emitted compiler does not build; specimen: the binder `node` of the `Present { value: node }` arms of v2.std.symbol_index symbol_index_candidates_at",
 ]
 
 data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
@@ -77,6 +54,6 @@ data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
       replacement: "a v2 stage lowers variant fields into declared field identities (named and positional \"0\")"
     },
     population: variant_fields_unlowered_on_the_native_route_population,
-    restoration_trigger: "resolve_pattern_node_is_constructor decides binder-versus-constructor from the DECLARATION KIND the symbol index recorded at insert time -- v2.compiler.symbol_index_fill distinguishes a containment edge from a variant payload from a data row -- rather than from the node's shape, so that a binder spelling a module, data or alias name binds the arm. The check is the specimen: the binder `node` in v2.std.symbol_index symbol_index_candidates_at binds its arm rather than resolving to the module v2.std.node. A fourth shape predicate does NOT satisfy this: three have been tried and each admitted a wider set than intended, which is the evidence that shape is the wrong carrier."
+    restoration_trigger: "the emitted compiler builds, and on that native route the specimen is observed: the binder `node` in v2.std.symbol_index symbol_index_candidates_at binds its arm and a positional `A(x)` construction and match round-trip field \"0\". A declaration-kind classifier alone (gunbc#12082) does NOT satisfy this: it changes how the interpreted stages decide, not whether the native route is observed."
   }
 }
