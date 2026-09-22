@@ -1,6 +1,8 @@
 module v2.compiler.resolution_provenance
 
 import std.algebra { Empty, FreeMonoid }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { NonEmptyStr }
 import v2.std.algebra {
   contains,
   fold_list,
@@ -37,13 +39,16 @@ import v2.std.symbol_index {
 }
 import v2.extdeps.languages.dag { qualified_name_from_module_node }
 
-// Resolution already knows which declaration answered a name but throws the answer's PATH away --
-// lookup_symbol_index_atom_identity keeps only the canonical Symbol, so nothing downstream can say
-// which module supplied a binding. That is why dependency edges are currently matched from the
-// reference SPELLING against declared module paths, a syntactic guess DESIGN section 4 rules out.
-// This module keeps the path: one name resolved at one position answers with its target and the
-// module that CONTAINS it, and the dependency derivation below consumes those answers and nothing
-// else.
+// THIS MODULE IS A SECOND RESOLVER, AND IT IS NOW DELETABLE. It was written because resolution knew
+// which declaration answered a name and threw the answer's PATH away -- lookup_symbol_index_atom_identity
+// kept only a canonical Symbol, so nothing downstream could say which module supplied a binding, and
+// dependency edges were matched from the reference SPELLING against declared module paths, a
+// syntactic guess DESIGN section 4 rules out. So this module re-ran the lookup and kept the path.
+// Since fierce-wren-487 (2026-09-22) resolution itself carries the path: v2.compiler.resolve
+// resolved_reference_node mints every corpus declaration reference as its declaring QualifiedName
+// (a qualified-name spine, read back by v2.std.qualified_name declaration_reference_path_optional).
+// One fact, two resolvers, is the fork DESIGN section 3 names; this module's answers are the second.
+// It is kept, frozen, until its consumers read the resolved tree -- the row below is the trigger.
 
 type ReferenceSite {
   position: QualifiedName
@@ -302,3 +307,15 @@ fn answer_target_optional(answer: ResolutionProvenance) -> Optional<QualifiedNam
     ProvenanceUnbound { site: _ } => optional_absent()
   }
 }
+
+// DISSOLVE-ON, AT CAPABILITY GRAIN: when every consumer of ResolutionProvenance -- the dependency
+// derivation in this module, v2.compiler.repair_input_origin_roster (whose own frontier row,
+// repair_input_declared_binding_frontier_dissolve_on, names the same capability) and
+// v2.compiler.declaring_identity_spelling_census -- derives the declaring path of a mention from the
+// RESOLVED TREE the production resolver emits (v2.std.qualified_name declaration_reference_path_optional
+// over v2.compiler.resolve output) rather than from resolve_reference_provenance re-running the
+// lookup, this module is DELETED together with this row. What makes it deletable is already true:
+// the resolved tree carries the path. What has not happened is the consumers reading it; a carrier
+// nothing consumes would satisfy a merge-shaped trigger while the second resolver stayed the only
+// thing answering (DESIGN section 4b(3)), so the trigger is the consumers' route, by execution.
+data resolution_provenance_second_resolver_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: every consumer of ResolutionProvenance derives a mention's declaring path from the resolved tree (v2.std.qualified_name declaration_reference_path_optional over v2.compiler.resolve output) by execution; then delete this module and this row." as NonEmptyStr)

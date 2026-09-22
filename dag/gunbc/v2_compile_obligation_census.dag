@@ -1,7 +1,7 @@
 module gunbc.v2_compile_obligation_census
 
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.guarantee_stall { NextRungTrigger, climbs_when, next_rung_trigger_render }
 import gunbc.guarantee_rung {
@@ -13,10 +13,35 @@ import gunbc.guarantee_rung {
   MechanicallyPreventable,
   StructurallyGuaranteed
 }
-import gunbc.witness_deferral_freeze { frozen_path_deferral_covers }
-import gunbc.ci_layer_roots { WitnessExclusionRow, witness_exclusion_frontier }
-import v2.workflow.required_floor { required_gate_admits }
 import gunbc.witness_v2_native_route { native_route_universe_member }
+import gunbc.derived_obligation_row {
+  WitnessSubject,
+  witness_subject,
+  witness_subject_qualified_name,
+  PathExecution,
+  ExecutedOnPath,
+  ExecutedPendingVerification,
+  DeclinedOutsideGateClosure,
+  RouteOffTheMergePath,
+  ExcludedFromDiscovery,
+  FrozenPathDeferred,
+  RouteGapHeld,
+  NoWitnessNamesIt,
+  path_execution_is_executing,
+  path_execution_label,
+  standing_carries_premise,
+  Home,
+  HomeAuthority,
+  NoHomeExists,
+  witness_subject_is_excluded,
+  witness_subject_is_frozen,
+  witness_subject_is_inside_gate_closure,
+  witness_subject_survives_every_subtraction,
+  interpreted_standing_of,
+  frozen_roster_authority,
+  exclusion_frontier_authority,
+  required_gate_authority
+}
 
 // WHY THIS CENSUS EXISTS, IN ONE SENTENCE THE OPERATOR ASKED FOR (2026-09-10): v2 exists so that
 // classes like nondeterministic emission are UNWRITABLE, and this roster says, per compile-time
@@ -74,52 +99,6 @@ type ObligationKind
   | DeclaredPrimitiveTraversalFact
   | RealizationCostFidelity
 
-// A WITNESS THIS OBLIGATION IS EXERCISED BY, AT EVERY GRAIN THE THREE AUTHORITIES ANSWER IN. The
-// freeze roster keys on ENTRY PATH plus FUNCTION, the exclusion frontier on ENTRY PATH, and the
-// required floor's gate closure on MODULE PATH — so a subject that named fewer than all three could
-// not be joined against all three. This is the one place the census authors a fact, and it authors
-// the keys rather than the answers.
-type WitnessSubject {
-  entry: NonEmptyStr
-  function: NonEmptyStr
-  module_path: NonEmptyStr
-}
-
-// WHERE AN OBLIGATION EXECUTES ON ONE ROUTE, AND WHY THE NON-EXECUTING ARMS ARE FOUR AND NOT ONE.
-// Collapsing them would reproduce exactly the failure gunbc.recurring_failure_mode names as
-// non-execution undifferentiated by what it silenced: a witness carved out of discovery by a
-// declared exclusion row, a witness frozen as never-executed, an obligation no witness names, and a
-// receipt family whose route publishes nothing the acceptance path can spend are four different
-// repairs with four different owners, and a single Absent arm would rank none of them.
-// THE ARMS, IN ORDER. ExecutedOnPath: discovered by the walk, subtracted by nothing, and its entry
-// verified to exist. ExecutedPendingEntryVerification: the same, MINUS the verification — the arm
-// every derived row currently takes, and it is a separate arm rather than a footnote on the first
-// one because the premise it carries is the one way this derivation can be wrong. ExcludedFromDiscovery: carved out by a gunbc.ci_layer_roots
-// witness_exclusion_frontier pattern — the row that does it is derivable from the entry, and
-// storing a copy of the pattern here would be the fork this module was rebuilt to remove.
-// FrozenPathDeferred: enrolled in the frozen legacy population, declared never-executed and
-// admitted with no executing consumer, so Mitigatable at best by construction of the roster it
-// sits in. RouteGapHeld: a receipt family exists for this route but publishes nothing the
-// acceptance path can spend. NoWitnessNamesIt: no witness names this obligation on this route.
-type PathExecution
-  = ExecutedOnPath { instrument: NonEmptyStr }
-  | ExecutedPendingVerification { instrument: NonEmptyStr, unverified_premises: List<DeclarationRef> }
-  | DeclinedOutsideGateClosure { gate: DeclarationRef }
-  | RouteOffTheMergePath { drop: DeclarationRef }
-  | ExcludedFromDiscovery { frontier: DeclarationRef }
-  | FrozenPathDeferred { roster: DeclarationRef }
-  | RouteGapHeld { stall: DeclarationRef }
-  | NoWitnessNamesIt { note: NonEmptyStr }
-
-// AN OBLIGATION WITH NO HOME IS A MODELING OBLIGATION, NOT A CENSUS ROW WITH A BLANK FIELD. DESIGN
-// section 3b draws that line for conformance domains and it applies here: a domain whose home
-// authority does not exist is not something to check, it is something to model, and a DeclarationRef
-// to a declaration nobody has authored would be a citation defect wearing the shape of coverage.
-// NoHomeExists carries the NEAREST authority — the declaration a reader would reach for — with the
-// reason it does not own the obligation, so the modeling work has a starting point.
-type Home
-  = HomeAuthority { authority: DeclarationRef }
-  | NoHomeExists { nearest: DeclarationRef, why_it_is_not_the_home: NonEmptyStr }
 
 // THE REACHED-BY-ROUTE AXIS IS DELETED, AND THE RULE THAT DELETED IT IS THIS MODULE'S OWN. It asked
 // which EXECUTING route names an obligation's door as a consumer, and it existed to separate two
@@ -173,106 +152,12 @@ type V2CompileObligation {
   related_drops: List<DeclarationRef>
 }
 
-data frozen_roster_authority: DeclarationRef = decl_ref(
-  module_path: "gunbc.witness_deferral_freeze",
-  decl_name: "frozen_path_deferrals"
-)
-
-data exclusion_frontier_authority: DeclarationRef = decl_ref(
-  module_path: "gunbc.ci_layer_roots",
-  decl_name: "witness_exclusion_frontier"
-)
-
 data self_host_route_stall: DeclarationRef = decl_ref(
   module_path: "gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall",
   decl_name: "self_host_wet_route_receipt_lifetime_stall"
 )
 
-// THE EXCLUSION JOIN REPRODUCES THE HOST RULE EXACTLY RATHER THAN APPROXIMATING IT. The deferred
-// discovery walk in v1_compiler.cli_run selects a *_test.dag whose repo-relative path CONTAINS an
-// exclusion pattern (`rel.contains(sub)`); string_contains is that same predicate, so this is the
-// rule itself asked again, not a second rule that happens to agree today.
-fn witness_subject_is_excluded_in(rows: List<WitnessExclusionRow>, w: WitnessSubject) -> Bool {
-  fold(
-    rows,
-    init: false,
-    f: fn(found, row) { found || string_contains(s: w.entry, pattern: row.pattern) }
-  )
-}
 
-fn witness_subject_is_excluded(w: WitnessSubject) -> Bool {
-  witness_subject_is_excluded_in(rows: witness_exclusion_frontier, w: w)
-}
-
-fn witness_subject_is_frozen(w: WitnessSubject) -> Bool {
-  frozen_path_deferral_covers(entry: w.entry, function: w.function)
-}
-
-data required_gate_authority: DeclarationRef = decl_ref(
-  module_path: "v2.workflow.required_floor",
-  decl_name: "required_gate_admits"
-)
-
-// THE GATE DECISION IS ASKED OF ITS AUTHORITY, NOT RE-IMPLEMENTED AS A PREFIX FOLD. This used to
-// fold `starts_with` over `required_gate_prefixes` itself, which was one reading of the gate while
-// the gate had one selector kind; the gate now also admits authored module names under the
-// segment-boundary rule (`RequiredGateSelector`), and a local prefix fold would have declined
-// every module admitted that way -- a second authority for the admission question, wrong in
-// exactly the population the second kind exists for.
-fn witness_subject_is_inside_gate_closure(w: WitnessSubject) -> Bool {
-  required_gate_admits(module_path: w.module_path)
-}
-
-// WHAT IS DERIVED, WHAT IS ASSUMED, AND WHY THE ASSUMPTION IS A NAMED ARM RATHER THAN A COMMENT.
-// Every entry below is a *_test.dag under dag/ or src/v2/, which is the whole of the discovery
-// walk's positive selection, so the remaining questions are exactly the three subtractions — the
-// freeze roster, the exclusion frontier, and the required floor's gate closure — and all three are
-// ASKED here, of the authorities that own them.
-//
-// THE THIRD ONE WAS MISSING FROM THE FIRST THREE CUTS, and its absence was the same defect as the
-// widen below wearing a bigger coat: the derivation reduced per-PR standing to two questions and
-// then reported discovery-reach as execution, while v2.workflow.required_floor
-// required_gate_prefixes declines every witness whose MODULE is outside the prepared closure. It
-// changes no row's value today — every witness below is under v2.test., which the roster admits —
-// and that is precisely why it had to be asked rather than assumed: a subtraction that happens to
-// be satisfied is not a subtraction that was checked.
-//
-// THE GATE TEST IS THE GATE'S OWN. Two cuts of this module used string_contains here and declared
-// the imprecision as debt — first discharged onto the wrong trigger, then given its own; a third
-// folded starts_with over the prefix roster, exact for the one selector kind the gate then had.
-// Each was an answer to a question with a better answer: the gate's admission decision is a
-// declared function of its authority, and asking it is what keeps this census from becoming a
-// second reading of the gate that drifts when the gate grows a selector kind. A declared debt for
-// a capability that already exists is not honesty, it is a permanent excuse with a receipt
-// attached — so the premise, its trigger and its number are DELETED rather than kept as
-// documentation of a problem that no longer exists.
-//
-// WHAT IS NOT ASKED is whether the entry file still exists at that path. A moved or deleted entry is
-// covered by neither roster, so "not frozen and not excluded" would answer EXECUTING for a witness
-// that cannot run — a widen toward coverage at exactly the moment the derivation stops being able to
-// decide, which DESIGN section 5 forbids as a failure arm that widens instead of refusing.
-//
-// SO THE ARM IS LOUD, BOUNDED, AND CARRIES ITS TRIGGER, which is the one carve-out section 5 allows.
-// LOUD: the standing is ExecutedPendingEntryVerification, a distinct arm naming the unverified
-// premise, never plain ExecutedOnPath — and obligations_executing_on_an_unverified_entry counts it,
-// so the debt has a number beside the coverage number rather than hiding inside it. BOUNDED: the
-// population is the entries of the rows in this file and nothing else -- obligations_claimed is its
-// size -- and it cannot grow with
-// the corpus. TRIGGER: entry_existence_verification_trigger below, a typed DissolutionCondition
-// naming the capability that retires it — not a sentence in a comment.
-//
-// AN EARLIER CUT OF THIS PARAGRAPH SAID THE TRIGGER WAS "named on the census's own next_trigger
-// below" WHEN NO SUCH DECLARATION EXISTED. That is precisely
-// stale_present_tense_coverage_claim_in_the_authority_consulted_first, the class this same change
-// files in the ledger, committed inside the module that files it. The repair is the declaration,
-// not a softer sentence.
-// The three subtractions this module CAN decide. Entry existence is deliberately not folded in here:
-// it is a different question with a different owner, and conflating them is what produced the widen.
-fn witness_subject_survives_every_subtraction(w: WitnessSubject) -> Bool {
-  !witness_subject_is_frozen(w: w)
-    && !witness_subject_is_excluded(w: w)
-    && witness_subject_is_inside_gate_closure(w: w)
-}
 
 // UNBOUND RATHER THAN BOUND, AND NOT BY PREFERENCE. A bound trigger names a declaration whose
 // appearance retires the obligation, which is the stronger arm and the one this row wants. It is
@@ -294,47 +179,6 @@ data unverified_entry_premise: DeclarationRef = decl_ref(
   module_path: "gunbc.v2_compile_obligation_census",
   decl_name: "entry_existence_verification_trigger"
 )
-
-fn any_witness_survives_every_subtraction(ws: List<WitnessSubject>) -> Bool {
-  fold(ws, init: false, f: fn(found, w) { found || witness_subject_survives_every_subtraction(w: w) })
-}
-
-fn all_witnesses_frozen(ws: List<WitnessSubject>) -> Bool {
-  fold(ws, init: true, f: fn(ok, w) { ok && witness_subject_is_frozen(w: w) })
-}
-
-fn all_witnesses_outside_gate_closure(ws: List<WitnessSubject>) -> Bool {
-  fold(ws, init: true, f: fn(ok, w) { ok && !witness_subject_is_inside_gate_closure(w: w) })
-}
-
-// THE DERIVED INTERPRETED STANDING. Executing wins over every non-executing arm because one
-// discovered witness is coverage; among the non-executing arms, frozen is reported only when EVERY
-// witness is frozen, so a mixed row reads as excluded rather than claiming a stronger declared
-// never-executed standing than its population supports.
-fn interpreted_standing(o: V2CompileObligation) -> PathExecution {
-  if list_length(items: o.witnesses) == 0 {
-    NoWitnessNamesIt {
-      note: "no witness in the corpus names this obligation" as NonEmptyStr
-    }
-  } else {
-    if any_witness_survives_every_subtraction(ws: o.witnesses) {
-      ExecutedPendingVerification {
-        instrument: "claim_executor --required-ci --source-root dag --source-root src/v2: the discovery walk reaches this entry, no exclusion row and no freeze row subtracts it, and its module reads as inside the required floor's gate closure" as NonEmptyStr,
-        unverified_premises: [unverified_entry_premise]
-      }
-    } else {
-      if all_witnesses_frozen(ws: o.witnesses) {
-        FrozenPathDeferred { roster: frozen_roster_authority }
-      } else {
-        if all_witnesses_outside_gate_closure(ws: o.witnesses) {
-          DeclinedOutsideGateClosure { gate: required_gate_authority }
-        } else {
-          ExcludedFromDiscovery { frontier: exclusion_frontier_authority }
-        }
-      }
-    }
-  }
-}
 
 // THE NATIVE COLUMN IS NOW DERIVED TOO, AND THE ANSWER CHANGED. Every earlier cut of this module
 // reported RouteGapHeld on every row, on the true observation that the self-host behavioral receipt
@@ -420,6 +264,16 @@ fn any_witness_in_native_lane(ws: List<WitnessSubject>) -> Bool {
   fold(ws, init: false, f: fn(found, w) { found || witness_subject_in_native_lane(w: w) })
 }
 
+// THE CENSUS'S OWN STANDING, SUPPLYING ITS OWN PREMISE. The derivation moved to
+// gunbc.derived_obligation_row when a second roster needed it; what stayed here is the fact that is
+// this census's and not the shape's -- WHICH unverified premise its pending arm carries. Passing it
+// rather than having the shape reach for it is why the move changed no verdict: the arm this census
+// reports, and the premise obligations_executing_on_an_unverified_entry counts, are the same
+// declarations they were before the extraction.
+fn interpreted_standing(o: V2CompileObligation) -> PathExecution {
+  interpreted_standing_of(ws: o.witnesses, unverified_premise: unverified_entry_premise)
+}
+
 fn native_standing(o: V2CompileObligation) -> PathExecution {
   if list_length(items: o.witnesses) == 0 {
     NoWitnessNamesIt {
@@ -450,13 +304,6 @@ fn rung_drop_ref(identity: String) -> DeclarationRef {
 // the failure this ledger already carries as declared_trigger_names_a_term_that_is_not_the_cause.
 data native_door_entry_trigger: NextRungTrigger = climbs_when(capability: "the emitted native lane's admitted subjects stop refusing at resolve, so compile_source_root_ingest_with_admission actually enters validate_then_compile and this gate is asked about an authored module. THAT IS THE WHOLE REMAINING CAPABILITY FOR THIS ROW: its witnesses are already discovered and already run on the interpreted per-PR route, so no discovery, exclusion or freeze change moves it — the executed rung is held down by the native path alone, and DESIGN section 4b(1) takes the MINIMUM across paths. AND ENTERING THE DOOR IS NECESSARY BUT NOT SUFFICIENT: what this census can then report is route coverage, so the rung this row reaches on the ladder additionally needs v2.compiler.self_host.compile_obligation_activation to require red-and-green execution receipts before MechanicallyPreventable is reportable at all")
 
-fn witness_subject(entry: String, function: String, module_path: String) -> WitnessSubject {
-  WitnessSubject {
-    entry: entry as NonEmptyStr,
-    function: function as NonEmptyStr,
-    module_path: module_path as NonEmptyStr
-  }
-}
 // THE CLAIMED RUNG IS DOWNGRADED, AND THE EVIDENCE IS THE REASON (gunbc#11004, 2026-09-12). This
 // row claimed MechanicallyPreventable on the strength of the discriminating red named below,
 // `gate_red_quadratic_rejects`. That witness lives in `test/claim/long/`, a
@@ -978,18 +825,6 @@ data v2_compile_obligation_census: List<V2CompileObligation> = [
   realization_cost_fidelity_obligation,
 ]
 
-fn path_execution_is_executing(p: PathExecution) -> Bool {
-  match p {
-    ExecutedOnPath { instrument: _ } => true
-    ExecutedPendingVerification { instrument: _, unverified_premises: _ } => true
-    RouteOffTheMergePath { drop: _ } => false
-    DeclinedOutsideGateClosure { gate: _ } => false
-    ExcludedFromDiscovery { frontier: _ } => false
-    FrozenPathDeferred { roster: _ } => false
-    RouteGapHeld { stall: _ } => false
-    NoWitnessNamesIt { note: _ } => false
-  }
-}
 
 fn obligation_executes_natively(o: V2CompileObligation) -> Bool {
   path_execution_is_executing(p: native_standing(o: o))
@@ -1121,23 +956,6 @@ fn obligation_executes_on_an_unverified_entry(o: V2CompileObligation) -> Bool {
   obligation_is_pending_on(o: o, premise: unverified_entry_premise)
 }
 
-// A PREMISE IS READ BY THE FOLD NAMED FOR IT. An earlier cut folded one predicate twice under two
-// names, which would have made the second number track the first forever instead of the premise it
-// is named for. standing_carries_premise takes the premise as an argument, so a count cannot drift
-// onto a premise it was not asked about.
-fn standing_carries_premise(p: PathExecution, premise: DeclarationRef) -> Bool {
-  match p {
-    ExecutedPendingVerification { instrument: _, unverified_premises: ps } =>
-      fold(ps, init: false, f: fn(found, r) { found || declaration_ref_eq(a: r, b: premise) })
-    ExecutedOnPath { instrument: _ } => false
-    DeclinedOutsideGateClosure { gate: _ } => false
-    RouteOffTheMergePath { drop: _ } => false
-    ExcludedFromDiscovery { frontier: _ } => false
-    FrozenPathDeferred { roster: _ } => false
-    RouteGapHeld { stall: _ } => false
-    NoWitnessNamesIt { note: _ } => false
-  }
-}
 
 fn obligation_is_pending_on(o: V2CompileObligation, premise: DeclarationRef) -> Bool {
   standing_carries_premise(p: interpreted_standing(o: o), premise: premise)
@@ -1150,13 +968,6 @@ fn obligations_executing_on_an_unverified_entry() -> Int {
   )
 }
 
-// THE SUBJECTS AS QUALIFIED NAMES, so a consumer that CAN read the tree has one thing to join on and
-// does not re-derive the dotted spelling. The declaration name carries no dots, so module plus
-// declaration is unambiguous in both directions — the same derivation
-// gunbc.witness_v2_native_route makes for the native lane's identities.
-fn witness_subject_qualified_name(w: WitnessSubject) -> String {
-  concat(concat(w.module_path as String, "."), w.function as String)
-}
 
 fn census_witness_subjects() -> List<WitnessSubject> {
   fold(
@@ -1215,19 +1026,6 @@ fn obligation_kind_label(k: ObligationKind) -> String {
   }
 }
 
-fn path_execution_label(p: PathExecution) -> String {
-  match p {
-    ExecutedOnPath { instrument: _ } => "executes"
-    ExecutedPendingVerification { instrument: _, unverified_premises: _ } =>
-      "executes-pending-verification"
-    DeclinedOutsideGateClosure { gate: _ } => "declined-outside-gate-closure"
-    RouteOffTheMergePath { drop: _ } => "route-off-the-merge-path"
-    ExcludedFromDiscovery { frontier: _ } => "excluded-from-discovery"
-    FrozenPathDeferred { roster: _ } => "frozen-deferral"
-    RouteGapHeld { stall: _ } => "route-gap-held"
-    NoWitnessNamesIt { note: _ } => "no-witness-names-it"
-  }
-}
 
 // THE REPORT IS THE RECORD'S CONSUMER, and it exists because a census whose fields nobody reads is
 // the redundant work DESIGN section 2 prices. Every authored field that is not already folded by a

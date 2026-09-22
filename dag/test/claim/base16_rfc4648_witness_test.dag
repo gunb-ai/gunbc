@@ -1,6 +1,6 @@
 module test.claim.base16_rfc4648_witness_test
 
-import std.integer { UInt8 }
+import std.integer { UInt8, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints, qualified_octet_members }
 import extdeps.numeric.base16 {
   base16_encode_lower, base16_decode_lower,
   base16_is_lower_digit_code_point, base16_is_digit_code_point, base16_lower_digit_value_at,
@@ -38,28 +38,58 @@ data asymmetric_node_hex: String = "0123456789abcdef0123456789abcdef01234567"
 
 data asymmetric_node_octets: List<UInt8> = [1, 35, 69, 103, 137, 171, 205, 239, 1, 35, 69, 103, 137, 171, 205, 239, 1, 35, 69, 103]
 
+// THE ENCODER'S INPUT IS MINTED THROUGH THE ONE ADMISSION FOLD, never constructed here: the
+// witness must reach base16_encode_lower the way a consumer does, and std.integer QualifiedOctets
+// has no constructor outside its defining module.
+//
+// THE REFUSAL ARM ANSWERS A STRING NO ENCODING CAN PRODUCE, and an earlier cut answered "" --
+// which is a VALID ENCODING, the one base16_encode_lower returns for the empty octet string. So
+// base16_encodes_empty_as_empty compared against "" and stayed green whether the encoder ran or
+// the mint refused: a claim with no discriminating red for its own subject, and an annotation
+// here asserting the opposite (review 70133). This alphabet is 0-9a-f, so "REFUSED" is outside
+// the codec's range by construction and every claim below separates the two outcomes.
+fn encoded(values: List<Int>) -> String {
+  match uint8_octets_of_ints(values: values) {
+    QualifiedOctetsReady { value: q } => base16_encode_lower(octets: q)
+    QualifiedOctetsRefused { observed: _ } => "REFUSED"
+  }
+}
+
+// THE REFUSAL IS REACHABLE AND DISTINGUISHABLE, asserted rather than assumed: without this, the
+// arm above is a branch nothing executes and "" could have been replaced by anything at all.
+test fn the_encoder_helper_refuses_an_out_of_range_vector() -> Bool {
+  encoded(values: [256]) == "REFUSED"
+    && encoded(values: [0, 255]) == "00ff"
+}
+
 test fn base16_encodes_rfc4648_foobar_vector() -> Bool {
-  base16_encode_lower(octets: [102, 111, 111, 98, 97, 114]) == "666f6f626172"
+  encoded(values: [102, 111, 111, 98, 97, 114]) == "666f6f626172"
 }
 
 test fn base16_encodes_empty_as_empty() -> Bool {
-  base16_encode_lower(octets: []) == ""
+  encoded(values: []) == ""
 }
 
 test fn base16_encodes_asymmetric_vector() -> Bool {
-  base16_encode_lower(octets: asymmetric_octets) == asymmetric_hex
+  encoded(values: asymmetric_octets) == asymmetric_hex
 }
 
+// THE DECODER'S RESULT IS THE SEALED CARRIER, AND THAT IS WHAT THIS PINS. Before this cut the
+// decoder answered List<UInt8> -- a phantom, uninhabited carrier that established nothing about
+// its members and emitted as PhantomData, which is what refused the self-host build when
+// extdeps.numeric.base16 entered the v2.compiler.compile closure. Reading the members back
+// through qualified_octet_members is the only route out of the carrier, so this claim also
+// establishes that the admission was minted rather than bypassed.
 test fn base16_decodes_asymmetric_vector() -> Bool {
   match base16_decode_lower(hex: asymmetric_hex) {
-    Present { value: octets } => octets == asymmetric_octets
+    Present { value: octets } => qualified_octet_members(q: octets) == asymmetric_octets
     Absent => false
   }
 }
 
 test fn base16_decodes_empty_as_empty() -> Bool {
   match base16_decode_lower(hex: "") {
-    Present { value: octets } => octets == []
+    Present { value: octets } => qualified_octet_members(q: octets) == []
     Absent => false
   }
 }
@@ -125,7 +155,7 @@ test fn a_digit_value_is_read_from_the_same_rows() -> Bool {
 
 fn decodes_to(hex: String, expected: List<UInt8>) -> Bool {
   match base16_decode_lower(hex: hex) {
-    Present { value: octets } => octets == expected
+    Present { value: octets } => qualified_octet_members(q: octets) == expected
     Absent => false
   }
 }
@@ -143,7 +173,7 @@ test fn two_character_text_decodes_as_two_digits_never_as_its_first() -> Bool {
     && decode_refuses(hex: "aZ")
     && decode_refuses(hex: "a")
     && match base16_decode_lower(hex: "") {
-      Present { value: octets } => count(octets) == 0
+      Present { value: octets } => count(qualified_octet_members(q: octets)) == 0
       Absent => false
     }
 }

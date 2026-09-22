@@ -1,6 +1,8 @@
 module v2.std.namespace_alias
 
-import v2.std.node { Symbol }
+import std.algebra { Empty, FreeMonoid }
+import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.node { Node, Symbol }
 import v2.std.qualified_name { QualifiedName }
 
 // Namespace alias surface row (docs/plans/namespace-resolution-design.md §13): alias <binding> =
@@ -12,4 +14,51 @@ import v2.std.qualified_name { QualifiedName }
 type AliasBindingRow {
   binding: Symbol
   target: QualifiedName
+}
+
+// WHAT THE SYMBOL INDEX NEEDS FROM ONE MODULE IN ORDER TO BIND IT, and the reason it is a pair
+// rather than two parallel lists. The declarations come from the grafted root; the import rows
+// cannot, because the graft dissolved the decls that carried them, so they arrive from the carrier
+// that captured them at normalize. Holding the two in one value keeps them joined by CONSTRUCTION:
+// two lists walked in step would be joined by position, and a reordering of either would silently
+// bind one module's imports into another module's namespace. The type lives here, beside the row it
+// carries, because the index fill and the normalized-tree carrier cannot import each other.
+type ModuleBindingSource {
+  root: Node
+  import_bindings: FreeMonoid<AliasBindingRow>
+}
+
+// A BINDING ROW WAITING FOR ITS TARGET, carried with the position it binds at. Pass B cannot bind a
+// row until the row's TARGET is in the index, and a target is not always a declaration: a re-export
+// chain (`m.b` imports `X` from `m.c`, `m.a` imports `X` from `m.b`) makes one row's target another
+// row's binding. So the rows that could not bind yet are carried forward as values and retried,
+// rather than being dropped in the order the roots happened to arrive in.
+type PendingBinding {
+  module_qn: QualifiedName
+  row: AliasBindingRow
+}
+
+// THE TWO PROJECTIONS A CONSUMER OF ModuleBindingSource NEEDS, so a caller never has to choose
+// between "the roots" and "the bindings" and risk pairing them by position.
+fn module_binding_source_roots(sources: FreeMonoid<ModuleBindingSource>) -> FreeMonoid<Node> {
+  fold_list(
+    xs: sources,
+    empty: Empty,
+    cons: fn(acc, src) { list_snoc_item(xs: acc, item: src.root) }
+  )
+}
+
+// A ROOT WITH NOTHING IMPORTED, for a caller that genuinely has none -- a hand-built Node, not a
+// parsed module. The name says that rather than letting `Empty` at a call site read as a caller
+// who forgot, which is the same reason v2.compiler.normalized_tree spells no_import_bindings().
+fn module_binding_source_without_imports(root: Node) -> ModuleBindingSource {
+  ModuleBindingSource { root: root, import_bindings: Empty }
+}
+
+fn module_binding_sources_without_imports(roots: FreeMonoid<Node>) -> FreeMonoid<ModuleBindingSource> {
+  fold_list(
+    xs: roots,
+    empty: Empty,
+    cons: fn(acc, root) { list_snoc_item(xs: acc, item: module_binding_source_without_imports(root: root)) }
+  )
 }

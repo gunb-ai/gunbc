@@ -118,12 +118,14 @@ fn native_route_identity_label(module_qn: String, declaration: String) -> LabelP
 // is the law: were the default ever narrower than the universe, the lane would silently drop
 // members at its default.
 //
-// CONSUMERS AND FRONTIER. `v2.compiler.compile` `native_lane_universe_selected` consumes the
-// pattern at execution; `native_lane_universe` (the required-v2-native lane's rendered main)
-// consumes it at this default. An OPERATOR-SUPPLIED pattern reaches that same producer when
-// `gunbc test <pattern>` enters the native implementation (v2 foundation package 9); that verb is
-// the trigger for a non-default caller, and until it lands the only non-default callers are the
-// witnesses over the real producer in gunbc.native_lane_import_refusal_witness_test.
+// CONSUMERS. `v2.compiler.compile` `native_lane_universe_selected` consumes the pattern at
+// execution; `native_lane_universe` (the required-v2-native lane's rendered main) consumes it at
+// this default. AN OPERATOR-SUPPLIED PATTERN NOW REACHES THAT SAME PRODUCER: `gunbc test <operand>`
+// admits the operand against THIS row as its universe (`gunbc.target_invocation`
+// `admit_test_operand`, whose containment decides the executor) and hands the operand's own pattern
+// to the emitted binary's `adjudicate` verb. So this declaration is read in two directions -- as
+// the lane's default population, and as the boundary that says which operands the native route
+// owns -- and they are one value, not two spellings of one.
 fn native_route_default_pattern() -> TargetPattern {
   SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr] } }
 }
@@ -904,29 +906,45 @@ data native_route_live_control_false_declaration: String = "native_lane_false_co
 data native_route_live_control_true_declaration: String = "native_lane_true_control"
 
 // THE LIVE PAIR'S STANDING: REQUIRED, OR ENROLLED AS AN EXPECTING-RED PROBE PINNED TO ITS CAUSE
-// (manager ruling 2026-09-21). On main 79e745b4 and on gunbc#11952 alike, the module both controls
-// live in, `v2.native_lane_fixture.control`, is refused at PREPARE with
-// `resolve_ambiguous_on_global_bare` on the bare `SubstrateInputsOnly` (the emitted binary's own
-// `census-resolve` names it), as is the whole population -- so neither control can be observed by
-// any head until the native resolver admits that form. Leaving the clause required would make the
-// lane unadmittable for a reason no lane change can move; dropping it would lose the control.
-// Enrolling it keeps the evidence: the clause holds ONLY while both controls refuse at the pinned
-// stage with the pinned FATAL reason and the pinned lookup CLASS in their chain. A DIFFERENT refusal is a moved wall and refuses as not
-// observed; an OBSERVED control refuses as `LivePairObservedWhileEnrolledRed`, which is the flip
-// signal -- the standing must then become `LivePairRequired`, and the pair is a required-green
-// control from that head on (DESIGN 4b(4): the probe flips to a permanent regression control, it
-// does not retire). RETIREMENT TRIGGER, the capability: the native resolver admits the retained
-// forms (v2 foundation package 12, the namespace candidate rule).
+// (manager ruling 2026-09-21). The enrolled arm was declared because, on main 79e745b4 and on
+// gunbc#11952 alike, the module both controls live in -- `v2.native_lane_fixture.control` -- was
+// refused at PREPARE with `resolve_ambiguous_on_global_bare` on the bare `SubstrateInputsOnly`, as
+// was the whole population: no head could observe the pair until the native resolver admitted that
+// form, and a required clause would have refused every receipt for a reason no lane change could
+// move. THAT CONDITION ENDED on 2026-09-22 (gunbc#12009), and the standing below is now
+// `LivePairRequired`; the enrolled arm is kept in the type because it is how a future stall would
+// be declared, not because anything is enrolled in it today.
+//
+// WHY THE ENROLLED ARM PINS THREE AXES, worth keeping now that it is unused: the clause held ONLY
+// while both controls refused at the pinned stage with the pinned FATAL reason and the pinned
+// lookup CLASS in their chain. A DIFFERENT refusal is a moved wall and refuses as not observed; an
+// OBSERVED control refuses as `LivePairObservedWhileEnrolledRed`, which is the flip signal. That
+// is what makes the arm a probe rather than a hole: it cannot be satisfied by the subject getting
+// worse in a new way, and it cannot outlive the condition it describes.
 type NativeRouteLivePairStanding
   = LivePairRequired
   | LivePairExpectedRed { stage: NativeTestStage, fatal_reason: Symbol, class_reason: Symbol, trigger: String }
 
-data native_route_live_pair_standing: NativeRouteLivePairStanding = LivePairExpectedRed {
-  stage: NativeTestStagePrepare,
-  fatal_reason: ^resolve_reason_ambiguous_symbol,
-  class_reason: ^resolve_ambiguous_on_global_bare,
-  trigger: "the native resolver admits the retained forms (v2 foundation package 12, the namespace candidate rule)"
-}
+// FLIPPED TO REQUIRED 2026-09-22 (gunbc#12009, v2 foundation package 12 -- the trigger this row
+// named). The pair is OBSERVED. All three conjuncts of the retirement trigger were executed on the
+// emitted route before this edit, which is the order DESIGN 4b(1) requires -- the reported rung
+// must equal the rung executed evidence establishes, and flipping on "it resolves" alone would
+// have been the inflation that section names:
+//   1. v2.native_lane_fixture.control RESOLVES (real source bytes, not an isomorphic fixture);
+//   2. native_lane_false_control observed ReturnedFalse AND native_lane_true_control observed
+//      Passed, through the emitted binary's own native_test_eval_one;
+//   3. this standing set to LivePairRequired in the same change.
+// The receipt -- head, emitter source, emitted-closure hash, both verdicts, the command -- is in
+// gunbc#12009's body.
+//
+// IT DOES NOT RETIRE, IT FLIPS (DESIGN 4b(4)): the pair is now a permanent regression control, and
+// a route that stops discriminating false from true reds this clause from here on. What the
+// enrolled-red form bought was tolerance of a refusal no lane change could move; that refusal is
+// gone, so the tolerance goes with it. The class it was pinned to -- resolve_ambiguous_on_global_bare
+// -- no longer has a producer, which is why leaving the pin standing was not an option: an
+// expecting-red probe pinned to an unproducible cause can never match, reads as a moved wall for
+// every future head, and can never be retired by its own trigger.
+data native_route_live_pair_standing: NativeRouteLivePairStanding = LivePairRequired
 
 // A CONTROL MATCHES THE ENROLLMENT ONLY AS THE PINNED REFUSAL, ON ALL THREE AXES: the stage, the
 // FATAL reason (`diagnostics_fatal_reason` -- the last diagnostic, never the head, which is
