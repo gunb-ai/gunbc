@@ -703,15 +703,25 @@ fn native_member_termination(
     let unobserved = rows
         .iter()
         .any(|v| matches!(v, NativeMemberVerdict::Refused));
+    // THE FOUR WAYS A SELECTION GOES UNOBSERVED ARE NAMED SEPARATELY AND THEN JOINED, rather than
+    // written as four `else if` arms returning the same value. They are four distinct facts and the
+    // `.dag` fold keeps them as four arms; here they collapse because Rust arms returning identical
+    // blocks are a clippy refusal (`if_same_then_else`) and this repository treats a warning as an
+    // error. Naming each condition keeps the reasons legible at the site -- which is what the arms
+    // were carrying -- without an `#[allow]`, and an escape hatch for a lint is the shape DESIGN
+    // section 5 refuses. The behaviour is identical and the witnesses that discriminate each reason
+    // are unchanged.
+    let a_member_was_not_observed = unobserved;
+    let the_population_is_short = rows.len() as u64 != universe;
+    let a_source_could_not_be_read = file_refusals != 0;
+    let nothing_was_selected = rows.is_empty();
     if observed_failure {
         NativeMemberTermination::ObservationDidNotHold
-    } else if unobserved {
-        NativeMemberTermination::SubjectUnreached
-    } else if rows.len() as u64 != universe {
-        NativeMemberTermination::SubjectUnreached
-    } else if file_refusals != 0 {
-        NativeMemberTermination::SubjectUnreached
-    } else if rows.is_empty() {
+    } else if a_member_was_not_observed
+        || the_population_is_short
+        || a_source_could_not_be_read
+        || nothing_was_selected
+    {
         NativeMemberTermination::SubjectUnreached
     } else {
         NativeMemberTermination::ObservationHeld
