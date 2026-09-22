@@ -3072,9 +3072,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/demand-engine-program.md",
       t: fields(
         headline: "CRYPTO-0: after the HMAC landing -- the native receipt instrument and the cost of interpreted SHA-256",
-        boundary: "SHA-256 landed on main as extdeps.crypto.sha2 over std.bitwise (gunbc#11645). HMAC-SHA-256 over it, utf8_encode_octets, and the deletion of the hmac interpreter primitives, crate and evidence rows were reconciled in gunbc#11895 and SPLIT OUT of its landing (operator ruling 2026-09-21): under the honest floor their witnesses run at 0.8-1.4M eval steps against the 100ms-equivalent new-witness budget, so they wait on the kernel arms. Also owed with that landing: the 4b(3) declared drop for the constant-time tag comparison that verify_slice realized mechanically and hmac_tag_difference cannot observe (review 69492). The reconciled tree is #11895's history.",
+        boundary: "SHA-256 landed on main as extdeps.crypto.sha2 over std.bitwise (gunbc#11645). HMAC-SHA-256 over it, utf8_encode_octets, and the deletion of the hmac interpreter primitives, crate and evidence rows were reconciled in gunbc#11895 and SPLIT OUT of its landing (operator ruling 2026-09-21): under the honest floor their witnesses run at 0.8-1.4M eval steps against the 100ms-equivalent new-witness budget, so they wait on the kernel arms. Also owed with that landing: the 4b(3) declared drop for the constant-time tag comparison that verify_slice realized mechanically and hmac_tag_difference cannot observe (review 69492). The reconciled tree is gunbc#11895 at its immutable quarry head 8fc4448575cd4955c2b3b6c34ac6e300f41d31f1 (tag quarry/11895); #11895 is a quarry and never lands.",
         displaced_cost: "Without the instrument the .dag hash has no native receipt, and without the cost measurement the kernel-arms row is scheduled on a guess.",
-        first_slice: "Re-draft the HMAC landing from #11895's reconciled tree once egress-numeric-bit-kernel-arms brings interpreted SHA-256 inside the floor budget; the constant-time rung-drop row lands with it.",
+        first_slice: "Re-draft the HMAC landing from gunbc#11895 at its immutable quarry head 8fc4448575cd4955c2b3b6c34ac6e300f41d31f1 (tag quarry/11895) once egress-numeric-bit-kernel-arms brings interpreted SHA-256 inside the floor budget; the constant-time rung-drop row lands with it.",
         red_control: "The native instrument refuses on a wrong label rather than reporting pass; a mutated round constant reds the FIPS 180-4 vectors in sha256_fips_witness_test.",
         out_of_scope: "SHA-384/512, P-256 and ES256 are the next row.",
         handback: "Return the instrument row and the measured cost."
@@ -3102,13 +3102,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/demand-engine-program.md",
       t: updated(t: fields(
         headline: "ENCODING-0: land pure .dag CBOR, DER and X.509 parsing (gunbc#11727)",
-        boundary: "gunbc#11727 (approved, receipt 8 modules / 170 claims / 0 failed) retargeted from the sharp-raven base onto main once the sealed carrier lands, fresh receipt, landed.",
+        boundary: "Pure .dag CBOR, DER and X.509 parsing, reconciled in gunbc#11895 at its immutable quarry head 8fc4448575cd4955c2b3b6c34ac6e300f41d31f1 (tag quarry/11895) and DEFERRED, not landed: it waits on its witness redesign (claims supplying pre-parsed values plus one inhabitance claim on the real bytes) or on the kernel arms. The reconciled tree is KNOWN INCORRECT in five ways found by review after the split, each an acceptance obligation of this row with its own discriminating control: (1) DER OID arc accumulation is bounded before pending * 128 + low can overflow -- an over-long arc refuses; (2) the required App Attest bundle-version extension is enforced before the ECDSA frontier is returned -- an attestation lacking it refuses; (3) a DER BIT STRING whose declared-unused low bits are nonzero refuses; (4) element matching enforces the DER primitive/constructed bit -- a constructed encoding of a primitive tag refuses; (5) CBOR map keys are checked for deterministic ordering -- an out-of-order map refuses.",
         displaced_cost: "The attestation parsers sit approved but unlandable, and every consumer of std.octet_span waits on them.",
-        first_slice: "Retarget onto main after egress-numeric-bit-sealed-carrier, re-run the receipt, land.",
-        red_control: "The three mutant REDs in the receipt stay red on the retargeted head.",
+        first_slice: "Re-draft from gunbc#11895 at its immutable quarry head 8fc4448575cd4955c2b3b6c34ac6e300f41d31f1 (tag quarry/11895) with the redesigned witnesses, repairing the five known defects in the boundary, each with its named refusal control.",
+        red_control: "The three mutant REDs of the gunbc#11727 receipt stay red, and each of the five boundary defects has a discriminating input that refuses.",
         out_of_scope: "content_hash consolidation, UTF-8 causes and the bytes seam are their own rows.",
         handback: "Return the landed head and the fresh receipt."
-      ), on: "2026-09-20", note: "Reconciled onto main in gunbc#11895 and SPLIT OUT of its landing (operator ruling 2026-09-21): its whole-object App Attest witnesses parse a 4 KB attestation in the interpreter at ~4M eval steps against the 100ms-equivalent new-witness budget. Re-draft from #11895's reconciled tree with the claims supplying pre-parsed values (DESIGN 3 standing rule) and one inhabitance claim on the real bytes, or behind the kernel arms.")
+      ), on: "2026-09-20", note: "Reconciled onto main in gunbc#11895 (quarry head 8fc4448575cd) and SPLIT OUT of its landing (operator ruling 2026-09-21): its whole-object App Attest witnesses parse a 4 KB attestation in the interpreter at ~4M eval steps against the 100ms-equivalent new-witness budget. Re-draft from the quarry head with the claims supplying pre-parsed values (DESIGN 3 standing rule) and one inhabitance claim on the real bytes, or behind the kernel arms.")
     ),
     active(
       identity: "rn_TNT1ZEDDB0C3KNE6CYV9K4GJBX",
@@ -3131,14 +3131,14 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "primitive-egress",
       path: "docs/plans/demand-engine-program.md",
       t: updated(t: fields(
-        headline: "EFFECTS-1: land cut (c) and the E2 LocalFilesystem provider",
-        boundary: "gunbc#11744 (head b170ce27, CLEAN, 412 uses rows cut with zero residue) lands once its follow-up roster is re-derived: it declares 26 rows over 5ff323b6d29..a35c7cede3e while the head carries 48 across 9 modules, and the roster is rendered into docs/plans/demand-engine-program.md whose regeneration refuses under host memory pressure. Then E2 binds one native Filesystem handler at the NativeCliDriver root reusing emit_file_call's semantics, the 48 rows retire, and a refusal lands on any new restatement row.",
+        headline: "EFFECTS-1: the E2 LocalFilesystem provider and the restatement refusal",
+        boundary: "Cut (c) lands through gunbc#11993 (the split-A landing; gunbc#11744 and gunbc#11895 are closed or quarry and do not land), with its follow-up roster derived by a semantic census of every authored uses row at the frozen landing base. What remains open: E2 binds one native Filesystem handler at the NativeCliDriver root reusing emit_file_call's semantics, the follow-up roster rows it discharges retire, and a refusal lands on any new restatement row.",
         displaced_cost: "Filesystem effects in the emitted closure still reach a bare primitive that is neither the handler nor the interface, and restatement rows accrue without a wall.",
-        first_slice: "On a quiet host: re-derive the roster and its range at the head, regenerate the plan projection in the same commit, floor clean, land gunbc#11744.",
+        first_slice: "E2: bind one native Filesystem handler at the NativeCliDriver root reusing emit_file_call's semantics and retire the follow-up roster rows it discharges.",
         red_control: "A new demand_restatement row refuses; an emitted closure reaching filesystem_read directly refuses under the handler binding.",
         out_of_scope: "Network and process effects are later program cuts.",
         handback: "Return the landed cut, the handler binding, and the restatement refusal."
-      ), on: "2026-09-20", note: "Cut (c) lands in gunbc#11895 with the follow-up roster re-derived at the landing head (ten production modules, range tip = the merged main); E2 and the restatement refusal remain the open slices.")
+      ), on: "2026-09-20", note: "Cut (c) lands in gunbc#11993 with the follow-up roster re-derived by semantic census at the frozen landing base; E2 and the restatement refusal remain the open slices.")
     ),
     active(
       identity: "rn_5NMAXZFR0Q4ER63G6VYDH6NHA5",
