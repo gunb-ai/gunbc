@@ -1259,12 +1259,12 @@ fn compute_refused_unreserved(
   }
 }
 
+// A SEAT NOBODY HOLDS IS NOT A CHARGE, so ComputeNothingToRelease LANDS. This fn is what gates the
+// settled record against compute_unreleased_record, and routing a double release to the unreleased
+// record is exactly the false incident that arm exists to stop.
 fn compute_release_landed(r: ComputeRelease) -> Bool {
   match r {
     ComputeReleased { partition: _, reference: _, reason: _ } => true
-    // A SEAT NOBODY HOLDS IS NOT A CHARGE, so this arm LANDS. It is what gates the settled record
-    // against compute_unreleased_record, and routing a double release to the unreleased record is
-    // exactly the false incident this arm exists to stop.
     ComputeNothingToRelease { detail: _ } => true
     ComputeReleaseRefused { detail: _ } => false
   }
