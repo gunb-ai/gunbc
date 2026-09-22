@@ -1590,7 +1590,7 @@ fn body_lower_comma_list_items_optional(list_capture: Node) -> Optional<List<Nod
 // Instantiation connective with the head as its first positional child and each argument
 // after it (the shape v2.std.compilers.target_model reads the head from, index 0); a trailing
 // `?` wraps the result in the Cardinality connective, v2's authority for an optional field
-// (v2.std.node_query declared_field_is_required). Before this reader a param or field typed
+// (v2.std.node_query DeclaredField.required, decoded once at declared_field_from_edge). Before this reader a param or field typed
 // `List<Int>` or `Int?` lowered to the bare head atom, silently.
 fn body_lower_type_generic_args_optional(generic_capture: Node) -> Optional<List<Node>> {
   let stripped = body_lower_deep_unwrap_optional(node: generic_capture)

@@ -32,7 +32,6 @@ import v2.std.node_query {
   DeclaredField,
   construct_field_edges,
   construct_tag_optional,
-  declared_field_is_required,
   declared_field_list,
   declared_field_named,
   find_arrow_body_child,
@@ -177,7 +176,7 @@ fn vf_type_atom_is(n: Node, lexeme: String) -> Bool {
 fn vf_field_is(f: DeclaredField, name: String, type_lexeme: String, required: Bool) -> Bool {
   (symbol_lexeme(sym: f.name) == name)
     && vf_type_atom_is(n: f.type_node, lexeme: type_lexeme)
-    && (declared_field_is_required(field: f) == required)
+    && (f.required == required)
 }
 
 fn vf_field_count(payload: Node) -> Int {
@@ -236,7 +235,7 @@ test fn vf_record_declaration_is_named_with_declared_fields() -> Bool {
             && (match declared_field_named(payload: payload, name: ^w) {
               Absent => false
               Present { value: f } =>
-                (!declared_field_is_required(field: f))
+                (!f.required)
                   && (match f.type_node.kind {
                     TypeNode { connective: Cardinality } =>
                       match list_at_optional(xs: node_positional_child_targets(node: f.type_node), index: 0) {
