@@ -1239,55 +1239,82 @@ pub fn native_route_default_pattern_text() -> String {
 /// selected population. Nothing on this path consults the interpreter, and nothing substitutes a
 /// cached or seed-side answer.
 ///
-/// EVERY TERMINATION HERE IS `SubjectUnreached`, AND THAT IS A STATEMENT ABOUT WHAT THE SEED CAN
-/// OBSERVE RATHER THAN A PLACEHOLDER. The three terminations are distinct by DESIGN's `gunbc test`
-/// law -- 0 held, 1 an observation that did not hold, 2 NO observation -- and answering 0 or 1 here
-/// would require the OPERAND'S own verdict. The seed does not have one. What comes back from the
-/// run is `run.terminal`, carrying `rows`, `universe` and the lane's whole-route QUALIFICATION bit;
-/// the per-identity `NativeTestVerdict` rows the binary writes are its own evidence surface and are
-/// not decoded here.
+/// THE TERMINATION IS THE OPERAND'S OWN, FOLDED FROM THE PER-IDENTITY ROWS. Every arm of this
+/// function used to answer `SubjectUnreached`, because the only bit the route returned was the
+/// LANE'S whole-route qualification and consuming that as the operand's verdict conflates two
+/// scopes in both directions -- a typo reported as a failing test, and worse, a held qualification
+/// reported as the operator's tests PASSING. That class is rostered as
+/// `gunbc.recurring_failure_mode` `route_scoped_qualification_read_as_one_members_verdict`.
 ///
-/// SO REUSING THAT BIT WOULD CONFLATE IN BOTH DIRECTIONS, and an earlier draft of this function did
-/// exactly that. Mapping a refused qualification to `ObservationDidNotHold` reports `JobNameMismatch`
-/// or `PositivePopulationEmpty` as "your target ran and failed" -- so a TYPO naming no module inside
-/// `//v2/test/...` would exit 1, a nonexistent target reported as a failing test, where the verb
-/// previously refused (the emptiness contract `v2.compiler.compile` explicitly leaves to this
-/// caller). Mapping a held qualification to `ObservationHeld` is worse: it reports the operator's
-/// targets as PASSING when what passed is the lane's route integrity, which is the false green
-/// DESIGN section 5 puts outside the ladder entirely.
+/// The route now folds the population it actually emitted through
+/// `gunbc.instrument_targets` `native_route_member_termination`, mirrored in the runner, so this
+/// caller receives a MEMBER-SCOPED standing and reads it directly. The lane's qualification is
+/// still carried and still reported, because a route-integrity refusal is something an operator
+/// needs to see -- but it no longer decides this verb's exit status.
 ///
-/// A NATIVE REFUSAL IS EVIDENCE OF ROUTING, NOT OF TEST SUPPORT -- and so is a native ACCEPTANCE,
-/// until a per-operand verdict reaches this caller. Exit 2 says the route was entered and no
-/// observation of the operand was obtained, which is exactly true. The summary is carried verbatim
-/// so an operator sees what the lane decided without this function restating it as a verdict it did
-/// not make.
-///
-/// WHAT RETIRES THIS: the per-identity rows decoded into the operand's own termination -- every
-/// selected identity `NativeTestPassed` is `ObservationHeld`, any returning false or other is
-/// `ObservationDidNotHold`, an empty selection or any refused identity stays `SubjectUnreached`.
-/// That needs the rows contract read at this boundary and is not this change.
+/// WHY THE LANE SUMMARY STILL RIDES ON EVERY ARM. A population can hold while the route did not
+/// qualify (a job name, an unrecorded identity, an unattributed file refusal), and a reader given
+/// only "held" would not know the run around their tests was itself refused. Both facts are
+/// reported; only the member one decides the status.
 fn run_native_test_route(pattern: &TargetPattern) -> InvocationOutcome {
     let rendered = render_target_pattern(pattern);
     match cli_run::run_required_v2_native(&self_host_source_roots(), &rendered) {
-        cli_run::NativeRouteOutcome::LaneQualificationHeld { summary } => InvocationOutcome {
-            termination: Termination::SubjectUnreached,
-            message: format!(
-                "native test route: {rendered} adjudicated; the LANE'S qualification held, which is \
-                 not an observation of this operand -- no per-target verdict reaches this caller yet \
-                 — {summary}"
-            ),
-        },
-        cli_run::NativeRouteOutcome::LaneQualificationRefused { summary } => InvocationOutcome {
-            termination: Termination::SubjectUnreached,
-            message: format!(
-                "native test route: {rendered} adjudicated; the LANE'S qualification refused, whose \
-                 causes are route-integrity clauses rather than this operand's verdict — {summary}"
-            ),
-        },
+        cli_run::NativeRouteOutcome::LaneQualificationHeld { summary, members } => {
+            native_member_outcome(
+                &rendered,
+                members,
+                "the lane's qualification held",
+                &summary,
+            )
+        }
+        cli_run::NativeRouteOutcome::LaneQualificationRefused { summary, members } => {
+            native_member_outcome(
+                &rendered,
+                members,
+                "the lane's qualification REFUSED",
+                &summary,
+            )
+        }
         cli_run::NativeRouteOutcome::Unreached { cause } => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: format!("native test route: {rendered} — {cause}"),
         },
+    }
+}
+
+/// THE MEMBER STANDING BECOMES THIS VERB'S TERMINATION, ONE ARM EACH AND NO WILDCARD.
+///
+/// `NativeMemberTermination` has three arms because `InvocationRefused` is unreachable from a
+/// population fold; a fourth arm here would be a constructor nothing can build. A new arm upstream
+/// must fail to compile here rather than inherit whichever status a `_` happened to name.
+fn native_member_outcome(
+    rendered: &str,
+    members: cli_run::NativeMemberTermination,
+    lane_note: &str,
+    summary: &str,
+) -> InvocationOutcome {
+    let termination = match members {
+        cli_run::NativeMemberTermination::ObservationHeld => Termination::ObservationHeld,
+        cli_run::NativeMemberTermination::ObservationDidNotHold => {
+            Termination::ObservationDidNotHold
+        }
+        cli_run::NativeMemberTermination::SubjectUnreached => Termination::SubjectUnreached,
+    };
+    let members_note = match members {
+        cli_run::NativeMemberTermination::ObservationHeld => "every selected test passed",
+        cli_run::NativeMemberTermination::ObservationDidNotHold => {
+            "a selected test evaluated and did not hold"
+        }
+        cli_run::NativeMemberTermination::SubjectUnreached => {
+            "no verdict was obtained for part of the selection (an empty selection, or a test that \
+             could not be reached)"
+        }
+    };
+    InvocationOutcome {
+        termination,
+        message: format!(
+            "native test route: {rendered} adjudicated — {members_note}; {lane_note} — {summary}"
+        ),
     }
 }
 

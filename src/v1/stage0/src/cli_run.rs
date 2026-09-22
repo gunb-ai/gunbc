@@ -96,8 +96,8 @@ pub mod rostered_row_join;
 pub mod scope_rank_view;
 mod serve_budget_refusal;
 pub use native_lane_runner::{
-    run_required_v2_native, run_self_host, run_v2_native_cli, NativeRouteOutcome, SelfHostHeld,
-    V2NativeCliHeld,
+    run_required_v2_native, run_self_host, run_v2_native_cli, NativeMemberTermination,
+    NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
