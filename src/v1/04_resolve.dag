@@ -90,22 +90,27 @@ fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> UnitV
 // because that is the ONE place an applied user generic is judged, so every occurrence is reached
 // rather than only the field-access route alias_chain_arity_diagnostics covers.
 //
-// THREE ADMITTING ARMS, AND THE HONEST CEILING OF EACH. A type variable or an in-scope generic
-// parameter is admitted here and judged at INSTANTIATION instead -- this position cannot know the
-// argument yet, and refusing it would refuse every generic function over a kinded parameter. A name
-// that is a declared variant of the kind is admitted by identity. A non-negative integer literal is
-// admitted when the kind declares a variant carrying exactly ONE field, on the reading that the
-// literal inhabits that variant's payload.
+// THE ADMITTING ARMS, AND THE HONEST CEILING OF EACH; the arms themselves are read from
+// type_arg_kind_inhabitance below rather than counted here, because a count in prose rots the first
+// time an arm is added. TWO of them are admitted WITHOUT consulting the kind at all. A type variable
+// or an in-scope generic parameter is admitted and judged at INSTANTIATION instead -- this position
+// cannot know the argument yet, and refusing it would refuse every generic function over a kinded
+// parameter. A NAT LITERAL is admitted UNCONDITIONALLY, before the kind declaration is looked up, so
+// no variant, field count or kind identity is ever consulted for it. Everything else is judged
+// against the KIND ITSELF: the kind's declared alias target and its declared children are the roster
+// of admissible named inhabitants, matched by identity rather than by shape.
 //
-// THE THIRD ARM IS THE WEAK ONE AND IS STATED RATHER THAN DRESSED UP: it does not judge that the
-// literal inhabits the field's TYPE, only that a one-field variant exists to carry it. So a kind
-// whose sole single-field variant carried a String would still admit `32` here. That is
-// MECHANICALLY PREVENTABLE, not structural, and its next-rung trigger is a decidable
-// literal-inhabits-declared-type judgment usable from resolve -- the same judgment
-// v1.compiler.infer's declared-type conformance wall documents as unsound for general use today
-// (node_type_compatible's four measured false-positive classes). Claiming the stronger rung here
-// would be rung inflation; the arm refuses everything that is neither a variant nor a literal,
-// which is what closes the class this wall was built for.
+// THE LITERAL ARM IS THE WEAK ONE AND IS STATED RATHER THAN DRESSED UP, AND AN EARLIER REVISION OF
+// THIS PARAGRAPH OVERSTATED IT (review 69986, BLOCKING). It said the literal was admitted only where
+// the kind declares a one-field variant, and priced the residual risk on that reading. The code does
+// no such thing and never did at this head: `expr_literal_int_optional(expr: arg) != none` admits any
+// integer literal in any kinded position. Literal admissibility is a LANGUAGE-LEVEL rule here rather
+// than a per-kind fact, the frontier is declared at std.machine_constraints
+// machine_width_literal_roster_frontier, and the same weaker account is written on
+// type_arg_kind_inhabitance itself. RUNG HONESTY (DESIGN 4b(1)): a class's rung is the minimum across
+// its paths, so this position's rung is set by the LITERAL axis and not by the named one, and an
+// annotation crediting the arm with a per-kind judgment it does not perform is rung inflation in
+// prose -- in a change whose whole subject is refusing exactly that.
 fn type_param_kind_diagnostics(carrier: Node, decl: Node, type_name: String, env: TypeEnv, module_name: String) -> List<ErrorNode> {
   decl.params |> enumerate |> flat_map(pair =>
     match find_property(props: pair.second.properties, prop_name: type_param_kind_property_name(), source_indices: env.source_indices) {
