@@ -311,14 +311,17 @@ fn qualified_name_spine_node(qn: QualifiedName, occurrence_id: NodeOccurrenceIde
 // the spine shape, so a bare Atom is never a reference and a consumer asking "is this node a
 // resolved reference to a corpus declaration" gets a decidable answer from the shape alone, before
 // it reads the Conj as a record. A one-segment spine IS a reference -- a declaration in a root that
-// names no module has a one-segment path -- and only the empty spine, which is also the empty
-// record, answers Absent. A well-formed spine whose fold refuses is a malformed node, not a
-// reference, and also answers Absent so that the consumer's own arm decides it.
+// names no module has a one-segment path -- so a reference is never narrowed to the multi-segment
+// case. The empty spine, which is also the empty record, is refused by the shape gate itself (it
+// has no children where the gate demands two) and answers Absent from the outer arm; every spine
+// the gate admits reaches QnFoldDone through QnSpineHead, whose target must be an Atom, so an
+// accepted fold carries at least one segment and a length guard here would be dead. A well-formed
+// spine whose fold refuses is a malformed node, not a reference, and also answers Absent so that
+// the consumer's own arm decides it.
 fn declaration_reference_path_optional(node: Node) -> Optional<QualifiedName> {
   if qualified_name_spine_shape_present(root: node) {
     match qualified_name_from_node(root: node) {
-      Accepted { value: qn, diagnostics: _ } =>
-        if length(xs: qn) > 0 { optional_present(value: qn) } else { optional_absent() }
+      Accepted { value: qn, diagnostics: _ } => optional_present(value: qn)
       Rejected { diagnostics: _ } => optional_absent()
     }
   } else {
