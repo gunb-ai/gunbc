@@ -41,6 +41,7 @@ type SugarLowering
   = SugarRewriteConnective { connective: Connective, edges: EdgeDiscipline }
   | SugarUnwrapPositionalChild {}
   | SugarFoldCoproductPipeChain {}
+  | SugarDropLeadingSeparator {}
 
 type SugarKey
   = SurfaceAtomKey { atom: Symbol }
@@ -72,13 +73,22 @@ data sugar_rule_type_alias_rhs: SugarRule = SugarRule {
   lowering: SugarFoldCoproductPipeChain {}
 }
 
+// A coproduct may open with its separator (`type H =\n  | A\n  | B`). The separator is layout,
+// so the lead production (v2.extdeps.languages.dag dag_grammar_type_alias_rhs_lead_expr) lowers
+// to its type_alias_rhs child and `= | A | B` normalizes to the tree `= A | B` does.
+data sugar_rule_type_alias_rhs_lead: SugarRule = SugarRule {
+  key: ProductionIdentityKey { identity: ^dag_surface_type_alias_rhs_lead },
+  lowering: SugarDropLeadingSeparator {}
+}
+
 fn sugar_rules() -> List<SugarRule> {
   [
     sugar_rule_service,
     sugar_rule_fn,
     sugar_rule_type,
     sugar_rule_operation,
-    sugar_rule_type_alias_rhs
+    sugar_rule_type_alias_rhs,
+    sugar_rule_type_alias_rhs_lead
   ]
 }
 
@@ -313,6 +323,15 @@ fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
           }
         Absent =>
           Accepted { value: folded, diagnostics: None }
+      }
+    SugarDropLeadingSeparator {} =>
+      match sugar_named_child_optional(root: folded, name: ^grammar_production_captured_node_projection) {
+        Present { value: captured } =>
+          match sugar_sequence_pair_optional(node: captured) {
+            Present { value: pair } => Accepted { value: pair.right, diagnostics: None }
+            Absent => Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
+          }
+        Absent => Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
       }
   }
 }

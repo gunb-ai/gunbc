@@ -1,0 +1,150 @@
+module v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, canonicalize_node_strip_provenance }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Subject: two rows of the ONE dag grammar (v2.extdeps.languages.dag) that the native front end
+// lacked and v1.compiler.parse admits -- dag_grammar_type_alias_rhs_lead_expr (a coproduct
+// opening with `|`) and dag_grammar_positional_variant_payload_expr (`Name(T)`). Both first
+// refused std.content_hash (`type HashFamily =` / `| Fnv1a64(Fnv1a64Structural)`), the module
+// the native adjudicate of //v2/test/parse:expression_bodied_fn_decl_parse stopped on. The
+// boundary is the prepared-grammar parse the native route runs, then normalize; the refusing
+// controls pin that each row admits only the seed's spelling.
+
+fn cp_parse(text: String) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: ^coproduct_parse_probe, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn cp_parses(text: String) -> Bool {
+  match cp_parse(text: text) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cp_normalizes(text: String) -> Bool {
+  match cp_parse(text: text) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match normalize(parse_tree: tree) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+test fn leading_pipe_multiline_coproduct_parses_and_normalizes_holds() -> Bool {
+  cp_normalizes(text: "module m.t\n\ntype H =\n  | A\n  | B\n")
+}
+
+test fn leading_pipe_single_line_coproduct_parses_holds() -> Bool {
+  cp_parses(text: "module m.t\n\ntype H = | A | B\n")
+}
+
+test fn bare_leading_pipe_without_variant_refuses_holds() -> Bool {
+  match cp_parses(text: "module m.t\n\ntype H =\n  |\n") {
+    true => false
+    false => true
+  }
+}
+
+test fn positional_payload_variants_parse_and_normalize_holds() -> Bool {
+  cp_normalizes(text: "module m.t\n\ntype C = A(X) | B { n: Int } | D\n")
+}
+
+test fn positional_payload_with_two_types_refuses_as_in_v1_holds() -> Bool {
+  match cp_parses(text: "module m.t\n\ntype C = A(X, Z) | B\n") {
+    true => false
+    false => true
+  }
+}
+
+test fn positional_payload_is_not_a_type_decl_body_holds() -> Bool {
+  match cp_parses(text: "module m.t\n\ntype R(X)\n") {
+    true => false
+    false => true
+  }
+}
+
+fn cp_normalized(text: String) -> Outcome<NormalizedTree> {
+  match cp_parse(text: text) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: _ } => normalize(parse_tree: tree)
+  }
+}
+
+// THE LEADING SEPARATOR IS LAYOUT, NOT MEANING: `type H = | A | B` and `type H = A | B` must
+// normalize to the same provenance-free tree (the leading `|` mints occurrence ids of its own, so
+// the comparison is over canonicalize_node_strip_provenance), so the
+// optional `|` cannot change the alternatives the rhs production yields.
+test fn leading_pipe_normalizes_to_the_same_alternatives_as_without_holds() -> Bool {
+  match cp_normalized(text: "module m.t\n\ntype H = | A | B\n") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: with_pipe, diagnostics: _ } =>
+      match cp_normalized(text: "module m.t\n\ntype H = A | B\n") {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: without_pipe, diagnostics: _ } =>
+          canonicalize_node_strip_provenance(n: with_pipe.root)
+            == canonicalize_node_strip_provenance(n: without_pipe.root)
+      }
+  }
+}
+
+// The positional row alone carries no leading `|`: positional_payload_variants_parse_and_normalize
+// exercises it inside a pipe-free coproduct, so removing only the leading-pipe row leaves it green.
+// It does not establish the field-"0" lowering: no v2 stage lowers variant fields into declared
+// field identities for ANY variant, named or positional, so `A(Int)` and `A { v: Int }` are equally
+// preserved and unlowered today (gunbc.rung_drop variant_fields_unlowered_on_the_native_route).
+
+// A wildcard payload binds nothing, so the arm loses nothing when lowering keeps only the
+// constructor: std.content_hash content_hash_family is exactly this shape
+// (`Fnv1a64(_) => Fnv1a64StructuralFamily`). An arm that BINDS a payload, braced or positional,
+// is not witnessed green here -- its binder is dropped on the native route
+// (gunbc.rung_drop variant_fields_unlowered_on_the_native_route).
+test fn positional_wildcard_pattern_still_normalizes_holds() -> Bool {
+  cp_normalizes(
+    text: "module m.t\n\nfn u(c: C) -> Int {\n  match c {\n    A(_) => 1\n  }\n}\n"
+  )
+}
+
+// The discriminating half of the equality above: the same projection DOES separate two coproducts
+// whose alternatives differ, so the leading-pipe equality is not a comparison that cannot fail.
+test fn distinct_alternatives_do_not_normalize_to_the_same_tree_holds() -> Bool {
+  match cp_normalized(text: "module m.t\n\ntype H = | A | B\n") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: left, diagnostics: _ } =>
+      match cp_normalized(text: "module m.t\n\ntype H = A | C\n") {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: right, diagnostics: _ } =>
+          canonicalize_node_strip_provenance(n: left.root)
+            != canonicalize_node_strip_provenance(n: right.root)
+      }
+  }
+}
