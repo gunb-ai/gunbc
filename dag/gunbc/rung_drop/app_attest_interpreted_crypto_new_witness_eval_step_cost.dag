@@ -1,0 +1,50 @@
+module gunbc.rung_drop.app_attest_interpreted_crypto_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_interpreted_crypto_rows }
+
+// DECLARED 4b(3) DROP (gunbc#11981, 2026-09-22). The DECLARATION lives here; the POPULATION's
+// authority is `v2.workflow.floor_eval_step_cost_drop` `floor_eval_step_cost_drop_interpreted_crypto_rows`.
+// It is its own list because growing another drop's list is a new drop.
+//
+// WHAT IS LOST IS ONE WALL, AND THE CLAIMS ARE UNTOUCHED. The eight identities are planned,
+// executed and measured on every pull request that edits them; a semantic red and a wall-clock
+// crossing still block. Only the eval-step overrun is reported as
+// `EvalStepsOverBudgetUnderDeclaredDrop` rather than refusing. The budget is not raised.
+//
+// WHY THE OVERRUN IS THE PRIMITIVE'S AND NOT THE CLAIM'S. Each claim evaluates one P-384 curve
+// equation over a real Apple key, or one SHA-384 over a FIPS vector: there is no repeated demand,
+// no copied accumulator and no nested scan to remove. What the budget prices is the seed
+// interpreter realizing 384-bit field arithmetic as 16-limb bignat folds and SHA-384 as Word64
+// pairs, because the interpreter reifies no machine width (decision msg_54c92f2f, 2026-09-21: the
+// terminal shape is the natively emitted crypto closure). Supplying the curve check's answer, or
+// the digest, as a fixture would remove the only execution of the P-384 parameters and of SHA-384
+// on the acceptance path (DESIGN section 3, the pairing obligation), so the claims stay and the
+// wall is declared down.
+//
+// THE THREE P-384 SIGNATURE VERIFICATIONS OF THE SAME WITNESS ARE NOT MEMBERS. They cross the wall
+// deadline, which this drop does not and may not cover; they left the required floor and run on the
+// native row `gunbc.auth.approval_device_redemption` `ecdsa_verification_realization_frontier` names.
+data app_attest_interpreted_crypto_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_interpreted_crypto_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_interpreted_crypto_rows; measured by "), m.measured_by))
+
+data app_attest_interpreted_crypto_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "app_attest_interpreted_crypto_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over the eight interpreted P-384 point checks and SHA-384 FIPS vectors of the App Attest path: they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+
+  declared: "2026-09-22",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "the P-384 and SHA-384 primitives executing as natively emitted code rather than as interpreted bignat and Word64 folds",
+    },
+    population: app_attest_interpreted_crypto_new_witness_eval_step_cost_population,
+    restoration_trigger: "THE CAPABILITY. MachineWidth<N> reification (gunbc#11819) lets the extdeps.crypto closure emit, and these eight identities execute on the natively emitted route -- the gunbc test instrument row the ecdsa_verification_realization_frontier names -- while each still evaluates the real curve equation or the real hash; WHAT THAT MUST BE SUFFICIENT FOR: the P-384 parameters and SHA-384 are exercised on the acceptance path with no interpreted 16-limb fold inside a claim frame, and the identities then measure under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives, or leave the floor for that native row. Supplying the curve check's answer or the digest as a fixture, or deleting the identities, satisfies neither.",
+  }
+}
