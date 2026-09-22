@@ -5,6 +5,64 @@ import v2.compiler.compile { compile_dag_source_to_target_text }
 import v2.std.diagnostic { Accepted, Rejected }
 import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
 
+// ONE FIXTURE SOURCE, TWO COMPILERS, ONE QUESTION: which argument feeds which parameter. The two
+// routes answer it differently, and the disagreement is about whether the children's SEQUENCE is
+// part of the answer.
+//
+// WHAT THE MODEL SAYS, which is what makes one of the two answers wrong rather than merely
+// different. A function's parameter set is the Arrow's DOMAIN, a `TypeNode { connective: Conj }`
+// whose children carry `Edge { label: Named { name } }`. `v2.std.node` `connective_edge_discipline`
+// gives Conj `LabeledEdges`, and `canonicalize_labeled_for_content_hash` SORTS LabeledEdges before
+// hashing -- so a parameter list has no identity-bearing sequence. The parameter set is name-keyed,
+// and the NAME is the binding key. The application is the other side: `behavior_edge_discipline`
+// gives `Transform` `PositionalEdges`, which is not sorted, so it carries an ORDER.
+//
+// WHERE v2 ANSWERS FROM THE ORDER. `v2.compiler.body_lowering_fold` `body_lower_named_arg_value_optional`
+// decodes the `name ^dag_token_colon value` spine, matches the parameter binding as `_binding`, and
+// returns only the operand; `body_lower_transform_call` then builds one `Edge { label: Positional }`
+// per argument. Downstream, `v2.compiler.infer` `infer_application_argument_inhabitance` recovers
+// formals with `infer_formals_from_domain` (the Conj's STORED order) and arguments with
+// `infer_transform_argument_targets` (stored order) and ZIPS them by index. So the same compiler
+// treats the Conj's stored order as a fact in one fold and sorts it away for identity in another.
+//
+// WHERE v1 ANSWERS FROM THE NAME, on BOTH of its routes. `v1.compiler.emit`
+// `order_typed_call_args_from_semantics` selects each argument by `matched_argument_index` from the
+// `application_plan` that `v1.compiler.infer` built by parameter identity, and renders arguments in
+// FORMAL order. And `v1_compiler.interpreter` `eval_call` binds a LABELLED actual by its name after
+// `param_name_matches_declared`, keying only an UNLABELLED actual by position; what it walks in
+// stored order is EVALUATION, which is a different fact from binding. That route is already
+// fail-closed on every conflict the mixed form can produce -- an unknown label, a duplicate label, a
+// positional actual landing on a slot a named actual already bound, a surplus positional -- so the
+// refusal behaviour a name-bound v2 would need is an authority that already exists.
+//
+// THE ARMS. `nab_inorder_source` and `nab_reordered_source` differ in NOTHING but the order the two
+// named arguments are written in, and `nab_pick` declares them at DIFFERENT types (`a: Int`,
+// `b: Bool`) so a position-keyed binding is type-discriminating rather than silent. The in-order
+// pair is the positive control: both routes must compile it. The out-of-order pair is the
+// discriminating fixture, and its two arms are what the divergence IS.
+//
+// THE v2 ARM IS A KNOWN-HOLE PROBE, DESIGN section 4b(4), AND WHAT IT ASSERTS IS THE DEFECT RATHER
+// THAN THE CONTRACT. Read that sentence before citing this file. The arm
+// `the_v2_route_binds_out_of_declaration_order_by_position_which_is_the_defect` is GREEN TODAY
+// BECAUSE v2 IS WRONG: it refuses a call the source wrote correctly, and the arm records that
+// refusal. It is not a statement that v2 may refuse such a call, and it may not be cited as
+// establishing the binding contract -- the contract is the opposite, and it is stated above: the
+// NAME is the binding authority and positional sequence is derived. The arm FLIPS when the repair
+// lands rather than retiring, at which point it inverts into the permanent regression control that
+// the binding is by name. An arm asserting the right answer would simply be red and would carry the
+// same information less honestly; an arm whose text did not say which of its two readings is the
+// defect is how a hole calcifies into a cited behaviour.
+//
+// WHAT THIS DOES NOT ESTABLISH. It measures the SOURCE-to-refusal path on v2 and the source-to-
+// diagnostic-census path on v1. It does not compare emitted bytes, and it says nothing about which
+// of the 171 corpus call sites written out of declaration order would change binding -- that census
+// is in the pull request that carried this file, derived by a stated method over the corpus rather
+// than by an enrolled instrument, and it is a reading rather than a wall.
+//
+// THE CLASS is `gunbc.recurring_failure_mode.an_application_binds_by_position_where_the_model_binds_by_name`,
+// whose next-rung trigger names the capability: the lowered application carries the argument NAME on
+// the carrier that owns the binding, and every consumer reads the binding from that one place.
+
 data nab_inorder_source: String = "module nab_inorder\n\nfn nab_pick(a: Int, b: Bool) -> Int \{\n  a\n}\n\nfn nab_use() -> Int \{\n  nab_pick(a: 1, b: true)\n}\n"
 
 data nab_reordered_source: String = "module nab_reordered\n\nfn nab_pick(a: Int, b: Bool) -> Int \{\n  a\n}\n\nfn nab_use() -> Int \{\n  nab_pick(b: true, a: 1)\n}\n"
@@ -27,10 +85,10 @@ test fn a_named_argument_call_in_declaration_order_compiles_on_both_routes() -> 
   nab_v2_accepts(source: nab_inorder_source) && nab_v1_blocking(source: nab_inorder_source) == 0
 }
 
-test fn a_named_argument_call_out_of_declaration_order_binds_by_name_on_v1() -> Bool {
+test fn the_v1_routes_bind_out_of_declaration_order_by_name_which_is_the_contract() -> Bool {
   nab_v1_blocking(source: nab_reordered_source) == 0
 }
 
-test fn a_named_argument_call_out_of_declaration_order_binds_by_position_on_v2() -> Bool {
+test fn the_v2_route_binds_out_of_declaration_order_by_position_which_is_the_defect() -> Bool {
   !nab_v2_accepts(source: nab_reordered_source)
 }
