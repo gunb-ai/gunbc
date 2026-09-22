@@ -119,7 +119,9 @@ data microvm_controller_firecracker_release: FirecrackerRelease = firecracker_re
 // THIS BOUND IS SIZED TO A SYMPTOM, AND THE SYMPTOM HAS AN OWNER. The 12.7G the controller holds
 // is the seed's retained preparation set -- the same set loyal-ibex-544 attributed on the floor
 // (gunbc.floor_demand: preparation reaches ~23 GiB and never releases it; the fold adds ~5%), whose
-// reduction lane is named by floor_peak_attribution_consumer_frontier there. When that reduction
+// reduction lane is named by floor_peak_attribution_consumer_frontier there -- named, not
+// discharged: that row's trigger is the seam being carried and read by its own consumers, and a
+// sizing argument citing it retires nothing (loyal-ibex-544, 2026-09-22). When that reduction
 // lands, this row's figure falls with the demand row it reads, and the width charge in
 // gunbc.runner_slot_allocation gunbc_microvm_shakedown_slot_charge_bytes falls with it; nothing
 // here should be tuned toward the symptom meanwhile.
