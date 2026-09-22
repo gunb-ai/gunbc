@@ -94,7 +94,7 @@ import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 import gunbc.heal_workflow { heal_same_repository_clause, heal_not_dependabot_clause }
 import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command }
 import extdeps.exec.command { shell_command_render }
-import extdeps.github.expressions { interpolate, ContextAccess, Needs }
+import extdeps.github.expressions { interpolate, ContextAccess, Needs, default_expression_spellings }
 import gunbc.emitted_subject_build_gate {
   EmittedSubjectBuildRow,
   emitted_subject_build_rows,
@@ -381,9 +381,23 @@ fn compiler_gate_floor_run_step() -> Step {
   }
 }
 
+// THE STEP NAME STATES ITS POPULATION, AND THE POPULATION IS NARROWER THAN "GENERATED ARTIFACTS".
+// generated_artifact_gate main reads gunbc.generated_artifact committed_generated_artifacts only. The
+// ~157 stage0 mirrors (src/v1/stage0/src/std_measure.rs and the rest of the compile_stage0 emitted
+// population) are adjudicated by claim_executor's GeneratedArtifact phase, which routes to
+// --required-lane build, and no job has invoked that lane since #11742. The earlier name,
+// "Generated artifacts match their authorities", stayed GREEN over that gap and read as a statement
+// about stage0; std_measure.rs drifted on main under it (gunbc#12067). Declared drop:
+// gunbc.rung_drop.witness_floor_off_the_required_gate. Row:
+// gunbc.recurring_failure_mode.generated_population_split_across_two_unjoined_rosters.
+//
+// WHERE THE STAGE0 PHASES MAY RUN, measured rather than assumed: this job's floor process already
+// peaks AT its slot's memory.high (run 35716368507: peak 26847006720 against high 26843545600,
+// high events 1109), and the generated-artifact pass peaks near 12.9 GiB. They fit only as a
+// SEPARATE process in a later step, after the floor exits -- never inside the floor's invocation.
 fn compiler_gate_drift_step() -> Step {
   RunStep {
-    name: Present { value: "Generated artifacts match their authorities" },
+    name: Present { value: "Registry-rostered generated artifacts (gunbc.generated_artifact) match their authorities; the stage0 mirrors are NOT checked here" },
     id: Present { value: compiler_gate_drift_step_id },
     run: concat(gunbc_ci_generated_artifact_verify_invoke(), "\n"),
     shell: none,
@@ -441,7 +455,7 @@ fn compiler_gate_repair_declaration_step() -> Step {
 
 fn compiler_gate_regen_step() -> Step {
   RunStep {
-    name: Present { value: "Regenerate every committed generated artifact, then verify the tree it wrote" },
+    name: Present { value: "Regenerate every registry-rostered generated artifact (not the stage0 mirrors), then verify the tree it wrote" },
     id: Present { value: compiler_gate_repair_regen_step_id },
     run: concat(gunbc_ci_generated_artifact_regen_verified_invoke(), "\n"),
     shell: none,
@@ -539,7 +553,7 @@ fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
     CompilerGateBoundStep {
       step: compiler_gate_drift_step(),
       role: capability_neutral,
-      step_name: "Generated artifacts match their authorities",
+      step_name: "Registry-rostered generated artifacts (gunbc.generated_artifact) match their authorities; the stage0 mirrors are NOT checked here",
     },
     CompilerGateBoundStep {
       step: compiler_gate_repair_declaration_step(),
@@ -549,7 +563,7 @@ fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
     CompilerGateBoundStep {
       step: compiler_gate_regen_step(),
       role: capability_neutral,
-      step_name: "Regenerate every committed generated artifact, then verify the tree it wrote",
+      step_name: "Regenerate every registry-rostered generated artifact (not the stage0 mirrors), then verify the tree it wrote",
     },
     CompilerGateBoundStep {
       step: compiler_gate_candidate_step(),
@@ -870,14 +884,37 @@ fn compiler_gate_aggregate_script_lines() -> List<String> {
   )
 }
 
-data compiler_gate_same_repo_expression: String = "${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}"
+// THE FORK PREDICATE HAS ONE AUTHORITY AND THIS IS NOT IT (review 69999). The first cut of the
+// derived gate promoted the inline `${{ ... }}` literal to a `data` row, which looked like
+// consolidation and was the opposite: a verbatim re-spelling of the predicate
+// `compiler_gate_floor_job_condition` already derives one screen up from
+// `gunbc.heal_workflow` `heal_same_repository_clause`, which this module already imports.
+//
+// THE COUPLING IS LOAD-BEARING, NOT COSMETIC, which is why a second spelling is a defect rather
+// than untidiness: the floor lane SKIPS exactly when that condition is false, and the gate's fork
+// carve-out EXCUSES that skip exactly when `$SAME_REPO` is false. Two sources for one predicate
+// and the two failure modes are opposite and both silent -- the fleet lane skips while the gate
+// refuses (a merge-queue stall on every fork PR), or the gate excuses a skip that was not
+// fork-driven (an unobserved head admitted). One authority makes both unwritable.
+//
+// ONLY THE INTERPOLATION DELIMITERS ARE ADDED HERE, and they are read from the expression
+// writer's own spellings rather than typed, for the same reason the lane results are: a job `if`
+// takes a bare expression and a step `env` value takes an interpolated one, which is a difference
+// of TRANSPORT, not of predicate.
+fn compiler_gate_same_repo_expression() -> String {
+  join([
+    default_expression_spellings.interp_open,
+    compiler_gate_floor_job_condition(),
+    default_expression_spellings.interp_close
+  ], "")
+}
 
 fn compiler_gate_aggregate_step_env() -> List<YamlKeyValue> {
   list_append(
     left: list_map(xs: compiler_gate_blocking_rows(), f: fn(row) {
       kv(key: row.var_name, value: yaml_string(s: compiler_gate_lane_result_expression(job_id: row.job_id)))
     }),
-    right: [kv(key: "SAME_REPO", value: yaml_string(s: compiler_gate_same_repo_expression))]
+    right: [kv(key: "SAME_REPO", value: yaml_string(s: compiler_gate_same_repo_expression()))]
   )
 }
 
@@ -970,7 +1007,7 @@ fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
       var_name: "EMIT_BUILD",
       arm: GateArmStrict,
       standing: LaneAnnouncedNotBlocking {
-        flip_trigger: "THE EMITTED SELF-HOST CLOSURE BUILDS ON MAIN. Measured red on run 35686128136: the emitted src/extdeps_numeric_base16.rs refuses with E0425 (UInt8 not found in scope at base16_decode_lower) and E0282, cargo status 101 -- gunbc#12004 pulling base16 into the closure against a latent emitter import gap. Sufficient for: a head of main on which `gunbc test //gunbc/instruments:self-host` and `gunbc test //gunbc/instruments:v2-native-cli` both exit zero, so that requiring this lane blocks merges only for defects the head in front of it introduced. At that point this row becomes LaneBlocks, the aggregate gains the needs edge and the variable, and the measured GREEN wall is reported to the operator -- the 12m33s figure from the run above is a red run's wall and is a lower bound, not the number the decision turns on."
+        flip_trigger: "THE EMITTED SELF-HOST CLOSURE BUILDS ON MAIN. Measured red on run 35686128136: the emitted src/extdeps_numeric_base16.rs refuses with E0425 (UInt8 not found in scope at base16_decode_lower) and E0282, cargo status 101 -- gunbc#12004 pulling base16 into the closure while it still spelled the UNINHABITED UInt8 carrier where values are put -- NOT an emitter import gap, which is what the E0425 reads like and what this row first said; the repair (gunbc#12056) changes base16 to carry std.integer QualifiedOctets and leaves the emitter untouched. Sufficient for: a head of main on which `gunbc test //gunbc/instruments:self-host` and `gunbc test //gunbc/instruments:v2-native-cli` both exit zero, so that requiring this lane blocks merges only for defects the head in front of it introduced. At that point this row becomes LaneBlocks, the aggregate gains the needs edge and the variable, and the measured GREEN wall is reported to the operator -- the 12m33s figure from the run above is a red run's wall and is a lower bound, not the number the decision turns on."
       }
     },
     CompilerGateLaneRow {

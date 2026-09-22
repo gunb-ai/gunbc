@@ -32,6 +32,8 @@ import extdeps.languages.json.emit {
   serialize_json,
 }
 import extdeps.github.org_admin_auth { github_app_installation_access_token_url }
+import std.markup { Fragment, Element, FragmentText, attr }
+import extdeps.languages.html { HtmlEmitResult, EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.transports.rest { RestOutcome }
 import v2.std.algebra { fold_list }
 
@@ -80,6 +82,47 @@ type GitHubAppRegistration {
 type GitHubAppPermissionAccess
   = AppAccessRead
   | AppAccessWrite
+
+// WHICH SUBSET OF {read, write} A SURFACE ADMITS ON AN AXIS -- ONE SHAPE, BOUND BY SEVERAL TABLES.
+// This was minted twice: once here as List<GitHubAppPermissionAccess> for the App-manifest table,
+// and once in extdeps.github.actions_token as ActionsAccessSet for the GITHUB_TOKEN table. The
+// TABLES are legitimately independent (DESIGN 3 external upstream decomposition governs the rows,
+// which are different upstream facts about different surfaces); the SHAPE is not, and a second
+// representation of it is the failed decomposition DESIGN 2 names. A List also lost the
+// construction guarantee DESIGN 5 asks for first: it could spell [] and [AppAccessRead,
+// AppAccessRead], which are not access subsets. The closed sum cannot.
+//
+// ActionsAccessNotAvailable was the Actions surface's spelling of "admits neither", which is the
+// same fact as an axis that is not declarable there -- an axis admitting neither access cannot be
+// declared -- so lifting it loses no distinction.
+//
+// WHAT THIS DOES NOT UNIFY: the two tables' ANSWERS. axis_allowed_actions_access says id_token is
+// write-only ON THE ACTIONS TOKEN; that is not evidence about what the App-manifest validator
+// admits, and reading it as such would be exactly the promotion permission_axis_admitted_accesses
+// exists to refuse (DESIGN 4d).
+type GitHubAccessSet
+  = GitHubAccessReadOrWrite
+  | GitHubAccessWriteOnly
+  | GitHubAccessReadOnly
+  | GitHubAccessNeither
+
+fn github_access_set_admits(set: GitHubAccessSet, access: GitHubAppPermissionAccess) -> Bool {
+  match set {
+    GitHubAccessNeither => false
+    GitHubAccessReadOrWrite => match access {
+      AppAccessRead => true
+      AppAccessWrite => true
+    }
+    GitHubAccessWriteOnly => match access {
+      AppAccessRead => false
+      AppAccessWrite => true
+    }
+    GitHubAccessReadOnly => match access {
+      AppAccessRead => true
+      AppAccessWrite => false
+    }
+  }
+}
 
 type GitHubPermissionAxis
   = ActionsAxis
@@ -593,6 +636,105 @@ data webhook_events_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data app_permissions_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/authentication/permissions-required-for-github-apps"
+  }
+}
+
+// WHAT WOULD GROUND AN UNREAD AXIS. Carried as one row so every AxisAccessesUnread names the
+// same obligation and the reason lives beside the table that owes it.
+data permission_axis_level_read_obligation: NonEmptyStr = "read a GitHub source that publishes ADMITTED ACCESS LEVELS per App permission (app_permissions_citation is organised by endpoint and does not), or observe a live App-manifest validator refusal for this axis, as workflows was observed on 2026-09-22" as NonEmptyStr
+
+// NOT EVERY AXIS ADMITS EVERY ACCESS LEVEL, AND THE MANIFEST VALIDATOR UPSTREAM REFUSES THE PAIRS
+// THAT DO NOT. This module carried the axis and the access as two independent coproducts, so a
+// GitHubAppPermission could spell `workflows: read` -- and the census manifest did, and GitHub's
+// registration page refused the whole manifest with "Default permission records resource
+// (workflows) is a write-only permission" (2026-09-22, the first live submission).
+//
+// WHAT IS READ IS CITED; WHAT IS NOT READ IS A BET, AND THE BET IS TYPED (DESIGN 4d). Only two
+// rows are grounded: workflows by that live refusal, and metadata because app_permissions_citation
+// documents it read-only and every App holds it. Every other axis is UNREAD, and an unread axis is
+// NOT judged here -- the pair reaches GitHub and GitHub answers. An earlier draft asserted
+// [AppAccessRead, AppAccessWrite] for the other twenty axes on the strength of prose saying the
+// same table admits both; that is a plausible inference standing as a deduced fact, which is the
+// defect this module is careful to avoid on the events side (webhook_event_subscribability
+// deliberately declines to classify installation_target and meta) and was doing the opposite of
+// here.
+//
+// THE READ OBLIGATION NAMES WHY THE CITED PAGE DOES NOT DISCHARGE IT. app_permissions_citation is
+// organised by ENDPOINT, not by admitted level: it lists which endpoints each permission reaches at
+// which level, so "only read endpoints are documented for code_quality" does not establish that the
+// manifest validator REFUSES `code_quality: write`. Reading a level off it is the same promotion
+// one layer down, and in the restrictive direction, which DESIGN 4d names as the costlier arm --
+// an over-broad prohibition refuses a manifest GitHub would have accepted, and the cost is the
+// submission that never happened. Grounding a row therefore takes a source that publishes admitted
+// levels, or a live validator refusal like the one that grounded workflows.
+//
+// THE UNREAD SET IS THE COMPLEMENT OF WHAT WAS READ, so it is a wildcard rather than twenty
+// identical rows: enumerating it would be a second list that must be edited every time a row is
+// grounded (DESIGN 3). A newly added axis therefore defaults to unjudged, which is the fail-safe
+// direction -- it reaches the upstream validator -- and the only way to make a row refuse locally
+// is to ground it.
+//
+// administration additionally documents an `admin` level this module's access type does not spell;
+// that is a partiality of GitHubAppPermissionAccess, not of this table.
+
+type AxisAccessAdmission
+  = AxisAdmitsExactly { set: GitHubAccessSet, authority: ExternalAuthority }
+  | AxisAccessesUnread { read_obligation: NonEmptyStr }
+
+fn permission_axis_admitted_accesses(axis: GitHubPermissionAxis) -> AxisAccessAdmission {
+  match axis {
+    MetadataAxis =>
+      AxisAdmitsExactly { set: GitHubAccessReadOnly, authority: app_permissions_citation }
+    WorkflowsAxis =>
+      AxisAdmitsExactly { set: GitHubAccessWriteOnly, authority: app_permissions_citation }
+    _ => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+  }
+}
+
+// THREE-VALUED BY CONSTRUCTION: a Bool here would fold "this module read the table and the pair is
+// not on it" together with "this module never read the table", and only the first is a refusal.
+type AxisAccessVerdict
+  = AxisAccessAdmitted { authority: ExternalAuthority }
+  | AxisAccessRefusedByAuthority { authority: ExternalAuthority }
+  | AxisAccessUnjudged { read_obligation: NonEmptyStr }
+
+fn permission_axis_access_verdict(
+  axis: GitHubPermissionAxis,
+  access: GitHubAppPermissionAccess,
+) -> AxisAccessVerdict {
+  match permission_axis_admitted_accesses(axis: axis) {
+    AxisAccessesUnread { read_obligation: o } => AxisAccessUnjudged { read_obligation: o }
+    AxisAdmitsExactly { set: st, authority: auth } =>
+      if github_access_set_admits(set: st, access: access) {
+        AxisAccessAdmitted { authority: auth }
+      } else {
+        AxisAccessRefusedByAuthority { authority: auth }
+      }
+  }
+}
+
+fn first_permission_not_admitted(perms: List<GitHubAppPermission>) -> GitHubAppPermission? {
+  fold_list(
+    xs: perms,
+    empty: none,
+    cons: fn(found, p) {
+      match found {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          match permission_axis_access_verdict(axis: p.name, access: p.access) {
+            AxisAccessAdmitted { authority: _ } => none
+            AxisAccessUnjudged { read_obligation: _ } => none
+            AxisAccessRefusedByAuthority { authority: _ } => Present { value: p }
+          }
+      }
+    }
+  )
+}
+
 // ACCESS HAS A WIRE SPELLING AND THIS MODULE DID NOT CARRY IT. permission_access_rank ordered the
 // two arms for the narrowing check, which is a different question from what GitHub writes in a
 // default_permissions object; a caller rendering a manifest would otherwise spell "read" itself,
@@ -697,6 +839,54 @@ data all_modeled_webhook_events: List<GitHubWebhookEvent> = [
   WebhookWorkflowJob, WebhookRepository, WebhookPublic
 ]
 
+// AN APP'S OWN LIFECYCLE EVENTS ARE NOT A SUBSCRIPTION. GitHub delivers `installation` and
+// `installation_repositories` to the App they concern without the App asking, so a manifest that
+// lists them under default_events is refused upstream -- measured on the first live submission of
+// the census manifest (2026-09-22): "Default events unsupported: installation and
+// installation_repositories" and "Default events are not supported by permissions". The coproduct
+// keeps those arms because the READ side (an installation's events list, a public App record) still
+// spells them; what is closed here is the WRITE side, by admission below. Only the two arms GitHub
+// refused are classified DeliveredToEveryApp: installation_target and meta are plausibly in the
+// same class and are deliberately NOT asserted so (DESIGN 4d: a plausible inference typed as a
+// fact is the defect), so a manifest naming them reaches GitHub and is judged there.
+type WebhookEventSubscribability
+  = SubscribableByManifest
+  | DeliveredToEveryApp
+
+fn webhook_event_subscribability(event: GitHubWebhookEvent) -> WebhookEventSubscribability {
+  match event {
+    WebhookInstallation => DeliveredToEveryApp
+    WebhookInstallationRepositories => DeliveredToEveryApp
+    WebhookInstallationTarget => SubscribableByManifest
+    WebhookMeta => SubscribableByManifest
+    WebhookPush => SubscribableByManifest
+    WebhookPullRequest => SubscribableByManifest
+    WebhookCheckRun => SubscribableByManifest
+    WebhookCheckSuite => SubscribableByManifest
+    WebhookWorkflowRun => SubscribableByManifest
+    WebhookWorkflowJob => SubscribableByManifest
+    WebhookRepository => SubscribableByManifest
+    WebhookPublic => SubscribableByManifest
+  }
+}
+
+fn first_event_not_subscribable(events: List<GitHubWebhookEvent>) -> GitHubWebhookEvent? {
+  fold_list(
+    xs: events,
+    empty: none,
+    cons: fn(found, e) {
+      match found {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          match webhook_event_subscribability(event: e) {
+            SubscribableByManifest => none
+            DeliveredToEveryApp => Present { value: e }
+          }
+      }
+    }
+  )
+}
+
 fn webhook_event_wire_name(event: GitHubWebhookEvent) -> NonEmptyStr {
   match event {
     WebhookInstallation => "installation"
@@ -784,15 +974,30 @@ type GitHubAppManifestAdmission
   = ManifestAdmitted { manifest: GitHubAppManifest }
   | ManifestDuplicatePermission { axis: GitHubPermissionAxis }
   | ManifestDuplicateEvent { event: GitHubWebhookEvent }
+  | ManifestAccessNotAdmittedOnAxis { axis: GitHubPermissionAxis, access: GitHubAppPermissionAccess }
+  | ManifestEventNotSubscribable { event: GitHubWebhookEvent }
 
-
+// ADMISSION IS WHERE THE UPSTREAM VALIDATOR'S RULES ARE APPLIED BEFORE THE HUMAN CARRIES THE
+// DOCUMENT TO IT. A manifest the browser POST will be refused on is refused here, typed and
+// located, so the operator is never handed a form whose only outcome is GitHub's error page. The
+// rung is mechanically-preventable, not structural: GitHubAppPermission and default_events are
+// still writable with the refused pairs because the same carriers serve the READ side, where
+// `workflows: write` and an installation event are legitimate observations.
 fn admit_app_manifest(m: GitHubAppManifest) -> GitHubAppManifestAdmission {
   match first_duplicated_permission(perms: m.default_permissions) {
     Present { value: dup } => ManifestDuplicatePermission { axis: dup.name }
     Absent =>
-      match first_duplicated_event(events: m.default_events) {
-        Present { value: e } => ManifestDuplicateEvent { event: e }
-        Absent => ManifestAdmitted { manifest: m }
+      match first_permission_not_admitted(perms: m.default_permissions) {
+        Present { value: p } => ManifestAccessNotAdmittedOnAxis { axis: p.name, access: p.access }
+        Absent =>
+          match first_duplicated_event(events: m.default_events) {
+            Present { value: e } => ManifestDuplicateEvent { event: e }
+            Absent =>
+              match first_event_not_subscribable(events: m.default_events) {
+                Present { value: e } => ManifestEventNotSubscribable { event: e }
+                Absent => ManifestAdmitted { manifest: m }
+              }
+          }
       }
   }
 }
@@ -877,6 +1082,10 @@ fn render_app_manifest(m: GitHubAppManifest) -> RenderedAppManifest {
       AppManifestNotRenderable { admission: ManifestDuplicatePermission { axis: a } }
     ManifestDuplicateEvent { event: e } =>
       AppManifestNotRenderable { admission: ManifestDuplicateEvent { event: e } }
+    ManifestAccessNotAdmittedOnAxis { axis: a, access: ac } =>
+      AppManifestNotRenderable { admission: ManifestAccessNotAdmittedOnAxis { axis: a, access: ac } }
+    ManifestEventNotSubscribable { event: e } =>
+      AppManifestNotRenderable { admission: ManifestEventNotSubscribable { event: e } }
   }
 }
 
@@ -934,6 +1143,174 @@ fn app_manifest_registration_url(
     UriPercentComponentEncoded(encoded) =>
       RegistrationUrlBuilt {
         url: join([app_manifest_registration_base_url(target: target), "?state=", encoded as String], "")
+      }
+  }
+}
+
+// THE MANIFEST IS DELIVERED BY A FORM POST AND THERE IS NO FIELD TO PASTE IT INTO. This is the
+// upstream fact the acquisition lane got wrong, observed live: an operator opened the registration
+// URL, was told to "paste the manifest into the form's manifest field", and found a create page with
+// no such field. A GET of that URL renders GitHub's ORDINARY App-creation form, which is the manual
+// route and ignores manifests entirely; the manifest protocol is a POST to the SAME URL carrying one
+// application/x-www-form-urlencoded parameter named `manifest` whose value is the manifest JSON
+// (app_manifest_registration_citation, "Implementing the GitHub App Manifest flow", step 1). So the
+// registration URL alone is not an executable instruction -- it is only the ACTION of a form nobody
+// had written, and the missing form is the whole defect.
+//
+// THE PARAMETER NAME IS A ROW BECAUSE IT IS UPSTREAM'S, not this corpus's choice of spelling. A
+// consumer that spelled it itself would fork the one fact that decides whether the POST is a manifest
+// registration or an ignored request.
+data app_manifest_form_parameter_name: String = "manifest"
+
+// WHY A SUBMIT BUTTON RATHER THAN A SCRIPT THAT POSTS ON LOAD. A page that submits itself would hand
+// the operator's signed-in session to a POST they never read, at the one endpoint in this flow that
+// creates an App and mints a private key shown exactly once. The button is the consent act the
+// endpoint requires anyway (GitHub takes the submission from the account or organization OWNER), so
+// making it a click costs one click and keeps the artifact readable before it is spent.
+data app_manifest_submission_button_label: String = "Create this GitHub App"
+
+// THE ESCAPING IS THE WALL AND IT IS NOT THIS MODULE'S. The manifest document is JSON, so it carries
+// a double quote around every key and every string value; placed unescaped into value="..." it would
+// close the attribute at the first key and the remainder would be parsed as markup -- which is not a
+// cosmetic defect here but a silent one, because the browser would POST a TRUNCATED manifest and
+// GitHub would register an App with permissions nobody declared. std.markup escape_attribute is the
+// single authority for that, reached through extdeps.languages.html's serializer, and this module
+// hands it a Fragment rather than assembling any markup text of its own.
+type AppManifestSubmissionDocument
+  = ManifestSubmissionRendered { html: String }
+  | ManifestSubmissionNotRenderable { cause: NonEmptyStr }
+
+fn app_manifest_submission_fragment(
+  action_url: String,
+  manifest_document: String,
+  heading: String,
+  guidance: String,
+) -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [attr(name: "lang", value: "en")],
+    children: [
+      Element {
+        tag: "head",
+        attributes: [],
+        children: [
+          Element { tag: "meta", attributes: [attr(name: "charset", value: "utf-8")], children: [] },
+          Element { tag: "title", attributes: [], children: [FragmentText { content: heading }] },
+        ],
+      },
+      Element {
+        tag: "body",
+        attributes: [],
+        children: [
+          Element { tag: "h1", attributes: [], children: [FragmentText { content: heading }] },
+          Element { tag: "p", attributes: [], children: [FragmentText { content: guidance }] },
+          Element {
+            tag: "form",
+            attributes: [attr(name: "method", value: "post"), attr(name: "action", value: action_url)],
+            children: [
+              Element {
+                tag: "input",
+                attributes: [
+                  attr(name: "type", value: "hidden"),
+                  attr(name: "name", value: app_manifest_form_parameter_name),
+                  attr(name: "value", value: manifest_document),
+                ],
+                children: [],
+              },
+              Element {
+                tag: "button",
+                attributes: [attr(name: "type", value: "submit")],
+                children: [FragmentText { content: app_manifest_submission_button_label }],
+              },
+            ],
+          },
+          Element {
+            tag: "pre",
+            attributes: [],
+            children: [FragmentText { content: manifest_document }],
+          },
+        ],
+      },
+    ],
+  }
+}
+
+// THE DOCUMENT REFUSES RATHER THAN RENDERING A FORM THAT WOULD POST SOMETHING ELSE. Three things can
+// go wrong before there is an artifact -- the manifest does not admit, the state nonce does not
+// percent-encode into the action URL, the serializer refuses the fragment -- and each produces no
+// document at all. A partial page here is worse than none: the operator would click it.
+fn app_manifest_submission_document(
+  target: GitHubAppRegistrationTarget,
+  state: NonEmptyStr,
+  m: GitHubAppManifest,
+  heading: String,
+  guidance: String,
+) -> AppManifestSubmissionDocument {
+  match render_app_manifest(m: m) {
+    AppManifestNotRenderable { admission: _ } =>
+      ManifestSubmissionNotRenderable {
+        cause: "the declared manifest is not renderable, so there is nothing to submit" as NonEmptyStr
+      }
+    AppManifestRendered { document: document } =>
+      match app_manifest_registration_url(target: target, state: state) {
+        RegistrationUrlStateUnencodable { cause: _ } =>
+          ManifestSubmissionNotRenderable {
+            cause: "the registration state nonce is not percent-encodable, so the form has no action URL" as NonEmptyStr
+          }
+        RegistrationUrlBuilt { url: url } =>
+          match try_serialize_html_source(
+            node: app_manifest_submission_fragment(
+              action_url: url,
+              manifest_document: document,
+              heading: heading,
+              guidance: guidance,
+            )
+          ) {
+            EmitRejected { reason: r } =>
+              ManifestSubmissionNotRenderable {
+                cause: join(["the submission document was refused by the HTML serializer: ", r], "") as NonEmptyStr
+              }
+            EmitOk { html: html } => ManifestSubmissionRendered { html: html }
+          }
+      }
+  }
+}
+
+// INSTALLATION IS A SECOND CONSENT AT A SECOND URL, AND THAT IS WHY IT IS A SECOND FACT. Registering
+// an App creates it under an owner; it grants that App access to nothing. The permissions in the
+// manifest are what the App may ASK FOR, and an installation is where an account holder agrees to
+// give some of them over some repositories -- so an App can exist with zero installations
+// indefinitely, which is exactly the state a newly converted App is in (installations_count is the
+// field upstream omits at zero). The page that takes that consent is the App's public install page,
+// addressed by the SLUG the conversion returned, and like the registration form it is a browser act
+// by a signed-in account holder with no API behind it (app_install_citation).
+data app_install_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/apps/using-github-apps/installing-your-own-github-app"
+  }
+}
+
+data github_apps_install_locator_prefix: String = "github.com/apps/"
+
+type AppInstallUrl
+  = InstallUrlBuilt { url: String }
+  | InstallUrlSlugUnencodable { cause: UriPercentEncodeRefusalCause }
+
+// THE SLUG IS PERCENT-ENCODED RATHER THAN INTERPOLATED. It is a value GitHub returns, not one this
+// corpus authored, and it is being placed into a URL PATH; a slug carrying a separator would address
+// a different page while the refusal here names it instead.
+fn app_install_url(slug: NonEmptyStr) -> AppInstallUrl {
+  match uri_percent_encode_component(value: slug) {
+    UriPercentComponentRefused { cause: c } => InstallUrlSlugUnencodable { cause: c }
+    UriPercentComponentEncoded(encoded) =>
+      InstallUrlBuilt {
+        url: uri_wire(
+          uri: Uri {
+            scheme: Https,
+            locator: join([github_apps_install_locator_prefix, encoded as String, "/installations/new"], "") as NonEmptyStr,
+          }
+        ) as String
       }
   }
 }
@@ -1260,6 +1637,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     extdeps.github.app.private_key_citation,
     extdeps.github.app.app_webhook_config_citation,
     extdeps.github.app.app_manifest_registration_citation,
+    extdeps.github.app.app_install_citation,
     extdeps.github.app.app_manifest_conversion_citation,
     extdeps.github.app.get_an_app_citation,
     extdeps.github.app.list_app_installations_citation,
