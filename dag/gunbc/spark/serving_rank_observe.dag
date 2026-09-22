@@ -513,11 +513,13 @@ fn observe_rank_gpu_direct_capability(ctx: SparkMaterializeContext, incarnation:
   uses net: Network
 {
   let subject = incarnation_leg_subject(i: incarnation)
+  let device_api = observe_rank_cuda_attribute(ctx: ctx, subject: subject, a: GpuDirectRdmaSupportedAttribute)
+  let dma_buf = observe_rank_cuda_attribute(ctx: ctx, subject: subject, a: DmaBufSupportedAttribute)
   RankGpuDirectCapabilityReceipt {
     from: incarnation,
     device_ordinal: cuda_probe_device_ordinal,
-    device_api: observe_rank_cuda_attribute(ctx: ctx, subject: subject, a: GpuDirectRdmaSupportedAttribute),
-    dma_buf: observe_rank_cuda_attribute(ctx: ctx, subject: subject, a: DmaBufSupportedAttribute),
+    device_api: device_api,
+    dma_buf: dma_buf,
   }
 }
 

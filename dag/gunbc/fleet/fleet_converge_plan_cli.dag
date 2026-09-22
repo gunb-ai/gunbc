@@ -409,29 +409,41 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                 CapMembersUnobservable { path: path, cause: cause } => FleetConvergeRequestUnobserved {
                   reason: join(["CapMemberUnobservable path=", path as String, " — ", cause], ""),
                 }
-                CapMembersAbsent => FleetConvergeRequestObserved {
-                  request: FullHostConverge {
-                    host: host,
-                    observed_timers: observe_timer_members_wet(),
-                    observed_caps: [],
-                    observed_slots: observed_slots,
-                    observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
-                    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
-                    observed_unit_standings: observe_runner_unit_standings_wet(host: host),
-                    observed_retirement: observe_slot_retirement_evidence_wet(host: host),
-                  },
+                CapMembersAbsent => {
+                  let observed_timers = observe_timer_members_wet()
+                  let observed_fabric_cells = admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity))
+                  let observed_unit_standings = observe_runner_unit_standings_wet(host: host)
+                  let observed_retirement = observe_slot_retirement_evidence_wet(host: host)
+                  FleetConvergeRequestObserved {
+                    request: FullHostConverge {
+                      host: host,
+                      observed_timers: observed_timers,
+                      observed_caps: [],
+                      observed_slots: observed_slots,
+                      observed_fabric_cells: observed_fabric_cells,
+                      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+                      observed_unit_standings: observed_unit_standings,
+                      observed_retirement: observed_retirement,
+                    },
+                  }
                 }
-                CapMembersObserved { members: observed_caps } => FleetConvergeRequestObserved {
-                  request: FullHostConverge {
-                    host: host,
-                    observed_timers: observe_timer_members_wet(),
-                    observed_caps: observed_caps,
-                    observed_slots: observed_slots,
-                    observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
-                    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
-                    observed_unit_standings: observe_runner_unit_standings_wet(host: host),
-                    observed_retirement: observe_slot_retirement_evidence_wet(host: host),
-                  },
+                CapMembersObserved { members: observed_caps } => {
+                  let observed_timers = observe_timer_members_wet()
+                  let observed_fabric_cells = admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity))
+                  let observed_unit_standings = observe_runner_unit_standings_wet(host: host)
+                  let observed_retirement = observe_slot_retirement_evidence_wet(host: host)
+                  FleetConvergeRequestObserved {
+                    request: FullHostConverge {
+                      host: host,
+                      observed_timers: observed_timers,
+                      observed_caps: observed_caps,
+                      observed_slots: observed_slots,
+                      observed_fabric_cells: observed_fabric_cells,
+                      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+                      observed_unit_standings: observed_unit_standings,
+                      observed_retirement: observed_retirement,
+                    },
+                  }
                 }
               }
           }

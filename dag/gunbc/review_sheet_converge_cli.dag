@@ -163,38 +163,43 @@ fn converge_review_sheet_all(
   drive_id: NonEmptyStr,
   policy: EnsurePolicy,
 ) -> ReviewSheetConvergeReport uses net: Network, fs: std.resources.Filesystem {
+  let sheets_api = converge_service_enablement(
+    token: token,
+    project_id: project_id,
+    service_id: sheets_serviceusage_api_id,
+    policy: policy,
+  )
+  let drive_api = converge_service_enablement(
+    token: token,
+    project_id: project_id,
+    service_id: drive_serviceusage_api_id,
+    policy: policy,
+  )
+  let writer_account = converge_service_account(
+    token: token,
+    project_id: project_id,
+    account_id: review_sheet_writer_account_id,
+    display_name: review_sheet_writer_display_name,
+    sa_email: writer,
+    policy: policy,
+  )
+  let membership = converge_drive_membership(
+    drive_id: drive_id,
+    writer: writer,
+    policy: policy,
+  )
+  let spreadsheet = converge_review_spreadsheet(
+    drive_id: drive_id,
+    sheet_name: ci_prospect_sheet_name,
+    marker_value: ci_prospect_sheet_marker_value,
+    policy: policy,
+  )
   ReviewSheetConvergeReport {
-    sheets_api: converge_service_enablement(
-      token: token,
-      project_id: project_id,
-      service_id: sheets_serviceusage_api_id,
-      policy: policy,
-    ),
-    drive_api: converge_service_enablement(
-      token: token,
-      project_id: project_id,
-      service_id: drive_serviceusage_api_id,
-      policy: policy,
-    ),
-    writer: converge_service_account(
-      token: token,
-      project_id: project_id,
-      account_id: review_sheet_writer_account_id,
-      display_name: review_sheet_writer_display_name,
-      sa_email: writer,
-      policy: policy,
-    ),
-    membership: converge_drive_membership(
-      drive_id: drive_id,
-      writer: writer,
-      policy: policy,
-    ),
-    spreadsheet: converge_review_spreadsheet(
-      drive_id: drive_id,
-      sheet_name: ci_prospect_sheet_name,
-      marker_value: ci_prospect_sheet_marker_value,
-      policy: policy,
-    ),
+    sheets_api: sheets_api,
+    drive_api: drive_api,
+    writer: writer_account,
+    membership: membership,
+    spreadsheet: spreadsheet,
   }
 }
 
@@ -324,14 +329,16 @@ fn converge_drive_half(
   writer: ServiceAccountEmail,
   policy: EnsurePolicy,
 ) -> DriveHalfReport uses net: Network, fs: std.resources.Filesystem {
+  let membership = converge_drive_membership(drive_id: drive_id, writer: writer, policy: policy)
+  let spreadsheet = converge_review_spreadsheet(
+    drive_id: drive_id,
+    sheet_name: ci_prospect_sheet_name,
+    marker_value: ci_prospect_sheet_marker_value,
+    policy: policy,
+  )
   DriveHalfReport {
-    membership: converge_drive_membership(drive_id: drive_id, writer: writer, policy: policy),
-    spreadsheet: converge_review_spreadsheet(
-      drive_id: drive_id,
-      sheet_name: ci_prospect_sheet_name,
-      marker_value: ci_prospect_sheet_marker_value,
-      policy: policy,
-    ),
+    membership: membership,
+    spreadsheet: spreadsheet,
   }
 }
 

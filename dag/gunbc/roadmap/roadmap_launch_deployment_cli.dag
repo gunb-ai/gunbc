@@ -473,11 +473,14 @@ fn rlm_predecessor_run(run_id: String) -> PredecessorRunProvenance
 fn rlm_run_provenance_fact(run: ActionsRunBinding, plan_run_id: String, apply_run_id: String, dashboard_run_id: String) -> RunProvenanceFact
   uses net: Network
 {
+  let plan_observed = rlm_predecessor_run(run_id: plan_run_id)
+  let apply_observed = rlm_predecessor_run(run_id: apply_run_id)
+  let dashboard_observed = rlm_predecessor_run(run_id: dashboard_run_id)
   RunProvenanceObserved {
     receipt_repository: run.repository,
-    plan: rlm_predecessor_run(run_id: plan_run_id),
-    apply: rlm_predecessor_run(run_id: apply_run_id),
-    dashboard: rlm_predecessor_run(run_id: dashboard_run_id),
+    plan: plan_observed,
+    apply: apply_observed,
+    dashboard: dashboard_observed,
     receipt_workflow_ref: (if run_binding_names_workflow_file(binding: run, workflow_path: rlm_workflow_file_path()) { ReceiptWorkflowRefNamesFile } else { ReceiptWorkflowRefForeign { workflow_ref: run.workflow_ref } }),
   }
 }
@@ -571,6 +574,9 @@ fn rlm_launch_deployment_receipt_bound(
     Present { value: h } => HostObserved { name: h as String }
     Absent => HostUnobserved { detail: "hostname probe did not succeed or returned empty output" }
   }
+  let unit_standing = unit_standing_fact(revision: revision)
+  let observation_window_closed = window_snapshot(context: context, instance: instance, routed_base: routed_base)
+  let run_provenance = rlm_run_provenance_fact(run: run, plan_run_id: plan_run_id, apply_run_id: apply_run_id, dashboard_run_id: dashboard_run_id)
   let facts = RoadmapLaunchDeploymentFacts {
     desired_revision: (match main_hex {
       RemoteRefUnreadable { detail: d } => DesiredRevisionUnobserved { detail: join(["main: ", d], "") }
@@ -587,7 +593,7 @@ fn rlm_launch_deployment_receipt_bound(
     release_binding: binding,
     readiness: readiness,
     transition: transition_actuation_standing(instance_root: instance.instance_root as String),
-    unit_standing: unit_standing_fact(revision: revision),
+    unit_standing: unit_standing,
     tick_standing: tick_fact(instance: instance, dashboard: dashboard, now: now),
     footprint: belt_footprint_admission_for_instance(instance: instance),
     provider_preflight: provider_fact(instance: instance),
@@ -596,8 +602,8 @@ fn rlm_launch_deployment_receipt_bound(
     instance_endpoint: instance_doc,
     principal: principal_fact(),
     observed_host: host,
-    observation_window: observation_window_fact(opened: opened, closed: window_snapshot(context: context, instance: instance, routed_base: routed_base)),
-    run_provenance: rlm_run_provenance_fact(run: run, plan_run_id: plan_run_id, apply_run_id: apply_run_id, dashboard_run_id: dashboard_run_id),
+    observation_window: observation_window_fact(opened: opened, closed: observation_window_closed),
+    run_provenance: run_provenance,
   }
   let verdict = roadmap_launch_deployment_verdict(subject: subject, facts: facts)
   let document = roadmap_launch_deployment_receipt_document(v: verdict)

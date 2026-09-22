@@ -466,14 +466,21 @@ type FormatReport {
 // and the report names which one refused. A fold would answer "one of five failed", which is the
 // shape of diagnostic this session has repeatedly had to go back and re-derive.
 fn format_review_sheet(plan: FormatRequestPlan) -> FormatReport uses net: Network {
+  let freeze = freeze_header(q: plan.freeze)
+  let header = format_header_band(q: plan.header)
+  let opportunity = color_standing(q: plan.opportunity, color: standing_admitted_color())
+  let arbitrage = color_standing(q: plan.arbitrage, color: standing_admitted_color())
+  let incompatible = color_standing(q: plan.incompatible, color: standing_refused_color())
+  let required = color_standing(q: plan.required, color: standing_refused_color())
+  let replay = color_standing(q: plan.replay, color: standing_refused_color())
   FormatReport {
-    freeze: freeze_header(q: plan.freeze),
-    header: format_header_band(q: plan.header),
-    opportunity: color_standing(q: plan.opportunity, color: standing_admitted_color()),
-    arbitrage: color_standing(q: plan.arbitrage, color: standing_admitted_color()),
-    incompatible: color_standing(q: plan.incompatible, color: standing_refused_color()),
-    required: color_standing(q: plan.required, color: standing_refused_color()),
-    replay: color_standing(q: plan.replay, color: standing_refused_color()),
+    freeze: freeze,
+    header: header,
+    opportunity: opportunity,
+    arbitrage: arbitrage,
+    incompatible: incompatible,
+    required: required,
+    replay: replay,
   }
 }
 

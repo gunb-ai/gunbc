@@ -1,7 +1,7 @@
 module test.claim.sibling_operand_effect_site_census_test
 
 import std.types { Bool, Int }
-import v2.std.algebra { all, filter, length }
+import v2.std.algebra { length }
 import gunbc.sibling_operand_effect_site_census {
   sibling_operand_effect_sites,
   site_is_argument_list,

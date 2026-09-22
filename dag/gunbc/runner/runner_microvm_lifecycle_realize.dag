@@ -340,14 +340,16 @@ fn observe_resource_absence(path: String) -> ResourceReadback
   if path == "" {
     ResourceUnreadable { reason: "the resource to prove absent has no path, so nothing was read" as NonEmptyStr }
   } else {
+    let parent_reading = observe_path_exists(path: parent_directory_of(path: path))
+    let child_reading = observe_path_exists(path: path)
     absence_of_containment(
       path: path,
       parent: parent_directory_of(path: path),
       contained: contained_existence(
         path: path,
         parent: parent_directory_of(path: path),
-        parent_reading: observe_path_exists(path: parent_directory_of(path: path)),
-        child_reading: observe_path_exists(path: path),
+        parent_reading: parent_reading,
+        child_reading: child_reading,
       ),
     )
   }
@@ -970,6 +972,8 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
       let rootfs_outcome = run_staged_after(after: kernel_outcome, command: stage_rootfs)
       let create_outcome = run_staged_after(after: rootfs_outcome, command: create)
       let format_outcome = run_staged_after(after: create_outcome, command: format)
+      let kernel_present = observe_path_exists(path: jail_kernel_destination(jail_root: jail_root))
+      let rootfs_present = observe_path_exists(path: jail_rootfs_destination(jail_root: jail_root))
       AttemptStaged {
         verdict: attempt_staging_verdict(
           plan: plan,
@@ -977,8 +981,8 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
             jail_root_exit: command_exit_code(outcome: root_outcome),
             kernel_exit: command_exit_code(outcome: kernel_outcome),
             rootfs_exit: command_exit_code(outcome: rootfs_outcome),
-            kernel: observe_path_exists(path: jail_kernel_destination(jail_root: jail_root)),
-            rootfs: observe_path_exists(path: jail_rootfs_destination(jail_root: jail_root)),
+            kernel: kernel_present,
+            rootfs: rootfs_present,
           },
           jit: stage_jit_device(device: device),
           workspace: WorkspaceStagingObservation {

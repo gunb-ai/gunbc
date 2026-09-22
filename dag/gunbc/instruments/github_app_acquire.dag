@@ -568,10 +568,13 @@ fn census_app_acquire_for(record: GitHubAppAcquisitionRecord) -> ProcessExit
   let observation = observe_census_app_live(
     address: census_app_read_address(record: record),
   )
+  let issued = read_handoff_value(path: census_app_state_path)
+  let observed = read_handoff_value(path: census_app_observed_state_path)
+  let code = read_handoff_value(path: census_app_code_path)
   let admission = admit_manifest_code(
-    issued: read_handoff_value(path: census_app_state_path),
-    observed: read_handoff_value(path: census_app_observed_state_path),
-    code: read_handoff_value(path: census_app_code_path),
+    issued: issued,
+    observed: observed,
+    code: code,
   )
   match admission {
     ManifestCodeStateMismatch { issued: i, observed: o } =>
