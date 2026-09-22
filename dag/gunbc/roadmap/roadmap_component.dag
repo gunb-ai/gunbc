@@ -17,7 +17,7 @@ import gunbc.design.theme {
 }
 import gunbc.design.interaction { DispatchBtnElement, Approach, Dispatch }
 import gunbc.roadmap_presentation {
-  activity_state_sep, activity_detail_sep, activity_evidence_kv_sep, activity_disclosure_label,
+  activity_state_sep, activity_detail_sep, activity_evidence_kv_sep, inspect_disclosure_label,
 }
 import gunbc.roadmap_belt_actuate {
   belt_dispatch_all_status_labels, belt_dispatch_label_is_ok,
@@ -403,56 +403,7 @@ data dispatch_class_ok: String = "dispatch-ok"
 data dispatch_class_refused: String = "dispatch-refused"
 data dispatch_class_loud: String = "dispatch-loud"
 
-data roadmap_row_archetype_note: String = "The RoadmapRow archetype (composition slice 2; ActivityRegion added at A2 after the live-session falsifier, operator 2026-08-01 — docs/plans/roadmap-presentation-seam-design.md section 1). The prior revision of this note declared the fusion the falsifier refuted: it packed the workflow strip, dynamic process evidence, AND the cleanup action into the one actuator wrapper 'to preserve the derived auto 1fr auto grid' — evidence about an action and the action itself sharing one region because the layout had one cell left. Under the first realistic live state the intrinsic-width actuator track starved the 1fr title on WIDE screens (the stacked realization fires only below the compact breakpoint, so the pathology never reached it). The correction is regional, not spatial: ActivityRegion — what is happening to this work — is its own region placed UnderHead, where width is not contested with the title; ActuatorRegion shrinks back to ACTIONS only (dispatch, stop); evidence rows render inside the activity region's disclosure, never as head-track furniture. The head grid stays the derived auto 1fr auto with a small third track. The activity content itself is the decided ActivityView from gunbc.roadmap_presentation (single projection authority across server and client); the attention rule governs its rendering — no attempt means NO activity DOM at all. The title owns the flex track; meta FLOWS inside it; disclosure sits under the head. Density rides roadmap_row_height and roadmap_row_gutter. The full-size instrument specimen remains outside .node-head in the sandbox."
-
-type RowTrack
-  = AutoTrack
-  | FlexTrack
-
-fn row_track_wire(t: RowTrack) -> String {
-  match t {
-    AutoTrack => "auto"
-    FlexTrack => "1fr"
-  }
-}
-
-type RowPlacement
-  = HeadTrack { track: RowTrack }
-  | InTitleFlow
-  | UnderHead
-
-type RowRegion
-  = StatusChipRegion
-  | TitleRegion
-  | MetaRegion
-  | ActivityRegion
-  | DisclosureRegion
-  | ActuatorRegion
-
-fn row_region_key(r: RowRegion) -> String {
-  match r {
-    StatusChipRegion => "status-chip"
-    TitleRegion => "title"
-    MetaRegion => "meta"
-    ActivityRegion => "activity"
-    DisclosureRegion => "disclosure"
-    ActuatorRegion => "actuator"
-  }
-}
-
-type RoadmapRowRegion {
-  region: RowRegion
-  placement: RowPlacement
-}
-
-data roadmap_row_archetype: List<RoadmapRowRegion> = [
-  RoadmapRowRegion { region: StatusChipRegion, placement: HeadTrack { track: AutoTrack } },
-  RoadmapRowRegion { region: TitleRegion, placement: HeadTrack { track: FlexTrack } },
-  RoadmapRowRegion { region: MetaRegion, placement: InTitleFlow },
-  RoadmapRowRegion { region: ActivityRegion, placement: UnderHead },
-  RoadmapRowRegion { region: DisclosureRegion, placement: UnderHead },
-  RoadmapRowRegion { region: ActuatorRegion, placement: HeadTrack { track: AutoTrack } },
-]
+data roadmap_row_archetype_note: String = "The RoadmapRow archetype (composition slice 2; ActivityRegion added at A2 after the live-session falsifier, operator 2026-08-01 — docs/plans/roadmap-presentation-seam-design.md section 1). The prior revision of this note declared the fusion the falsifier refuted: it packed the workflow strip, dynamic process evidence, AND the cleanup action into the one actuator wrapper 'to preserve the derived auto 1fr auto grid' — evidence about an action and the action itself sharing one region because the layout had one cell left. Under the first realistic live state the intrinsic-width actuator track starved the 1fr title on WIDE screens (the stacked realization fires only below the compact breakpoint, so the pathology never reached it). The correction is regional, not spatial: ActivityRegion — what is happening to this work — is its own region placed UnderHead, where width is not contested with the title; ActuatorRegion shrinks back to ACTIONS only (dispatch, stop); evidence rows render inside the activity region's disclosure, never as head-track furniture. The head grid stays the derived auto 1fr auto with a small third track. The activity content itself is the decided ActivityView from gunbc.roadmap_presentation (single projection authority across server and client); the attention rule governs its rendering — no attempt means NO activity DOM at all. The title owns the flex track; meta FLOWS inside it; disclosure sits under the head. Density rides roadmap_row_height and roadmap_row_gutter. The full-size instrument specimen remains outside .node-head in the sandbox. RETIRED 2026-09-21: the owner-endorsed title-in-bar redesign dissolved the three-track head grid — the taskbar face is one flex row, the regions vocabulary and its grid derivations are deleted with it (the falsifier history above kept as the record of WHY the grid existed)."
 
 // Two gutters, two jobs (operator-signed 2026-07-25, the third PROVISIONAL flip): the first cut ran
 // ONE space-4 token as both the grid's column rhythm and the mid cell's badge-flow rhythm, and the
@@ -462,56 +413,7 @@ data roadmap_row_archetype: List<RoadmapRowRegion> = [
 
 data roadmap_row_height: ScaleToken = height_row
 data roadmap_row_gutter: ScaleToken = space_4
-data roadmap_row_column_gutter: ScaleToken = space_8
 
-fn roadmap_row_grid_template() -> String {
-  join(
-    fold(roadmap_row_archetype, init: [], f: (acc, r) => match r.placement {
-      HeadTrack { track } => concat(acc, [row_track_wire(t: track)])
-      InTitleFlow => acc
-      UnderHead => acc
-    }),
-    " ")
-}
-
-// Explicit head-cell placement, derived from the SAME archetype the grid template folds (A3
-// routine-state collapse): once the status chip renders only when its lifecycle discriminates, the
-// head can have fewer children than tracks, and implicit grid auto-placement would slide the title
-// into the chip's auto track. Each head cell therefore carries an explicit grid-column derived from
-// its region's HeadTrack position in roadmap_row_archetype — one authority for both the template
-// and the placement, so an archetype reorder moves both together and a hand-drifted column is
-// unwritable. A region not placed in a head track derives 0, which the archetype witness refuses (a
-// 0 column never reaches emission while the witness is enrolled).
-
-type RowHeadColumnScan {
-  col: Int
-  found: Int
-}
-
-fn roadmap_row_head_column(region_key: String) -> Int {
-  let scan = fold(roadmap_row_archetype, init: RowHeadColumnScan { col: 0, found: 0 }, f: (acc, r) => match r.placement {
-    HeadTrack { track: _ } =>
-      if acc.found > 0 {
-        acc
-      } else {
-        if row_region_key(r: r.region) == region_key {
-          RowHeadColumnScan { col: acc.col + 1, found: acc.col + 1 }
-        } else {
-          RowHeadColumnScan { col: acc.col + 1, found: 0 }
-        }
-      }
-    InTitleFlow => acc
-    UnderHead => acc
-  })
-  scan.found
-}
-
-// The title track's cell: the wrapper that carries the title plus the flowing meta regions (badges,
-// carrier links). It exists because the archetype's grid has exactly the head tracks as columns and
-// a node's badge count varies — meta declared InTitleFlow realizes as flex flow inside this cell,
-// never as a column that would ragged the grid.
-
-data node_mid_class: String = "node-mid"
 
 // The operator-facing captions (remodel W1d, operator ruling 2026-07-24; lifecycle correction
 // 2026-07-27): ok keeps the exact belt status under the dispatch-receipt prefix, while fail and
@@ -919,7 +821,7 @@ fn row_disclosure_helper_stmt() -> TsStmt {
       op: "&&",
       right: ts_call(
         callee: ts_member(object: ts_ident(name: "r"), property: "querySelector"),
-        args: [ts_lit_str(value: "details.item-detail")]),
+        args: [ts_lit_str(value: "details.taskbar-inspect")]),
     )),
   ])))
 }
@@ -1025,6 +927,7 @@ fn dispatch_preamble_statements() -> List<TsStmt> {
     ts_const(name: js_dwell_const, value: ts_lit_num(text: to_string(dispatch_requested_read_dwell_ms))),
     row_disclosure_helper_stmt(),
     reason_surface_helper_stmt(),
+    inspect_ensure_helper_stmt(),
   ]
 }
 
@@ -1433,7 +1336,7 @@ fn disclosure_bind_statements() -> List<TsStmt> {
       callee: ts_member(
         object: ts_call(
           callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
-          args: [ts_lit_str(value: "details.item-detail")],
+          args: [ts_lit_str(value: "details.taskbar-inspect")],
         ),
         property: "forEach",
       ),
@@ -2239,7 +2142,7 @@ fn attempts_mark_stmts() -> List<TsStmt> {
     ts_const(name: "adt", value: ts_binop(
       left: ts_ident(name: "ar"),
       op: "&&",
-      right: ts_call(callee: ts_member(object: ts_ident(name: "ar"), property: "querySelector"), args: [ts_lit_str(value: "details.item-detail")]))),
+      right: ts_call(callee: ts_member(object: ts_ident(name: "ar"), property: "querySelector"), args: [ts_lit_str(value: "details.taskbar-inspect")]))),
     ts_if(
       cond: ts_ident(name: "adt"),
       then: ts_block(stmts: [
@@ -2376,13 +2279,25 @@ fn observation_fetch_statements() -> List<TsStmt> {
 // stale sweep realizes attempt disappearance as DOM removal (attention rule: absence earns no area)
 // while keep-and-update preserves the operator's open disclosure between polls.
 
+// THE CLIENT'S ACTIVITY PAINT, RETARGETED TO THE TASKBAR (the 2026-09-21 redesign). The bar's
+// attempt-driven slots — the fill's stage strip, the signal, the count, the second line — and the
+// inspection's stage/raw sections are painted VERBATIM from the decided wire fields
+// (av.bar_signal / av.summary_class / av.bar_count / av.summary / av.arm / av.attention, the wire
+// segments, attempt.throughput) exactly as the old region painter worked from av.*: no composition
+// policy crosses to TypeScript. When the wire stops carrying an attempt, the sweep RESTORES the
+// row's decided no-attempt signal and class from the data-rest-* attributes the server shipped
+// (task_bar_idle_view), so a vanished attempt never leaves its content painted and the client
+// never recomputes a scheduling fact. The stage-live pulse stays server-rendered (it marks the
+// live segment against process evidence the wire does not carry), the round strip stays
+// server-rendered (unpainted by the client since it landed — same precedent).
+
 fn workflow_activity_in_row_expr(row_name: String) -> TsExpr {
   ts_binop(
     left: ts_ident(name: row_name),
     op: "&&",
     right: ts_call(
       callee: ts_member(object: ts_ident(name: row_name), property: "querySelector"),
-      args: [ts_lit_str(value: join([".", node_activity_class], ""))]))
+      args: [ts_lit_str(value: ".taskbar")]))
 }
 
 fn workflow_clear_rendered_stmt() -> TsStmt {
@@ -2390,7 +2305,7 @@ fn workflow_clear_rendered_stmt() -> TsStmt {
     callee: ts_member(
       object: ts_call(
         callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
-        args: [ts_lit_str(value: join([".", node_activity_class], ""))]),
+        args: [ts_lit_str(value: ".taskbar-fill, .inspect-stages, .inspect-raw")]),
       property: "forEach"),
     args: [ts_arrow(params: ["na"], body: ts_expr_stmt(expr: ts_binop(
       left: ts_member(
@@ -2400,10 +2315,90 @@ fn workflow_clear_rendered_stmt() -> TsStmt {
       right: ts_lit_str(value: "1"))))]))
 }
 
+fn ts_slot_query(obj: String, selector: String) -> TsExpr {
+  ts_call(
+    callee: ts_member(object: ts_ident(name: obj), property: "querySelector"),
+    args: [ts_lit_str(value: selector)])
+}
+
 fn workflow_stale_sweep_stmt() -> TsStmt {
-  remove_all_selector_stmt(
-    selector: join([".", node_activity_class, "[data-stale=\"1\"]"], ""),
-    item_name: "staleActivity")
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(
+      object: ts_call(
+        callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+        args: [ts_lit_str(value: ".taskbar-fill[data-stale=\"1\"], .inspect-stages[data-stale=\"1\"], .inspect-raw[data-stale=\"1\"]")]),
+      property: "forEach"),
+    args: [ts_arrow(params: ["st"], body: ts_block(stmts: [
+      ts_const(name: "wr", value: ts_call(
+        callee: ts_member(object: ts_ident(name: "st"), property: "closest"),
+        args: [ts_lit_str(value: "li.node")])),
+      ts_const(name: "sig", value: ts_binop(
+        left: ts_ident(name: "wr"),
+        op: "&&",
+        right: ts_slot_query(obj: "wr", selector: ".taskbar-signal"))),
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_ident(name: "sig"),
+        op: "&&",
+        right: ts_binop(
+          left: ts_member(object: ts_ident(name: "sig"), property: "textContent"),
+          op: "=",
+          right: ts_binop(
+            left: ts_member(
+              object: ts_member(object: ts_ident(name: "sig"), property: "dataset"),
+              property: "restSignal"),
+            op: "||",
+            right: ts_lit_str(value: ""))))),
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_ident(name: "sig"),
+        op: "&&",
+        right: ts_binop(
+          left: ts_member(object: ts_ident(name: "sig"), property: "className"),
+          op: "=",
+          right: ts_binop(
+            left: ts_lit_str(value: "taskbar-signal "),
+            op: "+",
+            right: ts_binop(
+              left: ts_member(
+                object: ts_member(object: ts_ident(name: "sig"), property: "dataset"),
+                property: "restClass"),
+              op: "||",
+              right: ts_lit_str(value: "activity-line-neutral")))))),
+      ts_const(name: "cnt", value: ts_binop(
+        left: ts_ident(name: "wr"),
+        op: "&&",
+        right: ts_slot_query(obj: "wr", selector: ".taskbar-count"))),
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_ident(name: "cnt"),
+        op: "&&",
+        right: ts_binop(
+          left: ts_member(object: ts_ident(name: "cnt"), property: "textContent"),
+          op: "=",
+          right: ts_lit_str(value: "")))),
+      ts_const(name: "sub", value: ts_binop(
+        left: ts_ident(name: "wr"),
+        op: "&&",
+        right: ts_slot_query(obj: "wr", selector: ".taskbar-sub"))),
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_ident(name: "sub"),
+        op: "&&",
+        right: ts_binop(
+          left: ts_member(object: ts_ident(name: "sub"), property: "textContent"),
+          op: "=",
+          right: ts_lit_str(value: "")))),
+      ts_expr_stmt(expr: ts_call(
+        callee: ts_member(object: ts_ident(name: "st"), property: "remove"),
+        args: [])),
+      ts_const(name: "ins", value: ts_binop(
+        left: ts_ident(name: "wr"),
+        op: "&&",
+        right: ts_slot_query(obj: "wr", selector: "details.taskbar-inspect[data-client-minted=\"1\"]"))),
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_ident(name: "ins"),
+        op: "&&",
+        right: ts_call(
+          callee: ts_member(object: ts_ident(name: "ins"), property: "remove"),
+          args: []))),
+    ]))]))
 }
 
 fn workflow_refuse_visible_stmt() -> TsStmt {
@@ -2411,18 +2406,16 @@ fn workflow_refuse_visible_stmt() -> TsStmt {
     callee: ts_member(
       object: ts_call(
         callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
-        args: [ts_lit_str(value: join([".", node_activity_class], ""))]),
+        args: [ts_lit_str(value: ".taskbar")]),
       property: "forEach"),
-    args: [ts_arrow(params: ["na"], body: ts_block(stmts: [
+    args: [ts_arrow(params: ["tb"], body: ts_block(stmts: [
       ts_expr_stmt(expr: ts_binop(
         left: ts_member(
-          object: ts_member(object: ts_ident(name: "na"), property: "dataset"),
+          object: ts_member(object: ts_ident(name: "tb"), property: "dataset"),
           property: "arm"),
         op: "=",
         right: ts_lit_str(value: "unobservable"))),
-      ts_const(name: "ns", value: ts_call(
-        callee: ts_member(object: ts_ident(name: "na"), property: "querySelector"),
-        args: [ts_lit_str(value: join([".", activity_summary_class], ""))])),
+      ts_const(name: "ns", value: ts_slot_query(obj: "tb", selector: ".taskbar-sub")),
       ts_expr_stmt(expr: ts_binop(
         left: ts_ident(name: "ns"),
         op: "&&",
@@ -2433,81 +2426,93 @@ fn workflow_refuse_visible_stmt() -> TsStmt {
     ]))]))
 }
 
-fn activity_container_create_stmts() -> List<TsStmt> {
+// Creation paths for the attempt-driven regions: the bar's fill (before the face) and the
+// inspection details (after the bar) with its stages/raw sections. A client-minted details is
+// marked so the sweep can remove the whole element when the attempt vanishes — server-rendered
+// details carry ticket content and only lose their attempt sections.
+fn activity_fill_create_stmts() -> List<TsStmt> {
   [
     ts_expr_stmt(expr: ts_binop(
-      left: ts_ident(name: "act"),
+      left: ts_ident(name: "fl"),
       op: "=",
       right: ts_call(
         callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
         args: [ts_lit_str(value: "div")]))),
     ts_expr_stmt(expr: ts_binop(
-      left: ts_member(object: ts_ident(name: "act"), property: "className"),
+      left: ts_member(object: ts_ident(name: "fl"), property: "className"),
       op: "=",
-      right: ts_lit_str(value: node_activity_class))),
-    ts_const(name: "nh", value: ts_call(
-      callee: ts_member(object: ts_ident(name: "wr"), property: "querySelector"),
-      args: [ts_lit_str(value: ".node-head")])),
-    ts_if(
-      cond: ts_ident(name: "nh"),
-      then: ts_block(stmts: [
-        ts_expr_stmt(expr: ts_call(
-          callee: ts_member(object: ts_ident(name: "nh"), property: "insertAdjacentElement"),
-          args: [ts_lit_str(value: "afterend"), ts_ident(name: "act")])),
-      ]),
-      else_stmt: Present { value: ts_block(stmts: [
-        ts_expr_stmt(expr: ts_call(
-          callee: ts_member(object: ts_ident(name: "wr"), property: "append"),
-          args: [ts_ident(name: "act")])),
-      ]) },
-    ),
-    ts_const(name: "astrip", value: ts_call(
+      right: ts_lit_str(value: "taskbar-fill"))),
+    ts_const(name: "st", value: ts_call(
       callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
       args: [ts_lit_str(value: "div")])),
     ts_expr_stmt(expr: ts_binop(
-      left: ts_member(object: ts_ident(name: "astrip"), property: "className"),
+      left: ts_member(object: ts_ident(name: "st"), property: "className"),
       op: "=",
       right: ts_lit_str(value: stage_strip_class))),
     ts_expr_stmt(expr: ts_call(
-      callee: ts_member(object: ts_ident(name: "act"), property: "append"),
-      args: [ts_ident(name: "astrip")])),
-    ts_const(name: "asum", value: ts_call(
-      callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
-      args: [ts_lit_str(value: "span")])),
+      callee: ts_member(object: ts_ident(name: "fl"), property: "append"),
+      args: [ts_ident(name: "st")])),
+    ts_const(name: "fc", value: ts_slot_query(obj: "tb", selector: ".taskbar-face")),
     ts_expr_stmt(expr: ts_binop(
-      left: ts_member(object: ts_ident(name: "asum"), property: "className"),
-      op: "=",
-      right: ts_lit_str(value: activity_summary_class))),
-    ts_expr_stmt(expr: ts_call(
-      callee: ts_member(object: ts_ident(name: "act"), property: "append"),
-      args: [ts_ident(name: "asum")])),
-    ts_const(name: "athr", value: ts_call(
-      callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
-      args: [ts_lit_str(value: "span")])),
+      left: ts_ident(name: "fc"),
+      op: "&&",
+      right: ts_call(
+        callee: ts_member(object: ts_ident(name: "fc"), property: "insertAdjacentElement"),
+        args: [ts_lit_str(value: "beforebegin"), ts_ident(name: "fl")]))),
+  ]
+}
+
+fn activity_inspect_create_stmts() -> List<TsStmt> {
+  [
     ts_expr_stmt(expr: ts_binop(
-      left: ts_member(object: ts_ident(name: "athr"), property: "className"),
+      left: ts_ident(name: "ins"),
       op: "=",
-      right: ts_lit_str(value: activity_throughput_class))),
-    ts_expr_stmt(expr: ts_call(
-      callee: ts_member(object: ts_ident(name: "act"), property: "append"),
-      args: [ts_ident(name: "athr")])),
-    ts_const(name: "adet", value: ts_call(
-      callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
-      args: [ts_lit_str(value: "details")])),
+      right: ts_call(
+        callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+        args: [ts_lit_str(value: "details")]))),
     ts_expr_stmt(expr: ts_binop(
-      left: ts_member(object: ts_ident(name: "adet"), property: "className"),
+      left: ts_member(object: ts_ident(name: "ins"), property: "className"),
       op: "=",
-      right: ts_lit_str(value: activity_detail_class))),
-    ts_const(name: "asm", value: ts_call(
+      right: ts_lit_str(value: "taskbar-inspect"))),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(
+        object: ts_member(object: ts_ident(name: "ins"), property: "dataset"),
+        property: "clientMinted"),
+      op: "=",
+      right: ts_lit_str(value: "1"))),
+    ts_const(name: "sm", value: ts_call(
       callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
       args: [ts_lit_str(value: "summary")])),
     ts_expr_stmt(expr: ts_binop(
-      left: ts_member(object: ts_ident(name: "asm"), property: "textContent"),
+      left: ts_member(object: ts_ident(name: "sm"), property: "textContent"),
       op: "=",
-      right: ts_lit_str(value: activity_disclosure_label))),
+      right: ts_lit_str(value: inspect_disclosure_label))),
     ts_expr_stmt(expr: ts_call(
-      callee: ts_member(object: ts_ident(name: "adet"), property: "append"),
-      args: [ts_ident(name: "asm")])),
+      callee: ts_member(object: ts_ident(name: "ins"), property: "append"),
+      args: [ts_ident(name: "sm")])),
+    ts_const(name: "ib", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+      args: [ts_lit_str(value: "div")])),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "ib"), property: "className"),
+      op: "=",
+      right: ts_lit_str(value: "inspect-body"))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "ins"), property: "append"),
+      args: [ts_ident(name: "ib")])),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "tb"), property: "insertAdjacentElement"),
+      args: [ts_lit_str(value: "afterend"), ts_ident(name: "ins")])),
+    ts_const(name: "stg", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+      args: [ts_lit_str(value: "div")])),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "stg"), property: "className"),
+      op: "=",
+      right: ts_lit_str(value: "inspect-stages"))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "ib"), property: "append"),
+      args: [ts_ident(name: "stg")])),
     ts_const(name: "aled", value: ts_call(
       callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
       args: [ts_lit_str(value: "div")])),
@@ -2516,8 +2521,28 @@ fn activity_container_create_stmts() -> List<TsStmt> {
       op: "=",
       right: ts_lit_str(value: activity_ledger_class))),
     ts_expr_stmt(expr: ts_call(
-      callee: ts_member(object: ts_ident(name: "adet"), property: "append"),
+      callee: ts_member(object: ts_ident(name: "stg"), property: "append"),
       args: [ts_ident(name: "aled")])),
+    ts_const(name: "raw", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+      args: [ts_lit_str(value: "div")])),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "raw"), property: "className"),
+      op: "=",
+      right: ts_lit_str(value: "inspect-raw"))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "ib"), property: "append"),
+      args: [ts_ident(name: "raw")])),
+    ts_const(name: "athr", value: ts_call(
+      callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+      args: [ts_lit_str(value: "span")])),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_member(object: ts_ident(name: "athr"), property: "className"),
+      op: "=",
+      right: ts_lit_str(value: activity_throughput_class))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(object: ts_ident(name: "raw"), property: "append"),
+      args: [ts_ident(name: "athr")])),
     ts_const(name: "aev", value: ts_call(
       callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
       args: [ts_lit_str(value: "div")])),
@@ -2526,12 +2551,87 @@ fn activity_container_create_stmts() -> List<TsStmt> {
       op: "=",
       right: ts_lit_str(value: activity_evidence_class))),
     ts_expr_stmt(expr: ts_call(
-      callee: ts_member(object: ts_ident(name: "adet"), property: "append"),
+      callee: ts_member(object: ts_ident(name: "raw"), property: "append"),
       args: [ts_ident(name: "aev")])),
-    ts_expr_stmt(expr: ts_call(
-      callee: ts_member(object: ts_ident(name: "act"), property: "append"),
-      args: [ts_ident(name: "adet")])),
   ]
+}
+
+// When a server-rendered inspect exists (ticket content) but the attempt sections are absent, the
+// painter creates just those sections — stages ahead of the ticket body, raw beneath it.
+// Registered once beside the other helpers; the painter calls it with the inspect body element.
+data js_inspect_ensure_fn: String = "gunbcInspectEnsure"
+
+fn inspect_ensure_helper_stmt() -> TsStmt {
+  ts_const(name: js_inspect_ensure_fn, value: ts_arrow(params: ["ib"], body: ts_block(stmts: [
+    ts_let(name: "stg", value: ts_slot_query(obj: "ib", selector: ".inspect-stages")),
+    ts_if(
+      cond: ts_prefix(op: "!", expr: ts_ident(name: "stg")),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_ident(name: "stg"),
+          op: "=",
+          right: ts_call(
+            callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+            args: [ts_lit_str(value: "div")]))),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "stg"), property: "className"),
+          op: "=",
+          right: ts_lit_str(value: "inspect-stages"))),
+        ts_const(name: "aled2", value: ts_call(
+          callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+          args: [ts_lit_str(value: "div")])),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "aled2"), property: "className"),
+          op: "=",
+          right: ts_lit_str(value: activity_ledger_class))),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "stg"), property: "append"),
+          args: [ts_ident(name: "aled2")])),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "ib"), property: "prepend"),
+          args: [ts_ident(name: "stg")])),
+      ]),
+      else_stmt: none),
+    ts_let(name: "raw", value: ts_slot_query(obj: "ib", selector: ".inspect-raw")),
+    ts_if(
+      cond: ts_prefix(op: "!", expr: ts_ident(name: "raw")),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_ident(name: "raw"),
+          op: "=",
+          right: ts_call(
+            callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+            args: [ts_lit_str(value: "div")]))),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "raw"), property: "className"),
+          op: "=",
+          right: ts_lit_str(value: "inspect-raw"))),
+        ts_const(name: "athr2", value: ts_call(
+          callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+          args: [ts_lit_str(value: "span")])),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "athr2"), property: "className"),
+          op: "=",
+          right: ts_lit_str(value: activity_throughput_class))),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "raw"), property: "append"),
+          args: [ts_ident(name: "athr2")])),
+        ts_const(name: "aev2", value: ts_call(
+          callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+          args: [ts_lit_str(value: "div")])),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "aev2"), property: "className"),
+          op: "=",
+          right: ts_lit_str(value: activity_evidence_class))),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "raw"), property: "append"),
+          args: [ts_ident(name: "aev2")])),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "ib"), property: "append"),
+          args: [ts_ident(name: "raw")])),
+      ]),
+      else_stmt: none),
+  ])))
 }
 
 fn activity_summary_text_expr() -> TsExpr {
@@ -2557,69 +2657,36 @@ fn activity_paint_stmts() -> List<TsStmt> {
   [
     ts_expr_stmt(expr: ts_binop(
       left: ts_member(
-        object: ts_member(object: ts_ident(name: "act"), property: "dataset"),
+        object: ts_member(object: ts_ident(name: "tb"), property: "dataset"),
         property: "arm"),
       op: "=",
       right: ts_member(object: ts_ident(name: "av"), property: "arm"))),
     ts_expr_stmt(expr: ts_binop(
       left: ts_member(
-        object: ts_member(object: ts_ident(name: "act"), property: "dataset"),
+        object: ts_member(object: ts_ident(name: "tb"), property: "dataset"),
         property: "attention"),
       op: "=",
       right: ts_binop(
         left: ts_member(object: ts_ident(name: "av"), property: "attention"),
         op: "||",
         right: ts_lit_str(value: "")))),
+    ts_let(name: "fl", value: ts_slot_query(obj: "tb", selector: ".taskbar-fill")),
+    ts_if(
+      cond: ts_prefix(op: "!", expr: ts_ident(name: "fl")),
+      then: ts_block(stmts: activity_fill_create_stmts()),
+      else_stmt: none),
     ts_expr_stmt(expr: ts_binop(
       left: ts_member(
-        object: ts_member(object: ts_ident(name: "act"), property: "dataset"),
+        object: ts_member(object: ts_ident(name: "fl"), property: "dataset"),
         property: "stale"),
       op: "=",
       right: ts_lit_str(value: ""))),
-    ts_const(name: "asum", value: ts_call(
-      callee: ts_member(object: ts_ident(name: "act"), property: "querySelector"),
-      args: [ts_lit_str(value: join([".", activity_summary_class], ""))])),
-    ts_expr_stmt(expr: ts_binop(
-      left: ts_ident(name: "asum"),
-      op: "&&",
-      right: ts_binop(
-        left: ts_member(object: ts_ident(name: "asum"), property: "textContent"),
-        op: "=",
-        right: activity_summary_text_expr()))),
-    ts_expr_stmt(expr: ts_binop(
-      left: ts_ident(name: "asum"),
-      op: "&&",
-      right: ts_binop(
-        left: ts_member(object: ts_ident(name: "asum"), property: "className"),
-        op: "=",
-        right: ts_binop(
-          left: ts_lit_str(value: join([activity_summary_class, " ", activity_line_prefix_class], "")),
-          op: "+",
-          right: ts_binop(
-            left: ts_member(object: ts_ident(name: "av"), property: "summary_class"),
-            op: "||",
-            right: ts_lit_str(value: "neutral")))))),
-    ts_const(name: "athr", value: ts_call(
-      callee: ts_member(object: ts_ident(name: "act"), property: "querySelector"),
-      args: [ts_lit_str(value: join([".", activity_throughput_class], ""))])),
-    ts_expr_stmt(expr: ts_binop(
-      left: ts_ident(name: "athr"),
-      op: "&&",
-      right: ts_binop(
-        left: ts_member(object: ts_ident(name: "athr"), property: "textContent"),
-        op: "=",
-        right: ts_binop(
-          left: ts_member(object: ts_ident(name: "attempt"), property: "throughput"),
-          op: "||",
-          right: ts_lit_str(value: ""))))),
-    ts_const(name: "astrip", value: ts_call(
-      callee: ts_member(object: ts_ident(name: "act"), property: "querySelector"),
-      args: [ts_lit_str(value: join([".", stage_strip_class], ""))])),
+    ts_let(name: "st", value: ts_slot_query(obj: "fl", selector: join([".", stage_strip_class], ""))),
     ts_if(
-      cond: ts_ident(name: "astrip"),
+      cond: ts_ident(name: "st"),
       then: ts_block(stmts: [
         ts_expr_stmt(expr: ts_binop(
-          left: ts_member(object: ts_ident(name: "astrip"), property: "textContent"),
+          left: ts_member(object: ts_ident(name: "st"), property: "textContent"),
           op: "=",
           right: ts_lit_str(value: ""))),
         ts_expr_stmt(expr: ts_call(
@@ -2651,14 +2718,93 @@ fn activity_paint_stmts() -> List<TsStmt> {
                 op: "+",
                 right: ts_member(object: ts_ident(name: "seg"), property: "state")))),
             ts_expr_stmt(expr: ts_call(
-              callee: ts_member(object: ts_ident(name: "astrip"), property: "append"),
+              callee: ts_member(object: ts_ident(name: "st"), property: "append"),
               args: [ts_ident(name: "sp")])),
           ]))])),
       ]),
       else_stmt: none),
-    ts_const(name: "aled", value: ts_call(
-      callee: ts_member(object: ts_ident(name: "act"), property: "querySelector"),
-      args: [ts_lit_str(value: join([".", activity_ledger_class], ""))])),
+    ts_const(name: "sig", value: ts_slot_query(obj: "tb", selector: ".taskbar-signal")),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: "sig"),
+      op: "&&",
+      right: ts_binop(
+        left: ts_member(object: ts_ident(name: "sig"), property: "textContent"),
+        op: "=",
+        right: ts_binop(
+          left: ts_member(object: ts_ident(name: "av"), property: "bar_signal"),
+          op: "||",
+          right: ts_lit_str(value: ""))))),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: "sig"),
+      op: "&&",
+      right: ts_binop(
+        left: ts_member(object: ts_ident(name: "sig"), property: "className"),
+        op: "=",
+        right: ts_binop(
+          left: ts_lit_str(value: join(["taskbar-signal ", activity_line_prefix_class], "")),
+          op: "+",
+          right: ts_binop(
+            left: ts_member(object: ts_ident(name: "av"), property: "summary_class"),
+            op: "||",
+            right: ts_lit_str(value: "neutral")))))),
+    ts_const(name: "cnt", value: ts_slot_query(obj: "tb", selector: ".taskbar-count")),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: "cnt"),
+      op: "&&",
+      right: ts_binop(
+        left: ts_member(object: ts_ident(name: "cnt"), property: "textContent"),
+        op: "=",
+        right: ts_binop(
+          left: ts_member(object: ts_ident(name: "av"), property: "bar_count"),
+          op: "||",
+          right: ts_lit_str(value: ""))))),
+    ts_const(name: "sub", value: ts_slot_query(obj: "tb", selector: ".taskbar-sub")),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: "sub"),
+      op: "&&",
+      right: ts_binop(
+        left: ts_member(object: ts_ident(name: "sub"), property: "textContent"),
+        op: "=",
+        right: activity_summary_text_expr()))),
+    ts_let(name: "ins", value: ts_binop(
+      left: ts_ident(name: "wr"),
+      op: "&&",
+      right: ts_slot_query(obj: "wr", selector: "details.taskbar-inspect"))),
+    ts_if(
+      cond: ts_prefix(op: "!", expr: ts_ident(name: "ins")),
+      then: ts_block(stmts: activity_inspect_create_stmts()),
+      else_stmt: none),
+    ts_const(name: "ib", value: ts_slot_query(obj: "ins", selector: ".inspect-body")),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: "ib"),
+      op: "&&",
+      right: ts_call(
+        callee: ts_ident(name: js_inspect_ensure_fn),
+        args: [ts_ident(name: "ib")]))),
+    ts_let(name: "stg", value: ts_slot_query(obj: "ib", selector: ".inspect-stages")),
+    ts_let(name: "raw", value: ts_slot_query(obj: "ib", selector: ".inspect-raw")),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: "stg"),
+      op: "&&",
+      right: ts_binop(
+        left: ts_member(
+          object: ts_member(object: ts_ident(name: "stg"), property: "dataset"),
+          property: "stale"),
+        op: "=",
+        right: ts_lit_str(value: "")))),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: "raw"),
+      op: "&&",
+      right: ts_binop(
+        left: ts_member(
+          object: ts_member(object: ts_ident(name: "raw"), property: "dataset"),
+          property: "stale"),
+        op: "=",
+        right: ts_lit_str(value: "")))),
+    ts_let(name: "aled", value: ts_binop(
+      left: ts_ident(name: "stg"),
+      op: "&&",
+      right: ts_slot_query(obj: "stg", selector: join([".", activity_ledger_class], "")))),
     ts_if(
       cond: ts_ident(name: "aled"),
       then: ts_block(stmts: [
@@ -2726,7 +2872,7 @@ fn activity_paint_stmts() -> List<TsStmt> {
             ts_expr_stmt(expr: ts_call(
               callee: ts_ident(name: js_reason_surface_fn),
               args: [
-                ts_call(callee: ts_ident(name: js_row_disclosure_fn), args: [ts_ident(name: "act")]),
+                ts_call(callee: ts_ident(name: js_row_disclosure_fn), args: [ts_ident(name: "tb")]),
                 ts_binop(
                   left: ts_lit_str(value: reason_source_workflow_prefix),
                   op: "+",
@@ -2751,9 +2897,24 @@ fn activity_paint_stmts() -> List<TsStmt> {
           ]))])),
       ]),
       else_stmt: none),
-    ts_const(name: "aev", value: ts_call(
-      callee: ts_member(object: ts_ident(name: "act"), property: "querySelector"),
-      args: [ts_lit_str(value: join([".", activity_evidence_class], ""))])),
+    ts_let(name: "athr", value: ts_binop(
+      left: ts_ident(name: "raw"),
+      op: "&&",
+      right: ts_slot_query(obj: "raw", selector: join([".", activity_throughput_class], "")))),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: "athr"),
+      op: "&&",
+      right: ts_binop(
+        left: ts_member(object: ts_ident(name: "athr"), property: "textContent"),
+        op: "=",
+        right: ts_binop(
+          left: ts_member(object: ts_ident(name: "attempt"), property: "throughput"),
+          op: "||",
+          right: ts_lit_str(value: ""))))),
+    ts_let(name: "aev", value: ts_binop(
+      left: ts_ident(name: "raw"),
+      op: "&&",
+      right: ts_slot_query(obj: "raw", selector: join([".", activity_evidence_class], "")))),
     ts_if(
       cond: ts_ident(name: "aev"),
       then: ts_block(stmts: [
@@ -2838,7 +2999,7 @@ fn workflow_mark_attempt_stmts() -> List<TsStmt> {
       left: ts_member(object: ts_ident(name: "attempt"), property: "activity"),
       op: "||",
       right: ts_ident(name: "null"))),
-    ts_let(name: "act", value: workflow_activity_in_row_expr(row_name: "wr")),
+    ts_let(name: "tb", value: workflow_activity_in_row_expr(row_name: "wr")),
     ts_if(
       cond: ts_binop(
         left: ts_binop(
@@ -2849,24 +3010,9 @@ fn workflow_mark_attempt_stmts() -> List<TsStmt> {
             op: "===",
             right: ts_lit_str(value: "none"))),
         op: "||",
-        right: ts_prefix(op: "!", expr: ts_ident(name: "wr"))),
-      then: ts_block(stmts: [
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_ident(name: "act"),
-          op: "&&",
-          right: ts_call(
-            callee: ts_member(object: ts_ident(name: "act"), property: "remove"),
-            args: []))),
-      ]),
-      else_stmt: Present { value: ts_block(stmts: concat(
-        [
-          ts_if(
-            cond: ts_prefix(op: "!", expr: ts_ident(name: "act")),
-            then: ts_block(stmts: activity_container_create_stmts()),
-            else_stmt: none),
-        ],
-        activity_paint_stmts())) },
-    ),
+        right: ts_prefix(op: "!", expr: ts_ident(name: "tb"))),
+      then: ts_block(stmts: []),
+      else_stmt: Present { value: ts_block(stmts: activity_paint_stmts()) }),
   ]
 }
 
@@ -3078,7 +3224,7 @@ fn row_selection_bind_statements() -> List<TsStmt> {
         args: [ts_lit_str(value: row_selected_class)])),
       ts_const(name: "b", value: ts_call(
         callee: ts_member(object: ts_ident(name: "li"), property: "querySelector"),
-        args: [ts_lit_str(value: ".node-head .dispatch-btn.action-primary")])),
+        args: [ts_lit_str(value: ".taskbar .dispatch-btn.action-primary")])),
       ts_if(
         cond: ts_ident(name: "b"),
         then: ts_expr_stmt(expr: ts_call(

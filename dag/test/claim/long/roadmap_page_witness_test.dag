@@ -60,17 +60,17 @@ test fn witness_authority_serializes_with_structure() -> Bool {
         && !string_contains(s: h, pattern: "<h1>gunbc — roadmap</h1>")
         && string_contains(s: h, pattern: "<main class=\"roadmap\">")
         && string_contains(s: h, pattern: "class=\"roadmap-section\"")
-        && string_contains(s: h, pattern: "class=\"node-head\"")
+        && string_contains(s: h, pattern: "class=\"taskbar\"")
         && !string_contains(s: h, pattern: "class=\"status status-open\"")
   }
 }
 
-// A3 routine-state collapse flip: the former positive pin 'class="status status-' asserted that SOME chip serialized, which an all-open focused page satisfies only by rendering the routine default as permanent chrome. The decided rule (lifecycle_chip_renders) hides exactly the open default, so the discriminating page pins are the NEGATIVE — an open chip serialized anywhere is the collapse failing — plus node-head presence for the structural claim; the review/done chips keep their own positive pins on constructed fixtures (witness_merged_pr_is_review_evidence_not_acceptance).
+// A3 routine-state collapse flip: the former positive pin 'class="status status-' asserted that SOME chip serialized, which an all-open focused page satisfies only by rendering the routine default as permanent chrome. The decided rule (lifecycle_chip_renders) hides exactly the open default, so the discriminating page pins are the NEGATIVE — an open chip serialized anywhere is the collapse failing — plus taskbar presence for the structural claim; the review/done chips keep their own positive pins on constructed fixtures (witness_merged_pr_is_review_evidence_not_acceptance).
 test fn witness_authority_page_preserves_multi_parent_dependencies() -> Bool {
   match authority_page_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "requires all: v1-materialization-kernel, v1-emitter-fixed-point")
+      string_contains(s: h, pattern: "blocked on v1-materialization-kernel, v1-emitter-fixed-point")
   }
 }
 
@@ -269,6 +269,7 @@ test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
         && !string_contains(s: h, pattern: "workflow-strip")
         && !string_contains(s: h, pattern: "workflow-lamp")
         && !string_contains(s: h, pattern: "class=\"node-activity\"")
+        && !string_contains(s: h, pattern: "class=\"taskbar-fill\"")
         && string_contains(s: h, pattern: "<script src=\"/assets/roadmap-dispatch.js\"")
         && !string_contains(s: h, pattern: "querySelectorAll")
         && !string_contains(s: h, pattern: "j.status")
@@ -374,11 +375,11 @@ test fn witness_supporting_facts_live_in_disclosure_not_head() -> Bool {
   match dispatch_doc_html_for(rn: ready_dispatch_node()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "<span class=\"node-mid\"><span class=\"title\">dispatch-me</span></span>")
+      string_contains(s: h, pattern: "<span class=\"taskbar-title\">dispatch-me</span>")
         && string_contains(
           s: h,
-          pattern: "<details class=\"item-detail\"><summary><span class=\"disclosure-mark\">›</span>facts</summary><div class=\"item-body\"><div class=\"item-facts\"><span class=\"sizing\">i:low v:small gunbc</span></div></div></details>")
-        && !string_contains(s: h, pattern: "class=\"title\">dispatch-me</span><span class=\"sizing\"")
+          pattern: "<details class=\"taskbar-inspect\"><summary><span class=\"disclosure-mark\">›</span>inspect</summary><div class=\"inspect-body\"><div class=\"item-facts\"><span class=\"sizing\">i:low v:small gunbc</span></div></div></details>")
+        && !string_contains(s: h, pattern: "class=\"taskbar-title\">dispatch-me</span><span class=\"sizing\"")
   }
 }
 
@@ -434,7 +435,7 @@ test fn witness_upcoming_node_preserves_multi_parent_dependencies() -> Bool {
   match blocked_dispatch_workspace_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "requires all: disp-policy-blocker, disp-model-blocker")
+      string_contains(s: h, pattern: "blocked on disp-policy-blocker, disp-model-blocker")
   }
 }
 
@@ -458,7 +459,7 @@ test fn witness_ticket_rows_render_structured() -> Bool {
   match authority_page_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "class=\"item-detail ticket-row\"><summary><span class=\"disclosure-mark\">›</span>details</summary>")
+      string_contains(s: h, pattern: "class=\"taskbar-inspect\"><summary><span class=\"disclosure-mark\">›</span>inspect</summary>")
         && string_contains(s: h, pattern: "class=\"ticket-brief\"")
         && string_contains(s: h, pattern: ">displaced cost</span>")
         && string_contains(s: h, pattern: "href=\"https://github.com/gunb-ai/gunbc/blob/main/docs/plans/roadmap-workspace-ux-plan.md\"")
@@ -496,8 +497,8 @@ test fn witness_style_child_combinator_unescaped() -> Bool {
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "details.section-fold > summary")
         && !string_contains(s: h, pattern: "&gt; summary")
-        && string_contains(s: h, pattern: ".node-superseded .title")
-        && !string_contains(s: h, pattern: ".node-superseded > .title")
+        && string_contains(s: h, pattern: ".node-superseded .taskbar-title")
+        && !string_contains(s: h, pattern: ".node-superseded > .taskbar-title")
   }
 }
 
@@ -517,8 +518,8 @@ test fn witness_item_detail_disclosure_present() -> Bool {
   match authority_page_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "<details class=\"item-detail ticket-row\"><summary><span class=\"disclosure-mark\">›</span>details</summary>")
-        && string_contains(s: h, pattern: "class=\"item-body\"")
+      string_contains(s: h, pattern: "<details class=\"taskbar-inspect\"><summary><span class=\"disclosure-mark\">›</span>inspect</summary>")
+        && string_contains(s: h, pattern: "class=\"inspect-body\"")
   }
 }
 
@@ -553,7 +554,7 @@ test fn witness_ticket_updates_block_follows_the_thread() -> Bool {
     EmitRejected { reason: _ } => false
     EmitOk { html: empty } =>
       !string_contains(s: empty, pattern: "class=\"ticket-updates\"")
-        && string_contains(s: empty, pattern: "class=\"item-detail ticket-row\"")
+        && string_contains(s: empty, pattern: "class=\"taskbar-inspect\"")
   }
     && match dispatch_doc_html_for(rn: updates_fixture_node(updates: [ TicketUpdate { on: "2026-09-20", note: "thread note the witness looks for" } ])) {
       EmitRejected { reason: _ } => false
@@ -573,7 +574,7 @@ test fn witness_disclosure_label_law_on_fixtures() -> Bool {
   match dispatch_doc_html_for(rn: legacy_body_fixture_node()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "<span class=\"disclosure-mark\">›</span>brief</summary>")
+      string_contains(s: h, pattern: "<span class=\"disclosure-mark\">›</span>inspect</summary>")
   }
 }
 
@@ -669,7 +670,7 @@ fn parity_row_html(activity: gunbc.roadmap_presentation.ActivityView) -> HtmlEmi
   try_serialize_html_source(node: Element {
     tag: "li",
     attributes: gunbc.roadmap_page.node_li_attributes(view: view),
-    children: gunbc.roadmap_page.render_work_row(view: view),
+    children: gunbc.roadmap_page.render_task_row(view: view, observation: gunbc.roadmap_presentation.ObservationsNominal),
   })
 }
 
@@ -679,15 +680,16 @@ test fn witness_parity_server_realizes_decided_regions() -> Bool {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       summary == "Agent turn completed; the retained session is no longer running · Verification next · 4 remaining"
-        && string_contains(s: h, pattern: "class=\"node-activity\"")
+        && string_contains(s: h, pattern: "class=\"taskbar\"")
         && string_contains(s: h, pattern: "data-arm=\"active\"")
         && string_contains(s: h, pattern: "data-attention=\"routine\"")
+        && string_contains(s: h, pattern: "<span class=\"taskbar-signal activity-line-neutral\" data-rest-signal=\"ready to dispatch\" data-rest-class=\"activity-line-neutral\">Verification · pending</span>")
+        && string_contains(s: h, pattern: "<span class=\"taskbar-count\">3 of 7 stages</span>")
         && string_contains(s: h, pattern: summary)
         && string_contains(s: h, pattern: "Environment · complete — admission receipt readable")
-        && string_contains(s: h, pattern: "Verification · pending")
         && string_contains(s: h, pattern: "session container: present")
         && string_contains(s: h, pattern: "worker process: process exited")
-        && string_contains(s: h, pattern: ">activity</summary>")
+        && string_contains(s: h, pattern: ">inspect</summary>")
   }
 }
 
@@ -709,7 +711,9 @@ test fn witness_parity_client_paints_verbatim_with_shared_constants() -> Bool {
     && string_contains(s: js, pattern: "seg.label + ' · ' + seg.state")
     && string_contains(s: js, pattern: "' — ' + seg.detail")
     && string_contains(s: js, pattern: "row.label + ': ' + row.value")
-    && string_contains(s: js, pattern: "'activity'")
+    && string_contains(s: js, pattern: "'inspect'")
+    && string_contains(s: js, pattern: "av.bar_signal")
+    && string_contains(s: js, pattern: "av.bar_count")
 }
 
 data parity_refused_note: String = "The refused arm's parity, post the 2026-09-20 status-surface ruling: the server realization carries the refusal's LABEL as its summary (state word plus the short reason) and keeps the located reason inside a CLOSED activity disclosure — evidence behind disclosure, not an open error dump — and the client no longer auto-opens on the refused arm (the data-auto-opened guard is deleted in both realizations). A refusal whose label or reason failed to reach the surface is the title-only world the anomaly witnesses forbid; a refusal that renders open again is the overwhelming-dump regression this ruling closed."
@@ -728,6 +732,8 @@ test fn witness_parity_refused_arm_labels_and_discloses() -> Bool {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "data-arm=\"refused\"")
+        && string_contains(s: h, pattern: "class=\"taskbar taskbar-error\"")
+        && string_contains(s: h, pattern: "<span class=\"taskbar-signal activity-line-error-refusal\" data-rest-signal=\"ready to dispatch\" data-rest-class=\"activity-line-neutral\">Agent · refused</span>")
         && string_contains(s: h, pattern: "Agent · refused — turn.completed with process unobserved: no exit was established")
         && string_contains(s: h, pattern: "class=\"activity-located-reason\"")
         && string_contains(s: h, pattern: "turn.completed with process unobserved: no exit was established")
@@ -761,7 +767,7 @@ test fn witness_stale_attempt_row_renders_dimmed() -> Bool {
   match try_serialize_html_source(node: Element {
     tag: "li",
     attributes: gunbc.roadmap_page.node_li_attributes(view: stale_view),
-    children: gunbc.roadmap_page.render_work_row(view: stale_view),
+    children: gunbc.roadmap_page.render_task_row(view: stale_view, observation: gunbc.roadmap_presentation.ObservationsNominal),
   }) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -774,7 +780,7 @@ test fn witness_stale_attempt_row_renders_dimmed() -> Bool {
         !string_contains(s: h, pattern: "node-attempt-stale")
           && !string_contains(s: h, pattern: "data-attempt-revision")
     }
-    && string_contains(s: roadmap_css(), pattern: ".node-attempt-stale .node-activity")
+    && string_contains(s: roadmap_css(), pattern: ".node-attempt-stale .taskbar-inspect")
 }
 
 data a2_hierarchy_closeout_witnesses_note: String = "The A2 hierarchy-closeout receipts (operator gap ruling 2026-08-02; S0 amendments, operator recalibration 2026-08-02), each pinning a decided fact rather than accidental composition: the selection grammar ships in the emitted client asset (selection and activation distinct — interactive elements never move selection through the click channel; Escape clears; exactly the selected row's primary action earns action-focal, the class renamed from action-live because live means sessions/observation elsewhere in this product); selection has KEYBOARD PARITY (rows carry tabindex, keyboard focus is gated on :focus-visible so pointer clicks on inner controls cannot move selection through the focus channel, Enter/Space on the focused row toggles, and every path funnels through the one gunbcSelectRow); the three observation channels join ONE impact region (each channel's located row appends into the shared disclosure and the painter no longer prepends free-standing banners to main); and the stylesheet carries the quiet-rest pair, the action-focal band restore on the family's DERIVED rest-band vars, the li.node:focus-visible outline, and the header's shared composition frame. The axis pins on the dispatch button itself (ready renders action-primary/available; review and out-of-order render action-secondary/override; done and superseded render no button at all) live with the existing per-fixture witnesses above. The action-live spellings below are DISCRIMINATING NEGATIVES: the retired name reappearing means the rename regressed or a second prominence authority stood up."
@@ -784,7 +790,7 @@ test fn witness_selection_grammar_ships_in_client_asset() -> Bool {
   string_contains(s: js, pattern: "const gunbcClearSelection")
     && string_contains(s: js, pattern: "const gunbcSelectRow")
     && string_contains(s: js, pattern: "classList.add('node-selected')")
-    && string_contains(s: js, pattern: ".node-head .dispatch-btn.action-primary")
+    && string_contains(s: js, pattern: ".taskbar .dispatch-btn.action-primary")
     && string_contains(s: js, pattern: "classList.add('action-focal')")
     && string_contains(s: js, pattern: "e.key === 'Escape'")
     && string_contains(s: js, pattern: "closest('summary, button, a, input, select, textarea')")
@@ -896,9 +902,9 @@ test fn witness_project_row_renders_progress_bar_and_tasks() -> Bool {
   match fx_page_project_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "<li class=\"node node-project node-open\" data-node=\"page-project\" tabindex=\"0\">")
-        && string_contains(s: h, pattern: "0 of 2 tasks closed")
-        && string_contains(s: h, pattern: "class=\"project-progress-bar\"")
+      string_contains(s: h, pattern: "<li class=\"node node-project node-open\" id=\"node-page-project\" data-band=\"upcoming\" data-node=\"page-project\" tabindex=\"0\">")
+        && string_contains(s: h, pattern: "<span class=\"taskbar-count\">0 of 2 tasks closed</span>")
+        && string_contains(s: h, pattern: "class=\"taskbar-project-bar\"")
         && string_contains(s: h, pattern: "class=\"project-progress-closed\" style=\"flex-grow: 0\"")
         && string_contains(s: h, pattern: "class=\"project-progress-open\" style=\"flex-grow: 2\"")
         && string_contains(s: h, pattern: "<details class=\"project-tasks\">")
@@ -907,7 +913,7 @@ test fn witness_project_row_renders_progress_bar_and_tasks() -> Bool {
         && occurrence_count(s: h, pattern: "data-node=\"page-task-one\" tabindex=\"0\"") == 1
         && occurrence_count(s: h, pattern: "data-node=\"page-task-two\" tabindex=\"0\"") == 1
         && occurrence_count(s: h, pattern: "data-node=\"page-project\" tabindex=\"0\"") == 1
-        && occurrence_count(s: h, pattern: "class=\"node-head\"") == 3
+        && occurrence_count(s: h, pattern: "class=\"taskbar-face\"") == 3
         && occurrence_count(s: h, pattern: "class=\"workflow-controls\"") == 3
         && occurrence_count(s: h, pattern: "<button class=\"dispatch-btn") == 3
         && !string_contains(s: h, pattern: "class=\"project-chain\"")
@@ -1018,7 +1024,7 @@ test fn witness_shell_arc_renders_as_project_with_ten_tasks() -> Bool {
       doc: gunbc.roadmap_authority.roadmap_authority_for(focus: NoFocus), merged: [])) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "<li class=\"node node-project node-open\" data-node=\"shell-residue-zero\"")
+      string_contains(s: h, pattern: "<li class=\"node node-project node-open\" id=\"node-shell-residue-zero\"")
         && all(task_ids, id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
         && all(chain_ids, id => occurrence_count(s: h, pattern: join(["class=\"project-chain-member\" data-node=\"", id, "\""], "")) == 1)
         && occurrence_count(s: h, pattern: "data-node=\"shell-typed-invocation\" tabindex=\"0\"") == 0
@@ -1056,7 +1062,7 @@ test fn witness_collapsed_chain_renders_one_row_with_chain_line() -> Bool {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       occurrence_count(s: h, pattern: "<li class=\"node node-project ") == 1
-        && string_contains(s: h, pattern: "<li class=\"node node-project node-open\" data-node=\"page-collapse-top\"")
+        && string_contains(s: h, pattern: "<li class=\"node node-project node-open\" id=\"node-page-collapse-top\"")
         && string_contains(s: h, pattern: "0 of 2 tasks closed")
         && occurrence_count(s: h, pattern: "class=\"project-chain-member\" data-node=\"page-collapse-mid\"") == 1
         && string_contains(s: h, pattern: "collapse mid")
@@ -1125,7 +1131,7 @@ fn hero_row_html(view: gunbc.roadmap_presentation.WorkRowView) -> HtmlEmitResult
   try_serialize_html_source(node: Element {
     tag: "li",
     attributes: gunbc.roadmap_page.node_li_attributes(view: view),
-    children: gunbc.roadmap_page.render_work_row(view: view),
+    children: gunbc.roadmap_page.render_task_row(view: view, observation: gunbc.roadmap_presentation.ObservationsNominal),
   })
 }
 
@@ -1147,16 +1153,20 @@ test fn witness_hero_attempt_row_is_bar_first() -> Bool {
   match hero_row_html(view: hero_green_view(alive: true)) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "<div class=\"node-activity\" data-arm=\"active\" data-attention=\"routine\"><div class=\"stage-strip\">")
+      string_contains(s: h, pattern: "<div class=\"taskbar\" data-arm=\"active\" data-attention=\"routine\"><div class=\"taskbar-fill\"><div class=\"stage-strip\">")
+        && string_contains(s: h, pattern: "<div class=\"taskbar-face\">")
         && occurrence_count(s: h, pattern: "class=\"stage-segment stage-complete\"") == 1
         && occurrence_count(s: h, pattern: "class=\"stage-segment stage-active stage-live\"") == 1
         && occurrence_count(s: h, pattern: "class=\"stage-segment stage-pending\"") == 5
         && occurrence_count(s: h, pattern: "class=\"stage-segment stage-stopped\"") == 1
         && string_contains(s: h, pattern: "title=\"Environment · complete\"")
         && string_contains(s: h, pattern: "title=\"Workspace · active\"")
-        && string_contains(s: h, pattern: "<span class=\"activity-summary activity-line-neutral\">Agent working</span><span class=\"activity-throughput\">")
-        && string_contains(s: h, pattern: "<details class=\"activity-detail\">")
-        && !string_contains(s: h, pattern: "<details class=\"activity-detail\" open")
+        && string_contains(s: h, pattern: "<span class=\"taskbar-title\">Hero specimen row</span>")
+        && string_contains(s: h, pattern: "<span class=\"taskbar-signal activity-line-neutral\" data-rest-signal=\"ready to dispatch\" data-rest-class=\"activity-line-neutral\">Workspace · active</span>")
+        && string_contains(s: h, pattern: "<span class=\"taskbar-count\">2 of 8 stages</span>")
+        && string_contains(s: h, pattern: "<span class=\"taskbar-sub\">Agent working</span>")
+        && string_contains(s: h, pattern: "<details class=\"taskbar-inspect\">")
+        && !string_contains(s: h, pattern: "<details class=\"taskbar-inspect\" open")
   }
 }
 
@@ -1178,9 +1188,8 @@ test fn witness_round_strip_disclosed_and_classified() -> Bool {
   match hero_row_html(view: hero_green_view(alive: true)) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      let parts = split(s: h, delimiter: "<details class=\"activity-detail\"")
+      let parts = split(s: h, delimiter: "<details class=\"taskbar-inspect\"")
       count(parts) == 2
-        && !string_contains(s: first(parts).value, pattern: "activity-round-strip")
         && string_contains(s: string_at(parts: parts, index: 1), pattern: "class=\"activity-round-strip\"")
         && string_contains(s: h, pattern: "activity-round-read activity-line-read")
         && string_contains(s: h, pattern: "activity-round-write activity-line-write")
@@ -1240,15 +1249,16 @@ test fn witness_red_flagged_attempt_row() -> Bool {
     EmitOk { html: h } =>
       occurrence_count(s: h, pattern: "class=\"stage-segment stage-refused\"") == 1
         && occurrence_count(s: h, pattern: "class=\"stage-segment stage-complete\"") == 1
-        && string_contains(s: h, pattern: "class=\"activity-summary activity-line-error-refusal\"")
+        && string_contains(s: h, pattern: "class=\"taskbar taskbar-error\"")
+        && string_contains(s: h, pattern: "class=\"taskbar-signal activity-line-error-refusal\"")
         && string_contains(s: h, pattern: "data-arm=\"refused\"")
-        && !string_contains(s: h, pattern: "<details class=\"activity-detail\" open")
+        && !string_contains(s: h, pattern: "<details class=\"taskbar-inspect\" open")
   }
     && match hero_row_html(view: hero_failed_view()) {
       EmitRejected { reason: _ } => false
       EmitOk { html: h } =>
         occurrence_count(s: h, pattern: "class=\"stage-segment stage-failed\"") == 1
-          && string_contains(s: h, pattern: "class=\"activity-summary activity-line-error-refusal\"")
+          && string_contains(s: h, pattern: "class=\"taskbar taskbar-error\"")
           && string_contains(s: h, pattern: "data-attention=\"anomalous\"")
     }
 }
@@ -1266,6 +1276,7 @@ test fn witness_project_bar_flags_red_from_decided_field() -> Bool {
     auto_open: false,
     subtree_error: true,
     entries: [],
+    linked: [],
   }
   let quiet = gunbc.roadmap_presentation.ProjectTreeView {
     row: hero_green_view(alive: false),
@@ -1276,6 +1287,7 @@ test fn witness_project_bar_flags_red_from_decided_field() -> Bool {
     auto_open: false,
     subtree_error: false,
     entries: [],
+    linked: [],
   }
   match try_serialize_html_source(node: gunbc.roadmap_page.project_tree_li(view: base, observation: gunbc.roadmap_presentation.ObservationsNominal)) {
     EmitRejected { reason: _ } => false
@@ -1283,10 +1295,10 @@ test fn witness_project_bar_flags_red_from_decided_field() -> Bool {
       match try_serialize_html_source(node: gunbc.roadmap_page.project_tree_li(view: quiet, observation: gunbc.roadmap_presentation.ObservationsNominal)) {
         EmitRejected { reason: _ } => false
         EmitOk { html: calm } =>
-          string_contains(s: flagged, pattern: "class=\"project-progress project-error\"")
+          string_contains(s: flagged, pattern: "class=\"taskbar taskbar-error\"")
             && string_contains(s: flagged, pattern: "1 of 3 tasks closed")
-            && !string_contains(s: calm, pattern: "project-error")
-            && string_contains(s: calm, pattern: "class=\"project-progress\"")
+            && !string_contains(s: calm, pattern: "taskbar-error")
+            && string_contains(s: calm, pattern: "class=\"taskbar\"")
       }
   }
 }
@@ -1393,12 +1405,12 @@ test fn witness_shell_project_groups_in_active_band_with_live_task() -> Bool {
     EmitOk { html: h } =>
       let active_parts = split(s: h, delimiter: "frontier-bucket frontier-active")
       count(active_parts) == 2
-        && string_contains(s: string_at(parts: active_parts, index: 1), pattern: "<li class=\"node node-project node-open\" data-node=\"shell-residue-zero\"")
+        && string_contains(s: string_at(parts: active_parts, index: 1), pattern: "<li class=\"node node-project node-open\" id=\"node-shell-residue-zero\"")
         && all(fx_shell_task_ids(), id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
         && string_contains(s: h, pattern: "<details class=\"project-tasks\" open=\"\">")
         && string_contains(s: h, pattern: "class=\"stage-strip\"")
         && string_contains(s: h, pattern: "class=\"stage-segment stage-active stage-live\"")
-        && !string_contains(s: h, pattern: "project-error")
+        && !string_contains(s: h, pattern: "taskbar-error")
   }
 }
 
@@ -1407,7 +1419,7 @@ test fn witness_shell_red_flag_rolls_up_to_project_bar() -> Bool {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "frontier-bucket frontier-active")
-        && string_contains(s: h, pattern: "class=\"project-progress project-error\"")
+        && string_contains(s: h, pattern: "class=\"taskbar taskbar-error\"")
         && string_contains(s: h, pattern: "class=\"stage-segment stage-refused\"")
         && string_contains(s: h, pattern: " tasks closed")
   }

@@ -332,7 +332,21 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // test.claim.long.roadmap_page_witness and test.claim.roadmap_presentation_witness, plus the
 // register censuses. Derived by execution from this tree (roadmap_css_derived_digest run
 // 2026-09-21); this digest only pins bytes, never chosen.
-data roadmap_css_lift_parity_digest: String = "9d5d1d23dce5e2f8"
+
+// Re-pinned 2026-09-22 for the taskbar redesign (owner-endorsed 2026-09-21, "the task IS the
+// bar"): the roadmap bytes move intentionally and wholesale — the node-head three-track grid,
+// node-mid cell, .node-activity container, item-detail disclosure, and the RoadmapRow archetype's
+// grid derivations are DELETED; the .taskbar family lands in their place (the bar with its
+// overlay .taskbar-fill behind .taskbar-face at the new h-taskbar token, the signal/count/subline
+// slots with their :empty-hidden spans, .taskbar-error for the red flag, the .taskbar-inspect
+// disclosure with inspect-stages/inspect-raw, and .inspect-requires links), the stage-segment
+// width contract moves from per-segment inline styles to one `flex: 1` rule (the zero-width
+// defect's fix), and Position/Inset join the CSS property vocabulary for the overlay. Behavioral
+// receipts: the taskbar/parity/honesty witnesses in test.claim.long.roadmap_page_witness and
+// test.claim.roadmap_presentation_witness, the recomposed test.claim.roadmap_row_witness, the
+// register width-contract pin, and the register censuses. Derived by execution from this tree
+// (roadmap_css_derived_digest run 2026-09-22); this digest only pins bytes, never chosen.
+data roadmap_css_lift_parity_digest: String = "99937c47f134a165"
 // Re-pinned 2026-08-23 for the daily-workspace fleet capacity panel (operator request: live fleet
 // info on the workspace): the roadmap bytes move intentionally — the .fleet-capacity-panel family
 // lands (panel surface, .capacity-title, .capacity-summary, .capacity-row with its active/withdrawn

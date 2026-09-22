@@ -7,7 +7,7 @@ import gunbc.harness.harness_throughput {
 import gunbc.harness.harness_throughput { RoundObservation, RoundsObserved }
 import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
-import gunbc.roadmap_page { roadmap_header, render_work_row, node_li_attributes, workspace_entries_ul, round_strip_nodes }
+import gunbc.roadmap_page { roadmap_header, render_task_row, node_li_attributes, workspace_entries_ul, round_strip_nodes }
 import gunbc.roadmap_presentation {
   WorkRowView, ActivityView, NoDisclosure,
   OpenLifecycle, SchedulingReady,
@@ -439,7 +439,7 @@ fn fixture_row_li(view: WorkRowView) -> Fragment {
   Element {
     tag: "li",
     attributes: node_li_attributes(view: view),
-    children: render_work_row(view: view),
+    children: render_task_row(view: view, observation: ObservationsNominal),
   }
 }
 

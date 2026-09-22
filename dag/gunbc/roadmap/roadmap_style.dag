@@ -8,7 +8,7 @@ import gunbc.design.material {
 import gunbc.design.material { AmbientRule, MotionCycle, Keyframe, RunOnce, RunForever, TimingToken }
 import extdeps.languages.css.properties { Transform, TransformOrigin, AnimationDelay, AnimationDuration, FontSize, FontFamily, BorderRadius, Padding, MaxWidth, Overflow, TextOverflow, WhiteSpace, Background, Color }
 import gunbc.roadmap_component { activity_round_live_class, activity_round_remaining_class, standing_chip_class }
-import extdeps.languages.css.properties { Cursor, CustomProperty, BorderStyle, Opacity, GridColumn, Outline }
+import extdeps.languages.css.properties { Cursor, CustomProperty, BorderStyle, Opacity, GridColumn, Outline, Flex, Position, Inset }
 import extdeps.languages.css.values { CssLength, css_px, css_length_wire }
 import gunbc.design.scale {
   scale_var, scale_pair, scale_triple, scale_border, scale_root_css,
@@ -43,9 +43,7 @@ import gunbc.roadmap_component {
   dispatch_reserved_width, theme_toggle_class, theme_toggle_reserved_width,
   sound_toggle_class, sound_toggle_reserved_width,
   disclosure_mark_class, swatch_toggle_class, swatch_toggle_reserved_width,
-  roadmap_row_grid_template, roadmap_row_height, roadmap_row_gutter, roadmap_row_column_gutter, node_mid_class,
-  roadmap_row_head_column, row_region_key,
-  RowRegion, StatusChipRegion, TitleRegion, ActuatorRegion,
+  roadmap_row_height, roadmap_row_gutter,
   workflow_controls_class,
   node_activity_class, activity_summary_class, activity_detail_class,
   activity_ledger_class, activity_obligation_class,
@@ -496,26 +494,6 @@ fn dispatch_btn_base_decls() -> List<CssDecl> {
 // glance without a new material. The workflow-controls wrapper remains the one ActuatorRegion grid
 // item, now holding actions only.
 
-data workflow_controls_compact_breakpoint: CssLength = css_px(n: 640)
-
-fn workflow_controls_compact_css() -> String {
-  join([
-    "@media (max-width: ",
-    css_length_wire(l: workflow_controls_compact_breakpoint),
-    ") { ",
-    css_block(selector: ".node-head", decls: [
-      decl(prop: GridTemplateColumns, value: "auto minmax(0, 1fr)"),
-      decl(prop: AlignItems, value: "start"),
-    ]),
-    " ",
-    css_block(selector: join([".", workflow_controls_class], ""), decls: [
-      decl(prop: GridColumn, value: "1 / -1"),
-      decl(prop: Width, value: "100%"),
-    ]),
-    " }",
-  ], "")
-}
-
 // PROMINENCE DERIVES FROM SELECTION x PRIORITY, NEVER FROM AVAILABILITY ALONE (A2 hierarchy
 // closeout, operator gap ruling 2026-08-02). Every in-row dispatch control rests QUIET — surface
 // fill, dim ink, plain border — whatever its priority, because an unselected row's operation is
@@ -701,7 +679,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: BorderStyle, value: "dashed"),
     ] },
-    StaticRule { selector: RawSelector { text: ".node-superseded .title" }, decls: [
+    StaticRule { selector: RawSelector { text: ".node-superseded .taskbar-title" }, decls: [
       decl(prop: TextDecoration, value: "line-through"),
       role_decl(prop: Color, r: TextDimRole),
     ] },
@@ -710,9 +688,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: MarginLeft, value: scale_var(t: space_6)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "title" }, decls: [
-      decl(prop: MarginRight, value: scale_var(t: space_8)),
     ] },
     StaticRule { selector: ClassSelector { name: "owner" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_11)),
@@ -972,12 +947,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontSize, value: scale_var(t: text_13)),
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: ClassSelector { name: "dependencies" }, decls: [
-      decl(prop: Width, value: "100%"),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      role_decl(prop: Color, r: TextDimRole),
-    ] },
     StaticRule { selector: ClassSelector { name: "item-facts" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "baseline"),
@@ -1001,23 +970,73 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: TextTransform, value: "lowercase"),
       decl(prop: LetterSpacing, value: "0.03em"),
     ] },
-    StaticRule { selector: ClassSelector { name: "node-head" }, decls: [
-      decl(prop: Display, value: "grid"),
-      decl(prop: GridTemplateColumns, value: roadmap_row_grid_template()),
-      decl(prop: Gap, value: scale_var(t: roadmap_row_column_gutter)),
+    StaticRule { selector: ClassSelector { name: "taskbar" }, decls: [
+      decl(prop: Position, value: "relative"),
+      decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
-      decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
+      decl(prop: MinHeight, value: scale_var(t: height_taskbar)),
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Overflow, value: "hidden"),
     ] },
-    StaticRule { selector: RawSelector { text: ".node-head > .status" }, decls: [
-      decl(prop: GridColumn, value: to_string(roadmap_row_head_column(region_key: row_region_key(r: StatusChipRegion)))),
+    StaticRule { selector: ClassSelector { name: "taskbar-fill" }, decls: [
+      decl(prop: Position, value: "absolute"),
+      decl(prop: Inset, value: "0"),
+      decl(prop: Display, value: "flex"),
+      decl(prop: Opacity, value: "0.35"),
     ] },
-    StaticRule { selector: ClassSelector { name: node_mid_class }, decls: [
+    StaticRule { selector: RawSelector { text: join([".taskbar-fill .", stage_strip_class], "") }, decls: [
+      decl(prop: Flex, value: "1"),
+      decl(prop: Height, value: "100%"),
+      decl(prop: Margin, value: scale_var(t: space_0)),
+      decl(prop: BorderRadius, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "taskbar-project-bar" }, decls: [
+      decl(prop: Flex, value: "1"),
+      decl(prop: Display, value: "flex"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "taskbar-fill-closed" }, decls: [
+      decl(prop: Flex, value: "1"),
+      role_decl(prop: Background, r: FigureHaloRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "taskbar-face" }, decls: [
+      decl(prop: Position, value: "relative"),
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
       decl(prop: Gap, value: scale_var(t: roadmap_row_gutter)),
       decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: Padding, value: scale_pair(a: space_2, b: space_8)),
+      decl(prop: MinHeight, value: scale_var(t: height_taskbar)),
       decl(prop: MinWidth, value: scale_var(t: space_0)),
-      decl(prop: GridColumn, value: to_string(roadmap_row_head_column(region_key: row_region_key(r: TitleRegion)))),
+      decl(prop: Flex, value: "1"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "taskbar-title" }, decls: [
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: MarginRight, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "taskbar-signal" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".taskbar-signal.", activity_line_prefix_class, "done"], "") }, decls: [
+      role_decl(prop: Color, r: FigureRole),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".taskbar-signal.", activity_line_prefix_class, "error-refusal"], "") }, decls: [
+      decl(prop: Color, value: "var(--band-loud)"),
+      decl(prop: FontWeight, value: "600"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "taskbar-count" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontVariantNumeric, value: "tabular-nums"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "taskbar-sub" }, decls: [
+      decl(prop: Width, value: "100%"),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      role_decl(prop: Color, r: TextDimRole),
     ] },
     StaticRule { selector: ClassSelector { name: workflow_controls_class }, decls: [
       decl(prop: Display, value: "flex"),
@@ -1026,39 +1045,57 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Gap, value: scale_var(t: roadmap_row_gutter)),
       decl(prop: FlexWrap, value: "wrap"),
       decl(prop: MinWidth, value: scale_var(t: space_0)),
-      decl(prop: GridColumn, value: to_string(roadmap_row_head_column(region_key: row_region_key(r: ActuatorRegion)))),
+      decl(prop: MarginLeft, value: "auto"),
     ] },
-    StaticRule { selector: ClassSelector { name: node_activity_class }, decls: [
-      decl(prop: MarginTop, value: scale_var(t: space_4)),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
+    StaticRule { selector: RawSelector { text: ".taskbar-error" }, decls: [
+      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--band-loud)")),
     ] },
-    StaticRule { selector: RawSelector { text: join([
-      ".", node_attempt_stale_class, " .", node_activity_class,
-    ], "") }, decls: [
+    StaticRule { selector: RawSelector { text: ".taskbar-error .taskbar-count" }, decls: [
+      decl(prop: Color, value: "var(--band-loud)"),
+      decl(prop: FontWeight, value: "600"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([".", node_attempt_stale_class, " .taskbar-inspect"], "") }, decls: [
       decl(prop: Opacity, value: "0.55"),
     ] },
-    StaticRule { selector: RawSelector { text: join([
-      ".", node_attempt_stale_class, " .", activity_summary_class,
-    ], "") }, decls: [
-      role_decl(prop: Color, r: TextDimRole),
+    StaticRule { selector: RawSelector { text: "details.taskbar-inspect" }, decls: [
+      decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_3)),
+      decl(prop: MarginLeft, value: scale_var(t: space_12)),
     ] },
-    StaticRule { selector: RawSelector { text: join([
-      ".", node_activity_class, "[data-arm=\"refused\"], .",
-      node_activity_class, "[data-attention=\"anomalous\"]",
-    ], "") }, decls: [
-      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--band-loud)")),
-      decl(prop: PaddingLeft, value: scale_var(t: space_4)),
-    ] },
-    StaticRule { selector: ClassSelector { name: activity_summary_class }, decls: [
-      decl(prop: Display, value: "block"),
-      role_decl(prop: Color, r: TextRole),
-    ] },
-    StaticRule { selector: RawSelector { text: join([
-      "details.", activity_detail_class, " > summary",
-    ], "") }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_10)),
-      role_decl(prop: Color, r: TextDimRole),
+    StaticRule { selector: RawSelector { text: "details.taskbar-inspect > summary" }, decls: [
       decl(prop: Cursor, value: "pointer"),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: ListStyle, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: "details.taskbar-inspect > summary::-webkit-details-marker" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "inspect-stages" }, decls: [
+      decl(prop: MarginBottom, value: scale_var(t: space_2)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "inspect-stale-label" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontStyle, value: "italic"),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: MarginBottom, value: scale_var(t: space_1)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "inspect-raw" }, decls: [
+      decl(prop: MarginTop, value: scale_var(t: space_2)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "inspect-requires" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: MarginTop, value: scale_var(t: space_2)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "inspect-requires-label" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "inspect-requires-link" }, decls: [
+      role_decl(prop: Color, r: FigureRole),
     ] },
     StaticRule { selector: ClassSelector { name: activity_obligation_class }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),
@@ -1129,6 +1166,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     ] },
     StaticRule { selector: ClassSelector { name: stage_segment_class }, decls: [
       decl(prop: MinWidth, value: scale_var(t: space_0)),
+      decl(prop: Flex, value: "1"),
     ] },
     StaticRule { selector: RawSelector { text: join([".", stage_segment_class, ".stage-pending"], "") }, decls: [
       role_decl(prop: Background, r: TextDimRole),
@@ -1203,22 +1241,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: FontVariantNumeric, value: "tabular-nums"),
     ] },
-    StaticRule { selector: ClassSelector { name: "project-progress" }, decls: [
-      decl(prop: MarginTop, value: scale_var(t: space_2)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "project-progress-count" }, decls: [
-      role_decl(prop: Color, r: TextDimRole),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: FontVariantNumeric, value: "tabular-nums"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "project-progress-bar" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: Height, value: scale_var(t: space_8)),
-      decl(prop: MarginTop, value: scale_var(t: space_1)),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Overflow, value: "hidden"),
-    ] },
     StaticRule { selector: ClassSelector { name: "project-progress-closed" }, decls: [
       decl(prop: MinWidth, value: scale_var(t: space_0)),
       role_decl(prop: Background, r: FigureRole),
@@ -1226,14 +1248,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "project-progress-open" }, decls: [
       decl(prop: MinWidth, value: scale_var(t: space_0)),
       role_decl(prop: Background, r: FigureHaloRole),
-    ] },
-    StaticRule { selector: RawSelector { text: ".project-progress.project-error" }, decls: [
-      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--band-loud)")),
-      decl(prop: PaddingLeft, value: scale_var(t: space_4)),
-    ] },
-    StaticRule { selector: RawSelector { text: ".project-progress.project-error .project-progress-count" }, decls: [
-      decl(prop: Color, value: "var(--band-loud)"),
-      decl(prop: FontWeight, value: "600"),
     ] },
     StaticRule { selector: RawSelector { text: "details.project-tasks" }, decls: [
       decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_2)),
@@ -1269,7 +1283,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "project-chain-title" }, decls: [
       role_decl(prop: Color, r: TextDimRole),
     ] },
-    StaticRule { selector: RawSelector { text: ".node-head .dispatch-btn" }, decls: [
+    StaticRule { selector: RawSelector { text: ".taskbar .dispatch-btn" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_11)),
       decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
       decl(prop: Padding, value: scale_pair(a: space_0, b: space_8)),
@@ -1277,22 +1291,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: MaxWidth, value: dispatch_reserved_width()),
       decl(prop: Overflow, value: "hidden"),
       decl(prop: WhiteSpace, value: "nowrap"),
-    ] },
-    StaticRule { selector: RawSelector { text: "details.item-detail" }, decls: [
-      decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_3)),
-      decl(prop: MarginLeft, value: scale_var(t: space_12)),
-    ] },
-    StaticRule { selector: RawSelector { text: "details.item-detail > summary" }, decls: [
-      decl(prop: Cursor, value: "pointer"),
-      role_decl(prop: Color, r: TextDimRole),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: ListStyle, value: "none"),
-    ] },
-    StaticRule { selector: RawSelector { text: "details.item-detail > summary::-webkit-details-marker" }, decls: [
-      decl(prop: Display, value: "none"),
-    ] },
-    StaticRule { selector: RawSelector { text: "details.ticket-row > summary" }, decls: [
-      role_decl(prop: Color, r: FigureRole),
     ] },
     StaticRule { selector: ClassSelector { name: disclosure_mark_class }, decls: [
       decl(prop: Display, value: "inline-block"),
@@ -1424,7 +1422,6 @@ fn roadmap_css() -> String {
     band_root_css(),
     auditioner_root_css(),
     serialize_rules(rules: roadmap_rules()),
-    workflow_controls_compact_css(),
     reduced_motion_block(rules: roadmap_rules()),
   ], "\n")
 }

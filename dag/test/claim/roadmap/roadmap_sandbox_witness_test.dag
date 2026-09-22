@@ -194,7 +194,8 @@ test fn witness_family_fixture_frame_occurrences_exact() -> Bool {
     && frame_occurrence_count(s: h, pattern: "Record which generator actually produced each result") == 1
     && frame_occurrence_count(s: h, pattern: "Declare the closing contract for dag_compile_clean_gate") == 0
     && frame_occurrence_count(s: h, pattern: "status status-open") == 0
-    && frame_occurrence_count(s: h, pattern: "class=\"activity") == 0
+    && frame_occurrence_count(s: h, pattern: "class=\"taskbar-fill\"") == 0
+    && frame_occurrence_count(s: h, pattern: "class=\"stage-strip\"") == 0
 }
 
 test fn witness_family_fixture_page_carries_all_three_frames() -> Bool {

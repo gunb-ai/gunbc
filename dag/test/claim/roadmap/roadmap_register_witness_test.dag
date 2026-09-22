@@ -271,3 +271,15 @@ test fn witness_propagation_scoped_by_demand() -> Bool {
     && !string_contains(s: serialize_rules(rules: roadmap_rules()), pattern: "var(--figure-lit)")
 }
 
+
+// THE STAGE-STRIP WIDTH CONTRACT (external review, 2026-09-21): a stage segment renders empty by
+// construction (its fact rides the class and title), so without an explicit flex share every
+// segment computes to zero width and the strip reads as a blank bar. The contract lives in the
+// stylesheet — one authority covering BOTH realizations (the server render and the client-painted
+// strip), which is exactly where the former inline-style contract failed: the client's painter
+// never carried it. The pin is the rule's shape, and the RED control is that a segment without
+// the share fails to match.
+test fn witness_stage_segments_have_a_width_contract() -> Bool {
+  string_contains(s: roadmap_css(), pattern: ".stage-segment { min-width: var(--space-0); flex: 1 }")
+    && !string_contains(s: roadmap_css(), pattern: ".stage-segment { min-width: var(--space-0) }")
+}

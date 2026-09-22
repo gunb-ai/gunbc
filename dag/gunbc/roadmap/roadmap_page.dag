@@ -37,10 +37,9 @@ import gunbc.roadmap_component { activity_round_live_class, activity_round_remai
 import gunbc.roadmap_component {
   roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
   theme_toggle_label_prefix, theme_toggle_auto_value,
-  disclosure_mark_class, disclosure_mark_glyph, node_mid_class,
+  disclosure_mark_class, disclosure_mark_glyph,
   workflow_controls_class,
   dashboard_instance_class, dashboard_instance_label_class,
-  node_activity_class, activity_summary_class, activity_detail_class,
   activity_ledger_class, activity_obligation_class,
   activity_evidence_class, activity_evidence_row_class, activity_located_reason_class,
   activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class,
@@ -55,12 +54,13 @@ import gunbc.roadmap_launch_admission {
 }
 import gunbc.roadmap_presentation {
   WorkRowView, work_row_view, row_headline, LaunchRowContext,
+  TaskBarView, task_bar_view_of, BarFillNone, BarFillStages, BarFillProject, BarFillClosed,
+  row_filter_band_key,
   WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
   work_lifecycle, work_lifecycle_key,
   WorkScheduling, SchedulingReady, SchedulingUpcoming, SchedulingDone, SchedulingSuperseded, SchedulingUnplanned,
-  scheduling_dependency_line,
   ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt, CompletedWork, ActivityUnobservable,
-  ActivityAttention, activity_attention_key, activity_arm_key, activity_summary_line,
+  ActivityAttention, activity_attention_key, activity_arm_key,
   ActivityEvidenceRow,
   ActionView, WorkAction, WorkActionKind, DispatchAction, ClearSessionAction,
   ActionAvailability, ActionAvailable, ActionUnavailable,
@@ -70,8 +70,8 @@ import gunbc.roadmap_presentation {
   DisclosureField, DisclosureNote,
   work_scheduling_key, row_is_active_work,
   activity_view_from_progress,
-  activity_line_class_key, activity_line_class_of_round, activity_line_class_of_activity,
-  activity_state_sep, activity_detail_sep, activity_evidence_kv_sep, activity_disclosure_label,
+  activity_line_class_key, activity_line_class_of_round,
+  activity_state_sep, activity_detail_sep, activity_evidence_kv_sep, inspect_disclosure_label,
   ProgramProgressView,
   DailyWorkspaceView, daily_workspace_view,
   ObservationImpactView, ObservationsNominal, WorkspaceObservationImpact,
@@ -387,30 +387,6 @@ fn view_supporting_facts(view: WorkRowView) -> List<Fragment> {
   }
 }
 
-fn view_detail_block(view: WorkRowView) -> List<Fragment> {
-  let facts = view_supporting_facts(view: view)
-  let body = disclosure_body_nodes(d: view.disclosure)
-  if count(facts) == 0 && count(body) == 0 {
-    []
-  } else {
-    let is_ticket = match view.disclosure {
-      TicketDisclosure { brief: _, fields: _, updates: _ } => true
-      NoDisclosure => false
-      LegacyBodyDisclosure { content: _ } => false
-    }
-    let label = if is_ticket { "details" } else { if count(body) == 0 { "facts" } else { "brief" } }
-    [ el_attrs("details", [
-        attr(name: "class", value: if is_ticket { "item-detail ticket-row" } else { "item-detail" } ),
-      ], [
-        el("summary", [
-          el_class("span", disclosure_mark_class, [ txt(disclosure_mark_glyph) ]),
-          txt(label),
-        ]),
-        el_class("div", "item-body", concat(facts, body)),
-      ]) ]
-  }
-}
-
 // The per-surface link projection (remodel W2, census row 7): a Pointer's path is a REPO path —
 // correct in GitHub's renderer, dead on the served page by construction (no /docs route). The
 // served surface projects repo paths through the GitHub blob base so every carrier link answers;
@@ -573,21 +549,14 @@ fn page_script_census(page: Fragment) -> List<PageScriptViolation> {
 data a1_composition_provisional_note: String = "SCOPE STATEMENT for the A1 pass (operator feedback 2026-08-01): the flat row list, the head-line composition, and the visual style of this module are ONE PROVISIONAL RENDERER, not product ontology. What A1 fixed is which claims render and at what altitude (operational before narrative, local denominators, supporting facts demoted, routine chrome quieted); it deliberately did NOT choose the workspace's interaction model. The named misses carried forward to the presentation-seam slice (A2: WorkRowView/DailyWorkspaceView/ObservationImpactView, roadmap_page becomes serialize-only): the row's one purpose-specific supporting line (why-now / what-it-unlocks — deferred because no typed fact carries it yet, and truncating ticket prose by punctuation is exactly the heuristic class the seam exists to kill); the observation-refusal altitude split (one cause narrated once, not once per channel); availability-vs-priority on the dispatch control; family-once row grouping; routine-state collapse (open/ticket/idle lamps). Witnesses over this module assert per-claim semantics, never element order or adjacency — pinning the accidental composition would harden this renderer into the model."
 
 // The row composition, on the declared archetype. The head line retains three derived tracks: status chip; node-mid title/meta flow; and one workflow-controls realization of ActuatorRegion carrying actions only (workflow_controls_actions_only_note). Activity — what is happening to the work — is the separate UnderHead ActivityRegion: the client creates it below this head when the decided /workflow.json view says an attempt exists, and removes it when the view says none, so the intrinsic-width third track can never again starve the title (the A2 falsifier). The li owns stable data-node identity independently of actuator presence; client observations locate the row first and only then its regions.
-fn dependency_line_nodes(view: WorkRowView) -> List<Fragment> {
-  match scheduling_dependency_line(s: view.scheduling) {
-    Present { value: line } => [ el_class("span", "dependencies", [ txt(line) ]) ]
-    Absent => []
-  }
-}
-
-// The view-only row renderer (operator blocker 1, 2026-08-01): render_work_row and its helpers
-// receive WorkRowView ALONE — no RoadmapNode, no RoadmapItem, no merged list, no frontier edges, no
-// signoff or sizing constructors. Every fact they paint (status chip text, headline, superseded
-// pointer, dependency line, dispatch action, supporting facts, disclosure body, activity region)
-// arrives already decided by gunbc.roadmap_presentation; what remains here is serialization:
-// markdown-inline expansion, class assembly, element nesting. The tree structure (children, depth
-// fuel) stays outside the row renderer because parent/child is a graph fact about the PAGE, not a
-// presentation fact about one row.
+// The view-only row renderer (operator blocker 1, 2026-08-01; recomposed as the taskbar on
+// 2026-09-21): render_task_row and its helpers receive WorkRowView ALONE — no RoadmapNode, no
+// RoadmapItem, no merged list, no frontier edges, no signoff or sizing constructors. Every fact
+// they paint (bar fill, title, signal, count, second line, dispatch action, supporting facts,
+// disclosure body, inspection evidence) arrives already decided by gunbc.roadmap_presentation;
+// what remains here is serialization: markdown-inline expansion, class assembly, element nesting.
+// The tree structure (children, depth fuel) stays outside the row renderer because parent/child is
+// a graph fact about the PAGE, not a presentation fact about one row.
 
 // The SERVER realization of the activity region — the same semantic DOM the emitted client paints
 // from the decided /workflow.json view (node-activity container with arm/attention data, the hero
@@ -616,19 +585,210 @@ fn activity_evidence_row_node(row: ActivityEvidenceRow) -> Fragment {
   el_class("div", activity_evidence_row_class, [ txt(join([row.label, activity_evidence_kv_sep, row.value], "")) ])
 }
 
-// THE HERO ACTIVITY REGION (operator request 2026-09-21: "make the progress bar the prominent
-// thing and everything else a drop down; if there's an error flag the progress red and the user
-// expands details to see what they see now"). The collapsed face of an attempt row is exactly
-// four things: the row head (title), the STAGE STRIP (one segment per workflow obligation, state
-// keyed by the existing workflow_segment_state_key authority — complete lit, active in-progress
-// and pulsing while the worker is live, pending dimmed, failed and refused red at that segment),
-// the one-line state (the decided summary sentence, carrying its decided activity-line class), and
-// the throughput line. EVERYTHING else — the round strip, the obligation ledger with its texts,
-// the bounded refusal payloads, the session/process evidence — sits behind the row's activity
-// disclosure, which is now ALWAYS collapsed on arrival: this supersedes the 2026-09-05
-// open-while-live rule (the stage strip carries what the open ledger was opened to show). The
-// 2026-09-20 status-surface ruling stands: refusal loudness lives in the label, payloads stay
-// bounded and behind the disclosure.
+// THE TASKBAR (owner-endorsed redesign 2026-09-21: "the task IS the bar"). ONE recursive
+// component replaces the fragmented row (head + activity region + two disclosures + project
+// count/bar + tasks disclosure): a bar of h-taskbar height whose FILL is the subdued progress
+// layer (the decided stage segments for a live attempt, the project's declared closed/total
+// counts, or the full fill of an accepted node — the seam's TaskBarFill, painted here) with the
+// face — title, current-stage-or-blocker signal, at most one count, at most one short second
+// line, the actuator — laid over it. Everything else is INSPECTION, one disclosure deep:
+// stage-by-stage evidence first (the obligation ledger; for a stale attempt the earlier attempt's
+// strip under its own label — it never fills the bar and never implies a live worker), then raw
+// detail (round strip, throughput, evidence rows, bounded refusal payload), then the ticket body
+// and supporting facts, then dependency links. Two realizations, ONE deciding module
+// (gunbc.roadmap_presentation's task_bar_view_of); the parity obligation holds on the bar's
+// decided slots (signal/count/subline ride the wire as bar_signal/bar_count/summary).
+
+fn taskbar_stage_fill(obligations: List<WorkflowSegment>, live: Bool) -> List<Fragment> {
+  if count(obligations) == 0 {
+    []
+  } else {
+    [ el_class("div", "taskbar-fill", [
+        el_class("div", stage_strip_class,
+          map(obligations, s => stage_segment_node(s: s, pulsing: live && workflow_segment_state_key(state: s.state) == "active"))) ]) ]
+  }
+}
+
+fn taskbar_fill_nodes(view: WorkRowView, bar: TaskBarView, project: ProjectTreeView?) -> List<Fragment> {
+  match bar.fill {
+    BarFillNone => []
+    BarFillClosed =>
+      [ el_class("div", "taskbar-fill", [ el_class("span", "taskbar-fill-closed", []) ]) ]
+    BarFillProject =>
+      match project {
+        Absent => []
+        Present { value: p } =>
+          [ el_class("div", "taskbar-fill", [
+              el_class("div", "taskbar-project-bar", [
+                el_attrs("span", [
+                  attr(name: "class", value: "project-progress-closed" ),
+                  attr(name: "style", value: join(["flex-grow: ", to_string(p.closed_count)], "")),
+                ], []),
+                el_attrs("span", [
+                  attr(name: "class", value: "project-progress-open" ),
+                  attr(name: "style", value: join(["flex-grow: ", to_string(value: p.total_count - p.closed_count)], "")),
+                ], []),
+              ]),
+            ]) ]
+      }
+    BarFillStages =>
+      match view.activity {
+        ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } =>
+          taskbar_stage_fill(obligations: obligations, live: view.worker_alive)
+        ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations } =>
+          taskbar_stage_fill(obligations: obligations, live: view.worker_alive)
+        CompletedWork { outcome: _, evidence: _, obligations } =>
+          taskbar_stage_fill(obligations: obligations, live: view.worker_alive)
+        NoActiveWork => []
+        LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => []
+        ActivityUnobservable { reason: _ } => []
+      }
+  }
+}
+
+// The three slots are ALWAYS rendered (empty spans hide via :empty) so the client poll has stable
+// paint targets, and the signal span carries the row's NO-ATTEMPT values (task_bar_idle_view,
+// decided at serve) as data-rest-*: when the wire stops carrying an attempt the client restores
+// them rather than recomputing or leaving stale text.
+fn taskbar_face_nodes(view: WorkRowView, bar: TaskBarView) -> Fragment {
+  let rest = task_bar_idle_view(view: view)
+  el_class("div", "taskbar-face", concat(
+    concat(status_chip_nodes(view: view), standing_chip_nodes(view: view)),
+    concat(
+      [ el_class("span", "taskbar-title", inline_md_nodes(text: view.headline)) ],
+      concat(
+        superseded_badge_of(view: view),
+        concat(
+          [ el_attrs("span", [
+              attr(name: "class", value: join(["taskbar-signal ", activity_line_prefix_class, bar.signal_class], "") ),
+              attr(name: "data-rest-signal", value: rest.signal ),
+              attr(name: "data-rest-class", value: join([activity_line_prefix_class, rest.signal_class], "") ),
+            ], [ txt(bar.signal) ]) ],
+          concat(
+            [ el_class("span", "taskbar-count", [ txt(bar.count) ]) ],
+            concat(
+              workflow_controls_nodes(view: view),
+              [ el_class("span", "taskbar-sub", [ txt(bar.subline) ]) ])))))))
+}
+
+fn taskbar_attention_attr(view: WorkRowView) -> List<Attribute> {
+  match view.activity {
+    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention, evidence: _ } =>
+      [ attr(name: "data-attention", value: activity_attention_key(a: attention) ) ]
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => []
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => []
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => []
+    NoActiveWork => []
+    ActivityUnobservable { reason: _ } => []
+  }
+}
+
+fn taskbar_nodes(view: WorkRowView, bar: TaskBarView, project: ProjectTreeView?) -> Fragment {
+  el_attrs("div",
+    concat(
+      [ attr(name: "class", value: concat("taskbar", if bar.attention { " taskbar-error" } else { "" }) ),
+        attr(name: "data-arm", value: activity_arm_key(a: view.activity) ),
+      ],
+      taskbar_attention_attr(view: view)),
+    concat(
+      taskbar_fill_nodes(view: view, bar: bar, project: project),
+      [ taskbar_face_nodes(view: view, bar: bar) ]))
+}
+
+// Inspection order is the owner's: stage-by-stage evidence FIRST, raw detail beneath. A STALE
+// attempt's strip and ledger carry the earlier-attempt label and never pulse — they are evidence
+// for a superseded question. The ledger lines keep their bounded payloads (the 2026-09-20
+// status-surface ruling) and their per-state classes.
+fn inspect_attempt_nodes(view: WorkRowView, obligations: List<WorkflowSegment>, evidence: List<ActivityEvidenceRow>, located_reason: String) -> List<Fragment> {
+  [
+    el_class("div", "inspect-stages", concat(
+      if view.attempt_stale {
+        concat(
+          [ el_class("div", "inspect-stale-label", [ txt("earlier attempt · superseded revision — evidence for a superseded question") ]) ],
+          stage_strip_nodes(obligations: obligations, live: false))
+      } else { [] },
+      [ el_class("div", activity_ledger_class, map(obligations, s => activity_obligation_node(s: s))) ])),
+    el_class("div", "inspect-raw", concat(
+      [ activity_throughput_node(rounds: view.rounds) ],
+      concat(
+        round_strip_nodes(ledger: view.rounds, live: false),
+        [ el_class("div", activity_evidence_class, concat(
+            map(evidence, row => activity_evidence_row_node(row: row)),
+            if located_reason == "" { [] } else {
+              [ el_class("div", activity_located_reason_class, [ txt(located_reason) ]) ]
+            })) ]))),
+  ]
+}
+
+fn inspect_attempt_evidence(view: WorkRowView) -> List<Fragment> {
+  match view.activity {
+    NoActiveWork => []
+    ActivityUnobservable { reason: _ } => []
+    ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention: _, evidence } =>
+      inspect_attempt_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: "")
+    ActiveWorkRefused { summary: _, located_reason, evidence, obligations } =>
+      inspect_attempt_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: located_reason)
+    LegacySupersedableAttempt { summary: _, located_reason, attempt_key, evidence } =>
+      inspect_attempt_nodes(
+        view: view,
+        obligations: [],
+        evidence: concat(evidence, [ ActivityEvidenceRow { label: "attempt key", value: attempt_key } ]),
+        located_reason: located_reason)
+    CompletedWork { outcome: _, evidence, obligations } =>
+      inspect_attempt_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: "")
+  }
+}
+
+// DEPENDENCY LINKS (the requires-vs-contains ruling, 2026-09-21): nested members are the
+// decomposition the tree derives; a display child placed ELSEWHERE — a shared prerequisite owned
+// by another project (fleet-closed-loop-converge's shell-gate-migration is the exemplar) or a
+// family-owned closing-contract task — renders as a LINK to the one place the task renders, never
+// as a counted copy or a fake member. The bar's denominator still counts them (the declared
+// aggregate); the link is the pointer to the single rendering. The model carries only dependency
+// edges, so decomposition IS the primary-parent derivation — the named gap is that an authored
+// decomposition edge would be a first-class relation, not a presentation rule.
+fn inspect_dependency_link_nodes(project: ProjectTreeView?) -> List<Fragment> {
+  match project {
+    Absent => []
+    Present { value: p } =>
+      if count(p.linked) == 0 {
+        []
+      } else {
+        [ el_class("div", "inspect-requires", concat(
+            [ el_class("span", "inspect-requires-label", [ txt("requires") ]) ],
+            map(p.linked, r =>
+              el_attrs("a", [
+                attr(name: "class", value: "inspect-requires-link" ),
+                attr(name: "href", value: concat("#node-", r.node_id) ),
+              ], [ txt(r.headline) ])))) ]
+      }
+  }
+}
+
+fn taskbar_inspect_nodes(view: WorkRowView, project: ProjectTreeView?) -> List<Fragment> {
+  let attempt = inspect_attempt_evidence(view: view)
+  let facts = view_supporting_facts(view: view)
+  let body = disclosure_body_nodes(d: view.disclosure)
+  let links = inspect_dependency_link_nodes(project: project)
+  if count(attempt) == 0 && count(facts) == 0 && count(body) == 0 && count(links) == 0 {
+    []
+  } else {
+    [ el_class("details", "taskbar-inspect", [
+        el("summary", [
+          el_class("span", disclosure_mark_class, [ txt(disclosure_mark_glyph) ]),
+          txt(inspect_disclosure_label),
+        ]),
+        el_class("div", "inspect-body", concat(attempt, concat(facts, concat(body, links)))),
+      ]) ]
+  }
+}
+
+fn render_task_row(view: WorkRowView, observation: ObservationImpactView) -> List<Fragment> {
+  let bar = task_bar_view_of(view: view, observation: observation)
+  concat(
+    [ taskbar_nodes(view: view, bar: bar, project: none) ],
+    taskbar_inspect_nodes(view: view, project: none))
+}
 
 fn stage_segment_node(s: WorkflowSegment, pulsing: Bool) -> Fragment {
   let state = workflow_segment_state_key(state: s.state)
@@ -637,7 +797,6 @@ fn stage_segment_node(s: WorkflowSegment, pulsing: Bool) -> Fragment {
       stage_segment_class, " stage-", state,
       if pulsing { join([" ", stage_live_class], "") } else { "" },
     ], "")),
-    attr(name: "style", value: "flex-grow: 1"),
     attr(name: "title", value: join([
       workflow_segment_kind_label(kind: s.kind), activity_state_sep, state,
     ], "")),
@@ -653,91 +812,11 @@ fn stage_strip_nodes(obligations: List<WorkflowSegment>, live: Bool) -> List<Fra
   }
 }
 
-fn activity_summary_span(a: ActivityView) -> Fragment {
-  el_class("span", join([
-    activity_summary_class, " ", activity_line_prefix_class, activity_line_class_key(c: activity_line_class_of_activity(a: a)),
-  ], ""), [ txt(activity_summary_line(a: a)) ])
-}
-
 fn activity_throughput_node(rounds: HarnessRoundLedger) -> Fragment {
   el_class("span", activity_throughput_class, [
     txt(throughput_cell_text(t: harness_throughput_from_ledger(ledger: rounds))),
   ])
 }
-
-fn activity_detail_nodes(obligations: List<WorkflowSegment>, evidence: List<ActivityEvidenceRow>, located_reason: String, rounds: HarnessRoundLedger, live: Bool) -> Fragment {
-  el_class("details", activity_detail_class, concat(
-    [ el("summary", [ txt(activity_disclosure_label) ]) ],
-    concat(
-      round_strip_nodes(ledger: rounds, live: live),
-      [
-        el_class("div", activity_ledger_class, map(obligations, s => activity_obligation_node(s: s))),
-        el_class("div", activity_evidence_class, concat(
-          map(evidence, row => activity_evidence_row_node(row: row)),
-          if located_reason == "" { [] } else {
-            [ el_class("div", activity_located_reason_class, [ txt(located_reason) ]) ]
-          })),
-      ])))
-}
-
-fn activity_container(a: ActivityView, attention: String, children: List<Fragment>) -> Fragment {
-  el_attrs("div", concat(
-    [
-      attr(name: "class", value: node_activity_class ),
-      attr(name: "data-arm", value: activity_arm_key(a: a) ),
-    ],
-    if attention == "" { [] } else { [ attr(name: "data-attention", value: attention ) ] }),
-    children)
-}
-
-fn activity_face(a: ActivityView, obligations: List<WorkflowSegment>, rounds: HarnessRoundLedger, live: Bool) -> List<Fragment> {
-  concat(
-    stage_strip_nodes(obligations: obligations, live: live),
-    concat(
-      [ activity_summary_span(a: a) ],
-      [ activity_throughput_node(rounds: rounds) ]))
-}
-
-fn activity_region_nodes(a: ActivityView, rounds: HarnessRoundLedger, live: Bool) -> List<Fragment> {
-  match a {
-    NoActiveWork => []
-    ActivityUnobservable { reason: _ } => [ activity_container(a: a, attention: "", children: [
-        activity_summary_span(a: a),
-      ]) ]
-    ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention, evidence } => {
-      let key = activity_attention_key(a: attention)
-      [ activity_container(a: a, attention: key, children: concat(
-          activity_face(a: a, obligations: obligations, rounds: rounds, live: live),
-          [ activity_detail_nodes(obligations: obligations, evidence: evidence, located_reason: "", rounds: rounds, live: live) ],
-        )) ]
-    }
-    ActiveWorkRefused { summary: _, located_reason, evidence, obligations } =>
-      [ activity_container(a: a, attention: "", children: concat(
-          activity_face(a: a, obligations: obligations, rounds: rounds, live: live),
-          [ activity_detail_nodes(obligations: obligations, evidence: evidence, located_reason: located_reason, rounds: rounds, live: live) ],
-        )) ]
-    LegacySupersedableAttempt { summary: _, located_reason, attempt_key, evidence } =>
-      [ activity_container(a: a, attention: "", children: concat(
-          activity_face(a: a, obligations: [], rounds: rounds, live: live),
-          [ activity_detail_nodes(
-            obligations: [],
-            evidence: concat(
-              evidence,
-              [ ActivityEvidenceRow { label: "attempt key", value: attempt_key } ],
-            ),
-            located_reason: located_reason,
-            rounds: rounds,
-            live: live,
-          ) ],
-        )) ]
-    CompletedWork { outcome: _, evidence, obligations } =>
-      [ activity_container(a: a, attention: "", children: concat(
-          activity_face(a: a, obligations: obligations, rounds: rounds, live: live),
-          [ activity_detail_nodes(obligations: obligations, evidence: evidence, located_reason: "", rounds: rounds, live: live) ],
-        )) ]
-  }
-}
-
 
 // THE ROUND STRIP: one span per segment, width by flex-grow so a long round is a wide segment. The
 // widths are the segments' millisecond intervals used directly as flex weights -- proportional by
@@ -817,32 +896,14 @@ fn status_chip_nodes(view: WorkRowView) -> List<Fragment> {
   }
 }
 
-fn render_work_row_head(view: WorkRowView) -> Fragment {
-  el_class("div", "node-head", concat(
-    concat(
-      status_chip_nodes(view: view),
-      standing_chip_nodes(view: view),
-      [ el_class("span", node_mid_class, concat(
-          concat(
-            [ el_class("span", "title", inline_md_nodes(text: view.headline)) ],
-            superseded_badge_of(view: view),
-          ),
-          dependency_line_nodes(view: view))) ]),
-    workflow_controls_nodes(view: view)))
-}
-
-fn render_work_row(view: WorkRowView) -> List<Fragment> {
-  concat(
-    [ render_work_row_head(view: view) ],
-    concat(activity_region_nodes(a: view.activity, rounds: view.rounds, live: view.worker_alive), view_detail_block(view: view)))
-}
-
 fn node_li_attributes_for(view: WorkRowView, class_infix: String) -> List<Attribute> {
   concat(
     [
       attr(name: "class", value: concat(
         concat(concat("node", class_infix), concat(" node-", work_lifecycle_key(l: view.lifecycle))),
         if view.attempt_stale { concat(" ", node_attempt_stale_class) } else { "" })),
+      attr(name: "id", value: concat("node-", view.node_id)),
+      attr(name: "data-band", value: row_filter_band_key(view: view)),
       attr(name: "data-node", value: view.node_id),
       attr(name: "tabindex", value: "0"),
     ],
@@ -863,7 +924,7 @@ fn node_work_row_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<Roa
 
 fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
   let view = node_work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, launch: launch)
-  let head = render_work_row(view: view)
+  let head = render_task_row(view: view, observation: ObservationsNominal)
   let kids = children_of(nodes: nodes, edges: edges, parent: rn.node)
   let child_block = if count(kids) == 0 {
     []
@@ -955,15 +1016,10 @@ fn section_markup(s: RoadmapSection, merged: List<Int>, launch: LaunchRowContext
 // claim and the queue below it.
 
 fn workspace_row_li(view: WorkRowView, observation: ObservationImpactView) -> Fragment {
-  let body = if workspace_covers_row_activity(observation: observation, a: view.activity) {
-    concat([ render_work_row_head(view: view) ], view_detail_block(view: view))
-  } else {
-    render_work_row(view: view)
-  }
   Element {
     tag: "li",
     attributes: node_li_attributes(view: view),
-    children: body,
+    children: render_task_row(view: view, observation: observation),
   }
 }
 
@@ -997,28 +1053,6 @@ fn family_group_li(family: WorkFamilyView, observation: ObservationImpactView) -
 // renderer is not forked.
 
 fn project_render_depth_cap() -> Int { 3 }
-
-fn project_progress_nodes(view: ProjectTreeView) -> List<Fragment> {
-  if view.total_count == 0 {
-    []
-  } else {
-    [ el_class("div", if view.subtree_error { "project-progress project-error" } else { "project-progress" }, [
-        el_class("span", "project-progress-count", [
-          txt(join([to_string(view.closed_count), " of ", to_string(view.total_count), " tasks closed"], "")),
-        ]),
-        el_class("div", "project-progress-bar", [
-          el_attrs("span", [
-            attr(name: "class", value: "project-progress-closed" ),
-            attr(name: "style", value: join(["flex-grow: ", to_string(view.closed_count)], "")),
-          ], []),
-          el_attrs("span", [
-            attr(name: "class", value: "project-progress-open" ),
-            attr(name: "style", value: join(["flex-grow: ", to_string(value: view.total_count - view.closed_count)], "")),
-          ], []),
-        ]),
-      ]) ]
-  }
-}
 
 fn project_entry_li(entry: ProjectTreeEntry, observation: ObservationImpactView) -> Fragment {
   match entry {
@@ -1094,17 +1128,23 @@ fn project_tasks_details(view: ProjectTreeView, observation: ObservationImpactVi
 }
 
 fn project_tree_li(view: ProjectTreeView, observation: ObservationImpactView) -> Fragment {
-  let body = if workspace_covers_row_activity(observation: observation, a: view.row.activity) {
-    concat([ render_work_row_head(view: view.row) ], view_detail_block(view: view.row))
-  } else {
-    render_work_row(view: view.row)
+  let base = task_bar_view_of(view: view.row, observation: observation)
+  let bar = TaskBarView {
+    fill: BarFillProject,
+    signal: base.signal,
+    signal_class: base.signal_class,
+    count: join([to_string(view.closed_count), " of ", to_string(view.total_count), " tasks closed"], ""),
+    subline: base.subline,
+    attention: base.attention || view.subtree_error,
   }
   Element {
     tag: "li",
     attributes: node_li_attributes_for(view: view.row, class_infix: " node-project"),
-    children: concat(body, concat(
-      project_progress_nodes(view: view),
-      project_tasks_details(view: view, observation: observation))),
+    children: concat(
+      [ taskbar_nodes(view: view.row, bar: bar, project: Present { value: view }) ],
+      concat(
+        taskbar_inspect_nodes(view: view.row, project: Present { value: view }),
+        project_tasks_details(view: view, observation: observation))),
   }
 }
 

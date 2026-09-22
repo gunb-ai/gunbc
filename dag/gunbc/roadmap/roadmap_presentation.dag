@@ -337,27 +337,11 @@ fn work_scheduling_key(s: WorkScheduling) -> String {
   }
 }
 
-// The quiet dependency line under the title, DECIDED here: it renders only for an Upcoming row with
-// more than one blocker — a single parent is already told by the tree nesting, and a ready/done
-// row's dependencies are met, so repeating them is noise re-dismissed on every row. (The A1
-// renderer showed 'requires all' for any node with 2+ parents whatever its position; the seam
-// narrows it to rows where the line answers 'why is this not dispatchable-now', the fact it exists
-// to carry.)
-fn scheduling_dependency_line(s: WorkScheduling) -> String? {
-  match s {
-    SchedulingUpcoming { blockers } =>
-      if count(blockers) > 1 {
-        Present { value: join(["requires all: ", join(blockers, ", ")], "") }
-      } else {
-        none
-      }
-    SchedulingReady => none
-    SchedulingDone => none
-    SchedulingSuperseded => none
-    SchedulingUnplanned => none
-  }
-}
-
+// The dependency line's claim moved to the taskbar (2026-09-21 redesign): the bar's signal slot
+// carries "blocked on X, Y" for every upcoming row — the blocker is visible IN the bar, never
+// gated on a multi-blocker count, because the tree no longer tells it positionally once rows are
+// the page's structure. The seam's scheduling_blockers derivation is unchanged; only the old
+// title-adjacent line's presentation is deleted.
 type SupportingFact {
   label: String
   value: String
@@ -1049,13 +1033,13 @@ fn activity_arm_key(a: ActivityView) -> String {
 // the server renderer joins obligation label/state/detail and evidence label/value with exactly
 // these separators, and the emitted client embeds the same values as its string literals — one
 // authority, so the realizations cannot drift on composition without the parity witness
-// reddening. The disclosure summary word is here for the same reason: 'activity' must be the same
+// reddening. The disclosure summary word is here for the same reason: 'inspect' must be the same
 // word whether the details element was server-rendered or client-created.
 
 data activity_state_sep: String = " · "
 data activity_detail_sep: String = " — "
 data activity_evidence_kv_sep: String = ": "
-data activity_disclosure_label: String = "activity"
+data inspect_disclosure_label: String = "inspect"
 
 // The one visible line per arm, decided ONCE for both realizations: the server renderer and the
 // emitted client compose the identical selection (active/refused → summary, completed → outcome,
@@ -1163,6 +1147,201 @@ fn project_subtree_errored(rows: List<WorkRowView>, edges: List<RoadmapEdge>, me
   }
 }
 
+// THE TASKBAR VIEW (owner-endorsed redesign 2026-09-21: "the task IS the bar"). ONE recursive
+// component replaces the fragmented row (head + activity region + two disclosures + project
+// count/bar + tasks disclosure): a row of h-taskbar height with the title rendered INSIDE the bar
+// over a subdued progress fill, carrying title → current-stage-or-blocker → at most one meaningful
+// count/result → at most one short second line, plus the actuator. Everything else is inspection,
+// one disclosure deep: stage evidence first, then raw detail, then the ticket body, then
+// dependency links. This view is the DECIDED content of that face; the renderer only paints it.
+//
+// THE HONESTY LAWS, made structural here: the fill is a named thing or nothing — the decided
+// workflow SEGMENTS for a live attempt (never elapsed time, never consumed rounds — those stay in
+// the raw detail), the project's declared closed/total counts, or the full fill of an accepted
+// node. No arm computes a percentage; none may. A STALE attempt (launch revision no longer the
+// deployed head) fills NOTHING and implies NO live worker — it renders as earlier-attempt evidence
+// in the inspection region only. A terminated worker process completes nothing: completion reads
+// off segment states alone (the reconciliation's contract), so a pending Agent segment beside an
+// exited process shows pending. "Has a PR" stays not-closed as before.
+
+type TaskBarFill
+  = BarFillNone
+  | BarFillStages
+  | BarFillProject
+  | BarFillClosed
+
+// The row's FILTER band (the 2026-09-21 filters-over-structure redesign): Active/Ready/Upcoming/
+// Done/Superseded stop being page sections and become filter chips over the one nested forest, so
+// a row's band key is a ROW-GRAIN decided fact carried on the li (data-band) — a row keeps its
+// place as its state changes, and filtering retains ancestors. Active is activity-grain (a live
+// attempt), everything else is the scheduling position.
+fn row_filter_band_key(view: WorkRowView) -> String {
+  if row_is_active_work(row: view) {
+    "active"
+  } else {
+    work_scheduling_key(s: view.scheduling)
+  }
+}
+
+type TaskBarView {
+  fill: TaskBarFill
+  signal: String
+  signal_class: String
+  count: String
+  subline: String
+  attention: Bool
+}
+
+fn stage_is_settled(s: WorkflowSegment) -> Bool {
+  segment_state_is(state: s.state, key: "complete") || segment_state_is(state: s.state, key: "stopped")
+}
+
+fn stage_count_label(obligations: List<WorkflowSegment>) -> String {
+  let total = count(obligations)
+  if total == 0 {
+    ""
+  } else {
+    let settled = count(obligations |> filter(s => stage_is_settled(s: s)))
+    join([to_string(settled), " of ", to_string(total), " stages"], "")
+  }
+}
+
+fn task_bar_stage_signal(obligations: List<WorkflowSegment>) -> String {
+  match first_non_complete(segments: obligations) {
+    Absent => ""
+    Present { value: s } =>
+      join([workflow_segment_kind_label(kind: s.kind), activity_state_sep, workflow_segment_state_key(state: s.state)], "")
+  }
+}
+
+fn task_bar_refusal_signal(obligations: List<WorkflowSegment>) -> String {
+  match first_refused(segments: obligations) {
+    Absent => ""
+    Present { value: s } =>
+      join([workflow_segment_kind_label(kind: s.kind), activity_state_sep, workflow_segment_state_key(state: s.state)], "")
+  }
+}
+
+fn task_bar_view_of_activity(a: ActivityView, observation: ObservationImpactView) -> TaskBarView {
+  match a {
+    NoActiveWork => TaskBarView {
+      fill: BarFillNone, signal: "", signal_class: "neutral", count: "", subline: "", attention: false,
+    }
+    ActiveWork { summary, obligations, remaining_obligation_count: _, current_activity: _, attention, evidence: _ } =>
+      TaskBarView {
+        fill: BarFillStages,
+        signal: task_bar_stage_signal(obligations: obligations),
+        signal_class: activity_line_class_key(c: activity_line_class_of_activity(a: a)),
+        count: stage_count_label(obligations: obligations),
+        subline: summary,
+        attention: match attention { ActivityRoutine => false ActivityAnomalous => true },
+      }
+    ActiveWorkRefused { summary, located_reason: _, evidence: _, obligations } =>
+      TaskBarView {
+        fill: BarFillStages,
+        signal: task_bar_refusal_signal(obligations: obligations),
+        signal_class: "error-refusal",
+        count: stage_count_label(obligations: obligations),
+        subline: summary,
+        attention: true,
+      }
+    LegacySupersedableAttempt { summary, located_reason: _, attempt_key: _, evidence: _ } =>
+      TaskBarView {
+        fill: BarFillNone, signal: summary, signal_class: "neutral", count: "", subline: "", attention: false,
+      }
+    CompletedWork { outcome, evidence: _, obligations } =>
+      TaskBarView {
+        fill: BarFillStages,
+        signal: outcome,
+        signal_class: "done",
+        count: stage_count_label(obligations: obligations),
+        subline: "",
+        attention: false,
+      }
+    ActivityUnobservable { reason: _ } =>
+      TaskBarView {
+        fill: BarFillNone,
+        signal: "attempt unobservable",
+        signal_class: "neutral",
+        count: "",
+        subline: if workspace_covers_row_activity(observation: observation, a: a) {
+          ""
+        } else {
+          activity_summary_line(a: a)
+        },
+        attention: false,
+      }
+  }
+}
+
+// The no-attempt bar, factored: task_bar_view_of delegates to it for a row without an attempt,
+// and the page ships its signal/class on the bar's data-rest-* attributes so the client poll can
+// RESTORE them when the wire stops carrying an attempt — the restore values are decided at serve,
+// never recomputed client-side.
+fn task_bar_idle_view(view: WorkRowView) -> TaskBarView {
+  match view.lifecycle {
+          DoneLifecycle => TaskBarView {
+            fill: BarFillClosed, signal: "accepted", signal_class: "done", count: "", subline: "", attention: false,
+          }
+          SupersededLifecycle => TaskBarView {
+            fill: BarFillNone,
+            signal: concat("superseded → ", view.superseded_by),
+            signal_class: "neutral", count: "", subline: "", attention: false,
+          }
+          ReviewLifecycle => TaskBarView {
+            fill: BarFillNone, signal: "review — landed, awaiting acceptance", signal_class: "neutral", count: "", subline: "", attention: false,
+          }
+          OpenLifecycle =>
+            match view.scheduling {
+              SchedulingUpcoming { blockers } => TaskBarView {
+                fill: BarFillNone,
+                signal: join(["blocked on ", join(blockers, ", ")], ""),
+                signal_class: "neutral", count: "", subline: "", attention: false,
+              }
+              SchedulingReady => TaskBarView {
+                fill: BarFillNone, signal: "ready to dispatch", signal_class: "neutral", count: "", subline: "", attention: false,
+              }
+              SchedulingDone => TaskBarView {
+                fill: BarFillClosed, signal: "accepted", signal_class: "done", count: "", subline: "", attention: false,
+              }
+              SchedulingSuperseded => TaskBarView {
+                fill: BarFillNone,
+                signal: concat("superseded → ", view.superseded_by),
+                signal_class: "neutral", count: "", subline: "", attention: false,
+              }
+              SchedulingUnplanned => TaskBarView {
+                fill: BarFillNone, signal: "", signal_class: "neutral", count: "", subline: "", attention: false,
+              }
+            }
+    }
+}
+
+fn task_bar_view_of(view: WorkRowView, observation: ObservationImpactView) -> TaskBarView {
+  if view.attempt_stale {
+    TaskBarView {
+      fill: BarFillNone,
+      signal: "earlier attempt · superseded revision",
+      signal_class: "neutral",
+      count: "",
+      subline: "",
+      attention: false,
+    }
+  } else {
+    match view.activity {
+      NoActiveWork => task_bar_idle_view(view: view)
+      ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } =>
+        task_bar_view_of_activity(a: view.activity, observation: observation)
+      ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } =>
+        task_bar_view_of_activity(a: view.activity, observation: observation)
+      LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } =>
+        task_bar_view_of_activity(a: view.activity, observation: observation)
+      CompletedWork { outcome: _, evidence: _, obligations: _ } =>
+        task_bar_view_of_activity(a: view.activity, observation: observation)
+      ActivityUnobservable { reason: _ } =>
+        task_bar_view_of_activity(a: view.activity, observation: observation)
+    }
+  }
+}
 fn activity_evidence_row_json_value(row: ActivityEvidenceRow) -> JsonValue {
   json_object(members: [
     json_kv(key: "label", value: json_string(s: row.label)),
@@ -1180,15 +1359,20 @@ fn activity_evidence_row_json_value(row: ActivityEvidenceRow) -> JsonValue {
 // §3 forbids.
 fn activity_view_json_value(view: ActivityView) -> JsonValue {
   let summary_class = activity_line_class_key(c: activity_line_class_of_activity(a: view))
+  let bar = task_bar_view_of_activity(a: view, observation: ObservationsNominal)
   match view {
     NoActiveWork => json_object(members: [
       json_kv(key: "arm", value: json_string(s: "none")),
       json_kv(key: "summary_class", value: json_string(s: summary_class)),
+      json_kv(key: "bar_signal", value: json_string(s: bar.signal)),
+      json_kv(key: "bar_count", value: json_string(s: bar.count)),
     ])
     ActiveWork { summary, obligations: _, remaining_obligation_count, current_activity, attention, evidence } =>
       json_object(members: [
         json_kv(key: "arm", value: json_string(s: "active")),
         json_kv(key: "summary_class", value: json_string(s: summary_class)),
+        json_kv(key: "bar_signal", value: json_string(s: bar.signal)),
+        json_kv(key: "bar_count", value: json_string(s: bar.count)),
         json_kv(key: "summary", value: json_string(s: summary)),
         json_kv(key: "remaining_obligation_count", value: json_int(n: remaining_obligation_count)),
         json_kv(key: "current_activity", value: json_string(s: current_activity)),
@@ -1199,6 +1383,8 @@ fn activity_view_json_value(view: ActivityView) -> JsonValue {
       json_object(members: [
         json_kv(key: "arm", value: json_string(s: "refused")),
         json_kv(key: "summary_class", value: json_string(s: summary_class)),
+        json_kv(key: "bar_signal", value: json_string(s: bar.signal)),
+        json_kv(key: "bar_count", value: json_string(s: bar.count)),
         json_kv(key: "summary", value: json_string(s: summary)),
         json_kv(key: "located_reason", value: json_string(s: located_reason)),
         json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
@@ -1207,6 +1393,8 @@ fn activity_view_json_value(view: ActivityView) -> JsonValue {
       json_object(members: [
         json_kv(key: "arm", value: json_string(s: "legacy_supersedable")),
         json_kv(key: "summary_class", value: json_string(s: summary_class)),
+        json_kv(key: "bar_signal", value: json_string(s: bar.signal)),
+        json_kv(key: "bar_count", value: json_string(s: bar.count)),
         json_kv(key: "summary", value: json_string(s: summary)),
         json_kv(key: "located_reason", value: json_string(s: located_reason)),
         json_kv(key: "attempt_key", value: json_string(s: attempt_key)),
@@ -1216,6 +1404,8 @@ fn activity_view_json_value(view: ActivityView) -> JsonValue {
       json_object(members: [
         json_kv(key: "arm", value: json_string(s: "completed")),
         json_kv(key: "summary_class", value: json_string(s: summary_class)),
+        json_kv(key: "bar_signal", value: json_string(s: bar.signal)),
+        json_kv(key: "bar_count", value: json_string(s: bar.count)),
         json_kv(key: "outcome", value: json_string(s: outcome)),
         json_kv(key: "evidence", value: json_array(elements: map(evidence, row => activity_evidence_row_json_value(row: row)))),
       ])
@@ -1223,6 +1413,8 @@ fn activity_view_json_value(view: ActivityView) -> JsonValue {
       json_object(members: [
         json_kv(key: "arm", value: json_string(s: "unobservable")),
         json_kv(key: "summary_class", value: json_string(s: summary_class)),
+        json_kv(key: "bar_signal", value: json_string(s: bar.signal)),
+        json_kv(key: "bar_count", value: json_string(s: bar.count)),
         json_kv(key: "reason", value: json_string(s: reason)),
       ])
   }
@@ -1505,6 +1697,7 @@ type ProjectTreeView {
   auto_open: Bool
   subtree_error: Bool
   entries: List<ProjectTreeEntry>
+  linked: List<WorkRowView>
 }
 
 type ProjectChainWalk {
@@ -1682,6 +1875,11 @@ fn project_tree_view(row: WorkRowView, rows: List<WorkRowView>, edges: List<Road
           Absent => false
         }))
   }
+  let linked = tasks |> filter(t =>
+    match row_display_parent_id(rows: rows, edges: edges, members: members, node_id: t.node_id) {
+      Present { value: p } => !(p == end.node_id)
+      Absent => false
+    })
   ProjectTreeView {
     row: row,
     chain: walk.chain,
@@ -1691,6 +1889,7 @@ fn project_tree_view(row: WorkRowView, rows: List<WorkRowView>, edges: List<Road
     auto_open: project_subtree_pulses(rows: rows, edges: edges, members: members, node_id: row.node_id, fuel: count(rows)),
     subtree_error: row_activity_erred(row: row)
       || project_subtree_errored(rows: rows, edges: edges, members: members, node_id: row.node_id, fuel: count(rows)),
+    linked: linked,
     entries: map(nested, t =>
       if row_is_project(rows: rows, edges: edges, members: members, row: t) {
         ProjectNested { project: project_tree_view(row: t, rows: rows, edges: edges, members: members, depth: depth + 1, fuel: fuel - 1) }
