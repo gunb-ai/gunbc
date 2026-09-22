@@ -15,6 +15,7 @@ import extdeps.systemd.systemd_run {
   SystemdRunWaitSummary, systemd_run_wait_summary, SystemdServiceResultReading, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
   SystemdServiceResult, ServiceResultOomKill, systemd_service_result_wire,
   SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported,
+  SummaryAbsence, SummaryNoInvocation, SummarySuppressedByQuietLauncher, SummaryCaptureEmpty, SummaryLineAbsent, summary_absence_wire,
   SystemdFormattedBytes, FormattedBytesExact, FormattedBytesBounded, systemd_formatted_bytes_upper,
 }
 import extdeps.systemd.systemctl
@@ -357,7 +358,7 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
   if systemd_run == "" {
     ComputeUnitRun {
       exec: ComputeExecFailed { exit_code: 127, stdout: "", stderr: "this instance's toolchain declares no systemd-run; the local provider runs only under systemd" },
-      summary: SystemdRunWaitSummary { result: ServiceResultNotReported, memory_peak: MemoryPeakNotReported },
+      summary: SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } },
     }
   } else {
     let launcher = systemd_run_user_wait_arguments(
@@ -1140,7 +1141,7 @@ fn compute_summary_is_oom_kill(summary: SystemdRunWaitSummary) -> Bool {
   match summary.result {
     ServiceResultRead { result: r } => match r { ServiceResultOomKill => true  _ => false }
     ServiceResultUnrecognized { wire: _ } => false
-    ServiceResultNotReported => false
+    ServiceResultNotReported { absence: _ } => false
   }
 }
 
@@ -1152,7 +1153,7 @@ fn compute_summary_peak_wire(summary: SystemdRunWaitSummary) -> String {
         FormattedBytesBounded { printed, lower: _, upper } => join([printed, " (at most ", to_string(value: byte_size_count(b: upper)), " B)"], "")
       }
     MemoryPeakUnparseable { text } => join(["UNPARSEABLE (", text, ")"], "")
-    MemoryPeakNotReported => "NOT REPORTED (no Memory peak line: systemd below v254, or --wait summary suppressed)"
+    MemoryPeakNotReported { absence } => join(["NOT REPORTED (", summary_absence_wire(a: absence), ")"], "")
   }
 }
 
@@ -1160,7 +1161,7 @@ fn compute_summary_result_wire(summary: SystemdRunWaitSummary) -> String {
   match summary.result {
     ServiceResultRead { result: r } => systemd_service_result_wire(r: r)
     ServiceResultUnrecognized { wire } => join(["UNRECOGNIZED (", wire, ")"], "")
-    ServiceResultNotReported => "NOT REPORTED"
+    ServiceResultNotReported { absence } => join(["NOT REPORTED (", summary_absence_wire(a: absence), ")"], "")
   }
 }
 
@@ -1203,7 +1204,7 @@ fn compute_run_leased(
     ComputeExecFailed { exit_code, stdout: _, stderr } =>
       ComputeAttempt {
         outcome: WorkRefusedByInfrastructure { identity: identity, cause: CheckoutUnavailable { detail: join(["git worktree add exited ", to_string(value: exit_code), ": ", stderr], "") } },
-        summary: SystemdRunWaitSummary { result: ServiceResultNotReported, memory_peak: MemoryPeakNotReported },
+        summary: SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } },
       }
     ComputeExecOk { stdout: _, stderr: _ } => {
       let unit_run = compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency_store: dependency_store), granted: granted)

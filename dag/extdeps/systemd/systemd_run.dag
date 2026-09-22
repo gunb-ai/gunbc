@@ -302,10 +302,33 @@ fn systemd_service_result_wire(r: SystemdServiceResult) -> String {
   }
 }
 
+// WHY THERE IS NOTHING TO READ, BECAUSE "NOTHING" IS AN OUTCOME SEVERAL DIFFERENT CAUSES PRODUCE.
+// A bare NotReported answers identically for a manager below v254, a launcher run with --quiet, a
+// unit that was never started, an empty capture and a parser that has stopped working -- so a defect
+// that makes EVERYTHING unreported satisfies every absence claim at once, and the producer cannot
+// tell an old manager from a broken read. That is DESIGN 5's absorbing fallback in miniature: the
+// failure arm answers rather than refuses precisely. So the absence carries its cause, one vocabulary
+// shared by both readings because both go missing for the same reasons (loyal-swift-608, 2026-09-22:
+// assert the mechanism, not the outcome).
+type SummaryAbsence
+  = SummaryNoInvocation
+  | SummarySuppressedByQuietLauncher
+  | SummaryCaptureEmpty
+  | SummaryLineAbsent
+
+fn summary_absence_wire(a: SummaryAbsence) -> String {
+  match a {
+    SummaryNoInvocation => "no launcher ran, so there is no unit summary"
+    SummarySuppressedByQuietLauncher => "the launcher carries --quiet, which suppresses the summary entirely"
+    SummaryCaptureEmpty => "the launcher ran and its captured stderr was empty"
+    SummaryLineAbsent => "the captured stderr carries no such line (a manager below v254 omits the peak)"
+  }
+}
+
 type SystemdServiceResultReading
   = ServiceResultRead { result: SystemdServiceResult }
   | ServiceResultUnrecognized { wire: String }
-  | ServiceResultNotReported
+  | ServiceResultNotReported { absence: SummaryAbsence }
 
 fn systemd_service_result_parse(wire: String) -> SystemdServiceResultReading {
   let w = trim(s: wire)
@@ -408,7 +431,7 @@ fn systemd_formatted_bytes_upper(b: SystemdFormattedBytes) -> ByteSize {
 type SystemdMemoryPeakReading
   = MemoryPeakRead { peak: SystemdFormattedBytes }
   | MemoryPeakUnparseable { text: String }
-  | MemoryPeakNotReported
+  | MemoryPeakNotReported { absence: SummaryAbsence }
 
 type SystemdRunWaitSummary {
   result: SystemdServiceResultReading
@@ -425,15 +448,36 @@ fn systemd_run_summary_last_value(stderr: String, prefix: String) -> String? {
     } else { acc })
 }
 
-// THE READER TAKES THE LAUNCHER, NOT JUST ITS OUTPUT. The launcher argument is not inspected and is
-// not meant to be: it is the evidence that this stderr came from an invocation that prints a
-// summary at all, and its only inhabitant is minted by systemd_run_user_wait_arguments. Dropping it
-// would restore a reader that accepts a quiet launcher's silence as "no peak reported".
+// A WORD THIS ARGV CARRIES IS A FACT ABOUT WHETHER THERE IS ANYTHING TO READ, so it is read rather
+// than assumed. --quiet is the single word that decides it (run.c v255, `if (arg_wait &&
+// !arg_quiet)`); its presence is checked here rather than trusted from the parameter's type for the
+// reason measured below.
+fn systemd_argv_suppresses_summary(argv: List<String>) -> Bool {
+  fold(argv, init: false, f: (acc, w) => acc || w == "--quiet")
+}
+
+// THE READER TAKES THE LAUNCHER AND INSPECTS IT, AND THE SECOND HALF IS NOT REDUNDANT -- IT IS
+// MEASURED. The intent was construction: SystemdSummaryPrintingWait is minted only by
+// systemd_run_user_wait_arguments, the one wait builder here that omits --quiet, so a quiet
+// launcher should not be expressible as this argument at all. IT IS. A probe passing the
+// List<String> returned by systemd_run_transient_wait_unit_argv (which carries --quiet) as this
+// parameter COMPILED AND EVALUATED, reading a peak out of stderr no quiet launcher could have
+// printed. A declared record parameter does not refuse a list on this path, so the type alone is a
+// decoration -- DESIGN 4b(1) rung inflation, and it would have been reported as a wall.
+//
+// SO THE HONEST RUNG IS 2, MECHANICALLY PREVENTABLE, NOT 4. The check below is what actually holds:
+// a launcher whose argv carries --quiet reports NOTHING RATHER THAN A PEAK OF ZERO, which is the
+// same fail-closed reading as a manager below v254, and the probe that compiled now goes red
+// through it. Next-rung trigger: parameter-type enforcement for record types on the evaluation
+// path, at which point the mint becomes the wall and this fold retires as its regression control.
 fn systemd_run_wait_summary(launcher: SystemdSummaryPrintingWait, stderr: String) -> SystemdRunWaitSummary {
+  if systemd_argv_suppresses_summary(argv: systemd_summary_printing_wait_argv(w: launcher)) {
+    SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummarySuppressedByQuietLauncher }, memory_peak: MemoryPeakNotReported { absence: SummarySuppressedByQuietLauncher } }
+  } else {
   SystemdRunWaitSummary {
     result: match systemd_run_summary_last_value(stderr: stderr, prefix: systemd_run_summary_result_prefix) {
       Present { value: v } => systemd_service_result_parse(wire: v)
-      Absent => ServiceResultNotReported
+      Absent => ServiceResultNotReported { absence: if stderr == "" { SummaryCaptureEmpty } else { SummaryLineAbsent } }
     },
     memory_peak: match systemd_run_summary_last_value(stderr: stderr, prefix: systemd_run_summary_memory_peak_prefix) {
       Present { value: v } =>
@@ -441,7 +485,8 @@ fn systemd_run_wait_summary(launcher: SystemdSummaryPrintingWait, stderr: String
           FormattedBytesRead { value: b } => MemoryPeakRead { peak: b }
           FormattedBytesUnparseable { text: x } => MemoryPeakUnparseable { text: x }
         }
-      Absent => MemoryPeakNotReported
+      Absent => MemoryPeakNotReported { absence: if stderr == "" { SummaryCaptureEmpty } else { SummaryLineAbsent } }
     },
+  }
   }
 }

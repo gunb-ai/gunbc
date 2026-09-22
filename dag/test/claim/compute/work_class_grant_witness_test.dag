@@ -3,10 +3,11 @@ module test.claim.compute.work_class_grant_witness_test
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.measure { Kibibyte, kibibyte, kibibyte_count, byte_size_count }
 import extdeps.systemd.systemd_run {
-  SystemdRunWaitSummary, systemd_run_wait_summary, systemd_run_user_wait_arguments,
+  SystemdRunWaitSummary, systemd_run_wait_summary, systemd_run_user_wait_arguments, systemd_run_transient_wait_unit_argv,
   SystemdServiceResultReading, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
   SystemdServiceResult, ServiceResultOomKill, ServiceResultSuccess, ServiceResultExitCode,
   SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported,
+  SummaryAbsence, SummaryNoInvocation, SummarySuppressedByQuietLauncher, SummaryCaptureEmpty, SummaryLineAbsent,
   SystemdFormattedBytes, FormattedBytesExact, FormattedBytesBounded, systemd_formatted_bytes_upper,
   SystemdSummaryPrintingWait,
 }
@@ -56,7 +57,7 @@ test fn the_units_peak_and_result_are_the_summarys_last_lines_not_the_commands()
           FormattedBytesExact { bytes: _ } => false
         }
       MemoryPeakUnparseable { text: _ } => false
-      MemoryPeakNotReported => false
+      MemoryPeakNotReported { absence: _ } => false
     }
 }
 
@@ -67,7 +68,7 @@ test fn an_absent_peak_is_not_reported_and_a_byte_figure_is_exact() -> Bool {
   let absent = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "Finished with result: exit-code\nMain processes terminated with: code=exited/status=1\n")
   let small = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "Finished with result: success\nMemory peak: 512B\n")
   let garbled = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "Finished with result: frobnicated\nMemory peak: lots\n")
-  match absent.memory_peak { MemoryPeakNotReported => true  _ => false }
+  match absent.memory_peak { MemoryPeakNotReported { absence } => match absence { SummaryLineAbsent => true  _ => false }  _ => false }
     && !compute_summary_is_oom_kill(summary: absent)
     && match small.memory_peak {
       MemoryPeakRead { peak: b } => match b { FormattedBytesExact { bytes } => byte_size_count(b: bytes) == 512  _ => false }
@@ -75,7 +76,7 @@ test fn an_absent_peak_is_not_reported_and_a_byte_figure_is_exact() -> Bool {
     }
     && match garbled.result { ServiceResultUnrecognized { wire } => wire == "frobnicated"  _ => false }
     && match garbled.memory_peak { MemoryPeakUnparseable { text } => text == "lots"  _ => false }
-    && match systemd_run_wait_summary(launcher: fixture_launcher, stderr: "").result { ServiceResultNotReported => true  _ => false }
+    && match systemd_run_wait_summary(launcher: fixture_launcher, stderr: "").result { ServiceResultNotReported { absence } => match absence { SummaryCaptureEmpty => true  _ => false }  _ => false }
 }
 
 // ── THE RESOLUTION: rows to a grant ──────────────────────────────────────────────────────────
@@ -190,6 +191,13 @@ test fn the_exceedance_count_is_zero_only_when_absence_is_positively_read() -> B
 
 // ── HOW ELSE THE PEAK GOES UNREPORTED, AND THE GUARD THAT MUST NOT BE ADDED ───────────────────
 //
+// EACH CLAIM ASSERTS ITS OWN CAUSE, NOT THE SHARED OUTCOME (loyal-swift-608, 2026-09-22: assert the
+// mechanism, not the outcome). Written against a bare NotReported these three claims would all have
+// passed on ONE defect -- a parser that answers "nothing" for every input satisfies every absence
+// assertion at once, which is exactly the dead producer this lane is at risk of. SummaryAbsence is
+// what makes them discriminate: empty capture, absent line and suppressed-by-quiet are three
+// different answers now, so a collapse to any single cause reds two of the three.
+//
 // NotReported is reachable by three ABSENCE shapes, not only by a manager below v254 omitting the
 // line, and absence is the one thing this parser can be interrogated about without ever having seen
 // a real summary: these claims are about the ABSENCE of the format rather than its content
@@ -215,9 +223,9 @@ test fn the_peak_is_unreported_by_absence_and_an_untrimmed_summary_still_reads()
   let empty = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "")
   let unit_output_only = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "error: linking with `cc` failed\nrustc exited 1\n")
   let trimmed = systemd_run_wait_summary(launcher: fixture_launcher, stderr: "Finished with result: success\nMemory peak: 4.0G")
-  match empty.memory_peak { MemoryPeakNotReported => true  _ => false }
-    && match unit_output_only.memory_peak { MemoryPeakNotReported => true  _ => false }
-    && match unit_output_only.result { ServiceResultNotReported => true  _ => false }
+  match empty.memory_peak { MemoryPeakNotReported { absence } => match absence { SummaryCaptureEmpty => true  _ => false }  _ => false }
+    && match unit_output_only.memory_peak { MemoryPeakNotReported { absence } => match absence { SummaryLineAbsent => true  _ => false }  _ => false }
+    && match unit_output_only.result { ServiceResultNotReported { absence } => match absence { SummaryLineAbsent => true  _ => false }  _ => false }
     && match trimmed.result { ServiceResultRead { result: r } => match r { ServiceResultSuccess => true  _ => false }  _ => false }
     && match trimmed.memory_peak {
       MemoryPeakRead { peak: b } =>
@@ -227,5 +235,34 @@ test fn the_peak_is_unreported_by_absence_and_an_untrimmed_summary_still_reads()
           FormattedBytesExact { bytes: _ } => false
         }
       _ => false
+    }
+}
+
+
+// ── A LAUNCHER THAT CANNOT PRINT A PEAK REPORTS NOTHING, NOT A PEAK ───────────────────────────
+//
+// THIS IS THE DEMOTED WALL'S REGRESSION CONTROL, AND IT IS HERE BECAUSE THE TYPE WAS NOT ENOUGH.
+// The intent was that SystemdSummaryPrintingWait, minted only by the builder that omits --quiet,
+// makes a quiet launcher unexpressible as the reader's argument. Measured: passing the List<String>
+// from systemd_run_transient_wait_unit_argv (which carries --quiet) as that parameter COMPILED and
+// read 9.7G out of stderr no quiet launcher could have printed. A declared record parameter does not
+// refuse a list on the evaluation path, so the mint is not the wall -- DESIGN 4b(1), reported as
+// rung 2 rather than rung 4.
+//
+// TWO THINGS HOLD NOW AND THIS CLAIM PINS THE SECOND. A wrongly typed argument refuses at the field
+// access with a located TypeError naming the accessor and the call chain -- fail-closed, but not a
+// fact a Bool claim can carry. What a claim CAN carry is the fold: a token whose argv does contain
+// --quiet, constructed here directly because no builder will mint one, reports NotReported rather
+// than the peak sitting in the fixture. Deleting the check in systemd_run_wait_summary reds this.
+data quiet_launcher: SystemdSummaryPrintingWait = SystemdSummaryPrintingWait { argv: systemd_run_transient_wait_unit_argv(unit: "gunbc-quiet", properties: [], command_argv: ["true"]) }
+
+test fn a_quiet_launcher_reports_no_peak_rather_than_the_one_in_the_text() -> Bool {
+  let s = systemd_run_wait_summary(launcher: quiet_launcher, stderr: summary_oom_after_spoof)
+  match s.memory_peak { MemoryPeakNotReported { absence } => match absence { SummarySuppressedByQuietLauncher => true  _ => false }  _ => false }
+    && match s.result { ServiceResultNotReported { absence } => match absence { SummarySuppressedByQuietLauncher => true  _ => false }  _ => false }
+    && !compute_summary_is_oom_kill(summary: s)
+    && match work_class_peak_sample(summary: s, work_identity: "abc", op: CompileEntry { entry: "e" }, host: "srv1", observed_at: Present { value: 1790000000 }) {
+      PeakSampleNotTaken { reason: _ } => true
+      PeakSampleTaken { class: _, sample: _ } => false
     }
 }
