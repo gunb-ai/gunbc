@@ -1,6 +1,7 @@
 module v2.std.namespace_alias
 
-import std.algebra { FreeMonoid }
+import std.algebra { Empty, FreeMonoid }
+import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.node { Node, Symbol }
 import v2.std.qualified_name { QualifiedName }
 
@@ -35,4 +36,29 @@ type ModuleBindingSource {
 type PendingBinding {
   module_qn: QualifiedName
   row: AliasBindingRow
+}
+
+// THE TWO PROJECTIONS A CONSUMER OF ModuleBindingSource NEEDS, so a caller never has to choose
+// between "the roots" and "the bindings" and risk pairing them by position.
+fn module_binding_source_roots(sources: FreeMonoid<ModuleBindingSource>) -> FreeMonoid<Node> {
+  fold_list(
+    xs: sources,
+    empty: Empty,
+    cons: fn(acc, src) { list_snoc_item(xs: acc, item: src.root) }
+  )
+}
+
+// A ROOT WITH NOTHING IMPORTED, for a caller that genuinely has none -- a hand-built Node, not a
+// parsed module. The name says that rather than letting `Empty` at a call site read as a caller
+// who forgot, which is the same reason v2.compiler.normalized_tree spells no_import_bindings().
+fn module_binding_source_without_imports(root: Node) -> ModuleBindingSource {
+  ModuleBindingSource { root: root, import_bindings: Empty }
+}
+
+fn module_binding_sources_without_imports(roots: FreeMonoid<Node>) -> FreeMonoid<ModuleBindingSource> {
+  fold_list(
+    xs: roots,
+    empty: Empty,
+    cons: fn(acc, root) { list_snoc_item(xs: acc, item: module_binding_source_without_imports(root: root)) }
+  )
 }

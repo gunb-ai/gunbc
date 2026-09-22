@@ -585,7 +585,7 @@ import v2.std.collection { List }
 // because the fill is two front ends over twelve modules, many times one claim's budget, and the
 // alternative is paying it nine times.
 data floor_cross_claim_pure_producers_warm: List<String> = [
-  "v2.test.claim.resolve.namespace_candidate_rule.ncr_outcomes_warm",
+  "v2.test.claim.resolve.namespace_candidate_rule.ncr_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",
   "v2.test.claim.native_census.whole_tree_census_resolve.census_probe_outcomes",

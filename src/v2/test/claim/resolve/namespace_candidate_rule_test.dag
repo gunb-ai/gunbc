@@ -487,7 +487,6 @@ fn ncr_outcomes() -> NcrOutcomes {
   }
 }
 
-data ncr_outcomes_warm: NcrOutcomes = ncr_outcomes()
 
 fn ncr_verdict_is_resolved(v: NcrVerdict) -> Bool {
   match v {
@@ -555,7 +554,7 @@ fn ncr_verdict_same(left: NcrVerdict, right: NcrVerdict) -> Bool {
 // corpus-wide spelling is ambiguous and always was -- what makes the reference decidable is the
 // binding at this module's own position, which is the rule's whole claim.
 test fn a_bound_sibling_declaration_resolves_by_containment_holds() -> Bool {
-  match ncr_outcomes_warm {
+  match ncr_outcomes() {
     NcrContextRefused => false
     NcrOutcomesDecided { importer: importer, double: _, unbound: _, home_a: home_a, disp_user: _, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, missing_import: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_is_resolved(v: importer) && ncr_verdict_is_resolved(v: home_a)
@@ -566,7 +565,7 @@ test fn a_bound_sibling_declaration_resolves_by_containment_holds() -> Bool {
 // position, so the reference has two candidates and the rule may not pick. Either binder alone
 // would be a pick wearing a refusal's clothes, so the count is asserted as well as the membership.
 test fn a_genuine_ambiguity_refuses_naming_both_binders_holds() -> Bool {
-  match ncr_outcomes_warm {
+  match ncr_outcomes() {
     NcrContextRefused => false
     NcrOutcomesDecided { importer: _, double: double, unbound: _, home_a: _, disp_user: _, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, missing_import: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_refuses_with(v: double, reason: ^resolve_reason_ambiguous_symbol)
@@ -582,7 +581,7 @@ test fn a_genuine_ambiguity_refuses_naming_both_binders_holds() -> Bool {
 // to resolved if the search picks, to ambiguous if it refuses over the spelling -- and nothing else
 // in this file moves with it.
 test fn an_unbound_name_the_corpus_spells_twice_stays_unbound_holds() -> Bool {
-  match ncr_outcomes_warm {
+  match ncr_outcomes() {
     NcrContextRefused => false
     NcrOutcomesDecided { importer: _, double: _, unbound: unbound, home_a: _, disp_user: _, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, missing_import: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_refuses_with(v: unbound, reason: ^resolve_reason_unbound_symbol)
@@ -595,7 +594,7 @@ test fn an_unbound_name_the_corpus_spells_twice_stays_unbound_holds() -> Bool {
 // grain that would move -- the cause, and for the ambiguity the binder set -- rather than by a
 // pass/fail flag that two different refusals would share.
 test fn reordering_the_files_changes_no_verdict_holds() -> Bool {
-  match ncr_outcomes_warm {
+  match ncr_outcomes() {
     NcrContextRefused => false
     NcrOutcomesDecided {
       importer: importer,
@@ -635,7 +634,7 @@ test fn reordering_the_files_changes_no_verdict_holds() -> Bool {
 // resolves. v2.ncr_disp_other stays in the ingest precisely so the spelling stays ambiguous -- drop
 // it and this arm would pass under either mechanism and discriminate nothing.
 test fn the_workload_bare_variant_reference_resolves_through_its_import_holds() -> Bool {
-  match ncr_outcomes_warm {
+  match ncr_outcomes() {
     NcrContextRefused => false
     NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: disp_user, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, missing_import: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_is_resolved(v: disp_user)
@@ -647,7 +646,7 @@ test fn the_workload_bare_variant_reference_resolves_through_its_import_holds() 
 // import if it overwrote, the declaration if the import were merely dropped -- so both are
 // asserted, and the count with them.
 test fn declaring_and_importing_one_name_refuses_naming_both_holds() -> Bool {
-  match ncr_outcomes_warm {
+  match ncr_outcomes() {
     NcrContextRefused => false
     NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: shadow, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, missing_import: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_refuses_with(v: shadow, reason: ^resolve_reason_ambiguous_symbol)
@@ -664,7 +663,7 @@ test fn declaring_and_importing_one_name_refuses_naming_both_holds() -> Bool {
 // chain resolves AT ALL, which "unchanged under permutation" would not (two matching unbound
 // refusals are also unchanged).
 test fn a_re_export_chain_resolves_through_its_relay_holds() -> Bool {
-  match ncr_outcomes_warm {
+  match ncr_outcomes() {
     NcrContextRefused => false
     NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: _, chain: chain, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, missing_import: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_is_resolved(v: chain)
@@ -676,7 +675,7 @@ test fn a_re_export_chain_resolves_through_its_relay_holds() -> Bool {
 // that they now agree. The count is asserted because resolving to either claimant is what this
 // closes -- and that is how it failed: silently, with no diagnostic at all.
 test fn a_qualified_reference_to_a_contested_position_refuses_naming_both_holds() -> Bool {
-  match ncr_outcomes_warm {
+  match ncr_outcomes() {
     NcrContextRefused => false
     NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: _, chain: _, qual: qual, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, missing_import: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_refuses_with(v: qual, reason: ^resolve_reason_ambiguous_symbol)
@@ -704,7 +703,7 @@ test fn a_qualified_reference_to_a_contested_position_refuses_naming_both_holds(
 // bare atom in a match arm names a constructor, and reads Ambiguous as yes. Every leaf polluted
 // this way would push a fresh arm BINDER toward being classified as a constructor and refused.
 test fn a_transmuted_import_does_not_make_its_leaf_globally_ambiguous_holds() -> Bool {
-  match ncr_outcomes_warm {
+  match ncr_outcomes() {
     NcrContextRefused => false
     NcrOutcomesDecided {
       importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: _, chain: _, qual: _,
@@ -748,7 +747,7 @@ fn ncr_verdict_declared_at(v: NcrVerdict, dotted: String) -> Bool {
 // declaring path. The fatal stays resolve_reason_unbound_symbol -- the advisory explains the
 // absence, it does not change what the refusal IS.
 test fn a_missing_binding_names_where_the_name_is_declared_holds() -> Bool {
-  match ncr_outcomes_warm {
+  match ncr_outcomes() {
     NcrContextRefused => false
     NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: _, chain: _, qual: _, missing_import: missing_import, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_refuses_with(v: missing_import, reason: ^resolve_reason_unbound_symbol)
@@ -763,7 +762,7 @@ test fn a_missing_binding_names_where_the_name_is_declared_holds() -> Bool {
 // pointed at whichever declaration it found first -- which is the spelling search this package
 // deletes, readmitted as a diagnostic.
 test fn a_missing_binding_the_corpus_declares_twice_names_no_single_path_holds() -> Bool {
-  match ncr_outcomes_warm {
+  match ncr_outcomes() {
     NcrContextRefused => false
     NcrOutcomesDecided { importer: _, double: _, unbound: unbound, home_a: _, disp_user: _, shadow: _, chain: _, qual: _, missing_import: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_refuses_with(v: unbound, reason: ^resolve_reason_unbound_symbol)
