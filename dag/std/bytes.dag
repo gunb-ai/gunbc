@@ -63,8 +63,12 @@ fn bytes_octets(b: Bytes) -> List<UInt8> {
 // matters because this mint rests on that contract: bytes_octets' own .dag body is the divergent
 // seam, so unlike word_to_octets -- whose members are computed in-corpus through uint8_of_int --
 // the range here is established by the declared row and not by a computation this module can see.
-// If that row's result ever stops saying 0..255, this admission stops holding and the mint owes
-// the fold. std.integer names that trap in its own roster annotation -- word_to_octets is admitted to
+// THAT DEPENDENCY IS WALLED RATHER THAN ASSERTED HERE. If the row's result stops saying 0..255
+// this admission stops holding and the mint owes the fold -- and in prose alone that sentence
+// would be an obligation on whoever happens to read it, which DESIGN section 4c forbids treating
+// as evidence, since no Accepted program can read an annotation. The join between this mint's
+// assumption and the declared row is therefore a claim:
+// test.claim.bytes_qualified_octets_range_contract_witness_test, which reds if the row moves. std.integer names that trap in its own roster annotation -- word_to_octets is admitted to
 // the mint precisely because "routing it through the fold would add a refusal arm no input can
 // reach" -- and DESIGN section 5 names it more generally: a check that restates a constraint the
 // model already carries is validation standing where construction was available.
