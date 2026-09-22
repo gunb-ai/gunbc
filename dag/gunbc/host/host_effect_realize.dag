@@ -69,7 +69,7 @@ import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv
 import extdeps.shell.exec
 import extdeps.tools.id { id_uid_argv, id_gid_argv, id_binary_path }
 import extdeps.tools.mkdir { mkdir_parents_argv }
-import extdeps.tools.chown { chown_argv }
+import extdeps.tools.chown { chown_argv, ChownOwnerIds }
 import extdeps.tools.chmod { chmod_add_executable_argv }
 import extdeps.tools.stat { stat_owner_user_argv, stat_owner_group_argv, stat_mode_argv }
 import extdeps.posix.path_ownership {
@@ -2023,7 +2023,7 @@ fn srv3_chown_then_read_back(
   let attempt = srv3_chown_attempt(
     outcome: srv3_elevated_witness_bin_success(
       transport: transport,
-      command: chown_argv(owner: desired, path: path),
+      command: chown_argv(owner: ChownOwnerIds { spec: desired }, path: path),
     ),
   )
   srv3_readback_after_attempt(

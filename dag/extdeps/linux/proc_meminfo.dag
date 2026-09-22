@@ -54,25 +54,59 @@ type MeminfoRead
   = MeminfoParsed { meminfo: ProcMeminfo }
   | MeminfoFieldAbsent { field: NonEmptyStr }
 
+// THE UNIT IS THE DISCRIMINATOR AND IT IS PRESENT IN THE TEXT, so throwing it away and minting a
+// Kibibyte for every line is the one thing this fold must not do (review 69784).
+//
+// /proc/meminfo IS NOT UNIFORMLY kB. Most lines are `Name:   N kB`, and four on every Linux host --
+// HugePages_Total, HugePages_Free, HugePages_Rsvd, HugePages_Surp -- are `Name:   N` with NO unit,
+// because they are counts of PAGES. Reading a page count as a kibibyte value is wrong by the huge
+// page size, 2048x at the usual 2 MiB, and nothing in the resulting type says so: a MemoryMetric
+// carrying 0 pages and a MemoryMetric carrying 0 KiB are indistinguishable, and one carrying 3
+// pages claims 3 KiB. That is DESIGN 5's fabricated plausible output in the small -- syntactically
+// fine, semantically not the quantity it claims -- and DESIGN 3's instruction for extdeps is to
+// model what the API actually returns rather than what would be convenient.
+//
+// SO A LINE BECOMES A MemoryMetric ONLY IF IT SAYS kB. The third token is required and compared,
+// not discarded. A line without it is not a memory measure and has no business in a
+// List<MemoryMetric>; excluding it is the type being honest rather than data being lost.
+//
+// WHAT THIS MEANS FOR all_metrics, said because the name overpromises on its own: it is the
+// kB-DENOMINATED metrics, not every line of the file. The unitless lines are unmodelled here and
+// would need their own carrier -- a page count is a different quantity, not a memory one -- which
+// is a row to add when a consumer exists (DESIGN 3c) rather than a field to fake now.
+data meminfo_kibibyte_unit: String = "kB"
+
 fn meminfo_line_metric(line: String) -> MemoryMetric? {
   let tokens = filter(split(s: line, delimiter: " "), t => trim(s: t) != "")
-  match first(tokens) {
-    Absent => none
-    Present { value: head } =>
-      if !ends_with(s: head, suffix: ":") {
-        none
-      } else {
-        let key = substring(s: head, start: 0, end: length(head) - 1)
-        match first(tokens |> skip(n: 1)) {
-          Absent => none
-          Present { value: raw } =>
-            match parse_int(s: trim(s: raw)) {
-              Absent => none
-              Present { value: n } =>
-                if key == "" || n < 0 { none } else { Present { value: MemoryMetric { key: key as NonEmptyStr, value: kibibyte(count: n) } } }
-            }
+  if count(tokens) != 3 {
+    none
+  } else {
+    match first(tokens) {
+      Absent => none
+      Present { value: head } =>
+        if !ends_with(s: head, suffix: ":") {
+          none
+        } else {
+          let key = substring(s: head, start: 0, end: length(head) - 1)
+          match first(tokens |> skip(n: 1)) {
+            Absent => none
+            Present { value: raw } =>
+              match first(tokens |> skip(n: 2)) {
+                Absent => none
+                Present { value: unit } =>
+                  if trim(s: unit) != meminfo_kibibyte_unit {
+                    none
+                  } else {
+                    match parse_int(s: trim(s: raw)) {
+                      Absent => none
+                      Present { value: n } =>
+                        if key == "" || n < 0 { none } else { Present { value: MemoryMetric { key: key as NonEmptyStr, value: kibibyte(count: n) } } }
+                    }
+                  }
+              }
+          }
         }
-      }
+    }
   }
 }
 
