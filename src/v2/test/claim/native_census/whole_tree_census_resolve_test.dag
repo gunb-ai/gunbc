@@ -59,6 +59,19 @@ data census_clean_source: String = "module v2.census_probe_clean\n\nimport v2.st
 // reference named is no longer reachable. That is a stripped import's residual, one site of it.
 data census_unbound_source: String = "module v2.census_probe_unbound\n\nimport v2.std.logic { Bool }\n\nfn census_probe_unbound_value(p: Bool) -> Bool { census_probe_absent_callee }\n"
 
+// TWO INDEPENDENT REFUSALS IN ONE MODULE -- THE DISCRIMINATOR FOR OCCURRENCE GRAIN.
+//
+// Two declarations, each naming a DIFFERENT absent callee. Neither reference depends on the other,
+// and the module's scope is fixed before its children are walked, so both sites are independently
+// observable: observing the second cannot be an artifact of the first having failed.
+//
+// WHAT MAKES THIS THE DISCRIMINATING RED. A resolver that stops after the first rejected child
+// reports ONE residual row for this module and never sees the second site -- truthful at MODULE
+// grain and an undercount at OCCURRENCE grain, which is the grain XL-2's rehearsal residual needs.
+// The single-site specimen above CANNOT tell those apart: it yields one row either way. So the
+// claim below is the only arm in this file with the power to fail when the walk hides refusals.
+data census_two_source: String = "module v2.census_probe_two\n\nimport v2.std.logic { Bool }\n\nfn census_probe_two_first(p: Bool) -> Bool { census_probe_absent_one }\n\nfn census_probe_two_second(p: Bool) -> Bool { census_probe_absent_two }\n"
+
 // THE POISON SPECIMEN REFUSES IN THE FRONT END, before the resolver is entered at all. The bytes
 // are the same shape as the lane's committed malformed control (fixtures/native_lane_malformed):
 // a string that never terminates, which any honest front end refuses at tokenize.
@@ -94,7 +107,15 @@ data census_probe_ingest: SourceRootIngest = Cons {
         unit: ^census_probe_poison_cu,
         path: "dag/census_probe_poison.dag"
       ),
-      tail: Empty
+      tail: Cons {
+        head: census_probe_read(
+          source: census_two_source,
+          id: ^census_probe_two_artifact,
+          unit: ^census_probe_two_cu,
+          path: "dag/census_probe_two.dag"
+        ),
+        tail: Empty
+      }
     }
   }
 }
@@ -131,6 +152,7 @@ type CensusProbeOutcomes
       unbound: NativeCensusModuleOutcome
       poison: NativeCensusModuleOutcome
       unbound_residual_rows: Int
+      two_residual_rows: Int
     }
 
 fn census_probe_outcome_in(
@@ -177,6 +199,13 @@ fn census_probe_unbound_entry() -> NativeCensusModule {
   }
 }
 
+fn census_probe_two_entry() -> NativeCensusModule {
+  NativeCensusModule {
+    module: "v2.census_probe_two",
+    path: ^census_probe_two_cu
+  }
+}
+
 fn census_probe_outcomes() -> CensusProbeOutcomes {
   match native_test_context_from_ingest(ingest: census_probe_ingest) {
     Rejected { diagnostics: _ } => CensusProbeContextRefused
@@ -196,14 +225,22 @@ fn census_probe_outcomes() -> CensusProbeOutcomes {
               match census_probe_outcome_in(context: context, index: index, module_name: "v2.census_probe_poison") {
                 Absent => CensusProbeContextRefused
                 Present { value: poison_outcome } =>
-                  CensusProbeOutcomesDecided {
-                    clean: clean_outcome,
-                    unbound: unbound_outcome,
-                    poison: poison_outcome,
-                    unbound_residual_rows: census_probe_unbound_rows(
-                      entry: census_probe_unbound_entry(),
-                      outcome: unbound_outcome
-                    )
+                  match census_probe_outcome_in(context: context, index: index, module_name: "v2.census_probe_two") {
+                    Absent => CensusProbeContextRefused
+                    Present { value: two_outcome } =>
+                      CensusProbeOutcomesDecided {
+                        clean: clean_outcome,
+                        unbound: unbound_outcome,
+                        poison: poison_outcome,
+                        unbound_residual_rows: census_probe_unbound_rows(
+                          entry: census_probe_unbound_entry(),
+                          outcome: unbound_outcome
+                        ),
+                        two_residual_rows: census_probe_unbound_rows(
+                          entry: census_probe_two_entry(),
+                          outcome: two_outcome
+                        )
+                      }
                   }
               }
           }
@@ -216,13 +253,13 @@ fn census_probe_outcomes() -> CensusProbeOutcomes {
 // a file would under-report by exactly the files it dropped, and no per-module claim below could
 // see it: each of them asks about a module the roster already produced.
 test fn census_roster_carries_every_declared_module_holds() -> Bool {
-  length(xs: native_census_modules(ingest: census_probe_ingest)) == 3
+  length(xs: native_census_modules(ingest: census_probe_ingest)) == 4
 }
 
 test fn census_unbound_module_is_resolve_refused_holds() -> Bool {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
-    CensusProbeOutcomesDecided { clean: _, unbound: unbound, poison: _, unbound_residual_rows: _ } =>
+    CensusProbeOutcomesDecided { clean: _, unbound: unbound, poison: _, unbound_residual_rows: _, two_residual_rows: _ } =>
       match unbound {
         NativeCensusModuleResolveRefused { diagnostics: _ } => true
         NativeCensusModuleFileRefused => false
@@ -239,7 +276,7 @@ test fn census_unbound_module_is_resolve_refused_holds() -> Bool {
 test fn census_resolve_refusal_yields_a_located_row_per_diagnostic_holds() -> Bool {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
-    CensusProbeOutcomesDecided { clean: _, unbound: unbound, poison: _, unbound_residual_rows: rows } =>
+    CensusProbeOutcomesDecided { clean: _, unbound: unbound, poison: _, unbound_residual_rows: rows, two_residual_rows: _ } =>
       match unbound {
         NativeCensusModuleResolveRefused { diagnostics: d } => rows == length(xs: d.tail) + 1
         NativeCensusModuleFileRefused => false
@@ -255,7 +292,7 @@ test fn census_resolve_refusal_yields_a_located_row_per_diagnostic_holds() -> Bo
 test fn census_poison_module_is_file_refused_not_resolve_refused_holds() -> Bool {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
-    CensusProbeOutcomesDecided { clean: _, unbound: _, poison: poison, unbound_residual_rows: _ } =>
+    CensusProbeOutcomesDecided { clean: _, unbound: _, poison: poison, unbound_residual_rows: _, two_residual_rows: _ } =>
       match poison {
         NativeCensusModuleFileRefused => true
         NativeCensusModuleResolveRefused { diagnostics: _ } => false
@@ -270,11 +307,30 @@ test fn census_poison_module_is_file_refused_not_resolve_refused_holds() -> Bool
 test fn census_clean_module_resolves_holds() -> Bool {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
-    CensusProbeOutcomesDecided { clean: clean, unbound: _, poison: _, unbound_residual_rows: _ } =>
+    CensusProbeOutcomesDecided { clean: clean, unbound: _, poison: _, unbound_residual_rows: _, two_residual_rows: _ } =>
       match clean {
         NativeCensusModuleResolved => true
         NativeCensusModuleFileRefused => false
         NativeCensusModuleResolveRefused { diagnostics: _ } => false
       }
+  }
+}
+
+// TWO INDEPENDENT REFUSALS IN ONE MODULE BOTH REACH THE CENSUS.
+//
+// THE ONLY ARM IN THIS FILE THAT CAN FAIL WHEN THE WALK HIDES REFUSALS. Every other claim asks
+// about a module carrying ONE refusal, and one refusal yields one residual row whether the walk
+// stops at the first or observes them all -- so a green sweep over those arms is consistent with a
+// resolver that discards everything after the first site. This module carries two, in two
+// declarations, naming two different absent callees, so the fan-out's own arithmetic separates the
+// two behaviours: a stopping walk reports ONE row, an occurrence-complete walk reports TWO.
+//
+// RESTORING THE SHORT-CIRCUIT TURNS THIS RED AND LEAVES EVERY OTHER ARM GREEN, which is what makes
+// it the discriminator rather than a restatement of the single-site claim above it.
+test fn census_two_independent_refusals_both_reach_the_census_holds() -> Bool {
+  match census_probe_outcomes() {
+    CensusProbeContextRefused => false
+    CensusProbeOutcomesDecided { clean: _, unbound: _, poison: _, unbound_residual_rows: _, two_residual_rows: rows } =>
+      rows == 2
   }
 }
