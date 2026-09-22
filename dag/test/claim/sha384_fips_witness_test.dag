@@ -10,29 +10,32 @@ fn sha384_ascii(s: String) -> List<UInt8> {
   bytes_octets(b: utf8_encode_bytes(s: s))
 }
 
-// THE TWO SINGLE-BLOCK PUBLISHED VECTORS ARE NOT FLOOR CLAIMS (merge-queue floor run of
-// gunbc#11981, ENROLMENT-MARGIN-REFUSED lines): each is one SHA-384 block on the seed interpreter
-// and each measured inside the CLIFF the enrolment-margin gate exists for -- above the 302ms
-// margin the runner envelope implies and at or beside the 500ms per-subject line, which is the
-// coin-flip band v2.workflow.floor_enrolment_margin refuses to enrol. A one-block hash is already
-// the cheapest case there is, so there is nothing to reduce: the cost is the interpreter's Word64
-// realization, and the honest disposition is the one the three P-384 verifications took. They are
-// ordinary fns so the floor does not plan them, and their consumer is the native gunbc test row
-// that gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier names.
-// SHA-384 KEEPS ITS EXECUTING EVIDENCE ON THE FLOOR: the two-block published vector and the
-// one-octet discriminating red below both stay floor claims.
-// ── SHA-384: FIPS 180-2 Appendix D, the published examples ────────────────────────────────────
-fn sha384_of_the_empty_message_is_the_published_value() -> Bool {
+// THE PUBLISHED VECTORS ARE ONE CLAIM OVER ONE INTERFACE, NOT THREE CLAIMS OVER ONE EACH.
+// Three inputs to sha384_hex establishing one fact -- it reproduces the FIPS 180-2 Appendix D
+// published values -- is a table over a single boundary, not the conjunction of independent cases
+// DESIGN section 3 tells authors to split: splitting these loses no coverage only if each piece can
+// be ENROLLED, and that is exactly what fails here.
+//
+// WHY THEY ARE FOLDED (merge-queue floor run of gunbc#11981, ENROLMENT-MARGIN-REFUSED lines;
+// review 69978). Split, each single-block vector measures AT OR BESIDE the 500ms per-subject line
+// -- inside the coin-flip band v2.workflow.floor_enrolment_margin refuses, where a typed admission
+// goes stale on a faster run and BLOCKS the required lane ("at or under the line it is stale and
+// blocks"). A one-block hash has nothing left to reduce: the cost is the seed interpreter's Word64
+// realization, not the claim's shape. So neither the demotion first tried here nor three separate
+// enrolments is available. Folded, the claim bills the SUM of three readings this PR's run already
+// took individually, which is stably and necessarily above the line, so ONE typed admission covers
+// it and cannot go stale while the interpreter realizes SHA-384 this way.
+//
+// WHAT THIS RESTORES. The empty message is the ONLY executing evidence of the padding-only path of
+// FIPS 180-2 section 5.1.2 -- a zero-length message is all padding -- and the one-octet red below
+// exercises single-block padding but never against a published value and never at length zero.
+// Demoting it dropped that path off the acceptance path entirely; folding it back is what keeps
+// the published-vector evidence executing rather than merely declared.
+// -- SHA-384: FIPS 180-2 Appendix D, the published examples ------------------------------------
+test fn sha384_reproduces_the_published_fips_180_2_vectors() -> Bool {
   sha384_hex(message: []) == "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b"
-}
-
-fn sha384_of_abc_is_the_published_one_block_value() -> Bool {
-  sha384_hex(message: sha384_ascii(s: "abc")) == "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7"
-}
-
-// 896 bits: the padding no longer fits the first 1024-bit block, so this is the two-block path.
-test fn sha384_of_the_896_bit_message_is_the_published_two_block_value() -> Bool {
-  sha384_hex(message: sha384_ascii(s: "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu")) == "09330c33f71147e83d192fc782cd1b4753111b173b3b05d22fa08086e3b0f712fcc7c71a557e2db966c3e9fa91746039"
+    && sha384_hex(message: sha384_ascii(s: "abc")) == "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7"
+    && sha384_hex(message: sha384_ascii(s: "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu")) == "09330c33f71147e83d192fc782cd1b4753111b173b3b05d22fa08086e3b0f712fcc7c71a557e2db966c3e9fa91746039"
 }
 
 // One changed octet changes the digest, and the digest is 48 octets: the discriminating red.
