@@ -226,7 +226,7 @@ data whole_corpus_compile_public_root_receipt: WholeCorpusCompileDemandReceipt =
 
 // THE PUBLIC ROOT'S MEASURED PEAK IS ITS OWN ROW, CONSUMED BY THE DEMAND ROW BELOW AND BY THE
 // ONE CONSUMER THAT SIZES A PROCESS BY IT (gunbc.runner_slot_allocation
-// microvm_controller_slice_memory_max_bytes: the microVM slot controller resolves the same
+// microvm_controller_slice_memory_max: the microVM slot controller resolves the same
 // closure this row measured). A projection that matched the demand's arms would have needed an
 // answer for UnmeasuredRoot, and there is none that is not fabricated (review 69931); reading the
 // figure as the row the measured arm is BUILT FROM leaves nothing to answer -- if this root ever

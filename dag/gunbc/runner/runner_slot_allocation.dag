@@ -2,7 +2,7 @@ module gunbc.runner_slot_allocation
 
 import std.types { Int, String, List, Bool }
 import std.nat { Nat, nat_range_inclusive }
-import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_add, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.realization_width { byte_size_saturating_sub }
 import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -236,7 +236,7 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
 // THE INDEX IS AUTHORED, NOT THE TOP OF THE WIDTH, for the reason fabric_first_slot_index gives:
 // an index at the width moves when the width moves. 13 sits above the twelve GitHub slots srv1
 // runs and below its memory-admitted width.
-data gunbc_microvm_shakedown_slot_memory_max_bytes: Int = 30064771072
+data gunbc_microvm_shakedown_slot_memory_max: ByteSize = byte_size(30064771072)
 
 data gunbc_microvm_shakedown_slot_index: Nat = 13
 
@@ -258,9 +258,9 @@ fn gunbc_runner_slot_desired_for(slot: RunnerSlotIdentity) -> RunnerSlotDesired 
   let fleet = gunbc_runner_slot_desired()
   if slot_is_microvm_shakedown_slot(slot: slot) {
     RunnerSlotDesired {
-      memory_max: byte_size(gunbc_microvm_shakedown_slot_memory_max_bytes),
+      memory_max: gunbc_microvm_shakedown_slot_memory_max,
       memory_swap_max: byte_size(0),
-      memory_high: byte_size(gunbc_microvm_shakedown_slot_memory_max_bytes),
+      memory_high: gunbc_microvm_shakedown_slot_memory_max,
       tasks_max: fleet.tasks_max,
       cpu_weight: fleet.cpu_weight,
       cpu_quota: fleet.cpu_quota,
@@ -565,14 +565,21 @@ fn host_memory_admitted_width(host: HostIdentity) -> Int {
 // controller's closure is the same front half that row measured) plus headroom for the typed-module
 // cache the seed sizes against its budget. gunbc.runner_microvm_slot_unit renders it into
 // gunbc-microvm-controller.slice and carries the srv1 readings behind it.
-data microvm_controller_slice_cache_headroom_bytes: Int = 8589934592
+data microvm_controller_slice_cache_headroom: ByteSize = byte_size(8589934592)
 
-fn microvm_controller_slice_memory_max_bytes() -> Int {
-  byte_size_count(b: whole_corpus_compile_public_root_peak) + microvm_controller_slice_cache_headroom_bytes
+// THE SUM STAYS IN THE CARRIER. An earlier cut of this function unwrapped
+// whole_corpus_compile_public_root_peak with byte_size_count, added a bare Int, and let
+// gunbc.runner_microvm_slot_unit re-wrap the result one module later -- which is this same change
+// MINTING a ByteSize authority and discarding it on the next line (review 70050). std.measure
+// measure_add is the existing surface for adding two measures of one quantity and scale, so
+// reaching past it to Int arithmetic is DESIGN section 2's re-invention of a concept that already
+// has a home.
+fn microvm_controller_slice_memory_max() -> ByteSize {
+  measure_add(a: whole_corpus_compile_public_root_peak, b: microvm_controller_slice_cache_headroom)
 }
 
-fn gunbc_microvm_shakedown_slot_charge_bytes() -> Int {
-  gunbc_microvm_shakedown_slot_memory_max_bytes + microvm_controller_slice_memory_max_bytes()
+fn gunbc_microvm_shakedown_slot_charge() -> ByteSize {
+  measure_add(a: gunbc_microvm_shakedown_slot_memory_max, b: microvm_controller_slice_memory_max())
 }
 
 // THE WIDTH COST OF THE SHAKEDOWN SLOT IS DERIVED HERE AND NOWHERE ELSE. The host that carries it
@@ -581,12 +588,22 @@ fn gunbc_microvm_shakedown_slot_charge_bytes() -> Int {
 // rather than a number written into the declaration. An envelope that cannot hold the charge at
 // all admits zero, which gunbc.ci_runner_placement refuses by name exactly as it refuses an
 // unestablished host.
+// 🟡 dissolve-on: feature:fleet-slot-row-on-a-measure-carrier -- this fold stays on bare Int
+// DELIBERATELY, and the reason is that its DIVISOR is not this change's to move. It divides by
+// gunbc_runner_slot_memory_max_bytes, an Int row standing on main, so converting the fold alone
+// would take a ByteSize envelope, unwrap it to divide by that row, and re-wrap -- the same
+// carrier-drop review 70050 raises about the controller slice, relocated rather than removed. The
+// sums this change OWNS moved into the carrier (microvm_controller_slice_memory_max,
+// gunbc_microvm_shakedown_slot_charge); the quotient moves when the fleet row does, and
+// std.measure measure_fit_count_floor is the surface that then owns the division and its
+// zero-divisor guard. DISSOLVES WHEN gunbc_runner_slot_memory_max_bytes carries ByteSize.
 fn memory_admitted_width_of_envelope(envelope_bytes: Int, carries_shakedown_slot: Bool) -> Int {
+  let charge_bytes = byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
   if carries_shakedown_slot {
-    if envelope_bytes < gunbc_microvm_shakedown_slot_charge_bytes() {
+    if envelope_bytes < charge_bytes {
       0
     } else {
-      1 + (envelope_bytes - gunbc_microvm_shakedown_slot_charge_bytes()) / gunbc_runner_slot_memory_max_bytes
+      1 + (envelope_bytes - charge_bytes) / gunbc_runner_slot_memory_max_bytes
     }
   } else {
     envelope_bytes / gunbc_runner_slot_memory_max_bytes
