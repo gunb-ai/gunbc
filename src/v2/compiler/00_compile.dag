@@ -1158,26 +1158,34 @@ fn stage_translate(target: TargetModel) -> fn(ResolvedTree) -> Outcome<Medium<St
   }
 }
 
+// A REFUSED STAGE ADMISSION REFUSES THE COMPILE. cached_stage_realization answers
+// Outcome<CachedStageRealization> because an unmet materialization obligation is not a licence
+// to run the stage unmemoized -- it is a typed cause, and this spine already speaks Outcome, so
+// it is returned as the stage outcome rather than absorbed into the recompute arm.
 fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcome<Medium<String>> {
-  let lm = dag_language_model()
-  let pipeline = then_outcome(
-      f: stage_tokenize(lm: lm),
-      g: then_outcome(
-        f: stage_parse(lm: lm),
-        g: then_outcome(
-          f: stage_normalize(),
+  match cached_stage_realization() {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: realization, diagnostics: _ } =>
+      let lm = dag_language_model()
+      let pipeline = then_outcome(
+          f: stage_tokenize(lm: lm),
           g: then_outcome(
-            f: cached_stage_governed(
-              realization: cached_stage_realization(),
-              lookup: resolve_cache_miss,
-              stage: stage_resolve(lm: lm)
-            ),
-            g: stage_translate(target: target)
+            f: stage_parse(lm: lm),
+            g: then_outcome(
+              f: stage_normalize(),
+              g: then_outcome(
+                f: cached_stage_governed(
+                  realization: realization,
+                  lookup: resolve_cache_miss,
+                  stage: stage_resolve(lm: lm)
+                ),
+                g: stage_translate(target: target)
+              )
+            )
           )
         )
-      )
-    )
-  pipeline(source)
+      pipeline(source)
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
