@@ -528,6 +528,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         // (leaving the native job selecting zero phases), or a selected lane owning zero
         // phases in the authority, stops the line here rather than greening over an
         // unmeasured population.
+        v1_compiler::cli_run::floor_seam("lane-roster");
         let authority_lane_rows =
             match v1_compiler::cli_run::authority_lane_phase_rows(&source_roots) {
                 Ok(rows) => Some(rows),
