@@ -32,7 +32,7 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.provenance { SpanIndex, span_index_textual_locus_optional }
+import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_textual_locus_optional }
 import v2.std.text { String }
 import std.occurrence_identity {
   OccurrenceId,
@@ -115,13 +115,6 @@ fn attribution_has_byte_range(index: SpanIndex, id: OccurrenceId) -> Bool {
   }
 }
 
-fn attribution_id_of(node: Node) -> Optional<OccurrenceId> {
-  match node.occurrence_id {
-    OccurrenceSynthetic => optional_absent()
-    OccurrenceMinted { id: id } => optional_present(value: id)
-    OccurrenceProjected { id: id, caused_by: _ } => optional_present(value: id)
-  }
-}
 
 fn attribution_roots() -> Outcome<LocatedIngestRoots> {
   located_roots_and_spans_from_source_root_ingest(
@@ -207,10 +200,10 @@ test fn two_files_mint_distinct_root_occurrences_holds() -> Bool {
           match attribution_root_for_path(located: roots.located, path: "src/v2/test/fixture/attribution/attribution_b.dag") {
             Absent => false
             Present { value: tree_b } =>
-              match attribution_id_of(node: tree_a.root) {
+              match node_occurrence_id_optional(node: tree_a.root) {
                 Absent => false
                 Present { value: id_a } =>
-                  match attribution_id_of(node: tree_b.root) {
+                  match node_occurrence_id_optional(node: tree_b.root) {
                     Absent => false
                     Present { value: id_b } => !(id_a == id_b)
                   }
@@ -230,7 +223,7 @@ test fn attributed_occurrence_carries_a_byte_range_holds() -> Bool {
       match attribution_root_for_path(located: roots.located, path: "src/v2/test/fixture/attribution/attribution_a.dag") {
         Absent => false
         Present { value: tree } =>
-          match attribution_id_of(node: tree.root) {
+          match node_occurrence_id_optional(node: tree.root) {
             Absent => false
             Present { value: id } => attribution_has_byte_range(index: roots.spans, id: id)
           }
@@ -424,10 +417,10 @@ fn native_route_roots_have_distinct_occurrences(roots: FreeMonoid<NormalizedTree
       match rest {
         Empty => false
         Cons { head: second, tail: _ } =>
-          match attribution_id_of(node: first.root) {
+          match node_occurrence_id_optional(node: first.root) {
             Absent => false
             Present { value: id_a } =>
-              match attribution_id_of(node: second.root) {
+              match node_occurrence_id_optional(node: second.root) {
                 Absent => false
                 Present { value: id_b } => !(id_a == id_b)
               }

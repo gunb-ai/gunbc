@@ -279,17 +279,16 @@ fn program_assembly_phase_token_count(tokens: Outcome<TokenStream>) -> Int {
   }
 }
 
-// THE SEEDED PER-FILE FRONT END, WHICH IS THE ONE THE INGEST FOLD USES. It differs from the
-// projection below in exactly one respect: the occurrence ids it mints continue the ingest's count
-// instead of restarting, and it hands back the artifact so the fold can read the mark it reached
-// and the spans it recorded. Normalize is applied to the artifact's tree, so the normalized nodes
-// carry occurrence ids drawn from the SAME ingest-wide sequence the span index is keyed by -- that
-// agreement is what makes the later join a lookup rather than a search.
-type ProgramAssemblySeededRead {
-  tree: NormalizedTree,
-  alloc: OccurrenceIdAllocator,
-  spans: SpanIndex
-}
+// THE SEEDED PER-FILE FRONT END, WHICH IS THE ONE THE INGEST FOLD USES. The occurrence ids it mints
+// continue the ingest's count instead of restarting, and it hands back the mark it reached and the
+// spans it recorded so the fold can thread them. Normalize is applied to the parse artifact's tree,
+// so the normalized nodes carry occurrence ids drawn from the SAME ingest-wide sequence the span
+// index is keyed by -- that agreement is what makes the later join a lookup rather than a search.
+//
+// (This paragraph described an earlier carrier, `ProgramAssemblySeededRead`, which the restructure
+// to the three-field result below replaced and which survived as an unconstructed declaration --
+// DESIGN section 3c's "pub declaration with no call site in the closure", found by review 70027.
+// The type is deleted and its reasoning folded here, onto the carrier that exists.)
 
 // THE SPANS SURVIVE THIS READ'S OWN REFUSAL, which is the same reason IngestAssembly exists one
 // layer up: a file that PARSED and then failed to normalize or graft has a fully recorded span

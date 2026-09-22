@@ -23,7 +23,7 @@ import extdeps.languages.json.emit { quote_json_string }
 import v2.std.node { Node, Symbol }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.provenance { SpanIndex, span_index_empty, span_index_textual_locus_optional }
+import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_empty, span_index_textual_locus_optional }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
 
@@ -139,7 +139,7 @@ fn lens_verdict_node_occurrence_text(node: Node) -> String {
 // a derivation chain that bottoms out in no textual origin all render exactly as they did before.
 // Nothing here can invent a file; it can only find one that was recorded.
 fn lens_verdict_node_occurrence_text_in_spans(node: Node, index: SpanIndex) -> String {
-  match lens_verdict_node_occurrence_id_optional(node: node) {
+  match node_occurrence_id_optional(node: node) {
     Absent => lens_verdict_node_occurrence_text(node: node)
     Present { value: id } =>
       match span_index_textual_locus_optional(index: index, id: id) {
@@ -151,14 +151,6 @@ fn lens_verdict_node_occurrence_text_in_spans(node: Node, index: SpanIndex) -> S
             _ => lens_verdict_node_occurrence_text(node: node)
           }
       }
-  }
-}
-
-fn lens_verdict_node_occurrence_id_optional(node: Node) -> Optional<OccurrenceId> {
-  match node.occurrence_id {
-    OccurrenceSynthetic => optional_absent()
-    OccurrenceMinted { id: id } => optional_present(value: id)
-    OccurrenceProjected { id: id, caused_by: _ } => optional_present(value: id)
   }
 }
 
