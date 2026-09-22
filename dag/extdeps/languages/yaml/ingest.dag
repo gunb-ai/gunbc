@@ -263,7 +263,7 @@ fn yaml_string_reads_back_plain(s: String) -> Bool {
 }
 
 fn yaml_string_reads_back_as_plain_key(k: String) -> Bool {
-  (trim(k) == k) && (yaml_plain_key_refusal(k: k) == "") && !string_contains(s: k, pattern: ": ") && !ends_with(s: k, suffix: ":")
+  (trim(k) == k) && !string_contains(s: k, pattern: "\n") && (yaml_plain_key_refusal(k: k) == "") && !string_contains(s: k, pattern: ": ") && !ends_with(s: k, suffix: ":")
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -438,26 +438,29 @@ fn yaml_flow_entries(entries: List<String>, index: Int, acc: List<YamlValue>) ->
 }
 
 // Splits at the commas that are outside quotes. Quote state is tracked character by character; a
-// backslash inside double quotes skips the character after it.
-fn yaml_flow_split(s: String, i: Int, start: Int, quote: String, acc: List<String>) -> List<String> {
+// backslash inside double quotes skips the character after it. A quoted scalar can only OPEN where
+// an entry opens (section 7.3), so `at_entry_start` carries that position: a quote anywhere else is
+// ordinary plain content, and entering quote mode there would hide the following commas from the
+// splitter and read `[a'b,c]` as one entry instead of two.
+fn yaml_flow_split(s: String, i: Int, start: Int, quote: String, at_entry_start: Bool, acc: List<String>) -> List<String> {
   if i >= s.length() {
     concat(acc, [substring(s: s, start: start, end: s.length())])
   } else {
     let c = char_at(s, i)
     if quote == "" {
       if c == "," {
-        yaml_flow_split(s: s, i: i + 1, start: i + 1, quote: "", acc: concat(acc, [substring(s: s, start: start, end: i)]))
-      } else if (c == "\"") || (c == "'") {
-        yaml_flow_split(s: s, i: i + 1, start: start, quote: c, acc: acc)
+        yaml_flow_split(s: s, i: i + 1, start: i + 1, quote: "", at_entry_start: true, acc: concat(acc, [substring(s: s, start: start, end: i)]))
+      } else if at_entry_start && ((c == "\"") || (c == "'")) {
+        yaml_flow_split(s: s, i: i + 1, start: start, quote: c, at_entry_start: false, acc: acc)
       } else {
-        yaml_flow_split(s: s, i: i + 1, start: start, quote: "", acc: acc)
+        yaml_flow_split(s: s, i: i + 1, start: start, quote: "", at_entry_start: at_entry_start && (c == " "), acc: acc)
       }
     } else if (quote == "\"") && (c == "\\") {
-      yaml_flow_split(s: s, i: i + 2, start: start, quote: quote, acc: acc)
+      yaml_flow_split(s: s, i: i + 2, start: start, quote: quote, at_entry_start: false, acc: acc)
     } else if c == quote {
-      yaml_flow_split(s: s, i: i + 1, start: start, quote: "", acc: acc)
+      yaml_flow_split(s: s, i: i + 1, start: start, quote: "", at_entry_start: false, acc: acc)
     } else {
-      yaml_flow_split(s: s, i: i + 1, start: start, quote: quote, acc: acc)
+      yaml_flow_split(s: s, i: i + 1, start: start, quote: quote, at_entry_start: false, acc: acc)
     }
   }
 }
@@ -470,7 +473,7 @@ fn yaml_flow_sequence(v: String) -> YamlScalarResult {
     if inner == "" {
       ReadYamlScalar { value: YamlSequence { elements: [] } }
     } else if string_contains(s: inner, pattern: "\"") || string_contains(s: inner, pattern: "'") {
-      yaml_flow_entries(entries: yaml_flow_split(s: inner, i: 0, start: 0, quote: "", acc: []), index: 0, acc: [])
+      yaml_flow_entries(entries: yaml_flow_split(s: inner, i: 0, start: 0, quote: "", at_entry_start: true, acc: []), index: 0, acc: [])
     } else {
       yaml_flow_entries(entries: split(s: inner, delimiter: ","), index: 0, acc: [])
     }

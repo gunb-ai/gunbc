@@ -118,6 +118,21 @@ test fn flow_sequences_split_on_commas_outside_quotes() -> Bool {
   ] })
 }
 
+// A quote can only OPEN a scalar where an entry opens. Inside a plain scalar it is ordinary
+// content, so the commas after it are still separators.
+test fn a_quote_inside_a_plain_flow_entry_is_content_not_an_opener() -> Bool {
+  reads(src: "a: [a'b,c]\nb: [x\"y, z]\nc: [ \"p, q\" , r]\n", v: YamlMapping { entries: [
+    YamlKeyValue { key: "a", value: YamlSequence { elements: [str(s: "a'b"), str(s: "c")] } },
+    YamlKeyValue { key: "b", value: YamlSequence { elements: [str(s: "x\"y"), str(s: "z")] } },
+    YamlKeyValue { key: "c", value: YamlSequence { elements: [str(s: "p, q"), str(s: "r")] } }
+  ] })
+}
+
+// Red control: the entry may not absorb the separator that follows the embedded quote.
+test fn red_an_embedded_quote_does_not_hide_the_separator() -> Bool {
+  !reads(src: "a: [a'b,c]\n", v: one(key: "a", v: YamlSequence { elements: [str(s: "a'b,c")] }))
+}
+
 test fn red_nested_and_unclosed_flow_sequences_refuse() -> Bool {
   refuses_at(src: "a: [x, [y]]\n", line: 1, reason_part: "indicator")
     && refuses_at(src: "a: [x,\n  y]\n", line: 1, reason_part: "close on its own line")

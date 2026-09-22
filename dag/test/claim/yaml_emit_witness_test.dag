@@ -75,6 +75,17 @@ test fn every_multiline_string_round_trips_in_a_mapping_and_a_sequence() -> Bool
     && all(multiline_strings, s => round_trips(v: field(k: "items", v: YamlSequence { elements: [str(s: s), str(s: "after")] })))
 }
 
+// KEYS CARRY THE SAME CONTRACT AS VALUES. A key holding a line break cannot be written plain: the
+// predicate used to admit it, and the writer then reported success on a document the reader either
+// refuses or reads as different structure.
+test fn every_multiline_string_round_trips_as_a_key() -> Bool {
+  all(multiline_strings, s => round_trips(v: field(k: s, v: str(s: "x"))))
+}
+
+test fn red_a_key_with_a_line_break_is_double_quoted() -> Bool {
+  emitted(v: field(k: "a\nb", v: str(s: "x"))) == "\"a\\nb\": x\n"
+}
+
 // The literal carries its final line breaks in its chomping indicator, and keeps empty lines.
 test fn literal_blocks_pick_the_chomping_indicator_and_keep_empty_lines() -> Bool {
   (emitted(v: field(k: "run", v: str(s: "a\n\nb"))) == "run: |-\n  a\n\n  b\n")
