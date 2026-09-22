@@ -102,7 +102,7 @@ import gunbc.fabric_source_snapshot {
   TrustedOwners,
   ProviderPrincipal,
   establish_provider_base,
-  observe_trusted_owners,
+  trusted_owners_of,
   observe_provider_principal,
   provider_base_layouts,
   provider_layout,
@@ -886,10 +886,10 @@ fn author_open_directory(path: String) -> Bool {
 // provider_base_layouts and the control would keep passing while production admitted something
 // else. It asks the module for its layouts and requires that at least one of them is admissible on
 // this host, which is the same question a real allocation asks.
-fn admit_a_real_provider_layout(trusted: TrustedOwners) -> ProviderRootAdmission {
+fn admit_a_real_provider_layout() -> ProviderRootAdmission {
   match observe_provider_principal() {
     Absent =>
-      ProviderRootRefused { root: "", cause: "this process could not name its own uid" }
+      ProviderRootRefused { root: "", cause: "this process could not name its own principal" }
     Present { value: principal } =>
       fold(
         provider_base_layouts(principal: principal),
@@ -898,7 +898,10 @@ fn admit_a_real_provider_layout(trusted: TrustedOwners) -> ProviderRootAdmission
           match acc {
             ProviderRootAdmitted { root: r } => ProviderRootAdmitted { root: r }
             ProviderRootRefused { root: _, cause: previous } =>
-              match establish_provider_base(layout: layout, trusted: trusted) {
+              match establish_provider_base(
+                layout: layout,
+                trusted: trusted_owners_of(principal: principal),
+              ) {
                 ProviderRootAdmitted { root: r } => ProviderRootAdmitted { root: r }
                 ProviderRootRefused { root: r2, cause: c } =>
                   ProviderRootRefused { root: r2, cause: join([previous, "; ", c], "") }
@@ -926,14 +929,15 @@ fn admit_a_real_provider_layout(trusted: TrustedOwners) -> ProviderRootAdmission
 // it does not trust, for whoever watches that parent to act on. Asserting only the refusal arm
 // would pass for exactly that implementation, which is the one this control replaced.
 fn run_unsafe_allocation_root_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
-  match observe_trusted_owners() {
+  match observe_provider_principal() {
     Absent =>
       SnapshotScenarioFailed {
         scenario: "unsafe-allocation-root",
         step: "identity",
         detail: "this process could not name its own principal",
       }
-    Present { value: trusted } =>
+    Present { value: principal } =>
+      let trusted = trusted_owners_of(principal: principal)
       let open_parent = join([workspace.root, "/open-parent"], "")
       if !author_open_directory(path: open_parent) {
         SnapshotScenarioFailed {
@@ -961,7 +965,7 @@ fn run_unsafe_allocation_root_scenario(workspace: SnapshotWorkspace) -> Snapshot
                 detail: "the refusal was correct but the base had already been created under the unsafe parent",
               }
             } else {
-              match admit_a_real_provider_layout(trusted: trusted) {
+              match admit_a_real_provider_layout() {
                 ProviderRootRefused { root: _, cause: c } =>
                   SnapshotScenarioFailed {
                     scenario: "unsafe-allocation-root",
@@ -1000,14 +1004,15 @@ fn run_unsafe_allocation_root_scenario(workspace: SnapshotWorkspace) -> Snapshot
 // goes red again the moment a second pathname operation reappears between creating the base and
 // trusting it.
 fn run_squatted_base_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
-  match observe_trusted_owners() {
+  match observe_provider_principal() {
     Absent =>
       SnapshotScenarioFailed {
         scenario: "squatted-base",
         step: "identity",
         detail: "this process could not name its own principal",
       }
-    Present { value: trusted } =>
+    Present { value: principal } =>
+      let trusted = trusted_owners_of(principal: principal)
       let squatted = join([workspace.root, "/squatted-base"], "")
       if !author_open_directory(path: squatted) {
         SnapshotScenarioFailed {

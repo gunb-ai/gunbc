@@ -805,14 +805,18 @@ fn level_is_safe(observed: LevelObservation, trusted: TrustedOwners) -> Bool {
   }
 }
 
-fn observe_trusted_owners() -> TrustedOwners? {
-  let me = shell.Id.UserName()
-  if !me.success {
-    none
-  } else {
-    let named = trim(s: me.stdout)
-    if named == "" { none } else { Present { value: TrustedOwners { me: named as NonEmptyStr } } }
-  }
+// THE PRINCIPAL IS OBSERVED ONCE AND EVERYTHING ABOUT IT IS DERIVED FROM THAT ONE READING.
+//
+// There were two observations of the same fact: a second observer, since deleted, ran `id -un` for
+// the ownership predicate while `observe_provider_principal` ran it again for the base name, and
+// the selection called both. (The deleted one is described rather than named, because a citation to
+// a symbol that no longer resolves is the stale reference DESIGN section 3 makes decidable.) Two reads of one fact can disagree, so the name in
+// /tmp/gunbc-provider-<name> and the name the level rule trusts could come from different readings
+// -- and this module argues against exactly that one field over, where the base and its ancestry
+// were two values a caller filled separately until they were derived from one chain. Found by
+// review 69871 on gunbc#11960; the same law, the same module, one type along.
+fn trusted_owners_of(principal: ProviderPrincipal) -> TrustedOwners {
+  TrustedOwners { me: principal.name }
 }
 
 fn observe_provider_principal() -> ProviderPrincipal? {
@@ -1003,35 +1007,35 @@ type ProviderRootSelection
   | ProviderRootNoneAdmissible { detail: String }
 
 fn select_provider_root() -> ProviderRootSelection {
-  match observe_trusted_owners() {
+  match observe_provider_principal() {
     Absent =>
       ProviderRootNoneAdmissible {
-        detail: "this process could not name its own principal, so no owner is trusted",
+        detail: "this process could not name its own principal, so no base can be constructed and no owner is trusted",
       }
-    Present { value: trusted } =>
-      match observe_provider_principal() {
-        Absent =>
-          ProviderRootNoneAdmissible {
-            detail: "this process could not name its own uid, so no base can be constructed",
-          }
-        Present { value: principal } =>
-      fold(
-        provider_base_layouts(principal: principal),
-        init: ProviderRootNoneAdmissible { detail: "no provider base was considered" },
-        f: fn(acc, layout) {
-          match acc {
-            ProviderRootSelected { root: r } => ProviderRootSelected { root: r }
-            ProviderRootNoneAdmissible { detail: previous } =>
-              match establish_provider_base(layout: layout, trusted: trusted) {
-                ProviderRootAdmitted { root: r } => ProviderRootSelected { root: r }
-                ProviderRootRefused { root: r, cause: c } =>
-                  ProviderRootNoneAdmissible { detail: join([previous, "; ", r, ": ", c], "") }
-              }
-          }
-        },
-      )
-      }
+    Present { value: principal } => select_admissible_base(principal: principal)
   }
+}
+
+// THE FIRST LAYOUT THAT ADMITS WINS, AND A LAYOUT THAT DOES NOT IS CARRIED AS A CAUSE RATHER THAN
+// DROPPED. A host with no /run/user/<uid> should not have to guess why it ended up in /tmp, and a
+// host where NEITHER admits gets both refusals in one message instead of only the last.
+fn select_admissible_base(principal: ProviderPrincipal) -> ProviderRootSelection {
+  let trusted = trusted_owners_of(principal: principal)
+  fold(
+    provider_base_layouts(principal: principal),
+    init: ProviderRootNoneAdmissible { detail: "no provider base was considered" },
+    f: fn(acc, layout) {
+      match acc {
+        ProviderRootSelected { root: r } => ProviderRootSelected { root: r }
+        ProviderRootNoneAdmissible { detail: previous } =>
+          match establish_provider_base(layout: layout, trusted: trusted) {
+            ProviderRootAdmitted { root: r } => ProviderRootSelected { root: r }
+            ProviderRootRefused { root: r, cause: c } =>
+              ProviderRootNoneAdmissible { detail: join([previous, "; ", r, ": ", c], "") }
+          }
+      }
+    },
+  )
 }
 
 fn allocate_provider_workspace() -> ProviderWorkspaceAllocation {

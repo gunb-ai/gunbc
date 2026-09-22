@@ -383,29 +383,19 @@ service shell.Mktemp {
   }
 }
 
-// New IS PLAIN `mkdir`, AND ITS RATIONALE SITS HERE for the module-item-grain reason the Test
-// service records. It FAILS when the name already exists -- including when it exists as a symlink
-// -- which is the whole point: a caller that must know whether it CREATED a directory cannot learn
-// that from `mkdir -p`, which succeeds either way. Adopting an existing directory at a predictable
-// name is how a squatted path gets reused, so the distinction is a security boundary rather than a
-// convenience.
+// NewOwnerOnly FAILS WHEN THE NAME ALREADY EXISTS -- including when it exists as a symlink -- and
+// its rationale sits here for the module-item-grain reason the Test service records. That failure
+// is the point rather than an inconvenience: a caller that must know whether it CREATED a directory
+// cannot learn it from `mkdir -p`, which succeeds either way, and adopting an existing directory at
+// a predictable name is how a squatted path gets reused. The mode is applied AT CREATION, so the
+// name never exists at a wider one and no second pathname operation is needed to narrow it.
 service shell.Mkdir {
-  operation New {
-    input { path: FilePath }
-    output { success: Bool from "exit_success" }
-    transport shell { argv: ["mkdir", "--", "{path}"] }
-    exit {
-      0 => Unit "Directory created; fails if the name exists at all, which is the exclusivity this relies on"
-      nonzero => String "mkdir failed"
-    }
-  }
-
   operation NewOwnerOnly {
     input { path: FilePath }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["mkdir", "-m", "0700", "--", "{path}"] }
     exit {
-      0 => Unit "Directory created AT 0700; the mode is applied at creation, so the name never exists at a wider one and no second pathname operation is needed to narrow it"
+      0 => Unit "Directory created AT 0700; fails if the name exists at all, so success is proof this process created it"
       nonzero => String "mkdir -m 0700 failed"
     }
   }
