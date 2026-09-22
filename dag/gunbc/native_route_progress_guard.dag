@@ -278,19 +278,58 @@ fn native_adjudication_same(a: NativeVerdictAdjudication, b: NativeVerdictAdjudi
   a.authority == b.authority
 }
 
+// A FOURTH ARM, FOR A TREE THAT CAN NEVER BE A LANDED ONE (manager relay of witty-cat-84's case
+// on gunbc#12009, 2026-09-22). The three roles above answer "what is this tree's relation to
+// main"; none of them answers "could this tree ever land", and those are different questions.
+//
+// THEIR CASE, WHICH IS THIS DEFECT CLASS FROM THE OPPOSITE END. They met all three conjuncts of a
+// rung-flip trigger HONESTLY -- on a measurement composition, their head plus two cherry-picked
+// emitter files, that will never exist as a landed tree. By the letter, compliant; landing it
+// would have flipped a standing to `LivePairRequired` on a tree where the required observation is
+// impossible, taking a lane from enrolled-red-and-tolerated to required-and-failing. Their
+// phrasing of the shared class is better than mine and is kept verbatim: A VERDICT THAT IS ONLY
+// MEANINGFUL RELATIVE TO A CONTEXT THE VERDICT DOES NOT CARRY.
+//
+// WHY A BRANCH ARM DOES NOT COVER IT, which is the tempting fold and is wrong in the direction
+// that matters: a branch head CAN land -- that is what a branch is for -- so classifying an author
+// composition as one asserts a future that will not happen, and a consumer checking "evidence
+// composition equals landing composition" would be handed a tree it must reject as one it may
+// accept. A tree sha does not distinguish a landable ref from an assembled measurement tree; both
+// hash.
+//
+// THE SECOND CONSUMER IS WHY THIS LANDS NOW RATHER THAN WHEN NEEDED. `native_progress_baseline_
+// advance` is this module's own consumer; gunbc#12009's flip check is an independent one reached
+// from the other direction, and it turns their question into a decidable check. A capability with
+// one consumer is a bet (DESIGN section 3c); with two independent ones it is a modelled fact.
 type NativeObservationProvenance
   = MainBaselineObservation { head: String }
   | BranchObservation { branch: String, head: String }
   | HistoricalMainObservation { tree: String, note: String }
+  | AuthorCompositionObservation { base_head: String, overlay: String, note: String }
 
 // THE REFUSALS ARE KEPT APART BECAUSE THEIR REMEDIES ARE DIFFERENT, and two of them are the two
 // roles above: a stale main observation is refreshed by re-measuring on today's main, and a
 // branch observation is not refreshable at all -- the remedy is to land the branch. Telling a
 // reader to re-run a branch measurement is sending them on an errand that cannot finish.
+// THE PREDICATE THE SECOND CONSUMER READS, and it is deliberately not "did this advance the
+// ratchet". A flip check asks whether the tree an observation was made on is one that can BE the
+// landing tree; a ratchet asks whether it may raise the floor. `HistoricalMainObservation` is
+// landable and stale -- it was main -- which is precisely why the two questions need two
+// functions rather than one.
+fn native_observation_is_on_a_landable_tree(p: NativeObservationProvenance) -> Bool {
+  match p {
+    MainBaselineObservation { head: _ } => true
+    BranchObservation { branch: _, head: _ } => true
+    HistoricalMainObservation { tree: _, note: _ } => true
+    AuthorCompositionObservation { base_head: _, overlay: _, note: _ } => false
+  }
+}
+
 type NativeBaselineAdvance
   = BaselineMayAdvance { head: String }
   | BaselineAdvanceRefusedHistorical { tree: String }
   | BaselineAdvanceRefusedNeverMain { branch: String, head: String }
+  | BaselineAdvanceRefusedNotALandableTree { base_head: String, overlay: String }
   | BaselineAdvanceRefusedUnreached { reach: NativeRunReach }
   | BaselineAdvanceRefusedProgressLost
 
@@ -348,89 +387,82 @@ fn native_stage_rank(stage: NativeTestStage) -> Int {
 }
 
 // THE BAND RANK. Refusals occupy 0..3 by stage, so the two bands above them start at 4.
-// THE RANK IS PARTIAL, AND IT IS PARTIAL IN THE TYPE RATHER THAN IN A COMMENT (review 70018).
+// A BAR IS A DIFFERENT TYPE FROM A READING, AND THAT IS THE FOURTH TIME THIS LADDER HAS HAD TO
+// LEARN IT (review 70058).
 //
-// This function used to return `Int` and give `AttainUnreached` the value 0 -- colliding exactly
-// with `AttainRefused { stage: NativeTestStagePrepare }` -- under a paragraph asserting it had no
-// rank. The paragraph was right about the design and the code did not carry it, which is the
-// inert-annotation failure DESIGN section 4c names: no `Accepted` program can read a comment, so
-// a property stated only in prose is a property nothing holds. Nothing reached the collision
-// today, which made it exactly the kind of defect a later refactor inherits as a fact.
+// `AttainUnreached` was representable on a baseline row, and the comparison answered `false` for
+// an unreached BAR exactly as it once did for an unreached READING -- the misattribution this
+// module had already been repaired for twice, on the direct arm and on the rename arm, surviving
+// on the third side. And it was reachable through the module's OWN INTENDED MINTING ROUTE, not by
+// hand: a run reaches the population, reports `AttainUnreached` for a subject not yet in the
+// baseline, produces no finding (the row fold is driven by `baseline.rows`), verdicts
+// `ProgressPreserved`, is admitted by `native_progress_baseline_advance`, and the consumer mints
+// a baseline freezing an unreached bar. Every later run then reports `ProgressRegressed` forever
+// for a subject whose bar was "nothing looked at it".
 //
-// AN UNREACHED READING IS NOT A LOW POSITION, IT IS THE ABSENCE OF ONE, so the absence is now
-// `Absent` and every caller must say what it does about that. Ranking it bottom -- the tempting
-// total version -- makes every comparison against it answer "regressed", which is the
-// misattribution this module spends three sections removing.
-fn native_attainment_rank(a: NativeRouteAttainment) -> Optional<Int> {
+// SO THE REMEDY IS NOT A THIRD GUARD CLAUSE. Three repairs of one shape is the signal that the
+// shape is wrong, and DESIGN section 5 says what to do about it: "stronger than catching a wrong
+// state is making it unwritable". A BAR and a READING are genuinely different things -- a reading
+// may record that nothing was looked at, and a bar cannot, because "nothing was looked at" is not
+// a level anything can be held to. They are now different types, and the invalid state has no
+// constructor.
+//
+// ONE LADDER, NOT TWO, so this is a refinement rather than the section 3 fork it would otherwise
+// be. `native_baseline_rank` is the ladder and it is TOTAL. The observed rank is derived from it
+// through `native_observed_as_baseline`, the one-way projection that is also the MINTING GATE --
+// the same function answers "can this reading be a bar" and "what rank does this reading have",
+// because they are the same question.
+type NativeBaselineAttainment
+  = BaselineRefused { stage: NativeTestStage }
+  | BaselineDiverged
+  | BaselineAgreed
+
+fn native_baseline_rank(b: NativeBaselineAttainment) -> Int {
+  match b {
+    BaselineRefused { stage: s } => native_stage_rank(stage: s)
+    BaselineDiverged => 4
+    BaselineAgreed => 5
+  }
+}
+
+// THE PROJECTION AND THE MINTING GATE ARE ONE FUNCTION. A reading becomes a bar exactly when it
+// records that something was looked at; `Absent` is the refusal, and it is the only arm that can
+// stop an unreached reading from becoming a floor everyone is held to.
+fn native_observed_as_baseline(a: NativeRouteAttainment) -> Optional<NativeBaselineAttainment> {
   match a {
     AttainUnreached { blocked_at: _ } => optional_absent()
-    AttainRefused { stage: s } => optional_present(value: native_stage_rank(stage: s))
-    AttainDiverged => optional_present(value: 4)
-    AttainAgreed => optional_present(value: 5)
+    AttainRefused { stage: s } => optional_present(value: BaselineRefused { stage: s })
+    AttainDiverged => optional_present(value: BaselineDiverged)
+    AttainAgreed => optional_present(value: BaselineAgreed)
+  }
+}
+
+fn native_attainment_rank(a: NativeRouteAttainment) -> Optional<Int> {
+  match native_observed_as_baseline(a: a) {
+    Absent => optional_absent()
+    Present { value: b } => optional_present(value: native_baseline_rank(b: b))
   }
 }
 
 fn native_attainment_is_unreached(a: NativeRouteAttainment) -> Bool {
-  match a {
-    AttainUnreached { blocked_at: _ } => true
-    AttainRefused { stage: _ } => false
-    AttainDiverged => false
-    AttainAgreed => false
+  match native_observed_as_baseline(a: a) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
-// THE EXCLUSION'S STAGE IS NOT RECOVERABLE FROM ITS CAUSE, so the caller supplies it.
-//
-// `NativeRouteExclusionCause` is a CLASSIFICATION of why the route stopped -- compiler frontier,
-// entry limit, eval boundary, unattributed -- and `classify_native_refusal` computes it FROM the
-// stage and the reason, discarding the stage on the way. Reconstructing the stage from the cause
-// would be inverting a lossy function, which is exactly the fabricated-plausible-output arm
-// DESIGN section 5 forbids: `excluded_unattributed` is reachable from every stage, so any
-// inverse would have to guess, and a guessed stage in a monotone ladder is a guessed regression.
-//
-// The stage is carried on the `NativeTestRefused` verdict the member row already holds, so the
-// caller that has the row has the stage and no inversion is needed. This function takes both and
-// the row-level fold below supplies them together.
-// A DISPOSITION THAT SAYS "EXCLUDED" OVER A VERDICT THAT NAMES NO STAGE IS A MALFORMED
-// PAIR, and the guard takes the BOTTOM of the ladder for it rather than inventing a
-// position. Bottom is the fail-closed choice in one direction only -- it can never
-// manufacture progress -- and it cannot manufacture a regression either, because a
-// baseline row recorded through this same fold would have taken bottom too. What it
-// WOULD do is mask a real regression from `eval` down to bottom, so the pair is also
-// counted as a malformed reading by the report rather than only absorbed here.
-fn native_attainment_of_with_stage(
-  disposition: NativeRouteDisposition,
-  refused_at: Optional<NativeTestStage>
-) -> NativeRouteAttainment {
-  match disposition {
-    NativeAgreementPass => AttainAgreed
-    NativeAgreementExpectedRed => AttainAgreed
-    NativeAgreementRouteGap => AttainAgreed
-    NativeDivergence { cause: _ } => AttainDiverged
-    NativeExclusion { cause: _ } =>
-      match refused_at {
-        Present { value: s } => AttainRefused { stage: s }
-        Absent => AttainRefused { stage: NativeTestStagePrepare }
-      }
-  }
-}
-
-// THE COMPARISON IS ASKED ONLY OF RANKED READINGS, and callers route an unreached one to its own
-// finding before reaching here. The guard clause is kept rather than assumed because a total
-// function that quietly answered `false` for an unreached observation would report a REGRESSION
-// for a subject nothing looked at -- the report a reader learns to wave through, and the reason
-// the arm exists at all.
+// THE BASELINE SIDE OF THIS COMPARISON NO LONGER HAS A FAILURE ARM, which is the whole point of
+// the type split: there is nothing to ask. What remains is the OBSERVED side's floor, kept
+// because callers route an unreached reading to its own finding before reaching here and a total
+// function must still answer if one ever does -- and `false` is the fail-closed answer, which can
+// never manufacture progress.
 fn native_attainment_at_least(
   observed: NativeRouteAttainment,
-  baseline: NativeRouteAttainment
+  baseline: NativeBaselineAttainment
 ) -> Bool {
   match native_attainment_rank(a: observed) {
     Absent => false
-    Present { value: seen } =>
-      match native_attainment_rank(a: baseline) {
-        Absent => false
-        Present { value: bar } => seen >= bar
-      }
+    Present { value: seen } => seen >= native_baseline_rank(b: baseline)
   }
 }
 
@@ -440,7 +472,7 @@ fn native_attainment_at_least(
 
 type NativeProgressBaselineRow {
   identity: NativeRouteTestIdentity
-  attained: NativeRouteAttainment
+  attained: NativeBaselineAttainment
 }
 
 // A LEGITIMATE REMOVAL IS A CLAIM ABOUT THE WORLD, AND THE GUARD CHECKS IT RATHER THAN TAKING IT.
@@ -498,7 +530,7 @@ type NativeProgressBaseline {
 type NativeProgressFinding
   = ProgressRegressed {
       identity: NativeRouteTestIdentity
-      baseline: NativeRouteAttainment
+      baseline: NativeBaselineAttainment
       observed: NativeRouteAttainment
     }
   | BaselineMemberMissingUndisposed { identity: NativeRouteTestIdentity }
@@ -507,7 +539,7 @@ type NativeProgressFinding
   | RenameTargetBelowBaseline {
       identity: NativeRouteTestIdentity
       target: NativeRouteTestIdentity
-      baseline: NativeRouteAttainment
+      baseline: NativeBaselineAttainment
       observed: NativeRouteAttainment
     }
   | DisposedSubjectHasNoBaselineRow { identity: NativeRouteTestIdentity }
@@ -580,6 +612,29 @@ type NativeProgressObservedRow {
 type NativeProgressObservedReading {
   row: NativeProgressObservedRow
   findings: List<NativeProgressFinding>
+}
+
+// A DISPOSITION THAT SAYS "EXCLUDED" OVER A VERDICT THAT NAMES NO STAGE IS A MALFORMED PAIR, and
+// this fold takes the BOTTOM of the ladder for it rather than inventing a position. Bottom is
+// fail-closed in one direction only -- it can never manufacture progress -- and it cannot
+// manufacture a regression either, because a bar recorded through this same fold would have taken
+// bottom too. What it WOULD do is mask a real fall from `eval` down to bottom, so the pair is also
+// COUNTED as a malformed reading by `native_progress_read_observed` rather than only absorbed.
+fn native_attainment_of_with_stage(
+  disposition: NativeRouteDisposition,
+  refused_at: Optional<NativeTestStage>
+) -> NativeRouteAttainment {
+  match disposition {
+    NativeAgreementPass => AttainAgreed
+    NativeAgreementExpectedRed => AttainAgreed
+    NativeAgreementRouteGap => AttainAgreed
+    NativeDivergence { cause: _ } => AttainDiverged
+    NativeExclusion { cause: _ } =>
+      match refused_at {
+        Present { value: s } => AttainRefused { stage: s }
+        Absent => AttainRefused { stage: NativeTestStagePrepare }
+      }
+  }
 }
 
 fn native_progress_read_observed(
@@ -660,7 +715,7 @@ fn native_progress_disposition_index(
 
 fn native_progress_baseline_index(
   rows: List<NativeProgressBaselineRow>
-) -> Map<String, NativeRouteAttainment> {
+) -> Map<String, NativeBaselineAttainment> {
   fold_list(
     xs: rows,
     empty: empty_map(),
@@ -791,7 +846,7 @@ fn native_progress_row_findings(
 // bookkeeping about nothing, and is the shape a disposition list takes as it rots.
 fn native_progress_disposition_row_findings(
   row: NativeProgressDispositionRow,
-  baseline_index: Map<String, NativeRouteAttainment>,
+  baseline_index: Map<String, NativeBaselineAttainment>,
   observed: Map<String, NativeRouteAttainment>
 ) -> List<NativeProgressFinding> {
   let key = native_route_identity_qualified(identity: row.identity)
@@ -817,7 +872,7 @@ fn native_progress_disposition_row_findings(
 // ABOUT THAT RUN.
 fn native_progress_disposition_findings(
   baseline: NativeProgressBaseline,
-  baseline_index: Map<String, NativeRouteAttainment>,
+  baseline_index: Map<String, NativeBaselineAttainment>,
   observed: Map<String, NativeRouteAttainment>,
   reach: NativeRunReach
 ) -> List<NativeProgressFinding> {
@@ -952,6 +1007,45 @@ fn native_progress_verdict(report: NativeProgressReport) -> NativeProgressVerdic
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// MINTING: THE ONLY ROUTE FROM READINGS TO A BASELINE, AND IT REFUSES PER ROW
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// `native_progress_baseline_advance` answers whether a RUN may advance the ratchet at all.
+// This answers, for a run that may, WHICH OF ITS READINGS CAN BE BARS -- a separate question,
+// and the one the defect at review 70058 walked through. A consumer that built rows itself would
+// have to remember that an unreached reading is not a bar; here it cannot construct one, and the
+// readings it could not mint are RETURNED rather than dropped, because a subject silently missing
+// from a new baseline is indistinguishable from one legitimately removed.
+type NativeBaselineMinting {
+  rows: List<NativeProgressBaselineRow>
+  unmintable: List<NativeRouteTestIdentity>
+}
+
+fn native_progress_mint_row(row: NativeProgressObservedRow) -> List<NativeProgressBaselineRow> {
+  match native_observed_as_baseline(a: row.attained) {
+    Absent => []
+    Present { value: b } => [NativeProgressBaselineRow { identity: row.identity, attained: b }]
+  }
+}
+
+fn native_progress_unmintable_identity(row: NativeProgressObservedRow) -> List<NativeRouteTestIdentity> {
+  match native_observed_as_baseline(a: row.attained) {
+    Absent => [row.identity]
+    Present { value: _ } => []
+  }
+}
+
+fn native_progress_mint_baseline(
+  readings: List<NativeProgressObservedReading>
+) -> NativeBaselineMinting {
+  let rows = native_progress_observed_rows(readings: readings)
+  NativeBaselineMinting {
+    rows: list_flat_map(xs: rows, f: native_progress_mint_row),
+    unmintable: list_flat_map(xs: rows, f: native_progress_unmintable_identity)
+  }
+}
+
 // THE RATCHET ADVANCES FROM ONE KIND OF RUN ONLY, and this is a typed refusal rather than a note
 // asking the consumer nicely. Three ways to be told no, kept apart because they have different
 // remedies: a historical measurement is evidence to KEEP and never to advance from (A3 -- a
@@ -962,6 +1056,8 @@ fn native_progress_baseline_advance(report: NativeProgressReport) -> NativeBasel
   match report.provenance {
     HistoricalMainObservation { tree: t, note: _ } => BaselineAdvanceRefusedHistorical { tree: t }
     BranchObservation { branch: b, head: h } => BaselineAdvanceRefusedNeverMain { branch: b, head: h }
+    AuthorCompositionObservation { base_head: bh, overlay: o, note: _ } =>
+      BaselineAdvanceRefusedNotALandableTree { base_head: bh, overlay: o }
     MainBaselineObservation { head: h } =>
       match native_progress_verdict(report: report) {
         ProgressUnobserved { reach: r, findings: _ } => BaselineAdvanceRefusedUnreached { reach: r }

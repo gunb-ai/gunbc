@@ -15,6 +15,11 @@ import gunbc.witness_v2_native_route {
 }
 import gunbc.native_route_progress_guard {
   NativeRouteAttainment, AttainRefused, AttainDiverged, AttainAgreed,
+  NativeBaselineAttainment, BaselineRefused, BaselineDiverged, BaselineAgreed,
+  native_baseline_rank, native_observed_as_baseline,
+  NativeBaselineMinting, native_progress_mint_baseline,
+  native_observation_is_on_a_landable_tree,
+  AuthorCompositionObservation, BaselineAdvanceRefusedNotALandableTree,
   native_attainment_at_least, native_attainment_rank,
   NativeProgressBaseline, NativeProgressBaselineRow,
   NativeVerdictAdjudication, BaselineMintedUnderADifferentAdjudication, native_adjudication_same,
@@ -130,11 +135,11 @@ fn findings_of(
 test fn the_stage_ladder_orders_a_later_refusal_above_an_earlier_one() -> Bool {
   native_attainment_at_least(
     observed: AttainRefused { stage: NativeTestStageEval },
-    baseline: AttainRefused { stage: NativeTestStagePrepare }
+    baseline: BaselineRefused { stage: NativeTestStagePrepare }
   )
     && native_attainment_at_least(
       observed: AttainRefused { stage: NativeTestStageEntry },
-      baseline: AttainRefused { stage: NativeTestStageContext }
+      baseline: BaselineRefused { stage: NativeTestStageContext }
     )
 }
 
@@ -142,9 +147,9 @@ test fn the_stage_ladder_orders_a_later_refusal_above_an_earlier_one() -> Bool {
 // matter: the first keeps the guard from reading "the pipeline finally ran" as a regression, the
 // second keeps it from reading a lost agreement as progress.
 test fn divergence_sits_above_every_refusal_and_below_agreement() -> Bool {
-  native_attainment_at_least(observed: AttainDiverged, baseline: AttainRefused { stage: NativeTestStageEval })
-    && native_attainment_at_least(observed: AttainAgreed, baseline: AttainDiverged)
-    && (native_attainment_at_least(observed: AttainDiverged, baseline: AttainAgreed) == false)
+  native_attainment_at_least(observed: AttainDiverged, baseline: BaselineRefused { stage: NativeTestStageEval })
+    && native_attainment_at_least(observed: AttainAgreed, baseline: BaselineDiverged)
+    && (native_attainment_at_least(observed: AttainDiverged, baseline: BaselineAgreed) == false)
 }
 
 // THE THREE AGREEMENT ARMS ARE ONE BAND. A subject moving from a correctly-observed required red
@@ -158,8 +163,16 @@ test fn a_required_red_and_a_pass_are_the_same_attainment() -> Bool {
   let from_pass = native_progress_read_observed(
     identity: subject_a, disposition: NativeAgreementPass, refused_at: optional_absent()
   )
-  native_attainment_at_least(observed: from_red.row.attained, baseline: from_pass.row.attained)
-    && native_attainment_at_least(observed: from_pass.row.attained, baseline: from_red.row.attained)
+  match native_observed_as_baseline(a: from_pass.row.attained) {
+    Present { value: pass_bar } =>
+      match native_observed_as_baseline(a: from_red.row.attained) {
+        Present { value: red_bar } =>
+          native_attainment_at_least(observed: from_red.row.attained, baseline: pass_bar)
+            && native_attainment_at_least(observed: from_pass.row.attained, baseline: red_bar)
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 // ═══ THE GUARD'S OWN GREEN ═══
@@ -168,8 +181,8 @@ test fn an_unchanged_head_preserves_progress() -> Bool {
   preserved(
     baseline: baseline_of(
       rows: [
-        NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed },
-        NativeProgressBaselineRow { identity: subject_b, attained: AttainRefused { stage: NativeTestStageEntry } }
+        NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed },
+        NativeProgressBaselineRow { identity: subject_b, attained: BaselineRefused { stage: NativeTestStageEntry } }
       ],
       dispositions: []
     ),
@@ -184,7 +197,7 @@ test fn an_unchanged_head_preserves_progress() -> Bool {
 test fn a_subject_that_advances_preserves_progress() -> Bool {
   preserved(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainRefused { stage: NativeTestStagePrepare } }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineRefused { stage: NativeTestStagePrepare } }],
       dispositions: []
     ),
     readings: [observed(identity: subject_a, attained: AttainAgreed)]
@@ -196,7 +209,7 @@ test fn a_subject_that_advances_preserves_progress() -> Bool {
 test fn a_new_subject_below_every_baseline_row_preserves_progress() -> Bool {
   preserved(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: []
     ),
     readings: [
@@ -214,7 +227,7 @@ test fn a_new_subject_below_every_baseline_row_preserves_progress() -> Bool {
 test fn w_RED_a_subject_refused_earlier_than_before_is_a_regression() -> Bool {
   let fs = findings_of(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainRefused { stage: NativeTestStageEval } }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineRefused { stage: NativeTestStageEval } }],
       dispositions: []
     ),
     readings: [observed(identity: subject_a, attained: AttainRefused { stage: NativeTestStagePrepare })]
@@ -242,7 +255,7 @@ test fn w_RED_a_subject_refused_earlier_than_before_is_a_regression() -> Bool {
 test fn w_RED_an_agreement_becoming_a_divergence_is_a_regression() -> Bool {
   preserved(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: []
     ),
     readings: [observed(identity: subject_a, attained: AttainDiverged)]
@@ -254,7 +267,7 @@ test fn w_RED_an_agreement_becoming_a_divergence_is_a_regression() -> Bool {
 test fn w_RED_a_baseline_member_that_vanishes_without_a_disposition_reds() -> Bool {
   let fs = findings_of(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: []
     ),
     readings: []
@@ -265,7 +278,7 @@ test fn w_RED_a_baseline_member_that_vanishes_without_a_disposition_reds() -> Bo
 test fn a_deleted_subject_with_a_disposition_is_admitted() -> Bool {
   preserved(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: [NativeProgressDispositionRow {
         identity: subject_a,
         disposition: SubjectDeleted { authority: "the declaration was deleted by gunbc#00000" }
@@ -278,7 +291,7 @@ test fn a_deleted_subject_with_a_disposition_is_admitted() -> Bool {
 test fn a_subject_that_left_the_universe_is_admitted_under_its_own_name() -> Bool {
   preserved(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: [NativeProgressDispositionRow {
         identity: subject_a,
         disposition: SubjectLeftTheUniverse { moved_to_module: "v2.lens.alpha" }
@@ -293,7 +306,7 @@ test fn a_subject_that_left_the_universe_is_admitted_under_its_own_name() -> Boo
 test fn w_RED_a_deletion_the_run_contradicts_reds() -> Bool {
   preserved(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: [NativeProgressDispositionRow {
         identity: subject_a,
         disposition: SubjectDeleted { authority: "claimed deleted" }
@@ -323,7 +336,7 @@ test fn w_RED_a_disposition_for_a_subject_with_no_baseline_row_reds() -> Bool {
 test fn a_rename_that_carries_the_baseline_is_admitted() -> Bool {
   preserved(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_b, attained: AttainRefused { stage: NativeTestStageEntry } }],
+      rows: [NativeProgressBaselineRow { identity: subject_b, attained: BaselineRefused { stage: NativeTestStageEntry } }],
       dispositions: [NativeProgressDispositionRow {
         identity: subject_b,
         disposition: SubjectRenamed { to: subject_b_renamed, authority: "renamed by gunbc#00000" }
@@ -339,7 +352,7 @@ test fn a_rename_that_carries_the_baseline_is_admitted() -> Bool {
 test fn w_RED_a_rename_whose_target_attains_less_reds() -> Bool {
   let fs = findings_of(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_b, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_b, attained: BaselineAgreed }],
       dispositions: [NativeProgressDispositionRow {
         identity: subject_b,
         disposition: SubjectRenamed { to: subject_b_renamed, authority: "rewritten and renamed" }
@@ -366,7 +379,7 @@ test fn w_RED_a_rename_whose_target_attains_less_reds() -> Bool {
 test fn w_RED_a_rename_to_a_target_the_run_never_saw_reds() -> Bool {
   let fs = findings_of(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_b, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_b, attained: BaselineAgreed }],
       dispositions: [NativeProgressDispositionRow {
         identity: subject_b,
         disposition: SubjectRenamed { to: subject_b_renamed, authority: "renamed" }
@@ -406,7 +419,7 @@ test fn w_RED_a_build_that_did_not_produce_its_artifact_reds_a_clean_population(
   }
   let report = live_report(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: []
     ),
     readings: [observed(identity: subject_a, attained: AttainAgreed)],
@@ -464,7 +477,7 @@ test fn an_exclusion_that_names_its_stage_reads_cleanly_at_that_stage() -> Bool 
   is_empty(xs: reading.findings)
     && native_attainment_at_least(
       observed: reading.row.attained,
-      baseline: AttainRefused { stage: NativeTestStageEval }
+      baseline: BaselineRefused { stage: NativeTestStageEval }
     )
 }
 
@@ -475,7 +488,7 @@ test fn an_exclusion_that_names_its_stage_reads_cleanly_at_that_stage() -> Bool 
 test fn a_report_with_no_agreements_can_still_preserve_progress() -> Bool {
   let report = live_report(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainRefused { stage: NativeTestStagePrepare } }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineRefused { stage: NativeTestStagePrepare } }],
       dispositions: []
     ),
     readings: [observed(identity: subject_a, attained: AttainRefused { stage: NativeTestStagePrepare })],
@@ -495,8 +508,8 @@ test fn w_RED_a_rising_agreement_count_cannot_green_a_lost_position() -> Bool {
   let report = live_report(
     baseline: baseline_of(
       rows: [
-        NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed },
-        NativeProgressBaselineRow { identity: subject_b, attained: AttainRefused { stage: NativeTestStagePrepare } }
+        NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed },
+        NativeProgressBaselineRow { identity: subject_b, attained: BaselineRefused { stage: NativeTestStagePrepare } }
       ],
       dispositions: []
     ),
@@ -541,8 +554,8 @@ test fn w_RED_a_run_that_died_at_the_emitted_build_is_unobserved_not_lost() -> B
   let report = native_progress_report(
     baseline: baseline_of(
       rows: [
-        NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed },
-        NativeProgressBaselineRow { identity: subject_b, attained: AttainRefused { stage: NativeTestStageEntry } }
+        NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed },
+        NativeProgressBaselineRow { identity: subject_b, attained: BaselineRefused { stage: NativeTestStageEntry } }
       ],
       dispositions: []
     ),
@@ -589,7 +602,7 @@ test fn an_unobserved_run_does_not_report_progress_preserved() -> Bool {
 test fn w_RED_an_unreached_subject_reds_as_unreached_and_not_as_a_regression() -> Bool {
   let fs = findings_of(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: []
     ),
     readings: [observed(identity: subject_a, attained: AttainUnreached { blocked_at: ReachCrateBuilt })]
@@ -617,7 +630,7 @@ test fn w_RED_an_unreached_subject_reds_as_unreached_and_not_as_a_regression() -
 test fn a_live_run_that_preserved_progress_may_advance_the_baseline() -> Bool {
   let report = live_report(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: []
     ),
     readings: [observed(identity: subject_a, attained: AttainAgreed)],
@@ -627,6 +640,7 @@ test fn a_live_run_that_preserved_progress_may_advance_the_baseline() -> Bool {
     BaselineMayAdvance { head: h } => h == head_sha
     BaselineAdvanceRefusedHistorical { tree: _ } => false
     BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
     BaselineAdvanceRefusedUnreached { reach: _ } => false
     BaselineAdvanceRefusedProgressLost => false
   }
@@ -639,7 +653,7 @@ test fn a_live_run_that_preserved_progress_may_advance_the_baseline() -> Bool {
 test fn w_RED_a_historical_measurement_cannot_advance_the_ratchet() -> Bool {
   let report = native_progress_report(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: []
     ),
     readings: [observed(identity: subject_a, attained: AttainAgreed)],
@@ -655,6 +669,7 @@ test fn w_RED_a_historical_measurement_cannot_advance_the_ratchet() -> Bool {
     BaselineAdvanceRefusedHistorical { tree: t } => t == "b1f83a32f36"
     BaselineMayAdvance { head: _ } => false
     BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
     BaselineAdvanceRefusedUnreached { reach: _ } => false
     BaselineAdvanceRefusedProgressLost => false
   }
@@ -665,7 +680,7 @@ test fn w_RED_a_historical_measurement_cannot_advance_the_ratchet() -> Bool {
 test fn a_historical_measurement_is_still_read_and_reported() -> Bool {
   let report = native_progress_report(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: []
     ),
     readings: [observed(identity: subject_a, attained: AttainAgreed)],
@@ -691,7 +706,8 @@ test fn w_RED_an_unreached_run_cannot_advance_the_ratchet() -> Bool {
     adjudication: current_adjudicator
   )
   match native_progress_baseline_advance(report: report) {
-    BaselineAdvanceRefusedUnreached { reach: _ } => true
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
+        BaselineAdvanceRefusedUnreached { reach: _ } => true
     BaselineMayAdvance { head: _ } => false
     BaselineAdvanceRefusedHistorical { tree: _ } => false
     BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
@@ -704,7 +720,7 @@ test fn w_RED_an_unreached_run_cannot_advance_the_ratchet() -> Bool {
 test fn w_RED_a_run_that_lost_a_position_cannot_advance_the_ratchet() -> Bool {
   let report = live_report(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: []
     ),
     readings: [observed(identity: subject_a, attained: AttainDiverged)],
@@ -715,7 +731,8 @@ test fn w_RED_a_run_that_lost_a_position_cannot_advance_the_ratchet() -> Bool {
     BaselineMayAdvance { head: _ } => false
     BaselineAdvanceRefusedHistorical { tree: _ } => false
     BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
-    BaselineAdvanceRefusedUnreached { reach: _ } => false
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
+        BaselineAdvanceRefusedUnreached { reach: _ } => false
   }
 }
 
@@ -734,8 +751,8 @@ test fn w_RED_a_run_with_no_binary_reports_every_row_unreached_not_missing() -> 
   let fs = native_progress_report(
     baseline: baseline_of(
       rows: [
-        NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed },
-        NativeProgressBaselineRow { identity: subject_b, attained: AttainRefused { stage: NativeTestStageEntry } }
+        NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed },
+        NativeProgressBaselineRow { identity: subject_b, attained: BaselineRefused { stage: NativeTestStageEntry } }
       ],
       dispositions: []
     ),
@@ -820,7 +837,7 @@ test fn w_RED_an_unreached_run_emits_no_disposition_side_findings() -> Bool {
 test fn w_RED_a_rename_to_an_unreached_target_reds_as_unreached_not_as_a_lowered_bar() -> Bool {
   let fs = findings_of(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_b, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_b, attained: BaselineAgreed }],
       dispositions: [NativeProgressDispositionRow {
         identity: subject_b,
         disposition: SubjectRenamed { to: subject_b_renamed, authority: "renamed" }
@@ -879,7 +896,7 @@ test fn every_ranked_arm_still_carries_a_rank() -> Bool {
 test fn w_RED_a_branch_observation_cannot_raise_the_floor_for_everyone_else() -> Bool {
   let report = native_progress_report(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: []
     ),
     readings: [observed(identity: subject_a, attained: AttainAgreed)],
@@ -892,6 +909,7 @@ test fn w_RED_a_branch_observation_cannot_raise_the_floor_for_everyone_else() ->
     BaselineAdvanceRefusedNeverMain { branch: b, head: _ } => b == "session/sharp-bear-756"
     BaselineMayAdvance { head: _ } => false
     BaselineAdvanceRefusedHistorical { tree: _ } => false
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
     BaselineAdvanceRefusedUnreached { reach: _ } => false
     BaselineAdvanceRefusedProgressLost => false
   }
@@ -903,7 +921,7 @@ test fn w_RED_a_branch_observation_cannot_raise_the_floor_for_everyone_else() ->
 test fn a_branch_observation_is_still_read_and_reported() -> Bool {
   let report = native_progress_report(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: []
     ),
     readings: [observed(identity: subject_a, attained: AttainAgreed)],
@@ -925,7 +943,7 @@ test fn a_branch_observation_is_still_read_and_reported() -> Bool {
 // branch observation. A single "not admitted" arm would send a reader on an errand that cannot
 // finish.
 test fn a_stale_main_observation_and_a_branch_observation_refuse_differently() -> Bool {
-  let rows = [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }]
+  let rows = [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }]
   let readings = [observed(identity: subject_a, attained: AttainAgreed)]
   let stale = native_progress_report(
     baseline: baseline_of(rows: rows, dispositions: []),
@@ -945,11 +963,13 @@ test fn a_stale_main_observation_and_a_branch_observation_refuse_differently() -
         BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => true
         BaselineMayAdvance { head: _ } => false
         BaselineAdvanceRefusedHistorical { tree: _ } => false
+        BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
         BaselineAdvanceRefusedUnreached { reach: _ } => false
         BaselineAdvanceRefusedProgressLost => false
       }
     BaselineMayAdvance { head: _ } => false
     BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
     BaselineAdvanceRefusedUnreached { reach: _ } => false
     BaselineAdvanceRefusedProgressLost => false
   }
@@ -970,7 +990,7 @@ test fn a_stale_main_observation_and_a_branch_observation_refuse_differently() -
 test fn w_RED_a_baseline_minted_under_a_weaker_adjudicator_is_not_a_bar() -> Bool {
   let fs = native_progress_report(
     baseline: NativeProgressBaseline {
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: [],
       minted_under: NativeVerdictAdjudication {
         authority: "gunbc.witness_v2_native_route native_route_admission @ pre-f5bd9b064a",
@@ -1009,7 +1029,7 @@ test fn w_RED_a_baseline_minted_under_a_weaker_adjudicator_is_not_a_bar() -> Boo
 test fn w_RED_across_a_meaning_boundary_no_regression_is_reported_beside_it() -> Bool {
   let fs = native_progress_report(
     baseline: NativeProgressBaseline {
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: [],
       minted_under: NativeVerdictAdjudication { authority: "some older adjudicator", receipt_identity: optional_absent() }
     },
@@ -1042,7 +1062,7 @@ test fn w_RED_across_a_meaning_boundary_no_regression_is_reported_beside_it() ->
 test fn under_a_matching_adjudicator_that_same_reading_is_a_regression() -> Bool {
   preserved(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: []
     ),
     readings: [observed(identity: subject_a, attained: AttainDiverged)]
@@ -1055,7 +1075,7 @@ test fn under_a_matching_adjudicator_that_same_reading_is_a_regression() -> Bool
 test fn the_two_drifts_are_independent_and_both_are_carried() -> Bool {
   let report = live_report(
     baseline: baseline_of(
-      rows: [NativeProgressBaselineRow { identity: subject_a, attained: AttainAgreed }],
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
       dispositions: []
     ),
     readings: [observed(identity: subject_a, attained: AttainAgreed)],
@@ -1066,5 +1086,154 @@ test fn the_two_drifts_are_independent_and_both_are_carried() -> Bool {
       MainBaselineObservation { head: h } => h == head_sha
       BranchObservation { branch: _, head: _ } => false
       HistoricalMainObservation { tree: _, note: _ } => false
+      AuthorCompositionObservation { base_head: _, overlay: _, note: _ } => false
     }
+}
+
+// ═══ A BAR IS A DIFFERENT TYPE FROM A READING (review 70058) ═══
+//
+// `AttainUnreached` was representable on a baseline row, and the comparison answered `false` for
+// an unreached BAR exactly as it once did for an unreached READING -- the third side of a
+// misattribution already repaired twice. It was reachable through the module's own intended
+// minting route, so the remedy is a type split rather than a third guard clause: "nothing was
+// looked at" is not a level anything can be held to, and it now has no constructor on a bar.
+
+// THE STRUCTURAL CLAIM. This is the whole fix in one line -- there is no `BaselineUnreached`, so
+// the invalid state cannot be written, and the projection that would have to produce one refuses.
+test fn an_unreached_reading_cannot_become_a_bar() -> Bool {
+  match native_observed_as_baseline(a: AttainUnreached { blocked_at: ReachCrateBuilt }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// AND EVERY READING THAT DID LOOK AT SOMETHING STILL MINTS, so the gate did not simply close.
+test fn every_reading_that_observed_something_mints_a_bar() -> Bool {
+  all([AttainAgreed, AttainDiverged, AttainRefused { stage: NativeTestStageEval }], a =>
+    match native_observed_as_baseline(a: a) {
+      Present { value: _ } => true
+      Absent => false
+    })
+}
+
+// ONE LADDER, NOT TWO. The bar ranks and the reading ranks are the same numbers, which is what
+// keeps the type split a refinement rather than the second authority it would otherwise be.
+test fn the_bar_ladder_and_the_reading_ladder_are_one_ladder() -> Bool {
+  all([AttainAgreed, AttainDiverged, AttainRefused { stage: NativeTestStageEntry }], a =>
+    match native_observed_as_baseline(a: a) {
+      Present { value: b } =>
+        match native_attainment_rank(a: a) {
+          Present { value: r } => r == native_baseline_rank(b: b)
+          Absent => false
+        }
+      Absent => false
+    })
+}
+
+// THE REVIEWER'S EXACT PATH, AT THE MINT. A run reaches the population and reports an unreached
+// subject that is not yet in the baseline; it produces no finding, verdicts preserved, and is
+// admitted to advance. Minting must then OMIT that subject rather than freeze a bar of "nothing
+// looked at it" -- which would report `ProgressRegressed` for it on every later run, forever.
+test fn w_RED_minting_omits_an_unreached_subject_rather_than_freezing_it() -> Bool {
+  let minted = native_progress_mint_baseline(readings: [
+    observed(identity: subject_a, attained: AttainAgreed),
+    observed(identity: subject_b, attained: AttainUnreached { blocked_at: ReachCrateBuilt })
+  ])
+  length(xs: minted.rows) == 1
+    && length(xs: minted.unmintable) == 1
+    && any(xs: minted.unmintable, predicate: fn(i) { i.module == "v2.test.beta" })
+}
+
+// AND THE OMISSION IS RETURNED RATHER THAN DROPPED. A subject silently missing from a new
+// baseline is indistinguishable from one legitimately removed, which is the disposition question
+// this module spends a section on -- so the mint reports what it could not take.
+test fn the_mint_names_what_it_could_not_take() -> Bool {
+  let minted = native_progress_mint_baseline(readings: [
+    observed(identity: subject_a, attained: AttainUnreached { blocked_at: ReachSourceEmitted })
+  ])
+  is_empty(xs: minted.rows) && length(xs: minted.unmintable) == 1
+}
+
+// ═══ A TREE THAT CAN NEVER BE A LANDED ONE (gunbc#12009's case, relayed) ═══
+//
+// Their conjuncts were met HONESTLY on a measurement composition -- a head plus two cherry-picked
+// emitter files -- that will never exist as a landed tree. By the letter, compliant. The shared
+// class, in their words: a verdict that is only meaningful relative to a context the verdict does
+// not carry.
+
+test fn w_RED_an_author_composition_cannot_advance_the_ratchet() -> Bool {
+  let report = native_progress_report(
+    baseline: baseline_of(
+      rows: [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }],
+      dispositions: []
+    ),
+    readings: [observed(identity: subject_a, attained: AttainAgreed)],
+    build: clean_build,
+    reach: ReachExecutableStarted,
+    provenance: AuthorCompositionObservation {
+      base_head: "6032d50be7d",
+      overlay: "two cherry-picked emitter files",
+      note: "assembled to take a measurement; will never exist as a landed tree"
+    },
+    adjudication: current_adjudicator
+  )
+  match native_progress_baseline_advance(report: report) {
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: o } =>
+      string_contains(s: o, pattern: "cherry-picked")
+    BaselineMayAdvance { head: _ } => false
+    BaselineAdvanceRefusedHistorical { tree: _ } => false
+    BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
+    BaselineAdvanceRefusedUnreached { reach: _ } => false
+    BaselineAdvanceRefusedProgressLost => false
+  }
+}
+
+// THE SECOND CONSUMER'S PREDICATE, AND IT IS NOT "DID THIS ADVANCE". A flip check asks whether
+// the tree an observation was made on can BE the landing tree. A stale main observation is
+// landable and must not advance; an author composition is neither. One question would conflate
+// them, which is why there are two functions.
+test fn landability_and_advancement_are_different_questions() -> Bool {
+  native_observation_is_on_a_landable_tree(p: MainBaselineObservation { head: head_sha })
+    && native_observation_is_on_a_landable_tree(p: BranchObservation { branch: "b", head: "h" })
+    && native_observation_is_on_a_landable_tree(
+      p: HistoricalMainObservation { tree: "t", note: "aged but it was main" })
+    && (native_observation_is_on_a_landable_tree(
+      p: AuthorCompositionObservation { base_head: "h", overlay: "o", note: "n" }) == false)
+}
+
+// AND A BRANCH IS NOT AN AUTHOR COMPOSITION, which is the fold that would have served their case
+// wrongly: a branch head CAN land, so classifying an assembled tree as one asserts a future that
+// will not happen.
+test fn w_RED_a_branch_and_an_author_composition_refuse_under_different_names() -> Bool {
+  let rows = [NativeProgressBaselineRow { identity: subject_a, attained: BaselineAgreed }]
+  let readings = [observed(identity: subject_a, attained: AttainAgreed)]
+  let branch = native_progress_report(
+    baseline: baseline_of(rows: rows, dispositions: []), readings: readings,
+    build: clean_build, reach: ReachExecutableStarted,
+    provenance: BranchObservation { branch: "session/sharp-bear-756", head: "6032d50be7d" },
+    adjudication: current_adjudicator
+  )
+  let composed = native_progress_report(
+    baseline: baseline_of(rows: rows, dispositions: []), readings: readings,
+    build: clean_build, reach: ReachExecutableStarted,
+    provenance: AuthorCompositionObservation { base_head: "6032d50be7d", overlay: "o", note: "n" },
+    adjudication: current_adjudicator
+  )
+  match native_progress_baseline_advance(report: branch) {
+    BaselineAdvanceRefusedNeverMain { branch: _, head: _ } =>
+      match native_progress_baseline_advance(report: composed) {
+        BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => true
+        BaselineMayAdvance { head: _ } => false
+        BaselineAdvanceRefusedHistorical { tree: _ } => false
+        BaselineAdvanceRefusedNeverMain { branch: _, head: _ } => false
+        BaselineAdvanceRefusedUnreached { reach: _ } => false
+        BaselineAdvanceRefusedProgressLost => false
+      }
+    BaselineMayAdvance { head: _ } => false
+    BaselineAdvanceRefusedHistorical { tree: _ } => false
+    BaselineAdvanceRefusedNotALandableTree { base_head: _, overlay: _ } => false
+    BaselineAdvanceRefusedUnreached { reach: _ } => false
+    BaselineAdvanceRefusedProgressLost => false
+  }
 }
