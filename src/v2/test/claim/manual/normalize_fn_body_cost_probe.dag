@@ -38,6 +38,15 @@ import v2.std.optional { Absent, Optional, Present, optional_present }
 // fn-TYPED PARAMETER, which is what makes the deleted shape-search reading reachable.
 // ---------------------------------------------------------------------------
 
+// FALSIFIERS FOR THE POSITIONAL READ ITSELF. The spine read relies on opt(generic_params)
+// occupying its position when elided; a generic fn is the case where that assumption, if
+// wrong, shifts every later position. The `= expr` form exercises the OTHER arm of the body
+// choice at the same spine depth. A wrong read here is a regression across the corpus, not an
+// edge case: generic fns and `=`-bodied fns are ordinary.
+data nfbcp_generic_fn_source: String = "module m\nfn f<T>(x: T) -> T { x }\n"
+
+data nfbcp_eq_body_fn_source: String = "module m\nfn f(x: Int) -> Int = x\n"
+
 data nfbcp_ordinary_fn_source: String = "module m\nfn f(x: Int) -> Int { x }\n"
 
 data nfbcp_bare_type_source: String = "module m.t\ntype T = A | B\n"
@@ -205,6 +214,38 @@ test fn nfbcp_control_ordinary_fn_return_type_holds() -> Bool {
   match nfbcp_return_atom(text: nfbcp_ordinary_fn_source) {
     Absent => false
     Present { value: id } => id == ^dag_binding_type_int
+  }
+}
+
+// FALSIFIER: a generic fn must still read its declared return type. Absent here would mean
+// every generic fn in the corpus retains its wrapper instead of lowering.
+test fn nfbcp_falsifier_generic_fn_return_type_holds() -> Bool {
+  match nfbcp_return_atom(text: nfbcp_generic_fn_source) {
+    Absent => false
+    Present { value: id } => id == ^T
+  }
+}
+
+// FALSIFIER: the `= expr` body arm sits at the same spine depth as the braced body, so the
+// return clause must read identically through it.
+test fn nfbcp_falsifier_eq_body_fn_return_type_holds() -> Bool {
+  match nfbcp_return_atom(text: nfbcp_eq_body_fn_source) {
+    Absent => false
+    Present { value: id } => id == ^dag_binding_type_int
+  }
+}
+
+test fn nfbcp_generic_fn_specimen_parses_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_generic_fn_source) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+test fn nfbcp_eq_body_specimen_parses_holds() -> Bool {
+  match nfbcp_parsed(text: nfbcp_eq_body_fn_source) {
+    Absent => false
+    Present { value: _ } => true
   }
 }
 

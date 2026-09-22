@@ -1405,6 +1405,14 @@ fn body_lower_sequence_head_is_arrow(node: Node) -> Bool {
 // the spine positions do NOT shift when the generic params or the arrow clause are absent --
 // that is what makes reading by position sound rather than a guess about layout.
 //
+// THE DEPTH IS VERIFIED AGAINST THE PRODUCTION, NOT SAMPLED FROM SPECIMENS. That production has
+// exactly TWO optionals and only generic_params precedes the return clause, so generic_params is
+// the entire risk surface for this depth; both it and the `= expr` body arm are held by
+// executing falsifiers (`nfbcp_falsifier_generic_fn_return_type_holds`,
+// `nfbcp_falsifier_eq_body_fn_return_type_holds`). The reciprocal note lives on the carrier that
+// owns the shape, beside dag_grammar_fn_decl_expr, because the person who would break this is
+// editing the grammar and not this reader.
+//
 // THIS REPLACES A SILENTLY WRONG READING, AND THAT IS WHY IT IS NOT AN OPTIMISATION.
 // The deleted reading (body_lower_return_type_after_arrow_walk, #10929) walked the whole fn
 // subtree looking for any sequence(arrow, ...) with no prune, so it descended into the PARAMETER
