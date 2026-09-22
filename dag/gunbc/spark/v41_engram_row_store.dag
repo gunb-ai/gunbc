@@ -6,7 +6,7 @@ import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_add }
 import v2.std.optional { Present, Absent }
 import extdeps.safetensors.format {
   SafetensorsEntry, SafetensorsDtype, SafeF8E4M3, SafeF8E8M0,
@@ -755,8 +755,8 @@ fn v41_rank_digest_of(e: V41RowStoreEncoding, rank: Nat) -> ContentHash? {
 type V41PublishedSpan {
   tensor: NonEmptyStr
   shard: NonEmptyStr
-  file_offset: Nat
-  length: Nat
+  file_offset: ByteSize
+  length: ByteSize
 }
 
 type V41PublishedSpanPlan
@@ -771,8 +771,8 @@ fn v41_published_span_of(e: SafetensorsShardedEntry, shards: List<SafetensorsSha
       Present { value: f } => Present { value: V41PublishedSpan {
         tensor: e.entry.name,
         shard: e.shard,
-        file_offset: byte_size_count(b: safetensors_shard_declared_overhead(header_bytes: f.header_bytes)) + e.entry.begin_offset,
-        length: byte_size_count(b: safetensors_entry_span(e: e.entry)),
+        file_offset: measure_add(a: safetensors_shard_declared_overhead(header_bytes: f.header_bytes), b: byte_size(count: e.entry.begin_offset)),
+        length: safetensors_entry_span(e: e.entry),
       } }
     }
   }
@@ -813,7 +813,7 @@ type V41PublishedRowStoreKey
   | V41PublishedRowStoreRefused { defects: List<NonEmptyStr> }
 
 fn v41_span_eq(a: V41PublishedSpan, b: V41PublishedSpan) -> Bool {
-  (a.tensor as String) == (b.tensor as String) && (a.shard as String) == (b.shard as String) && a.file_offset == b.file_offset && a.length == b.length
+  (a.tensor as String) == (b.tensor as String) && (a.shard as String) == (b.shard as String) && byte_size_count(b: a.file_offset) == byte_size_count(b: b.file_offset) && byte_size_count(b: a.length) == byte_size_count(b: b.length)
 }
 
 // THE READINGS ARE JOINED TO THE PLAN BY IDENTITY, NOT COUNTED. Every planned span must be read
@@ -822,11 +822,11 @@ fn v41_span_eq(a: V41PublishedSpan, b: V41PublishedSpan) -> Bool {
 // set cannot key.
 fn v41_span_reading_defects(plan: List<V41PublishedSpan>, read: List<V41PublishedSpanDigest>) -> List<NonEmptyStr> {
   let unread = map(filter(plan, sp => length(filter(read, r => v41_span_eq(a: r.span, b: sp))) == 0),
-    sp => join(["the planned span of ", sp.tensor as String, " (", sp.shard as String, " at ", to_string(sp.file_offset), " for ", to_string(sp.length), " bytes) was not read"], "") as NonEmptyStr)
+    sp => join(["the planned span of ", sp.tensor as String, " (", sp.shard as String, " at ", to_string(byte_size_count(b: sp.file_offset)), " for ", to_string(byte_size_count(b: sp.length)), " bytes) was not read"], "") as NonEmptyStr)
   let twice = map(filter(plan, sp => length(filter(read, r => v41_span_eq(a: r.span, b: sp))) > 1),
     sp => join(["the span of ", sp.tensor as String, " was read more than once, so which digest is its reading is undecided"], "") as NonEmptyStr)
   let foreign = map(filter(read, r => !any(plan, sp => v41_span_eq(a: r.span, b: sp))),
-    r => join(["a reading of ", r.span.tensor as String, " (", r.span.shard as String, " at ", to_string(r.span.file_offset), " for ", to_string(r.span.length), " bytes) is not a span this partition stores"], "") as NonEmptyStr)
+    r => join(["a reading of ", r.span.tensor as String, " (", r.span.shard as String, " at ", to_string(byte_size_count(b: r.span.file_offset)), " for ", to_string(byte_size_count(b: r.span.length)), " bytes) is not a span this partition stores"], "") as NonEmptyStr)
   concat(concat(unread, twice), foreign)
 }
 
@@ -845,7 +845,7 @@ fn v41_published_row_store_text(spec_key: ContentHash, read: List<V41PublishedSp
   join(concat(
     [join(["encoding_spec ", serialize_content_hash(hash: spec_key) as String, "\n"], "")],
     map(read.sort_by(r => r.span.tensor as String), r => join([
-      "span ", r.span.tensor as String, " ", r.span.shard as String, " ", to_string(r.span.file_offset), " ", to_string(r.span.length), " ", r.sha256.hex as String, "\n",
+      "span ", r.span.tensor as String, " ", r.span.shard as String, " ", to_string(byte_size_count(b: r.span.file_offset)), " ", to_string(byte_size_count(b: r.span.length)), " ", r.sha256.hex as String, "\n",
     ], ""))), "")
 }
 

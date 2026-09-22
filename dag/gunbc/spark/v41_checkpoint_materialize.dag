@@ -471,7 +471,7 @@ fn v41_disk_line(d: V41DiskReading) -> String {
 // the same derivation the key admits the readings against; the read is extdeps.tools.sha256sum
 // sha256sum_byte_span_argv over exactly the span.
 fn v41_span_read_argv(sp: V41PublishedSpan) -> List<String> {
-  sha256sum_byte_span_argv(path: v41_install_path(path: sp.shard) as String, offset: to_string(sp.file_offset), length: to_string(sp.length))
+  sha256sum_byte_span_argv(path: v41_install_path(path: sp.shard) as String, offset: to_string(byte_size_count(b: sp.file_offset)), length: to_string(byte_size_count(b: sp.length)))
 }
 
 type V41SpanReadOutcome
@@ -499,7 +499,7 @@ fn v41_read_span(ctx: SparkMaterializeContext, sp: V41PublishedSpan) -> V41SpanR
 // v41_published_span_readings: every field the reading row carries, in its order.
 fn v41_span_line(o: V41SpanReadOutcome) -> String {
   match o {
-    V41SpanRead { reading: r } => join(["span ", r.span.tensor as String, " ", r.span.shard as String, " ", to_string(r.span.file_offset), " ", to_string(r.span.length), " sha256=", r.sha256.hex as String, "\n"], "")
+    V41SpanRead { reading: r } => join(["span ", r.span.tensor as String, " ", r.span.shard as String, " ", to_string(byte_size_count(b: r.span.file_offset)), " ", to_string(byte_size_count(b: r.span.length)), " sha256=", r.sha256.hex as String, "\n"], "")
     V41SpanUnread { span: sp, cause: c } => join(["span-unread ", sp.tensor as String, " ", sp.shard as String, ": ", c as String, "\n"], "")
     V41SpanPlanRefused { defects: d } => join(["span-plan-refused: ", join(map(d, x => x as String), "; "), "\n"], "")
   }
