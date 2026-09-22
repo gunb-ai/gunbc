@@ -2,6 +2,7 @@ module test.claim.spark.v41_published_row_store_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
+import std.measure { byte_size, byte_size_count }
 import v2.std.optional { Present, Absent }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.deepseek.deepseek_v4_1_flash {
@@ -67,8 +68,8 @@ data w_other_partition: V41EngramResidencyPartition = V41EngramResidencyPartitio
 test fn the_span_plan_names_the_four_storage_backed_regions() -> Bool {
   let plan = w_plan(p: v41_candidate_partition)
   length(plan) == 4
-    && any(plan, sp => (sp.tensor as String) == "layers.1.engram.embed.weight" && (sp.shard as String) == "model-00047-of-00048.safetensors" && sp.file_offset == 664 && sp.length == 98305579008)
-    && any(plan, sp => (sp.tensor as String) == "layers.14.engram.embed.scale" && (sp.shard as String) == "model-00048-of-00048.safetensors" && sp.file_offset == 8 + 664 + 98308270592)
+    && any(plan, sp => (sp.tensor as String) == "layers.1.engram.embed.weight" && (sp.shard as String) == "model-00047-of-00048.safetensors" && byte_size_count(b: sp.file_offset) == 664 && byte_size_count(b: sp.length) == 98305579008)
+    && any(plan, sp => (sp.tensor as String) == "layers.14.engram.embed.scale" && (sp.shard as String) == "model-00048-of-00048.safetensors" && byte_size_count(b: sp.file_offset) == 8 + 664 + 98308270592)
 }
 
 // POSITIVE CONTROL: the exact plan, read, keys.
@@ -86,13 +87,13 @@ test fn a_digest_over_a_different_table_set_does_not_key() -> Bool {
 
 // AND A READING OF A TENSOR THE PARTITION KEEPS RESIDENT IS FOREIGN, EVEN ALONGSIDE THE RIGHT FOUR.
 test fn a_reading_of_a_resident_tensor_refuses_as_foreign() -> Bool {
-  let resident_span = V41PublishedSpan { tensor: "layers.1.engram.q_weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr, file_offset: 664 + 101377628352, length: 40960 }
+  let resident_span = V41PublishedSpan { tensor: "layers.1.engram.q_weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr, file_offset: byte_size(count: 664 + 101377628352), length: byte_size(count: 40960) }
   w_refused_with(k: w_key(p: v41_candidate_partition, r: w_read(spans: concat(w_plan(p: v41_candidate_partition), [resident_span]), c: "a")), fragment: "is not a span this partition stores")
 }
 
 // THE RIGHT TENSOR OVER ANOTHER REGION IS NOT ITS READING.
 test fn a_shifted_region_refuses() -> Bool {
-  let shifted = map(w_plan(p: v41_candidate_partition), sp => V41PublishedSpan { tensor: sp.tensor, shard: sp.shard, file_offset: sp.file_offset + 1, length: sp.length })
+  let shifted = map(w_plan(p: v41_candidate_partition), sp => V41PublishedSpan { tensor: sp.tensor, shard: sp.shard, file_offset: byte_size(count: byte_size_count(b: sp.file_offset) + 1), length: sp.length })
   w_refused_with(k: w_key(p: v41_candidate_partition, r: w_read(spans: shifted, c: "a")), fragment: "was not read")
 }
 

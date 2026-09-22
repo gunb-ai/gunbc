@@ -2,7 +2,7 @@ module test.claim.spark.v41_checkpoint_materialize_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { byte_size_count }
+import std.measure { byte_size, byte_size_count }
 import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity }
 import extdeps.deepseek.deepseek_v4_1_flash { DeepseekV41PublishedFile, deepseek_v4_1_flash_safetensors_tree_file_bytes }
@@ -98,7 +98,7 @@ test fn only_a_group_a_host_is_admitted() -> Bool {
 // THE SPAN READ IS EXACTLY THE PLANNED REGION: the fixed program owned by extdeps.tools.sha256sum,
 // with the shard path, offset and length as its positional operands -- nothing spliced into the text.
 test fn the_span_read_reads_exactly_its_region() -> Bool {
-  let argv = v41_span_read_argv(sp: V41PublishedSpan { tensor: "layers.1.engram.embed.weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr, file_offset: 664, length: 98305579008 })
+  let argv = v41_span_read_argv(sp: V41PublishedSpan { tensor: "layers.1.engram.embed.weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr, file_offset: byte_size(count: 664), length: byte_size(count: 98305579008) })
   argv == ["bash", "-c", sha256sum_byte_span_program as String, "bash", join([v41_checkpoint_directory as String, "/model-00047-of-00048.safetensors"], ""), "664", "98305579008"]
 }
 
