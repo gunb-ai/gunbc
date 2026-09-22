@@ -1,0 +1,67 @@
+module v2.test.parse.closure_parse_batch_two
+
+import v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse { cp_normalized, cp_normalizes, cp_parses }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Subject: five constructs of the workload closure (//v2/test/parse/expression_bodied_fn_decl_parse:all)
+// the native front end refused, each a row of the one dag grammar (v2.extdeps.languages.dag), each
+// admitting only what v1.compiler.parse admits. Every positive claim goes red with its row removed;
+// every refusing claim pins the row's boundary.
+
+// B -- dag_grammar_generic_arg_expr (std.integer `MachineWidth<8>`).
+test fn int_literal_generic_argument_parses_holds() -> Bool {
+  cp_parses(text: "module m.t\n\ntype I8 = Compose<Int, W<8>>\n")
+}
+
+test fn bare_int_literal_is_not_a_type_holds() -> Bool {
+  match cp_parses(text: "module m.t\n\ntype T = 8\n") {
+    true => false
+    false => true
+  }
+}
+
+// C -- dag_grammar_primary_name_expr (std.cross_tree.resolution `{ module: module }`).
+test fn module_keyword_as_a_value_parses_holds() -> Bool {
+  cp_parses(text: "module m.t\n\nfn f(x: Q) -> Q {\n  module\n}\n")
+}
+
+test fn other_keywords_are_not_values_holds() -> Bool {
+  match cp_parses(text: "module m.t\n\nfn f(x: Q) -> Q {\n  data\n}\n") {
+    true => false
+    false => true
+  }
+}
+
+// D -- the field_decl_block arm of dag_grammar_type_expr (std.pareto `type AxisScan = { .. }`).
+test fn anonymous_record_type_expression_parses_holds() -> Bool {
+  cp_parses(text: "module m.t\n\ntype S = { p: Int, c: Int }\n")
+}
+
+// E -- dag_grammar_admit_callers_clause_expr (std.integer qualified_octets). Parsed and discarded
+// (gunbc.rung_drop admit_callers_discarded_on_the_native_route).
+test fn admit_callers_clause_parses_holds() -> Bool {
+  cp_parses(
+    text: "module m.t\n\nfn q(m: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"a\", decl_name: \"c\")]\n{\n  m\n}\n"
+  )
+}
+
+test fn empty_admit_callers_refuses_as_in_v1_holds() -> Bool {
+  match cp_parses(text: "module m.t\n\nfn q(m: Int) -> Int\n  admit_callers: []\n{\n  m\n}\n") {
+    true => false
+    false => true
+  }
+}
+
+// A -- dag_grammar_else_less_if_stmt_expr (extdeps.uri_path guards): parsed, then refused at
+// lowering with its own typed cause, never dropped or rewritten.
+test fn else_less_if_refuses_at_lowering_with_its_cause_holds() -> Bool {
+  match cp_normalized(text: "module m.t\n\nfn f(x: Bool) -> Int {\n  if x {\n    return 1\n  }\n  2\n}\n") {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal_reason(d: d) == ^body_lowering_reason_else_less_if_unlowered
+  }
+}
