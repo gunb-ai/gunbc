@@ -3267,7 +3267,6 @@ type PostfixStep {
 type PostfixChainRead
   = PostfixChainFound { steps: List<PostfixStep> }
   | PostfixChainNotThisShape
-  | PostfixChainStepSuffixUnlowered { at: Node }
 
 fn body_lower_postfix_chain_steps_grow(
   repeat_capture: Node,
@@ -3297,7 +3296,20 @@ fn body_lower_postfix_chain_steps_read(
           Present { value: segment } =>
             match body_lower_postfix_suffix_read(repeat_elem: repeat_elem) {
               PostfixSuffixNone => PostfixChainNotThisShape
-              PostfixSuffixUnlowered => PostfixChainStepSuffixUnlowered { at: repeat_elem }
+              // DECLINED, NOT REFUSED, AND THE PRECEDENT IS #11683's FOR THE SAME REASON.
+              // Refusing an unlowered suffix kind here is the DESIGN section 5 reading, and it
+              // was measured: it turned 32 modules that ACCEPT at base into refusals -- 28
+              // directly, and 4 more as match_arm_navigation_refused when the rejection
+              // propagated out of a match scrutinee. #11683 faced this exact choice for the
+              // call-before-end class and declined for the same reason, with the erasure
+              // recorded as a today-row rather than hidden. So the brace suffix
+              // (`a.b.C { f: v }`, the module-qualified record construction) and the `as`
+              // suffix DECLINE to the pre-existing arms, where they behave exactly as they do
+              // on base. That leaves their erasure in place and this package does not claim
+              // otherwise: the receipt is on gunbc.recurring_failure_mode
+              // call_expression_erased_at_v2_body_lowering, and lowering them needs a construct
+              // tag that can carry a qualified name, which is a wider package than this one.
+              PostfixSuffixUnlowered => PostfixChainNotThisShape
               PostfixSuffixEmpty =>
                 body_lower_postfix_chain_steps_grow(
                   repeat_capture: repeat_capture,
@@ -3352,7 +3364,6 @@ fn body_lower_postfix_chain_read(node: Node) -> PostfixChainRead {
     Present { value: pair } =>
       match body_lower_postfix_chain_steps_read(repeat_capture: pair.right, acc: Empty) {
         PostfixChainNotThisShape => PostfixChainNotThisShape
-        PostfixChainStepSuffixUnlowered { at: at } => PostfixChainStepSuffixUnlowered { at: at }
         PostfixChainFound { steps: steps } =>
           match steps {
             Empty => PostfixChainNotThisShape
@@ -3369,7 +3380,6 @@ fn body_lower_postfix_chain_read(node: Node) -> PostfixChainRead {
 fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
   match body_lower_postfix_chain_read(node: node) {
     PostfixChainNotThisShape => optional_absent()
-    PostfixChainStepSuffixUnlowered { at: _ } => optional_absent()
     PostfixChainFound { steps: steps } =>
       if body_lower_postfix_steps_all_bare(steps: steps) {
         match body_lower_dotted_head_symbol_optional(
@@ -3502,13 +3512,6 @@ fn body_lower_postfix_chain_fold_step(
 fn body_lower_dotted_chain_lowered_optional(node: Node) -> Outcome<Optional<Node>> {
   match body_lower_postfix_chain_read(node: node) {
     PostfixChainNotThisShape => outcome_accepted(value: optional_absent())
-    PostfixChainStepSuffixUnlowered { at: at } =>
-      outcome_rejected(
-        d: body_lower_diagnostic(
-          reason: ^body_lowering_reason_postfix_suffix_unlowered,
-          n: at
-        )
-      )
     PostfixChainFound { steps: steps } =>
       let head_node = body_lower_postfix_chain_head_or_self(node: node)
       match body_lower_dotted_head_symbol_optional(node: head_node) {

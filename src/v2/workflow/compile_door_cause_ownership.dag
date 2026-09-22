@@ -144,12 +144,6 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "body-lowering stage frontier on the self-host critical path: a record-literal field initializer whose shape is not `name: value`. Measured 2026-09-22 at fatal grain by the workload adjudicate over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
-    cause: ^body_lowering_reason_postfix_suffix_unlowered,
-    grain: FatalGrain,
-    lane: SharedSelfHostCriticalPath,
-    flip_trigger: "body-lowering stage frontier on the self-host critical path: a postfix chain step whose suffix is neither empty nor a parenthesised argument row -- today that is the module-qualified record construction `a.b.C { f: v }` and an `as` suffix. It REPLACES the unowned cause postfix_field_access_refused, which the single-step postfix reader raised for every chain whose FIRST step carried no call suffix, including the field projections and computed receivers that gunbc#12033's PR2 lowers; the residue this row now owns is the suffix kinds that are genuinely unlowered. It flips to Blocking when a construct tag can carry a qualified name, which is what the brace-suffix shape needs and what this package deliberately did not widen to reach. Measured 2026-09-22 at fatal grain by the workload adjudicate over dag + src/v2 (count on the PR)"
-  },
-  CauseOwnership {
     cause: ^body_lowering_reason_value_carried_unlowered,
     grain: HeadGrain,
     lane: SharedSelfHostCriticalPath,
