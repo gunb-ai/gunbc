@@ -231,6 +231,20 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // and a job without that edge installs whatever was lying around. host-reset-return is held to it
 // most sharply, since it POWER-CYCLES its subject.
 //
+// THE CLAIM IS TOTAL: NO INDEX IS READ, AND THAT IS WHAT MAKES ITS RED DISCRIMINATE.
+//
+// The first form indexed -- edges[0].id, edges[1].needs -- with the count conjunct FIRST so a short
+// row would fail before any index. It did not: dropping an edge row produced an EVALUATION ERROR
+// on the absent index rather than a clean false, with the count conjunct already ahead of it. So
+// `&&` here does not spare the later operands from evaluation, and no reordering fixes it.
+//
+// That matters because a control that DIES is weaker evidence than one that ANSWERS false: an eval
+// error is also what a typo, a renamed field or a broken fixture produces, so the red stops
+// discriminating the thing it was built for. Comparing the projected id list against the expected
+// spelling, and folding the edge property with `all`, reads no index at all -- a dropped or renamed
+// row makes the lists unequal and the claim returns false, while an eval error now means something
+// else genuinely broke.
+//
 // THE INHABITANCE OBLIGATION IS DISCHARGED ELSEWHERE AND DELIBERATELY: the rendered-yaml claims in
 // this file run the real workflow end to end, so the edges asserted here are known to reach the
 // emitted jobs. Reading the roster alone would otherwise establish the graph a builder was TOLD,
@@ -238,22 +252,22 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
   let edges = fleet_converge_job_edges
   let build = [fleet_converge_release_bins_job_id as String]
-  edges.length() == 7
-    && edges[0].id == ("build" as NonEmptyStr)
-    && edges[0].needs == []
-    && edges[1].id == ("fleet-converge" as NonEmptyStr)
-    && edges[1].needs == build
-    && edges[2].id == ("host-reset-return" as NonEmptyStr)
-    && edges[2].needs == build
-    && edges[3].id == ("dashboard-deploy" as NonEmptyStr)
-    && edges[3].needs == build
-    && edges[4].id == ("approval-broker-dark-install" as NonEmptyStr)
-    && edges[4].needs == build
-    && edges[5].id == ("microvm-controller-install" as NonEmptyStr)
-    && edges[5].needs == build
-    && edges[6].id == ("rlm-launch-deployment-receipt" as NonEmptyStr)
-    && edges[6].needs == build
+  map(edges, e => e.id as String) == [
+    "build",
+    "fleet-converge",
+    "host-reset-return",
+    "dashboard-deploy",
+    "approval-broker-dark-install",
+    "microvm-controller-install",
+    "rlm-launch-deployment-receipt",
+  ]
+    && all(edges, e => if (e.id as String) == (fleet_converge_release_bins_job_id as String) {
+      e.needs == []
+    } else {
+      e.needs == build
+    })
 }
+
 
 fn expected_fleet_converge_yml_content() -> String {
   match expected_fleet_converge_yml() {
