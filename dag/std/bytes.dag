@@ -1,7 +1,7 @@
 module std.bytes
 
 import std.types { Bytes }
-import std.integer { UInt8 }
+import std.integer { UInt8, QualifiedOctetsResult, uint8_octets_of_ints }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -49,6 +49,55 @@ fn pure_dag_seam_unreachable_string() -> String {
 
 fn bytes_octets(b: Bytes) -> List<UInt8> {
   [pure_dag_seam_unreachable()]
+}
+
+// THE ONE PLACE A HOST-PRODUCED BYTE LIST IS QUALIFIED, AND IT OBSERVES RATHER THAN ASSERTS.
+//
+// std.encoding base64_encode declares the SEALED carrier QualifiedOctets -- the proof that every
+// member passed uint8_of_int admission. An earlier form of this function MINTED that carrier
+// directly from bytes_octets on the ground that a byte is an octet by construction, so the
+// admission fold's refusal arm was unreachable. That was wrong, and the reason is worth keeping
+// because it is easy to reach again: the range of a host-produced value is an EXTERNAL fact.
+// bytes_octets' own .dag body is the divergent seam -- the realization is the seed's interpreter
+// arm -- so nothing in this corpus establishes the range. word_to_octets is admitted to the mint
+// roster because its members run through uint8_of_int where a reader can follow them; this value
+// has no such derivation, only a declared row asserting it. DESIGN section 4b puts external
+// reality in the observe-refuse-or-mitigate-at-a-declared-boundary column, explicitly NOT on the
+// ladder and explicitly never fabricated, and names the failure directly: a brand or Validated<T>
+// is cosmetic until construction and acceptance enforce the distinction. Minting the seal from an
+// unobserved host value was exactly that cosmetic wrapper.
+//
+// So the value is OBSERVED here, once, where it crosses into the corpus. This is deliberately ONE
+// boundary rather than a check at each consumer (DESIGN section 3, single authority): every
+// downstream holder of a QualifiedOctets receives a carrier that was actually inspected and does
+// no checking of its own.
+//
+// WHY ROUTING THROUGH A SHARED FOLD DOES NOT WEAKEN THE ONE-BOUNDARY CLAIM, stated because it is
+// the natural worry: uint8_octets_of_ints is reachable from anywhere, so this function holds no
+// exclusive access to the carrier. It does not need one. The fold is CHECKED -- it scans every
+// member and mints only from a list it has proved in full -- so every path through it is
+// qualified by construction rather than by permission. std.integer's admit_callers roster names
+// who may call the mint DIRECTLY, bypassing that scan (word_to_octets does, on its own
+// in-corpus derivation); this function is not on that roster and does not want to be. The
+// property here is that the host value is inspected before it is sealed, and that rests on the
+// fold's own behaviour rather than on nobody else calling it -- which is the version that would
+// have rotted the first time the roster grew.
+//
+// RUNG, STATED HONESTLY AND NOT INFLATED: MITIGATABLE at a declared boundary. This is not
+// construction and must not be described as such -- the wrong value can still arrive, and what
+// changes is that it is refused with a located observation instead of sealed. What section 5
+// forbids is mislabelling mitigation as construction, not performing it.
+//
+// IS THE RED AUTHORABLE? NOT TODAY, AND THAT IS STATED RATHER THAN LEFT TO BE DISCOVERED (4b's
+// top-rung question). No .dag fixture can make this seam yield an out-of-range member, because
+// the seam's realization is the host's and a fixture cannot substitute it -- so the refusal arm
+// is presently unreachable from the corpus and this claim's own red is not enrollable. Per 4b
+// that missing harness is the NEXT-RUNG TRIGGER, not a permanent ceiling: A FIXTURE HARNESS THAT
+// CAN SUBSTITUTE THE REALIZATION OF A PRIMITIVE SEAM, sufficient to hand this function a byte
+// list carrying 256 and observe the refusal. Until that exists, the arm is an honest boundary
+// refusal with no executed red, and nothing here may be cited as evidence that it fires.
+fn bytes_qualified_octets(b: Bytes) -> QualifiedOctetsResult {
+  uint8_octets_of_ints(values: bytes_octets(b: b))
 }
 
 fn octets_bytes(o: List<UInt8>) -> Bytes {
