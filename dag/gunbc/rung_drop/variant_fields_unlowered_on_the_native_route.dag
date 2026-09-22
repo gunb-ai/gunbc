@@ -29,6 +29,13 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // constructor by SHAPE, and a module container is a Conj whose every child is a Named edge, which
 // is also what a declared payload looks like to every shape test tried. So a binder spelling a
 // sibling module name is classified a constructor, gets no frame local, and resolves to the
+// MODULE. In this tree the binder is `node`, bound by BOTH `Present { value: node }` arms of
+// v2.std.symbol_index symbol_index_candidates_at -- the unbound-declaring arm that builds a single
+// LexicalBindingCandidate, and the fold arm that snocs one per declaring -- and lexical ascent from
+// either reaches the MODULE v2.std.node.
+// Accepted, wrong value, no diagnostic -- below the ladder, not on it. Found by review 70101 on
+// this PR.
+//
 // WHY THIS SPECIMEN IS CITED BY SYMBOL AND NOT BY LINE, AS A RECEIPT RATHER THAN A PREFERENCE.
 // This row first cited `src/v2/std/symbol_index.dag:156`, and that citation was CORRECT when it
 // was written -- line 156 was the arm, at three successive commits. It was invalidated by one
@@ -38,12 +45,6 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // took under a day, across lanes, under somebody else's correct work. So the class is not that a
 // citation was written carelessly -- it is that a position is a SECOND naming scheme for something
 // the containment tree already names, and it decays without either end being edited.
-// MODULE. In this tree the binder is `node`, bound by BOTH `Present { value: node }` arms of
-// v2.std.symbol_index symbol_index_candidates_at -- the unbound-declaring arm that builds a single
-// LexicalBindingCandidate, and the fold arm that snocs one per declaring -- and lexical ascent from
-// either reaches the MODULE v2.std.node.
-// Accepted, wrong value, no diagnostic -- below the ladder, not on it. Found by review 70101 on
-// this PR.
 //
 // AN ABSENCE CLAIM THAT WAS ABOUT WHERE I LOOKED, RECORDED BECAUSE THE NEXT READER MEETS IT HERE.
 // Two commits before this row was narrowed, the annotation beside the classifier stated that this

@@ -1052,7 +1052,7 @@ fn resolve_transform_children(
 // answered "constructor". Reachable and in this tree: the binder `node` of BOTH
 // `Present { value: node }` arms of v2.std.symbol_index symbol_index_candidates_at -- the
 // unbound-declaring arm and the fold arm -- where lexical ascent reaches the MODULE v2.std.node.
-// The binder gets no frame local and the arm body resolves `node` to the module.
+// The binder gets no frame local and the arm body resolves `node` to the module. That is the
 // population of gunbc.rung_drop variant_fields_unlowered_on_the_native_route, which is why that
 // row STANDS rather than being retired by this PR.
 //
