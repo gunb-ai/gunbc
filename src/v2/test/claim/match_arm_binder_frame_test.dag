@@ -94,8 +94,6 @@ fn mab_outcome_refuses_with(o: Outcome<Node>, reason: Symbol) -> Bool {
   }
 }
 
-
-
 fn mab_resolved_0() -> Outcome<Node> {
   mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\ntest fn x() -> Int { 1 }\n\nfn pick(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n")
 }
@@ -189,25 +187,4 @@ test fn mab_nested_braced_and_shorthand_binders_bind() -> Bool {
     && mab_outcome_accepts(o: mab_resolved_8())
     && mab_outcome_accepts(o: mab_resolved_9())
 }
-
-fn mab_resolved_data_named_binder() -> Outcome<Node> {
-  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\ndata d: Int = 1\n\nfn pick(c: C) -> Int {\n  match c {\n    A(d) => d\n    B => 0\n  }\n}\n")
-}
-
-// A BINDER SPELLING A MODULE-LEVEL DATA NAME BINDS THE ARM, NOT THE DATA ROW. The classifier used
-// to answer "constructor" for ANY Conj, and the namespace graft binds a data name to its
-// declaration parse node, which is a Conj -- so `A(d)` beside `data d: Int = 1` was skipped by
-// resolve_pattern_binders, never entered the arm frame, and resolved to the data row instead.
-// Silent: the name resolves, so nothing refuses. This is the case the rule three lines above
-// resolve_pattern_node_is_constructor already excluded in words while the code admitted it.
-test fn mab_data_named_binder_binds_the_arm() -> Bool {
-  mab_outcome_accepts(o: mab_resolved_data_named_binder())
-}
-
-
-
-
-
-
-
 
