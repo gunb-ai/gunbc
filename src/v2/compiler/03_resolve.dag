@@ -1044,17 +1044,15 @@ fn resolve_transform_children(
 // type expressions). A construct is excluded on top of that, because its tag self-edge reads as a
 // field of the same name and would otherwise satisfy the field test.
 //
-// WHAT THIS DOES NOT CLOSE, NAMED PRECISELY, BECAUSE A PARTIAL REPAIR WHOSE RESIDUE IS UNSTATED
-// IS THE DANGEROUS KIND. This test is strictly narrower than the fail-open default it replaces
-// and it does NOT close the module-container case. v2.std.node_query declared_field_from_edge
-// accepts ANY Named edge and constrains the target kind not at all, so a module container --
-// every child a Named edge to a declaration -- satisfies the field-coverage test and is still
-// answered "constructor". Reachable and in this tree: the binder `node` of BOTH
-// `Present { value: node }` arms of v2.std.symbol_index symbol_index_candidates_at -- the
-// unbound-declaring arm and the fold arm -- where lexical ascent reaches the MODULE v2.std.node.
-// The binder gets no frame local and the arm body resolves `node` to the module. That is the
-// population of gunbc.rung_drop variant_fields_unlowered_on_the_native_route, which is why that
-// row STANDS rather than being retired by this PR.
+// WHAT THIS DOES NOT CLOSE, NAMED PRECISELY. This test is strictly narrower than the fail-open
+// default it replaces, but the shape still cannot tell a declared payload from a module container:
+// v2.std.node_query declared_field_from_edge accepts ANY Named edge, so a module container would
+// be answered "constructor" IF a binder's lookup ever reached one. No route is known to. The
+// review-sourced specimen (binder `node` beside module v2.std.node in v2.std.symbol_index
+// symbol_index_candidates_at) was executed by gunbc#12082's v2.test.claim.match_arm_binder_frame
+// mab_binder_spelling_a_sibling_module_binds_the_arm and binds, because symbol_index_fill inserts
+// no module path. An earlier revision of this note asserted that specimen resolved silently to the
+// module without running it; that is retracted.
 //
 // AND WHY A FOURTH SHAPE DISCRIMINATOR IS REFUSED RATHER THAN ATTEMPTED. Three have been tried
 // here -- the bare connective, the construct tag, and declared-field coverage -- and each admitted
