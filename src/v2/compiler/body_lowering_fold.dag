@@ -2908,12 +2908,16 @@ fn body_lower_value_is_function_value_shell(node: Node) -> Bool {
 // COST SHAPE: ONE BOTTOM-UP FOLD PER VALUE, THE WALKER ONLY AS THE FALLBACK. A raw value is first
 // folded once (body_lower_fold, linear in its size: nested calls, records and literals lower with
 // their children already lowered) and the result peeled; only a value the fold cannot bring to a
-// lowered node enters the top-down walker. Entering the walker first cost an exponential in
-// nesting depth -- each walker attempt re-folds the subtree and re-enters this reader for every
-// nested argument -- measured as normalize of the workload closure going from 42 s to 121 s
-// (v2.extdeps.languages.dag 8.5 s -> 30 s, this module 1.3 s -> 12.6 s) before this ordering.
-// A fold that refuses hands the value to the walker rather than propagating: these positions were
-// read by the walker before, and its verdict on them is the one this change does not alter.
+// lowered node enters the top-down walker. Entering the walker first is exponential in nesting
+// depth: each walker attempt (body_lower_body_subtree_lower_rest and the from_binary / from_expr /
+// from_postfix retries) re-folds the subtree through body_lower_try_body_lowered and re-enters
+// this reader for every nested argument, so a call nested d deep is folded on the order of 5^d
+// times. The instrument that re-derives this is the native lane's per-file phase clock: the
+// emitted driver's `adjudicate` (std.compiler_entry SourceRootEvalDriver, absorbed by
+// v2.compiler.compile native_test_context_absorb) prints one row per ingested file carrying
+// `normalize_nanos`; sum and sort it over the workload closure, baseline against candidate. A fold
+// that refuses hands the value to the walker rather than propagating: these positions were read
+// by the walker before, and its verdict on them is the one this change does not alter.
 fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
   match body_lower_lowered_behind_shells_optional(node: node) {
     Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))

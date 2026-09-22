@@ -80,8 +80,6 @@ fn mab_refuses_with(src: String, reason: Symbol) -> Bool {
   }
 }
 
-data mab_prelude: String = "module p\n\ntype C = A(Int) | B\n\n"
-
 // (1) A binder shadowing an outer name binds the ARM's binding: the outer `x` is test code, and
 // the arm's `x` never reaches it.
 test fn mab_shadowing_binder_binds_the_arm() -> Bool {

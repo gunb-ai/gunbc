@@ -137,6 +137,14 @@ fn coproduct_arm_payload_pair_from_arm(arm: CoproductArm) -> CoproductArmPayload
 // loudly), so the reader carries no default slot. Positional and record spellings are one shape:
 // `A(T)` declares the field list [0: T] and `A { v: T }` declares [v: T]. Nullary is the empty
 // payload Conj (arm_payload_from_target Nullary), not an absent one.
+// CONSUMERS (DESIGN 3c): the producers (v2.compiler.body_lowering_fold) build the field edges
+// directly; these READERS are consumed today by v2.test.parse.variant_field_lowering over real
+// normalize output, and their production consumer is the declared frontier of the same lane:
+// field projection off a receiver -- `expr.field` names a DECLARED field of the receiver's type
+// or refuses, located -- and the construction/elimination typing that joins a positional operand
+// to field "0" (the seed's infer_variant_constructor_call), both dispatched as the follow-up PR to
+// gunbc#12033 in the native-route program. They are not a second lookup model: that PR reads
+// declared_field_named and refuses on Absent.
 type DeclaredField {
   name: Symbol
   type_node: Node
