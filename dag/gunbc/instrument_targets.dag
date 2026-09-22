@@ -912,7 +912,32 @@ fn native_route_termination_step(
   }
 }
 
-fn native_route_member_termination(rows: List<NativeRouteMemberRow>) -> InvocationTermination {
+// COMPLETENESS IS AN INPUT, NOT AN ASSUMPTION, AND THAT IS THE WHOLE REPAIR (review 70091).
+//
+// An earlier shape of this fold took ONLY the rows. Its contract was a COMPLETE per-identity
+// population and nothing in `List<NativeRouteMemberRow>` says so, so any caller could hand it a
+// short list and get a confident answer about a selection it had not observed. The failing case is
+// concrete and fails green: two tests pass, a third identity emits NO ROW because its file refused
+// to parse, and the fold sees two passes and answers `ObservationHeld` -- exit 0 -- while the lane
+// concurrently refuses with `population_omissions_present`. A non-empty row list hides exactly the
+// defect the empty-selection arm below exists to catch.
+//
+// SO THE EXTENT IS DECLARED BY THE CALLER AND CHECKED HERE. `universe` is how many identities the
+// selection contained and `file_refusals` is how many sources could not be read at all; a caller
+// cannot compute a termination without stating both, which is DESIGN section 5's construction over
+// validation applied to the fold's own contract -- the incomplete call is not merely detected, it
+// is unwritable.
+//
+// A FILE REFUSAL COUNTS EVEN WHEN THE ROW COUNT MATCHES. A source that refused may hold identities
+// discovery never saw, so the universe itself can be short without any row going missing. Treating
+// a non-zero refusal count as observed-nothing is the fail-closed direction: it costs a caller an
+// exit 2 on a run that might have been complete, and the alternative costs a green on one that was
+// not.
+fn native_route_member_termination(
+  rows: List<NativeRouteMemberRow>,
+  universe: Int,
+  file_refusals: Int
+) -> InvocationTermination {
   let tally = fold(
     rows,
     init: NativeRouteTerminationTally { observed_failure: false, unobserved: false, members: 0 },
@@ -921,6 +946,10 @@ fn native_route_member_termination(rows: List<NativeRouteMemberRow>) -> Invocati
   if tally.observed_failure {
     InvocationObservationDidNotHold {}
   } else if tally.unobserved {
+    InvocationSubjectUnreached {}
+  } else if tally.members != universe {
+    InvocationSubjectUnreached {}
+  } else if file_refusals != 0 {
     InvocationSubjectUnreached {}
   } else if tally.members == 0 {
     InvocationSubjectUnreached {}

@@ -682,7 +682,18 @@ pub enum NativeMemberTermination {
 /// "every row passed" is vacuously true of no rows and reporting that as a pass is the
 /// absence-is-not-success defect. The `.dag` witness carries a discriminating red for each of those
 /// three, so this mirror drifting from it is detectable there rather than only by reading.
-fn native_member_termination(rows: &[NativeMemberVerdict]) -> NativeMemberTermination {
+///
+/// COMPLETENESS IS PASSED IN, NOT ASSUMED. The rows are what the run PRINTED; the run also reports
+/// how many identities the selection held and how many sources it could not read at all. Folding
+/// the printed rows alone answered `ObservationHeld` for a selection where two tests passed and a
+/// third emitted no row because its file refused -- exit 0 beside a lane refusing
+/// `population_omissions_present` (review 70091). Both counts come off the same terminal marker
+/// this function's caller already logs, so nothing new is observed to close it.
+fn native_member_termination(
+    rows: &[NativeMemberVerdict],
+    universe: u64,
+    file_refusals: u64,
+) -> NativeMemberTermination {
     let observed_failure = rows.iter().any(|v| {
         matches!(
             v,
@@ -695,6 +706,10 @@ fn native_member_termination(rows: &[NativeMemberVerdict]) -> NativeMemberTermin
     if observed_failure {
         NativeMemberTermination::ObservationDidNotHold
     } else if unobserved {
+        NativeMemberTermination::SubjectUnreached
+    } else if rows.len() as u64 != universe {
+        NativeMemberTermination::SubjectUnreached
+    } else if file_refusals != 0 {
         NativeMemberTermination::SubjectUnreached
     } else if rows.is_empty() {
         NativeMemberTermination::SubjectUnreached
@@ -2040,7 +2055,11 @@ fn run_required_v2_native_inner(
     Ok(NativeRunAdmission {
         admitted: run.terminal.admitted,
         summary: run.terminal.summary,
-        members: native_member_termination(&run.members),
+        members: native_member_termination(
+            &run.members,
+            run.terminal.universe,
+            run.terminal.file_refusals,
+        ),
     })
 }
 
@@ -2068,7 +2087,7 @@ mod tests {
         let out = parse_native_run_output(&stdout).expect("the real row must decode");
         assert_eq!(out.members, vec![NativeMemberVerdict::Refused]);
         assert_eq!(
-            native_member_termination(&out.members),
+            native_member_termination(&out.members, 1, 0),
             NativeMemberTermination::SubjectUnreached
         );
     }
@@ -2078,11 +2097,35 @@ mod tests {
     #[test]
     fn an_empty_population_is_unreached_not_held() {
         assert_eq!(
-            native_member_termination(&[]),
+            native_member_termination(&[], 0, 0),
             NativeMemberTermination::SubjectUnreached
         );
         assert_eq!(
-            native_member_termination(&[NativeMemberVerdict::Passed]),
+            native_member_termination(&[NativeMemberVerdict::Passed], 1, 0),
+            NativeMemberTermination::ObservationHeld
+        );
+    }
+
+    /// THE REVIEWER'S CASE (review 70091), WHICH FAILED GREEN. Two tests pass and a third identity
+    /// of the selection emits NO ROW because its file refused. Folding the printed rows alone saw
+    /// two passes and answered held -- exit 0 -- beside a lane refusing population_omissions_present.
+    #[test]
+    fn an_incompletely_observed_selection_cannot_hold() {
+        let two_passes = [NativeMemberVerdict::Passed, NativeMemberVerdict::Passed];
+        // universe of three, only two rows printed: one identity was never observed.
+        assert_eq!(
+            native_member_termination(&two_passes, 3, 0),
+            NativeMemberTermination::SubjectUnreached
+        );
+        // counts agree but a source could not be read at all -- the real run's shape
+        // (universe=3992 population=3992 file_refusals=259).
+        assert_eq!(
+            native_member_termination(&two_passes, 2, 259),
+            NativeMemberTermination::SubjectUnreached
+        );
+        // complete and clean is the only way to hold.
+        assert_eq!(
+            native_member_termination(&two_passes, 2, 0),
             NativeMemberTermination::ObservationHeld
         );
     }
@@ -2092,18 +2135,26 @@ mod tests {
     #[test]
     fn the_precedence_matches_the_modeled_fold() {
         assert_eq!(
-            native_member_termination(&[
-                NativeMemberVerdict::Refused,
-                NativeMemberVerdict::ReturnedFalse
-            ]),
+            native_member_termination(
+                &[
+                    NativeMemberVerdict::Refused,
+                    NativeMemberVerdict::ReturnedFalse
+                ],
+                2,
+                0
+            ),
             NativeMemberTermination::ObservationDidNotHold
         );
         assert_eq!(
-            native_member_termination(&[NativeMemberVerdict::Passed, NativeMemberVerdict::Refused]),
+            native_member_termination(
+                &[NativeMemberVerdict::Passed, NativeMemberVerdict::Refused],
+                2,
+                0
+            ),
             NativeMemberTermination::SubjectUnreached
         );
         assert_eq!(
-            native_member_termination(&[NativeMemberVerdict::ReturnedOther]),
+            native_member_termination(&[NativeMemberVerdict::ReturnedOther], 1, 0),
             NativeMemberTermination::ObservationDidNotHold
         );
     }

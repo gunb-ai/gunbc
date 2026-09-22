@@ -83,14 +83,14 @@ test fn a_wholly_refused_population_is_subject_unreached() -> Bool {
   termination_name(t: native_route_member_termination(rows: [
     row_with(module: "v2.test.parse", declaration: "a", verdict: refused_at_prepare()),
     row_with(module: "v2.test.parse", declaration: "b", verdict: refused_at_eval()),
-  ])) == "subject_unreached"
+  ], universe: 2, file_refusals: 0)) == "subject_unreached"
 }
 
 // THE EMPTY SELECTION IS ITS OWN ARM AND IT IS NOT THE ALL-PASSED ARM. "every row passed" is
 // vacuously true of no rows, so collapsing these two would report a pattern that selected nothing
 // as a passing test. This is the arm a reviewer will suggest simplifying.
 test fn an_empty_selection_is_unreached_not_held() -> Bool {
-  termination_name(t: native_route_member_termination(rows: [])) == "subject_unreached"
+  termination_name(t: native_route_member_termination(rows: [], universe: 0, file_refusals: 0)) == "subject_unreached"
 }
 
 // SUPPLIED ARM (no executed backing yet). All members passed and the population is non-empty.
@@ -98,7 +98,7 @@ test fn a_wholly_passing_population_is_held() -> Bool {
   termination_name(t: native_route_member_termination(rows: [
     row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestPassed {}),
     row_with(module: "v2.test.parse", declaration: "b", verdict: NativeTestPassed {}),
-  ])) == "held"
+  ], universe: 2, file_refusals: 0)) == "held"
 }
 
 // SUPPLIED ARM (no executed backing yet). One member evaluated and returned false.
@@ -106,7 +106,7 @@ test fn one_returned_false_makes_the_selection_not_hold() -> Bool {
   termination_name(t: native_route_member_termination(rows: [
     row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestPassed {}),
     row_with(module: "v2.test.parse", declaration: "b", verdict: NativeTestReturnedFalse {}),
-  ])) == "did_not_hold"
+  ], universe: 2, file_refusals: 0)) == "did_not_hold"
 }
 
 // THE PRECEDENCE, WHICH IS THE ONE DECISION IN THIS FOLD THAT COULD HAVE GONE THE OTHER WAY. A
@@ -117,7 +117,7 @@ test fn a_definite_failure_outranks_an_unobserved_sibling() -> Bool {
   termination_name(t: native_route_member_termination(rows: [
     row_with(module: "v2.test.parse", declaration: "a", verdict: refused_at_prepare()),
     row_with(module: "v2.test.parse", declaration: "b", verdict: NativeTestReturnedFalse {}),
-  ])) == "did_not_hold"
+  ], universe: 2, file_refusals: 0)) == "did_not_hold"
 }
 
 // AND AN UNOBSERVED MEMBER OUTRANKS THE PASSES AROUND IT. Without this arm, an implementation that
@@ -126,7 +126,7 @@ test fn one_unobserved_member_stops_a_passing_population_holding() -> Bool {
   termination_name(t: native_route_member_termination(rows: [
     row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestPassed {}),
     row_with(module: "v2.test.parse", declaration: "b", verdict: refused_at_prepare()),
-  ])) == "subject_unreached"
+  ], universe: 2, file_refusals: 0)) == "subject_unreached"
 }
 
 // RETURNED-OTHER IS A FAILURE, NOT AN UNOBSERVED STATE. A test that evaluated to a non-Bool WAS
@@ -134,5 +134,36 @@ test fn one_unobserved_member_stops_a_passing_population_holding() -> Bool {
 test fn returned_other_is_a_failure_rather_than_an_absence() -> Bool {
   termination_name(t: native_route_member_termination(rows: [
     row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestReturnedOther {}),
-  ])) == "did_not_hold"
+  ], universe: 1, file_refusals: 0)) == "did_not_hold"
+}
+
+// THE REVIEWER'S CASE, WHICH FAILED GREEN AND IS THE REASON COMPLETENESS BECAME AN INPUT
+// (review 70091). Two tests pass and a THIRD identity of the selection emitted no row at all --
+// its file refused to parse. Folding only the printed rows sees two passes and answers "held",
+// exit 0, while the lane concurrently refuses with population_omissions_present. A non-empty row
+// list hides exactly what the empty-selection arm exists to catch.
+test fn an_omitted_identity_stops_a_passing_population_holding() -> Bool {
+  termination_name(t: native_route_member_termination(rows: [
+    row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestPassed {}),
+    row_with(module: "v2.test.parse", declaration: "b", verdict: NativeTestPassed {}),
+  ], universe: 3, file_refusals: 0)) == "subject_unreached"
+}
+
+// A FILE REFUSAL COUNTS EVEN WHEN EVERY EXPECTED ROW ARRIVED. A source that could not be read may
+// hold identities discovery never saw, so the universe itself can be short with no row missing.
+// This is the arm the real run exercises: it reported universe=3992 population=3992 and
+// file_refusals=259, so the counts AGREED and the selection was still not wholly observed.
+test fn a_file_refusal_stops_a_matching_population_holding() -> Bool {
+  termination_name(t: native_route_member_termination(rows: [
+    row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestPassed {}),
+  ], universe: 1, file_refusals: 259)) == "subject_unreached"
+}
+
+// AND A DEFINITE FAILURE STILL OUTRANKS INCOMPLETENESS. A test that evaluated and returned false
+// makes "the selection held" false whether or not its siblings were all observed; demoting that to
+// "unreached" because a file refused would bury a located defect behind a completeness problem.
+test fn a_definite_failure_outranks_an_incomplete_population() -> Bool {
+  termination_name(t: native_route_member_termination(rows: [
+    row_with(module: "v2.test.parse", declaration: "a", verdict: NativeTestReturnedFalse {}),
+  ], universe: 9, file_refusals: 7)) == "did_not_hold"
 }
