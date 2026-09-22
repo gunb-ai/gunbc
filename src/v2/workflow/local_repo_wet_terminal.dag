@@ -242,6 +242,19 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // bin-witness wet class, whose standing excl_bin_wet_reason carries. Measured wet through
 // `gunbc run --claim-run` over this tree before enrollment: all ten held, and every metacharacter
 // probe failed without output rather than running its payload.
+// NINE ATTEMPT-LIFECYCLE MEMBERS (2026-09-22, gunbc#12040). Same admitted effect as the seven
+// host_capacity members directly below, and enrolled the same way: a real compare-and-set against a
+// real generation-file store inside a directory the witness creates with shell.Mktemp.DirWithTemplate
+// and removes -- no repository, no network, no cargo, no remote host, no install media. The floor
+// PLANNED all nine and the hermetic route reached no subject for most of them: the #12040 run named
+// five (cause route_gap, 'the hermetic route has no arm for DirWithTemplate'), and a hermetic
+// claim_batch over this tree ended six that way with three verdicts. A changed witness ending in a
+// route gap is admitted only when a wet terminal joins it. The whole file is enrolled rather than
+// the gapped subset, and the two measurements disagreeing on which subset is itself the reason: a
+// claim reaches a verdict hermetically only by not touching the directory on that path, which is a
+// property of the evaluation order and not of the claim, and it moves under an edit. The file's exclusion row is gunbc.ci.ci_layer_roots
+// excl_local_repo_wet_tempdir_write_reason, and it retires on the same mock coverage as its
+// neighbours. Measured wet over this tree before enrollment: 9/9 held.
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
@@ -284,6 +297,60 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "two_instances_on_one_host_resolve_to_one_pool_at_one_root" },
       entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
       function: "two_instances_on_one_host_resolve_to_one_pool_at_one_root",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "a_launch_that_won_refuses_a_recovery_arriving_behind_it" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "a_launch_that_won_refuses_a_recovery_arriving_behind_it",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "the_unit_binding_is_read_back_from_the_record_the_attempt_wrote" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "the_unit_binding_is_read_back_from_the_record_the_attempt_wrote",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "settling_records_why_and_does_not_erase_what_it_settled" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "settling_records_why_and_does_not_erase_what_it_settled",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "the_union_keeps_every_arm_either_list_carried_and_each_refuses_as_before" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "the_union_keeps_every_arm_either_list_carried_and_each_refuses_as_before",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "recovery_cannot_fire_inside_the_window_the_producer_declared" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "recovery_cannot_fire_inside_the_window_the_producer_declared",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "a_launched_attempt_is_recovered_only_on_an_ended_unit" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "a_launched_attempt_is_recovered_only_on_an_ended_unit",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "an_undecodable_slot_is_unreadable_and_never_absent" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "an_undecodable_slot_is_unreadable_and_never_absent",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

@@ -1,6 +1,6 @@
 module gunbc.compute.work_provider_local
 
-import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef, EpochSecs }
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef, EpochSecs, Seconds }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import std.measure { byte_size_count }
@@ -750,7 +750,7 @@ type AttemptGate
 // ceiling in attempt_lifecycle is the authority on what is tolerable to the other contenders on
 // this host. Naming the ceiling's own row rather than restating 300 keeps one number: a change
 // there moves this declaration with it instead of silently leaving the producer at a stale bound.
-data compute_launch_window_seconds: Int = compute_pre_launch_ceiling_seconds
+data compute_launch_window_seconds: Seconds = compute_pre_launch_ceiling_seconds
 
 // THE UNIT NAME IS WRITTEN INTO THE RECORD BY THE ATTEMPT THAT OWNS IT, from the same fold the
 // invocation uses. That is the binding criterion 2 is about: recovery reads this field rather than

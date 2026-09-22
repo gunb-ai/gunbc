@@ -1,6 +1,6 @@
 module gunbc.compute.attempt_lifecycle
 
-import std.types { String, Bool, Int, NonEmptyStr, EpochSecs }
+import std.types { String, Bool, Int, NonEmptyStr, EpochSecs, Seconds }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import std.content_hash { content_hash_of_value }
 import std.durable_compare_and_set {
@@ -342,7 +342,7 @@ fn attempt_commit(root: NonEmptyStr, record: AttemptRecord, expected: CasExpecta
 // a widen wearing a safety limit's clothes. The refusal is typed and names both numbers, so the
 // author of an over-long declaration learns what the ceiling is rather than discovering it as a
 // mysterious reclaim.
-data compute_pre_launch_ceiling_seconds: Int = 300
+data compute_pre_launch_ceiling_seconds: Seconds = 300
 
 // OPENING: the attempt declares itself Reserved, and it must be the FIRST writer of this reference.
 // ExpectSlotAbsent is what makes a duplicated reference a refusal rather than a silent overwrite of
