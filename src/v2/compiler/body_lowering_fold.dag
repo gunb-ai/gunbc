@@ -3469,7 +3469,7 @@ fn body_lower_postfix_chain_fold_step(
                         args: args
                       )
                     },
-                    diagnostics: list_append(left: ad, right: cd)
+                    diagnostics: diagnostics_merge(outer: ad, inner: cd)
                   )
                 PostfixAccumValue { node: receiver } =>
                   outcome_with_diagnostics(
@@ -3479,7 +3479,7 @@ fn body_lower_postfix_chain_fold_step(
                         args: list_append(left: [receiver], right: args)
                       )
                     },
-                    diagnostics: list_append(left: ad, right: cd)
+                    diagnostics: diagnostics_merge(outer: ad, inner: cd)
                   )
               }
           }
