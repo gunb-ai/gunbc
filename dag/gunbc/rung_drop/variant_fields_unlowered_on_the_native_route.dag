@@ -17,10 +17,19 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // silently lost; that loss is now the typed refusal
 // body_lowering_reason_positional_pattern_binder_unlowered.
 
+// NARROWED 2026-09-22 (gunbc#PR_NUMBER), NOT RETIRED. The lowering half of the trigger is
+// executed: v2.compiler.body_lowering_fold body_lower_type_variant / body_lower_record_type_decl
+// declare the fields (v2.std.node_query DeclaredField, "0" for the positional spelling), the graft
+// skip is deleted, and body_lower_pattern_lowered lowers `A(x) =>`, `A { v: x } =>` and `A { v } =>`
+// to the construct over their binders (Conj { A: Atom(A), 0: Atom(x) }), so the binder reaches
+// the resolver instead of vanishing and the #11998 refusal is retired; evidence
+// v2.test.parse.variant_field_lowering. WHAT STILL STANDS, and why the row does: the resolver
+// scopes no match-arm frame (v2.compiler.resolve resolve_node has no Match arm), so a binder
+// that shadows an outer name still resolves to the outer one -- the silent-shadowing loss the
+// manager ruled this row keeps declaring until that frame lands (Pkg12, witty-cat-84). The
+// population below is that remainder.
 data variant_fields_unlowered_on_the_native_route_population: List<String> = [
-  "v2.compiler.namespace_graft namespace_graft_type_decl_is_fielded -- record and positional variants go to residual_units, no field identities",
-  "v2.compiler.body_lowering_fold body_lower_is_structure_preserved_emitted -- dag_surface_field_decl_block and dag_surface_positional_variant_payload preserved unlowered",
-  "v2.compiler.body_lowering_fold body_lower_match_arm_wire_from_sequence -- positional pattern binders refuse (body_lowering_reason_positional_pattern_binder_unlowered)",
+  "v2.compiler.resolve resolve_node -- no scope frame for a match arm's binders: a binder that shadows an outer name binds the outer one",
 ]
 
 data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {

@@ -50,7 +50,7 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.compilers.body_lowering { lower_binary_infix, lower_branch, lower_bind, lower_loop, lower_match }
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.diagnostic {
   Accepted,
@@ -81,9 +81,11 @@ import v2.std.node {
   Arrow,
   Atom,
   Branch,
+  Cardinality,
   ComputationNode,
   Conj,
   Edge,
+  Instantiation,
   Named,
   Node,
   Positional,
@@ -97,7 +99,13 @@ import v2.std.node {
   node_synthetic,
   node_with_occurrence_id
 }
-import v2.std.node_query { find_named_child }
+import v2.std.node_query {
+  construct_node,
+  construct_tag_optional,
+  find_named_child,
+  positional_payload_field_name,
+  variant_declaration_node
+}
 
 data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into v2.compiler.body_producer_forward GrammarRelationRow forward fold (general-body-producer-design §3) once Slice 4 deletes this module; match/if/body_try hand-walker scaffolds dissolved into body_producer_forward + body_lower_fold. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → seam Loop via fold_call_to_loop); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_to_loop — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; ^dag_surface_fn_body is deferred (shell retained until parent fn_decl lowers); metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; out-of-scope emitted identities land wrapper-retained with typed diagnostic ^body_lowering_reason_wrapper_retained_emitted (general-body-producer-design Stage A frontier: lowered | wrapper-retained cause, counted — never silent shell accept)."
 
@@ -385,11 +393,18 @@ fn body_lower_wrapper_retained_shell(shell: Node) -> Outcome<Node> {
 // v2.test.claim.body_lowering_qualified_path, while a call through the same chain survived only
 // because a Transform already counted as substrate. One shape, one verdict: what the spine
 // builder emits, every later reader keeps.
+// A CONSTRUCT IS LOWERED SUBSTRATE. The record-literal producer answers a Conj (v2.std.node_query
+// construct_node: tag edge, then field edges), and every reducer above it -- the postfix reduce
+// first -- must pass it through as it passes an Arrow or a Transform; the first-atom fallback
+// they otherwise take would answer the construct's tag and drop its fields, which is exactly how
+// `data d: R = R { .. }` reached the graft as the atom R before this arm.
 fn body_lower_is_core_substrate(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
     ComputationNode { behavior: _ } => true
-    _ => qualified_name_spine_shape_present(root: node)
+    _ =>
+      qualified_name_spine_shape_present(root: node)
+        || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
   }
 }
 
@@ -622,6 +637,177 @@ fn body_lower_type_variant_children_with_where(
   }
 }
 
+// VARIANT AND RECORD FIELDS LOWER HERE, INTO DECLARED FIELD IDENTITIES. The seed's model
+// (v1.compiler.core make_field_node; v1.compiler.parse parse_positional_variant_type_fields)
+// and its v2 home (v2.std.node_query DeclaredField) agree: a field is a Named edge on the
+// payload Conj, the label its identity, the target its type; `Name(T)` is the one Required
+// field "0"; a nullary variant is the empty payload Conj. Both spellings lower through the same
+// two functions, so the record and positional halves of
+// gunbc.rung_drop variant_fields_unlowered_on_the_native_route close together, and a field
+// whose declaration cannot be read is a typed, located refusal -- never a residual shell.
+fn body_lower_field_decl_edge_optional(item: Node) -> Optional<Edge> {
+  let stripped = body_lower_deep_unwrap_optional(node: item)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => Absent
+    Present { value: pair } =>
+      match body_lower_param_binding_optional(node: pair.left) {
+        Absent => Absent
+        Present { value: field_name } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Absent => Absent
+            Present { value: after_colon } =>
+              match body_lower_type_expr_lowered_optional(node: after_colon.right) {
+                Absent => Absent
+                Present { value: type_node } =>
+                  Present { value: Edge { label: Named { name: field_name }, target: type_node } }
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_payload_node(edges: List<Edge>, source: Node) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: edges,
+    occurrence_id: source.occurrence_id
+  )
+}
+
+// `{ f: T, g: U }` -> Conj { f: T, g: U }. The block's captured is seq(`{`, seq(list, `}`)).
+fn body_lower_field_decl_block_payload(block_shell: Node) -> Outcome<Node> {
+  let refuse = outcome_rejected(
+    d: body_lower_diagnostic(reason: ^body_lowering_reason_field_decl_unlowered, n: block_shell)
+  )
+  match parse_production_captured_child_optional(node: block_shell) {
+    Absent => refuse
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => refuse
+        Present { value: pair } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Absent => refuse
+            Present { value: inner } =>
+              match body_lower_comma_list_items_optional(list_capture: inner.left) {
+                Absent => refuse
+                Present { value: items } =>
+                  match fold(items, init: Present { value: Empty }, f: fn(acc, item) {
+                    match acc {
+                      Absent => Absent
+                      Present { value: edges } =>
+                        match body_lower_field_decl_edge_optional(item: item) {
+                          Absent => Absent
+                          Present { value: e } => Present { value: list_snoc_item(xs: edges, item: e) }
+                        }
+                    }
+                  }) {
+                    Absent => refuse
+                    Present { value: edges } =>
+                      outcome_accepted(value: body_lower_payload_node(edges: edges, source: block_shell))
+                  }
+              }
+          }
+      }
+  }
+}
+
+// `(T)` -> Conj { 0: T }. The payload's captured is seq(`(`, seq(type_expr, `)`)); arity is one
+// by the grammar row itself (dag_grammar_positional_variant_payload_expr), as in the seed.
+fn body_lower_positional_payload(payload_shell: Node) -> Outcome<Node> {
+  let refuse = outcome_rejected(
+    d: body_lower_diagnostic(reason: ^body_lowering_reason_field_decl_unlowered, n: payload_shell)
+  )
+  match parse_production_captured_child_optional(node: payload_shell) {
+    Absent => refuse
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => refuse
+        Present { value: pair } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Absent => refuse
+            Present { value: inner } =>
+              match body_lower_type_expr_lowered_optional(node: inner.left) {
+                Absent => refuse
+                Present { value: type_node } =>
+                  outcome_accepted(
+                    value: body_lower_payload_node(
+                      edges: [Edge { label: Named { name: positional_payload_field_name() }, target: type_node }],
+                      source: payload_shell
+                    )
+                  )
+              }
+          }
+      }
+  }
+}
+
+type VariantPayloadShell
+  = VariantPayloadAbsent
+  | VariantPayloadShell { shell: Node }
+  | VariantPayloadUnrecognized
+
+fn body_lower_variant_payload_shell(suffix: Node) -> VariantPayloadShell {
+  let stripped = body_lower_deep_unwrap_optional(node: suffix)
+  if is_empty_conj_root(n: stripped) {
+    VariantPayloadAbsent
+  } else {
+    match parse_production_emitted_identity_optional(node: stripped) {
+      Present { value: id } =>
+        if (id == ^dag_surface_field_decl_block) || (id == ^dag_surface_positional_variant_payload) {
+          VariantPayloadShell { shell: stripped }
+        } else {
+          VariantPayloadUnrecognized
+        }
+      Absent => VariantPayloadUnrecognized
+    }
+  }
+}
+
+fn body_lower_variant_payload(shell: Node) -> Outcome<Node> {
+  match parse_production_emitted_identity_optional(node: shell) {
+    Present { value: id } =>
+      if id == ^dag_surface_positional_variant_payload {
+        body_lower_positional_payload(payload_shell: shell)
+      } else {
+        body_lower_field_decl_block_payload(block_shell: shell)
+      }
+    Absent =>
+      outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_decl_unlowered, n: shell))
+  }
+}
+
+// The variant's label is its head type expression, which must be one bare name: a dotted or
+// generic head in variant position is not a variant the seed admits either.
+fn body_lower_variant_label_optional(head: Node) -> Optional<Symbol> {
+  match body_lower_type_atom_from_expr(node: head) {
+    Absent => Absent
+    Present { value: atom } => node_atom_identity_optional(node: atom)
+  }
+}
+
+fn body_lower_fielded_type_variant(shell: Node, head: Node, payload_shell: Node) -> Outcome<Node> {
+  match body_lower_variant_label_optional(head: head) {
+    Absent =>
+      outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_field_decl_unlowered, n: shell))
+    Present { value: label } =>
+      match body_lower_variant_payload(shell: payload_shell) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: payload, diagnostics: d } =>
+          Accepted {
+            value: variant_declaration_node(label: label, payload: payload, source: shell),
+            diagnostics: d
+          }
+      }
+  }
+}
+
+// A variant shell is seq(type_expr, seq(optional(where), optional(payload))). A bare head is left
+// as parsed: whether `type T = U` names an alias or a one-variant sum is decided where the
+// alternatives are counted (v2.std.compilers.sugar sugar_fold_coproduct_pipe_chain, the seed's
+// parse_type_body_after_eq rule), and lowering a bare head here would erase an alias's reference
+// to its target. A payload lowers to a declared variant; a where clause beside a payload is a
+// spelling the seed's try_where_clause never reaches (it refines the alias arm only), so it
+// refuses here rather than carrying the payload unlowered.
 fn body_lower_type_variant(shell: Node) -> Outcome<Node> {
   match parse_production_captured_child_optional(node: shell) {
     Absent => outcome_accepted(value: shell)
@@ -632,23 +818,38 @@ fn body_lower_type_variant(shell: Node) -> Outcome<Node> {
           match body_lower_type_variant_suffix_pair_optional(captured: captured) {
             Absent => outcome_accepted(value: shell)
             Present { value: suffixes } =>
-              match parse_production_emitted_identity_optional(node: suffixes.left) {
-                Absent => outcome_accepted(value: shell)
-                Present { value: suffix_id } =>
-                  if suffix_id == ^dag_surface_where_refinement_clause {
-                    outcome_accepted(
-                      value: node_with_occurrence_id(
-                        kind: TypeNode { connective: Conj },
-                        children: body_lower_type_variant_children_with_where(
-                          base: pair.left,
-                          where_clause: suffixes.left,
-                          fields: suffixes.right
-                        ),
-                        occurrence_id: shell.occurrence_id
-                      )
-                    )
+              match body_lower_variant_payload_shell(suffix: suffixes.right) {
+                VariantPayloadShell { shell: payload_shell } =>
+                  if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: suffixes.left)) {
+                    body_lower_fielded_type_variant(shell: shell, head: pair.left, payload_shell: payload_shell)
                   } else {
-                    outcome_accepted(value: shell)
+                    outcome_rejected(
+                      d: body_lower_diagnostic(reason: ^body_lowering_reason_field_decl_unlowered, n: shell)
+                    )
+                  }
+                VariantPayloadUnrecognized =>
+                  outcome_rejected(
+                    d: body_lower_diagnostic(reason: ^body_lowering_reason_field_decl_unlowered, n: shell)
+                  )
+                VariantPayloadAbsent =>
+                  match parse_production_emitted_identity_optional(node: suffixes.left) {
+                    Absent => outcome_accepted(value: shell)
+                    Present { value: suffix_id } =>
+                      if suffix_id == ^dag_surface_where_refinement_clause {
+                        outcome_accepted(
+                          value: node_with_occurrence_id(
+                            kind: TypeNode { connective: Conj },
+                            children: body_lower_type_variant_children_with_where(
+                              base: pair.left,
+                              where_clause: suffixes.left,
+                              fields: suffixes.right
+                            ),
+                            occurrence_id: shell.occurrence_id
+                          )
+                        )
+                      } else {
+                        outcome_accepted(value: shell)
+                      }
                   }
               }
           }
@@ -755,6 +956,10 @@ fn body_lower_operand_from_shell_optional(shell: Node) -> Optional<Node> {
   }
 }
 
+// An int literal is an atom with a magnitude child, and it is not a binding: the operand reader
+// reads it whole before the branded-atom arm rebuilds an atom with no children -- which is what
+// happened to every literal argument (`f(1)` carried a bare dag_token_int_literal) until that
+// arm was ordered first.
 fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
   match body_lower_is_core_substrate(node: node) {
     true => Present { value: node }
@@ -770,6 +975,9 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
         Absent => body_lower_operand_fold_children_optional(node: node)
       }
     Absent =>
+      match dag_node_is_int_literal_atom(node: node) {
+        true => body_lower_int_literal_with_magnitude_optional(node: node)
+        false =>
       match dag_binding_branded_atom_identity(node: node) {
         Present { value: binding } =>
           Present { value: body_lower_param_ref_atom(source: node, identity: binding) }
@@ -801,6 +1009,7 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
               }
           }
       }
+  }
   }
   }
 }
@@ -1275,7 +1484,7 @@ fn body_lower_typed_param_edge(param_capture: Node) -> Optional<Edge> {
           match sugar_sequence_pair_optional(node: pair.right) {
             Absent => Absent
             Present { value: after_colon } =>
-              match body_lower_type_atom_from_expr(node: after_colon.right) {
+              match body_lower_type_expr_lowered_optional(node: after_colon.right) {
                 Absent => Absent
                 Present { value: type_node } =>
                   Present {
@@ -1313,6 +1522,239 @@ fn body_lower_unwrap_optional_element(node: Node) -> Node {
   }
 }
 
+
+// THE ONE COMMA-LIST READER. dag_grammar_comma_list_expr is one grammar helper --
+// seq(item, seq(repeat(seq(optional(comma), item)), optional(comma))) -- reused by call
+// arguments, field declarations, field patterns, field initializers and positional
+// patterns, so its parse shape is read in one place and each consumer maps its own item.
+// An optional wrapper around the whole list (an absent list is an empty Conj) is
+// flattened first. The reader answers Absent for a node that is not that shape, so a
+// caller never mistakes "not a list" for "an empty list".
+fn body_lower_comma_repeat_items(repeat_capture: Node) -> List<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: repeat_capture)
+  if is_empty_conj_root(n: stripped) {
+    Empty
+  } else {
+    match sugar_sequence_pair_optional(node: stripped) {
+      Absent => Empty
+      Present { value: pair } =>
+        let item = match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
+          Present { value: elem } => [elem.right]
+          Absent => Empty
+        }
+        list_append(left: item, right: body_lower_comma_repeat_items(repeat_capture: pair.right))
+    }
+  }
+}
+
+fn body_lower_comma_list_items_optional(list_capture: Node) -> Optional<List<Node>> {
+  let stripped = body_lower_deep_unwrap_optional(node: list_capture)
+  if is_empty_conj_root(n: stripped) {
+    optional_present(value: Empty)
+  } else {
+    match sugar_sequence_pair_optional(node: stripped) {
+      Absent => Absent
+      Present { value: pair } =>
+        match sugar_sequence_pair_optional(node: pair.right) {
+          Absent => Absent
+          Present { value: tail } =>
+            Present {
+              value: list_append(
+                left: [pair.left],
+                right: body_lower_comma_repeat_items(repeat_capture: tail.left)
+              )
+            }
+        }
+    }
+  }
+}
+
+// THE WHOLE TYPE EXPRESSION, NOT ITS HEAD ATOM. dag_grammar_qualified_type_expr is
+// seq(seq(qualified_name, optional(`<` type_list `>`)), optional(`?`)). The head lowers as
+// before (a binding atom or a qualified-name spine); a generic application becomes the
+// Instantiation connective with the head as its first positional child and each argument
+// after it (the shape v2.std.compilers.target_model reads the head from, index 0); a trailing
+// `?` wraps the result in the Cardinality connective, v2's authority for an optional field
+// (v2.std.node_query declared_field_is_required). Before this reader a param or field typed
+// `List<Int>` or `Int?` lowered to the bare head atom, silently.
+fn body_lower_type_generic_args_optional(generic_capture: Node) -> Optional<List<Node>> {
+  let stripped = body_lower_deep_unwrap_optional(node: generic_capture)
+  if is_empty_conj_root(n: stripped) {
+    optional_present(value: Empty)
+  } else {
+    match sugar_sequence_pair_optional(node: stripped) {
+      Absent => Absent
+      Present { value: pair } =>
+        match node_atom_identity_optional(node: pair.left) {
+          Present { value: lt } =>
+            if lt == ^dag_token_lt {
+              match sugar_sequence_pair_optional(node: pair.right) {
+                Absent => Absent
+                Present { value: inner } =>
+                  match body_lower_comma_list_items_optional(list_capture: inner.left) {
+                    Absent => Absent
+                    Present { value: items } =>
+                      fold(items, init: Present { value: Empty }, f: fn(acc, item) {
+                        match acc {
+                          Absent => Absent
+                          Present { value: args } =>
+                            match body_lower_type_expr_lowered_optional(node: item) {
+                              Absent => Absent
+                              Present { value: arg } => Present { value: list_snoc_item(xs: args, item: arg) }
+                            }
+                        }
+                      })
+                  }
+              }
+            } else {
+              Absent
+            }
+          Absent => Absent
+        }
+    }
+  }
+}
+
+fn body_lower_type_wrap_instantiation(head: Node, args: List<Node>, source: Node) -> Node {
+  if count(args) == 0 {
+    head
+  } else {
+    node_with_occurrence_id(
+      kind: TypeNode { connective: Instantiation },
+      children: fold(
+        list_append(left: [head], right: args),
+        init: Empty,
+        f: fn(acc, t) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: t }) }
+      ),
+      occurrence_id: source.occurrence_id
+    )
+  }
+}
+
+fn body_lower_type_wrap_cardinality(base: Node, question_capture: Node, source: Node) -> Optional<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: question_capture)
+  if is_empty_conj_root(n: stripped) {
+    optional_present(value: base)
+  } else {
+    match node_atom_identity_optional(node: stripped) {
+      Present { value: q } =>
+        match q == ^dag_token_question {
+          true =>
+            optional_present(
+              value: node_with_occurrence_id(
+                kind: TypeNode { connective: Cardinality },
+                children: [Edge { label: Positional, target: base }],
+                occurrence_id: source.occurrence_id
+              )
+            )
+          false => optional_absent()
+        }
+      Absent => Absent
+    }
+  }
+}
+
+// A FUNCTION TYPE `fn(T0, T1) -> U` is the Arrow the target model reads as its positional wire
+// (v2.std.compilers.target_model TargetTypeExprArrowPositionalWire, target_type_expr_arrow_emitted):
+// the inputs, then the output, all positional; no body edge. The captured is
+// seq(`fn`, seq(`(`, seq(type_list, seq(`)`, seq(`->`, type_expr))))).
+fn body_lower_fn_type_lowered_optional(fn_type_shell: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: fn_type_shell) {
+    Absent => Absent
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: captured) {
+        Absent => Absent
+        Present { value: after_fn } =>
+          match sugar_sequence_pair_optional(node: after_fn.right) {
+            Absent => Absent
+            Present { value: after_lparen } =>
+              match sugar_sequence_pair_optional(node: after_lparen.right) {
+                Absent => Absent
+                Present { value: after_list } =>
+                  match sugar_sequence_pair_optional(node: after_list.right) {
+                    Absent => Absent
+                    Present { value: after_rparen } =>
+                      match sugar_sequence_pair_optional(node: after_rparen.right) {
+                        Absent => Absent
+                        Present { value: after_arrow } =>
+                          match body_lower_comma_list_items_optional(list_capture: after_list.left) {
+                            Absent => Absent
+                            Present { value: items } =>
+                              match fold(items, init: Present { value: Empty }, f: fn(acc, item) {
+                                match acc {
+                                  Absent => Absent
+                                  Present { value: domain_types } =>
+                                    match body_lower_type_expr_lowered_optional(node: item) {
+                                      Absent => Absent
+                                      Present { value: t } => Present { value: list_snoc_item(xs: domain_types, item: t) }
+                                    }
+                                }
+                              }) {
+                                Absent => Absent
+                                Present { value: domain_types } =>
+                                  match body_lower_type_expr_lowered_optional(node: after_arrow.right) {
+                                    Absent => Absent
+                                    Present { value: codomain_type } =>
+                                      optional_present(
+                                        value: node_with_occurrence_id(
+                                          kind: TypeNode { connective: Arrow },
+                                          children: fold(
+                                            list_append(left: domain_types, right: [codomain_type]),
+                                            init: Empty,
+                                            f: fn(acc, t) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: t }) }
+                                          ),
+                                          occurrence_id: fn_type_shell.occurrence_id
+                                        )
+                                      )
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_type_expr_lowered_optional(node: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_type_expr {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } => body_lower_type_expr_lowered_optional(node: captured)
+          Absent => Absent
+        }
+      } else if id == ^dag_surface_fn_type {
+        body_lower_fn_type_lowered_optional(fn_type_shell: node)
+      } else {
+        body_lower_type_atom_from_expr(node: node)
+      }
+    Absent =>
+      match sugar_sequence_pair_optional(node: node) {
+        Absent => body_lower_type_atom_from_expr(node: node)
+        Present { value: outer } =>
+          match sugar_sequence_pair_optional(node: outer.left) {
+            Absent => body_lower_type_atom_from_expr(node: node)
+            Present { value: inner } =>
+              match body_lower_type_atom_from_expr(node: inner.left) {
+                Absent => Absent
+                Present { value: head } =>
+                  match body_lower_type_generic_args_optional(generic_capture: inner.right) {
+                    Absent => Absent
+                    Present { value: args } =>
+                      body_lower_type_wrap_cardinality(
+                        base: body_lower_type_wrap_instantiation(head: head, args: args, source: node),
+                        question_capture: outer.right,
+                        source: node
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
 fn body_lower_param_list_comma_spine_optional(param_list_captured: Node) -> Optional<Node> {
   match sugar_sequence_pair_optional(node: param_list_captured) {
     Absent => Absent
@@ -1333,7 +1775,7 @@ fn body_lower_type_atom_from_arrow_seq_right(right: Node) -> Optional<Node> {
     emitted: ^dag_surface_type_expr
   ) {
     ParseSubtreeFound { captured: type_expr } =>
-      body_lower_type_atom_from_expr(node: type_expr)
+      body_lower_type_expr_lowered_optional(node: type_expr)
     ParseSubtreeAbsent =>
       match parse_production_emitted_identity_optional(node: right) {
         Present { value: emitted } =>
@@ -1341,7 +1783,7 @@ fn body_lower_type_atom_from_arrow_seq_right(right: Node) -> Optional<Node> {
             true =>
               match parse_production_captured_child_optional(node: right) {
                 Present { value: captured } =>
-                  body_lower_type_atom_from_expr(node: captured)
+                  body_lower_type_expr_lowered_optional(node: captured)
                 Absent => Absent
               }
             false => Absent
@@ -1515,7 +1957,10 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
     outcome_accepted(value: optional_absent())
   } else {
     match body_lower_dotted_chain_lowered_optional(node: node) {
-      Present { value: spine } => outcome_accepted(value: optional_present(value: spine))
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: spine_opt, diagnostics: sd } =>
+      match spine_opt {
+      Present { value: spine } => outcome_with_diagnostics(value: optional_present(value: spine), diagnostics: sd)
       Absent =>
     match body_lower_try_fold_behavior_optional(node: node) {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -1640,6 +2085,7 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
         }
     }
     }
+      }
   }
 }
 
@@ -1872,38 +2318,64 @@ fn body_lower_body_subtree_lower(captured: Node) -> Outcome<Optional<Node>> {
   }
 }
 
-fn body_lower_body_subtree_lower_control_forms(captured: Node) -> Outcome<Optional<Node>> {
-  match body_lower_find_captured(
-    root: captured,
-    emitted: ^dag_surface_if_expr
-  ) {
-    ParseSubtreeFound { captured: if_capture } =>
-      body_lower_try_if_from_captured(captured: if_capture)
-    ParseSubtreeAbsent =>
-      match body_lower_find_captured(
-        root: captured,
-        emitted: ^dag_surface_match_expr
-      ) {
-        ParseSubtreeFound { captured: match_capture } =>
-          body_lower_try_match_from_captured(captured: match_capture)
-        ParseSubtreeAbsent =>
-          match body_lower_find_captured(
-            root: captured,
-            emitted: ^dag_surface_loop_expr
-          ) {
-            ParseSubtreeFound { captured: loop_capture } =>
-              body_lower_try_loop_expr_from_captured(captured: loop_capture)
-            ParseSubtreeAbsent =>
-              match body_lower_find_captured(
-                root: captured,
-                emitted: ^dag_surface_let_expr
-              ) {
-                ParseSubtreeFound { captured: let_capture } =>
-                  body_lower_try_let_in_from_captured(captured: let_capture)
-                ParseSubtreeAbsent =>
-                  body_lower_body_subtree_lower_from_binary(captured: captured)
-              }
+// THE OUTERMOST CONTROL FORM, NOT THE FIRST OF A FIXED KIND. The four control productions were
+// searched one kind at a time, each search deep, so a body `match c { A(x) => if p { .. } .. }`
+// was answered by the `if` inside its arm -- the whole match, both arms and the binder, gone --
+// because `if` was searched before `match`. One pre-order walk over the four kinds finds the
+// form nearest the root, which on an expression spine is the one that owns the body.
+type ControlFormFound {
+  emitted: Symbol
+  captured: Node
+}
+
+fn body_lower_is_control_form_emitted(id: Symbol) -> Bool {
+  (id == ^dag_surface_if_expr)
+    || (id == ^dag_surface_match_expr)
+    || (id == ^dag_surface_loop_expr)
+    || (id == ^dag_surface_let_expr)
+}
+
+fn body_lower_find_control_form_optional(root: Node) -> Optional<ControlFormFound> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } =>
+      match body_lower_is_control_form_emitted(id: id) {
+        true =>
+          match parse_production_captured_child_optional(node: root) {
+            Present { value: captured } =>
+              optional_present(value: ControlFormFound { emitted: id, captured: captured })
+            Absent => body_lower_find_control_form_under_children(root: root)
           }
+        false =>
+          match body_lower_find_captured_prunable(id: id) {
+            true => optional_absent()
+            false => body_lower_find_control_form_under_children(root: root)
+          }
+      }
+    Absent => body_lower_find_control_form_under_children(root: root)
+  }
+}
+
+fn body_lower_find_control_form_under_children(root: Node) -> Optional<ControlFormFound> {
+  fold(root.children, init: Absent, f: fn(acc, edge) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => body_lower_find_control_form_optional(root: edge.target)
+    }
+  })
+}
+
+fn body_lower_body_subtree_lower_control_forms(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_find_control_form_optional(root: captured) {
+    Absent => body_lower_body_subtree_lower_from_binary(captured: captured)
+    Present { value: found } =>
+      if found.emitted == ^dag_surface_if_expr {
+        body_lower_try_if_from_captured(captured: found.captured)
+      } else if found.emitted == ^dag_surface_match_expr {
+        body_lower_try_match_from_captured(captured: found.captured)
+      } else if found.emitted == ^dag_surface_loop_expr {
+        body_lower_try_loop_expr_from_captured(captured: found.captured)
+      } else {
+        body_lower_try_let_in_from_captured(captured: found.captured)
       }
   }
 }
@@ -2369,119 +2841,198 @@ fn body_lower_call_arg_edge_optional(arg_capture: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_call_arg_operand_from_repeat_elem(repeat_elem: Node) -> List<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
-  match sugar_sequence_pair_optional(node: stripped) {
-    Present { value: pair } =>
-      match body_lower_call_arg_edge_optional(
-        arg_capture: body_lower_postfix_optional_unwrap(node: pair.right)
-      ) {
-        Present { value: operand } => [operand]
-        Absent => Empty
-      }
+// ONE VALUE READER FOR ARGUMENTS AND FIELD INITIALIZERS. A value reaches these readers in one
+// of two states: already lowered (the bottom-up fold has run over it, as under a data
+// initializer, or it is core substrate) or raw (inside a fn body the fn_decl producer walks the
+// parse top-down, so an argument is still its `arg`/`expr` shell). A lowered atom is read as the
+// operand it is; anything else goes to body_lower_body_subtree_lower, the same entry the fn body
+// itself is lowered by, so a nested call, an infix or a control form in argument position lowers
+// as it would in body position. Absent means this reader could not lower the value.
+fn body_lower_node_is_lowered_atom(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: _ } => false
     Absent =>
-      match body_lower_call_arg_edge_optional(arg_capture: stripped) {
-        Present { value: operand } => [operand]
-        Absent => Empty
+      match node_atom_identity_optional(node: node) {
+        Present { value: _ } => true
+        Absent => false
       }
   }
 }
 
-fn body_lower_extract_comma_list_operand(node: Node) -> List<Node> {
+// A value the bottom-up fold has already reduced sits behind what the reducers leave: a
+// pass-through shell around the lowered child, or the binary_expr precedence spine -- one
+// left-nested sequence per precedence level, each right projection an empty repeat -- with the
+// lowered operand at its leftmost leaf (body_lower_reduce_passthrough strips the shells and keeps
+// the spine). Both are peeled to the lowered node first; a spine with a non-empty right
+// projection is an unlowered operator tail and is not peeled.
+fn body_lower_lowered_behind_shells_optional(node: Node) -> Optional<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: node)
-  match body_lower_call_arg_edge_optional(arg_capture: stripped) {
-    Present { value: operand } => [operand]
-    Absent =>
-      match sugar_sequence_pair_optional(node: stripped) {
-        Present { value: pair } =>
-          let left_ops = body_lower_call_arg_operand_from_repeat_elem(repeat_elem: pair.left)
-          if count(left_ops) > 0 {
-            left_ops
-          } else {
-            body_lower_call_arg_operand_from_repeat_elem(repeat_elem: stripped)
-          }
-        Absent => body_lower_call_arg_operand_from_repeat_elem(repeat_elem: stripped)
-      }
-  }
-}
-
-fn body_lower_collect_call_arg_operands_from_repeat_tail(repeat_capture: Node) -> List<Node> {
-  if is_empty_conj_root(n: repeat_capture) {
-    Empty
+  if body_lower_is_core_substrate(node: stripped) {
+    optional_present(value: stripped)
+  } else if body_lower_node_is_lowered_atom(node: stripped) {
+    body_lower_operand_ref_optional(node: stripped)
   } else {
-    match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
-      Accepted { value: head, diagnostics: _ } =>
-        let operands = body_lower_extract_comma_list_operand(node: head)
-        match find_named_child(root: repeat_capture, name: ^grammar_sequence_right_node_projection) {
-          Accepted { value: tail, diagnostics: _ } =>
-            list_append(
-              left: operands,
-              right: body_lower_collect_call_arg_operands_from_repeat_tail(repeat_capture: tail)
-            )
-          Rejected { diagnostics: _ } => operands
+    match parse_production_emitted_identity_optional(node: stripped) {
+      Present { value: _ } =>
+        match parse_production_captured_child_optional(node: stripped) {
+          Absent => optional_absent()
+          Present { value: captured } => body_lower_lowered_behind_shells_optional(node: captured)
         }
-      Rejected { diagnostics: _ } => Empty
+      Absent =>
+        match sugar_sequence_pair_optional(node: stripped) {
+          Absent => optional_absent()
+          Present { value: pair } =>
+            if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+              body_lower_lowered_behind_shells_optional(node: pair.left)
+            } else {
+              optional_absent()
+            }
+        }
     }
   }
 }
 
-fn body_lower_collect_call_arg_operands(sequence_capture: Node) -> List<Node> {
-  let unwrapped = body_lower_postfix_optional_unwrap(node: sequence_capture)
-  match find_named_child(root: unwrapped, name: ^grammar_sequence_left_node_projection) {
-    Accepted { value: first, diagnostics: _ } =>
-      let first_operands = match body_lower_call_arg_edge_optional(arg_capture: first) {
-        Present { value: operand } => [operand]
-        Absent => body_lower_call_arg_operand_from_repeat_elem(repeat_elem: first)
+// A function value in argument or field position -- `c => body`, `fn(a) { body }` -- has no
+// producer on this route (dag_surface_arrow_lambda and dag_surface_fn_literal are preserved
+// structure, lowered only by fold_lowering inside a fold-family call). The body walker would
+// answer such a value with its body's first primary, so it is named here and declined: the
+// caller carries the shell under its advisory instead of a truncation.
+fn body_lower_value_is_function_value_shell(node: Node) -> Bool {
+  let stripped = body_lower_unwrap_surface_shell(node: body_lower_deep_unwrap_optional(node: node))
+  match parse_production_emitted_identity_optional(node: stripped) {
+    Present { value: id } => (id == ^dag_surface_arrow_lambda) || (id == ^dag_surface_fn_literal)
+    Absent => false
+  }
+}
+
+fn body_lower_value_lowered(node: Node) -> Outcome<Optional<Node>> {
+  match body_lower_lowered_behind_shells_optional(node: node) {
+    Present { value: lowered } => outcome_accepted(value: optional_present(value: lowered))
+    Absent =>
+      if body_lower_value_is_function_value_shell(node: node) {
+        outcome_accepted(value: optional_absent())
+      } else {
+        body_lower_body_subtree_lower(captured: body_lower_deep_unwrap_optional(node: node))
       }
-      match find_named_child(root: unwrapped, name: ^grammar_sequence_right_node_projection) {
-        Accepted { value: tail, diagnostics: _ } =>
-          list_append(
-            left: first_operands,
-            right: body_lower_collect_call_arg_operands_from_repeat_tail(repeat_capture: tail)
-          )
-        Rejected { diagnostics: _ } => first_operands
+  }
+}
+
+// THE ARGUMENT LIST IS READ AS THE COMMA LIST IT IS. body_lower_postfix_call_suffix_args hands
+// this the capture INSIDE the parens -- the dag_grammar_comma_list_expr of `arg` items -- and
+// the reader that stood here first ran body_lower_param_list_comma_spine_optional over it, a
+// walk shaped for a capture that still carries its `(`: on a bare comma list that walk's
+// "skip the paren" step skips the FIRST ITEM, so `f(x)` lowered to Transform(f) and
+// `f(x, y)` to Transform(f, y) (the argument half of
+// gunbc.recurring_failure_mode.call_expression_erased_at_v2_body_lowering, measured there as
+// `{ step(a: x) }` -> Transform(step)); the items it did keep were read by the operand reader,
+// which answers a nested call or lambda with its first atom. Each item is one `arg` shell,
+// named or positional, and its value is read by body_lower_value_lowered. A named argument's
+// VALUE is carried as a positional operand, as before -- argument labels are not modeled on this
+// route yet. A value the reader cannot lower is CARRIED AS ITS SHELL under a counted, located
+// advisory (body_lowering_reason_value_carried_unlowered): the mention survives for
+// every downstream reader, and the count is the row's remaining population -- it is not a
+// refusal here, because refusing would deny every module a lambda argument admits to.
+fn body_lower_arg_value_capture(arg_capture: Node) -> Node {
+  let stripped = body_lower_deep_unwrap_optional(node: arg_capture)
+  let captured = match parse_production_emitted_identity_optional(node: stripped) {
+    Present { value: id } =>
+      if id == ^dag_surface_arg {
+        match parse_production_captured_child_optional(node: stripped) {
+          Present { value: c } => c
+          Absent => stripped
+        }
+      } else {
+        stripped
       }
-    Rejected { diagnostics: _ } =>
-      match body_lower_call_arg_edge_optional(arg_capture: unwrapped) {
-        Present { value: operand } => [operand]
-        Absent =>
-          match sugar_sequence_pair_optional(node: unwrapped) {
-            Present { value: pair } =>
-              match body_lower_call_arg_edge_optional(arg_capture: pair.left) {
-                Present { value: operand } =>
-                  match body_lower_after_comma_tail_optional(node: pair.right) {
-                    Present { value: tail } =>
-                      list_append(
-                        left: [operand],
-                        right: body_lower_collect_call_arg_operands(sequence_capture: tail)
-                      )
-                    Absent => [operand]
-                  }
-                Absent =>
-                  match body_lower_after_comma_tail_optional(node: pair.right) {
-                    Present { value: tail } => body_lower_collect_call_arg_operands(sequence_capture: tail)
-                    Absent => Empty
-                  }
+    Absent => stripped
+  }
+  match sugar_sequence_pair_optional(node: captured) {
+    Absent => captured
+    Present { value: pair } =>
+      match body_lower_param_binding_optional(node: pair.left) {
+        Absent => captured
+        Present { value: _label } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Absent => captured
+            Present { value: after_name } =>
+              match node_atom_identity_optional(node: after_name.left) {
+                Present { value: colon } =>
+                  if colon == ^dag_token_colon { after_name.right } else { captured }
+                Absent => captured
               }
-            Absent => Empty
           }
       }
   }
 }
 
-fn body_lower_call_args_from_capture(args_capture: Node) -> List<Node> {
-  match body_lower_param_list_comma_spine_optional(param_list_captured: args_capture) {
-    Present { value: comma_spine } =>
-      body_lower_collect_call_arg_operands(sequence_capture: comma_spine)
-    Absent => body_lower_collect_call_arg_operands(sequence_capture: args_capture)
+// The value, lowered, or carried as its shell under the counted advisory.
+fn body_lower_value_lowered_or_carried(value: Node) -> Outcome<Node> {
+  match body_lower_value_lowered(node: value) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: found, diagnostics: d } =>
+      match found {
+        Present { value: lowered } => Accepted { value: lowered, diagnostics: d }
+        Absent =>
+          outcome_with_diagnostics(
+            value: value,
+            diagnostics: diagnostics_merge(
+              outer: d,
+              inner: Some {
+                diagnostics: diagnostics_singleton(
+                  d: body_lower_diagnostic(
+                    reason: ^body_lowering_reason_value_carried_unlowered,
+                    n: value
+                  )
+                )
+              }
+            )
+          )
+      }
+  }
+}
+
+fn body_lower_arg_lowered(arg_capture: Node) -> Outcome<Node> {
+  body_lower_value_lowered_or_carried(value: body_lower_arg_value_capture(arg_capture: arg_capture))
+}
+
+fn body_lower_call_args_from_capture(args_capture: Node) -> Outcome<List<Node>> {
+  match body_lower_comma_list_items_optional(list_capture: args_capture) {
+    Absent => outcome_accepted(value: Empty)
+    Present { value: items } =>
+      fold(items, init: outcome_accepted(value: Empty), f: fn(acc, item) {
+        match acc {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: args, diagnostics: ad } =>
+            match body_lower_arg_lowered(arg_capture: item) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
+              Accepted { value: operand, diagnostics: d } =>
+                Accepted {
+                  value: list_snoc_item(xs: args, item: operand),
+                  diagnostics: diagnostics_merge(outer: ad, inner: d)
+                }
+            }
+        }
+      })
+  }
+}
+
+// The call-suffix SHAPE, without reading the arguments: seq(`(`, seq(list, `)`)).
+fn body_lower_call_suffix_is_paren_list(call_suffix: Node) -> Bool {
+  match sugar_sequence_pair_optional(node: call_suffix) {
+    Absent => false
+    Present { value: pair } =>
+      match node_atom_identity_optional(node: pair.left) {
+        Present { value: id } => id == ^dag_token_lparen
+        Absent => false
+      }
   }
 }
 
 fn body_lower_primary_call_suffix_optional(root: Node) -> Optional<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: root)
-  match body_lower_postfix_call_suffix_args(call_suffix: stripped) {
-    Present { value: _ } => optional_present(value: stripped)
-    Absent =>
+  match body_lower_call_suffix_is_paren_list(call_suffix: stripped) {
+    true => optional_present(value: stripped)
+    false =>
       fold(root.children, init: Absent, f: fn(acc, e) {
         match acc {
           Present { value: _ } => acc
@@ -2535,42 +3086,45 @@ fn body_lower_try_primary_ident_call(node: Node) -> Outcome<Optional<Node>> {
             Absent => outcome_accepted(value: optional_absent())
             Present { value: call_suffix } =>
               match body_lower_postfix_call_suffix_args(call_suffix: call_suffix) {
-                Present { value: args } =>
-                  outcome_accepted(
-                    value: optional_present(
-                      value: body_lower_transform_call(
-                        operator: callee_atom,
-                        args: args
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: args_opt, diagnostics: d } =>
+                  match args_opt {
+                    Present { value: args } =>
+                      outcome_with_diagnostics(
+                        value: optional_present(
+                          value: body_lower_transform_call(
+                            operator: callee_atom,
+                            args: args
+                          )
+                        ),
+                        diagnostics: d
                       )
-                    )
-                  )
-                Absent => outcome_accepted(value: optional_absent())
+                    Absent => outcome_accepted(value: optional_absent())
+                  }
               }
           }
       }
   }
 }
 
-fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Optional<List<Node>> {
-  match sugar_sequence_pair_optional(node: call_suffix) {
-    Absent => Absent
-    Present { value: pair } =>
-      match node_atom_identity_optional(node: pair.left) {
-        Present { value: id } =>
-          if id == ^dag_token_lparen {
-            match sugar_sequence_pair_optional(node: pair.right) {
-              Absent => optional_present(value: Empty)
-              Present { value: inner } =>
-                optional_present(
-                  value: body_lower_call_args_from_capture(
-                    args_capture: body_lower_postfix_optional_unwrap(node: inner.left)
-                  )
-                )
-            }
-          } else {
-            Absent
+fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Outcome<Optional<List<Node>>> {
+  match body_lower_call_suffix_is_paren_list(call_suffix: call_suffix) {
+    false => outcome_accepted(value: optional_absent())
+    true =>
+      match sugar_sequence_pair_optional(node: call_suffix) {
+        Absent => outcome_accepted(value: optional_absent())
+        Present { value: pair } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Absent => outcome_accepted(value: optional_present(value: Empty))
+            Present { value: inner } =>
+              match body_lower_call_args_from_capture(
+                args_capture: body_lower_postfix_optional_unwrap(node: inner.left)
+              ) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: args, diagnostics: d } =>
+                  outcome_with_diagnostics(value: optional_present(value: args), diagnostics: d)
+              }
           }
-        Absent => Absent
       }
   }
 }
@@ -2845,23 +3399,32 @@ fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
 // leaves what the head denotes to v2.compiler.resolve
 // try_resolve_qualified_name_node, which refuses a chain whose head is a local binder as Unbound
 // (its own header states that standing) -- loud where the route was silent.
-fn body_lower_dotted_chain_lowered_optional(node: Node) -> Optional<Node> {
+fn body_lower_dotted_chain_lowered_optional(node: Node) -> Outcome<Optional<Node>> {
   match body_lower_dotted_chain_read(node: node) {
-    DottedChainTailNotThisShape => optional_absent()
-    DottedChainCallBeforeEnd { call_elem: _ } => optional_absent()
+    DottedChainTailNotThisShape => outcome_accepted(value: optional_absent())
+    DottedChainCallBeforeEnd { call_elem: _ } => outcome_accepted(value: optional_absent())
     DottedChainTailFound { tail: chain } =>
       match chain.call_elem {
         Absent =>
-          optional_present(
-            value: body_lower_qualified_name_spine_node(segments: chain.segments, source: node)
-          )
-        Present { value: call_elem } =>
-          optional_present(
-            value: body_lower_transform_call(
-              operator: body_lower_qualified_name_spine_node(segments: chain.segments, source: node),
-              args: body_lower_postfix_projection_args(repeat_elem: call_elem)
+          outcome_accepted(
+            value: optional_present(
+              value: body_lower_qualified_name_spine_node(segments: chain.segments, source: node)
             )
           )
+        Present { value: call_elem } =>
+          match body_lower_postfix_projection_args(repeat_elem: call_elem) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: args, diagnostics: d } =>
+              outcome_with_diagnostics(
+                value: optional_present(
+                  value: body_lower_transform_call(
+                    operator: body_lower_qualified_name_spine_node(segments: chain.segments, source: node),
+                    args: args
+                  )
+                ),
+                diagnostics: d
+              )
+          }
       }
   }
 }
@@ -2911,13 +3474,17 @@ fn body_lower_postfix_method_suffix_optional(repeat_elem: Node) -> Optional<Node
   }
 }
 
-fn body_lower_postfix_projection_args(repeat_elem: Node) -> List<Node> {
+fn body_lower_postfix_projection_args(repeat_elem: Node) -> Outcome<List<Node>> {
   match body_lower_postfix_method_suffix_optional(repeat_elem: repeat_elem) {
-    Absent => Empty
+    Absent => outcome_accepted(value: Empty)
     Present { value: call_suffix } =>
       match body_lower_postfix_call_suffix_args(call_suffix: call_suffix) {
-        Present { value: args } => args
-        Absent => Empty
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: found, diagnostics: d } =>
+          match found {
+            Present { value: args } => outcome_with_diagnostics(value: args, diagnostics: d)
+            Absent => outcome_with_diagnostics(value: Empty, diagnostics: d)
+          }
       }
   }
 }
@@ -2925,11 +3492,7 @@ fn body_lower_postfix_projection_args(repeat_elem: Node) -> List<Node> {
 fn body_lower_postfix_projection_has_call_suffix(repeat_elem: Node) -> Bool {
   match body_lower_postfix_method_suffix_optional(repeat_elem: repeat_elem) {
     Absent => false
-    Present { value: call_suffix } =>
-      match body_lower_postfix_call_suffix_args(call_suffix: call_suffix) {
-        Present { value: _ } => true
-        Absent => false
-      }
+    Present { value: call_suffix } => body_lower_call_suffix_is_paren_list(call_suffix: call_suffix)
   }
 }
 
@@ -2970,18 +3533,22 @@ fn body_lower_try_postfix_projection(node: Node) -> Outcome<Optional<Node>> {
                 Absent => outcome_accepted(value: optional_absent())
                 Present { value: method } =>
                   if body_lower_postfix_projection_has_call_suffix(repeat_elem: repeat_elem) {
-                    let args = body_lower_postfix_projection_args(repeat_elem: repeat_elem)
-                    outcome_accepted(
-                      value: optional_present(
-                        value: body_lower_transform_call(
-                          operator: body_lower_method_operator_atom(sym: method),
-                          args: list_append(
-                            left: [receiver],
-                            right: args
-                          )
+                    match body_lower_postfix_projection_args(repeat_elem: repeat_elem) {
+                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                      Accepted { value: args, diagnostics: d } =>
+                        outcome_with_diagnostics(
+                          value: optional_present(
+                            value: body_lower_transform_call(
+                              operator: body_lower_method_operator_atom(sym: method),
+                              args: list_append(
+                                left: [receiver],
+                                right: args
+                              )
+                            )
+                          ),
+                          diagnostics: d
                         )
-                      )
-                    )
+                    }
                   } else {
                     outcome_rejected(
                       d: body_lower_diagnostic(
@@ -3006,8 +3573,14 @@ fn body_lower_match_arm_wire(pat_node: Node, body: Node) -> Node {
   )
 }
 
+// The same ordering as body_lower_operand_ref_optional: an int literal is read whole before the
+// branded-atom arm, which would rebuild it without its magnitude (the postfix reduce reaches
+// this reader for every literal operand).
 fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: node)
+  match dag_node_is_int_literal_atom(node: stripped) {
+    true => body_lower_int_literal_with_magnitude_optional(node: stripped)
+    false =>
   match dag_binding_branded_atom_identity(node: stripped) {
     Present { value: binding } =>
       optional_present(value: body_lower_param_ref_atom(source: stripped, identity: binding))
@@ -3049,6 +3622,7 @@ fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
               })
           }
       }
+  }
   }
 }
 
@@ -3144,113 +3718,206 @@ fn body_lower_match_arm_body_optional(body_capture: Node) -> Optional<Node> {
   }
 }
 
-// POSITIONAL BINDERS ARE REFUSED, NOT DROPPED. body_lower_pattern_atom_optional keeps a pattern's
-// constructor atom and nothing else, so `A(x) => x` lowered to an arm on `A` whose body names an
-// `x` the arm never bound -- the payload's binder silently vanished, and a nested constructor
-// `A(B)` silently matched every `A`. The seed binds from the variant's field "0"
-// (v1.compiler.parse parse_positional_variant_type_fields), and no v2 stage lowers variant fields
-// into declared field identities for any variant, named or positional (the frontier
-// gunbc.rung_drop variant_fields_unlowered_on_the_native_route declares). Until one does, a
-// positional suffix that names anything is a typed, located refusal. `A(_)` names nothing and
-// loses nothing -- the constructor atom is the whole of what it tests -- so it still lowers. The
-// `(` atom locates the suffix because the constructor pattern suffix
-// (dag_grammar_constructor_pattern_suffix_expr) is the only place a pattern admits one.
-fn body_lower_is_pattern_punctuation(id: Symbol) -> Bool {
-  (id == ^dag_token_lparen) || (id == ^dag_token_rparen) || (id == ^dag_token_comma)
+// A PATTERN LOWERS TO THE SHAPE IT ELIMINATES. A constructor pattern is
+// seq(qualified_name, optional(`{` field_pattern,* `}` | `(` pattern,* `)`)). With no suffix it is
+// the atom it always was (a nullary variant, a binder, or a literal -- which of the first two is
+// the resolver's to decide, as in the seed's 04_patterns). With a suffix it is the CONSTRUCT
+// (v2.std.node_query construct_node): the tag edge names the constructor, and each declared field
+// the pattern names is a Named edge from that field to the sub-pattern it binds -- `A(x)` binds
+// field "0" (v1.compiler.parse parse_variant_pattern), `A { v: x }` binds field v, and the
+// shorthand `A { v }` binds field v to the binder v. So `Fnv1a64(left_structural) =>` lowers to
+// Conj { Fnv1a64: Atom(Fnv1a64), 0: Atom(left_structural) }, the same shape the language
+// authority's fixture pattern dag_variant_holds_pattern_node has, and the binder reaches the
+// resolver instead of vanishing (the loss gunbc#11998 turned into
+// body_lowering_reason_positional_pattern_binder_unlowered, retired here). Positional arity is
+// one, as the seed's parse admits; more refuses with a located cause.
+fn body_lower_pattern_head_symbol_optional(head: Node) -> Optional<Symbol> {
+  match body_lower_pattern_leaf_atom_optional(node: head) {
+    Absent => Absent
+    Present { value: atom } => node_atom_identity_optional(node: atom)
+  }
 }
 
-fn body_lower_subtree_names_non_wildcard(n: Node) -> Bool {
-  match node_atom_identity_optional(node: n) {
-    Present { value: id } =>
-      if body_lower_is_pattern_punctuation(id: id) {
-        false
-      } else {
-        id != symbol_intern_lexeme(lexeme: "_")
-      }
+fn body_lower_pattern_reject<T>(pattern_capture: Node) -> Outcome<T> {
+  outcome_rejected(
+    d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_unlowered, n: pattern_capture)
+  )
+}
+
+fn body_lower_field_pattern_edge(item: Node) -> Outcome<Edge> {
+  let stripped = body_lower_deep_unwrap_optional(node: item)
+  let captured = match parse_production_captured_child_optional(node: stripped) {
+    Present { value: c } => c
+    Absent => stripped
+  }
+  match sugar_sequence_pair_optional(node: captured) {
     Absent =>
-      fold(n.children, init: false, f: fn(found, e) {
-        found || (!body_lower_is_production_identity_edge(e: e) && body_lower_subtree_names_non_wildcard(n: e.target))
-      })
-  }
-}
-
-// A production shell names its production on an identity-projection edge; that atom is parse
-// machinery, never a name the pattern binds.
-fn body_lower_is_production_identity_edge(e: Edge) -> Bool {
-  match e.label {
-    Named { name: sym } => sym == ^grammar_production_identity_node_projection
-    Positional => false
-  }
-}
-
-type PositionalBinderScan {
-  after_lparen: Bool
-  found: Bool
-}
-
-fn body_lower_positional_binder_scan_step(acc: PositionalBinderScan, e: Edge) -> PositionalBinderScan {
-  if acc.found {
-    acc
-  } else {
-    match node_atom_identity_optional(node: e.target) {
-      Present { value: id } =>
-        if id == ^dag_token_lparen {
-          PositionalBinderScan { after_lparen: true, found: false }
-        } else {
-          PositionalBinderScan {
-            after_lparen: acc.after_lparen,
-            found: acc.after_lparen && body_lower_subtree_names_non_wildcard(n: e.target)
+      match body_lower_param_binding_optional(node: captured) {
+        Present { value: field_name } =>
+          outcome_accepted(
+            value: Edge {
+              label: Named { name: field_name },
+              target: body_lower_param_ref_atom(source: captured, identity: field_name)
+            }
+          )
+        Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_unlowered, n: item))
+      }
+    Present { value: pair } =>
+      match body_lower_param_binding_optional(node: pair.left) {
+        Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_unlowered, n: item))
+        Present { value: field_name } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_unlowered, n: item))
+            Present { value: after_colon } =>
+              match body_lower_pattern_lowered(pattern_capture: after_colon.right) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: sub, diagnostics: d } =>
+                  Accepted { value: Edge { label: Named { name: field_name }, target: sub }, diagnostics: d }
+              }
           }
-        }
-      Absent =>
-        PositionalBinderScan {
-          after_lparen: acc.after_lparen,
-          found: (acc.after_lparen && body_lower_subtree_names_non_wildcard(n: e.target))
-            || body_lower_pattern_names_positional_binder(n: e.target)
-        }
+      }
+  }
+}
+
+fn body_lower_pattern_field_edges(items: List<Node>, braced: Bool, witness: Node) -> Outcome<List<Edge>> {
+  if braced {
+    fold(items, init: outcome_accepted(value: Empty), f: fn(acc, item) {
+      bind_outcome(o: acc, f: fn(edges) {
+        bind_outcome(o: body_lower_field_pattern_edge(item: item), f: fn(e) {
+          outcome_accepted(value: list_snoc_item(xs: edges, item: e))
+        })
+      })
+    })
+  } else {
+    if count(items) == 1 {
+      match list_at_optional(xs: items, index: 0) {
+        Absent => body_lower_pattern_reject(pattern_capture: witness)
+        Present { value: only } =>
+          bind_outcome(o: body_lower_pattern_lowered(pattern_capture: only), f: fn(sub) {
+            outcome_accepted(
+              value: [Edge { label: Named { name: positional_payload_field_name() }, target: sub }]
+            )
+          })
+      }
+    } else {
+      body_lower_pattern_reject(pattern_capture: witness)
     }
   }
 }
 
-// A sequence node's children are ordered (left, right), so a `(` terminal is followed by the
-// payload's pattern list within the same spine; the walk carries that fact down the spine.
-fn body_lower_pattern_names_positional_binder(n: Node) -> Bool {
-  fold(
-    n.children,
-    init: PositionalBinderScan { after_lparen: false, found: false },
-    f: fn(acc, e) { body_lower_positional_binder_scan_step(acc: acc, e: e) }
-  ).found
+fn body_lower_pattern_suffix_lowered(head: Node, suffix: Node, pattern_capture: Node) -> Outcome<Node> {
+  match sugar_sequence_pair_optional(node: suffix) {
+    Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
+    Present { value: pair } =>
+      match node_atom_identity_optional(node: pair.left) {
+        Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
+        Present { value: open } =>
+          if (open == ^dag_token_lparen) || (open == ^dag_token_lbrace) {
+            match sugar_sequence_pair_optional(node: pair.right) {
+              Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
+              Present { value: inner } =>
+                match body_lower_comma_list_items_optional(list_capture: inner.left) {
+                  Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
+                  Present { value: items } =>
+                    match body_lower_pattern_head_symbol_optional(head: head) {
+                      Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
+                      Present { value: tag } =>
+                        bind_outcome(
+                          o: body_lower_pattern_field_edges(
+                            items: items,
+                            braced: open == ^dag_token_lbrace,
+                            witness: pattern_capture
+                          ),
+                          f: fn(edges) {
+                            outcome_accepted(
+                              value: construct_node(tag: tag, field_edges: edges, source: pattern_capture)
+                            )
+                          }
+                        )
+                    }
+                }
+            }
+          } else {
+            body_lower_pattern_reject(pattern_capture: pattern_capture)
+          }
+      }
+  }
 }
 
+fn body_lower_pattern_lowered(pattern_capture: Node) -> Outcome<Node> {
+  let stripped = body_lower_deep_unwrap_optional(node: pattern_capture)
+  let captured = match parse_production_emitted_identity_optional(node: stripped) {
+    Present { value: id } =>
+      if id == ^dag_surface_pattern {
+        match parse_production_captured_child_optional(node: stripped) {
+          Present { value: c } => c
+          Absent => stripped
+        }
+      } else {
+        stripped
+      }
+    Absent => stripped
+  }
+  match sugar_sequence_pair_optional(node: captured) {
+    Present { value: pair } =>
+      if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+        match body_lower_pattern_atom_optional(pattern_capture: pair.left) {
+          Present { value: atom } => outcome_accepted(value: atom)
+          Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
+        }
+      } else {
+        body_lower_pattern_suffix_lowered(
+          head: pair.left,
+          suffix: body_lower_deep_unwrap_optional(node: pair.right),
+          pattern_capture: pattern_capture
+        )
+      }
+    Absent =>
+      match body_lower_pattern_atom_optional(pattern_capture: captured) {
+        Present { value: atom } => outcome_accepted(value: atom)
+        Absent => body_lower_pattern_reject(pattern_capture: pattern_capture)
+      }
+  }
+}
+
+// THE ARM BODY IS LOWERED BY THE BODY WALKER FIRST. The arm-body reader
+// (body_lower_match_arm_body_optional) is an operand reader: it answers a nested `match` or `if`
+// in arm position with that form's first atom (`dag_token_kw_if`), which is how every arm of
+// std.content_hash compare_content_hash lost its inner match. body_lower_value_lowered enters
+// the same walker the fn body itself is lowered by, so an arm body lowers as a body would; the
+// operand reader stays as the fallback for the shapes the walker declines.
 fn body_lower_match_arm_wire_from_sequence(stripped: Node) -> Outcome<Node> {
   match body_lower_find_captured(
     root: stripped,
     emitted: ^dag_surface_pattern
   ) {
     ParseSubtreeFound { captured: pat_capture } =>
-      if body_lower_pattern_names_positional_binder(n: pat_capture) {
-        outcome_rejected(
-          d: body_lower_diagnostic(
-            reason: ^body_lowering_reason_positional_pattern_binder_unlowered,
-            n: pat_capture
-          )
-        )
-      } else {
-      match body_lower_pattern_atom_optional(pattern_capture: pat_capture) {
-        Present { value: pat_node } =>
+      match body_lower_pattern_lowered(pattern_capture: pat_capture) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: pat_node, diagnostics: _ } =>
           match body_lower_match_arm_body_capture_optional(stripped: stripped) {
             Present { value: body_capture } =>
-              match body_lower_match_arm_body_optional(body_capture: body_capture) {
-                Present { value: body } =>
-                  outcome_accepted(
-                    value: body_lower_match_arm_wire(pat_node: pat_node, body: body)
-                  )
-                Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
+              match body_lower_value_lowered(node: body_capture) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: lowered_opt, diagnostics: d } =>
+                  match lowered_opt {
+                    Present { value: body } =>
+                      outcome_with_diagnostics(
+                        value: body_lower_match_arm_wire(pat_node: pat_node, body: body),
+                        diagnostics: d
+                      )
+                    Absent =>
+                      match body_lower_match_arm_body_optional(body_capture: body_capture) {
+                        Present { value: body } =>
+                          outcome_accepted(
+                            value: body_lower_match_arm_wire(pat_node: pat_node, body: body)
+                          )
+                        Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
+                      }
+                  }
               }
             Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
           }
-        Absent => body_lower_match_arm_navigation_reject(arm_capture: stripped)
-      }
       }
     ParseSubtreeAbsent =>
       match body_lower_match_spine_left(spine: stripped) {
@@ -4624,6 +5291,28 @@ fn body_lower_try_loop_keyword_from_node(node: Node) -> Outcome<Optional<Node>> 
   }
 }
 
+// The condition is lowered by the body walker first (a call condition
+// `if content_hash_eq_structural(left: a, right: b) {..}` read by the operand readers below is
+// its first argument atom); the operand readers remain the fallback for what the walker declines.
+fn body_lower_if_condition_lowered(condition_capture: Node) -> Outcome<Optional<Node>> {
+  match body_lower_value_lowered(node: condition_capture) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: found, diagnostics: d } =>
+      match found {
+        Present { value: condition } => outcome_with_diagnostics(value: optional_present(value: condition), diagnostics: d)
+        Absent =>
+          match body_lower_if_arm_operand_optional(arm_capture: condition_capture) {
+            Present { value: condition_raw } =>
+              outcome_with_diagnostics(
+                value: body_lower_arm_operand_resolved_optional(arm: condition_raw),
+                diagnostics: d
+              )
+            Absent => outcome_with_diagnostics(value: optional_absent(), diagnostics: d)
+          }
+      }
+  }
+}
+
 fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_if_condition_optional(captured: captured) {
     Present { value: condition_capture } =>
@@ -4631,9 +5320,10 @@ fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
         Present { value: then_capture } =>
           match body_lower_if_else_capture_optional(captured: captured) {
             Present { value: else_capture } =>
-              match body_lower_if_arm_operand_optional(arm_capture: condition_capture) {
-                Present { value: condition_raw } =>
-                  match body_lower_arm_operand_resolved_optional(arm: condition_raw) {
+              match body_lower_if_condition_lowered(condition_capture: condition_capture) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: condition_opt, diagnostics: _ } =>
+                  match condition_opt {
                     Present { value: condition } =>
                       match body_lower_if_arm_operand_optional(arm_capture: then_capture) {
                         Present { value: then_raw } =>
@@ -4662,7 +5352,6 @@ fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
                       }
                     Absent => body_lower_if_navigation_reject(captured: condition_capture)
                   }
-                Absent => body_lower_if_navigation_reject(captured: condition_capture)
               }
             Absent => body_lower_if_navigation_reject(captured: captured)
           }
@@ -5012,6 +5701,22 @@ fn body_lower_match_expr(shell: Node) -> Outcome<Node> {
   }
 }
 
+// A postfix with NO suffix over an already-lowered primary is that primary: a construct (or any
+// core substrate) the primary produced passes through whole, instead of the first-atom fallback
+// below answering its tag.
+fn body_lower_postfix_lowered_primary_optional(captured: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: captured) {
+    Absent => Absent
+    Present { value: pair } =>
+      if body_lower_is_core_substrate(node: pair.left)
+        && is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+        optional_present(value: pair.left)
+      } else {
+        optional_absent()
+      }
+  }
+}
+
 fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
@@ -5019,8 +5724,14 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
         d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
       )
     Present { value: captured } =>
+      match body_lower_postfix_lowered_primary_optional(captured: captured) {
+        Present { value: lowered } => outcome_accepted(value: lowered)
+        Absent =>
       match body_lower_dotted_chain_lowered_optional(node: captured) {
-        Present { value: spine } => outcome_accepted(value: spine)
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: spine_opt, diagnostics: sd } =>
+        match spine_opt {
+        Present { value: spine } => outcome_with_diagnostics(value: spine, diagnostics: sd)
         Absent =>
       match body_lower_pattern_first_atom_optional(node: captured) {
         Present { value: atom } => outcome_accepted(value: atom)
@@ -5067,17 +5778,139 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
       }
       }
   }
+      }
+  }
+      }
+}
+
+// A RECORD LITERAL LOWERS TO THE CONSTRUCT. primary_expr's captured for `R { f: e, .. }` is
+// seq(name, seq(`{`, seq(field_init,*, `}`))); each field_init shell, preserved by the child fold
+// around its already-lowered value, is seq(name, seq(`:`, value)). The result is
+// v2.std.node_query construct_node -- Conj { R: Atom(R), f: e, .. } -- the RecordConstructBody
+// shape v2.std.node admits and the shape a fielded pattern lowers to, so `Rec { n: 1 }` and
+// `Rec { n: x } =>` are one shape read in two directions. A dotted head (`m.R { .. }`) is not a
+// bare name and falls through to the arms below unchanged.
+fn body_lower_field_init_edge(item: Node) -> Outcome<Edge> {
+  let stripped = body_lower_deep_unwrap_optional(node: item)
+  let captured = match parse_production_captured_child_optional(node: stripped) {
+    Present { value: c } => c
+    Absent => stripped
+  }
+  let refuse = outcome_rejected(
+    d: body_lower_diagnostic(reason: ^body_lowering_reason_field_init_unlowered, n: item)
+  )
+  match sugar_sequence_pair_optional(node: captured) {
+    Absent => refuse
+    Present { value: pair } =>
+      match body_lower_param_binding_optional(node: pair.left) {
+        Absent => refuse
+        Present { value: field_name } =>
+          match sugar_sequence_pair_optional(node: pair.right) {
+            Absent => refuse
+            Present { value: after_colon } =>
+              match body_lower_value_lowered_or_carried(value: after_colon.right) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: value, diagnostics: d } =>
+                  outcome_with_diagnostics(
+                    value: Edge { label: Named { name: field_name }, target: value },
+                    diagnostics: d
+                  )
+              }
+          }
+      }
   }
 }
 
+fn body_lower_record_literal_field_items_optional(captured: Node) -> Optional<List<Node>> {
+  match sugar_sequence_pair_optional(node: captured) {
+    Absent => Absent
+    Present { value: pair } =>
+      match sugar_sequence_pair_optional(node: pair.right) {
+        Absent => Absent
+        Present { value: brace_seq } =>
+          match node_atom_identity_optional(node: brace_seq.left) {
+            Absent => Absent
+            Present { value: open } =>
+              if open == ^dag_token_lbrace {
+                match sugar_sequence_pair_optional(node: brace_seq.right) {
+                  Absent => Absent
+                  Present { value: inner } =>
+                    match node_atom_identity_optional(node: inner.right) {
+                      Absent => Absent
+                      Present { value: close } =>
+                        if close == ^dag_token_rbrace {
+                          body_lower_comma_list_items_optional(list_capture: inner.left)
+                        } else {
+                          Absent
+                        }
+                    }
+                }
+              } else {
+                Absent
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_record_literal_tag_optional(captured: Node) -> Optional<Symbol> {
+  match sugar_sequence_pair_optional(node: captured) {
+    Absent => Absent
+    Present { value: pair } =>
+      match dag_binding_branded_atom_identity(node: pair.left) {
+        Present { value: tag } =>
+          match dag_lex_token_symbol(sym: tag) {
+            true => optional_absent()
+            false => optional_present(value: tag)
+          }
+        Absent => Absent
+      }
+  }
+}
+
+fn body_lower_try_record_literal(captured: Node) -> Outcome<Optional<Node>> {
+  match body_lower_record_literal_tag_optional(captured: captured) {
+    Absent => outcome_accepted(value: optional_absent())
+    Present { value: tag } =>
+      match body_lower_record_literal_field_items_optional(captured: captured) {
+        Absent => outcome_accepted(value: optional_absent())
+        Present { value: items } =>
+          match fold(items, init: outcome_accepted(value: Empty), f: fn(acc, item) {
+            bind_outcome(o: acc, f: fn(edges) {
+              bind_outcome(o: body_lower_field_init_edge(item: item), f: fn(e) {
+                outcome_accepted(value: list_snoc_item(xs: edges, item: e))
+              })
+            })
+          }) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: edges, diagnostics: d } =>
+              Accepted {
+                value: optional_present(value: construct_node(tag: tag, field_edges: edges, source: captured)),
+                diagnostics: d
+              }
+          }
+      }
+  }
+}
+
+// The literal probe at the head is SHALLOW on purpose: it answers a primary whose captured IS
+// an int literal, through production shells and optionals only. The deep search that stood
+// here answered the first literal anywhere under the captured, so `f(1)`, `A(1)` and
+// `R { v: 1 }` each lowered to the literal 1 with the callee, constructor and fields dropped.
 fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
   let captured = match body_lower_unwrap_captured(shell: shell) {
     Present { value: inner } => inner
     Absent => shell
   }
-  match body_lower_literal_int_atom_optional(node: captured) {
+  match body_lower_int_literal_with_magnitude_optional(node: captured) {
         Present { value: lit } => outcome_accepted(value: lit)
         Absent =>
+      match body_lower_try_record_literal(captured: captured) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: record_opt, diagnostics: cd } =>
+          match record_opt {
+            Present { value: construct } => Accepted { value: construct, diagnostics: cd }
+            Absent =>
       match body_lower_try_loop_keyword_from_captured(captured: captured) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: loop_opt, diagnostics: ld } =>
@@ -5093,7 +5926,10 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
               Accepted { value: transform, diagnostics: d }
             Absent =>
       match body_lower_dotted_chain_lowered_optional(node: captured) {
-        Present { value: spine } => outcome_accepted(value: spine)
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: spine_opt, diagnostics: sd } =>
+        match spine_opt {
+        Present { value: spine } => outcome_with_diagnostics(value: spine, diagnostics: sd)
         Absent =>
       match body_lower_pattern_first_atom_optional(node: captured) {
         Present { value: atom } => outcome_accepted(value: atom)
@@ -5143,6 +5979,9 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
       }
       }
       }
+      }
+      }
+          }
       }
   }
 }
@@ -5204,6 +6043,28 @@ fn body_lower_find_where_host_conj(root: Node) -> Optional<Node> {
   }
 }
 
+// A RECORD DECLARATION rehomes exactly the way a where-alias does: `type R { f: T }` becomes
+// Conj { R: Conj { f: T } }, a Named member the graft flatten keeps, so the record's fields are
+// declared identities (module.R.f in the containment index) instead of a residual shell. The
+// block shell reaches this dispatch preserved by the child fold; after a coproduct's variants
+// have lowered no block shell remains under the unit, so a remaining one is the record spelling.
+// Generic parameters and the type-decl modifiers are not carried by this rehome, as they are
+// not by the where-alias rehome beside it: neither is modeled on this route yet.
+fn body_lower_record_type_decl(shell: Node, type_name: Symbol, block_shell: Node) -> Outcome<Node> {
+  match body_lower_field_decl_block_payload(block_shell: block_shell) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: payload, diagnostics: d } =>
+      Accepted {
+        value: node_with_occurrence_id(
+          kind: TypeNode { connective: Conj },
+          children: [Edge { label: Named { name: type_name }, target: payload }],
+          occurrence_id: shell.occurrence_id
+        ),
+        diagnostics: d
+      }
+  }
+}
+
 fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
   match parse_production_captured_child_optional(node: shell) {
     Absent => outcome_accepted(value: shell)
@@ -5211,18 +6072,23 @@ fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
       match dag_surface_kw_then_ident_from_captured(captured: captured) {
         Absent => outcome_accepted(value: shell)
         Present { value: type_name } =>
-          match body_lower_find_where_host_conj(root: captured) {
-            Absent => outcome_accepted(value: shell)
-            Present { value: host } =>
-              outcome_accepted(
-                value: node_with_occurrence_id(
-                  kind: TypeNode { connective: Conj },
-                  children: [
-                    Edge { label: Named { name: type_name }, target: host }
-                  ],
-                  occurrence_id: shell.occurrence_id
-                )
-              )
+          match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_field_decl_block) {
+            Present { value: block_shell } =>
+              body_lower_record_type_decl(shell: shell, type_name: type_name, block_shell: block_shell)
+            Absent =>
+              match body_lower_find_where_host_conj(root: captured) {
+                Absent => outcome_accepted(value: shell)
+                Present { value: host } =>
+                  outcome_accepted(
+                    value: node_with_occurrence_id(
+                      kind: TypeNode { connective: Conj },
+                      children: [
+                        Edge { label: Named { name: type_name }, target: host }
+                      ],
+                      occurrence_id: shell.occurrence_id
+                    )
+                  )
+              }
           }
       }
   }

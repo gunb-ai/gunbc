@@ -1,0 +1,137 @@
+module v2.test.claim.match_arm_binder_frame
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject
+}
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  SourceRootIngest
+}
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: the match-arm scope frame of v2.compiler.resolve (resolve_match_node): the binders a
+// lowered pattern carries (v2.test.parse.variant_field_lowering asserts the shape) are a lexical
+// frame for the arm's body, and nothing else. BOUNDARY: source text in, assembled (normalized +
+// resolved) program out through assemble_program_from_ingest, the same real path the
+// declaration_graft_assemble rows run; the outcome and its typed reason are the observation.
+//
+// WHY THE SHADOWING CONTROL IS SHAPED THE WAY IT IS. A binder's canonical atom is its own symbol,
+// exactly as a parameter's is, so a resolved tree cannot show WHICH frame answered `x`. What can:
+// a frame local is answered BoundInFrame before the root is reached, and the root's test-code
+// wall (resolve_atom_bound) is never consulted for it. So the outer `x` here is a TEST-MARKED
+// declaration: with the frame, the arm's `x` binds to the arm and the module assembles; without
+// it, `x` reaches the root, names test code, and refuses resolve_reason_test_code_referenced --
+// the red that makes the green mean the arm bound it. The mutation receipt (frame deleted) is on
+// the PR.
+
+data mab_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^match_arm_binder_frame_artifact,
+  file_path: "src/v2/pilot/match_arm_binder_frame_pilot.dag"
+}
+
+fn mab_ingest_for(src: String) -> SourceRootIngest {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: src, fidelity: Lossless },
+      artifact: mab_artifact,
+      compilation_unit: ^match_arm_binder_frame_cu,
+      source_root: V2Tree
+    },
+    tail: Empty
+  }
+}
+
+fn mab_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } },
+    imports: Empty
+  }
+}
+
+fn mab_assemble(src: String) -> Outcome<Node> {
+  assemble_program_from_ingest(ingest: mab_ingest_for(src: src), admission: mab_admission(), lm: dag_language_model())
+}
+
+fn mab_accepts(src: String) -> Bool {
+  match mab_assemble(src: src) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn mab_refuses_with(src: String, reason: Symbol) -> Bool {
+  match mab_assemble(src: src) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+data mab_prelude: String = "module p\n\ntype C = A(Int) | B\n\n"
+
+// (1) A binder shadowing an outer name binds the ARM's binding: the outer `x` is test code, and
+// the arm's `x` never reaches it.
+test fn mab_shadowing_binder_binds_the_arm() -> Bool {
+  mab_accepts(src: "module p\n\ntype C = A(Int) | B\n\ntest fn x() -> Int { 1 }\n\nfn pick(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n")
+}
+
+// The wall the frame bypasses is real: the same outer test-code name, referenced from an arm that
+// binds no `x`, refuses through the root exactly as the frame-less reading of (1) would.
+test fn mab_outer_test_code_name_still_refuses_without_a_binder() -> Bool {
+  mab_refuses_with(
+    src: "module p\n\ntype C = A(Int) | B\n\ntest fn x() -> Int { 1 }\n\nfn pick(c: C) -> Int {\n  match c {\n    A(_) => x\n    B => 0\n  }\n}\n",
+    reason: ^resolve_reason_test_code_referenced
+  )
+}
+
+// A binder with no outer name at all binds through the frame (green) -- and the body naming a
+// different, unbound name refuses (red): the frame binds exactly the binder.
+test fn mab_fresh_binder_binds() -> Bool {
+  mab_accepts(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    B => 0\n  }\n}\n")
+}
+
+test fn mab_unbound_name_in_arm_body_refuses() -> Bool {
+  mab_refuses_with(
+    src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => z\n    B => 0\n  }\n}\n",
+    reason: ^resolve_reason_unbound_symbol
+  )
+}
+
+// (3) The constructor tag is not a binder: a misspelled variant refuses as an unbound reference
+// instead of becoming a fresh binder that matches everything.
+test fn mab_misspelled_tag_refuses() -> Bool {
+  mab_refuses_with(
+    src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    Aa(y) => y\n    B => 0\n  }\n}\n",
+    reason: ^resolve_reason_unbound_symbol
+  )
+}
+
+// (4) The binder does not leak: a sibling arm naming it is unbound.
+test fn mab_binder_does_not_leak_to_a_sibling_arm() -> Bool {
+  mab_refuses_with(
+    src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    B => y\n  }\n}\n",
+    reason: ^resolve_reason_unbound_symbol
+  )
+}
+
+// Nested constructs bind at depth, braced and shorthand spellings bind their field's binder, and
+// a wildcard binds nothing.
+test fn mab_nested_braced_and_shorthand_binders_bind() -> Bool {
+  mab_accepts(src: "module p\n\ntype Opt = Present { value: Int } | Absent\ntype C = A(Opt) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(Present { value: y }) => y\n    A(Absent) => 0\n    B => 1\n  }\n}\n")
+    && mab_accepts(src: "module p\n\ntype Opt = Present { value: Int } | Absent\n\nfn get(o: Opt) -> Int {\n  match o {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n")
+    && mab_accepts(src: "module p\n\ntype Opt = Present { value: Int } | Absent\n\nfn get(o: Opt) -> Int {\n  match o {\n    Present { value } => value\n    Absent => 0\n  }\n}\n")
+    && mab_accepts(src: "module p\n\ntype C = A(Int) | B\n\nfn tag(c: C) -> Int {\n  match c {\n    A(_) => 1\n    B => 0\n  }\n}\n")
+}

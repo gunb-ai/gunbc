@@ -6,7 +6,7 @@ import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, canonicalize_node_strip_provenance }
@@ -117,29 +117,20 @@ test fn leading_pipe_normalizes_to_the_same_alternatives_as_without_holds() -> B
   }
 }
 
-// The positional row alone, with no leading `|`, at its construction site. This establishes that
-// the front end CONSUMES the spelling through normalize. It does not establish the field-"0"
-// lowering: no v2 stage lowers variant fields into declared field identities for ANY variant,
-// named or positional, so `A(Int)` and `A { v: Int }` are equally preserved and unlowered today
-// (gunbc.rung_drop variant_fields_unlowered_on_the_native_route).
+// The positional row alone, with no leading `|`, at its construction site: the front end CONSUMES
+// the spelling through normalize. The field-"0" lowering itself, the construction's operand and
+// the binder are the subject of v2.test.parse.variant_field_lowering.
 test fn positional_payload_without_leading_pipe_with_construction_normalizes_holds() -> Bool {
   cp_normalizes(text: "module m.t\n\ntype C = A(Int) | B\n\nfn wrap(x: Int) -> C {\n  A(x)\n}\n")
 }
 
-fn cp_normalize_refuses_with(text: String, reason: Symbol) -> Bool {
-  match cp_normalized(text: text) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
-  }
-}
-
-// ELIMINATION REFUSES RATHER THAN LOSING THE BINDER. The match-arm lowering kept only a pattern's
-// constructor atom, so `A(x) => x` became an arm on `A` whose `x` was never bound. It is now a
-// typed refusal (body_lower_match_arm_wire_from_sequence) until variant fields lower.
-test fn positional_pattern_binder_refuses_until_fields_lower_holds() -> Bool {
-  cp_normalize_refuses_with(
-    text: "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n",
-    reason: ^body_lowering_reason_positional_pattern_binder_unlowered
+// ELIMINATION BINDS THE BINDER. gunbc#11998 turned the silent loss of `A(x) => x`'s binder into a
+// typed refusal until variant fields lowered; they lower now, the refusal is retired, and the arm
+// normalizes -- the shape it binds through is asserted by v2.test.parse.variant_field_lowering
+// vf_positional_pattern_binds_field_zero, so this row keeps only the route half.
+test fn positional_pattern_binder_normalizes_holds() -> Bool {
+  cp_normalizes(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n"
   )
 }
 

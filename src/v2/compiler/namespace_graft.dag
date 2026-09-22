@@ -318,38 +318,24 @@ fn namespace_graft_type_decl_target(root: Node) -> Node {
   }
 }
 
-// Any type_decl that still locates dag_surface_field_decl_block is residual,
-// not Named: records and fielded variants (optional field_decl_block on
-// dag_grammar_type_variant_expr; sugar leaves those blocks in the tree).
-// Narrowing by type_alias_rhs / `=` rehomes records. Class
-// gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft.
-// A positional payload `Name(T)` is the same fielded variant spelled positionally
-// (dag_grammar_positional_variant_payload_expr), so it takes the same residual arm.
-fn namespace_graft_type_decl_is_fielded(unit: Node) -> Bool {
-  match parse_subtree_locate_production(root: unit, emitted: ^dag_surface_field_decl_block) {
-    Present { value: _ } => true
-    Absent =>
-      match parse_subtree_locate_production(root: unit, emitted: ^dag_surface_positional_variant_payload) {
-        Present { value: _ } => true
-        Absent => false
-      }
-  }
-}
-
+// EVERY type_decl unit is Named. Records and fielded variants used to take a residual arm here
+// because no stage lowered their field_decl_block; body lowering now declares those fields
+// (v2.compiler.body_lowering_fold body_lower_type_variant / body_lower_record_type_decl), a
+// record reaches this flatten as `Conj { R: payload }` the way a where-alias does, and a
+// coproduct's unit carries its Disj with every arm's payload declared. The skip and the class
+// it mitigated, gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft,
+// close together: a field block that cannot lower is body lowering's typed refusal, so no
+// unlowered block can reach this partition.
 fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {
-  if namespace_graft_type_decl_is_fielded(unit: unit) {
-    optional_absent()
-  } else {
-    match namespace_graft_type_decl_name(unit: unit) {
-      Absent => optional_absent()
-      Present { value: type_name } =>
-        optional_present(
-          value: Edge {
-            label: Named { name: type_name },
-            target: namespace_graft_type_decl_target(root: unit)
-          }
-        )
-    }
+  match namespace_graft_type_decl_name(unit: unit) {
+    Absent => optional_absent()
+    Present { value: type_name } =>
+      optional_present(
+        value: Edge {
+          label: Named { name: type_name },
+          target: namespace_graft_type_decl_target(root: unit)
+        }
+      )
   }
 }
 
@@ -480,10 +466,9 @@ fn namespace_graft_partition_decl_units(units: List<Node>) -> NamespaceGraftDecl
   )
 }
 
-// Flatten keeps Named members that are not parse machinery. A Conj that still
-// carries field_decl_block is the same skip as type_decl_named_edge (record or
-// fielded variant), not a flatten member. Atom targets stay: the graft-shape
-// fixture is two Named atoms.
+// Flatten keeps Named members that are not parse machinery: a lowered record
+// (`Conj { R: payload }`), a where-alias, an Atom -- the graft-shape fixture is
+// two Named atoms.
 fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
   match edge.label {
     Named { name: sym } =>
@@ -494,14 +479,7 @@ fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
       } else if namespace_graft_target_is_production_shell(edge: edge) {
         false
       } else {
-        match edge.target.kind {
-          TypeNode { connective: Conj } =>
-            match namespace_graft_type_decl_is_fielded(unit: edge.target) {
-              true => false
-              false => true
-            }
-          _ => true
-        }
+        true
       }
     Positional => false
   }

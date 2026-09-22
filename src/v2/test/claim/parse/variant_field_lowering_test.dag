@@ -1,0 +1,471 @@
+module v2.test.parse.variant_field_lowering
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node {
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Disj,
+  Edge,
+  Instantiation,
+  Match,
+  Named,
+  Node,
+  Positional,
+  Transform,
+  TypeNode,
+  canonicalize_node_strip_provenance,
+  match_arm_pattern,
+  node_subtree_nodes
+}
+import v2.std.node_query {
+  DeclaredField,
+  construct_field_edges,
+  construct_tag_optional,
+  declared_field_is_required,
+  declared_field_list,
+  declared_field_named,
+  find_arrow_body_child,
+  find_named_child,
+  node_labeled_child_edges,
+  node_positional_child_targets,
+  payload_is_nullary,
+  positional_payload_field_name
+}
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.collection { List, list_at_optional }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: normalize (v2.compiler.body_lowering_fold, with v2.std.compilers.sugar's coproduct fold
+// and the namespace graft), the ONE stage that lowers variant and record fields into declared
+// field identities (v2.std.node_query DeclaredField): `A(Int)` declares the one Required field
+// "0", `A { v: Int }` declares v, `B` is the empty payload; a construction is the construct shape
+// (tag edge + field edges) and a match pattern over a fielded variant is that same shape over its
+// binders. BOUNDARY: source text in, normalized tree out, on the prepared-grammar parse the native
+// route runs (v2.compiler.program_assembly program_assembly_read_to_normalized_root_prepared
+// composes exactly these calls). The inputs are SUPPLIED at that boundary (DESIGN section 3); the
+// inhabitance claim for the real corpus is the native workload run recorded on the PR
+// (std.content_hash normalizes natively, where before it refused
+// body_lowering_reason_positional_pattern_binder_unlowered), and vf_content_hash_declarations_
+// below runs the declarations and the positional match of that module verbatim through the same
+// two stages.
+
+fn vf_parse(text: String) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: ^variant_field_probe, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn vf_normalized(text: String) -> Outcome<NormalizedTree> {
+  match vf_parse(text: text) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: _ } => normalize(parse_tree: tree)
+  }
+}
+
+fn vf_normalizes(text: String) -> Bool {
+  match vf_normalized(text: text) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn vf_refuses_with(text: String, reason: Symbol) -> Bool {
+  match vf_normalized(text: text) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+// The Named member the graft placed for a declaration: the first Named edge anywhere in the
+// tree whose label spells `lexeme`. Parse projections never spell a user name.
+fn vf_named_member_optional(root: Node, lexeme: String) -> Optional<Node> {
+  fold(node_subtree_nodes(root: root), init: Absent, f: fn(found, n) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        fold(n.children, init: Absent, f: fn(inner, e) {
+          match inner {
+            Present { value: _ } => inner
+            Absent =>
+              match e.label {
+                Named { name: sym } =>
+                  match symbol_lexeme(sym: sym) == lexeme {
+                    true => Present { value: e.target }
+                    false => Absent
+                  }
+                Positional => Absent
+              }
+          }
+        })
+    }
+  })
+}
+
+fn vf_first_disj_optional(root: Node) -> Optional<Node> {
+  fold(node_subtree_nodes(root: root), init: Absent, f: fn(found, n) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match n.kind {
+          TypeNode { connective: Disj } => Present { value: n }
+          _ => Absent
+        }
+    }
+  })
+}
+
+// The payload a coproduct declares for the arm labelled `lexeme`.
+fn vf_arm_payload_optional(root: Node, type_lexeme: String, arm_lexeme: String) -> Optional<Node> {
+  match vf_named_member_optional(root: root, lexeme: type_lexeme) {
+    Absent => Absent
+    Present { value: member } =>
+      match vf_first_disj_optional(root: member) {
+        Absent => Absent
+        Present { value: disj } => vf_named_member_optional(root: disj, lexeme: arm_lexeme)
+      }
+  }
+}
+
+fn vf_arm_payload_of(text: String, type_lexeme: String, arm_lexeme: String) -> Optional<Node> {
+  match vf_normalized(text: text) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: nt, diagnostics: _ } =>
+      vf_arm_payload_optional(root: nt.root, type_lexeme: type_lexeme, arm_lexeme: arm_lexeme)
+  }
+}
+
+fn vf_type_atom_is(n: Node, lexeme: String) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => symbol_lexeme(sym: id) == lexeme
+    _ => false
+  }
+}
+
+fn vf_field_is(f: DeclaredField, name: String, type_lexeme: String, required: Bool) -> Bool {
+  (symbol_lexeme(sym: f.name) == name)
+    && vf_type_atom_is(n: f.type_node, lexeme: type_lexeme)
+    && (declared_field_is_required(field: f) == required)
+}
+
+fn vf_field_count(payload: Node) -> Int {
+  count(declared_field_list(payload: payload))
+}
+
+data vf_positional_sum: String = "module m.t\n\ntype C = A(Int) | B\n"
+
+// `type C = A(Int) | B`: A declares exactly one Required field "0" of type Int; B is nullary.
+test fn vf_positional_variant_declares_one_required_field_zero() -> Bool {
+  match vf_arm_payload_of(text: vf_positional_sum, type_lexeme: "C", arm_lexeme: "A") {
+    Absent => false
+    Present { value: payload } =>
+      (vf_field_count(payload: payload) == 1)
+        && (match declared_field_named(payload: payload, name: positional_payload_field_name()) {
+          Absent => false
+          Present { value: f } => vf_field_is(f: f, name: "0", type_lexeme: "dag_binding_type_int", required: true)
+        })
+  }
+}
+
+test fn vf_bare_variant_is_nullary() -> Bool {
+  match vf_arm_payload_of(text: vf_positional_sum, type_lexeme: "C", arm_lexeme: "B") {
+    Absent => false
+    Present { value: payload } => payload_is_nullary(payload: payload) && (vf_field_count(payload: payload) == 0)
+  }
+}
+
+// The braced spelling declares the SAME kind of field, through the same stage.
+test fn vf_braced_variant_declares_named_field() -> Bool {
+  match vf_arm_payload_of(text: "module m.t\n\ntype C = A { v: Int } | B\n", type_lexeme: "C", arm_lexeme: "A") {
+    Absent => false
+    Present { value: payload } =>
+      (vf_field_count(payload: payload) == 1)
+        && (match declared_field_named(payload: payload, name: ^v) {
+          Absent => false
+          Present { value: f } => vf_field_is(f: f, name: "v", type_lexeme: "dag_binding_type_int", required: true)
+        })
+  }
+}
+
+// A record declaration is a Named member whose payload declares its fields: Required `v`,
+// Optional `w` (a Cardinality node over Int), and `xs` typed by an Instantiation of List over Int.
+test fn vf_record_declaration_is_named_with_declared_fields() -> Bool {
+  match vf_normalized(text: "module m.t\n\ntype R { v: Int, w: Int?, xs: List<Int> }\n") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: nt, diagnostics: _ } =>
+      match vf_named_member_optional(root: nt.root, lexeme: "R") {
+        Absent => false
+        Present { value: payload } =>
+          (vf_field_count(payload: payload) == 3)
+            && (match declared_field_named(payload: payload, name: ^v) {
+              Absent => false
+              Present { value: f } => vf_field_is(f: f, name: "v", type_lexeme: "dag_binding_type_int", required: true)
+            })
+            && (match declared_field_named(payload: payload, name: ^w) {
+              Absent => false
+              Present { value: f } =>
+                (!declared_field_is_required(field: f))
+                  && (match f.type_node.kind {
+                    TypeNode { connective: Cardinality } =>
+                      match list_at_optional(xs: node_positional_child_targets(node: f.type_node), index: 0) {
+                        Present { value: inner } => vf_type_atom_is(n: inner, lexeme: "dag_binding_type_int")
+                        Absent => false
+                      }
+                    _ => false
+                  })
+            })
+            && (match declared_field_named(payload: payload, name: ^xs) {
+              Absent => false
+              Present { value: f } =>
+                match f.type_node.kind {
+                  TypeNode { connective: Instantiation } =>
+                    (count(node_positional_child_targets(node: f.type_node)) == 2)
+                      && (match list_at_optional(xs: node_positional_child_targets(node: f.type_node), index: 0) {
+                        Present { value: head } => vf_type_atom_is(n: head, lexeme: "List")
+                        Absent => false
+                      })
+                  _ => false
+                }
+            })
+      }
+  }
+}
+
+// The seed's sum rule: one alternative with a payload is a coproduct; one bare alternative is an
+// alias and keeps its reference to the type it names.
+test fn vf_single_fielded_variant_is_a_sum() -> Bool {
+  match vf_arm_payload_of(text: "module m.t\n\ntype F = Bar { n: Int }\n", type_lexeme: "F", arm_lexeme: "Bar") {
+    Absent => false
+    Present { value: payload } => vf_field_count(payload: payload) == 1
+  }
+}
+
+test fn vf_bare_alias_is_not_a_sum() -> Bool {
+  match vf_normalized(text: "module m.t\n\ntype T = String\n") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: nt, diagnostics: _ } =>
+      match vf_named_member_optional(root: nt.root, lexeme: "T") {
+        Absent => false
+        Present { value: member } =>
+          (match vf_first_disj_optional(root: member) { Present { value: _ } => false  Absent => true })
+            && fold(node_subtree_nodes(root: member), init: false, f: fn(acc, n) {
+              acc || vf_type_atom_is(n: n, lexeme: "String")
+            })
+      }
+  }
+}
+
+fn vf_fn_body_of(text: String, fn_lexeme: String) -> Optional<Node> {
+  match vf_normalized(text: text) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: nt, diagnostics: _ } =>
+      match vf_named_member_optional(root: nt.root, lexeme: fn_lexeme) {
+        Absent => Absent
+        Present { value: arrow } =>
+          match find_arrow_body_child(root: arrow) {
+            Accepted { value: body, diagnostics: _ } => Present { value: body }
+            Rejected { diagnostics: _ } => Absent
+          }
+      }
+  }
+}
+
+// CONSTRUCTION SUPPLIES FIELD "0": `A(x)` is a Transform whose callee is A and whose single
+// positional operand is x -- the one operand the declared field list [0] receives, the way the
+// seed's infer_variant_constructor_call joins them. That the argument is CARRIED is this control's
+// point: on the route before this change `A(x)` lowered to Transform(A) with x dropped.
+test fn vf_positional_construction_carries_its_operand() -> Bool {
+  match vf_fn_body_of(text: "module m.t\n\ntype C = A(Int) | B\n\nfn wrap(x: Int) -> C {\n  A(x)\n}\n", fn_lexeme: "wrap") {
+    Absent => false
+    Present { value: body } =>
+      match body.kind {
+        ComputationNode { behavior: Transform } =>
+          let operands = node_positional_child_targets(node: body)
+          (count(operands) == 2)
+            && (match list_at_optional(xs: operands, index: 0) { Present { value: c } => vf_type_atom_is(n: c, lexeme: "A")  Absent => false })
+            && (match list_at_optional(xs: operands, index: 1) { Present { value: a } => vf_type_atom_is(n: a, lexeme: "x")  Absent => false })
+        _ => false
+      }
+  }
+}
+
+// A record construction is the construct shape: tag edge R -> Atom(R), then field v -> x.
+test fn vf_record_construction_is_the_construct_shape() -> Bool {
+  match vf_fn_body_of(text: "module m.t\n\ntype R { v: Int }\n\nfn mk(x: Int) -> R {\n  R { v: x }\n}\n", fn_lexeme: "mk") {
+    Absent => false
+    Present { value: body } =>
+      (match construct_tag_optional(n: body) { Present { value: tag } => symbol_lexeme(sym: tag) == "R"  Absent => false })
+        && (count(construct_field_edges(n: body)) == 1)
+        && (match list_at_optional(xs: construct_field_edges(n: body), index: 0) {
+          Present { value: e } =>
+            (match e.label { Named { name: nm } => symbol_lexeme(sym: nm) == "v"  Positional => false })
+              && vf_type_atom_is(n: e.target, lexeme: "x")
+          Absent => false
+        })
+  }
+}
+
+fn vf_first_arm_pattern_of(text: String, fn_lexeme: String) -> Optional<Node> {
+  match vf_fn_body_of(text: text, fn_lexeme: fn_lexeme) {
+    Absent => Absent
+    Present { value: body } =>
+      match body.kind {
+        ComputationNode { behavior: Match } =>
+          match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
+            Absent => Absent
+            Present { value: arm } =>
+              match find_named_child(root: arm, name: match_arm_pattern) {
+                Accepted { value: pat, diagnostics: _ } => Present { value: pat }
+                Rejected { diagnostics: _ } => Absent
+              }
+          }
+        _ => Absent
+      }
+  }
+}
+
+fn vf_pattern_binds(pat: Node, tag: String, field: String, binder: String) -> Bool {
+  (match construct_tag_optional(n: pat) { Present { value: t } => symbol_lexeme(sym: t) == tag  Absent => false })
+    && (count(construct_field_edges(n: pat)) == 1)
+    && (match list_at_optional(xs: construct_field_edges(n: pat), index: 0) {
+      Present { value: e } =>
+        (match e.label { Named { name: nm } => symbol_lexeme(sym: nm) == field  Positional => false })
+          && vf_type_atom_is(n: e.target, lexeme: binder)
+      Absent => false
+    })
+}
+
+data vf_positional_unwrap: String = "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n"
+
+// THE MATCH BINDS FROM FIELD "0": the arm pattern is the construct A with field 0 -> x, so the
+// binder the body names reaches the resolver instead of vanishing (and instead of the typed
+// refusal gunbc#11998 stood in its place, now retired).
+test fn vf_positional_pattern_binds_field_zero() -> Bool {
+  match vf_first_arm_pattern_of(text: vf_positional_unwrap, fn_lexeme: "unwrap") {
+    Absent => false
+    Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "0", binder: "x")
+  }
+}
+
+test fn vf_braced_pattern_binds_named_field() -> Bool {
+  match vf_first_arm_pattern_of(text: "module m.t\n\ntype C = A { v: Int } | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A { v: x } => x\n    B => 0\n  }\n}\n", fn_lexeme: "unwrap") {
+    Absent => false
+    Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "v", binder: "x")
+  }
+}
+
+test fn vf_shorthand_pattern_binds_field_to_its_own_name() -> Bool {
+  match vf_first_arm_pattern_of(text: "module m.t\n\ntype C = A { v: Int } | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A { v } => v\n    B => 0\n  }\n}\n", fn_lexeme: "unwrap") {
+    Absent => false
+    Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "v", binder: "v")
+  }
+}
+
+// A wildcard payload is the same construct with `_` in field 0 -- nothing is dropped.
+test fn vf_wildcard_pattern_keeps_its_field() -> Bool {
+  match vf_first_arm_pattern_of(text: "module m.t\n\ntype C = A(Int) | B\n\nfn tag(c: C) -> Int {\n  match c {\n    A(_) => 1\n    B => 0\n  }\n}\n", fn_lexeme: "tag") {
+    Absent => false
+    Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "0", binder: "_")
+  }
+}
+
+// THE STRUCTURAL HALF OF THE SHADOWING CONTROL. A binder that spells an outer parameter's name is
+// carried on the arm's own pattern (field 0 -> Atom(x)) while the parameter stays the domain's
+// Named edge, so a match-arm scope frame has exactly what it needs to bind the body's x to the
+// arm. That the body's x then RESOLVES to the arm's binder and not the parameter is the
+// resolver's fact: v2.compiler.resolve scopes no match-arm frame yet, and
+// gunbc.rung_drop variant_fields_unlowered_on_the_native_route stands on that remainder.
+test fn vf_shadowing_binder_is_carried_on_the_arm() -> Bool {
+  let text = "module m.t\n\ntype C = A(Int) | B\n\nfn pick(x: Int, c: C) -> Int {\n  match c {\n    A(x) => x\n    B => x\n  }\n}\n"
+  (match vf_first_arm_pattern_of(text: text, fn_lexeme: "pick") {
+    Absent => false
+    Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "0", binder: "x")
+  })
+    && (match vf_normalized(text: text) {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: nt, diagnostics: _ } =>
+        match vf_named_member_optional(root: nt.root, lexeme: "pick") {
+          Absent => false
+          Present { value: arrow } =>
+            match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+              Absent => false
+              Present { value: domain } =>
+                match find_named_child(root: domain, name: ^x) {
+                  Accepted { value: t, diagnostics: _ } => vf_type_atom_is(n: t, lexeme: "dag_binding_type_int")
+                  Rejected { diagnostics: _ } => false
+                }
+            }
+        }
+    })
+}
+
+// DISTINCT PAYLOADS STAY DISTINCT: constructions differing only in the payload normalize to
+// different provenance-free trees, so the payload is carried, not summarized by the constructor.
+test fn vf_distinct_payloads_normalize_distinct() -> Bool {
+  match vf_normalized(text: "module m.t\n\ntype C = A(Int) | B\n\nfn one() -> C { A(1) }\n") {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: left, diagnostics: _ } =>
+      match vf_normalized(text: "module m.t\n\ntype C = A(Int) | B\n\nfn one() -> C { A(2) }\n") {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: right, diagnostics: _ } =>
+          canonicalize_node_strip_provenance(n: left.root) != canonicalize_node_strip_provenance(n: right.root)
+      }
+  }
+}
+
+// REFUSALS, LOCATED. Positional arity is one, as in the seed's parse_variant_pattern; a where
+// clause beside a payload is a spelling the seed never reaches.
+test fn vf_two_positional_binders_refuse() -> Bool {
+  vf_refuses_with(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x, y) => x\n    B => 0\n  }\n}\n",
+    reason: ^body_lowering_reason_pattern_unlowered
+  )
+}
+
+test fn vf_where_beside_payload_refuses() -> Bool {
+  vf_refuses_with(
+    text: "module m.t\n\ntype C = A where non_empty { v: Int } | B\n",
+    reason: ^body_lowering_reason_field_decl_unlowered
+  )
+}
+
+// std.content_hash's own declarations and its positional match, verbatim: the module the native
+// workload stopped on. This is the seed-run half of that receipt; the native run is on the PR.
+data vf_content_hash_declarations: String = "module std.content_hash\n\ntype HashFamily =\n  | Fnv1a64StructuralFamily\n  | Sha256Family\n\ntype Fnv1a64Structural {\n  digest: Fnv1a64StructuralDigestHex\n}\n\ntype Sha256Digest {\n  hex: Sha256DigestHex\n}\n\ntype ContentHash =\n  | Fnv1a64(Fnv1a64Structural)\n  | Sha256Hash(Sha256Digest)\n\nfn structural_content_hash(digest: Fnv1a64StructuralDigestHex) -> Fnv1a64Structural {\n  Fnv1a64Structural { digest: digest }\n}\n\nfn as_content_hash_structural(structural: Fnv1a64Structural) -> ContentHash {\n  Fnv1a64(structural)\n}\n\nfn compare_content_hash(left: ContentHash, right: ContentHash) -> ContentHashComparison {\n  match left {\n    Fnv1a64(left_structural) =>\n      match right {\n        Fnv1a64(right_structural) =>\n          if content_hash_eq_structural(left: left_structural, right: right_structural) {\n            ContentHashEqual\n          } else {\n            ContentHashDifferent\n          }\n        Sha256Hash(_) => ContentHashCrossFamilyIncomparable\n      }\n    Sha256Hash(left_digest) =>\n      match right {\n        Sha256Hash(right_digest) =>\n          if content_hash_eq_cryptographic(left: left_digest, right: right_digest) {\n            ContentHashEqual\n          } else {\n            ContentHashDifferent\n          }\n        Fnv1a64(_) => ContentHashCrossFamilyIncomparable\n      }\n  }\n}\n"
+
+test fn vf_content_hash_declarations_and_positional_match_normalize() -> Bool {
+  vf_normalizes(text: vf_content_hash_declarations)
+    && (match vf_first_arm_pattern_of(text: vf_content_hash_declarations, fn_lexeme: "compare_content_hash") {
+      Absent => false
+      Present { value: pat } => vf_pattern_binds(pat: pat, tag: "Fnv1a64", field: "0", binder: "left_structural")
+    })
+    && (match vf_arm_payload_of(text: vf_content_hash_declarations, type_lexeme: "ContentHash", arm_lexeme: "Fnv1a64") {
+      Absent => false
+      Present { value: payload } =>
+        match declared_field_named(payload: payload, name: positional_payload_field_name()) {
+          Absent => false
+          Present { value: f } => vf_field_is(f: f, name: "0", type_lexeme: "Fnv1a64Structural", required: true)
+        }
+    })
+}

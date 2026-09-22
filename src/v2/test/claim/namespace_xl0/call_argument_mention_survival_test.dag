@@ -218,8 +218,12 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 //
 // THE LOSSES BELOW ARE THREE CAPABILITIES, NOT ONE, AND NOTHING THAT RESTORES ONE RESTORES ANOTHER:
 //
-//   call argument, callee name          -> the v2 body-lowering repair that stops normalize erasing
-//                                          call expressions (XL-2, gunbc#11207)
+//   call argument, callee name          -> LANDED for the plain shapes (callee: gunbc#11595 /
+//                                          #11683; argument: gunbc PR_NUMBER, the comma list read
+//                                          whole). The rows below flipped to "reaches" and stay
+//                                          enrolled; what is still erased is listed on
+//                                          gunbc.recurring_failure_mode
+//                                          call_expression_erased_at_v2_body_lowering.
 //   qualified / dotted reference        -> LANDED: body_lower_dotted_reference_optional and its
 //     (any position, body or type)         type-position twin in v2.compiler.body_lowering_fold. The
 //                                          rows for it below flipped from "is absent today" to
@@ -255,14 +259,18 @@ test fn a_parameter_reference_reaches_the_collector_holds() -> Bool {
   sites_mention(sites: fixture_sites(), spelling: "probe")
 }
 
-// MEASURED DEFICIENCY 1: a reference occurring only as a call ARGUMENT does not reach the
-// collector. Asserted as absent so this reds when the lowering repair lands.
-test fn a_call_argument_mention_is_absent_from_the_denominator_today() -> Bool {
-  !sites_mention(sites: fixture_sites(), spelling: "xl0_call_only")
+// MEASURED DEFICIENCY 1, RESTORED (gunbc PR_NUMBER): a reference occurring only as a call
+// ARGUMENT reaches the collector. This row was authored "is absent today" and went red exactly
+// when the argument list started being read whole (v2.compiler.body_lowering_fold
+// body_lower_call_args_from_capture: the first item of a call's comma list is no longer skipped
+// and each argument value lowers through the body walker), which is the flip the row was written
+// for; it stays enrolled as the regression control DESIGN section 4b(4) asks for.
+test fn a_call_argument_mention_reaches_the_denominator_holds() -> Bool {
+  sites_mention(sites: fixture_sites(), spelling: "xl0_call_only")
 }
 
 // The brace-body call lowering repair keeps the callee in the normalized tree, so the collector
-// now sees it. The argument-only miss above is a separate class and stays asserted-absent.
+// sees it; the argument row above is the other half of the same call.
 test fn a_callee_name_reaches_the_denominator_holds() -> Bool {
   sites_mention(sites: fixture_sites(), spelling: "xl0_callee")
 }

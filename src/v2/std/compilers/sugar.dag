@@ -17,7 +17,7 @@ import v2.std.diagnostic {
   outcome_accepted
 }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.node_query { find_named_child }
+import v2.std.node_query { find_named_child, variant_declaration_edge_optional }
 import v2.std.node {
   Arrow,
   Atom,
@@ -243,16 +243,43 @@ fn sugar_first_atom_identity_optional(node: Node) -> Symbol? {
   }
 }
 
+// A Disj arm is Named{label} -> payload. A variant whose fields body lowering already declared
+// (v2.std.node_query variant_declaration_node) hands over its edge as is; a bare variant is the
+// nullary arm, whose payload is the empty Conj (v2.std.node_query payload_is_nullary) -- its
+// name is the edge label, so the parse subtree that spelled it carries nothing the arm keeps.
 fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
   let variant = sugar_unwrap_production_shell(node: variant_node)
-  match sugar_first_atom_identity_optional(node: variant) {
-    Present { value: name } =>
-      Accepted {
-        value: Edge { label: Named { name: name }, target: variant },
-        diagnostics: None
-      }
+  match variant_declaration_edge_optional(n: variant) {
+    Present { value: declared } => Accepted { value: declared, diagnostics: None }
     Absent =>
-      Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: variant_node)) }
+      match sugar_first_atom_identity_optional(node: variant) {
+        Present { value: name } =>
+          Accepted {
+            value: Edge {
+              label: Named { name: name },
+              target: sugar_type_node(connective: Conj, children: [], n: variant)
+            },
+            diagnostics: None
+          }
+        Absent =>
+          Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: variant_node)) }
+      }
+  }
+}
+
+// THE SEED'S RULE FOR WHAT IS A SUM (v1.compiler.parse parse_type_body_after_eq): more than one
+// alternative, or a single alternative that carries a payload. One bare alternative is an alias
+// to the type it names and is left as parsed.
+fn sugar_variants_form_coproduct(variants: FreeMonoid<Node>) -> Bool {
+  if length(xs: variants) >= 2 {
+    true
+  } else {
+    fold_list(xs: variants, empty: false, cons: fn(acc, v) {
+      acc || (match variant_declaration_edge_optional(n: sugar_unwrap_production_shell(node: v)) {
+        Present { value: _ } => true
+        Absent => false
+      })
+    })
   }
 }
 
@@ -272,7 +299,7 @@ fn sugar_variants_to_disj_edges(variants: FreeMonoid<Node>) -> Outcome<FreeMonoi
 
 fn sugar_fold_coproduct_pipe_chain(captured: Node, shell: Node) -> Outcome<Node> {
   let variants = sugar_all_coproduct_variants(captured: captured)
-  if length(xs: variants) < 2 {
+  if !sugar_variants_form_coproduct(variants: variants) {
     Accepted { value: captured, diagnostics: None }
   } else {
     match sugar_variants_to_disj_edges(variants: variants) {

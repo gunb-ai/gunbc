@@ -265,15 +265,24 @@ fn body_lowering_body_is_call_through_path(body: Node, dotted: String) -> Bool {
   }
 }
 
-fn body_lowering_door_lowers_to_path(node: Node, dotted: String) -> Bool {
+// The door answers Outcome<Optional<Node>> since the argument list is read with diagnostics
+// (gunbc PR_NUMBER); these shape rows read only the lowered node, and a Rejected reads as Absent.
+fn body_lowering_door_lowered_optional(node: Node) -> Optional<Node> {
   match body_lower_dotted_chain_lowered_optional(node: node) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: found, diagnostics: _ } => found
+  }
+}
+
+fn body_lowering_door_lowers_to_path(node: Node, dotted: String) -> Bool {
+  match body_lowering_door_lowered_optional(node: node) {
     Absent => false
     Present { value: lowered } => body_lowering_body_is_path(body: lowered, dotted: dotted)
   }
 }
 
 fn body_lowering_door_lowers_to_call_through_path(node: Node, dotted: String) -> Bool {
-  match body_lower_dotted_chain_lowered_optional(node: node) {
+  match body_lowering_door_lowered_optional(node: node) {
     Absent => false
     Present { value: lowered } =>
       body_lowering_body_is_call_through_path(body: lowered, dotted: dotted)
@@ -306,7 +315,7 @@ test fn body_lowering_qualified_call_callee_is_the_whole_path() -> Bool {
 // what `x` denotes is the resolver's (a local head refuses Unbound there, loud where the route
 // was silent).
 test fn body_lowering_local_receiver_call_callee_is_the_whole_path() -> Bool {
-  match body_lower_dotted_chain_lowered_optional(node: dotted_fixture_local_receiver_call()) {
+  match body_lowering_door_lowered_optional(node: dotted_fixture_local_receiver_call()) {
     Absent => false
     Present { value: lowered } =>
       body_lowering_body_callee_is_path(
@@ -325,7 +334,7 @@ test fn body_lowering_call_before_end_is_named_and_declined() -> Bool {
     DottedChainTailFound { tail: _ } => false
     DottedChainTailNotThisShape => false
   }
-  let declined = match body_lower_dotted_chain_lowered_optional(
+  let declined = match body_lowering_door_lowered_optional(
     node: dotted_fixture_call_before_end()
   ) {
     Absent => true
@@ -341,7 +350,7 @@ test fn body_lowering_call_before_end_is_named_and_declined() -> Bool {
 // tail with no segments into DottedChainTailNotThisShape. A naked atom declines one step earlier,
 // at sugar_sequence_pair_optional, and never reaches that guard, so it would establish less.
 test fn body_lowering_bare_local_is_not_claimed_by_the_door() -> Bool {
-  match body_lower_dotted_chain_lowered_optional(
+  match body_lowering_door_lowered_optional(
     node: dotted_fixture_chain(
       head: ^peer_leaf,
       repeat_capture: dotted_fixture_empty()
@@ -469,7 +478,7 @@ fn body_lowering_qualified_call_parsed() -> Outcome<Node> {
 }
 
 fn body_lowering_lowered_callee_optional(node: Node) -> Node? {
-  match body_lower_dotted_chain_lowered_optional(node: node) {
+  match body_lowering_door_lowered_optional(node: node) {
     Absent => Absent
     Present { value: lowered } =>
       match node_positional_child_targets(node: lowered) {

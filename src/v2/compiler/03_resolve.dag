@@ -85,6 +85,7 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
+  Match,
   Named,
   Node,
   NodeFold,
@@ -93,8 +94,16 @@ import v2.std.node {
   Transform,
   TypeNode,
   fold_node,
+  match_arm_body,
+  match_arm_pattern,
   node_with_occurrence_id,
   well_formed,
+}
+import v2.std.node_query {
+  construct_field_edges,
+  construct_tag_optional,
+  find_named_child,
+  pattern_wildcard_name
 }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId }
 
@@ -904,6 +913,200 @@ fn resolve_transform_children(
   }
 }
 
+
+// A MATCH ARM'S BINDERS ARE A LEXICAL FRAME, LIKE PARAMETERS AND `let`. Normalize lowers a pat
+// over a fielded variant to the construct shape (v2.std.node_query construct_node): a tag edge that
+// names the constructor and one edge per field the pat names, whose target is the
+// sub-pat -- a binder atom, `_`, a literal, or a nested construct. The arm's BODY resolves
+// under one ScopeFrame holding those binders (name -> name, as add_arrow_domain_named_params
+// does); the scrutinee and the sibling arms keep the outer scope, so a binder neither leaks to a
+// sibling nor past the match. lookup_chain answers a frame local BoundInFrame before it reaches the
+// root or the symbol index, so a binder that spells an outer name shadows it -- a lexical frame,
+// deliberately not a namespace binding: a namespace claimant at the same position would be the
+// located ambiguity the namespace chain refuses (docs/plans/namespace-resolution-design.md section
+// 13), which is right for containment positions and wrong for binders. WHICH FIELD-TARGET ATOMS
+// ARE BINDERS: the seed's rule (v1.compiler.04_patterns) -- an atom the symbol index binds to a
+// declared payload is a nullary constructor and stays a reference, a canonical symbol is a
+// constant; any other atom is a binder (a fn or data of the same name does not make it one); `_`
+// binds nothing. The constructor TAG is never a binder: it resolves as
+// an ordinary reference, so a misspelled variant in a pat refuses instead of quietly becoming
+// a binder that matches everything. A pat that is not a construct (a bare atom, a literal)
+// binds nothing and resolves as before.
+fn resolve_pattern_node_is_constructor(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } => true
+    _ => false
+  }
+}
+
+// The seed's rule, at this resolver's grain: a field-target atom is a constructor when the symbol
+// index binds it to a declared payload (a variant arm, module.Type.Variant or its unique alias,
+// resolves to its payload Conj; so does a record type), or when it is a canonical symbol (`true`,
+// `false`). A fn or data declaration of the same name does NOT make it a constructor: the seed
+// binds `x` in `A(x)` even when a fn x exists, and so does this frame.
+fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bool {
+  match symbol_index_lexical_lookup(
+    index: ctx.namespace.symbol_index,
+    position: symbol_index_lookup_position(ctx: ctx),
+    name: id
+  ) {
+    LexicalHit { node: node, path: _ } => resolve_pattern_node_is_constructor(node: node)
+    LexicalAmbiguous { candidates: _ } => true
+    LexicalUnbound =>
+      match symbol_index_global_unique_lookup(index: ctx.namespace.symbol_index, name: id) {
+        GlobalBareHit { node: node, path: _ } => resolve_pattern_node_is_constructor(node: node)
+        GlobalBareLookupAmbiguous => true
+        GlobalBareLookupUnbound => namespace_has_canonical_symbol(namespace: ctx.namespace, name: id)
+      }
+  }
+}
+
+fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+  match construct_tag_optional(n: pat) {
+    Absent => acc
+    Present { value: _ } =>
+      fold(construct_field_edges(n: pat), init: acc, f: fn(m, e) {
+        match e.target.kind {
+          TypeNode { connective: Atom { identity: id } } =>
+            if id == pattern_wildcard_name() {
+              m
+            } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
+              m
+            } else {
+              map_insert(m, id, id)
+            }
+          _ => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
+        }
+      })
+  }
+}
+
+// The pat resolves under the ARM frame: the tag and any nested constructor resolve as
+// references, a binder answers BoundInFrame and stays itself, and `_` is kept as it is.
+fn resolve_pattern_node(ctx: ResolveContext, pat: Node) -> Outcome<Node> {
+  match construct_tag_optional(n: pat) {
+    Absent => resolve_node(ctx: ctx, n: pat)
+    Present { value: _ } =>
+      match fold(pat.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
+        match acc {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: done, diagnostics: ad } =>
+            match resolve_pattern_field_target(ctx: ctx, target: e.target) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
+              Accepted { value: rt, diagnostics: ed } =>
+                Accepted {
+                  value: list_snoc_item(xs: done, item: Edge { label: e.label, target: rt }),
+                  diagnostics: diagnostics_merge(outer: ad, inner: ed)
+                }
+            }
+        }
+      }) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: resolved_children, diagnostics: d } =>
+          Accepted {
+            value: node_with_occurrence_id(kind: pat.kind, children: resolved_children, occurrence_id: pat.occurrence_id),
+            diagnostics: d
+          }
+      }
+  }
+}
+
+fn resolve_pattern_field_target(ctx: ResolveContext, target: Node) -> Outcome<Node> {
+  match target.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == pattern_wildcard_name() {
+        Accepted { value: target, diagnostics: None }
+      } else {
+        resolve_node(ctx: ctx, n: target)
+      }
+    _ => resolve_pattern_node(ctx: ctx, pat: target)
+  }
+}
+
+fn resolve_match_arm(ctx: ResolveContext, arm: Node) -> Outcome<Node> {
+  match find_named_child(root: arm, name: match_arm_pattern) {
+    Rejected { diagnostics: _ } => resolve_children_homogeneous_scope(ctx: ctx, n: arm)
+    Accepted { value: pat, diagnostics: _ } =>
+      let arm_ctx = resolve_ctx_with_scope(
+        ctx: ctx,
+        scope: ScopeFrame {
+          locals: resolve_pattern_binders(ctx: ctx, pat: pat, acc: empty_map()),
+          outer: ctx.scope
+        }
+      )
+      match fold(arm.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
+        match acc {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: done, diagnostics: ad } =>
+            let resolved_target = match e.label {
+              Named { name: label } =>
+                if label == match_arm_pattern {
+                  resolve_pattern_node(ctx: arm_ctx, pat: e.target)
+                } else {
+                  resolve_node(ctx: arm_ctx, n: e.target)
+                }
+              Positional => resolve_node(ctx: arm_ctx, n: e.target)
+            }
+            match resolved_target {
+              Rejected { diagnostics: r } => Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
+              Accepted { value: rt, diagnostics: ed } =>
+                Accepted {
+                  value: list_snoc_item(xs: done, item: Edge { label: e.label, target: rt }),
+                  diagnostics: diagnostics_merge(outer: ad, inner: ed)
+                }
+            }
+        }
+      }) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: resolved_children, diagnostics: d } =>
+          Accepted {
+            value: node_with_occurrence_id(kind: arm.kind, children: resolved_children, occurrence_id: arm.occurrence_id),
+            diagnostics: d
+          }
+      }
+  }
+}
+
+// children[0] is the scrutinee (outer scope); every later positional child is an arm.
+fn resolve_match_node(ctx: ResolveContext, n: Node) -> Outcome<Node> {
+  match fold(n.children, init: EdgeResolveAccMk { have_seen_first: false, acc: Accepted { value: empty_edge_list(), diagnostics: None } }, f: fn(state, e) {
+    match state {
+      EdgeResolveAccMk { have_seen_first: seen, acc: acc_state } =>
+        match acc_state {
+          Rejected { diagnostics: r } => EdgeResolveAccMk { have_seen_first: true, acc: Rejected { diagnostics: r } }
+          Accepted { value: done, diagnostics: ad } =>
+            let resolved = if seen {
+              resolve_match_arm(ctx: ctx, arm: e.target)
+            } else {
+              resolve_node(ctx: ctx, n: e.target)
+            }
+            match resolved {
+              Rejected { diagnostics: r } =>
+                EdgeResolveAccMk { have_seen_first: true, acc: Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) } }
+              Accepted { value: rt, diagnostics: ed } =>
+                EdgeResolveAccMk {
+                  have_seen_first: true,
+                  acc: Accepted {
+                    value: list_snoc_item(xs: done, item: Edge { label: e.label, target: rt }),
+                    diagnostics: diagnostics_merge(outer: ad, inner: ed)
+                  }
+                }
+            }
+        }
+    }
+  }) {
+    EdgeResolveAccMk { have_seen_first: _, acc: outcome } =>
+      match outcome {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: resolved_children, diagnostics: d } =>
+          Accepted {
+            value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
+            diagnostics: d
+          }
+      }
+  }
+}
+
 fn resolve_node(
   ctx: ResolveContext,
   n: Node
@@ -930,6 +1133,8 @@ fn resolve_node(
       }
     ComputationNode { behavior: Bind } =>
       resolve_bind_node(ctx: ctx, n: n)
+    ComputationNode { behavior: Match } =>
+      resolve_match_node(ctx: ctx, n: n)
     ComputationNode { behavior: Transform } =>
       resolve_transform_children(ctx: ctx, n: n)
     TypeNode { connective: Conj } =>
