@@ -155,6 +155,13 @@ data ncr_chain_source: String = "module v2.ncr_chain\n\nimport v2.std.logic { Bo
 // answers decided by how the reference was spelled.
 data ncr_qual_source: String = "module v2.ncr_qual\n\nimport v2.std.logic { Bool }\n\nfn ncr_qual_use(p: v2.ncr_shadow.NcrTwin) -> Bool { p }\n"
 
+// THE MIGRATION POPULATION'S DIAGNOSTIC, at fixture scale. This module names `NcrDisp` and imports
+// it from nowhere -- the shape every module that was quietly relying on the corpus-wide spelling
+// search turns into when that search is deleted. `NcrDisp` is declared EXACTLY ONCE in the ingest,
+// so the refusal can name where it is declared; v2.ncr_unbound is the companion, naming `NcrTwin`,
+// which two modules declare, so there the refusal must say "several" and name no single path.
+data ncr_missing_import_source: String = "module v2.ncr_missing_import\n\nimport v2.std.logic { Bool }\n\nfn ncr_missing(p: NcrDisp) -> Bool { p }\n"
+
 fn ncr_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: source, fidelity: Lossless },
@@ -162,6 +169,10 @@ fn ncr_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSource
     compilation_unit: unit,
     source_root: DagTree
   }
+}
+
+fn ncr_missing_import_read() -> DagSourceReadWitness {
+  ncr_read(source: ncr_missing_import_source, id: ^ncr_missing_import_artifact, unit: ^ncr_missing_import_cu, path: "dag/ncr_missing_import.dag")
 }
 
 fn ncr_qual_read() -> DagSourceReadWitness {
@@ -237,7 +248,10 @@ data ncr_ingest: SourceRootIngest = Cons {
                     head: ncr_relay_read(),
                     tail: Cons {
                       head: ncr_chain_read(),
-                      tail: Cons { head: ncr_qual_read(), tail: Empty }
+                      tail: Cons {
+                        head: ncr_qual_read(),
+                        tail: Cons { head: ncr_missing_import_read(), tail: Empty }
+                      }
                     }
                   }
                 }
@@ -272,7 +286,10 @@ data ncr_ingest_permuted: SourceRootIngest = Cons {
                     head: ncr_chain_read(),
                     tail: Cons {
                       head: ncr_relay_read(),
-                      tail: Cons { head: ncr_qual_read(), tail: Empty }
+                      tail: Cons {
+                        head: ncr_qual_read(),
+                        tail: Cons { head: ncr_missing_import_read(), tail: Empty }
+                      }
                     }
                   }
                 }
@@ -317,7 +334,7 @@ fn ncr_outcome_in(
 // competing declarations the ambiguity named beside it.
 type NcrVerdict
   = NcrResolved
-  | NcrRefused { reason: Symbol, competing: FreeMonoid<QualifiedName> }
+  | NcrRefused { reason: Symbol, competing: FreeMonoid<QualifiedName>, reasons: FreeMonoid<Symbol>, declared_at: FreeMonoid<QualifiedName> }
   | NcrFileRefused
   | NcrAbsent
 
@@ -351,7 +368,27 @@ fn ncr_verdict_of(outcome: Optional<NativeCensusModuleOutcome>) -> NcrVerdict {
         NativeCensusModuleResolveRefused { diagnostics: d } =>
           NcrRefused {
             reason: diagnostics_fatal_reason(d: d),
-            competing: ncr_competing_declarations(d: d)
+            competing: ncr_competing_declarations(d: d),
+            reasons: fold_list(
+              xs: Cons { head: d.head, tail: d.tail },
+              empty: Empty,
+              cons: fn(acc, diag) { Cons { head: diag.reason, tail: acc } }
+            ),
+            declared_at: fold_list(
+              xs: Cons { head: d.head, tail: d.tail },
+              empty: Empty,
+              cons: fn(acc, diag) {
+                if diag.reason == ^resolve_unbound_name_is_declared_elsewhere {
+                  match diag.at {
+                    DeclarationLocus { declaration: path } => Cons { head: path, tail: acc }
+                    Textual { file: _, extent: _ } => acc
+                    NodeLocus { anchor: _ } => acc
+                    SourcePortLocus { anchor: _, file: _, extent: _ } => acc
+                    InvariantPortLocus { anchor: _, invariant: _ } => acc
+                  }
+                } else { acc }
+              }
+            )
           }
       }
   }
@@ -381,6 +418,7 @@ type NcrOutcomes
       shadow_permuted: NcrVerdict
       chain_permuted: NcrVerdict
       qual_permuted: NcrVerdict
+      missing_import: NcrVerdict
       singly_declared_leaf_is_unique: Bool
       doubly_declared_leaf_is_ambiguous: Bool
     }
@@ -426,6 +464,7 @@ fn ncr_outcomes() -> NcrOutcomes {
                   GlobalBareLookupUnbound => false
                 }
             }),
+            missing_import: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_missing_import")),
             importer: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_importer")),
             double: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_double")),
             unbound: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: ncr_ingest, module_name: "v2.ncr_unbound")),
@@ -453,7 +492,7 @@ data ncr_outcomes_warm: NcrOutcomes = ncr_outcomes()
 fn ncr_verdict_is_resolved(v: NcrVerdict) -> Bool {
   match v {
     NcrResolved => true
-    NcrRefused { reason: _, competing: _ } => false
+    NcrRefused { reason: _, competing: _, reasons: _, declared_at: _ } => false
     NcrFileRefused => false
     NcrAbsent => false
   }
@@ -462,7 +501,7 @@ fn ncr_verdict_is_resolved(v: NcrVerdict) -> Bool {
 fn ncr_verdict_refuses_with(v: NcrVerdict, reason: Symbol) -> Bool {
   match v {
     NcrResolved => false
-    NcrRefused { reason: r, competing: _ } => r == reason
+    NcrRefused { reason: r, competing: _, reasons: _, declared_at: _ } => r == reason
     NcrFileRefused => false
     NcrAbsent => false
   }
@@ -471,7 +510,7 @@ fn ncr_verdict_refuses_with(v: NcrVerdict, reason: Symbol) -> Bool {
 fn ncr_verdict_names(v: NcrVerdict, dotted: String) -> Bool {
   match v {
     NcrResolved => false
-    NcrRefused { reason: _, competing: competing } =>
+    NcrRefused { reason: _, competing: competing, reasons: _, declared_at: _ } =>
       contains(
         xs: competing,
         item: qualified_name_from_dotted_string(dotted: dotted),
@@ -485,7 +524,7 @@ fn ncr_verdict_names(v: NcrVerdict, dotted: String) -> Bool {
 fn ncr_verdict_competing_count(v: NcrVerdict) -> Int {
   match v {
     NcrResolved => 0
-    NcrRefused { reason: _, competing: competing } => length(xs: competing)
+    NcrRefused { reason: _, competing: competing, reasons: _, declared_at: _ } => length(xs: competing)
     NcrFileRefused => 0
     NcrAbsent => 0
   }
@@ -494,14 +533,14 @@ fn ncr_verdict_competing_count(v: NcrVerdict) -> Int {
 fn ncr_verdict_same(left: NcrVerdict, right: NcrVerdict) -> Bool {
   match left {
     NcrResolved => ncr_verdict_is_resolved(v: right)
-    NcrFileRefused => match right { NcrFileRefused => true, NcrResolved => false, NcrRefused { reason: _, competing: _ } => false, NcrAbsent => false }
-    NcrAbsent => match right { NcrAbsent => true, NcrResolved => false, NcrRefused { reason: _, competing: _ } => false, NcrFileRefused => false }
-    NcrRefused { reason: r, competing: c } =>
+    NcrFileRefused => match right { NcrFileRefused => true, NcrResolved => false, NcrRefused { reason: _, competing: _, reasons: _, declared_at: _ } => false, NcrAbsent => false }
+    NcrAbsent => match right { NcrAbsent => true, NcrResolved => false, NcrRefused { reason: _, competing: _, reasons: _, declared_at: _ } => false, NcrFileRefused => false }
+    NcrRefused { reason: r, competing: c, reasons: _, declared_at: _ } =>
       ncr_verdict_refuses_with(v: right, reason: r)
         && ncr_verdict_competing_count(v: right) == length(xs: c)
         && for_all(xs: c, predicate: fn(path) {
              match right {
-               NcrRefused { reason: _, competing: rc } =>
+               NcrRefused { reason: _, competing: rc, reasons: _, declared_at: _ } =>
                  contains(xs: rc, item: path, eq: fn(a, b) { a == b })
                NcrResolved => false
                NcrFileRefused => false
@@ -518,7 +557,7 @@ fn ncr_verdict_same(left: NcrVerdict, right: NcrVerdict) -> Bool {
 test fn a_bound_sibling_declaration_resolves_by_containment_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: importer, double: _, unbound: _, home_a: home_a, disp_user: _, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
+    NcrOutcomesDecided { importer: importer, double: _, unbound: _, home_a: home_a, disp_user: _, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, missing_import: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_is_resolved(v: importer) && ncr_verdict_is_resolved(v: home_a)
   }
 }
@@ -529,7 +568,7 @@ test fn a_bound_sibling_declaration_resolves_by_containment_holds() -> Bool {
 test fn a_genuine_ambiguity_refuses_naming_both_binders_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: double, unbound: _, home_a: _, disp_user: _, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
+    NcrOutcomesDecided { importer: _, double: double, unbound: _, home_a: _, disp_user: _, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, missing_import: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_refuses_with(v: double, reason: ^resolve_reason_ambiguous_symbol)
         && ncr_verdict_names(v: double, dotted: "v2.ncr_home_a.NcrTwin")
         && ncr_verdict_names(v: double, dotted: "v2.ncr_home_b.NcrTwin")
@@ -545,7 +584,7 @@ test fn a_genuine_ambiguity_refuses_naming_both_binders_holds() -> Bool {
 test fn an_unbound_name_the_corpus_spells_twice_stays_unbound_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: _, unbound: unbound, home_a: _, disp_user: _, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
+    NcrOutcomesDecided { importer: _, double: _, unbound: unbound, home_a: _, disp_user: _, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, missing_import: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_refuses_with(v: unbound, reason: ^resolve_reason_unbound_symbol)
   }
 }
@@ -574,6 +613,7 @@ test fn reordering_the_files_changes_no_verdict_holds() -> Bool {
       shadow_permuted: shadow_permuted,
       chain_permuted: chain_permuted,
       qual_permuted: qual_permuted,
+      missing_import: _,
       singly_declared_leaf_is_unique: _,
       doubly_declared_leaf_is_ambiguous: _
     } =>
@@ -597,7 +637,7 @@ test fn reordering_the_files_changes_no_verdict_holds() -> Bool {
 test fn the_workload_bare_variant_reference_resolves_through_its_import_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: disp_user, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
+    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: disp_user, shadow: _, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, missing_import: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_is_resolved(v: disp_user)
   }
 }
@@ -609,7 +649,7 @@ test fn the_workload_bare_variant_reference_resolves_through_its_import_holds() 
 test fn declaring_and_importing_one_name_refuses_naming_both_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: shadow, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
+    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: shadow, chain: _, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, missing_import: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_refuses_with(v: shadow, reason: ^resolve_reason_ambiguous_symbol)
         && ncr_verdict_names(v: shadow, dotted: "v2.ncr_shadow.NcrTwin")
         && ncr_verdict_names(v: shadow, dotted: "v2.ncr_home_a.NcrTwin")
@@ -626,7 +666,7 @@ test fn declaring_and_importing_one_name_refuses_naming_both_holds() -> Bool {
 test fn a_re_export_chain_resolves_through_its_relay_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: _, chain: chain, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
+    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: _, chain: chain, qual: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, missing_import: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_is_resolved(v: chain)
   }
 }
@@ -638,7 +678,7 @@ test fn a_re_export_chain_resolves_through_its_relay_holds() -> Bool {
 test fn a_qualified_reference_to_a_contested_position_refuses_naming_both_holds() -> Bool {
   match ncr_outcomes_warm {
     NcrContextRefused => false
-    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: _, chain: _, qual: qual, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
+    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: _, chain: _, qual: qual, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, missing_import: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
       ncr_verdict_refuses_with(v: qual, reason: ^resolve_reason_ambiguous_symbol)
         && ncr_verdict_names(v: qual, dotted: "v2.ncr_shadow.NcrTwin")
         && ncr_verdict_names(v: qual, dotted: "v2.ncr_home_a.NcrTwin")
@@ -670,7 +710,64 @@ test fn a_transmuted_import_does_not_make_its_leaf_globally_ambiguous_holds() ->
       importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: _, chain: _, qual: _,
       importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _,
       shadow_permuted: _, chain_permuted: _, qual_permuted: _,
+      missing_import: _,
       singly_declared_leaf_is_unique: unique, doubly_declared_leaf_is_ambiguous: ambiguous
     } => unique && ambiguous
+  }
+}
+
+fn ncr_verdict_has_reason(v: NcrVerdict, reason: Symbol) -> Bool {
+  match v {
+    NcrResolved => false
+    NcrFileRefused => false
+    NcrAbsent => false
+    NcrRefused { reason: _, competing: _, reasons: reasons, declared_at: _ } =>
+      contains(xs: reasons, item: reason, eq: fn(a, b) { a == b })
+  }
+}
+
+fn ncr_verdict_declared_at(v: NcrVerdict, dotted: String) -> Bool {
+  match v {
+    NcrResolved => false
+    NcrFileRefused => false
+    NcrAbsent => false
+    NcrRefused { reason: _, competing: _, reasons: _, declared_at: declared_at } =>
+      contains(
+        xs: declared_at,
+        item: qualified_name_from_dotted_string(dotted: dotted),
+        eq: fn(a, b) { a == b }
+      )
+  }
+}
+
+// A MISSING BINDING REFUSES WITH EVIDENCE, NOT JUST A LOCATION. Deleting the corpus-wide spelling
+// search turns every module that was quietly relying on it into a refusal, and the difference
+// between a diagnostic its author can act on and a puzzle is whether the refusal says WHERE the
+// name is declared. `v2.ncr_missing_import` names `NcrDisp` and imports it from nowhere; `NcrDisp`
+// is declared exactly once, so the chain carries resolve_unbound_name_is_declared_elsewhere at the
+// declaring path. The fatal stays resolve_reason_unbound_symbol -- the advisory explains the
+// absence, it does not change what the refusal IS.
+test fn a_missing_binding_names_where_the_name_is_declared_holds() -> Bool {
+  match ncr_outcomes_warm {
+    NcrContextRefused => false
+    NcrOutcomesDecided { importer: _, double: _, unbound: _, home_a: _, disp_user: _, shadow: _, chain: _, qual: _, missing_import: missing_import, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
+      ncr_verdict_refuses_with(v: missing_import, reason: ^resolve_reason_unbound_symbol)
+        && ncr_verdict_has_reason(v: missing_import, reason: ^resolve_unbound_name_is_declared_elsewhere)
+        && ncr_verdict_declared_at(v: missing_import, dotted: "v2.ncr_disp_home.NcrDisp")
+  }
+}
+
+// AND IT DOES NOT FABRICATE ONE WHEN THERE ARE SEVERAL. `v2.ncr_unbound` names `NcrTwin`, which TWO
+// modules declare, so no single declaring path is the answer: the advisory says several and carries
+// NO path. Without this arm the one above would be satisfied by an implementation that always
+// pointed at whichever declaration it found first -- which is the spelling search this package
+// deletes, readmitted as a diagnostic.
+test fn a_missing_binding_the_corpus_declares_twice_names_no_single_path_holds() -> Bool {
+  match ncr_outcomes_warm {
+    NcrContextRefused => false
+    NcrOutcomesDecided { importer: _, double: _, unbound: unbound, home_a: _, disp_user: _, shadow: _, chain: _, qual: _, missing_import: _, importer_permuted: _, double_permuted: _, unbound_permuted: _, disp_user_permuted: _, shadow_permuted: _, chain_permuted: _, qual_permuted: _, singly_declared_leaf_is_unique: _, doubly_declared_leaf_is_ambiguous: _ } =>
+      ncr_verdict_refuses_with(v: unbound, reason: ^resolve_reason_unbound_symbol)
+        && ncr_verdict_has_reason(v: unbound, reason: ^resolve_unbound_name_is_declared_in_several_modules)
+        && !ncr_verdict_has_reason(v: unbound, reason: ^resolve_unbound_name_is_declared_elsewhere)
   }
 }

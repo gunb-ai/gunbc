@@ -70,7 +70,11 @@ import v2.std.symbol_index {
   LexicalUnbound,
   SymbolIndex,
   empty_symbol_index,
+  GlobalBareHit,
+  GlobalBareLookupAmbiguous,
+  GlobalBareLookupUnbound,
   symbol_index_absolute_candidates,
+  symbol_index_global_unique_lookup,
   symbol_index_lexical_lookup,
   symbol_index_lookup
 }
@@ -396,6 +400,51 @@ fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
     reason: ^resolve_reason_unbound_symbol,
     at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+// AN UNBOUND NAME THE CORPUS DOES DECLARE IS A MISSING BINDING, NOT A TYPO, AND THE REFUSAL SAYS SO.
+// Deleting the corpus-wide spelling search makes a reference refuse when nothing on its chain binds
+// it -- correct, and the point of the package -- but on its own it hands the author of a module
+// that was quietly relying on that search a bare "unbound symbol here". That population is not
+// hypothetical: a lane with no knowledge of this work (gunbc#12035) found a production reference
+// resolving with nothing importing it, confirmed by a mutation that reds. Every such module starts
+// refusing when the search goes, and the difference between a diagnostic they can act on and a
+// puzzle is whether the refusal names where the name IS declared.
+//
+// THE ORACLE IS THE RIGHT SOURCE FOR THIS AND THE WRONG SOURCE FOR RESOLUTION, which is the whole
+// distinction docs/plans/namespace-resolution-design.md section 13 draws when it keeps global_bare
+// as a migration oracle after deleting it as a mechanism. Asking the corpus "does this spelling
+// exist anywhere" may not CHOOSE a meaning -- that is the defect -- but it is exactly the right
+// question for explaining an absence. So the advisory rides in front and the fatal stays last, the
+// carriage order every consumer folds to; the advisory carries a DeclarationLocus so the author is
+// pointed at a declaration rather than a spelling.
+//
+// IT DISCRIMINATES THE TWO CAUSES, which is why the third arm exists rather than defaulting: a name
+// no module declares gets NO advisory, because the honest reading there is a typo or a deleted
+// declaration and pointing anywhere would be fabrication.
+fn unbound_symbol_diagnostics(ctx: ResolveContext, n: Node, name: Symbol) -> NonEmptyDiagnostics {
+  let fatal = unbound_symbol_diagnostic(n: n)
+  match symbol_index_global_unique_lookup(index: ctx.namespace.symbol_index, name: name) {
+    GlobalBareHit { node: _, path: path } =>
+      NonEmptyDiagnostics {
+        head: Diagnostic {
+          reason: ^resolve_unbound_name_is_declared_elsewhere,
+          at: declaration_locus(declaration: path),
+          correction: Unavailable { reason: UserInputBoundary }
+        },
+        tail: [fatal]
+      }
+    GlobalBareLookupAmbiguous =>
+      NonEmptyDiagnostics {
+        head: Diagnostic {
+          reason: ^resolve_unbound_name_is_declared_in_several_modules,
+          at: node_locus(node: n),
+          correction: Unavailable { reason: UserInputBoundary }
+        },
+        tail: [fatal]
+      }
+    GlobalBareLookupUnbound => NonEmptyDiagnostics { head: fatal, tail: [] }
   }
 }
 
@@ -818,7 +867,7 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node>
                 Rejected {
                   diagnostics: rejected_with_pending(
                     pending: pending,
-                    rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
+                    rejected: unbound_symbol_diagnostics(ctx: ctx, n: n, name: identity)
                   )
                 }
               }
