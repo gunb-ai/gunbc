@@ -1,9 +1,0 @@
-module fixture.import_binding_homonym.consumer_only_entry
-
-import std.types { Int }
-import fixture.import_binding_homonym.consumer { count_octets }
-
-// ARM A, THE CONTROL: the closure holds ONE declaration of `UInt8`.
-fn consumer_only_probe() -> Int {
-  count_octets(xs: [])
-}

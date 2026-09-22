@@ -1,0 +1,102 @@
+module test.claim.authored_import_use_line_binding_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN AUTHORED IMPORT'S USE-LINE MUST FOLLOW THE MODULE THE AUTHOR NAMED, and today it does not
+// when two conditions hold together. This pair is the executing control for
+// gunbc.recurring_failure_mode a_bare_type_name_binds_the_wrong_declaration reaching EMISSION:
+// the emitted module renders a bare type name it declined to import, which is one module
+// contradicting itself and refuses downstream at rustc with E0425.
+//
+// THE CONDITION IS A CONJUNCTION, measured over four arms on 2026-09-22 (sharp-bear-756) and not
+// derivable from any single one. (1) TWO modules in the compiled closure must declare the short
+// spelling -- std.integer and v2.std.integer both declare UInt8. (2) The declaration the author
+// NAMED must be a non-nominal alias: UInt8 is Compose<UInt, MachineWidth<8>>, a phantom. Drop
+// either condition and the line returns. A nominal record forked the same way keeps its line --
+// std.termination TerminationProof against v2.std.cardinality TerminationProof, two genuinely
+// different records under one spelling, emitted byte-identically with and without the second
+// declarer in the closure -- so the fork alone is not sufficient and the phantom alone is not
+// either.
+//
+// WHAT IS DELIBERATELY NOT ASSERTED HERE: which filter decides it. The arms establish the
+// CONDITION, not the mechanism, and writing a claim over a named predicate would assert a
+// location this evidence does not reach.
+
+// THE ASSERTION STRINGS CARRY NO BRACES, AND THAT IS NOT COSMETIC. A `.dag` string literal
+// INTERPOLATES a braced reference, so the natural spelling of the expected line --
+// `pub use crate::std_integer::{UInt8};` -- is read as a reference to `UInt8`, which has two
+// declarers and therefore REFUSES AT RESOLVE with "ambiguous reference 'UInt8': 2 candidates".
+// Measured here: the three refusals landed on the assertion arrays, not on the source strings
+// beside them, because those spell `{ Int, List }` with spaces and a comma and do not parse as a
+// reference. The qualified module path is the discriminator instead: `crate::std_integer::`
+// appears ONLY in the use-line, since the signature spells `UInt8` unqualified.
+
+// THE POSITIVE CONTROL, AND IT IS THE HALF THAT MUST NEVER RED. One declarer of the spelling in
+// the closure, the same phantom alias, the same signature: the use-line is emitted and binds the
+// named provider. If this arm ever goes red, the defect has widened from a conjunction to the
+// unconditional case and every phantom-aliased import in the corpus is affected.
+fn w_single_declarer_keeps_the_authored_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aiulb_single\n\nimport std.types { Int, List }\nimport std.integer { UInt8 }\n\nfn count_octets(xs: List<UInt8>) -> Int {\n  count(xs)\n}\n",
+    "src/aiulb_single.rs",
+    ["pub use crate::std_integer::", "UInt8"],
+    []
+  )
+}
+
+test fn a_singly_declared_phantom_import_emits_its_use_line() -> Bool {
+  w_single_declarer_keeps_the_authored_use_line()
+}
+
+// THE EXPECTING-RED ARM. The ONLY difference from the control is that this module also imports
+// v2.std.integer, which puts a second UInt8 declaration in the crate. Nothing here names UInt8
+// from it -- OverflowDisposition is declared only by v2.std.integer -- and arm C of the
+// measurement established that the bystander's IMPORT LIST is irrelevant: closure membership
+// alone is what moves the verdict. So this asserts the DEFECT AS IT STANDS: the use-line is
+// absent while the signature below it still spells UInt8.
+//
+// WHEN THE REPAIR LANDS THIS CLAIM GOES RED, AND THAT IS ITS JOB. Per DESIGN section 4b(4) it
+// then FLIPS to a permanent regression control -- change the excludes below to includes -- rather
+// than being deleted. It is the only thing in the corpus that fails if this defect returns, and
+// it matters because the symptom that exposed it (extdeps.numeric.base16 refusing the self-host
+// build) has been removed at the source by the sealed-carrier repair, leaving the defect real and
+// silent.
+fn w_second_declarer_drops_the_authored_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aiulb_forked\n\nimport std.types { Int, List }\nimport std.integer { UInt8 }\nimport v2.std.integer { OverflowDisposition }\n\nfn count_octets(xs: List<UInt8>) -> Int {\n  count(xs)\n}\n\nfn disposition_is_ignored(d: OverflowDisposition) -> Int {\n  0\n}\n",
+    "src/aiulb_forked.rs",
+    ["UInt8"],
+    ["pub use crate::std_integer::"]
+  )
+}
+
+test fn a_second_declarer_in_the_closure_drops_the_use_line() -> Bool {
+  w_second_declarer_drops_the_authored_use_line()
+}
+
+// THE DISCRIMINATION IS THE PAIR, not either arm alone, and this states it as one fact so a
+// reader cannot take the red arm for a claim that dropping use-lines is correct. Exactly one
+// variable separates the two sources: the presence of `import v2.std.integer`.
+test fn the_use_line_verdict_turns_on_a_second_declarer_alone() -> Bool {
+  w_single_declarer_keeps_the_authored_use_line()
+    && w_second_declarer_drops_the_authored_use_line()
+}
+
+// THE NON-PHANTOM COMPARISON, ENROLLED BECAUSE IT IS WHAT BOUNDS THE CLASS. A forked NOMINAL
+// record keeps its use-line with the second declarer present. Without this arm the row's
+// population would read as "every dual-declared spelling", which is measurably false and would
+// send a later reader to repair 34 names instead of the one condition that matters.
+fn w_forked_nominal_record_keeps_its_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aiulb_nominal\n\nimport std.types { Int, List }\nimport std.termination { TerminationProof }\nimport v2.std.cardinality { LoopBound }\n\nfn proof_dimension_count(p: TerminationProof) -> Int {\n  count(p.dimensions)\n}\n",
+    "src/aiulb_nominal.rs",
+    ["pub use crate::std_termination::"],
+    []
+  )
+}
+
+test fn a_forked_nominal_record_keeps_its_authored_use_line() -> Bool {
+  w_forked_nominal_record_keeps_its_use_line()
+}
