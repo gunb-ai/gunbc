@@ -25697,12 +25697,20 @@ mod push_hash_extension_tests {
         eval_recompute_value_hash(&mut fresh, &ctx.symbols.borrow(), v).expect("keyable")
     }
 
-    fn push(ctx: &InterpContext, xs: &Rc<RrbVector<Value>>, item: Value) -> Value {
-        let mut r = (**xs).clone();
-        r.push_back(item.clone());
-        let pushed = list_value(r);
-        eval_recompute_extend_push_hash(ctx, xs, &item, &pushed);
-        pushed
+    /// THROUGH THE PRODUCTION ARMS, never the helper: `i` selects the free-call arm
+    /// (`eval_builtin`) or the method arm (`eval_algebra_method_inner`), alternating so deleting
+    /// the extension from EITHER arm turns the test red (DESIGN section 3: deleting the
+    /// integration must make a control fail).
+    fn push(ctx: &InterpContext, xs: &Rc<RrbVector<Value>>, item: Value, i: i64) -> Value {
+        let receiver = Value::List(xs.clone());
+        if i % 2 == 0 {
+            eval_builtin("list_push", &[(None, receiver), (None, item)], ctx)
+                .expect("free list_push evaluates")
+                .expect("free list_push is a builtin")
+        } else {
+            eval_algebra_method_inner("list_push", receiver, &[item], &Env::empty(), ctx)
+                .expect("method list_push evaluates")
+        }
     }
 
     /// The extended entry must be the value the full fold computes, for scalar and composite
@@ -25716,7 +25724,7 @@ mod push_hash_extension_tests {
         let Value::List(rc0) = acc.clone() else {
             unreachable!()
         };
-        let child = push(&ctx, &rc0, Value::Int(0));
+        let child = push(&ctx, &rc0, Value::Int(0), 0);
         let Value::List(child_rc) = &child else {
             unreachable!()
         };
@@ -25739,7 +25747,7 @@ mod push_hash_extension_tests {
             } else {
                 Value::Int(i)
             };
-            acc = push(&ctx, &rc, item);
+            acc = push(&ctx, &rc, item, i);
             let Value::List(now) = &acc else {
                 unreachable!()
             };
