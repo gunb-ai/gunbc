@@ -1088,6 +1088,14 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
             span: no_span(),
         },
         AdmitCallersEntryNotDeclRef { constructor_decl_name: s(), span: no_span() },
+        ResourceRequirementUnestablished {
+            callee_module_path: s(),
+            callee_decl_name: s(),
+            resource: s(),
+            caller_module_path: s(),
+            caller_decl_name: s(),
+            span: no_span(),
+        },
         DeclaredTypeNotInhabited { position: s(), expected: s(), got: s(), span: no_span() },
         DeclaredTypeInhabitanceUndecided { position: s(), reason: s(), span: no_span() },
         UnlistedImportUse { name: s(), span: no_span() },
@@ -1569,6 +1577,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             "ConstructorCallAdmissionRefused"
         }
         CompilerDiagnostic::AdmitCallersEntryNotDeclRef { .. } => "AdmitCallersEntryNotDeclRef",
+        CompilerDiagnostic::ResourceRequirementUnestablished { .. } => {
+            "ResourceRequirementUnestablished"
+        }
         CompilerDiagnostic::DeclaredTypeNotInhabited { .. } => "DeclaredTypeNotInhabited",
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => {
             "DeclaredTypeInhabitanceUndecided"
@@ -1673,6 +1684,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             constructor_decl_name,
             ..
         } => constructor_decl_name.clone(),
+        CompilerDiagnostic::ResourceRequirementUnestablished {
+            callee_decl_name, ..
+        } => callee_decl_name.clone(),
         CompilerDiagnostic::DeclaredTypeNotInhabited { position, .. } => position.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
