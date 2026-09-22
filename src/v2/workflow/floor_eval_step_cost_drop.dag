@@ -114,7 +114,7 @@ data floor_eval_step_cost_drop_page_style_rows: List<EvalStepCostDropMeasurement
 
 
 // FIFTH DROP, SAME MEMBERSHIP TEST: the interpreted-crypto claims of the App Attest path
-// (`gunbc.rung_drop` `app_attest_interpreted_crypto_new_witness_eval_step_cost`). Eight identities:
+// (`gunbc.rung_drop` `app_attest_interpreted_crypto_new_witness_eval_step_cost`). Nine identities:
 // four P-384 point checks over real Apple keys, two group-law closure checks, and the three published SHA-384 FIPS
 // vectors, each paired with the mutation that discriminates it (review 69978 and the design ruling
 // that followed): every one measured decisively above the per-subject line on its OWN subject,
