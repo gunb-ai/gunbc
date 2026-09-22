@@ -52,17 +52,27 @@ import gunbc.compile_census_probe { total_blocking_count_for }
 // the TOTAL rather than for one wanted class means an UPSTREAM refusal cannot satisfy the arm by
 // leaving the class it was looking for at zero.
 //
-// THE v2 ARM IS A KNOWN-HOLE PROBE, DESIGN section 4b(4), AND WHAT IT ASSERTS IS THE DEFECT RATHER
-// THAN THE CONTRACT. Read that sentence before citing this file. The arm
-// `the_v2_route_binds_out_of_declaration_order_by_position_which_is_the_defect` is GREEN TODAY
-// BECAUSE v2 IS WRONG: it refuses a call the source wrote correctly, and the arm records that
-// refusal. It is not a statement that v2 may refuse such a call, and it may not be cited as
-// establishing the binding contract -- the contract is the opposite, and it is stated above: the
-// NAME is the binding authority and positional sequence is derived. The arm FLIPS when the repair
-// lands rather than retiring, at which point it inverts into the permanent regression control that
-// the binding is by name. An arm asserting the right answer would simply be red and would carry the
-// same information less honestly; an arm whose text did not say which of its two readings is the
-// defect is how a hole calcifies into a cited behaviour.
+// THE v2 ARM IS AN ENROLLED RED AND IT ASSERTS THE CONTRACT, NOT THE DEFECT.
+// `the_v2_route_accepts_a_named_call_written_out_of_declaration_order` says what SHOULD be true --
+// the NAME is the binding authority, so a call written out of declaration order is an ordinary call
+// and v2 must accept it. It is RED today because v2 is wrong, and it is admitted as a known red
+// through the mechanism the repository already owns: `gunbc.explicit_witness_admission`
+// `known_red_probe`, cadence QuarantineProbeExpectRed, expectation `std.witness_admission`
+// `ExpectAssertionFalse`. When the repair lands the arm GREENS with no edit to it and its admission
+// row deletes in the same change, promoting it to an ordinary permanent regression control.
+//
+// AN EARLIER FORM OF THIS FILE ASSERTED THE NEGATION -- that v2 REFUSES the reordered call -- and
+// that was wrong twice over (review 70059). It forked the admission mechanism, so the hole entered
+// no roster and nobody was obliged to revisit it; and it inverted the alert signature, because the
+// repair would have turned the arm RED and made a fix indistinguishable from a regression. It also
+// did not discriminate: `nab_v2_accepts` collapses every `Rejected` to false, so a negated arm
+// stayed green on ANY refusal cause, including one with nothing to do with binding. Asserting
+// ACCEPTANCE has one unambiguous satisfying state and does not have that failure mode. The corpus
+// states the rule against the form I first wrote, at
+// `dag/test/claim/algebra_receiver_callable_witness_test.dag`'s admission rows: the assertion is
+// written in the acceptance direction on purpose, because asserting the refusal would encode the
+// defect as the expected state and the fix would then require rewriting the witness instead of
+// flipping it.
 //
 // WHAT THIS DOES NOT ESTABLISH. It measures the SOURCE-to-refusal path on v2 and the source-to-
 // diagnostic-census path on v1. It does not compare emitted bytes, and it says nothing about which
@@ -99,6 +109,6 @@ test fn the_v1_routes_bind_out_of_declaration_order_by_name_which_is_the_contrac
   total_blocking_count_for(source: nab_reordered_source) == 0
 }
 
-test fn the_v2_route_binds_out_of_declaration_order_by_position_which_is_the_defect() -> Bool {
-  !nab_v2_accepts(source: nab_reordered_source)
+test fn the_v2_route_accepts_a_named_call_written_out_of_declaration_order() -> Bool {
+  nab_v2_accepts(source: nab_reordered_source)
 }
