@@ -1,0 +1,245 @@
+module gunbc.plans.for_while_loop_sugar
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import std.markdown { MarkdownBlock, MarkdownTableRow, CodeBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
+
+fn code(text: String) -> MarkdownBlock { CodeBlock { code: text } }
+
+fn table3(header: MarkdownTableRow, rows: List<MarkdownTableRow>) -> MarkdownBlock {
+  TableBlock { header: header, alignments: [AlignNone, AlignNone, AlignNone], rows: rows }
+}
+
+fn table4(header: MarkdownTableRow, rows: List<MarkdownTableRow>) -> MarkdownBlock {
+  TableBlock { header: header, alignments: [AlignNone, AlignNone, AlignNone, AlignNone], rows: rows }
+}
+
+fn table2(header: MarkdownTableRow, rows: List<MarkdownTableRow>) -> MarkdownBlock {
+  TableBlock { header: header, alignments: [AlignNone, AlignNone], rows: rows }
+}
+
+fn r4(a: String, b: String, c: String, d: String) -> MarkdownTableRow { row(cells: [cell(text: a), cell(text: b), cell(text: c), cell(text: d)]) }
+fn r3(a: String, b: String, c: String) -> MarkdownTableRow { row(cells: [cell(text: a), cell(text: b), cell(text: c)]) }
+fn r2(a: String, b: String) -> MarkdownTableRow { row(cells: [cell(text: a), cell(text: b)]) }
+
+fn section_0_how_to_read() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** design brief for the contributor who implements `for` and `while` in the v2 `.dag` frontend. Nothing here is implemented. **Consumer of this document:** that contributor. **Authority for every judgement about a change:** `DESIGN.md`. §11 below lists the sections of it you need, in the order you will need them."),
+    p(text: "The goal is small on purpose. `for` and `while` add **no** new core behavior, no new node kind and no new runtime. They are ergonomic spellings in the surface grammar, and each one lowers to something the substrate already has: `map`, `fold`, or the `Loop` behavior with a declared measure. If a form cannot be spelled that way, it is refused. It is not given a special path."),
+    p(text: "Every claim below names the module and symbol it rests on (DESIGN §3, *cite the symbol, not the position*), so you can check it before you build on it."),
+  ]
+}
+
+fn section_1_central_decision() -> List<MarkdownBlock> {
+  [
+    h2(text: "1. The one design decision"),
+    quote(blocks: [p(text: "**Iterations are independent unless a dependence is written as structure.**")]),
+    p(text: "A traditional `for` or `while` is serial by default. Iteration *k+1* may read anything iteration *k* wrote, so a compiler has to *prove* independence before it may reorder or parallelize, and in practice it rarely can. This design inverts that default, and the inversion is sound here because of one property the language already has: **there is no mutation.** A loop body cannot write a variable the next iteration reads. So an iteration can reach the next one through exactly two routes:"),
+    ol(items: [
+      li(text: "**a declared carrier.** This is the accumulator or loop state: the `acc` of a fold, or the `i` of `int i = 0`. In the core it is the `^loop_carrier_edge` of a `Loop` node (`v2.std.node` `loop_behavior_edges_conform`: at most one carrier edge)."),
+      li(text: "**an effect.** A body that reads a socket or writes a file couples its iterations through the outside world, even if it carries no state."),
+    ]),
+    p(text: "Neither route exists, so the iterations are independent, and that is **structural** (DESIGN §4b rung 4, *structurally impossible*): a hidden dependence has no constructor. Nothing is inferred and no heuristic decides. The loop's ergonomics live in the surface syntax; its dependencies live in its structure, and the structure is the only thing the scheduler reads."),
+    p(text: "The consequence you will be asked about most: **`for` and `while` here do not always behave like their C or Python namesakes.** The deviations are deliberate, and §8 lists them all. Each one is either *unobservable* (order of independent pure work) or *refused loudly* (a form the substrate cannot bound). None of them changes a value silently."),
+  ]
+}
+
+fn section_2_forms() -> List<MarkdownBlock> {
+  [
+    h2(text: "2. The forms and what each one desugars to"),
+    p(text: "Four surface forms. The spellings are proposals, and the grammar row you write decides them (§9). The *targets* are the design, because each one already exists and already carries its termination evidence."),
+    table4(
+      header: r4("surface form", "desugars to", "termination evidence", "iterations are"),
+      rows: [
+        r4("`for x in xs { e }`", "`map(xs, x => e)`, which lowers through the fold seam to a `Loop` with **no carrier**", "`^dag_surface_fold_iteration_measure`, already `Strict` in `v2.std.cardinality` `measure_descent_fact_registry`", "**independent** if `e` has no effect; effect-coupled otherwise"),
+        r4("`for x in xs with acc = init { e }`", "`fold(xs, init: init, f: (acc, x) => e)`, i.e. `v2.compiler.fold_lowering` `fold_call_seam_loop` with `^loop_carrier_edge -> acc`", "same fold-iteration measure", "**carrier-coupled**: serial today (§4)"),
+        r4("`while cond(s) with s = init decreasing m(s) { next(s) }`", "a `Loop` with carrier `s` and bound edge `m`", "only if the descent of `m` is **proven** (§5); otherwise refused", "carrier-coupled: serial"),
+        r4("`while true { e }`", "the existing `loop N e` production, with `N` = `std.computation` `forever_iteration_bound()`", "`^dag_loop_measure_sym`, already `Strict`: a counter that counts down", "serial: it must have a carrier or an effect, or it is refused (§3)"),
+      ]
+    ),
+    p(text: "Three things to notice:"),
+    ul(items: [
+      li(text: "**`for` without a carrier is `map`, not `fold`.** The result is the list of body values in **source order**, whatever order the iterations ran in. Parallel execution never changes a value. It can only change the order of *effects*, which is exactly why an effect makes a loop serial (§4)."),
+      li(text: "**`while` over a list is `for`.** The `while(list elements)` case is iteration over a finite collection, and the fold-iteration measure already proves it terminates. Giving it a second spelling would give one concept two names (DESIGN §3, nicknaming). The recommendation is **one** spelling, `for x in xs`, and `while` kept for condition-driven loops. This is open question Q1 in §10."),
+      li(text: "**`while true` reuses the `loop` keyword that already exists.** The v2 grammar has `loop N expr` (`v2.extdeps.languages.dag` `dag_grammar_loop_expr_expr`, lowered by `v2.compiler.body_lowering_fold` `body_lower_try_loop_keyword_from_captured`). `while true` is that production with a bound the author did not have to type. It is sugar in the literal sense."),
+    ]),
+    p(text: "Worked example: the same computation written with and without a carrier."),
+    code(text: "// independent: one value per element, no iteration can see another\nfn doubled(xs: List<Int>) -> List<Int> {\n  for x in xs { x * 2 }\n}\n// ==  map(xs, x => x * 2)\n\n// carrier-coupled: the dependence is the carrier, written out\nfn total(xs: List<Int>) -> Int {\n  for x in xs with acc = 0 { acc + x }\n}\n// ==  fold(xs, init: 0, f: (acc, x) => acc + x)\n\n// condition-driven: the carrier is the state, the measure is what shrinks\nfn halvings(n: Int) -> Int {\n  while s.n > 1 with s = { n: n, count: 0 } decreasing s.n {\n    { n: s.n / 2, count: s.count + 1 }\n  }.count\n}\n"),
+  ]
+}
+
+fn section_3_while_true() -> List<MarkdownBlock> {
+  [
+    h2(text: "3. `while true`: forever, made decidable"),
+    p(text: "`while true` is the serial loop: keep a socket open, drain a queue, serve requests. The developer means *until the process is stopped*. The substrate cannot express *literally forever*. DESIGN §4 says execution is bounded and forward, and `v2.std.cardinality` refuses a `Loop` with no bound (`^cardinality_loop_bound_undeclared`). So `while true` desugars to a **finite bound chosen by physics**, not by convention."),
+    h3(text: "3.1 The bound: reuse the one that exists"),
+    p(text: "The repository already carries this number. `std.computation` has `SizeBound.Forever` and `forever_iteration_bound() -> Int` = `9223372036854775807` (2^63 − 1, the largest `Int`). The proposal was 2^62 − 1. **Reuse the existing authority rather than minting a second constant**, because two forever-bounds would be the DESIGN §3 fork. The difference between the two is not observable:"),
+    table3(
+      header: r3("bound", "iterations", "wall time at 10^9 iterations per second"),
+      rows: [
+        r3("2^62 − 1", "≈ 4.6 × 10^18", "≈ 146 years"),
+        r3("2^63 − 1 (`forever_iteration_bound`)", "≈ 9.2 × 10^18", "≈ 292 years"),
+      ]
+    ),
+    p(text: "Either bound is past the lifetime of any deployed process, the hardware under it, and the author. That is the DESIGN §1 move of replacing convention with necessity: the bound is not a guess about how long a server should run, it is a number physics guarantees will never be reached. The loop is a counter that counts down, which is why `^dag_loop_measure_sym` proves it `Strict`, and counting down from 2^63 − 1 to 0 cannot overflow, so the 2^62 headroom buys nothing."),
+    p(text: "**Do not use `SizeBound.Forever`'s lowering row.** `std.computation` `lower_call_pattern` maps `SameArgumentCall` to `Repeat, bound: Forever, evidence: NonIncreasing`, and `NonIncreasing` is not a termination proof: the cardinality lens would refuse it. `while true` must lower to the counted `loop` with `Strict` evidence. It reuses the *number* from `forever_iteration_bound`, not the `NonIncreasing` row."),
+    h3(text: "3.2 Reaching the bound is a typed outcome, not a normal exit"),
+    p(text: "If the counter ever reaches zero, the loop did not *finish*. It ran out. That has to be a typed, located outcome (DESIGN §5), distinct from a body that chose to stop. Silently returning the last state would be the fabricated plausible output that §5 forbids. So a `while true` evaluates to a result that says *which* happened: the body finished, or the bound was exhausted. The exhausted arm is unreachable in practice and still has to exist in the type, because a `match` must name every alternative."),
+    h3(text: "3.3 A `while true` with nothing to iterate is refused"),
+    p(text: "A `while true` body with **no carrier and no effect** computes the same pure value 2^63 − 1 times. No iteration can observe another and nothing leaves the loop. That is always an authoring mistake, never a server, so it is **refused** with a typed cause rather than lowered. A `while true` is admitted only when it has a carrier (state that changes) or an effect (a socket, a clock, a queue). Either one also makes it serial, so the developer's expectation that it runs one iteration at a time falls out of the rule and needs no special case."),
+    h3(text: "3.4 Stopping early"),
+    p(text: "A server loop still wants to stop when told to. The body returns one of two alternatives: *continue with this next state*, or *finish with this result*. That is the substrate's existing `ControlTransfer` idea (`v2.std.runtime` `ControlTransfer`) raised to the surface as an ordinary sum type, so there is no `break` keyword and no non-local jump. Choose the variant names after grepping the corpus. `Continue` is already taken by `v2.std.runtime` `ControlTransfer`, and a colliding bare variant name is resolved by precedence rather than refused (the name-collision class in `gunbc.recurring_failure_mode`). `LoopContinues` and `LoopFinishes` are unused as of this writing."),
+    code(text: "// the serial socket loop: an effect every iteration, a carrier for the session\nfn serve(listener: Listener) -> ServeResult uses Network {\n  while true with session = SessionState { served: 0 } {\n    match listener.Accept() {\n      Accepted { conn } => LoopContinues { state: handle(session: session, conn: conn) }\n      ShutdownRequested  => LoopFinishes  { result: session.served }\n    }\n  }\n}\n// the result type carries the third arm the author never expects to see:\n//   Finished { result } | BoundExhausted { iterations }\n"),
+    p(text: "A candidate consumer already exists. `docs/plans/gunbc-served-dashboard-design.md` runs the dashboard's accept loop as a sequential host Rust `std::net::TcpListener`, and records the serve entry as a declared scaffold under ROADMAP §④'s ledger for server loops. `while true` gives that loop a `.dag` spelling. It does not by itself retire the scaffold, whose trigger is emit-on-demand of the serve closure, but it is the natural first program to write with the form (DESIGN §3c: a new form lands with its consumer)."),
+  ]
+}
+
+fn section_4_independence() -> List<MarkdownBlock> {
+  [
+    h2(text: "4. When a loop may run in parallel"),
+    p(text: "Whether a loop *may* run in parallel is a fact about its structure. Whether it *does* is a realization choice. Keep the two apart. There is no `parallel for` keyword, because putting the dispatch in the interface is exactly the layer inversion DESIGN §3 describes (*the dispatch that selects a realization is itself realization*). The loop node carries the facts, and the realization that emits it chooses serial or parallel from them. That choice is a §3d selection over cost, not a promise the source makes."),
+    p(text: "Three facts decide it. All three are already computable or already named:"),
+    table4(
+      header: r4("carrier?", "body effects?", "combine law carried?", "may run in parallel"),
+      rows: [
+        r4("no", "none", "(no combine)", "**yes**: a data-parallel `map`; the result order is fixed by the source order"),
+        r4("no", "some", "(no combine)", "no, today: effects are ordered. Frontier: disjoint, isolated effects (`std.effect_axes` `write_grant_isolated`) could admit it later"),
+        r4("yes", "none", "no", "no: the carrier is a real sequential dependence"),
+        r4("yes", "none", "yes, associative", "**yes, as a tree reduction**: but no law is machine-carried yet, see below"),
+      ]
+    ),
+    p(text: "**Classify with the vocabulary that exists; do not add a second one.** `v2.lens.common.algebraic_composition` `ParallelismRelation` = `DataDependent | EffectCoupled | BarrierCoupled | UnresolvedCoupling`. It classifies edges. An independent loop is one where **no edge crosses from one iteration to the next**: the empty set of coupling relations. Adding an `Independent` arm would state the same fact twice. A carrier edge is `DataDependent`, an effect in the body is `EffectCoupled`, and anything the classifier cannot decide is `UnresolvedCoupling`. The last one is **serial**, never optimistically parallel: an unknown coupling is not treated as independence (DESIGN §5, the absorbing fallback)."),
+    p(text: "**The carrier-plus-law row is a declared frontier, not a promise.** `std.algebra` has `Monoid` and `CommutativeMonoid`, but they are field-identical records and no law is machine-carried. `docs/plans/machine-shape-orthogonal-scheduling.md` says so explicitly. Until associativity is a carried, checked fact, a fold's combine cannot be proven reassociable, so **every carrier-coupled loop realizes serially**. That is not over-prohibition (DESIGN §4d): the row names the capability that lifts it (a law carrier a scheduler can dispatch on), and a loop written today inherits the lift without being edited, because the source never promised an order."),
+    p(text: "**What ships in the first milestone is the fact, not the parallelism.** No emitter emits parallel code today (there is no `par_map` and no data-parallel emission). Milestone M3 computes and exercises the independence classification. Serial emission stays correct for every row, because a serial run is one valid schedule of an independent loop. The parallel realization is a later, separate change with its own evidence. Until it lands, do not describe a loop as *parallelized*; describe it as *parallelizable* (DESIGN §4b, rung honesty)."),
+  ]
+}
+
+fn section_5_termination() -> List<MarkdownBlock> {
+  [
+    h2(text: "5. Termination for `while`: a measure, proven or refused"),
+    p(text: "A `for` over a list never needs a termination argument, because the list is finite and the fold-iteration measure is already `Strict`. A condition-driven `while` does need one, and the design refuses to guess. The machinery is all in place:"),
+    ul(items: [
+      li(text: "The `Loop` node takes its bound as a `^loop_bound_edge` to a measure (`v2.std.node` `loop_behavior_edges_conform`: exactly one)."),
+      li(text: "`v2.std.cardinality` `loop_multiplicity` looks the measure up in `measure_descent_fact_registry`. A registered measure carries `DescentEvidence` (`std.termination`: `Strict | NonIncreasing | DescentUnknown`). An unregistered one is `DescentUnknown`, and that refuses with `^cardinality_descent_not_proven`. The module's own comment: *an unproven measure refuses, never fabricates.*"),
+      li(text: "`std.computation` `lower_call_pattern` already knows which state updates descend. `ArithmeticSubtractCall` (subtract a positive literal) and `ArithmeticDivideCall` (divide by a literal greater than one) both yield `Strict`."),
+    ]),
+    p(text: "So `while ... decreasing m(s)` lowers to a `Loop` whose bound edge is `m`. The lowering then checks that `next(s)` makes `m` descend by one of those proven patterns, and emits a `Strict` fact **derived from that check**, never hand-stamped. If the descent cannot be shown, the program is refused at the loop, with the measure and the failing update named in the diagnostic."),
+    p(text: "**The tempting fallback is forbidden.** When a `while` cannot be proven to terminate, it is tempting to quietly give it the forever-bound of §3 and move on. That is DESIGN §5's absorbing fallback: it widens an unknown into ⊤, hides the missing proof, and the deficit never ranks for fixing. An author who really wants the physical bound writes `while true` with a carrier and a `LoopFinishes` arm. That is visible at the site, carries the typed `BoundExhausted` outcome, and a lens can count it. The difference is that the author declared it; the compiler never assumes it."),
+    p(text: "`v2.test.lens_complexity` `while_external_condition` already shows a bound-less `Loop` failing closed in both the cost and complexity lenses. The `while` form gives that refusal a surface spelling. It does not add a new one."),
+  ]
+}
+
+fn section_6_effects() -> List<MarkdownBlock> {
+  [
+    h2(text: "6. Effects inside a loop"),
+    p(text: "A body that performs an effect has to declare it through the function's `uses` clause like any other effect: a loop grants no effect permission of its own. The effect is what makes the loop serial (§4), so no separate ordering annotation is needed."),
+    p(text: "There is one existing neighbor you must not fork. `v2.std.effect_plan` `EffectPlanStep` already has `For { binder, over, body }` and `While { cond, body }` arms for effect orchestration, and `docs/plans/host-effect-orchestration.md` states that *body-lowering treats For/While/Retry/recursion as one `Loop` sugar* and that `While` must carry a measure, with no measure making it unconstructible. Today its `While` has no measure field. The surface `while` you build and that `EffectPlanStep.While` must end up with **one** measure vocabulary: the `std.termination` one. Either reuse it there in the same change, or record the divergence with its reason (DESIGN §3b, conformance). Do not leave two answers to *what makes a while terminate* standing side by side."),
+  ]
+}
+
+fn section_7_where() -> List<MarkdownBlock> {
+  [
+    h2(text: "7. Where the change lands"),
+    p(text: "Everything is v2. v1 is under `gunbc.v1_maintenance_standing` `v1_seed_standing`: semantics frozen, maintenance only for the v2 self-host program. Adding loop forms to v1 is growth for its own sake and is not admitted. v1 already reserves `for`/`in` and has an unused `for x in coll` path (`src/v1/02_parse.dag` `parse_for` → `ExprForEach`, emitted through the `emit_for_each` arm of `src/v1/05_emit.dag`) with **no** bound and no termination check. It has zero corpus uses. Do not revive it. Retiring it is a separate v1 change, not this one."),
+    table2(
+      header: r2("piece", "where, and what to reuse"),
+      rows: [
+        r2("keywords `for`, `in`, `while`, `with`, `decreasing`, `true` in a loop head", "`v2.extdeps.languages.dag`, next to `dag_keyword_lex_rule(^dag_token_kw_loop, ...)`. Grep the corpus first: a keyword removes an identifier from every module."),
+        r2("one production per form", "`v2.compiler.body_producer_forward`, one `BodyProducerForwardRow` per surface identity (see `body_producer_forward_row_loop_expr`). This is the planned successor to `body_lowering_fold` (DESIGN §4, *one grammar, read in both directions*): the same row both ingests and emits. If that cutover has not landed when you start, coordinate with its owner rather than adding arms to the table being deleted."),
+        r2("`for` lowering", "no new lowering. Build the `map`/`fold` call and hand it to `v2.compiler.fold_lowering` `fold_call_lowering`, which already fails closed (`^fold_lowering_not_a_fold_call`, `_shape_invalid`)."),
+        r2("`while true` lowering", "the existing `loop N e` path, with `N` = `std.computation` `forever_iteration_bound()`. Widen `body_lower_try_loop_keyword_from_captured` from int-literal operands only to a resolved constant, and wrap the result in the finished-or-exhausted type of §3.2."),
+        r2("`while ... decreasing` lowering", "`lower_loop` (`v2.std.compilers.body_lowering`) with a carrier edge and the measure as the bound edge; the descent check of §5 reuses `std.computation` `lower_call_pattern`."),
+        r2("measure facts", "`v2.std.cardinality` `measure_descent_fact_registry`. A proven `while` must produce its `Strict` fact **from the descent check**, not from a new hand-written registry row per loop."),
+        r2("independence fact", "`v2.lens.common.algebraic_composition` `ParallelismRelation`, through the `parallelism_classifier` row that `v2.lens.parallelism` already consumes, applied to iteration-crossing edges. No new relation vocabulary (§4)."),
+      ]
+    ),
+  ]
+}
+
+fn section_8_deviations() -> List<MarkdownBlock> {
+  [
+    h2(text: "8. How this differs from a traditional loop"),
+    p(text: "Hand this table to anyone who writes their first loop here:"),
+    table3(
+      header: r3("in C / Python / Java", "here", "why"),
+      rows: [
+        r3("the body can assign to a variable outside the loop", "it cannot: there is no mutation. State that crosses iterations is a declared carrier (`with acc = ...`)", "the dependence is structure, so the scheduler can see it"),
+        r3("iterations run in order, always", "carrier-free, effect-free iterations may run in any order, or at once. The *result* is still in source order", "order is only observable through a carrier or an effect, and both force serial"),
+        r3("`for` returns nothing; you push into a list", "`for x in xs { e }` *is* a value: the list of `e`s", "it is `map`"),
+        r3("`while (cond)` needs no termination argument", "a condition-driven `while` needs a `decreasing` measure that is proven to descend, or it is refused", "execution is bounded and forward (DESIGN §4); unproven termination refuses (DESIGN §5)"),
+        r3("`while (true)` runs forever", "it runs for at most 2^63 − 1 iterations and then reports `BoundExhausted` as a typed outcome", "forever is not decidable; 292 years is"),
+        r3("`while (true) { pure_expr }` compiles", "refused: no carrier and no effect means no iteration can matter", "always an authoring mistake"),
+        r3("`break` / `continue`", "the body returns `LoopContinues { state }` or `LoopFinishes { result }`", "no non-local jumps; the exit is a value the type forces you to handle"),
+        r3("the compiler may auto-parallelize if it can prove safety", "the structure *is* the proof; whether to run in parallel is a realization choice, and today every loop runs serially", "parallelizable is a fact; parallelized is a realization (§4)"),
+      ]
+    ),
+  ]
+}
+
+fn section_9_milestones() -> List<MarkdownBlock> {
+  [
+    h2(text: "9. Milestones and the evidence each owes"),
+    p(text: "Each milestone lands with its consumer and with a claim that can go red (DESIGN §3c, §5). A test that only shows the new production *parses* proves nothing (DESIGN §5, specification-without-execution). Each claim below evaluates a program and compares values."),
+    ol(items: [
+      li(text: "**M1 — `for` without a carrier.** Grammar row, lowering to `map`. Claims: `for x in xs { e }` and `map(xs, x => e)` evaluate to the same list on a discriminating input (a non-commutative `e`, so a reordered result would show); the result order equals source order; the emitted Rust compiles and gives the same value. Red control: a lowering that reverses the list fails the order claim."),
+      li(text: "**M2 — `for` with a carrier.** Lowering to `fold`. Claims: equality with the hand-written `fold` on a non-associative combine (subtraction), so a reassociating realization would go red; the loop node has exactly one `^loop_carrier_edge`."),
+      li(text: "**M3 — the independence fact.** The classification of §4 computed from the lowered node. Claims: the carrier-free pure loop has no coupling edge; adding a carrier yields `DataDependent`; adding a `uses` effect yields `EffectCoupled`; an undecidable coupling yields `UnresolvedCoupling` and is classified serial. Each arm has its own discriminating input. Serial emission is unchanged."),
+      li(text: "**M4 — `while ... decreasing`.** Claims: a halving loop and a count-down loop are admitted with `Strict` derived from the descent check; a loop whose update does not descend (`s + 1`, or `s` unchanged) is refused with `^cardinality_descent_not_proven`, naming the measure. Red control: hand-stamping the `Strict` fact must make the refusal claim fail."),
+      li(text: "**M5 — `while true`.** Claims: the lowered bound is exactly `forever_iteration_bound()` (the inhabitance claim on the real path); reaching the bound yields `BoundExhausted`. Test this with a **supplied** small bound at the lowering's interface (DESIGN §3, *a witness discriminates at one interface*), and pair it with one claim that the real lowering uses the real constant. `LoopFinishes` yields the result; a pure carrier-free `while true` is refused. Consumer: the served dashboard's accept loop (§3.4), or a named later change carrying it."),
+      li(text: "**M6 — conformance with `EffectPlanStep`.** `v2.std.effect_plan` `While` carries the same `std.termination` measure, or the divergence is recorded with its reason (§6)."),
+    ]),
+    p(text: "Parallel emission is **not** a milestone of this brief. It is a separate realization change, gated on M3 and on a carried associativity law for the carrier row, and it owes its own paired serial-versus-parallel equality claims."),
+  ]
+}
+
+fn section_10_open() -> List<MarkdownBlock> {
+  [
+    h2(text: "10. Open questions (decide before M1)"),
+    ul(items: [
+      li(text: "**Q1 — one spelling for list iteration.** Recommended: `for x in xs` only, with `while` for condition loops. The alternative, also admitting `while x in xs`, gives one concept two names (DESIGN §3)."),
+      li(text: "**Q2 — the forever bound.** Recommended: reuse `std.computation` `forever_iteration_bound` (2^63 − 1) rather than add 2^62 − 1 (§3.1). If there is a reason for the smaller number (an overflow margin in some realization, say), move the one authority's value rather than adding a second constant."),
+      li(text: "**Q3 — the exit variants.** Proposed `LoopContinues` / `LoopFinishes` and `Finished` / `BoundExhausted`. Grep the corpus before you settle them."),
+      li(text: "**Q4 — the head spelling of a carrier.** `with acc = init` is a proposal. Whatever you choose, it must make the carrier impossible to miss when reading the loop, because the carrier is the one thing that makes a loop serial."),
+    ]),
+  ]
+}
+
+fn section_11_design_reading() -> List<MarkdownBlock> {
+  [
+    h2(text: "11. What to read in DESIGN.md, and when"),
+    table2(
+      header: r2("before…", "read"),
+      rows: [
+        r2("the first grammar row", "§4, *the closed, grounded substrate*: six behaviors, sugar adds no power, one grammar read in both directions"),
+        r2("choosing the forever bound", "§1, *reduce intersubjectivity to physics*, and §3, *single authority*"),
+        r2("writing any refusal", "§5, *fail-closed*: the absorbing fallback and the workaround are the two traps this design is most exposed to"),
+        r2("claiming a loop is parallel", "§4b rung honesty and §3d, *selection precedes convergence*"),
+        r2("touching `EffectPlanStep`", "§3b, conformance"),
+        r2("your first claim", "§3, *a witness discriminates at one interface*: supply the small bound, keep one claim on the real path"),
+      ]
+    ),
+  ]
+}
+
+fn for_while_loop_sugar_body() -> List<MarkdownBlock> {
+  concat(section_0_how_to_read(),
+  concat(section_1_central_decision(),
+  concat(section_2_forms(),
+  concat(section_3_while_true(),
+  concat(section_4_independence(),
+  concat(section_5_termination(),
+  concat(section_6_effects(),
+  concat(section_7_where(),
+  concat(section_8_deviations(),
+  concat(section_9_milestones(),
+  concat(section_10_open(), section_11_design_reading())))))))))))
+}
+
+data for_while_loop_sugar_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
+  slug: "for-while-loop-sugar",
+  title: "for / while — ergonomic sugar over Loop, independent by default",
+  body: for_while_loop_sugar_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this brief when milestones M1 through M6 are landed and green on the required floor: the for and while productions exist as body_producer_forward rows, each lowering is exercised by a discriminating claim, the while-true form has its consumer, and EffectPlanStep.While shares the std.termination measure. At that point the grammar rows and their claims are the authority for what the loop forms mean, and this document, whose only job was to hand off the design, would be a second statement of it.") }
+}
