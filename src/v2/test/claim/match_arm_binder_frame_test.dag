@@ -328,3 +328,33 @@ test fn mab_where_alias_is_not_a_record() -> Bool {
       names == Cons { head: ^R, tail: Cons { head: ^U, tail: Empty } }
   }
 }
+
+// THE FILED SPECIMEN'S SHAPE, AT THE RESOLVE INTERFACE (Pkg16 trigger claim). The binder `node` of
+// a `Present { value: node }` arm inside v2.std.symbol_index symbol_index_candidates_at, with a
+// sibling MODULE v2.std.node that lexical ascent from the arm would reach. The claim is that the
+// arm binds `node` through the index-keyed classifier (v2.compiler.resolve
+// resolve_pattern_atom_names_constructor asking v2.std.symbol_index
+// symbol_index_denotes_declared_payload): the tree is Accepted and the binder's Atom survives. It is
+// established HERE, at the resolve interface over a supplied mirror of the two modules -- not on the
+// native route, whose emitted compiler does not build -- and says so rather than more.
+fn mab_resolved_module_named_binder() -> Outcome<Node> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: mab_file(src: "module v2.std.node\n\nfn content_hash(v: Int) -> Int { v }\n", id: ^match_arm_binder_specimen_node_cu),
+      tail: Cons {
+        head: mab_file(src: "module v2.std.symbol_index\n\ntype Opt = Present { value: Int } | Absent\n\nfn symbol_index_candidates_at(o: Opt) -> Int {\n  match o {\n    Present { value: node } => node\n    Absent => 0\n  }\n}\n", id: ^match_arm_binder_specimen_index_cu),
+        tail: Empty
+      }
+    },
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^v2, tail: Cons { head: ^std, tail: Cons { head: ^symbol_index, tail: Empty } } } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+}
+
+test fn mab_binder_spelling_a_sibling_module_binds_the_arm() -> Bool {
+  mab_outcome_accepts(o: mab_resolved_module_named_binder())
+    && mab_has_atom(o: mab_resolved_module_named_binder(), id: ^node)
+}
