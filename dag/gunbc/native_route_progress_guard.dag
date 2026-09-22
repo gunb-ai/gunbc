@@ -112,9 +112,18 @@ import gunbc.witness_v2_native_route {
 // main is not true.
 //
 // AND HOW FAR A RUN GETS IS A PER-HEAD FACT THAT FLIPS, WHICH IS WHY `reach` IS A FIELD ON THE
-// REPORT AND NOT A CEILING IN THIS MODULE. Measured within an hour of each other: main stops at
-// the emitted build, and `session/sharp-bear-756` at 6032d50be7d builds the emitted crate clean
-// (`exit_status=0`, `warning_count=0` under `RUSTFLAGS=-D warnings`, wall 575s). So "unreached on
+// REPORT AND NOT A CEILING IN THIS MODULE. Two readings within an hour of each other: main stops
+// at the emitted build (measured here, by gunbc#12043's `emit-build` lane, twice, deterministically
+// at 12m33s), and `session/sharp-bear-756` at 6032d50be7d builds the emitted crate clean --
+// `exit_status=0`, `warning_count=0` under `RUSTFLAGS=-D warnings`, wall 575s -- which is
+// RELAYED FROM THAT SESSION AND NOT REPRODUCED HERE. The reproduction was attempted from this lane
+// and is INCONCLUSIVE rather than negative: one remote dispatch over that tree reached
+// `compile.normalize` and was ended by the runner's own deadline, so it neither confirms nor
+// contradicts the figure. It is cited to its author rather than restated as this module's
+// measurement, which is the standing `extdeps.external_authority` `CitedFigureStanding` asks for
+// and the distinction DESIGN section 4d turns on -- an inference is not promoted by being useful.
+// Nothing in this module's construction depends on which of the two readings is right; they are
+// two values of one field. So "unreached on
 // main, reached on that head" is two runs with two `NativeRunReach` values and one model, with no
 // observation fabricated for main and no ceiling written down. That is the whole test of whether
 // the rungs are drawn in the right place, and the day that branch lands nothing here changes.
@@ -222,6 +231,47 @@ fn native_run_reached_the_population(r: NativeRunReach) -> Bool {
 // than a second source for it -- which is also this module's answer to the standing rule that a
 // report must state the judged sha and its relation to current main. The relation is the arm; the
 // sha is its field. A report that could not say which tree it judged could not choose an arm.
+// A VERDICT IS IDENTIFIED BY THE TREE IT JUDGED **AND** THE ADJUDICATION THAT TURNED OBSERVATIONS
+// INTO GREEN OR RED (manager ruling, 2026-09-22, from an incident).
+//
+// THE FACT BEHIND IT. gunbc#11998's floor job concluded SUCCESS while its own floor log read
+// `verdict=FloorRefused, phases_failed=1`. Not a flake and not a stale base: the floor builds
+// claim_executor from the CHECKED-OUT HEAD, and that head predates f5bd9b064a (gunbc#11829),
+// which binds the adjudicator so a refusal reaches the job conclusion. gunbc#12050 carries the
+// same witnesses plus that commit and fails. Same source, opposite lane verdicts, one commit
+// between -- and #11829's own message states the blast radius: every floor success between
+// #11742/#11761 and its landing is unverified.
+//
+// SO A SUBJECT TREE IS NOT SUFFICIENT TO IDENTIFY A VERDICT, and this module is where that has
+// consequences, because it is the one thing in the corpus that consumes historical verdicts and
+// compares them ACROSS TIME. Two drifts, and the provenance arms above cover only the first:
+//
+//   TREE DRIFT           same adjudicator, different subject -- which the three roles model.
+//   GATE-SEMANTIC DRIFT  same subject, different adjudicator -- which nothing recorded.
+//
+// "Green at SHA X" is incomplete in either direction.
+//
+// THE PAYOFF IS NOT THAT INCIDENT, IT IS THE NEXT GATE STRENGTHENING. Today the discriminator is
+// "does the judged head contain f5bd9b064a", which works and is unrememberable -- in a month
+// nobody will know to ask. With the adjudicator on the verdict, a gate strengthening makes older
+// verdicts NOT VERDICTS IN THE CURRENT MEANING automatically, rather than weaker evidence of the
+// same kind, and the question is answerable without anyone recalling a commit hash. That is the
+// difference between a fact the model carries and a fact a person has to remember (A3: agreement
+// holds only on what stays stable across time).
+//
+// THE RECEIPT IDENTITY IS OPTIONAL BECAUSE NOT EVERY ADJUDICATION IS RECEIPT-BASED, and the
+// absence is a real state rather than a missing value: an adjudicator that decided inline has no
+// receipt to name, which is a different fact from one whose receipt went unrecorded. Only the
+// first is representable here; the second is a defect in the producer.
+type NativeVerdictAdjudication {
+  authority: String
+  receipt_identity: Optional<String>
+}
+
+fn native_adjudication_same(a: NativeVerdictAdjudication, b: NativeVerdictAdjudication) -> Bool {
+  a.authority == b.authority
+}
+
 type NativeObservationProvenance
   = MainBaselineObservation { head: String }
   | BranchObservation { branch: String, head: String }
@@ -418,9 +468,14 @@ type NativeProgressDispositionRow {
   disposition: NativeProgressDisposition
 }
 
+// THE BASELINE CARRIES THE ADJUDICATION IT WAS MINTED UNDER, which is what makes the question
+// answerable rather than merely recorded: a bar established under one meaning of "green" is not a
+// bar in a different one, and the comparison is the place that would otherwise silently span the
+// two.
 type NativeProgressBaseline {
   rows: List<NativeProgressBaselineRow>
   dispositions: List<NativeProgressDispositionRow>
+  minted_under: NativeVerdictAdjudication
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -452,6 +507,10 @@ type NativeProgressFinding
   | DisposedSubjectHasNoBaselineRow { identity: NativeRouteTestIdentity }
   | ArtifactProductionFailed { detail: String }
   | ObservedMemberReadingMalformed { identity: NativeRouteTestIdentity }
+  | BaselineMintedUnderADifferentAdjudication {
+      baseline_authority: String
+      run_authority: String
+    }
   | SubjectUnreachedEarlierRungFailed {
       identity: NativeRouteTestIdentity
       blocked_at: NativeRunReach
@@ -782,30 +841,53 @@ fn native_progress_disposition_findings(
 type NativeProgressReport {
   reach: NativeRunReach
   provenance: NativeObservationProvenance
+  adjudication: NativeVerdictAdjudication
   baseline_size: Int
   observed_size: Int
   agreed: Int
   findings: List<NativeProgressFinding>
 }
 
+// THE COMPARISON SHORT-CIRCUITS ACROSS A MEANING BOUNDARY rather than running and adding one
+// more finding beside its results. A per-identity regression computed against a bar from a
+// different definition of green is not a weaker reading of the same fact, it is a reading of a
+// different one -- and emitting both would let a reader take the regressions at face value and
+// treat the boundary as a footnote.
 fn native_progress_report(
   baseline: NativeProgressBaseline,
   readings: List<NativeProgressObservedReading>,
   build: NativeRouteEmittedBuild,
   reach: NativeRunReach,
-  provenance: NativeObservationProvenance
+  provenance: NativeObservationProvenance,
+  adjudication: NativeVerdictAdjudication
 ) -> NativeProgressReport {
+  let comparable = native_adjudication_same(a: baseline.minted_under, b: adjudication)
   let observed_rows = native_progress_observed_rows(readings: readings)
   let observed = native_progress_observed_index(observed: observed_rows)
   let dispositions = native_progress_disposition_index(dispositions: baseline.dispositions)
   let baseline_index = native_progress_baseline_index(rows: baseline.rows)
-  let row_findings = list_flat_map(
-    xs: baseline.rows,
-    f: fn(row) { native_progress_row_findings(row: row, observed: observed, dispositions: dispositions, reach: reach) }
-  )
+  let row_findings =
+    if comparable {
+      list_flat_map(
+        xs: baseline.rows,
+        f: fn(row) { native_progress_row_findings(row: row, observed: observed, dispositions: dispositions, reach: reach) }
+      )
+    } else {
+      []
+    }
+  let adjudication_findings =
+    if comparable {
+      []
+    } else {
+      [BaselineMintedUnderADifferentAdjudication {
+        baseline_authority: baseline.minted_under.authority,
+        run_authority: adjudication.authority
+      }]
+    }
   NativeProgressReport {
     reach: reach,
     provenance: provenance,
+    adjudication: adjudication,
     baseline_size: length(xs: baseline.rows),
     observed_size: length(xs: observed_rows),
     agreed: count_where(xs: observed_rows, predicate: fn(r) {
@@ -821,7 +903,12 @@ fn native_progress_report(
         native_progress_artifact_findings(build: build),
         native_progress_reading_findings(readings: readings),
         row_findings,
-        native_progress_disposition_findings(baseline: baseline, baseline_index: baseline_index, observed: observed, reach: reach)
+        if comparable {
+          native_progress_disposition_findings(baseline: baseline, baseline_index: baseline_index, observed: observed, reach: reach)
+        } else {
+          []
+        },
+        adjudication_findings
       ],
       f: fn(fs) { fs }
     )
@@ -898,6 +985,12 @@ fn native_progress_finding_text(f: NativeProgressFinding) -> String {
       join(["ARTIFACT PRODUCTION FAILED ", d], "")
     ObservedMemberReadingMalformed { identity: id } =>
       join(["OBSERVED MEMBER READING MALFORMED ", native_route_identity_qualified(identity: id)], "")
+    BaselineMintedUnderADifferentAdjudication { baseline_authority: b, run_authority: r } =>
+      join([
+        "NOT A BAR IN THE CURRENT MEANING (the baseline was minted under adjudicator '", b,
+        "' and this run was adjudicated by '", r,
+        "', so a comparison would span two definitions of green)"
+      ], "")
     SubjectUnreachedEarlierRungFailed { identity: id, blocked_at: r } =>
       join([
         "UNREACHED (the run stopped at '", native_run_reach_text(r: r), "', so this subject was never looked at) ",
