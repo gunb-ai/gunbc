@@ -389,19 +389,36 @@ type V41DiskReading
   = V41DiskRead { required: ByteSize, available: ByteSize, population: ByteSize }
   | V41DiskUnread { cause: NonEmptyStr }
 
-fn v41_line_size_for(listing: List<String>, path: NonEmptyStr) -> String? {
-  match first(filter(listing, l => {
-    let parts = split(s: l, delimiter: " ")
-    length(parts) == 2 && (match get(xs: parts, index: 1) { Present { value: p } => p == (path as String)  Absent => false })
-  })) {
-    Absent => none
-    Present { value: l } => get(xs: split(s: l, delimiter: " "), index: 0)
-  }
+// ONE LISTING LINE, PARSED ONCE: `<size> <path>` as find_regular_file_sizes_argv prints it. A line of
+// any other shape is not a reading of a file and is dropped here, so a present file it describes
+// counts as missing rather than as present at some size.
+type V41ListedFile {
+  size_text: String
+  path: String
 }
 
+fn v41_listed_files(listing: List<String>) -> List<V41ListedFile> {
+  flat_map(listing, l => {
+    let parts = split(s: l, delimiter: " ")
+    if length(parts) != 2 { [] as List<V41ListedFile> } else {
+      match get(xs: parts, index: 0) {
+        Absent => [] as List<V41ListedFile>
+        Present { value: sz } => match get(xs: parts, index: 1) {
+          Absent => [] as List<V41ListedFile>
+          Present { value: pth } => [V41ListedFile { size_text: sz, path: pth }]
+        }
+      }
+    }
+  })
+}
+
+// THE REQUIREMENT IS THE BYTES NOT ALREADY THERE AT THEIR DECLARED SIZE. The listing is parsed once
+// and each file looks its row up in the parsed form (DESIGN section 6, bare minimum cost: the split
+// per file per line was a quadratic fold over the same lines).
 fn v41_required_bytes(files: List<DeepseekV41PublishedFile>, listing: List<String>) -> ByteSize {
-  v41_checkpoint_bytes(files: filter(files, f => match v41_line_size_for(listing: listing, path: f.path) {
-    Present { value: s } => s != to_string(byte_size_count(b: f.file_bytes))
+  let listed = v41_listed_files(listing: listing)
+  v41_checkpoint_bytes(files: filter(files, f => match first(filter(listed, r => r.path == (f.path as String))) {
+    Present { value: r } => r.size_text != to_string(byte_size_count(b: f.file_bytes))
     Absent => true
   }))
 }
