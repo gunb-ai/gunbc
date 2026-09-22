@@ -1124,6 +1124,27 @@ fn established_resource_binding(scope: InferScope, required: ResourceRequirement
   }
 }
 
+// THE RESOURCE IS NAMED BY ITS RESOLVED DECLARATION, NEVER BY THE CALLER'S IMPORT SPELLING.
+// type_node_label renders the reference as the caller WROTE it, so one resource reached this
+// boundary under two labels -- `Network` where the caller imported the bare name and
+// `std.resources.Network` where it wrote the qualified one. The COMPARATOR never had that defect:
+// established_resource_binding matches through resource_declaration_identity, so both spellings
+// resolve to one declaration and establishment was always decided on identity. The RENDERER did,
+// and the renderer is what the frontier roster keys on -- so one resource would have held TWO
+// ROSTER KEYS, DESIGN section 3's fork arriving in the consumer rather than in the comparator.
+// The consequence is worse than a duplicate row: an unrelated edit to a caller's import spelling
+// moves an EXISTING admitted site off its key, at which point it takes the blocking arm and the
+// ratchet fires over a population change nobody made.
+// The Absent arm falls back to the written spelling and fabricates nothing: a resource whose name
+// resolves to no declaration establishes nothing either, so that call is already refused and the
+// label is only carried for the message.
+fn resource_identity_label(scope: InferScope, resource: Node) -> String {
+  match resource_declaration_identity(scope: scope, resource: resource) {
+    Present { value: declaration } => type_node_label(n: declaration, source_indices: scope.type_env.source_indices)
+    Absent => type_node_label(n: resource, source_indices: scope.type_env.source_indices)
+  }
+}
+
 fn resource_requirement_established(scope: InferScope, required: ResourceRequirement, established: List<ResourceRequirement>) -> Bool {
   established_resource_binding(scope: scope, required: required, established: established) != none
 }
@@ -1205,6 +1226,25 @@ type ResourceRequirementFrontierRow {
   dissolution: DissolutionCondition
 }
 
+// WHAT MAKES A NEW UNDECLARED USE RED, AND THE HONEST STANDING OF THAT CLAIM: PROVEN BY
+// CONSTRUCTION, UNEXECUTED. A call site is admitted only by an EXACT match on all five identity
+// facts, so a newly authored undeclared use -- a new caller, a new callee, a new resource, or the
+// same caller acquiring a second unestablished callee -- matches no row and takes the refusing arm.
+// The rows below are exhaustive over the census population, so every site outside them is new by
+// definition. That is a construction argument and it is NOT an executed one: there is no
+// discriminating pair in the required path that refuses a newly authored use and admits a rostered
+// one. The precedent for writing one is frontier_occurrence_budget_diags, whose ratchet is
+// exercised AT THE MECHANISM with synthesized diagnostics at the declared count, one more and zero
+// -- authorable for this fold too.
+// THE REASON THAT PAIR IS NOT SIMPLY WRITTEN HERE, and any reader who finds it later must know
+// this: its home, v1.compiler.compiler_tests_rust, runs under `cargo test -p v1-compiler --lib`,
+// which is OFF THE MERGE PATH under gunbc.rung_drop rust_unit_tests_off_the_merge_path. Evidence
+// placed there executes on demand and GATES NOTHING, so finding a discriminating pair in that file
+// is not evidence that this roster is protected against a regression. Reading it as coverage is
+// the specific mistake this paragraph exists to prevent.
+// TRIGGER for this condition: an EXECUTABLE HOME on the required path for a discriminating pair
+// over the frontier's admitting and refusing arms -- sufficient that a newly authored undeclared
+// use fails a lane rather than waiting for someone to invoke the evidence by hand.
 // HOW THE POPULATION WAS DISCOVERED, NAMED AS AN INSTRUMENT RATHER THAN TRANSCRIBED AS A COUNT.
 // A monotone debt contract is honest only over a universe that is independently discovered and
 // CLOSED (DESIGN section 5), so the rows below are the output of a WHOLE-CORPUS census, not of any
@@ -2015,7 +2055,7 @@ fn resource_requirement_diags(scope: InferScope, call_target: CallTargetOutcome,
             required
               |> filter(r => !resource_requirement_established(scope: scope, required: r, established: established))
               |> map(r =>
-                let resource_label = type_node_label(n: r.resource, source_indices: scope.type_env.source_indices)
+                let resource_label = resource_identity_label(scope: scope, resource: r.resource)
                 match resource_requirement_frontier_trigger(
                   caller_module_path: scope.module_name,
                   caller_decl_name: caller_name,
