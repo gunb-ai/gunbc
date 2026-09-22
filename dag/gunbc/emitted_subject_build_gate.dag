@@ -198,7 +198,7 @@ data emit_build_standing: NativeEmitBuildStanding = EmitBuildExpectedRed {
 // is stale and what edit retires it. Nothing mechanically flips the row when the condition holds:
 // that is review diligence, stated here rather than implied.
 fn emit_build_standing_notice_for(standing: NativeEmitBuildStanding, lane_blocks: Bool) -> List<String> {
-  list_append(xs: emit_build_lane_blocking_lines(lane_blocks: lane_blocks), ys: emit_build_standing_lines(standing: standing, lane_blocks: lane_blocks))
+  list_append(left: emit_build_lane_blocking_lines(lane_blocks: lane_blocks), right: emit_build_standing_lines(standing: standing, lane_blocks: lane_blocks))
 }
 
 fn emit_build_lane_blocking_lines(lane_blocks: Bool) -> List<String> {
