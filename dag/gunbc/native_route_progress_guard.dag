@@ -71,7 +71,16 @@ import gunbc.witness_v2_native_route {
 // form, and section 3c admits exactly one honest alternative to "consumed in this change": a
 // NAMED consumer landing in a NAMED later change, with the trigger stated beside it. So:
 //
-//   NAMED CONSUMER. The Tier 2 native-lane job of gunbc#12043's programme -- the run that
+//   NAMED CONSUMER, FOR THE RENDERING SURFACE AS WELL AS THE FOLD -- stated for both because
+//   review 70109 found the renderer dangling while this section named a consumer only for the
+//   fold, so the section itself had the sibling-shaped gap. `native_progress_finding_text` and
+//   the two helpers beneath it (`native_run_reach_text`, `native_adjudication_receipt_text`) are
+//   the operator-facing half of the same consumer: the job prints one line per finding. They are
+//   EXECUTED by this module's witness, which asserts the rendered text carries the receipt and
+//   says so when there is none -- so they are exercised rather than merely declared, which is the
+//   distinction section 5 draws between a consumer and a typecheck.
+//
+//   The Tier 2 native-lane job of gunbc#12043's programme -- the run that
 //   invokes the native route over the derived `v2.test.*` universe, derives one
 //   `NativeProgressObservedReading` per universe member from the dispositions
 //   `gunbc.witness_v2_native_route` `native_route_disposition` already computes, and adjudicates
@@ -555,13 +564,6 @@ fn native_attainment_rank(a: NativeRouteAttainment) -> Optional<Int> {
   match native_observed_as_baseline(a: a) {
     Absent => optional_absent()
     Present { value: b } => optional_present(value: native_baseline_rank(b: b))
-  }
-}
-
-fn native_attainment_is_unreached(a: NativeRouteAttainment) -> Bool {
-  match native_observed_as_baseline(a: a) {
-    Absent => true
-    Present { value: _ } => false
   }
 }
 

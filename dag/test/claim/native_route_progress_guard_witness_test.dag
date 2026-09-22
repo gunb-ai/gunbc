@@ -39,6 +39,7 @@ import gunbc.native_route_progress_guard {
   NativeProgressObservedRow, NativeProgressObservedReading,
   native_progress_read_observed,
   native_progress_report, native_progress_verdict,
+  native_progress_finding_text,
   ProgressPreserved, ProgressLost, ProgressUnobserved,
   NativeRunReach, ReachEmissionAttempted, ReachSourceEmitted, ReachCrateBuilt, ReachExecutableStarted,
   native_run_reach_rank, native_run_reached_the_population,
@@ -1686,4 +1687,59 @@ test fn w_RED_a_declared_accept_to_refuse_regression_still_reds() -> Bool {
     ProgressPreserved => false
     ProgressUnobserved { reach: _, findings: _ } => false
   }
+}
+
+// ═══ THE RENDERING IS EXECUTED, NOT MERELY DECLARED (review 70109) ═══
+//
+// `native_adjudication_receipt_text` existed to make the receipt identity READ rather than merely
+// written -- and it was called only by `native_progress_finding_text`, which nothing called. So
+// the review-70073 defect had MOVED OUT ONE LAYER rather than closed: the receipt still reached
+// nobody, under an annotation claiming it reached an operator. That is
+// `a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling` with my own claimed fix as
+// the specimen, which is why these claims assert the RENDERED TEXT and not the finding's presence.
+
+test fn the_boundary_finding_renders_the_receipt_that_would_be_looked_for() -> Bool {
+  let rendered = native_progress_finding_text(f: BaselineMintedUnderADifferentAdjudication {
+    baseline: strengthened_adjudicator,
+    run: current_adjudicator
+  })
+  string_contains(s: rendered, pattern: "native_route_receipt.json")
+    && string_contains(s: rendered, pattern: "aaaabbbbccccdddd")
+    && string_contains(s: rendered, pattern: "NOT A BAR IN THE CURRENT MEANING")
+}
+
+// AN ABSENT RECEIPT IS ITSELF INFORMATIVE and must not render as a blank: an adjudicator that
+// decided inline HAS no receipt, which is a different fact from one whose receipt went
+// unrecorded, and a reader sent looking for a file that does not exist is worse served than one
+// told there is none.
+test fn w_RED_an_absent_receipt_says_so_rather_than_rendering_nothing() -> Bool {
+  let rendered = native_progress_finding_text(f: BaselineMintedUnderADifferentAdjudication {
+    baseline: strengthened_adjudicator,
+    run: current_adjudicator
+  })
+  string_contains(s: rendered, pattern: "adjudicated inline, no receipt")
+}
+
+// THE UNREACHED FINDING NAMES THE RUNG THE RUN STOPPED AT, which is the whole point of sending a
+// reader to the earlier rung rather than into a diff. Without the rung the line says only that
+// something did not happen.
+test fn the_unreached_finding_names_the_rung_it_stopped_at() -> Bool {
+  let rendered = native_progress_finding_text(f: SubjectUnreachedEarlierRungFailed {
+    identity: subject_a,
+    blocked_at: ReachCrateBuilt
+  })
+  string_contains(s: rendered, pattern: "emitted crate built")
+    && string_contains(s: rendered, pattern: "v2.test.alpha.holds")
+}
+
+// EVERY FINDING NAMES ITS SUBJECT, which is what keeps a red from sending a reader to diff two
+// receipts by hand -- DESIGN section 5 asks for a located diagnostic, not a count.
+test fn a_regression_finding_locates_the_identity_it_is_about() -> Bool {
+  let rendered = native_progress_finding_text(f: ProgressRegressed {
+    identity: subject_b,
+    baseline: BaselineAgreed,
+    observed: AttainRefused { stage: NativeTestStagePrepare, cause: frontier_cause }
+  })
+  string_contains(s: rendered, pattern: "REGRESSED")
+    && string_contains(s: rendered, pattern: "v2.test.beta.holds")
 }
