@@ -14,7 +14,7 @@ import extdeps.systemd.systemd_run {
   SystemdFormattedBytes, FormattedBytesExact, FormattedBytesBounded, systemd_formatted_bytes_upper,
   SystemdSummaryPrintingWait,
 }
-import gunbc.compute.work_request { WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug, WorkSucceeded, WorkFailed }
+import gunbc.compute.work_request { WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug, WorkSucceeded, WorkFailed, WorkOutcome, WorkRefusedByInfrastructure, UnitMemoryGrantExceeded, UnitEndingUnclassifiable }
 import gunbc.compute.work_class_grant {
   WorkClass, WorkClassBuild, WorkClassCompile, WorkClassClaims, work_class_of, work_class_wire,
   WorkClassPeakSample, WorkClassGrantRow, work_class_grant_rows,
@@ -25,6 +25,8 @@ import gunbc.compute.work_class_grant {
 }
 import gunbc.compute.work_provider_local {
   ComputeAttempt, compute_attempt_retries_at_ceiling, compute_summary_is_oom_kill,
+  UnitEnding, EndingOomKill, EndingNotOomKill, EndingUnclassifiable, compute_unit_ending,
+  compute_ceiling_retry_reference, compute_failed_unit_outcome,
   ComputeListing, GrantExceededCount, GrantExceededCounted, GrantExceededNeverRecorded, GrantExceededUnreadable, grant_exceeded_count_decide,
 }
 
@@ -358,4 +360,80 @@ test fn the_grounding_recursion_terminates_because_an_unreadable_version_refuses
   match unknown { SummaryFormatVersionUnreadable { line } => line == ""  _ => false }
     && match s.memory_peak { MemoryPeakFormatNotGrounded { standing: _ } => true  _ => false }
     && !compute_summary_is_oom_kill(summary: s)
+}
+
+
+// ── THE ENDING IS DECIDED IN THREE ARMS, AND AN UNKNOWN IS NOT A FAILURE ──────────────────────
+//
+// THESE ASSERT THE OUTCOME THE CONSUMER PRODUCES, NOT THE PREDICATE IT CONSULTS, AND THE DIFFERENCE
+// IS MEASURED. The first draft of these controls asserted compute_unit_ending directly; reverting
+// the CALL SITE to the old Bool left all twenty green, so they established the decision function
+// was right while saying nothing about the decision being MADE. compute_failed_unit_outcome is the
+// fold the effectful body now calls, so a revert inside it reds these.
+//
+// One arm per cause: a claim asserting several could not name which collapsed
+// (a_claim_asserting_several_causes_cannot_name_which_one_went).
+data ending_op: WorkOperation = CompileEntry { entry: "e" }
+
+fn outcome_for(stderr: String, standing: SummaryFormatStanding) -> WorkOutcome {
+  compute_failed_unit_outcome(
+    summary: systemd_run_wait_summary(launcher: fixture_launcher, standing: standing, stderr: stderr),
+    identity: "abc", exit_code: 1, op: ending_op, granted: kibibyte(count: 1024), grant_was_ceiling: false, log_path: "/l",
+  )
+}
+
+fn outcome_is_unclassifiable(o: WorkOutcome) -> Bool {
+  match o {
+    WorkRefusedByInfrastructure { identity: _, cause } =>
+      match cause { UnitEndingUnclassifiable { exit_code, cause: c } => exit_code == 1 && c != ""  _ => false }
+    _ => false
+  }
+}
+
+test fn a_recognized_oom_kill_becomes_a_grant_exceeded_refusal() -> Bool {
+  match outcome_for(stderr: summary_oom_after_spoof, standing: grounded_standing) {
+    WorkRefusedByInfrastructure { identity: _, cause } =>
+      match cause { UnitMemoryGrantExceeded { class: _, granted: _, peak_upper: _, grant_was_ceiling: _ } => true  _ => false }
+    _ => false
+  }
+}
+
+test fn a_recognized_non_oom_result_becomes_a_plain_work_failure() -> Bool {
+  match outcome_for(stderr: "Finished with result: exit-code\nMemory peak: 3.1G\n", standing: grounded_standing) {
+    WorkFailed { identity: _, exit_code, log_path: _ } => exit_code == 1
+    _ => false
+  }
+}
+
+test fn an_unrecognized_result_refuses_rather_than_reporting_a_failure() -> Bool {
+  outcome_is_unclassifiable(o: outcome_for(stderr: "Finished with result: frobnicated\n", standing: grounded_standing))
+}
+
+test fn an_absent_summary_refuses_rather_than_reporting_a_failure() -> Bool {
+  outcome_is_unclassifiable(o: outcome_for(stderr: "error: linking with `cc` failed\n", standing: grounded_standing))
+}
+
+test fn an_ungrounded_manager_refuses_rather_than_reporting_a_failure() -> Bool {
+  outcome_is_unclassifiable(o: outcome_for(stderr: summary_oom_after_spoof, standing: summary_format_standing(version_line: "systemd 257 (257.1-1)")))
+}
+
+
+// ── THE CEILING RETRY RESERVES UNDER A REFERENCE THE RELEASED HOLD CANNOT COLLIDE WITH ────────
+//
+// THE DEFECT THIS PINS IS A CLOCK COLLISION, SO THE CONTROL FREEZES THE CLOCK RATHER THAN RACING
+// IT. compute_reservation_reference is identity + "@" + a SECOND-granularity reading; the retry
+// reserves immediately after releasing the first hold, so a fast oom-kill re-mints the SAME
+// reference and the ledger answers DuplicateReference -- rendered to an operator as a full pool.
+// Supplying one timestamp to both derivations is the discriminating input: under the old re-mint
+// these are equal, and the repair makes them unequal BY CONSTRUCTION rather than by precision.
+data frozen_reference: NonEmptyStr = "abc@1790000000" as NonEmptyStr
+
+test fn the_ceiling_retry_reference_differs_from_the_hold_it_replaces() -> Bool {
+  compute_ceiling_retry_reference(reference: frozen_reference) as String != frozen_reference as String
+}
+
+test fn the_retry_reference_is_derived_from_the_original_not_reminted() -> Bool {
+  let a = compute_ceiling_retry_reference(reference: frozen_reference) as String
+  let b = compute_ceiling_retry_reference(reference: "def@1790000000" as NonEmptyStr) as String
+  a != b && a != (frozen_reference as String)
 }

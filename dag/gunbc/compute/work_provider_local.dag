@@ -55,7 +55,7 @@ import gunbc.compute.work_request {
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
   CheckoutUnavailable, StoreUnavailable,
-  ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded,
+  ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
 
@@ -819,7 +819,7 @@ fn compute_run_granted(
     } else {
       let ceiling = compute_memory_ceiling(instance: instance)
       let retry_grant = GrantAtCeiling { class: work_class_of(op: op), amount: ceiling, reason: ClassRetryAfterGrantExceeded { exceeded: granted } }
-      let retry_reference = compute_reservation_reference(identity: identity)
+      let retry_reference = compute_ceiling_retry_reference(reference: reference)
       let retry_reservation = compute_reserve(instance: instance, reference: retry_reference, term_seconds: compute_reservation_term_seconds, request: ceiling)
       match retry_reservation {
         ComputeCapacityFull { wire: w } =>
@@ -1105,6 +1105,27 @@ fn compute_reservation_reference(identity: String) -> NonEmptyStr {
   join([identity, "@", clock_now_probed_at_or_unknown() as String], "") as NonEmptyStr
 }
 
+// THE CEILING RETRY MUST NOT RE-MINT FROM THE CLOCK (side-chat review of gunbc#12021).
+//
+// compute_reservation_reference is identity + "@" + a SECOND-GRANULARITY clock reading, and the
+// retry reserves immediately after releasing the first hold. A unit that is oom-killed FAST enough
+// -- which is the common case for a grant sized below what the class needs, not a rare one --
+// releases and re-reserves inside one second, so the re-mint produces THE SAME REFERENCE as the
+// hold just released. The ledger retains reference history and answers DuplicateReference, which
+// gunbc.product.capacity.pool_events records being rendered to an operator as a FULL POOL on a host
+// with 400 GiB free (srv1, 2026-09-21). So the advertised retry would be refused as a capacity
+// failure in exactly the case it exists to serve.
+//
+// THE REPAIR IS CONSTRUCTION, NOT PRECISION. A finer clock would narrow the window and leave the
+// class writable; deriving the retry's reference FROM the first one makes the collision
+// unexpressible, and it needs no clock at all. Exactly one ceiling retry is permitted per attempt
+// (compute_run_granted refuses a second), so one discriminator is sufficient rather than a counter.
+data compute_retry_reference_discriminator: String = "#ceiling-retry"
+
+fn compute_ceiling_retry_reference(reference: NonEmptyStr) -> NonEmptyStr {
+  join([reference as String, compute_retry_reference_discriminator], "") as NonEmptyStr
+}
+
 // A REQUEST REFUSED FOR CAPACITY HOLDS NOTHING. The producer lease is dropped on the way out, so a
 // host that is full does not accumulate names that would refuse the next attempt for the wrong
 // reason -- a capacity refusal reported as a producer already in flight is the state conflation
@@ -1157,6 +1178,55 @@ type ComputeAttempt {
   summary: SystemdRunWaitSummary
 }
 
+// THE ENDING IS A THREE-WAY FACT AND A Bool CANNOT CARRY IT (side-chat review of gunbc#12021).
+//
+// The parser already distinguishes three unknowns -- a result line it did not recognize, a summary
+// that was never reported with its typed absence cause, and a manager whose format this corpus has
+// not read. compute_summary_is_oom_kill answered FALSE for all three, and its only consumer read
+// false as "definitely not an oom-kill" and rendered WorkFailed. So "the ending could not be
+// classified" became "definitely failed", suppressing UnitMemoryGrantExceeded and its counted retry
+// in exactly the case where the manager's result was unavailable -- the version-grounding refusal
+// two files up, discarded one layer down. THE PREDICATE WAS NOT WRONG; ASKING A YES/NO QUESTION OF
+// A THREE-VALUED FACT WAS. So the boundary decides in the vocabulary the parser produces.
+type UnitEnding
+  = EndingOomKill
+  | EndingNotOomKill
+  | EndingUnclassifiable { cause: String }
+
+fn compute_unit_ending(summary: SystemdRunWaitSummary) -> UnitEnding {
+  match summary.result {
+    ServiceResultRead { result: r } => match r { ServiceResultOomKill => EndingOomKill  _ => EndingNotOomKill }
+    ServiceResultUnrecognized { wire } => EndingUnclassifiable { cause: join(["the manager reported a result this corpus does not recognize: ", wire], "") }
+    ServiceResultNotReported { absence } => EndingUnclassifiable { cause: summary_absence_wire(a: absence) }
+    ServiceResultFormatNotGrounded { standing } => EndingUnclassifiable { cause: summary_format_standing_wire(s: standing) }
+  }
+}
+
+// THE WHOLE MAPPING IS ONE PURE FOLD, SO A CONTROL CAN REACH IT. compute_run_leased is effectful --
+// it execs a unit and writes a log -- so no claim can call it, and a claim over compute_unit_ending
+// alone does NOT discriminate the defect this repairs: reverting the CALL SITE to a Bool leaves such
+// a claim green, measured. Lifting the exit-code-to-outcome decision out of the effectful body puts
+// the part that was wrong under a claim, and leaves the effectful shell with no decision in it.
+//
+// WHAT THIS STILL DOES NOT ESTABLISH, stated rather than implied: a claim cannot observe WHICH
+// function an effectful call site calls, so bypassing this fold entirely is not detectable here. The
+// pairing obligation (DESIGN 3) for that is the real-path run, which is the srv1 inhabitance run
+// this PR declares as not executed.
+fn compute_failed_unit_outcome(summary: SystemdRunWaitSummary, identity: String, exit_code: Int, op: WorkOperation, granted: Kibibyte, grant_was_ceiling: Bool, log_path: String) -> WorkOutcome {
+  match compute_unit_ending(summary: summary) {
+    EndingOomKill =>
+      WorkRefusedByInfrastructure { identity: identity, cause: UnitMemoryGrantExceeded {
+        class: work_class_wire(c: work_class_of(op: op)), granted: granted, peak_upper: work_class_summary_peak_upper(summary: summary), grant_was_ceiling: grant_was_ceiling,
+      } }
+    EndingNotOomKill => WorkFailed { identity: identity, exit_code: exit_code, log_path: log_path }
+    EndingUnclassifiable { cause } =>
+      WorkRefusedByInfrastructure { identity: identity, cause: UnitEndingUnclassifiable { exit_code: exit_code, cause: cause } }
+  }
+}
+
+// RETAINED FOR THE RETRY PREDICATE ONLY, where the question really is yes/no: an ending that is not
+// POSITIVELY an oom-kill must not consume the one permitted ceiling retry. An unclassifiable ending
+// refuses upstream and never reaches here.
 fn compute_summary_is_oom_kill(summary: SystemdRunWaitSummary) -> Bool {
   match summary.result {
     ServiceResultRead { result: r } => match r { ServiceResultOomKill => true  _ => false }
@@ -1240,13 +1310,7 @@ fn compute_run_leased(
       ComputeAttempt {
         outcome: match run {
           ComputeExecFailed { exit_code, stdout: _, stderr: _ } =>
-            if compute_summary_is_oom_kill(summary: summary) {
-              WorkRefusedByInfrastructure { identity: identity, cause: UnitMemoryGrantExceeded {
-                class: work_class_wire(c: work_class_of(op: op)), granted: granted, peak_upper: work_class_summary_peak_upper(summary: summary), grant_was_ceiling: grant_was_ceiling,
-              } }
-            } else {
-              WorkFailed { identity: identity, exit_code: exit_code, log_path: layout.log_path }
-            }
+            compute_failed_unit_outcome(summary: summary, identity: identity, exit_code: exit_code, op: op, granted: granted, grant_was_ceiling: grant_was_ceiling, log_path: layout.log_path)
           ComputeExecOk { stdout: _, stderr: _ } =>
             match compute_return_outputs(instance: instance, layout: layout, declared: work_declared_outputs(op: op)) {
               OutputsMismatch { detail } => WorkOutputMismatch { identity: identity, detail: detail }
