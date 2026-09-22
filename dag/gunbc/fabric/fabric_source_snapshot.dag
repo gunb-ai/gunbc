@@ -879,27 +879,30 @@ fn base_is_admissible(observed: LevelObservation, trusted: TrustedOwners) -> Boo
 // that is exactly right for /tmp. The base HOLDS THE SNAPSHOT, so it must be owned by this process
 // and readable by nobody else: a 0755 base would satisfy the ancestry rule and publish every
 // materialized tree to every principal on the host.
-// THE CHMOD IS NESTED UNDER `created` AND NOT GUARDED BY `&&`, AND THAT IS NOT A STYLE CHOICE.
-// `&&` DEMANDS ITS RIGHT OPERAND UNDER A FALSE LEFT, so an effect there runs unconditionally.
-// Written as `created && !chmod(base)`, this function chmodded a directory it had NOT created --
-// the squatted one -- to 0700 and then admitted it as compliant, which is precisely the adoption
-// the separation exists to prevent; the squatted-base control caught it. The authority for the
-// property is `test.claim.eval_model_probe` `and_short_circuit_direct_probe`, which asserts the
-// marker file is GONE after `false && shell.Remove.RecursiveForce(...)`, and
-// `v2.workflow.local_repo_wet_terminal` records why those probes exist. An effect may sit under a
-// CONTROL-FLOW form, never under a boolean operand.
+// THE MODE IS APPLIED AT CREATION, SO THERE IS NO SECOND PATHNAME OPERATION TO REDIRECT.
+//
+// This was `mkdir` followed by `chmod 0700`, and the chmod addressed the base BY NAME -- so a
+// principal able to rename entries in the parent could swap the fresh directory for a link between
+// the two calls and send the chmod somewhere else, and the base would then exist at whatever mode
+// the umask gave it. Even without a swap, the name existed briefly at a wider mode, long enough for
+// another principal to open it and keep a descriptor.
+//
+// `mkdir -m 0700` removes both: the directory is never present at any other mode, and there is no
+// follow-up call to aim. That is the construction form of the repair rather than an argument about
+// whether the window is reachable -- and the argument WOULD have held here (for /tmp, sticky and
+// root-owned means only the entry's owner may rename it, and the fresh entry is ours; for
+// /run/user/<uid>, mode 0700 means no other principal can traverse it at all), which is exactly why
+// it is not the version to ship: a window closed by reasoning has to be re-argued every time the
+// surrounding code moves, and one that does not exist does not.
+//
+// A PREVIOUS REVISION ALSO GUARDED THE CHMOD WITH `created && !chmod(base)`, and `&&` demands its
+// right operand under a false left, so the chmod ran on a SQUATTED directory and the admission then
+// accepted it. The authority for that property is `test.claim.eval_model_probe`
+// `and_short_circuit_direct_probe`; the squatted-base control caught the instance. With the mode
+// applied at creation there is no guarded effect left here to get wrong.
 fn establish_provider_base(layout: ProviderBaseLayout, trusted: TrustedOwners) -> ProviderRootAdmission {
-  let base = layout.base as String
-  let created = shell.Mkdir.New(path: base as FilePath).success
-  if created {
-    if !shell.Chmod.OwnerOnlyDirectory(path: base as FilePath).success {
-      ProviderRootRefused { root: base, cause: "the provider base could not be made owner-only" }
-    } else {
-      verify_provider_base(layout: layout, trusted: trusted, created: created)
-    }
-  } else {
-    verify_provider_base(layout: layout, trusted: trusted, created: created)
-  }
+  let created = shell.Mkdir.NewOwnerOnly(path: layout.base as FilePath).success
+  verify_provider_base(layout: layout, trusted: trusted, created: created)
 }
 
 fn verify_provider_base(

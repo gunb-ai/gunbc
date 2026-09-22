@@ -973,6 +973,15 @@ fn run_unsafe_allocation_root_scenario(workspace: SnapshotWorkspace) -> Snapshot
 // WHAT THIS HARNESS CANNOT STAGE, said plainly: a base owned by ANOTHER uid, because chown needs a
 // privilege it does not have. That case is claimed over supplied observations against the same
 // base_is_admissible this control executes, in test.claim.fabric_source_snapshot_witness.
+//
+// THE TWO HALVES NOW SIT AT DIFFERENT RUNGS, AND SAYING SO KEEPS THE SECOND FROM BEING READ AS A
+// LIVE DISCRIMINATOR. The refusal half still discriminates: neutralise base_is_admissible and this
+// scenario reports the squatted base as adopted, at exit 1. The untouched half CANNOT fail against
+// the current module, because the mode is applied by `mkdir -m 0700` at creation and there is no
+// follow-up chmod to aim anywhere -- it is a regression control over a wall that has landed, which
+// is what DESIGN section 4b(4) says such a probe becomes rather than something that retires. It
+// goes red again the moment a second pathname operation reappears between creating the base and
+// trusting it.
 fn run_squatted_base_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
   match observe_trusted_owners() {
     Absent =>

@@ -400,6 +400,16 @@ service shell.Mkdir {
     }
   }
 
+  operation NewOwnerOnly {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["mkdir", "-m", "0700", "--", "{path}"] }
+    exit {
+      0 => Unit "Directory created AT 0700; the mode is applied at creation, so the name never exists at a wider one and no second pathname operation is needed to narrow it"
+      nonzero => String "mkdir -m 0700 failed"
+    }
+  }
+
   operation Parents {
     input { path: FilePath }
     output { success: Bool from "exit_success" }
