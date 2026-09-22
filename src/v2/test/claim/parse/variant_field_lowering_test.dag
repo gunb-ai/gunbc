@@ -468,3 +468,35 @@ test fn vf_content_hash_declarations_and_positional_match_normalize() -> Bool {
         }
     })
 }
+
+// COST DECOMPOSITION PROBES -- TEMPORARY, removed before this PR lands. They exist to falsify or
+// confirm one reading: that the fixed route cost (grammar preparation) dominates every claim in
+// this module, so no assertion tuning can bring one under the floor budget.
+test fn vf_probe_a_grammar_only() -> Bool {
+  match dag_prepared_grammar() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn vf_probe_b_grammar_and_tokenize() -> Bool {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } =>
+      match tokenize(text: vf_positional_sum, file: ^variant_field_probe, rules: dag_lex()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+test fn vf_probe_c_parse_only() -> Bool {
+  match vf_parse(text: vf_positional_sum) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn vf_probe_d_parse_and_normalize() -> Bool {
+  vf_normalizes(text: vf_positional_sum)
+}
