@@ -215,8 +215,6 @@ fn interpreted_standing_of(ws: List<WitnessSubject>, unverified_premise: Declara
   }
 }
 
-// THE NATIVE COLUMN IS NOW DERIVED TOO, AND THE ANSWER CHANGED. Every earlier cut of this module
-
 fn witness_subject(entry: String, function: String, module_path: String) -> WitnessSubject {
   WitnessSubject {
     entry: entry as NonEmptyStr,

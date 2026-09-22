@@ -64,6 +64,27 @@ import gunbc.derived_obligation_row {
 // inhabits, so a boundary's REAL CONSUMERS are DERIVED from the live freeze roster, exclusion
 // frontier and gate closure rather than authored -- which is the whole difference between naming a
 // witness and establishing that it runs.
+//
+// AND THE EXACT LIMIT OF THAT DERIVATION, BECAUSE THE SENTENCE ABOVE OVERSTATED IT UNTIL REVIEW
+// 69877 CAUGHT IT. The derivation is only as good as the KEY it is handed. module_path is what
+// witness_subject_is_inside_gate_closure passes to required_gate_admits, so a module_path THAT NO
+// MODULE DECLARES matches nothing and the row still reports a standing -- derived, in form, from a
+// name that cannot match. Two rows shipped that way: both spelled a trailing `_test` the declaring
+// module does not carry, because the file suffix and the module name agree for some witnesses in
+// this corpus and not others (test.claim.rt_bridge_registry_witness_test declares the suffix;
+// test.claim.reference_realization_witness does not). Neither spelling is admitted by the gate
+// today, so no arm changed -- which is precisely the case gunbc.derived_obligation_row argues
+// against in its own words: a subtraction that happens to be satisfied is not a subtraction that
+// was checked.
+//
+// NOTHING HERE CHECKS THE SPELLING, AND NO FOLD AVAILABLE TO THIS MODULE CAN. Resolving a module
+// name against the declaring tree is a Node-tree read, which is exactly the read DESIGN section 3
+// says makes a stale name DECIDABLE AND ENFORCEABLE rather than a matter of care -- so this is a
+// missing wall, not an inherent limit. Until it exists, every module_path in this roster is
+// author-verified against the declaring module's own header and nothing re-verifies it on edit.
+// THE CAPABILITY THAT CLOSES IT: acceptance resolves a witness_subject's module_path against the
+// declaring module tree, SUFFICIENT FOR a subject naming a module no file declares to be a located
+// refusal rather than a row whose derived standing is computed from an unmatchable key.
 
 // THE ELEVEN CLASSES. Ten are the classes the inventory was commissioned over; CrossTreeImport is
 // the eleventh and was ADDED by the inventory, because the coercion fork and the bindings candidate
@@ -257,7 +278,7 @@ data coercions_boundary: RepresentationBoundary = RepresentationBoundary {
     witness_subject(
       entry: "dag/test/claim/reference_realization_witness_test.dag",
       function: "w_opaque_provider_preserves_the_provider_declaration",
-      module_path: "test.claim.reference_realization_witness_test"
+      module_path: "test.claim.reference_realization_witness"
     )
   ],
   supported_scope: "The cast side decides on a NAME, and the corpus already knows a name is insufficient: std.nat.Nat and v2.std.nat.Nat share a spelling and must realize differently, so v1.compiler.coercion keys REALIZATION on the declaring module and answers NO realization for an unknown identity rather than guessing. One module therefore carries a name-keyed predicate and an identity-keyed decision side by side, answering adjacent questions at two different grains.",
@@ -368,7 +389,7 @@ data data_layout_boundary: RepresentationBoundary = RepresentationBoundary {
     witness_subject(
       entry: "dag/test/claim/self_host_symbol_identity_binding_witness_test.dag",
       function: "w_symbol_declaration_resolves_to_std_string",
-      module_path: "test.claim.self_host_symbol_identity_binding_witness_test"
+      module_path: "test.claim.self_host_symbol_identity_binding_witness"
     )
   ],
   supported_scope: "SCALAR: extdeps.languages.rust.representation owns it, carries a cited ExternalAuthority, and is consumed by v1.compiler.emit_rust, v1.compiler.coercion, gunbc.rust_source_type_bindings and gunbc.symbol_identity_census. AGGREGATE record and coproduct field layout has a DIFFERENT home -- v1.compiler.emit_rust emit_struct_from_children and emit_struct_field_from_child -- and that home is single and is .dag rather than hand Rust, so the class conforms at both grains. No second authority was found for either half.",

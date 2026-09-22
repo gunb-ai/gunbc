@@ -180,6 +180,7 @@ data unverified_entry_premise: DeclarationRef = decl_ref(
   decl_name: "entry_existence_verification_trigger"
 )
 
+// THE NATIVE COLUMN IS NOW DERIVED TOO, AND THE ANSWER CHANGED. Every earlier cut of this module
 // reported RouteGapHeld on every row, on the true observation that the self-host behavioral receipt
 // family publishes nothing the acceptance path can spend. That is still true of THAT family and it
 // is no longer the whole native story: gunbc#10882 landed the required-v2-native lane, whose subject
