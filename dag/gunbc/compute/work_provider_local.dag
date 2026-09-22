@@ -363,6 +363,12 @@ type ComputeUnitRun {
   summary: SystemdRunWaitSummary
 }
 
+// ITS `standing` BINDING OBSERVES THE VERSION FROM THE SAME BINARY WHOSE OUTPUT IS PARSED, not from
+// a sibling tool and not assumed. extdeps.systemd.systemd_run grounds the summary format at specific
+// majors -- down to the USE_IEC flag that makes the figures 1024-based -- so a manager outside that
+// set must refuse rather than have its figures read against a format nobody has checked. Reading
+// `systemctl --version` there would answer about a DIFFERENT executable than the one that prints the
+// line, which on a mixed install is a different version.
 fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, granted: Kibibyte) -> ComputeUnitRun {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
@@ -371,12 +377,6 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       summary: SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } },
     }
   } else {
-    // THE VERSION IS OBSERVED FROM THE SAME BINARY WHOSE OUTPUT IS PARSED, not from a sibling tool
-    // and not assumed. extdeps.systemd.systemd_run grounds the summary format at specific majors --
-    // down to the USE_IEC flag that makes the figures 1024-based -- so a manager outside that set
-    // must refuse rather than have its figures read against a format nobody has checked. Reading
-    // `systemctl --version` here would answer about a DIFFERENT executable than the one that prints
-    // the line.
     let standing = summary_format_standing(version_line: match compute_exec(program: systemd_run, workdir: layout.checkout, args: ["--version"]) {
       ComputeExecOk { stdout: v, stderr: _ } => v
       ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => ""

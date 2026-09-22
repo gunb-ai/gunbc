@@ -169,6 +169,18 @@ fn systemd_run_transient_wait_unit_argv(unit: NonEmptyStr, properties: List<Syst
 // attempt it was started for, takes the retained form and owes an explicit reset of the unit when it
 // is done with it -- gunbc.runner_microvm_lifecycle_realize does exactly that after its teardown
 // readbacks. Making it a flag on one operation would have hidden that obligation.
+// ITS RunTransientAndWait OPERATION CANNOT SERVE PEAK OBSERVATION, AND THE REASON IS ITS --quiet.
+// run.c at v255 prints "Finished with result:" and "Memory peak:" only under
+// `if (arg_wait && !arg_quiet)`, so that invocation's stderr never carries the summary and a peak
+// read from it is NotReported for every run. That is why systemd_run_wait_summary takes a
+// SystemdSummaryPrintingWait token that operation cannot produce: a caller needing the unit's peak
+// takes systemd_run_user_wait_arguments instead. --quiet stays there because that operation's
+// callers want the child's own stdio unpolluted by the launcher's chatter, which is a real and
+// different need -- the fix is that the two cannot be confused, not that one of them loses its flag.
+//
+// (Authored at module-item grain because DESIGN 4c admits annotations only above a module-scope
+// declaration; an operation nested in this service has no annotation site of its own, so the
+// annotation names its subject instead of relying on adjacency.)
 service systemd.SystemdRun {
   operation RunTransient {
     input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
@@ -205,14 +217,6 @@ service systemd.SystemdRun {
     }
   }
 
-  // THIS OPERATION CANNOT SERVE PEAK OBSERVATION, AND THE REASON IS THE --quiet BELOW. run.c at v255
-  // prints "Finished with result:" and "Memory peak:" only under `if (arg_wait && !arg_quiet)`, so
-  // this invocation's stderr never carries the summary and a peak read from it is NotReported for
-  // every run. That is why systemd_run_wait_summary takes a SystemdSummaryPrintingWait token this
-  // operation cannot produce: a caller needing the unit's peak takes
-  // systemd_run_user_wait_arguments instead. --quiet stays here because this operation's callers
-  // want the child's own stdio unpolluted by the launcher's chatter, which is a real and different
-  // need -- the fix is that the two cannot be confused, not that one of them loses its flag.
   operation RunTransientAndWait {
     input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
     output {

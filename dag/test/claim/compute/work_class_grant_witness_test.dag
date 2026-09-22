@@ -322,6 +322,11 @@ test fn a_grounded_major_is_the_only_one_that_parses() -> Bool {
   }
 }
 
+// ITS LAST CONJUNCT ASSERTS THAT THE REFUSAL REACHES THE CONSUMER CARRYING ITS REMEDY, because a
+// remedy nothing carries is prose nobody reads at the moment they hit the wall. That conjunct is
+// keyed to the DECLARATION summary_format_grounding_remedy rather than to a literal: rewording the
+// remedy stays green, because the wording is not the claim, while dropping it from the path a
+// consumer actually reads goes red, because the join is.
 test fn an_unread_major_refuses_instead_of_reading_its_figures() -> Bool {
   let newer = summary_format_standing(version_line: "systemd 257 (257.1-1)")
   let s = systemd_run_wait_summary(launcher: fixture_launcher, standing: newer, stderr: summary_oom_after_spoof)
@@ -329,10 +334,6 @@ test fn an_unread_major_refuses_instead_of_reading_its_figures() -> Bool {
     && match s.memory_peak { MemoryPeakFormatNotGrounded { standing: _ } => true  _ => false }
     && match s.result { ServiceResultFormatNotGrounded { standing: _ } => true  _ => false }
     && !compute_summary_is_oom_kill(summary: s)
-    // THE REFUSAL MUST REACH THE CONSUMER CARRYING ITS REMEDY, or the remedy is prose nobody reads
-    // at the moment they hit the wall. Keyed to the DECLARATION rather than to a literal: rewording
-    // the remedy stays green, because the wording is not the claim -- dropping it from the path a
-    // consumer actually reads goes red, because the join is.
     && match work_class_peak_sample(summary: s, work_identity: "abc", op: CompileEntry { entry: "e" }, host: "srv1", observed_at: Present { value: 1790000000 }) {
       PeakSampleNotTaken { reason } => reason.contains(summary_format_grounding_remedy)
       PeakSampleTaken { class: _, sample: _ } => false
