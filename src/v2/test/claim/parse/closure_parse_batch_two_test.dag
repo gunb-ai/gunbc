@@ -3,7 +3,7 @@ module v2.test.parse.closure_parse_batch_two
 import v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse { cp_normalized, cp_normalizes, cp_parses }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.logic { Bool }
-import v2.std.node { Node, NodeFold, fold_node, name_occurrences }
+import v2.std.node { Node, NodeFold, Symbol, fold_node, name_occurrences }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
