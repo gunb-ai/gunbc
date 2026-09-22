@@ -80,7 +80,18 @@ data runner_microvm_network_converge_disposition: Disposition = SingleAuthority
 // with every argument spelled in full, source included, so a staged file at a random temporary path
 // would be a command no line authorizes. One deterministic path per file, derived from the same
 // names the destinations are derived from.
-data runner_microvm_staging_dir: NonEmptyStr = "/var/lib/gunbc/fleet-converge/microvm-network" as NonEmptyStr
+//
+// AND THE ROOT IS OUTSIDE THE JOB USER'S TREE, WHICH IS A CORRECTION AND NOT A PREFERENCE. This was
+// /var/lib/gunbc/fleet-converge/microvm-network -- a subdirectory of gunbc_fleet_converge_state_dir,
+// which gunbc.runner_host_grants creates with owner=job. A staged file there is content the job user
+// can rewrite, and the source of a root-evaluated install being grantee-writable is exactly what
+// microvm_network_host_mutation_principal_frontier says does not satisfy it: spelling the source in
+// full narrows nothing when the source is grantee-writable, and neither does moding the leaf, because
+// the job user owns the parent and can replace the leaf between a check and the install. The root is
+// now a sibling of that tree which nothing grants the job user anything beneath, and
+// gunbc.runner_microvm_network_apply verifies EVERY ancestor of it root-only, far-side, before it
+// stages a byte.
+data runner_microvm_staging_dir: NonEmptyStr = "/var/lib/gunbc-microvm-network-stage" as NonEmptyStr
 
 fn staged_path(name: String) -> NonEmptyStr {
   join([runner_microvm_staging_dir as String, "/", name], "") as NonEmptyStr
@@ -191,22 +202,55 @@ fn microvm_network_readback_operations() -> List<ExecutorPrivilegedOperation> {
 // gunbc.executor_privileged_operation states this type exists to provide.
 //
 // So the roster carries the READBACKS ONLY. They are reads: they disclose host configuration to a
-// principal that already runs on the host, and they cannot install or start anything. The mutating
-// half needs a principal the job user cannot impersonate, which this mode does not have today --
-// microvm_network_host_mutation_principal_frontier names it.
+// principal that already runs on the host, and they cannot install or start anything.
+//
+// AND IT STILL CARRIES THE READBACKS ONLY NOW THAT THE MUTATING HALF HAS A PRINCIPAL. That half is
+// gunbc.runner_microvm_network_apply, executing as the host administrator over the fleet SSH edge;
+// that account reaches root through its own non-interactive sudo and needs no line in THIS file,
+// which is the job user's. Adding the install operations here because they are now performed
+// somewhere would grant the job user the exact pair the frontier refuses, on the argument that
+// someone else uses it -- so the roster is unchanged by construction rather than by memory.
 fn microvm_network_granted_operations() -> List<ExecutorPrivilegedOperation> {
   microvm_network_readback_operations()
 }
 
-// DECLARED FRONTIER (DESIGN 3c). NAMED CONSUMER: this module's apply half. TRIGGER: the microVM
-// network mutations run under a principal the job user cannot impersonate -- the administrator over
-// the fleet key, as gunbc.runner_host_file_converge already does for root-owned files -- so the
-// staged content cannot be substituted by anything executing in a job. SUFFICIENT FOR deleting this
-// row and re-admitting the install operations to the grant roster. NOT satisfied by spelling the
-// staged source path in full, by staging into another grantee-owned directory, or by checking the
-// staged file's digest from the same principal that can rewrite it.
+// DECLARED FRONTIER (DESIGN 3c), NARROWED -- THE PRINCIPAL HAS LANDED, THE EXECUTION HAS NOT.
+//
+// THE ROUTE NOW EXISTS: gunbc.runner_microvm_network_apply is the apply half under
+// gunbc.fleet_bootstrap_principal executor_bootstrap_principal over the fleet SSH edge. It consumes
+// converge_staged_files and microvm_network_converge_operations directly, refuses when the
+// administrator IS the job user on that host, refuses unless the dispatch names the revision the
+// tree is checked out at, verifies EVERY ancestor of the staging root root-only before staging a
+// byte, writes each staged file root:root 0600 through gunbc.typed_remote_file_write, verifies the
+// staged files' own ownership, installs, and reads the ruleset back. The staging root moved out of
+// the job user's own /var/lib/gunbc/fleet-converge in the same change, because a staged file under a
+// grantee-owned parent is what this row says does not satisfy it.
+//
+// WHAT REMAINS, AND IT IS WHY THIS ROW IS AMENDED RATHER THAN DELETED: the trigger says the
+// mutations EXECUTE under that principal, and no run has executed them on any host. A landed route
+// is not an execution, and the two folds this row covers are consumed by a mode nobody has
+// dispatched yet. SUFFICIENT FOR deleting this row: one microvm_network_apply run on a host whose
+// receipt carries the staged writes, the installs and the ruleset readback.
+//
+// THE GRANT ROSTER IS DELIBERATELY UNCHANGED, which is a correction to this row's own earlier text.
+// microvm_network_granted_operations renders the JOB USER's sudoers, and the install operations now
+// execute under a different principal entirely -- one that reaches root through its own
+// non-interactive sudo and needs no per-operation line. Re-admitting them to that roster would grant
+// the job user exactly the install+systemctl pair this row exists to refuse.
+//
+// AND THE PAIR IS ALREADY HELD, FROM SOMEWHERE ELSE. /etc/sudoers.d/gunbc-deploy, generated by
+// gunbc.ci_deploy_sudoers, grants the job user path-unrestricted NOPASSWD over /usr/bin/install and
+// /usr/bin/systemctl on srv1 today. That is rostered at gunbc.rung_drop
+// the_job_user_holds_a_path_unrestricted_root_grant and classed at gunbc.recurring_failure_mode
+// the_grant_a_frontier_refuses_is_already_held_from_another_authority. It does not weaken this
+// frontier -- it means satisfying it is necessary and not sufficient, and closing those grants is a
+// separate, operator-gated item.
+//
+// TRIGGER: the microVM network mutations EXECUTE under a principal the job user cannot impersonate.
+// NOT satisfied by spelling the staged source path in full, by staging into another grantee-owned
+// directory, or by checking the staged file's digest from the same principal that can rewrite it.
 data microvm_network_host_mutation_principal_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_microvm_network_converge's apply half. TRIGGER: the microVM network mutations execute under a principal the job user cannot impersonate (the administrator over the fleet key, as runner_host_file_converge does), so staged content cannot be substituted by anything running in a job. WHAT IT COVERS: converge_staged_files and microvm_network_converge_operations, which are modeled and witnessed but executed by no route today -- they are what that principal will stage and apply. SUFFICIENT FOR deleting this row, re-admitting the install operations to the grant roster, and giving those two folds an executing consumer. NOT satisfied by spelling the staged source in full, by staging into another grantee-owned directory, or by digesting the staged file from the principal that can rewrite it. WHEN IT LANDS, THE MODE'S SSH-KEY CLASSIFICATION FLIPS: FleetSshKeyNotConsumed is correct only for today's read-only mode, which reaches the host it already runs on; an administrator-over-the-fleet-key actuation consumes that key, so fleet_converge_mode_fleet_ssh_key_demand changes with this row and the current classification is not a standing fact about the mode." as NonEmptyStr,
+  description: "NAMED CONSUMER: gunbc.runner_microvm_network_apply runner_microvm_network_apply_ci_wet, WHICH HAS LANDED and consumes converge_staged_files and microvm_network_converge_operations directly. TRIGGER: the microVM network mutations execute under a principal the job user cannot impersonate (the administrator over the fleet key, as runner_host_file_converge does), so staged content cannot be substituted by anything running in a job. WHAT REMAINS: the route exists but no run has EXECUTED it on any host, so those two folds still reach no host. SUFFICIENT FOR deleting this row: one microvm_network_apply run whose receipt carries the staged writes, the installs and the ruleset readback. NOT SUFFICIENT: the route landing, a witness over it, or this module compiling. THE GRANT ROSTER IS NOT PART OF THE TRIGGER and this corrects an earlier reading of this row: microvm_network_granted_operations renders the JOB USER's sudoers and the installs now run under a different principal, so re-admitting them there would grant the job user the pair this row refuses. NOT satisfied by spelling the staged source in full, by staging into another grantee-owned directory, or by digesting the staged file from the principal that can rewrite it. THE SSH-KEY CLASSIFICATION HAS ALREADY MOVED, AND NOT BY CHANGING THIS MODE'S: microvm_network_observe stays FleetSshKeyNotConsumed, which is correct for a read-only mode reaching the host it already runs on, and the administrator-over-the-fleet-key actuation is its own mode, microvm_network_apply, declared FleetSshKeyConsumed in gunbc.fleet_converge_workflow fleet_converge_mode_fleet_ssh_key_demand." as NonEmptyStr,
 )
 
 // --- reading the host back ---

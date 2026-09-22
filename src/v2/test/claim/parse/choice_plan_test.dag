@@ -131,7 +131,7 @@ fn pcp_observe(expr: GrammarExpr, tokens: List<Token>) -> ChoiceParseObservation
   ) {
     Rejected { diagnostics: _ } => ObservedRejected
     Accepted { value: validated, diagnostics: _ } =>
-      let table = parse_table_for_production(validated: validated, all_tokens: tokens)
+      let table = parse_table_for_production(validated: validated, all_tokens: tokens, materialization: Memoize)
       match map_lookup(m: table.prepared_exprs, key: root.start) {
         Absent => ObservedRejected
         Present { value: prepared } =>
@@ -156,7 +156,7 @@ fn pcp_observe_root(root: GrammarRoot, expr: GrammarExpr, tokens: List<Token>) -
       tokens: tokens,
       all_tokens: tokens,
       root: root,
-      table: parse_table_empty(),
+      table: parse_table_empty(materialization: Memoize),
       prov: parse_prov_initial()
     )
   )
@@ -192,7 +192,7 @@ fn oracle_parse_choice(left: GrammarExpr, right: GrammarExpr, tokens: List<Token
     tokens: tokens,
     all_tokens: tokens,
     root: pcp_root(),
-    table: parse_table_empty(),
+    table: parse_table_empty(materialization: Memoize),
     prov: parse_prov_initial()
   ) {
     ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: _, prov: _, table: _ } =>
@@ -203,7 +203,7 @@ fn oracle_parse_choice(left: GrammarExpr, right: GrammarExpr, tokens: List<Token
         tokens: tokens,
         all_tokens: tokens,
         root: pcp_root(),
-        table: parse_table_empty(),
+        table: parse_table_empty(materialization: Memoize),
         prov: parse_prov_initial()
       ) {
         ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: _, prov: _, table: _ } =>
@@ -283,7 +283,7 @@ test fn prepared_choice_nonterminal_alts_empty_table_agrees_with_ordered_oracle(
     tokens: tokens_b,
     all_tokens: tokens_b,
     root: root,
-    table: parse_table_empty(),
+    table: parse_table_empty(materialization: Memoize),
     prov: parse_prov_initial()
   ) {
     ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: _, prov: _, table: _ } =>
@@ -294,7 +294,7 @@ test fn prepared_choice_nonterminal_alts_empty_table_agrees_with_ordered_oracle(
         tokens: tokens_b,
         all_tokens: tokens_b,
         root: root,
-        table: parse_table_empty(),
+        table: parse_table_empty(materialization: Memoize),
         prov: parse_prov_initial()
       ) {
         ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: _, prov: _, table: _ } =>

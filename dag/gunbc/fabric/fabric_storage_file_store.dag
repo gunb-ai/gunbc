@@ -9,7 +9,7 @@ import std.durable_compare_and_set {
   CasSlotObservationRefused, CasGenerationPublicationRefused, CasUnreadableMalformed, CasUnreadableReadRefused,
 }
 import std.fabric_storage {
-  FabricObjectRef, FabricObject, FabricStoredObject, fabric_object_ref_of, fabric_object_ref_wire, fabric_object_ref_of_wire, fabric_object_ref_eq,
+  FabricObjectRef, FabricObject, FabricStoredObject, FabricAddressedObject, fabric_object_addressed, fabric_object_ref_wire, fabric_object_ref_of_wire, fabric_object_ref_eq,
   fabric_object_preimage, fabric_object_decode, fabric_object_verified, FabricObjectVerified, FabricObjectVerificationFailed,
   FabricHeadReading, FabricHeadAbsent, FabricHeadAt, FabricHeadExpectation, fabric_head_admits,
   FabricStorageFault, FabricStoreRefused, FabricObjectMissing, FabricObjectCorrupt, FabricHeadNameRefused,
@@ -104,11 +104,19 @@ fn fabric_storage_file_get(root: FabricStorageFileRoot, object: FabricObjectRef)
 
 // PUTTING AN OBJECT. Its ref is derived from its bytes, so a put names nothing the caller chose. A
 // put is idempotent -- the name already holding THESE bytes is the object already stored -- and an
-// occupied name holding OTHER bytes is a digest collision, refused as corruption rather than read
-// through: the digest family is non-cryptographic (std.content_hash content_hash_of_value), and this
-// arm is what keeps a collision loud.
-fn fabric_storage_put_from_create(object: FabricObject, created: FilesystemCreateNew, existing: FabricObjectGet) -> FabricPut {
-  let r = fabric_object_ref_of(object: object)
+// occupied name holding OTHER bytes is refused as corruption rather than read through.
+//
+// THE COLLISION ARM STAYS. The digest family is non-cryptographic (gunbc.recurring_failure_mode
+// fabric_object_identity_is_a_structural_locator), so a collision is a thing an ordinary workload
+// can actually meet and the arm is a wall against an accident. It must not be removed when the
+// family becomes cryptographic either: under that family a collision stops being noise and becomes
+// an ATTACK, which is exactly when the check earns its keep.
+//
+// THE REF IS RECEIVED, NOT RE-DERIVED: the object and its ref arrive as ONE carrier, minted once at
+// the entry below, so this function cannot be handed a ref for some other object's bytes.
+fn fabric_storage_put_from_create(addressed: FabricAddressedObject, created: FilesystemCreateNew, existing: FabricObjectGet) -> FabricPut {
+  let r = addressed.ref
+  let object = addressed.object
   match created {
     FilesystemCreated { path: _ } => FabricObjectStored { object: r }
     FilesystemCreateTargetOccupied { path: _ } =>
@@ -125,16 +133,21 @@ fn fabric_storage_put_from_create(object: FabricObject, created: FilesystemCreat
   }
 }
 
+// BOTH HALVES OF THE ADDRESSED OBJECT COME OFF THE CARRIER, and the write below reads a.object
+// rather than the outer `object` deliberately. They are the same VALUE; the difference is SHAPE.
+// Reading the outer binding is the spelling that lets a later edit change one side without the
+// other, which is how the peer-parameter defect FabricAddressedObject exists to close gets back in.
 fn fabric_storage_file_put(root: FabricStorageFileRoot, object: FabricObject) -> FabricPut {
-  let r = fabric_object_ref_of(object: object)
+  let a = fabric_object_addressed(object: object)
+  let r = a.ref
   let path = fabric_storage_object_path(root: root, object: r)
-  let write = Filesystem.WriteCreateNew(path: path, content: fabric_object_preimage(object: object) as String)
+  let write = Filesystem.WriteCreateNew(path: path, content: fabric_object_preimage(object: a.object) as String)
   let created = filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind)
   match created {
-    FilesystemCreateTargetOccupied { path: _ } => fabric_storage_put_from_create(object: object, created: created, existing: fabric_storage_file_get(root: root, object: r))
-    FilesystemCreated { path: _ } => fabric_storage_put_from_create(object: object, created: created, existing: FabricObjectGetRefused { fault: FabricObjectMissing { object: r } })
-    FilesystemCreateRefused { path: _, kind: _, error: _ } => fabric_storage_put_from_create(object: object, created: created, existing: FabricObjectGetRefused { fault: FabricObjectMissing { object: r } })
-    FilesystemCreateKindUnrecognized { path: _, observed: _, error: _ } => fabric_storage_put_from_create(object: object, created: created, existing: FabricObjectGetRefused { fault: FabricObjectMissing { object: r } })
+    FilesystemCreateTargetOccupied { path: _ } => fabric_storage_put_from_create(addressed: a, created: created, existing: fabric_storage_file_get(root: root, object: r))
+    FilesystemCreated { path: _ } => fabric_storage_put_from_create(addressed: a, created: created, existing: FabricObjectGetRefused { fault: FabricObjectMissing { object: r } })
+    FilesystemCreateRefused { path: _, kind: _, error: _ } => fabric_storage_put_from_create(addressed: a, created: created, existing: FabricObjectGetRefused { fault: FabricObjectMissing { object: r } })
+    FilesystemCreateKindUnrecognized { path: _, observed: _, error: _ } => fabric_storage_put_from_create(addressed: a, created: created, existing: FabricObjectGetRefused { fault: FabricObjectMissing { object: r } })
   }
 }
 
