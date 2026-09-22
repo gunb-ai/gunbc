@@ -16,7 +16,7 @@ import v2.std.diagnostic {
 }
 import std.algebra { Empty, FreeMonoid }
 import v2.std.algebra { fold_list, list_snoc_item }
-import v2.std.node { Node }
+import v2.std.node { Node, Symbol }
 import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
 import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
 
@@ -37,10 +37,19 @@ import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
 // binding is the same shape of fact and is carried the same way. Recovering it after the graft is
 // not an option -- the node is gone -- and re-reading the source at the index would be a second
 // read of a fact this carrier already passed.
+// THE FOURTH FIELD IS THE SAME SHAPE OF FACT AGAIN. Body lowering rehomes a record type_decl to
+// `Conj { R: payload }` (v2.compiler.body_lowering_fold body_lower_record_type_decl), which is the
+// shape a where-alias rehome writes and the shape the graft builds for a module spine, so after
+// normalize a record is indistinguishable from either -- and the pattern-binder classifier must
+// tell a record (a constructor) from a module (not one). The fact is read where it is still held,
+// by the same predicate the rehome uses, and carried here as the leaf names this module declares
+// as records; the symbol-index fill qualifies each by this module's own name, so the key the index
+// holds is a declaring path, never a bare spelling.
 type NormalizedTree sole_constructor {
   root: Node,
   test_markers: TestMarkerChannel,
   import_bindings: FreeMonoid<AliasBindingRow>,
+  record_declarations: FreeMonoid<Symbol>,
 }
 
 // Rung: ACCEPTED REFINEMENT WITH EXECUTING REFUSAL, not structural impossibility. The invalid state
@@ -57,6 +66,12 @@ fn no_import_bindings() -> FreeMonoid<AliasBindingRow> {
   Empty
 }
 
+// A hand-built root declares no records this carrier can see, for the same reason it has no import
+// bindings: the record rehome has already run, or never did.
+fn no_record_declarations() -> FreeMonoid<Symbol> {
+  Empty
+}
+
 fn normalized_tree_retention_diagnostic(root: Node) -> Diagnostic {
   Diagnostic {
     reason: ^normalized_tree_reason_wrapper_retention_not_normalized,
@@ -69,6 +84,7 @@ fn admit_normalized_tree(
   root: Node,
   test_markers: TestMarkerChannel,
   import_bindings: FreeMonoid<AliasBindingRow>,
+  record_declarations: FreeMonoid<Symbol>,
   diagnostics: Diagnostics
 ) -> Outcome<NormalizedTree> {
   if body_lowering_diagnostics_carry_wrapper_retention(d: diagnostics) {
@@ -83,7 +99,8 @@ fn admit_normalized_tree(
       value: NormalizedTree {
         root: root,
         test_markers: test_markers,
-        import_bindings: import_bindings
+        import_bindings: import_bindings,
+        record_declarations: record_declarations
       },
       diagnostics: diagnostics
     }
@@ -104,7 +121,8 @@ fn normalized_tree_roots_to_binding_sources(
         xs: acc,
         item: ModuleBindingSource {
           root: tree.root,
-          import_bindings: tree.import_bindings
+          import_bindings: tree.import_bindings,
+          record_declarations: tree.record_declarations
         }
       )
     }
@@ -151,6 +169,7 @@ fn admit_unmarked_normalized_roots(
             root: root,
             test_markers: test_marker_channel_empty(),
             import_bindings: Empty,
+            record_declarations: no_record_declarations(),
             diagnostics: diagnostics
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }

@@ -6130,6 +6130,41 @@ fn body_lower_record_type_decl(shell: Node, type_name: Symbol, block_shell: Node
   }
 }
 
+// WHICH type_decl IS A RECORD, ASKED ONCE. The record rehome below writes a record as
+// `Conj { R: payload }`, which is the same shape a where-alias rehome writes and the same shape the
+// graft builds for a module spine, so after this stage nothing can tell a record from those. The
+// pattern-binder classifier needs exactly that distinction (v2.compiler.resolve
+// resolve_pattern_atom_names_constructor: a record type spelled as a field-target atom is a
+// constructor, a module is not), so it is read HERE, where it is still held, and carried on
+// v2.compiler.normalized_tree NormalizedTree record_declarations by v2.compiler.normalize.
+//
+// The rule is the grammar's (v2.extdeps.languages.dag dag_grammar_type_decl_expr): a record is the
+// type_decl whose body is the field_decl_block arm of the choice, not the `=` arm. Asking for the
+// block alone is not enough on the PARSE tree, where every fielded variant of a coproduct still
+// carries one (dag_grammar_type_variant_expr). Every `=` body reaches a type_alias_rhs -- the
+// optional leading pipe's _lead wrapper is sugared away, the rhs is structure-preserved
+// (body_lower_is_structure_preserved_emitted) -- so excluding it gives the same answer on the parse
+// tree normalize captures from and on the lowered shell this stage rehomes: the rehome and the
+// capture cannot disagree. On the lowered shell the exclusion changes nothing the old block-only
+// test answered, because a lowered coproduct's variants no longer carry a block.
+fn body_lower_type_decl_record_block_optional(captured: Node) -> Optional<Node> {
+  match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_type_alias_rhs) {
+    Present { value: _ } => Absent
+    Absent => body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_field_decl_block)
+  }
+}
+
+fn body_lower_type_decl_record_name_optional(shell: Node) -> Optional<Symbol> {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => Absent
+    Present { value: captured } =>
+      match body_lower_type_decl_record_block_optional(captured: captured) {
+        Absent => Absent
+        Present { value: _ } => dag_surface_kw_then_ident_from_captured(captured: captured)
+      }
+  }
+}
+
 fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
   match parse_production_captured_child_optional(node: shell) {
     Absent => outcome_accepted(value: shell)
@@ -6137,7 +6172,7 @@ fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
       match dag_surface_kw_then_ident_from_captured(captured: captured) {
         Absent => outcome_accepted(value: shell)
         Present { value: type_name } =>
-          match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_field_decl_block) {
+          match body_lower_type_decl_record_block_optional(captured: captured) {
             Present { value: block_shell } =>
               body_lower_record_type_decl(shell: shell, type_name: type_name, block_shell: block_shell)
             Absent =>

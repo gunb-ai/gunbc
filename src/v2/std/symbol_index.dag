@@ -76,13 +76,15 @@ type SymbolIndex {
   entries: Map<QualifiedName, Node>
   global_bare: Map<Symbol, GlobalBareBindingState>
   bound_declarings: Map<QualifiedName, FreeMonoid<QualifiedName>>
+  declared_payloads: Map<QualifiedName, Bool>
 }
 
 fn empty_symbol_index() -> SymbolIndex {
   SymbolIndex {
     entries: empty_map(),
     global_bare: empty_map(),
-    bound_declarings: empty_map()
+    bound_declarings: empty_map(),
+    declared_payloads: empty_map()
   }
 }
 
@@ -160,7 +162,8 @@ fn symbol_index_track_global_bare(
                   key: leaf,
                   value: GlobalBareAmbiguous
                 ),
-                bound_declarings: index.bound_declarings
+                bound_declarings: index.bound_declarings,
+                declared_payloads: index.declared_payloads
               }
             }
           Absent =>
@@ -171,7 +174,8 @@ fn symbol_index_track_global_bare(
                 key: leaf,
                 value: GlobalBareUnique { node: resolved, path: qualified_path }
               ),
-              bound_declarings: index.bound_declarings
+              bound_declarings: index.bound_declarings,
+              declared_payloads: index.declared_payloads
             }
         }
         Rejected { diagnostics: _ } => index
@@ -187,13 +191,42 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
       value: resolved
     ),
     global_bare: index.global_bare,
-    bound_declarings: index.bound_declarings
+    bound_declarings: index.bound_declarings,
+    declared_payloads: index.declared_payloads
   }
   symbol_index_track_global_bare(
     index: with_entry,
     qualified_path: qualified_path,
     resolved: resolved
   )
+}
+
+// WHAT A NAME DENOTES, RECORDED BY THE WRITER THAT KNOWS IT. A declared payload -- a variant arm,
+// its unique module-level alias, a record type -- is a constructor where a pattern names it; a
+// module, a data row, a fn, an alias is not. Every one of those is stored in `entries` as a Node,
+// and a declared payload, a module container and a declaration parse-rest node are all Conj with
+// Named edges, so the node cannot answer which it is: three shape predicates were tried on the
+// reader (v2.compiler.resolve resolve_pattern_atom_names_constructor) and each admitted a module.
+// So the fact is written HERE, keyed by DECLARING path, by the fill arms that know what they are
+// inserting (v2.compiler.symbol_index_fill), and the reader asks this map instead of the node.
+// Keyed by path, not leaf, so two records spelled alike in two modules are two facts.
+fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: QualifiedName) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    bound_declarings: index.bound_declarings,
+    declared_payloads: map_insert(m: index.declared_payloads, key: qualified_path, value: true)
+  }
+}
+
+fn symbol_index_denotes_declared_payload(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
+  match v2.std.collection.map_get(index.declared_payloads, qualified_path) {
+    Accepted { value: opt, diagnostics: _ } => match opt {
+      Present { value: _ } => true
+      Absent => false
+    }
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> GlobalBareLookup {
@@ -300,13 +333,15 @@ fn symbol_index_bind_at(
         m: index.bound_declarings,
         key: binding_path,
         value: list_snoc_item(xs: prior, item: declaring_path)
-      )
+      ),
+      declared_payloads: index.declared_payloads
     }
     if is_empty(xs: prior) {
       SymbolIndex {
         entries: map_insert(m: recorded.entries, key: binding_path, value: resolved),
         global_bare: recorded.global_bare,
-        bound_declarings: recorded.bound_declarings
+        bound_declarings: recorded.bound_declarings,
+        declared_payloads: recorded.declared_payloads
       }
     } else {
       recorded

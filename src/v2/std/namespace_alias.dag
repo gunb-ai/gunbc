@@ -23,9 +23,14 @@ type AliasBindingRow {
 // two lists walked in step would be joined by position, and a reordering of either would silently
 // bind one module's imports into another module's namespace. The type lives here, beside the row it
 // carries, because the index fill and the normalized-tree carrier cannot import each other.
+// record_declarations: the leaf names this module declares as RECORD types, carried beside the
+// root because the record rehome erased the distinction from it (v2.compiler.normalized_tree
+// NormalizedTree record_declarations). Leaf names, joined to this module by construction exactly
+// as import_bindings is; the fill qualifies them by the module's own name.
 type ModuleBindingSource {
   root: Node
   import_bindings: FreeMonoid<AliasBindingRow>
+  record_declarations: FreeMonoid<Symbol>
 }
 
 // A BINDING ROW WAITING FOR ITS TARGET, carried with the position it binds at. Pass B cannot bind a
@@ -52,7 +57,7 @@ fn module_binding_source_roots(sources: FreeMonoid<ModuleBindingSource>) -> Free
 // parsed module. The name says that rather than letting `Empty` at a call site read as a caller
 // who forgot, which is the same reason v2.compiler.normalized_tree spells no_import_bindings().
 fn module_binding_source_without_imports(root: Node) -> ModuleBindingSource {
-  ModuleBindingSource { root: root, import_bindings: Empty }
+  ModuleBindingSource { root: root, import_bindings: Empty, record_declarations: Empty }
 }
 
 fn module_binding_sources_without_imports(roots: FreeMonoid<Node>) -> FreeMonoid<ModuleBindingSource> {

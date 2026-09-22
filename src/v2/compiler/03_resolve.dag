@@ -80,6 +80,7 @@ import v2.std.symbol_index {
   GlobalBareLookupAmbiguous,
   GlobalBareLookupUnbound,
   symbol_index_absolute_candidates,
+  symbol_index_denotes_declared_payload,
   symbol_index_global_unique_lookup,
   symbol_index_lexical_lookup
 }
@@ -108,7 +109,6 @@ import v2.std.node {
 import v2.std.node_query {
   construct_field_edges,
   construct_tag_optional,
-  declared_field_list,
   find_named_child,
   pattern_wildcard_name
 }
@@ -1018,71 +1018,21 @@ fn resolve_transform_children(
 // an ordinary reference, so a misspelled variant in a pat refuses instead of quietly becoming
 // a binder that matches everything. A pat that is not a construct (a bare atom, a literal)
 // binds nothing and resolves as before.
-// A DECLARED PAYLOAD IS A CONSTRUCTOR; A VALUE CONSTRUCT IS NOT. Both are Conj, so the connective
-// alone cannot decide it, and the difference is load-bearing here: this stage now lowers
-// `data d: R = R { .. }` to the construct shape (body_lowering_fold body_lower_try_record_literal),
-// so a plain `TypeNode { connective: Conj }` test classifies that data row as a constructor and a
-// pattern binder spelling its name -- `match c { A(d) => d }` beside `data d: Rec = Rec { .. }` --
-// gets no frame local, leaving the arm body's `d` bound to the data row. That is Accepted with the
-// wrong value and no diagnostic, which DESIGN section 5 forbids outright, and it contradicts the
-// rule stated below that a fn or data of the same name does not make an atom a constructor.
-// construct_tag_optional is the existing authority for the distinction: Present exactly for a
-// construct (first child is the tag self-edge, label == target atom identity), Absent for a
-// declared payload, whose first edge labels a FIELD and targets that field's TYPE.
-// A DECLARED PAYLOAD IS IDENTIFIED POSITIVELY, NOT BY NOT BEING SOMETHING ELSE. The first repair
-// of this predicate (gunbc#12033, review 69994) excluded the construct shape and left `Absent =>
-// true`, so every Conj that is not a construct was still answered "constructor". That default is
-// the widening arm DESIGN section 5 forbids, arriving inside the remedy: parse mints Conj for
-// ordinary sequence nodes (v2.std.grammar grammar_expr_node, the 02_parse sequence snoc), the
-// namespace graft binds a data or alias NAME to its declaration parse node, and symbol_index_fill
-// puts that Conj in the index under the name -- so a match-arm binder spelling a module-level
-// data or alias name was classified a constructor, skipped by resolve_pattern_binders, and
-// resolved as a reference to that declaration. Silently, because the name resolves.
+// WHAT THE NAME DENOTES IS ASKED OF THE INDEX, NOT OF THE NODE (Pkg16). Three shape predicates stood
+// here in turn -- the bare Conj connective, the construct tag with an `Absent => true` default, and
+// declared-field coverage -- and each classified a MODULE container as a constructor, because a
+// declared payload, a module container and a declaration parse-rest node are all Conj with Named
+// edges: the shape does not carry the fact. The specimen was src/v2/std/symbol_index.dag,
+// `Present { value: node } =>` in v2.std.symbol_index, where ascent reaches the MODULE v2.std.node,
+// so the binder got no frame local and the arm body read the module -- Accepted, wrong, silent.
 //
-// So the test asks what a declared payload IS: a Conj that is nullary (a bare variant arm) or
-// whose every child is a declared field (v2.std.node_query declared_field_list, Named edges to
-// type expressions). A construct is excluded on top of that, because its tag self-edge reads as a
-// field of the same name and would otherwise satisfy the field test.
-//
-// WHAT THIS DOES NOT CLOSE, NAMED PRECISELY, BECAUSE A PARTIAL REPAIR WHOSE RESIDUE IS UNSTATED
-// IS THE DANGEROUS KIND. This test is strictly narrower than the fail-open default it replaces
-// and it does NOT close the module-container case. v2.std.node_query declared_field_from_edge
-// accepts ANY Named edge and constrains the target kind not at all, so a module container --
-// every child a Named edge to a declaration -- satisfies the field-coverage test and is still
-// answered "constructor". Reachable and in this tree: src/v2/std/symbol_index.dag:156 is
-// `Present { value: node } =>` inside module v2.std.symbol_index, and lexical ascent from that
-// arm reaches the MODULE v2.std.node. The binder gets no frame local and the arm body's `node`
-// resolves to the module: Accepted, wrong value, no diagnostic. Carried as the narrowed
-// population of gunbc.rung_drop variant_fields_unlowered_on_the_native_route, which is why that
-// row STANDS rather than being retired by this PR.
-//
-// AND WHY A FOURTH SHAPE DISCRIMINATOR IS REFUSED RATHER THAN ATTEMPTED. Three have been tried
-// here -- the bare connective, the construct tag, and declared-field coverage -- and each admitted
-// a wider set than its author intended, because a declared payload, a module container and a
-// declaration parse-rest node are ALL Conj with Named edges. The fact this predicate needs is what
-// the NAME DENOTES, which is a declaration-kind fact v2.compiler.symbol_index_fill holds at insert
-// time and the node does not carry. Sniffing the node is asking the wrong carrier (DESIGN section
-// 6b: the earliest unjustified boundary is the link, not the predicate), and the repair is filed
-// as its own subject rather than guessed at again here.
-fn resolve_pattern_node_is_declared_payload(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      if count(node.children) == 0 {
-        true
-      } else {
-        count(declared_field_list(payload: node)) == count(node.children)
-      }
-    _ => false
-  }
-}
-
-fn resolve_pattern_node_is_constructor(node: Node) -> Bool {
-  resolve_pattern_node_is_declared_payload(node: node)
-    && (match construct_tag_optional(n: node) {
-      Absent => true
-      Present { value: _ } => false
-    })
-}
+// The fact is held by the writers that know what they inserted: v2.compiler.symbol_index_fill marks
+// a variant arm and its unique alias as it inserts them, and marks a record from the carrier
+// normalize captured before the record rehome erased the distinction (v2.compiler.normalized_tree
+// NormalizedTree record_declarations). Both are keyed by DECLARING path, which is the path a lexical
+// or global-unique hit returns (for an import binding, the declaration's own path). So a module, a
+// data row, a fn and an alias are never constructors here -- not because a predicate excludes them,
+// but because nothing marks them.
 
 // The seed's rule, at this resolver's grain: a field-target atom is a constructor when the symbol
 // index binds it to a declared payload (a variant arm, module.Type.Variant or its unique alias,
@@ -1107,11 +1057,13 @@ fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bo
     position: symbol_index_lookup_position(ctx: ctx),
     name: id
   ) {
-    LexicalHit { node: node, path: _ } => resolve_pattern_node_is_constructor(node: node)
+    LexicalHit { node: _, path: path } =>
+      symbol_index_denotes_declared_payload(index: ctx.namespace.symbol_index, qualified_path: path)
     LexicalAmbiguous { candidates: _ } => true
     LexicalUnbound =>
       match symbol_index_global_unique_lookup(index: ctx.namespace.symbol_index, name: id) {
-        GlobalBareHit { node: node, path: _ } => resolve_pattern_node_is_constructor(node: node)
+        GlobalBareHit { node: _, path: path } =>
+          symbol_index_denotes_declared_payload(index: ctx.namespace.symbol_index, qualified_path: path)
         GlobalBareLookupAmbiguous => true
         GlobalBareLookupUnbound => namespace_has_canonical_symbol(namespace: ctx.namespace, name: id)
       }
