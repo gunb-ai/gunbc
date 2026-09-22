@@ -3229,13 +3229,6 @@ fn body_lower_dotted_head_symbol_optional(node: Node) -> Optional<Symbol> {
   }
 }
 
-fn body_lower_dotted_suffix_slot_is_empty(repeat_elem: Node) -> Bool {
-  match body_lower_postfix_method_suffix_optional(repeat_elem: repeat_elem) {
-    Present { value: suffix } => is_empty_conj_root(n: suffix)
-    Absent => false
-  }
-}
-
 // ONE WALK OVER THE CHAIN'S TAIL, READ BY EVERY DOTTED READER. Every repeat element must be a
 // dot-projection step; its suffix slot is either EMPTY (a bare segment) or a PAREN CALL (an
 // argument row). Any other suffix kind -- a brace suffix `a.b.C { f: v }`, an `as` suffix -- is
@@ -3276,6 +3269,19 @@ type PostfixChainRead
   | PostfixChainNotThisShape
   | PostfixChainStepSuffixUnlowered { at: Node }
 
+fn body_lower_postfix_chain_steps_grow(
+  repeat_capture: Node,
+  acc: List<PostfixStep>,
+  step: PostfixStep
+) -> PostfixChainRead {
+  let grown = list_snoc_item(xs: acc, item: step)
+  match body_lower_seq_child(node: repeat_capture, name: ^grammar_sequence_right_node_projection) {
+    Present { value: rest_capture } =>
+      body_lower_postfix_chain_steps_read(repeat_capture: rest_capture, acc: grown)
+    Absent => PostfixChainFound { steps: grown }
+  }
+}
+
 fn body_lower_postfix_chain_steps_read(
   repeat_capture: Node,
   acc: List<PostfixStep>
@@ -3289,29 +3295,21 @@ fn body_lower_postfix_chain_steps_read(
         match body_lower_postfix_projection_step(repeat_elem: repeat_elem) {
           Absent => PostfixChainNotThisShape
           Present { value: segment } =>
-            let call_elem =
-              if body_lower_dotted_suffix_slot_is_empty(repeat_elem: repeat_elem) {
-                optional_absent()
-              } else if body_lower_postfix_projection_has_call_suffix(repeat_elem: repeat_elem) {
-                optional_present(value: repeat_elem)
-              } else {
-                optional_absent()
-              }
-            let suffix_is_readable =
-              body_lower_dotted_suffix_slot_is_empty(repeat_elem: repeat_elem)
-                || body_lower_postfix_projection_has_call_suffix(repeat_elem: repeat_elem)
-            if suffix_is_readable {
-              let grown = list_snoc_item(
-                xs: acc,
-                item: PostfixStep { segment: segment, call_elem: call_elem }
-              )
-              match body_lower_seq_child(node: repeat_capture, name: ^grammar_sequence_right_node_projection) {
-                Present { value: rest_capture } =>
-                  body_lower_postfix_chain_steps_read(repeat_capture: rest_capture, acc: grown)
-                Absent => PostfixChainFound { steps: grown }
-              }
-            } else {
-              PostfixChainStepSuffixUnlowered { at: repeat_elem }
+            match body_lower_postfix_suffix_read(repeat_elem: repeat_elem) {
+              PostfixSuffixNone => PostfixChainNotThisShape
+              PostfixSuffixUnlowered => PostfixChainStepSuffixUnlowered { at: repeat_elem }
+              PostfixSuffixEmpty =>
+                body_lower_postfix_chain_steps_grow(
+                  repeat_capture: repeat_capture,
+                  acc: acc,
+                  step: PostfixStep { segment: segment, call_elem: optional_absent() }
+                )
+              PostfixSuffixCall =>
+                body_lower_postfix_chain_steps_grow(
+                  repeat_capture: repeat_capture,
+                  acc: acc,
+                  step: PostfixStep { segment: segment, call_elem: optional_present(value: repeat_elem) }
+                )
             }
         }
     }
@@ -3611,6 +3609,16 @@ fn body_lower_postfix_projection_args(repeat_elem: Node) -> Outcome<List<Node>> 
   }
 }
 
+fn body_lower_postfix_projection_call_suffix_capture(repeat_elem: Node) -> Node {
+  match body_lower_postfix_method_suffix_optional(repeat_elem: repeat_elem) {
+    Absent => repeat_elem
+    Present { value: call_suffix } => call_suffix
+  }
+}
+
+// Kept for v2.lens.complexity_accumulator_copy.analyze, which reads it directly; the chain walk
+// itself consumes body_lower_postfix_suffix_read below instead, because a boolean cannot separate
+// an absent slot from an unlowered one.
 fn body_lower_postfix_projection_has_call_suffix(repeat_elem: Node) -> Bool {
   match body_lower_postfix_method_suffix_optional(repeat_elem: repeat_elem) {
     Absent => false
@@ -3618,10 +3626,33 @@ fn body_lower_postfix_projection_has_call_suffix(repeat_elem: Node) -> Bool {
   }
 }
 
-fn body_lower_postfix_projection_call_suffix_capture(repeat_elem: Node) -> Node {
+// THE SUFFIX SLOT IS A THREE-WAY READ, AND COLLAPSING IT TO A BOOLEAN PAIR OVER-REFUSES.
+// body_lower_dotted_suffix_slot_is_empty and body_lower_postfix_projection_has_call_suffix BOTH
+// answer false when the slot is ABSENT, so "neither empty nor a call" conflates two different
+// facts: a slot that is PRESENT carrying a suffix kind this lowering cannot read (the brace
+// suffix `a.b.C { f: v }`, an `as` suffix), which must REFUSE, and NO SLOT AT ALL, which is
+// simply not this shape and must DECLINE to the existing arms exactly as the pre-PR2 walk did.
+// Measured: refusing the absent case as well took the workload from 0 to 103 refusing rows over
+// ordinary modules -- src/v2/compiler/01_tokenize.dag, src/v2/std/artifact.dag and 101 others --
+// which is DESIGN section 5 inverted, a decline widened into a refusal rather than a widen
+// narrowed into one.
+type PostfixSuffixRead
+  = PostfixSuffixNone
+  | PostfixSuffixEmpty
+  | PostfixSuffixCall
+  | PostfixSuffixUnlowered
+
+fn body_lower_postfix_suffix_read(repeat_elem: Node) -> PostfixSuffixRead {
   match body_lower_postfix_method_suffix_optional(repeat_elem: repeat_elem) {
-    Absent => repeat_elem
-    Present { value: call_suffix } => call_suffix
+    Absent => PostfixSuffixNone
+    Present { value: suffix } =>
+      if is_empty_conj_root(n: suffix) {
+        PostfixSuffixEmpty
+      } else if body_lower_call_suffix_is_paren_list(call_suffix: suffix) {
+        PostfixSuffixCall
+      } else {
+        PostfixSuffixUnlowered
+      }
   }
 }
 
