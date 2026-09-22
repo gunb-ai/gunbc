@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.a_pool_partition_does_not_declare_its_quantity
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_pool_partition_does_not_declare_its_quantity: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_pool_partition_does_not_declare_its_quantity" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a persisted capacity partition carries magnitudes and does not declare the QUANTITY they are denominated in. product.capacity.pool_events pool_apply_event mints every replayed amount into the Q and S OF THE POOL BEING FOLDED, and the wire has nothing to disagree with -- so a partition written by a seat pool and replayed by a memory pool reinterprets 1 seat as 1 KiB, and a memory partition replayed by a seat pool reinterprets 27262976 KiB as 27262976 seats. HARM: an admission decision computed against a committed total that means something else; the numbers are arithmetically consistent and semantically unrelated, so nothing refuses and nothing looks wrong.",
+
+    "THE CLASS BECAME REACHABLE WHEN THE POOL BECAME POLYMORPHIC. gunbc#11962 generalized gunbc.fabric_event_log fabric_seat_acquire and fabric_seat_observe from Pool<Count, One> to Pool<Q, S> so a host memory pool could use the same linearization as the seat pools. Before that every partition reachable through that fold was denominated in seats, the question could not be asked, and the answer could not be wrong. The generalization is what made two quantities share one carrier.",
+
+    "WHY TYPING THE WIRE FIELD IS NOT THE REPAIR, ruled 2026-09-21 and recorded here because the wrong repair is the attractive one. Making PoolAcquired.amount a Measure<Q, S, Nat> looks like the fix and buys nothing: the DECODER would still mint the caller-requested Q and S, because there is nothing on the wire to disagree with. The RED would not be authorable anywhere a check could run, which DESIGN 4b names as worse than absent -- a decoration that gets cited as coverage. The admission boundary, where the hazard WAS reachable, is closed separately and by construction: SeatRequest<Q, S> must match Pool<Q, S> at propose_acquire, so a seat count can no longer be charged against a memory pool at the door.",
+
+    "WHAT IS NOT CLAIMED: that this has occurred. The two partition namers in the corpus are disjoint by construction today -- product.capacity.quota quota_partition prefixes `quota-` over an upstream rate-limit key and gunbc.compute.host_capacity compute_memory_partition prefixes `compute-memory-` over a host identity -- so no name collides and no fold has been observed reading the wrong one. The class is filed because the DISCIPLINE preventing it is a naming convention held by two authors, not a fact the substrate checks.",
+
+    "RUNG FOUND AT: mitigatable, and only by that convention. Nothing refuses a cross-quantity fold; what prevents it is that the two producers happen to choose non-overlapping prefixes and that each consumer happens to pass the pool it built the partition name from.",
+
+    "CEILING: structurally guaranteed. A partition identity that BINDS the quantity it is denominated in, checked where the fold is assembled, makes the mismatched pairing refuse rather than reinterpret -- the root pool and the partition are already supplied together at every call site, so the join exists and is simply not made.",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: partition identity binds the pool quantity, so assembling a fold from a partition and a root pool whose quantities disagree is a typed refusal rather than a silent reinterpretation. It is deliberately NOT `carry Measure through the codec` -- that artifact could land in full while this class stayed exactly as dead, which is the grain mismatch DESIGN 4b(3) warns about between a loss sentence and its trigger.",
+
+    "CONSUMPTION: the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster includes this per-class declaration.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "product.capacity.pool_events", decl_name: "pool_apply_event"),
+    decl_ref(module_path: "product.capacity.pool_events", decl_name: "pool_event_decode"),
+    decl_ref(module_path: "product.capacity.quota", decl_name: "quota_partition"),
+    decl_ref(module_path: "gunbc.compute.host_capacity", decl_name: "compute_memory_partition"),
+  ],
+}
