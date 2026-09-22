@@ -4,7 +4,8 @@ import std.logic { Bool }
 import std.types { String, List }
 import std.integer { UInt8 }
 import std.bytes { bytes_octets, utf8_encode_bytes }
-import extdeps.crypto.sha2 { sha384, sha384_hex }
+import extdeps.crypto.sha2 { sha384 }
+import extdeps.numeric.base16 { base16_encode_lower }
 
 fn sha384_ascii(s: String) -> List<UInt8> {
   bytes_octets(b: utf8_encode_bytes(s: s))
@@ -39,7 +40,7 @@ fn sha384_ascii(s: String) -> List<UInt8> {
 test fn sha384_of_the_empty_message_is_the_published_value_and_one_octet_discriminates() -> Bool {
   let empty = sha384(message: [])
   let one = sha384(message: sha384_ascii(s: "a"))
-  sha384_hex(message: []) == "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b"
+  base16_encode_lower(octets: empty) == "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b"
     && count(empty) == 48 && count(one) == 48 && empty != one
 }
 
@@ -47,7 +48,7 @@ test fn sha384_of_the_empty_message_is_the_published_value_and_one_octet_discrim
 test fn sha384_of_abc_is_the_published_value_and_one_octet_discriminates() -> Bool {
   let a = sha384(message: sha384_ascii(s: "abc"))
   let b = sha384(message: sha384_ascii(s: "abd"))
-  sha384_hex(message: sha384_ascii(s: "abc")) == "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7"
+  base16_encode_lower(octets: a) == "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7"
     && count(a) == 48 && count(b) == 48 && a != b
 }
 
@@ -58,6 +59,6 @@ test fn sha384_of_the_896_bit_message_is_the_published_two_block_value_and_one_o
   let mutated = "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstv"
   let a = sha384(message: sha384_ascii(s: msg))
   let b = sha384(message: sha384_ascii(s: mutated))
-  sha384_hex(message: sha384_ascii(s: msg)) == "09330c33f71147e83d192fc782cd1b4753111b173b3b05d22fa08086e3b0f712fcc7c71a557e2db966c3e9fa91746039"
+  base16_encode_lower(octets: a) == "09330c33f71147e83d192fc782cd1b4753111b173b3b05d22fa08086e3b0f712fcc7c71a557e2db966c3e9fa91746039"
     && count(a) == 48 && count(b) == 48 && a != b
 }
