@@ -928,11 +928,21 @@ data custody_probe_issuance: GitHubAppCredentialIssuance = CredentialIssuedOnce 
   client_secret: "probe-client-secret" as Secret,
 }
 
+// EACH REMOVAL IS BOUND BEFORE ANY OF THEM IS CONJOINED, and that is the whole point of the shape.
+// The intent here is that ALL FOUR files go, and the returned Bool only reports whether they did --
+// so the removals may not sit under a boolean operand, where whether they run at all depends on an
+// evaluation-order fact the substrate does not declare (gunbc.recurring_failure_mode
+// realization_arms_diverge_on_whether_the_program_refuses: the interpreter demands both operands,
+// the emitted host token does not). Under the emitted reading a failed pem removal would skip the
+// other three and leave a file named like a private key behind, which the note above this data
+// block says is worse than no receipt at all. A `let` is demanded by both realizations, so the four
+// removals are unconditional by construction and the conjunction is over four values.
 fn custody_probe_cleanup(paths: CustodyHandoffPaths) -> Bool {
-  shell.Remove.RecursiveForce(path: paths.pem).success
-    && shell.Remove.RecursiveForce(path: paths.client_secret).success
-    && shell.Remove.RecursiveForce(path: paths.webhook_secret).success
-    && shell.Remove.RecursiveForce(path: paths.identity).success
+  let pem_removed = shell.Remove.RecursiveForce(path: paths.pem).success
+  let client_secret_removed = shell.Remove.RecursiveForce(path: paths.client_secret).success
+  let webhook_secret_removed = shell.Remove.RecursiveForce(path: paths.webhook_secret).success
+  let identity_removed = shell.Remove.RecursiveForce(path: paths.identity).success
+  pem_removed && client_secret_removed && webhook_secret_removed && identity_removed
 }
 
 fn custody_write_receipt() -> ProcessExit uses fs: std.resources.Filesystem {

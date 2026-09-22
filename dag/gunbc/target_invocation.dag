@@ -20,19 +20,30 @@ import std.integer { Int }
 import extdeps.bazel.target_pattern {
   TargetPattern, SingleTarget, PackageTargets, SubtreeTargets,
   TargetPatternParsed, TargetPatternRefused, TargetPatternRefusal,
-  parse_target_pattern, target_pattern_refusal_text,
+  parse_target_pattern, target_pattern_refusal_text, target_pattern_within,
 }
 
 // THE VERB'S OPERAND IS A TARGET PATTERN, AND ADMISSION IS THE PATTERN AUTHORITY'S DECISION.
 //
 // The surface row (gunbc.cli_dispatch_surface) names `extdeps.bazel.target_pattern` as the
 // operand's authority; this function is where that authority's answer becomes the verb's route.
-// A SINGLE target folds to the label the grammar already spelled, and the exact-label route below
-// answers it unchanged -- registry lookup, bound producer, native standing. A SET form
-// (`PackageTargets`, `SubtreeTargets`) denotes a population; it is admitted here as
-// `TestOperandSetForm` and REFUSED by the route (`test_operand_set_form_refusal_rendered`, below,
-// carries the ruling and its retirement trigger). Nothing here re-decides the grammar -- no prefix
-// check, no suffix list -- so the CLI cannot grow a second, weaker pattern grammar.
+// Nothing here re-decides the grammar -- no prefix check, no suffix list -- so the CLI cannot grow
+// a second, weaker pattern grammar.
+//
+// THERE ARE TWO EXECUTORS AND THE OPERAND SAYS WHICH, BY CONTAINMENT RATHER THAN BY SPELLING.
+// The native test route owns one universe, and that universe is itself a target pattern
+// (`gunbc.witness_v2_native_route` `native_route_default_pattern`, `//v2/test/...`). So "does this
+// operand belong to the native route" is the cited authority's own containment question, asked
+// once, here: `extdeps.bazel.target_pattern` `target_pattern_within`. An operand inside it --
+// single target or set form alike -- is `TestOperandNativeRoute` and enters the native
+// implementation carrying THAT pattern, which is what makes `gunbc test //v2/test/parse:all` a
+// narrower native run rather than the whole lane. An operand outside it keeps the route it had:
+// a single target is an exact registry lookup, and a set form has no executor at all.
+//
+// THE UNIVERSE IS A PARAMETER, NOT A ROW THIS MODULE REACHES FOR, for the same reason
+// `route_target_invocation_in` takes its index: folding the lane's own rows in here would leave
+// this function checkable only against a transcription of them, which is the change detector
+// DESIGN's oracle rule rejects. The production caller supplies `native_route_default_pattern`.
 //
 // THE REFUSAL IS THE AUTHORITY'S OWN CAUSE, CARRIED TYPED. `PatternNotAbsolute` and
 // `PatternAllTargetsUnsupported` have different remedies from each other and from every
@@ -40,32 +51,43 @@ import extdeps.bazel.target_pattern {
 // the state-space conflation this repository keeps finding.
 type TestOperandAdmission
   = TestOperandExactTarget { label: Label }
+  | TestOperandNativeRoute { pattern: TargetPattern }
   | TestOperandSetForm { pattern: TargetPattern }
   | TestOperandRefused { operand: String, cause: TargetPatternRefusal }
 
-fn admit_test_operand(operand: String) -> TestOperandAdmission {
+fn admit_test_operand(operand: String, native_universe: TargetPattern) -> TestOperandAdmission {
   match parse_target_pattern(text: operand) {
     TargetPatternRefused { cause: c } => TestOperandRefused { operand: operand, cause: c }
     TargetPatternParsed { pattern: p } =>
-      match p {
-        SingleTarget { label: l } => TestOperandExactTarget { label: l }
-        PackageTargets { package: _ } => TestOperandSetForm { pattern: p }
-        SubtreeTargets { package: _ } => TestOperandSetForm { pattern: p }
+      if target_pattern_within(inner: p, outer: native_universe) {
+        TestOperandNativeRoute { pattern: p }
+      } else {
+        match p {
+          SingleTarget { label: l } => TestOperandExactTarget { label: l }
+          PackageTargets { package: _ } => TestOperandSetForm { pattern: p }
+          SubtreeTargets { package: _ } => TestOperandSetForm { pattern: p }
+        }
       }
   }
 }
 
-// A SET FORM IS ADMITTED BY THE GRAMMAR AND REFUSED BY THE ROUTE (operator ruling 2026-09-21).
-// `//pkg:all` and `//pkg/...` parse, and name a population; the only executor that may answer for
-// that population is the native `gunbc test` route (v2 foundation package 9), because an
-// interpreted run standing in for it would report a native-looking result the native compiler
-// never produced. Until that route exists the verb refuses with status 2 -- no observation --
-// never 1, which would claim a run happened and did not hold. RETIREMENT TRIGGER: the native test
-// route executes a selected population and returns its result; this arm then routes to it.
+// A SET FORM OUTSIDE THE NATIVE UNIVERSE HAS NO EXECUTOR, AND THAT IS WHAT THIS REFUSES.
+//
+// The 2026-09-21 ruling this arm carried said set forms run only through the native test route and
+// that the route did not exist. The route exists now and this module routes to it, so the refusal
+// is no longer about the route's availability -- it is about the operand. `//dag/test/claim/...`
+// names a population the native lane's universe does not contain and the instrument registry
+// cannot enumerate, so nothing may answer for it; the verb refuses with status 2 -- no observation
+// -- never 1, which would claim a run happened and did not hold. Delegating it to the interpreter
+// stays forbidden for the reason it always was: an interpreted run would report a result the
+// native compiler never produced.
+//
+// RETIREMENT TRIGGER: an executor that enumerates a population outside the native universe. The
+// instrument registry is not one -- it answers exact labels by construction.
 fn test_operand_set_form_refusal_rendered(operand: String) -> String {
   concat(
     concat("gunbc test: ", operand),
-    " denotes a SET of targets; set forms run only through the native test route, which is not yet available, and are never delegated to the interpreter"
+    " denotes a SET of targets outside the native test route's universe; no executor enumerates that population, and set forms are never delegated to the interpreter"
   )
 }
 

@@ -1,9 +1,9 @@
 module extdeps.auth.jws
 
 import std.types { String, NonEmptyStr, Int, List }
-import std.integer { UInt8, QualifiedOctetsReady, QualifiedOctetsRefused }
-import std.bytes { bytes_octets, utf8_encode_bytes, pure_dag_seam_unreachable_string }
-import std.encoding { base64_encode, base64_octets, UrlSafe }
+import std.integer { UInt8, QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
+import std.bytes { bytes_qualified_octets, utf8_encode_bytes }
+import std.encoding { base64_encode, UrlSafe }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -31,27 +31,60 @@ data jws_rs256_alg: NonEmptyStr = "RS256"
 
 // BASE64URL IS RFC 7515 section 2's: the URL-safe alphabet of RFC 4648 section 5 WITH ALL TRAILING
 // '=' OMITTED. std.encoding pads, so the padding is cut here rather than a second encoder written.
-fn jws_base64url_octets(octets: List<UInt8>) -> String {
-  match base64_octets(values: octets) {
-    QualifiedOctetsReady { value: q } => join(split(s: base64_encode(octets: q, variant: UrlSafe), delimiter: "="), "")
-    QualifiedOctetsRefused { observed: _ } => pure_dag_seam_unreachable_string()
-  }
+// THE FORMAL IS THE SEALED CARRIER, NOT A RAW LIST, and this is the floor rather than a
+// refinement. std.encoding base64_encode declares QualifiedOctets -- the proof that every member
+// passed uint8_of_int admission -- and this function used to hand it a bare List<UInt8>. That
+// compiled: UInt8 is Compose<UInt, MachineWidth<8>>, which is PHANTOM and has no inhabitant, so
+// List<UInt8> establishes nothing about its members. std/integer.dag documented the consequence --
+// the call "compiles and dies at RUNTIME with TypeError: cannot access field 'members' on List" --
+// and this module was the one live site in the corpus reaching it.
+fn jws_base64url_octets(octets: QualifiedOctets) -> String {
+  join(split(s: base64_encode(octets: octets, variant: UrlSafe), delimiter: "="), "")
 }
 
-fn jws_base64url_text(s: String) -> String {
-  jws_base64url_octets(octets: bytes_octets(b: utf8_encode_bytes(s: s)))
+// BOTH HALVES OBSERVE, AND AN EARLIER FORM OF THIS MODULE DID NOT. The text half used to
+// CONSTRUCT its carrier on the ground that UTF-8 octets are in range by definition, so the
+// admission fold's refusal arm was unreachable. That reasoning treated the range as a modeled
+// fact; it is not. std.bytes bytes_octets is the divergent seam, so the range is established by a
+// declared row about a HOST realization and by nothing this corpus can follow, which makes it an
+// EXTERNAL fact -- DESIGN section 4b's observe-refuse-or-mitigate-at-a-declared-boundary column,
+// never fabricated. Sealing an unobserved host value was the cosmetic-wrapper failure 4b names:
+// a brand is cosmetic until construction and acceptance enforce the distinction.
+//
+// The observation happens ONCE, at std.bytes bytes_qualified_octets, where the value crosses into
+// the corpus -- not here and not at each consumer (section 3, single authority). This function
+// only carries the refusal that boundary produced. RUNG: mitigatable at a declared boundary, for
+// both halves; neither is construction and neither may be described as one.
+type JwsEncodeOutcome
+  = JwsEncoded { text: String }
+  | JwsEncodeNotOctets { observed: Int }
+
+fn jws_base64url_text(s: String) -> JwsEncodeOutcome {
+  match bytes_qualified_octets(b: utf8_encode_bytes(s: s)) {
+    QualifiedOctetsRefused { observed: o } => JwsEncodeNotOctets { observed: o }
+    QualifiedOctetsReady { value: sealed } =>
+      JwsEncoded { text: jws_base64url_octets(octets: sealed) }
+  }
 }
 
 fn jws_rs256_protected_header_json() -> String {
   join(["\{\"alg\":\"", jws_rs256_alg as String, "\",\"typ\":\"JWT\"}"], "")
 }
 
-fn jws_rs256_signing_input(payload_json: String) -> NonEmptyStr {
-  join([
-    jws_base64url_text(s: jws_rs256_protected_header_json()),
-    ".",
-    jws_base64url_text(s: payload_json),
-  ], "") as NonEmptyStr
+// THE SIGNING INPUT CARRIES THE BOUNDARY'S REFUSAL RATHER THAN SWALLOWING IT. Both segments are
+// base64url of text, so either can surface the octet refusal, and the first one observed is the
+// one reported. JwsEncodeOutcome is reused rather than a third refusal vocabulary being minted:
+// this is the same fact -- a member that is not an octet -- at the same shape, a text segment.
+fn jws_rs256_signing_input(payload_json: String) -> JwsEncodeOutcome {
+  match jws_base64url_text(s: jws_rs256_protected_header_json()) {
+    JwsEncodeNotOctets { observed: o } => JwsEncodeNotOctets { observed: o }
+    JwsEncoded { text: header } =>
+      match jws_base64url_text(s: payload_json) {
+        JwsEncodeNotOctets { observed: o } => JwsEncodeNotOctets { observed: o }
+        JwsEncoded { text: payload } =>
+          JwsEncoded { text: join([header, ".", payload], "") }
+      }
+  }
 }
 
 // THE SIGNER INTERFACE: sign(signing input, key reference) -> signature octets. Its SUBJECT is the
@@ -75,8 +108,36 @@ type JwsSignOutcome
 // THE RESULT IS extdeps.auth.jwt JwtCompactSerialization, not a bare string: the only protected
 // header this module produces is typ JWT, so every value it emits IS a JWT, and the brand keeps it
 // from being confused with an opaque bearer (an installation token is not decodable).
-fn jws_compact_serialization(signing_input: NonEmptyStr, signature: List<UInt8>) -> JwtCompactSerialization {
-  join([signing_input as String, ".", jws_base64url_octets(octets: signature)], "") as JwtCompactSerialization
+// THE SIGNATURE HALF ALSO OBSERVES, AND IT IS NOW THE SAME TREATMENT AS THE TEXT HALF RATHER THAN
+// THE OPPOSITE ONE. An earlier form of this module answered the two halves differently -- fold
+// here, construct there -- on the reading that UTF-8 octets were provably in range while a
+// signature was not. Both are external: a signature crosses the key custody boundary from a host
+// CLI or an HSM, and the text octets come from the bytes_octets divergent seam, so neither range
+// is established by anything this corpus can follow. The asymmetry was in the confidence, not in
+// the facts.
+//
+// WHAT STAYS DIFFERENT IS WHERE EACH IS OBSERVED, which is the single-authority point. The text
+// half is qualified once at std.bytes bytes_qualified_octets, where host bytes enter the corpus.
+// A signature does not pass through that seam -- it arrives here as a List<UInt8> directly from
+// the signer -- so this is where it crosses, and this is where it is observed.
+//
+// RUNG: mitigatable at a declared boundary, and unlike the text half THIS RED IS AUTHORABLE
+// TODAY: a fixture supplies the signature list directly, so 256 is expressible from .dag and
+// test.claim.github_effect_perform_witness drives it. JwsSignatureNotOctets names which member
+// was observed, and gunbc.github_effect_perform maps it onto the AppJwtUnsigned arm it already
+// carries rather than minting a second cause.
+type JwsSerializationOutcome
+  = JwsSerialized { jwt: JwtCompactSerialization }
+  | JwsSignatureNotOctets { observed: Int }
+
+fn jws_compact_serialization(signing_input: NonEmptyStr, signature: List<UInt8>) -> JwsSerializationOutcome {
+  match uint8_octets_of_ints(values: signature) {
+    QualifiedOctetsRefused { observed: o } => JwsSignatureNotOctets { observed: o }
+    QualifiedOctetsReady { value: sealed } =>
+      JwsSerialized {
+        jwt: join([signing_input as String, ".", jws_base64url_octets(octets: sealed)], "") as JwtCompactSerialization
+      }
+  }
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
