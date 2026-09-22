@@ -28,8 +28,25 @@ import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
 // `UInt8` typecheck and their witnesses evaluate, "their emitted Rust is produced by nothing on the
 // merge path" -- and BOTH retained subjects refused on it at once, because `std.integer` is in every
 // closure. It happened again on 2026-09-21 when gunbc#12004 pulled `base16` into the closure and
-// exposed a latent emitter import gap: main's native self-host build broke and no required check
-// noticed. This lane is the check that would have noticed, and its red is structural to the diff --
+// broke main's native self-host build with no required check noticing.
+//
+// THE CAUSE IS NAMED CORRECTLY HERE BECAUSE THE FIRST READING OF IT WAS WRONG, and the wrong one
+// is the one that reads plausibly. The emitted `extdeps_numeric_base16.rs` refused with E0425
+// `UInt8 not found in this scope`, which looks exactly like a dropped import and was first
+// recorded here as "a latent emitter import gap". It was not: `extdeps.numeric.base16` was
+// SPELLING THE UNINHABITED `UInt8` CARRIER where values are put, and the repair (gunbc#12056,
+// sharp-bear-756) carries `std.integer` `QualifiedOctets` through its codec surface instead --
+// the emitter is untouched by it. This is the same rostered class the paragraph above cites,
+// not a second defect.
+//
+// A DROPPED-USE-LINE EMITTER DEFECT DOES EXIST and is deliberately not conflated with this one:
+// an authored `import M { T }` emits no use-line when two modules in the closure declare the
+// short spelling, the named declaration is a non-nominal alias, and the second declarer arrives
+// through a module the consumer does not import. It is real, reproduced under a one-variable
+// experiment, and UNFIXED -- so this lane will meet it again on any module satisfying all three,
+// and a reader must not treat base16's repair as having closed it.
+//
+// This lane is the check that would have noticed, and its red is structural to the diff --
 // it names the emitted module and the compiler diagnostic -- rather than a host or shared-runner
 // signal.
 //
