@@ -431,18 +431,6 @@ type ParseFullRun {
   hits: Int
 }
 
-// The door's answer as a Materialization for the equality claim's base table. A refusal is not
-// this claim's subject -- refused_scope_is_not_admitted and the consumer-boundary control own it
-// -- and Recompute is the conservative stand-in here: it turns the store OFF, so if a refusal
-// ever did reach this grammar the forced/derived comparison would still have to hold, rather
-// than being quietly skipped.
-fn derived_admission_or_recompute(r: ParseMemoRecurrence) -> Materialization {
-  match parse_table_memo_materialization_for(r: r) {
-    Rejected { diagnostics: _ } => Recompute
-    Accepted { value: m, diagnostics: _ } => m
-  }
-}
-
 fn linear_run(forced: Optional<Materialization>) -> Optional<ParseFullRun> {
   let contract_locus = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^abandoned_path_grammar_contract)
   match grammar_validate_for_parse(root: linear_root(), at: contract_locus) {
@@ -454,7 +442,20 @@ fn linear_run(forced: Optional<Materialization>) -> Optional<ParseFullRun> {
       // THE UNFORCED RUN IS THE DERIVED ONE, so the base table's materialization comes from the
       // real door asked about THIS grammar's census -- not from a literal that would make the
       // equality claim compare two runs the derivation never chose.
-      let derived = derived_admission_or_recompute(r: analysis.memo_recurrence)
+      //
+      // A REFUSAL FAILS THE CLAIM RATHER THAN SUBSTITUTING FOR IT. Standing in Recompute here
+      // would be the very move this package exists to remove, one layer down: a refusal replaced
+      // by a valid operational value so the caller can proceed. The objection is not about the
+      // store -- Recompute would indeed turn it off and the comparison would still run -- it is
+      // about this claim's PREMISE. A refused admission means the derived side of the pair does
+      // not exist, so the claim would go green having evaluated a state it was never written to
+      // evaluate, with nothing saying so. Refusal is owned elsewhere for COVERAGE
+      // (refused_scope_is_not_admitted, and the consumer-boundary control over prepare_grammar);
+      // it is not owned elsewhere for this claim's honesty. Absent propagates to the claim's
+      // Absent arm, which is false.
+      match parse_table_memo_materialization_for(r: analysis.memo_recurrence) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: derived, diagnostics: _ } =>
       let base = parse_table_for_production_analyzed(
         validated: validated,
         analysis: analysis,
@@ -500,6 +501,7 @@ fn linear_run(forced: Optional<Materialization>) -> Optional<ParseFullRun> {
                 hits: final_table.memo_hits
               })
           }
+      }
       }
   }
 }

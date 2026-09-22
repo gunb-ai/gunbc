@@ -110,6 +110,32 @@ data compile_stage_memo_demand_identity: String = "compile-pipeline-stage"
 //      and the second consumed zero tokens -- which requires the first N itself to consume
 //      nothing, i.e. N is nullable.
 // So (a) is a discarding backtrack site and (b) a nullable nonterminal; there is no third route.
+// THE TWO CODE FACTS (a) RESTS ON, named rather than inferred, because they are what a future
+// reader has to re-check and what a falsifier is aimed at. Both are in v2.compiler.parse.
+//  - parse_expr_sequence: when the RIGHT side rejects, the whole sequence returns
+//    ParseExprRejected. It never re-invokes the left side, so a failure downstream of a
+//    construct does not re-execute that construct or anything before it.
+//  - parse_expr_repeat_step: on a rejected element it sets done and KEEPS acc.remaining -- a
+//    successful iteration is never given back. Repeat is greedy and possessive, so it cannot
+//    shift the position at which a later nonterminal is demanded by yielding iterations. (It
+//    also stops on a zero-consumption iteration rather than looping at one position.)
+// Without those two, a Choice or Repeat branch containing NO Nonterminal could still cause a
+// later nonterminal to be re-demanded at the same position, and the syntactic site test would
+// not see it. That is the hole this argument would have.
+//
+// THE FALSIFIER, stated so this is an argument someone can kill rather than one they must
+// accept: either a parse_expr path that re-executes a continuation after a downstream failure,
+// or a demand of a nonterminal from inside a Choice / Optional / Repeat branch that contains no
+// Nonterminal node. Either one breaks (a) and the no-recurrence arm with it.
+//
+// WHO ACTUALLY TAKES THE NO-RECURRENCE ARM TODAY: no real grammar. It requires zero discarding
+// sites AND zero nullable nonterminals, and the .dag grammar has both, so it derives Memoize --
+// the same value the literal it replaced gave. The direct-computation arm is inhabited only by
+// synthetic fixtures (v2.test.provenance.parse_memo_frame_replay linear_root, and the
+// one-Terminal grammar in v2.test.claim.compiler_materialization_witness). That is declared
+// rather than left to be discovered: the arm is admitted and executed, but its only inhabitants
+// are fixtures, and a reader asking which real grammar recomputes should get "none today" from
+// here rather than from a search.
 // THE OBLIGATION ON A NEW CONSTRUCT: if it can resume after a failed attempt, it is a discarding
 // site and expr_parse_demand_fold in v2.compiler.parse must count it; if it can succeed consuming
 // nothing, the nullable fixpoint must include it. Parser error recovery (sync tokens) is outside
