@@ -119,4 +119,3 @@ fn w_forked_nominal_record_keeps_its_use_line() -> Bool {
 test fn a_forked_nominal_record_keeps_its_authored_use_line() -> Bool {
   w_forked_nominal_record_keeps_its_use_line()
 }
-
