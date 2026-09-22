@@ -175,10 +175,10 @@ test fn each_subject_is_invoked_through_gunbc_test() -> Bool {
 // ONE STEP PER SUBJECT ON TOP OF THE SHARED PRELUDE, and the prelude is the compiler lane's five
 // steps. A lane that grew a subject without growing a step would run one compilation and report on
 // two.
+// FIVE PRELUDE STEPS, ONE PER SUBJECT, AND ONE STANDING-NOTICE STEP AT THE END. The `+ 1` was
+// added by the change that introduced the notice, and this claim FAILED until it was -- which is
+// the count doing its job rather than a number kept in step by hand.
 test fn the_lane_binds_one_step_per_subject_above_the_prelude() -> Bool {
-  // Five prelude steps, one per subject, and one standing-notice step at the end. The `+ 1` was
-  // added by the change that introduced the notice, and this claim FAILED until it was -- which
-  // is the count doing its job rather than a number kept in step by hand.
   length(xs: compiler_gate_emit_build_bound_steps())
     == 5 + length(xs: emitted_subject_build_rows()) + 1
 }
@@ -290,8 +290,24 @@ test fn the_notice_carries_the_discriminator_and_not_only_the_reassurance() -> B
   let text = join(emit_build_standing_notice(), "\n")
   string_contains(s: text, pattern: "does NOT block your merge")
     && string_contains(s: text, pattern: "E0573 PointerWidth at src/std_integer.rs")
-    && string_contains(s: text, pattern: "gunbc#12070")
     && string_contains(s: text, pattern: "DIFFERENT error code")
+}
+
+// THE NOTICE NAMES NO OWNING PULL REQUEST, and this claim exists because the first cut DID.
+// `owned_by: "gunbc#12070"` was false within the hour -- that repair was measured insufficient for
+// this site, and ownership moved twice in one evening. The typed standing makes the REASSURANCE
+// unprintable once it stops being true and does nothing at all for a volatile fact in a field
+// beside it: a `String` naming a PR rots exactly as fast inside a well-typed row as in a comment.
+//
+// So the guard is a claim rather than a resolution to remember. Any `#` followed by a digit in the
+// rendered notice is a pointer to something that moves, on a surface a stranger reads as
+// authoritative because they have no other source.
+test fn w_RED_the_notice_names_no_owning_pull_request() -> Bool {
+  let text = join(emit_build_standing_notice(), "\n")
+  (string_contains(s: text, pattern: "#1") == false)
+    && (string_contains(s: text, pattern: "#2") == false)
+    && (string_contains(s: text, pattern: "PR #") == false)
+    && string_contains(s: text, pattern: "names no owning pull request")
 }
 
 // AND IT TELLS A READER WHY THE CAUSE LINE CANNOT BE THE DISCRIMINATOR, because that is the trap:
@@ -301,13 +317,14 @@ test fn the_notice_says_the_cause_line_does_not_discriminate() -> Bool {
   string_contains(s: join(emit_build_standing_notice(), "\n"), pattern: "cause=EmittedCompilerBuildFailed")
 }
 
+// THE LIVE STANDING NAMES A CAPABILITY AS ITS RETIREMENT CONDITION, NOT AN ARTIFACT.
+//
 // THE REASSURANCE IS UNPRINTABLE ONCE THE STANDING FLIPS, which is why the standing is a typed row
 // and not prose in the step. A notice still saying "a red is currently expected" after main
 // self-hosts is an inert annotation on the one surface a stranger actually reads.
 test fn w_RED_the_green_standing_cannot_print_the_expected_red_reassurance() -> Bool {
   match emit_build_standing {
-    EmitBuildExpectedRed { known_signature: _, owned_by: _, retires_when: t } =>
-      // The live standing names a CAPABILITY as its retirement condition, not an artifact.
+    EmitBuildExpectedRed { known_signature: _, retires_when: t } =>
       string_contains(s: t, pattern: "both exit zero")
     EmitBuildExpectedGreen => false
   }
