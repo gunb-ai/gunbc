@@ -83,10 +83,3 @@ fn emitted_subject_build_command(row: EmittedSubjectBuildRow) -> ArgvCommand {
 fn emitted_subject_build_step_name(row: EmittedSubjectBuildRow) -> String {
   join(["emit and build ", emitted_subject_build_label_text(row: row)], "")
 }
-
-// THE SUBJECT LINES, for the lane's own row and for any reader asking what the green covers. They
-// are DERIVED from the roster above rather than restated, so a subject cannot enter the lane
-// without entering this list.
-fn emitted_subject_build_population() -> List<String> {
-  emitted_subject_build_rows() |> map(r => emitted_subject_build_label_text(row: r))
-}

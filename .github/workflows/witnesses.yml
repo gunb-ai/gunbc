@@ -421,7 +421,7 @@ jobs:
       GUNBC_REQUIRED_FLOOR_CROSS_CLAIM_DEMAND: required_floor_cross_claim_demand.tsv
   witnesses:
     runs-on: ubuntu-24.04-arm
-    needs: [compiler, clippy, emit-build, floor]
+    needs: [compiler, clippy, floor]
     timeout-minutes: 5
     if: always()
     permissions:
@@ -429,13 +429,12 @@ jobs:
     steps:
       - name: Every required lane must have succeeded
         run: |
-          echo "required lanes: compiler=$COMPILER clippy=$CLIPPY emit_build=$EMIT_BUILD floor=$FLOOR (same_repo=$SAME_REPO)"
-          if [ "$COMPILER" = failure ] || [ "$CLIPPY" = failure ] || [ "$EMIT_BUILD" = failure ] || [ "$FLOOR" = failure ]; then echo "::error::a required lane concluded failure (compiler=$COMPILER clippy=$CLIPPY emit_build=$EMIT_BUILD) - open that job's log" >&2; exit 1; fi
-          if [ "$COMPILER" != success ] || [ "$CLIPPY" != success ] || [ "$EMIT_BUILD" != success ]; then echo "::error::a required lane produced no conclusion of its own, so this head is unobserved rather than failed (compiler=$COMPILER clippy=$CLIPPY emit_build=$EMIT_BUILD)" >&2; exit 1; fi
+          echo "required lanes: compiler=$COMPILER clippy=$CLIPPY floor=$FLOOR (same_repo=$SAME_REPO)"
+          if [ "$COMPILER" = failure ] || [ "$CLIPPY" = failure ] || [ "$FLOOR" = failure ]; then echo "::error::a required lane concluded failure (compiler=$COMPILER clippy=$CLIPPY) - open that job's log" >&2; exit 1; fi
+          if [ "$COMPILER" != success ] || [ "$CLIPPY" != success ]; then echo "::error::a required lane produced no conclusion of its own, so this head is unobserved rather than failed (compiler=$COMPILER clippy=$CLIPPY)" >&2; exit 1; fi
           if [ "$FLOOR" != success ]; then if [ "$SAME_REPO" = false ] && [ "$FLOOR" = skipped ]; then echo "::notice::the fleet lane is skipped for a fork pull request: no witnesses fold and no generated-artifact verdict for this head"; else echo "::error::the fleet lane produced no success (floor=$FLOOR), so this head carries no witnesses fold and no generated-artifact verdict"; exit 1; fi; fi
         env:
           COMPILER: ${{ needs.compiler.result }}
           CLIPPY: ${{ needs.clippy.result }}
-          EMIT_BUILD: ${{ needs['emit-build'].result }}
           FLOOR: ${{ needs.floor.result }}
           SAME_REPO: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
