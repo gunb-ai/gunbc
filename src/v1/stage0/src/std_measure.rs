@@ -4,6 +4,7 @@
 use self::ClockBasis::*;
 use self::ClockDomain::*;
 use self::FiniteByteSizeBuild::*;
+use self::GrainRounding::*;
 use self::InstantOrder::*;
 use self::MeasureSubtraction::*;
 use self::PositiveCelsiusDelta::*;
@@ -28,6 +29,12 @@ pub use crate::extdeps_units_iso_80000_3::{
     degrees_per_turn, square_millimetres_per_square_metre,
 };
 pub use crate::std_algebra::FieldOfFractions;
+pub use crate::std_checked_arithmetic::int_inclusive_max;
+use crate::std_checked_arithmetic::CheckedIntOperands::BinaryOperands;
+use crate::std_checked_arithmetic::IntegerArithmeticOperation::IntegerAdd;
+pub use crate::std_checked_arithmetic::{
+    CheckedIntOperands, IntegerArithmeticOperation, IntegerOverflow,
+};
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
@@ -745,6 +752,45 @@ pub fn finite_byte_size_from_byte_size(size: ByteSize) -> Rc<FiniteByteSizeBuild
                     observed: observed.clone(),
                 })
             }
+        }
+    }
+}
+
+pub fn gibibyte_grain() -> FiniteByteSize {
+    finite_byte_size(positive_measure_count((gibibyte_scale_factor_bytes() - 1)))
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum GrainRounding {
+    GrainRounded { bytes: ByteSize },
+    GrainUnrepresentable { cause: Rc<IntegerOverflow> },
+}
+
+pub fn round_up_to_grain(bytes: ByteSize, grain: FiniteByteSize) -> Rc<GrainRounding> {
+    {
+        let n = byte_size_count(bytes.clone());
+        let g = finite_byte_size_count(grain.clone());
+        let remainder = (n.clone() % g.clone());
+        let pad = if (remainder.clone() == 0) {
+            0
+        } else {
+            (g.clone() - remainder.clone())
+        };
+        if (n.clone() > (crate::std_checked_arithmetic::int_inclusive_max() - pad.clone())) {
+            Rc::new(GrainRounding::GrainUnrepresentable {
+                cause: Rc::new(IntegerOverflow {
+                    operation: IntegerArithmeticOperation::IntegerAdd,
+                    operands: Rc::new(CheckedIntOperands::BinaryOperands {
+                        lhs: n.clone(),
+                        rhs: pad.clone(),
+                    }),
+                }),
+            })
+        } else {
+            Rc::new(GrainRounding::GrainRounded {
+                bytes: byte_size((n.clone() + pad.clone())),
+            })
         }
     }
 }
