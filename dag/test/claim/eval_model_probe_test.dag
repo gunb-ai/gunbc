@@ -30,7 +30,8 @@ test fn let_is_eager_when_consumed() -> Bool {
 // interpreter then did and what the emitted Rust never did (gunbc.recurring_failure_mode
 // realization_arms_diverge_on_whether_the_program_refuses). The row is now declared, both
 // realizations read it, and And declares DemandsRightOnlyWhenLeftIs { deciding: true }. So the
-// removal under a false left does NOT run and the marker SURVIVES, in both realizations. The
+// removal under a false left does NOT run and the marker SURVIVES, on the interpreted route and
+// on the Rust emission route, which are the two this probe can reach. The
 // assertion is inverted because the measured fact inverted; a probe whose polarity is chosen to
 // match the wall it is pointed at measures nothing. `a_let_bound_effect_still_runs` below is the
 // control that keeps this honest: it establishes the removal is reachable at all, so a surviving
@@ -102,7 +103,7 @@ test fn the_same_guard_admits_its_right_operand_when_it_holds() -> Bool {
 // `{0}.unwrap_or_else(|| {1})`, whose closure body is demanded only when the left is absent -- so it
 // is declared DemandsRightOnlyWhenLeftIsAbsent. These two claims are what make that declaration a
 // READING rather than a hypothesis. The right operand REFUSES if it is evaluated, so the pair turns
-// on demand alone: division by zero aborts identically in both realizations IF it runs at all.
+// on demand alone: division by zero aborts identically on both routes IF it runs at all.
 fn coalesced_division(left: Int?, divisor: Int) -> Int {
   left ?? (100 / divisor)
 }

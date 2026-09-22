@@ -6667,9 +6667,12 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
         // returned false there. The class is gunbc.recurring_failure_mode
         // realization_arms_diverge_on_whether_the_program_refuses, whose next-rung trigger named
         // the capability this now consumes: std.operator_realization operand_demand, one row that
-        // BOTH realizations read. The emitter derives its rendering from the same fold
-        // (v1.compiler.emit_rust emit_rust_demanded_host_bin_op), so neither arm carries an
-        // evaluation-order decision of its own.
+        // THIS ARM AND THE RUST EMITTER read -- those two, and not every realization of BinOp. The
+        // Rust emitter derives its rendering from the same fold (v1.compiler.emit_rust
+        // emit_rust_demanded_host_bin_op), so neither of those two arms carries an evaluation-order
+        // decision of its own. The Go, Python and dag emission paths still reach BinOp through
+        // v1.compiler.emit emit_default_bin_op, which consults no demand row; that gap and its
+        // trigger are recorded on the failure-mode row rather than implied away here.
         //
         // The row is derived from std.logic, not invented: classical_and is
         // `match a { False => False  True => b }`, so the right operand is demanded only under one
