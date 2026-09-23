@@ -5,6 +5,10 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
+import v2.std.optional { Present, Absent }
+import std.algebra { trim }
+import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
+import extdeps.tools.gnu_coreutils { df_available_bytes_argv }
 import gunbc.fleet_shell_transport_observation {
   fleet_shell_transport_observation,
   ShellTransportSucceeded,
@@ -37,6 +41,36 @@ fn host_disk_observed_producer(host: HostIdentity) -> HostDiskObservation {
       }
     ShellTransportUnobserved { reason: r } =>
       DiskUnobserved { reason: concat("disk observation unobserved: ", r) }
+  }
+}
+
+// THE FREE-SPACE READ, AS ONE ARGV AND ONE READER. Whatever transport runs the argv on the host --
+// this module's HostEffectTransport producer when it lands, or a lane's own authenticated leg today
+// (gunbc.spark.v41_checkpoint_materialize) -- the fact is read here and nowhere else: df's available
+// bytes for the filesystem holding `path`, typed as a ByteSize. A failed df is a refusal with its
+// status; output that is not one byte count on its last line is a refusal too, never a zero.
+fn host_disk_free_space_argv(path: String) -> List<String> {
+  df_available_bytes_argv(path: path)
+}
+
+fn host_disk_last_line(s: String) -> String {
+  fold(split(s: s, delimiter: "\n"), init: "", f: (acc, l) => if trim(s: l) == "" { acc } else { l })
+}
+
+fn host_disk_observation_of_df(exit_code: Int, stdout: String, stderr: String, observed_on: NonEmptyStr) -> HostDiskObservation {
+  if exit_code != 0 {
+    DiskObservationRefused { detail: join(["df exited ", to_string(exit_code), ": ", trim(s: stderr)], "") as NonEmptyStr }
+  } else {
+    match parse_int(s: trim(s: host_disk_last_line(s: stdout))) {
+      Absent => DiskObservationRefused { detail: join(["df answered no byte count: ", stdout], "") as NonEmptyStr }
+      Present { value: n } =>
+        if n < 0 { DiskObservationRefused { detail: "df answered a negative byte count" as NonEmptyStr } } else {
+          match checked_int_magnitude(a: n) {
+            CheckedNatOverflow { cause: _ } => DiskObservationRefused { detail: "df's byte count does not fit a Nat" as NonEmptyStr }
+            CheckedNatReady { value: v } => DiskObserved { free_bytes: byte_size(count: v), observed_on: observed_on }
+          }
+        }
+    }
   }
 }
 

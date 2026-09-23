@@ -123,6 +123,7 @@ import gunbc.ci_spec {
   gunbc_ci_spark_serving_apply_invoke,
   gunbc_ci_spark_native_serving_apply_invoke,
   gunbc_ci_spark_runtime_image_probe_invoke,
+  gunbc_ci_spark_v41_checkpoint_materialize_invoke,
   gunbc_ci_spark_v41_runtime_image_build_invoke,
   gunbc_fleet_converge_plan_artifact_name,
   gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
@@ -224,6 +225,7 @@ type FleetConvergeWorkflowMode
   | SparkServingApply
   | SparkNativeServingApply
   | SparkRuntimeImageProbe
+  | SparkV41CheckpointMaterialize
   | SparkV41RuntimeImageBuild
   | DashboardDeploy
   | RlmLaunchDeploymentReceipt
@@ -267,6 +269,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     SparkServingApply => "spark_serving_apply"
     SparkNativeServingApply => "spark_native_serving_apply"
     SparkRuntimeImageProbe => "spark_runtime_image_probe"
+    SparkV41CheckpointMaterialize => "spark_v41_checkpoint_materialize"
     SparkV41RuntimeImageBuild => "spark_v41_runtime_image_build"
     DashboardDeploy => "dashboard_deploy"
     RlmLaunchDeploymentReceipt => "rlm_launch_deployment_receipt"
@@ -313,7 +316,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41RuntimeImageBuild, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41CheckpointMaterialize, SparkV41RuntimeImageBuild, DashboardDeploy, ApprovalBrokerDarkInstall, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1CensusImagePublish, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0]
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
 // EVERY MODE IS NAMED, AND THE WILDCARD IS DELIBERATELY ABSENT. A `_ => none` would read the same
@@ -354,6 +357,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     SparkServingApply => none
     SparkNativeServingApply => none
     SparkRuntimeImageProbe => none
+    SparkV41CheckpointMaterialize => none
     SparkV41RuntimeImageBuild => none
     DashboardDeploy => Present { value: LiveDeploy }
     ApprovalBrokerDarkInstall => none
@@ -466,6 +470,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     SparkServingApply => FleetSshKeyConsumed
     SparkNativeServingApply => FleetSshKeyConsumed
     SparkRuntimeImageProbe => FleetSshKeyConsumed
+    SparkV41CheckpointMaterialize => FleetSshKeyConsumed
     SparkV41RuntimeImageBuild => FleetSshKeyConsumed
     DashboardDeploy => FleetSshKeyConsumed
     ApprovalBrokerDarkInstall => FleetSshKeyConsumed
@@ -998,6 +1003,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     SparkServingApply => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
     SparkNativeServingApply => ArmDomain { group: fleet_arm_mutation_group_glm_group_b_native }
     SparkRuntimeImageProbe => ExecutorDomain
+    SparkV41CheckpointMaterialize => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
     SparkV41RuntimeImageBuild => ExecutorDomain
     DashboardDeploy => ExecutorDomain
     RlmLaunchDeploymentReceipt => ExecutorDomain
@@ -1045,6 +1051,7 @@ data fleet_converge_mutation_concurrency_group_expression: String = join([
 ], "")
 
 data fleet_converge_spark_runtime_image_probe_step_if: String = fleet_converge_mode_step_if(mode: SparkRuntimeImageProbe)
+data fleet_converge_spark_v41_checkpoint_materialize_step_if: String = fleet_converge_mode_step_if(mode: SparkV41CheckpointMaterialize)
 
 data fleet_converge_spark_v41_runtime_image_build_step_if: String = fleet_converge_mode_step_if(mode: SparkV41RuntimeImageBuild)
 
@@ -2589,6 +2596,30 @@ fn fleet_converge_spark_v41_runtime_image_build_step() -> Step {
   }
 }
 
+// THE PUBLISHED V4.1 CHECKPOINT ON ONE GROUP A SPARK (gunbc.spark.v41_checkpoint_materialize): every
+// admitted file fetched at the pinned revision, digested against its manifest row before it is
+// published, then the storage-backed Engram spans read from the verified shards. Its domain is Group
+// A's arm (fleet_converge_mode_mutation_domain), so it queues behind D0 and the pair apply and one
+// Group A host is written at a time; a transfer outlives the step, and a rerun reattaches.
+fn fleet_converge_spark_v41_checkpoint_materialize_step() -> Step {
+  RunStep {
+    name: Present { value: "Spark V4.1 checkpoint materialize (fetch the admitted published files onto the selected Group A Spark, verify each sha256 before publishing, read the storage-backed Engram spans)" },
+    id: Present { value: "spark_v41_checkpoint_materialize" },
+    run: gunbc_ci_spark_v41_checkpoint_materialize_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_spark_v41_checkpoint_materialize_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+  }
+}
+
 // EVERY JOB CHECKS OUT R, THE REVISION THE OPERATOR NAMED, NOT WHATEVER main IS WHEN THE RUNNER
 // FINALLY PICKS THE JOB UP. The run-revision guard in gunbc.fleet_converge_plan_cli compares the
 // checked-out tree to RLM_EXPECTED_REVISION and refuses on mismatch; with a plain branch checkout
@@ -2680,6 +2711,20 @@ fn fleet_converge_mtcollins1_boot_job() -> Job {
   }
 }
 
+// THE CREDENTIAL PRELUDE, IN ORDER: the release binaries, then the credential-free D0 admission,
+// then the WIF token and the fleet key. It is its own producer because the ORDER is a fact a witness
+// reads -- admission before any credential is minted -- and reading it here costs these five steps
+// rather than the whole job's.
+fn fleet_converge_credential_prelude_steps() -> List<Step> {
+  [
+    ci_release_bins_download_step(),
+    ci_release_bins_unpack_verify_step(),
+    fleet_converge_pair_serving_d0_admit_step(),
+    ci_fleet_wif_auth_step(),
+    ci_fleet_key_agent_step_when(if_condition: Present { value: fleet_converge_fleet_ssh_key_step_if }),
+  ]
+}
+
 fn fleet_converge_job() -> Job {
   Job {
     id: "fleet-converge",
@@ -2689,13 +2734,7 @@ fn fleet_converge_job() -> Job {
     steps: concat(
       concat(
         fleet_converge_consumer_prelude_steps(),
-        [
-          ci_release_bins_download_step(),
-          ci_release_bins_unpack_verify_step(),
-          fleet_converge_pair_serving_d0_admit_step(),
-          ci_fleet_wif_auth_step(),
-          ci_fleet_key_agent_step_when(if_condition: Present { value: fleet_converge_fleet_ssh_key_step_if }),
-        ]
+        fleet_converge_credential_prelude_steps()
       ),
       [
         fleet_converge_plan_step(),
@@ -2746,6 +2785,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_spark_serving_apply_step(),
         fleet_converge_spark_native_serving_apply_step(),
         fleet_converge_spark_runtime_image_probe_step(),
+        fleet_converge_spark_v41_checkpoint_materialize_step(),
         fleet_converge_spark_v41_runtime_image_build_step(),
         fleet_converge_runner_host_file_observe_step(),
         fleet_converge_runner_host_file_converge_step(),
@@ -2886,118 +2926,122 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
   }
 }
 
+// THE DISPATCH INPUTS, AS THEIR OWN ROW: the workflow consumes them below, and a witness over
+// what the operator can name reads this list rather than building every job to reach it.
+data fleet_converge_dispatch_inputs: List<DispatchInput> = [
+  DispatchInput {
+    name: "host",
+    description: Present { value: "Executor fleet host (runner pinned here; plan mode observes this host)" },
+    required: true,
+    default: none,
+    type: InputChoice { options: fleet_converge_enrolled_host_options },
+  },
+  DispatchInput {
+    name: "mode",
+    description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; app_key_version_verify reads the gunbai-ci App private key at the EXACT Secret Manager version named by app_key_version, mints an installation token with it, and refuses unless GitHub accepts it and the key's rotation deadline has not passed -- no add, disable or destroy; microvm_host_converge installs the cited Firecracker release on the selected host and reads the kvm grant back, refusing by name when the grant has not landed (the grant itself is applied by the full-host apply spine); microvm_network_apply stages the slot and host network files the model renders at the named expected_revision as root:root 0600 in a root-only directory over the fleet SSH edge as the host's ADMINISTRATOR, installs them with the modeled operations, reloads networkd, systemd-sysctl and the nft loader unit, and reads the ruleset back -- the job user is granted none of it, because install plus systemctl over content that principal can write is arbitrary root for any pull request; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' pair vLLM units over the password session, workers before heads; spark_native_serving_apply relaunches group B's native four-rank arm as ONE BOUNDED TRANSACTION -- an all-host preflight that mutates nothing and refuses on any unresolved artifact from an earlier run, the incumbent UNIT preserved (plus a diagnostic inspect of the incumbent container -- the container itself cannot outlive its unit, because these run --rm in the foreground under systemd), the head applied BEFORE the workers so every rank joins the head's new rendezvous store, then a readback of the COMPLETE realization through each container's own inspect -- every field the create spec states, the effective --node-rank off that container's argv, and NCCL's typed transport verdict on that incarnation -- plus the head's front door answering with this arm's served model, and then commit or a rollback of the whole arm -- and it is a separate mode because it reloads a 328 GB arm and nobody should reach it by asking for the pair units; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; spark_v41_checkpoint_materialize fetches the admitted published DeepSeek V4.1 files onto the selected Group A Spark (about 510 GB; it states the requirement and refuses before fetching when the disk cannot hold it), publishes each only after its sha256 matches the manifest, leaves a present file with the right digest alone and refuses one with the wrong digest, and reads the storage-backed Engram spans from the verified shards; a transfer runs detached and a rerun reattaches; spark_v41_runtime_image_build PRODUCES the DeepSeek V4.1 image on the selected Spark -- it verifies the candidate's three FlashInfer wheels against the digests the candidate keys, converges the patched source tree, builds from it, reads the produced configuration digest back from inside the image through the probe route, and admits that digest against the candidate's own recipe, refusing a digest that does not recompute from it -- and it is a separate mode from the probe because it occupies one host for hours where the probe occupies it for minutes; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown" },
+    required: true,
+    default: none,
+    type: InputChoice { options: fleet_converge_mode_options },
+  },
+  DispatchInput {
+    name: "target",
+    description: Present { value: fleet_converge_spark_target_description() },
+    required: false,
+    default: none,
+    type: InputChoice { options: fleet_converge_spark_target_options },
+  },
+  DispatchInput {
+    name: "reset_observer",
+    description: Present { value: "host_reset_return only: the PEER that observes the reset. The subject is NOT an input -- it is derived from this observer through the modeled pairing, so a job cannot be pointed at the host it is resetting" },
+    required: false,
+    default: none,
+    type: InputChoice { options: fleet_converge_reset_observer_options },
+  },
+  DispatchInput {
+    name: "credential",
+    description: Present { value: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and a row scoped to one host refuses any other" },
+    required: false,
+    default: none,
+    type: InputChoice { options: host_custody_credential_options },
+  },
+  DispatchInput {
+    name: "d0_consent",
+    description: Present { value: "pair_serving_d0 only (Cut D, Group A on srv1; expected_revision is required and frozen with the filing): the escalation id the consent is filed under. It names the transaction, and a rerun after a crash MUST name the same id to find its frozen filing and held claim -- a fresh id is a new consent" },
+    required: false,
+    default: none,
+    type: InputString,
+  },
+  DispatchInput {
+    name: "app_key_version",
+    description: Present { value: "app_key_version_verify only: the Secret Manager version NUMBER of ci-github-app-private-key to verify. The alias latest is refused -- it names whatever is newest when it resolves, so a mint through it proves nothing about a specific key" },
+    required: false,
+    default: none,
+    type: InputString,
+  },
+  DispatchInput {
+    name: "plan_artifact_hash",
+    description: Present { value: "Fnv1a64Structural bundle digest of plan.txt + apply.sh — required for apply (printed by plan step)." },
+    required: false,
+    default: none,
+    type: InputString,
+  },
+  DispatchInput {
+    name: "plan_workflow_run_id",
+    description: Present { value: "Workflow run id that produced the plan artifact — required for apply, dashboard_deploy and rlm_launch_deployment_receipt" },
+    required: false,
+    default: none,
+    type: InputString,
+  },
+  DispatchInput {
+    name: "expected_revision",
+    description: Present { value: "R — the exact main revision this transaction installs and proves; every run of the transaction must execute at it (RLM_EXPECTED_REVISION). Required for dashboard_deploy and rlm_launch_deployment_receipt — and for microvm_network_apply, whose installed bytes are rendered from it" },
+    required: false,
+    default: none,
+    type: InputString,
+  },
+  DispatchInput {
+    name: "apply_workflow_run_id",
+    description: Present { value: "Workflow run id of the fleet apply — required for dashboard_deploy and rlm_launch_deployment_receipt" },
+    required: false,
+    default: none,
+    type: InputString,
+  },
+  DispatchInput {
+    name: "dashboard_workflow_run_id",
+    description: Present { value: "Workflow run id of the dashboard deploy — required for rlm_launch_deployment_receipt" },
+    required: false,
+    default: none,
+    type: InputString,
+  },
+  DispatchInput {
+    name: "runner_ids",
+    description: Present { value: "org_runner_roster_observe only: comma-separated captured runner registration ids to observe individually (present / absent / unobserved) in the gunbai-ci organization" },
+    required: false,
+    default: none,
+    type: InputString,
+  },
+  DispatchInput {
+    name: "roster_page_size",
+    description: Present { value: "org_runner_roster_observe only: page size for the first roster request (1..100, default 100); later pages follow the authority's own continuation links" },
+    required: false,
+    default: none,
+    type: InputString,
+  },
+  DispatchInput {
+    name: "transaction_nonce",
+    description: Present { value: "Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). Not consumed by any step" },
+    required: false,
+    default: none,
+    type: InputString,
+  },
+]
+
 data fleet_converge_workflow: Workflow = Workflow {
   name: "fleet-converge",
   run_name: Present { value: "fleet-converge ${{ inputs.mode }} ${{ inputs.host }} nonce=${{ inputs.transaction_nonce }}" },
   on: [
     WorkflowDispatch {
-      inputs: [
-        DispatchInput {
-          name: "host",
-          description: Present { value: "Executor fleet host (runner pinned here; plan mode observes this host)" },
-          required: true,
-          default: none,
-          type: InputChoice { options: fleet_converge_enrolled_host_options },
-        },
-        DispatchInput {
-          name: "mode",
-          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; org_runner_roster_observe reads the organization's self-hosted runner registrations to exhaustion under the same token and refuses unless the roster is complete; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; app_key_version_verify reads the gunbai-ci App private key at the EXACT Secret Manager version named by app_key_version, mints an installation token with it, and refuses unless GitHub accepts it and the key's rotation deadline has not passed -- no add, disable or destroy; microvm_host_converge installs the cited Firecracker release on the selected host and reads the kvm grant back, refusing by name when the grant has not landed (the grant itself is applied by the full-host apply spine); microvm_network_apply stages the slot and host network files the model renders at the named expected_revision as root:root 0600 in a root-only directory over the fleet SSH edge as the host's ADMINISTRATOR, installs them with the modeled operations, reloads networkd, systemd-sysctl and the nft loader unit, and reads the ruleset back -- the job user is granted none of it, because install plus systemctl over content that principal can write is arbitrary root for any pull request; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' pair vLLM units over the password session, workers before heads; spark_native_serving_apply relaunches group B's native four-rank arm as ONE BOUNDED TRANSACTION -- an all-host preflight that mutates nothing and refuses on any unresolved artifact from an earlier run, the incumbent UNIT preserved (plus a diagnostic inspect of the incumbent container -- the container itself cannot outlive its unit, because these run --rm in the foreground under systemd), the head applied BEFORE the workers so every rank joins the head's new rendezvous store, then a readback of the COMPLETE realization through each container's own inspect -- every field the create spec states, the effective --node-rank off that container's argv, and NCCL's typed transport verdict on that incarnation -- plus the head's front door answering with this arm's served model, and then commit or a rollback of the whole arm -- and it is a separate mode because it reloads a 328 GB arm and nobody should reach it by asking for the pair units; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; spark_v41_runtime_image_build PRODUCES the DeepSeek V4.1 image on the selected Spark -- it verifies the candidate's three FlashInfer wheels against the digests the candidate keys, converges the patched source tree, builds from it, reads the produced configuration digest back from inside the image through the probe route, and admits that digest against the candidate's own recipe, refusing a digest that does not recompute from it -- and it is a separate mode from the probe because it occupies one host for hours where the probe occupies it for minutes; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown" },
-          required: true,
-          default: none,
-          type: InputChoice { options: fleet_converge_mode_options },
-        },
-        DispatchInput {
-          name: "target",
-          description: Present { value: fleet_converge_spark_target_description() },
-          required: false,
-          default: none,
-          type: InputChoice { options: fleet_converge_spark_target_options },
-        },
-        DispatchInput {
-          name: "reset_observer",
-          description: Present { value: "host_reset_return only: the PEER that observes the reset. The subject is NOT an input -- it is derived from this observer through the modeled pairing, so a job cannot be pointed at the host it is resetting" },
-          required: false,
-          default: none,
-          type: InputChoice { options: fleet_converge_reset_observer_options },
-        },
-        DispatchInput {
-          name: "credential",
-          description: Present { value: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and a row scoped to one host refuses any other" },
-          required: false,
-          default: none,
-          type: InputChoice { options: host_custody_credential_options },
-        },
-        DispatchInput {
-          name: "d0_consent",
-          description: Present { value: "pair_serving_d0 only (Cut D, Group A on srv1; expected_revision is required and frozen with the filing): the escalation id the consent is filed under. It names the transaction, and a rerun after a crash MUST name the same id to find its frozen filing and held claim -- a fresh id is a new consent" },
-          required: false,
-          default: none,
-          type: InputString,
-        },
-        DispatchInput {
-          name: "app_key_version",
-          description: Present { value: "app_key_version_verify only: the Secret Manager version NUMBER of ci-github-app-private-key to verify. The alias latest is refused -- it names whatever is newest when it resolves, so a mint through it proves nothing about a specific key" },
-          required: false,
-          default: none,
-          type: InputString,
-        },
-        DispatchInput {
-          name: "plan_artifact_hash",
-          description: Present { value: "Fnv1a64Structural bundle digest of plan.txt + apply.sh — required for apply (printed by plan step)." },
-          required: false,
-          default: none,
-          type: InputString,
-        },
-        DispatchInput {
-          name: "plan_workflow_run_id",
-          description: Present { value: "Workflow run id that produced the plan artifact — required for apply, dashboard_deploy and rlm_launch_deployment_receipt" },
-          required: false,
-          default: none,
-          type: InputString,
-        },
-        DispatchInput {
-          name: "expected_revision",
-          description: Present { value: "R — the exact main revision this transaction installs and proves; every run of the transaction must execute at it (RLM_EXPECTED_REVISION). Required for dashboard_deploy and rlm_launch_deployment_receipt — and for microvm_network_apply, whose installed bytes are rendered from it" },
-          required: false,
-          default: none,
-          type: InputString,
-        },
-        DispatchInput {
-          name: "apply_workflow_run_id",
-          description: Present { value: "Workflow run id of the fleet apply — required for dashboard_deploy and rlm_launch_deployment_receipt" },
-          required: false,
-          default: none,
-          type: InputString,
-        },
-        DispatchInput {
-          name: "dashboard_workflow_run_id",
-          description: Present { value: "Workflow run id of the dashboard deploy — required for rlm_launch_deployment_receipt" },
-          required: false,
-          default: none,
-          type: InputString,
-        },
-        DispatchInput {
-          name: "runner_ids",
-          description: Present { value: "org_runner_roster_observe only: comma-separated captured runner registration ids to observe individually (present / absent / unobserved) in the gunbai-ci organization" },
-          required: false,
-          default: none,
-          type: InputString,
-        },
-        DispatchInput {
-          name: "roster_page_size",
-          description: Present { value: "org_runner_roster_observe only: page size for the first roster request (1..100, default 100); later pages follow the authority's own continuation links" },
-          required: false,
-          default: none,
-          type: InputString,
-        },
-        DispatchInput {
-          name: "transaction_nonce",
-          description: Present { value: "Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). Not consumed by any step" },
-          required: false,
-          default: none,
-          type: InputString,
-        },
-      ]
+      inputs: fleet_converge_dispatch_inputs,
     }
   ],
   concurrency: none,
