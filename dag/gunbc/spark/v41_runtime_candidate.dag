@@ -44,6 +44,7 @@ import gunbc.spark.v41_engram_row_store {
   V41PublishedRowStoreKey, V41PublishedRowStoreKeyed, V41PublishedRowStoreUnestablished, V41PublishedRowStoreRefused,
   v41_published_row_store_key, v41_published_span_readings, v41_live_head_sizes,
 }
+import gunbc.spark.v41_index_engram_selection { v41_engram_population_observed }
 import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell, sha256sum_stdin_digest_via_shell }
 
@@ -522,10 +523,11 @@ fn v41_row_store_obligations(m: V41ManifestStanding) -> List<NonEmptyStr> {
 }
 
 // AN UNRECONCILED MEMBERSHIP IS AN UNESTABLISHED AXIS, NOT A KEYABLE ONE. This module's own law is that
-// no key is minted for an axis with a hole in it. The checkpoint's Engram population closes against the
-// twelve rows that were READ rather than against the revision's 96085-name index, so a thirteenth Engram
-// tensor at this revision would be neither reconciled nor refused -- and a partition can be total and
-// disjoint over the twelve while missing it entirely. Keying here would hash "the Engram tensors we
+// no key is minted for an axis with a hole in it. A population closed only against the rows that were
+// READ, rather than against the revision's full index, would let a thirteenth Engram tensor pass
+// neither reconciled nor refused -- and a partition can be total and disjoint over the twelve while
+// missing it entirely. (The live population is gunbc.spark.v41_index_engram_selection v41_engram_population_observed:
+// closed only once a reading of the pinned index is transcribed; a scoped closure lands here.) Keying here would hash "the Engram tensors we
 // happen to have read" and call it the Engram realization, and two different future candidates over
 // different readings of the same checkpoint would share it. So the residual the population carries is
 // folded onto this axis as an obligation, and it is the only one of the three standings that can be
@@ -730,7 +732,7 @@ data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
   },
   engram: V41EngramRealizationInputs {
     partition: v41_candidate_partition,
-    population: deepseek_v4_1_flash_engram_population,
+    population: v41_engram_population_observed(),
     row_store_encoding: v41_row_store_encoding_standing(),
     route: engram_route_b_identity,
   },

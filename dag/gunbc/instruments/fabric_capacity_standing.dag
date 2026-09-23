@@ -17,7 +17,6 @@ import gunbc.spark.pair_serving_authority {
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
-import std.resources { Network }
 import gunbc.fabric_event_log_host { now_epoch_seconds }
 import gunbc.spark.vllm_kv_layout_observe {
   VllmKvLayoutReceipt, admit_kv_layout,
@@ -598,7 +597,6 @@ fn fabric_capacity_standing_current(current: List<CurrentAuthority>) -> ProcessE
 }
 
 fn fabric_capacity_standing() -> ProcessExit
-  uses net: Network
 {
   match observe_executor_reach() {
     ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["fabric capacity standing: ", c], ""))

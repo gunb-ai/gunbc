@@ -971,6 +971,24 @@ fn parse_stamp_derived_repeat(
   }
 }
 
+// THE PARSE TREE'S PROJECTION EDGES, AS A CLOSED ROSTER OWNED BY THEIR PRODUCER. A parse tree
+// carries exactly four Named edges that are parse-projection structure rather than authored
+// program data: the production identity and captured pair stamped by parse_wrap_production_captured,
+// and the sequence left/right pair stamped by the sequence and list spines. Every later stage that
+// must see through projection structure (namespace_graft, name_resolve, symbol_index_fill) asks
+// THIS predicate. It was a lexeme-suffix test on "_node_projection" before, and a suffix is a
+// heuristic (DESIGN section 4): an authored fn or data declaration whose name ends in
+// `_node_projection` (v2.std.runtime runtime_value_node_projection and its siblings) matched it and
+// was dissolved at the module body -- one such declaration vanished SILENTLY, two collided into an
+// ill-formed Conj. The roster is what the grammar_named_edge sites below actually mint; a projection
+// edge added there is added here, and a name outside it is program data by construction.
+fn parse_tree_projection_edge(name: Symbol) -> Bool {
+  (name == ^grammar_production_identity_node_projection)
+    || (name == ^grammar_production_captured_node_projection)
+    || (name == ^grammar_sequence_left_node_projection)
+    || (name == ^grammar_sequence_right_node_projection)
+}
+
 fn parse_wrap_production_captured(
   production: GrammarProduction,
   captured: Node,

@@ -709,7 +709,7 @@ fn v41_dropped_source_row_is_unfaithful(source: List<V41SourceRow>, spec: V41Row
 // (test.claim.spark.v41_row_store_encode_witness), which is weaker than the fold producing the bytes
 // itself: gunbc.rung_drop v41_row_store_host_realized_by_sample records the drop and its trigger (the
 // emitted .dag encoder encoding all eight stores). Identified is then minted by v41_identify_row_store
-// from the host's per-store sha256 (gunbc.spark.v41_row_store_encode v41_published_store_readings).
+// from the host's per-store sha256 (v41_published_store_readings, beside the row-store encoding key).
 fn v41_published_transform_standing() -> V41TransformResult {
   V41PublishedTransformUnestablished {
     obligation: "the published Engram stores (layers 1 and 14, four ranks each) have not been produced: a host realization of v41_place_row over the materialized shards, admitted by a differential claim over real published rows, is the only producer this module admits" as NonEmptyStr,
