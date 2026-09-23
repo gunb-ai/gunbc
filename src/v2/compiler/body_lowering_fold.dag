@@ -5918,17 +5918,33 @@ fn body_lower_match_scrutinee_from_spine(spine: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_match_scrutinee_optional(captured: Node) -> Optional<Node> {
+// THE SCRUTINEE IS A VALUE, READ AS ONE. It was read by the operand reader alone, which before
+// gunbc#12145 narrowed a call scrutinee `match nat_compare(a: x, b: y) {..}` to `nat_compare`,
+// dropping its arguments, and after it answered Absent, so the whole match refused as
+// match_arm_navigation_refused. The value goes through body_lower_value_lowered first -- the reader
+// call arguments, field initializers and if-conditions use -- and the operand reader only for what
+// that declines; a refusal either raises is the scrutinee's.
+fn body_lower_match_scrutinee_value(node: Node) -> Outcome<Optional<Node>> {
+  match body_lower_value_lowered(node: node) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: Present { value: lowered }, diagnostics: d } =>
+      outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: d)
+    Accepted { value: Absent, diagnostics: _ } =>
+      outcome_accepted(value: body_lower_operand_ref_optional(node: node))
+  }
+}
+
+fn body_lower_match_scrutinee_optional(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_binary_expr) {
-    ParseSubtreeFound { captured: binary } =>
-      body_lower_operand_ref_optional(node: binary)
+    ParseSubtreeFound { captured: binary } => body_lower_match_scrutinee_value(node: binary)
     ParseSubtreeAbsent =>
       match body_lower_find_captured(root: captured, emitted: ^dag_surface_postfix_expr) {
-        ParseSubtreeFound { captured: postfix } =>
-          body_lower_operand_ref_optional(node: postfix)
+        ParseSubtreeFound { captured: postfix } => body_lower_match_scrutinee_value(node: postfix)
         ParseSubtreeAbsent =>
-          body_lower_match_scrutinee_from_spine(
-            spine: body_lower_unwrap_surface_shell(node: captured)
+          outcome_accepted(
+            value: body_lower_match_scrutinee_from_spine(
+              spine: body_lower_unwrap_surface_shell(node: captured)
+            )
           )
       }
   }
@@ -5987,7 +6003,15 @@ fn body_lower_match_arms_optional(captured: Node) -> Outcome<Optional<List<Node>
 
 fn body_lower_try_match_from_captured(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_match_scrutinee_optional(captured: captured) {
-    Present { value: scrutinee } =>
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: Absent, diagnostics: _ } =>
+      outcome_rejected(
+        d: body_lower_diagnostic(
+          reason: ^body_lowering_reason_match_arm_navigation_refused,
+          n: captured
+        )
+      )
+    Accepted { value: Present { value: scrutinee }, diagnostics: _ } =>
       match body_lower_match_arms_optional(captured: captured) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: arms_opt, diagnostics: d } =>
@@ -6015,13 +6039,6 @@ fn body_lower_try_match_from_captured(captured: Node) -> Outcome<Optional<Node>>
               )
           }
       }
-    Absent =>
-      outcome_rejected(
-        d: body_lower_diagnostic(
-          reason: ^body_lowering_reason_match_arm_navigation_refused,
-          n: captured
-        )
-      )
   }
 }
 
