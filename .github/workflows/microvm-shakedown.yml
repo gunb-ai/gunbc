@@ -19,17 +19,9 @@ jobs:
       - name: "Known task: hash the fixed payload and compare with the model's digest"
         id: known_task
         run: |
-          # 🟡 dissolve-on: microvm_shakedown_known_task_script — concat-built foreign-executor (GitHub Actions run:) known-task runner; the payload, the expected digest and the result line are derived from this module, but the comparison and the summary write remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the step through orchestration emit without a medium-as-string concat scaffold
-          set -euo pipefail
-          observed=$(printf '%s' 'gunbc-microvm-shakedown-known-task-v1' | sha256sum | cut -d' ' -f1)
-          expected='ccb509ddd1dfb3975ea53d3f5ec51b5dbeacaf7af123909b18aa47f10a4ee0e4'
-          if [ "$observed" != "$expected" ]; then
-            echo "microvm-shakedown known-task=REFUSED observed=$observed expected=$expected" >&2
-            exit 1
-          fi
-          line="microvm-shakedown known-task=held attempt=$MICROVM_SHAKEDOWN_ATTEMPT runner=$RUNNER_NAME revision=${{ github.sha }} run=${{ github.run_id }} attempt_number=${{ github.run_attempt }} digest=$observed"
-          echo "$line"
-          echo "$line" >> "$GITHUB_STEP_SUMMARY"
+          set -e
+          observed=$('printf' '%s' 'gunbc-microvm-shakedown-known-task-v1' | 'sha256sum' | 'cut' '-d' ' ' '-f1')
+          if '[' "$observed" '=' 'ccb509ddd1dfb3975ea53d3f5ec51b5dbeacaf7af123909b18aa47f10a4ee0e4' ']'; then 'echo' 'microvm-shakedown known-task=held attempt='"$MICROVM_SHAKEDOWN_ATTEMPT"' runner='"$RUNNER_NAME"' revision='"$GITHUB_SHA"' run='"$GITHUB_RUN_ID"' attempt_number='"$GITHUB_RUN_ATTEMPT"' digest='"$observed"; 'echo' 'microvm-shakedown known-task=held attempt='"$MICROVM_SHAKEDOWN_ATTEMPT"' runner='"$RUNNER_NAME"' revision='"$GITHUB_SHA"' run='"$GITHUB_RUN_ID"' attempt_number='"$GITHUB_RUN_ATTEMPT"' digest='"$observed" > "$GITHUB_STEP_SUMMARY"; else 'echo' 'microvm-shakedown known-task=REFUSED expected=''ccb509ddd1dfb3975ea53d3f5ec51b5dbeacaf7af123909b18aa47f10a4ee0e4'' observed='"$observed" >&2; exit 1; fi
         shell: bash
         env:
           MICROVM_SHAKEDOWN_ATTEMPT: ${{ inputs.attempt }}
