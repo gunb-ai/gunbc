@@ -612,11 +612,10 @@ import v2.std.collection { List }
 // for one computation identity with a shared ancestor. The front end each claim rebuilt is work no
 // row is about.
 //
-// THE INSTRUMENT DECIDED THIS ROW RATHER THAN A PREFERENCE: the required floor on gunbc#11985 head
-// 97675ab2281 refused
-// `refused_assembly_still_locates_the_files_it_parsed_holds` ENROLMENT-MARGIN-REFUSED at
-// observed_cpu_ms=344 against the 302ms margin, and COMPLETED-OVER-COST-REQUIREMENT at 129385
-// evaluator steps against the 72300-step new-witness budget. The lane's own guidance was checked
+// THE INSTRUMENT DECIDED THIS ROW RATHER THAN A PREFERENCE: the required floor (the `witnesses`
+// lane of `gunbc.witness_floor_workflow`) refused
+// `refused_assembly_still_locates_the_files_it_parsed_holds` as both ENROLMENT-MARGIN-REFUSED and
+// COMPLETED-OVER-COST-REQUIREMENT; re-derive the figures by running that lane on the claim. The lane's own guidance was checked
 // before reducing anything: the cause is not a nested membership scan and not contention at
 // constant eval steps -- it is one front end per claim, so the share point is the producer.
 //
