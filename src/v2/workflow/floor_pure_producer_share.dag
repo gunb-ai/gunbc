@@ -666,6 +666,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.match_arm_binder_frame.mab_resolved_unshadowed_binder",
   "v2.test.claim.match_arm_binder_frame.mab_resolved_record_data_binder",
   "v2.test.claim.match_arm_binder_frame.mab_resolved_ambiguous_binder",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_module_named_binder",
   "v2.test.claim.match_arm_binder_frame.mab_record_declarations_specimen",
   "v2.test.execution.emit_on_demand_match_loop_fold_family_witness.mlf_family_primary_emitted",
   "v2.test.execution.emit_on_demand_family_crate_witness.logic_family_primary_emitted",
