@@ -23,6 +23,8 @@ import v2.extdeps.languages.dag {
   ParseSubtreeFind,
   ParseSubtreeFound,
   dag_binding_branded_atom_identity,
+  dag_grammar_binary_expr_expr,
+  dag_grammar_unary_expr_expr,
   dag_int_type_binding,
   dag_int_literal_magnitude_node_optional,
   dag_int_literal_node_from_lexeme,
@@ -49,9 +51,10 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.compilers.body_lowering { lower_binary_infix, lower_branch, lower_bind, lower_loop, lower_match }
+import v2.std.compilers.body_lowering { lower_binary_infix, lower_branch, lower_bind, lower_loop, lower_match, lower_unary_prefix }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
+import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -957,6 +960,24 @@ fn body_lower_operand_from_shell_optional(shell: Node) -> Optional<Node> {
   }
 }
 
+// A SEQUENCE WITH A NON-EMPTY RIGHT IS NEVER NARROWED TO ITS LEFT ELEMENT. When pair.right is the
+// empty conj the sequence is one element and its left IS the operand; otherwise the sequence is an
+// operator expression, read whole by body_lower_read_operator_expression, or it is not an operand
+// this reader recognises. The arm this replaces returned pair.left for every sequence, so `a && b`
+// read as `a` and `!a` read as `!` (gunbc.recurring_failure_mode
+// lowering_accessor_collapses_a_sequence_operand). The refusal an operator expression carries cannot
+// be carried by this Optional reader, so it answers Absent there and the Outcome routes that lower an
+// operator expression -- body_lower_try_body_lowered, body_lower_reduce_emitted,
+// body_lower_operator_operand -- read the same expression through body_lower_try_infix_transform and
+// refuse at the unread position.
+fn body_lower_operand_ref_sequence_optional(node: Node) -> Optional<Node> {
+  match body_lower_read_operator_expression(node: node) {
+    OperatorExpressionRead { lowered: lowered } => optional_present(value: lowered)
+    OperatorExpressionRefused { diagnostics: _ } => optional_absent()
+    OperatorExpressionAbsent => optional_absent()
+  }
+}
+
 // An int literal is an atom with a magnitude child, and it is not a binding: the operand reader
 // reads it whole before the branded-atom arm rebuilds an atom with no children -- which is what
 // happened to every literal argument (`f(1)` carried a bare dag_token_int_literal) until that
@@ -999,7 +1020,12 @@ fn body_lower_operand_ref_optional(node: Node) -> Optional<Node> {
                 Present { value: pair } =>
                   match body_lower_dotted_reference_optional(node: node) {
                     Present { value: spine } => Present { value: spine }
-                    Absent => body_lower_operand_ref_optional(node: pair.left)
+                    Absent =>
+                      if is_empty_conj_root(n: pair.right) {
+                        body_lower_operand_ref_optional(node: pair.left)
+                      } else {
+                        body_lower_operand_ref_sequence_optional(node: node)
+                      }
                   }
                 Absent =>
                   match parse_production_captured_child_optional(node: node) {
@@ -1067,134 +1093,232 @@ fn body_lower_unwrap_captured(shell: Node) -> Optional<Node> {
   parse_production_captured_child_optional(node: shell)
 }
 
-fn body_lower_infix_from_operator_seq(left: Node, op_seq: Node) -> Optional<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: op_seq)
-  match sugar_sequence_pair_optional(node: stripped) {
-    Absent => Absent
-    Present { value: pair } =>
-      match body_lower_operator_atom_optional(node: pair.left) {
-        Absent => Absent
-        Present { value: operator } =>
-          match body_lower_operand_ref_optional(node: pair.right) {
-            Absent => Absent
-            Present { value: right } =>
-              Present {
-                value: lower_binary_infix(left: left, operator: operator, right: right)
-              }
-          }
+// AN OPERATOR EXPRESSION IS READ OFF THE GRAMMAR'S OWN PRECEDENCE TOWER, WHOLE, AND A POSITION THE
+// READER CANNOT READ REFUSES.
+//
+// v2.extdeps.languages.dag dag_grammar_binary_expr_expr is a tower of seven levels, each
+//   level = sequence(next_level, tail)
+// whose tail is a REPEAT of sequence(operator, next_level) for the pipe, or, and, additive and
+// multiplicative levels and an OPTIONAL of the same for equality and comparison. The parse captures
+// a repeat as a cons spine -- sequence(element, rest), ending in the empty conj -- and an optional
+// as its element or the empty conj, so a tail is exactly one of
+//   the empty conj                              (no operator at this level)
+//   sequence(operator, operand)                 (an optional that matched)
+//   sequence(sequence(operator, operand), rest) (a repeat element and the rest of the repeat)
+// and the bottom of the tower is dag_grammar_unary_expr_expr: a prefix `!` or `-` over another
+// unary, or a postfix expression.
+//
+// THE READER IT REPLACES READ ONE OPERATOR AND DROPPED THE REST, SILENTLY. It lowered the first
+// sequence(operator, operand) it found and returned, so `a && b && c` lowered to `a && b` with `c`
+// gone; its operand reader, body_lower_operand_ref_optional, narrowed any other sequence to its
+// LEFT element, so `!a && b` lost `a` (read as the bare `!`) and, in a body the bottom-up fold had
+// not lowered, `a && b` became `a`. Measured on the real tokenize -> parse -> normalize route: an
+// atom only on the right of those shapes reached no reference site
+// (gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand). Every operand is
+// now lowered and folded left-associatively, and an unreadable position is a located refusal.
+type OperatorExpressionRead
+  = OperatorExpressionAbsent
+  | OperatorExpressionRead { lowered: Node }
+  | OperatorExpressionRefused { diagnostics: NonEmptyDiagnostics }
+
+// THE OPERATOR SETS ARE READ OFF THE GRAMMAR, NOT LISTED BESIDE IT. Every terminal of
+// dag_grammar_binary_expr_expr is an operator -- its nonterminals are the unary operands -- and every
+// terminal of dag_grammar_unary_expr_expr is a prefix operator, so collecting the terminals of those
+// two expressions IS the operator set. An operator the grammar gains is recognised here with no edit;
+// a hand-copied list would have answered OperatorExpressionAbsent for it and let the expression fall
+// to the other lowering routes (review 70545).
+fn body_lower_grammar_terminals(expr: GrammarExpr) -> List<Symbol> {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(token_class, _stamp) { [token_class] },
+      literal_terminal: fn(token_class, _lexeme) { [token_class] },
+      nonterminal: fn(_production) { Empty },
+      sequence: fn(l, r) { list_append(left: l, right: r) },
+      choice: fn(l, r) { list_append(left: l, right: r) },
+      optional: fn(e) { e },
+      repeat: fn(e) { e }
+    }
+  )
+}
+
+// Nullary, pure and reifying to symbols, so both sets are enrolled WARM in
+// v2.workflow.floor_pure_producer_share: building the grammar expressions per claim frame cost
+// ~11.4k eval steps and pushed v2.test.manual.body_lowering_normalize_add over the new-witness
+// budget on this PR's first floor run.
+fn body_lower_binary_operator_tokens() -> List<Symbol> {
+  body_lower_grammar_terminals(expr: dag_grammar_binary_expr_expr())
+}
+
+fn body_lower_prefix_operator_tokens() -> List<Symbol> {
+  body_lower_grammar_terminals(expr: dag_grammar_unary_expr_expr())
+}
+
+// Read once per frame through these rows; the floor serves the producers above from its warm tier.
+data body_lower_binary_operators: List<Symbol> = body_lower_binary_operator_tokens()
+
+data body_lower_prefix_operators: List<Symbol> = body_lower_prefix_operator_tokens()
+
+fn body_lower_symbol_listed(id: Symbol, xs: List<Symbol>) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == id) })
+}
+
+fn body_lower_is_binary_operator_token(id: Symbol) -> Bool {
+  body_lower_symbol_listed(id: id, xs: body_lower_binary_operators)
+}
+
+fn body_lower_is_prefix_operator_token(id: Symbol) -> Bool {
+  body_lower_symbol_listed(id: id, xs: body_lower_prefix_operators)
+}
+
+fn body_lower_operator_token_optional(node: Node, binary: Bool) -> Optional<Node> {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } =>
+      if (binary && body_lower_is_binary_operator_token(id: id))
+        || (!binary && body_lower_is_prefix_operator_token(id: id)) {
+        optional_present(value: node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: []))
+      } else {
+        optional_absent()
       }
+    Absent => optional_absent()
   }
 }
 
-fn body_lower_infix_from_operator_tail(left: Node, tail: Node) -> Optional<Node> {
+// A tower level with no operator is sequence(next_level, empty): the level is its next level.
+fn body_lower_strip_operator_free_levels(node: Node) -> Node {
+  let stripped = body_lower_unwrap_surface_shell(node: node)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Present { value: pair } =>
+      if is_empty_conj_root(n: pair.right) {
+        body_lower_strip_operator_free_levels(node: pair.left)
+      } else {
+        stripped
+      }
+    Absent => stripped
+  }
+}
+
+// Whether a tail carries an operator: its first element is one, or is sequence(operator, operand).
+fn body_lower_tail_has_binary_operator(tail: Node) -> Bool {
   match sugar_sequence_pair_optional(node: tail) {
+    Absent => false
     Present { value: pair } =>
-      match body_lower_infix_from_operator_seq(left: left, op_seq: pair.left) {
-        Present { value: found } => Present { value: found }
-        Absent => body_lower_infix_from_operator_tail(left: left, tail: pair.right)
-      }
-    Absent =>
-      match find_named_child(root: tail, name: ^grammar_repeat_element_node_projection) {
-        Accepted { value: repeat_elem, diagnostics: _ } =>
-          body_lower_infix_from_repeat_element(left: left, repeat_elem: repeat_elem)
-        Rejected { diagnostics: _ } => Absent
+      match body_lower_operator_token_optional(node: pair.left, binary: true) {
+        Present { value: _ } => true
+        Absent =>
+          match sugar_sequence_pair_optional(node: pair.left) {
+            Present { value: element } =>
+              match body_lower_operator_token_optional(node: element.left, binary: true) {
+                Present { value: _ } => true
+                Absent => false
+              }
+            Absent => false
+          }
       }
   }
 }
 
-fn body_lower_infix_from_repeat_element(left: Node, repeat_elem: Node) -> Optional<Node> {
-  let stripped = body_lower_deep_unwrap_optional(node: repeat_elem)
-  match sugar_sequence_pair_optional(node: stripped) {
-    Absent => Absent
-    Present { value: pair } =>
-      match body_lower_operator_atom_optional(node: pair.left) {
-        Present { value: operator } =>
-          match body_lower_operand_ref_optional(node: pair.right) {
-            Absent => Absent
-            Present { value: right } =>
-              Present {
-                value: lower_binary_infix(left: left, operator: operator, right: right)
-              }
-          }
-        Absent =>
-          match sugar_sequence_pair_optional(node: pair.right) {
-            Present { value: inner } =>
-              match body_lower_operator_atom_optional(node: inner.left) {
-                Present { value: operator } =>
-                  match body_lower_operand_ref_optional(node: inner.right) {
-                    Absent => Absent
-                    Present { value: right } =>
-                      Present {
-                        value: lower_binary_infix(
-                          left: left,
-                          operator: operator,
-                          right: right
+fn body_lower_operator_refusal(reason: Symbol, at: Node) -> OperatorExpressionRead {
+  OperatorExpressionRefused { diagnostics: diagnostics_singleton(d: body_lower_diagnostic(reason: reason, n: at)) }
+}
+
+// One operand of an operator expression, lowered whole or refused at the operand.
+fn body_lower_operator_operand(node: Node) -> Outcome<Node> {
+  let operand = body_lower_strip_operator_free_levels(node: node)
+  match body_lower_read_operator_expression(node: operand) {
+    OperatorExpressionRead { lowered: lowered } => outcome_accepted(value: lowered)
+    OperatorExpressionRefused { diagnostics: r } => Rejected { diagnostics: r }
+    OperatorExpressionAbsent =>
+      if body_lower_is_core_substrate(node: operand) {
+        outcome_accepted(value: operand)
+      } else {
+        match body_lower_try_body_lowered(node: operand) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: Present { value: lowered }, diagnostics: d } =>
+            outcome_with_diagnostics(value: lowered, diagnostics: d)
+          Accepted { value: Absent, diagnostics: _ } =>
+            match body_lower_operand_ref_optional(node: operand) {
+              Present { value: lowered } => outcome_accepted(value: lowered)
+              Absent =>
+                outcome_rejected(
+                  d: body_lower_diagnostic(reason: ^body_lowering_reason_operator_operand_unread, n: operand)
+                )
+            }
+        }
+      }
+  }
+}
+
+fn body_lower_fold_operator_tail(acc: Node, tail: Node) -> OperatorExpressionRead {
+  if is_empty_conj_root(n: tail) {
+    OperatorExpressionRead { lowered: acc }
+  } else {
+    match sugar_sequence_pair_optional(node: tail) {
+      Absent => body_lower_operator_refusal(reason: ^body_lowering_reason_operator_tail_unread, at: tail)
+      Present { value: pair } =>
+        match body_lower_operator_token_optional(node: pair.left, binary: true) {
+          Present { value: operator } =>
+            match body_lower_operator_operand(node: pair.right) {
+              Rejected { diagnostics: r } => OperatorExpressionRefused { diagnostics: r }
+              Accepted { value: right, diagnostics: _ } =>
+                OperatorExpressionRead { lowered: lower_binary_infix(left: acc, operator: operator, right: right) }
+            }
+          Absent =>
+            match sugar_sequence_pair_optional(node: pair.left) {
+              Absent => body_lower_operator_refusal(reason: ^body_lowering_reason_operator_tail_unread, at: tail)
+              Present { value: element } =>
+                match body_lower_operator_token_optional(node: element.left, binary: true) {
+                  Absent => body_lower_operator_refusal(reason: ^body_lowering_reason_operator_tail_unread, at: tail)
+                  Present { value: operator } =>
+                    match body_lower_operator_operand(node: element.right) {
+                      Rejected { diagnostics: r } => OperatorExpressionRefused { diagnostics: r }
+                      Accepted { value: right, diagnostics: _ } =>
+                        body_lower_fold_operator_tail(
+                          acc: lower_binary_infix(left: acc, operator: operator, right: right),
+                          tail: pair.right
                         )
-                      }
-                  }
-                Absent => Absent
-              }
-            Absent => Absent
-          }
-      }
+                    }
+                }
+            }
+        }
+    }
   }
 }
 
-fn body_lower_try_infix_from_sequence(node: Node) -> Optional<Node> {
-  let stripped = body_lower_unwrap_surface_shell(node: node)
+// Absent: this node is not an operator expression -- no prefix operator heads it and no operator
+// sits in its tower tail. Read: every operand lowered. Refused: an operator was read and a position
+// under it was not.
+fn body_lower_read_operator_expression(node: Node) -> OperatorExpressionRead {
+  let stripped = body_lower_strip_operator_free_levels(node: node)
   match sugar_sequence_pair_optional(node: stripped) {
-    Absent => Absent
+    Absent => OperatorExpressionAbsent
     Present { value: pair } =>
-      match body_lower_operand_ref_optional(node: pair.left) {
-        Absent => Absent
-        Present { value: left } =>
-          body_lower_infix_from_operator_tail(left: left, tail: pair.right)
-      }
-  }
-}
-
-fn body_lower_try_infix_transform(node: Node) -> Optional<Node> {
-  let stripped = body_lower_unwrap_surface_shell(node: node)
-  match body_lower_try_infix_from_sequence(node: stripped) {
-    Present { value: transform } => Present { value: transform }
-    Absent =>
-      match sugar_sequence_pair_optional(node: stripped) {
-        Present { value: pair } =>
-          match body_lower_try_infix_transform(node: pair.left) {
-            Present { value: transform } => Present { value: transform }
-            Absent => body_lower_try_infix_transform(node: pair.right)
+      match body_lower_operator_token_optional(node: pair.left, binary: false) {
+        Present { value: operator } =>
+          match body_lower_operator_operand(node: pair.right) {
+            Rejected { diagnostics: r } => OperatorExpressionRefused { diagnostics: r }
+            Accepted { value: operand, diagnostics: _ } =>
+              OperatorExpressionRead { lowered: lower_unary_prefix(operator: operator, operand: operand) }
           }
         Absent =>
-          match find_named_child(root: stripped, name: ^grammar_repeat_element_node_projection) {
-            Accepted { value: repeat_elem, diagnostics: _ } =>
-              match body_lower_try_infix_transform(node: repeat_elem) {
-                Present { value: transform } => Present { value: transform }
-                Absent =>
-                  match parse_production_captured_child_optional(node: stripped) {
-                    Present { value: captured } =>
-                      body_lower_try_infix_transform(node: captured)
-                    Absent =>
-                      fold(stripped.children, init: Absent, f: fn(acc, e) {
-                        match acc {
-                          Present { value: _ } => acc
-                          Absent => body_lower_try_infix_transform(node: e.target)
-                        }
-                      })
-                  }
-              }
-            Rejected { diagnostics: _ } =>
-              match parse_production_captured_child_optional(node: stripped) {
-                Present { value: captured } => body_lower_try_infix_transform(node: captured)
-                Absent =>
-                  fold(stripped.children, init: Absent, f: fn(acc, e) {
-                    match acc {
-                      Present { value: _ } => acc
-                      Absent => body_lower_try_infix_transform(node: e.target)
-                    }
-                  })
-              }
+          if body_lower_tail_has_binary_operator(tail: pair.right) {
+            match body_lower_operator_operand(node: pair.left) {
+              Rejected { diagnostics: r } => OperatorExpressionRefused { diagnostics: r }
+              Accepted { value: left, diagnostics: _ } =>
+                body_lower_fold_operator_tail(acc: left, tail: pair.right)
+            }
+          } else {
+            OperatorExpressionAbsent
           }
       }
+  }
+}
+
+fn body_lower_try_infix_transform(node: Node) -> Outcome<Optional<Node>> {
+  match body_lower_read_operator_expression(node: node) {
+    OperatorExpressionAbsent => outcome_accepted(value: optional_absent())
+    OperatorExpressionRead { lowered: lowered } => outcome_accepted(value: optional_present(value: lowered))
+    OperatorExpressionRefused { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
@@ -1959,9 +2083,10 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                 )
                               Absent =>
                                 match body_lower_try_infix_transform(node: node) {
-                                          Present { value: lowered } =>
+                                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                                          Accepted { value: Present { value: lowered }, diagnostics: _ } =>
                                             outcome_accepted(value: optional_present(value: lowered))
-                                          Absent =>
+                                          Accepted { value: Absent, diagnostics: _ } =>
                                                     let stripped = body_lower_unwrap_surface_shell(node: node)
                                                     match body_lower_try_fold_loop(node: stripped) {
                                                               Rejected { diagnostics: r } =>
@@ -1986,11 +2111,12 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                                                     )
                                                                   Absent =>
                                                                     match body_lower_try_infix_transform(node: stripped) {
-                                                                      Present { value: lowered } =>
+                                                                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                                                                      Accepted { value: Present { value: lowered }, diagnostics: _ } =>
                                                                         outcome_accepted(
                                                                           value: optional_present(value: lowered)
                                                                         )
-                                                                      Absent =>
+                                                                      Accepted { value: Absent, diagnostics: _ } =>
                                                                         outcome_accepted(value: optional_absent())
                                                                     }
                                                                 }
@@ -2031,8 +2157,9 @@ fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
     outcome_accepted(value: folded)
   } else if emitted == ^dag_surface_binary_expr {
     match body_lower_try_infix_transform(node: folded) {
-      Present { value: transform } => outcome_accepted(value: transform)
-      Absent => body_lower_reduce_passthrough(folded: folded)
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: Present { value: transform }, diagnostics: _ } => outcome_accepted(value: transform)
+      Accepted { value: Absent, diagnostics: _ } => body_lower_reduce_passthrough(folded: folded)
     }
   } else if emitted == ^dag_surface_postfix_expr {
     body_lower_reduce_or_keep(o: body_lower_postfix_expr(shell: folded), folded: folded)
@@ -4916,6 +5043,16 @@ fn body_lower_let_in_value_capture_optional(captured: Node) -> Optional<Node> {
   }
 }
 
+// The binding name is the FIRST element of what follows `let` -- `let NAME = value` -- read off
+// that position, never off the operand reader: body_lower_operand_ref_optional no longer narrows a
+// sequence to its left element, which is what this reader used to lean on to find NAME.
+fn body_lower_let_name_position(after_let: Node) -> Node {
+  match sugar_sequence_pair_optional(node: after_let) {
+    Present { value: pair } => pair.left
+    Absent => after_let
+  }
+}
+
 fn body_lower_let_in_key_binding_optional(captured: Node) -> Optional<Symbol> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match body_lower_match_spine_left(spine: spine) {
@@ -4925,7 +5062,7 @@ fn body_lower_let_in_key_binding_optional(captured: Node) -> Optional<Symbol> {
           match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
             Present { value: id } =>
               if id == ^dag_token_kw_let {
-                match body_lower_param_binding_optional(node: right) {
+                match body_lower_param_binding_optional(node: body_lower_let_name_position(after_let: right)) {
                   Present { value: binding } => Present { value: binding }
                   Absent =>
                     match dag_binding_branded_atom_identity(node: right) {
@@ -5978,8 +6115,9 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
         Present { value: atom } => outcome_accepted(value: atom)
         Absent =>
       match body_lower_try_infix_transform(node: captured) {
-                Present { value: transform } => outcome_accepted(value: transform)
-                Absent =>
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: Present { value: transform }, diagnostics: _ } => outcome_accepted(value: transform)
+                Accepted { value: Absent, diagnostics: _ } =>
                   match body_lower_try_fold_loop(node: captured) {
                     Rejected { diagnostics: _ } =>
                       body_lower_try_operand_or_reject(shell: shell, captured: captured)
@@ -6156,8 +6294,9 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
         Present { value: atom } => outcome_accepted(value: atom)
         Absent =>
       match body_lower_try_infix_transform(node: captured) {
-                Present { value: transform } => outcome_accepted(value: transform)
-                Absent =>
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: Present { value: transform }, diagnostics: _ } => outcome_accepted(value: transform)
+                Accepted { value: Absent, diagnostics: _ } =>
                   match body_lower_try_fold_loop(node: captured) {
                     Rejected { diagnostics: _ } =>
                       body_lower_try_operand_or_reject(shell: shell, captured: captured)
@@ -6258,18 +6397,12 @@ fn body_lower_find_where_host_conj(root: Node) -> Optional<Node> {
 // declaration and a where-alias are indistinguishable, and the record/where-alias distinction is
 // last held HERE, in body_lower_type_decl's arms.
 //
-// NOTHING CONSUMES THAT DISTINCTION TODAY, WHICH IS WHY THIS IS A FRONTIER AND NOT A DEFECT --
-// and it is named rather than left to be discovered, because a lane has already hit it:
-// gunbc#12033's follow-up (Pkg16, the pattern-binder classifier reading what a name DENOTES rather
-// than sniffing node shape) withdrew its first design on exactly this, having assumed a record
-// still reaches namespace_graft_unit_disposition as a type_decl. It does not, on this branch.
-//
-// NOTE WHAT THE EVIDENCE HERE DOES NOT COVER, stated because a reader would otherwise assume it
-// does: this file's witnesses assert the FIELDS a record declares, and v2.test.parse.
-// variant_field_lowering vf_where_beside_payload_refuses asserts a where clause beside a payload
-// REFUSES. Neither distinguishes a lowered record from a lowered where-alias, so no claim in this
-// PR would go red if that collapse mattered. Whoever needs the distinction carries it from this
-// arm; they do not recover it downstream.
+// SO IT IS CARRIED FROM HERE, not recovered downstream: body_lower_type_decl_record_name_optional
+// (below) is the one predicate that says which type_decl is a record; this dispatch and
+// v2.compiler.normalize record_declaration_capture both ask it, and the capture rides to the symbol
+// index on NormalizedTree record_declarations, where the pattern-binder classifier reads it (Pkg16).
+// The record-versus-where-alias control is v2.test.claim.match_arm_binder_frame
+// mab_where_alias_is_not_a_record.
 fn body_lower_record_type_decl(shell: Node, type_name: Symbol, block_shell: Node) -> Outcome<Node> {
   match body_lower_field_decl_block_payload(block_shell: block_shell) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -6285,6 +6418,41 @@ fn body_lower_record_type_decl(shell: Node, type_name: Symbol, block_shell: Node
   }
 }
 
+// WHICH type_decl IS A RECORD, ASKED ONCE. The record rehome below writes a record as
+// `Conj { R: payload }`, which is the same shape a where-alias rehome writes and the same shape the
+// graft builds for a module spine, so after this stage nothing can tell a record from those. The
+// pattern-binder classifier needs exactly that distinction (v2.compiler.resolve
+// resolve_pattern_atom_names_constructor: a record type spelled as a field-target atom is a
+// constructor, a module is not), so it is read HERE, where it is still held, and carried on
+// v2.compiler.normalized_tree NormalizedTree record_declarations by v2.compiler.normalize.
+//
+// The rule is the grammar's (v2.extdeps.languages.dag dag_grammar_type_decl_expr): a record is the
+// type_decl whose body is the field_decl_block arm of the choice, not the `=` arm. Asking for the
+// block alone is not enough on the PARSE tree, where every fielded variant of a coproduct still
+// carries one (dag_grammar_type_variant_expr). Every `=` body reaches a type_alias_rhs -- the
+// optional leading pipe's _lead wrapper is sugared away, the rhs is structure-preserved
+// (body_lower_is_structure_preserved_emitted) -- so excluding it gives the same answer on the parse
+// tree normalize captures from and on the lowered shell this stage rehomes: the rehome and the
+// capture cannot disagree. On the lowered shell the exclusion changes nothing the old block-only
+// test answered, because a lowered coproduct's variants no longer carry a block.
+fn body_lower_type_decl_record_block_optional(captured: Node) -> Optional<Node> {
+  match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_type_alias_rhs) {
+    Present { value: _ } => Absent
+    Absent => body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_field_decl_block)
+  }
+}
+
+fn body_lower_type_decl_record_name_optional(shell: Node) -> Optional<Symbol> {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => Absent
+    Present { value: captured } =>
+      match body_lower_type_decl_record_block_optional(captured: captured) {
+        Absent => Absent
+        Present { value: _ } => dag_surface_kw_then_ident_from_captured(captured: captured)
+      }
+  }
+}
+
 fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
   match parse_production_captured_child_optional(node: shell) {
     Absent => outcome_accepted(value: shell)
@@ -6292,7 +6460,7 @@ fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
       match dag_surface_kw_then_ident_from_captured(captured: captured) {
         Absent => outcome_accepted(value: shell)
         Present { value: type_name } =>
-          match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_field_decl_block) {
+          match body_lower_type_decl_record_block_optional(captured: captured) {
             Present { value: block_shell } =>
               body_lower_record_type_decl(shell: shell, type_name: type_name, block_shell: block_shell)
             Absent =>
