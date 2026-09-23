@@ -899,6 +899,8 @@ pub(crate) const WARNING_DENIAL_ENCODED_RUSTFLAGS: &str = "-D\x1fwarnings";
 /// happen (side-chat landing ruling on #11011, 2026-09-11).
 const CARGO_ENCODED_RUSTFLAGS_ENV: &str = "CARGO_ENCODED_RUSTFLAGS";
 const RUSTC_ENV: &str = "RUSTC";
+/// cargo `term.color` = `never` (doc.rust-lang.org/cargo/reference/config.html#termcolor).
+const CARGO_PLAIN_TEXT_COLOR: &str = "never";
 const RUSTC_WRAPPER_ENV: &str = "RUSTC_WRAPPER";
 const RUSTC_WORKSPACE_WRAPPER_ENV: &str = "RUSTC_WORKSPACE_WRAPPER";
 
@@ -1002,6 +1004,14 @@ fn probe_cargo_command_bound(
         .env(
             CARGO_ENCODED_RUSTFLAGS_ENV,
             WARNING_DENIAL_ENCODED_RUSTFLAGS,
+        )
+        // THE SPAWN READS CARGO'S TEXT, SO IT ASKS FOR TEXT. attributed_diagnostic recognises a
+        // header by a line starting `error`; under an inherited CARGO_TERM_COLOR=always (the
+        // witnesses workflow sets it) every header starts with an ANSI escape, so no red was ever
+        // attributable in CI and every emitted build refused EmittedBuildNotDiscriminating.
+        .env(
+            cargo_environment_variable_name(CargoEnvironmentVariable::CargoTermColorEnv),
+            CARGO_PLAIN_TEXT_COLOR,
         )
         .env(RUSTC_ENV, compiler)
         .env(RUSTC_WRAPPER_ENV, "")
@@ -2408,6 +2418,28 @@ mod tests {
     /// receipt that said `-D warnings` and compiler X beside a spawn that let cargo read an
     /// ambient encoded flag, a config compiler or a wrapper would be the fabricated provenance
     /// this construction exists to make unwritable.
+    /// WHY THE SPAWN SETS CARGO_TERM_COLOR. The same refusal, verbatim from CI run 35811281201,
+    /// in the two renderings cargo can produce: plain text is attributed, the coloured rendering
+    /// an inherited CARGO_TERM_COLOR=always produces is not. The coloured half is the
+    /// discriminating red that made every CI emit-build refuse EmittedBuildNotDiscriminating.
+    #[test]
+    fn a_coloured_refusal_is_unattributable_and_a_plain_one_is_attributed() {
+        let plain = "error[E0308]: mismatched types\n    --> src/v2_compiler_compile.rs:2022:45\n     |\n2022 | pub const EMIT_COMPILE_MUTATION_PROBE: u8 = \"the phase's own discriminating red\";\n";
+        let coloured = "\x1b[1m\x1b[91merror[E0308]\x1b[0m\x1b[1m: mismatched types\x1b[0m\n    \x1b[1m\x1b[94m--> \x1b[0msrc/v2_compiler_compile.rs:2022:45\n\x1b[1m\x1b[94m2022\x1b[0m \x1b[1m\x1b[94m|\x1b[0m pub const EMIT_COMPILE_MUTATION_PROBE: u8 = \"the phase's own discriminating red\";\n";
+        assert!(
+            attributed_diagnostic(plain, MUTATION_PROBE_SYMBOL)
+                .0
+                .is_some(),
+            "plain text: the injected symbol is attributed under its error header"
+        );
+        assert!(
+            attributed_diagnostic(coloured, MUTATION_PROBE_SYMBOL)
+                .0
+                .is_none(),
+            "coloured text: no line starts with `error`, so nothing is attributable"
+        );
+    }
+
     #[test]
     fn the_probe_cargo_spawn_binds_flags_compiler_and_wrappers_and_the_receipt_names_that_spawn() {
         let crate_dir = Path::new("/tmp/probe-crate");
@@ -2432,6 +2464,11 @@ mod tests {
                 .join(" "),
             WARNING_DENIAL_RUSTFLAGS,
             "the two channels spell one denial"
+        );
+        assert_eq!(
+            env_of(&command, "CARGO_TERM_COLOR"),
+            Some(Some("never".to_string())),
+            "the spawn asks for the plain text attributed_diagnostic reads, not an inherited colour"
         );
         assert_eq!(
             env_of(&command, RUSTC_ENV),
