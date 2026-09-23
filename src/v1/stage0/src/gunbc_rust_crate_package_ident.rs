@@ -4,8 +4,14 @@
 use self::PackageIdentOutcome::*;
 use self::PackageIdentRefusalCause::*;
 use self::PackageIdentSetOutcome::*;
+pub use crate::extdeps_languages_rust_emit::rust_reserved;
+use crate::std_decl_ref::DeclField::WholeDeclaration;
+pub use crate::std_decl_ref::{DeclField, DeclarationRef};
+pub use crate::std_dissolution::retires_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 use crate::std_types::Bool::*;
-pub use crate::std_types::{Bool, List};
+pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -18,6 +24,13 @@ use std::rc::Rc;
 pub enum PackageIdentRefusalCause {
     PackageNameNotIdentSafe {
         package_name: String,
+    },
+    PackageIdentNotLeadable {
+        package_name: String,
+    },
+    PackageIdentReserved {
+        package_name: String,
+        ident: String,
     },
     PackageIdentCollision {
         ident: String,
@@ -51,6 +64,15 @@ pub fn package_ident_alphabet() -> String {
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn package_ident_forbidden_leading() -> Rc<Vec<String>> {
+    thread_local! {
+        static CACHED: Rc<Vec<String>> = {
+            Rc::new(vec!["0".to_string(), "1".to_string(), "2".to_string(), "3".to_string(), "4".to_string(), "5".to_string(), "6".to_string(), "7".to_string(), "8".to_string(), "9".to_string(), "-".to_string()])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
 pub fn rust_crate_package_ident(package_name: String) -> Rc<PackageIdentOutcome> {
@@ -97,9 +119,27 @@ pub fn rust_crate_package_ident(package_name: String) -> Rc<PackageIdentOutcome>
             }
             __all
         } {
-            Rc::new(PackageIdentOutcome::PackageIdentOk {
-                ident: v1_rt::replace(package_name.clone(), "-".to_string(), "_".to_string()),
-            })
+            if {
+                let mut __found = false;
+                for p in package_ident_forbidden_leading().iter().cloned() {
+                    if v1_rt::starts_with(package_name.clone(), p.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                Rc::new(PackageIdentOutcome::PackageIdentRefused {
+                    cause: Rc::new(PackageIdentRefusalCause::PackageIdentNotLeadable {
+                        package_name: package_name.clone(),
+                    }),
+                })
+            } else {
+                rust_crate_package_ident_unreserved(
+                    package_name.clone(),
+                    v1_rt::replace(package_name.clone(), "-".to_string(), "_".to_string()),
+                )
+            }
         } else {
             Rc::new(PackageIdentOutcome::PackageIdentRefused {
                 cause: Rc::new(PackageIdentRefusalCause::PackageNameNotIdentSafe {
@@ -108,6 +148,46 @@ pub fn rust_crate_package_ident(package_name: String) -> Rc<PackageIdentOutcome>
             })
         }
     }
+}
+
+pub fn rust_crate_package_ident_unreserved(
+    package_name: String,
+    ident: String,
+) -> Rc<PackageIdentOutcome> {
+    if ((ident.clone() == "_".to_string()) || {
+        let mut __found = false;
+        for word in rust_reserved().iter().cloned() {
+            if (word.clone() == ident.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }) {
+        Rc::new(PackageIdentOutcome::PackageIdentRefused {
+            cause: Rc::new(PackageIdentRefusalCause::PackageIdentReserved {
+                package_name: package_name.clone(),
+                ident: ident.clone(),
+            }),
+        })
+    } else {
+        Rc::new(PackageIdentOutcome::PackageIdentOk {
+            ident: ident.clone(),
+        })
+    }
+}
+
+pub fn emit_rust_second_ident_projection_dissolve_on() -> Rc<DissolutionCondition> {
+    thread_local! {
+            static CACHED: Rc<DissolutionCondition> = {
+                crate::std_dissolution::retires_dissolution(Rc::new(DeclarationRef {
+        module_path: "v1.compiler.emit_rust".to_string(),
+        decl_name: "stage0_package_name_to_crate_ident".to_string(),
+        field: Rc::new(DeclField::WholeDeclaration),
+    }))
+            };
+        }
+    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -244,6 +324,27 @@ pub fn package_ident_refusal_message(cause: Rc<PackageIdentRefusalCause>) -> Str
                 package_ident_alphabet(),
             ),
             ")".to_string(),
+        ),
+        PackageIdentRefusalCause::PackageIdentNotLeadable {
+            package_name: package_name,
+            ..
+        } => v1_rt::concat(
+            "package name cannot begin a rust identifier (leading digit or hyphen): ".to_string(),
+            package_name.clone(),
+        ),
+        PackageIdentRefusalCause::PackageIdentReserved {
+            package_name,
+            ident,
+            ..
+        } => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    "package name carries to a reserved rust word ".to_string(),
+                    ident.clone(),
+                ),
+                ": ".to_string(),
+            ),
+            package_name.clone(),
         ),
         PackageIdentRefusalCause::PackageIdentCollision {
             ident,

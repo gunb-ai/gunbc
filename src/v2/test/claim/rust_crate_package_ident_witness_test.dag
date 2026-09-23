@@ -1,7 +1,11 @@
 module test.claim.rust_crate_package_ident_witness
 
 import std.types { Bool, List, String }
+import std.dissolution { BoundDissolution, DeclarationRetires, UnboundDissolution }
 import gunbc.rust_crate_package_ident {
+  PackageIdentNotLeadable,
+  PackageIdentReserved,
+  emit_rust_second_ident_projection_dissolve_on,
   PackageIdentBinding,
   PackageIdentCollision,
   PackageIdentOk,
@@ -45,6 +49,8 @@ test fn a_name_with_a_character_cargo_will_not_take_refuses() -> Bool {
       match cause {
         PackageNameNotIdentSafe { package_name: package_name } => package_name == "v1.Stage0"
         PackageIdentCollision { ident: _, first_package: _, second_package: _ } => false
+        PackageIdentNotLeadable { package_name: _ } => false
+        PackageIdentReserved { package_name: _, ident: _ } => false
       }
     PackageIdentOk { ident: _ } => false
   }
@@ -59,6 +65,8 @@ test fn two_names_projecting_to_one_identifier_refuse_and_name_both() -> Bool {
         PackageIdentCollision { ident: ident, first_package: first, second_package: second } =>
           (ident == "a_b") && (first == "a-b") && (second == "a_b")
         PackageNameNotIdentSafe { package_name: _ } => false
+        PackageIdentNotLeadable { package_name: _ } => false
+        PackageIdentReserved { package_name: _, ident: _ } => false
       }
     PackageIdentSetOk { bindings: _ } => false
   }
@@ -131,5 +139,48 @@ test fn a_package_outside_the_admitted_set_is_not_bound() -> Bool {
         Present { value: _ } => false
         Absent => true
       }
+  }
+}
+
+// NAMES THE CHARACTER CHECK ADMITS THAT ARE STILL NOT IDENTIFIERS (review 70422). Each is built
+// only of admitted characters, so each would pass a per-character check alone; the claim is that
+// the leading-position and reserved-word checks catch them, each under its own cause.
+test fn a_name_with_a_leading_digit_refuses() -> Bool {
+  match rust_crate_package_ident(package_name: "1core") {
+    PackageIdentRefused { cause: PackageIdentNotLeadable { package_name: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_name_with_a_leading_hyphen_refuses() -> Bool {
+  match rust_crate_package_ident(package_name: "-core") {
+    PackageIdentRefused { cause: PackageIdentNotLeadable { package_name: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_name_carrying_to_a_bare_underscore_refuses() -> Bool {
+  match rust_crate_package_ident(package_name: "_") {
+    PackageIdentRefused { cause: PackageIdentReserved { package_name: _, ident: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_name_carrying_to_a_rust_keyword_refuses() -> Bool {
+  match rust_crate_package_ident(package_name: "self") {
+    PackageIdentRefused { cause: PackageIdentReserved { package_name: _, ident: _ } } => true
+    _ => false
+  }
+}
+
+// The remaining second projection is a BOUND trigger on the exact declaration, so it fires when
+// that declaration retires and cannot be satisfied by anything else.
+test fn the_remaining_second_projection_is_a_bound_retirement_trigger() -> Bool {
+  match emit_rust_second_ident_projection_dissolve_on {
+    UnboundDissolution { description: _ } => false
+    BoundDissolution { trigger: DeclarationRetires { ref: r } } =>
+      ((r.module_path as String) == "v1.compiler.emit_rust")
+        && ((r.decl_name as String) == "stage0_package_name_to_crate_ident")
+    BoundDissolution { trigger: _ } => false
   }
 }
