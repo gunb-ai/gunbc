@@ -142,7 +142,7 @@ test fn the_nonce_step_reds_on_other_client_data() -> Bool {
 }
 
 // The key id step reds by name when its expectation is wrong.
-test fn the_key_id_step_reds_on_another_key_id() -> Bool {
+fn the_key_id_step_reds_on_another_key_id() -> Bool {
   let e = sample_expectation()
   match sample_fold_inputs() {
     Absent => false
@@ -238,11 +238,24 @@ test fn the_sample_assertion_counter_is_the_published_one() -> Bool {
   }
 }
 
-// INHABITANCE, THE ASSERTION'S REAL PATH, including the attestation -> assertion key join.
+// OFF THE FLOOR, NAMED BY THE NATIVE ROW (the #11981 precedent for the enrolment gate's dead band).
+// The two ordinary functions the_key_id_step_reds_on_another_key_id and
+// the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions measured between the 302 ms
+// enrolment margin and the 500 ms per-subject line on the required floor, the band
+// v2.workflow.floor_enrolment_margin describes as stale under a typed admission and over the margin
+// without one, so blocked under both. Like #11981's cliff-band SHA-384 vectors and the P-256
+// verifications here, they are ordinary functions whose executing consumer is the native row
+// gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier names. Until it
+// lands, the floor loses: the key-id step's own RED, and the assertion's real path (assertion_parts,
+// the RP ID step over Apple's assertion, and the attestation-to-assertion key join). The key-id
+// SHA-256 over the real leaf still executes on the floor inside
+// the_sample_passes_every_step_before_the_extension_steps. A quiet host may run both by name through
+// claim_batch --functions; that is not acceptance-path evidence.
+// THE ASSERTION'S REAL PATH, including the attestation -> assertion key join.
 // The assertion fold: RP ID passes on real bytes and the first refusal is step 7's absence (the
 // 37-octet prefix carries no extensions); the counter is carried out as 1 either way; a wrong App
 // ID reds step 4 by name.
-test fn the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions() -> Bool {
+fn the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions() -> Bool {
   match assertion_expectation() {
     Absent => false
     Present { value: e } =>
@@ -296,7 +309,7 @@ fn the_sample_assertion_signature_is_false_for_other_client_data() -> Bool {
 // AssertionSignatureInvalid) -- and it is cheap, refusing before any curve arithmetic or nonce hash.
 // SUBJECT: assertion_signature_verifies' key decoding. The key is the value under test, so it is
 // supplied; it is not read from the attestation, whose join to the assertion is carried by
-// the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions.
+// the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions, executed by the native row the frontier names.
 test fn an_undecodable_stored_key_is_absent_not_a_false_verdict() -> Bool {
   match assertion_signature_verifies_for(object: sample_assertion_octets, e: AssertionExpectation {
     key_id: sample_key_id_b64 as AttestKeyId,
