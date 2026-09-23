@@ -245,7 +245,7 @@ fn sugar_first_atom_identity_optional(node: Node) -> Symbol? {
 
 // A Disj arm is Named{label} -> payload. A variant whose fields body lowering already declared
 // (v2.std.node_query variant_declaration_node) hands over its edge as is; a bare variant is the
-// nullary arm, whose payload is the empty Conj (v2.std.node_query payload_is_nullary) -- its
+// nullary arm, whose payload is the empty Conj (a Conj with no children) -- its
 // name is the edge label, so the parse subtree that spelled it carries nothing the arm keeps.
 fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
   let variant = sugar_unwrap_production_shell(node: variant_node)
