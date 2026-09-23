@@ -439,7 +439,7 @@ fn ncr_outcomes() -> NcrOutcomes {
               Accepted { value: rc, diagnostics: _ } =>
                 match symbol_index_global_unique_lookup(index: rc.symbol_index, name: ^NcrDisp) {
                   GlobalBareHit { node: _, path: _ } => true
-                  GlobalBareLookupAmbiguous => false
+                  GlobalBareLookupAmbiguous { paths: _ } => false
                   GlobalBareLookupUnbound => false
                 }
             }),
@@ -448,7 +448,7 @@ fn ncr_outcomes() -> NcrOutcomes {
               Accepted { value: rc, diagnostics: _ } =>
                 match symbol_index_global_unique_lookup(index: rc.symbol_index, name: ^NcrTwin) {
                   GlobalBareHit { node: _, path: _ } => false
-                  GlobalBareLookupAmbiguous => true
+                  GlobalBareLookupAmbiguous { paths: _ } => true
                   GlobalBareLookupUnbound => false
                 }
             }),

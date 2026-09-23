@@ -687,6 +687,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.match_arm_binder_frame.mab_resolved_ambiguous_binder",
   "v2.test.claim.match_arm_binder_frame.mab_resolved_module_named_binder",
   "v2.test.claim.match_arm_binder_frame.mab_resolved_unimported_constructor",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_two_module_variant",
   "v2.test.claim.match_arm_binder_frame.mab_record_declarations_specimen",
   "v2.test.claim.body_lowering_qualified_path.body_lowering_qualified_value_normalized",
   "v2.test.manual.body_lowering_projection_call.body_lowering_parsed_module",
