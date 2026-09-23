@@ -15,7 +15,7 @@ import extdeps.apple.app_attest {
   AttestationStep, KeyIdLengthStep, NonceStep, KeyIdStep, AppIdStep, CounterStep, EnvironmentStep, CredentialIdStep,
   LeafIssuerStep, IntermediateIssuerStep, LeafValidityStep, IntermediateValidityStep, IntermediateCaAuthorityStep,
   ValidationCategoryStep, BundleVersionStep,
-  nonce_step, key_id_step, app_id_step, environment_step, leaf_validity_step,
+  ordered_step_refusal, OrderedStepRan, AttestationStepNotInOrder,
   attestation_parts, AttestationPartsOk, AttestationPartsRefused, AttestationRefusal, app_attest_certificate,
 }
 import extdeps.standards.rfc_5280 { X509Certificate, X509TbsFields }
@@ -120,10 +120,11 @@ fn sample_fold_inputs() -> AttestationDecoded? {
 // make it name that step instead of category-absent. That the steps are the ones production runs, in production's
 // order, is attestation_step_order_is_the_declared_order below; the real path's inhabitance is
 // the_sample_passes_every_step_before_the_extension_steps.
-fn step_name(r: AttestationRefusal?) -> String {
-  match r {
-    Absent => "none"
-    Present { value: c } => attestation_refusal_name(c: c)
+fn ordered_name(step: AttestationStep, d: AttestationDecoded, e: AttestationExpectation) -> String {
+  match ordered_step_refusal(step: step, d: d, e: e) {
+    AttestationStepNotInOrder => "not-in-order"
+    OrderedStepRan { refusal: Absent } => "none"
+    OrderedStepRan { refusal: Present { value: c } } => attestation_refusal_name(c: c)
   }
 }
 
@@ -133,7 +134,7 @@ test fn the_nonce_step_reds_on_other_client_data() -> Bool {
   match sample_fold_inputs() {
     Absent => false
     Present { value: d } =>
-      step_name(r: nonce_step(d: d, e: AttestationExpectation { key_id: e.key_id, client_data: "wurzelpfropg" as NonEmptyStr, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version })) == "nonce"
+      ordered_name(step: NonceStep, d: d, e: AttestationExpectation { key_id: e.key_id, client_data: "wurzelpfropg" as NonEmptyStr, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version })) == "nonce"
   }
 }
 
@@ -143,7 +144,7 @@ test fn the_key_id_step_reds_on_another_key_id() -> Bool {
   match sample_fold_inputs() {
     Absent => false
     Present { value: d } =>
-      step_name(r: key_id_step(d: d, e: AttestationExpectation { key_id: "YmbJO4x5nEHUvncp9zdWuVZjNBEMgJn3cdSToAXQe3Q=" as AttestKeyId, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version })) == "key-id"
+      ordered_name(step: KeyIdStep, d: d, e: AttestationExpectation { key_id: "YmbJO4x5nEHUvncp9zdWuVZjNBEMgJn3cdSToAXQe3Q=" as AttestKeyId, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version })) == "key-id"
   }
 }
 
@@ -153,7 +154,7 @@ test fn the_app_id_step_reds_on_another_app_id() -> Bool {
   match sample_fold_inputs() {
     Absent => false
     Present { value: d } =>
-      step_name(r: app_id_step(d: d, e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: "6MURL8TA57.de.vincent-haupert.other" as NonEmptyStr, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version })) == "app-id"
+      ordered_name(step: AppIdStep, d: d, e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: "6MURL8TA57.de.vincent-haupert.other" as NonEmptyStr, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version })) == "app-id"
   }
 }
 
@@ -163,7 +164,7 @@ test fn the_environment_step_reds_on_production() -> Bool {
   match sample_fold_inputs() {
     Absent => false
     Present { value: d } =>
-      step_name(r: environment_step(d: d, e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: AppAttestProduction, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version })) == "environment"
+      ordered_name(step: EnvironmentStep, d: d, e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: AppAttestProduction, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version })) == "environment"
   }
 }
 
@@ -173,7 +174,7 @@ test fn the_validity_step_reds_when_observed_in_2026() -> Bool {
   match sample_fold_inputs() {
     Absent => false
     Present { value: d } =>
-      step_name(r: leaf_validity_step(d: d, e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: "2026-09-21T00:00:00Z", admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version })) == "chain:credential certificate expired at 2021-01-25T12:13:35Z"
+      ordered_name(step: LeafValidityStep, d: d, e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: "2026-09-21T00:00:00Z", admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version })) == "chain:credential certificate expired at 2021-01-25T12:13:35Z"
   }
 }
 
