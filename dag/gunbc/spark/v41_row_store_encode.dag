@@ -3,6 +3,7 @@ module gunbc.spark.v41_row_store_encode
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.nat { Nat }
 import std.content_hash { Sha256Digest }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { ByteSize, byte_size_count }
 import v2.std.optional { Present, Absent }
 import extdeps.numeric.base16 { byte_hex_lower }
@@ -22,8 +23,8 @@ import gunbc.spark.v41_engram_row_store {
 // ── THE HOST REALIZATION OF v41_place_row: WHAT THE ENCODER IS TOLD, DERIVED ───────────────────
 //
 // The published stores are hundreds of millions of rows, so they are not built by the .dag fold; they
-// are built on the host that holds the materialized shards by dag/gunbc/spark/encoders/
-// v41_row_store_encode.py, and this module is the whole of what that program knows. For one
+// are built on the host that holds the materialized shards by v41_row_store_encoder_program below, and
+// this module is the whole of what that program knows. For one
 // (layer, rank) store it derives, from the row-store spec and the published span plan:
 //   - the shard and the file offsets of the layer's weight and scale tables (the span plan, which is
 //     the publisher's header arithmetic -- the same plan the span-key read uses);
@@ -37,7 +38,72 @@ import gunbc.spark.v41_engram_row_store {
 // over a sample, not a derivation -- gunbc.rung_drop v41_row_store_host_realized_by_sample says so and
 // names what restores the structural rung.
 
-data v41_row_store_encoder_path: NonEmptyStr = "dag/gunbc/spark/encoders/v41_row_store_encode.py" as NonEmptyStr
+// ── THE PROGRAM, AS DATA OWNED HERE (ruling A, proud-deer-538, 2026-09-23) ─────────────────────
+//
+// The interleave v41_place_row describes, as the text shipped to the host and run with `python3 -c`
+// (the same shape as extdeps.tools.sha256sum sha256sum_byte_span_program's `bash -c`): the text is
+// fixed and every value -- shard, table offsets, row range, record widths, magic, output, chunk size --
+// is an argument v41_store_encode_argv renders from the spec. NO LAYOUT FACT IS IN THE TEXT: no stride,
+// no offset, no rank bound, no head size. It writes OUT.part and renames only when complete, and prints
+// nothing on success; each store's SHA-256 is read separately by sha256sum.
+data v41_row_store_encoder_program_lines: List<String> = [
+  "import argparse",
+  "import os",
+  "import sys",
+  "",
+  "def main():",
+  "    p = argparse.ArgumentParser()",
+  "    for name in ['--shard', '--magic-hex', '--out']:",
+  "        p.add_argument(name, required=True)",
+  "    for name in ['--weight-offset', '--scale-offset', '--start', '--rows', '--weight-bytes', '--scale-bytes', '--chunk-rows']:",
+  "        p.add_argument(name, type=int, required=True)",
+  "    a = p.parse_args()",
+  "    if a.rows <= 0 or a.weight_bytes <= 0 or a.scale_bytes <= 0 or a.chunk_rows <= 0 or a.start < 0:",
+  "        print('v41_row_store_encode: rows, widths and chunk must be positive and start non-negative', file=sys.stderr)",
+  "        return 2",
+  "    wb = a.weight_bytes",
+  "    sb = a.scale_bytes",
+  "    w0 = a.weight_offset + a.start * wb",
+  "    s0 = a.scale_offset + a.start * sb",
+  "    part = a.out + '.part'",
+  "    with open(a.shard, 'rb') as src, open(part, 'wb') as dst:",
+  "        dst.write(bytes.fromhex(a.magic_hex))",
+  "        done = 0",
+  "        while done < a.rows:",
+  "            n = min(a.chunk_rows, a.rows - done)",
+  "            src.seek(w0 + done * wb)",
+  "            w = src.read(n * wb)",
+  "            src.seek(s0 + done * sb)",
+  "            s = src.read(n * sb)",
+  "            if len(w) != n * wb or len(s) != n * sb:",
+  "                print('v41_row_store_encode: short read from the shard; the span is not all there', file=sys.stderr)",
+  "                return 3",
+  "            dst.write(b''.join(w[i * wb:(i + 1) * wb] + s[i * sb:(i + 1) * sb] for i in range(n)))",
+  "            done += n",
+  "    os.replace(part, a.out)",
+  "    return 0",
+  "",
+  "sys.exit(main())",
+]
+
+data v41_row_store_encoder_program: String = concat(join(v41_row_store_encoder_program_lines, "\n"), "\n")
+
+// The rows per read. Not a layout fact: any positive value yields the same bytes.
+data v41_row_store_encoder_chunk_rows: Nat = 65536
+
+// THIS PROGRAM DECLARES WHAT IT REALIZES AND THE RUNG THAT COSTS.
+type V41HostRealization sole_constructor {
+  realizes: DeclarationRef
+  program: String
+  rung_drop: DeclarationRef
+}
+
+data v41_row_store_host_realization: V41HostRealization = V41HostRealization {
+  realizes: decl_ref(module_path: "gunbc.spark.v41_engram_row_store", decl_name: "v41_place_row"),
+  program: v41_row_store_encoder_program,
+  rung_drop: decl_ref(module_path: "gunbc.rung_drop.v41_row_store_host_realized_by_sample", decl_name: "v41_row_store_host_realized_by_sample"),
+}
+
 
 // THE DIRECTORY ON THE HOST, next to the materialized checkpoint (gunbc.spark.v41_checkpoint_materialize
 // v41_checkpoint_directory) and keyed by nothing yet: which path the runtime opens a store at is the
@@ -45,7 +111,7 @@ data v41_row_store_encoder_path: NonEmptyStr = "dag/gunbc/spark/encoders/v41_row
 // the encoder writes and a later cut moves or links them.
 data v41_row_store_output_directory: NonEmptyStr = "/home/briansrls/models/deepseek-ai/DeepSeek-V4.1-Flash/engram-row-stores" as NonEmptyStr
 
-type V41StoreEncodeArgs sole_constructor {
+type V41StoreEncodeArgs {
   layer: Nat
   rank: Nat
   shard: NonEmptyStr
@@ -118,14 +184,13 @@ fn v41_store_encode_plan(spec: V41RowStoreEncodingSpec, spans: List<V41Published
   }
 }
 
-// THE ARGV, rendered for a shard directory on the host. The program path is where the mode stages the
-// declared file; nothing here is a layout literal. DECLARED FRONTIER: its executing consumer is the
+// THE ARGV, rendered for a shard directory on the host: the program text inline, every value an operand. DECLARED FRONTIER: its executing consumer is the
 // dispatched spark_v41_row_store_encode mode (the next change in this lane), which runs it per rank on
 // the host that holds that rank's shards and transcribes sha256sum of each output into
 // v41_published_store_readings; it lands once Group A's shards are materialized (#12109).
-fn v41_store_encode_argv(program: NonEmptyStr, shard_directory: NonEmptyStr, a: V41StoreEncodeArgs) -> List<String> {
+fn v41_store_encode_argv(shard_directory: NonEmptyStr, a: V41StoreEncodeArgs) -> List<String> {
   [
-    "python3", program as String,
+    "python3", "-c", v41_row_store_host_realization.program,
     "--shard", join([shard_directory as String, "/", a.shard as String], ""),
     "--weight-offset", to_string(a.weight_offset),
     "--scale-offset", to_string(a.scale_offset),
@@ -135,6 +200,7 @@ fn v41_store_encode_argv(program: NonEmptyStr, shard_directory: NonEmptyStr, a: 
     "--scale-bytes", to_string(a.scale_bytes),
     "--magic-hex", a.magic_hex,
     "--out", a.out as String,
+    "--chunk-rows", to_string(v41_row_store_encoder_chunk_rows),
   ]
 }
 

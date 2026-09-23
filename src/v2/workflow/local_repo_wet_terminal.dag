@@ -1495,6 +1495,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.v41_row_store_encode_witness", function: "the_receipt_was_produced_by_the_rendered_program_the_mode_ships" },
+      entry: "dag/test/claim/spark/v41_row_store_encode_witness_test.dag",
+      function: "the_receipt_was_produced_by_the_rendered_program_the_mode_ships",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.spark.v41_published_row_store_witness", function: "a_reading_of_exactly_the_planned_spans_keys" },
       entry: "dag/test/claim/spark/v41_published_row_store_witness_test.dag",
       function: "a_reading_of_exactly_the_planned_spans_keys",

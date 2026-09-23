@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.integer { UInt8, qualified_octet_members }
 import v2.std.optional { Present, Absent }
 import extdeps.numeric.base16 { base16_decode_lower }
-import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
 import extdeps.safetensors.format { SafeF8E4M3, SafeF8E8M0 }
 import extdeps.vllm.engram_layout { VllmEngramRankRows }
 import extdeps.deepseek.deepseek_v4_1_flash {
@@ -19,7 +19,8 @@ import gunbc.spark.v41_engram_row_store {
   v41_place_all, v41_placed_rows, v41_store_bytes, v41_row_store_spec, v41_published_span_plan,
 }
 import gunbc.spark.v41_row_store_encode {
-  V41StoreEncodePlanned, V41StoreEncodeUnplannable, v41_store_encode_plan, v41_row_store_encoder_path,
+  V41StoreEncodeArgs, V41StoreEncodePlanned, V41StoreEncodeUnplannable, v41_store_encode_plan,
+  v41_store_encode_argv, v41_row_store_encoder_program, v41_row_store_host_realization, v41_magic_hex,
 }
 import test.claim.vllm.vllm_engram_layout_witness { w_published_head_sizes }
 
@@ -27,15 +28,17 @@ import test.claim.vllm.vllm_engram_layout_witness { w_published_head_sizes }
 //
 // THE RECEIPT, and how it was produced (2026-09-23, bold-newt-50). Rows 96000562 and 96000563 of
 // layers.1.engram.embed.{weight,scale} were read by HTTP range from model-00047-of-00048.safetensors at
-// dba1be0a and written at their TRUE file offsets into a sparse copy of that shard. The encoder
-// dag/gunbc/spark/encoders/v41_row_store_encode.py (sha256 w_encoder_sha256 below) then ran with
+// dba1be0a and written at their TRUE file offsets into a sparse copy of that shard. The rendered
+// program gunbc.spark.v41_row_store_encode v41_row_store_encoder_program -- the exact text the fleet
+// mode ships, whose sha256 is w_program_sha256 -- then ran as `python3 -c <program>` with
 //   --weight-offset 664 --scale-offset 98305579672 --start 96000562 --rows 2
-//   --weight-bytes 256 --scale-bytes 8 --magic-hex 454e4752310a
-// (the offsets and widths are the live plan's for layer 1, asserted by
+//   --weight-bytes 256 --scale-bytes 8 --magic-hex 454e4752310a --chunk-rows 65536
+// and again with --chunk-rows 1, which crosses a chunk boundary between the two rows and wrote the same
+// bytes (the offsets and widths are the live plan's for layer 1, asserted by
 // the_live_plan_hands_the_encoder_what_the_sample_run_used), and w_host_store is its output file. The
 // perturbed receipt is the same run with --scale-offset one row further (98305579680): row 0 then
 // carries row 1's scale and row 1 carries row 2's.
-data w_encoder_sha256: String = "1f1affd6f660b2f01ae78a49caf1e42dffb62170fb5681fc1beaf4a5a73ec0f1"
+data w_program_sha256: String = "0c79e8da41f10401ae9696c2d617430e78a86a601dd3dee70468c258e12d6116"
 
 data w_weight_96000562: String = "73cbf4f370e0e7696f6ab56a6d5cec58e8e7e86e77f2ebc563eaee4b60f2e655c1ec657a76f7f5dad977f1fccef5d7ea5d74f1e57366f17174f1f3fb6ef6fe70f1faf3ebf1f36ff1f5db7b63e97779eb75f6ece87bf17af9717b79f777de78f8f36c6af272e4407375f179e4e55769faf7ecf068ea5e73e468776d6d6ff6f1f275d56eefc3d564e8ee6573686959e5ee71606a586b77e4e8e1f568ee5c595768df7377ef72f77bf763727b73fbf77b71767168f1e57a756c70fb6dea6dfbf57365f8f2f2e3e8fb775e6cfaf6f25cda707172e4e6f2eaea78f473fdecf2657252e979f24ff775fbf6707c71ef727ef7ecf767f6f377de6f706f706bfc7c6feaf9"
 data w_scale_96000562: String = "7877777778777777"
@@ -45,6 +48,14 @@ data w_scale_96000563: String = "7878787878787878"
 data w_host_store: String = "454e4752310a73cbf4f370e0e7696f6ab56a6d5cec58e8e7e86e77f2ebc563eaee4b60f2e655c1ec657a76f7f5dad977f1fccef5d7ea5d74f1e57366f17174f1f3fb6ef6fe70f1faf3ebf1f36ff1f5db7b63e97779eb75f6ece87bf17af9717b79f777de78f8f36c6af272e4407375f179e4e55769faf7ecf068ea5e73e468776d6d6ff6f1f275d56eefc3d564e8ee6573686959e5ee71606a586b77e4e8e1f568ee5c595768df7377ef72f77bf763727b73fbf77b71767168f1e57a756c70fb6dea6dfbf57365f8f2f2e3e8fb775e6cfaf6f25cda707172e4e6f2eaea78f473fdecf2657252e979f24ff775fbf6707c71ef727ef7ecf767f6f377de6f706f706bfc7c6feaf978777777787777775b71726d69725c6567cfea6ae069776871e87873eaf254f26a7458ebf2f7736c75f2eef17048f1ec63c356eef2646e51ecf5de6072ececf2737361e56ee349f979d8e2f96edd6c61f063dfefe96c6ff3f0f572d17afa5eec6b66dce47767f0fadcf7eb57cb7074696ae36dd46761f16e666072e0e46b69dbf362ec6ef4e17cf576ebe3dde9f0f17775e84ae3ccdad0f16b746c4d735ee75076ede2e96df1f7f4f0f67af2ddea67d7edda6ee9e871755cf6ebf660ede966f36eecf064636a66645b71f6637366dc60f0e6f27af7726c706ef971ae72de6bc8f473ecdbe2e75de0737566ec6b6be9d9f4da6f5376696f6ce761c4eeeb5d61eff8f44a766b7a6a607878787878787878"
 
 data w_host_store_perturbed: String = "454e4752310a73cbf4f370e0e7696f6ab56a6d5cec58e8e7e86e77f2ebc563eaee4b60f2e655c1ec657a76f7f5dad977f1fccef5d7ea5d74f1e57366f17174f1f3fb6ef6fe70f1faf3ebf1f36ff1f5db7b63e97779eb75f6ece87bf17af9717b79f777de78f8f36c6af272e4407375f179e4e55769faf7ecf068ea5e73e468776d6d6ff6f1f275d56eefc3d564e8ee6573686959e5ee71606a586b77e4e8e1f568ee5c595768df7377ef72f77bf763727b73fbf77b71767168f1e57a756c70fb6dea6dfbf57365f8f2f2e3e8fb775e6cfaf6f25cda707172e4e6f2eaea78f473fdecf2657252e979f24ff775fbf6707c71ef727ef7ecf767f6f377de6f706f706bfc7c6feaf978787878787878785b71726d69725c6567cfea6ae069776871e87873eaf254f26a7458ebf2f7736c75f2eef17048f1ec63c356eef2646e51ecf5de6072ececf2737361e56ee349f979d8e2f96edd6c61f063dfefe96c6ff3f0f572d17afa5eec6b66dce47767f0fadcf7eb57cb7074696ae36dd46761f16e666072e0e46b69dbf362ec6ef4e17cf576ebe3dde9f0f17775e84ae3ccdad0f16b746c4d735ee75076ede2e96df1f7f4f0f67af2ddea67d7edda6ee9e871755cf6ebf660ede966f36eecf064636a66645b71f6637366dc60f0e6f27af7726c706ef971ae72de6bc8f473ecdbe2e75de0737566ec6b6be9d9f4da6f5376696f6ce761c4eeeb5d61eff8f44a766b7a6a607778777878777878"
+
+fn w_sample_args() -> V41StoreEncodeArgs {
+  V41StoreEncodeArgs {
+    layer: 1, rank: 0, shard: "model-00047-of-00048.safetensors" as NonEmptyStr,
+    weight_offset: 664, scale_offset: 98305579672, start: 96000562, rows: 2,
+    weight_bytes: 256, scale_bytes: 8, magic_hex: v41_magic_hex(), out: "/s/out" as NonEmptyStr,
+  }
+}
 
 fn w_octets(hex: String) -> List<UInt8> {
   match base16_decode_lower(hex: hex) {
@@ -85,12 +96,23 @@ test fn a_perturbed_placement_by_the_host_program_is_not_the_folds_store() -> Bo
   length(dag) == 6 + 2 * 264 && dag != w_octets(hex: w_host_store_perturbed)
 }
 
-// THE RECEIPT DESCRIBES THIS PROGRAM: an edit to the encoder invalidates it until it is re-run.
-test fn the_receipt_was_produced_by_the_committed_encoder() -> Bool {
-  match sha256sum_file_digest_via_shell(path: v41_row_store_encoder_path) {
-    Sha256FileDigest { digest: d } => (d.hex as String) == w_encoder_sha256
+// THE RECEIPT DESCRIBES THE RENDERED PROGRAM THE MODE SHIPS: the text that produced it is the text
+// v41_store_encode_argv carries. An edit to the program invalidates the receipt until it is re-run.
+test fn the_receipt_was_produced_by_the_rendered_program_the_mode_ships() -> Bool {
+  match sha256sum_stdin_digest_via_shell(content: v41_row_store_encoder_program) {
+    Sha256FileDigest { digest: d } => (d.hex as String) == w_program_sha256
     Sha256FileDigestUnavailable { path: _, reason: _ } => false
   }
+}
+
+// THE ARGV CARRIES THAT TEXT, and the declaration says what it realizes.
+test fn the_argv_ships_the_rendered_program_as_a_realization_of_v41_place_row() -> Bool {
+  let a = v41_store_encode_argv(shard_directory: "/s" as NonEmptyStr, a: w_sample_args())
+  match get(xs: a, index: 2) {
+    Present { value: prog } => prog == v41_row_store_encoder_program
+    Absent => false
+  } && (v41_row_store_host_realization.realizes.decl_name as String) == "v41_place_row"
+    && (v41_row_store_host_realization.realizes.module_path as String) == "gunbc.spark.v41_engram_row_store"
 }
 
 // THE LIVE PLAN HANDS THE ENCODER WHAT THE SAMPLE RUN USED for layer 1: the weight and scale tables at
