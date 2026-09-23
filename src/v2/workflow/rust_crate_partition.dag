@@ -8,7 +8,15 @@ import std.graph {
   CallGraph,
   GraphEdge,
   graph_has_multi_node_scc,
+  graph_reverse_reachable_members,
   graph_strongly_connected_components
+}
+import gunbc.rust_emitted_edge {
+  EmittedEdge,
+  EmittedEdgeProvenance,
+  EmittedModuleTarget,
+  EmittedCrateRootTarget,
+  rust_prelude_emitted_edges
 }
 import std.disposition { RealizationDispatch }
 import std.types { List, String, Bool, Int, NonEmptyStr }
@@ -71,6 +79,7 @@ type ResolvePartitionRefusalCause
   | AssignmentOmitsModule { module_id: ModuleId }
   | AssignmentNamesModuleOutsideDag { module_id: ModuleId }
   | PartitionRustAdmissibilityRefused { cause: PartitionR4ValidityCause }
+  | PartitionEmittedEdgeRefused { cause: EmittedEdgeRefusal }
 
 type ResolvePartitionOutcome
   = ResolvePartitionOk {
@@ -577,7 +586,6 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "v1_std_core", to: "std_induction"),
     stage0_module_dag_edge(from: "v1_std_core", to: "std_syntax"),
     stage0_module_dag_edge(from: "v1_std_core", to: "std_types"),
-    stage0_module_dag_edge(from: "v1_std_core", to: "v1_rt"),
     stage0_module_dag_edge(from: "v1_compiler_infer_sigs", to: "std_induction"),
     stage0_module_dag_edge(from: "v1_compiler_infer_service", to: "v1_compiler_infer_items"),
     stage0_module_dag_edge(from: "v1_compiler_infer_types", to: "v1_compiler_infer_items"),
@@ -591,25 +599,166 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "v1_compiler_coercion", to: "v1_compiler_artifact"),
     stage0_module_dag_edge(from: "v1_compiler_languages", to: "v1_compiler_artifact"),
     stage0_module_dag_edge(from: "std_import", to: "std_types"),
-    stage0_module_dag_edge(from: "std_import", to: "v1_rt"),
     stage0_module_dag_edge(from: "v1_compiler_parse", to: "std_algebra"),
     stage0_module_dag_edge(from: "v1_compiler_parse", to: "std_import"),
     stage0_module_dag_edge(from: "v1_compiler_parse", to: "std_occurrence_identity"),
     stage0_module_dag_edge(from: "v1_compiler_parse", to: "std_syntax"),
     stage0_module_dag_edge(from: "v1_compiler_parse", to: "std_types"),
     stage0_module_dag_edge(from: "v1_compiler_parse", to: "extdeps_languages_dag_syntax"),
-    stage0_module_dag_edge(from: "v1_compiler_parse", to: "v1_rt"),
     stage0_module_dag_edge(from: "v1_compiler_parse", to: "v1_std_core"),
   ]
 }
 
-data stage0_module_dag: ModuleDag = ModuleDag {
+data stage0_source_module_dag: ModuleDag = ModuleDag {
     modules: stage0_all_partitioned_modules()
       |> map(basename => stage0_module_id(basename: basename)),
     edges: stage0_cross_unit_import_edges(),
     exports: stage0_module_dag_exports_map(),
     type_definitions: stage0_module_dag_type_definitions_map(),
   }
+
+// The stage0 DAG the partition decides over is the source edges PLUS the edges the emitter writes
+// into every emitted module, read from the emitter's own row producer. The runtime edges this
+// derives were three hand rows in stage0_cross_unit_import_edges -- a partial second list of a
+// fact the emitter decides for every module -- and they are deleted in favour of it.
+data stage0_module_dag_merge: ModuleDagEmittedMerge = module_dag_with_emitted_edges(
+  module_dag: stage0_source_module_dag,
+  emitted: module_dag_runtime_prelude_edges(module_dag: stage0_source_module_dag)
+)
+
+// AN EMITTED EDGE IS A REALIZATION EDGE WITH ITS PROVENANCE, AND THE PARTITION ADMITS IT OR REFUSES
+// IT BY NAME. A source-acyclic closure can be emitted into a crate graph that does not compile when
+// the emitter writes a path the source never declared, so the partition must decide over every
+// module edge the emitted code carries. An emitted edge whose target already reaches its source
+// through the source edges would close a cycle the source does not have: that is an emitter
+// defect, refused as EmitterReverseEdge with the provenance that produced it, never merged into a
+// DAG whose R4 verdict would then report an anonymous UnitGraphCycle. An endpoint the DAG does not
+// declare is refused rather than dropped, because dropping it answers for a smaller graph.
+type EmittedEdgeRefusal
+  = EmitterReverseEdge { from: ModuleId, to: ModuleId, provenance: EmittedEdgeProvenance }
+  | EmittedEdgeEndpointOutsideDag { from: String, to: String }
+
+type ModuleDagEmittedMerge
+  = ModuleDagEmittedMerged { module_dag: ModuleDag }
+  | ModuleDagEmittedRefused { cause: EmittedEdgeRefusal }
+
+type EmittedEdgeMergeFold {
+  edges: List<ModuleDagEdge>
+  present: Map<String, Bool>
+  refusal: Optional<EmittedEdgeRefusal>
+}
+
+fn module_dag_runtime_prelude_edges(module_dag: ModuleDag) -> List<EmittedEdge> {
+  module_dag.modules |> flat_map(module_id => rust_prelude_emitted_edges(module: module_id as String))
+}
+
+fn module_dag_edge_key(from: String, to: String) -> String {
+  concat(from, concat(" -> ", to))
+}
+
+// What each distinct emitted target reaches along the SOURCE edges, one walk per target rather
+// than one per edge: every emitted module shares the runtime target.
+fn emitted_target_reach(module_dag: ModuleDag, emitted: List<EmittedEdge>) -> Map<String, Map<String, Bool>> {
+  let names = module_dag.modules |> map(module_id => module_id as String)
+  let forward_as_reverse = CallGraph {
+    edges: module_dag.edges |> map(edge => GraphEdge { caller: edge.to as String, callee: edge.from as String })
+  }
+  emitted |> fold(init: empty_map(), f: fn(acc, edge) {
+    match edge.to {
+      EmittedCrateRootTarget => acc
+      EmittedModuleTarget { module: target } =>
+        match map_get(acc, target) {
+          Accepted { value: Present { value: _ }, diagnostics: _ } => acc
+          _ =>
+            map_insert(acc, target,
+              graph_reverse_reachable_members(names: names, graph: forward_as_reverse, start: target)
+                |> fold(init: empty_map(), f: fn(reached, member) { map_insert(reached, member, true) }))
+        }
+    }
+  })
+}
+
+fn string_member(set: Map<String, Bool>, key: String) -> Bool {
+  match map_get(set, key) {
+    Accepted { value: Present { value: _ }, diagnostics: _ } => true
+    _ => false
+  }
+}
+
+fn emitted_edge_merge_step(
+  acc: EmittedEdgeMergeFold,
+  edge: EmittedEdge,
+  module_set: Map<String, Bool>,
+  reach: Map<String, Map<String, Bool>>
+) -> EmittedEdgeMergeFold {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match edge.to {
+        EmittedCrateRootTarget => acc
+        EmittedModuleTarget { module: target } =>
+          if edge.from == target {
+            acc
+          } else if !string_member(set: module_set, key: edge.from) || !string_member(set: module_set, key: target) {
+            EmittedEdgeMergeFold {
+              edges: acc.edges,
+              present: acc.present,
+              refusal: optional_present(value: EmittedEdgeEndpointOutsideDag { from: edge.from, to: target })
+            }
+          } else {
+            let target_reaches_source = match map_get(reach, target) {
+              Accepted { value: Present { value: reached }, diagnostics: _ } => string_member(set: reached, key: edge.from)
+              _ => false
+            }
+            if target_reaches_source {
+              EmittedEdgeMergeFold {
+                edges: acc.edges,
+                present: acc.present,
+                refusal: optional_present(value: EmitterReverseEdge {
+                  from: stage0_module_id(basename: edge.from),
+                  to: stage0_module_id(basename: target),
+                  provenance: edge.provenance
+                })
+              }
+            } else if string_member(set: acc.present, key: module_dag_edge_key(from: edge.from, to: target)) {
+              acc
+            } else {
+              EmittedEdgeMergeFold {
+                edges: acc.edges |> list_push(ModuleDagEdge {
+                  from: stage0_module_id(basename: edge.from),
+                  to: stage0_module_id(basename: target)
+                }),
+                present: map_insert(acc.present, module_dag_edge_key(from: edge.from, to: target), true),
+                refusal: Absent
+              }
+            }
+          }
+      }
+  }
+}
+
+fn module_dag_with_emitted_edges(module_dag: ModuleDag, emitted: List<EmittedEdge>) -> ModuleDagEmittedMerge {
+  let module_set = module_dag.modules |> fold(init: empty_map(), f: fn(acc, module_id) { map_insert(acc, module_id as String, true) })
+  let present = module_dag.edges |> fold(init: empty_map(), f: fn(acc, edge) {
+    map_insert(acc, module_dag_edge_key(from: edge.from as String, to: edge.to as String), true)
+  })
+  let reach = emitted_target_reach(module_dag: module_dag, emitted: emitted)
+  let folded = emitted |> fold(init: EmittedEdgeMergeFold { edges: module_dag.edges, present: present, refusal: Absent }, f: fn(acc, edge) {
+    emitted_edge_merge_step(acc: acc, edge: edge, module_set: module_set, reach: reach)
+  })
+  match folded.refusal {
+    Present { value: cause } => ModuleDagEmittedRefused { cause: cause }
+    Absent =>
+      ModuleDagEmittedMerged {
+        module_dag: ModuleDag {
+          modules: module_dag.modules,
+          edges: folded.edges,
+          exports: module_dag.exports,
+          type_definitions: module_dag.type_definitions,
+        }
+      }
+  }
+}
 
 // ONE COMPONENTS PASS PER RESOLVE: the policy lays out the DAG's components and the R4 verdict
 // reads SCC membership from the same list, so both are handed the value rather than each
@@ -778,19 +927,26 @@ fn admit_partition_assignment(
 // stage0_partition_r4_valid need the assignment this produces, and they are two demands with a
 // shared-state least common ancestor -- DESIGN section 2 calls that authored duplication, not a
 // caching opportunity, and says to carry the first value rather than let the second recompute it.
-// Binding it here is the same move this change makes for stage0_module_dag one declaration up.
-data stage0_resolve_partition_outcome: ResolvePartitionOutcome = resolve_partition_outcome(
-  parameter: stage0_partition_parameter(),
-  module_dag: stage0_module_dag
-)
+// Binding it here is the same move this change makes for stage0_module_dag_merge one declaration up.
+data stage0_resolve_partition_outcome: ResolvePartitionOutcome = match stage0_module_dag_merge {
+  ModuleDagEmittedRefused { cause: cause } =>
+    ResolvePartitionRefused { cause: PartitionEmittedEdgeRefused { cause: cause } }
+  ModuleDagEmittedMerged { module_dag: module_dag } =>
+    resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: module_dag)
+}
 
 data stage0_partition_receipt_outcome: Stage0PartitionReceiptOutcome = match stage0_resolve_partition_outcome {
   ResolvePartitionOk { assignment: assignment, provenance: _ } =>
-    match partition_fold_outcome(module_dag: stage0_module_dag, assignment: assignment) {
-      PartitionFoldOk { units: units } =>
-        Stage0PartitionReceiptOk { units: units }
-      PartitionFoldRefused { cause: cause } =>
-        Stage0PartitionReceiptFoldRefused { cause: cause }
+    match stage0_module_dag_merge {
+      ModuleDagEmittedRefused { cause: cause } =>
+        Stage0PartitionReceiptResolveRefused { cause: PartitionEmittedEdgeRefused { cause: cause } }
+      ModuleDagEmittedMerged { module_dag: module_dag } =>
+        match partition_fold_outcome(module_dag: module_dag, assignment: assignment) {
+          PartitionFoldOk { units: units } =>
+            Stage0PartitionReceiptOk { units: units }
+          PartitionFoldRefused { cause: cause } =>
+            Stage0PartitionReceiptFoldRefused { cause: cause }
+        }
     }
   ResolvePartitionRefused { cause: cause } =>
     Stage0PartitionReceiptResolveRefused { cause: cause }
@@ -864,7 +1020,7 @@ fn stage0_single_crate_assignment() -> Map<ModuleId, CompilationUnitId> {
 
 fn stage0_single_crate_fold_outcome() -> PartitionFoldOutcome {
   partition_fold_outcome(
-    module_dag: stage0_module_dag,
+    module_dag: stage0_source_module_dag,
     assignment: stage0_single_crate_assignment()
   )
 }
@@ -1263,21 +1419,28 @@ fn stage0_reexport_derivation_disagreements() -> Stage0ReexportDerivationDisagre
         cause: Stage0ReexportPartitionResolveRefused { cause: cause }
       }
     ResolvePartitionOk { assignment: assignment, provenance: _ } =>
-      match reexport_derivation_disagreements_over(
-        edges: assignment_unit_dep_edges(module_dag: stage0_module_dag, assignment: assignment),
-        rows: stage0_module_bearing_crate_rows()
-      ) {
-        ReexportDisagreementScanUnitHasNoRow { unit_id: unit_id } =>
+      match stage0_module_dag_merge {
+        ModuleDagEmittedRefused { cause: cause } =>
           Stage0ReexportDisagreementsUnavailable {
-            cause: Stage0ReexportDepUnitHasNoPackageRow { unit_id: unit_id }
+            cause: Stage0ReexportPartitionResolveRefused { cause: PartitionEmittedEdgeRefused { cause: cause } }
           }
-        ReexportDisagreementScanOk { packages: packages } =>
-          Stage0ReexportDisagreementsDerived { packages: packages }
+        ModuleDagEmittedMerged { module_dag: module_dag } =>
+          match reexport_derivation_disagreements_over(
+            edges: assignment_unit_dep_edges(module_dag: module_dag, assignment: assignment),
+            rows: stage0_module_bearing_crate_rows()
+          ) {
+            ReexportDisagreementScanUnitHasNoRow { unit_id: unit_id } =>
+              Stage0ReexportDisagreementsUnavailable {
+                cause: Stage0ReexportDepUnitHasNoPackageRow { unit_id: unit_id }
+              }
+            ReexportDisagreementScanOk { packages: packages } =>
+              Stage0ReexportDisagreementsDerived { packages: packages }
+          }
       }
   }
 }
 
-data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — the balanced policy has landed (resolve_partition_outcome PolicyPartitionParam, policy_partition_assignment), so it is no longer what holds stage0 on the explicit arm. What does: stage0_module_dag's edges and module lists are authored (stage0_cross_unit_import_edges, the stage0_*_modules lists) over v1 mirror basenames, not derived, so a policy over them would balance an incomplete graph. THE SIZE OF 'incomplete' IS DERIVED, NOT TRANSCRIBED (DESIGN 6: name the instrument, never copy its output). stage0_reexport_derivation_disagreements is the producer: it folds the authored edges through the assignment into CompilationUnit.deps, closes them transitively, maps them back to package names and returns the package names whose DERIVED dependency set differs from their AUTHORED reexport_packages. An earlier revision of this row carried the counts in prose; they were removed because they go stale the moment an edge row is appended and nothing would notice. The population is pinned at IDENTITY grain against the ledger stage0_reexport_derivation_known_divergent_packages by test.claim.rust_crate_partition_witness stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit, and the contract that claim enforces is NOT restated here: it is the claim's to state, and an earlier revision of this row described a subset check the claim had already stopped performing, which is the one-fact-two-statements fork DESIGN 3 forbids inside a single change. WHICH SIDE IS WRONG is not symmetric: the reexports are correct and the authored edge list is what is missing them, established off this graph by the unit's real Cargo.toml and its real lib.rs. Crate dependency is therefore answered by TWO authorities, and deriving the edges dissolves the second rather than reconciling them -- which is why the trigger below is the derivation and not a hand completion, since completing the list by hand re-authors the fork.")
+data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — the balanced policy has landed (resolve_partition_outcome PolicyPartitionParam, policy_partition_assignment), so it is no longer what holds stage0 on the explicit arm. What does: stage0_source_module_dag's edges and module lists are authored (stage0_cross_unit_import_edges, the stage0_*_modules lists) over v1 mirror basenames, not derived, so a policy over them would balance an incomplete graph. THE SIZE OF 'incomplete' IS DERIVED, NOT TRANSCRIBED (DESIGN 6: name the instrument, never copy its output). stage0_reexport_derivation_disagreements is the producer: it folds the authored edges through the assignment into CompilationUnit.deps, closes them transitively, maps them back to package names and returns the package names whose DERIVED dependency set differs from their AUTHORED reexport_packages. An earlier revision of this row carried the counts in prose; they were removed because they go stale the moment an edge row is appended and nothing would notice. The population is pinned at IDENTITY grain against the ledger stage0_reexport_derivation_known_divergent_packages by test.claim.rust_crate_partition_witness stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit, and the contract that claim enforces is NOT restated here: it is the claim's to state, and an earlier revision of this row described a subset check the claim had already stopped performing, which is the one-fact-two-statements fork DESIGN 3 forbids inside a single change. WHICH SIDE IS WRONG is not symmetric: the reexports are correct and the authored edge list is what is missing them, established off this graph by the unit's real Cargo.toml and its real lib.rs. Crate dependency is therefore answered by TWO authorities, and deriving the edges dissolves the second rather than reconciling them -- which is why the trigger below is the derivation and not a hand completion, since completing the list by hand re-authors the fork.")
 
 data stage0_compilation_units_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (§5 List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only.")
 

@@ -22,6 +22,13 @@ import v2.std.compilers.compilation_unit {
   partition_provenance_policy_derived,
   partition_unit_by_id
 }
+import gunbc.rust_emitted_edge {
+  EmittedEdge,
+  EmittedModuleTarget,
+  EmitterHelper,
+  RuntimePrelude,
+  rust_runtime_prelude_module
+}
 import v2.workflow.rust_crate_partition {
   AssignmentNamesModuleOutsideDag,
   AssignmentOmitsModule,
@@ -29,6 +36,7 @@ import v2.workflow.rust_crate_partition {
   ExplicitPartitionParam,
   PartitionParameter,
   PartitionRustAdmissibilityRefused,
+  PartitionEmittedEdgeRefused,
   PolicyPartitionParam,
   PolicyTargetCountNotPositive,
   PartitionPolicy,
@@ -39,7 +47,16 @@ import v2.workflow.rust_crate_partition {
   rust_crate_partition_declared_core_target,
   rust_crate_partition_module_bearing_unit_target,
   stage0_interim_explicit_assignment,
-  stage0_module_dag,
+  stage0_source_module_dag,
+  stage0_module_dag_merge,
+  stage0_resolve_partition_outcome,
+  module_dag_with_emitted_edges,
+  module_dag_runtime_prelude_edges,
+  ModuleDagEmittedMerge,
+  ModuleDagEmittedMerged,
+  ModuleDagEmittedRefused,
+  EmitterReverseEdge,
+  EmittedEdgeEndpointOutsideDag,
   Stage0PartitionCrateRow,
   Stage0LayeredCoreCrate,
   UnitDepEdge,
@@ -128,6 +145,7 @@ fn witness_refused_by_rust_rule(outcome: ResolvePartitionOutcome) -> String {
     ResolvePartitionRefused { cause: PolicyTargetCountNotPositive { policy: _ } } => "target-not-positive"
     ResolvePartitionRefused { cause: AssignmentOmitsModule { module_id: _ } } => "omits-module"
     ResolvePartitionRefused { cause: AssignmentNamesModuleOutsideDag { module_id: _ } } => "outside-dag"
+    ResolvePartitionRefused { cause: PartitionEmittedEdgeRefused { cause: _ } } => "emitted-edge-refused"
     ResolvePartitionOk { assignment: _, provenance: _ } => "admitted"
   }
 }
@@ -377,7 +395,7 @@ test fn witness_partition_r4_valid_on_interim_holds() -> Bool {
 }
 
 test fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
-  match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: stage0_module_dag) {
+  match stage0_resolve_partition_outcome {
     ResolvePartitionOk { assignment: resolved, provenance: _ } => {
       let expected = stage0_interim_explicit_assignment()
       (resolved |> count) == (expected |> count)
@@ -534,3 +552,57 @@ fn interface_grounding_capability_is_the_declared_one(capability: InterfaceGroun
 }
 
 
+
+// THE EMITTED RUNTIME EDGES REACH THE PARTITION FROM THE EMITTER'S OWN ROW PRODUCER. Positive
+// control: over the stage0 source DAG, the prelude rows merge, and every emitted member other than
+// the runtime module gains exactly one edge to it -- the hand-listed runtime edges are gone from
+// the source list, so every one of these was derived. If the merge stopped reading the rows, or
+// the rows stopped naming the runtime module, the count moves and this reds.
+test fn witness_stage0_runtime_edges_are_derived_from_the_emitter_rows_holds() -> Bool {
+  let source_runtime_edges = stage0_source_module_dag.edges
+    |> filter(edge => (edge.to as String) == rust_runtime_prelude_module)
+    |> count
+  match stage0_module_dag_merge {
+    ModuleDagEmittedRefused { cause: _ } => false
+    ModuleDagEmittedMerged { module_dag: merged } =>
+      source_runtime_edges == 0
+        && (merged.edges |> filter(edge => (edge.to as String) == rust_runtime_prelude_module) |> count)
+          == ((stage0_source_module_dag.modules |> count) - 1)
+        && (merged.edges |> count) == (stage0_source_module_dag.edges |> count) + ((stage0_source_module_dag.modules |> count) - 1)
+  }
+}
+
+// DISCRIMINATING RED: an emitted edge that reverses a source dependency is refused BY NAME, with
+// the provenance that produced it, not merged into a DAG whose R4 verdict would report an anonymous
+// cycle. v1_std_core imports std_algebra in the source edges, so an emitter-written
+// std_algebra -> v1_std_core path closes a cycle the source does not have.
+test fn witness_emitter_reverse_edge_is_refused_by_name_holds() -> Bool {
+  let reverse = EmittedEdge {
+    from: "std_algebra",
+    to: EmittedModuleTarget { module: "v1_std_core" },
+    provenance: EmitterHelper { realized_type: "FreeMonoid" }
+  }
+  match module_dag_with_emitted_edges(
+    module_dag: stage0_source_module_dag,
+    emitted: module_dag_runtime_prelude_edges(module_dag: stage0_source_module_dag) |> list_push(reverse)
+  ) {
+    ModuleDagEmittedRefused { cause: EmitterReverseEdge { from: from, to: to, provenance: EmitterHelper { realized_type: realized } } } =>
+      (from as String) == "std_algebra" && (to as String) == "v1_std_core" && realized == "FreeMonoid"
+    _ => false
+  }
+}
+
+// An emitted edge to a module the DAG does not declare is refused, never dropped: dropping it
+// answers for a smaller graph than the emitted code carries.
+test fn witness_emitted_edge_outside_dag_is_refused_holds() -> Bool {
+  let stranger = EmittedEdge {
+    from: "v1_std_core",
+    to: EmittedModuleTarget { module: "not_a_stage0_module" },
+    provenance: RuntimePrelude
+  }
+  match module_dag_with_emitted_edges(module_dag: stage0_source_module_dag, emitted: [stranger]) {
+    ModuleDagEmittedRefused { cause: EmittedEdgeEndpointOutsideDag { from: from, to: to } } =>
+      from == "v1_std_core" && to == "not_a_stage0_module"
+    _ => false
+  }
+}
