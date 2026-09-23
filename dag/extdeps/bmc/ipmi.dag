@@ -66,6 +66,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // --kill-after included; exit 124 on expiry) with the caller's bound, so a controller that does not
 // answer is a bounded reading, not a hung step, whatever ipmitool's own retry schedule is.
 //
+// SdrDumpAuthenticated AND SelListAuthenticatedCached ARE ONE READ SPLIT AT THE SDR. ipmitool(1)
+// (ipmitool 1.8.19, OPTIONS and SEL COMMANDS): `sel elist` "cross-references event records with
+// sensor data records to produce descriptive event output", so an uncached elist reads the whole SDR
+// repository from the controller before it prints a record; `sdr dump <file>` writes that repository
+// to a local file, and `-S <sdr_cache_file>` "use[s] local file for remote SDR cache", which the page
+// says "can drastically increase performance for commands that require knowledge of the entire SDR,
+// such as sdr, sel elist". The cached read is a second operation rather than an optional flag on the
+// first because an absent cache file is not the same argv with a blank: SelListAuthenticated keeps
+// meaning "the controller supplies its own SDR". Both run under coreutils `timeout` for the reason
+// SelListAuthenticated does.
+//
 // SdrTypeList IS THE AUTHENTICATED, TYPE-SELECTED READ, AND IT EXISTS BECAUSE SdrList COULD NOT BE
 // USED. The three original readonly operations carry no credential, which the asymmetry paragraph
 // above already records as a real gap; every controller in this fleet now requires one, so a sensor
@@ -136,6 +147,37 @@ service diagnostic.ipmi.Tool {
     exit {
       0 => Unit
       nonzero => String "ipmitool authenticated sel elist failed"
+    }
+  }
+
+  operation SdrDumpAuthenticated {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sdr_cache_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "sdr", "dump", "{sdr_cache_file}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool authenticated sdr dump failed"
+    }
+  }
+
+  operation SelListAuthenticatedCached {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sdr_cache_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "-S", "{sdr_cache_file}", "sel", "elist"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool authenticated cached sel elist failed"
     }
   }
 
