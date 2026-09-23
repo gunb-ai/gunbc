@@ -37,9 +37,6 @@ import gunbc.auth.approval_ntfy_runtime_observe {
   NtfyRuntimeObserveOutcome,
   NtfyRuntimeObserved,
   NtfyRuntimeObserveRefused,
-  NtfyRuntimeWireEncoding,
-  NtfyRuntimeWireEncoded,
-  NtfyRuntimeWireValueUnencodable,
   NtfyRuntimeObserveReading,
   NtfyRuntimeReadingDecoded,
   NtfyRuntimeReadingUndecodable,
@@ -222,40 +219,25 @@ data sample_observation: NtfyRuntimeProcessObservation = NtfyRuntimeProcessObser
   ],
 }
 
-fn encoded(o: NtfyRuntimeObserveOutcome) -> String {
-  match ntfy_runtime_observe_encode(outcome: o) {
-    NtfyRuntimeWireEncoded { text: t } => t
-    NtfyRuntimeWireValueUnencodable { key: _, value: _ } => ""
-  }
-}
-
 fn round_trips(o: NtfyRuntimeObserveOutcome) -> Bool {
-  match ntfy_runtime_observe_decode(text: encoded(o: o)) {
+  match ntfy_runtime_observe_decode(text: ntfy_runtime_observe_encode(outcome: o)) {
     NtfyRuntimeReadingDecoded { outcome: back } => back == o
     NtfyRuntimeReadingUndecodable { cause: _ } => false
   }
 }
 
-// Verbatim targets survive, including ` (deleted)`, `socket:[N]`, `=` and spaces.
+// Verbatim targets survive, including ` (deleted)`, `socket:[N]`, `=`, spaces and a newline.
 test fn an_observation_round_trips_verbatim() -> Bool {
   round_trips(o: NtfyRuntimeObserved { observation: sample_observation })
+    && round_trips(o: NtfyRuntimeObserved { observation: NtfyRuntimeProcessObservation {
+      main_pid: 4242, start_ticks_before: 1, start_ticks_after: 1, environment_names: [],
+      exe_target: "/usr/bin/ntfy", exe_inode: 1,
+      open_fds: [NtfyOpenFd { target: "/tmp/a\nb \"q\"", target_inode: 2 }],
+    } })
 }
 
 test fn a_refusal_round_trips() -> Bool {
   round_trips(o: NtfyRuntimeObserveRefused { read: "unit", cause: "ActiveState=inactive MainPID=0" })
-}
-
-// RED: a newline in a value is refused by the encoder, not flattened.
-test fn a_newline_in_a_target_is_unencodable() -> Bool {
-  let o = NtfyRuntimeObserved { observation: NtfyRuntimeProcessObservation {
-    main_pid: 4242, start_ticks_before: 1, start_ticks_after: 1, environment_names: [],
-    exe_target: "/usr/bin/ntfy", exe_inode: 1,
-    open_fds: [NtfyOpenFd { target: "/tmp/a\nb", target_inode: 2 }],
-  } }
-  match ntfy_runtime_observe_encode(outcome: o) {
-    NtfyRuntimeWireValueUnencodable { key: k, value: _ } => k == "open_fd"
-    NtfyRuntimeWireEncoded { text: _ } => false
-  }
 }
 
 fn undecodable(text: String) -> Bool {
@@ -265,17 +247,32 @@ fn undecodable(text: String) -> Bool {
   }
 }
 
-data decode_base: String = "outcome=observed\nstart_ticks_before=1\nstart_ticks_after=1\nexe_target=/usr/bin/ntfy\nexe_inode=1\n"
+data observed_head: String = "{\"outcome\":\"observed\",\"start_ticks_before\":1,\"start_ticks_after\":1,\"environment_names\":[\"LANG\"],\"exe_target\":\"/usr/bin/ntfy\",\"exe_inode\":1,\"open_fds\":[{\"target\":\"socket:[5]\",\"target_inode\":5}]"
 
-// REDs over the decoder: each is one defect from an accepted text (the positive control is the
-// first conjunct).
+fn observed_with(tail: String) -> String {
+  concat(observed_head, concat(tail, "}"))
+}
+
+data refused_ok: String = "{\"outcome\":\"refused\",\"read\":\"unit\",\"cause\":\"inactive\"}"
+
+// REDs over the decoder. Each is one defect away from an accepted text, and the first two conjuncts
+// are the positive controls. The mixed-outcome cases are review 70435's: each arm must refuse the
+// other arm's members instead of dropping them.
 test fn the_decoder_refuses_every_malformed_text() -> Bool {
-  !undecodable(text: concat(decode_base, "main_pid=7\n"))
-    && undecodable(text: decode_base)
-    && undecodable(text: concat(decode_base, "main_pid=0\n"))
-    && undecodable(text: concat(decode_base, "main_pid=7\nmain_pid=8\n"))
-    && undecodable(text: concat(decode_base, "main_pid=7\nopen_fd=socket:[1]\n"))
-    && undecodable(text: concat(decode_base, "main_pid=7\nsurprise=1\n"))
-    && undecodable(text: concat(decode_base, "main_pid=7\nno separator\n"))
-    && undecodable(text: "outcome=maybe\n")
+  !undecodable(text: observed_with(tail: ",\"main_pid\":7"))
+    && !undecodable(text: refused_ok)
+    && undecodable(text: observed_with(tail: ",\"main_pid\":7,\"read\":\"unit\",\"cause\":\"x\""))
+    && undecodable(text: "{\"outcome\":\"refused\",\"read\":\"unit\",\"cause\":\"inactive\",\"main_pid\":7,\"open_fds\":[]}")
+    && undecodable(text: observed_head)
+    && undecodable(text: observed_with(tail: ""))
+    && undecodable(text: observed_with(tail: ",\"main_pid\":0"))
+    && undecodable(text: observed_with(tail: ",\"main_pid\":7,\"main_pid\":8"))
+    && undecodable(text: observed_with(tail: ",\"main_pid\":\"7\""))
+    && undecodable(text: observed_with(tail: ",\"main_pid\":7,\"surprise\":1"))
+    && undecodable(text: concat(
+      "{\"outcome\":\"observed\",\"main_pid\":7,\"start_ticks_before\":1,\"start_ticks_after\":1,\"environment_names\":[],\"exe_target\":\"/usr/bin/ntfy\",\"exe_inode\":1,",
+      "\"open_fds\":[{\"target\":\"socket:[5]\",\"target_inode\":5,\"mode\":1}]}",
+    ))
+    && undecodable(text: "{\"outcome\":\"maybe\"}")
+    && undecodable(text: "outcome=observed\n")
 }

@@ -2,6 +2,12 @@ module gunbc.auth.approval_ntfy_runtime_observe
 
 import std.types { NonEmptyStr, String, Int, List }
 import v2.std.algebra { any }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_kv, json_string, json_int, json_array, json_object, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_members_named, json_field, json_field_int, json_field_string, json_field_string_list,
+  json_field_value, json_field_cause,
+}
 import gunbc.auth.approval_ntfy_deployment { approval_ntfy_principal_name }
 
 // THE CONTRACT OF THE NTFY RUNTIME-OBSERVATION HELPER, and only the contract. The enrolment-code
@@ -89,12 +95,18 @@ type NtfyRuntimeObserveOutcome
   = NtfyRuntimeObserved { observation: NtfyRuntimeProcessObservation }
   | NtfyRuntimeObserveRefused { read: String, cause: String }
 
-// ── THE WIRE: ONE GRAMMAR, BOTH DIRECTIONS ────────────────────────────────────────────────────
-// One `key=value` line per scalar, one line per list member (repeated key), in list order. The key
-// is split off at the FIRST "=", so a value may contain "=". A value may NOT contain a newline: a
-// line codec cannot carry one without changing it. The encoder REFUSES such a value; it does not
-// flatten it. A readlink target with a newline is a legal Linux path, and rewriting it would be the
-// silent wrongness §5 forbids.
+// ── THE WIRE: THE MODELED JSON GRAMMAR, AND ONE KEY TABLE PER OUTCOME ─────────────────────────
+// The observation crosses the process boundary as one JSON object, written by
+// extdeps.languages.json.emit serialize_json and read by extdeps.languages.json.parse
+// parse_json_document. That grammar is already modeled in both directions, so this module adds no
+// second lexical grammar and does no escaping of its own. A target containing a newline, a quote or
+// `=` is carried verbatim, because JSON string escaping carries every code point.
+//
+// WHICH KEYS AN OUTCOME MAY CARRY IS ONE TABLE, READ BY BOTH DIRECTIONS. The encoder emits exactly
+// the keys ntfy_runtime_wire_keys names for its arm. The decoder refuses an object that carries any
+// other member: the other arm's keys, an unknown key, or a duplicate. So an `observed` object with
+// refusal members, or a `refused` object with observation members, is undecodable. It is never read
+// as whichever arm the `outcome` member happens to name (review 70435).
 
 data ntfy_runtime_wire_outcome: String = "outcome"
 data ntfy_runtime_wire_observed: String = "observed"
@@ -102,64 +114,67 @@ data ntfy_runtime_wire_refused: String = "refused"
 data ntfy_runtime_wire_main_pid: String = "main_pid"
 data ntfy_runtime_wire_start_before: String = "start_ticks_before"
 data ntfy_runtime_wire_start_after: String = "start_ticks_after"
-data ntfy_runtime_wire_environment_name: String = "environment_name"
+data ntfy_runtime_wire_environment_names: String = "environment_names"
 data ntfy_runtime_wire_exe_target: String = "exe_target"
 data ntfy_runtime_wire_exe_inode: String = "exe_inode"
-// `open_fd=<target_inode> <target>`: the inode is decimal digits, so the FIRST space separates it
-// from a target that may itself contain spaces.
-data ntfy_runtime_wire_open_fd: String = "open_fd"
-data ntfy_runtime_wire_refused_read: String = "refused_read"
-data ntfy_runtime_wire_refused_cause: String = "refused_cause"
+data ntfy_runtime_wire_open_fds: String = "open_fds"
+data ntfy_runtime_wire_fd_target: String = "target"
+data ntfy_runtime_wire_fd_target_inode: String = "target_inode"
+data ntfy_runtime_wire_read: String = "read"
+data ntfy_runtime_wire_cause: String = "cause"
 
-type NtfyRuntimeWireEncoding
-  = NtfyRuntimeWireEncoded { text: String }
-  | NtfyRuntimeWireValueUnencodable { key: String, value: String }
+type NtfyRuntimeWireArm
+  = WireArmObserved
+  | WireArmRefused
+  | WireArmOpenFd
 
-type NtfyRuntimeWireLine {
-  key: String
-  value: String
-}
-
-fn ntfy_runtime_wire_lines(outcome: NtfyRuntimeObserveOutcome) -> List<NtfyRuntimeWireLine> {
-  match outcome {
-    NtfyRuntimeObserveRefused { read: r, cause: c } => [
-      NtfyRuntimeWireLine { key: ntfy_runtime_wire_outcome, value: ntfy_runtime_wire_refused },
-      NtfyRuntimeWireLine { key: ntfy_runtime_wire_refused_read, value: r },
-      NtfyRuntimeWireLine { key: ntfy_runtime_wire_refused_cause, value: c },
+fn ntfy_runtime_wire_keys(arm: NtfyRuntimeWireArm) -> List<String> {
+  match arm {
+    WireArmObserved => [
+      ntfy_runtime_wire_outcome,
+      ntfy_runtime_wire_main_pid,
+      ntfy_runtime_wire_start_before,
+      ntfy_runtime_wire_start_after,
+      ntfy_runtime_wire_environment_names,
+      ntfy_runtime_wire_exe_target,
+      ntfy_runtime_wire_exe_inode,
+      ntfy_runtime_wire_open_fds,
     ]
-    NtfyRuntimeObserved { observation: o } =>
-      concat(
-        concat(
-          [
-            NtfyRuntimeWireLine { key: ntfy_runtime_wire_outcome, value: ntfy_runtime_wire_observed },
-            NtfyRuntimeWireLine { key: ntfy_runtime_wire_main_pid, value: to_string(o.main_pid) },
-            NtfyRuntimeWireLine { key: ntfy_runtime_wire_start_before, value: to_string(o.start_ticks_before) },
-            NtfyRuntimeWireLine { key: ntfy_runtime_wire_start_after, value: to_string(o.start_ticks_after) },
-            NtfyRuntimeWireLine { key: ntfy_runtime_wire_exe_target, value: o.exe_target },
-            NtfyRuntimeWireLine { key: ntfy_runtime_wire_exe_inode, value: to_string(o.exe_inode) },
-          ],
-          map(o.environment_names, n => NtfyRuntimeWireLine { key: ntfy_runtime_wire_environment_name, value: n }),
-        ),
-        map(o.open_fds, f => NtfyRuntimeWireLine {
-          key: ntfy_runtime_wire_open_fd,
-          value: concat(to_string(f.target_inode), concat(" ", f.target)),
-        }),
-      )
+    WireArmRefused => [ntfy_runtime_wire_outcome, ntfy_runtime_wire_read, ntfy_runtime_wire_cause]
+    WireArmOpenFd => [ntfy_runtime_wire_fd_target, ntfy_runtime_wire_fd_target_inode]
   }
 }
 
-fn ntfy_runtime_observe_encode(outcome: NtfyRuntimeObserveOutcome) -> NtfyRuntimeWireEncoding {
-  fold(ntfy_runtime_wire_lines(outcome: outcome), init: NtfyRuntimeWireEncoded { text: "" }, f: (acc, l) =>
-    match acc {
-      NtfyRuntimeWireValueUnencodable { key: k, value: v } => NtfyRuntimeWireValueUnencodable { key: k, value: v }
-      NtfyRuntimeWireEncoded { text: t } =>
-        if string_contains(s: l.value, pattern: "\n") {
-          NtfyRuntimeWireValueUnencodable { key: l.key, value: l.value }
-        } else {
-          NtfyRuntimeWireEncoded { text: concat(t, concat(l.key, concat("=", concat(l.value, "\n")))) }
-        }
-    }
-  )
+fn ntfy_open_fd_json(fd: NtfyOpenFd) -> JsonValue {
+  json_object(members: [
+    json_kv(key: ntfy_runtime_wire_fd_target, value: json_string(s: fd.target)),
+    json_kv(key: ntfy_runtime_wire_fd_target_inode, value: json_int(n: fd.target_inode)),
+  ])
+}
+
+fn ntfy_runtime_observe_json(outcome: NtfyRuntimeObserveOutcome) -> JsonValue {
+  match outcome {
+    NtfyRuntimeObserveRefused { read: r, cause: c } => json_object(members: [
+      json_kv(key: ntfy_runtime_wire_outcome, value: json_string(s: ntfy_runtime_wire_refused)),
+      json_kv(key: ntfy_runtime_wire_read, value: json_string(s: r)),
+      json_kv(key: ntfy_runtime_wire_cause, value: json_string(s: c)),
+    ])
+    NtfyRuntimeObserved { observation: o } => json_object(members: [
+      json_kv(key: ntfy_runtime_wire_outcome, value: json_string(s: ntfy_runtime_wire_observed)),
+      json_kv(key: ntfy_runtime_wire_main_pid, value: json_int(n: o.main_pid)),
+      json_kv(key: ntfy_runtime_wire_start_before, value: json_int(n: o.start_ticks_before)),
+      json_kv(key: ntfy_runtime_wire_start_after, value: json_int(n: o.start_ticks_after)),
+      json_kv(key: ntfy_runtime_wire_environment_names, value: json_array(elements: map(o.environment_names, n => json_string(s: n)))),
+      json_kv(key: ntfy_runtime_wire_exe_target, value: json_string(s: o.exe_target)),
+      json_kv(key: ntfy_runtime_wire_exe_inode, value: json_int(n: o.exe_inode)),
+      json_kv(key: ntfy_runtime_wire_open_fds, value: json_array(elements: map(o.open_fds, f => ntfy_open_fd_json(fd: f)))),
+    ])
+  }
+}
+
+// TOTAL: every outcome has an encoding.
+fn ntfy_runtime_observe_encode(outcome: NtfyRuntimeObserveOutcome) -> String {
+  serialize_json(v: ntfy_runtime_observe_json(outcome: outcome))
 }
 
 // ── DECODE: TOTAL, AND EVERY MISMATCH IS A TYPED REFUSAL ──────────────────────────────────────
@@ -167,98 +182,63 @@ type NtfyRuntimeObserveReading
   = NtfyRuntimeReadingDecoded { outcome: NtfyRuntimeObserveOutcome }
   | NtfyRuntimeReadingUndecodable { cause: String }
 
-// A line with no "=" is unknown grammar. So is a key this codec does not define. Both refuse; neither
-// is skipped.
-fn ntfy_runtime_wire_parse_lines(text: String) -> List<NtfyRuntimeWireLine>? {
-  fold(split(s: text, delimiter: "\n"), init: Present { value: [] }, f: (acc, line) =>
-    match acc {
-      Absent => none
-      Present { value: ls } =>
-        if line == "" {
-          Present { value: ls }
-        } else {
-          let parts = split(s: line, delimiter: "=")
-          if count(parts) < 2 {
-            none
-          } else {
-            let key = parts |> first
-            match key {
-              Absent => none
-              Present { value: k } => Present { value: concat(ls, [NtfyRuntimeWireLine {
-                key: k,
-                value: substring(s: line, start: k.length() + 1, end: line.length()),
-              }]) }
+// The first member whose key is not in the arm's table, or appears twice. Absent means the object
+// carries only keys from the table, each at most once. Presence and type of each key are checked
+// by the field reads that follow.
+fn ntfy_runtime_wire_stray_member(v: JsonValue, arm: NtfyRuntimeWireArm) -> String? {
+  match v {
+    JsonObject { members: ms } =>
+      fold(ms, init: none, f: (acc, m) =>
+        match acc {
+          Present { value: k } => Present { value: k }
+          Absent =>
+            if !any(ntfy_runtime_wire_keys(arm: arm), k => k == m.key) {
+              Present { value: concat("member not carried by this outcome: ", m.key) }
+            } else if count(json_object_members_named(members: ms, key: m.key)) > 1 {
+              Present { value: concat("member repeated: ", m.key) }
+            } else {
+              none
             }
+        }
+      )
+    JsonNull => Present { value: "not an object" }
+    JsonBool { value: _ } => Present { value: "not an object" }
+    JsonNumber { lexeme: _ } => Present { value: "not an object" }
+    JsonString { value: _ } => Present { value: "not an object" }
+    JsonArray { elements: _ } => Present { value: "not an object" }
+  }
+}
+
+// FieldAbsent (missing or null) is a refusal for every field here: no member of either arm is
+// optional.
+fn ntfy_runtime_required_cause(key: String, cause: String?) -> String {
+  match cause {
+    Present { value: c } => c
+    Absent => concat("missing ", key)
+  }
+}
+
+fn ntfy_runtime_wire_read_open_fd(v: JsonValue) -> NtfyOpenFd? {
+  match ntfy_runtime_wire_stray_member(v: v, arm: WireArmOpenFd) {
+    Present { value: _ } => none
+    Absent =>
+      match json_field_value(r: json_field_string(obj: v, key: ntfy_runtime_wire_fd_target)) {
+        Absent => none
+        Present { value: t } =>
+          match json_field_value(r: json_field_int(obj: v, key: ntfy_runtime_wire_fd_target_inode)) {
+            Absent => none
+            Present { value: n } => Present { value: NtfyOpenFd { target: t, target_inode: n } }
           }
-        }
-    }
-  )
-}
-
-fn ntfy_runtime_wire_values(lines: List<NtfyRuntimeWireLine>, key: String) -> List<String> {
-  fold(lines, init: [], f: (acc, l) => if l.key == key { concat(acc, [l.value]) } else { acc })
-}
-
-type NtfyRuntimeWireField
-  = WireFieldOne { value: String }
-  | WireFieldMissing { key: String }
-  | WireFieldRepeated { key: String }
-
-fn ntfy_runtime_wire_one(lines: List<NtfyRuntimeWireLine>, key: String) -> NtfyRuntimeWireField {
-  let vs = ntfy_runtime_wire_values(lines: lines, key: key)
-  if count(vs) == 0 {
-    WireFieldMissing { key: key }
-  } else if count(vs) > 1 {
-    WireFieldRepeated { key: key }
-  } else {
-    match vs |> first {
-      Present { value: v } => WireFieldOne { value: v }
-      Absent => WireFieldMissing { key: key }
-    }
+      }
   }
 }
 
-fn ntfy_runtime_wire_one_int(lines: List<NtfyRuntimeWireLine>, key: String) -> Int? {
-  match ntfy_runtime_wire_one(lines: lines, key: key) {
-    WireFieldOne { value: v } => parse_int(s: v)
-    WireFieldMissing { key: _ } => none
-    WireFieldRepeated { key: _ } => none
-  }
-}
-
-fn ntfy_runtime_wire_one_text(lines: List<NtfyRuntimeWireLine>, key: String) -> String? {
-  match ntfy_runtime_wire_one(lines: lines, key: key) {
-    WireFieldOne { value: v } => Present { value: v }
-    WireFieldMissing { key: _ } => none
-    WireFieldRepeated { key: _ } => none
-  }
-}
-
-fn ntfy_runtime_wire_parse_open_fd(value: String) -> NtfyOpenFd? {
-  let parts = split(s: value, delimiter: " ")
-  if count(parts) < 2 {
-    none
-  } else {
-    match parts |> first {
-      Absent => none
-      Present { value: inode_text } =>
-        match parse_int(s: inode_text) {
-          Absent => none
-          Present { value: inode } => Present { value: NtfyOpenFd {
-            target: substring(s: value, start: inode_text.length() + 1, end: value.length()),
-            target_inode: inode,
-          } }
-        }
-    }
-  }
-}
-
-fn ntfy_runtime_wire_open_fds(values: List<String>) -> List<NtfyOpenFd>? {
-  fold(values, init: Present { value: [] }, f: (acc, v) =>
+fn ntfy_runtime_wire_open_fd_elements(elements: List<JsonValue>) -> List<NtfyOpenFd>? {
+  fold(elements, init: Present { value: [] }, f: (acc, e) =>
     match acc {
       Absent => none
       Present { value: fds } =>
-        match ntfy_runtime_wire_parse_open_fd(value: v) {
+        match ntfy_runtime_wire_read_open_fd(v: e) {
           Absent => none
           Present { value: fd } => Present { value: concat(fds, [fd]) }
         }
@@ -266,59 +246,60 @@ fn ntfy_runtime_wire_open_fds(values: List<String>) -> List<NtfyOpenFd>? {
   )
 }
 
-data ntfy_runtime_wire_known_keys: List<String> = [
-  ntfy_runtime_wire_outcome,
-  ntfy_runtime_wire_main_pid,
-  ntfy_runtime_wire_start_before,
-  ntfy_runtime_wire_start_after,
-  ntfy_runtime_wire_environment_name,
-  ntfy_runtime_wire_exe_target,
-  ntfy_runtime_wire_exe_inode,
-  ntfy_runtime_wire_open_fd,
-  ntfy_runtime_wire_refused_read,
-  ntfy_runtime_wire_refused_cause,
-]
-
-fn ntfy_runtime_wire_unknown_key(lines: List<NtfyRuntimeWireLine>) -> String? {
-  fold(lines, init: none, f: (acc, l) =>
-    match acc {
-      Present { value: k } => Present { value: k }
-      Absent => if any(ntfy_runtime_wire_known_keys, k => k == l.key) { none } else { Present { value: l.key } }
-    }
-  )
+fn ntfy_runtime_wire_read_open_fds(v: JsonValue) -> List<NtfyOpenFd>? {
+  match json_field_value(r: json_field(obj: v, key: ntfy_runtime_wire_open_fds)) {
+    Absent => none
+    Present { value: arr } =>
+      match arr {
+        JsonArray { elements: es } => ntfy_runtime_wire_open_fd_elements(elements: es)
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonString { value: _ } => none
+        JsonObject { members: _ } => none
+      }
+  }
 }
 
-fn ntfy_runtime_decode_observed(lines: List<NtfyRuntimeWireLine>) -> NtfyRuntimeObserveReading {
-  match ntfy_runtime_wire_one_int(lines: lines, key: ntfy_runtime_wire_main_pid) {
-    Absent => NtfyRuntimeReadingUndecodable { cause: "main_pid is not exactly one integer" }
+fn ntfy_runtime_wire_int(v: JsonValue, key: String) -> Int? {
+  json_field_value(r: json_field_int(obj: v, key: key))
+}
+
+fn ntfy_runtime_decode_observed(v: JsonValue) -> NtfyRuntimeObserveReading {
+  match ntfy_runtime_wire_int(v: v, key: ntfy_runtime_wire_main_pid) {
+    Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_main_pid, cause: json_field_cause(r: json_field_int(obj: v, key: ntfy_runtime_wire_main_pid))) }
     Present { value: pid } =>
-      match ntfy_runtime_wire_one_int(lines: lines, key: ntfy_runtime_wire_start_before) {
-        Absent => NtfyRuntimeReadingUndecodable { cause: "start_ticks_before is not exactly one integer" }
+      match ntfy_runtime_wire_int(v: v, key: ntfy_runtime_wire_start_before) {
+        Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_start_before, cause: json_field_cause(r: json_field_int(obj: v, key: ntfy_runtime_wire_start_before))) }
         Present { value: before } =>
-          match ntfy_runtime_wire_one_int(lines: lines, key: ntfy_runtime_wire_start_after) {
-            Absent => NtfyRuntimeReadingUndecodable { cause: "start_ticks_after is not exactly one integer" }
+          match ntfy_runtime_wire_int(v: v, key: ntfy_runtime_wire_start_after) {
+            Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_start_after, cause: json_field_cause(r: json_field_int(obj: v, key: ntfy_runtime_wire_start_after))) }
             Present { value: after } =>
-              match ntfy_runtime_wire_one_text(lines: lines, key: ntfy_runtime_wire_exe_target) {
-                Absent => NtfyRuntimeReadingUndecodable { cause: "exe_target is not exactly one line" }
-                Present { value: exe } =>
-                  match ntfy_runtime_wire_one_int(lines: lines, key: ntfy_runtime_wire_exe_inode) {
-                    Absent => NtfyRuntimeReadingUndecodable { cause: "exe_inode is not exactly one integer" }
-                    Present { value: exe_inode } =>
-                      match ntfy_runtime_wire_open_fds(values: ntfy_runtime_wire_values(lines: lines, key: ntfy_runtime_wire_open_fd)) {
-                        Absent => NtfyRuntimeReadingUndecodable { cause: "an open_fd line is not `<inode> <target>`" }
-                        Present { value: fds } =>
-                          if pid <= 0 {
-                            NtfyRuntimeReadingUndecodable { cause: "main_pid is not positive: an observed outcome never carries pid 0" }
-                          } else {
-                            NtfyRuntimeReadingDecoded { outcome: NtfyRuntimeObserved { observation: NtfyRuntimeProcessObservation {
-                              main_pid: pid,
-                              start_ticks_before: before,
-                              start_ticks_after: after,
-                              environment_names: ntfy_runtime_wire_values(lines: lines, key: ntfy_runtime_wire_environment_name),
-                              exe_target: exe,
-                              exe_inode: exe_inode,
-                              open_fds: fds,
-                            } } }
+              match json_field_value(r: json_field_string_list(obj: v, key: ntfy_runtime_wire_environment_names)) {
+                Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_environment_names, cause: json_field_cause(r: json_field_string_list(obj: v, key: ntfy_runtime_wire_environment_names))) }
+                Present { value: names } =>
+                  match json_field_value(r: json_field_string(obj: v, key: ntfy_runtime_wire_exe_target)) {
+                    Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_exe_target, cause: json_field_cause(r: json_field_string(obj: v, key: ntfy_runtime_wire_exe_target))) }
+                    Present { value: exe } =>
+                      match ntfy_runtime_wire_int(v: v, key: ntfy_runtime_wire_exe_inode) {
+                        Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_exe_inode, cause: json_field_cause(r: json_field_int(obj: v, key: ntfy_runtime_wire_exe_inode))) }
+                        Present { value: exe_inode } =>
+                          match ntfy_runtime_wire_read_open_fds(v: v) {
+                            Absent => NtfyRuntimeReadingUndecodable { cause: "open_fds is missing, or an element is not exactly a target string plus a target_inode integer" }
+                            Present { value: fds } =>
+                              if pid <= 0 {
+                                NtfyRuntimeReadingUndecodable { cause: "main_pid is not positive: an observed outcome never carries pid 0" }
+                              } else {
+                                NtfyRuntimeReadingDecoded { outcome: NtfyRuntimeObserved { observation: NtfyRuntimeProcessObservation {
+                                  main_pid: pid,
+                                  start_ticks_before: before,
+                                  start_ticks_after: after,
+                                  environment_names: names,
+                                  exe_target: exe,
+                                  exe_inode: exe_inode,
+                                  open_fds: fds,
+                                } } }
+                              }
                           }
                       }
                   }
@@ -328,35 +309,43 @@ fn ntfy_runtime_decode_observed(lines: List<NtfyRuntimeWireLine>) -> NtfyRuntime
   }
 }
 
-fn ntfy_runtime_decode_refused(lines: List<NtfyRuntimeWireLine>) -> NtfyRuntimeObserveReading {
-  match ntfy_runtime_wire_one_text(lines: lines, key: ntfy_runtime_wire_refused_read) {
-    Absent => NtfyRuntimeReadingUndecodable { cause: "refused_read is not exactly one line" }
+fn ntfy_runtime_decode_refused(v: JsonValue) -> NtfyRuntimeObserveReading {
+  match json_field_value(r: json_field_string(obj: v, key: ntfy_runtime_wire_read)) {
+    Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_read, cause: json_field_cause(r: json_field_string(obj: v, key: ntfy_runtime_wire_read))) }
     Present { value: r } =>
-      match ntfy_runtime_wire_one_text(lines: lines, key: ntfy_runtime_wire_refused_cause) {
-        Absent => NtfyRuntimeReadingUndecodable { cause: "refused_cause is not exactly one line" }
+      match json_field_value(r: json_field_string(obj: v, key: ntfy_runtime_wire_cause)) {
+        Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_cause, cause: json_field_cause(r: json_field_string(obj: v, key: ntfy_runtime_wire_cause))) }
         Present { value: c } => NtfyRuntimeReadingDecoded { outcome: NtfyRuntimeObserveRefused { read: r, cause: c } }
       }
   }
 }
 
+// THE ARM IS CHOSEN BY `outcome`, AND THEN THE WHOLE OBJECT MUST BELONG TO THAT ARM.
+fn ntfy_runtime_decode_arm(v: JsonValue, arm: NtfyRuntimeWireArm) -> NtfyRuntimeObserveReading {
+  match ntfy_runtime_wire_stray_member(v: v, arm: arm) {
+    Present { value: why } => NtfyRuntimeReadingUndecodable { cause: why }
+    Absent =>
+      match arm {
+        WireArmObserved => ntfy_runtime_decode_observed(v: v)
+        WireArmRefused => ntfy_runtime_decode_refused(v: v)
+        WireArmOpenFd => NtfyRuntimeReadingUndecodable { cause: "an open_fd record is not an outcome" }
+      }
+  }
+}
+
 fn ntfy_runtime_observe_decode(text: String) -> NtfyRuntimeObserveReading {
-  match ntfy_runtime_wire_parse_lines(text: text) {
-    Absent => NtfyRuntimeReadingUndecodable { cause: "a line carries no `=`" }
-    Present { value: lines } =>
-      match ntfy_runtime_wire_unknown_key(lines: lines) {
-        Present { value: k } => NtfyRuntimeReadingUndecodable { cause: concat("unknown key ", k) }
-        Absent =>
-          match ntfy_runtime_wire_one(lines: lines, key: ntfy_runtime_wire_outcome) {
-            WireFieldOne { value: v } =>
-              if v == ntfy_runtime_wire_observed {
-                ntfy_runtime_decode_observed(lines: lines)
-              } else if v == ntfy_runtime_wire_refused {
-                ntfy_runtime_decode_refused(lines: lines)
-              } else {
-                NtfyRuntimeReadingUndecodable { cause: concat("unknown outcome ", v) }
-              }
-            WireFieldMissing { key: k } => NtfyRuntimeReadingUndecodable { cause: concat("missing ", k) }
-            WireFieldRepeated { key: k } => NtfyRuntimeReadingUndecodable { cause: concat("repeated ", k) }
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } => NtfyRuntimeReadingUndecodable { cause: concat("not one JSON document: ", json_document_gap_text(gap: g)) }
+    JsonDocumentParsed { value: v } =>
+      match json_field_value(r: json_field_string(obj: v, key: ntfy_runtime_wire_outcome)) {
+        Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_outcome, cause: json_field_cause(r: json_field_string(obj: v, key: ntfy_runtime_wire_outcome))) }
+        Present { value: o } =>
+          if o == ntfy_runtime_wire_observed {
+            ntfy_runtime_decode_arm(v: v, arm: WireArmObserved)
+          } else if o == ntfy_runtime_wire_refused {
+            ntfy_runtime_decode_arm(v: v, arm: WireArmRefused)
+          } else {
+            NtfyRuntimeReadingUndecodable { cause: concat("unknown outcome ", o) }
           }
       }
   }
