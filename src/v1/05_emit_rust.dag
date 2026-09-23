@@ -3682,11 +3682,8 @@ fn emit_compiler_tests_module() -> TextFile {
 //
 // WHAT IT ASKS. A use line `use crate::<filename>::<name>` is produced in exactly one place --
 // `reference_derived_use_line_plan`, from a candidate name whose registry provider is the module
-// with that filename. (The other producer, `emit_faithful_text_carrier_import_lines`, is the
-// hardcoded carrier family; its gate `module_needs_faithful_carrier_imports` currently answers
-// `false` unconditionally, so it emits nothing and contributes no reference at all.) So the
-// question is: does any module in the closure carry a reference candidate whose provider is that
-// filename. The candidates come from the SAME collectors the plan seeds itself from, through the
+// with that filename. So the question is: does any module in the closure carry a reference
+// candidate whose provider is that filename. The candidates come from the SAME collectors the plan seeds itself from, through the
 // same `repair_input_origin_candidates` authority -- not a second reading of them.
 //
 // IT IS A SUPERSET, COMPUTED AS THE ANSWER, AND THE DIRECTION IS THE SAFE ONE. The plan narrows
@@ -5503,24 +5500,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let prelude = emit_prelude(module_name: this_module_name)
   let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items, module_env: Present { value: scope.type_env })
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
-  let carrier_import_lines = if module_needs_faithful_carrier_imports(
-    items: typed_module.items,
-    source_indices: scope.type_env.source_indices
-  ) {
-    emit_faithful_text_carrier_import_lines(
-      imported_names: prelude_imported_names,
-      local_type_names: local_type_names,
-      items: typed_module.items,
-      source_indices: scope.type_env.source_indices,
-      shared_types: shared_types,
-      typed_modules: typed_modules
-    )
-  } else {
-    []
-  }
   let already_imported_names = concat(
     prelude_imported_names,
-    concat(dag_import_lines, concat(carrier_import_lines, prelude |> split(delimiter: "\n"))) |> flat_map(l => imported_names_in_use_line(line: l))
+    concat(dag_import_lines, prelude |> split(delimiter: "\n")) |> flat_map(l => imported_names_in_use_line(line: l))
   )
   let reference_plan = reference_derived_use_line_plan(
       items: typed_module.items,
@@ -5538,7 +5520,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       emitted_source: items_str
     )
   let reference_use_lines = reference_plan.lines
-  let merged_import_lines = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), reference_use_lines))
+  let merged_import_lines = dedupe_rust_import_lines(lines: concat(dag_import_lines, reference_use_lines))
   let merged_imports = merged_import_lines |> join(separator: "\n")
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
@@ -7147,46 +7129,6 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
   }
 }
 
-fn type_node_is_faithful_string_leaf(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let _n = n
-  let _si = source_indices
-  false
-}
-
-fn node_tree_has_faithful_string_leaf(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if type_node_is_faithful_string_leaf(n: n, source_indices: source_indices) {
-    true
-  } else {
-    let child_hit = n.children |> any(child => node_tree_has_faithful_string_leaf(n: child, source_indices: source_indices))
-    let annotation_hit = match n.type_annotation {
-      Present { value: ta } => node_tree_has_faithful_string_leaf(n: ta, source_indices: source_indices)
-      Absent => false
-    }
-    let inferred_hit = match n.inferred {
-      Present { value: Resolved { node: rt } } => node_tree_has_faithful_string_leaf(n: rt, source_indices: source_indices)
-      _ => false
-    }
-    child_hit || annotation_hit || inferred_hit
-  }
-}
-
-fn node_tree_references_type_name(n: Node, type_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if authored_name_at(source_indices: source_indices, node: n) == type_name {
-    true
-  } else {
-    let child_hit = n.children |> any(child => node_tree_references_type_name(n: child, type_name: type_name, source_indices: source_indices))
-    let annotation_hit = match n.type_annotation {
-      Present { value: ta } => node_tree_references_type_name(n: ta, type_name: type_name, source_indices: source_indices)
-      Absent => false
-    }
-    let inferred_hit = match n.inferred {
-      Present { value: Resolved { node: rt } } => node_tree_references_type_name(n: rt, type_name: type_name, source_indices: source_indices)
-      _ => false
-    }
-    child_hit || annotation_hit || inferred_hit
-  }
-}
-
 data data_field_struct_import_provider_note: String = "§3 single authority for 'which module PROVIDES this field-struct name'. This synth exists because an ANONYMOUS record literal takes its type from the FIELD it initializes (an unnamed record literal on the `io` field), so the constructed type name appears NOWHERE in the source text and can therefore never sit in an authored import list — emit_imports, which derives use-lines only from import lists, has no candidate to work from and the emitted Rust refuses (E0422 `cannot find struct ... in this scope`).
 
 The predicate was `has_physical_type_def_in_module_filename` — field type PHYSICALLY DEFINED in the module being imported from. That is strictly narrower than the question actually being asked, which is whether the imported module PROVIDES the name. `extdeps.realization.compile_stage_memo` imports CacheInterfaceCatalogFacts from `extdeps.cache.types` and constructs its `io` / `placement` fields, but those types are defined in the SIBLING modules `extdeps.cache.catalog_io` / `extdeps.cache.catalog_placement` and merely re-exported by `extdeps.cache.types` — so the physical-definition test rejected them and the use-line was never synthesized. Measured, not assumed: materialization_carriers first_error = error E0422 cannot find struct, variant or union type CacheInterfaceCatalogIoSemantics in this scope.
@@ -7228,126 +7170,6 @@ fn module_data_field_struct_import_names(items: List<Node>, type_summaries: Map<
 
 fn typed_closure_includes_module_filename(typed_modules: List<TypedModule>, filename: String, source_indices: Map<String, NewlineIndex>) -> Bool {
   typed_modules |> any(tm => module_to_filename(name: authored_name_at(source_indices: source_indices, node: tm.module)) == filename)
-}
-
-fn module_item_has_faithful_string_leaf(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  node_tree_has_faithful_string_leaf(n: item, source_indices: source_indices)
-    || item.params |> any(p => node_tree_has_faithful_string_leaf(n: p, source_indices: source_indices))
-    || match item.body {
-      Present { value: body } => node_tree_has_faithful_string_leaf(n: body, source_indices: source_indices)
-      Absent => false
-    }
-}
-
-fn module_item_references_type_name(item: Node, type_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
-  node_tree_references_type_name(n: item, type_name: type_name, source_indices: source_indices)
-    || match item.type_annotation {
-      Present { value: ta } => node_tree_references_type_name(n: ta, type_name: type_name, source_indices: source_indices)
-      Absent => false
-    }
-    || item.params |> any(p => node_tree_references_type_name(n: p, type_name: type_name, source_indices: source_indices))
-    || match item.body {
-      Present { value: body } => node_tree_references_type_name(n: body, type_name: type_name, source_indices: source_indices)
-      Absent => false
-    }
-}
-
-fn module_item_references_faithful_expanded_type(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  module_item_references_type_name(item: item, type_name: "ByteSize", source_indices: source_indices)
-    || module_item_references_type_name(item: item, type_name: "Measure", source_indices: source_indices)
-    || module_item_references_type_name(item: item, type_name: "Map", source_indices: source_indices)
-}
-
-fn module_needs_faithful_carrier_imports(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if true {
-    false
-  } else {
-    module_renders_faithful_text_carrier(items: items, source_indices: source_indices)
-    || items |> any(item =>
-      module_item_references_type_name(item: item, type_name: "FreeMonoid", source_indices: source_indices)
-      || module_item_references_type_name(item: item, type_name: "Char", source_indices: source_indices)
-      || module_item_references_type_name(item: item, type_name: "NonEmptyStr", source_indices: source_indices)
-      || module_item_references_type_name(item: item, type_name: "Int", source_indices: source_indices)
-      || module_item_references_type_name(item: item, type_name: "PartialFunction", source_indices: source_indices)
-      || module_item_references_type_name(item: item, type_name: "Memory", source_indices: source_indices)
-      || module_item_references_faithful_expanded_type(item: item, source_indices: source_indices)
-    )
-  }
-}
-
-fn module_renders_faithful_text_carrier(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if true {
-    false
-  } else {
-    items |> any(item => module_item_has_faithful_string_leaf(item: item, source_indices: source_indices))
-  }
-}
-
-fn rust_import_name_already_resolved(imported_names: List<String>, local_type_names: List<String>, name: String) -> Bool {
-  imported_names |> any(n => n == name) || local_type_names |> any(n => n == name)
-}
-
-fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_type_names: List<String>, items: List<Node>, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, typed_modules: List<TypedModule>) -> List<String> {
-  let closure_has_std_measure = typed_closure_includes_module_filename(typed_modules: typed_modules, filename: "std_measure", source_indices: source_indices)
-  let needs_free_monoid = items |> any(item =>
-    module_item_has_faithful_string_leaf(item: item, source_indices: source_indices)
-    || module_item_references_type_name(item: item, type_name: "FreeMonoid", source_indices: source_indices)
-  )
-  let needs_char = items |> any(item =>
-    module_item_has_faithful_string_leaf(item: item, source_indices: source_indices)
-    || module_item_references_type_name(item: item, type_name: "Char", source_indices: source_indices)
-  )
-  let needs_non_empty_str = items |> any(item => module_item_references_type_name(item: item, type_name: "NonEmptyStr", source_indices: source_indices))
-  let needs_int = items |> any(item => module_item_references_type_name(item: item, type_name: "Int", source_indices: source_indices))
-  let needs_partial_function = items |> any(item =>
-    module_item_references_type_name(item: item, type_name: "PartialFunction", source_indices: source_indices)
-  )
-  let needs_finitely_supported_function = items |> any(item =>
-    module_item_references_type_name(item: item, type_name: "FinitelySupportedFunction", source_indices: source_indices)
-    || module_item_references_type_name(item: item, type_name: "Map", source_indices: source_indices)
-  )
-  let needs_measure_phantoms = closure_has_std_measure && items |> any(item => module_item_references_faithful_expanded_type(item: item, source_indices: source_indices))
-  let free_monoid = if !needs_free_monoid || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "FreeMonoid") {
-    []
-  } else {
-    [concat(rust_visibility_prefix(), "use crate::std_algebra::FreeMonoid;")]
-  }
-  let char_line = if !needs_char || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "Char") {
-    []
-  } else {
-    [concat(rust_visibility_prefix(), "use crate::std_types::Char;")]
-  }
-  let non_empty_str = if !needs_non_empty_str || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "NonEmptyStr") {
-    []
-  } else {
-    [concat(rust_visibility_prefix(), "use crate::std_types::NonEmptyStr;")]
-  }
-  let int_line = if !needs_int || local_type_names |> any(n => n == "Int") {
-    []
-  } else {
-    [concat(rust_visibility_prefix(), "use crate::v2_std_integer::Int;")]
-  }
-  let partial_function = if !needs_partial_function || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "PartialFunction") {
-    []
-  } else {
-    [concat(rust_visibility_prefix(), "use crate::std_algebra::PartialFunction;")]
-  }
-  let finitely_supported_function = if !needs_finitely_supported_function || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "FinitelySupportedFunction") {
-    []
-  } else {
-    [concat(rust_visibility_prefix(), "use crate::std_algebra::FinitelySupportedFunction;")]
-  }
-  let memory = if !needs_measure_phantoms || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "Memory") {
-    []
-  } else {
-    [concat(rust_visibility_prefix(), "use crate::std_measure::Memory;")]
-  }
-  let one = if !needs_measure_phantoms || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "One") {
-    []
-  } else {
-    [concat(rust_visibility_prefix(), "use crate::std_measure::One;")]
-  }
-  concat(free_monoid, char_line, non_empty_str, int_line, partial_function, finitely_supported_function, memory, one)
 }
 
 // The runtime and facade paths below are rendered FROM gunbc.rust_emitted_edge
