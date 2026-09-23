@@ -107,7 +107,8 @@ fn apt_package_of(tool: CliTool) -> NonEmptyStr? {
 
 // WHERE THE PACKAGE PUTS THE BINARY IS A FACT ABOUT THE PACKAGE, STATED ON THE ROW. A reader
 // that probes an apt-acquired tool by path must probe the path the package installs, and that is
-// not always /usr/bin: conntrack-tools' nfct ships at /usr/sbin/nfct. The directory used to be a
+// not always /usr/bin: nfct (Ubuntu package `nfct`, from the conntrack-tools project) ships at
+// /usr/sbin/nfct. The directory used to be a
 // single constant every probe assumed, so an sbin tool read absent after a successful install and
 // no row could say otherwise. Each SourceApt now states its bin_dir, and this fold derives the
 // path from it. Absent means the tool declares no apt source -- the caller refuses rather than
