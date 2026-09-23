@@ -221,29 +221,6 @@ fn v41_store_encode_argv(shard_directory: NonEmptyStr, a: V41StoreEncodeArgs) ->
   ]
 }
 
-// ── THE PUBLISHED STORES' IDENTITIES ──────────────────────────────────────────────────────────
-//
-// Read on the host: sha256sum over each store the encoder wrote, one per (layer, rank). A run's receipt
-// is transcribed here; v41_identify_row_store then admits exactly the declared eight or refuses.
-type V41PublishedStoreReadings
-  = V41PublishedStoresUnread { obligation: NonEmptyStr }
-  | V41PublishedStoresRead { observed_at: NonEmptyStr, stores: List<V41RankStoreIdentity> }
-
-data v41_published_store_readings: V41PublishedStoreReadings = V41PublishedStoresUnread {
-  obligation: "the eight published Engram row stores (layers 1 and 14 x four ranks) have not been encoded: the host realization needs the materialized shards on Group A (gunbc.spark.v41_checkpoint_materialize), and its per-store sha256sum receipt is transcribed into gunbc.spark.v41_row_store_encode v41_published_store_readings" as NonEmptyStr,
-}
-
-// THE LIVE ENCODING: the live spec over the published population, identified from the readings. The
-// bucket layout is drawn only once a reading exists. DECLARED FRONTIER: its consumers are
-// gunbc.spark.v41_engram_staging v41_stage_rank_stores and gunbc.spark.v41_runtime_realized
-// v41_realized_candidate, whose live wiring lands with the encode mode above.
-fn v41_published_row_store_encoding(partition: V41EngramResidencyPartition, readings: V41PublishedStoreReadings) -> V41RowStoreEncoding {
-  match readings {
-    V41PublishedStoresUnread { obligation: o } => V41RowStoreEncodingUnestablished { obligation: o }
-    V41PublishedStoresRead { observed_at: _, stores: st } =>
-      match v41_row_store_spec(population: map(deepseek_v4_1_flash_engram_sharded_entries, e => e.entry), partition: partition, tables: deepseek_v4_1_flash_engram, head_sizes: v41_live_head_sizes(tables: deepseek_v4_1_flash_engram)) {
-        V41RowStoreSpecRefused { defects: d } => V41RowStoreEncodingRefused { defects: d }
-        V41RowStoreSpecAdmitted { spec: spec } => v41_identify_row_store(spec: spec, rank_stores: st)
-      }
-  }
-}
+// THE PUBLISHED STORES' IDENTITIES live with the row-store model (gunbc.spark.v41_engram_row_store
+// v41_published_store_readings, v41_row_store_encoding_key), where the dispatched encode run's receipt is
+// transcribed; this module owns only what the host program is told.
