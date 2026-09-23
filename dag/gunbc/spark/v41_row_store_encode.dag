@@ -128,6 +128,9 @@ fn v41_row_store_output_directory() -> NonEmptyStr {
   join([v41_checkpoint_repo_directory(), "/engram-row-stores"], "") as NonEmptyStr
 }
 
+// THE PUBLISHED STORES' IDENTITIES are not here: they live with the row-store model
+// (gunbc.spark.v41_engram_row_store v41_published_store_readings, v41_row_store_encoding_key), where the
+// dispatched encode run's receipt is transcribed. This module owns only what the host program is told.
 type V41StoreEncodeArgs {
   layer: Nat
   rank: Nat
@@ -220,7 +223,3 @@ fn v41_store_encode_argv(shard_directory: NonEmptyStr, a: V41StoreEncodeArgs) ->
     "--chunk", to_string(v41_row_store_encoder_chunk_rows),
   ]
 }
-
-// THE PUBLISHED STORES' IDENTITIES live with the row-store model (gunbc.spark.v41_engram_row_store
-// v41_published_store_readings, v41_row_store_encoding_key), where the dispatched encode run's receipt is
-// transcribed; this module owns only what the host program is told.
