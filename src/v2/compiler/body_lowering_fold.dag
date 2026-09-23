@@ -2,7 +2,7 @@ module v2.compiler.body_lowering_fold
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.fold_lowering {
   FoldCallLowered,
   FoldCallNotAFold,
@@ -303,19 +303,30 @@ fn body_lower_arrow_domain_matches_ingest_param_bindings(
   )
 }
 
-fn body_lower_frontend_symbol_index_from_module(tree: Node) -> SymbolIndex {
-  symbol_index_fill_module_root(index: empty_symbol_index(), root: tree)
+fn body_lower_frontend_symbol_index_from_module(
+  tree: Node,
+  record_declarations: FreeMonoid<Symbol>
+) -> SymbolIndex {
+  symbol_index_fill_module_root(
+    index: empty_symbol_index(),
+    root: tree,
+    record_declarations: record_declarations
+  )
 }
 
 fn body_lower_arrow_domain_matches_frontend_symbol_index(
   arrow: Node,
   module_tree: Node,
+  record_declarations: FreeMonoid<Symbol>,
   fn_name: Symbol
 ) -> Bool {
   match qualified_name_from_module_node(root: module_tree) {
     Accepted { value: module_qn, diagnostics: _ } =>
       let fn_path = qualified_name_snoc(qn: module_qn, segment: fn_name)
-      let idx = body_lower_frontend_symbol_index_from_module(tree: module_tree)
+      let idx = body_lower_frontend_symbol_index_from_module(
+        tree: module_tree,
+        record_declarations: record_declarations
+      )
       fold(
         body_lower_arrow_domain_binding_symbols(arrow: arrow),
         init: true,
