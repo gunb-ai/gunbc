@@ -1,0 +1,110 @@
+module test.claim.stage0_emitted_edge_admission_witness
+
+import std.types { Bool }
+import gunbc.rust_emitted_edge { rust_prelude_emitted_edges, semantic_source_reference_edge }
+import gunbc.stage0_emitted_edge_admission {
+  Stage0EmittedEdgesAdmitted,
+  Stage0EmittedEdgesNotCovered,
+  Stage0EmittedEdgesRefused,
+  stage0_emitted_edge_admission,
+  stage0_emitted_edge_admission_refusal
+}
+
+// ── ONE ADMISSION, SUPPLIED EDGES, THE REAL PARTITION ROWS ────────────────────────────────────
+//
+// The subject is gunbc.stage0_emitted_edge_admission: given the edges the emitter returned and the
+// host shell's module roster, does every edge land in a package its source crate reaches. The rows
+// and package graph are the committed ones (gunbc.stage0_crate_partition_generated), so the module
+// names below are real members of real crates: v1_rt in the runtime foundation, std_types in
+// std-core, v1_compiler_infer in v1-infer. The edges are supplied, because the claim is about the
+// admission, not about what one emission happened to produce. The real producer is exercised by the
+// required generated-artifact phase, which runs this admission over the whole seed emission in
+// required_regen_host compile_stage0 and refuses the regen on any arm but Admitted.
+
+// RED: a foundation crate re-exports nothing, so an edge out of the runtime into v1-infer names a
+// module its crate cannot see -- the E0432 a partition build would report, refused here by name.
+test fn an_edge_out_of_the_foundation_into_a_higher_crate_is_refused() -> Bool {
+  match stage0_emitted_edge_admission(
+    edges: [semantic_source_reference_edge(from: "v1_rt", to_module: "v1_compiler_infer")],
+    host_shell_modules: []
+  ) {
+    Stage0EmittedEdgesRefused { crossings: crossings } =>
+      (crossings |> count) == 1
+        && crossings |> all(c =>
+          c.from_module == "v1_rt"
+            && c.to_module == "v1_compiler_infer"
+            && c.from_package == "v1-stage0-runtime"
+            && c.to_package == "v1-stage0-v1-infer")
+    _ => false
+  }
+}
+
+// RED, the direction that actually bites: a partition crate naming a host-shell module. The shell
+// depends on the partition, never the reverse.
+test fn an_edge_from_a_partition_crate_into_the_host_shell_is_refused() -> Bool {
+  match stage0_emitted_edge_admission(
+    edges: [semantic_source_reference_edge(from: "v1_compiler_infer", to_module: "cli_run")],
+    host_shell_modules: ["cli_run"]
+  ) {
+    Stage0EmittedEdgesRefused { crossings: crossings } =>
+      (crossings |> count) == 1
+        && crossings |> all(c => c.from_package == "v1-stage0-v1-infer" && c.to_package == "v1-compiler")
+    _ => false
+  }
+}
+
+// CONTROL for both REDs: the same admission over edges down the layering admits. v1-infer reaches
+// std-core through its facade, and the shell reaches v1-infer through its one dependency.
+test fn edges_down_the_layering_are_admitted() -> Bool {
+  match stage0_emitted_edge_admission(
+    edges: [
+      semantic_source_reference_edge(from: "v1_compiler_infer", to_module: "std_types"),
+      semantic_source_reference_edge(from: "cli_run", to_module: "v1_compiler_infer"),
+      semantic_source_reference_edge(from: "cli_run", to_module: "v1_rt")
+    ],
+    host_shell_modules: ["cli_run"]
+  ) {
+    Stage0EmittedEdgesAdmitted { edge_count: n } => n == 3
+    _ => false
+  }
+}
+
+// The emitter's own prelude rows, as the emitter produces them for a v1-infer module, admit: the
+// runtime edge reaches the foundation and the facade edge names the crate root.
+test fn the_emitter_prelude_rows_for_a_partition_module_are_admitted() -> Bool {
+  match stage0_emitted_edge_admission(
+    edges: rust_prelude_emitted_edges(module: "v1_compiler_infer"),
+    host_shell_modules: []
+  ) {
+    Stage0EmittedEdgesAdmitted { edge_count: _ } => true
+    _ => false
+  }
+}
+
+// NOT COVERED is its own arm: a module in neither a partition row nor the shell roster has no
+// crate here, which is what emitting a closure other than the seed looks like. It never passes.
+test fn a_module_outside_the_seed_is_not_covered_rather_than_admitted() -> Bool {
+  match stage0_emitted_edge_admission(
+    edges: [semantic_source_reference_edge(from: "fixture_closure_module", to_module: "std_types")],
+    host_shell_modules: ["cli_run"]
+  ) {
+    Stage0EmittedEdgesNotCovered { uncovered: uncovered } =>
+      (uncovered |> count) == 1
+        && uncovered |> all(u => u.module == "fixture_closure_module" && u.edge_from == "fixture_closure_module")
+    _ => false
+  }
+}
+
+// The refusal the regen prints is located: it names both modules, both packages and the provenance.
+test fn the_refusal_names_modules_packages_and_provenance() -> Bool {
+  match stage0_emitted_edge_admission_refusal(
+    outcome: stage0_emitted_edge_admission(
+      edges: [semantic_source_reference_edge(from: "v1_rt", to_module: "v1_compiler_infer")],
+      host_shell_modules: []
+    )
+  ) {
+    Present { value: message } =>
+      string_contains(s: message, pattern: "v1_rt [v1-stage0-runtime] -> v1_compiler_infer [v1-stage0-v1-infer] (semantic-source-reference)")
+    Absent => false
+  }
+}

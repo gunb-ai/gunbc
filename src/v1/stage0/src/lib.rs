@@ -169,17 +169,6 @@ pub mod gunbc_rust_decl_type_overlay;
     suspicious_double_ref_op,
     clippy::all
 )]
-pub mod gunbc_rust_emitted_edge;
-#[allow(
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_parens,
-    dead_code,
-    non_shorthand_field_patterns,
-    suspicious_double_ref_op,
-    clippy::all
-)]
 pub mod gunbc_stage0_crate_layout_generated;
 #[allow(
     unused_imports,
@@ -192,6 +181,17 @@ pub mod gunbc_stage0_crate_layout_generated;
     clippy::all
 )]
 pub mod gunbc_stage0_crate_partition_generated;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod gunbc_stage0_emitted_edge_admission;
 #[allow(
     unused_imports,
     unused_variables,

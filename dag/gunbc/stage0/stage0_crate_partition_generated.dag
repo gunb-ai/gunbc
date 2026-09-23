@@ -75,7 +75,8 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_literal_elaboration",
         "std_operator_realization",
         "std_import",
-        "v1_std_core"
+        "v1_std_core",
+        "gunbc_rust_emitted_edge"
       ],
       reexport_packages: [
         "v1-stage0-runtime"

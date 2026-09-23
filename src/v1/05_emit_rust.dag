@@ -12,7 +12,7 @@ import std.repair_input_origin {
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
 }
-import gunbc.rust_emitted_edge { rust_prelude_emitted_edges, emitted_edge_target_module, RuntimePrelude, ReexportFacade }
+import gunbc.rust_emitted_edge { EmittedEdge, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, RuntimePrelude, ReexportFacade }
 import gunbc.reference_derived_candidate {
   ReferenceDerivedCandidateDisposition,
   CandidateSurvived,
@@ -3500,19 +3500,19 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let shared_types = emit_info.shared_types
   let anonymous_record_diags = ctx.anonymous_record_diags
   if anonymous_record_diags |> count > 0 {
-    return EmitResult { files: [], diagnostics: anonymous_record_diags }
+    return EmitResult { files: [], diagnostics: anonymous_record_diags, emitted_edges: [] }
   }
   let effectful_recursion_diags = ctx.effectful_recursion_diags
   if effectful_recursion_diags |> count > 0 {
-    return EmitResult { files: [], diagnostics: effectful_recursion_diags }
+    return EmitResult { files: [], diagnostics: effectful_recursion_diags, emitted_edges: [] }
   }
   let filename_collisions = module_filename_collision_diagnostics(typed: typed)
   if filename_collisions |> count > 0 {
-    return EmitResult { files: [], diagnostics: filename_collisions }
+    return EmitResult { files: [], diagnostics: filename_collisions, emitted_edges: [] }
   }
   let symbol_collisions = emitted_symbol_collision_diagnostics(typed: typed)
   if symbol_collisions |> count > 0 {
-    return EmitResult { files: [], diagnostics: symbol_collisions }
+    return EmitResult { files: [], diagnostics: symbol_collisions, emitted_edges: [] }
   }
   let test_projections = ctx.test_projections
   let module_emissions = typed.modules
@@ -3590,7 +3590,7 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let population_manifest = emit_emitted_population_manifest(paths: emitted_paths)
   let emitted_files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
   let files = concat(emitted_files, [population_manifest])
-  EmitResult { files: files, diagnostics: module_refusals }
+  EmitResult { files: files, diagnostics: module_refusals, emitted_edges: published_module_emissions |> flat_map(e => e.emitted_edges) }
 }
 
 // THE ONE PLACE A MODULE'S EMITTED FILENAME IS DECIDED, read by the renderer and by every
@@ -5178,6 +5178,7 @@ fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> Referen
 type ReferenceDerivedUseLinePlan {
   lines: List<String>
   rows: List<ReferenceDerivedCandidateRow>
+  edges: List<EmittedEdge>
 }
 
 // The final use-line authority is one module's emitted item text, at exact identifier grain.
@@ -5284,30 +5285,35 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
       }
     )
     let providers = canonical_string_set(items: resolved |> map(b => b.provider_module))
-    let lines = providers |> flat_map(provider =>
+    let typed_lines = providers |> flat_map(provider =>
       let names = canonical_string_set(items: resolved |> filter(b => b.provider_module == provider) |> map(b => b.name))
       let plan_module_env = match map_get(module_index.by_name, this_module_name) {
         Present { value: tm } => Present { value: tm.type_env }
         Absent => none
       }
-      let block = emit_specific_import_block(import_module: provider, mod_name: module_to_filename(name: provider), filtered_names: names, type_position_names: applied_type_argument_names, emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, module_env: plan_module_env)
-      let block_lines = if block == "" { [] } else { block |> split(delimiter: "\n") }
-      let emitted_here = block_lines |> flat_map(l => imported_names_in_use_line(line: l))
+      let block_lines = emit_specific_import_use_lines(import_module: provider, mod_name: module_to_filename(name: provider), filtered_names: names, type_position_names: applied_type_argument_names, emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, module_env: plan_module_env)
+      let emitted_here = block_lines |> flat_map(l => imported_names_in_use_line(line: l.text))
       let fallback = names |> flat_map(nm =>
         if (emitted_here |> any(e => e == nm)) || (is_known_variant(type_summaries: emit_info.type_summaries, name: nm) && !emit_map_has(m: type_position_set, key: nm)) {
           []
         } else if provider_proven_exports_symbol(name: nm, provider_module: provider, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
-          [concat(rust_visibility_prefix(), concat("use crate::", concat(module_to_filename(name: provider), concat("::", concat(emit_import_name(owner_module: provider, n: nm, registry: registry), ";")))))]
+          [RustUseLine { target_module: module_to_filename(name: provider), text: concat(rust_visibility_prefix(), concat("use crate::", concat(module_to_filename(name: provider), concat("::", concat(emit_import_name(owner_module: provider, n: nm, registry: registry), ";"))))) }]
         } else {
           []
         }
       )
       concat(block_lines, fallback)
     )
+    let lines = typed_lines |> map(l => l.text)
     let names_already_in_lines = lines |> flat_map(l => imported_names_in_use_line(line: l))
     let qualified_rows = qualified_type_reference_rows(emit_info: emit_info, names: qualified_item_emit_surface_compatibility_names(candidates: origin_candidates) |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let qualified_lines = qualified_type_reference_use_lines(rows: qualified_rows, registry: registry)
-    ReferenceDerivedUseLinePlan { lines: concat(lines, qualified_lines), rows: concat(rows, qualified_rows) }
+    let this_module_filename = module_to_filename(name: this_module_name)
+    ReferenceDerivedUseLinePlan {
+      lines: concat(lines, qualified_lines |> map(l => l.text)),
+      rows: concat(rows, qualified_rows),
+      edges: rust_use_line_edges(from: this_module_filename, lines: concat(typed_lines, qualified_lines))
+    }
   }
 }
 
@@ -5388,14 +5394,17 @@ fn registry_row_is_type_declared_in(info: ItemInfo, module_name: String) -> Bool
   if info.module_name != module_name { false } else { match info.kind { TypeItem => true  _ => false } }
 }
 
-fn qualified_type_reference_use_lines(rows: List<ReferenceDerivedCandidateRow>, registry: Map<String, ItemInfo>) -> List<String> {
-  canonical_string_set(items: rows |> flat_map(r =>
+fn qualified_type_reference_use_lines(rows: List<ReferenceDerivedCandidateRow>, registry: Map<String, ItemInfo>) -> List<RustUseLine> {
+  let typed = rows |> flat_map(r =>
     match r.disposition {
       CandidateSurvived { provider_module: provider } =>
-        [concat(rust_visibility_prefix(), "use crate::", module_to_filename(name: provider), "::", emit_import_name(owner_module: provider, n: qualified_last_segment(name: r.name), registry: registry), ";")]
+        [RustUseLine { target_module: module_to_filename(name: provider), text: concat(rust_visibility_prefix(), "use crate::", module_to_filename(name: provider), "::", emit_import_name(owner_module: provider, n: qualified_last_segment(name: r.name), registry: registry), ";") }]
       _ => []
     }
-  ))
+  )
+  canonical_string_set(items: typed |> map(l => l.text)) |> flat_map(text =>
+    typed |> filter(l => l.text == text) |> take(n: 1)
+  )
 }
 
 fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> List<String> {
@@ -5412,6 +5421,7 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
 type ModuleEmission {
   file: TextFile
   reference_rows: List<ReferenceDerivedCandidateRow>
+  emitted_edges: List<EmittedEdge>
   module_refusals: List<ErrorNode>
 }
 
@@ -5501,7 +5511,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: wire_context_items, imports: wire_context_imports, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index))
     |> join(separator: "\n\n")
   let prelude = emit_prelude(module_name: this_module_name)
-  let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items, module_env: Present { value: scope.type_env })
+  let rendered_imports = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items, module_env: Present { value: scope.type_env }, from_module: module_to_filename(name: this_module_name))
+  let imports_str = rendered_imports.text
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
   let carrier_import_lines = if module_needs_faithful_carrier_imports(
     items: typed_module.items,
@@ -5548,15 +5559,17 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       Absent => []
     }
   )
-  let extern_svc_imports = unique_strings(items: all_svc_names) |> flat_map(sn =>
+  let extern_svc_use_lines = unique_strings(items: all_svc_names) |> flat_map(sn =>
     match map_get(svc_module_map, sn) {
       Present { value: mod_file } =>
         if mod_file == this_mod_filename { [] }
-        else { [concat(rust_visibility_prefix(), "use crate::", mod_file, "::", sanitize_service_name(name: sn), ";")] }
+        else { [RustUseLine { target_module: mod_file, text: concat(rust_visibility_prefix(), "use crate::", mod_file, "::", sanitize_service_name(name: sn), ";") }] }
       Absent => []
     }
   )
+  let extern_svc_imports = extern_svc_use_lines |> map(l => l.text)
   let uncovered_svc_imports = service_import_lines_not_already_bound(svc_lines: extern_svc_imports, merged_lines: merged_import_lines)
+  let uncovered_svc_use_lines = extern_svc_use_lines |> filter(l => uncovered_svc_imports |> any(u => u == l.text))
   let svc_imports_str = if uncovered_svc_imports |> count == 0 { "" }
     else { concat("\n", uncovered_svc_imports |> join(separator: "\n")) }
   let local_enum_uses = typed_module.items
@@ -5583,6 +5596,12 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   ModuleEmission {
     file: TextFile { path: module_emit_path, content: content },
     reference_rows: reference_plan.rows,
+    emitted_edges: concat(
+      rust_prelude_emitted_edges(module: this_mod_filename),
+      rendered_imports.edges,
+      reference_plan.edges,
+      rust_use_line_edges(from: this_mod_filename, lines: uncovered_svc_use_lines)
+    ),
     module_refusals: concat(
       reference_derived_row_diagnostics(rows: reference_plan.rows, module_span: m.span),
       module_projection_refusals(
@@ -6619,7 +6638,28 @@ fn import_name_resolves_to_host_realized_kernel_scalar(name: String, module_env:
   }
 }
 
+// A use-line and the module its path names, produced together so the edge the crate partition
+// reads and the text rustc reads are one value (gunbc.rust_emitted_edge SemanticSourceReference).
+type RustUseLine {
+  target_module: String
+  text: String
+}
+
+fn rust_use_lines_text(lines: List<RustUseLine>) -> String {
+  lines |> map(l => l.text) |> join(separator: "\n")
+}
+
+fn rust_use_line_edges(from: String, lines: List<RustUseLine>) -> List<EmittedEdge> {
+  canonical_string_set(items: lines |> map(l => l.target_module))
+    |> filter(target => target != from)
+    |> map(target => semantic_source_reference_edge(from: from, to_module: target))
+}
+
 fn emit_specific_import_block(import_module: String, mod_name: String, filtered_names: List<String>, type_position_names: List<String>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, module_env: TypeEnv?) -> String {
+  rust_use_lines_text(lines: emit_specific_import_use_lines(import_module: import_module, mod_name: mod_name, filtered_names: filtered_names, type_position_names: type_position_names, emit_info: emit_info, registry: registry, local_names: local_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, module_env: module_env))
+}
+
+fn emit_specific_import_use_lines(import_module: String, mod_name: String, filtered_names: List<String>, type_position_names: List<String>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, module_env: TypeEnv?) -> List<RustUseLine> {
   let type_summaries = emit_info.type_summaries
   let deduped_names = unique_strings(items: filtered_names
     |> filter(n => local_names |> all(ln => ln != n))
@@ -6633,7 +6673,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
   ))
   let non_marker_names = deduped_names |> filter(n => marker_type_names |> all(name => name != n))
   if deduped_names |> count == 0 {
-    ""
+    []
   } else {
     let import_module_enums = import_module_enum_scope(import_module: import_module, registry: registry, type_summaries: type_summaries, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let top_level = non_marker_names |> filter(n =>
@@ -6700,7 +6740,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
     let type_direct_mods = unique_strings(items: type_direct_names |> map(n =>
       graph_type_import_module_filename(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
     ))
-    let type_direct_lines = type_direct_mods |> map(def_mod =>
+    let type_direct_lines = type_direct_mods |> flat_map(def_mod =>
       let group = type_direct_names |> filter(n =>
         graph_type_import_module_filename(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) == def_mod
       )
@@ -6708,16 +6748,16 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
         let names_str = group |> map(n =>
           emit_import_name(owner_module: graph_type_import_module_path(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index), n: n, registry: registry)
         ) |> join(separator: ", ")
-        concat(rust_visibility_prefix(), "use crate::", def_mod, "::{", names_str, "};")
-      } else { "" }
+        [RustUseLine { target_module: def_mod, text: concat(rust_visibility_prefix(), "use crate::", def_mod, "::{", names_str, "};") }]
+      } else { [] }
     )
     let other_direct_line = if other_direct_names |> count > 0 {
       let names_str = other_direct_names |> map(n =>
         emit_import_name(owner_module: import_module, n: n, registry: registry)
       ) |> join(separator: ", ")
-      concat(rust_visibility_prefix(), "use crate::", mod_name, "::{", names_str, "};")
-    } else { "" }
-    let direct_lines = concat(type_direct_lines |> filter(l => l != ""), if other_direct_line != "" { [other_direct_line] } else { [] })
+      [RustUseLine { target_module: mod_name, text: concat(rust_visibility_prefix(), "use crate::", mod_name, "::{", names_str, "};") }]
+    } else { [] }
+    let direct_lines = concat(type_direct_lines, other_direct_line)
     let parent_defining_mods = unique_strings(items: remote_parent_list |> map(p =>
       let rep_variant = deduped_names |> filter(n =>
         match find_variant_parent_in_module(variant_name: n, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
@@ -6734,7 +6774,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
         Absent => item_defining_module_filename(name: p, module_index: module_index, fallback: mod_name)
       }
     ))
-    let parent_main_lines = parent_defining_mods |> map(def_mod =>
+    let parent_main_lines = parent_defining_mods |> flat_map(def_mod =>
       let group = remote_parent_list |> filter(p =>
         let rep_variant = deduped_names |> filter(n =>
           match find_variant_parent_in_module(variant_name: n, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
@@ -6753,16 +6793,12 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       )
       if group |> count > 0 {
         let names_str = group |> join(separator: ", ")
-        concat(rust_visibility_prefix(), "use crate::", def_mod, "::{", names_str, "};")
-      } else { "" }
+        [RustUseLine { target_module: def_mod, text: concat(rust_visibility_prefix(), "use crate::", def_mod, "::{", names_str, "};") }]
+      } else { [] }
     )
-    let main_lines = if direct_lines |> count > 0 {
-      concat(direct_lines, parent_main_lines |> filter(l => l != ""))
-    } else {
-      parent_main_lines |> filter(l => l != "")
-    }
-    let variant_lines = parent_list |> map(parent =>
-      if is_grounded_coproduct_native_alias(name: parent) { "" } else {
+    let main_lines = concat(direct_lines, parent_main_lines)
+    let variant_lines = parent_list |> flat_map(parent =>
+      if is_grounded_coproduct_native_alias(name: parent) { [] } else {
       let variants = deduped_names |> filter(n =>
         if n == "None" || n == "Some" {
           false
@@ -6790,20 +6826,15 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
         Absent => item_defining_module_filename(name: parent, module_index: module_index, fallback: mod_name)
       }
       let vars_str = variants |> join(separator: ", ")
-      concat("use crate::", parent_mod, "::", parent, "::{", vars_str, "};")
+      [RustUseLine { target_module: parent_mod, text: concat("use crate::", parent_mod, "::", parent, "::{", vars_str, "};") }]
       }
     )
     let final_imported_enums = top_level |> filter(n => import_module_enums |> any(e => e == n))
     let wildcard_enum_lines = final_imported_enums
       |> filter(en => parent_list |> any(p => p == en) == false
         && !is_grounded_coproduct_native_alias(name: en))
-      |> map(en => concat("use crate::", mod_name, "::", en, "::*;"))
-    let all_lines = concat(
-      main_lines |> filter(l => l != ""),
-      variant_lines |> filter(l => l != ""),
-      wildcard_enum_lines
-    )
-    all_lines |> join(separator: "\n")
+      |> map(en => RustUseLine { target_module: mod_name, text: concat("use crate::", mod_name, "::", en, "::*;") })
+    concat(main_lines, variant_lines, wildcard_enum_lines)
   }
 }
 
@@ -7083,16 +7114,23 @@ fn dedupe_rust_import_lines(lines: List<String>) -> List<String> {
   strip_repeated_use_symbols(lines: covered)
 }
 
-fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, supplement_items: List<Node>, module_env: TypeEnv?) -> String {
+// A renderer's use-line text and the edges its paths name, returned together (DESIGN §3: the
+// crate partition reads the edge, rustc reads the text, and neither is re-derived from the other).
+type RenderedUseLines {
+  text: String
+  edges: List<EmittedEdge>
+}
+
+fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, supplement_items: List<Node>, module_env: TypeEnv?, from_module: String) -> RenderedUseLines {
   if imports |> count == 0 {
-    ""
+    RenderedUseLines { text: "", edges: [] }
   } else {
     let applied_type_argument_names = unique_strings(items: supplement_items
       |> flat_map(item => collect_item_type_surface_occurrences(item: item, source_indices: source_indices))
       |> filter(occurrence => occurrence.applied_argument)
       |> map(occurrence => occurrence.name))
     let import_modules = unique_strings(items: imports |> map(imp => authored_name_at(source_indices: source_indices, node: imp)))
-    let import_lines = import_modules |> flat_map(import_module =>
+    let import_blocks = import_modules |> map(import_module =>
       let mod_imports = imports |> filter(imp => authored_name_at(source_indices: source_indices, node: imp) == import_module)
       let mod_name = module_to_filename(name: import_module)
       let mod_has_wildcard = mod_imports |> any(imp => import_is_all(n: imp))
@@ -7105,7 +7143,7 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
             |> flat_map(imp => import_specific_names_at(n: imp, source_indices: source_indices)),
           reexport_surface
         ))
-        let specific_block = emit_specific_import_block(
+        let specific_lines = emit_specific_import_use_lines(
           import_module: import_module,
           mod_name: mod_name,
           filtered_names: merged_specific,
@@ -7118,16 +7156,12 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
           source_indices: source_indices,
         module_index: module_index,
         module_env: module_env)
-        if specific_block != "" {
-          concat(wildcard_line, "\n", specific_block)
-        } else {
-          wildcard_line
-        }
+        concat([RustUseLine { target_module: mod_name, text: wildcard_line }], specific_lines)
       } else {
         let specific_names = mod_imports |> flat_map(imp => import_specific_names_at(n: imp, source_indices: source_indices))
         let synth_for_module = module_data_field_struct_import_names(items: supplement_items, type_summaries: emit_info.type_summaries, import_module: import_module, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
         let merged_specific = unique_strings(items: concat(specific_names, synth_for_module))
-        emit_specific_import_block(
+        emit_specific_import_use_lines(
           import_module: import_module,
           mod_name: mod_name,
           filtered_names: merged_specific,
@@ -7141,9 +7175,13 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
         module_index: module_index,
         module_env: module_env)
       }
-      block |> split(delimiter: "\n")
+      block
     )
-    dedupe_rust_import_lines(lines: import_lines) |> join(separator: "\n")
+    let import_lines = import_blocks |> flat_map(block => rust_use_lines_text(lines: block) |> split(delimiter: "\n"))
+    RenderedUseLines {
+      text: dedupe_rust_import_lines(lines: import_lines) |> join(separator: "\n"),
+      edges: rust_use_line_edges(from: from_module, lines: import_blocks |> flat_map(block => block))
+    }
   }
 }
 
