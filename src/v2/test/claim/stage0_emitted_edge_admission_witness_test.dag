@@ -2,6 +2,7 @@ module test.claim.stage0_emitted_edge_admission_witness
 
 import std.types { Bool }
 import gunbc.rust_emitted_edge { rust_prelude_emitted_edges, semantic_source_reference_edge }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.stage0_emitted_edge_admission {
   Stage0EmittedEdgesAdmitted,
   Stage0EmittedEdgesNotCovered,
@@ -20,6 +21,8 @@ import gunbc.stage0_emitted_edge_admission {
 // admission, not about what one emission happened to produce. The real producer is exercised by the
 // required generated-artifact phase, which runs this admission over the whole seed emission in
 // required_regen_host compile_stage0 and refuses the regen on any arm but Admitted.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // RED: a foundation crate re-exports nothing, so an edge out of the runtime into v1-infer names a
 // module its crate cannot see -- the E0432 a partition build would report, refused here by name.
