@@ -271,7 +271,7 @@ fn approval_ntfy_subscriber_grant_intervention() -> HumanIntervention {
       approval_ntfy_operator_user as String,
       "', and create no other users. Enrolment-code issuance reads this list back with `ntfy access`",
       " and refuses on any other shape (gunbc.auth.approval_ntfy_access_readback), so this step is",
-      " checked rather than trusted. Four of its reads run as '",
+      " checked rather than trusted. Six of its reads (four distinct argv) run as '",
       approval_ntfy_principal_name as String,
       "' and one as root, each via `sudo -n` at an exact argv (gunbc.auth.approval_ntfy_access_readback",
       " approval_ntfy_read_command: stat identity and cat of the config, stat identity of the auth file,",

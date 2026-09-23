@@ -217,8 +217,11 @@ type ApprovalNtfyAclVerdict
   | AclRefused { deviation: ApprovalNtfyAclDeviation }
 
 // ── THE READS, AS MODELED COMMANDS ─────────────────────────────────────────────────────────
-// Every read is an extdeps argv builder; the four elevated ones are the ONLY sudoers lines this
-// needs, each an exact argv with no PID in it (the PID-bearing reads are world-readable procfs).
+// Every read is an extdeps argv builder. Seven reads are elevated over FIVE distinct argv -- the
+// config identity (read before and after), the config text, the auth-file identity (before and
+// after), the env -i listing, and the tailscale serve status -- and those five are the ONLY sudoers
+// lines this needs, each an exact argv with no PID in it (the PID-bearing reads are world-readable
+// procfs).
 data approval_ntfy_read_timeout: Second = second(count: 10)
 data approval_ntfy_read_kill_after: Second = second(count: 2)
 
