@@ -102,11 +102,12 @@ test fn a_reading_with_a_thirteenth_engram_name_refuses() -> Bool {
   }
 }
 
-// THE LIVE READING IS UNREAD UNTIL AN ENROLLED ROUTE'S RECEIPT LANDS, and the observed population is
-// then the extdeps one, scoped to the rows read -- a diagnostic run of the scan does not close it.
-test fn the_live_reading_is_unread_and_the_observed_population_stays_scoped() -> Bool {
+// THE LIVE READING IS AN ENROLLED ROUTE'S RECEIPT, AND OVER THE PINNED FILE AND EVERY NAME IT CLOSES
+// MEMBERSHIP. The oracle is the extdeps fold against the pin; the row's own values are not asserted
+// here, because comparing them with literals copied from the row would only restate it (review 70580).
+test fn the_live_reading_closes_the_observed_population() -> Bool {
   (match v41_index_engram_selection_reading {
-    V41IndexEngramSelectionRead { index_sha256_hex: _, index_bytes: _, name_count: _, members: _, observed: _ } => false
-    V41IndexEngramSelectionUnread { obligation: o } => (o as String).contains("spark_v41_checkpoint_materialize")
-  }) && w_closure_of(s: v41_engram_population_observed()) == 1
+    V41IndexEngramSelectionRead { index_sha256_hex: _, index_bytes: _, name_count: _, members: _, observed: _ } => true
+    V41IndexEngramSelectionUnread { obligation: _ } => false
+  }) && w_closure_of(s: v41_engram_population_observed()) == 0
 }
