@@ -525,7 +525,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.auth.mtcollins1_boot_federation", decl_name: "mtcollins1_boot_federation_provision_with_supplied_token"),
+    site: site(module_path: "gunbc.auth.mtcollins1_boot_federation_provision", decl_name: "mtcollins1_boot_federation_provision_with_supplied_token"),
     effect: PrivilegedEffect {
       subject: "create the mtcollins1 boot's dedicated pool, provider and service account, bind who may act as it, and its two version-pinned accessor cells" as NonEmptyStr,
       frequency: FleetOnce,
