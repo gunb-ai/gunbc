@@ -418,6 +418,7 @@ pub fn kibibyte_to_byte_size(k: Kibibyte) -> ByteSize {
     byte_size((kibibyte_count(k.clone()) * kibi_factor()))
 }
 
+// PLANTED SEED-MIRROR DRIFT (control, do not merge).
 pub fn kibibyte_from_byte_size_floor(b: ByteSize) -> Kibibyte {
     kibibyte((byte_size_count(b.clone()) / kibi_factor()))
 }
