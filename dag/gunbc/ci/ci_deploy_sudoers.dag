@@ -7,16 +7,21 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.algebra { fold_list, any }
 import extdeps.sudo.elevation { sudo_elevate_argv }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import extdeps.sudo.nopasswd_execute_probe { NopasswdExecuteCheck, NopasswdGrantListCheck }
 import gunbc.ci_deploy_access {
   DeployAccess,
+  PrivilegedCommand,
   gunbc_deploy_sudoers_dropin,
   deploy_access_sudoers_line,
   posix_sudo_grant_to_privileged,
 }
 import gunbc.fleet_posix_accounts {
   PosixSudoGrant,
+  SudoVisudo,
+  SudoInstall,
   fleet_posix_ci_runner_sudo_grants,
-  fleet_visudo_binary_path,
+  ci_runner_sudo_binary_path,
 }
 
 // Wave C envelope: /etc/sudoers.d/gunbc-deploy is EMITTED from the roster grants (never
@@ -113,15 +118,59 @@ fn deploy_sudo_prefix() -> String {
   concat(join(sudo_elevate_argv(command: []), " "), " ")
 }
 
+// THE FULL ROSTER IS DEMANDED HERE, AFTER THE INSTALL, AND A MISS STOPS THE SCRIPT BEFORE ANY OTHER
+// MUTATION. The pre-mutation gate demands only what the install spends
+// (gunbc.ci_deploy_access deploy_access_sudoers_install_scope), because the install is what grants
+// the rest; so this is where the rest is required, one probe per privileged command, with the same
+// probe kind the roster row declares: an execute check runs the sudo -n argv of
+// extdeps.sudo.nopasswd_execute_probe_check_op sudo_nopasswd_execute_probe_argv, and a grant-list
+// check (a binary that may not be installed yet) requires an exact NOPASSWD row in `sudo -n -l`, the
+// same exact-row reading as sudo_nopasswd_grant_list_line_admits_probe. The refusal is loud and
+// exits nonzero; it is not a warning.
+data deploy_sudoers_post_install_refusal_prefix: String = "deploy_access: typed refusal after sudoers install, before any other mutation -- roster command not granted by the installed drop-in:"
+
+fn deploy_sudoers_post_install_refusal(cmd: PrivilegedCommand) -> String {
+  join([
+    "; then echo ",
+    posix_single_quote(spelling: concat(concat(deploy_sudoers_post_install_refusal_prefix, " "), cmd.grant.command_path as String)),
+    " >&2; exit 1; fi\n",
+  ], "")
+}
+
+fn deploy_sudoers_post_install_probe_line(cmd: PrivilegedCommand) -> String {
+  let path = posix_single_quote(spelling: cmd.grant.command_path as String)
+  let probe = match cmd.grant.probe {
+    NopasswdExecuteCheck { check_argv: a } =>
+      join([deploy_sudo_prefix(), path, " ", posix_single_quote(spelling: a as String), " >/dev/null 2>&1"], "")
+    NopasswdGrantListCheck =>
+      join([deploy_sudo_prefix(), "-l 2>/dev/null | sed -n 's/^.*NOPASSWD:[[:space:]]*//p' | sed 's/[[:space:]]*$//' | grep -Fqx -- ", path], "")
+  }
+  join(["if ! ", probe, deploy_sudoers_post_install_refusal(cmd: cmd)], "")
+}
+
+fn deploy_sudoers_post_install_roster_probe_shell(access: DeployAccess) -> String {
+  fold_list(
+    xs: access.privileged_commands,
+    empty: "",
+    cons: (acc, cmd) => concat(acc, deploy_sudoers_post_install_probe_line(cmd: cmd))
+  )
+}
+
+// visudo and install are read from gunbc.fleet_posix_accounts ci_runner_sudo_binary_path, the same
+// rows ci_runner_sudoers_install_binaries names, so what this step spends and what the pre-install
+// gate demands cannot drift apart.
 fn deploy_sudoers_install_shell(access: DeployAccess) -> String {
+  let visudo = ci_runner_sudo_binary_path(b: SudoVisudo) as String
+  let install = ci_runner_sudo_binary_path(b: SudoInstall) as String
   join([
     "cat > \"$_gunbc_stage/gunbc-deploy.sudoers\" <<'GUNBC_SUDOERS_EOF'\n",
     deploy_sudoers_dropin_content(access: access),
     "GUNBC_SUDOERS_EOF\n",
-    deploy_sudo_prefix(), fleet_visudo_binary_path as String, " -cf \"$_gunbc_stage/gunbc-deploy.sudoers\"\n",
-    deploy_sudo_prefix(), "install -m 0440 \"$_gunbc_stage/gunbc-deploy.sudoers\" ",
+    deploy_sudo_prefix(), visudo, " -cf \"$_gunbc_stage/gunbc-deploy.sudoers\"\n",
+    deploy_sudo_prefix(), install, " -m 0440 \"$_gunbc_stage/gunbc-deploy.sudoers\" ",
     gunbc_deploy_sudoers_dropin as String,
     "\n",
-    deploy_sudo_prefix(), fleet_visudo_binary_path as String, " -cf ", gunbc_deploy_sudoers_dropin as String,
+    deploy_sudo_prefix(), visudo, " -cf ", gunbc_deploy_sudoers_dropin as String, "\n",
+    deploy_sudoers_post_install_roster_probe_shell(access: access),
   ], "")
 }
