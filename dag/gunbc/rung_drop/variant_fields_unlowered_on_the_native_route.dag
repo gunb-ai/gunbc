@@ -21,7 +21,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // v2.compiler.body_lowering_fold declares the fields, the graft skip is deleted, and
 // body_lower_pattern_lowered lowers `A(x) =>`, `A { v: x } =>` and `A { v } =>` to the construct over
 // their binders, so the #11998 positional-binder refusal is retired. The resolver frame is executed
-// too: v2.compiler.resolve resolve_match_node scopes those binders as the arm's lexical frame, and
+// too: v2.compiler.resolve resolve_match_node_walk scopes those binders as the arm's lexical frame, and
 // v2.test.claim.match_arm_binder_frame holds that a binder binds. What is NOT established is the
 // capability this row's subject names: that the NATIVE ROUTE, the emitted compiler, lowers fields and
 // binds binders. The emitted compiler does not build today, so nothing observes it there.

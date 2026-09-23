@@ -10,7 +10,17 @@ import gunbc.compute.work_provider_local {
   provide_result_host_record, provide_result_ending, provide_result_document, host_record_was_written, host_record_wire,
   compute_with_lost_host_record, provide_result_with_host_record, host_record_join,
   ComputeLayout, compute_layout, compute_unit_properties,
+  LeaseDrop, LeaseDropped, LeaseNotDropped, compute_lease_drop_record, compute_stale_lease_note,
+  compute_stuck_reservation_remedy,
+  UnitLifecycleObservations, unit_lifecycle_decide, unit_population,
+  UnitPopulation, PopulationOccupied, PopulationEmpty, PopulationUnknown,
   compute_kill_mode_property, compute_kill_mode_value,
+  UnitPropertyReading, unit_property_from_shell,
+}
+import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
+import gunbc.compute.attempt_lifecycle {
+  UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,
+  UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
 }
 import std.measure { kibibyte }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
@@ -161,7 +171,7 @@ test fn the_attempt_completion_fact_is_not_the_works_ending() -> Bool {
   compute_attempt_completed(outcome: WorkSucceeded { identity: "a", outputs: [], log_path: "/l" })
     && compute_attempt_completed(outcome: WorkOutputMismatch { identity: "a", detail: "d" })
     && !compute_attempt_completed(outcome: WorkFailed { identity: "a", exit_code: 1, log_path: "/l" })
-    && !compute_attempt_completed(outcome: WorkCancelled { identity: "a" })
+    && !compute_attempt_completed(outcome: WorkCancelled { identity: "a", detail: "d" })
     && !compute_attempt_completed(outcome: WorkRefusedByInfrastructure { identity: "a", cause: HostComputeCapacityFull { wire: "pool-full" } })
 }
 
@@ -183,8 +193,8 @@ test fn a_lost_host_record_changes_no_contract_the_next_caller_reads() -> Bool {
   let settled = ProvideFresh { outcome: succeeded, document: document, host_record: HostRecordWritten }
   let attached = ProvideAttached { identity: "abc", ending: "succeeded", document: document, host_record: HostRecordWritten }
   let layout = compute_layout(instance: srv1_live_dashboard_instance(), identity_hex: "abc")
-  let lost = compute_with_lost_host_record(settled: settled, layout: layout, dropped_ok: false, dropped_error: "EBUSY", error: "ENOSPC")
-  let lost_attached = compute_with_lost_host_record(settled: attached, layout: layout, dropped_ok: false, dropped_error: "EBUSY", error: "ENOSPC")
+  let lost = compute_with_lost_host_record(settled: settled, layout: layout, dropped: LeaseNotDropped { detail: "EBUSY" }, error: "ENOSPC")
+  let lost_attached = compute_with_lost_host_record(settled: attached, layout: layout, dropped: LeaseNotDropped { detail: "EBUSY" }, error: "ENOSPC")
   provide_result_ending(r: lost) == provide_result_ending(r: settled)
     && provide_result_document(r: lost) == provide_result_document(r: settled)
     && provide_result_ending(r: lost) == "succeeded"
@@ -238,4 +248,162 @@ test fn a_lost_record_on_a_dependency_survives_a_successful_dependent() -> Bool 
     && host_record_was_written(h: provide_result_host_record(r: clean_child))
     && string_contains(s: host_record_wire(h: both_lost), pattern: "still held")
     && string_contains(s: host_record_wire(h: both_lost), pattern: "lost its reading")
+}
+
+
+fn lifecycle_word(u: UnitLifecycle) -> String {
+  match u {
+    UnitTerminatedSuccess { detail: _ } => "terminated-success"
+    UnitTerminatedFailure { detail: _ } => "terminated-failure"
+    UnitTerminatedCauseUnknown { detail: _ } => "terminated-cause-unknown"
+    UnitStillRunning { detail: _ } => "still-running"
+    UnitLifecycleUnknown { detail: _ } => "unknown"
+  }
+}
+
+data unqueried: UnitPropertyReading = UnitPropertyReading { queried: false, value: "" }
+
+fn lifecycle_of(load: UnitPropertyReading, active: UnitPropertyReading, result: UnitPropertyReading, pop: UnitPopulation) -> UnitLifecycle {
+  unit_lifecycle_decide(o: UnitLifecycleObservations { load_state: load, active_state: active, result: result, population: pop })
+}
+
+// CRITERION 1: FOUR STATES FROM THE MANAGER'S OWN VOCABULARY, AND UNKNOWN IS AN ARM.
+//
+// DISCRIMINATING IN FIVE DIRECTIONS AT ONCE, and the last two are the ones that fail open if the
+// fold is wrong. An occupied cgroup must outrank LoadState=not-found -- the manager forgetting a
+// unit while the kernel still holds processes in its cgroup is precisely the state where freeing
+// the seat hands away live memory. And every reading that fails to ESTABLISH an end must answer
+// unknown rather than picking the plausible neighbour: an inactive unit whose Result could not be
+// read is not a success, and a unit whose Result came back empty is not a verdict.
+//
+// THE UNKNOWN ARMS ASSERT THEIR REASON RATHER THAN THEIR ARM. A negative control satisfied by any
+// unknown would be satisfied by a fold that answered unknown to everything, so each one names the
+// fact it could not establish (a refusal witness must assert the reason).
+test fn the_lifecycle_verdict_has_four_states_and_unknown_carries_why() -> Bool {
+  let empty = PopulationEmpty { detail: "cg reports populated 0" }
+  let occupied = PopulationOccupied { detail: "processes remain in /user.slice/x" }
+  let unknown_pop = PopulationUnknown { detail: "the cgroup events could not be read" }
+
+  let succeeded = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "inactive"), result: reading(queried: true, value: "success"), pop: empty)
+  let failed = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "failed"), result: reading(queried: true, value: "exit-code"), pop: empty)
+  let oom = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "inactive"), result: reading(queried: true, value: "oom-kill"), pop: empty)
+  let running = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "active"), result: reading(queried: true, value: "success"), pop: unknown_pop)
+  let collected = lifecycle_of(load: reading(queried: true, value: "not-found"), active: unqueried, result: unqueried, pop: unknown_pop)
+
+  let occupied_but_forgotten = lifecycle_of(load: reading(queried: true, value: "not-found"), active: unqueried, result: unqueried, pop: occupied)
+  let no_manager = lifecycle_of(load: unqueried, active: unqueried, result: unqueried, pop: unknown_pop)
+  let result_unreadable = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "inactive"), result: unqueried, pop: empty)
+  let result_empty = lifecycle_of(load: reading(queried: true, value: "loaded"), active: reading(queried: true, value: "inactive"), result: reading(queried: true, value: ""), pop: empty)
+
+  lifecycle_word(u: succeeded) == "terminated-success"
+    && lifecycle_word(u: failed) == "terminated-failure"
+    && lifecycle_word(u: oom) == "terminated-failure"
+    && string_contains(s: unit_lifecycle_wire(u: oom), pattern: "oom-kill")
+    && lifecycle_word(u: running) == "still-running"
+    && lifecycle_word(u: collected) == "terminated-cause-unknown"
+
+    && lifecycle_word(u: occupied_but_forgotten) == "still-running"
+    && lifecycle_word(u: no_manager) == "unknown"
+    && string_contains(s: unit_lifecycle_wire(u: no_manager), pattern: "load state")
+    && lifecycle_word(u: result_unreadable) == "unknown"
+    && string_contains(s: unit_lifecycle_wire(u: result_unreadable), pattern: "Result could not be read")
+    && lifecycle_word(u: result_empty) == "unknown"
+    && string_contains(s: unit_lifecycle_wire(u: result_empty), pattern: "not a verdict")
+
+    && unit_lifecycle_ended(u: succeeded)
+    && unit_lifecycle_ended(u: failed)
+    && unit_lifecycle_ended(u: collected)
+    && !unit_lifecycle_ended(u: running)
+    && !unit_lifecycle_ended(u: occupied_but_forgotten)
+    && !unit_lifecycle_ended(u: no_manager)
+    && !unit_lifecycle_ended(u: result_unreadable)
+    && !unit_lifecycle_ended(u: result_empty)
+}
+
+
+// CRITERION 7: ONE CONTRACT FOR AN UNDROPPED LEASE, AND IT IS THE STORED RECORD THAT DECIDES.
+//
+// The state is: the work ran and its outcome was published, and the producer lease could not be
+// removed. Three claims used to be made about it and they cannot all be true -- the caller was
+// handed a refusal, the stored document said the run SUCCEEDED, and the note said the next request
+// would refuse as ProducerInFlight. The stored record is exactly what the next caller attaches to,
+// so it decides: the caller is told what the next caller will read, and the stale name is carried
+// as the operational fact it is.
+//
+// DISCRIMINATING ON THE THREE WAYS THIS GOES WRONG, each of which has been written at least once
+// in this change's history. (1) The undropped lease VANISHES -- LeaseNotDropped mapping to
+// HostRecordWritten. (2) The undropped lease becomes a VERDICT -- the outcome or the document
+// changing because a file could not be deleted. (3) The note tells the operator something the
+// contract contradicts: it used to say THE NEXT REQUEST refuses as ProducerInFlight, which is
+// false for a published success, because the attach is decided BEFORE the lease is consulted. The
+// repair was to SCOPE that sentence, not to delete the word: the note still names ProducerInFlight
+// as what a request that must PRODUCE again will meet, which is true. So the assertion here is on
+// the two clauses that carry the scope -- a note that drops them and states the refusal
+// unconditionally goes red, while the word itself is free to stay.
+//
+// AND THE REMEDY IS ASSERTED TO NAME A ROUTE THAT EXISTS. A refusal whose remedy names a
+// capability nobody built decays into advice; this one names compute_recover_cli, and the
+// assertion is here so that deleting the door makes this cell red rather than leaving the text
+// pointing at nothing.
+test fn an_undropped_lease_is_recorded_and_never_becomes_the_works_verdict() -> Bool {
+  let layout = compute_layout(instance: srv1_live_dashboard_instance(), identity_hex: "abc")
+  let succeeded = WorkSucceeded { identity: "abc", outputs: [], log_path: "/l" }
+  let document = work_outcome_wire(o: succeeded, subject: tree(hex: tree_a), op: work_default_build())
+  let settled = ProvideFresh { outcome: succeeded, document: document, host_record: HostRecordWritten }
+
+  let clean = compute_lease_drop_record(dropped: LeaseDropped, layout: layout)
+  let stuck = compute_lease_drop_record(dropped: LeaseNotDropped { detail: "EBUSY" }, layout: layout)
+  let carried = provide_result_with_host_record(r: settled, carried: stuck)
+
+  host_record_was_written(h: clean)
+    && !host_record_was_written(h: stuck)
+    && string_contains(s: host_record_wire(h: stuck), pattern: "STALE PRODUCER LEASE")
+    && string_contains(s: host_record_wire(h: stuck), pattern: layout.lease_path)
+    && string_contains(s: host_record_wire(h: stuck), pattern: "EBUSY")
+
+    && provide_result_ending(r: carried) == "succeeded"
+    && provide_result_document(r: carried) == document
+    && !host_record_was_written(h: provide_result_host_record(r: carried))
+
+    && string_contains(s: compute_stale_lease_note(layout: layout, error: "EBUSY"), pattern: "the attach is decided before this name is consulted")
+    && string_contains(s: compute_stale_lease_note(layout: layout, error: "EBUSY"), pattern: "matters only to a request that must PRODUCE again")
+    && string_contains(s: compute_stuck_reservation_remedy, pattern: "compute_recover_cli")
+}
+
+// THE DISCRIMINATING HALF, AND IT RUNS EVERYWHERE (review 69970). The claim below used to be
+// `if present { true }`, and the one lane it is enrolled on HAS a manager -- so on the only route
+// that executes it, nothing could turn it red and the pre-change behaviour on that host was
+// identical. DESIGN 4b: a check whose forbidden state cannot be expressed where the check runs is
+// a decoration, permanently green by construction, and worse than absent because it is cited as
+// coverage. The subject is the FOLD, which was fused to the effect and is now its own function, so
+// both shell outcomes are authorable here and a host without systemctl is no longer required to
+// observe the arm.
+//
+// THE RED THIS GOES TO: map ShellSpawnRefused to a queried reading, or delete the arm, and the
+// first conjunct fails. That is the mapping the settlement and recovery routes depend on -- a
+// refused spawn is NOT an answer, so it may not arrive as one.
+//
+// THE INPUT THAT ACTUALLY DISCRIMINATES, and the first attempt at this claim did not carry it.
+// Supplying success: false and an empty value alongside the refusal makes the correct arm and a
+// WRONG arm that reads the flag instead of the outcome produce the SAME reading, so the claim
+// passed against a fold mutated to `ShellSpawnRefused => { queried: success, value: value }`.
+// The fold's contract is that the OUTCOME decides: a spawn that produced no process is not a
+// reading whatever the transport's other fields say, so the separating input is a refusal
+// carrying a successful-looking flag and a value.
+test fn a_refused_spawn_is_a_property_not_queried_and_never_a_reading() -> Bool {
+  let refused = unit_property_from_shell(
+    outcome: ShellSpawnRefused { program: "systemctl" as NonEmptyStr, cause: "No such file or directory" as NonEmptyStr },
+    success: false, value: "")
+  let refused_with_a_flattering_flag = unit_property_from_shell(
+    outcome: ShellSpawnRefused { program: "systemctl" as NonEmptyStr, cause: "No such file or directory" as NonEmptyStr },
+    success: true, value: "active")
+  let answered = unit_property_from_shell(outcome: ShellExited, success: true, value: "inactive")
+  let nonzero = unit_property_from_shell(outcome: ShellExited, success: false, value: "")
+  !refused.queried
+    && refused.value == ""
+    && !refused_with_a_flattering_flag.queried
+    && refused_with_a_flattering_flag.value == ""
+    && answered.queried
+    && answered.value == "inactive"
+    && !nonzero.queried
 }
