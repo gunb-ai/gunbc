@@ -677,13 +677,13 @@ pub fn required_ci_emit_compile_probe_root() -> Result<PrivateProbeRoot, String>
 /// REFUSES rather than sharing. There is no lock and no "is someone else running" probe, because
 /// there is nothing shared to guard.
 ///
-/// NOTHING WARM IS LOST. The cargo target directory is `<workspace>/target`
-/// (`probe_cargo_invocation`), not under this root; the root holds only emitted crate sources and
-/// the retention file, which every run rewrites in full anyway (`write_probe_crate_files` removes a
-/// stale tree before writing). A private directory changes the probe crate's manifest path, so
-/// cargo rebuilds that one crate per run; its dependencies stay warm. Reuse ACROSS runs, if it is
-/// ever wanted, is a keyed materialization (`std.materialization_ladder`) with its own complete
-/// key, not a scratch directory two runs happen to agree on.
+/// NOTHING IS WARM ACROSS RUNS, AND THAT IS PRICED RATHER THAN HIDDEN. The root holds the emitted
+/// crate sources, the retention file, and the cargo target directory (`target_dir`), so the
+/// executable a run builds and spawns is one no other run can write. The cost is the probe
+/// dependency graph (`stage0_foundation_runtime_dependencies`, three small crates) compiled once
+/// per run; the arms within one run are incremental against it. Reuse ACROSS runs, if it is ever
+/// wanted, is a keyed materialization (`std.materialization_ladder`) with its own complete key,
+/// not a directory two runs happen to agree on.
 ///
 /// THE DIRECTORY IS REMOVED WHEN THE VALUE DROPS, because a per-run directory nobody removes
 /// grows the host temp by one emitted crate per local run (review 70325; the shared root it
