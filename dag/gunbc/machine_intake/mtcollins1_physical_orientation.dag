@@ -1,0 +1,657 @@
+module gunbc.machine_intake_mtcollins1_physical_orientation
+
+import std.types { Bool, NonEmptyStr, String, List, list_length }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.roster_frontier { FrontierRow, DeclSubject }
+import std.dissolution { UnboundDissolution }
+import extdeps.publication { SpecificationDocumentDate }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  MtCollinsChannelConnectorPair, MtCollinsDimmPopulationRow,
+  mt_collins_channel_connector_pairs, mt_collins_population_rows,
+}
+import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout {
+  MtCollinsDimmFigure, MtCollinsDimmFigureBank,
+  dimm_figure_banks, chassis_orientation_figure,
+  chassis_figure_orientation,
+}
+import gunbc.mt_collins_dimm_physical_identity {
+  MtCollinsDimmPopulationIdentity, MtCollinsPhysicalIdentificationGap,
+  ConnectorSilkscreenNotEstablished, PhysicalColourRoleNotEstablished,
+  DimmDiagramIdentityResolved, DimmDiagramIdentityRefused,
+  PopulationDiagramResolved, PopulationDiagramRefused, PopulationCountDisagrees, PopulationConnectorRepeated,
+  resolve_dimm_diagram_identity, population_diagram_identity,
+}
+import gunbc.machine_intake_mtcollins1_dimm_connector_observation {
+  mtcollins1_blue_connector_observation,
+}
+import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
+  MtCollins1TrainedSlot, MtCollins1Socket1InvestigationBoot, MtCollins1IntendedPlacement,
+  IntendedAsDescribed, IntendedAtDrawingLabels,
+  mtcollins1_boot_receipts_artifact, mtcollins1_socket1_investigation_boots,
+  mtcollins1_socket1_boot_three_sticks, mtcollins1_socket1_boot_two_sticks,
+  mtcollins1_socket1_investigation_predecessor, mtcollins1_socket1_next_hypothesis,
+}
+
+// THE PHYSICAL ORIENTATION OF MT. COLLINS UNIT 1'S DIMM ROW, AS THIS REPOSITORY OBSERVED IT.
+// A receipt in the observing layer (DESIGN §3): the vendor's Figure 9/10 facts stay in
+// extdeps.ampere.mt_collins_getting_started_guide.dimm_layout, and nothing here edits them.
+// Three standings are kept apart by type (§4d), because on 2026-09-23 they were conflated:
+// the operator placed DIMMs by a drawing derived from Figure 9, and the firmware trained
+// connectors the drawing did not name. The vendor figure is not wrong; the drawing's
+// left-to-right order is not the order the operator sees.
+type MtCollins1PhysicalFactStanding
+  = VendorFigureFact { figure: MtCollinsDimmFigure, standing: CitedFigureStanding }
+  | OperatorByEyeReport { observed_on: SpecificationDocumentDate, relay: NonEmptyStr, method: NonEmptyStr }
+  | FirmwareTrainedFact { run_id: Nat, artifact: NonEmptyStr, roster_lines: List<NonEmptyStr> }
+
+// Candidate readings of the operator's left-to-right view against Figure 9's bank order.
+// Each is a hypothesis; only firmware anchors eliminate one. FullMirror is what a rigid board
+// looks like from the end opposite the figure's; SocketHalvesSwapped keeps each bank's order
+// and exchanges the two sockets' sides, which no rigid viewpoint produces but which the first
+// anchor cannot exclude.
+type MtCollins1ViewHypothesis
+  = FigureOrder
+  | FullMirror
+  | SocketHalvesSwapped
+
+data mtcollins1_view_hypotheses: List<MtCollins1ViewHypothesis> = [FigureOrder, FullMirror, SocketHalvesSwapped]
+
+fn banks_connectors(banks: List<MtCollinsDimmFigureBank>) -> List<Nat> {
+  fold(banks, init: [], f: (acc, bank) => concat(acc, bank.connectors_left_to_right))
+}
+
+// The operator's left-to-right connector order under a hypothesis, derived from the figure
+// banks, never authored: a second literal 32-slot list would be a parallel authority.
+fn view_order(hypothesis: MtCollins1ViewHypothesis, banks: List<MtCollinsDimmFigureBank>) -> List<Nat> {
+  let figure = banks_connectors(banks: banks)
+  match hypothesis {
+    FigureOrder => figure
+    FullMirror => reverse(figure)
+    SocketHalvesSwapped => concat(
+      banks_connectors(banks: filter(banks, b => b.processor_socket != 0)),
+      banks_connectors(banks: filter(banks, b => b.processor_socket == 0)))
+  }
+}
+
+type MtCollins1PhysicalPosition {
+  from_left: Nat
+  connector: Nat
+}
+
+fn positions(order: List<Nat>) -> List<MtCollins1PhysicalPosition> {
+  fold(order, init: [], f: (acc, c) => concat(acc, [MtCollins1PhysicalPosition { from_left: list_length(items: acc), connector: c }]))
+}
+
+fn connector_at(order: List<Nat>, from_left: Nat) -> Nat? {
+  let hits = filter(positions(order: order), p => p.from_left == from_left)
+  let unique = if list_length(items: hits) == 1 { hits } else { [] }
+  map(unique, p => p.connector).first()
+}
+
+fn index_of(order: List<Nat>, connector: Nat) -> Nat? {
+  let hits = filter(positions(order: order), p => p.connector == connector)
+  let unique = if list_length(items: hits) == 1 { hits } else { [] }
+  map(unique, p => p.from_left).first()
+}
+
+fn nat_member(xs: List<Nat>, x: Nat) -> Bool {
+  fold(xs, init: false, f: (acc, y) => acc || y == x)
+}
+
+fn trained_slot_eq(a: MtCollins1TrainedSlot, b: MtCollins1TrainedSlot) -> Bool {
+  a.socket == b.socket && a.controller == b.controller && a.slot == b.slot
+}
+
+fn trained_slot_member(xs: List<MtCollins1TrainedSlot>, x: MtCollins1TrainedSlot) -> Bool {
+  fold(xs, init: false, f: (acc, y) => acc || trained_slot_eq(a: y, b: x))
+}
+
+fn trained_sets_equal(a: List<MtCollins1TrainedSlot>, b: List<MtCollins1TrainedSlot>) -> Bool {
+  list_length(items: a) == list_length(items: b)
+    && fold(a, init: true, f: (acc, x) => acc && trained_slot_member(xs: b, x: x))
+    && fold(b, init: true, f: (acc, x) => acc && trained_slot_member(xs: a, x: x))
+}
+
+// One boot: where the operator put DIMMs, named in the drawing's labels (which is how they
+// named them), and what the firmware trained. live_sockets is the firmware fact that only
+// socket 0 is present; a DIMM on an absent socket trains nothing.
+type MtCollins1PlacementAnchor {
+  evidence: MtCollins1PhysicalFactStanding
+  placed_at_drawing_labels: List<Nat>
+  trained: List<MtCollins1TrainedSlot>
+  live_sockets: List<Nat>
+}
+
+fn drawing_labels(intended: MtCollins1IntendedPlacement) -> List<Nat> {
+  match intended {
+    IntendedAtDrawingLabels { labels: ls } => ls
+    IntendedAsDescribed { description: _ } => []
+  }
+}
+
+// An anchor is a boot receipt read as a placement test; it is derived from the receipt, never
+// restated beside it.
+fn boot_anchor(boot: MtCollins1Socket1InvestigationBoot) -> MtCollins1PlacementAnchor {
+  MtCollins1PlacementAnchor {
+    evidence: FirmwareTrainedFact { run_id: boot.run_id, artifact: mtcollins1_boot_receipts_artifact, roster_lines: boot.roster_lines },
+    placed_at_drawing_labels: drawing_labels(intended: boot.intended),
+    trained: boot.trained,
+    live_sockets: boot.live_sockets,
+  }
+}
+
+// Run 35805796492: drawing 'J1','J17','J25'. It cannot tell FullMirror from SocketHalvesSwapped.
+data mtcollins1_three_stick_anchor: MtCollins1PlacementAnchor = boot_anchor(boot: mtcollins1_socket1_boot_three_sticks)
+
+// Run 35808203121: only the rightmost stick (drawing 'J25') removed. FullMirror puts the
+// remaining sticks at J25 and J9 (SK0 MC4); SocketHalvesSwapped at J17 and J1 (SK0 MC0). The
+// roster read SK0 MC4 alone, with the same RCD[32:86] module run 35805796492 trained on MC4.
+data mtcollins1_two_stick_anchor: MtCollins1PlacementAnchor = boot_anchor(boot: mtcollins1_socket1_boot_two_sticks)
+
+type MtCollins1AnchorVerdict
+  = AnchorConsistent
+  | AnchorContradicted { predicted: List<MtCollins1TrainedSlot> }
+  | AnchorUnevaluable { unresolved_key: Nat }
+
+type MtCollins1Prediction {
+  predicted: List<MtCollins1TrainedSlot>
+  unresolved: List<Nat>
+}
+
+// The firmware readback a set of physical connectors must produce: each connector's channel and
+// slot role through the existing Table 12-13 join, with absent sockets training nothing. The
+// install plan's expected readback and the anchor prediction are this one function.
+fn expected_firmware_readback(connectors: List<Nat>, live_sockets: List<Nat>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> MtCollins1Prediction {
+  fold(connectors, init: MtCollins1Prediction { predicted: [], unresolved: [] }, f: (acc, c) => match resolve_dimm_diagram_identity(connector: c, banks: banks, pairs: pairs) {
+    DimmDiagramIdentityRefused { connector: _, cause: _ } => MtCollins1Prediction { predicted: acc.predicted, unresolved: concat(acc.unresolved, [c]) }
+    DimmDiagramIdentityResolved { identity: i } =>
+      if nat_member(xs: live_sockets, x: i.channel.processor_socket) {
+        MtCollins1Prediction {
+          predicted: concat(acc.predicted, [MtCollins1TrainedSlot { socket: i.channel.processor_socket, controller: i.channel.memory_controller, slot: i.legend.slot_number }]),
+          unresolved: acc.unresolved,
+        }
+      } else { acc }
+  })
+}
+
+// Predict the roster a placement would produce under a hypothesis: drawing label -> drawing
+// position -> the connector the operator's view has there -> expected_firmware_readback. A label
+// that does not resolve makes the anchor unevaluable; it never silently drops out.
+fn predict_trained(anchor: MtCollins1PlacementAnchor, hypothesis: MtCollins1ViewHypothesis, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> MtCollins1Prediction {
+  let drawing = view_order(hypothesis: FigureOrder, banks: banks)
+  let view = view_order(hypothesis: hypothesis, banks: banks)
+  let unlocated = filter(anchor.placed_at_drawing_labels, label => match index_of(order: drawing, connector: label) {
+    Present { value: i } => match connector_at(order: view, from_left: i) { Present { value: _ } => false  Absent => true }
+    Absent => true
+  })
+  if list_length(items: unlocated) > 0 {
+    MtCollins1Prediction { predicted: [], unresolved: unlocated }
+  } else {
+    let connectors = fold(anchor.placed_at_drawing_labels, init: [], f: (acc, label) => match index_of(order: drawing, connector: label) {
+      Present { value: i } => match connector_at(order: view, from_left: i) { Present { value: c } => concat(acc, [c])  Absent => acc }
+      Absent => acc
+    })
+    expected_firmware_readback(connectors: connectors, live_sockets: anchor.live_sockets, banks: banks, pairs: pairs)
+  }
+}
+
+fn anchor_verdict(anchor: MtCollins1PlacementAnchor, hypothesis: MtCollins1ViewHypothesis, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> MtCollins1AnchorVerdict {
+  let p = predict_trained(anchor: anchor, hypothesis: hypothesis, banks: banks, pairs: pairs)
+  match p.unresolved.first() {
+    Present { value: key } => AnchorUnevaluable { unresolved_key: key }
+    Absent => if trained_sets_equal(a: p.predicted, b: anchor.trained) { AnchorConsistent } else { AnchorContradicted { predicted: p.predicted } }
+  }
+}
+
+type MtCollins1OrientationOutcome
+  = OrientationResolved { hypothesis: MtCollins1ViewHypothesis, order: List<Nat> }
+  | OrientationAmbiguous { surviving: List<MtCollins1ViewHypothesis> }
+  | OrientationContradicted
+  | OrientationUnevaluable { hypothesis: MtCollins1ViewHypothesis, unresolved_key: Nat }
+
+fn hypothesis_survives(anchors: List<MtCollins1PlacementAnchor>, hypothesis: MtCollins1ViewHypothesis, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> Bool {
+  fold(anchors, init: true, f: (acc, a) => acc && anchor_verdict(anchor: a, hypothesis: hypothesis, banks: banks, pairs: pairs) == AnchorConsistent)
+}
+
+fn first_unevaluable(anchors: List<MtCollins1PlacementAnchor>, hypotheses: List<MtCollins1ViewHypothesis>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> MtCollins1OrientationOutcome? {
+  fold(hypotheses, init: Absent, f: (acc, h) => match acc {
+    Present { value: _ } => acc
+    Absent => fold(anchors, init: Absent, f: (inner, a) => match inner {
+      Present { value: _ } => inner
+      Absent => match anchor_verdict(anchor: a, hypothesis: h, banks: banks, pairs: pairs) {
+        AnchorUnevaluable { unresolved_key: l } => Present { value: OrientationUnevaluable { hypothesis: h, unresolved_key: l } }
+        AnchorConsistent => Absent
+        AnchorContradicted { predicted: _ } => Absent
+      }
+    })
+  })
+}
+
+// An unevaluable anchor refuses before survival is counted: an anchor that cannot be read
+// must not be allowed to eliminate, or preserve, a hypothesis.
+fn resolve_orientation(anchors: List<MtCollins1PlacementAnchor>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> MtCollins1OrientationOutcome {
+  match first_unevaluable(anchors: anchors, hypotheses: mtcollins1_view_hypotheses, banks: banks, pairs: pairs) {
+    Present { value: refusal } => refusal
+    Absent => {
+      let surviving = filter(mtcollins1_view_hypotheses, h => hypothesis_survives(anchors: anchors, hypothesis: h, banks: banks, pairs: pairs))
+      match surviving.first() {
+        Absent => OrientationContradicted
+        Present { value: only } =>
+          if list_length(items: surviving) == 1 {
+            OrientationResolved { hypothesis: only, order: view_order(hypothesis: only, banks: banks) }
+          } else {
+            OrientationAmbiguous { surviving: surviving }
+          }
+      }
+    }
+  }
+}
+
+// Every boot whose placement was recorded in drawing labels is an anchor.
+data mtcollins1_placement_anchors: List<MtCollins1PlacementAnchor> = map(filter(mtcollins1_socket1_investigation_boots, b => list_length(items: drawing_labels(intended: b.intended)) > 0), b => boot_anchor(boot: b))
+
+fn mtcollins1_orientation() -> MtCollins1OrientationOutcome {
+  resolve_orientation(anchors: mtcollins1_placement_anchors, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
+}
+
+// THE DAMAGED CONNECTOR, recorded by the position the operator actually counted, not by a
+// J number: the J number is derived per surviving hypothesis, so it is a candidate set until
+// the orientation resolves, and a single connector after.
+type MtCollins1RowEdge = OperatorLeftEdge | OperatorRightEdge
+
+type MtCollins1SupersessionCause
+  = LabelReadFromUnanchoredDrawing { basis: NonEmptyStr }
+
+// History is kept, not deleted. The earlier report's own words are the record; its location
+// is not known to this repository, so none is invented.
+type MtCollins1SupersededDamageReport {
+  quote: NonEmptyStr
+  stated_label: Nat
+  location: NonEmptyStr?
+  cause: MtCollins1SupersessionCause
+}
+
+type MtCollins1DamagedConnectorReport {
+  counted_from: MtCollins1RowEdge
+  ordinal: Nat
+  damage: NonEmptyStr
+  report: MtCollins1PhysicalFactStanding
+  supersedes: MtCollins1SupersededDamageReport
+}
+
+data mtcollins1_damaged_connector_report: MtCollins1DamagedConnectorReport = MtCollins1DamagedConnectorReport {
+  counted_from: OperatorRightEdge,
+  ordinal: 5,
+  damage: "cracked connector (one blue socket snapped)",
+  report: OperatorByEyeReport {
+    observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 },
+    relay: "eager-owl-205 work item adhoc-3c0e7885-cd9 and message msg_760c88a9-98c8-4f09-a2b9-a436bb86dd4a",
+    method: "Operator by-eye count of connector positions from their right edge of the DIMM row. No photograph supplied to this session.",
+  },
+  supersedes: MtCollins1SupersededDamageReport {
+    quote: "one blue socket had snapped off, I think it's J3",
+    stated_label: 3,
+    location: Absent,
+    cause: LabelReadFromUnanchoredDrawing {
+      basis: "The J3 label was read off a figure-derived drawing whose left-to-right order was never anchored to the board; run 35805796492 showed that drawing's labels are not the physical connectors (drawing 'J1','J17','J25' trained as SK0 MC0 and SK0 MC4). The position count from a named edge replaces the label.",
+    },
+  },
+}
+
+// Ordinals are 1-based and counted without subtraction: the right edge is the reversed row.
+fn connector_counted_from(order: List<Nat>, edge: MtCollins1RowEdge, ordinal: Nat) -> Nat? {
+  let row = match edge { OperatorLeftEdge => order  OperatorRightEdge => reverse(order) }
+  map(filter(positions(order: row), p => p.from_left + 1 == ordinal), p => p.connector).first()
+}
+
+type MtCollins1DamagedCandidates
+  = DamagedCandidates { connectors: List<Nat>, hypotheses: List<MtCollins1ViewHypothesis> }
+  | DamagedCandidatesRefused { orientation: MtCollins1OrientationOutcome }
+
+fn damaged_connector_candidates(report: MtCollins1DamagedConnectorReport, orientation: MtCollins1OrientationOutcome, banks: List<MtCollinsDimmFigureBank>) -> MtCollins1DamagedCandidates {
+  let surviving = match orientation {
+    OrientationResolved { hypothesis: h, order: _ } => [h]
+    OrientationAmbiguous { surviving: s } => s
+    OrientationContradicted => []
+    OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => []
+  }
+  let located = fold(surviving, init: [], f: (acc, h) => match connector_counted_from(order: view_order(hypothesis: h, banks: banks), edge: report.counted_from, ordinal: report.ordinal) {
+    Present { value: c } => if nat_member(xs: acc, x: c) { acc } else { concat(acc, [c]) }
+    Absent => acc
+  })
+  if list_length(items: surviving) == 0 || list_length(items: located) == 0 {
+    DamagedCandidatesRefused { orientation: orientation }
+  } else {
+    DamagedCandidates { connectors: located, hypotheses: surviving }
+  }
+}
+
+fn mtcollins1_damaged_candidates() -> MtCollins1DamagedCandidates {
+  damaged_connector_candidates(report: mtcollins1_damaged_connector_report, orientation: mtcollins1_orientation(), banks: dimm_figure_banks)
+}
+
+// CONSEQUENCE FOR POPULATION CHOICE. Every candidate is excluded, not only the likeliest: a
+// candidate set is an unresolved fact, and excluding all of it is refusal, not widening.
+type MtCollins1PopulationDamageStanding
+  = PopulationAvoidsDamage { population: MtCollinsDimmPopulationRow }
+  | PopulationUsesDamaged { population: MtCollinsDimmPopulationRow, connectors: List<Nat> }
+  | PopulationDamageUndetermined { candidates: MtCollins1DamagedCandidates }
+
+fn population_damage_standing(population: MtCollinsDimmPopulationRow, candidates: MtCollins1DamagedCandidates) -> MtCollins1PopulationDamageStanding {
+  match candidates {
+    DamagedCandidatesRefused { orientation: _ } => PopulationDamageUndetermined { candidates: candidates }
+    DamagedCandidates { connectors: cs, hypotheses: _ } => {
+      let hit = filter(population.connectors, c => nat_member(xs: cs, x: c))
+      if list_length(items: hit) == 0 { PopulationAvoidsDamage { population: population } } else { PopulationUsesDamaged { population: population, connectors: hit } }
+    }
+  }
+}
+
+fn mtcollins1_population_damage_standings() -> List<MtCollins1PopulationDamageStanding> {
+  let candidates = mtcollins1_damaged_candidates()
+  map(mt_collins_population_rows, row => population_damage_standing(population: row, candidates: candidates))
+}
+
+data mtcollins1_population_selection_frontier: FrontierRow = FrontierRow {
+  subject: DeclSubject { ref: DeclarationRef {
+    module_path: "gunbc.machine_intake_mtcollins1_physical_orientation",
+    decl_name: "population_damage_standing",
+    field: WholeDeclaration,
+  } },
+  reason: "No production module selects an Mt. Collins DIMM population for a unit today; the tech slot map below renders the standing for the population it is handed. The named later consumer is the mtcollins1 population selection that chooses what the field tech installs.",
+  dissolution: UnboundDissolution {
+    description: "A population selector for mtcollins1 calls population_damage_standing for each Table 11 row and refuses PopulationUsesDamaged and PopulationDamageUndetermined rows before offering one.",
+  },
+}
+
+// WHERE THE OPERATOR STOOD. Not guessed: until the operator reports it the renderer refuses,
+// because "left" and "right" name nothing to a tech without an end of the chassis.
+type MtCollins1ChassisEnd = FrontEnd | RearEnd
+
+type MtCollins1Viewpoint
+  = ViewpointReported { end: MtCollins1ChassisEnd, report: MtCollins1PhysicalFactStanding }
+  | ViewpointNotYetReported { asked: NonEmptyStr }
+
+// "usually": this frame covers the reports made so far. A later report from another end must
+// name its own edge; it does not inherit this one.
+data mtcollins1_operator_viewpoint: MtCollins1Viewpoint = ViewpointReported {
+  end: FrontEnd,
+  report: OperatorByEyeReport {
+    observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 },
+    relay: "eager-owl-205 message msg_3007d41b-4817-487f-8b2c-806c5bd77437",
+    method: "Operator, verbatim: 'i am usually facing the front or J1 side'. A landmark report, independent of the firmware anchors.",
+  },
+}
+
+fn chassis_end_landmark(end: MtCollins1ChassisEnd) -> NonEmptyStr {
+  match end {
+    FrontEnd => chassis_figure_orientation.top_landmark
+    RearEnd => chassis_figure_orientation.bottom_landmark
+  }
+}
+
+// A bet, typed as one (§4d): IF Figure 9 is drawn from the same viewpoint as Figure 10 (seen
+// from above, front at the top), then a reader at the rear sees FigureOrder and a reader at the
+// front sees FullMirror, and nobody sees SocketHalvesSwapped. The guide does not state that
+// Figure 9 shares Figure 10's viewpoint.
+data figure_nine_shares_figure_ten_viewpoint: MtCollins1PhysicalFactStanding = VendorFigureFact {
+  figure: chassis_orientation_figure,
+  standing: TranscribedUncited {
+    read_obligation: "Collins GSG Issue 1.05 does not state that Figure 9 (page 11) is drawn from Figure 10's (page 13) top-down, front-at-top viewpoint. A firmware anchor on a reported viewpoint, or a vendor statement, grounds it.",
+  },
+}
+
+type MtCollins1ViewpointAgreement
+  = ViewpointAgreesWithFigureBet
+  | ViewpointDisagreesWithFigureBet { expected: MtCollins1ViewHypothesis? }
+  | ViewpointAgreementUnknown
+
+fn viewpoint_agreement(viewpoint: MtCollins1Viewpoint, hypothesis: MtCollins1ViewHypothesis) -> MtCollins1ViewpointAgreement {
+  match viewpoint {
+    ViewpointNotYetReported { asked: _ } => ViewpointAgreementUnknown
+    ViewpointReported { end: e, report: _ } => {
+      let expected = match e { RearEnd => FigureOrder  FrontEnd => FullMirror }
+      if expected == hypothesis { ViewpointAgreesWithFigureBet } else { ViewpointDisagreesWithFigureBet { expected: Present { value: expected } } }
+    }
+  }
+}
+
+// DERIVED FROM THE BOOT RECEIPTS. The physical connectors a boot populated, under the resolved
+// orientation; Absent for a boot whose placement was only described, or when the orientation
+// is unresolved.
+fn boot_physical_population(boot: MtCollins1Socket1InvestigationBoot, orientation: MtCollins1OrientationOutcome, banks: List<MtCollinsDimmFigureBank>) -> List<Nat>? {
+  let labels = drawing_labels(intended: boot.intended)
+  let order = match orientation {
+    OrientationResolved { hypothesis: _, order: o } => o
+    OrientationAmbiguous { surviving: _ } => []
+    OrientationContradicted => []
+    OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => []
+  }
+  let drawing = view_order(hypothesis: FigureOrder, banks: banks)
+  let connectors = fold(labels, init: [], f: (acc, label) => match index_of(order: drawing, connector: label) {
+    Present { value: i } => match connector_at(order: order, from_left: i) { Present { value: c } => concat(acc, [c])  Absent => acc }
+    Absent => acc
+  })
+  let complete = list_length(items: labels) > 0 && list_length(items: connectors) == list_length(items: labels)
+  filter([connectors], _ => complete).first()
+}
+
+// Socket 1 has trained no DIMM in any boot of this investigation, including the one whose
+// physical population put a module on J25 (SK1 MC4) beside J9 (SK0 MC4).
+type MtCollins1Socket1Standing
+  = Socket1TrainedNothing { runs: List<Nat>, since: DeclarationRef, symmetric_mc4_runs: List<Nat> }
+  | Socket1TrainedIn { runs: List<Nat> }
+
+fn socket1_standing(boots: List<MtCollins1Socket1InvestigationBoot>, orientation: MtCollins1OrientationOutcome, banks: List<MtCollinsDimmFigureBank>) -> MtCollins1Socket1Standing {
+  let trained_on_1 = filter(boots, b => fold(b.trained, init: false, f: (acc, t) => acc || t.socket == 1))
+  let symmetric = filter(boots, b => match boot_physical_population(boot: b, orientation: orientation, banks: banks) {
+    Present { value: cs } => nat_member(xs: cs, x: 9) && nat_member(xs: cs, x: 25)
+    Absent => false
+  })
+  if list_length(items: trained_on_1) == 0 {
+    Socket1TrainedNothing { runs: map(boots, b => b.run_id), since: mtcollins1_socket1_investigation_predecessor, symmetric_mc4_runs: map(symmetric, b => b.run_id) }
+  } else {
+    Socket1TrainedIn { runs: map(trained_on_1, b => b.run_id) }
+  }
+}
+
+fn controller_bit(controller: Nat) -> Nat {
+  fold([1, 2, 3, 4, 5, 6, 7], init: 1, f: (acc, i) => if i <= controller { acc * 2 } else { acc })
+}
+
+// The bitmap of socket 0's controllers holding a trained DIMM, each counted once.
+fn trained_controller_bitmap(trained: List<MtCollins1TrainedSlot>) -> Nat {
+  let controllers = fold(filter(trained, t => t.socket == 0), init: [], f: (acc, t) => if nat_member(xs: acc, x: t.controller) { acc } else { concat(acc, [t.controller]) })
+  fold(controllers, init: 0, f: (acc, c) => acc + controller_bit(controller: c))
+}
+
+// AN OBSERVED CORRELATION, NOT A VENDOR DEFINITION (§4d): on every boot that printed it,
+// mcu_enable_mask equalled the bitmap of socket 0 controllers with a trained DIMM. No Ampere
+// document read by this repository defines the mask; one divergent boot ends the claim.
+type MtCollins1MaskCorrelation
+  = MaskMatchedTrainedControllers { runs: List<Nat>, not_printed: List<Nat> }
+  | MaskDiverged { run_id: Nat, mask: Nat, bitmap: Nat }
+
+fn mask_correlation(boots: List<MtCollins1Socket1InvestigationBoot>) -> MtCollins1MaskCorrelation {
+  let printed = filter(boots, b => match b.mcu_enable_mask { Present { value: _ } => true  Absent => false })
+  let diverged = filter(printed, b => match b.mcu_enable_mask { Present { value: m } => m != trained_controller_bitmap(trained: b.trained)  Absent => false })
+  match diverged.first() {
+    Present { value: b } => MaskDiverged { run_id: b.run_id, mask: match b.mcu_enable_mask { Present { value: m } => m  Absent => 0 }, bitmap: trained_controller_bitmap(trained: b.trained) }
+    Absent => MaskMatchedTrainedControllers { runs: map(printed, b => b.run_id), not_printed: map(filter(boots, b => match b.mcu_enable_mask { Present { value: _ } => false  Absent => true }), b => b.run_id) }
+  }
+}
+
+fn boot_history_line(boot: MtCollins1Socket1InvestigationBoot, orientation: MtCollins1OrientationOutcome, banks: List<MtCollinsDimmFigureBank>) -> String {
+  let intended = match boot.intended {
+    IntendedAsDescribed { description: d } => concat(concat("\"", d), "\"")
+    IntendedAtDrawingLabels { labels: ls } => concat(concat("drawing 'J", join(map(ls, l => to_string(l)), "','J")), "'")
+  }
+  let physical = match boot_physical_population(boot: boot, orientation: orientation, banks: banks) {
+    Present { value: cs } => concat(" = physical J", join(map(cs, c => to_string(c)), ", J"))
+    Absent => ""
+  }
+  let mask = match boot.mcu_enable_mask_line { Present { value: l } => l  Absent => "mcu_enable_mask not printed" }
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(
+    "run ", to_string(boot.run_id)), ": "), intended), physical), " -> trained "),
+    join(map(boot.trained, t => trained_slot_text(slot: t)), ", ")), "; DRAM "), to_string(boot.dram_total_gib)), " GiB; "), mask)
+}
+
+fn socket1_standing_text(standing: MtCollins1Socket1Standing) -> String {
+  match standing {
+    Socket1TrainedNothing { runs: rs, since: _, symmetric_mc4_runs: sy } => concat(concat(concat(concat(
+      "Socket 1 trained no DIMM in ", to_string(list_length(items: rs))), " boots, including the J9+J25 placement (run "), join(map(sy, r => to_string(r)), ", run ")), ").")
+    Socket1TrainedIn { runs: rs } => concat("Socket 1 trained a DIMM in run ", join(map(rs, r => to_string(r)), ", run "))
+  }
+}
+
+fn mtcollins1_socket1_standing() -> MtCollins1Socket1Standing {
+  socket1_standing(boots: mtcollins1_socket1_investigation_boots, orientation: mtcollins1_orientation(), banks: dimm_figure_banks)
+}
+
+fn mtcollins1_mask_correlation() -> MtCollins1MaskCorrelation {
+  mask_correlation(boots: mtcollins1_socket1_investigation_boots)
+}
+
+// THE TECH-FACING SLOT MAP. A projection, regenerated from the observation, the anchors, the
+// damage report and the population: nothing in its text is authored except the frame words.
+// Consumes gunbc.mt_collins_dimm_physical_identity population_diagram_identity, discharging
+// its operator_projection_frontier.
+type MtCollins1SlotState = SlotPopulated | SlotEmpty | SlotDamaged
+
+type MtCollins1SlotMapLine {
+  from_left: Nat
+  colour: NonEmptyStr
+  connector: Nat
+  socket: Nat
+  controller: Nat
+  state: MtCollins1SlotState
+}
+
+type MtCollins1SlotMapRefusal
+  = SlotMapOrientationUnresolved { orientation: MtCollins1OrientationOutcome }
+  | SlotMapViewpointNotReported { asked: NonEmptyStr }
+  | SlotMapPopulationUnresolved { identity: MtCollinsDimmPopulationIdentity }
+  | SlotMapConnectorUnresolved { connector: Nat }
+
+type MtCollins1SlotMap
+  = SlotMapRendered { end: MtCollins1ChassisEnd, readback: List<MtCollins1TrainedSlot>, lines: List<MtCollins1SlotMapLine>, damage: MtCollins1PopulationDamageStanding, agreement: MtCollins1ViewpointAgreement, text: String }
+  | SlotMapRefused { refusal: MtCollins1SlotMapRefusal }
+
+// Colour comes from the unit-scoped operator observation only; connectors outside its blue set
+// are reported as not blue, never assigned a colour nobody reported.
+fn slot_colour(connector: Nat) -> NonEmptyStr {
+  if nat_member(xs: mtcollins1_blue_connector_observation.colour_population.connectors, x: connector) { "blue" } else { "not blue" }
+}
+
+fn slot_state_text(state: MtCollins1SlotState) -> String {
+  match state { SlotPopulated => "populated"  SlotEmpty => "empty"  SlotDamaged => "DAMAGED - do not use" }
+}
+
+fn trained_slot_text(slot: MtCollins1TrainedSlot) -> String {
+  concat(concat(concat(concat(concat("SK", to_string(slot.socket)), " MC"), to_string(slot.controller)), " S"), to_string(slot.slot))
+}
+
+fn chassis_end_text(end: MtCollins1ChassisEnd) -> String {
+  match end { FrontEnd => "FRONT"  RearEnd => "REAR" }
+}
+
+fn slot_map_line_text(line: MtCollins1SlotMapLine) -> String {
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(
+    to_string(line.from_left + 1), ". "), line.colour), "  J"), to_string(line.connector)),
+    "  SK"), to_string(line.socket)), " MC"), to_string(line.controller)), "  "), slot_state_text(state: line.state))
+}
+
+fn damage_standing_text(standing: MtCollins1PopulationDamageStanding) -> String {
+  match standing {
+    PopulationAvoidsDamage { population: p } => concat(concat("Population of ", to_string(p.dimm_count)), " DIMMs avoids the damaged connector.")
+    PopulationUsesDamaged { population: p, connectors: cs } => concat(concat(concat("Population of ", to_string(p.dimm_count)), " DIMMs uses damaged J"), join(map(cs, c => to_string(c)), ", J"))
+    PopulationDamageUndetermined { candidates: _ } => "Damaged connector not located; population not checked."
+  }
+}
+
+fn gap_text(gap: MtCollinsPhysicalIdentificationGap) -> String {
+  match gap {
+    ConnectorSilkscreenNotEstablished { basis: _ } => "J numbers are derived, not read from board silkscreen."
+    PhysicalColourRoleNotEstablished { basis: _ } => "Colours are the operator's report for this unit, not a vendor legend."
+  }
+}
+
+fn readback_unresolved(population: MtCollinsDimmPopulationRow, live_sockets: List<Nat>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> List<Nat> {
+  expected_firmware_readback(connectors: population.connectors, live_sockets: live_sockets, banks: banks, pairs: pairs).unresolved
+}
+
+fn history_block(history: List<MtCollins1Socket1InvestigationBoot>, orientation: MtCollins1OrientationOutcome, banks: List<MtCollinsDimmFigureBank>) -> List<String> {
+  if list_length(items: history) == 0 { [] } else {
+    concat(concat(["History (firmware rosters):"], map(history, b => boot_history_line(boot: b, orientation: orientation, banks: banks))),
+      [socket1_standing_text(standing: socket1_standing(boots: history, orientation: orientation, banks: banks)), concat("Open hypothesis (not established): ", mtcollins1_socket1_next_hypothesis.hypothesis)])
+  }
+}
+
+fn render_slot_map(orientation: MtCollins1OrientationOutcome, viewpoint: MtCollins1Viewpoint, tech_end: MtCollins1ChassisEnd, live_sockets: List<Nat>, history: List<MtCollins1Socket1InvestigationBoot>, population: MtCollinsDimmPopulationRow, installed_drawing_labels: List<Nat>, report: MtCollins1DamagedConnectorReport, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> MtCollins1SlotMap {
+  match orientation {
+    OrientationAmbiguous { surviving: _ } => SlotMapRefused { refusal: SlotMapOrientationUnresolved { orientation: orientation } }
+    OrientationContradicted => SlotMapRefused { refusal: SlotMapOrientationUnresolved { orientation: orientation } }
+    OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => SlotMapRefused { refusal: SlotMapOrientationUnresolved { orientation: orientation } }
+    OrientationResolved { hypothesis: h, order: order } => match viewpoint {
+      ViewpointNotYetReported { asked: a } => SlotMapRefused { refusal: SlotMapViewpointNotReported { asked: a } }
+      ViewpointReported { end: operator_end, report: _ } => {
+        let tech_order = if tech_end == operator_end { order } else { reverse(order) }
+        let identity = population_diagram_identity(population: population)
+        match identity {
+          PopulationDiagramRefused { unresolved: _ } => SlotMapRefused { refusal: SlotMapPopulationUnresolved { identity: identity } }
+          PopulationCountDisagrees { declared: _, listed: _ } => SlotMapRefused { refusal: SlotMapPopulationUnresolved { identity: identity } }
+          PopulationConnectorRepeated { connectors: _ } => SlotMapRefused { refusal: SlotMapPopulationUnresolved { identity: identity } }
+          PopulationDiagramResolved { population: _, slots: _, orientation: _, physical_gaps: gaps, photographed_colours: _, user_guide_citation: _, mirror_read: _ } => {
+            let drawing = view_order(hypothesis: FigureOrder, banks: banks)
+            let installed = fold(installed_drawing_labels, init: [], f: (acc, label) => match index_of(order: drawing, connector: label) {
+              Present { value: i } => match connector_at(order: order, from_left: i) { Present { value: c } => concat(acc, [c])  Absent => acc }
+              Absent => acc
+            })
+            let candidates = damaged_connector_candidates(report: report, orientation: orientation, banks: banks)
+            let damaged = match candidates { DamagedCandidates { connectors: cs, hypotheses: _ } => cs  DamagedCandidatesRefused { orientation: _ } => [] }
+            let resolved = map(positions(order: tech_order), p => match resolve_dimm_diagram_identity(connector: p.connector, banks: banks, pairs: pairs) {
+              DimmDiagramIdentityRefused { connector: _, cause: _ } => Absent
+              DimmDiagramIdentityResolved { identity: i } => Present { value: MtCollins1SlotMapLine {
+                from_left: p.from_left,
+                colour: slot_colour(connector: p.connector),
+                connector: p.connector,
+                socket: i.channel.processor_socket,
+                controller: i.channel.memory_controller,
+                state: if nat_member(xs: damaged, x: p.connector) { SlotDamaged } else { if nat_member(xs: installed, x: p.connector) { SlotPopulated } else { SlotEmpty } },
+              } }
+            })
+            let lines = fold(resolved, init: [], f: (acc, r) => match r { Present { value: l } => concat(acc, [l])  Absent => acc })
+            if list_length(items: lines) != list_length(items: order) || list_length(items: readback_unresolved(population: population, live_sockets: live_sockets, banks: banks, pairs: pairs)) > 0 || list_length(items: installed) != list_length(items: installed_drawing_labels) {
+              SlotMapRefused { refusal: SlotMapConnectorUnresolved { connector: list_length(items: lines) } }
+            } else {
+              let damage = population_damage_standing(population: population, candidates: candidates)
+              let readback = expected_firmware_readback(connectors: population.connectors, live_sockets: live_sockets, banks: banks, pairs: pairs)
+              let header = concat(concat(concat(concat(
+                "mtcollins1 DIMM slots. Standing at the ", chassis_end_text(end: tech_end)), " ("), chassis_end_landmark(end: tech_end)),
+                "), from LEFT edge to RIGHT edge:")
+              let readback_line = concat("Expected firmware roster for this population: ", join(map(readback.predicted, t => trained_slot_text(slot: t)), ", "))
+              SlotMapRendered {
+                end: tech_end,
+                readback: readback.predicted,
+                lines: lines,
+                damage: damage,
+                agreement: viewpoint_agreement(viewpoint: viewpoint, hypothesis: h),
+                text: join(concat(concat(concat(concat([header], map(lines, l => slot_map_line_text(line: l))), [damage_standing_text(standing: damage), readback_line]), map(gaps, g => gap_text(gap: g))), history_block(history: history, orientation: orientation, banks: banks)), "\n"),
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// The present remaining sticks, in the drawing labels the operator uses; the rightmost
+// (drawing 'J25') was removed before run 35808203121.
+data mtcollins1_installed_drawing_labels: List<Nat> = [1, 17]
+
+fn mtcollins1_slot_map(population: MtCollinsDimmPopulationRow, tech_end: MtCollins1ChassisEnd) -> MtCollins1SlotMap {
+  render_slot_map(orientation: mtcollins1_orientation(), viewpoint: mtcollins1_operator_viewpoint, tech_end: tech_end, live_sockets: mtcollins1_two_stick_anchor.live_sockets, history: mtcollins1_socket1_investigation_boots, population: population, installed_drawing_labels: mtcollins1_installed_drawing_labels, report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
+}

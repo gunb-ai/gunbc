@@ -1,0 +1,179 @@
+module gunbc.machine_intake_mtcollins1_socket1_investigation_observation
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// MT. COLLINS UNIT 1, 2026-09-23: THE SOCKET-1 INVESTIGATION, ONE RECEIPT PER BOOT.
+// This continues the unit's bring-up history rather than starting a second log: the previous
+// chapter is gunbc.machine_intake_mtcollins1_sixteen_module_restore_observation (2026-09-12/13),
+// named below as this history's predecessor. Every row was read from its run's own
+// mtcollins1-boot-receipts artifact (mtcollins1-boot-sol.capture) and carries that capture's
+// sha256, so re-reading the artifact re-derives the row. Nothing here interprets placement:
+// which physical connectors a boot populated is derived by
+// gunbc.machine_intake_mtcollins1_physical_orientation from the drawing labels recorded here,
+// under the orientation the firmware anchors resolve.
+data mtcollins1_socket1_investigation_predecessor: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.machine_intake_mtcollins1_sixteen_module_restore_observation",
+  decl_name: "mtcollins1_sixteen_module_restore_capture",
+  field: WholeDeclaration,
+}
+
+// A firmware roster line reduced to its identity: socket, memory controller, slot.
+type MtCollins1TrainedSlot {
+  socket: Nat
+  controller: Nat
+  slot: Nat
+}
+
+// What the operator meant to install, in the words they used. Only drawing labels are an
+// input to the orientation join; a described intent is kept as said and joins nothing.
+type MtCollins1IntendedPlacement
+  = IntendedAsDescribed { description: NonEmptyStr }
+  | IntendedAtDrawingLabels { labels: List<Nat> }
+
+type MtCollins1HostCpuReading {
+  sockets: Nat
+  cpus: Nat
+  numa_nodes: Nat
+}
+
+type MtCollins1BootFinding
+  = InitrdLoadFailedKernelPanic { lines: List<NonEmptyStr> }
+  | NprocSectionNulCorrupted { fail_open_repair: NonEmptyStr }
+  | WorkloadShmNoSpace { lines: List<NonEmptyStr> }
+
+// mcu_enable_mask is kept as the printed value (Absent when the boot printed none). Its
+// relation to the trained controllers is computed, as an observed correlation, downstream.
+type MtCollins1Socket1InvestigationBoot {
+  run_id: Nat
+  capture_sha256: NonEmptyStr
+  intended: MtCollins1IntendedPlacement
+  roster_lines: List<NonEmptyStr>
+  trained: List<MtCollins1TrainedSlot>
+  dram_total_gib: Nat
+  mcu_enable_mask: Nat?
+  mcu_enable_mask_line: NonEmptyStr?
+  host: MtCollins1HostCpuReading?
+  live_sockets: List<Nat>
+  findings: List<MtCollins1BootFinding>
+}
+
+data mtcollins1_boot_receipts_artifact: NonEmptyStr = "GitHub Actions artifact mtcollins1-boot-receipts, file mtcollins1-boot-sol.capture"
+
+data mtcollins1_socket1_boot_eight_on_socket0: MtCollins1Socket1InvestigationBoot = MtCollins1Socket1InvestigationBoot {
+  run_id: 35793279839,
+  capture_sha256: "01b11164fbafddfb4123ca3b49c1dfae731b961d7ef3cfcf6b630996d2a1715b",
+  intended: IntendedAsDescribed { description: "8 DIMMs on socket 0, none on socket 1" },
+  roster_lines: [
+    "SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK",
+    "SK0 MC1 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK",
+    "SK0 MC2 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+    "SK0 MC3 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+    "SK0 MC4 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+    "SK0 MC5 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK",
+    "SK0 MC6 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+    "SK0 MC7 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK",
+  ],
+  trained: [
+    MtCollins1TrainedSlot { socket: 0, controller: 0, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 1, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 2, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 3, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 4, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 5, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 6, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 7, slot: 0 },
+  ],
+  dram_total_gib: 128,
+  mcu_enable_mask: Absent,
+  mcu_enable_mask_line: Absent,
+  host: Present { value: MtCollins1HostCpuReading { sockets: 1, cpus: 80, numa_nodes: 1 } },
+  live_sockets: [0],
+  findings: [],
+}
+
+data mtcollins1_socket1_boot_eight_plus_one: MtCollins1Socket1InvestigationBoot = MtCollins1Socket1InvestigationBoot {
+  run_id: 35801475989,
+  capture_sha256: "cd53370a1dc09abf3eea2efd8cefa47327ee03daa5eb2ad69eb059965164b4b5",
+  intended: IntendedAsDescribed { description: "8 DIMMs on socket 0 plus 1 on socket 1" },
+  roster_lines: [
+    "SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK",
+    "SK0 MC4 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+  ],
+  trained: [
+    MtCollins1TrainedSlot { socket: 0, controller: 0, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 4, slot: 0 },
+  ],
+  dram_total_gib: 32,
+  mcu_enable_mask: Present { value: 17 },
+  mcu_enable_mask_line: Present { value: "mcu_enable_mask = 00000011 [default: 000000ff]" },
+  host: Present { value: MtCollins1HostCpuReading { sockets: 1, cpus: 80, numa_nodes: 1 } },
+  live_sockets: [0],
+  findings: [],
+}
+
+data mtcollins1_socket1_boot_three_sticks: MtCollins1Socket1InvestigationBoot = MtCollins1Socket1InvestigationBoot {
+  run_id: 35805796492,
+  capture_sha256: "9e0f534602debb0a9acdf3f2a28611488be4f7dc5141285343a50865d9959155",
+  intended: IntendedAtDrawingLabels { labels: [1, 17, 25] },
+  roster_lines: [
+    "SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK",
+    "SK0 MC4 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+  ],
+  trained: [
+    MtCollins1TrainedSlot { socket: 0, controller: 0, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 4, slot: 0 },
+  ],
+  dram_total_gib: 32,
+  mcu_enable_mask: Present { value: 17 },
+  mcu_enable_mask_line: Present { value: "mcu_enable_mask = 00000011 [default: 000000ff]" },
+  host: Absent,
+  live_sockets: [0],
+  findings: [
+    InitrdLoadFailedKernelPanic { lines: [
+      "EFI stub: ERROR: Failed to load initrd: 0x8000000000000001",
+      "Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)",
+    ] },
+  ],
+}
+
+data mtcollins1_socket1_boot_two_sticks: MtCollins1Socket1InvestigationBoot = MtCollins1Socket1InvestigationBoot {
+  run_id: 35808203121,
+  capture_sha256: "cb9b7392548d858971efcb81a22f35380699b0885093b4aab55d7caf72ad1660",
+  intended: IntendedAtDrawingLabels { labels: [1, 17] },
+  roster_lines: [
+    "SK0 MC4 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+  ],
+  trained: [MtCollins1TrainedSlot { socket: 0, controller: 4, slot: 0 }],
+  dram_total_gib: 16,
+  mcu_enable_mask: Present { value: 16 },
+  mcu_enable_mask_line: Present { value: "mcu_enable_mask = 00000010 [default: 000000ff]" },
+  host: Present { value: MtCollins1HostCpuReading { sockets: 1, cpus: 80, numa_nodes: 1 } },
+  live_sockets: [0],
+  findings: [
+    NprocSectionNulCorrupted { fail_open_repair: "work item adhoc-370c3139-99c" },
+    WorkloadShmNoSpace { lines: ["dd: error writing '/dev/shm/gunbc/chunk0': No space left on device"] },
+  ],
+}
+
+data mtcollins1_socket1_investigation_boots: List<MtCollins1Socket1InvestigationBoot> = [
+  mtcollins1_socket1_boot_eight_on_socket0,
+  mtcollins1_socket1_boot_eight_plus_one,
+  mtcollins1_socket1_boot_three_sticks,
+  mtcollins1_socket1_boot_two_sticks,
+]
+
+// The next diagnosis is a hypothesis, typed as one (§4d): nothing above establishes it, and
+// it names the observation that would confirm or refute it.
+type MtCollins1DiagnosisHypothesis {
+  hypothesis: NonEmptyStr
+  basis: NonEmptyStr
+  discriminator: NonEmptyStr
+}
+
+data mtcollins1_socket1_next_hypothesis: MtCollins1DiagnosisHypothesis = MtCollins1DiagnosisHypothesis {
+  hypothesis: "CPU1 is not seated or not powered, so socket 1's memory controllers never come up.",
+  basis: "Every boot since the 2026-09-13 restore reports one socket and 80 CPUs, and no population trains a DIMM on SK1, including the symmetric MC4 placement on J25.",
+  discriminator: "Reseat CPU1 (or read the BMC's CPU1 presence and VR sensors) and boot a population with a DIMM on each socket: two sockets and 160 CPUs with SK1 trained confirms it; an unchanged one-socket roster with CPU1 present and powered refutes it.",
+}
