@@ -1,0 +1,112 @@
+module gunbc.runner_group_restriction_observation
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import extdeps.github.actions_jit_runner { JitRunnerGroupId }
+import gunbc.repository { gunbc_repository }
+import gunbc.generated_artifact { artifact_path, MicrovmShakedownYamlArtifact }
+import gunbc.fleet.org_actions_inspection {
+  RunnerGroupIdentity, RunnerGroupListDecode, RunnerGroupListDecoded, RunnerGroupListDecodeRefused,
+}
+
+// THE ONE READING THAT AUTHORIZES A MICROVM MINT, AND THE ONLY PLACE IT CAN BE WRITTEN.
+//
+// gunbc.runner_jit_mint plan_jit_mint mints a JIT runner only into a group OBSERVED restricted to
+// the shakedown workflow file, because GitHub may hand a JIT registration its OS and architecture
+// default labels and a runner in an unrestricted group would then match witnesses.yml, heal.yml and
+// fleet-converge jobs. That authorization is only as good as the path that constructs it, so the
+// restriction is a sole_constructor record: nothing outside this module can write a
+// ShakedownRunnerGroupRestriction by literal or cast, and the only function here that mints one is
+// the observer below, which does so only on a decoded GitHub reading. A witness or a controller that
+// wants the authorized arm has to hand this observer a body GitHub could have sent.
+//
+// The reading is GitHub's own runner-group shape (extdeps.github.org_actions OrgRunnerGroup,
+// restricted_to_workflows and selected_workflows), decoded by gunbc.fleet.org_actions_inspection
+// decode_runner_groups_json -- the same decode the org-actions inspection runs, not a second one.
+
+// THE WORKFLOW IDENTIFIER THE GROUP MUST SELECT, derived rather than spelled. GitHub identifies a
+// workflow in selected_workflows as `<owner>/<repo>/<path>@<ref>` (docs.github.com/en/rest/actions/
+// self-hosted-runner-groups, REST API version 2022-11-28, read 2026-09-23). The repository and its
+// default branch are gunbc.repository gunbc_repository and the path is the shakedown workflow's
+// generated location, so a rename of either reaches this string. The ref is the full branch ref:
+// the shakedown is dispatched from the default branch, and a ref-less or other-branch entry would
+// admit a workflow file this repository did not review.
+fn microvm_shakedown_selected_workflow() -> NonEmptyStr {
+  join([
+    gunbc_repository.full_name as String, "/",
+    artifact_path(a: MicrovmShakedownYamlArtifact),
+    "@refs/heads/", gunbc_repository.default_branch as String,
+  ], "") as NonEmptyStr
+}
+
+type ShakedownRunnerGroupRestriction sole_constructor {
+  group: JitRunnerGroupId
+  selected_workflow: NonEmptyStr
+}
+
+// EVERY READING BUT ONE REFUSES, EACH BY ITS OWN NAME, so an operator reading the controller's
+// refusal learns which fact of the group is wrong rather than that "the group" is.
+type RunnerGroupRestrictionRefusal
+  = RunnerGroupRestrictionNotYetObserved
+  | RunnerGroupListUnreadable { reason: NonEmptyStr }
+  | RunnerGroupAbsent
+  | RunnerGroupDuplicated { count: Int }
+  | RunnerGroupNotRestrictedToWorkflows
+  | RunnerGroupSelectsOtherWorkflows { selected: List<NonEmptyStr> }
+
+fn runner_group_restriction_refusal_text(cause: RunnerGroupRestrictionRefusal) -> String {
+  match cause {
+    RunnerGroupRestrictionNotYetObserved => "RunnerGroupRestrictionNotYetObserved: no read of the org's runner groups reached this decision"
+    RunnerGroupListUnreadable { reason } => concat("RunnerGroupListUnreadable: ", reason as String)
+    RunnerGroupAbsent => "RunnerGroupAbsent: the org's runner groups contain no group with this id"
+    RunnerGroupDuplicated { count } => concat("RunnerGroupDuplicated: groups with this id: ", to_string(count))
+    RunnerGroupNotRestrictedToWorkflows => "RunnerGroupNotRestrictedToWorkflows: restricted_to_workflows is false, so every workflow may use the group"
+    RunnerGroupSelectsOtherWorkflows { selected } =>
+      join(["RunnerGroupSelectsOtherWorkflows: selected_workflows=[", join(map(selected, s => s as String), ","), "] expected=[", microvm_shakedown_selected_workflow() as String, "]"], "")
+  }
+}
+
+type MicrovmRunnerGroupStanding
+  = RunnerGroupRestrictedToShakedownWorkflow { restriction: ShakedownRunnerGroupRestriction }
+  | RunnerGroupRestrictionRefused { group: JitRunnerGroupId, cause: RunnerGroupRestrictionRefusal }
+
+// A group that selects the shakedown workflow AND another one is refused, not admitted: exactly one
+// entry is the whole restriction, and a second entry is a second workflow whose jobs the guest takes.
+fn restriction_of(group: JitRunnerGroupId, row: RunnerGroupIdentity) -> MicrovmRunnerGroupStanding {
+  if !row.restricted_to_workflows {
+    RunnerGroupRestrictionRefused { group: group, cause: RunnerGroupNotRestrictedToWorkflows }
+  } else {
+    let expected = microvm_shakedown_selected_workflow() as String
+    if count(row.selected_workflows) == 1 && count(filter(row.selected_workflows, w => (w as String) == expected)) == 1 {
+      RunnerGroupRestrictedToShakedownWorkflow { restriction: ShakedownRunnerGroupRestriction {
+        group: group,
+        selected_workflow: microvm_shakedown_selected_workflow(),
+      } }
+    } else {
+      RunnerGroupRestrictionRefused { group: group, cause: RunnerGroupSelectsOtherWorkflows { selected: row.selected_workflows } }
+    }
+  }
+}
+
+fn observe_shakedown_runner_group_restriction(group: JitRunnerGroupId, listed: RunnerGroupListDecode) -> MicrovmRunnerGroupStanding {
+  match listed {
+    RunnerGroupListDecodeRefused { reason } =>
+      RunnerGroupRestrictionRefused { group: group, cause: RunnerGroupListUnreadable { reason: reason } }
+    RunnerGroupListDecoded { groups } => {
+      let rows = filter(groups, g => g.id == group.value)
+      if count(rows) > 1 {
+        RunnerGroupRestrictionRefused { group: group, cause: RunnerGroupDuplicated { count: count(rows) } }
+      } else {
+        match rows.first() {
+          Absent => RunnerGroupRestrictionRefused { group: group, cause: RunnerGroupAbsent }
+          Present { value: row } => restriction_of(group: group, row: row)
+        }
+      }
+    }
+  }
+}
+
+// THE STANDING A CALLER HOLDS BEFORE ANY READ. It is a refusal, named, so a controller that has not
+// read the groups yet still carries a cause through to its operator rather than a bare "no".
+fn runner_group_restriction_not_yet_observed(group: JitRunnerGroupId) -> MicrovmRunnerGroupStanding {
+  RunnerGroupRestrictionRefused { group: group, cause: RunnerGroupRestrictionNotYetObserved }
+}

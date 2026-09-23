@@ -18,9 +18,10 @@ import gunbc.auth.github_credential {
 }
 import gunbc.runner.runner_jit_admission { JitAdmissionAxisStanding }
 import gunbc.runner_microvm_attempt { MicroVmAttempt, MicroVmCellBinding }
+import gunbc.runner_group_restriction_observation { MicrovmRunnerGroupStanding, RunnerGroupRestrictionRefusal }
 import gunbc.runner_jit_mint {
   JitMintPlan, JitMintAuthorized, JitMintRefusedCellNotOwned, JitMintRefusedCredential,
-  JitMintRefusedAttemptUnbound, JitMintRefusedRunnerGroupUnrestricted, MicrovmRunnerGroupStanding, plan_jit_mint,
+  JitMintRefusedAttemptUnbound, JitMintRefusedRunnerGroupUnrestricted, plan_jit_mint,
 }
 
 data runner_jit_perform_disposition: Disposition = SingleAuthority
@@ -72,7 +73,7 @@ type JitDispatchRefusal
       unsatisfied: List<CredentialCapability>
     }
   | DispatchRefusedAttemptUnbound { cause: String }
-  | DispatchRefusedRunnerGroupUnrestricted { group: Int }
+  | DispatchRefusedRunnerGroupUnrestricted { group: Int, cause: RunnerGroupRestrictionRefusal }
   | DispatchRefusedNoInstallationCredential { cause: String }
 
 // THE FOURTH REFUSAL IS A TOTALITY ARM AND IS DELIBERATELY NOT ENROLLED AS COVERAGE.
@@ -134,8 +135,8 @@ fn dispatch_jit_mint(
       JitMintDispatchRefused { refusal: DispatchRefusedCellNotOwned { cause: c } }
     JitMintRefusedAttemptUnbound { cause: c } =>
       JitMintDispatchRefused { refusal: DispatchRefusedAttemptUnbound { cause: c } }
-    JitMintRefusedRunnerGroupUnrestricted { group: g } =>
-      JitMintDispatchRefused { refusal: DispatchRefusedRunnerGroupUnrestricted { group: g } }
+    JitMintRefusedRunnerGroupUnrestricted { group: g, cause: c } =>
+      JitMintDispatchRefused { refusal: DispatchRefusedRunnerGroupUnrestricted { group: g, cause: c } }
     JitMintRefusedCredential { organization: org, unsatisfied: u } =>
       JitMintDispatchRefused {
         refusal: DispatchRefusedCredential { organization: org, unsatisfied: u },

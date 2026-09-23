@@ -35,8 +35,13 @@ import gunbc.runner.runner_jit_admission {
 import gunbc.runner_jit_mint {
   JitMintPlan, JitMintAuthorized, JitMintRefusedCellNotOwned, JitMintRefusedCredential,
   JitMintRefusedAttemptUnbound, JitMintRefusedRunnerGroupUnrestricted,
-  RunnerGroupRestrictedToShakedownWorkflow, RunnerGroupRestrictionUnobserved,
   plan_jit_mint,
+}
+import gunbc.fleet.org_actions_inspection { decode_runner_groups_json }
+import gunbc.runner_group_restriction_observation {
+  MicrovmRunnerGroupStanding, RunnerGroupRestrictionNotYetObserved,
+  observe_shakedown_runner_group_restriction, runner_group_restriction_not_yet_observed,
+  microvm_shakedown_selected_workflow,
 }
 import gunbc.runner.runner_jit_perform {
   JitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused,
@@ -1030,13 +1035,27 @@ fn jit_binding(owned: Bool) -> MicroVmCellBinding {
   }
 }
 
+// THE AUTHORIZED GROUP STANDING IS OBSERVED, NOT WRITTEN. Its arm carries a sole_constructor record
+// only gunbc.runner_group_restriction_observation can mint, so these fixtures hand that observer the
+// body GitHub returns for a group restricted to exactly the shakedown workflow and take its answer.
+fn restricted_group_1() -> MicrovmRunnerGroupStanding {
+  observe_shakedown_runner_group_restriction(
+    group: JitRunnerGroupId { value: 1 },
+    listed: decode_runner_groups_json(body: join([
+      "\{\"total_count\":1,\"runner_groups\":[\{\"id\":1,\"name\":\"Default\",\"visibility\":\"all\",\"allows_public_repositories\":false,\"restricted_to_workflows\":true,\"selected_workflows\":[\"",
+      microvm_shakedown_selected_workflow() as String,
+      "\"],\"workflow_restrictions_read_only\":false}]}",
+    ], "")),
+  )
+}
+
 fn planned(owned: Bool, perms: List<GitHubAppPermission>) -> JitMintPlan {
   plan_jit_mint(
     binding: jit_binding(owned: owned),
     authority: app_credential,
     control_plane: observed_grant(perms: perms),
     organization: gunbai_org_ref,
-    runner_group: RunnerGroupRestrictedToShakedownWorkflow { group: JitRunnerGroupId { value: 1 } },
+    runner_group: restricted_group_1(),
     attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
   )
 }
@@ -1107,10 +1126,10 @@ test fn witness_jit_mint_refuses_a_runner_group_not_observed_restricted() -> Boo
     authority: app_credential,
     control_plane: observed_grant(perms: runner_grant),
     organization: gunbai_org_ref,
-    runner_group: RunnerGroupRestrictionUnobserved { group: JitRunnerGroupId { value: 1 } },
+    runner_group: runner_group_restriction_not_yet_observed(group: JitRunnerGroupId { value: 1 }),
     attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
   ) {
-    JitMintRefusedRunnerGroupUnrestricted { group: g } => g == 1
+    JitMintRefusedRunnerGroupUnrestricted { group: g, cause: RunnerGroupRestrictionNotYetObserved } => g == 1
     _ => false
   }
 }
@@ -1121,7 +1140,7 @@ test fn witness_jit_mint_refuses_when_attempt_binding_is_deferred() -> Bool {
     authority: app_credential,
     control_plane: observed_grant(perms: runner_grant),
     organization: gunbai_org_ref,
-    runner_group: RunnerGroupRestrictedToShakedownWorkflow { group: JitRunnerGroupId { value: 1 } },
+    runner_group: restricted_group_1(),
     attempt_binding: AxisDeferred {
       trigger: "fixture: deferred standing must refuse a mint that would not carry the attempt identity" as NonEmptyStr,
     },
@@ -1145,7 +1164,7 @@ fn dispatched(owned: Bool, perms: List<GitHubAppPermission>) -> JitMintDispatch 
     authority: app_credential,
     control_plane: observed_grant(perms: perms),
     organization: gunbai_org_ref,
-    runner_group: RunnerGroupRestrictedToShakedownWorkflow { group: JitRunnerGroupId { value: 1 } },
+    runner_group: restricted_group_1(),
     attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
   )
 }
@@ -1201,7 +1220,7 @@ test fn witness_jit_dispatch_refuses_when_the_attempt_binding_is_deferred() -> B
     authority: app_credential,
     control_plane: observed_grant(perms: runner_grant),
     organization: gunbai_org_ref,
-    runner_group: RunnerGroupRestrictedToShakedownWorkflow { group: JitRunnerGroupId { value: 1 } },
+    runner_group: restricted_group_1(),
     attempt_binding: AxisDeferred {
       trigger: "fixture: deferred standing must refuse a dispatch that would not carry the attempt identity" as NonEmptyStr,
     },

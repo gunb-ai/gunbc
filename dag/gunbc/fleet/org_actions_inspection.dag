@@ -78,7 +78,18 @@ fn render_org_actions_read_refusal(cause: OrgActionsReadRefusal) -> String {
   }
 }
 
-type RunnerGroupIdentity { id: Int, name: NonEmptyStr, allows_public_repositories: Bool }
+// restricted_to_workflows and selected_workflows are decoded, not skipped: they are the group's
+// WORKFLOW restriction (extdeps.github.org_actions OrgRunnerGroup), and
+// gunbc.runner_group_restriction_observation reads them to decide whether a microVM mint may use
+// the group. Both are required members of every element GitHub returns, so an element missing
+// either refuses the whole list rather than reading as unrestricted.
+type RunnerGroupIdentity {
+  id: Int
+  name: NonEmptyStr
+  allows_public_repositories: Bool
+  restricted_to_workflows: Bool
+  selected_workflows: List<NonEmptyStr>
+}
 
 type RunnerGroupListDecode
   = RunnerGroupListDecoded { groups: List<RunnerGroupIdentity> }
@@ -109,6 +120,28 @@ fn json_member_bool(v: JsonValue, key: String) -> Bool? {
   }
 }
 
+// An array of non-empty strings, or absent when the member is missing, not an array, or holds any
+// element that is not a non-empty string -- one bad element is not dropped, it refuses the member.
+fn json_member_string_list(v: JsonValue, key: String) -> List<NonEmptyStr>? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: JsonArray { elements } } => {
+      let strings = map(elements, e => match e {
+        JsonString { value } => if value == "" { none } else { Present { value: value as NonEmptyStr } }
+        _ => none
+      })
+      if any(strings, s => match s { Absent => true, Present { value: _ } => false }) {
+        none
+      } else {
+        Present { value: flat_map(strings, s => match s {
+          Present { value } => [value]
+          Absent => []
+        }) }
+      }
+    }
+    _ => none
+  }
+}
+
 fn decode_runner_group(v: JsonValue) -> RunnerGroupIdentity? {
   match json_member_int(v: v, key: "id") {
     Absent => none
@@ -116,11 +149,19 @@ fn decode_runner_group(v: JsonValue) -> RunnerGroupIdentity? {
       Absent => none
       Present { value: name } => match json_member_bool(v: v, key: "allows_public_repositories") {
         Absent => none
-        Present { value: allows_public } => Present { value: RunnerGroupIdentity {
-          id: id,
-          name: name,
-          allows_public_repositories: allows_public
-        } }
+        Present { value: allows_public } => match json_member_bool(v: v, key: "restricted_to_workflows") {
+          Absent => none
+          Present { value: restricted } => match json_member_string_list(v: v, key: "selected_workflows") {
+            Absent => none
+            Present { value: selected } => Present { value: RunnerGroupIdentity {
+              id: id,
+              name: name,
+              allows_public_repositories: allows_public,
+              restricted_to_workflows: restricted,
+              selected_workflows: selected
+            } }
+          }
+        }
       }
     }
   }
@@ -135,7 +176,7 @@ fn decode_runner_groups_json(body: String) -> RunnerGroupListDecode {
       JsonMemberFound { value: JsonArray { elements } } => {
         let decoded = map(elements, v => decode_runner_group(v: v))
         if any(decoded, d => match d { Absent => true, Present { value: _ } => false }) {
-          RunnerGroupListDecodeRefused { reason: "runner_groups contains an element without exact id/name/allows_public_repositories fields" }
+          RunnerGroupListDecodeRefused { reason: "runner_groups contains an element without exact id/name/allows_public_repositories/restricted_to_workflows/selected_workflows fields" }
         } else {
           RunnerGroupListDecoded { groups: flat_map(decoded, d => match d {
             Present { value } => [value]
