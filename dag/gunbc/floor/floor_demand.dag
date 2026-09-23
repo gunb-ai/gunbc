@@ -909,14 +909,14 @@ type PeakLowerBoundCause
   | SwapPolicyIsRead { swap_max: ByteSize }
 
 // THE SUCCESSFUL ARM IS NAMED FOR WHAT IT ESTABLISHES, WHICH IS NOT EXACT DEMAND. It used to be
-// called PeakIsUncensoredSampledMaximum, and that name asserted past its evidence in the way DESIGN 4d forbids: the
+// called PeakIsDemand, and that name asserted past its evidence in the way DESIGN 4d forbids: the
 // arm is reached when the workload completed, the SAMPLED peak showed no stall, and swap could
 // not spill. Those remove two CENSORING mechanisms -- they do not make a sampled maximum the true
 // maximum. memory.stat carries no high-water counter, so this receipt's peak is the largest value
 // a PERIODIC sample caught, and a spike that rose and fell between two beats is invisible to it.
 // This module's own beat-cadence note has said exactly that from the start; the fold promoted
 // past it anyway, and the ARM NAME was the assertion, because a later reader consumes an arm
-// called PeakIsUncensoredSampledMaximum as a fact rather than as the bet it is.
+// called PeakIsDemand as a fact rather than as the bet it is.
 //
 // SO EVERY ARM OF THIS TYPE IS A LOWER BOUND, and they differ only in WHY. The uncensored arm is
 // the strongest reading available from this instrument and it is still a floor on demand. An

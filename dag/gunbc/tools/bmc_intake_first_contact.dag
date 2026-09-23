@@ -47,7 +47,6 @@ fn classify_intake_probe(reached_host: Bool, blob: String, transport_stderr: Str
 }
 
 fn bmc_intake_first_contact() -> CliWireResponse
-  uses net: std.resources.Network
 {
   host = shell.Env.Get(name: "BMC_HOST")
   let bmc = bmc_first_contact_host(value: host.value)
