@@ -115,6 +115,14 @@ fn admit_normalized_tree(
 // (all of which take NormalizedTree) can be handed one. Rung: structurally impossible to emit a
 // census-grade module -- the carrier has no route to the emitter. It carries no test-marker channel:
 // census mode leaves test fn declarations unlowered and runs none of a non-member's tests.
+// CONSUMER, A DECLARED FRONTIER (DESIGN section 3c). Production callers land in the gen-two door's
+// two sibling changes, both owned by the self-host closure frontier lane: PR-a's reference-derived
+// closure producer builds ONE SymbolIndex with symbol_index_fill_module_roots over the members'
+// normalized_tree_roots_to_binding_sources ++ census_tree_binding_source of every non-member, and
+// PR-c's door wiring (program_assembly / compiler_closure_emit / compile_cli) calls normalize_census
+// for each parsed file outside the closure. TRIGGER: the gen-one emission of v2.compiler.compile
+// ingests a non-member through normalize_census -- until then this carrier is exercised only by
+// v2.test.claim.normalize.census_mode, and if that trigger is abandoned this carrier deletes.
 type CensusTree sole_constructor {
   root: Node,
   import_bindings: FreeMonoid<AliasBindingRow>,
