@@ -1,0 +1,34 @@
+module test.claim.runner.runner_microvm_shakedown_workflow_witness_test
+
+import std.types { Bool, String }
+import extdeps.github.actions { self_hosted_provenance_label, SelfHosted }
+import gunbc.runner_microvm_shakedown_workflow {
+  microvm_shakedown_job, microvm_shakedown_known_task_script, microvm_shakedown_attempt_expression,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE JOB ASKS FOR EXACTLY THE SHAPE THE MINT REGISTERS: the provenance label and one attempt label,
+// in that order and nothing else. gunbc.runner_jit_mint microvm_attempt_registration_labels mints
+// [self-hosted, <attempt name>]; a runs-on carrying any further label (linux, arm64, a host) would
+// ask for a label the guest does not carry and queue forever, and one carrying fewer would let any
+// self-hosted runner take the job.
+test fn the_shakedown_job_asks_for_the_provenance_label_and_the_attempt_alone() -> Bool {
+  match microvm_shakedown_job().runner {
+    SelfHosted { labels: ls } =>
+      count(ls) == 2
+        && ls[0] == self_hosted_provenance_label
+        && ls[1] == microvm_shakedown_attempt_expression()
+    _ => false
+  }
+}
+
+// NO DISPATCH INPUT IS SPLICED INTO THE SCRIPT. An expression inside `run:` is evaluated before the
+// shell parses it, so a crafted input would become script text; the attempt reaches the script
+// through the step's environment instead. The red is the first writing of this script, which
+// interpolated the input into its result line.
+test fn no_dispatch_input_is_interpolated_into_the_known_task_script() -> Bool {
+  !string_contains(s: microvm_shakedown_known_task_script(), pattern: "${{ inputs.")
+    && string_contains(s: microvm_shakedown_known_task_script(), pattern: "$MICROVM_SHAKEDOWN_ATTEMPT")
+}
