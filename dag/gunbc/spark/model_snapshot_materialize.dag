@@ -2,6 +2,9 @@ module gunbc.spark.model_snapshot_materialize
 
 import std.types { String, Bool, List, NonEmptyStr, Secret, Int }
 import std.nat { Nat }
+import std.integer { UInt8 }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha2 { sha256_hex }
 import product.placement_supply { HostIdentity }
 import std.algebra { trim }
 import gunbc.fleet_bootstrap_principal_session {
@@ -391,15 +394,20 @@ fn spark_snapshot_ensure_parent(ctx: SparkMaterializeContext, subject: Acquisiti
 // of a FIRST one and call it its own -- and the reattach guarantee that makes re-running safe was
 // valid only while exactly one transfer had ever existed.
 //
-// THE DESTINATION IS CARRIED WHOLE RATHER THAN DIGESTED. A systemd unit name admits alphanumerics,
-// dashes, underscores and dots to 256 characters, and this fleet's paths are well inside that -- so
-// the full destination both discriminates perfectly and stays readable in `systemctl` output, which a
-// digest would not. An earlier attempt here reached for a hash helper that returned the string's
-// LENGTH under a name claiming otherwise; the simple answer is the correct one.
-fn unit_name_segment(s: String) -> String {
-  join(["-", join(split(join(split(s, "/"), "-"), " "), "-")], "")
-}
-
+// THE NAME IS A DIGEST OF THE TUPLE, BECAUSE THE TUPLE HAS NO LENGTH BOUND AND A UNIT NAME DOES.
+// systemd admits a unit name of at most 255 characters INCLUDING its `.service` suffix (UNIT_NAME_MAX
+// is 256 with the terminating NUL). An earlier form carried identity, key and destination whole, on
+// the assertion that "this fleet's paths are well inside that" -- a bet, never measured, and wrong:
+// a DeepSeek V4.1 shard's name came to 252 characters, 260 with the suffix, so systemd-run refused
+// all 48 shards on srv5 (fleet-converge run 35806250877) while the index and tokenizer files, a few
+// characters shorter, went through. The name is now `gunbc-materialize-` and the sha256 of the whole
+// tuple, 82 characters whatever the tuple, so the bound holds by construction rather than by the
+// paths this fleet happens to use today. Readability moves to `--description`, which has no such
+// bound and is what `systemctl status` prints beside the name.
+//
+// THE PREIMAGE IS LENGTH-PREFIXED, NOT SEPARATOR-JOINED. Every component is written as its octet
+// count, a colon and its octets (a netstring without the trailing comma), so no choice of characters
+// inside an identity or a path can make two different tuples encode to the same bytes.
 // THE UNIT NAME CARRIES THE KEY, because a transfer is identified by WHAT IT IS FETCHING and not only
 // by where it lands. Keyed on identity and path alone, two runs pinned to DIFFERENT REVISIONS of the
 // same checkpoint share one unit name: the second run polls the first one's unit, reads its clean exit,
@@ -413,12 +421,23 @@ fn unit_name_segment(s: String) -> String {
 // unit and the process that POLLS it -- which fails closed as a spurious TransferAbsent, but fails.
 // Threading the source through the supervision surface is the fix and it is not made here.
 fn spark_transfer_unit_for(subject: AcquisitionSubject) -> NonEmptyStr {
-  join([
-    "gunbc-materialize",
-    unit_name_segment(s: subject.identity as String),
-    unit_name_segment(s: acquisition_key_wire(key: subject.key) as String),
-    unit_name_segment(s: subject.install_path as String),
-  ], "") as NonEmptyStr
+  join(["gunbc-materialize-", spark_transfer_unit_digest(subject: subject)], "") as NonEmptyStr
+}
+
+fn spark_transfer_unit_digest(subject: AcquisitionSubject) -> String {
+  sha256_hex(message: concat(concat(
+    unit_preimage_component(s: subject.identity as String),
+    unit_preimage_component(s: acquisition_key_wire(key: subject.key) as String)),
+    unit_preimage_component(s: subject.install_path as String)))
+}
+
+fn unit_preimage_component(s: String) -> List<UInt8> {
+  let octets = bytes_octets(b: utf8_encode_bytes(s: s))
+  concat(bytes_octets(b: utf8_encode_bytes(s: join([to_string(length(octets)), ":"], ""))), octets)
+}
+
+fn spark_transfer_unit_description(subject: AcquisitionSubject) -> String {
+  join(["gunbc model snapshot materialize ", subject.identity as String, " -> ", subject.install_path as String], "")
 }
 
 // THE SUPERVISION BUDGET IS DECLARED, AND EXHAUSTING IT IS NOT A FAILURE OF THE TRANSFER. These two
@@ -514,7 +533,7 @@ fn spark_transfer_start_argv(ctx: SparkMaterializeContext, subject: AcquisitionS
     [
       "systemd-run",
       join(["--unit=", spark_transfer_unit_for(subject: subject) as String], ""),
-      "--description=gunbc model snapshot materialize",
+      join(["--description=", spark_transfer_unit_description(subject: subject)], ""),
       "--",
     ],
     executor_wrap(executor: ctx.executor, argv: argv),
