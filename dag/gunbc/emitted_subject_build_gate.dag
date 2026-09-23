@@ -1,6 +1,7 @@
 module gunbc.emitted_subject_build_gate
 
-import std.types { String, List }
+import std.types { Bool, String, List }
+import v2.std.algebra { list_map, list_append }
 import extdeps.bazel.label { Label, render_label }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.gunbc_cli_command { gunbc_test_command }
@@ -99,4 +100,158 @@ fn emitted_subject_build_command(row: EmittedSubjectBuildRow) -> ArgvCommand {
 // "emit and build" would not say which compilation refused.
 fn emitted_subject_build_step_name(row: EmittedSubjectBuildRow) -> String {
   join(["emit and build ", emitted_subject_build_label_text(row: row)], "")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE LANE'S STANDING, AND WHY IT IS A TYPED ROW RATHER THAN A SENTENCE IN A STEP
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// FROM THE MOMENT THIS LANE LANDED, EVERY PULL REQUEST IN THE REPOSITORY RUNS IT -- and while main
+// cannot self-host, every one of them goes RED for a defect the author did not introduce and
+// cannot fix. That is a standing cost this lane imposes on every other lane, and it is paid by
+// whoever clicks the red X expecting to find their own mistake.
+//
+// The manager made exactly that mistake on gunbc#12043 with ONE instance in front of him: he read
+// `mergeStateStatus: UNSTABLE`, took the red as a blocker, and dropped the PR from the merge card.
+// It is now offered to every lane at once.
+//
+// WHY A TYPED STANDING AND NOT PROSE IN THE STEP. A note saying "this red is expected" is TRUE
+// only while it is, and a lane still printing it after main self-hosts would be a lie that nobody
+// owns -- the inert-annotation failure, on the one surface a stranger actually reads. The standing
+// is a row, so retiring it is a visible edit with a name, and `EmitBuildExpectedGreen` makes the
+// reassurance UNPRINTABLE the moment it stops being true.
+//
+// THE ROW CARRIES NO OWNING PR, AND THAT IS A CORRECTION RATHER THAN AN OMISSION. The first cut
+// had an `owned_by` field naming gunbc#12070, which was FALSE within the hour: that repair was
+// measured insufficient for this site -- it keeps a use-line when the provider's binding is a type
+// declaration, and this binding is a variant -- and ownership then moved twice in one evening while
+// two theories were proposed and falsified by the lanes that proposed them.
+//
+// THE LESSON IS ABOUT WHAT A TYPE PROTECTS. The standing being a typed row makes the REASSURANCE
+// unprintable once it stops being true; it does nothing whatever for a volatile fact sitting in a
+// field beside it. A `String` naming a PR is exactly as rottable inside a well-typed row as it
+// would be in a comment, and this one rotted onto the surface a stranger reads before the PR that
+// added it had even landed.
+//
+// SO THE FIELDS ARE RESTRICTED TO WHAT IS STABLE FOR THE STANDING'S LIFETIME: the signature, which
+// is a property of the break, and the retirement condition, which is a capability. Ownership is a
+// property of the ORGANISATION and belongs nowhere near a generated CI surface. The signature is
+// also the durable handle -- searching for it finds whoever currently holds the investigation,
+// which a stale PR number actively prevents.
+//
+// THE DISCRIMINATOR IS THE HALF THAT MATTERS, and the reassurance alone would be worse than
+// nothing. A standing red teaches every lane to ignore this lane, which is how a detector dies
+// without anyone deciding to kill it. So the row carries the KNOWN SIGNATURE and the message tells
+// a reader what would be a genuinely new finding: a different error code, or a different emitted
+// file. Matching red -- noise, do nothing. Different red -- a second defect, report it.
+type NativeEmitBuildStanding
+  = EmitBuildExpectedGreen
+  | EmitBuildExpectedRed { known_signature: EmittedBuildSignature }
+
+// THE SIGNATURE'S THREE PARTS ARE FIELDS, because the notice tells a reader to compare two of them
+// SEPARATELY -- a different error code, or a different emitted file, is a new finding -- and a
+// single string would leave that comparison to eyes (DESIGN section 2). The error code is rustc's
+// own vocabulary; the path is the emitted crate's, relative to its root.
+type EmittedBuildSignature {
+  error_code: String
+  symbol: String
+  emitted_path: String
+}
+
+fn render_emitted_build_signature(sig: EmittedBuildSignature) -> String {
+  join([sig.error_code, " ", sig.symbol, " at ", sig.emitted_path], "")
+}
+
+// THE RETIREMENT CONDITION IS NOT A FIELD: it is rendered from `emitted_subject_build_rows`, so it
+// names exactly the instruments this lane runs, by their declared labels, and a subject added to
+// the lane joins the condition without anyone restating it.
+fn emit_build_standing_retirement() -> String {
+  join([
+    "a head of main on which ",
+    join(list_map(xs: emitted_subject_build_rows(), f: emitted_subject_build_retirement_clause), " and "),
+    " all exit zero",
+  ], "")
+}
+
+fn emitted_subject_build_retirement_clause(row: EmittedSubjectBuildRow) -> String {
+  join(["`gunbc test ", emitted_subject_build_label_text(row: row), "`"], "")
+}
+
+// THE ONE ROW TO EDIT WHEN MAIN SELF-HOSTS AGAIN. Flipping it to `EmitBuildExpectedGreen` deletes
+// the notice from every future run; leaving it stale keeps printing a reassurance for a red that
+// is no longer expected, which is why the type has only two arms and no "probably fine" middle.
+data emit_build_standing: NativeEmitBuildStanding = EmitBuildExpectedRed {
+  known_signature: EmittedBuildSignature {
+    error_code: "E0573",
+    symbol: "PointerWidth",
+    emitted_path: "src/std_integer.rs",
+  }
+}
+
+// THE LINES A LANE READS WHEN IT CLICKS THE RED X. Rendered from the standing row above AND from
+// whether the lane blocks -- a SUPPLIED Bool, because that fact's one home is the lane row in
+// `gunbc.compiler_gate_workflow` (`LaneBlocks` / `LaneAnnouncedNotBlocking`), which imports this
+// module and composes the live notice. A hard-coded "does NOT block your merge" would go false the
+// moment that row flips, on exactly the surface this rendering exists to keep honest.
+//
+// The retirement condition is PRINTED, so a reader who can see main self-host again knows the row
+// is stale and what edit retires it. Nothing mechanically flips the row when the condition holds:
+// that is review diligence, stated here rather than implied.
+fn emit_build_standing_notice_for(standing: NativeEmitBuildStanding, lane_blocks: Bool) -> List<String> {
+  list_append(left: emit_build_lane_blocking_lines(lane_blocks: lane_blocks), right: emit_build_standing_lines(standing: standing, lane_blocks: lane_blocks))
+}
+
+fn emit_build_lane_blocking_lines(lane_blocks: Bool) -> List<String> {
+  if lane_blocks {
+    [
+      "emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `witnesses`.",
+    ]
+  } else {
+    [
+      "emit-build is a NON-REQUIRED detector lane. A red here does NOT block your merge:",
+      "the required context is `witnesses`, and this job is not an input to it.",
+    ]
+  }
+}
+
+// A BLOCKING LANE WITH A RED STANDING IS A CONTRADICTION, not a state to reassure anyone about:
+// the flip trigger is main self-hosting, which is the standing's retirement condition. So that
+// combination prints no "nothing for you to fix" -- it tells the reader the two rows disagree.
+fn emit_build_standing_lines(standing: NativeEmitBuildStanding, lane_blocks: Bool) -> List<String> {
+  match standing {
+    EmitBuildExpectedGreen => [
+      "No standing break is declared, so a red here is a REAL FINDING -- most likely yours.",
+    ]
+    EmitBuildExpectedRed { known_signature: sig } => if lane_blocks {
+      [
+        "",
+        "CONTRADICTION: this lane blocks, yet its standing still declares an expected red with signature",
+        join(["  ", render_emitted_build_signature(sig: sig)], ""),
+        "The lane was to become required only once main self-hosts, which retires that standing.",
+        "One of gunbc.compiler_gate_workflow's emit-build lane row or",
+        "gunbc.emitted_subject_build_gate emit_build_standing is stale. Report it; do not assume this red is yours or not.",
+      ]
+    } else {
+    [
+      "",
+      "A RED IS CURRENTLY EXPECTED: main cannot self-host, and the break has this signature --",
+      join(["  ", render_emitted_build_signature(sig: sig)], ""),
+      "",
+      "This notice names no owning pull request ON PURPOSE. Ownership of a standing break moves,",
+      "and a stale pointer here would be read as authoritative by someone who has no other source.",
+      "The SIGNATURE is the durable handle: search it to find whoever currently holds it.",
+      "",
+      "WHAT TO DO: if the failure above matches that signature, this is not your defect and",
+      "there is nothing for you to fix. Do not patch around it in your branch.",
+      "",
+      "WHAT IS A REAL FINDING: a DIFFERENT error code, or a different emitted file. That is a",
+      "second defect this lane just caught, and it should be reported rather than assumed to be",
+      "the known one -- every break at this step shares cause=EmittedCompilerBuildFailed, so the",
+      "cause line does not discriminate and the ERROR CODE is what you compare.",
+      "",
+      join(["THIS STANDING RETIRES WHEN: ", emit_build_standing_retirement()], ""),
+      "If that already holds on main, this notice is stale: flip gunbc.emitted_subject_build_gate emit_build_standing to EmitBuildExpectedGreen.",
+    ]
+    }
+  }
 }
