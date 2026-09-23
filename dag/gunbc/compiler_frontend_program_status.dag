@@ -202,6 +202,7 @@ type Xl2Prerequisite
   | WholeTreeResolveCensus
   | ResolveOccurrenceCompleteness
   | StrippedTreeRehearsalComposition
+  | SequenceOperandReferenceVisibility
 
 type Xl2PrerequisiteEvidence {
   pr: Int
@@ -211,11 +212,14 @@ type Xl2PrerequisiteEvidence {
 
 // Delivered carries its owner and its QUALIFICATION -- what the delivery does not establish -- as
 // a required field, because every delivered arm below has one and a delivery rendered without its
-// limit is the rung inflation this list exists to stop. Outstanding names the lane in flight;
-// it has no owner capability yet, which is exactly what outstanding means.
+// limit is the rung inflation this list exists to stop. An outstanding arm has no owner capability
+// yet, which is exactly what outstanding means, and it says what tracks it instead: a lane in
+// flight, or -- where no lane has been dispatched -- the rostered failure mode that records the
+// gap, cited by symbol so the citation wall refuses it once that row is deleted.
 type Xl2PrerequisiteStanding
   = PrerequisiteDelivered { owner: DeclarationRef, evidence: Xl2PrerequisiteEvidence, qualification: NonEmptyStr }
   | PrerequisiteOutstanding { in_flight_pr: Int, why: NonEmptyStr }
+  | PrerequisiteOutstandingRostered { failure_mode: DeclarationRef, why: NonEmptyStr }
 
 data xl2_prerequisites: List<Xl2Prerequisite> = [
   CallArgumentReferenceVisibility,
@@ -223,6 +227,7 @@ data xl2_prerequisites: List<Xl2Prerequisite> = [
   WholeTreeResolveCensus,
   ResolveOccurrenceCompleteness,
   StrippedTreeRehearsalComposition,
+  SequenceOperandReferenceVisibility,
 ]
 
 fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
@@ -231,6 +236,7 @@ fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
     BareFieldTypeVisibility => "BARE field-position type names reach the containment tree"
     WholeTreeResolveCensus => "a whole-tree v2 census that RESOLVES per module"
     ResolveOccurrenceCompleteness => "occurrence completeness: every independent refusal reaches the census"
+    SequenceOperandReferenceVisibility => "references inside BOTH operands of a sequence (a + b) reach resolve"
     StrippedTreeRehearsalComposition => "the stripped-tree rehearsal composition: import strip over a throwaway tree fed through the census-resolve route"
   }
 }
@@ -240,7 +246,7 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
     CallArgumentReferenceVisibility => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.call_argument_mention_survival", decl_name: "a_call_argument_mention_reaches_the_denominator_holds"),
       evidence: Xl2PrerequisiteEvidence { pr: 12108, merge_sha: "b0d307c31b" as NonEmptyStr, measured_at: "b8e0cc4eb9" as NonEmptyStr },
-      qualification: "CORRECTION: the earlier premise that call arguments were represented after lowering was FALSE. At b8e0cc4eb9 v2.compiler.body_lowering_fold body_lower_call_args_from_capture read the argument capture with the parameter-list spine reader, so every argument of a plain call, named or positional, lowered to a call with ZERO arguments -- the fact was absent from the normalized tree, not lost between the tree and the denominator. #12108 replaced it with a structural, fail-closed argument reader; an undeclared name used only as an argument now refuses at resolve located at the argument (v2.test.claim.namespace_xl0.call_argument_resolve_refusal). This is P1 only: it does not claim XL-2 and does not make the rehearsal producer available. A non-final-segment call (a.f().b) and lowering_accessor_collapses_a_sequence_operand stay with their own rows." as NonEmptyStr,
+      qualification: "CORRECTION: the earlier premise that call arguments were represented after lowering was FALSE. At b8e0cc4eb9 v2.compiler.body_lowering_fold body_lower_call_args_from_capture read the argument capture with the parameter-list spine reader, so every argument of a plain call, named or positional, lowered to a call with ZERO arguments -- the fact was absent from the normalized tree, not lost between the tree and the denominator. #12108 replaced it with a structural, fail-closed argument reader; an undeclared name used only as an argument now refuses at resolve located at the argument (v2.test.claim.namespace_xl0.call_argument_resolve_refusal). Call ARGUMENTS only: the sibling narrowing of a sequence operand (body_lower_operand_ref_optional answering pair.left, gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand) stays open as SequenceOperandReferenceVisibility, so an argument `a + b` reaches resolve as `a`. This is P1 only: it does not claim XL-2 and does not make the rehearsal producer available. A non-final-segment call (a.f().b) stays with its own row." as NonEmptyStr,
     }
     BareFieldTypeVisibility => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.declaring_identity_spelling.production_ingest", decl_name: "a_bare_parameter_type_reaches_and_a_bare_field_type_does_too"),
@@ -261,6 +267,10 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
       in_flight_pr: 12097,
       why: "the import strip applied to a throwaway tree and fed through census-resolve is not on main; gunbc#12097 is in flight and carries a local prerequisite cause to be rebound to this arm when it lands." as NonEmptyStr,
     }
+    SequenceOperandReferenceVisibility => PrerequisiteOutstandingRostered {
+      failure_mode: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_accessor_collapses_a_sequence_operand", decl_name: "lowering_accessor_collapses_a_sequence_operand"),
+      why: "v2.compiler.body_lowering_fold body_lower_operand_ref_optional narrows a sequence operand to pair.left, so in `a + b` the references in `b` never reach resolve and cannot refuse there -- an undercount of the residual by construction. No lane is in flight; the gap is rostered. The stripped-tree rehearsal (gunbc#12097) refuses completeness on it as Xl2SequenceOperandReferencesUnobservable rather than reporting over it." as NonEmptyStr,
+    }
   }
 }
 
@@ -268,6 +278,7 @@ fn xl2_prerequisite_is_delivered(p: Xl2Prerequisite) -> Bool {
   match xl2_prerequisite_standing(p: p) {
     PrerequisiteDelivered { owner: _, evidence: _, qualification: _ } => true
     PrerequisiteOutstanding { in_flight_pr: _, why: _ } => false
+    PrerequisiteOutstandingRostered { failure_mode: _, why: _ } => false
   }
 }
 
@@ -285,6 +296,9 @@ fn render_xl2_prerequisite(p: Xl2Prerequisite) -> String {
       concat("] ", concat(xl2_prerequisite_label(p: p), concat(" -- ", qualification as String)))))))))))))
     PrerequisiteOutstanding { in_flight_pr, why } =>
       concat("[OUTSTANDING, in flight gunbc#", concat(to_string(value: in_flight_pr),
+      concat("] ", concat(xl2_prerequisite_label(p: p), concat(" -- ", why as String)))))
+    PrerequisiteOutstandingRostered { failure_mode, why } =>
+      concat("[OUTSTANDING, rostered ", concat(failure_mode.module_path as String,
       concat("] ", concat(xl2_prerequisite_label(p: p), concat(" -- ", why as String)))))
   }
 }
