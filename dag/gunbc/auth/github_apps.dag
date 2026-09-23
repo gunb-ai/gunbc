@@ -1,7 +1,7 @@
 module gunbc.auth.github_apps
 
-import std.types { NonEmptyStr }
-import std.content_hash { ContentHash }
+import std.types { NonEmptyStr, String, EpochSecs, HttpStatus }
+import extdeps.auth.jws { JwsSigningKeyRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import extdeps.uri { Uri, uri_https }
@@ -110,12 +110,18 @@ fn app_settings_permissions_locator(app: DeclaredGitHubApp) -> Uri {
   )
 }
 
+// CUSTODY IS OBSERVED BY USE, NOT BY FINGERPRINT EQUALITY. GitHub's REST API exposes no App's
+// registered public-key fingerprints (they are on the settings page only), so a field comparing a
+// derived fingerprint against a "registered" one had no producer. The discriminator that does
+// exist is stronger: GitHub answered GET /app (extdeps.github.app github.AuthenticatedApp) for a
+// JWT signed by `key`, and returned `accepted_as`. An unregistered or revoked key is a 401 there
+// (SignerKeyRejected), and a key registered to another App returns that App's id
+// (SignerNamesDifferentApp). The reading proves custody AT observed_at, not forever: a key revoked
+// after it is not seen by this value, which is why the state is re-observed rather than stored.
 type ObservedGitHubAppSigner {
-  app_id: GitHubAppId
-  secret_version: SecretRef
-  secret_content_hash: ContentHash
-  derived_public_fingerprint: GitHubAppPublicKeyFingerprint
-  github_registered_fingerprint: GitHubAppPublicKeyFingerprint
+  key: JwsSigningKeyRef
+  accepted_as: GitHubAppId
+  observed_at: EpochSecs
 }
 
 type SignerSealFailure
@@ -123,10 +129,8 @@ type SignerSealFailure
       observed_app_id: GitHubAppId
       declared_app_id: GitHubAppId
     }
-  | SignerFingerprintNotRegistered {
-      derived: GitHubAppPublicKeyFingerprint
-      registered: GitHubAppPublicKeyFingerprint
-    }
+  | SignerKeyRejected { status: HttpStatus, body: String }
+  | SignerReadbackNotReached { detail: String }
 
 type SignerCustody
   = SignerCustodyObserved { signer: ObservedGitHubAppSigner }
@@ -150,18 +154,11 @@ fn signer_seal_failure(
   signer: ObservedGitHubAppSigner,
   app: DeclaredGitHubApp
 ) -> SignerSealFailure? {
-  if signer.app_id.value != app.app_id.value {
+  if signer.accepted_as.value != app.app_id.value {
     Present {
       value: SignerNamesDifferentApp {
-        observed_app_id: signer.app_id,
+        observed_app_id: signer.accepted_as,
         declared_app_id: app.app_id
-      }
-    }
-  } else if !key_fingerprint_eq(a: signer.derived_public_fingerprint, b: signer.github_registered_fingerprint) {
-    Present {
-      value: SignerFingerprintNotRegistered {
-        derived: signer.derived_public_fingerprint,
-        registered: signer.github_registered_fingerprint
       }
     }
   } else {
