@@ -302,8 +302,8 @@ fn direct_interface_changes(
         // A roster that appears where there was none narrows admission from "anyone" to its
         // entries; a roster that disappears widens it. Only the first strands a caller, and the
         // callers it strands are every reader not on the new roster -- the whole population.
-        if base_record.admitted_callers.get(declaration).is_none()
-            && head_record.admitted_callers.get(declaration).is_some()
+        if !base_record.admitted_callers.contains_key(declaration)
+            && head_record.admitted_callers.contains_key(declaration)
         {
             out.push(change(InterfaceChangeGround::SignatureChanged));
         } else if !removed_callers.is_empty() {
