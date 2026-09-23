@@ -7,8 +7,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.workflow.emitted_crate_workspace {
   EmittedWorkspacePlanned,
   EmittedWorkspaceRefused,
-  EmittedWorkspaceEmittedModuleOutsideDag,
-  EmittedWorkspaceModuleNotEmitted,
+  EmittedWorkspaceClosuresDisagree,
   EmittedWorkspaceNoDiscriminatingEdge,
   emitted_workspace_plan_over,
   emitted_workspace_runtime_package
@@ -112,7 +111,8 @@ test fn a_dag_module_the_emission_did_not_produce_refuses_by_name() -> Bool {
     edge_provenances: [],
     target_crate_count: 3
   ) {
-    EmittedWorkspaceRefused { cause: EmittedWorkspaceModuleNotEmitted { module: m } } => m == "fx.c"
+    EmittedWorkspaceRefused { cause: EmittedWorkspaceClosuresDisagree { not_emitted: n, outside_dag: o } } =>
+      n == ["fx.c"] && (o |> count) == 0
     _ => false
   }
 }
@@ -126,7 +126,8 @@ test fn an_emitted_module_outside_the_dag_refuses_by_name() -> Bool {
     edge_provenances: [],
     target_crate_count: 3
   ) {
-    EmittedWorkspaceRefused { cause: EmittedWorkspaceEmittedModuleOutsideDag { module: m } } => m == "fx_stray"
+    EmittedWorkspaceRefused { cause: EmittedWorkspaceClosuresDisagree { not_emitted: n, outside_dag: o } } =>
+      (n |> count) == 0 && o == ["fx_stray"]
     _ => false
   }
 }

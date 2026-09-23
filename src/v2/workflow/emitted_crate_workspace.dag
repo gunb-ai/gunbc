@@ -79,14 +79,15 @@ import v2.workflow.rust_crate_partition {
 //
 // A DAG module is placed by the basename the emitter writes for it (gunbc.rust_emitted_edge
 // rust_module_emit_filename, the one home of that rule, which the edge rows name endpoints by). The
-// caller supplies the basenames the emission actually wrote; a DAG module whose file the emission
-// did not produce, or an emitted file that is neither a DAG module nor the runtime, refuses by name.
+// caller supplies the basenames the emission actually wrote. The two closures -- the one the live
+// dependency facts derive and the one the emission compiled -- must be the SAME population: a DAG
+// module whose file the emission did not produce, and an emitted file that is neither a DAG module
+// nor the runtime, are refused together, every member named, never narrowed to the intersection.
 
 type EmittedWorkspaceRefusal
   = EmittedWorkspaceDagRefused { cause: ModuleDagDerivationRefusal }
   | EmittedWorkspaceBasenameShared { basename: String }
-  | EmittedWorkspaceModuleNotEmitted { module: String }
-  | EmittedWorkspaceEmittedModuleOutsideDag { module: String }
+  | EmittedWorkspaceClosuresDisagree { not_emitted: List<String>, outside_dag: List<String> }
   | EmittedWorkspaceEdgeListsMisaligned { froms: Int, tos: Int, provenances: Int }
   | EmittedWorkspaceEdgeProvenanceUnknown { provenance: String }
   | EmittedWorkspaceEdgeMergeRefused { cause: EmittedEdgeRefusal }
@@ -216,27 +217,28 @@ fn emitted_workspace_basename_dag(module_dag: ModuleDag, module_by_basename: Map
   let outside = emitted_basenames |> filter(b =>
     b != rust_runtime_prelude_module
       && match emitted_workspace_lookup(m: module_by_basename, key: b) { Present { value: _ } => false  Absent => true })
-  match not_emitted |> first {
-    Present { value: m } => BasenameDagRefused { cause: EmittedWorkspaceModuleNotEmitted { module: m as String } }
-    Absent =>
-      match outside |> first {
-        Present { value: b } => BasenameDagRefused { cause: EmittedWorkspaceEmittedModuleOutsideDag { module: b } }
-        Absent =>
-          BasenameDagOk {
-            module_dag: ModuleDag {
-              modules: concat(
-                module_dag.modules |> map(m => rust_module_emit_filename(module_name: m as String) as ModuleId),
-                [rust_runtime_prelude_module as ModuleId]
-              ),
-              edges: module_dag.edges |> map(e => ModuleDagEdge {
-                from: rust_module_emit_filename(module_name: e.from as String) as ModuleId,
-                to: rust_module_emit_filename(module_name: e.to as String) as ModuleId
-              }),
-              exports: empty_map(),
-              type_definitions: empty_map()
-            }
-          }
+  if ((not_emitted |> count) + (outside |> count)) > 0 {
+    BasenameDagRefused {
+      cause: EmittedWorkspaceClosuresDisagree {
+        not_emitted: not_emitted |> map(m => m as String),
+        outside_dag: outside
       }
+    }
+  } else {
+    BasenameDagOk {
+      module_dag: ModuleDag {
+        modules: concat(
+          module_dag.modules |> map(m => rust_module_emit_filename(module_name: m as String) as ModuleId),
+          [rust_runtime_prelude_module as ModuleId]
+        ),
+        edges: module_dag.edges |> map(e => ModuleDagEdge {
+          from: rust_module_emit_filename(module_name: e.from as String) as ModuleId,
+          to: rust_module_emit_filename(module_name: e.to as String) as ModuleId
+        }),
+        exports: empty_map(),
+        type_definitions: empty_map()
+      }
+    }
   }
 }
 
