@@ -747,6 +747,14 @@ data systemctl_program: NonEmptyStr = "systemctl"
 // system manager, so an unelevated invocation is not a weaker version of this request, it is a
 // different one that fails. sudo's own calling convention comes from extdeps.sudo.elevation rather
 // than being re-spelled as two more literals here.
+// IS THE CALLING USER'S SERVICE MANAGER REACHABLE: `systemctl --user show-environment` succeeds only
+// when this process can reach its user manager over the user bus, which is exactly the precondition
+// `systemd-run --user` needs. `is-system-running` would not serve: it exits non-zero on a `degraded`
+// manager that is perfectly reachable. PATH-resolved, because the invoking host is unobserved.
+fn systemctl_user_manager_probe_command() -> ArgvCommand {
+  argv_command(program: "systemctl" as NonEmptyStr, arguments: ["--user", "show-environment"])
+}
+
 fn systemctl_enable_now_command(units: List<String>) -> ArgvCommand {
   argv_command(
     program: sudo_binary_path,

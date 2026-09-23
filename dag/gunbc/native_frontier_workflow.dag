@@ -16,6 +16,7 @@ import extdeps.cron.schedule_model { CronSchedule, Exact, Wildcard }
 import extdeps.exec.command { shell_command_render }
 import extdeps.systemd { MemoryMax }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_user_scope_command }
+import extdeps.systemd.systemctl { systemctl_user_manager_probe_command }
 import gunbc.action_use_admission { checkout_action, upload_artifact_action }
 import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
 import gunbc.workflow_capability_closure {
@@ -114,6 +115,34 @@ fn native_frontier_instrument_command() -> String {
   ))
 }
 
+// THE MEMORY BOUND'S PRECONDITION, ASSERTED FIRST AND REFUSED WITH A TYPED CAUSE. `systemd-run --user`
+// needs a reachable user manager for the runner user, and that is a host fact, not a repository
+// one. Measured by neat-boar-16 on 2026-09-23 for ghrunner (uid 999): srv1 has Linger=yes, but its
+// /run/user/999 was absent at the time of reading (the manager may start lazily; unverified), and
+// srv2 reports the user neither logged in nor lingering, so it cannot host this job until an
+// operator enables linger there. This step runs before the build, so an unfit host refuses in
+// seconds, naming `UserManagerUnreachable`, instead of hours into the census. There is no
+// unbounded fallback.
+fn native_frontier_preflight_step() -> Step {
+  RunStep {
+    name: Present { value: "Assert the runner user's systemd manager is reachable (the memory bound needs it)" },
+    id: none,
+    run: join([
+      join(["if ! ", shell_command_render(command: systemctl_user_manager_probe_command()), " > /dev/null; then"], ""),
+      "  echo \"::error title=environment::UserManagerUnreachable -- systemd-run --user cannot bound this job's memory on $(hostname) for $(id -un) (uid $(id -u)). The host needs a lingering user manager (loginctl enable-linger), an operator host change. This is not a frontier verdict.\"",
+      "  exit 1",
+      "fi",
+      ""
+    ], "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn native_frontier_checkout_step() -> Step {
   UsesStep {
     name: Present { value: "Checkout" },
@@ -204,6 +233,7 @@ type NativeFrontierBoundStep {
 fn native_frontier_bound_steps() -> List<NativeFrontierBoundStep> {
   [
     NativeFrontierBoundStep { step: native_frontier_checkout_step(), role: capability_neutral, step_name: "Checkout" },
+    NativeFrontierBoundStep { step: native_frontier_preflight_step(), role: capability_neutral, step_name: "Assert the runner user's systemd manager is reachable (the memory bound needs it)" },
     NativeFrontierBoundStep { step: toolchain_home_isolation_step(), role: capability_neutral, step_name: "Isolate toolchain homes" },
     NativeFrontierBoundStep {
       step: witness_floor_toolchain_step(),
