@@ -45,9 +45,14 @@ import gunbc.spark.v41_engram_row_store {
 // A-OFFSET + i * A-WIDTH followed by the B-WIDTH bytes at B-OFFSET + i * B-WIDTH, all from SRC. It names
 // no table, no layer, no rank, and holds no offset, stride, bound, head size or magic: every value is an
 // operand v41_store_encode_argv renders from v41_store_encode_plan, i.e. from the row-store spec and the
-// published span plan. Its SCAFFOLD STANDING is not settled by this module: review 70425 holds that a
-// hand-written copier beside v41_place_row needs operator admission (DESIGN section 5), and that
-// question is with the operator (the alternative being the emitted .dag encoder). It is run as
+// published span plan. It is a DECLARED SCAFFOLD, admitted outside this diff (review 70425 held that a
+// hand-written copier beside v41_place_row needs operator admission, DESIGN section 5):
+// SCAFFOLD ADMISSION (2026-09-23): operator escalation msg_4de9efa4-51fb-4dbc-ab71-9ccf45f378e7, option
+// 'Admit scaffold, layout-free text'. It was approved by the dashboard's 15-minute default on the
+// recommendation of proud-deer-538 (DS4.1), NOT by an explicit operator reply. Scope: the host program
+// text is layout-free (every V4.1 fact is an operand rendered from the .dag plan), and this admission
+// ends when the emitted .dag encoder encodes all eight stores.
+// The debt and its end are gunbc.rung_drop v41_row_store_host_realized_by_sample. It is run as
 // `python3 -c` (the shape of extdeps.tools.sha256sum sha256sum_byte_span_program's `bash -c`), writes
 // OUT.part and renames only when complete, and prints nothing on success.
 data v41_row_store_encoder_program_lines: List<String> = [
