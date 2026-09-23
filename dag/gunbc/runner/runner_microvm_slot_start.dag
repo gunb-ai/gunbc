@@ -1,0 +1,164 @@
+module gunbc.runner_microvm_slot_start
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.measure { Second, second, second_count }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.algebra { trim }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.systemd { systemd_unit_property_wire, InvocationIDProperty, ExecMainStatus }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
+import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_slot_unit_timeout_stop }
+import gunbc.runner_microvm_slot_controller { slot_controller_receipt_path }
+import gunbc.executor_privileged_operation { SystemdStartUnit, executor_privileged_operation_command }
+
+// ONE START OF THE SHAKEDOWN SLOT'S CONTROLLER UNIT, AND WHAT IT LEFT BEHIND.
+//
+// NOTHING STARTED THE SLOT UNIT. microvm_controller_install writes the locus and the template and
+// starts no instance, and no modeled path issued `systemctl start gunbc-microvm-slot@<instance>`, so
+// every receipt this lane owes -- the real job, the second attempt, the cancel -- had no first step.
+// This is that step, and nothing more: it asks systemd to start the unit and then reads what the
+// controller did. Everything the attempt DECIDES is the controller's (gunbc.runner_microvm_slot_controller
+// and gunbc.runner_microvm_lifecycle_realize); this module decides only whether it saw that happen.
+//
+// THE INSTANCE IS DERIVED, NEVER AN INPUT. The unit name comes from the shakedown slot row
+// (gunbc.runner_slot_allocation srv1_microvm_shakedown_slot), so a dispatch cannot point this start at
+// another slot, and the start runs through the same modeled privileged operation, SystemdStartUnit,
+// whose argv the sudoers match is derived from. It starts a root-owned unit that
+// microvm_controller_install wrote; the job chooses no byte the root process evaluates.
+//
+// Restart=no MAKES ONE START ONE ATTEMPT, and Type=exec returns from `start` as soon as the controller
+// execs, so the unit is then waited for, bounded by the slot unit's own stop timeout -- the VMM
+// deadline plus every teardown bound, the same sum systemd enforces (runner_microvm_slot_unit
+// microvm_slot_unit_timeout_stop). The readback binds to the InvocationID systemd assigned THIS start,
+// and the controller's receipt is read at the path that id names, so a receipt from an earlier start
+// of the same unit cannot stand for this one.
+fn microvm_slot_start_unit() -> NonEmptyStr {
+  microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()) as String)
+}
+
+data microvm_slot_start_poll_interval: Second = second(count: 5)
+
+data microvm_slot_start_receipt_path: String = "target/microvm-slot-start-receipt.txt"
+
+type MicrovmSlotStartRun
+  = SlotStartRefused { unit: NonEmptyStr, detail: String }
+  | SlotStartInvocationUnread { unit: NonEmptyStr }
+  | SlotStartStillActiveAtBound { unit: NonEmptyStr, invocation_id: NonEmptyStr, bound_seconds: Int }
+  | SlotStartCompleted {
+      unit: NonEmptyStr
+      invocation_id: NonEmptyStr
+      exec_main_status: String
+      controller_receipt: MicrovmControllerReceiptReading
+    }
+
+type MicrovmControllerReceiptReading
+  = ControllerReceiptRead { path: String, text: String }
+  | ControllerReceiptUnreadable { path: String, detail: String }
+
+fn show_property(unit: NonEmptyStr, property: NonEmptyStr) -> String {
+  let r = systemd.Systemctl.ShowProperty(unit: unit, property: property)
+  if !r.success { "" } else { trim(s: r.value) }
+}
+
+fn wait_inactive(unit: NonEmptyStr, polls_remaining: Int) -> Bool {
+  if systemd.Systemctl.IsActive(unit: unit).active == false {
+    true
+  } else if polls_remaining <= 0 {
+    false
+  } else {
+    let _slept = sleep_delay_seconds_second_carrier_projection(duration: microvm_slot_start_poll_interval)
+    wait_inactive(unit: unit, polls_remaining: polls_remaining - 1)
+  }
+}
+
+fn microvm_slot_start_polls() -> Int {
+  second_count(s: microvm_slot_unit_timeout_stop()) / second_count(s: microvm_slot_start_poll_interval) + 1
+}
+
+fn read_controller_receipt(invocation_id: NonEmptyStr) -> MicrovmControllerReceiptReading {
+  let path = slot_controller_receipt_path(
+    instance: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()) as String,
+    invocation_id: invocation_id,
+  )
+  let r = Filesystem.Read(path: path)
+  if !r.success {
+    ControllerReceiptUnreadable { path: path, detail: r.error }
+  } else {
+    ControllerReceiptRead { path: path, text: trim(s: r.content) }
+  }
+}
+
+fn microvm_slot_start_run() -> MicrovmSlotStartRun {
+  let unit = microvm_slot_start_unit()
+  match run_shell_command_capture(command: executor_privileged_operation_command(op: SystemdStartUnit { unit: unit }), transport: LocalExec) {
+    ProcessRefused { exit_code: c, stderr: e } =>
+      SlotStartRefused { unit: unit, detail: join(["systemctl start exited ", to_string(c), ": ", trim(s: e)], "") }
+    _ => {
+      let invocation = show_property(unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty))
+      if invocation == "" {
+        SlotStartInvocationUnread { unit: unit }
+      } else if !wait_inactive(unit: unit, polls_remaining: microvm_slot_start_polls()) {
+        SlotStartStillActiveAtBound {
+          unit: unit,
+          invocation_id: invocation as NonEmptyStr,
+          bound_seconds: second_count(s: microvm_slot_unit_timeout_stop()),
+        }
+      } else {
+        SlotStartCompleted {
+          unit: unit,
+          invocation_id: invocation as NonEmptyStr,
+          exec_main_status: show_property(unit: unit, property: systemd_unit_property_wire(property: ExecMainStatus)),
+          controller_receipt: read_controller_receipt(invocation_id: invocation as NonEmptyStr),
+        }
+      }
+    }
+  }
+}
+
+fn microvm_slot_start_text(r: MicrovmSlotStartRun) -> String {
+  match r {
+    SlotStartRefused { unit: u, detail: d } => join(["slot-start=refused unit=", u as String, " (", d, ")"], "")
+    SlotStartInvocationUnread { unit: u } => join(["slot-start=invocation-unread unit=", u as String], "")
+    SlotStartStillActiveAtBound { unit: u, invocation_id: i, bound_seconds: b } =>
+      join(["slot-start=still-active-at-bound unit=", u as String, " invocation=", i as String, " bound_seconds=", to_string(b)], "")
+    SlotStartCompleted { unit: u, invocation_id: i, exec_main_status: s, controller_receipt: c } =>
+      join(["slot-start=completed unit=", u as String, " invocation=", i as String, " exec_main_status=", s, "\n", controller_receipt_text(c: c)], "")
+  }
+}
+
+fn controller_receipt_text(c: MicrovmControllerReceiptReading) -> String {
+  match c {
+    ControllerReceiptRead { path: p, text: t } => join(["controller-receipt path=", p, "\n", t], "")
+    ControllerReceiptUnreadable { path: p, detail: d } => join(["controller-receipt=unreadable path=", p, " (", d, ")"], "")
+  }
+}
+
+// SUCCESS MEANS THE CONTROLLER RAN AND ITS RECEIPT WAS READ FOR THIS INVOCATION, whatever that
+// receipt says. A controller that refused or quarantined still exits this step zero only if its
+// receipt is on disk for this start; the receipt's content is the finding, and this step's job is to
+// have obtained it. Every other arm -- a refused start, an unread invocation, a unit still running at
+// its own bound, an unreadable receipt -- fails the step, because no receipt of this attempt exists.
+fn microvm_slot_start_admitted(r: MicrovmSlotStartRun) -> Bool {
+  match r {
+    SlotStartCompleted { unit: _, invocation_id: _, exec_main_status: _, controller_receipt: ControllerReceiptRead { path: _, text: _ } } => true
+    _ => false
+  }
+}
+
+fn microvm_slot_start_ci_wet() -> ProcessExit {
+  let run = microvm_slot_start_run()
+  let body = concat(microvm_slot_start_text(r: run), "\n")
+  let w = Filesystem.Write(path: microvm_slot_start_receipt_path, content: body)
+  if !w.success {
+    exit_failure(reason: join(["microvm_slot_start: receipt write failed: ", w.error, "\n", body], ""))
+  } else if !microvm_slot_start_admitted(r: run) {
+    exit_failure(reason: body)
+  } else {
+    ExitSuccess
+  }
+}
