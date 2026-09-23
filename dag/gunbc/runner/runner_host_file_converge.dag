@@ -866,6 +866,7 @@ fn observe_runner_host_file_content(
   context: FleetSshExecutionContext,
   file: RunnerHostFileDesired,
 ) -> RunnerHostFileStanding
+  uses net: Network
 {
   match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: runner_host_file_metadata_probe_argv(path: file.path as String)) {
     TypedArgvExecRefused { reason: why } => HostFileUnobservable { reason: why }

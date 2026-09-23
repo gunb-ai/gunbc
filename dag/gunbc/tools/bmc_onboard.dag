@@ -418,6 +418,7 @@ fn bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenS
 
 
 fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> BmcCredentialProbeResult
+  uses net: Network
 {
   let host = plan.bmc.host
   let account = plan.factory_login.username

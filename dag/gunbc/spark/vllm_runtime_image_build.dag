@@ -1075,6 +1075,7 @@ fn with_spark_build_host(
 // reads off the recipe itself. The v41 fallback and the GLM SM121 image are the two current
 // callers; a third family adds a recipe row and a one-line entry, not a copy of this body.
 fn vllm_runtime_image_build_entry(r: VllmContainerBuildRecipe) -> ProcessExit
+  uses net: Network
 {
   let now = clock_now_probed_at()
   match spark_converge_target_selection(execute_apply: true) {
