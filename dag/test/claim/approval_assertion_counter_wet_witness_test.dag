@@ -92,18 +92,30 @@ fn admit_sequentially(root: NonEmptyStr, enrollment_id: NonEmptyStr, next: Int, 
   }
 }
 
-// THE CLAIM THAT WOULD HAVE CAUGHT THE CLIFF. One enrolment admits 4200 assertions in sequence --
-// past the 4096 generations at which the store's former linear walk refused every read of the slot
-// -- and every one is admitted. Then the wall still stands at that depth: the last counter again is a
-// replay, and the next one is admitted.
+// THE CLAIM THAT WOULD HAVE CAUGHT THE CLIFF, AT ONE INTERFACE (DESIGN section 3). Its subject is
+// head discovery and the next admission past generation 4096 -- not 4200 admissions each run end to
+// end, which cost ~22 s and re-executed a path the claims above already execute for real. So the
+// history is SUPPLIED: 4200 contiguous generations are written into the slot through the store's own
+// slot-path authority (cas_file_slot_path), each holding the counter an admission would have written,
+// so the layout cannot drift from production. Then ONE real admission runs against it: the last counter
+// again and an older one are replays, and the next is admitted. Restoring the old 4096 bound or the
+// linear walk reds it.
+fn seed_contiguous_generations(root: NonEmptyStr, key: NonEmptyStr, next: Int, last: Int) -> Bool {
+  if next > last { true }
+  else {
+    let w = Filesystem.WriteCreateNew(path: cas_file_slot_path(root: root, key: key, generation: next), content: to_string(next))
+    if w.success { seed_contiguous_generations(root: root, key: key, next: next + 1, last: last) } else { false }
+  }
+}
+
 test fn an_enrolment_keeps_admitting_past_four_thousand_ninety_six_assertions() -> Bool {
   let root = fresh_counter_root()
-  let all = admit_sequentially(root: root as NonEmptyStr, enrollment_id: "enr-long-lived", next: 1, last: 4200)
+  let seeded = seed_contiguous_generations(root: root as NonEmptyStr, key: "enr-long-lived", next: 1, last: 4200)
   let again = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-long-lived", observed: 4200)
   let older = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-long-lived", observed: 17)
   let next = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-long-lived", observed: 4201)
   let removed = shell.Remove.RecursiveForce(path: root)
-  all && replayed(a: again) && replayed(a: older) && admitted_at(a: next, counter: 4201) && removed.success
+  seeded && replayed(a: again) && replayed(a: older) && admitted_at(a: next, counter: 4201) && removed.success
 }
 
 // AN APPEND THAT LANDS MID-SEARCH YIELDS A STALE HEAD, NEVER A FABRICATED ONE, AND A WRITER ACTING ON
