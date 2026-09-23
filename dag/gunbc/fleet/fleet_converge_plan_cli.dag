@@ -3,7 +3,6 @@ module gunbc.fleet_converge_plan_cli
 import extdeps.tools.chmod { chmod_path_resolved_program }
 import std.types { String, List, Bool, NonEmptyStr, Int }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import std.resources { Network }
 import std.algebra { trim }
 import std.content_hash { serialize_content_hash }
 import extdeps.filesystem.filesystem_io {
@@ -227,7 +226,6 @@ data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converg
 // The effective principal, read the same way the hostname is: a typed observation that is Absent
 // when the probe did not succeed, never an empty name.
 fn observe_effective_user_wet() -> NonEmptyStr?
-  uses net: Network
 {
   match run_shell_command_capture(command: whoami_command(), transport: LocalExec) {
     ProcessOutputPresent { text: t } =>
@@ -238,7 +236,6 @@ fn observe_effective_user_wet() -> NonEmptyStr?
 }
 
 fn observe_host_short_wet() -> NonEmptyStr?
-  uses net: Network
 {
   match run_shell_command_capture(
     command: hostname_short_read_command(),
@@ -259,7 +256,6 @@ fn observe_host_short_wet() -> NonEmptyStr?
 // (gunbc.fleet_converge_plan fleet_converge_generation_admission), so this function has no arm
 // that invents a number.
 fn observe_generation_store_wet(subject_host: NonEmptyStr) -> GenerationAdmission
-  uses net: Network
 {
   let read = Filesystem.Read(path: fleet_converge_generation_store_path(subject_host: subject_host))
   fleet_converge_generation_admission(
@@ -272,7 +268,6 @@ fn observe_generation_store_wet(subject_host: NonEmptyStr) -> GenerationAdmissio
 }
 
 fn observe_timer_members_wet() -> List<TimerRetirementMember>
-  uses net: Network
 {
   let legacy = timer_retirement_observed_legacy_srv1()
   filter(legacy, m =>
@@ -318,7 +313,6 @@ fn cap_members_observation(reads: List<CapMemberRead>) -> CapMembersObservation 
 }
 
 fn observe_cap_members_wet() -> CapMembersObservation
-  uses net: Network
 {
   let listed = Filesystem.List(path: runner_unit_dropin_dir as String)
   let listing = filesystem_listing_observation(
@@ -368,7 +362,6 @@ type FleetConvergeRequestObservation
 // compiler-floor lane adhoc-0f99c6bc-193). What holds is the narrower production fact above, and it
 // is what the site census and the non-interference matrix actually execute.
 fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> FleetConvergeRequestObservation
-  uses net: Network
 {
   match fleet_converge_scope_of_wire(wire: scope_wire) {
     ScopeUndecodable { cause: why } => FleetConvergeRequestUnobserved { reason: why }
@@ -460,7 +453,6 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
 // AN UNMODELED HOST OBSERVES AS EVIDENCE-ABSENT RATHER THAN AS A PERMITTED EMPTY TRANSITION, because
 // a host with no deploy row has no transition and nothing here may speak for it.
 fn observe_slot_retirement_evidence_wet(host: NonEmptyStr) -> SlotRetirementEvidence
-  uses net: Network
 {
   match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployUnmodeled { host: h } =>
@@ -502,7 +494,6 @@ type RunnerUnitStandingRead
   | UnitStandingRefused { reason: NonEmptyStr }
 
 fn observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRead
-  uses net: Network
 {
   match read_unit_property(unit: unit, property: ActiveState) {
     UnitPropertyUnreadable { unit: u, property: p } =>
@@ -524,7 +515,6 @@ fn observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRead
 }
 
 fn observe_runner_unit_standings_wet(host: NonEmptyStr) -> RunnerUnitStandings
-  uses net: Network
 {
   match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployRefused { host: h, cause: c } =>
@@ -556,7 +546,6 @@ fn observe_runner_unit_standings_wet(host: NonEmptyStr) -> RunnerUnitStandings
 }
 
 fn write_fleet_converge_plan_artifact_wet(artifact: FleetConvergePlanArtifact) -> ProcessExit
-  uses net: Network
 {
   match fleet_converge_plan_bundle_digest_hex(
     plan_body: artifact.plan_body,
@@ -609,7 +598,6 @@ fn write_fleet_converge_plan_artifact_wet(artifact: FleetConvergePlanArtifact) -
 }
 
 fn fleet_converge_allocation_store_plan_wet() -> ProcessExit
-  uses net: Network
 {
   match observe_host_short_wet() {
     Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: HostObservationFailed")
@@ -776,7 +764,6 @@ fn observe_allocation_store_under_namespace_wet(
 // of PLANNING, not of any one resource family, so a second copy of them beside this one would be a
 // parallel authority for whether a plan run is admissible at all.
 fn fleet_converge_plan_wet() -> ProcessExit
-  uses net: Network
 {
   fleet_converge_scoped_plan_wet(scope: FullHost)
 }
@@ -784,13 +771,11 @@ fn fleet_converge_plan_wet() -> ProcessExit
 // RLM-2's launch-environment plan. Same admission spine, narrower scope: see the scope annotation
 // in gunbc.fleet_converge_plan for why runner-slot and activation are omitted rather than excused.
 fn fleet_converge_launch_environment_plan_wet() -> ProcessExit
-  uses net: Network
 {
   fleet_converge_scoped_plan_wet(scope: LaunchEnvironment)
 }
 
 fn fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
-  uses net: Network
 {
   match observe_actions_run_binding() {
     ActionsRunUnbound { variable: v, detail: d } =>
@@ -834,7 +819,6 @@ fn fleet_converge_plan_scoped_bound_wet(
   expected_host: String,
   scope: FleetConvergeScope,
 ) -> ProcessExit
-  uses net: Network
 {
   match canonical_protocol_gate(standing: bind_canonical_protocol()) {
     CanonicalProtocolRefused { standing: why } =>
@@ -973,7 +957,6 @@ fn fleet_converge_plan_scoped_bound_wet(
 // what the plan receipt says, and the apply receipt carries the plan receipt's identity so the
 // final join can pair them without re-deriving anything.
 fn fleet_converge_apply_wet() -> ProcessExit
-  uses net: Network
 {
   match observe_actions_run_binding() {
     ActionsRunUnbound { variable: v, detail: d } =>
@@ -1009,7 +992,6 @@ fn fleet_converge_apply_bound_wet(
   plan_receipt: FleetConvergePlanReceipt,
   expected_revision_admitted: String,
 ) -> ProcessExit
-  uses net: Network
 {
   let read_plan = Filesystem.Read(path: fleet_converge_plan_body_path)
   let read_base = Filesystem.Read(path: fleet_converge_plan_baseline_hex_path)
@@ -1237,7 +1219,6 @@ type OperatorLocalRunBinding
   | OperatorLocalRunUnbound { reason: String }
 
 fn observe_operator_local_run_binding() -> OperatorLocalRunBinding
-  uses net: Network
 {
   let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
   if !head.success {
@@ -1261,7 +1242,6 @@ fn observe_operator_local_run_binding() -> OperatorLocalRunBinding
 }
 
 fn fleet_converge_local_plan_wet(scope: String) -> ProcessExit
-  uses net: Network
 {
   match fleet_converge_scope_of_wire(wire: scope) {
     ScopeUndecodable { cause: why } =>
@@ -1322,7 +1302,6 @@ fn fleet_converge_operator_cli_entry(
   candidate_branch: String,
   receipt_path: String,
 ) -> ProcessExit
-  uses net: Network
 {
   let outcome = fleet_converge_operator_cli_dispatch(
     host: host, mode: mode, scope: scope, plan_run_id: plan_run_id, plan_hash: plan_hash, target: target,
@@ -1364,7 +1343,6 @@ fn fleet_converge_operator_cli_dispatch(
   target: String,
   candidate_branch: String,
 ) -> ProcessExit
-  uses net: Network
 {
   match observe_host_short_wet() {
     Absent =>
@@ -1401,7 +1379,6 @@ fn fleet_converge_operator_cli_dispatch(
 }
 
 fn fleet_converge_local_apply_wet(plan_run_id: String, plan_hash: String) -> ProcessExit
-  uses net: Network
 {
   match observe_operator_local_run_binding() {
     OperatorLocalRunUnbound { reason: why } =>
@@ -1477,7 +1454,6 @@ type RunnerSlotProvenanceRead
   | SlotProvenanceRefused { reason: String }
 
 fn observe_runner_slot_provenance_wet(host: NonEmptyStr, member: RunnerSlotMember) -> RunnerSlotProvenanceRead
-  uses net: Network
 {
   let name = member.instance_name
   if !runner_slot_name_in_host_grammar(host: host as HostIdentity, instance_name: name) {
@@ -1520,7 +1496,6 @@ fn observe_runner_slot_provenance_wet(host: NonEmptyStr, member: RunnerSlotMembe
 }
 
 fn observe_runner_slot_members_with_provenance_wet(host: NonEmptyStr) -> RunnerSlotObservation
-  uses net: Network
 {
   match observe_runner_slot_members_wet() {
     RunnerSlotsUnobserved { reason: why } => RunnerSlotsUnobserved { reason: why }
