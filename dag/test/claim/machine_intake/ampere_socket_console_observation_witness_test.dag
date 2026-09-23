@@ -30,7 +30,23 @@ fn reference_text() -> String {
   Filesystem.Read(path: mtcollins1_census_sol_artifact_path as String).content
 }
 
+// THE WHOLE-FILE ROUTE IS PAID ONCE (DESIGN §3, a witness discriminates at one interface): only
+// the_comparison_over_the_committed_file_names_socket_one reads the capture whole. The other
+// reference claims supply its three regions as excerpts, exact bytes of that file.
+// artifacts/bmc/mtcollins1-hw-census-sol.log lines 455-494 verbatim; excerpt sha256 969989d117ab172dca5f80995c8c0a8c23ed3c090a24dc14595f3e257f7db35c.
+data reference_summary: String = "UEFI RC version: 1.08\r\nSCP FW version    : 1.08\r\nSCP FW build date : 20210825\r\nFailsafe status                 : 0\r\nReset status                    : 3\r\nCPU info\r\n    CPU ID                      : 413FD0C1\r\n    CPU Clock                   : 2800 MHz\r\n    Number of active sockets    : 2\r\n    Number of active cores      : 160\r\n    Inter Socket Connection 0   : Width: x16 / Speed 25 GT/s\r\n    Inter Socket Connection 1   : Width: x16 / Speed 25 GT/s\r\n    Socket[0]: Core voltage     : 1065\r\n    Socket[0]: SCU ProductID    : A10001\r\n    Socket[0]: Max cores        : 80\r\n    Socket[0]: Warranty         : 0\r\n    Socket[0]: Subnuma          : 0\r\n    Socket[0]: RC disable mask  : 3\r\n    Socket[0]: AVS enabled      : 1\r\n    Socket[0]: AVS voltage      : 1027\r\n    Socket[1]: Core voltage     : 1035\r\n    Socket[1]: SCU ProductID    : A10001\r\n    Socket[1]: Max cores        : 80\r\n    Socket[1]: Warranty         : 1\r\n    Socket[1]: Subnuma          : 0\r\n    Socket[1]: RC disable mask  : 3\r\n    Socket[1]: AVS enabled      : 1\r\n    Socket[1]: AVS voltage      : 996\r\nSOC info\r\n    DDR Frequency               : 2666 MHz\r\n    Socket[0]: Soc voltage      : 750\r\n    Socket[0]: DIMM1 voltage    : 1235\r\n    Socket[0]: DIMM2 voltage    : 1235\r\n    Socket[1]: Soc voltage      : 750\r\n    Socket[1]: DIMM1 voltage    : 1235\r\n    Socket[1]: DIMM2 voltage    : 1235\r\n    PCP Clock                   : 1650 MHz\r\n    SOC Clock                   : 2000 MHz\r\n    SYS Clock                   : 400 MHz\r\n    AHB Clock                   : 200 MHz\r\n"
+
+// artifacts/bmc/mtcollins1-hw-census-sol.log lines 2112-2127 verbatim; excerpt sha256 c81890743310c383ea551cc411a876f4da7ed37a4084af340e71258d4f08b14a.
+data reference_ghes: String = "[    0.360421] {1}[Hardware Error]: Hardware error from APEI Generic Hardware Error Source: 0\r\n[    0.360430] {1}[Hardware Error]: event severity: recoverable\r\n[    0.360434] {1}[Hardware Error]:  Error 0, type: recoverable\r\n[    0.360436] {1}[Hardware Error]:   section type: unknown, e8ed898d-df16-43cc-8ecc-54f060ef157f\r\n[    0.360443] {1}[Hardware Error]:   section length: 0x30\r\n[    0.360448] {1}[Hardware Error]:   00000000: 00000005 ec30000e 00080110 80001001  ......0.........\r\n[    0.360451] {1}[Hardware Error]:   00000010: 00000300 00000000 00000000 00000000  ................\r\n[    0.360453] {1}[Hardware Error]:   00000020: 00000000 00000000 00000000 00000000  ................\r\n[    0.360507] {2}[Hardware Error]: Hardware error from APEI Generic Hardware Error Source: 3\r\n[    0.360509] {2}[Hardware Error]: event severity: recoverable\r\n[    0.360511] {2}[Hardware Error]:  Error 0, type: recoverable\r\n[    0.360512] {2}[Hardware Error]:   section type: unknown, e8ed898d-df16-43cc-8ecc-54f060ef157f\r\n[    0.360513] {2}[Hardware Error]:   section length: 0x30\r\n[    0.360515] {2}[Hardware Error]:   00000000: 40000005 ec30000e 00080110 80005001  ...@..0......P..\r\n[    0.360517] {2}[Hardware Error]:   00000010: 00000300 00000000 00000000 00000000  ................\r\n[    0.360519] {2}[Hardware Error]:   00000020: 00000000 00000000 00000000 00000000  ................\r\n"
+
+// artifacts/bmc/mtcollins1-hw-census-sol.log lines 3158-3167 verbatim; excerpt sha256 273ac5e09e0f35017ab34def365c451ad568fd3e39e90d223d5a196fe51de4c8.
+data reference_bert: String = "[   16.312983] BERT: Error records from previous boot:\r\n[   16.317851] [Hardware Error]: event severity: recoverable\r\n[   16.323242] [Hardware Error]:  Error 0, type: fatal\r\n[   16.328114] [Hardware Error]:   section type: unknown, e8ed898d-df16-43cc-8ecc-54f060ef157f\r\n[   16.336455] [Hardware Error]:   section length: 0x31\r\n[   16.341410] [Hardware Error]:   00000000: 0000007f 6e6b6e55 206e776f 6f626572  ....Unknown rebo\r\n[   16.350098] [Hardware Error]:   00000010: 7220746f 6f736165 0000006e 00000000  ot reason.......\r\n[   16.358787] [Hardware Error]:   00000020: 00000000 00000000 00000000 00000000  ................\r\n[   16.367475] [Hardware Error]:   00000030: 12                                               .\r\n[   16.375906] BERT: Total records found: 1\r\n"
+
 fn reference() -> AmpereSocketConsoleObservation {
+  ampere_socket_console_observation(lines: split(s: concat(reference_summary, reference_ghes, reference_bert), delimiter: "\n"))
+}
+
+fn reference_whole_file() -> AmpereSocketConsoleObservation {
   ampere_socket_console_observation(lines: split(s: reference_text(), delimiter: "\n"))
 }
 
@@ -102,7 +118,7 @@ test fn the_reference_capture_is_its_committed_length() -> Bool {
 }
 
 test fn the_reference_summary_prints_two_sockets_and_two_inter_socket_links() -> Bool {
-  reference_text().length() == reference_scalars && (match reference().summary {
+  (match reference().summary {
     AmpereSummaryObserved { summary: s, summaries_printed: _ } =>
       is_count(n: s.active_sockets, expected: 2) && ints_equal(a: ampere_summary_sockets(s: s), b: [0, 1]) && count(s.inter_socket_links) == 2
     AmpereSummaryNotPrinted => false
@@ -111,8 +127,7 @@ test fn the_reference_summary_prints_two_sockets_and_two_inter_socket_links() ->
 
 test fn the_reference_boot_raises_one_gic_record_per_socket() -> Bool {
   let o = reference()
-  reference_text().length() == reference_scalars
-    && ints_equal(a: ampere_cper_sockets_this_boot(o: o.cper), b: [0, 1])
+  ints_equal(a: ampere_cper_sockets_this_boot(o: o.cper), b: [0, 1])
     && all(filter(o.cper.records, r => match r.source { CperFromBert => false _ => true }), r => ampere_ras_header_is_type(h: r.header, t: AmpereRasGic))
 }
 
@@ -137,8 +152,8 @@ test fn every_subject_record_is_socket_zero() -> Bool {
 
 // ── the comparison ─────────────────────────────────────────────────────────────────────────────
 
-fn differences() -> List<String> {
-  map(ampere_socket_console_differences(reference: reference(), subject: subject()), d => match d {
+fn differences_from(r: AmpereSocketConsoleObservation) -> List<String> {
+  map(ampere_socket_console_differences(reference: r, subject: subject()), d => match d {
     ActiveSocketsDiffer { reference: _, subject: _ } => "active"
     SummarySocketAbsent { socket: k } => concat("socket-absent ", to_string(k))
     InterSocketLinkAbsent { link: l, reference: _ } => concat("link-absent ", to_string(l))
@@ -149,14 +164,29 @@ fn differences() -> List<String> {
   })
 }
 
-test fn the_comparison_names_socket_one_on_both_printers_and_the_added_pmpro_record() -> Bool {
-  let d = differences()
-  reference_text().length() == reference_scalars
-    && any(d, x => x == "active") && any(d, x => x == "socket-absent 1")
+fn names_socket_one(d: List<String>) -> Bool {
+  any(d, x => x == "active") && any(d, x => x == "socket-absent 1")
     && any(d, x => x == "link-absent 0") && any(d, x => x == "link-absent 1")
     && any(d, x => x == "cper-absent 1 GIC") && any(d, x => x == "cper-added 0 PMPRO FW 3")
     && any(d, x => x == "field 0 RC disable mask")
     && !any(d, x => x == "cper-absent 0 GIC")
+}
+
+test fn the_comparison_names_socket_one_on_both_printers_and_the_added_pmpro_record() -> Bool {
+  names_socket_one(d: differences_from(r: reference()))
+}
+
+// THE ONE REAL-ROUTE CLAIM: the committed capture read whole, through the production fold, shows
+// socket 1 on both printers, as the excerpts the other claims supply do. The comparison over those
+// facts is the excerpt claim above; re-running it here would pay for it twice.
+test fn the_committed_file_shows_socket_one_on_both_printers() -> Bool {
+  let o = reference_whole_file()
+  reference_text().length() == reference_scalars
+    && ints_equal(a: ampere_cper_sockets_this_boot(o: o.cper), b: [0, 1])
+    && (match o.summary {
+      AmpereSummaryObserved { summary: s, summaries_printed: _ } => is_count(n: s.active_sockets, expected: 2) && ints_equal(a: ampere_summary_sockets(s: s), b: [0, 1]) && count(s.inter_socket_links) == 2
+      AmpereSummaryNotPrinted => false
+    })
 }
 
 // A boot compared with itself differs in nothing: the comparison is not a generator of findings.

@@ -294,13 +294,20 @@ fn ampere_cper_observation(lines: List<String>) -> AmpereCperObservation {
 // ONE PASS SELECTS THE LINES EITHER FOLD CAN ACT ON. A booted capture is thousands of kernel lines
 // and both folds leave every other line's state untouched, so dropping those lines before the
 // folds changes no result and saves two per-line CR/NUL rewrites on each of them.
+// A line that opens with the kernel's "[    t]" timestamp can only be a CPER line, so it is tested
+// against the two kernel markers alone, both of which contain "Error". Every other line is tested against all six, so a kernel line
+// prefixed by stray console bytes is still seen: the shortcut only narrows, it never drops.
 fn socket_console_relevant(raw: String) -> Bool {
-  string_contains(s: raw, pattern: kernel_hardware_error_marker)
-    || string_contains(s: raw, pattern: kernel_bert_marker)
-    || string_contains(s: raw, pattern: ampere_summary_rc_marker)
-    || string_contains(s: raw, pattern: "Number of active ")
-    || string_contains(s: raw, pattern: ampere_summary_inter_socket)
-    || string_contains(s: raw, pattern: "Socket[")
+  if starts_with(s: raw, prefix: "[") {
+    string_contains(s: raw, pattern: "Error") && (string_contains(s: raw, pattern: kernel_hardware_error_marker) || string_contains(s: raw, pattern: kernel_bert_marker))
+  } else {
+    string_contains(s: raw, pattern: kernel_hardware_error_marker)
+      || string_contains(s: raw, pattern: kernel_bert_marker)
+      || string_contains(s: raw, pattern: ampere_summary_rc_marker)
+      || string_contains(s: raw, pattern: "Number of active ")
+      || string_contains(s: raw, pattern: ampere_summary_inter_socket)
+      || string_contains(s: raw, pattern: "Socket[")
+  }
 }
 
 fn ampere_socket_console_observation(lines: List<String>) -> AmpereSocketConsoleObservation {
