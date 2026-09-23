@@ -5,6 +5,7 @@ import std.nat { Nat }
 import std.types { Timestamp }
 import gunbc.fleet_lifecycle_observation { ProcessReceipt }
 import extdeps.ssh { SshPublicKey }
+import extdeps.netfilter.nfct { nfct_installed_path }
 import std.content_hash { Fnv1a64Structural }
 import extdeps.sudo.nopasswd_execute_probe {
   SudoNopasswdProbeKind,
@@ -247,7 +248,7 @@ data fleet_conntrack_binary_path: NonEmptyStr = "/usr/sbin/conntrack"
 // registered with the kernel rather than written in any ruleset, so each needs its own probe.
 data fleet_iptables_legacy_save_binary_path: NonEmptyStr = "/usr/sbin/iptables-legacy-save"
 
-data fleet_nfct_binary_path: NonEmptyStr = "/usr/sbin/nfct"
+data fleet_nfct_binary_path: NonEmptyStr = nfct_installed_path() as NonEmptyStr
 
 // A CLOSED VOCABULARY OF WHAT THIS PRINCIPAL MAY SUDO, so that emitting an ungranted sudo command
 // has no spelling rather than being a mistake something downstream has to notice.

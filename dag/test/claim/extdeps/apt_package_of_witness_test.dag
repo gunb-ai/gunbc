@@ -57,22 +57,19 @@ test fn apt_installed_bin_path_is_apt_bin_dir_plus_the_binary_name() -> Bool {
     == concat(apt_bin_dir as String, concat("/", sshpass_cli_tool.name as String))
 }
 
-// THE DECLARED INSTALL PATH IS THE ONE THE HOST ACTUALLY RUNS. apt_binary_path_of is what the
-// FleetSsh presence readback tests, and the nfct row is the one whose binary is not in /usr/bin.
-// The oracle is independent of the row: gunbc.fleet_posix_accounts fleet_nfct_binary_path is the
-// path the observe mode's privileged helper read executes, so a row and a probe disagreeing about
-// where nfct lives goes red here rather than on a host.
-test fn nfct_declares_the_path_the_helper_read_executes() -> Bool {
+// THE DISCRIMINATING RED, WITH ITS CONTROL. The real row derives the path the helper read execs
+// (both come from extdeps.netfilter nfct_bin_dir, so this is a route check, not a second copy);
+// the same tool declared with the /usr/bin directory every row assumed before bin_dir existed
+// derives a different path -- the readback would test /usr/bin/nfct and refuse after a successful
+// install. If apt_binary_path_of ignored bin_dir (a single constant again) the pair could not
+// both hold.
+test fn the_nfct_row_derives_the_path_the_helper_read_execs() -> Bool {
   match apt_binary_path_of(tool: nfct_cli_tool) {
     Present { value: p } => (p as String) == (fleet_nfct_binary_path as String)
     Absent => false
   }
 }
 
-// THE DISCRIMINATING RED. The same tool declared with the /usr/bin directory every row assumed
-// before bin_dir existed derives a path that is not where nfct is installed -- the readback would
-// test /usr/bin/nfct and refuse after a successful install. If apt_binary_path_of ignored bin_dir
-// (a single constant again) this and the control above could not both hold.
 data nfct_declared_in_the_wrong_dir: CliTool = CliTool {
   name: nfct_cli_tool.name,
   min_version: none,

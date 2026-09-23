@@ -1,11 +1,11 @@
 module extdeps.netfilter.nfct
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, FilePath }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { apt_sbin_dir, package_nfct }
+import extdeps.apt { apt_sbin_dir, package_nfct, apt_installed_bin_path }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -44,6 +44,15 @@ data nfct_program: NonEmptyStr = "nfct"
 // carry userspace helpers, so neither reading substitutes for the other.
 data nfct_helper_list_arguments: List<NonEmptyStr> = ["helper", "list"]
 
+// WHERE nfct IS INSTALLED IS STATED ONCE, HERE. The apt row below and every consumer that execs the
+// binary by path (gunbc.fleet_posix_accounts fleet_nfct_binary_path, the privileged helper read)
+// derive from nfct_bin_dir, so the row and the exec path cannot disagree.
+data nfct_bin_dir: FilePath = apt_sbin_dir
+
+fn nfct_installed_path() -> FilePath {
+  apt_installed_bin_path(bin_dir: nfct_bin_dir, binary: nfct_program)
+}
+
 // THE BINARY IS IN /usr/sbin, AND THE ROW SAYS SO. Ubuntu noble ships nfct in its own package,
 // `nfct` (packages.ubuntu.com/noble/amd64/nfct/filelist: /usr/sbin/nfct) -- not the conntrack
 // package and not a package named conntrack-tools. A FleetSsh presence readback tests exactly
@@ -51,5 +60,5 @@ data nfct_helper_list_arguments: List<NonEmptyStr> = ["helper", "list"]
 data nfct_cli_tool: CliTool = CliTool {
   name: nfct_program,
   min_version: none,
-  installable_via: [SourceApt { package: package_nfct, bin_dir: apt_sbin_dir }],
+  installable_via: [SourceApt { package: package_nfct, bin_dir: nfct_bin_dir }],
 }
