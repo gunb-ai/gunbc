@@ -80,6 +80,7 @@ import gunbc.roadmap_presentation {
   WorkFamilyDecl, WorkFamilyMemberFact, WorkFamilyView,
   WorkBandEntry, BandRow, BandFamily, BandProject,
   ProjectTreeEntry, ProjectTreeView, ProjectLeaf, ProjectNested,
+  IssueTableRow,
   project_tree_statuses,
   worker_alive_from_process,
 }
@@ -1202,13 +1203,127 @@ fn workspace_observation_banner(observation: ObservationImpactView) -> List<Frag
   }
 }
 
+// THE ISSUE TRACKER'S DEFAULT VIEW (owner ruling 2026-09-22, "the frontend as an issue tracker":
+// the default view is a searchable issue table). The page ships ONE body with two containers:
+// the flat issue TABLE (default) and the FOREST (the landed nested trees in band order), with the
+// tree and bands views being alternate presentations of the SAME forest DOM — the tree view
+// strips the band chrome via the container's data-view, the bands view keeps it. The table rows
+// are the same taskbar component; each carries data-search (headline · node id · owner) for the
+// client-side text filter and the data-band the chips read. View chips and band chips are
+// server-rendered buttons whose behavior the emitted client binds; without JavaScript the table
+// shows by default, which is the ruling's default state.
+fn issue_default_view() -> String { "table" }
+
+fn issue_owner_value(view: WorkRowView) -> String {
+  fold(view.supporting_facts, init: "", f: (acc, f) =>
+    if f.label == "owner" { f.value } else { acc })
+}
+
+fn issue_search_value(view: WorkRowView) -> String {
+  join([view.headline, " ", view.node_id, " ", issue_owner_value(view: view)], "")
+}
+
+fn issue_view_chip(label: String, view: String) -> Fragment {
+  el_attrs("button", [
+    attr(name: "class", value: if view == issue_default_view() { "chip chip-on" } else { "chip" } ),
+    attr(name: "type", value: "button" ),
+    attr(name: "data-view-chip", value: view ),
+  ], [ txt(label) ])
+}
+
+fn issue_band_chip(label: String, band: String) -> Fragment {
+  el_attrs("button", [
+    attr(name: "class", value: "chip chip-filter" ),
+    attr(name: "type", value: "button" ),
+    attr(name: "data-band-chip", value: band ),
+  ], [ txt(label) ])
+}
+
+fn issue_controls_markup() -> Fragment {
+  el_class("div", "issue-controls", concat(
+    [ el_attrs("input", [
+        attr(name: "type", value: "search" ),
+        attr(name: "class", value: "issue-search" ),
+        attr(name: "placeholder", value: "filter issues — title · id · owner" ),
+        attr(name: "aria-label", value: "filter issues" ),
+      ], []) ],
+    concat(
+      [
+        issue_view_chip(label: "table", view: "table"),
+        issue_view_chip(label: "tree", view: "tree"),
+        issue_view_chip(label: "bands", view: "bands"),
+      ],
+      [
+        issue_band_chip(label: "all", band: "all"),
+        issue_band_chip(label: "active", band: "active"),
+        issue_band_chip(label: "ready", band: "ready"),
+        issue_band_chip(label: "upcoming", band: "upcoming"),
+        issue_band_chip(label: "done", band: "done"),
+        issue_band_chip(label: "superseded", band: "superseded"),
+      ])))
+}
+
+// THE DENSE ISSUE LINE (Buganizer visual contract, row anatomy: ID · Component · Title · Status,
+// one dense line). The table's row is NOT the taskbar — the taskbar is the tree's component; the
+// table reads the SAME decided bar view (one authority) onto the contract's dense line. No id
+// anchor on these rows: the forest's rows own the #node-* ids, and the detail-page link arrives
+// with its route. The row's li keeps li.node so selection and the band chips apply uniformly.
+fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView) -> Fragment {
+  let view = row.view
+  let bar = task_bar_view_of(view: view, observation: observation)
+  let owner = issue_owner_value(view: view)
+  Element {
+    tag: "li",
+    attributes: concat(
+      node_li_attributes_for(view: view, class_infix: match row.project {
+        Absent => ""
+        Present { value: _ } => " node-project"
+      }) |> filter(a => !(a.name == "id")),
+      [ attr(name: "data-search", value: issue_search_value(view: view) ) ]),
+    children: [ el_class("div", "issue-line", concat(
+      [ el_class("span", "issue-id", [ txt(view.node_id) ]) ],
+      concat(
+        if owner == "" { [] } else { [ el_class("span", "issue-component", [ txt(owner) ]) ] },
+        concat(
+          [ el_class("span", "issue-title", inline_md_nodes(text: view.headline)) ],
+          concat(
+            if bar.signal == "" { [] } else {
+              [ el_class("span", join(["taskbar-signal issue-status ", activity_line_prefix_class, bar.signal_class], ""), [ txt(bar.signal) ]) ]
+            },
+            concat(
+              match row.project {
+                Absent =>
+                  if bar.count == "" { [] } else { [ el_class("span", "taskbar-count", [ txt(bar.count) ]) ] }
+                Present { value: p } =>
+                  [ el_class("span", "taskbar-count", [ txt(join([to_string(p.closed_count), " of ", to_string(p.total_count), " tasks closed"], "")) ]) ]
+              },
+              workflow_controls_nodes(view: view))))))) ],
+  }
+}
+
+fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactView) -> Fragment {
+  el_class("div", "issue-table", [
+    el_class("h2", "issue-table-heading", [ txt("Issue search results") ]),
+    el_class("div", "issue-empty", [ txt("No issues match your search.") ]),
+    el("ul", map(rows, r => issue_line_li(row: r, observation: observation))),
+  ])
+}
+
 fn workspace_markup(ws: DailyWorkspaceView) -> Fragment {
-  el_class("section", "roadmap-frontier", concat(
-    workspace_active_band(entries: ws.active, observation: ws.observation),
-    concat(workspace_band(label: "Ready", cls: "ready", entries: ws.ready, observation: ws.observation),
-      concat(workspace_band(label: "Upcoming", cls: "upcoming", entries: ws.upcoming, observation: ws.observation),
-        concat(workspace_band(label: "Done", cls: "done", entries: ws.done, observation: ws.observation),
-          workspace_band(label: "Superseded", cls: "superseded", entries: ws.superseded, observation: ws.observation))))))
+  el_attrs("section", [
+    attr(name: "class", value: "roadmap-frontier" ),
+    attr(name: "data-view", value: issue_default_view() ),
+  ], [
+    el_class("div", "view-table", concat(
+      [ issue_controls_markup() ],
+      [ issue_table_markup(rows: ws.table, observation: ws.observation) ])),
+    el_class("div", "view-forest", concat(
+      workspace_active_band(entries: ws.active, observation: ws.observation),
+      concat(workspace_band(label: "Ready", cls: "ready", entries: ws.ready, observation: ws.observation),
+        concat(workspace_band(label: "Upcoming", cls: "upcoming", entries: ws.upcoming, observation: ws.observation),
+          concat(workspace_band(label: "Done", cls: "done", entries: ws.done, observation: ws.observation),
+            workspace_band(label: "Superseded", cls: "superseded", entries: ws.superseded, observation: ws.observation)))))),
+  ])
 }
 
 fn v1_exit_program_progress_view_for_accepted(accepted_ids: List<RoadmapNodeId>, ready_count: Int) -> ProgramProgressView {

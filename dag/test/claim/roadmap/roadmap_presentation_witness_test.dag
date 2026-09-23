@@ -1610,3 +1610,39 @@ test fn witness_non_primary_child_is_a_link_not_a_member() -> Bool {
     && count(p1.entries) == 0
     && map(p2.entries, x => fx_entry_id(entry: x)) == ["hier-sp-t"]
 }
+
+// THE ISSUE TABLE'S FLATTENING LAW (owner ruling 2026-09-22): the default view is one flat
+// searchable table — every rendered issue exactly once, including rows the tree nests and
+// projects the tree collapses. The table is the forest ENUMERATED, not a second derivation:
+// same rows, same order, one place each.
+test fn witness_issue_table_flattens_every_rendered_row_once() -> Bool {
+  let rows = fx_hier_rows(activity_for_open: fx_specimen_activity(), standing_for_open: none)
+  let edges = fx_hier_edges()
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  let forest = fx_ws_rendered_ids(ws: ws)
+  let table = map(ws.table, r => r.view.node_id)
+  count(table) == count(forest)
+    && all(rows, r => count(table |> filter(i => i == r.node_id)) == 1)
+    && all(forest, id => count(table |> filter(i => i == id)) == 1)
+}
+
+// Collapsed chain members are issues too: swallowed in the tree, flat in the table — each
+// exactly once in each view's enumeration.
+test fn witness_issue_table_carries_collapsed_chain_members_flat() -> Bool {
+  let nodes = [
+    fx_sized(id: "hier-chain-a", content: "chain top"),
+    fx_sized(id: "hier-chain-b", content: "chain mid"),
+    fx_sized(id: "hier-chain-c", content: "chain base"),
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "hier-chain-a", parent: "hier-chain-b"),
+    gunbc.roadmap_authority.edge(child: "hier-chain-b", parent: "hier-chain-c"),
+  ]
+  let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [])
+  let table = map(ws.table, r => r.view.node_id)
+  count(table) == 3
+    && count(table |> filter(i => i == "hier-chain-b")) == 1
+    && count(table |> filter(i => i == "hier-chain-c")) == 1
+    && (match table.first() { Present { value: id } => id == "hier-chain-a" Absent => false })
+}

@@ -2295,9 +2295,12 @@ fn workflow_activity_in_row_expr(row_name: String) -> TsExpr {
   ts_binop(
     left: ts_ident(name: row_name),
     op: "&&",
-    right: ts_call(
-      callee: ts_member(object: ts_ident(name: row_name), property: "querySelector"),
-      args: [ts_lit_str(value: ".taskbar")]))
+    right: ts_binop(
+      left: ts_call(
+        callee: ts_member(object: ts_ident(name: row_name), property: "querySelector"),
+        args: [ts_lit_str(value: ".taskbar")]),
+      op: "||",
+      right: ts_ident(name: row_name)))
 }
 
 fn workflow_clear_rendered_stmt() -> TsStmt {
@@ -2672,16 +2675,28 @@ fn activity_paint_stmts() -> List<TsStmt> {
         right: ts_lit_str(value: "")))),
     ts_let(name: "fl", value: ts_slot_query(obj: "tb", selector: ".taskbar-fill")),
     ts_if(
-      cond: ts_prefix(op: "!", expr: ts_ident(name: "fl")),
+      cond: ts_binop(
+        left: ts_prefix(op: "!", expr: ts_ident(name: "fl")),
+        op: "&&",
+        right: ts_binop(
+          left: ts_ident(name: "tb"),
+          op: "!==",
+          right: ts_ident(name: "wr"))),
       then: ts_block(stmts: activity_fill_create_stmts()),
       else_stmt: none),
     ts_expr_stmt(expr: ts_binop(
-      left: ts_member(
-        object: ts_member(object: ts_ident(name: "fl"), property: "dataset"),
-        property: "stale"),
-      op: "=",
-      right: ts_lit_str(value: ""))),
-    ts_let(name: "st", value: ts_slot_query(obj: "fl", selector: join([".", stage_strip_class], ""))),
+      left: ts_ident(name: "fl"),
+      op: "&&",
+      right: ts_binop(
+        left: ts_member(
+          object: ts_member(object: ts_ident(name: "fl"), property: "dataset"),
+          property: "stale"),
+        op: "=",
+        right: ts_lit_str(value: "")))),
+    ts_let(name: "st", value: ts_binop(
+      left: ts_ident(name: "fl"),
+      op: "&&",
+      right: ts_slot_query(obj: "fl", selector: join([".", stage_strip_class], "")))),
     ts_if(
       cond: ts_ident(name: "st"),
       then: ts_block(stmts: [
@@ -3351,6 +3366,163 @@ fn row_selection_bind_statements() -> List<TsStmt> {
   ]
 }
 
+// THE ISSUE TRACKER'S CLIENT BEHAVIORS (owner ruling 2026-09-22): three mechanics over the
+// server's decided DOM, no presentation policy. A VIEW chip only writes the root's data-view —
+// the stylesheet decides which container shows and whether the band chrome renders; a BAND chip
+// only writes data-band-filter — the stylesheet hides non-matching rows; the search input hides
+// rows by inline display from the row's own data-search (headline · node id · owner, decided at
+// serve). Filters retain nothing: the table is flat by construction and matching is a substring
+// read, never a tree walk.
+
+fn ts_closest(obj: String, selector: String) -> TsExpr {
+  ts_call(
+    callee: ts_member(object: ts_ident(name: obj), property: "closest"),
+    args: [ts_lit_str(value: selector)])
+}
+
+fn ts_on_click(obj: String, body: List<TsStmt>) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: ts_ident(name: obj), property: "addEventListener"),
+    args: [
+      ts_lit_str(value: "click"),
+      ts_arrow(params: [], body: ts_block(stmts: body)),
+    ]))
+}
+
+fn ts_for_each(selector: String, item: String, body: List<TsStmt>) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(
+      object: ts_call(
+        callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+        args: [ts_lit_str(value: selector)]),
+      property: "forEach"),
+    args: [ts_arrow(params: [item], body: ts_block(stmts: body))]))
+}
+
+fn issue_view_bind_statements() -> List<TsStmt> {
+  [
+    ts_for_each(selector: "[data-view-chip]", item: "c", body: [
+      ts_on_click(obj: "c", body: [
+        ts_const(name: "root", value: ts_closest(obj: "c", selector: ".roadmap-frontier")),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_ident(name: "root"),
+          op: "&&",
+          right: ts_binop(
+            left: ts_member(
+              object: ts_member(object: ts_ident(name: "root"), property: "dataset"),
+              property: "view"),
+            op: "=",
+            right: ts_member(
+              object: ts_member(object: ts_ident(name: "c"), property: "dataset"),
+              property: "viewChip")))),
+        ts_for_each(selector: "[data-view-chip]", item: "d", body: [
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_member(
+              object: ts_member(object: ts_ident(name: "d"), property: "classList"),
+              property: "toggle"),
+            args: [
+              ts_lit_str(value: "chip-on"),
+              ts_binop(
+                left: ts_member(
+                  object: ts_member(object: ts_ident(name: "d"), property: "dataset"),
+                  property: "viewChip"),
+                op: "===",
+                right: ts_member(
+                  object: ts_member(object: ts_ident(name: "c"), property: "dataset"),
+                  property: "viewChip")),
+            ])),
+        ]),
+      ]),
+    ]),
+    ts_for_each(selector: "[data-band-chip]", item: "c", body: [
+      ts_on_click(obj: "c", body: [
+        ts_const(name: "root", value: ts_closest(obj: "c", selector: ".roadmap-frontier")),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_ident(name: "root"),
+          op: "&&",
+          right: ts_binop(
+            left: ts_member(
+              object: ts_member(object: ts_ident(name: "root"), property: "dataset"),
+              property: "bandFilter"),
+            op: "=",
+            right: ts_cond(
+              test: ts_binop(
+                left: ts_member(
+                  object: ts_member(object: ts_ident(name: "c"), property: "dataset"),
+                  property: "bandChip"),
+                op: "===",
+                right: ts_lit_str(value: "all")),
+              consequent: ts_lit_str(value: ""),
+              alternate: ts_member(
+                object: ts_member(object: ts_ident(name: "c"), property: "dataset"),
+                property: "bandChip"))))),
+        ts_for_each(selector: "[data-band-chip]", item: "d", body: [
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_member(
+              object: ts_member(object: ts_ident(name: "d"), property: "classList"),
+              property: "toggle"),
+            args: [
+              ts_lit_str(value: "chip-on"),
+              ts_binop(
+                left: ts_member(
+                  object: ts_member(object: ts_ident(name: "d"), property: "dataset"),
+                  property: "bandChip"),
+                op: "===",
+                right: ts_member(
+                  object: ts_member(object: ts_ident(name: "c"), property: "dataset"),
+                  property: "bandChip")),
+            ])),
+        ]),
+      ]),
+    ]),
+    ts_for_each(selector: "input.issue-search", item: "q", body: [
+      ts_expr_stmt(expr: ts_call(
+        callee: ts_member(object: ts_ident(name: "q"), property: "addEventListener"),
+        args: [
+          ts_lit_str(value: "input"),
+          ts_arrow(params: ["e"], body: ts_block(stmts: [
+            ts_const(name: "root", value: ts_closest(obj: "q", selector: ".roadmap-frontier")),
+            ts_const(name: "needle", value: ts_call(
+              callee: ts_member(
+                object: ts_member(
+                  object: ts_member(object: ts_ident(name: "e"), property: "target"),
+                  property: "value"),
+                property: "toLowerCase"),
+              args: [])),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_ident(name: "root"),
+              op: "&&",
+              right: ts_call(
+                callee: ts_member(
+                  object: ts_call(
+                    callee: ts_member(object: ts_ident(name: "root"), property: "querySelectorAll"),
+                    args: [ts_lit_str(value: ".view-table li.node")]),
+                  property: "forEach"),
+                args: [ts_arrow(params: ["li"], body: ts_expr_stmt(expr: ts_binop(
+                  left: ts_member(
+                    object: ts_member(object: ts_ident(name: "li"), property: "style"),
+                    property: "display"),
+                  op: "=",
+                  right: ts_cond(
+                    test: ts_call(
+                      callee: ts_member(
+                        object: ts_call(
+                          callee: ts_member(
+                            object: ts_member(
+                              object: ts_member(object: ts_ident(name: "li"), property: "dataset"),
+                              property: "search"),
+                            property: "toLowerCase"),
+                          args: []),
+                        property: "includes"),
+                      args: [ts_ident(name: "needle")]),
+                    consequent: ts_lit_str(value: ""),
+                    alternate: ts_lit_str(value: "none")))))]))),
+          ])),
+        ])),
+    ]),
+  ]
+}
+
 fn dispatch_client_program_for(
   selector: String,
   url_expr: TsExpr,
@@ -3382,7 +3554,9 @@ fn dispatch_client_program_for(
                       workflow_fetch_statements(),
                       concat(
                         row_selection_bind_statements(),
-                        instance_statements))))))))))),
+                        concat(
+                          issue_view_bind_statements(),
+                          instance_statements)))))))))))),
   }
 }
 

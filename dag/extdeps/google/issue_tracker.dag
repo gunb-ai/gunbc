@@ -1,6 +1,7 @@
 module extdeps.google.issue_tracker
 
 import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
+import extdeps.color.srgb { Srgb8 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, File, Https }
@@ -366,4 +367,41 @@ fn query_run(issues: List<Issue>, query: Query) -> List<Issue> {
 // BLOCKING-EDGE MEMBERSHIP, the one predicate the interface needs over the reference lists.
 fn issue_ref_list_includes(refs: List<IssueRef>, id: Int) -> Bool {
   any(refs, r => r.id == id)
+}
+
+// THE VISUAL TOKENS, VERIFIED 2026-09-22 (docs/plans/buganizer-visual-contract.md — extracted from
+// the product's own CSS bundle in the owner's session capture). These are the product's actual
+// rendered values, carried here as interface facts with their citation; the dashboard's style
+// layer maps them onto the issue-tracker surface (gunbc.roadmap_style's issue token block) rather
+// than re-spelling them. Fonts are the product's stacks in order.
+type IssueTrackerVisualTokens {
+  text_primary: Srgb8
+  text_secondary: Srgb8
+  text_tertiary: Srgb8
+  border_default: Srgb8
+  border_strong: Srgb8
+  background_subtle: Srgb8
+  background_hover: Srgb8
+  highlight: Srgb8
+  action: Srgb8
+  action_hover: Srgb8
+  error: Srgb8
+  font_body: String
+  font_heading: String
+}
+
+data issue_tracker_visual_tokens: IssueTrackerVisualTokens = IssueTrackerVisualTokens {
+  text_primary: Srgb8 { r: 32, g: 33, b: 36 },
+  text_secondary: Srgb8 { r: 95, g: 99, b: 104 },
+  text_tertiary: Srgb8 { r: 60, g: 64, b: 67 },
+  border_default: Srgb8 { r: 218, g: 220, b: 224 },
+  border_strong: Srgb8 { r: 189, g: 193, b: 198 },
+  background_subtle: Srgb8 { r: 248, g: 249, b: 250 },
+  background_hover: Srgb8 { r: 241, g: 243, b: 244 },
+  highlight: Srgb8 { r: 210, g: 227, b: 252 },
+  action: Srgb8 { r: 26, g: 115, b: 232 },
+  action_hover: Srgb8 { r: 25, g: 103, b: 210 },
+  error: Srgb8 { r: 197, g: 34, b: 31 },
+  font_body: "Roboto, Arial, sans-serif",
+  font_heading: "Google Sans, Roboto, Arial, sans-serif",
 }

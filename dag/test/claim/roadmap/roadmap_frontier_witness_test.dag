@@ -167,7 +167,7 @@ test fn witness_page_renders_four_buckets() -> Bool {
   let doc = fixture_doc(nodes: [node_a], edges: [])
   let h = daily_workspace_html(doc: doc, merged: [])
   string_contains(s: h, pattern: "<h1>daily workspace</h1>")
-    && string_contains(s: h, pattern: "class=\"roadmap-frontier\"")
+    && string_contains(s: h, pattern: "<section class=\"roadmap-frontier\" data-view=\"table\"")
     && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-ready\"")
     && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-upcoming\"")
     && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-done\"")

@@ -910,12 +910,12 @@ test fn witness_project_row_renders_progress_bar_and_tasks() -> Bool {
         && string_contains(s: h, pattern: "<details class=\"project-tasks\">")
         && string_contains(s: h, pattern: "page task one")
         && string_contains(s: h, pattern: "page task two")
-        && occurrence_count(s: h, pattern: "data-node=\"page-task-one\" tabindex=\"0\"") == 1
-        && occurrence_count(s: h, pattern: "data-node=\"page-task-two\" tabindex=\"0\"") == 1
-        && occurrence_count(s: h, pattern: "data-node=\"page-project\" tabindex=\"0\"") == 1
+        && occurrence_count(s: h, pattern: "data-node=\"page-task-one\" tabindex=\"0\"") == 2
+        && occurrence_count(s: h, pattern: "data-node=\"page-task-two\" tabindex=\"0\"") == 2
+        && occurrence_count(s: h, pattern: "data-node=\"page-project\" tabindex=\"0\"") == 2
         && occurrence_count(s: h, pattern: "class=\"taskbar-face\"") == 3
-        && occurrence_count(s: h, pattern: "class=\"workflow-controls\"") == 3
-        && occurrence_count(s: h, pattern: "<button class=\"dispatch-btn") == 3
+        && occurrence_count(s: h, pattern: "class=\"workflow-controls\"") == 6
+        && occurrence_count(s: h, pattern: "<button class=\"dispatch-btn") == 6
         && !string_contains(s: h, pattern: "class=\"project-chain\"")
   }
 }
@@ -989,12 +989,12 @@ test fn witness_project_depth_cap_renders_deeper_affordance() -> Bool {
   match fx_page_chain_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      occurrence_count(s: h, pattern: "<li class=\"node node-project ") == 3
+      occurrence_count(s: h, pattern: "<li class=\"node node-project ") == 6
         && occurrence_count(s: h, pattern: "<details class=\"project-tasks project-deeper\">") == 1
         && string_contains(s: h, pattern: "+2 deeper")
         && !string_contains(s: h, pattern: "project-deeper\" open")
-        && occurrence_count(s: h, pattern: "data-node=\"page-chain-c4\" tabindex=\"0\"") == 1
-        && occurrence_count(s: h, pattern: "data-node=\"page-chain-x3\" tabindex=\"0\"") == 1
+        && occurrence_count(s: h, pattern: "data-node=\"page-chain-c4\" tabindex=\"0\"") == 2
+        && occurrence_count(s: h, pattern: "data-node=\"page-chain-x3\" tabindex=\"0\"") == 2
         && string_contains(s: h, pattern: "chain level four")
   }
 }
@@ -1003,9 +1003,11 @@ test fn witness_project_depth_cap_renders_deeper_affordance() -> Bool {
 // ruling: over the real unfocused authority the chain shell-residue-zero → shell-gate-migration →
 // shell-effectplan-to-bash → shell-typed-invocation is four single-child links, so it renders as
 // ONE collapsed project row — residue-zero's — carrying the arc's ten authored shell-dag-* tasks
-// one disclosure down, with the three swallowed intermediates on the chain line (identity grain:
-// each exactly once, as a chain member, never as its own row). No node is lost and none is
-// duplicated.
+// one disclosure down, with the three swallowed intermediates on the chain line. Since the
+// 2026-09-22 issue-tracker ruling the page ships TWO containers: the flat issue table (every
+// issue once, including the arc as a plain row) and the forest (the collapsed tree). So a task id
+// renders exactly TWICE — once per container — and a chain member once as the forest's chain
+// line plus once as its flat table row. No node is lost and none is duplicated within a view.
 test fn witness_shell_arc_renders_as_project_with_ten_tasks() -> Bool {
   let task_ids = [
     "shell-dag-cron-entry-line-builder",
@@ -1025,9 +1027,9 @@ test fn witness_shell_arc_renders_as_project_with_ten_tasks() -> Bool {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "<li class=\"node node-project node-open\" id=\"node-shell-residue-zero\"")
-        && all(task_ids, id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
+        && all(task_ids, id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 2)
         && all(chain_ids, id => occurrence_count(s: h, pattern: join(["class=\"project-chain-member\" data-node=\"", id, "\""], "")) == 1)
-        && occurrence_count(s: h, pattern: "data-node=\"shell-typed-invocation\" tabindex=\"0\"") == 0
+        && occurrence_count(s: h, pattern: "data-node=\"shell-typed-invocation\" tabindex=\"0\"") == 1
         && string_contains(s: h, pattern: " tasks closed")
   }
 }
@@ -1061,14 +1063,14 @@ test fn witness_collapsed_chain_renders_one_row_with_chain_line() -> Bool {
   match try_serialize_html_source(node: roadmap_daily_workspace_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing())) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      occurrence_count(s: h, pattern: "<li class=\"node node-project ") == 1
+      occurrence_count(s: h, pattern: "<li class=\"node node-project ") == 2
         && string_contains(s: h, pattern: "<li class=\"node node-project node-open\" id=\"node-page-collapse-top\"")
         && string_contains(s: h, pattern: "0 of 2 tasks closed")
         && occurrence_count(s: h, pattern: "class=\"project-chain-member\" data-node=\"page-collapse-mid\"") == 1
         && string_contains(s: h, pattern: "collapse mid")
-        && occurrence_count(s: h, pattern: "data-node=\"page-collapse-mid\" tabindex=\"0\"") == 0
-        && occurrence_count(s: h, pattern: "data-node=\"page-collapse-t1\" tabindex=\"0\"") == 1
-        && occurrence_count(s: h, pattern: "data-node=\"page-collapse-t2\" tabindex=\"0\"") == 1
+        && occurrence_count(s: h, pattern: "data-node=\"page-collapse-mid\" tabindex=\"0\"") == 1
+        && occurrence_count(s: h, pattern: "data-node=\"page-collapse-t1\" tabindex=\"0\"") == 2
+        && occurrence_count(s: h, pattern: "data-node=\"page-collapse-t2\" tabindex=\"0\"") == 2
         && string_contains(s: h, pattern: ">tasks</summary>")
   }
 }
@@ -1406,7 +1408,7 @@ test fn witness_shell_project_groups_in_active_band_with_live_task() -> Bool {
       let active_parts = split(s: h, delimiter: "frontier-bucket frontier-active")
       count(active_parts) == 2
         && string_contains(s: string_at(parts: active_parts, index: 1), pattern: "<li class=\"node node-project node-open\" id=\"node-shell-residue-zero\"")
-        && all(fx_shell_task_ids(), id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 1)
+        && all(fx_shell_task_ids(), id => occurrence_count(s: h, pattern: join(["data-node=\"", id, "\" tabindex=\"0\""], "")) == 2)
         && string_contains(s: h, pattern: "<details class=\"project-tasks\" open=\"\">")
         && string_contains(s: h, pattern: "class=\"stage-strip\"")
         && string_contains(s: h, pattern: "class=\"stage-segment stage-active stage-live\"")
@@ -1423,4 +1425,45 @@ test fn witness_shell_red_flag_rolls_up_to_project_bar() -> Bool {
         && string_contains(s: h, pattern: "class=\"stage-segment stage-refused\"")
         && string_contains(s: h, pattern: " tasks closed")
   }
+}
+
+// THE ISSUE TRACKER'S DEFAULT VIEW (owner ruling 2026-09-22): the page opens on the searchable
+// issue table — one flat container with every rendered issue as a taskbar row carrying
+// data-search (headline · node id · owner), the search input, the view chips, and the band
+// chips; the forest ships in the same body as the alternate view. Without JavaScript the table
+// shows, which is the ruling's default state.
+test fn witness_default_view_is_the_searchable_issue_table() -> Bool {
+  match fx_page_project_html() {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      string_contains(s: h, pattern: "<section class=\"roadmap-frontier\" data-view=\"table\">")
+        && string_contains(s: h, pattern: "<div class=\"view-table\">")
+        && string_contains(s: h, pattern: "<div class=\"view-forest\">")
+        && string_contains(s: h, pattern: "<input type=\"search\" class=\"issue-search\"")
+        && string_contains(s: h, pattern: "data-view-chip=\"table\"")
+        && string_contains(s: h, pattern: "data-view-chip=\"tree\"")
+        && string_contains(s: h, pattern: "data-view-chip=\"bands\"")
+        && string_contains(s: h, pattern: "data-band-chip=\"active\"")
+        && string_contains(s: h, pattern: "class=\"chip chip-on\"")
+        && occurrence_count(s: h, pattern: "data-node=\"page-task-one\" tabindex=\"0\"") == 2
+        && string_contains(s: h, pattern: "data-search=\"page task one page-task-one")
+  }
+}
+
+// The client mechanics and the stylesheet law, both pinned at their contracts: the chips only
+// write data attributes, the stylesheet decides visibility, the search reads the row's own
+// decided data-search, and filters retain nothing (matching is a substring read over the flat
+// table, never a tree walk).
+test fn witness_view_switch_and_filter_contracts() -> Bool {
+  let js = dispatch_client_js_source()
+  let css = roadmap_css()
+  string_contains(s: js, pattern: "[data-view-chip]")
+    && string_contains(s: js, pattern: "[data-band-chip]")
+    && string_contains(s: js, pattern: "input.issue-search")
+    && string_contains(s: js, pattern: "dataset.search")
+    && string_contains(s: js, pattern: "toLowerCase()")
+    && string_contains(s: js, pattern: "bandFilter")
+    && string_contains(s: css, pattern: ".roadmap-frontier[data-view=\"table\"] .view-forest { display: none }")
+    && string_contains(s: css, pattern: ".roadmap-frontier[data-band-filter=\"active\"] .view-table li.node:not([data-band=\"active\"]) { display: none }")
+    && string_contains(s: css, pattern: ".taskbar-sub:empty, .taskbar-signal:empty, .taskbar-count:empty { display: none }")
 }

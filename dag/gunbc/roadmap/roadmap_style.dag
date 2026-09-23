@@ -55,6 +55,7 @@ import gunbc.roadmap_component {
   node_attempt_stale_class,
 }
 import extdeps.color.srgb { Srgb8 }
+import extdeps.google.issue_tracker { issue_tracker_visual_tokens }
 import std.integer { uint8_channel_inclusive_max_value_derived }
 import extdeps.accessibility.wcag_contrast { srgb8_contrast_ratio_x100_for_max }
 import gunbc.design.palette { Swatch, SwatchSet, SwatchSetForUse, swatch_filed, swatch_paint, swatches_of, for_use_combined_set }
@@ -561,6 +562,33 @@ fn roadmap_instance_rules() -> List<BuildRule> {
 // whose launch revision is no longer the deployed head is evidence for a superseded question — its
 // region dims to the pending-obligation's recession and its summary drops to the dim role. The row
 // keeps every fact behind its disclosure; only the volume changes.
+// THE ISSUE SURFACE'S TOKENS (owner directive 2026-09-22: anchor on the Buganizer look, captured
+// VERIFIED in docs/plans/buganizer-visual-contract.md). The values are the product's own,
+// consumed from extdeps.google.issue_tracker (the interface model) and emitted as scoped custom
+// properties — the rules below reference the vars, so a re-capture retunes the surface in ONE
+// place. This is deliberately a SURFACE-scoped mapping, not a theme fork: the rest of the
+// dashboard keeps its theme roles.
+fn issue_token_decls() -> List<CssDecl> {
+  let t = issue_tracker_visual_tokens
+  [
+    decl(prop: CustomProperty { name: "issue-text" }, value: swatch_paint(sw: Swatch { name: "issue-text", color: t.text_primary })),
+    decl(prop: CustomProperty { name: "issue-text-dim" }, value: swatch_paint(sw: Swatch { name: "issue-text-dim", color: t.text_secondary })),
+    decl(prop: CustomProperty { name: "issue-border" }, value: swatch_paint(sw: Swatch { name: "issue-border", color: t.border_default })),
+    decl(prop: CustomProperty { name: "issue-bg-hover" }, value: swatch_paint(sw: Swatch { name: "issue-bg-hover", color: t.background_hover })),
+    decl(prop: CustomProperty { name: "issue-bg-subtle" }, value: swatch_paint(sw: Swatch { name: "issue-bg-subtle", color: t.background_subtle })),
+    decl(prop: CustomProperty { name: "issue-highlight" }, value: swatch_paint(sw: Swatch { name: "issue-highlight", color: t.highlight })),
+    decl(prop: CustomProperty { name: "issue-action" }, value: swatch_paint(sw: Swatch { name: "issue-action", color: t.action })),
+    decl(prop: CustomProperty { name: "issue-action-hover" }, value: swatch_paint(sw: Swatch { name: "issue-action-hover", color: t.action_hover })),
+    decl(prop: CustomProperty { name: "issue-error" }, value: swatch_paint(sw: Swatch { name: "issue-error", color: t.error })),
+    decl(prop: CustomProperty { name: "issue-font" }, value: t.font_body),
+    decl(prop: CustomProperty { name: "issue-font-heading" }, value: t.font_heading),
+  ]
+}
+
+fn issue_tracker_root_css() -> String {
+  css_block(selector: ":root", decls: issue_token_decls())
+}
+
 fn roadmap_instance_rules_head() -> List<BuildRule> {
   [
     StaticRule { selector: RawSelector { text: "*" }, decls: [
@@ -850,6 +878,123 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Display, value: "flex"),
       decl(prop: FlexDirection, value: "column"),
       decl(prop: Gap, value: scale_var(t: space_20)),
+    ] },
+    StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-view=\"table\"] .view-forest" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-view=\"tree\"] .view-table, .roadmap-frontier[data-view=\"bands\"] .view-table" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-view=\"tree\"] .frontier-bucket" }, decls: [
+      decl(prop: Border, value: "0"),
+      role_decl(prop: Background, r: CanvasRole),
+      decl(prop: Padding, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-view=\"tree\"] .frontier-bucket > h2" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-controls" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_6)),
+      decl(prop: FlexWrap, value: "wrap"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-search" }, decls: [
+      decl(prop: Flex, value: "1"),
+      decl(prop: MinWidth, value: scale_var(t: width_status)),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontFamily, value: scale_var(t: font_sans)),
+      role_decl(prop: Color, r: TextRole),
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_8)),
+      decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "chip" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_999)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_8)),
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: TextTransform, value: "lowercase"),
+      decl(prop: LetterSpacing, value: "0.03em"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "chip-on" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: BorderColor, value: "var(--focus)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-table" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_6)),
+    ] },
+    StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-band-filter=\"active\"] .view-table li.node:not([data-band=\"active\"])" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-band-filter=\"ready\"] .view-table li.node:not([data-band=\"ready\"])" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-band-filter=\"upcoming\"] .view-table li.node:not([data-band=\"upcoming\"])" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-band-filter=\"done\"] .view-table li.node:not([data-band=\"done\"])" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-band-filter=\"superseded\"] .view-table li.node:not([data-band=\"superseded\"])" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".taskbar-sub:empty, .taskbar-signal:empty, .taskbar-count:empty" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-line" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+      decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
+      decl(prop: FontFamily, value: "var(--issue-font)"),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: Color, value: "var(--issue-text)"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-line:hover" }, decls: [
+      decl(prop: Background, value: "var(--issue-bg-hover)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-id" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: MinWidth, value: scale_var(t: width_status)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-component" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-title" }, decls: [
+      decl(prop: Color, value: "var(--issue-text)"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-line .taskbar-signal" }, decls: [
+      decl(prop: MarginLeft, value: "auto"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-table-heading" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font-heading)"),
+      decl(prop: FontSize, value: scale_var(t: text_15)),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-empty" }, decls: [
+      decl(prop: Display, value: "none"),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: Padding, value: scale_pair(a: space_12, b: space_8)),
+    ] },
+    StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-empty=\"1\"] .issue-empty" }, decls: [
+      decl(prop: Display, value: "block"),
     ] },
     StaticRule { selector: ClassSelector { name: "frontier-bucket" }, decls: [
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
@@ -1419,6 +1564,7 @@ fn roadmap_css() -> String {
   join([
     scale_root_css(),
     theme_root_css(base: day_theme, alternate: night_theme),
+    issue_tracker_root_css(),
     band_root_css(),
     auditioner_root_css(),
     serialize_rules(rules: roadmap_rules()),

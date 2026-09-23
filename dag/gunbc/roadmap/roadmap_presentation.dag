@@ -1934,6 +1934,59 @@ type DailyWorkspaceView {
   upcoming: List<WorkBandEntry>
   done: List<WorkBandEntry>
   superseded: List<WorkBandEntry>
+  table: List<IssueTableRow>
+}
+
+// A table row carries its tree when it is a collapsed project's root: the dense line paints the
+// tree's decided k-of-n count and the project marker from it, so the table never re-derives
+// project-hood and never drops the count the tree shows.
+type IssueTableRow {
+  view: WorkRowView
+  project: ProjectTreeView?
+}
+
+// THE ISSUE TABLE'S FLAT ROW SET (owner ruling 2026-09-22, "the frontend as an issue tracker"):
+// the DEFAULT view is one flat, dense, searchable table — every rendered issue exactly once, in
+// the same order the forest presents (active roots first, then the scheduling positions). The
+// flattening rides the landed tree derivation rather than re-deriving anything: a project row
+// contributes itself, then its collapsed chain members (each an issue in its own right in the
+// table — the tree swallows them, the table does not), then its members recursively; a family
+// contributes its member rows. Nothing is recomputed; the trees are read once and enumerated.
+fn project_flat_rows(view: ProjectTreeView) -> List<IssueTableRow> {
+  concat(
+    [ IssueTableRow { view: view.row, project: Present { value: view } } ],
+    concat(
+      map(view.chain, r => IssueTableRow { view: r, project: none }),
+      flat_map(view.entries, e => match e {
+        ProjectLeaf { row } => [ IssueTableRow { view: row, project: none } ]
+        ProjectNested { project } => project_flat_rows(view: project)
+      })))
+}
+
+fn band_entry_flat_rows(e: WorkBandEntry) -> List<IssueTableRow> {
+  match e {
+    BandRow { row } => [ IssueTableRow { view: row, project: none } ]
+    BandFamily { family } => map(family.rows, r => IssueTableRow { view: r, project: none })
+    BandProject { project } => project_flat_rows(view: project)
+  }
+}
+
+fn workspace_flat_table(
+  active: List<WorkBandEntry>,
+  ready: List<WorkBandEntry>,
+  upcoming: List<WorkBandEntry>,
+  done: List<WorkBandEntry>,
+  superseded: List<WorkBandEntry>,
+) -> List<IssueTableRow> {
+  concat(
+    flat_map(active, e => band_entry_flat_rows(e: e)),
+    concat(
+      flat_map(ready, e => band_entry_flat_rows(e: e)),
+      concat(
+        flat_map(upcoming, e => band_entry_flat_rows(e: e)),
+        concat(
+          flat_map(done, e => band_entry_flat_rows(e: e)),
+          flat_map(superseded, e => band_entry_flat_rows(e: e))))))
 }
 
 fn row_is_active_work(row: WorkRowView) -> Bool {
@@ -2089,13 +2142,24 @@ fn daily_workspace_view(
   families: List<WorkFamilyDecl>,
   members: List<WorkFamilyMemberFact>,
 ) -> DailyWorkspaceView {
+  let active_entries = band_entries(rows: rows_for_active_band(rows: rows, edges: edges, members: members), all_rows: rows, edges: edges, families: [], members: [])
+  let ready_entries = band_entries(rows: rows_for_scheduling_band(rows: rows, edges: edges, members: members, key: "ready"), all_rows: rows, edges: edges, families: families, members: members)
+  let upcoming_entries = band_entries(rows: rows_for_scheduling_band(rows: rows, edges: edges, members: members, key: "upcoming"), all_rows: rows, edges: edges, families: families, members: members)
+  let done_entries = band_entries(rows: rows_for_scheduling_band(rows: rows, edges: edges, members: members, key: "done"), all_rows: rows, edges: edges, families: families, members: members)
+  let superseded_entries = band_entries(rows: rows_for_scheduling_band(rows: rows, edges: edges, members: members, key: "superseded"), all_rows: rows, edges: edges, families: families, members: members)
   DailyWorkspaceView {
     program: program,
     observation: observation,
-    active: band_entries(rows: rows_for_active_band(rows: rows, edges: edges, members: members), all_rows: rows, edges: edges, families: [], members: []),
-    ready: band_entries(rows: rows_for_scheduling_band(rows: rows, edges: edges, members: members, key: "ready"), all_rows: rows, edges: edges, families: families, members: members),
-    upcoming: band_entries(rows: rows_for_scheduling_band(rows: rows, edges: edges, members: members, key: "upcoming"), all_rows: rows, edges: edges, families: families, members: members),
-    done: band_entries(rows: rows_for_scheduling_band(rows: rows, edges: edges, members: members, key: "done"), all_rows: rows, edges: edges, families: families, members: members),
-    superseded: band_entries(rows: rows_for_scheduling_band(rows: rows, edges: edges, members: members, key: "superseded"), all_rows: rows, edges: edges, families: families, members: members),
+    active: active_entries,
+    ready: ready_entries,
+    upcoming: upcoming_entries,
+    done: done_entries,
+    superseded: superseded_entries,
+    table: workspace_flat_table(
+      active: active_entries,
+      ready: ready_entries,
+      upcoming: upcoming_entries,
+      done: done_entries,
+      superseded: superseded_entries),
   }
 }
