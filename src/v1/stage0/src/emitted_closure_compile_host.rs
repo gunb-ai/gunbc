@@ -1117,11 +1117,6 @@ pub(crate) fn closure_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
         .collect())
 }
 
-/// THE DISCRIMINATING RED, ESTABLISHED BY MUTATION AND RESTORED BEFORE THE PHASE REPORTS.
-///
-/// One fault, in one file, failing alone -- the baseline before is the control, the restore after
-/// the second control. Several things changing at once would show cargo responds to damage, not
-/// that this instrument reads this closure.
 /// THE UNATTRIBUTED REFUSAL CARRIES THE FAULTED RUN'S OWN OUTPUT. It names the class, and without
 /// cargo's stderr it cannot say WHY no diagnostic named the probe: an unrelated error, a lock, a
 /// full disk and an unreadable rendering all print the same sentence. `run_cargo` already captured
@@ -1138,6 +1133,11 @@ fn unattributed_fault_refusal(red: &CargoVerdict) -> MutationVerdict {
     }
 }
 
+/// THE DISCRIMINATING RED, ESTABLISHED BY MUTATION AND RESTORED BEFORE THE PHASE REPORTS.
+///
+/// One fault, in one file, failing alone -- the baseline before is the control, the restore after
+/// the second control. Several things changing at once would show cargo responds to damage, not
+/// that this instrument reads this closure.
 pub(crate) fn establish_discriminating_red(
     crate_dir: &Path,
     workspace: &Path,
@@ -2419,11 +2419,6 @@ mod tests {
             .map(|(_, v)| v.map(|v| v.to_string_lossy().to_string()))
     }
 
-    /// THE SPAWN OWNS EVERY CHANNEL CARGO READS, AND THE RECEIPT DESCRIBES THE SPAWN. The
-    /// `Command`'s own environment table is read back rather than the receipt trusted: a
-    /// receipt that said `-D warnings` and compiler X beside a spawn that let cargo read an
-    /// ambient encoded flag, a config compiler or a wrapper would be the fabricated provenance
-    /// this construction exists to make unwritable.
     /// A faulted run whose red names no probe must surface its own stderr in the refusal, so the
     /// cause is located and not only classed. The marker stands for whatever cargo said instead.
     #[test]
@@ -2445,6 +2440,11 @@ mod tests {
         }
     }
 
+    /// THE SPAWN OWNS EVERY CHANNEL CARGO READS, AND THE RECEIPT DESCRIBES THE SPAWN. The
+    /// `Command`'s own environment table is read back rather than the receipt trusted: a
+    /// receipt that said `-D warnings` and compiler X beside a spawn that let cargo read an
+    /// ambient encoded flag, a config compiler or a wrapper would be the fabricated provenance
+    /// this construction exists to make unwritable.
     #[test]
     fn the_probe_cargo_spawn_binds_flags_compiler_and_wrappers_and_the_receipt_names_that_spawn() {
         let crate_dir = Path::new("/tmp/probe-crate");
