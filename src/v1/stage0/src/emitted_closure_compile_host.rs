@@ -632,22 +632,14 @@ fn declared_runner_temp() -> Option<std::ffi::OsString> {
     std::env::var_os("RUNNER_TEMP").filter(|value| !value.is_empty())
 }
 
-/// RUNNER-SCOPED, NOT HOST-SHARED, AND THIS WAS MEASURED THE HARD WAY. A fixed path in the host's
-/// `/tmp` is shared by every tenant of a SELF-HOSTED runner and persists across runs, slots and
-/// jobs. On the first required run the directory existed owned by another uid, so creating the
-/// lock returned `EACCES` and the phase refused — permanently, on every PR landing on that
-/// runner, the only closing move being someone deleting a directory over SSH. A required gate
-/// whose sole remedy is manual host intervention has no reachable green: the shape DESIGN records
-/// for a gate that launders rather than gates.
+/// THE PER-JOB BASE A REQUIRED RUN'S PRIVATE ROOT IS CREATED UNDER, AND ITS ABSENCE IS A REFUSAL.
 ///
-/// `RUNNER_TEMP` is created and torn down per job and owned by the process needing it, so two
-/// tenants never name one path. Its ABSENCE IS A REFUSAL, not permission to write the host-shared
-/// system temp and hope this runner makes it safe. The shared target dir is untouched: one run's
-/// entries still share `workspace/target`, with per-entry package names separating fingerprints.
-///
-/// This refusal governs `required_ci_probe_root_from_runner_temp` and its environment-reading
-/// wrapper `required_ci_emit_compile_probe_root`; `local_emit_compile_probe_root` deliberately
-/// remains the standalone mode's explicit system-temp selection.
+/// A fixed path in the host's `/tmp` is shared by every tenant of a SELF-HOSTED runner and persists
+/// across runs, slots and jobs; the first required run found it owned by another uid and refused
+/// `EACCES` on every landing (run 34471447387). `RUNNER_TEMP` is created and torn down per job, so
+/// the required phase refuses without it rather than creating its root under the host-shared
+/// system temp. The root itself is `create_private_probe_root`'s, never a fixed name under this
+/// base.
 fn required_ci_probe_root_from_runner_temp(
     runner_temp: Option<&std::ffi::OsStr>,
 ) -> Result<PathBuf, String> {
@@ -658,86 +650,123 @@ fn required_ci_probe_root_from_runner_temp(
              falling back to a host-shared temp directory"
                 .to_string()
         })?;
-    Ok(PathBuf::from(base).join(PROBE_ROOT_DIR_NAME))
+    Ok(PathBuf::from(base))
 }
 
-pub fn required_ci_emit_compile_probe_root() -> Result<PathBuf, String> {
-    required_ci_probe_root_from_runner_temp(declared_runner_temp().as_deref())
+pub fn required_ci_emit_compile_probe_root() -> Result<PrivateProbeRoot, String> {
+    create_private_probe_root(&required_ci_probe_root_from_runner_temp(
+        declared_runner_temp().as_deref(),
+    )?)
 }
 
-/// THE LOCAL ROOT IS OWNER-SCOPED, BECAUSE THE HOST TEMP IS NOT THIS PROCESS'S TO NAME ALONE.
+/// A PROBE ROOT THIS RUN CREATED, WHICH NO OTHER RUN CAN NAME.
 ///
-/// `lane_emit_compile_probe_root` below reasons that "locally no runner temp exists and the host
-/// temp is the local route's authority". That holds on a workstation and is FALSE on a machine
-/// that is ALSO a self-hosted runner host — which every fleet host is, and which the development
-/// box this was measured on is. There the runner's euid has already created
-/// `gunbc-emit-compile` under the same host temp at mode 755, and the local route's write refuses
-/// EACCES with the one remedy `required_ci_probe_root_from_runner_temp` already rejected as
-/// unreachable: someone deleting a directory by hand.
+/// The root used to be SELECTED: `<temp>/gunbc-emit-compile-<euid>` locally, a fixed name under
+/// `RUNNER_TEMP` in CI. A selected name is shared by every run that computes it, so two runs of one
+/// euid on one host wrote and read one crate directory. MEASURED 2026-09-23 on srv2: a
+/// self-host run at 6d9d9a4c30e (emit ~00:41) read another run's emitted `std_integer.rs`,
+/// overwritten at 01:30:41, and reported a false E0573 on main after #12089 had fixed it; the
+/// same directory had destroyed an operator's preserved binary earlier that day. Neither run
+/// could tell: each reported a verdict about files it did not write.
 ///
-/// MEASURED 2026-09-21, not anticipated: a root owned by `ghrunner` dated Aug 27 refused
-/// `gunbc test //gunbc/instruments:self-host` for uid 1000 with `EmittedCrateNotWritten — …
-/// Permission denied`, which is the SAME receipt that note already cites for CI (run
-/// 34471447387). One defect, two environments; the CI half was repaired and the local half kept
-/// the fixed name.
+/// So the root is CONSTRUCTED, not selected: `create_private_probe_root` makes a fresh directory
+/// with an exclusive `mkdir` and this is the only value that carries it. Its field is private, so
+/// no caller can hold a `PrivateProbeRoot` for a directory it did not create, and every writer in
+/// this module takes one rather than a `&Path`. Exclusivity is the kernel's `mkdir`, not the
+/// name: the pid, time and sequence in the name only make a clash improbable, and a clash
+/// REFUSES rather than sharing. There is no lock and no "is someone else running" probe, because
+/// there is nothing shared to guard.
 ///
-/// So the euid goes IN THE PATH. That buys the local route the property `RUNNER_TEMP` buys CI —
-/// two tenants never name one path — without inventing a declaration the standalone mode does not
-/// have, and it is the narrowest change that closes the observed collision.
+/// NOTHING WARM IS LOST. The cargo target directory is `<workspace>/target`
+/// (`probe_cargo_invocation`), not under this root; the root holds only emitted crate sources and
+/// the retention file, which every run rewrites in full anyway (`write_probe_crate_files` removes a
+/// stale tree before writing). A private directory changes the probe crate's manifest path, so
+/// cargo rebuilds that one crate per run; its dependencies stay warm. Reuse ACROSS runs, if it is
+/// ever wanted, is a keyed materialization (`std.materialization_ladder`) with its own complete
+/// key, not a scratch directory two runs happen to agree on.
 ///
-/// IT IS DELIBERATELY NOT A PRIVATE DIRECTORY PER RUN, for the reason `acquire_probe_root_lock`'s
-/// note gives against that arm: a private directory throws away the warm cargo target dir, which
-/// is what makes a rebuild cheap and a restore comparable.
-///
-/// WHAT THIS DOES NOT ESTABLISH, STATED BECAUSE AN EARLIER VERSION OF THIS NOTE CLAIMED IT. That
-/// version said "concurrency is already that lock's subject". IT IS NOT, ON THIS ROUTE.
-/// `acquire_probe_root_lock` is taken only by `run_required_emit_compile`; `run_self_host` and
-/// `run_v2_native_cli` reach `prepare_emitted_compiler` and take NO probe-root lock. So on the
-/// route this function serves:
-///
-///   - the CRATE-SOURCE directory is unprotected against a concurrent writer of the same euid;
-///   - the cargo TARGET directory is protected by cargo's own build lock, which is cargo's
-///     guarantee about its target dir and says nothing about arbitrary crate-source writes
-///     performed outside it;
-///   - the interleaving hazard that lock's note describes ("one's faulted tree is the other's
-///     baseline") needs the fault-inject/restore probe, which this route does not perform.
-///
-/// AND AN EUID IN A PREDICTABLE NAME IS NOT PROOF OF OWNERSHIP of a directory that already exists.
-/// `std::env::temp_dir` is documented as a location that may be shared and whose fixed names need
-/// secure-creation handling; scoping by euid removes the CROSS-TENANT collision that was measured,
-/// and is not hostile-tenant isolation. The remaining same-euid source-write and lifecycle
-/// obligation is undischarged here and stays visible to whoever runs concurrent builds on one host.
-pub fn local_emit_compile_probe_root() -> PathBuf {
-    // SAFETY: `geteuid` reads the calling process's effective uid. It takes no arguments, touches
-    // no memory the caller owns, and is documented as always succeeding.
-    let euid = unsafe { libc::geteuid() };
-    std::env::temp_dir().join(format!("{PROBE_ROOT_DIR_NAME}-{euid}"))
+/// The directory is NOT removed on drop: its path is printed on every route and the retention file
+/// inside it is read after the run. It lives under the declared base (`RUNNER_TEMP`, torn down per
+/// job in CI; the system temp locally).
+#[derive(Debug)]
+pub struct PrivateProbeRoot {
+    path: PathBuf,
 }
 
-fn lane_probe_root_from_runner_temp(runner_temp: Option<&std::ffi::OsStr>) -> PathBuf {
-    match runner_temp.filter(|value| !value.is_empty()) {
-        Some(base) => PathBuf::from(base).join(PROBE_ROOT_DIR_NAME),
-        None => local_emit_compile_probe_root(),
+impl PrivateProbeRoot {
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 }
 
-/// THE V2-NATIVE LANE'S PROBE ROOT FOLLOWS THE DECLARED EXECUTION ENVIRONMENT, SELECTED ONCE.
-///
-/// The lane runs in two environments and each has its own root authority. In required CI the
-/// executor declares a per-job temp: the self-hosted fleet's host-shared temp persists across
-/// jobs, runs and euids, and a stale or concurrent `gunbc-emit-compile` there is an EACCES at
-/// best and two runs writing one crate dir at worst (receipt: run 34471447387,
-/// `EmittedCrateNotWritten — … Permission denied`). Locally no runner temp exists and the
-/// OWNER-SCOPED host temp is the local route's authority — see `local_emit_compile_probe_root`,
-/// whose note records why the unscoped name this sentence used to describe was the same defect in
-/// its second environment rather than a safe fallback. This is environment SELECTION, not a
-/// failure arm: both roots are declared, nothing is widened, and the required phase's own stricter
-/// policy (refuse without the declaration) is untouched beside it.
-pub fn lane_emit_compile_probe_root() -> PathBuf {
-    lane_probe_root_from_runner_temp(declared_runner_temp().as_deref())
+impl std::ops::Deref for PrivateProbeRoot {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.path
+    }
 }
 
-fn probe_crate_dir(probe_root: &Path, entry: &str) -> PathBuf {
+/// Distinguishes two roots created by one process within one clock tick.
+static PROBE_ROOT_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn create_private_probe_root(base: &Path) -> Result<PrivateProbeRoot, String> {
+    std::fs::create_dir_all(base).map_err(|e| {
+        format!(
+            "could not create the probe root's base {} ({e})",
+            base.display()
+        )
+    })?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let sequence = PROBE_ROOT_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let path = base.join(format!(
+        "{PROBE_ROOT_DIR_NAME}-{}-{nanos}-{sequence}",
+        std::process::id()
+    ));
+    create_exclusive_probe_root(path)
+}
+
+/// The kernel's exclusive `mkdir` is the whole ownership claim: a directory that already exists
+/// was created by someone else and is refused, never adopted.
+fn create_exclusive_probe_root(path: PathBuf) -> Result<PrivateProbeRoot, String> {
+    match std::fs::create_dir(&path) {
+        Ok(()) => Ok(PrivateProbeRoot { path }),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(format!(
+            "the private probe root {} already exists — another run created it, and a root this \
+             run did not create is not one it may write or read",
+            path.display()
+        )),
+        Err(e) => Err(format!(
+            "could not create the private probe root {} ({e})",
+            path.display()
+        )),
+    }
+}
+
+/// The standalone mode's root: private, under the system temp.
+pub fn local_emit_compile_probe_root() -> Result<PrivateProbeRoot, String> {
+    create_private_probe_root(&std::env::temp_dir())
+}
+
+/// THE V2-NATIVE LANE'S BASE FOLLOWS THE DECLARED EXECUTION ENVIRONMENT, SELECTED ONCE: the
+/// per-job runner temp in CI, the system temp locally. This is base SELECTION, not a failure arm;
+/// the root under either base is private to the run.
+fn lane_probe_root_from_runner_temp(runner_temp: Option<&std::ffi::OsStr>) -> PathBuf {
+    match runner_temp.filter(|value| !value.is_empty()) {
+        Some(base) => PathBuf::from(base),
+        None => std::env::temp_dir(),
+    }
+}
+
+pub fn lane_emit_compile_probe_root() -> Result<PrivateProbeRoot, String> {
+    create_private_probe_root(&lane_probe_root_from_runner_temp(
+        declared_runner_temp().as_deref(),
+    ))
+}
+
+fn probe_crate_dir(probe_root: &PrivateProbeRoot, entry: &str) -> PathBuf {
     let slug: String = entry
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
@@ -752,7 +781,7 @@ fn probe_crate_dir(probe_root: &Path, entry: &str) -> PathBuf {
 /// one beside it (DESIGN §2 — the note on `write_probe_crate_files` is the argument).
 pub(crate) fn write_probe_crate(
     run: &CompileRun,
-    probe_root: &Path,
+    probe_root: &PrivateProbeRoot,
     entry: &str,
 ) -> Result<(PathBuf, usize), String> {
     let emission = run
@@ -772,7 +801,7 @@ pub(crate) fn write_probe_crate(
 /// `src/lib.rs` requirement -- so a green on one would stop being evidence about the other.
 fn write_probe_crate_files(
     files: &im::Vector<std::rc::Rc<crate::v1_std_core::TextFile>>,
-    probe_root: &Path,
+    probe_root: &PrivateProbeRoot,
     entry: &str,
 ) -> Result<(PathBuf, usize), String> {
     let dir = probe_crate_dir(probe_root, entry);
@@ -1183,8 +1212,8 @@ pub(crate) fn establish_discriminating_red(
     //
     // THIS IS NOT HYPOTHETICAL. Verifying the blunted-mutation arm, a concurrent run produced a
     // `Discriminated` verdict whose red line quoted a `#[cfg]` WARNING over a cargo run that said
-    // `Finished`. The probe-root lock closes the cause; this closes the arm that accepted the
-    // result — different defects.
+    // `Finished`. The private probe root (`PrivateProbeRoot`) closes the cause; this closes the
+    // arm that accepted the result — different defects.
     //
     // So the arm demands three things of the faulted run, in order of what they rule out:
     //   1. `Completed` — cargo reached a verdict, so `NotAttempted`/`DidNotComplete` fail rather
@@ -1269,7 +1298,7 @@ pub(crate) fn entry_rust_module(entry: &str, workspace: &Path) -> Result<String,
 /// One entry, end to end.
 pub fn run_emit_compile_entry(
     source_roots: &[String],
-    probe_root: &Path,
+    probe_root: &PrivateProbeRoot,
     entry: &str,
 ) -> EmitCompileOutcome {
     // PROGRESS IS REPORTED AS THE STAGE IS ENTERED, NOT WHEN THE ENTRY FINISHES.
@@ -1521,7 +1550,7 @@ fn fixture_rust_module(source: &str) -> Result<String, String> {
 #[cfg(test)]
 pub(crate) fn fixture_closure_rustc_verdict(
     source: &str,
-    probe_root: &Path,
+    probe_root: &PrivateProbeRoot,
 ) -> FixtureClosureOutcome {
     let rust_module = match fixture_rust_module(source) {
         Ok(module) => module,
@@ -1643,7 +1672,7 @@ const FIXTURE_RED_EXPECTED_RUSTC_CODE: &str = "E0308";
 /// compiled. An empty `.dag` text emits a crate that builds, so substituting one would turn a
 /// missing fixture into a GREEN control and a red arm that stopped discriminating.
 #[cfg(test)]
-fn fixture_arm_verdict(rel_path: &str, probe_root: &Path) -> FixtureClosureOutcome {
+fn fixture_arm_verdict(rel_path: &str, probe_root: &PrivateProbeRoot) -> FixtureClosureOutcome {
     let path = process_workspace_root().join(rel_path);
     match std::fs::read_to_string(&path) {
         Ok(source) => fixture_closure_rustc_verdict(&source, probe_root),
@@ -1654,7 +1683,9 @@ fn fixture_arm_verdict(rel_path: &str, probe_root: &Path) -> FixtureClosureOutco
 }
 
 #[cfg(test)]
-pub(crate) fn run_fixture_closure_discrimination(probe_root: &Path) -> FixtureDiscrimination {
+pub(crate) fn run_fixture_closure_discrimination(
+    probe_root: &PrivateProbeRoot,
+) -> FixtureDiscrimination {
     FixtureDiscrimination {
         green: fixture_arm_verdict(FIXTURE_GREEN_PATH, probe_root),
         red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
@@ -1714,7 +1745,7 @@ const FIXTURE_ADAPTER_RED_PATH: &str =
 /// route's own pair uses -- a second discrimination, not a second harness.
 #[cfg(test)]
 pub(crate) fn run_function_value_adapter_discrimination(
-    probe_root: &Path,
+    probe_root: &PrivateProbeRoot,
 ) -> FixtureDiscrimination {
     FixtureDiscrimination {
         green: fixture_arm_verdict(FIXTURE_ADAPTER_GREEN_PATH, probe_root),
@@ -1751,7 +1782,7 @@ const FIXTURE_NESTED_REFINEMENT_CAST_GREEN_PATH: &str =
 /// the SAME predicate the route's own pair uses -- a third discrimination, not a third harness.
 #[cfg(test)]
 pub(crate) fn run_nested_refinement_cast_discrimination(
-    probe_root: &Path,
+    probe_root: &PrivateProbeRoot,
 ) -> FixtureDiscrimination {
     FixtureDiscrimination {
         green: fixture_arm_verdict(FIXTURE_NESTED_REFINEMENT_CAST_GREEN_PATH, probe_root),
@@ -1854,7 +1885,7 @@ const FIXTURE_PHANTOM_MARKER_RED_PATH: &str =
 /// fourth discrimination, not a fourth harness.
 #[cfg(test)]
 pub(crate) fn run_phantom_marker_identity_discrimination(
-    probe_root: &Path,
+    probe_root: &PrivateProbeRoot,
 ) -> FixtureDiscrimination {
     FixtureDiscrimination {
         green: fixture_arm_verdict(FIXTURE_PHANTOM_MARKER_GREEN_PATH, probe_root),
@@ -1901,7 +1932,9 @@ const FIXTURE_APPEND_CONCAT_GREEN_PATH: &str =
 
 /// The empty-map turbofish pair -- subject `v1.compiler.emit_rust` `rust_empty_map_init_expr`.
 #[cfg(test)]
-pub(crate) fn run_empty_map_turbofish_discrimination(probe_root: &Path) -> FixtureDiscrimination {
+pub(crate) fn run_empty_map_turbofish_discrimination(
+    probe_root: &PrivateProbeRoot,
+) -> FixtureDiscrimination {
     FixtureDiscrimination {
         green: fixture_arm_verdict(FIXTURE_EMPTY_MAP_TURBOFISH_GREEN_PATH, probe_root),
         red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
@@ -1910,7 +1943,9 @@ pub(crate) fn run_empty_map_turbofish_discrimination(probe_root: &Path) -> Fixtu
 
 /// The argv word-list splice pair -- subject `v1.compiler.emit_rust` `emit_shell_call`.
 #[cfg(test)]
-pub(crate) fn run_argv_word_list_splice_discrimination(probe_root: &Path) -> FixtureDiscrimination {
+pub(crate) fn run_argv_word_list_splice_discrimination(
+    probe_root: &PrivateProbeRoot,
+) -> FixtureDiscrimination {
     FixtureDiscrimination {
         green: fixture_arm_verdict(FIXTURE_ARGV_WORD_LIST_GREEN_PATH, probe_root),
         red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
@@ -1920,7 +1955,9 @@ pub(crate) fn run_argv_word_list_splice_discrimination(probe_root: &Path) -> Fix
 /// The append concat-form pair -- subject `v1.compiler.emit_rust`
 /// `rust_append_call_is_concat_form`.
 #[cfg(test)]
-pub(crate) fn run_append_concat_form_discrimination(probe_root: &Path) -> FixtureDiscrimination {
+pub(crate) fn run_append_concat_form_discrimination(
+    probe_root: &PrivateProbeRoot,
+) -> FixtureDiscrimination {
     FixtureDiscrimination {
         green: fixture_arm_verdict(FIXTURE_APPEND_CONCAT_GREEN_PATH, probe_root),
         red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
@@ -1969,7 +2006,7 @@ const FIXTURE_SHELL_MULTI_FIELD_PROJECTION_GREEN_PATH: &str =
 /// would measure nothing about the arity.
 #[cfg(test)]
 pub(crate) fn run_shell_projection_arity_discrimination(
-    probe_root: &Path,
+    probe_root: &PrivateProbeRoot,
 ) -> FixtureDiscrimination {
     FixtureDiscrimination {
         green: fixture_arm_verdict(FIXTURE_SHELL_MULTI_FIELD_PROJECTION_GREEN_PATH, probe_root),
@@ -2224,7 +2261,7 @@ pub fn retain_not_selected_identities(
 pub fn emit_compile_report(
     outcomes: &[EmitCompileOutcome],
     source_roots: &[String],
-    probe_root: &Path,
+    probe_root: &PrivateProbeRoot,
     prefix: &str,
 ) -> (Vec<String>, Option<String>) {
     let selection = emit_compile_selection(source_roots);
@@ -2268,64 +2305,9 @@ pub fn emit_compile_report(
     (lines, retention_error)
 }
 
-/// A ROOT WHOSE LAST WRITER DIED IS NOT A ROOT TO SILENTLY BUILD ON, SO A SECOND HOLDER REFUSES.
-///
-/// WHAT THIS LOCK IS FOR HAS NARROWED; the argument below was written for the wider case. Under a
-/// per-job `RUNNER_TEMP` root two CONCURRENT runs cannot collide — no path they both name — so
-/// the lock no longer prevents interleaving in CI. It still catches a previous attempt in THIS
-/// job that died mid-flight, or two invocations given the same runner temp: both leave the tree's
-/// state unestablished, which is what is worth refusing on.
-///
-/// The arms share one probe root and one cargo target directory — what makes the baseline warm
-/// and the restore comparable. So two runs interleave: one's faulted tree is the other's
-/// baseline, one's restore erases the other's red before it is read. Both report confidently.
-///
-/// MEASURED, NOT ANTICIPATED. Verifying the blunted-mutation arm, a stale background invocation
-/// overlapped a foreground one: `Discriminated` with a red line quoting a `#[cfg]` WARNING over a
-/// cargo run whose tail said `Finished` — a green compile reported as a discriminating red, handed
-/// to the very arm that exists to catch one. A clean re-run answered `NotDiscriminating`.
-///
-/// The refusal is a lock file created exclusively, NOT a wait and NOT a private directory per run.
-/// Waiting serializes into the same shared state with the same ambiguity; a private directory
-/// throws away the warm target dir. Refusing is the fail-closed arm: line stops, cause typed and
-/// located, operator sees two runs were attempted rather than a verdict computed across both.
-pub(crate) fn acquire_probe_root_lock(root: &Path) -> Result<PathBuf, String> {
-    std::fs::create_dir_all(root).map_err(|e| {
-        format!(
-            "could not create the caller-selected probe root {} ({e})",
-            root.display()
-        )
-    })?;
-    let lock = root.join("emit-compile.lock");
-    match std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&lock)
-    {
-        Ok(_) => Ok(lock),
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(format!(
-            "another emitted-closure compile run holds {} — two runs sharing one probe root \
-             interleave their faulted and restored trees, so neither verdict is attributable. \
-             Remove the lock only after establishing no other run is live.",
-            lock.display()
-        )),
-        // A LIVE PEER AND AN UNWRITABLE ROOT ARE OPPOSITE REMEDIES, so opposite refusals.
-        // `AlreadyExists` says investigate a concurrent run; `PermissionDenied` says the ROOT is
-        // wrong and no peer exists. Collapsing them is the state-space conflation DESIGN names,
-        // and cost a triage cycle when the catch-all string sent a reader hunting a concurrent
-        // run on a runner that had none.
-        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => Err(format!(
-            "the probe root {} is not writable by this process ({e}) — this is NOT a concurrent \
-             run; the caller-selected root itself is wrong.",
-            root.display()
-        )),
-        Err(e) => Err(format!("could not take {}: {e}", lock.display())),
-    }
-}
-
 pub fn run_required_emit_compile(
     source_roots: &[String],
-    probe_root: &Path,
+    probe_root: &PrivateProbeRoot,
 ) -> Result<Vec<EmitCompileOutcome>, String> {
     let entries = required_emit_compile_entries();
     if entries.is_empty() {
@@ -2334,8 +2316,6 @@ pub fn run_required_emit_compile(
                 .to_string(),
         );
     }
-    // See `acquire_probe_root_lock`: a second concurrent run refuses rather than interleaving.
-    let lock = acquire_probe_root_lock(probe_root)?;
     // A FAILED RESTORE ENDS THE RUN, not merely the entry.
     //
     // WHY IT IS TERMINAL RATHER THAN A FINDING SIBLINGS CONTINUE PAST, as every other refusal
@@ -2373,10 +2353,6 @@ pub fn run_required_emit_compile(
             break;
         }
     }
-    // The lock is released at the one exit below the acquisition: every loop branch pushes an
-    // outcome and falls through. A run killed before this point leaves the lock deliberately --
-    // a probe root whose last writer died is not a state to silently build on.
-    let _ = std::fs::remove_file(&lock);
     Ok(outcomes)
 }
 
@@ -2785,34 +2761,82 @@ mod tests {
 
         assert_eq!(
             required_ci_probe_root_from_runner_temp(Some(std::ffi::OsStr::new("/runner/job")))
-                .expect("a declared runner temp owns the probe root"),
-            PathBuf::from("/runner/job/gunbc-emit-compile")
+                .expect("a declared runner temp is the base"),
+            PathBuf::from("/runner/job")
         );
     }
 
-    /// THE LANE SELECTS THE DECLARED PER-JOB ROOT WHEN ONE EXISTS, the host temp otherwise.
+    /// THE LANE'S BASE IS THE DECLARED PER-JOB TEMP WHEN ONE EXISTS, the system temp otherwise.
     ///
-    /// Both arms are pinned because both are load-bearing: the first keeps a required-CI lane
-    /// off the self-hosted fleet's host-shared temp (the EACCES of run 34471447387), the second
-    /// keeps the local route runnable where no executor declares a temp. The expected values
-    /// name the authorities, never the spelled dir name — the single-spelling test above owns
-    /// that needle.
+    /// Both arms are load-bearing: the first keeps a required-CI lane off the self-hosted fleet's
+    /// host-shared temp (the EACCES of run 34471447387), the second keeps the local route runnable
+    /// where no executor declares a temp.
     #[test]
     fn the_lane_probe_root_follows_the_declared_environment() {
         assert_eq!(
             lane_probe_root_from_runner_temp(Some(std::ffi::OsStr::new("/runner/job"))),
             required_ci_probe_root_from_runner_temp(Some(std::ffi::OsStr::new("/runner/job")))
                 .expect("the same declared temp"),
-            "a declared per-job runner temp owns the lane's probe root, exactly as it owns the \
-             required phase's"
+            "a declared per-job runner temp is the lane's base, exactly as it is the required \
+             phase's"
         );
         for absent in [None, Some(std::ffi::OsStr::new(""))] {
             assert_eq!(
                 lane_probe_root_from_runner_temp(absent),
-                local_emit_compile_probe_root(),
-                "with no declared runner temp the lane takes the local route's root"
+                std::env::temp_dir(),
+                "with no declared runner temp the lane's base is the system temp"
             );
         }
+    }
+
+    /// TWO RUNS OVER DIFFERENT TREES GET DISTINCT ROOTS AND DO NOT READ EACH OTHER'S OUTPUT.
+    ///
+    /// The discriminating control for `PrivateProbeRoot`, run on the real constructor and the real
+    /// writer. Both "runs" start from the SAME base, exactly as two concurrent runs of one euid on
+    /// one host did on 2026-09-23. Each writes its own tree for the SAME entry, and the first then
+    /// reads back its own emitted file. RED ON THE OLD DERIVATION: a root derived from the base
+    /// and the euid (`<temp>/gunbc-emit-compile-<euid>`) names one directory for both, so the
+    /// second write replaces the first tree and the first run reads the second run's bytes — the
+    /// false E0573 at 6d9d9a4c30e. The last arm pins that a directory the run did not create is
+    /// refused, never adopted.
+    #[test]
+    fn two_runs_over_different_trees_do_not_share_a_probe_root() {
+        let base = std::env::temp_dir().join(format!(
+            "gunbc-probe-root-control-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        let tree = |marker: &str| -> im::Vector<std::rc::Rc<crate::v1_std_core::TextFile>> {
+            im::vector![std::rc::Rc::new(crate::v1_std_core::TextFile {
+                path: "src/lib.rs".to_string(),
+                content: format!("// emitted by run {marker}\n"),
+            })]
+        };
+        let first = create_private_probe_root(&base).expect("the first run creates its root");
+        let second = create_private_probe_root(&base).expect("the second run creates its root");
+        assert_ne!(
+            first.path(),
+            second.path(),
+            "two runs from one base must not name one probe root"
+        );
+
+        let (first_crate, _) = write_probe_crate_files(&tree("A"), &first, "v2.compiler.compile")
+            .expect("the first run writes its tree");
+        write_probe_crate_files(&tree("B"), &second, "v2.compiler.compile")
+            .expect("the second run writes its tree");
+        assert_eq!(
+            std::fs::read_to_string(first_crate.join("src/lib.rs")).expect("read back"),
+            "// emitted by run A\n",
+            "the first run must read the tree it wrote, not the second run's"
+        );
+
+        let adopted = create_exclusive_probe_root(first.path().to_path_buf());
+        assert!(
+            adopted.is_err(),
+            "a root another run created must be refused, not adopted"
+        );
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// A FAILED RESTORE MUST WIN OVER EVERY NON-TERMINAL FAULT VERDICT.

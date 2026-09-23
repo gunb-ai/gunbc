@@ -1132,7 +1132,13 @@ fn run() -> Result<ExitCode, ExitCode> {
         } else {
             source_roots.clone()
         };
-        let probe_root = v1_compiler::cli_run::local_emit_compile_probe_root();
+        let probe_root = match v1_compiler::cli_run::local_emit_compile_probe_root() {
+            Ok(root) => root,
+            Err(e) => {
+                eprintln!("required-emit-compile: probe root not created: {e}");
+                return Err(ExitCode::from(1));
+            }
+        };
         match v1_compiler::cli_run::run_required_emit_compile(&roots, &probe_root) {
             Ok(outcomes) => {
                 let mut not_passed = 0usize;
