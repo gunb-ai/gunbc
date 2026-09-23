@@ -89,9 +89,10 @@ fn approval_push_custom_keys(h: ApprovalPushHint) -> List<ApnsCustomKey> {
 // push. The app proves it is the enrolled app instance with an App Attest assertion (no Face ID --
 // reading is not deciding) over a framed read request naming the path, the enrolment and the app's
 // claimed time, carried in the POST body as ReadAuthentication; the server admits it only inside a short skew window and only for an ACTIVE iOS
-// enrolment. Residual, stated: the counter is not stored (see PlatformRedemptionProof), so a
-// captured read request replays inside its window -- over the tailnet's TLS -- and would disclose a
-// capability that, until cutover, the legacy bearer route still honours. Cutover closes it.
+// enrolment. The skew window bounds WHEN a read may be presented, not how often: a captured read is
+// made single-use by the assertion counter, committed per enrolment before the read runs
+// (gunbc.auth.approval_assertion_counter; which routes consult it is decided in
+// gunbc.auth.approval_device_routes admit_device_read).
 data approval_device_read_protocol: NonEmptyStr = "gunbc.approval-device-read.v1" as NonEmptyStr
 data approval_device_read_skew: Second = second(count: 60)
 
@@ -191,12 +192,12 @@ type EnrolmentRequest {
 }
 
 // Per-redemption platform proof. iOS: an App Attest assertion whose client data is EXACTLY the
-// signing input. THE ASSERTION COUNTER IS NOT STORED, a stated departure from Apple's recommended
-// flow: Apple uses it to refuse replay, and a redemption replay is already refused twice -- the
-// challenge is server-minted, expiring and bound to one escalation revision, and the decision slot
-// admits one decision per escalation. Storing it would add one CAS generation per approval against
-// the store's generation probe bound, for no refusal the route lacks. (Reads are the exception, and
-// their residual is stated at device_read_client_data.)
+// signing input. The REDEMPTION does not consult the stored assertion counter, deliberately: its replay
+// wall is the server-minted, expiring challenge bound to one escalation revision and the one-decision
+// slot, and because Apple's counter is monotonic across the key, a redemption that does not advance
+// the standing leaves the reads' comparison sound. The counter IS stored and IS the replay wall for
+// the reads and the push update (gunbc.auth.approval_assertion_counter, consulted by
+// gunbc.auth.approval_device_routes admit_device_read), where that decision is stated.
 type PlatformRedemptionProof
   = IosAppAttestAssertion { assertion_b64: NonEmptyStr }
   | AndroidDecisionKeyOnly
