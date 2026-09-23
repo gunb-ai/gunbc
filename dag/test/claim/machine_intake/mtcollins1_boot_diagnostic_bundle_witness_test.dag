@@ -20,6 +20,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   mtcollins1_boot_console_reading, ConsoleRetained, ConsoleNotRetained, ConsoleExceedsBound, mtcollins1_boot_console_bound,
   AttemptRunId, AttemptIdentityUnavailable, BmcDeadlineReached, BmcCollectionIncomplete,
   CollectionComplete, CollectionRefused, redfish_collection_assembly, redfish_budget_refusal, member_not_reached,
+  MemberBody, assemble_memory_members, BmcResponseMalformed,
   mtcollins1_boot_diagnostics_allowance, mtcollins1_boot_redfish_read_budget, mtcollins1_boot_collection_member_bound,
 }
 import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_ended_before_bmc, BmcAccessNotReached, mtcollins1_boot_attempt_identity }
@@ -437,5 +438,69 @@ test fn an_empty_dram_socket_in_the_console_reaches_the_refusal() -> Bool {
   match mtcollins1_boot_outcome_with_findings(outcome: exit_failure(reason: "mtcollins1 boot: host qualification REFUSED"), findings: mtcollins1_boot_bundle_findings(bundle: bundle)) {
     ExitFailure { code: _, reason: r } => contains(r, "printed no trained DIMM for socket 1") && !contains(r, "mcu_enable_mask")
     ExitSuccess => false
+  }
+}
+
+// ── IDENTITY COMPLETENESS ────────────────────────────────────────────────────────────────────
+
+fn dimm_body(odata_id: String, id: String, socket: Int) -> String {
+  concat("{\"@odata.id\": \"", odata_id, "\", \"Id\": \"", id, "\", \"MemoryLocation\": {\"Socket\": ", to_string(socket), "}, \"Status\": {\"State\": \"Enabled\", \"Health\": \"OK\"}}")
+}
+
+data link_a: NonEmptyStr = "/redfish/v1/Systems/Self/Memory/DIMM_A"
+
+data link_b: NonEmptyStr = "/redfish/v1/Systems/Self/Memory/DIMM_B"
+
+data memory_collection_path: NonEmptyStr = "/redfish/v1/Systems/Self/Memory"
+
+test fn duplicate_member_links_refuse_the_collection() -> Bool {
+  match redfish_collection_assembly(pages: [page(links: [link_a as String, link_a as String], total: Present { value: 2 }, next: none)], member_bound: 40) {
+    CollectionRefused { detail: d } => contains(d as String, "is listed more than once")
+    CollectionComplete { links: _ } => false
+  }
+}
+
+test fn a_later_page_disagreeing_on_the_count_refuses_the_collection() -> Bool {
+  match redfish_collection_assembly(pages: [
+    page(links: [link_a as String], total: Present { value: 2 }, next: Present { value: "/redfish/v1/Systems/Self/Memory?$skip=1" }),
+    page(links: [link_b as String], total: Present { value: 3 }, next: none),
+  ], member_bound: 40) {
+    CollectionRefused { detail: d } => contains(d as String, "reports Members@odata.count 3 where the first page reported 2")
+    CollectionComplete { links: _ } => false
+  }
+}
+
+test fn two_links_returning_one_id_leave_the_section_unread() -> Bool {
+  match assemble_memory_members(collection: memory_collection_path, at: "t", bodies: [
+    MemberBody { link: link_a, body: dimm_body(odata_id: link_a as String, id: "DIMM_A", socket: 0) },
+    MemberBody { link: link_b, body: dimm_body(odata_id: link_b as String, id: "DIMM_A", socket: 0) },
+  ]) {
+    MembersUnread { cause: BmcCollectionIncomplete { endpoint: _, at: _, detail: d } } => contains(d, "returned the same Id DIMM_A")
+    _ => false
+  }
+}
+
+test fn a_member_answering_as_another_resource_leaves_the_section_unread() -> Bool {
+  match assemble_memory_members(collection: memory_collection_path, at: "t", bodies: [
+    MemberBody { link: link_a, body: dimm_body(odata_id: link_a as String, id: "DIMM_A", socket: 0) },
+    MemberBody { link: link_b, body: dimm_body(odata_id: link_a as String, id: "DIMM_B", socket: 0) },
+  ]) {
+    MembersUnread { cause: BmcResponseMalformed { endpoint: _, at: _, detail: d } } => contains(d, "link /redfish/v1/Systems/Self/Memory/DIMM_B returned the resource /redfish/v1/Systems/Self/Memory/DIMM_A")
+    _ => false
+  }
+}
+
+// CONTROL: two distinct links, a stable total and distinct matching ids are complete and read.
+test fn distinct_links_stable_total_and_matching_ids_are_complete() -> Bool {
+  let links = match redfish_collection_assembly(pages: [
+    page(links: [link_a as String], total: Present { value: 2 }, next: Present { value: "/redfish/v1/Systems/Self/Memory?$skip=1" }),
+    page(links: [link_b as String], total: Present { value: 2 }, next: none),
+  ], member_bound: 40) { CollectionComplete { links: ls } => count(ls) == 2 CollectionRefused { detail: _ } => false }
+  links && match assemble_memory_members(collection: memory_collection_path, at: "t", bodies: [
+    MemberBody { link: link_a, body: dimm_body(odata_id: link_a as String, id: "DIMM_A", socket: 0) },
+    MemberBody { link: link_b, body: dimm_body(odata_id: link_b as String, id: "DIMM_B", socket: 1) },
+  ]) {
+    MembersRead { members: ms } => count(ms) == 2
+    _ => false
   }
 }

@@ -19,7 +19,7 @@ import extdeps.bmc.redfish_memory_inventory {
   redfish_resource_state_wire, redfish_health_wire,
   redfish_memory_member_of, redfish_processor_member_of,
   RedfishCollectionPage, redfish_collection_page_of, RedfishLinkReading, RedfishLinkSameOrigin, RedfishLinkRefused, redfish_same_origin_link,
-  RedfishSystemInventoryLinks, redfish_system_inventory_links_of,
+  RedfishSystemInventoryLinks, redfish_system_inventory_links_of, redfish_resource_odata_id,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.auth.netrc_binding {
@@ -683,7 +683,13 @@ fn redfish_collection_assembly(pages: List<RedfishCollectionPage>, member_bound:
           let links = fold(pages, init: [], f: (acc, p) => concat(acc, p.member_links))
           let last_has_next = match reverse(pages).first() { Absent => false Present { value: p } => p.next_link != none }
           let refused_links = filter(links, l => match redfish_same_origin_link(link: l) { RedfishLinkRefused { cause: _ } => true _ => false })
-          if last_has_next {
+          let disagreeing = filter(pages, p => p.member_count != Present { value: total })
+          let duplicated = first_duplicate(xs: links)
+          if count(disagreeing) > 0 {
+            CollectionRefused { detail: concat("a page reports Members@odata.count ", match disagreeing.first() { Absent => "" Present { value: p } => match p.member_count { Present { value: n } => to_string(n) Absent => "none" } }, " where the first page reported ", to_string(total)) as NonEmptyStr }
+          } else if duplicated != none {
+            CollectionRefused { detail: concat("member link ", match duplicated { Present { value: d } => d Absent => "" }, " is listed more than once") as NonEmptyStr }
+          } else if last_has_next {
             CollectionRefused { detail: concat("the last page read still carries Members@odata.nextLink; ", to_string(count(links)), " of ", to_string(total), " member(s) read") as NonEmptyStr }
           } else if total > member_bound {
             CollectionRefused { detail: concat("Members@odata.count ", to_string(total), " exceeds the member bound ", to_string(member_bound)) as NonEmptyStr }
@@ -696,6 +702,96 @@ fn redfish_collection_assembly(pages: List<RedfishCollectionPage>, member_bound:
           }
         }
       }
+  }
+}
+
+fn first_duplicate(xs: List<String>) -> String? {
+  let empty: List<String> = []
+  let found: String? = none
+  let done = fold(xs, init: MembersSeen { seen: empty, duplicate: found }, f: (acc, x) => match acc.duplicate {
+    Present { value: _ } => acc
+    Absent => if any(acc.seen, y => y == x) { MembersSeen { seen: acc.seen, duplicate: Present { value: x } } } else { MembersSeen { seen: concat(acc.seen, [x]), duplicate: none } }
+  })
+  done.duplicate
+}
+
+type MembersSeen { seen: List<String>, duplicate: String? }
+
+// ── MEMBER IDENTITY (pure) ───────────────────────────────────────────────────────────────────
+//
+// A COLLECTION IS IDENTITY-COMPLETE, NOT ONLY COUNT-COMPLETE: every member answered at the link that
+// named it (its returned `@odata.id` is that link) and no two members returned one `Id`. A member
+// that answers as another resource, or two links that resolve to one DIMM, would otherwise make a
+// full count out of fewer slots. Any mismatch leaves the section unread, so no inventory-count
+// finding can be minted from it.
+type MemberBody { link: NonEmptyStr, body: String }
+
+fn member_link_mismatch(m: MemberBody) -> String? {
+  match redfish_resource_odata_id(body: m.body) {
+    ObservationRefused { cause: c } => Present { value: concat("member at ", m.link as String, ": ", c as String) }
+    ObservationEstablished { observed: returned } =>
+      if (returned as String) == (m.link as String) { none } else { Present { value: concat("link ", m.link as String, " returned the resource ", returned as String) } }
+  }
+}
+
+fn first_member_mismatch(bodies: List<MemberBody>) -> String? {
+  match filter(map(bodies, b => member_link_mismatch(m: b)), r => r != none).first() {
+    Absent => none
+    Present { value: r } => r
+  }
+}
+
+fn memory_member_ids(ms: List<RedfishMemoryMember>) -> List<String> {
+  map(ms, m => m.id as String)
+}
+
+fn processor_member_ids(ps: List<RedfishProcessorMember>) -> List<String> {
+  map(ps, p => p.id as String)
+}
+
+fn assemble_memory_members(collection: NonEmptyStr, at: NonEmptyStr, bodies: List<MemberBody>) -> MembersReading<RedfishMemoryMember> {
+  match first_member_mismatch(bodies: bodies) {
+    Present { value: why } => MembersUnread { cause: BmcResponseMalformed { endpoint: mtcollins1_redfish_url(path: collection as String), at: at, detail: why } }
+    Absent => {
+      let empty: List<RedfishMemoryMember> = []
+      let parsed = fold(bodies, init: MembersRead { members: empty }, f: (acc, b) => match acc {
+        MembersRead { members: ms } => match redfish_memory_member_of(body: b.body) {
+          ObservationRefused { cause: c } => MembersUnread { cause: BmcResponseMalformed { endpoint: mtcollins1_redfish_url(path: b.link as String), at: at, detail: c as String } }
+          ObservationEstablished { observed: m } => MembersRead { members: concat(ms, [m]) }
+        }
+        other => other
+      })
+      match parsed {
+        MembersRead { members: ms } => match first_duplicate(xs: memory_member_ids(ms: ms)) {
+          Present { value: d } => MembersUnread { cause: BmcCollectionIncomplete { endpoint: mtcollins1_redfish_url(path: collection as String), at: at, detail: concat("two member links returned the same Id ", d) } }
+          Absent => parsed
+        }
+        other => other
+      }
+    }
+  }
+}
+
+fn assemble_processor_members(collection: NonEmptyStr, at: NonEmptyStr, bodies: List<MemberBody>) -> MembersReading<RedfishProcessorMember> {
+  match first_member_mismatch(bodies: bodies) {
+    Present { value: why } => MembersUnread { cause: BmcResponseMalformed { endpoint: mtcollins1_redfish_url(path: collection as String), at: at, detail: why } }
+    Absent => {
+      let empty: List<RedfishProcessorMember> = []
+      let parsed = fold(bodies, init: MembersRead { members: empty }, f: (acc, b) => match acc {
+        MembersRead { members: ps } => match redfish_processor_member_of(body: b.body) {
+          ObservationRefused { cause: c } => MembersUnread { cause: BmcResponseMalformed { endpoint: mtcollins1_redfish_url(path: b.link as String), at: at, detail: c as String } }
+          ObservationEstablished { observed: p } => MembersRead { members: concat(ps, [p]) }
+        }
+        other => other
+      })
+      match parsed {
+        MembersRead { members: ps } => match first_duplicate(xs: processor_member_ids(ps: ps)) {
+          Present { value: d } => MembersUnread { cause: BmcCollectionIncomplete { endpoint: mtcollins1_redfish_url(path: collection as String), at: at, detail: concat("two member links returned the same Id ", d) } }
+          Absent => parsed
+        }
+        other => other
+      }
+    }
   }
 }
 
@@ -788,40 +884,40 @@ fn member_not_reached(total: Int, read: Int) -> String {
   concat(to_string(total - read), " of ", to_string(total), " member read(s)")
 }
 
-fn read_memory_members(netrc: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> MemoryFold
+type MemberBodiesFetch
+  = MemberBodiesFetched { bodies: List<MemberBody>, left: Int }
+  | MemberBodiesFailed { cause: BmcReadCause, left: Int }
+
+fn fetch_member_bodies(netrc: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> MemberBodiesFetch
   uses net: std.resources.Network
 {
-  let empty: List<RedfishMemoryMember> = []
-  fold(links, init: MemoryFold { reading: MembersRead { members: empty }, left: left }, f: (acc, link) => match acc.reading {
-    MembersRead { members: ms } =>
-      match redfish_get(netrc: netrc, path: link, left: acc.left, not_reached: member_not_reached(total: count(links), read: count(ms))) {
-        RedfishGetFailed { cause: c, left: l } => MemoryFold { reading: MembersUnread { cause: c }, left: l }
-        RedfishGot { body: body, left: l } =>
-          match redfish_memory_member_of(body: body) {
-            ObservationRefused { cause: c } => MemoryFold { reading: MembersUnread { cause: BmcResponseMalformed { endpoint: mtcollins1_redfish_url(path: link as String), at: clock_now_probed_at_or_unknown(), detail: c as String } }, left: l }
-            ObservationEstablished { observed: m } => MemoryFold { reading: MembersRead { members: concat(ms, [m]) }, left: l }
-          }
+  let empty: List<MemberBody> = []
+  fold(links, init: MemberBodiesFetched { bodies: empty, left: left }, f: (acc, link) => match acc {
+    MemberBodiesFetched { bodies: bs, left: l } =>
+      match redfish_get(netrc: netrc, path: link, left: l, not_reached: member_not_reached(total: count(links), read: count(bs))) {
+        RedfishGetFailed { cause: c, left: l2 } => MemberBodiesFailed { cause: c, left: l2 }
+        RedfishGot { body: body, left: l2 } => MemberBodiesFetched { bodies: concat(bs, [MemberBody { link: link, body: body }]), left: l2 }
       }
-    _ => acc
+    other => other
   })
 }
 
-fn read_processor_members(netrc: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> ProcessorFold
+fn read_memory_members(netrc: NonEmptyStr, collection: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> MemoryFold
   uses net: std.resources.Network
 {
-  let empty: List<RedfishProcessorMember> = []
-  fold(links, init: ProcessorFold { reading: MembersRead { members: empty }, left: left }, f: (acc, link) => match acc.reading {
-    MembersRead { members: ps } =>
-      match redfish_get(netrc: netrc, path: link, left: acc.left, not_reached: member_not_reached(total: count(links), read: count(ps))) {
-        RedfishGetFailed { cause: c, left: l } => ProcessorFold { reading: MembersUnread { cause: c }, left: l }
-        RedfishGot { body: body, left: l } =>
-          match redfish_processor_member_of(body: body) {
-            ObservationRefused { cause: c } => ProcessorFold { reading: MembersUnread { cause: BmcResponseMalformed { endpoint: mtcollins1_redfish_url(path: link as String), at: clock_now_probed_at_or_unknown(), detail: c as String } }, left: l }
-            ObservationEstablished { observed: p } => ProcessorFold { reading: MembersRead { members: concat(ps, [p]) }, left: l }
-          }
-      }
-    _ => acc
-  })
+  match fetch_member_bodies(netrc: netrc, links: links, left: left) {
+    MemberBodiesFailed { cause: c, left: l } => MemoryFold { reading: MembersUnread { cause: c }, left: l }
+    MemberBodiesFetched { bodies: bs, left: l } => MemoryFold { reading: assemble_memory_members(collection: collection, at: clock_now_probed_at_or_unknown(), bodies: bs), left: l }
+  }
+}
+
+fn read_processor_members(netrc: NonEmptyStr, collection: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> ProcessorFold
+  uses net: std.resources.Network
+{
+  match fetch_member_bodies(netrc: netrc, links: links, left: left) {
+    MemberBodiesFailed { cause: c, left: l } => ProcessorFold { reading: MembersUnread { cause: c }, left: l }
+    MemberBodiesFetched { bodies: bs, left: l } => ProcessorFold { reading: assemble_processor_members(collection: collection, at: clock_now_probed_at_or_unknown(), bodies: bs), left: l }
+  }
 }
 
 fn link_absent_cause(system: NonEmptyStr, property: String) -> BmcReadCause {
@@ -846,7 +942,7 @@ fn read_processors(netrc: NonEmptyStr, system: NonEmptyStr, link: String?, left:
     Present { value: path } =>
       match fetch_collection(netrc: netrc, collection: path, left: left) {
         CollectionFetchFailed { cause: c, left: l } => ProcessorFold { reading: MembersUnread { cause: c }, left: l }
-        CollectionFetched { links: links, left: l } => read_processor_members(netrc: netrc, links: links, left: l)
+        CollectionFetched { links: links, left: l } => read_processor_members(netrc: netrc, collection: path, links: links, left: l)
       }
   }
 }
@@ -859,7 +955,7 @@ fn read_memory(netrc: NonEmptyStr, system: NonEmptyStr, link: String?, left: Int
     Present { value: path } =>
       match fetch_collection(netrc: netrc, collection: path, left: left) {
         CollectionFetchFailed { cause: c, left: l } => MemoryFold { reading: MembersUnread { cause: c }, left: l }
-        CollectionFetched { links: links, left: l } => read_memory_members(netrc: netrc, links: links, left: l)
+        CollectionFetched { links: links, left: l } => read_memory_members(netrc: netrc, collection: path, links: links, left: l)
       }
   }
 }

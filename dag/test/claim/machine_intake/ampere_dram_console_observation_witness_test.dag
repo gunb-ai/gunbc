@@ -3,7 +3,7 @@ module test.claim.machine_intake.ampere_dram_console_observation_witness_test
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, String }
 import gunbc.machine_intake_ampere_dram_console_observation {
-  AmpereDramBlockNotPrinted, AmpereDramBlockObserved,
+  AmpereDramBlockNotPrinted, AmpereDramBlockObserved, RosterNotObserved, RosterOpen, RosterClosed,
   ampere_dram_console_observation, ampere_dram_findings, ampere_dram_console_text, ampere_dram_dimms_on_socket,
 }
 import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
@@ -131,6 +131,49 @@ test fn a_capture_without_the_block_asserts_no_roster() -> Bool {
 test fn a_reset_loop_reads_the_last_block() -> Bool {
   match ampere_dram_console_observation(lines: lines_of(text: concat(capture_35793279839_last_block, capture_35801475989_last_block))) {
     AmpereDramBlockObserved { block: b, blocks_printed: n } => n == 2 && ampere_dram_dimms_on_socket(block: b, socket: 0) == 2
+    AmpereDramBlockNotPrinted => false
+  }
+}
+
+// ── ROSTER STANDING: ONLY A CLOSED ROSTER ESTABLISHES AN UNTRAINED SOCKET ────────────────────
+
+// The complete real block closes its roster at the `CP: 3ff00100` line.
+test fn the_complete_real_block_has_a_closed_roster() -> Bool {
+  match ampere_dram_console_observation(lines: lines_of(text: capture_35801475989_first_block)) {
+    AmpereDramBlockObserved { block: b, blocks_printed: _ } => match b.roster { RosterClosed => true _ => false }
+    AmpereDramBlockNotPrinted => false
+  }
+}
+
+// The real bytes cut after the SK0 rows (the closing `CP:` line dropped): the roster is open,
+// SK0's two rows are kept, and socket 1 is NOT reported untrained.
+test fn a_capture_cut_mid_roster_is_open_and_mints_no_empty_socket() -> Bool {
+  let cut = filter(lines_of(text: capture_35801475989_first_block), l => !contains(l, "CP: 3ff00100"))
+  let o = ampere_dram_console_observation(lines: cut)
+  (match o {
+    AmpereDramBlockObserved { block: b, blocks_printed: _ } => (match b.roster { RosterOpen => true _ => false }) && ampere_dram_dimms_on_socket(block: b, socket: 0) == 2
+    AmpereDramBlockNotPrinted => false
+  })
+    && !any_contains(xs: ampere_dram_findings(observation: o, expected_sockets: [0, 1]), pattern: "no trained DIMM")
+    && contains(ampere_dram_console_text(observation: o, expected_sockets: [0, 1]), "roster: OPEN at the end of the capture")
+}
+
+// A block cut before its roster header has no roster at all, and so no untrained socket.
+test fn a_block_without_a_roster_header_mints_no_empty_socket() -> Bool {
+  let cut = filter(lines_of(text: capture_35801475989_last_block), l => !contains(l, "DRAM populated DIMMs:") && !contains(l, "  SK0 "))
+  let o = ampere_dram_console_observation(lines: cut)
+  (match o {
+    AmpereDramBlockObserved { block: b, blocks_printed: _ } => match b.roster { RosterNotObserved => true _ => false }
+    AmpereDramBlockNotPrinted => false
+  })
+    && count(ampere_dram_findings(observation: o, expected_sockets: [0, 1])) == 0
+}
+
+// A new block header closes the previous block's roster; the last block's roster, cut, stays open.
+test fn a_new_block_header_closes_the_previous_roster() -> Bool {
+  let text = "NOTICE:  DRAM FW version 210525\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM\r\nNOTICE:  DRAM FW version 210525\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM\r\n"
+  match ampere_dram_console_observation(lines: lines_of(text: text)) {
+    AmpereDramBlockObserved { block: b, blocks_printed: n } => n == 2 && match b.roster { RosterOpen => true _ => false }
     AmpereDramBlockNotPrinted => false
   }
 }

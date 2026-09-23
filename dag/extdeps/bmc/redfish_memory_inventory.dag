@@ -432,3 +432,17 @@ fn redfish_processor_member_of(body: String) -> ObservationAttempt<RedfishProces
       }
   }
 }
+
+// A RESOURCE'S OWN `@odata.id`, as it returned it. DSP0266 makes this the resource's URI, so a
+// consumer that followed a link can check that the resource answering is the one the link named.
+fn redfish_resource_odata_id(body: String) -> ObservationAttempt<NonEmptyStr, NonEmptyStr> {
+  match redfish_document(body: body) {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: doc } =>
+      match redfish_optional_string(obj: doc, key: "@odata.id") {
+        RedfishStringBad { cause: c } => ObservationRefused { cause: c }
+        RedfishStringOk { value: v } =>
+          if v == "" { ObservationRefused { cause: "resource carries no @odata.id" } } else { ObservationEstablished { observed: v as NonEmptyStr } }
+      }
+  }
+}
