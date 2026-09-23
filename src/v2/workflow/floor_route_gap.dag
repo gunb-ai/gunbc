@@ -1121,8 +1121,9 @@ fn floor_route_gap_expectation_chunk_11() -> List<FloorRouteGapExpectation> {
 // sequential loser naming the winner, generation-two advance, a non-contention store refusal, and the
 // head search reaching the Int maximum without overflowing -- plus the five
 // test.claim.approval_assertion_counter_wet_witness_test identities (replay refused, per-enrolment
-// standing, lost race refused, 4200 sequential admissions past the former 4096 cliff, and an append
-// interleaved between the head search's reads), whose first effect is the same Mktemp.
+// standing, lost race refused, a 4200-generation prefix seeded through cas_file_slot_path past the
+// former 4096 cliff followed by real replay and admission reads, and an append interleaved between
+// the head search's reads), whose first effect is the same Mktemp.
 // First effect is shell.Mktemp.DirWithTemplate with no mock_response. Triple enrollment: this
 // expectation, WetScheduledClaim rows in local_repo_wet_schedule, and the
 // gunbc.ci_layer_roots witness_exclusion_frontier LocalRepoWetLane row for
