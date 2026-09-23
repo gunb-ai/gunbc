@@ -3,7 +3,6 @@ module gunbc.auth.approval_gate
 import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp }
 import std.measure { Second, second_count }
 import v2.std.optional { Present, Absent }
-import std.resources { Network }
 import std.algebra { trim }
 import std.scoped_authorization {
   AuthorizationRequest, ScopedAuthorization, authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
@@ -182,7 +181,6 @@ type ApprovalPollOutcome
 
 // One read of the broker's standing for this escalation, judged at a fresh canonical instant.
 fn approval_standing_read(escalation_id: NonEmptyStr, expires_at: Timestamp) -> ApprovalStandingRead
-  uses net: Network
 {
   match approval_instant_now() {
     Absent => StandingClockUnreadable
@@ -212,7 +210,6 @@ fn approval_poll_step(escalation_id: NonEmptyStr, standing: ApprovalPollStanding
 // THE BOUNDED POLL: N waits and a terminal read at the declared boundary, each read at a fresh
 // instant, each step decided by approval_poll_step.
 fn approval_poll_ticks(remaining: Int, cadence: Second, escalation_id: NonEmptyStr, expires_at: Timestamp) -> ApprovalPollOutcome
-  uses net: Network
 {
   match approval_standing_read(escalation_id: escalation_id, expires_at: expires_at) {
     StandingClockUnreadable => PollClockUnreadable
@@ -245,7 +242,6 @@ type ApprovalFiling
   | ApprovalFilingRefused { reason: String }
 
 fn approval_file_stored_request(stored: StoredApprovalRequest, body_file_name: String, submit_timeout: Second) -> ApprovalFiling
-  uses net: Network
 {
   let sub_path = actions_variable_trimmed(name: approval_submission_mac_key_path_env)
   if sub_path == "" {

@@ -2,7 +2,6 @@ module gunbc.runner_microvm_network_apply
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import std.algebra { trim }
-import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -207,7 +206,6 @@ fn run_admin_leg(
   context: FleetSshExecutionContext,
   argv: List<String>,
 ) -> ApplyLeg
-  uses net: Network
 {
   match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: argv) {
     TypedArgvExecRefused { reason: why } => ApplyLegRefused { reason: why }
@@ -223,7 +221,6 @@ fn observe_administrator_privilege(
   subject: MicrovmNetworkApplySubject,
   context: FleetSshExecutionContext,
 ) -> AdministratorPrivilege
-  uses net: Network
 {
   match run_admin_leg(subject: subject, context: context, argv: elevated_argv(command: ["true"])) {
     ApplyLegRefused { reason: why } => AdministratorPrivilegeMissing { reason: why }
@@ -259,7 +256,6 @@ fn observe_paths_root_only(
   paths: List<String>,
   kind: String,
 ) -> RunnerHostPathMetadata
-  uses net: Network
 {
   match run_admin_leg(subject: subject, context: context, argv: runner_microvm_root_only_probe_argv(paths: paths, kind: kind)) {
     ApplyLegRefused { reason: why } => PathsUnobservable { reason: why }
@@ -283,7 +279,6 @@ fn run_operation(
   context: FleetSshExecutionContext,
   op: ExecutorPrivilegedOperation,
 ) -> ApplyLeg
-  uses net: Network
 {
   run_admin_leg(
     subject: subject,
@@ -337,7 +332,6 @@ fn run_operations_until_failure(
   context: FleetSshExecutionContext,
   ops: List<ExecutorPrivilegedOperation>,
 ) -> List<OperationResult>
-  uses net: Network
 {
   let sequence = fold(
     ops,
@@ -393,7 +387,6 @@ fn write_staged_file(
   context: FleetSshExecutionContext,
   file: StagedFile,
 ) -> StagedWriteResult
-  uses net: Network
 {
   StagedWriteResult {
     path: file.path,
@@ -446,7 +439,6 @@ fn read_back_ruleset(
   subject: MicrovmNetworkApplySubject,
   context: FleetSshExecutionContext,
 ) -> RulesetReadback
-  uses net: Network
 {
   match run_operation(subject: subject, context: context, op: runner_microvm_nft_read_operation()) {
     ApplyLegRefused { reason: why } => RulesetNotListed { reason: why }
@@ -526,7 +518,6 @@ fn run_microvm_network_apply(
   subject: MicrovmNetworkApplySubject,
   context: FleetSshExecutionContext,
 ) -> MicrovmNetworkApplyRun
-  uses net: Network
 {
   let privilege = observe_administrator_privilege(subject: subject, context: context)
   match privilege {
@@ -549,7 +540,6 @@ fn run_privileged_microvm_network_apply(
   context: FleetSshExecutionContext,
   privilege: AdministratorPrivilege,
 ) -> MicrovmNetworkApplyRun
-  uses net: Network
 {
   let ensured = run_operation(subject: subject, context: context, op: staging_dir_ensure_operation())
   let dir = match ensured {
@@ -583,7 +573,6 @@ fn run_staged_microvm_network_apply(
   privilege: AdministratorPrivilege,
   dir: RunnerHostPathMetadata,
 ) -> MicrovmNetworkApplyRun
-  uses net: Network
 {
   let files = converge_staged_files(
     slots: subject.slots,
@@ -654,7 +643,6 @@ fn apply_checked_out_revision() -> String {
 }
 
 fn runner_microvm_network_apply_ci_wet() -> ProcessExit
-  uses net: Network
 {
   match microvm_network_apply_admission(
     host: apply_expected_host(),

@@ -4,7 +4,6 @@ import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs }
 import std.measure { Second, second, second_count, Minute, minute }
 import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization }
 import gunbc.auth.approval_gate {
   ApprovalGate, GateAdmitted, GateRefused, ApprovalStoreUnreadable, approval_gate_from_poll, approval_gate_from_outcome, approval_refusal_text,
@@ -173,7 +172,6 @@ fn d0_absent_claim_step(read: ApprovalStandingRead, request: AuthorizationReques
 }
 
 fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptyStr, expires: Timestamp, issued: Timestamp) -> D0DoorGate
-  uses net: Network
 {
   match kind {
     D0RunRefused { reason: r } => D0DoorRefused { reason: r }
@@ -204,13 +202,11 @@ fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptySt
 }
 
 fn d0_poll(request: AuthorizationRequest<D0Subject>, expires: Timestamp) -> D0DoorGate
-  uses net: Network
 {
   d0_door_gate_of(gate: approval_gate_from_outcome(outcome: approval_poll_ticks(remaining: d0_poll_tick_budget, cadence: d0_poll_cadence, escalation_id: request.escalation_id, expires_at: expires), request: request))
 }
 
 fn d0_file_and_poll(request: AuthorizationRequest<D0Subject>, issued: Timestamp, expires: Timestamp) -> D0DoorGate
-  uses net: Network
 {
   match approval_file_stored_request(stored: stored_request_from_authorization(request: request, issued_at: issued, expires_at: expires), body_file_name: d0_submit_body_file_name, submit_timeout: d0_submit_timeout) {
     ApprovalFilingRefused { reason: r } => D0DoorRefused { reason: r }
@@ -219,7 +215,6 @@ fn d0_file_and_poll(request: AuthorizationRequest<D0Subject>, issued: Timestamp,
 }
 
 fn pair_serving_d0_wet(group: String, transaction: String, authorization: String, execution_revision: String) -> ProcessExit
-  uses net: Network
 {
   match parse_fabric_group(wire: group) {
     Absent => refuse(reason: join(["`", group, "` names no fabric group"], ""))
@@ -329,7 +324,6 @@ fn pair_serving_d0_checked_out_revision() -> String {
 }
 
 fn pair_serving_d0_kernel_host() -> String
-  uses net: Network
 {
   match observe_executor_reach() {
     ExecutorReachKnown { short_hostname: h, path: _ } => h
@@ -340,7 +334,6 @@ fn pair_serving_d0_kernel_host() -> String
 // The credential-free admission step: refuses, or prints the admitted arguments, before the job
 // holds any secret.
 fn pair_serving_d0_admit_executor() -> ProcessExit
-  uses net: Network
 {
   match pair_serving_d0_mode_admission(declared_host: pair_serving_d0_declared_host(), kernel_host: pair_serving_d0_kernel_host(), consent: actions_variable_trimmed(name: pair_serving_d0_consent_env), execution_revision: pair_serving_d0_execution_revision(), checked_out_revision: pair_serving_d0_checked_out_revision()) {
     D0ModeRefused { reason: r } => refuse(reason: r)
@@ -349,7 +342,6 @@ fn pair_serving_d0_admit_executor() -> ProcessExit
 }
 
 fn pair_serving_d0_ci_wet() -> ProcessExit
-  uses net: Network
 {
   match pair_serving_d0_mode_admission(declared_host: pair_serving_d0_declared_host(), kernel_host: pair_serving_d0_kernel_host(), consent: actions_variable_trimmed(name: pair_serving_d0_consent_env), execution_revision: pair_serving_d0_execution_revision(), checked_out_revision: pair_serving_d0_checked_out_revision()) {
     D0ModeRefused { reason: r } => refuse(reason: r)

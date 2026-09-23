@@ -237,7 +237,6 @@ fn mtcollins1_sol_release(
   username: NonEmptyStr,
   password_file: NonEmptyStr,
 ) -> Bool
-  uses net: std.resources.Network
 {
   dropped = diagnostic.ipmi.Tool.SolDeactivate(
     bmc_host: mtcollins1_endpoint.host,
@@ -300,7 +299,6 @@ fn mtcollins1_sol_acquire_after_grant(
   pid_path: String,
   capture_path: String,
 ) -> ProcessExit
-  uses net: std.resources.Network
 {
   match mtcollins1_bmc_username {
     Absent =>
@@ -341,7 +339,6 @@ fn mtcollins1_sol_activate_held(
   pid_path: String,
   capture_path: String,
 ) -> ProcessExit
-  uses net: std.resources.Network
 {
   if pid_path == "" {
     return exit_failure(reason: "mtcollins1 boot: SOL pid path unset; refusing acquire")
@@ -716,7 +713,6 @@ fn mtcollins1_boot_await_capture_terminal(
 }
 
 fn mtcollins1_boot_release_sol(password_file: String, pid_path: String) -> HeldLeaseObservedState
-  uses net: std.resources.Network
 {
   match mtcollins1_bmc_username {
     Absent => LeaseInaccessible
@@ -733,7 +729,6 @@ fn mtcollins1_boot_settle_from_fresh_clock(
   attempt: AttemptIdentity,
   held_at: CasGeneration,
 ) -> ProcessExit
-  uses fs: std.resources.Filesystem
 {
   match approval_instant_now() {
     Absent =>
@@ -762,7 +757,6 @@ fn mtcollins1_boot_after_gate(
   sol_pid_path: String,
   sol_capture_path: String,
 ) -> ProcessExit
-  uses net: std.resources.Network
 {
   match gate {
     GateAdmitted { authorization: auth } =>
@@ -852,7 +846,6 @@ fn mtcollins1_boot_refuses_off_srv1(host: String) -> ProcessExit {
 }
 
 fn mtcollins1_boot_wet() -> ProcessExit
-  uses net: std.resources.Network
 {
   match actions_variable_read(name: fleet_converge_expected_host_env_name) {
     ActionsVariableAbsent { variable: v, detail: d } =>
@@ -866,7 +859,6 @@ fn mtcollins1_boot_wet() -> ProcessExit
 }
 
 fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
-  uses net: std.resources.Network
 {
   let cred = actions_variable_trimmed(name: host_reset_bmc_credential_path_env)
   if cred == "" {

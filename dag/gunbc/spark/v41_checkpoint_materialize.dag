@@ -3,7 +3,6 @@ module gunbc.spark.v41_checkpoint_materialize
 import std.types { String, Bool, Int, List, NonEmptyStr, Secret }
 import std.nat { Nat }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import std.algebra { trim }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
@@ -603,7 +602,6 @@ data v41_checkpoint_ci_attempt_raw: String = "v41-checkpoint-materialize-ci"
 data v41_checkpoint_ci_receipt_path: String = "target/v41-checkpoint-materialize-receipt.txt"
 
 fn v41_checkpoint_materialize_ci_wet() -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   match spark_converge_target_selection(execute_apply: true) {
