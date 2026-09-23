@@ -5209,7 +5209,14 @@ fn type_node_is_arrow(n: Node) -> Bool {
 // unannotated let-bound lambda at its arrow.
 fn expression_is_local_value(e: Node) -> Bool {
   match e.expr_data {
-    ExprVar { binding_kind: Present { value: LocalValueBinding } } => true
+    ExprVar { binding_kind: kind } => binding_kind_is_local_value(kind: kind)
+    _ => false
+  }
+}
+
+fn binding_kind_is_local_value(kind: VarBindingKind?) -> Bool {
+  match kind {
+    Present { value: LocalValueBinding } => true
     _ => false
   }
 }

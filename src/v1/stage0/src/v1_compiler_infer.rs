@@ -1303,6 +1303,13 @@ pub fn variant_value_reference_diagnostics(
     )
 }
 
+pub fn expected_type_is_arrow(expected: Option<Rc<Node>>) -> bool {
+    match expected.clone() {
+        Some(e) => (e.connective.clone() == Connective::Arrow),
+        std::option::Option::None => false,
+    }
+}
+
 pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBindingKind> {
     match lookup_variant_parent_enum(scope.clone(), name.clone()) {
         Some(parent_enum) => Rc::new(VarBindingKind::VariantValueBinding {
@@ -1624,7 +1631,7 @@ pub fn explicit_return_conformance_diags(
             __result.extend(
                 (*declared_type_conformance_diags(
                     declared.clone(),
-                    crate::v1_compiler_infer_types::resolved_type(returned.clone()),
+                    expression_value_type(returned.clone()),
                     returned.span.clone(),
                     scope.clone(),
                 ))
@@ -1828,14 +1835,8 @@ pub fn declared_type_conformance_diags(
                     scope.module_name.clone(),
                 )])
             } else {
-                if ((type_node_is_callable(declared.clone())
-                    && type_node_is_callable(produced.clone()))
-                    && callable_signature_mismatch(
-                        declared.clone(),
-                        produced.clone(),
-                        si.clone(),
-                        0,
-                    ))
+                if ((type_node_is_arrow(declared.clone()) && type_node_is_arrow(produced.clone()))
+                    && callable_signature_mismatch(declared.clone(), produced.clone(), si.clone()))
                 {
                     Rc::new(vec![type_mismatch_error(
                         crate::v1_compiler_infer_types::node_type_shape(
@@ -6256,6 +6257,7 @@ pub fn direct_call_structured_record_literal_resolved_type_mismatch(
                                 formal.clone(),
                                 substitution_basis.clone(),
                                 actual.clone(),
+                                actual_expr.clone(),
                                 type_env.clone(),
                                 module_name.clone(),
                                 source_indices.clone(),
@@ -6275,6 +6277,7 @@ pub fn direct_call_structured_record_literal_resolved_type_mismatch(
                         formal.clone(),
                         substitution_basis.clone(),
                         actual.clone(),
+                        actual_expr.clone(),
                         type_env.clone(),
                         module_name.clone(),
                         source_indices.clone(),
@@ -6899,6 +6902,62 @@ pub fn direct_call_formal_has_unbound_type_variable_at(n: Rc<Node>, depth: i64) 
     })
 }
 
+pub fn callable_generic_names(
+    arrow: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in Rc::new({
+            let mut __result = Vec::new();
+            for p in arrow.params.clone().iter().cloned() {
+                if param_is_generic_decl(p.clone(), source_indices.clone()) {
+                    __result.push(p);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(crate::v1_std_core::param_node_name_at(
+                p.clone(),
+                source_indices.clone(),
+            ));
+        }
+        __result
+    })
+}
+
+pub fn callable_value_params(
+    arrow: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in arrow.params.clone().iter().cloned() {
+            if !param_is_generic_decl(p.clone(), source_indices.clone()) {
+                __result.push(p);
+            }
+        }
+        __result
+    })
+}
+
+pub fn callable_param_type(p: Rc<Node>) -> Rc<Node> {
+    {
+        let te = crate::v1_std_core::param_node_type_expr(p.clone());
+        if (te.connective.clone() == Connective::Arrow) {
+            te
+        } else {
+            match te.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: resolved, .. }) => resolved.clone(),
+                _ => te,
+            }
+        }
+    }
+}
+
 pub fn callable_signature_view(n: Rc<Node>) -> Rc<Node> {
     if (n.connective.clone() == Connective::Arrow) {
         n.clone()
@@ -6907,32 +6966,181 @@ pub fn callable_signature_view(n: Rc<Node>) -> Rc<Node> {
     }
 }
 
+pub fn callable_signature_substitution(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    generic_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    acc: Rc<HashMap<String, Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    {
+        let f_params = callable_value_params(formal.clone(), source_indices.clone());
+        let a_params = callable_value_params(actual.clone(), source_indices.clone());
+        let after_params = Rc::new(
+            f_params
+                .clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        .fold(
+            acc.clone(),
+            |st: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| match a_params
+                .clone()
+                .iter()
+                .cloned()
+                .skip(pair.0.clone() as usize)
+                .next()
+            {
+                Some(ap) => callable_leaf_substitution(
+                    callable_param_type(pair.1.clone()),
+                    callable_param_type(ap.clone()),
+                    generic_names.clone(),
+                    source_indices.clone(),
+                    st.clone(),
+                ),
+                std::option::Option::None => st.clone(),
+            },
+        );
+        callable_leaf_substitution(
+            crate::v1_compiler_infer_types::resolved_type(formal.clone()),
+            crate::v1_compiler_infer_types::resolved_type(actual.clone()),
+            generic_names.clone(),
+            source_indices.clone(),
+            after_params.clone(),
+        )
+    }
+}
+
+pub fn callable_leaf_substitution(
+    formal_part: Rc<Node>,
+    actual_part: Rc<Node>,
+    generic_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    acc: Rc<HashMap<String, Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    if ((formal_part.connective.clone() == Connective::Arrow)
+        && (actual_part.connective.clone() == Connective::Arrow))
+    {
+        callable_signature_substitution(
+            formal_part.clone(),
+            actual_part.clone(),
+            generic_names.clone(),
+            source_indices.clone(),
+            acc.clone(),
+        )
+    } else {
+        unify_generics(
+            actual_part.clone(),
+            formal_part.clone(),
+            generic_names.clone(),
+            source_indices.clone(),
+            acc.clone(),
+        )
+    }
+}
+
 pub fn callable_component_ground_mismatch(
     formal_part: Rc<Node>,
     actual_part: Rc<Node>,
+    subst: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    depth: i64,
 ) -> bool {
     if ((formal_part.connective.clone() == Connective::Arrow)
         && (actual_part.connective.clone() == Connective::Arrow))
     {
-        callable_signature_mismatch(
+        callable_arrow_mismatch(
             formal_part.clone(),
             actual_part.clone(),
+            subst.clone(),
             source_indices.clone(),
-            (depth.clone() + 1),
         )
     } else {
-        if (conformance_ground_type(formal_part.clone(), source_indices.clone())
-            && conformance_ground_type(actual_part.clone(), source_indices.clone()))
         {
-            !crate::v1_compiler_infer_types::node_type_compatible(
-                formal_part.clone(),
-                actual_part.clone(),
-                source_indices.clone(),
-            )
+            let instantiated =
+                substitute_generics(actual_part.clone(), subst.clone(), source_indices.clone());
+            if ((formal_part.connective.clone() == Connective::Arrow)
+                || (instantiated.connective.clone() == Connective::Arrow))
+            {
+                (conformance_ground_type(formal_part.clone(), source_indices.clone())
+                    || conformance_ground_type(instantiated.clone(), source_indices.clone()))
+            } else {
+                if (conformance_ground_type(formal_part.clone(), source_indices.clone())
+                    && conformance_ground_type(instantiated.clone(), source_indices.clone()))
+                {
+                    !crate::v1_compiler_infer_types::node_type_compatible(
+                        formal_part.clone(),
+                        instantiated.clone(),
+                        source_indices.clone(),
+                    )
+                } else {
+                    false
+                }
+            }
+        }
+    }
+}
+
+pub fn callable_arrow_mismatch(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    subst: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let f_params = callable_value_params(formal.clone(), source_indices.clone());
+        let a_params = callable_value_params(actual.clone(), source_indices.clone());
+        if ((f_params.clone().len() as i64) != (a_params.clone().len() as i64)) {
+            true
         } else {
-            false
+            {
+                let params_mismatch = {
+                    let mut __found = false;
+                    for pair in Rc::new(
+                        f_params
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .enumerate()
+                            .map(|(i, v)| (i as i64, v))
+                            .collect::<Vec<_>>(),
+                    )
+                    .iter()
+                    .cloned()
+                    {
+                        if match a_params
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(pair.0.clone() as usize)
+                            .next()
+                        {
+                            Some(ap) => callable_component_ground_mismatch(
+                                callable_param_type(pair.1.clone()),
+                                callable_param_type(ap.clone()),
+                                subst.clone(),
+                                source_indices.clone(),
+                            ),
+                            std::option::Option::None => true,
+                        } {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                };
+                (params_mismatch.clone()
+                    || callable_component_ground_mismatch(
+                        crate::v1_compiler_infer_types::resolved_type(formal.clone()),
+                        crate::v1_compiler_infer_types::resolved_type(actual.clone()),
+                        subst.clone(),
+                        source_indices.clone(),
+                    ))
+            }
         }
     }
 }
@@ -6941,76 +7149,152 @@ pub fn callable_signature_mismatch(
     formal: Rc<Node>,
     actual: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    depth: i64,
 ) -> bool {
-    if (depth.clone() >= 8) {
-        false
-    } else {
+    {
+        let f = callable_signature_view(formal.clone());
+        let a = callable_signature_view(actual.clone());
+        if ((f.connective.clone() != Connective::Arrow)
+            || (a.connective.clone() != Connective::Arrow))
         {
-            let f = callable_signature_view(formal.clone());
-            let a = callable_signature_view(actual.clone());
-            if ((f.connective.clone() != Connective::Arrow)
-                || (a.connective.clone() != Connective::Arrow))
+            false
+        } else {
             {
-                false
+                let generic_names = callable_generic_names(a.clone(), source_indices.clone());
+                let subst = callable_signature_substitution(
+                    f.clone(),
+                    a.clone(),
+                    generic_names.clone(),
+                    source_indices.clone(),
+                    v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                );
+                callable_arrow_mismatch(f.clone(), a.clone(), subst.clone(), source_indices.clone())
+            }
+        }
+    }
+}
+
+pub fn type_node_positively_not_callable(n: Rc<Node>, type_env: Rc<TypeEnv>) -> bool {
+    {
+        let si = type_env.source_indices.clone();
+        if type_node_is_callable(n.clone()) {
+            false
+        } else {
+            if conformance_ground_type(n.clone(), si.clone()) {
+                true
             } else {
-                if ((f.params.clone().len() as i64) != (a.params.clone().len() as i64)) {
-                    true
-                } else {
-                    {
-                        let params_mismatch = {
-                            let mut __found = false;
-                            for pair in Rc::new(
-                                f.params
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .enumerate()
-                                    .map(|(i, v)| (i as i64, v))
-                                    .collect::<Vec<_>>(),
-                            )
-                            .iter()
-                            .cloned()
-                            {
-                                if match a
-                                    .params
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(pair.0.clone() as usize)
-                                    .next()
-                                {
-                                    Some(ap) => callable_component_ground_mismatch(
-                                        crate::v1_compiler_infer_types::child_type_node(
-                                            crate::v1_std_core::param_node_type_expr(
-                                                pair.1.clone(),
-                                            ),
-                                        ),
-                                        crate::v1_compiler_infer_types::child_type_node(
-                                            crate::v1_std_core::param_node_type_expr(ap.clone()),
-                                        ),
-                                        source_indices.clone(),
-                                        depth.clone(),
-                                    ),
-                                    std::option::Option::None => true,
-                                } {
-                                    __found = true;
-                                    break;
-                                }
-                            }
-                            __found
-                        };
-                        (params_mismatch.clone()
-                            || callable_component_ground_mismatch(
-                                crate::v1_compiler_infer_types::resolved_type(f.clone()),
-                                crate::v1_compiler_infer_types::resolved_type(a.clone()),
-                                source_indices.clone(),
-                                depth.clone(),
-                            ))
+                match crate::v1_compiler_infer_env::lookup_type_for(
+                    type_env.clone(),
+                    crate::v1_std_core::with_required_cardinality(n.clone()),
+                ) {
+                    Some(resolved) => {
+                        (!type_node_is_callable(resolved.clone())
+                            && ((resolved.connective.clone() == Connective::Conj)
+                                || (resolved.connective.clone() == Connective::Disj)))
                     }
+                    std::option::Option::None => false,
                 }
             }
         }
+    }
+}
+
+pub fn expression_value_type(e: Rc<Node>) -> Rc<Node> {
+    if is_lambda_expr(e.clone()) {
+        resolved_callable_type(
+            Rc::new({
+                let mut __result = Vec::new();
+                for lp in Rc::new(
+                    e.children
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                {
+                    __result.push(lambda_arrow_param(lp.clone()));
+                }
+                __result
+            }),
+            crate::v1_compiler_infer_types::resolved_type(e.clone()),
+        )
+    } else {
+        crate::v1_compiler_infer_types::resolved_type(e.clone())
+    }
+}
+
+pub fn lambda_arrow_param(lambda_param: Rc<Node>) -> Rc<Node> {
+    {
+        let param_type = crate::v1_compiler_infer_types::resolved_type(lambda_param.clone());
+        Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: "".to_string(),
+            span: lambda_param.span.clone(),
+            ident_span: std::option::Option::None,
+            children: Rc::new(vec![param_type.clone()]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: param_type.clone(),
+            })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+}
+
+pub fn one_sided_callable_value_mismatch(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    type_env: Rc<TypeEnv>,
+) -> bool {
+    ((((type_node_is_arrow(declared.clone()) != type_node_is_arrow(produced.clone()))
+        && !direct_call_formal_has_unbound_type_variable(declared.clone()))
+        && !direct_call_formal_has_unbound_type_variable(produced.clone()))
+        && one_sided_callable_mismatch(declared.clone(), produced.clone(), type_env.clone()))
+}
+
+pub fn one_sided_callable_mismatch(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    type_env: Rc<TypeEnv>,
+) -> bool {
+    ((type_node_is_arrow(formal.clone())
+        && type_node_positively_not_callable(actual.clone(), type_env.clone()))
+        || (type_node_is_arrow(actual.clone())
+            && type_node_positively_not_callable(formal.clone(), type_env.clone())))
+}
+
+pub fn type_node_is_arrow(n: Rc<Node>) -> bool {
+    (n.connective.clone() == Connective::Arrow)
+}
+
+pub fn expression_is_local_value(e: Rc<Node>) -> bool {
+    match (*e.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: kind, ..
+        } => binding_kind_is_local_value(kind.clone()),
+        _ => false,
+    }
+}
+
+pub fn binding_kind_is_local_value(kind: Option<Rc<VarBindingKind>>) -> bool {
+    match kind.clone().as_deref().cloned() {
+        Some(VarBindingKind::LocalValueBinding) => true,
+        _ => false,
     }
 }
 
@@ -7018,6 +7302,7 @@ pub fn direct_call_arg_type_mismatch(
     formal: Rc<Node>,
     substitution_basis: Rc<Node>,
     actual: Rc<Node>,
+    actual_expr: Rc<Node>,
     type_env: Rc<TypeEnv>,
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -7029,41 +7314,48 @@ pub fn direct_call_arg_type_mismatch(
                 source_indices.clone(),
                 substitution_basis.clone(),
             )) == "Optional".to_string()));
-        if ((substitution_is_optional.clone()
-            || direct_call_formal_has_unbound_type_variable(substitution_basis.clone()))
-            || direct_call_formal_has_unbound_type_variable(actual.clone()))
-        {
+        if substitution_is_optional.clone() {
             false
         } else {
-            if (type_node_is_callable(formal.clone()) && type_node_is_callable(actual.clone())) {
-                callable_signature_mismatch(
-                    formal.clone(),
-                    actual.clone(),
-                    source_indices.clone(),
-                    0,
-                )
+            if (type_node_is_arrow(formal.clone()) && type_node_is_arrow(actual.clone())) {
+                callable_signature_mismatch(formal.clone(), actual.clone(), source_indices.clone())
             } else {
-                if (type_node_is_callable(formal.clone()) || type_node_is_callable(actual.clone()))
+                if (direct_call_formal_has_unbound_type_variable(substitution_basis.clone())
+                    || direct_call_formal_has_unbound_type_variable(actual.clone()))
                 {
                     false
                 } else {
-                    ((nominal_call_arg_brand_mismatch(
-                        formal.clone(),
-                        actual.clone(),
-                        type_env.clone(),
-                        source_indices.clone(),
-                    ) || container_element_nominal_brand_mismatch(
-                        formal.clone(),
-                        actual.clone(),
-                        type_env.clone(),
-                        module_name.clone(),
-                        source_indices.clone(),
-                    )) || kernel_value_declared_type_mismatch(
-                        formal.clone(),
-                        actual.clone(),
-                        type_env.clone(),
-                        source_indices.clone(),
-                    ))
+                    if (type_node_is_arrow(formal.clone()) || type_node_is_arrow(actual.clone())) {
+                        (one_sided_callable_mismatch(
+                            formal.clone(),
+                            actual.clone(),
+                            type_env.clone(),
+                        ) && !expression_is_local_value(actual_expr.clone()))
+                    } else {
+                        if (type_node_is_callable(formal.clone())
+                            || type_node_is_callable(actual.clone()))
+                        {
+                            false
+                        } else {
+                            ((nominal_call_arg_brand_mismatch(
+                                formal.clone(),
+                                actual.clone(),
+                                type_env.clone(),
+                                source_indices.clone(),
+                            ) || container_element_nominal_brand_mismatch(
+                                formal.clone(),
+                                actual.clone(),
+                                type_env.clone(),
+                                module_name.clone(),
+                                source_indices.clone(),
+                            )) || kernel_value_declared_type_mismatch(
+                                formal.clone(),
+                                actual.clone(),
+                                type_env.clone(),
+                                source_indices.clone(),
+                            ))
+                        }
+                    }
                 }
             }
         }
@@ -7739,9 +8031,9 @@ if match (*actual_expr.expr_data.clone()).clone() {
                     Rc::new(vec![])
                 } else {
                     {
-                        let actual_raw = crate::v1_compiler_infer_types::resolved_type(actual_expr.clone());
+                        let actual_raw = expression_value_type(actual_expr.clone());
 let actual = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(actual_raw.clone(), type_env.clone(), module_name.clone());
-if direct_call_arg_type_mismatch(formal.clone(), app.formal.clone().substitution_basis.clone(), actual.clone(), type_env.clone(), module_name.clone(), source_indices.clone()) {
+if direct_call_arg_type_mismatch(formal.clone(), app.formal.clone().substitution_basis.clone(), actual.clone(), actual_expr.clone(), type_env.clone(), module_name.clone(), source_indices.clone()) {
                             Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal.clone(), source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual.clone(), source_indices.clone()), actual_expr.span.clone(), module_name.clone())])
                         } else {
                             Rc::new(vec![])
@@ -10400,7 +10692,7 @@ ok_infer(crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clon
 }
 },
     std::option::Option::None => match (*crate::v1_compiler_infer_lookup::lookup_func_sig(scope.func_env.clone(), scope.type_env.clone(), name.clone())).clone() {
-    FuncSigLookup::FuncSigResolved { sig: fsig, declared: fsig_declared, .. } => match ((fsig.params.clone().len() as i64) == 0) {
+    FuncSigLookup::FuncSigResolved { sig: fsig, declared: fsig_declared, .. } => match (((fsig.params.clone().len() as i64) == 0) && !expected_type_is_arrow(expected.clone())) {
     true => ok_infer(crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
     target: crate::v1_compiler_infer_lookup::resolved_declaration_call_target(fsig_declared.clone()),
@@ -12478,12 +12770,40 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             let val_typed = val_result.typed.clone();
             let val_type = crate::v1_compiler_infer_types::resolved_type(val_typed.clone());
             let val_annotation_diags = match declared_let_type.clone() {
-                Some(declared) => declared_type_conformance_diags(
-                    declared.clone(),
-                    val_type.clone(),
-                    val_expr.span.clone(),
-                    scope.clone(),
-                ),
+                Some(declared) => {
+                    let produced_value_type = expression_value_type(val_typed.clone());
+                    let conformance = declared_type_conformance_diags(
+                        declared.clone(),
+                        produced_value_type.clone(),
+                        val_expr.span.clone(),
+                        scope.clone(),
+                    );
+                    if ((conformance.clone().len() as i64) > 0) {
+                        conformance.clone()
+                    } else {
+                        if (one_sided_callable_value_mismatch(
+                            declared.clone(),
+                            produced_value_type.clone(),
+                            scope.type_env.clone(),
+                        ) && !expression_is_local_value(val_typed.clone()))
+                        {
+                            Rc::new(vec![type_mismatch_error(
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    declared.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ),
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    produced_value_type.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ),
+                                val_expr.span.clone(),
+                                scope.module_name.clone(),
+                            )])
+                        } else {
+                            Rc::new(vec![])
+                        }
+                    }
+                }
                 std::option::Option::None => Rc::new(vec![]),
             };
             let val_diags =
@@ -20508,9 +20828,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     val_result.diagnostics.clone(),
                                     declared_type_conformance_diags(
                                         item.type_annotation.clone().clone().unwrap(),
-                                        crate::v1_compiler_infer_types::resolved_type(
-                                            val_typed.clone(),
-                                        ),
+                                        expression_value_type(val_typed.clone()),
                                         item.body.clone().clone().unwrap().span.clone(),
                                         scope.clone(),
                                     ),
