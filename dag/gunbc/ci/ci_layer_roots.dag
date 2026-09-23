@@ -327,6 +327,10 @@ data excl_run_verdict_exit_status_dissolve: DissolutionCondition = unbound_disso
 
 data excl_shell_spawn_refused_reason: String = "SUBSTANTIATED per-row: the subject of test.claim.shell_spawn_refused_real_execution_witness is whether the host can spawn argv[0], and whether the seed's shell transport turns a failed spawn into ShellSpawnRefused rather than aborting the evaluation. Both are facts about the real spawn, so the file cannot be made hermetic: a mock_response for test.ShellSpawnProbe.Observed would be authored data, and the discriminating red (an absent binary yields ShellSpawnRefused) would pass against a fabricated refusal whether or not the transport realizes one. Its fns are scheduled in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, which the required floor executes: the only effect is spawning a local program (true, false, an absent name) -- no network, no cargo, no remote host, no writes."
 
+data excl_manager_unaskable_reason: String = "SUBSTANTIATED per-row, and it is its OWN row rather than a second use of excl_shell_spawn_refused_reason because that reason substantiates a DIFFERENT SUBJECT AND A DIFFERENT EFFECT SET (review 69970): it says in terms that the subject of test.claim.shell_spawn_refused_real_execution_witness is whether the host can spawn argv[0], and that its only effect is spawning a local program. The subject here is a SYSTEMD USER MANAGER -- whether gunbc.compute.work_provider_local read_user_unit_property folds a refused spawn of systemctl into a property that was NOT QUERIED, so the two unit readings reach their own unavailable arm instead of the whole evaluation ending as a shell-spawn-refused runtime error with the seat charged and the producer lease held. The effects are the manager probe, systemctl ShowUserProperty for four unit properties, and a cgroup events read: a superset of the neighbour row's one effect, over a different boundary. DESIGN section 3b: a home that resolves but owns only part of the scope a row claims is a scope/ownership mismatch on the row. The negative half that admits it to the same LANE is the one every member shares: no network, no cargo, no remote host, no install media, and nothing written outside what the witness creates."
+
+data excl_manager_unaskable_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for the manager probe AND for systemd.Systemctl.ShowUserProperty, sufficient for the queried/not-queried fold to be re-checked hermetically against BOTH shell outcomes; then the fn re-enrols as an ordinary hermetic discovery row, drops off local_repo_wet_schedule and off floor_route_gap, and this row deletes. A mock for the probe ALONE does not discharge it: the subject is what the property reader does when the manager cannot be spawned, so a run that reaches ShowUserProperty through a fixture and never exercises the refusal arm re-checks the assertion against authored data rather than against the boundary.")
+
 data excl_shell_spawn_refused_dissolve: DissolutionCondition = unbound_dissolution(description: "the spawn boundary of the shell transport becomes executable under the execution-corpus scope prefix as ExecutionWitnessKind rows in gunbc.commit_workflow, the same terminal excl_bin_wet_dissolve names; then this row and its four schedule rows delete together. Publishing a mock_response for ShellSpawnProbe.Observed does NOT discharge it: a mocked ShellSpawnRefused re-checks the assertions against a fixture, not against the spawn.")
 
 // bin-execution witness class re-homed to the falsifier wet cadence (CI floor endgame D6): the
@@ -1033,6 +1037,16 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "host_capacity_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "manager_unaskable_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_manager_unaskable_reason,
+    dissolution: excl_manager_unaskable_dissolve},
+  WitnessExclusionRow {
+    pattern: "attempt_lifecycle_wet_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},

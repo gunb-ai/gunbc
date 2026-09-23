@@ -11,7 +11,7 @@ import gunbc.compute.host_capacity {
   compute_capacity_subject, compute_capacity_root, compute_memory_partition, compute_memory_ceiling,
   HostMemoryObservation, HostMemoryObserved, HostMemoryUnobserved, observe_host_memory,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
-  compute_reserve_on, compute_reserve_against, compute_release, ComputeRelease, ComputeReleased, ComputeReleaseRefused,
+  compute_reserve_on, compute_reserve_against, compute_release, ComputeRelease, ComputeNothingToRelease, ComputeReleased, ComputeReleaseRefused,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing_on,
 }
 
@@ -90,7 +90,24 @@ fn is_ledger_refusal(r: ComputeReservation) -> Bool {
 fn released(r: ComputeRelease) -> Bool {
   match r {
     ComputeReleased { partition: _, reference: _, reason: _ } => true
+    ComputeNothingToRelease { detail: _ } => false
     ComputeReleaseRefused { detail: _ } => false
+  }
+}
+
+fn nothing_to_release(r: ComputeRelease) -> Bool {
+  match r {
+    ComputeReleased { partition: _, reference: _, reason: _ } => false
+    ComputeNothingToRelease { detail: _ } => true
+    ComputeReleaseRefused { detail: _ } => false
+  }
+}
+
+fn release_refused(r: ComputeRelease) -> Bool {
+  match r {
+    ComputeReleased { partition: _, reference: _, reason: _ } => false
+    ComputeNothingToRelease { detail: _ } => false
+    ComputeReleaseRefused { detail: _ } => true
   }
 }
 
@@ -248,3 +265,31 @@ test fn the_real_observation_reads_this_machine() -> Bool {
   }
 }
 
+// A SECOND RELEASE OF ONE SEAT IS NOT A FAILED RELEASE, and before this arm existed it was reported
+// as one. The producer and the recovery door both come back through compute_release, so the seat
+// can be returned twice for one reference -- recovery wins past the deadline, returns the seat, and
+// the producer reaches its own release afterwards. The pool then answers SeatNotHeld, which a
+// CATCH-ALL arm folded into ComputeReleaseRefused: compute_release_landed went false, the record
+// fold wrote outcome.json saying the seat was STILL CHARGED, and the stuck-reservation remedy was
+// attached to a seat recovery had already returned.
+//
+// THIS DRIVES THE DOUBLE RELEASE FOR REAL rather than describing it: one reservation against a real
+// event log in a temporary directory, released twice. The capacity reading after the second release
+// is what rules out the opposite error -- an arm that reported success by releasing the seat AGAIN
+// would show the committed figure moving, and it does not.
+test fn releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing() -> Bool {
+  let subject = subject_at(root: fresh_root(), appropriation_kib: one_gibibyte_in_kibibytes * 2, request_kib: one_gibibyte_in_kibibytes)
+  let held = compute_reserve_on(subject: subject, reference: "wet-double" as NonEmptyStr, term_seconds: 60)
+  let while_held = compute_capacity_standing_on(subject: subject)
+  let first = compute_release(reservation: held, reason: "the producer finished" as NonEmptyStr)
+  let after_first = compute_capacity_standing_on(subject: subject)
+  let second = compute_release(reservation: held, reason: "recovery got here too" as NonEmptyStr)
+  let after_second = compute_capacity_standing_on(subject: subject)
+  reserved_amount(r: held) == one_gibibyte_in_kibibytes
+    && standing_committed(s: while_held) == one_gibibyte_in_kibibytes
+    && released(r: first)
+    && standing_committed(s: after_first) == 0
+    && nothing_to_release(r: second)
+    && !release_refused(r: second)
+    && standing_committed(s: after_second) == 0
+}

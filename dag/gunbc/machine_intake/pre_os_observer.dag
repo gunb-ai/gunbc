@@ -2,7 +2,7 @@ module gunbc.machine_intake_pre_os_observer
 
 import gunbc.machine_intake_mtcollins1_netboot_client_observation { firmware_pxe_mac_rendering }
 import std.types { Bool, NonEmptyStr, String }
-import extdeps.posix.termios { termios_onlcr_output_lines }
+import gunbc.machine_intake_terminal_transcript { terminal_transcript_lines }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import gunbc.machine_intake_pre_os_bringup_verdict {
   FirmwareConsoleReport, NoTerminalStated, UndecodedErrorCodesOnly,
@@ -15,7 +15,7 @@ import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIn
 import std.algebra { FreeSemigroup, Empty }
 
 
-// Every reader below frames the SOL transcript with extdeps.posix.termios termios_onlcr_output_lines,
+// Every reader below frames the SOL transcript with gunbc.machine_intake_terminal_transcript terminal_transcript_lines,
 // the one authority for the channel's CR NL terminator (shared with
 // gunbc.machine_intake_host_capture_envelope); no reader trims a line of its own.
 
@@ -24,7 +24,7 @@ import std.algebra { FreeSemigroup, Empty }
 data sol_activation_banner: NonEmptyStr = "[SOL Session operational.  Use ~? for help]"
 
 fn pre_os_has_banner(text: String) -> Bool {
-  any(termios_onlcr_output_lines(text: text), line => line == sol_activation_banner as String)
+  any(terminal_transcript_lines(text: text), line => line == sol_activation_banner as String)
 }
 
 // A terminal closes an assessed firmware attempt, never its machine's collector.
@@ -32,7 +32,7 @@ fn pre_os_has_banner(text: String) -> Bool {
 // or process-termination operation is reachable from this recognizer.
 fn pre_os_terminal_from_console(text: String) -> ObservationAttempt<FirmwareConsoleReport, NonEmptyStr> {
   if text == "" { ObservationRefused { cause: "zero-byte capture: no console observation, not silence" } }
-  else { match firmware_console_report(lines: termios_onlcr_output_lines(text: text)) {
+  else { match firmware_console_report(lines: terminal_transcript_lines(text: text)) {
     FirmwareErrorStatementUnrecognized { statement } => ObservationRefused { cause: concat("unrecognized firmware statement: ", statement as String) as NonEmptyStr }
     UndecodedErrorCodesOnly { err_lines } => ObservationRefused { cause: concat("undecoded firmware error-code lines: ", to_string(err_lines)) as NonEmptyStr }
     report => ObservationEstablished { observed: report }
@@ -84,7 +84,7 @@ fn pre_os_training_assessment(milestones: PreOsMilestones) -> GoalAssessment<Non
 // not a BMC status. The source-to-machine authentication is checked by the
 // envelope consumer before this parser is called. No kernel boot UUID is minted.
 fn pre_os_host_userspace_boot(text: String, host_mac: NonEmptyStr) -> ObservationAttempt<HostBootOutcome, NonEmptyStr> {
-  let lines = termios_onlcr_output_lines(text: text)
+  let lines = terminal_transcript_lines(text: text)
   let beginning = "\nmarker=gunbc-runner-host-boot\n"
   let ending = "\nmarker-end=gunbc-runner-host-boot\n"
   let blocks = split(s: concat("\n", join(lines, "\n"), "\n"), delimiter: beginning).skip(n: 1)
@@ -112,7 +112,7 @@ fn pre_os_host_userspace_boot(text: String, host_mac: NonEmptyStr) -> Observatio
 // count does not identify modules or their socket positions and cannot replace
 // #11198's positioned inventory for configuration applicability.
 fn pre_os_host_population_statement(text: String) -> ObservationAttempt<NonEmptyStr, NonEmptyStr> {
-  let rows = filter(termios_onlcr_output_lines(text: text),
+  let rows = filter(terminal_transcript_lines(text: text),
     line => contains(line, "DMI: Memory slots populated: "))
   match rows.first() {
     Absent => ObservationRefused { cause: "no host-produced DMI population statement" }
@@ -128,7 +128,7 @@ fn pre_os_host_population_statement(text: String) -> ObservationAttempt<NonEmpty
 // CR) does not and should not remove. Boot-option errors remain independently unrecognized
 // by the training-statement roster; this fact does not green that assessment.
 fn pre_os_firmware_boot_selection(text: String, host_mac: NonEmptyStr) -> ObservationAttempt<NonEmptyStr, NonEmptyStr> {
-  let lines = map(termios_onlcr_output_lines(text: text), line =>
+  let lines = map(terminal_transcript_lines(text: text), line =>
     if ends_with(s: line, suffix: "^M") { substring(s: line, start: 0, end: line.length() - 2) } else { line })
   let rendered_host_mac = firmware_pxe_mac_rendering(host_mac: host_mac)
   match filter(lines, line => line == concat(">>Start PXE over IPv4 on MAC: ", rendered_host_mac as String, ".")

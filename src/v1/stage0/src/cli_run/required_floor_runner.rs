@@ -1293,7 +1293,9 @@ fn changed_and_enrolled_witness_identities_with_index(
         }
     }
     let dag_path_list: Vec<String> = dag_paths.into_iter().collect();
+    floor_seam("diff-base-decl-census");
     let base_test_decl_names = floor_base_test_decl_census(&dag_path_list)?;
+    floor_seam("diff-edits");
     let edits = floor_diff_edits_from_line_ranges(
         index,
         &line_ranges_by_file,
@@ -1303,6 +1305,7 @@ fn changed_and_enrolled_witness_identities_with_index(
         Some(&base_test_decl_names),
         &rename_from,
     )?;
+    floor_seam("diff-changed-witness-identities");
     let quarantined = quarantine_probe_admitted_pairs();
     let root = process_workspace_root();
     let changed = changed_witness_identities_from_edited_test_fns(
@@ -1322,6 +1325,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     // exhaustiveness is real at `gunbc compile` and silent on a required floor that never
     // resolved the file. Seeding the authored module pulls its both-closure into
     // `prepare_repository_closure` (`ResolveTypecheckGate::Strict`), which is the same pass.
+    floor_seam("diff-touched-module-seeds");
     let (touched_modules, touched_outside_floor_roots, seeded_pairs) =
         module_seeds_from_touched_entry_files(&root, &edits.touched_entry_files, source_roots)?;
     // THE ASSEMBLY'S OWN PREDICATE (`prepared_subject_exclusion_row_for`), asked here over the
@@ -1341,6 +1345,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     // (gunbc#11194). Same diff window as every projection above -- the base is the floor's own
     // resolved comparison, never a second baseline authority -- and the same Strict preparation
     // downstream, so a planned consumer is a prepared consumer and `check_match` runs on it.
+    floor_seam("arm-set-planning");
     let arm_set = arm_set_consumer_planning(planning_index)?;
     Ok(FloorDiffProjections {
         changed_witnesses: changed,
@@ -4345,6 +4350,43 @@ pub fn floor_seam(name: &str) {
         g.clear();
         g.push_str(name);
     }
+    // EVERY SEAM IS A PHASE BOUNDARY, SO EVERY SEAM CARRIES A BEAT. The sixty-second watchdog
+    // names the minute a phase was in, never where it began or ended, so a phase shorter than a
+    // beat is invisible and a longer one is bounded only to the minute. A reading taken AT the
+    // boundary is what lets gunbc.floor_demand attribute a held-set delta to the phase between two
+    // seams rather than to whichever phase the next tick happened to land in.
+    floor_cgroup_stat_beat(&format!("seam-{name}"), None);
+    floor_heap_beat(name);
+}
+
+/// THE ALLOCATOR'S OWN SPLIT AT A SEAM: bytes live in allocations, and bytes the allocator holds
+/// free. A resident set that stays high across a phase boundary has two causes with opposite
+/// remedies -- state still owned by the program (shorten its ownership) or memory freed and kept
+/// by glibc (an allocator behaviour, not retention) -- and RSS cannot tell them apart.
+/// `malloc_trim` can, but it ACTS: it returns the free half, so the next phase would run on a
+/// different heap than the one being measured. `mallinfo2` only reads. Seams only, never the
+/// watchdog: it walks every arena, and a boundary is where the attribution is decided.
+///
+/// `in_use` is `uordblks` (allocated main-arena and thread-arena bytes) plus `hblkhd` (mmapped
+/// chunks, which are always live); `free` is `fordblks`. glibc-only, and `na` elsewhere rather
+/// than a zero, since zero free is a real reading.
+fn floor_heap_beat(seam: &str) {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        // SAFETY: mallinfo2 takes no arguments and returns a struct by value; it reads allocator
+        // bookkeeping under the arena locks and changes nothing.
+        let mi = unsafe { libc::mallinfo2() };
+        eprintln!(
+            "[floor-heap] seam={seam} in_use={} free={} mmapped={} arena={} {}",
+            mi.uordblks + mi.hblkhd,
+            mi.fordblks,
+            mi.hblkhd,
+            mi.arena,
+            crate::cli_run::entry_resolve::process_resolve_census(),
+        );
+    }
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+    eprintln!("[floor-heap] seam={seam} in_use=na free=na mmapped=na arena=na");
 }
 
 /// THE SEAM AS IT STANDS RIGHT NOW, so a reading can say WHERE IN THE RUN it was taken.
@@ -5639,8 +5681,17 @@ pub(crate) fn floor_cgroup_stat_beat(
             })
             .unwrap_or_else(|| "na".to_string())
     };
-    let current = std::fs::read_to_string(format!("{leaf}/memory.current"))
-        .map(|v| v.trim().to_string())
+    let raw = |name: &str| -> String {
+        std::fs::read_to_string(format!("{leaf}/{name}"))
+            .map(|v| v.split_whitespace().collect::<Vec<_>>().join(","))
+            .unwrap_or_else(|_| "na".to_string())
+    };
+    let current = raw("memory.current");
+    // THE WALL CLOCK, so a beat is placed in time by its own line rather than by the log
+    // prefix the job runner happens to add, and a seam beat and a watchdog beat order by value.
+    let unix_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis().to_string())
         .unwrap_or_else(|_| "na".to_string());
     let seam_after = floor_seam_current();
     // The beat line's own spelling, one token each and no spaces, because this line is parsed
@@ -5674,6 +5725,50 @@ pub(crate) fn floor_cgroup_stat_beat(
         Some(o) => crate::memory_governor::memory_stall_major_faults_per_minute(o).to_string(),
         None => "na".to_string(),
     };
+    // SWAP, PSI AND THE LEAF'S OWN EVENTS BESIDE THE COUNTERS, on every beat. The 2026-09-19
+    // receipt is censored on the held-set axis because anonymous pages were going to swap one beat
+    // after its peak, and the swap figure that showed it was the HOST's swap-in, read beside the
+    // leaf -- a different subject. `memory.swap.current` is this leaf's own; `memory.pressure` is
+    // the stall time that says whether reclaim cost the run anything; `memory.events.local`
+    // carries `oom` and `oom_kill` for this leaf alone. Printed raw, as the counters are.
+    //
+    // AND THE PROCESSES CHARGED TO THE LEAF, because a leaf charge is a sum over every process in
+    // it: a floor that shares its slot with a build daemon or a previous step's straggler reads
+    // their pages as its own, and that overlap is a different cause with a different remedy than
+    // retained application state. `pid:comm:rss_kb` per member, read from procfs, nothing summed.
+    let procs = std::fs::read_to_string(format!("{leaf}/cgroup.procs"))
+        .map(|body| {
+            body.lines()
+                .filter_map(|pid| {
+                    let pid = pid.trim();
+                    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+                    let field = |k: &str| {
+                        status.lines().find_map(|l| {
+                            l.strip_prefix(k).map(|r| {
+                                r.trim_start_matches(':')
+                                    .trim()
+                                    .trim_end_matches(" kB")
+                                    .to_string()
+                            })
+                        })
+                    };
+                    Some(format!(
+                        "{pid}:{}:{}",
+                        field("Name").unwrap_or_else(|| "na".to_string()),
+                        field("VmRSS").unwrap_or_else(|| "na".to_string())
+                    ))
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .unwrap_or_else(|_| "na".to_string());
+    eprintln!(
+        "[floor-cgroup] when={when} seam={seam} unix_ms={unix_ms} swap_current={} \
+         events_local=[{}] pressure=[{}] procs=[{procs}]",
+        raw("memory.swap.current"),
+        raw("memory.events.local"),
+        raw("memory.pressure"),
+    );
     eprintln!(
         "[floor-cgroup] when={when} stat_level={leaf} seam={seam} stall_per_min={stall_text} current={current} \
          memory_stat=[anon,{},file,{},shmem,{},unevictable,{},slab_unreclaimable,{},\
@@ -5743,6 +5838,7 @@ pub fn run_required_floor(
     // 4,260-module corpus, measured 2026-08-29), so it is built once here and lent to the
     // policy-closure prepare and the gate-closure prepare alike.
     let gate_entry_index = build_multi_entry_index(source_roots);
+    floor_seam("changed-witness-planning");
     // ONE CORPUS READ FOR BOTH PREPARES, CARRIED FROM THE ANCESTOR THAT OWNS BOTH DEMANDS.
     //
     // This function prepares TWO subjects -- the policy closure through
@@ -5806,6 +5902,7 @@ pub fn run_required_floor(
                 .to_string()
         })
         .collect();
+    floor_seam("nominal-subject-seeds");
     // THE NOMINAL SEEDS -- gate prefixes, gate authored modules, the wet schedule -- come from
     // the one producer the resolution census also reads, so what the floor prepares on a run
     // that touches nothing and what the census reports as reached are the same fact.
@@ -5963,6 +6060,7 @@ pub fn run_required_floor(
     )
     .chain(arm_set_consumer_seeds.iter().cloned())
     .collect();
+    floor_seam("prepare-closure-resolve");
     let (mut prepared, prepared_sources) = crate::cli_run::prepare_repository_from_corpus(
         &floor_corpus,
         &floor_prepared_subject_exclusions(),
@@ -5973,6 +6071,7 @@ pub fn run_required_floor(
         )),
     )?;
     drop(gate_entry_index);
+    floor_seam("prepared-subject-warm");
     // THE FULL INDEX THE DISCOVERY AUTHORITY WILL JUDGE, captured here because the prepared
     // graph is intentionally only the required gate closure. Declaration discovery is a
     // corpus-wide question: fold the one modeled producer over every indexed source, finalize
@@ -9816,6 +9915,7 @@ pub fn run_required_floor(
     // candidate-bound rather than carrying a commit-shaped lie. The roster identity is derived
     // inside the module from the identities being published, so no value here can disagree with
     // the population it names.
+    floor_seam("publication");
     {
         let snapshot_wire = if commit == "local" || commit.is_empty() {
             "unpublished"

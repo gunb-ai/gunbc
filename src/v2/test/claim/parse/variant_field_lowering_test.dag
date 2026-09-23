@@ -1,0 +1,1256 @@
+module v2.test.parse.variant_field_lowering
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.compilers.lexing { Token, TokenStream, symbol_lexeme, token_stream_new }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node {
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Disj,
+  Edge,
+  Instantiation,
+  Match,
+  Named,
+  Node,
+  Positional,
+  Transform,
+  TypeNode,
+  canonicalize_node_strip_provenance,
+  match_arm_pattern,
+  node_subtree_nodes
+}
+import std.constructors { Cardinality, Required, Optional }
+import v2.std.node_query {
+  DeclaredField,
+  construct_field_edges,
+  construct_tag_optional,
+  declared_field_list,
+  declared_field_named,
+  find_arrow_body_child,
+  find_named_child,
+  node_labeled_child_edges,
+  node_positional_child_targets,
+  positional_payload_field_name
+}
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.collection { List, list_at_optional }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_projection }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: normalize (v2.compiler.body_lowering_fold, with v2.std.compilers.sugar's coproduct fold
+// and the namespace graft), the ONE stage that lowers variant and record fields into declared
+// field identities (v2.std.node_query DeclaredField): `A(Int)` declares the one Required field
+// "0", `A { v: Int }` declares v, `B` is the empty payload; a construction is the construct shape
+// (tag edge + field edges) and a match pattern over a fielded variant is that same shape over its
+// binders. BOUNDARY: source text in, normalized tree out, on the prepared-grammar parse the native
+// route runs (v2.compiler.program_assembly program_assembly_read_to_normalized_root_prepared
+// composes exactly these calls). The inputs are SUPPLIED at that boundary (DESIGN section 3); the
+// inhabitance claim for the real corpus is the native workload run recorded on the PR
+// (std.content_hash normalizes natively, where before it refused
+// body_lowering_reason_positional_pattern_binder_unlowered), and vf_content_hash_declarations_
+// below runs the declarations and the positional match of that module verbatim through the same
+// two stages.
+
+// THE INPUT IS SUPPLIED AT THE BOUNDARY; PARSE AND NORMALIZE STILL EXECUTE. Each claim below
+// discriminates at normalize -- how a variant or record field reaches a declared field identity
+// -- so the token stream is its INPUT and not its claim, and supplying it is what DESIGN
+// section 3 asks for. Parse still runs on the supplied tokens, so a claim whose subject includes
+// parsing keeps that subject and needs no carve-out. The real tokenizer is not deleted from the
+// evidence: every specimen owes a vfs_fidelity_* claim asserting this stream IS what tokenize
+// emits for the same text (v2.test.parse.supplied_token_stream_support), so deleting the
+// integration reddens a control.
+fn vf_parse(tokens: TokenStream) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      match parse_module_prepared(tokens: tokens, prepared: prepared, validation_residue: residue) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+      }
+  }
+}
+
+fn vf_normalized(tokens: TokenStream) -> Outcome<NormalizedTree> {
+  match vf_parse(tokens: tokens) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: _ } => normalize(parse_tree: tree)
+  }
+}
+
+fn vf_normalizes(o: Outcome<NormalizedTree>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn vf_refuses_with(o: Outcome<NormalizedTree>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+// The Named member the graft placed for a declaration: the first Named edge anywhere in the
+// tree whose label spells `lexeme`. Parse projections never spell a user name.
+fn vf_named_member_optional(root: Node, lexeme: String) -> Optional<Node> {
+  fold(node_subtree_nodes(root: root), init: Absent, f: fn(found, n) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        fold(n.children, init: Absent, f: fn(inner, e) {
+          match inner {
+            Present { value: _ } => inner
+            Absent =>
+              match e.label {
+                Named { name: sym } =>
+                  match symbol_lexeme(sym: sym) == lexeme {
+                    true => Present { value: e.target }
+                    false => Absent
+                  }
+                Positional => Absent
+              }
+          }
+        })
+    }
+  })
+}
+
+fn vf_first_disj_optional(root: Node) -> Optional<Node> {
+  fold(node_subtree_nodes(root: root), init: Absent, f: fn(found, n) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match n.kind {
+          TypeNode { connective: Disj } => Present { value: n }
+          _ => Absent
+        }
+    }
+  })
+}
+
+// The payload a coproduct declares for the arm labelled `lexeme`.
+fn vf_arm_payload_optional(root: Node, type_lexeme: String, arm_lexeme: String) -> Optional<Node> {
+  match vf_named_member_optional(root: root, lexeme: type_lexeme) {
+    Absent => Absent
+    Present { value: member } =>
+      match vf_first_disj_optional(root: member) {
+        Absent => Absent
+        Present { value: disj } => vf_named_member_optional(root: disj, lexeme: arm_lexeme)
+      }
+  }
+}
+
+// ONE NORMALIZE PER CLAIM. The *_from_tree readers take the normalized tree a claim already has,
+// so a claim asserting three facts about one specimen pays the route once instead of three times
+// -- the copied-accumulator shape DESIGN section 6 says is always fixed regardless of realized n.
+fn vf_arm_payload_from_tree(nt: NormalizedTree, type_lexeme: String, arm_lexeme: String) -> Optional<Node> {
+  vf_arm_payload_optional(root: nt.root, type_lexeme: type_lexeme, arm_lexeme: arm_lexeme)
+}
+
+fn vf_arm_payload_of(o: Outcome<NormalizedTree>, type_lexeme: String, arm_lexeme: String) -> Optional<Node> {
+  match o {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: nt, diagnostics: _ } =>
+      vf_arm_payload_optional(root: nt.root, type_lexeme: type_lexeme, arm_lexeme: arm_lexeme)
+  }
+}
+
+fn vf_type_atom_is(n: Node, lexeme: String) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => symbol_lexeme(sym: id) == lexeme
+    _ => false
+  }
+}
+
+fn vf_field_is(f: DeclaredField, name: String, type_lexeme: String, required: Cardinality) -> Bool {
+  (symbol_lexeme(sym: f.name) == name)
+    && vf_type_atom_is(n: f.type_node, lexeme: type_lexeme)
+    && (f.cardinality == required)
+}
+
+fn vf_field_count(payload: Node) -> Int {
+  count(declared_field_list(payload: payload))
+}
+
+data vf_positional_sum: String = "module m.t\n\ntype C = A(Int) | B\n"
+
+// `type C = A(Int) | B`: A declares exactly one Required field "0" of type Int; B is nullary.
+test fn vf_positional_variant_declares_one_required_field_zero() -> Bool {
+  match vf_arm_payload_of(o: vfs_normalized_13(), type_lexeme: "C", arm_lexeme: "A") {
+    Absent => false
+    Present { value: payload } =>
+      (vf_field_count(payload: payload) == 1)
+        && (match declared_field_named(payload: payload, name: positional_payload_field_name()) {
+          Absent => false
+          Present { value: f } => vf_field_is(f: f, name: "0", type_lexeme: "dag_binding_type_int", required: Required)
+        })
+  }
+}
+
+test fn vf_bare_variant_is_nullary() -> Bool {
+  match vf_arm_payload_of(o: vfs_normalized_13(), type_lexeme: "C", arm_lexeme: "B") {
+    Absent => false
+    Present { value: payload } => (match payload.kind {
+      TypeNode { connective: Conj } => count(payload.children) == 0
+      _ => false
+    }) && (vf_field_count(payload: payload) == 0)
+  }
+}
+
+// The braced spelling declares the SAME kind of field, through the same stage.
+test fn vf_braced_variant_declares_named_field() -> Bool {
+  match vf_arm_payload_of(o: vfs_normalized_0(), type_lexeme: "C", arm_lexeme: "A") {
+    Absent => false
+    Present { value: payload } =>
+      (vf_field_count(payload: payload) == 1)
+        && (match declared_field_named(payload: payload, name: ^v) {
+          Absent => false
+          Present { value: f } => vf_field_is(f: f, name: "v", type_lexeme: "dag_binding_type_int", required: Required)
+        })
+  }
+}
+
+// A record declaration is a Named member whose payload declares its fields: Required `v`,
+// Optional `w` (a Cardinality node over Int), and `xs` typed by an Instantiation of List over Int.
+test fn vf_record_declaration_is_named_with_declared_fields() -> Bool {
+  match vfs_normalized_1() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: nt, diagnostics: _ } =>
+      match vf_named_member_optional(root: nt.root, lexeme: "R") {
+        Absent => false
+        Present { value: payload } =>
+          (vf_field_count(payload: payload) == 3)
+            && (match declared_field_named(payload: payload, name: ^v) {
+              Absent => false
+              Present { value: f } => vf_field_is(f: f, name: "v", type_lexeme: "dag_binding_type_int", required: Required)
+            })
+            && (match declared_field_named(payload: payload, name: ^w) {
+              Absent => false
+              Present { value: f } =>
+                (f.cardinality == Optional)
+                  && (match f.type_node.kind {
+                    TypeNode { connective: Cardinality } =>
+                      match list_at_optional(xs: node_positional_child_targets(node: f.type_node), index: 0) {
+                        Present { value: inner } => vf_type_atom_is(n: inner, lexeme: "dag_binding_type_int")
+                        Absent => false
+                      }
+                    _ => false
+                  })
+            })
+            && (match declared_field_named(payload: payload, name: ^xs) {
+              Absent => false
+              Present { value: f } =>
+                match f.type_node.kind {
+                  TypeNode { connective: Instantiation } =>
+                    (count(node_positional_child_targets(node: f.type_node)) == 2)
+                      && (match list_at_optional(xs: node_positional_child_targets(node: f.type_node), index: 0) {
+                        Present { value: head } => vf_type_atom_is(n: head, lexeme: "List")
+                        Absent => false
+                      })
+                  _ => false
+                }
+            })
+      }
+  }
+}
+
+// The seed's sum rule: one alternative with a payload is a coproduct; one bare alternative is an
+// alias and keeps its reference to the type it names.
+test fn vf_single_fielded_variant_is_a_sum() -> Bool {
+  match vf_arm_payload_of(o: vfs_normalized_2(), type_lexeme: "F", arm_lexeme: "Bar") {
+    Absent => false
+    Present { value: payload } => vf_field_count(payload: payload) == 1
+  }
+}
+
+test fn vf_bare_alias_is_not_a_sum() -> Bool {
+  match vfs_normalized_3() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: nt, diagnostics: _ } =>
+      match vf_named_member_optional(root: nt.root, lexeme: "T") {
+        Absent => false
+        Present { value: member } =>
+          (match vf_first_disj_optional(root: member) { Present { value: _ } => false  Absent => true })
+            && fold(node_subtree_nodes(root: member), init: false, f: fn(acc, n) {
+              acc || vf_type_atom_is(n: n, lexeme: "String")
+            })
+      }
+  }
+}
+
+fn vf_fn_body_from_tree(nt: NormalizedTree, fn_lexeme: String) -> Optional<Node> {
+  match vf_named_member_optional(root: nt.root, lexeme: fn_lexeme) {
+    Absent => Absent
+    Present { value: arrow } =>
+      match find_arrow_body_child(root: arrow) {
+        Accepted { value: body, diagnostics: _ } => Present { value: body }
+        Rejected { diagnostics: _ } => Absent
+      }
+  }
+}
+
+fn vf_fn_body_of(o: Outcome<NormalizedTree>, fn_lexeme: String) -> Optional<Node> {
+  match o {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: nt, diagnostics: _ } => vf_fn_body_from_tree(nt: nt, fn_lexeme: fn_lexeme)
+  }
+}
+
+// CONSTRUCTION SUPPLIES FIELD "0": `A(x)` is a Transform whose callee is A and whose single
+// positional operand is x -- the one operand the declared field list [0] receives, the way the
+// seed's infer_variant_constructor_call joins them. That the argument is CARRIED is this control's
+// point: on the route before this change `A(x)` lowered to Transform(A) with x dropped.
+test fn vf_positional_construction_carries_its_operand() -> Bool {
+  match vf_fn_body_of(o: vfs_normalized_4(), fn_lexeme: "wrap") {
+    Absent => false
+    Present { value: body } =>
+      match body.kind {
+        ComputationNode { behavior: Transform } =>
+          let operands = node_positional_child_targets(node: body)
+          (count(operands) == 2)
+            && (match list_at_optional(xs: operands, index: 0) { Present { value: c } => vf_type_atom_is(n: c, lexeme: "A")  Absent => false })
+            && (match list_at_optional(xs: operands, index: 1) { Present { value: a } => vf_type_atom_is(n: a, lexeme: "x")  Absent => false })
+        _ => false
+      }
+  }
+}
+
+// A record construction is the construct shape: tag edge R -> Atom(R), then field v -> x.
+test fn vf_record_construction_is_the_construct_shape() -> Bool {
+  match vf_fn_body_of(o: vfs_normalized_5(), fn_lexeme: "mk") {
+    Absent => false
+    Present { value: body } =>
+      (match construct_tag_optional(n: body) { Present { value: tag } => symbol_lexeme(sym: tag) == "R"  Absent => false })
+        && (count(construct_field_edges(n: body)) == 1)
+        && (match list_at_optional(xs: construct_field_edges(n: body), index: 0) {
+          Present { value: e } =>
+            (match e.label { Named { name: nm } => symbol_lexeme(sym: nm) == "v"  Positional => false })
+              && vf_type_atom_is(n: e.target, lexeme: "x")
+          Absent => false
+        })
+  }
+}
+
+fn vf_first_arm_pattern_of(o: Outcome<NormalizedTree>, fn_lexeme: String) -> Optional<Node> {
+  match o {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: nt, diagnostics: _ } => vf_first_arm_pattern_from_tree(nt: nt, fn_lexeme: fn_lexeme)
+  }
+}
+
+fn vf_first_arm_pattern_from_tree(nt: NormalizedTree, fn_lexeme: String) -> Optional<Node> {
+  match vf_fn_body_from_tree(nt: nt, fn_lexeme: fn_lexeme) {
+    Absent => Absent
+    Present { value: body } =>
+      match body.kind {
+        ComputationNode { behavior: Match } =>
+          match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
+            Absent => Absent
+            Present { value: arm } =>
+              match find_named_child(root: arm, name: match_arm_pattern) {
+                Accepted { value: pat, diagnostics: _ } => Present { value: pat }
+                Rejected { diagnostics: _ } => Absent
+              }
+          }
+        _ => Absent
+      }
+  }
+}
+
+fn vf_pattern_binds(pat: Node, tag: String, field: String, binder: String) -> Bool {
+  (match construct_tag_optional(n: pat) { Present { value: t } => symbol_lexeme(sym: t) == tag  Absent => false })
+    && (count(construct_field_edges(n: pat)) == 1)
+    && (match list_at_optional(xs: construct_field_edges(n: pat), index: 0) {
+      Present { value: e } =>
+        (match e.label { Named { name: nm } => symbol_lexeme(sym: nm) == field  Positional => false })
+          && vf_type_atom_is(n: e.target, lexeme: binder)
+      Absent => false
+    })
+}
+
+data vf_positional_unwrap: String = "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n"
+
+// THE MATCH BINDS FROM FIELD "0": the arm pattern is the construct A with field 0 -> x, so the
+// binder the body names reaches the resolver instead of vanishing (and instead of the typed
+// refusal gunbc#11998 stood in its place, now retired).
+test fn vf_positional_pattern_binds_field_zero() -> Bool {
+  match vf_first_arm_pattern_of(o: vfs_normalized_14(), fn_lexeme: "unwrap") {
+    Absent => false
+    Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "0", binder: "x")
+  }
+}
+
+test fn vf_braced_pattern_binds_named_field() -> Bool {
+  match vf_first_arm_pattern_of(o: vfs_normalized_6(), fn_lexeme: "unwrap") {
+    Absent => false
+    Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "v", binder: "x")
+  }
+}
+
+test fn vf_shorthand_pattern_binds_field_to_its_own_name() -> Bool {
+  match vf_first_arm_pattern_of(o: vfs_normalized_7(), fn_lexeme: "unwrap") {
+    Absent => false
+    Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "v", binder: "v")
+  }
+}
+
+// A wildcard payload is the same construct with `_` in field 0 -- nothing is dropped.
+test fn vf_wildcard_pattern_keeps_its_field() -> Bool {
+  match vf_first_arm_pattern_of(o: vfs_normalized_8(), fn_lexeme: "tag") {
+    Absent => false
+    Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "0", binder: "_")
+  }
+}
+
+// THE STRUCTURAL HALF OF THE SHADOWING CONTROL. A binder that spells an outer parameter's name is
+// carried on the arm's own pattern (field 0 -> Atom(x)) while the parameter stays the domain's
+// Named edge, so a match-arm scope frame has exactly what it needs to bind the body's x to the
+// arm. That the body's x then RESOLVES to the arm's binder and not the parameter is the
+// resolver's fact, asserted by v2.test.claim.match_arm_binder_frame over resolve_match_node_walk.
+test fn vf_shadowing_binder_is_carried_on_the_arm() -> Bool {
+  (match vf_first_arm_pattern_of(o: vfs_normalized_16(), fn_lexeme: "pick") {
+    Absent => false
+    Present { value: pat } => vf_pattern_binds(pat: pat, tag: "A", field: "0", binder: "x")
+  })
+    && (match vfs_normalized_16() {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: nt, diagnostics: _ } =>
+        match vf_named_member_optional(root: nt.root, lexeme: "pick") {
+          Absent => false
+          Present { value: arrow } =>
+            match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+              Absent => false
+              Present { value: domain } =>
+                match find_named_child(root: domain, name: ^x) {
+                  Accepted { value: t, diagnostics: _ } => vf_type_atom_is(n: t, lexeme: "dag_binding_type_int")
+                  Rejected { diagnostics: _ } => false
+                }
+            }
+        }
+    })
+}
+
+// DISTINCT PAYLOADS STAY DISTINCT: constructions differing only in the payload normalize to
+// different provenance-free trees, so the payload is carried, not summarized by the constructor.
+test fn vf_distinct_payloads_normalize_distinct() -> Bool {
+  match vfs_normalized_9() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: left, diagnostics: _ } =>
+      match vfs_normalized_10() {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: right, diagnostics: _ } =>
+          canonicalize_node_strip_provenance(n: left.root) != canonicalize_node_strip_provenance(n: right.root)
+      }
+  }
+}
+
+// REFUSALS, LOCATED. Positional arity is one, as in the seed's parse_variant_pattern; a where
+// clause beside a payload is a spelling the seed never reaches.
+test fn vf_two_positional_binders_refuse() -> Bool {
+  vf_refuses_with(
+    o: vfs_normalized_11(),
+    reason: ^body_lowering_reason_pattern_unlowered
+  )
+}
+
+test fn vf_where_beside_payload_refuses() -> Bool {
+  vf_refuses_with(
+    o: vfs_normalized_12(),
+    reason: ^body_lowering_reason_field_decl_unlowered
+  )
+}
+
+// std.content_hash's own declarations and its positional match, verbatim: the module the native
+// workload stopped on. This is the seed-run half of that receipt; the native run is on the PR.
+
+test fn vf_content_hash_declarations_and_positional_match_normalize() -> Bool {
+  match vfs_normalized_15() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: nt, diagnostics: _ } =>
+      (match vf_first_arm_pattern_from_tree(nt: nt, fn_lexeme: "compare_content_hash") {
+        Absent => false
+        Present { value: pat } => vf_pattern_binds(pat: pat, tag: "Fnv1a64", field: "0", binder: "left_structural")
+      })
+        && (match vf_arm_payload_from_tree(nt: nt, type_lexeme: "ContentHash", arm_lexeme: "Fnv1a64") {
+          Absent => false
+          Present { value: payload } =>
+            match declared_field_named(payload: payload, name: positional_payload_field_name()) {
+              Absent => false
+              Present { value: f } => vf_field_is(f: f, name: "0", type_lexeme: "Fnv1a64Structural", required: Required)
+            }
+        })
+  }
+}
+
+fn vfs_stream_0() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 23, end: 24 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^variant_field_probe, start: 25, end: 26 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 28, end: 31 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 32, end: 33 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 34, end: 35 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 36, end: 37 }
+  ])
+}
+
+test fn vfs_fidelity_0() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A { v: Int } | B\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_0()
+  )
+}
+
+fn vfs_stream_1() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^variant_field_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 24, end: 27 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^variant_field_probe, start: 27, end: 28 },
+    Token { class: ^dag_token_ident, lexeme: "w", file: ^variant_field_probe, start: 29, end: 30 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 30, end: 31 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 32, end: 35 },
+    Token { class: ^dag_token_question, lexeme: "?", file: ^variant_field_probe, start: 35, end: 36 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^variant_field_probe, start: 36, end: 37 },
+    Token { class: ^dag_token_ident, lexeme: "xs", file: ^variant_field_probe, start: 38, end: 40 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 40, end: 41 },
+    Token { class: ^dag_token_ident, lexeme: "List", file: ^variant_field_probe, start: 42, end: 46 },
+    Token { class: ^dag_token_lt, lexeme: "<", file: ^variant_field_probe, start: 46, end: 47 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 47, end: 50 },
+    Token { class: ^dag_token_gt, lexeme: ">", file: ^variant_field_probe, start: 50, end: 51 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 52, end: 53 }
+  ])
+}
+
+test fn vfs_fidelity_1() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype R { v: Int, w: Int?, xs: List<Int> }\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_1()
+  )
+}
+
+fn vfs_stream_2() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "F", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "Bar", file: ^variant_field_probe, start: 21, end: 24 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 25, end: 26 },
+    Token { class: ^dag_token_ident, lexeme: "n", file: ^variant_field_probe, start: 27, end: 28 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 30, end: 33 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 34, end: 35 }
+  ])
+}
+
+test fn vfs_fidelity_2() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype F = Bar { n: Int }\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_2()
+  )
+}
+
+fn vfs_stream_3() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "T", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "String", file: ^variant_field_probe, start: 21, end: 27 }
+  ])
+}
+
+test fn vfs_fidelity_3() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype T = String\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_3()
+  )
+}
+
+fn vfs_stream_4() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 23, end: 26 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 30, end: 31 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^variant_field_probe, start: 33, end: 35 },
+    Token { class: ^dag_token_ident, lexeme: "wrap", file: ^variant_field_probe, start: 36, end: 40 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 40, end: 41 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 41, end: 42 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 42, end: 43 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 44, end: 47 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^variant_field_probe, start: 49, end: 51 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 52, end: 53 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 54, end: 55 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 58, end: 59 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 59, end: 60 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 60, end: 61 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 61, end: 62 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 63, end: 64 }
+  ])
+}
+
+test fn vfs_fidelity_4() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn wrap(x: Int) -> C {\n  A(x)\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_4()
+  )
+}
+
+fn vfs_stream_5() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^variant_field_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 24, end: 27 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^variant_field_probe, start: 31, end: 33 },
+    Token { class: ^dag_token_ident, lexeme: "mk", file: ^variant_field_probe, start: 34, end: 36 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 36, end: 37 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 37, end: 38 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 38, end: 39 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 40, end: 43 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 43, end: 44 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^variant_field_probe, start: 45, end: 47 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^variant_field_probe, start: 48, end: 49 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 50, end: 51 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^variant_field_probe, start: 54, end: 55 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 56, end: 57 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^variant_field_probe, start: 58, end: 59 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 59, end: 60 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 61, end: 62 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 63, end: 64 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 65, end: 66 }
+  ])
+}
+
+test fn vfs_fidelity_5() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype R { v: Int }\n\nfn mk(x: Int) -> R {\n  R { v: x }\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_5()
+  )
+}
+
+fn vfs_stream_6() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 23, end: 24 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^variant_field_probe, start: 25, end: 26 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 28, end: 31 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 32, end: 33 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 34, end: 35 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 36, end: 37 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^variant_field_probe, start: 39, end: 41 },
+    Token { class: ^dag_token_ident, lexeme: "unwrap", file: ^variant_field_probe, start: 42, end: 48 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 48, end: 49 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^variant_field_probe, start: 49, end: 50 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 50, end: 51 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 52, end: 53 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 53, end: 54 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^variant_field_probe, start: 55, end: 57 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 58, end: 61 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 62, end: 63 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^variant_field_probe, start: 66, end: 71 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^variant_field_probe, start: 72, end: 73 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 74, end: 75 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 80, end: 81 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 82, end: 83 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^variant_field_probe, start: 84, end: 85 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 85, end: 86 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 87, end: 88 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 89, end: 90 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 91, end: 93 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 94, end: 95 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 100, end: 101 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 102, end: 104 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^variant_field_probe, start: 105, end: 106 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 109, end: 110 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 111, end: 112 }
+  ])
+}
+
+test fn vfs_fidelity_6() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A { v: Int } | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A { v: x } => x\n    B => 0\n  }\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_6()
+  )
+}
+
+fn vfs_stream_7() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 23, end: 24 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^variant_field_probe, start: 25, end: 26 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 28, end: 31 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 32, end: 33 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 34, end: 35 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 36, end: 37 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^variant_field_probe, start: 39, end: 41 },
+    Token { class: ^dag_token_ident, lexeme: "unwrap", file: ^variant_field_probe, start: 42, end: 48 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 48, end: 49 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^variant_field_probe, start: 49, end: 50 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 50, end: 51 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 52, end: 53 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 53, end: 54 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^variant_field_probe, start: 55, end: 57 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 58, end: 61 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 62, end: 63 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^variant_field_probe, start: 66, end: 71 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^variant_field_probe, start: 72, end: 73 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 74, end: 75 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 80, end: 81 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 82, end: 83 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^variant_field_probe, start: 84, end: 85 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 86, end: 87 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 88, end: 90 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^variant_field_probe, start: 91, end: 92 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 97, end: 98 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 99, end: 101 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^variant_field_probe, start: 102, end: 103 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 106, end: 107 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 108, end: 109 }
+  ])
+}
+
+test fn vfs_fidelity_7() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A { v: Int } | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A { v } => v\n    B => 0\n  }\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_7()
+  )
+}
+
+fn vfs_stream_8() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 23, end: 26 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 30, end: 31 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^variant_field_probe, start: 33, end: 35 },
+    Token { class: ^dag_token_ident, lexeme: "tag", file: ^variant_field_probe, start: 36, end: 39 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 39, end: 40 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^variant_field_probe, start: 40, end: 41 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 41, end: 42 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 43, end: 44 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 44, end: 45 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^variant_field_probe, start: 46, end: 48 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 49, end: 52 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 53, end: 54 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^variant_field_probe, start: 57, end: 62 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^variant_field_probe, start: 63, end: 64 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 65, end: 66 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 71, end: 72 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 72, end: 73 },
+    Token { class: ^dag_token_ident, lexeme: "_", file: ^variant_field_probe, start: 73, end: 74 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 74, end: 75 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 76, end: 78 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^variant_field_probe, start: 79, end: 80 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 85, end: 86 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 87, end: 89 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^variant_field_probe, start: 90, end: 91 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 94, end: 95 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 96, end: 97 }
+  ])
+}
+
+test fn vfs_fidelity_8() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn tag(c: C) -> Int {\n  match c {\n    A(_) => 1\n    B => 0\n  }\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_8()
+  )
+}
+
+fn vfs_stream_9() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 23, end: 26 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 30, end: 31 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^variant_field_probe, start: 33, end: 35 },
+    Token { class: ^dag_token_ident, lexeme: "one", file: ^variant_field_probe, start: 36, end: 39 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 39, end: 40 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 40, end: 41 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^variant_field_probe, start: 42, end: 44 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 45, end: 46 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 49, end: 50 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 50, end: 51 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^variant_field_probe, start: 51, end: 52 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 52, end: 53 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 54, end: 55 }
+  ])
+}
+
+test fn vfs_fidelity_9() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn one() -> C { A(1) }\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_9()
+  )
+}
+
+fn vfs_stream_10() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 23, end: 26 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 30, end: 31 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^variant_field_probe, start: 33, end: 35 },
+    Token { class: ^dag_token_ident, lexeme: "one", file: ^variant_field_probe, start: 36, end: 39 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 39, end: 40 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 40, end: 41 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^variant_field_probe, start: 42, end: 44 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 45, end: 46 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 49, end: 50 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 50, end: 51 },
+    Token { class: ^dag_token_int_literal, lexeme: "2", file: ^variant_field_probe, start: 51, end: 52 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 52, end: 53 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 54, end: 55 }
+  ])
+}
+
+test fn vfs_fidelity_10() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn one() -> C { A(2) }\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_10()
+  )
+}
+
+fn vfs_stream_11() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 23, end: 26 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 30, end: 31 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^variant_field_probe, start: 33, end: 35 },
+    Token { class: ^dag_token_ident, lexeme: "unwrap", file: ^variant_field_probe, start: 36, end: 42 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 42, end: 43 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^variant_field_probe, start: 43, end: 44 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 44, end: 45 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 46, end: 47 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^variant_field_probe, start: 49, end: 51 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 52, end: 55 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 56, end: 57 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^variant_field_probe, start: 60, end: 65 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^variant_field_probe, start: 66, end: 67 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 68, end: 69 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 74, end: 75 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 75, end: 76 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 76, end: 77 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^variant_field_probe, start: 77, end: 78 },
+    Token { class: ^dag_token_ident, lexeme: "y", file: ^variant_field_probe, start: 79, end: 80 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 80, end: 81 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 82, end: 84 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 85, end: 86 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 91, end: 92 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 93, end: 95 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^variant_field_probe, start: 96, end: 97 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 100, end: 101 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 102, end: 103 }
+  ])
+}
+
+test fn vfs_fidelity_11() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x, y) => x\n    B => 0\n  }\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_11()
+  )
+}
+
+fn vfs_stream_12() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_kw_where, lexeme: "where", file: ^variant_field_probe, start: 23, end: 28 },
+    Token { class: ^dag_token_ident, lexeme: "non_empty", file: ^variant_field_probe, start: 29, end: 38 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 39, end: 40 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^variant_field_probe, start: 41, end: 42 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 42, end: 43 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 44, end: 47 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 48, end: 49 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 50, end: 51 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 52, end: 53 }
+  ])
+}
+
+test fn vfs_fidelity_12() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A where non_empty { v: Int } | B\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_12()
+  )
+}
+
+fn vfs_stream_13() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 23, end: 26 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 30, end: 31 }
+  ])
+}
+
+test fn vfs_fidelity_13() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(Int) | B\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_13()
+  )
+}
+
+fn vfs_stream_14() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 23, end: 26 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 30, end: 31 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^variant_field_probe, start: 33, end: 35 },
+    Token { class: ^dag_token_ident, lexeme: "unwrap", file: ^variant_field_probe, start: 36, end: 42 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 42, end: 43 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^variant_field_probe, start: 43, end: 44 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 44, end: 45 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 46, end: 47 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^variant_field_probe, start: 49, end: 51 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 52, end: 55 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 56, end: 57 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^variant_field_probe, start: 60, end: 65 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^variant_field_probe, start: 66, end: 67 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 68, end: 69 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 74, end: 75 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 75, end: 76 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 76, end: 77 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 77, end: 78 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 79, end: 81 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 82, end: 83 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 88, end: 89 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 90, end: 92 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^variant_field_probe, start: 93, end: 94 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 97, end: 98 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 99, end: 100 }
+  ])
+}
+
+test fn vfs_fidelity_14() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn unwrap(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_14()
+  )
+}
+
+fn vfs_stream_15() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "std", file: ^variant_field_probe, start: 7, end: 10 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 10, end: 11 },
+    Token { class: ^dag_token_ident, lexeme: "content_hash", file: ^variant_field_probe, start: 11, end: 23 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 25, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "ContentHash", file: ^variant_field_probe, start: 30, end: 41 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 42, end: 43 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 46, end: 47 },
+    Token { class: ^dag_token_ident, lexeme: "Fnv1a64", file: ^variant_field_probe, start: 48, end: 55 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 55, end: 56 },
+    Token { class: ^dag_token_ident, lexeme: "Fnv1a64Structural", file: ^variant_field_probe, start: 56, end: 73 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 73, end: 74 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 77, end: 78 },
+    Token { class: ^dag_token_ident, lexeme: "Sha256Hash", file: ^variant_field_probe, start: 79, end: 89 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 89, end: 90 },
+    Token { class: ^dag_token_ident, lexeme: "Sha256Digest", file: ^variant_field_probe, start: 90, end: 102 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 102, end: 103 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^variant_field_probe, start: 105, end: 107 },
+    Token { class: ^dag_token_ident, lexeme: "compare_content_hash", file: ^variant_field_probe, start: 108, end: 128 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 128, end: 129 },
+    Token { class: ^dag_token_ident, lexeme: "left", file: ^variant_field_probe, start: 129, end: 133 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 133, end: 134 },
+    Token { class: ^dag_token_ident, lexeme: "ContentHash", file: ^variant_field_probe, start: 135, end: 146 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 146, end: 147 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^variant_field_probe, start: 148, end: 150 },
+    Token { class: ^dag_token_ident, lexeme: "ContentHashComparison", file: ^variant_field_probe, start: 151, end: 172 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 173, end: 174 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^variant_field_probe, start: 177, end: 182 },
+    Token { class: ^dag_token_ident, lexeme: "left", file: ^variant_field_probe, start: 183, end: 187 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 188, end: 189 },
+    Token { class: ^dag_token_ident, lexeme: "Fnv1a64", file: ^variant_field_probe, start: 194, end: 201 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 201, end: 202 },
+    Token { class: ^dag_token_ident, lexeme: "left_structural", file: ^variant_field_probe, start: 202, end: 217 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 217, end: 218 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 219, end: 221 },
+    Token { class: ^dag_token_ident, lexeme: "ContentHashEqual", file: ^variant_field_probe, start: 222, end: 238 },
+    Token { class: ^dag_token_ident, lexeme: "Sha256Hash", file: ^variant_field_probe, start: 243, end: 253 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 253, end: 254 },
+    Token { class: ^dag_token_ident, lexeme: "left_digest", file: ^variant_field_probe, start: 254, end: 265 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 265, end: 266 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 267, end: 269 },
+    Token { class: ^dag_token_ident, lexeme: "ContentHashDifferent", file: ^variant_field_probe, start: 270, end: 290 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 293, end: 294 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 295, end: 296 }
+  ])
+}
+
+test fn vfs_fidelity_15() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module std.content_hash\n\ntype ContentHash =\n  | Fnv1a64(Fnv1a64Structural)\n  | Sha256Hash(Sha256Digest)\n\nfn compare_content_hash(left: ContentHash) -> ContentHashComparison {\n  match left {\n    Fnv1a64(left_structural) => ContentHashEqual\n    Sha256Hash(left_digest) => ContentHashDifferent\n  }\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_15()
+  )
+}
+
+fn vfs_stream_16() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^variant_field_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^variant_field_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^variant_field_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^variant_field_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^variant_field_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^variant_field_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 23, end: 26 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_pipe, lexeme: "|", file: ^variant_field_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 30, end: 31 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^variant_field_probe, start: 33, end: 35 },
+    Token { class: ^dag_token_ident, lexeme: "pick", file: ^variant_field_probe, start: 36, end: 40 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 40, end: 41 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 41, end: 42 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 42, end: 43 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 44, end: 47 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^variant_field_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^variant_field_probe, start: 49, end: 50 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^variant_field_probe, start: 50, end: 51 },
+    Token { class: ^dag_token_ident, lexeme: "C", file: ^variant_field_probe, start: 52, end: 53 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 53, end: 54 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^variant_field_probe, start: 55, end: 57 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^variant_field_probe, start: 58, end: 61 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 62, end: 63 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^variant_field_probe, start: 66, end: 71 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^variant_field_probe, start: 72, end: 73 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^variant_field_probe, start: 74, end: 75 },
+    Token { class: ^dag_token_ident, lexeme: "A", file: ^variant_field_probe, start: 80, end: 81 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^variant_field_probe, start: 81, end: 82 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 82, end: 83 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^variant_field_probe, start: 83, end: 84 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 85, end: 87 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 88, end: 89 },
+    Token { class: ^dag_token_ident, lexeme: "B", file: ^variant_field_probe, start: 94, end: 95 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^variant_field_probe, start: 96, end: 98 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^variant_field_probe, start: 99, end: 100 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 103, end: 104 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^variant_field_probe, start: 105, end: 106 }
+  ])
+}
+
+test fn vfs_fidelity_16() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype C = A(Int) | B\n\nfn pick(x: Int, c: C) -> Int {\n  match c {\n    A(x) => x\n    B => x\n  }\n}\n",
+    file: ^variant_field_probe,
+    supplied: vfs_stream_16()
+  )
+}
+
+fn vfs_normalized_0() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_0())
+}
+
+fn vfs_normalized_1() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_1())
+}
+
+fn vfs_normalized_2() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_2())
+}
+
+fn vfs_normalized_3() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_3())
+}
+
+fn vfs_normalized_4() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_4())
+}
+
+fn vfs_normalized_5() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_5())
+}
+
+fn vfs_normalized_6() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_6())
+}
+
+fn vfs_normalized_7() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_7())
+}
+
+fn vfs_normalized_8() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_8())
+}
+
+fn vfs_normalized_9() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_9())
+}
+
+fn vfs_normalized_10() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_10())
+}
+
+fn vfs_normalized_11() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_11())
+}
+
+fn vfs_normalized_12() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_12())
+}
+
+fn vfs_normalized_13() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_13())
+}
+
+fn vfs_normalized_14() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_14())
+}
+
+fn vfs_normalized_15() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_15())
+}
+
+fn vfs_normalized_16() -> Outcome<NormalizedTree> {
+  vf_normalized(tokens: vfs_stream_16())
+}

@@ -367,15 +367,31 @@ fn compute_seat(subject: ComputeCapacitySubject, reference: NonEmptyStr, now: Ep
 //
 // A RELEASE THAT DID NOT LAND IS NOT A RELEASE. The append is retried against a moving head and
 // exhaustion is its own arm; nothing here reports a return of capacity it did not observe.
+// NOTHING-TO-RELEASE IS ITS OWN ARM, BECAUSE A SEAT THE POOL DOES NOT HOLD IS NOT A FAILED RELEASE.
+// Three states, not two: this caller returned the seat; there was no seat to return; the ledger
+// could not return it. Folding the middle into the last manufactures an incident -- outcome.json
+// says the seat is STILL CHARGED and carries the stuck-reservation remedy, and an operator chases a
+// seat that recovery already returned. It is the same distinction gunbc.compute.work_provider_local
+// makes at compute_settle_attempt, where AttemptUnsettleable projects to HostRecordWritten
+// deliberately: a loss means something was OWED and not done, and a producer that owed nothing
+// cannot have lost anything. Here it was unmade, and by a CATCH-ALL rather than by a decision --
+// `other => ComputeReleaseRefused` in the fold below, which reads as exhaustive while being a
+// default, so SeatNotHeld arrived at the refusal arm nobody wrote it into.
+//
+// THE THREE PRE-GRANT ARMS BELOW WERE ALREADY SAYING IT IN PROSE. Each rendered `nothing to
+// release: ...` into a REFUSED detail, which is the right sentence in the wrong constructor: a
+// reservation that was never granted has nothing to return, and every reader deciding on the arm
+// rather than the text saw a failure.
 type ComputeRelease
   = ComputeReleased { partition: PartitionId, reference: NonEmptyStr, reason: NonEmptyStr }
+  | ComputeNothingToRelease { detail: String }
   | ComputeReleaseRefused { detail: String }
 
 fn compute_release(reservation: ComputeReservation, reason: NonEmptyStr) -> ComputeRelease {
   match reservation {
-    ComputeCapacityFull { wire: w } => ComputeReleaseRefused { detail: join(["nothing to release: ", w], "") }
-    ComputeHostBelowFloor { requested: _, available: _ } => ComputeReleaseRefused { detail: "nothing to release: the host was below its live memory floor" }
-    ComputeReservationRefused { detail: d } => ComputeReleaseRefused { detail: join(["nothing to release: ", d], "") }
+    ComputeCapacityFull { wire: w } => ComputeNothingToRelease { detail: join(["nothing to release: ", w], "") }
+    ComputeHostBelowFloor { requested: _, available: _ } => ComputeNothingToRelease { detail: "nothing to release: the host was below its live memory floor" }
+    ComputeReservationRefused { detail: d } => ComputeNothingToRelease { detail: join(["nothing to release: ", d], "") }
     ComputeReserved { grant: g, partition: p, amount: _, store: store } =>
       compute_release_on(store: store, partition: p, appropriation: kibibyte(count: 0), reference: g.reference, reason: reason)
   }
@@ -387,14 +403,19 @@ fn compute_release(reservation: ComputeReservation, reason: NonEmptyStr) -> Comp
 // append; it would fail at every later READ, when the fold hits UnknownEncumbrance and refuses the
 // WHOLE partition.
 //
-// THE OPERATOR'S RECOVERY DOOR IS NOT HERE, and its absence is declared rather than implied. The
-// discharge of a seat whose release did not land needs a termination decision bound to the unit, an
-// attempt-to-unit binding that cannot release another attempt's live reservation, and a settled
-// state a retry consumes -- see gunbc.recurring_failure_mode
-// a_held_compute_seat_has_no_in_corpus_discharge, whose trigger names that capability. Shipping a
-// recovery route with any of those missing would FREE SEATS THAT SHOULD NOT BE FREED, which is
-// worse than not having one: without it every failure here keeps the charge and the host merely
-// under-admits.
+// THE OPERATOR'S RECOVERY DOOR IS NOT HERE, AND IT IS NO LONGER ABSENT: it is one layer up, at
+// gunbc.compute.work_provider_local compute_recover_cli, and it comes back through THIS function
+// rather than growing a release path of its own. What had to exist before one could ship was named
+// in this annotation and by gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge
+// -- a termination decision bound to the unit, an attempt-to-unit binding that cannot release
+// another attempt's live reservation, and a settled state a retry consumes. All three are now
+// present, and the reason the door is up there rather than here is the same reason this fold takes
+// a store and a partition rather than an instance: the pool knows about encumbrances, and deciding
+// that a particular attempt is dead is not a fact about a pool.
+//
+// WHAT HAS NOT CHANGED is why a recovery may not simply free on doubt. Shipping one with any of
+// those three missing would FREE SEATS THAT SHOULD NOT BE FREED, which is worse than having none:
+// every failure here keeps the charge and the host merely under-admits.
 //
 // THE APPROPRIATION PASSED HERE IS NOT LOAD-BEARING AND THE ZERO IS NOT A FABRICATED READING. product.capacity.pool
 // ruled that replay never adjudicates the ceiling, so a release is decided by whether the ledger
@@ -428,7 +449,10 @@ fn compute_release_on(
         budget: compute_partition_read_budget,
       ) {
         SeatReleased { reference: r, id: _ } => ComputeReleased { partition: partition, reference: r, reason: reason }
-        other => ComputeReleaseRefused { detail: seat_release_wire(r: other) }
+        SeatNotHeld { reference: r, wire: w } =>
+          ComputeNothingToRelease { detail: join(["the pool is not holding ", r as String, ", so there is no seat to return: ", w, ". A double release reaches here -- recovery returning a seat the producer then releases again is the ordinary case -- and it is not a ledger failure"], "") }
+        SeatReleaseContended { attempts: a } => ComputeReleaseRefused { detail: seat_release_wire(r: SeatReleaseContended { attempts: a }) }
+        SeatReleaseRefused { step: st, reason: rs } => ComputeReleaseRefused { detail: seat_release_wire(r: SeatReleaseRefused { step: st, reason: rs }) }
       }
   }
 }

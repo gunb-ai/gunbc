@@ -24,7 +24,7 @@ import gunbc.compute.work_class_grant {
   WorkClassPeakSampleReading, PeakSampleTaken, PeakSampleNotTaken, work_class_peak_sample,
 }
 import gunbc.compute.work_provider_local {
-  ComputeAttempt, compute_attempt_retries_at_ceiling, compute_summary_is_oom_kill,
+  ComputeAttempt, AttemptGateRefused, compute_attempt_retries_at_ceiling, compute_summary_is_oom_kill,
   UnitEnding, EndingOomKill, EndingNotOomKill, EndingUnclassifiable, compute_unit_ending,
   compute_ceiling_retry_reference, compute_failed_unit_outcome,
   ComputeListing, GrantExceededCount, GrantExceededCounted, GrantExceededNeverRecorded, GrantExceededUnreadable, grant_exceeded_count_decide,
@@ -152,8 +152,8 @@ test fn with_the_shipped_rows_every_class_reserves_the_ceiling() -> Bool {
 test fn only_an_oom_kill_below_the_ceiling_retries_at_the_ceiling() -> Bool {
   let below = GrantSized { class: WorkClassCompile, amount: kibibyte(count: 11 * gib), samples: 3, peak_upper: kibibyte(count: 9 * gib), headroom: kibibyte(count: 2 * gib), headroom_authority: "fixture" as NonEmptyStr }
   let at = GrantAtCeiling { class: WorkClassCompile, amount: ceiling(), reason: ClassUnmeasured }
-  let oom = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: summary_oom_after_spoof) }
-  let clean = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: exit-code\nMemory peak: 3.1G\n") }
+  let oom = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: summary_oom_after_spoof), gate: AttemptGateRefused { detail: "fixture: no attempt slot" } }
+  let clean = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: exit-code\nMemory peak: 3.1G\n"), gate: AttemptGateRefused { detail: "fixture: no attempt slot" } }
   compute_attempt_retries_at_ceiling(grant: below, attempt: oom)
     && !compute_attempt_retries_at_ceiling(grant: at, attempt: oom)
     && !compute_attempt_retries_at_ceiling(grant: below, attempt: clean)

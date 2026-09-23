@@ -11,6 +11,7 @@ import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
 import gunbc.fabric_storage_placement { fabric_storage_listen_port, fabric_storage_https_port }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import gunbc.live_deploy.spec {
   gunbc_approval_broker_unit_name, gunbc_approval_broker_slice_unit_name,
@@ -1254,6 +1255,22 @@ fn step_is_fabric_storage_store(step: DeploymentStep) -> Bool {
 // The fabric DB's store is created on the placement host's apply path, as an ensured directory.
 test fn the_fabric_storage_store_root_reaches_the_srv1_apply_path() -> Bool {
   any(deployment_spec_srv1().steps, st => step_is_fabric_storage_store(step: st))
+}
+
+fn srv1_ensures_directory(path: String) -> Bool {
+  any(deployment_spec_srv1().steps, st => match st {
+    Dependency { step: dep } => (ensured_subject_identity(subject: dep.subject) as String) == path
+    ArtifactStep { step: _ } => false
+  })
+}
+
+// THE AREAS THE STORE WRITES INTO ARE ENSURED, NOT ONLY THE ROOT. The paths are read from the file
+// store's own root function -- the one the put and the head CAS write under -- so this goes red when
+// the deployment ensures the root alone, which is the state that refused fleet-converge run
+// 35818578751's host-effect claim with `object publication refused: not_found`.
+test fn the_fabric_storage_store_areas_reach_the_srv1_apply_path() -> Bool {
+  let files = fabric_storage_file_root(root: dashboard_instance_fabric_storage_root(instance: srv1_live_dashboard_instance()) as String as NonEmptyStr)
+  srv1_ensures_directory(path: files.objects as String) && srv1_ensures_directory(path: files.heads as String)
 }
 
 // THE LOG IS NOT DEPLOYMENT STATE: no retract may remove the store. Moving this root back into the
