@@ -461,7 +461,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     FleetApply => FleetSshKeyConsumed
     AppControlPlaneObserve => FleetSshKeyConsumed
     MicrovmHostConverge => FleetSshKeyConsumed
-    MicrovmNetworkObserve => FleetSshKeyNotConsumed
+    MicrovmNetworkObserve => FleetSshKeyConsumed
     MicrovmNetworkApply => FleetSshKeyConsumed
     GuestImageObserve => FleetSshKeyConsumed
     GuestImageConverge => FleetSshKeyConsumed
@@ -721,13 +721,17 @@ data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"se
 fn fleet_converge_build_job_steps() -> List<Step> {
   concat(
     ci_prelude_steps_with_checkout(checkout: fleet_converge_checkout_step(), exact_head_preflight: []),
-    [
-      ci_release_build_step(),
-      fleet_converge_reset_observer_dispatch_admission_step(),
-      ci_release_bins_pack_step(),
-      ci_release_bins_upload_step(),
-    ],
+    fleet_converge_build_job_own_steps(),
   )
+}
+
+fn fleet_converge_build_job_own_steps() -> List<Step> {
+  [
+    ci_release_build_step(),
+    fleet_converge_reset_observer_dispatch_admission_step(),
+    ci_release_bins_pack_step(),
+    ci_release_bins_upload_step(),
+  ]
 }
 
 fn step_declared_timeout_minutes(st: Step) -> Int {

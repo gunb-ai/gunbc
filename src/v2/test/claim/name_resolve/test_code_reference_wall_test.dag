@@ -107,7 +107,7 @@ fn wall_channel(marked: List<Symbol>) -> TestMarkerChannel {
 }
 
 fn wall_tree(root: Node, marked: List<Symbol>) -> Outcome<NormalizedTree> {
-  admit_normalized_tree(import_bindings: no_import_bindings(), root: root, test_markers: wall_channel(marked: marked), diagnostics: None)
+  admit_normalized_tree(import_bindings: no_import_bindings(), record_declarations: no_record_declarations(), root: root, test_markers: wall_channel(marked: marked), diagnostics: None)
 }
 
 // THE PEER'S NAMES ARE BOUND, BECAUSE UNDER THE CANDIDATE RULE THAT IS THE ONLY WAY TO REACH THEM.
@@ -138,6 +138,7 @@ fn wall_peer_import_bindings() -> FreeMonoid<AliasBindingRow> {
 fn wall_tree_importing_peer(root: Node, marked: List<Symbol>) -> Outcome<NormalizedTree> {
   admit_normalized_tree(
     import_bindings: wall_peer_import_bindings(),
+    record_declarations: no_record_declarations(),
     root: root,
     test_markers: wall_channel(marked: marked),
     diagnostics: None
