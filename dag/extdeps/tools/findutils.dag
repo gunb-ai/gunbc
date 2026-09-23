@@ -1,6 +1,6 @@
 module extdeps.tools.findutils
 
-import std.types { String, NonEmptyStr, Int }
+import std.types { String, NonEmptyStr, Int, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -64,3 +64,11 @@ fn find_symlink_target_glob_command(
     ],
   )
 }
+
+// THE REGULAR FILES UNDER A ROOT, ONE `<size> <relative path>` LINE EACH (find(1) -printf: %s is the
+// size in bytes, %P the path with the starting point removed). A plain argv: no shell, and find's own
+// status is the one the caller reads.
+fn find_regular_file_sizes_argv(root: String) -> List<String> {
+  [find_program as String, root, "-type", "f", "-printf", "%s %P\n"]
+}
+

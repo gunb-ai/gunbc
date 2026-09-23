@@ -16,9 +16,11 @@
 // emitted rather than authored. The obligation is enrolled in
 // `gunbc.target_invocation_seed_growth`.
 //
-// WHAT IS AND IS NOT GENERIC HERE. One route: argv operand -> admit pattern -> a single target
-// builds the registry, exact lookup, invoke the bound producer, render its native standing; a
-// set form is refused with status 2 until the native test route executes it. No per-instrument arm on that route, and none
+// WHAT IS AND IS NOT GENERIC HERE. One route: argv operand -> admit pattern -> the operand's
+// CONTAINMENT in the native route's universe decides the executor. Inside it, the native test
+// route adjudicates that pattern through the emitted compiler. Outside it, a single target builds
+// the registry, exact lookup, invoke the bound producer, render its native standing; a set form
+// has no executor and is refused with status 2. No per-instrument arm on that route, and none
 // may be added; a second instrument is a row in `instrument_registry` plus one `Producer` arm in
 // `run_producer` — the peripheral realization dispatch DESIGN section 3 keeps out of the
 // interface. Deliberately NOT here: any consultation of `//:required` aggregate policy or the
@@ -1161,28 +1163,201 @@ fn behavioral_outcome(
     }
 }
 
-/// THE ONE SEAM: argv operand -> pattern admission -> route. A SINGLE target builds the registry
+/// `extdeps.bazel.target_pattern` `target_pattern_package`, mirrored.
+fn target_pattern_package(pattern: &TargetPattern) -> &[String] {
+    match pattern {
+        TargetPattern::SingleTarget(label) => &label.package_segments,
+        TargetPattern::PackageTargets(package) => package,
+        TargetPattern::SubtreeTargets(package) => package,
+    }
+}
+
+/// `extdeps.bazel.target_pattern` `package_within`, mirrored: `a` is `b` or lies under it.
+fn package_within(a: &[String], b: &[String]) -> bool {
+    b.len() <= a.len() && b.iter().zip(a.iter()).all(|(outer, inner)| outer == inner)
+}
+
+/// `extdeps.bazel.target_pattern` `target_pattern_within`, mirrored arm for arm, including the
+/// subtree-inside-package arm that answers `false` rather than claiming a containment this side
+/// cannot establish either.
+fn target_pattern_within(inner: &TargetPattern, outer: &TargetPattern) -> bool {
+    match outer {
+        TargetPattern::SubtreeTargets(package) => {
+            package_within(target_pattern_package(inner), package)
+        }
+        TargetPattern::PackageTargets(package) => match inner {
+            TargetPattern::SingleTarget(label) => &label.package_segments == package,
+            TargetPattern::PackageTargets(inner_package) => inner_package == package,
+            TargetPattern::SubtreeTargets(_) => false,
+        },
+        TargetPattern::SingleTarget(label) => match inner {
+            TargetPattern::SingleTarget(inner_label) => inner_label == label,
+            TargetPattern::PackageTargets(_) | TargetPattern::SubtreeTargets(_) => false,
+        },
+    }
+}
+
+/// `extdeps.bazel.target_pattern` `render_target_pattern`, mirrored. This is what reaches the
+/// emitted binary's `adjudicate` operand, so the pattern the operator wrote and the pattern the
+/// native universe is selected by are one value rendered once, never two spellings.
+fn render_target_pattern(pattern: &TargetPattern) -> String {
+    match pattern {
+        TargetPattern::SingleTarget(label) => render_label(label),
+        TargetPattern::PackageTargets(package) => format!("//{}:all", package.join("/")),
+        TargetPattern::SubtreeTargets(package) => {
+            if package.is_empty() {
+                "//...".to_string()
+            } else {
+                format!("//{}/...", package.join("/"))
+            }
+        }
+    }
+}
+
+/// `gunbc.witness_v2_native_route` `native_route_default_pattern`, mirrored: the native test
+/// route's whole universe, `//v2/test/...`. An operand CONTAINED in it belongs to that route.
+///
+/// THIS IS THE ONLY SEED-SIDE SPELLING OF THAT UNIVERSE, and it is `pub` for exactly that reason.
+/// The lane's runner needs the same fact as TEXT (it is an argv word) and this verb needs it as a
+/// PATTERN, which is two renderings of one value, not two values. A bare `"//v2/test/..."` literal
+/// beside this one would be the second independently editable spelling DESIGN section 3 forbids,
+/// and the drift would be load-bearing rather than cosmetic: narrow one and not the other and the
+/// verb routes an operand native that the lane's default excludes, or the reverse.
+pub fn native_route_default_pattern() -> TargetPattern {
+    TargetPattern::SubtreeTargets(vec!["v2".to_string(), "test".to_string()])
+}
+
+/// The universe above as the argv word the emitted binary's `adjudicate` verb takes. Derived from
+/// the one pattern rather than spelled again.
+pub fn native_route_default_pattern_text() -> String {
+    render_target_pattern(&native_route_default_pattern())
+}
+
+/// THE NATIVE TEST ROUTE, ENTERED WITH THE OPERAND'S OWN PATTERN.
+///
+/// The seed emits the compiler closure, cargo builds it, and the EMITTED BINARY adjudicates the
+/// selected population. Nothing on this path consults the interpreter, and nothing substitutes a
+/// cached or seed-side answer.
+///
+/// THE TERMINATION IS THE OPERAND'S OWN, FOLDED FROM THE PER-IDENTITY ROWS. Every arm of this
+/// function used to answer `SubjectUnreached`, because the only bit the route returned was the
+/// LANE'S whole-route qualification and consuming that as the operand's verdict conflates two
+/// scopes in both directions -- a typo reported as a failing test, and worse, a held qualification
+/// reported as the operator's tests PASSING. That class is rostered as
+/// `gunbc.recurring_failure_mode` `route_scoped_qualification_read_as_one_members_verdict`.
+///
+/// The route now folds the population it actually emitted through
+/// `gunbc.instrument_targets` `native_route_member_termination`, mirrored in the runner, so this
+/// caller receives a MEMBER-SCOPED standing and reads it directly. The lane's qualification is
+/// still carried and still reported, because a route-integrity refusal is something an operator
+/// needs to see -- but it no longer decides this verb's exit status.
+///
+/// THE LANE'S QUALIFICATION GATES A PASS, AND THE SUMMARY RIDES ON EVERY ARM. An earlier shape of
+/// this function said "only the member one decides the status", which over-corrected the original
+/// conflation: ruling out "qualification IS the verdict" never licensed "qualification may be
+/// IGNORED", and a refused route beside an all-passing population answered exit 0 with the refusal
+/// demoted to a sentence (review 70107). A refused qualification now clamps a `held` to
+/// `SubjectUnreached` while letting a definite member failure through unchanged.
+fn run_native_test_route(pattern: &TargetPattern) -> InvocationOutcome {
+    let rendered = render_target_pattern(pattern);
+    match cli_run::run_required_v2_native(&self_host_source_roots(), &rendered) {
+        cli_run::NativeRouteOutcome::LaneQualificationHeld { summary, members } => {
+            native_member_outcome(
+                &rendered,
+                members,
+                true,
+                "the lane's qualification held",
+                &summary,
+            )
+        }
+        cli_run::NativeRouteOutcome::LaneQualificationRefused { summary, members } => {
+            native_member_outcome(
+                &rendered,
+                members,
+                false,
+                "the lane's qualification REFUSED",
+                &summary,
+            )
+        }
+        cli_run::NativeRouteOutcome::Unreached { cause } => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: format!("native test route: {rendered} — {cause}"),
+        },
+    }
+}
+
+/// THE MEMBER STANDING BECOMES THIS VERB'S TERMINATION, ONE ARM EACH AND NO WILDCARD.
+///
+/// `NativeMemberTermination` has three arms because `InvocationRefused` is unreachable from a
+/// population fold; a fourth arm here would be a constructor nothing can build. A new arm upstream
+/// must fail to compile here rather than inherit whichever status a `_` happened to name.
+fn native_member_outcome(
+    rendered: &str,
+    members: cli_run::NativeMemberTermination,
+    lane_qualified: bool,
+    lane_note: &str,
+    summary: &str,
+) -> InvocationOutcome {
+    let member_termination = match members {
+        cli_run::NativeMemberTermination::ObservationHeld => Termination::ObservationHeld,
+        cli_run::NativeMemberTermination::ObservationDidNotHold => {
+            Termination::ObservationDidNotHold
+        }
+        cli_run::NativeMemberTermination::SubjectUnreached => Termination::SubjectUnreached,
+    };
+    // `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored: the
+    // lane's qualification GATES a positive answer and nothing else. Several of its clauses are
+    // what establish the verdict surface is trustworthy at all -- the false and true controls, and
+    // MalformedSpecimenAccepted, whose own note says that when they fail every verdict in the
+    // census is worthless -- so a pass read off rows with no established provenance is the
+    // fabricated plausible output DESIGN section 5 forbids. The clamp is ONE-DIRECTIONAL: it can
+    // only weaken an answer, never strengthen one, and it never manufactures a failure no member
+    // reported.
+    let termination = if lane_qualified {
+        member_termination
+    } else {
+        match member_termination {
+            Termination::ObservationHeld => Termination::SubjectUnreached,
+            other => other,
+        }
+    };
+    let members_note = match members {
+        cli_run::NativeMemberTermination::ObservationHeld => "every selected test passed",
+        cli_run::NativeMemberTermination::ObservationDidNotHold => {
+            "a selected test evaluated and did not hold"
+        }
+        cli_run::NativeMemberTermination::SubjectUnreached => {
+            "no verdict was obtained for part of the selection (an empty selection, or a test that \
+             could not be reached)"
+        }
+    };
+    InvocationOutcome {
+        termination,
+        message: format!(
+            "native test route: {rendered} adjudicated — {members_note}; {lane_note} — {summary}"
+        ),
+    }
+}
+
+/// THE ONE SEAM: argv operand -> pattern admission -> route. Mirrors `gunbc.target_invocation`
+/// `admit_test_operand`, including the containment that decides WHICH executor answers.
+///
+/// An operand inside the native route's universe -- single target or set form alike -- enters the
+/// native implementation carrying that pattern. Outside it, a SINGLE target builds the registry
 /// and looks up EXACTLY — no prefix, suffix or "did you mean": a near miss silently running a
-/// different target is worse than a refusal naming the one asked for. A SET form is ADMITTED by
-/// the grammar and REFUSED by the route (status 2, no observation): its only executor is the
-/// native `gunbc test` route (v2 foundation package 9), and handing it to the interpreter would
-/// let an interpreted run stand in for a native one. Mirrors `gunbc.target_invocation`
+/// different target is worse than a refusal naming the one asked for. A SET form outside it has no
+/// executor and is refused with status 2, no observation; handing it to the interpreter would let
+/// an interpreted run stand in for a native one. Mirrors
 /// `test_operand_set_form_refusal_rendered`.
 fn test_operand_set_form_refusal_rendered(operand: &str) -> String {
     format!(
-        "gunbc test: {operand} denotes a SET of targets; set forms run only through the native test route, which is not yet available, and are never delegated to the interpreter"
+        "gunbc test: {operand} denotes a SET of targets outside the native test route's universe; no executor enumerates that population, and set forms are never delegated to the interpreter"
     )
 }
 
 pub fn test_verb(operand: &str) -> InvocationOutcome {
-    let label = match parse_target_pattern(operand) {
-        Ok(TargetPattern::SingleTarget(label)) => label,
-        Ok(TargetPattern::PackageTargets(_)) | Ok(TargetPattern::SubtreeTargets(_)) => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: test_operand_set_form_refusal_rendered(operand),
-            };
-        }
+    let pattern = match parse_target_pattern(operand) {
+        Ok(pattern) => pattern,
         Err(cause) => {
             return InvocationOutcome {
                 termination: Termination::Refused,
@@ -1190,6 +1365,18 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
                     "gunbc test: operand is not an admitted target pattern: {operand}\n  cause: {}",
                     target_pattern_refusal_text(&cause)
                 ),
+            };
+        }
+    };
+    if target_pattern_within(&pattern, &native_route_default_pattern()) {
+        return run_native_test_route(&pattern);
+    }
+    let label = match pattern {
+        TargetPattern::SingleTarget(label) => label,
+        TargetPattern::PackageTargets(_) | TargetPattern::SubtreeTargets(_) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: test_operand_set_form_refusal_rendered(operand),
             };
         }
     };
@@ -1554,5 +1741,57 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
                  recognise as a FloorMemoryQualification: {other:?}"
             ),
         },
+    }
+}
+
+#[cfg(test)]
+mod native_route_termination_tests {
+    use super::*;
+
+    /// `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored here and
+    /// given its own red. The `.dag` witness pins the fold; this pins that THIS host applies it.
+    ///
+    /// A REFUSED QUALIFICATION CANNOT YIELD A PASS (review 70107). Several qualification clauses
+    /// are what establish the verdict surface is trustworthy at all, so a pass read off rows with
+    /// no established provenance is fabricated plausible output.
+    #[test]
+    fn a_refused_qualification_clamps_a_pass_to_unreached() {
+        let out = native_member_outcome(
+            "//v2/test/parse:all",
+            cli_run::NativeMemberTermination::ObservationHeld,
+            false,
+            "refused",
+            "s",
+        );
+        assert_eq!(out.termination, Termination::SubjectUnreached);
+    }
+
+    /// AND A QUALIFIED ROUTE PASSES THE MEMBER STANDING THROUGH, which is what makes the clamp a
+    /// gate rather than a constant: without this, always answering SubjectUnreached would pass the
+    /// arm above.
+    #[test]
+    fn a_qualified_route_passes_a_pass_through() {
+        let out = native_member_outcome(
+            "//v2/test/parse:all",
+            cli_run::NativeMemberTermination::ObservationHeld,
+            true,
+            "held",
+            "s",
+        );
+        assert_eq!(out.termination, Termination::ObservationHeld);
+    }
+
+    /// A DEFINITE FAILURE SURVIVES A REFUSED QUALIFICATION. Demoting it would bury a located defect
+    /// behind an infrastructure problem, and the gate is one-directional by construction.
+    #[test]
+    fn a_refused_qualification_does_not_demote_a_failure() {
+        let out = native_member_outcome(
+            "//v2/test/parse:all",
+            cli_run::NativeMemberTermination::ObservationDidNotHold,
+            false,
+            "refused",
+            "s",
+        );
+        assert_eq!(out.termination, Termination::ObservationDidNotHold);
     }
 }
