@@ -3,6 +3,7 @@ module v2.test.claim.body_lowering_qualified_path
 import v2.compiler.body_lowering_fold {
   ParseSubtreeAbsent,
   ParseSubtreeFound,
+  PostfixChainBare,
   PostfixChainFound,
   PostfixChainNotThisShape,
   body_lower_postfix_method_suffix_optional,
@@ -352,7 +353,21 @@ test fn body_lowering_call_before_end_is_found_as_two_steps() -> Bool {
   match body_lower_postfix_chain_read(node: dotted_fixture_call_before_end()) {
     PostfixChainNotThisShape => false
     PostfixChainSuffixCarried { at: _ } => false
+    PostfixChainBare { segments: _ } => false
     PostfixChainFound { steps: steps } => length(xs: steps) == 2
+  }
+}
+
+// THE ALL-BARE ARM IS THE READ'S OWN ANSWER (review 70331). `wall.peer.peer_leaf` carries no call,
+// so the read answers PostfixChainBare with both segments, and a chain with a call (the row above)
+// answers PostfixChainFound. The two rows together discriminate the decision the read makes once;
+// a read that answered Found for every chain fails this one.
+test fn body_lowering_bare_chain_is_read_as_bare_segments() -> Bool {
+  match body_lower_postfix_chain_read(node: dotted_fixture_qualified_value()) {
+    PostfixChainNotThisShape => false
+    PostfixChainSuffixCarried { at: _ } => false
+    PostfixChainFound { steps: _ } => false
+    PostfixChainBare { segments: segments } => segments == [^peer, ^peer_leaf]
   }
 }
 
