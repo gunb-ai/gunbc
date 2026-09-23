@@ -359,15 +359,17 @@ fn xl2_rehearse_stripped(source_commit: GitObjectId, source_tree: GitObjectId, s
 }
 
 // THE ENTRY: the exact base is pinned by the ref the collector resolves, in the same dispatch.
-// DECLARED FRONTIER, NOT EXECUTED IN THIS CHANGE. Its consumer is the XL-2 rehearsal run whose
-// receipt is the RehearsalInstrumentDelivered StageDeliveryReceipt read by
-// gunbc.compiler_frontend_program_status xl2_stage_standing; the trigger is P1 (call-argument
-// references reach resolve) and P4 (occurrence-complete refusal observation) both delivered, per
-// the parent's serialized prerequisite PR. BOTH HAVE LANDED (gunbc#12108, gunbc#12116), so this is
-// no longer a frontier awaiting inputs: what it lacks is an EXECUTING ROUTE. The hermetic floor
-// cannot reach the object store (the collector's own module states that route deficit), and the
-// whole-tree interpreter census is beyond a claim's budget; the route that executes it is the open
-// item on gunbc#12097, and until it runs this entry is unexercised and says so.
+// DECLARED FRONTIER, NOT EXECUTED IN THIS CHANGE. Consumer: the XL-2 rehearsal run whose receipt is
+// the RehearsalInstrumentDelivered StageDeliveryReceipt read by gunbc.compiler_frontend_program_status
+// xl2_stage_standing. Its first trigger, P1 and P4 delivered (gunbc#12108, gunbc#12116), HAS FIRED.
+// Execution is deferred by the namespace-cut manager's ruling of 2026-09-23 to ONE further
+// capability: the trigger of gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand.
+// Until it lands every run can only answer Xl2SequenceOperandReferencesUnobservable, a refusal
+// already known, so a whole-tree run today buys nothing; after it, a run can reach Xl2CensusComplete.
+// The run itself is a one-shot `gunbc run --function` on a host with an enforceable cgroup limit
+// (never a shared session container; the whole-tree resolve is tens of GB), receipt on the delivering
+// change. Until then the stages below the collector execute in test.claim.namespace_xl2_rehearsal_census,
+// and the collector's live half carries the route deficit its own module states.
 fn run_xl2_rehearsal_at(ref: String) -> Xl2RehearsalRun {
   match collect_step0_subject_vector_at(ref: ref) {
     Step0SubjectCollectionRefused { cause: cause } => Xl2RehearsalBaseUnobserved { cause: cause }
