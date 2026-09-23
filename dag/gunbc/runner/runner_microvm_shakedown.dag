@@ -1,0 +1,155 @@
+module gunbc.runner_microvm_shakedown
+
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import std.disposition { Disposition, SingleAuthority }
+import std.decl_ref { decl_ref }
+import std.measure { second, money_amount_micro, MoneyPerSecond }
+import extdeps.currency.currency { Usd }
+import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, WorkKey }
+import product.fabric.work {
+  Work, WorkContract, WorkStep, ReceiptSatisfiable, OpaqueEffects, MaterializedProgram,
+  declared_output_obligations_from_manifests, work_for,
+}
+import product.fabric.demand { Demand }
+import product.fabric.supply { SupplierOffer, QuotedPerSecond, ObservedSupply }
+import product.fabric.provider_route { ProviderRoute }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fabric_witness_run { floor_execution_requirements }
+import gunbc.fabric_floor_dispatch { floor_demand }
+import gunbc.fabric_control_plane { fabric_cell_allocation_key }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_offer_envelope, srv1_microvm_shakedown_slot }
+import gunbc.runner_microvm { RunnerGuestImage, gunbc_runner_guest_image, runner_microvm_isolation_profile }
+import gunbc.runner_microvm_slot_unit { microvm_controller_firecracker_release }
+import extdeps.virtualization.firecracker { FirecrackerRelease }
+import extdeps.github.actions_runner { ActionsRunnerRelease }
+import extdeps.github.actions_jit_runner { JitRunnerGroupId }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+
+data runner_microvm_shakedown_disposition: Disposition = SingleAuthority
+
+// THE SHAKEDOWN'S WORK, DEMAND AND OFFER, DERIVED ONCE FOR BOTH SIDES OF THE RESERVATION.
+//
+// A microVM attempt is derived from a reservation on the cell (gunbc.runner_microvm_attempt:
+// the attempt id is the reservation's work key and generation), and the reservation is re-read
+// from the host CAS by the slot controller in a LATER PROCESS than the one that placed it
+// (gunbc.fabric_required_build_cell observe_required_build_cell_wet compares the held owner
+// against fabric_hold_owner(demand, offer)). So the placer and the controller must derive the
+// SAME demand and offer from one authority, or the controller reads a hold it cannot name and
+// refuses every attempt as ReservationPayloadWorkMismatch. This module is that authority.
+//
+// THE WORK IS THE SHAKEDOWN'S OWN, NOT THE REQUIRED FLOOR'S. The required build Work
+// (gunbc.fabric_witness_run required_witnesses_build_work) is keyed on a verified git commit and
+// tree, which a controller running from a release locus with no repository cannot re-derive. The
+// shakedown's contract is what the guest actually does -- boot the cited image, register the cited
+// runner release under the attempt's JIT credential, serve ONE dispatched GitHub job, exit -- and
+// its REQUIREMENTS are the floor's (memory demand, threads, trust domain, capabilities), so the
+// guest is shaped for the floor job the acceptance sequence ends with, and the planner's
+// reservation arm admits it on the fleet's own trust domain. A smaller job run through this Work
+// proves the LIFECYCLE and not floor fit, exactly as the brief admits it.
+//
+// EVERY IDENTITY BELOW IS DERIVED FROM THE SLOT AND THE CONTRACT, NEVER AUTHORED PER RUN: the
+// work key from the contract and requirements (product.fabric.work derive_work_key), the demand
+// and offer keys from the slot instance name, the executor from the cell's allocation key. Two
+// processes on two days compute the same values, which is the whole point.
+fn microvm_shakedown_contract(image: RunnerGuestImage, vmm: FirecrackerRelease) -> WorkContract {
+  WorkContract {
+    execution: MaterializedProgram {
+      program: join(["gunbc.microvm-shakedown.program:actions-runner-", image.runner.version as String], ""),
+      source: join(["gunbc.microvm-shakedown.source:", image.distribution as String, "-", image.release_series as String, "-", image.arch as String], ""),
+      runtime_closure: join(["gunbc.microvm-shakedown.runtime:firecracker-", vmm.version as String, "-", vmm.arch as String], ""),
+    },
+    steps: [
+      WorkStep { step_id: "stage-attempt-and-boot-guest", resumability: ReceiptSatisfiable },
+      WorkStep { step_id: "register-runner-under-attempt-credential", resumability: ReceiptSatisfiable },
+      WorkStep { step_id: "serve-one-dispatched-job", resumability: OpaqueEffects { reason: "the dispatched job's effects are the job's own; the attempt does not resume it" } },
+    ],
+    inputs: "gunbc.microvm-shakedown.inputs:attempt-jit-credential-and-workspace-image",
+    effect_contract: "gunbc.microvm-shakedown.effects.guest-scoped-plus-github-job-reporting",
+    output_contract: "gunbc.microvm-shakedown.outputs",
+    output_obligations: declared_output_obligations_from_manifests(
+      artifacts: ["microvm-attempt-receipt"],
+      terminals: ["github-job-conclusion", "cell-readiness-settlement"],
+    ),
+  }
+}
+
+data microvm_shakedown_principal: NonEmptyStr = "gunbc" as NonEmptyStr
+
+fn microvm_shakedown_work() -> Work<NonEmptyStr> {
+  work_for(
+    principal: microvm_shakedown_principal,
+    contract: microvm_shakedown_contract(image: gunbc_runner_guest_image, vmm: microvm_controller_firecracker_release),
+    requirements: floor_execution_requirements(),
+  )
+}
+
+fn microvm_shakedown_demand_id(slot: RunnerSlotIdentity) -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity {
+    principal: microvm_shakedown_principal,
+    key: join(["microvm-shakedown-demand-", runner_slot_instance_name(slot: slot)], "") as DemandKey,
+  }
+}
+
+fn microvm_shakedown_offer_id(slot: RunnerSlotIdentity) -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity {
+    principal: microvm_shakedown_principal,
+    key: join(["microvm-shakedown-offer-", runner_slot_instance_name(slot: slot)], "") as OfferKey,
+  }
+}
+
+// THE MONEY TERMS ARE THE FCI-1 PROBE'S, because the fleet prices its own cells at nothing and the
+// budget is a wall against a fixture defect rather than a market: a reservation refused on money
+// here would be a broken row masquerading as a market answer (the probe's 50/51 split argument).
+fn microvm_shakedown_demand(slot: RunnerSlotIdentity) -> Demand<NonEmptyStr> {
+  floor_demand(
+    id: microvm_shakedown_demand_id(slot: slot),
+    work: microvm_shakedown_work().id,
+    origin: "gunbc.observation.microvm-shakedown",
+    submitted_at: "2026-09-21T00:00:00Z",
+    account: "fleet-ci",
+    reservation_price: money_amount_micro(count: 500000),
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    deadline: none,
+  )
+}
+
+// THE ROUTE IS THE FLEET'S OWN SLOT, CITED BY DECLARATION: the provider is the fabric slot roster
+// that admits the shakedown slot, the service is the unit that serves it, the region is the slot.
+fn microvm_shakedown_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "gunbc.runner_slot_allocation", decl_name: "fabric_execution_slot_identities"),
+    service: decl_ref(module_path: "gunbc.runner_microvm_slot_unit", decl_name: "microvm_slot_unit_template_name"),
+    region: decl_ref(module_path: "gunbc.runner_slot_allocation", decl_name: "srv1_microvm_shakedown_slot"),
+  }
+}
+
+fn microvm_shakedown_offer(slot: RunnerSlotIdentity) -> SupplierOffer<NonEmptyStr> {
+  let work = microvm_shakedown_work()
+  SupplierOffer {
+    id: microvm_shakedown_offer_id(slot: slot),
+    executor: fabric_cell_allocation_key(slot: slot),
+    route: microvm_shakedown_route(),
+    shape: work.requirements.shape,
+    capabilities: work.requirements.capabilities,
+    trust_domain: work.requirements.trust_domain,
+    isolation: runner_microvm_isolation_profile(),
+    quantity_bound: 1,
+    ready_at: "2026-09-21T00:00:00Z",
+    quote: QuotedPerSecond(MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd }),
+    billing_quantum: second(count: 0),
+    evidence: ObservedSupply {
+      observed_at: "2026-09-21T00:00:00Z",
+      receipt: "gunbc.observation.microvm-shakedown-slot",
+    },
+  }
+}
+
+// THE RUNNER GROUP THE ATTEMPT REGISTERS INTO. GitHub creates every organization with one runner
+// group named Default whose id is 1; the fleet's host slots register into it. The figure is
+// TranscribedUncited with its read obligation named: the org_runner_roster_observe mode reads
+// registrations, not groups, so the id has no producer in this corpus yet.
+data microvm_shakedown_runner_group_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "read the organization's runner groups (GET the organization's actions runner-groups) through gunbc.fleet.org_actions_inspection and cite the Default group's id from that response" as NonEmptyStr,
+}
+
+data microvm_shakedown_runner_group: JitRunnerGroupId = JitRunnerGroupId { value: 1 }
