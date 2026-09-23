@@ -9,7 +9,7 @@ import std.types { NonEmptyStr, List, String }
 // rows that arrived over the range; they are the RETAINED EXCEPTIONS, the identities the criterion
 // cannot type at that base, each with its own trigger.
 
-data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..d759da1c50e" as NonEmptyStr
+data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..be3a2f28d42" as NonEmptyStr
 
 // THE FINAL-BASE CENSUS, AT USES-0 ROW IDENTITY -- (module, declaration, alias, type) -- not by
 // syntactic clause, since one clause can bind several aliases. At the range tip every authored `uses`
@@ -51,7 +51,7 @@ type DemandRestatementRetainedRow {
 // THE ORDINARY FUNCTIONS THE CRITERION CANNOT TYPE, because their module refuses to resolve, so there
 // is no registry entry and no derived demand to compare against. Two causes, and they carry different
 // triggers. `gunbc.auth.patterns` (a pre-existing type error, expected String got Secret, measured at
-// d759da1c50e) is a DEFECT this cut neither introduced nor repairs: TRIGGER, per row, the module
+// be3a2f28d42) is a DEFECT this cut neither introduced nor repairs: TRIGGER, per row, the module
 // resolves and the criterion executes on it like any other fn row. `test.probe.census_app_acquisition_forged_probe` refuses BY DESIGN -- forging the
 // sole_constructor receipt is the probe's whole point -- so resolution is not coming; its one row
 // (two resources) is carried at each alias, and it leaves with the probe.
