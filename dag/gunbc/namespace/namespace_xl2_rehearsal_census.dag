@@ -34,7 +34,7 @@ import v2.compiler.native_test_vocabulary { NativeTestFileRefusal }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, Diagnostic, NonEmptyDiagnostics, Rejected, diagnostics_fatal }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
 import v2.std.node { Symbol }
 import v2.std.algebra { fold_list }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
@@ -52,15 +52,15 @@ import std.algebra { Cons, Empty }
 
 // ONE RESIDUAL ROW IS ONE INDEPENDENT FAILURE CHAIN, NOT ONE DIAGNOSTIC. A resolve refusal is an
 // ordered chain whose advisories precede the refusal that fired; fanning it out per diagnostic
-// counts the advisories as residual sites. The row carries the resolver's chain whole and its fatal
-// from std.diagnostic diagnostics_fatal, the one home of that ordering. Loci are carried as the
+// counts the advisories as residual sites. The row carries the resolver's chain whole and NO stored
+// fatal: a reader derives it with std.diagnostic diagnostics_fatal(chain), the one home of that
+// ordering, so the row cannot hold a fatal that disagrees with its chain. Loci are carried as the
 // resolver produced them -- minted and synthetic alike, never re-keyed -- and beside them the
 // file's strip coordinate map, which is what joins a stripped-source extent back to the base.
 type Xl2ResidualChain {
   module: String
   path: Symbol
   chain: NonEmptyDiagnostics
-  fatal: Diagnostic
   base_coordinates: List<ImportStripCoordinateSegment>
 }
 
@@ -208,7 +208,6 @@ fn xl2_observe_module(
           module: entry.module,
           path: entry.path,
           chain: d,
-          fatal: diagnostics_fatal(d: d),
           base_coordinates: xl2_base_coordinates_of(members: members, path: entry.path)
         }),
         resolved: acc.resolved,
