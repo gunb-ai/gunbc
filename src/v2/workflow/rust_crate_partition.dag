@@ -136,11 +136,28 @@ type Stage0ModuleDagInterfaceGrounding
     }
 
 type ExportsMapNotSourceGrounded {
-  dissolve_target: DeclarationRef
+  capability: InterfaceGroundingCapability
 }
 
 type TypeDefinitionsMapNotSourceGrounded {
-  dissolve_target: DeclarationRef
+  capability: InterfaceGroundingCapability
+}
+
+// The capability that retires this debt, as STRUCTURE rather than prose. A DeclarationRef names a
+// declaration and nothing else, so one ref could only ever pin the supply; the other two halves of
+// the trigger -- that the supply be host-emitted, and the population it must be sufficient for --
+// were a String a program could only grep. Each is a field here so a reader matches on it.
+//   host_emission     joins the dissolution already declared for the supply's hand host handler,
+//                     rather than opening a second one for the same event.
+//   contents_supply   the supply whose rows must carry per-module declaration contents; today they
+//                     carry module, provenance and root only, which is why this is still debt.
+//   population        the derivation whose closure the contents must be complete for -- the emitted
+//                     compiler closure, not a fixture.
+// Named by ref, not imported: v2.workflow.emitted_closure_crate_partition imports this module.
+type InterfaceGroundingCapability {
+  host_emission: DeclarationRef
+  contents_supply: DeclarationRef
+  population: DeclarationRef
 }
 
 // Interim: ModuleDag.exports + type_definitions carry per-module keys with empty lists (structural
@@ -199,13 +216,29 @@ fn stage0_module_interface_grounding_target() -> DeclarationRef {
   }
 }
 
+fn stage0_module_interface_grounding_capability() -> InterfaceGroundingCapability {
+  InterfaceGroundingCapability {
+    host_emission: DeclarationRef {
+      module_path: "v2.compiler.source_authority" as NonEmptyStr,
+      decl_name: "module_storage_supply_dissolution_trigger" as NonEmptyStr,
+      field: WholeDeclaration,
+    },
+    contents_supply: stage0_module_interface_grounding_target(),
+    population: DeclarationRef {
+      module_path: "v2.workflow.emitted_closure_crate_partition" as NonEmptyStr,
+      decl_name: "module_dag_from_dependency_facts" as NonEmptyStr,
+      field: WholeDeclaration,
+    }
+  }
+}
+
 fn stage0_module_dag_interface_grounding() -> Stage0ModuleDagInterfaceGrounding {
   Stage0ModuleDagInterfaceUngrounded {
     exports_map: ExportsMapNotSourceGrounded {
-      dissolve_target: stage0_module_interface_grounding_target()
+      capability: stage0_module_interface_grounding_capability()
     },
     type_definitions_map: TypeDefinitionsMapNotSourceGrounded {
-      dissolve_target: stage0_module_interface_grounding_target()
+      capability: stage0_module_interface_grounding_capability()
     }
   }
 }
@@ -1020,4 +1053,4 @@ data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolutio
 
 data stage0_compilation_units_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (§5 List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only.")
 
-data stage0_module_dag_interface_grounding_debt_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_module_dag_interface_grounding — THE TRIGGER IS A CAPABILITY, NOT AN ARTIFACT, and it is stated here because this is the carrier a program reads; the annotation above stage0_module_interface_grounding_target is commentary no Accepted program can consume, and that declaration is a DeclarationRef, which can name a declaration and nothing else. THE CAPABILITY: the module-binding supply must be HOST-EMITTED and must carry PER-MODULE DECLARATION CONTENTS. SUFFICIENT FOR, which is the half a decl name cannot state: partition_fold_outcome deriving a COMPLETE CompilationUnit interface — exports as module-scope declaration Nodes, and by-value ModuleTypeDefinitionRow rows — for EVERY module of the emitted compiler closure, within the required gate budget rather than at oracle scale. Both halves must hold: a host-emitted supply that still carries only module and path retires nothing, and contents derived in-graph at a scale the gate cannot pay for retires nothing either. THE POPULATION is the emitted closure v2.workflow.emitted_closure_crate_partition derives, not a fixture; its size and the per-module eval price are owned by v2.compiler.source_authority module_storage_bindings_for_source_roots' own note and by that derivation, and are deliberately not copied here (DESIGN 6: name the instrument, never transcribe its output). THE HOST-EMISSION HALF is already declared as v2.compiler.source_authority module_storage_supply_dissolution_trigger, so this debt JOINS that dissolution rather than opening a second; the CONTENTS half and the sufficiency clause above are what this row adds, and they are declared nowhere else. A module whose provenance is ProducedByBehavior has no artifact and no file_path, so it has no contents to project: that arm must REFUSE, and its interface being supplied by its producer is a different fact owing a different declaration — answering Empty there reintroduces the exact symptom this row exists to remove. UNTIL ALL OF THAT HOLDS, R3 render uses Stage0PartitionCrateRow.modules plus the reexport_packages wildcard pub-use chain, never CompilationUnit.interface Nodes.")
+data stage0_module_dag_interface_grounding_debt_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_module_dag_interface_grounding — THE TRIGGER IS A CAPABILITY, NOT AN ARTIFACT. Its declarations -- host emission, the contents supply and the population -- are the typed fields of InterfaceGroundingCapability on the debt carrier, which is what a program reads; this text states what those declarations must be SUFFICIENT FOR, which a declaration ref cannot. THE CAPABILITY: the module-binding supply must be HOST-EMITTED and must carry PER-MODULE DECLARATION CONTENTS. SUFFICIENT FOR, which is the half a decl name cannot state: partition_fold_outcome deriving a COMPLETE CompilationUnit interface — exports as module-scope declaration Nodes, and by-value ModuleTypeDefinitionRow rows — for EVERY module of the emitted compiler closure, within the required gate budget rather than at oracle scale. Both halves must hold: a host-emitted supply that still carries only module and path retires nothing, and contents derived in-graph at a scale the gate cannot pay for retires nothing either. THE POPULATION is the emitted closure v2.workflow.emitted_closure_crate_partition derives, not a fixture; its size and the per-module eval price are owned by v2.compiler.source_authority module_storage_bindings_for_source_roots' own note and by that derivation, and are deliberately not copied here (DESIGN 6: name the instrument, never transcribe its output). THE HOST-EMISSION HALF is already declared as v2.compiler.source_authority module_storage_supply_dissolution_trigger, so this debt JOINS that dissolution rather than opening a second; the CONTENTS half and the sufficiency clause above are what this row adds, and they are declared nowhere else. A module whose provenance is ProducedByBehavior has no artifact and no file_path, so it has no contents to project: that arm must REFUSE, and its interface being supplied by its producer is a different fact owing a different declaration — answering Empty there reintroduces the exact symptom this row exists to remove. UNTIL ALL OF THAT HOLDS, R3 render uses Stage0PartitionCrateRow.modules plus the reexport_packages wildcard pub-use chain, never CompilationUnit.interface Nodes.")

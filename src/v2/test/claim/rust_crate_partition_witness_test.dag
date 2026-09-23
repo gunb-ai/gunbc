@@ -1,7 +1,6 @@
 module v2.test.claim.rust_crate_partition_witness
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.dissolution { BoundDissolution, DissolutionCondition, UnboundDissolution }
 import std.perturbation { ForwardSameInSameOut, perturbation_consistent }
 import std.types { NonEmptyStr }
 import v2.std.collection { Absent, Present, empty_map, map_get, map_insert }
@@ -41,7 +40,10 @@ import v2.workflow.rust_crate_partition {
   rust_crate_partition_module_bearing_unit_target,
   stage0_interim_explicit_assignment,
   stage0_module_dag,
-  stage0_module_dag_interface_grounding_debt_dissolve_on,
+  stage0_module_dag_interface_grounding,
+  InterfaceGroundingCapability,
+  Stage0ModuleDagInterfaceSourceGrounded,
+  Stage0ModuleDagInterfaceUngrounded,
   stage0_module_dag_interface_grounding_is_debt,
   stage0_module_interface_grounding_target,
   stage0_module_bearing_unit_count,
@@ -394,26 +396,29 @@ test fn witness_interface_grounding_target_names_the_binding_supply_holds() -> B
     && ((target.decl_name as String) == "module_storage_bindings_for_source_roots")
 }
 
-// A DECLARATION REF NAMES A DECLARATION AND NOTHING ELSE, so the claim above cannot see the half
-// of the trigger that actually decides whether the debt may retire. DESIGN 4b(3): "The trigger
-// must name the CAPABILITY, not an artifact that would contribute to one... Where a trigger names
-// an artifact, the row must state what that artifact must be SUFFICIENT FOR." A reader who only
-// pins the decl name admits a supply that is host-emitted and still carries nothing but module and
-// path -- which is precisely how the two PREVIOUS targets passed inspection.
+// A DECLARATION REF NAMES A DECLARATION AND NOTHING ELSE, so the claim above pins only the supply.
+// DESIGN 4b(3) wants the trigger to name the CAPABILITY and what the artifact must be SUFFICIENT
+// FOR. Both debt carriers must hold the same typed capability: host emission JOINED to the supply's
+// existing dissolution, and the emitted-closure derivation as the population. Pointing either at
+// another declaration, or letting the two maps disagree, reds this claim.
 //
-// So this reads the TYPED CARRIER and asserts both halves are named in it. The red is authorable
-// and is the point: deleting either half from the dissolution condition, or moving the sufficiency
-// clause back out into the commentary String, reds this claim. Prose in an annotation could not be
-// checked at all (DESIGN 4c), and the commentary String could be emptied without any claim noticing.
+// STATED AT ITS STRENGTH: this pins which declarations the trigger names. It does NOT evaluate
+// whether the supply is host-emitted or carries contents -- no program can yet, which is the debt.
 test fn witness_interface_grounding_trigger_states_both_capability_halves_holds() -> Bool {
-  match stage0_module_dag_interface_grounding_debt_dissolve_on {
-    BoundDissolution { trigger: _ } => false
-    UnboundDissolution { description: description } =>
-      (description as String).contains("HOST-EMITTED")
-        && (description as String).contains("PER-MODULE DECLARATION CONTENTS")
-        && (description as String).contains("SUFFICIENT FOR")
-        && (description as String).contains("EVERY module of the emitted compiler closure")
+  match stage0_module_dag_interface_grounding() {
+    Stage0ModuleDagInterfaceSourceGrounded => false
+    Stage0ModuleDagInterfaceUngrounded { exports_map: exports_map, type_definitions_map: type_definitions_map } =>
+      interface_grounding_capability_is_the_declared_one(capability: exports_map.capability)
+        && interface_grounding_capability_is_the_declared_one(capability: type_definitions_map.capability)
   }
+}
+
+fn interface_grounding_capability_is_the_declared_one(capability: InterfaceGroundingCapability) -> Bool {
+  ((capability.host_emission.module_path as String) == "v2.compiler.source_authority")
+    && ((capability.host_emission.decl_name as String) == "module_storage_supply_dissolution_trigger")
+    && ((capability.contents_supply.decl_name as String) == "module_storage_bindings_for_source_roots")
+    && ((capability.population.module_path as String) == "v2.workflow.emitted_closure_crate_partition")
+    && ((capability.population.decl_name as String) == "module_dag_from_dependency_facts")
 }
 
 
