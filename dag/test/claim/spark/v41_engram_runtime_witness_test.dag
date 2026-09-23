@@ -160,10 +160,10 @@ fn w_source() -> List<V41SourceRow> {
 // production; four distinct SHA-256 values here, one per (layer 1, rank).
 fn w_identified() -> V41RowStoreEncoding? {
   match v41_identify_row_store(spec: w_tiny_spec(), rank_stores: [
-    v41_rank_store_identity(layer: 1, rank: 0, digest: Sha256Hash(w_sha(c: "0"))),
-    v41_rank_store_identity(layer: 1, rank: 1, digest: Sha256Hash(w_sha(c: "1"))),
-    v41_rank_store_identity(layer: 1, rank: 2, digest: Sha256Hash(w_sha(c: "2"))),
-    v41_rank_store_identity(layer: 1, rank: 3, digest: Sha256Hash(w_sha(c: "3"))),
+    v41_rank_store_identity(layer: 1, rank: 0, digest: w_sha(c: "0")),
+    v41_rank_store_identity(layer: 1, rank: 1, digest: w_sha(c: "1")),
+    v41_rank_store_identity(layer: 1, rank: 2, digest: w_sha(c: "2")),
+    v41_rank_store_identity(layer: 1, rank: 3, digest: w_sha(c: "3")),
   ]) {
     V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d } => Present { value: V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d } }
     V41RowStoreEncodingUnestablished { obligation: _ } => none

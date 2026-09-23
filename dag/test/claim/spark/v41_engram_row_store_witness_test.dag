@@ -3,7 +3,7 @@ module test.claim.spark.v41_engram_row_store_witness
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.nat { Nat }
 import std.integer { UInt8, qualified_octet_members }
-import std.content_hash { ContentHash, Sha256Hash, content_hash_of_value, serialize_content_hash, sha256_hex_digest }
+import std.content_hash { Sha256Digest, Sha256DigestHex, serialize_content_hash }
 import std.measure { byte_size_count }
 import v2.std.optional { Present, Absent }
 import extdeps.numeric.base16 { base16_decode_lower }
@@ -113,14 +113,11 @@ test fn an_incomplete_source_does_not_mint_identified_stores() -> Bool {
 
 // ── IDENTIFICATION: EXACT (LAYER, RANK) POPULATION, SHA-256 ONLY ───────────────────────────────
 
-fn w_sha(c: String) -> ContentHash {
-  match sha256_hex_digest(hex: join([c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c], "")) {
-    Present { value: d } => Sha256Hash(d)
-    Absent => content_hash_of_value(value: "unreachable" as NonEmptyStr)
-  }
+fn w_sha(c: String) -> Sha256Digest {
+  Sha256Digest { hex: join([c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c], "") as Sha256DigestHex }
 }
 
-test fn identification_refuses_a_missing_foreign_or_non_sha256_store() -> Bool {
+test fn identification_refuses_a_missing_foreign_or_duplicated_store() -> Bool {
   let four = map([0, 1, 2, 3], k => v41_rank_store_identity(layer: 1, rank: k, digest: w_sha(c: "a")))
   (match v41_identify_row_store(spec: w_tiny_spec(), rank_stores: four) {
     V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: _, content_digest: _ } => true
@@ -134,8 +131,8 @@ test fn identification_refuses_a_missing_foreign_or_non_sha256_store() -> Bool {
       V41RowStoreEncodingRefused { defects: d } => any(d, x => (x as String).contains("not declared"))
       _ => false
     })
-    && (match v41_identify_row_store(spec: w_tiny_spec(), rank_stores: concat(four |> take(n: 3), [v41_rank_store_identity(layer: 1, rank: 3, digest: content_hash_of_value(value: "r3" as NonEmptyStr))])) {
-      V41RowStoreEncodingRefused { defects: d } => any(d, x => (x as String).contains("not a SHA-256"))
+    && (match v41_identify_row_store(spec: w_tiny_spec(), rank_stores: concat(four, [v41_rank_store_identity(layer: 1, rank: 3, digest: w_sha(c: "b"))])) {
+      V41RowStoreEncodingRefused { defects: d } => any(d, x => (x as String).contains("more than one digest"))
       _ => false
     })
 }

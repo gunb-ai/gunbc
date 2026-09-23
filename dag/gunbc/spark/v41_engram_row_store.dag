@@ -377,13 +377,15 @@ fn v41_encoding_spec_key(spec: V41RowStoreEncodingSpec) -> ContentHash {
 
 // ── A STORE'S IDENTITY: (LAYER, RANK, SHA-256 OF THE FILE) ─────────────────────────────────────
 
+// THE DIGEST IS A SHA-256 BY TYPE, because the consumer compares the file's SHA-256 and nothing else;
+// a digest of another family is not writable here rather than refused later.
 type V41RankStoreIdentity sole_constructor {
   layer: Nat
   rank: Nat
-  digest: ContentHash
+  digest: Sha256Digest
 }
 
-fn v41_rank_store_identity(layer: Nat, rank: Nat, digest: ContentHash) -> V41RankStoreIdentity {
+fn v41_rank_store_identity(layer: Nat, rank: Nat, digest: Sha256Digest) -> V41RankStoreIdentity {
   V41RankStoreIdentity { layer: layer, rank: rank, digest: digest }
 }
 
@@ -406,19 +408,12 @@ fn v41_ordered_stores(stores: List<V41RankStoreIdentity>) -> List<V41RankStoreId
 }
 
 fn v41_rank_store_inputs(stores: List<V41RankStoreIdentity>) -> List<ArtifactRealizationInput> {
-  map(v41_ordered_stores(stores: stores), s => v41_input(identity: join([v41_store_key(layer: s.layer, rank: s.rank), ".sha256"], ""), value: serialize_content_hash(hash: s.digest) as String))
+  map(v41_ordered_stores(stores: stores), s => v41_input(identity: join([v41_store_key(layer: s.layer, rank: s.rank), ".sha256"], ""), value: serialize_content_hash(hash: Sha256Hash(s.digest)) as String))
 }
 
 // THE DECLARED STORE POPULATION: one (layer, rank) per spec layer per rank, as keys.
 fn v41_declared_store_keys(spec: V41RowStoreEncodingSpec) -> List<String> {
   flat_map(spec.layers, t => map(vllm_engram_count_up(n: spec.rank_count), k => v41_store_key(layer: t.layer, rank: k)))
-}
-
-fn v41_is_sha256(h: ContentHash) -> Bool {
-  match h {
-    Sha256Hash(_) => true
-    _ => false
-  }
 }
 
 // HOW MANY TIMES EACH KEY OCCURS, as one pass into a map, so every membership and multiplicity test
@@ -434,9 +429,8 @@ fn v41_key_count(index: Map<String, Int>, key: String) -> Int {
   }
 }
 
-// IDENTIFIED ONLY OVER THE EXACT DECLARED POPULATION, EACH A SHA-256. A missing store, a duplicated
-// one, a store the spec does not declare, or a digest of another family refuses -- the last because
-// the consumer compares a SHA-256 and nothing else would ever equal it.
+// IDENTIFIED ONLY OVER THE EXACT DECLARED POPULATION. A missing store, a duplicated one, or a store the
+// spec does not declare refuses; that each digest is a SHA-256 is the identity's type.
 fn v41_identify_row_store(spec: V41RowStoreEncodingSpec, rank_stores: List<V41RankStoreIdentity>) -> V41RowStoreEncoding {
   let scheme = v41_uninhabited_scheme_defects(spec: spec)
   let declared = v41_declared_store_keys(spec: spec)
@@ -446,8 +440,7 @@ fn v41_identify_row_store(spec: V41RowStoreEncodingSpec, rank_stores: List<V41Ra
   let missing = map(filter(declared, k => v41_key_count(index: supplied_index, key: k) == 0), k => join(["declared store ", k, " carries no digest; a missing store is not a store"], "") as NonEmptyStr)
   let foreign = map(filter(supplied, s => v41_key_count(index: declared_index, key: s) == 0), s => join(["store ", s, " is not declared by the encoding spec"], "") as NonEmptyStr)
   let duplicated = map(filter(declared, k => v41_key_count(index: supplied_index, key: k) > 1), k => join(["store ", k, " carries more than one digest"], "") as NonEmptyStr)
-  let family = map(filter(rank_stores, s => !v41_is_sha256(h: s.digest)), s => join(["store ", v41_store_key(layer: s.layer, rank: s.rank), " digest is not a SHA-256; the consumer opens by SHA-256 of the file"], "") as NonEmptyStr)
-  let defects = concat(concat(concat(concat(scheme, missing), foreign), duplicated), family)
+  let defects = concat(concat(concat(scheme, missing), foreign), duplicated)
   if length(defects) != 0 {
     V41RowStoreEncodingRefused { defects: defects }
   } else {
@@ -755,7 +748,7 @@ fn v41_rank_stores_of(e: V41RowStoreEncoding) -> List<V41RankStoreIdentity> {
 
 fn v41_rank_digest_of(e: V41RowStoreEncoding, layer: Nat, rank: Nat) -> ContentHash? {
   match first(filter(v41_rank_stores_of(e: e), r => r.layer == layer && r.rank == rank)) {
-    Present { value: row } => Present { value: row.digest }
+    Present { value: row } => Present { value: Sha256Hash(row.digest) }
     Absent => none
   }
 }
