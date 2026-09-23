@@ -6,7 +6,6 @@ import std.algebra { trim }
 import std.nat { Nat, nat_range_inclusive }
 import std.checked_arithmetic { CheckedNatOverflow, CheckedNatReady, checked_int_magnitude }
 import std.measure { celsius, rpm }
-import std.resources { Network }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import product.placement_supply { HostIdentity }
 import product.fan_tach {
@@ -130,7 +129,6 @@ type HealthReadResponse {
 }
 
 fn health_redfish_read(bmc_host: NonEmptyStr, netrc: NonEmptyStr, read: FleetHealthRedfishRead) -> HealthReadResponse
-  uses net: Network
 {
   match read {
     ReadManager => {
@@ -187,14 +185,12 @@ fn telemetry_surface(telemetry: BmcTelemetryProfile, firmware: BmcFirmwareVersio
 }
 
 fn read_json(bmc_host: NonEmptyStr, netrc: NonEmptyStr, read: FleetHealthRedfishRead, what: String) -> ObservationAttempt<String, NonEmptyStr>
-  uses net: Network
 {
   let r = health_redfish_read(bmc_host: bmc_host, netrc: netrc, read: read)
   return if r.success { ObservationEstablished { observed: r.body } } else { ObservationRefused { cause: concat("the Redfish ", what, " read failed: ", r.body) as NonEmptyStr } }
 }
 
 fn sample_sensor_collection(bmc_host: NonEmptyStr, netrc: NonEmptyStr, chassis_id: NonEmptyStr, ids: List<NonEmptyStr>) -> ObservationAttempt<List<RedfishTelemetryPoint>, NonEmptyStr>
-  uses net: Network
 {
   let empty: List<RedfishTelemetryPoint> = []
   let initial: ObservationAttempt<List<RedfishTelemetryPoint>, NonEmptyStr> = ObservationEstablished { observed: empty }
@@ -220,7 +216,6 @@ fn sample_sensor_collection(bmc_host: NonEmptyStr, netrc: NonEmptyStr, chassis_i
 }
 
 fn sample_telemetry(bmc_host: NonEmptyStr, netrc: NonEmptyStr, chassis_id: NonEmptyStr, surface: RedfishThermalTelemetrySurface) -> ObservationAttempt<List<RedfishTelemetryPoint>, NonEmptyStr>
-  uses net: Network
 {
   match surface {
     RedfishLegacyChassisThermal => match read_json(bmc_host: bmc_host, netrc: netrc, read: ReadChassisThermal { chassis_id: chassis_id }, what: "Thermal") {
@@ -374,7 +369,6 @@ fn event_window(opening: List<RedfishLogEntry>, closing: List<RedfishLogEntry>) 
 }
 
 fn read_event_log(bmc_host: NonEmptyStr, netrc: NonEmptyStr) -> ObservationAttempt<List<RedfishLogEntry>, NonEmptyStr>
-  uses net: Network
 {
   match read_json(bmc_host: bmc_host, netrc: netrc, read: ReadSystemEventLog, what: "system event log") {
     ObservationRefused { cause } => return ObservationRefused { cause: cause }
@@ -390,7 +384,6 @@ data memory_counter_not_exposed: NonEmptyStr = "Redfish serves no MemoryMetrics 
 data processor_counter_not_exposed: NonEmptyStr = "Redfish serves no processor or platform error counter on this board's images"
 
 fn observe_with_netrc(telemetry: BmcTelemetryProfile, netrc: NonEmptyStr, samples: Nat) -> HostHealthObserved
-  uses net: Network
 {
   let bmc = telemetry.bmc_host
   let opening = read_event_log(bmc_host: bmc, netrc: netrc)
@@ -442,7 +435,6 @@ fn observe_with_netrc(telemetry: BmcTelemetryProfile, netrc: NonEmptyStr, sample
 // shred that fails refuses the host's observation, because leaving the credential on disk is a
 // standing exposure this run created.
 fn observe_host_health(telemetry: BmcTelemetryProfile, reader_login: NonEmptyStr, reader_password: Secret, samples: Nat) -> ObservationAttempt<HostHealthObserved, NonEmptyStr>
-  uses net: Network
 {
   match place_netrc_binding_privately(machine: telemetry.bmc_host, login: reader_login, password: reader_password) {
     NetrcBindingRefused { cause } => return ObservationRefused { cause: cause }

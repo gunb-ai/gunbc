@@ -12,6 +12,7 @@ import std.repair_input_origin {
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
 }
+import gunbc.rust_emitted_edge { rust_prelude_emitted_edges, emitted_edge_target_module, RuntimePrelude, ReexportFacade }
 import gunbc.reference_derived_candidate {
   ReferenceDerivedCandidateDisposition,
   CandidateSurvived,
@@ -5499,7 +5500,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let items_str = typed_module.items
     |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: wire_context_items, imports: wire_context_imports, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index))
     |> join(separator: "\n\n")
-  let prelude = emit_prelude(imported_names: prelude_imported_names, local_type_names: local_type_names)
+  let prelude = emit_prelude(module_name: this_module_name)
   let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items, module_env: Present { value: scope.type_env })
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
   let carrier_import_lines = if module_needs_faithful_carrier_imports(
@@ -7349,13 +7350,27 @@ fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_t
   concat(free_monoid, char_line, non_empty_str, int_line, partial_function, finitely_supported_function, memory, one)
 }
 
-fn emit_prelude(imported_names: List<String>, local_type_names: List<String>) -> String {
+// The runtime and facade paths below are rendered FROM gunbc.rust_emitted_edge
+// rust_prelude_emitted_edges, the same rows the crate partition reads, so the module this text
+// names and the edge the partition sees cannot drift apart.
+fn emit_prelude(module_name: String) -> String {
+  let edges = rust_prelude_emitted_edges(module: module_to_filename(name: module_name))
+  let runtime_modules = edges |> flat_map(edge => match edge.provenance {
+    RuntimePrelude => emitted_edge_target_module(edge: edge)
+    _ => []
+  })
+  let has_facade = edges |> any(edge => match edge.provenance {
+    ReexportFacade => true
+    _ => false
+  })
+  let runtime_trait_uses = runtime_modules |> map(rt => concat("use crate::", rt, "::\{VecCompat, VecJoin\};\n")) |> join(separator: "")
+  let runtime_module_uses = runtime_modules |> map(rt => concat("use crate::", rt, ";")) |> join(separator: "\n")
   let base = concat(
     "use im::\{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
-    "use crate::v1_rt::\{VecCompat, VecJoin\};\n",
+    runtime_trait_uses,
     "use std::rc::Rc;\n",
-    "use crate::v1_rt;")
-  let wrapper_use = "\nuse crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;"
+    runtime_module_uses)
+  let wrapper_use = if has_facade { "\nuse crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;" } else { "" }
   concat(base, wrapper_use)
 }
 
