@@ -79,7 +79,9 @@ type MtCollins1BootFinding
   | NprocSectionNulCorrupted { fail_open_repair: NonEmptyStr }
   | WorkloadShmNoSpace { lines: List<NonEmptyStr> }
   | QualificationRefused { verdict: NonEmptyStr, receipt_line: NonEmptyStr }
-  | DiagnosticsBundleAborted { cause: NonEmptyStr, evidence_source: NonEmptyStr }
+  | SelReadTimedOut { log_line: NonEmptyStr }
+  | RedfishRouteNotFound { log_line: NonEmptyStr }
+  | DiagnosticPublicationAborted { log_lines: List<NonEmptyStr>, log_source: NonEmptyStr }
 
 // mcu_enable_mask is kept as the printed value (Absent when the boot printed none). Its
 // relation to the trained controllers is computed, as an observed correlation, downstream.
@@ -224,8 +226,9 @@ data mtcollins1_socket1_boot_canonical_j1_j17: MtCollins1Socket1InvestigationBoo
   ],
 }
 
-// The J1 and J17 sticks exchanged, then the same J1 + J17 population booted again. The stick
-// that sat in J17 for run 35810323032 now sat in J1 and trained; J17 again trained nothing.
+// The same J1 + J17 population booted again after the operator exchanged the two sticks (the
+// exchange itself is mtcollins1_j1_j17_stick_swap below). The roster fields are from the SOL
+// capture; the findings are from the workflow log, as each says.
 data mtcollins1_socket1_boot_j1_j17_sticks_swapped: MtCollins1Socket1InvestigationBoot = MtCollins1Socket1InvestigationBoot {
   run_id: 35871654468,
   capture_sha256: "6bfd827b10ef0731cba430f8fc22a1fa8ecafdfbe14f00510e15fc38cf8b8006",
@@ -241,9 +244,14 @@ data mtcollins1_socket1_boot_j1_j17_sticks_swapped: MtCollins1Socket1Investigati
   host: Present { value: MtCollins1HostCpuReading { sockets: 1, cpus: 80, numa_nodes: 1 } },
   live_sockets: [0],
   findings: [
-    DiagnosticsBundleAborted {
-      cause: "The run's diagnostics bundle and boot receipt are missing: the known SEL-read timeout aborted the job before they were written (fix tracked separately).",
-      evidence_source: "Every field of this row was read from the SOL capture alone.",
+    SelReadTimedOut { log_line: "diagnostic.ipmi.Tool.SelListAuthenticated failed: $ timeout --kill-after 5s 20s ipmitool ... sel elist (exit=124) in 20 seconds" },
+    RedfishRouteNotFound { log_line: "redfish.Http.GetResourceByPath failed: ... https://192.168.1.228/redfish/v1/Systems (exit=22) | curl: (22) The requested URL returned error: 404" },
+    DiagnosticPublicationAborted {
+      log_lines: [
+        "error: evaluating mtcollins1_boot_wet in dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
+        "cause: TypeError { msg: \"cannot cast Int to Nat\" }",
+      ],
+      log_source: "GitHub Actions run 35871654468, job fleet-converge log (not the SOL capture). The two readings above were typed failures the run carried on past; this evaluation defect is what ended it before the bundle and receipt were written.",
     },
   ],
 }
@@ -279,21 +287,20 @@ data mtcollins1_socket_cpus: List<MtCollins1SocketCpu> = [
   MtCollins1SocketCpu { socket: 1, issue: ProductionPart, provenance: "The machine's original production CPU.", report: mtcollins1_cpu_report_2026_09_23 },
 ]
 
-// Has this CPU pairing booted two-socket? The operator reported it has, without a date, so
-// this answers whether the pairing ever booted, not when the swap fell relative to 2026-09-13.
+// Has this CPU pairing booted since the swap? The operator's words say the machine booted; a
+// degraded one-socket boot satisfies them too, so this carries no socket count and weakens no
+// hypothesis. A report naming both sockets or 160 CPUs would be a different, stronger arm.
 type MtCollins1PairingBootHistory
-  = TwoSocketBootReportedSinceSwap { quote: NonEmptyStr, report: MtCollins1PhysicalFactStanding }
+  = MachineBootReportedSinceSwap { quote: NonEmptyStr, report: MtCollins1PhysicalFactStanding }
   | PairingBootNotYetReported { question: NonEmptyStr }
 
-data mtcollins1_pairing_boot_history: MtCollins1PairingBootHistory = TwoSocketBootReportedSinceSwap {
+data mtcollins1_pairing_boot_history: MtCollins1PairingBootHistory = MachineBootReportedSinceSwap {
   quote: "the machine has booted since i swapped the CPU - so it's probably not that",
-  report: mtcollins1_pairing_boot_history_report,
-}
-
-data mtcollins1_pairing_boot_history_report: MtCollins1PhysicalFactStanding = OperatorByEyeReport {
-  observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 },
-  relay: "eager-owl-205 message msg_bb424be5-be47-4841-8221-c88587f6e5da",
-  method: "Operator's recollection in chat, verbatim; no date for the swap or for that boot was given.",
+  report: OperatorByEyeReport {
+    observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 },
+    relay: "eager-owl-205 message msg_bb424be5-be47-4841-8221-c88587f6e5da",
+    method: "Operator's recollection in chat, verbatim; no date and no socket or CPU count was given.",
+  },
 }
 
 // Spares on hand of this processor family: approximate, as the operator said it.
@@ -309,21 +316,57 @@ data mtcollins1_spare_processors: MtCollins1SpareProcessors = MtCollins1SparePro
   report: mtcollins1_cpu_report_2026_09_23,
 }
 
-// WHAT IS ESTABLISHED IS NARROW: firmware does not expose socket 1. SCP reports one active
-// socket and prints no Socket[1] block. That is not "socket 1 is bad"; which layer stops it is open.
-data mtcollins1_socket1_not_exposed: MtCollins1PhysicalFactStanding = FirmwareTrainedFact {
+// WHAT IS ESTABLISHED IS NARROW: firmware reports one active socket. That is not "socket 1
+// is bad"; which layer stops it is open. Only the printed count is carried: no complete parse
+// of the summary's socket blocks is, so nothing here asserts what the summary omitted.
+type MtCollins1FirmwareSocketSummary {
+  run_id: Nat
+  capture_sha256: NonEmptyStr
+  line: NonEmptyStr
+  active_sockets: Nat
+}
+
+data mtcollins1_firmware_socket_summary: MtCollins1FirmwareSocketSummary = MtCollins1FirmwareSocketSummary {
   run_id: 35871654468,
-  artifact: "GitHub Actions artifact mtcollins1-boot-receipts, file mtcollins1-boot-sol.capture",
-  roster_lines: ["Number of active sockets    : 1", "Socket[0]: Max cores        : 80"],
+  capture_sha256: "6bfd827b10ef0731cba430f8fc22a1fa8ecafdfbe14f00510e15fc38cf8b8006",
+  line: "Number of active sockets    : 1",
+  active_sockets: 1,
+}
+
+// THE STICK EXCHANGE, AS THE OPERATOR REPORTED IT. The captures print the same part number for
+// both modules, so which stick sat where is not in them: this report is the only source, and
+// the stick refutation is derived from it joined to the two boot receipts.
+type MtCollins1StickPlacement {
+  run_id: Nat
+  stick: NonEmptyStr
+  connector: Nat
+}
+
+type MtCollins1StickSwapReport {
+  placements: List<MtCollins1StickPlacement>
+  report: MtCollins1PhysicalFactStanding
+}
+
+data mtcollins1_j1_j17_stick_swap: MtCollins1StickSwapReport = MtCollins1StickSwapReport {
+  placements: [
+    MtCollins1StickPlacement { run_id: 35810323032, stick: "stick A", connector: 1 },
+    MtCollins1StickPlacement { run_id: 35810323032, stick: "stick B", connector: 17 },
+    MtCollins1StickPlacement { run_id: 35871654468, stick: "stick B", connector: 1 },
+    MtCollins1StickPlacement { run_id: 35871654468, stick: "stick A", connector: 17 },
+  ],
+  report: OperatorByEyeReport {
+    observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 },
+    relay: "eager-owl-205 brief for work item adhoc-712174ff-d1e",
+    method: "Operator's report that the J1 and J17 sticks were exchanged between the two runs; A and B are labels for that exchange, not serial numbers.",
+  },
 }
 
 // The diagnoses are hypotheses, typed as such (§4d): bets, not facts. Each names the
-// observation that would discriminate it. No standing ranks one bet above another: evidence
-// weakens or refutes, and a weakening or refutation cites what did it.
+// observation that would discriminate it. No standing ranks one bet above another. A
+// refutation is not authored: it names the report it is derived from, and the renderer derives it.
 type MtCollins1HypothesisStanding
   = HypothesisOpen
-  | HypothesisWeakened { by: MtCollins1PhysicalFactStanding, basis: NonEmptyStr }
-  | HypothesisRefuted { runs: List<Nat>, basis: NonEmptyStr }
+  | HypothesisRefutedByStickSwap { swap: MtCollins1StickSwapReport }
 
 type MtCollins1DiagnosisHypothesis {
   hypothesis: NonEmptyStr
@@ -332,23 +375,15 @@ type MtCollins1DiagnosisHypothesis {
 }
 
 // One open hypothesis per layer at which socket 1 could stop short of UEFI enumeration, in
-// bring-up order. Each is discriminated by per-socket SMpro/BMC evidence the socket-1
-// diagnostics work item is wiring into the boot bundle.
-data mtcollins1_socket1_open_hypotheses: List<MtCollins1DiagnosisHypothesis> = [
+// bring-up order, each discriminated by per-socket SMpro/BMC evidence the socket-1
+// diagnostics work item is wiring into the boot bundle; then the CPU pairing and the stick.
+data mtcollins1_socket1_hypotheses: List<MtCollins1DiagnosisHypothesis> = [
   MtCollins1DiagnosisHypothesis { hypothesis: "Physical presence: CPU1 is not detected as present (seating, retention torque, bent or fouled socket pins, package damage).", discriminator: "BMC CPU1 presence sensor across a power-on; if absent, re-torque and inspect the socket and package.", standing: HypothesisOpen },
   MtCollins1DiagnosisHypothesis { hypothesis: "Power and rails: CPU1's VRM or rails do not come up.", discriminator: "BMC CPU1 VR sensors and the SEL across a power-on: absent or faulted CPU1 rails.", standing: HypothesisOpen },
   MtCollins1DiagnosisHypothesis { hypothesis: "Reset and firmware-ready: socket 1 is not released from reset or never signals firmware-ready.", discriminator: "Per-socket SMpro/BMC reset and ready status for socket 1 in the boot bundle.", standing: HypothesisOpen },
   MtCollins1DiagnosisHypothesis { hypothesis: "SCP/SMpro boot stage: socket 1's SCP or SMpro stops before joining the two-socket boot.", discriminator: "Socket 1's SCP/SMpro boot-stage and error registers via the BMC in the boot bundle.", standing: HypothesisOpen },
   MtCollins1DiagnosisHypothesis { hypothesis: "DDR init and training: socket 1 comes up but its memory initialisation fails, so the socket is dropped.", discriminator: "Socket 1 DDR init/training status from SMpro/BMC; a J17 module listed as SK1 MC0 in the roster.", standing: HypothesisOpen },
-  MtCollins1DiagnosisHypothesis { hypothesis: "UEFI enumeration: socket 1 completes SCP bring-up but UEFI does not enumerate it.", discriminator: "A Socket[1] block in the SCP summary while UEFI and lscpu still report one socket.", standing: HypothesisOpen },
-  MtCollins1DiagnosisHypothesis {
-    hypothesis: "The engineering-sample CPU0 with the production CPU1 is an unsupported two-socket pairing (stepping or microcode).",
-    discriminator: "Boot J1+J17 with a production CPU0 matching CPU1: SK1 MC0 trained would support it.",
-    standing: HypothesisWeakened { by: mtcollins1_pairing_boot_history_report, basis: "A two-socket boot with this pairing is operator-reported." },
-  },
-  MtCollins1DiagnosisHypothesis {
-    hypothesis: "The DIMM is at fault: the stick in J17 is bad.",
-    discriminator: "Swap the J1 and J17 sticks: SK0 MC0 still trained and SK1 silent clears the stick; SK0 MC0 lost implicates the stick.",
-    standing: HypothesisRefuted { runs: [35810323032, 35871654468], basis: "Each stick trained as SK0 MC0 in J1, one per run, and J17 (SK1 MC0) trained neither. This clears the stick, not the J17 slot; a bad slot alone would not take socket 1's 80 CPUs out of lscpu." },
-  },
+  MtCollins1DiagnosisHypothesis { hypothesis: "UEFI enumeration: socket 1 completes SCP bring-up but UEFI does not enumerate it.", discriminator: "SCP reporting two active sockets while UEFI and lscpu still report one.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "The engineering-sample CPU0 with the production CPU1 is an unsupported two-socket pairing (stepping or microcode).", discriminator: "An operator report that this pairing showed both sockets / 160 CPUs after the swap would weaken it; booting J1+J17 with a production CPU0 matching CPU1 and seeing SK1 MC0 train would support it.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "The DIMM is at fault: a stick placed in J17 is bad.", discriminator: "Exchange the J1 and J17 sticks: the stick that was silent in J17 training in J1 clears it. This clears the stick, not the J17 slot.", standing: HypothesisRefutedByStickSwap { swap: mtcollins1_j1_j17_stick_swap } },
 ]

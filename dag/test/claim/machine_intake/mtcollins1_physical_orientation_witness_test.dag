@@ -27,13 +27,13 @@ import gunbc.machine_intake_mtcollins1_physical_orientation {
   Socket1TrainedNothing, Socket1TrainedIn, MaskMatchedTrainedControllers, MaskDiverged,
   socket1_standing, mask_correlation, placement_readbacks, mtcollins1_placement_readbacks,
   PlacementReadbackMatches, PlacementReadbackDiffers, PlacementReadbackUnevaluable, mtcollins1_socket1_standing, mtcollins1_mask_correlation,
-  hypothesis_text,
+  hypothesis_text, stick_swap_verdict, StickCleared, StickNotCleared,
 }
 import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   MtCollins1Socket1InvestigationBoot, MtCollins1TrainedSlot, IntendedAtPhysicalConnectors,
   MtCollins1Viewpoint, FirmwareTrainedFact, OperatorByEyeReport, ViewpointReported, ViewpointNotYetReported, RearEnd, FrontEnd,
   mtcollins1_operator_front_report, mtcollins1_socket1_investigation_boots, mtcollins1_socket1_boot_two_sticks,
-  MtCollins1DiagnosisHypothesis, HypothesisRefuted,
+  MtCollins1DiagnosisHypothesis, HypothesisRefutedByStickSwap, MtCollins1StickSwapReport, MtCollins1StickPlacement, mtcollins1_j1_j17_stick_swap,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -410,31 +410,50 @@ test fn w_no_install_plan_beside_unresolved_or_used_damage() -> Bool {
   unframed && sixteen && eight
 }
 
-// The map carries today's standing: which CPU sits where, the firmware fact that socket 1 is not exposed,
-// the operator's report that the pairing has booted, six open layer bets, the weakened
-// CPU-pairing bet, and the DIMM bet refuted by the two J1+J17 receipts. Red: a
-// refutation citing a run the history does not hold renders as unverified, never as refuted.
+// The map carries today's standing: the firmware socket count, the CPU reports, the operator's
+// boot quote without a socket count, six open layer bets plus the open CPU-pairing bet, and
+// the stick refutation DERIVED from the swap report joined to the receipts. Reds: with no
+// exchange (the same stick in J17 both runs) or a run with no receipt, nothing is cleared.
 test fn w_slot_map_carries_cpu_facts_and_hypothesis_standing() -> Bool {
   let shown = match rendered_today() {
     SlotMapRendered { end: _, readback: _, lines: _, damage: _, agreement: _, text: t } =>
-      string_contains(s: t, pattern: "\nCPU0 (socket 0): engineering sample - ")
+      string_contains(s: t, pattern: "\nEstablished (run 35871654468): SCP reports 'Number of active sockets    : 1' of the board's sockets - firmware does not expose them all.")
+      && !string_contains(s: t, pattern: "Socket[1] block")
+      && string_contains(s: t, pattern: "\nCPU0 (socket 0): engineering sample - ")
       && string_contains(s: t, pattern: "\nCPU1 (socket 1): production part - The machine's original production CPU.\n")
-      && string_contains(s: t, pattern: "\nEstablished (run 35871654468): firmware does not expose socket 1 - SCP reports 'Number of active sockets    : 1'")
-      && string_contains(s: t, pattern: "\nOperator: this CPU pairing has booted since the swap: \"the machine has booted since i swapped the CPU - so it's probably not that\" (no date given).\n")
-      && !string_contains(s: t, pattern: "Leading")
+      && string_contains(s: t, pattern: "\nOperator: \"the machine has booted since i swapped the CPU - so it's probably not that\" (a boot since the swap, no socket count and no date given).\n")
+      && string_contains(s: t, pattern: "\nSpares on hand: about 45 Ampere Altra processors (operator report).\n")
+      && !string_contains(s: t, pattern: "Leading") && !string_contains(s: t, pattern: "Weakened")
       && string_contains(s: t, pattern: "\nOpen hypothesis (not established): Physical presence: ")
       && string_contains(s: t, pattern: "\nOpen hypothesis (not established): Power and rails: ")
       && string_contains(s: t, pattern: "\nOpen hypothesis (not established): Reset and firmware-ready: ")
       && string_contains(s: t, pattern: "\nOpen hypothesis (not established): SCP/SMpro boot stage: ")
       && string_contains(s: t, pattern: "\nOpen hypothesis (not established): DDR init and training: ")
       && string_contains(s: t, pattern: "\nOpen hypothesis (not established): UEFI enumeration: ")
-      && string_contains(s: t, pattern: "\nSpares on hand: about 45 Ampere Altra processors (operator report).\n")
-      && string_contains(s: t, pattern: "\nWeakened hypothesis: The engineering-sample CPU0 with the production CPU1 is an unsupported two-socket pairing (stepping or microcode). Test: ")
-      && string_contains(s: t, pattern: " Weakened: A two-socket boot with this pairing is operator-reported.\n")
-      && string_contains(s: t, pattern: "\nRefuted hypothesis: The DIMM is at fault: the stick in J17 is bad. Refuted by run 35810323032, run 35871654468: ")
+      && string_contains(s: t, pattern: "\nOpen hypothesis (not established): The engineering-sample CPU0 with the production CPU1")
+      && string_contains(s: t, pattern: "\nRefuted hypothesis: The DIMM is at fault: a stick placed in J17 is bad. By the operator's swap report: stick B was silent in J17 (run 35810323032) and trained in J1 (run 35871654468). The J17 slot is not cleared.")
       && string_contains(s: t, pattern: "\nrun 35871654468: placed by the resolved mapping = physical J1, J17 -> trained SK0 MC0 S0; DRAM 16 GiB; mcu_enable_mask = 00000001")
     SlotMapRefused { refusal: _ } => false
   }
-  let unheld = hypothesis_text(h: MtCollins1DiagnosisHypothesis { hypothesis: "x.", discriminator: "y.", standing: HypothesisRefuted { runs: [7], basis: "z." } }, history: mtcollins1_socket1_investigation_boots)
-  shown && string_contains(s: unheld, pattern: "unverified") && !string_contains(s: unheld, pattern: "Refuted hypothesis")
+  let sw = mtcollins1_j1_j17_stick_swap
+  let no_exchange = MtCollins1StickSwapReport { placements: [
+    MtCollins1StickPlacement { run_id: 35810323032, stick: "stick A", connector: 1 },
+    MtCollins1StickPlacement { run_id: 35810323032, stick: "stick B", connector: 17 },
+    MtCollins1StickPlacement { run_id: 35871654468, stick: "stick A", connector: 1 },
+    MtCollins1StickPlacement { run_id: 35871654468, stick: "stick B", connector: 17 },
+  ], report: sw.report }
+  let unreceipted = MtCollins1StickSwapReport { placements: [
+    MtCollins1StickPlacement { run_id: 35810323032, stick: "stick B", connector: 17 },
+    MtCollins1StickPlacement { run_id: 7, stick: "stick B", connector: 1 },
+  ], report: sw.report }
+  let red_no_exchange = match stick_swap_verdict(swap: no_exchange, history: mtcollins1_socket1_investigation_boots, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
+    StickNotCleared => true
+    StickCleared { stick: _, silent_run: _, silent_connector: _, trained_run: _, trained_connector: _ } => false
+  }
+  let red_unreceipted = match stick_swap_verdict(swap: unreceipted, history: mtcollins1_socket1_investigation_boots, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
+    StickNotCleared => true
+    StickCleared { stick: _, silent_run: _, silent_connector: _, trained_run: _, trained_connector: _ } => false
+  }
+  let unheld = hypothesis_text(h: MtCollins1DiagnosisHypothesis { hypothesis: "x.", discriminator: "y.", standing: HypothesisRefutedByStickSwap { swap: no_exchange } }, history: mtcollins1_socket1_investigation_boots, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
+  shown && red_no_exchange && red_unreceipted && string_contains(s: unheld, pattern: "unverified") && !string_contains(s: unheld, pattern: "Refuted hypothesis")
 }
