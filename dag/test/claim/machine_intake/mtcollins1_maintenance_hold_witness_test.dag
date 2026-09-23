@@ -2,11 +2,14 @@ module test.claim.machine_intake.mtcollins1_maintenance_hold_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr, String }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import std.durable_compare_and_set { CasGeneration, cas_generation_first }
 import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldSlotUndecodable,
 }
 import gunbc.machine_intake_mtcollins1_maintenance_hold {
+  UnitHoldOwner, OperatorMaintenance, BootRun, HostResetReturn, UnitHoldOwnerDecoded, UnitHoldOwnerUnrecognized,
+  unit_hold_owner_ref, decode_unit_hold_owner, unit_hold_owner_label,
   unit_hold_refusal, operator_maintenance_owner, boot_run_owner, host_reset_owner, mtcollins1_unit_hold_key,
 }
 import gunbc.auth.mtcollins1_boot_federation {
@@ -120,4 +123,28 @@ test fn the_boot_account_reads_exactly_two_pinned_versions_from_the_dedicated_po
     && !any(gs, g => (g.target.secret as String) == "approval-submission-mac-key")
     && string_contains(s: mtcollins1_boot_wif_principal_set(), pattern: "/workloadIdentityPools/github-mtcollins1-boot/*")
     && !string_contains(s: mtcollins1_boot_wif_principal_set(), pattern: "/workloadIdentityPools/github-actions/")
+}
+
+// THE HOLDER KIND IS A DECLARED SUM (review 70459), rendered and decoded in one place. Each kind round-
+// trips; a string no kind rendered is refused rather than guessed; and a host-reset holder is named as
+// one -- the defect the review found was a two-valued check naming it a boot run.
+fn round_trips(o: UnitHoldOwner, label: String) -> Bool {
+  match decode_unit_hold_owner(owner: unit_hold_owner_ref(o: o)) {
+    UnitHoldOwnerDecoded { owner: d } => unit_hold_owner_label(o: d) == label
+    UnitHoldOwnerUnrecognized { raw: _ } => false
+  }
+}
+
+test fn every_holder_kind_round_trips_and_a_foreign_owner_is_refused() -> Bool {
+  round_trips(o: OperatorMaintenance { reason: "reseating DIMMs" as NonEmptyStr }, label: "operator maintenance: reseating DIMMs")
+    && round_trips(o: BootRun { run_id: "41" as NonEmptyStr }, label: "the mtcollins1 boot run 41")
+    && round_trips(o: HostResetReturn { attempt: "srv1-mtcollins1" as NonEmptyStr }, label: "host reset-return attempt srv1-mtcollins1")
+    && match decode_unit_hold_owner(owner: "someone-else:x" as DurableHoldOwnerRef) {
+      UnitHoldOwnerUnrecognized { raw: _ } => true
+      UnitHoldOwnerDecoded { owner: _ } => false
+    }
+    && match decode_unit_hold_owner(owner: "host-reset-return:" as DurableHoldOwnerRef) {
+      UnitHoldOwnerUnrecognized { raw: _ } => true
+      UnitHoldOwnerDecoded { owner: _ } => false
+    }
 }
