@@ -1,0 +1,48 @@
+module v2.test.parse.supplied_token_stream_support
+
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.compilers.lexing { Token, TokenStream, symbol_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+// SUPPLYING A TOKEN STREAM IS HOW A NORMALIZE-SUBJECT CLAIM PAYS FOR ITS INPUT ONCE. A claim whose
+// subject is parse or normalize reaches its verdict through the whole text route -- tokenize,
+// parse, normalize -- and that route costs more than the floor's per-claim budget before the
+// claim asserts anything, so every such claim is refused on cost rather than on its verdict.
+// DESIGN section 3 rules the remedy: supply the inputs at the boundary the claim discriminates at,
+// and keep the real path executing somewhere. Supplying the TOKEN STREAM rather than the parse
+// tree is what makes that practical AND keeps the subject whole -- parse and normalize both still
+// execute on the supplied tokens, so a claim about parsing keeps its subject and needs no
+// carve-out, while a token stream, unlike a production tree, is flat enough to author.
+//
+// THE PAIRING OBLIGATION IS DISCHARGED BY PROVEN EQUALITY, NOT BY ASSERTION. A supplied value is a
+// hypothesis about a boundary; without a claim that the real producer emits that shape, the suite
+// is green about a stream the compiler never produces. supplied_stream_matches_tokenize is that
+// claim: it runs the REAL tokenizer over the same text and compares canonically, so deleting the
+// integration reddens it. Each specimen owes one.
+//
+// SPECIMEN-SIZE CEILING, WHICH ADOPTERS MUST PRICE. This shape converts one over-budget claim into
+// TWO claims that must each fit: the fidelity claim costs tokenize of its specimen, and the
+// supplied-route claim costs parse plus normalize plus its assertions. That is comfortable for a
+// small specimen and does NOT rescue a large one -- a specimen whose tokenize alone exceeds the
+// budget hits the same wall through the mechanism meant to be the remedy, and must be split or
+// dispositioned on its own. Measured 2026-09-22 on v2.test.parse.variant_field_lowering.
+//
+// The generator that authors a stream is deliberately NOT an authority here and is not shared: a
+// second generator cannot produce a wrong green, because every stream is checked per specimen
+// against the real tokenizer by the claim below. The generator is a convenience; this is the wall.
+fn supplied_stream_projection(ts: TokenStream) -> String {
+  fold(ts.all, init: "", f: fn(acc, t) {
+    concat(concat(concat(acc, symbol_lexeme(sym: t.class)), "="), concat(t.lexeme, ";"))
+  })
+}
+
+fn supplied_stream_matches_tokenize(text: String, file: Symbol, supplied: TokenStream) -> Bool {
+  match tokenize(text: text, file: file, rules: dag_lex()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: real, diagnostics: _ } =>
+      supplied_stream_projection(ts: real) == supplied_stream_projection(ts: supplied)
+  }
+}

@@ -66,7 +66,6 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index, lookup_type_for};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
-pub use crate::v1_compiler_infer_items::item_is_effectful_callee;
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
 pub use crate::v1_compiler_infer_service::{
@@ -7237,8 +7236,8 @@ pub fn emit_typed_call_unified(
             };
         let extra_args = match callee.clone() {
             Some(info) => {
-                let has_effects =
-                    crate::v1_compiler_infer_items::item_is_effectful_callee(info.clone());
+                let has_effects = (((info.service_names.clone().len() as i64) > 0)
+                    || ((info.resource_names.clone().len() as i64) > 0));
                 if has_effects.clone() {
                     {
                         let resource_args = Rc::new({
@@ -7299,8 +7298,8 @@ pub fn emit_typed_call_unified(
         };
         match callee.clone() {
             Some(info) => {
-                let has_effects =
-                    crate::v1_compiler_infer_items::item_is_effectful_callee(info.clone());
+                let has_effects = (((info.service_names.clone().len() as i64) > 0)
+                    || ((info.resource_names.clone().len() as i64) > 0));
                 if has_effects.clone() {
                     v1_rt::concat(spec.async_call_prefix.clone(), call_str.clone())
                 } else {

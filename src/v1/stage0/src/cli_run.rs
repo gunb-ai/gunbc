@@ -102,8 +102,8 @@ pub use native_lane_runner::{
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
-    floor_discovery_path_excluded, make_eval_context, make_eval_context_with_runtime_options,
-    run_claim_measured, run_required_floor,
+    floor_discovery_path_excluded, floor_seam, make_eval_context,
+    make_eval_context_with_runtime_options, run_claim_measured, run_required_floor,
 };
 pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
@@ -41072,11 +41072,50 @@ pub fn assemble_prepared_subject_closure(
     exclude_substrings: &[String],
     closure: Option<(&MultiEntryIndex, &[String], &[String])>,
 ) -> Result<PreparedSubject, String> {
-    let full_index = build_module_index(source_roots);
-    let full_inventory = floor_source_inventory(&full_index);
+    let corpus = read_source_corpus_once(source_roots);
+    assemble_prepared_subject_from_corpus(&corpus, exclude_substrings, closure)
+}
+
+/// THE CORPUS READ, AS A VALUE A CALLER CAN OWN AND LEND TO MORE THAN ONE DEMAND.
+///
+/// `build_module_index` walks every source root and `read_to_string`s every `.dag` file; it is
+/// not memoised and nothing above it carried the result, so a caller that prepared two subjects
+/// read and indexed the WHOLE CORPUS TWICE. The floor is exactly that caller -- `run_required_floor`
+/// prepares the policy closure and then the gate closure, and both call sites pass IDENTICAL source
+/// roots, identical exclusions and the same entry index, differing only in their closure seeds.
+///
+/// So this is DESIGN §2's authored duplication, and the repair is the one §2 names: several demands
+/// with a shared-state least common ancestor CARRY the first value rather than caching the second.
+/// The ancestor reads once and lends; there is no key, no invalidation rule and no provider, because
+/// none of those is what was missing -- the value simply was not carried.
+pub struct SourceCorpusRead {
+    index: ModuleSourceIndex,
+    inventory: Vec<PreparedSourceView>,
+}
+
+pub fn read_source_corpus_once(source_roots: &[String]) -> SourceCorpusRead {
+    let index = build_module_index(source_roots);
+    let inventory = floor_source_inventory(&index);
+    SourceCorpusRead { index, inventory }
+}
+
+/// The subject fold over a corpus the CALLER read. Identical to the wrapper above in every respect
+/// except that it does not do the reading, so two subjects prepared from one read see one corpus.
+pub fn assemble_prepared_subject_from_corpus(
+    corpus: &SourceCorpusRead,
+    exclude_substrings: &[String],
+    closure: Option<(&MultiEntryIndex, &[String], &[String])>,
+) -> Result<PreparedSubject, String> {
+    let full_index = &corpus.index;
+    let full_inventory = corpus.inventory.clone();
     let mut discovery_exclusions: HashMap<String, String> = HashMap::new();
     let index: ModuleSourceIndex = match closure {
-        None => full_index,
+        // THE ONLY TWO PLACES THE INDEX WAS MOVED rather than read. Both now clone, and what they
+        // clone is `Rc<SourceFile>` pointers plus their keys -- not file contents, and for the
+        // closure arm only the KEPT subset, which on the floor is a small fraction of the corpus.
+        // That is the cost of carrying one read instead of doing a second one, and it is the trade
+        // the duplication was paying in full on every floor run.
+        None => full_index.clone(),
         Some((entry_index, prefixes, module_seeds)) => {
             let started = std::time::Instant::now();
             // THE CLOSURE IS THE LOADER'S BOTH-CLOSURE, NOT THE IMPORT HEADERS. A module in
@@ -41218,8 +41257,9 @@ pub fn assemble_prepared_subject_closure(
                 full_index.len()
             );
             full_index
-                .into_iter()
-                .filter(|(m, _)| keep.contains(m))
+                .iter()
+                .filter(|(m, _)| keep.contains(*m))
+                .map(|(m, sf)| (m.clone(), sf.clone()))
                 .collect()
         }
     };
@@ -41362,7 +41402,18 @@ pub fn prepare_repository_closure(
     exclude_substrings: &[String],
     closure: Option<(&MultiEntryIndex, &[String], &[String])>,
 ) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
-    let subject = assemble_prepared_subject_closure(source_roots, exclude_substrings, closure)?;
+    let corpus = read_source_corpus_once(source_roots);
+    prepare_repository_from_corpus(&corpus, exclude_substrings, closure)
+}
+
+/// The repository fold over a corpus the CALLER read; see `read_source_corpus_once` for why the
+/// read is a value rather than something each prepare does for itself.
+pub fn prepare_repository_from_corpus(
+    corpus: &SourceCorpusRead,
+    exclude_substrings: &[String],
+    closure: Option<(&MultiEntryIndex, &[String], &[String])>,
+) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
+    let subject = assemble_prepared_subject_from_corpus(corpus, exclude_substrings, closure)?;
     // THE SUBJECT IS STATED BY THE REFUSAL ITSELF, not only by the success path.
     //
     // The digest and the two counts are computed above, BEFORE the gate that can reject.
@@ -44828,7 +44879,7 @@ pub use emitted_closure_compile_host::{
     emit_compile_selection_universe_digest, lane_emit_compile_probe_root,
     local_emit_compile_probe_root, required_ci_emit_compile_probe_root,
     required_emit_compile_entries, retain_not_selected_identities, run_required_emit_compile,
-    CargoVerdict, EmitCompileOutcome, EmitCompileSelection, MutationVerdict,
+    CargoVerdict, EmitCompileOutcome, EmitCompileSelection, MutationVerdict, PrivateProbeRoot,
 };
 
 /// THE FIXTURE ROUTE IS TEST-FACING ONLY, AND THAT IS WHY IT HAS ITS OWN `use` RATHER THAN A LINE
