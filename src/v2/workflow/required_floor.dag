@@ -1524,8 +1524,9 @@ fn corpus_census_eval_step_allowance_in(
               identity: identity,
               reason: concat(concat(m.subject_path, ": extdeps.languages.yaml.ingest refused the subject, so its entry count cannot be derived: "), r),
             }
-            IngestedYaml { value: v } =>
-              if yaml_entry_count(v: v) == 0 {
+            IngestedYaml { value: v } => {
+              let n = yaml_entry_count(v: v)
+              if n == 0 {
                 CensusAllowanceRefused {
                   identity: identity,
                   reason: concat(m.subject_path, ": the subject parsed to zero entries; a census over nothing has no line to scale by"),
@@ -1534,10 +1535,11 @@ fn corpus_census_eval_step_allowance_in(
                 CensusAllowanceDerived {
                   identity: identity,
                   subject_path: m.subject_path,
-                  entry_count: yaml_entry_count(v: v),
-                  budget_steps: corpus_census_allowance_steps(policy: policy, entry_count: yaml_entry_count(v: v)),
+                  entry_count: n,
+                  budget_steps: corpus_census_allowance_steps(policy: policy, entry_count: n),
                 }
               }
+            }
           }
       }
   }
