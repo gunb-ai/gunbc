@@ -558,10 +558,13 @@ fn bundle_version_refusal(extensions: CborValue?, expected: NonEmptyStr) -> Atte
   }
 }
 
-fn first_attestation_refusal(rs: List<AttestationRefusal?>) -> AttestationRefusal? {
+// THE CHECKS ARE THUNKS, SO THE FIRST REFUSAL ENDS THE FOLD: a list of values evaluates every
+// check -- several of them SHA-256s -- even after an earlier step has already refused, which is
+// work no consumer reads (the same shape review 69668 of gunbc#11989 removed from the chain links).
+fn first_attestation_refusal(rs: List<fn() -> AttestationRefusal?>) -> AttestationRefusal? {
   fold(rs, init: none, f: (acc, r) => match acc {
     Present { value: a } => Present { value: a }
-    Absent => r
+    Absent => r()
   })
 }
 
@@ -579,33 +582,31 @@ fn attestation_structural_refusal(parts: AttestationParts, leaf: X509Certificate
     Present { value: o } => o
     Absent => []
   }
-  let client_data_hash = sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.client_data as String)))
-  let nonce = sha256(message: concat(parts.auth_data, client_data_hash))
   let credential = auth.attested_credential
   first_attestation_refusal(rs: [
-    if count(key_id_octets) != 32 { Present { value: AttestationKeyIdMismatch { declared: e.key_id } } } else { none },
-    match credential_certificate_nonce(leaf: leaf) {
+    fn() { if count(key_id_octets) != 32 { Present { value: AttestationKeyIdMismatch { declared: e.key_id } } } else { none } },
+    fn() { match credential_certificate_nonce(leaf: leaf) {
       Absent => Present { value: AttestationNonceMismatch }
-      Present { value: n } => if n == nonce { none } else { Present { value: AttestationNonceMismatch } }
-    },
-    if sha256(message: leaf.tbs.spki_public_key) == key_id_octets { none } else { Present { value: AttestationKeyIdMismatch { declared: e.key_id } } },
-    if auth.rp_id_hash == sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.app_id as String))) { none } else { Present { value: AttestationAppIdMismatch { expected_app_id: e.app_id } } },
-    if auth.sign_count == 0 { none } else { Present { value: AttestationCounterNonZero { counter: auth.sign_count } } },
-    match credential {
+      Present { value: n } => if n == sha256(message: concat(parts.auth_data, sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.client_data as String))))) { none } else { Present { value: AttestationNonceMismatch } }
+    } },
+    fn() { if sha256(message: leaf.tbs.spki_public_key) == key_id_octets { none } else { Present { value: AttestationKeyIdMismatch { declared: e.key_id } } } },
+    fn() { if auth.rp_id_hash == sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.app_id as String))) { none } else { Present { value: AttestationAppIdMismatch { expected_app_id: e.app_id } } } },
+    fn() { if auth.sign_count == 0 { none } else { Present { value: AttestationCounterNonZero { counter: auth.sign_count } } } },
+    fn() { match credential {
       Absent => Present { value: AttestationCredentialIdMismatch { declared: e.key_id } }
       Present { value: c } => if c.aaguid == app_attest_aaguid_octets(environment: e.environment) { none } else { Present { value: AttestationEnvironmentUnexpected { expected: e.environment } } }
-    },
-    match credential {
+    } },
+    fn() { match credential {
       Absent => Present { value: AttestationCredentialIdMismatch { declared: e.key_id } }
       Present { value: c } => if c.credential_id == key_id_octets { none } else { Present { value: AttestationCredentialIdMismatch { declared: e.key_id } } }
-    },
-    if leaf.tbs.issuer_octets == ca.tbs.subject_octets { none } else { Present { value: AttestationChainUntrusted { detail: "the credential certificate's issuer is not the intermediate" } } },
-    if ca.tbs.issuer_octets == root.tbs.subject_octets { none } else { Present { value: AttestationChainUntrusted { detail: "the intermediate's issuer is not the Apple App Attestation Root CA" } } },
-    validity_refusal(cert: leaf, observed_at: e.observed_at, which: "credential"),
-    validity_refusal(cert: ca, observed_at: e.observed_at, which: "intermediate"),
-    ca_authority_refusal(ca: ca),
-    validation_category_refusal(extensions: auth.extensions, admitted: e.admitted_validation_categories),
-    bundle_version_refusal(extensions: auth.extensions, expected: e.expected_bundle_version),
+    } },
+    fn() { if leaf.tbs.issuer_octets == ca.tbs.subject_octets { none } else { Present { value: AttestationChainUntrusted { detail: "the credential certificate's issuer is not the intermediate" } } } },
+    fn() { if ca.tbs.issuer_octets == root.tbs.subject_octets { none } else { Present { value: AttestationChainUntrusted { detail: "the intermediate's issuer is not the Apple App Attestation Root CA" } } } },
+    fn() { validity_refusal(cert: leaf, observed_at: e.observed_at, which: "credential") },
+    fn() { validity_refusal(cert: ca, observed_at: e.observed_at, which: "intermediate") },
+    fn() { ca_authority_refusal(ca: ca) },
+    fn() { validation_category_refusal(extensions: auth.extensions, admitted: e.admitted_validation_categories) },
+    fn() { bundle_version_refusal(extensions: auth.extensions, expected: e.expected_bundle_version) },
   ])
 }
 
@@ -770,10 +771,13 @@ fn assertion_version_refusal(extensions: CborValue?, expected: NonEmptyStr) -> A
   }
 }
 
-fn first_assertion_refusal(rs: List<AssertionRefusal?>) -> AssertionRefusal? {
+// THE CHECKS ARE THUNKS, SO THE FIRST REFUSAL ENDS THE FOLD: a list of values evaluates every
+// check -- several of them SHA-256s -- even after an earlier step has already refused, which is
+// work no consumer reads (the same shape review 69668 of gunbc#11989 removed from the chain links).
+fn first_assertion_refusal(rs: List<fn() -> AssertionRefusal?>) -> AssertionRefusal? {
   fold(rs, init: none, f: (acc, r) => match acc {
     Present { value: a } => Present { value: a }
-    Absent => r
+    Absent => r()
   })
 }
 
@@ -782,9 +786,9 @@ fn first_assertion_refusal(rs: List<AssertionRefusal?>) -> AssertionRefusal? {
 // P-256 verification (step 3) runs after the structural checks.
 fn assertion_refusal(parts: AssertionParts, e: AssertionExpectation) -> AssertionRefusal? {
   match first_assertion_refusal(rs: [
-    if parts.auth.prefix.rp_id_hash == sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.app_id as String))) { none } else { Present { value: AssertionAppIdMismatch { expected_app_id: e.app_id } } },
-    assertion_category_refusal(extensions: parts.auth.extensions, admitted: e.admitted_validation_categories),
-    assertion_version_refusal(extensions: parts.auth.extensions, expected: e.expected_bundle_version),
+    fn() { if parts.auth.prefix.rp_id_hash == sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.app_id as String))) { none } else { Present { value: AssertionAppIdMismatch { expected_app_id: e.app_id } } } },
+    fn() { assertion_category_refusal(extensions: parts.auth.extensions, admitted: e.admitted_validation_categories) },
+    fn() { assertion_version_refusal(extensions: parts.auth.extensions, expected: e.expected_bundle_version) },
   ]) {
     Present { value: r } => Present { value: r }
     Absent =>
