@@ -1,6 +1,5 @@
 module gunbc.runner_host_file_converge
 
-import std.resources { Network }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -866,7 +865,6 @@ fn observe_runner_host_file_content(
   context: FleetSshExecutionContext,
   file: RunnerHostFileDesired,
 ) -> RunnerHostFileStanding
-  uses net: Network
 {
   match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: runner_host_file_metadata_probe_argv(path: file.path as String)) {
     TypedArgvExecRefused { reason: why } => HostFileUnobservable { reason: why }
@@ -905,7 +903,6 @@ fn observe_runner_host_file(
   context: FleetSshExecutionContext,
   file: RunnerHostFileDesired,
 ) -> RunnerHostFileObservation
-  uses net: Network
 {
   let content = observe_runner_host_file_content(subject: subject, context: context, file: file)
   RunnerHostFileObservation {
@@ -1177,7 +1174,6 @@ fn plan_runner_host_file(
   context: FleetSshExecutionContext,
   file: RunnerHostFileDesired,
 ) -> RunnerHostFilePlanned
-  uses net: Network
 {
   let observation = observe_runner_host_file(subject: subject, context: context, file: file)
   RunnerHostFilePlanned { file: file, observation: observation, action: runner_host_file_action(observation: observation) }

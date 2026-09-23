@@ -51,8 +51,7 @@ import v1.std.core { Unmarked,
   ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
   AlgebraApplicationEvidenceUnavailable,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  ResourceFrontierOccurrenceKey, diagnostic_resource_frontier_key,
-  InternalError, TypeMismatch, TypeParameterInValuePosition, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, ResourceRequirementUnestablished, ResourceRequirementFrontierAdmitted, ResourceFrontierOccurrenceBudgetExceeded, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
+  InternalError, TypeMismatch, TypeParameterInValuePosition, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   EqualityOnFunctionMember, EqualityMemberUnjudgeable,
   TypeArgumentArityMismatch,
@@ -222,7 +221,7 @@ import v1.compiler.infer_lookup {
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
   lookup_in_scope, lookup_func_sig,
   resolved_plain_call_target_for_outcome, resolved_declaration_call_target, census_declaration_identity,
-  global_bare_callable_node, func_decl_binding_for_call, constructor_declaration_for_admission,
+  global_bare_callable_node, func_decl_binding_for_call,
   ConstructorDeclarationLookup, ExactConstructorDeclaration,
   NotAdmissionBearingReference, AdmissionBearingDeclarationUnavailable,
   ExactDeclarationIdentity, DeclarationLookupFailure, DeclarationNotIndexedAtQualifiedName
@@ -1081,34 +1080,29 @@ fn constructor_call_admission_diags(
   }
 }
 
-// A CALL SITE MUST ESTABLISH EVERY RESOURCE ITS CALLEE DECLARES THROUGH `uses`. The callee's
-// requirements are read from ITS DECLARATION, reached by the identity the resolver selected
-// (the DeclaredCallableIdentity on the call target, through the same exact-identity read the
-// admit_callers wall uses) -- never by re-looking-up the spelling. The caller's establishment is
-// read from its own registry row (module + caller_decl_name), i.e. its own `uses` clause. The two
-// sides are compared as RESOURCE DECLARATIONS: each authored resource type is resolved in this
-// module's environment to the declaration node it names, and two requirements agree only when
-// both resolve and resolve to the same declaration. A resource that fails to resolve on either
-// side matches nothing, so the call refuses rather than admitting a spelling coincidence.
+// THE RESOURCE BINDING A CALL PASSES IS THE CALLER'S, MATCHED BY RESOLVED DECLARATION. The Rust
+// realization passes each resource a callee requires as a parameter, and before this fold the
+// emitter appended the CALLEE's binding name: the emitted call agreed with the declaration's arity
+// while its argument named nothing in the caller's scope. v1.compiler.emit_rust emit_typed_call
+// asks this fold for the caller's binding of each requirement, and renders a located
+// compile_error! where there is none.
 //
-// WHY THIS IS THE EARLIEST UNJUSTIFIED BOUNDARY (DESIGN section 6b): the interpreter serves
-// resources ambiently and never consulted the caller, and the Rust realization passes each
-// resource as a parameter -- so before this check nothing in the chain established that the
-// caller HAS the resource, and the emitter published a call whose extra argument named the
-// callee's binding in a scope that never bound it. The fact is a source-level fact about the
-// program, so its home is the typecheck, and because emission is gated on blocking diagnostics
-// (v1.compiler.compile emittable_graph) an accepted program cannot carry the state; the emitter's
-// own refusal arm stays as the realization-side wall for a path that bypasses this gate.
-// Services are deliberately NOT covered here: a service requirement propagates transitively by
-// inference (v1.compiler.infer_service expand_transitive_services) and the caller's own row grows
-// to carry it, so there is no authored establishment to compare against.
+// WHAT THIS FOLD IS NOT: it is not an admission wall. Whether a caller ESTABLISHES a resource is
+// owned by DESIGN D13's derived DependencyDemand (docs/plans/demand-engine-program.md), under which
+// a transparent function's demand is derived rather than authored. This fold reads the caller's
+// AUTHORED `uses` rows only because no derived carrier with a binding identity exists yet
+// (its return is the next-rung trigger on gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target). A caller whose
+// requirement is derived gets the compile_error! arm, so the target compiler refuses the artifact
+// rather than accepting a call that names an unbound identifier.
+//
+// KNOWN IDENTITY FORK: a bare resource name resolves to a kernel-spanned node and the qualified
+// `std.resources.X` to the corpus declaration, so the two spellings never compare equal
+// (gunbc.recurring_failure_mode a_sibling_refusal_masks_a_ratchet_rows_observation). Its repair is
+// its own lane.
 fn resource_declaration_identity(scope: InferScope, resource: Node) -> Node? {
   lookup_type_by_name(env: scope.type_env, name: type_node_label(n: resource, source_indices: scope.type_env.source_indices))
 }
 
-// THE ONE MATCHING AUTHORITY, read by the typecheck (a Bool) and by the Rust emitter (the caller's
-// binding name to pass). It answers the caller's binding for a callee requirement, so the emitter
-// can never pass a spelling the typecheck did not establish: both consult this fold.
 fn established_resource_binding(scope: InferScope, required: ResourceRequirement, established: List<ResourceRequirement>) -> String? {
   match resource_declaration_identity(scope: scope, resource: required.resource) {
     Absent => none
@@ -1125,725 +1119,10 @@ fn established_resource_binding(scope: InferScope, required: ResourceRequirement
   }
 }
 
-// THE RESOURCE IS NAMED BY ITS RESOLVED DECLARATION, NEVER BY THE CALLER'S IMPORT SPELLING.
-// type_node_label renders the reference as the caller WROTE it, so one resource reached this
-// boundary under two labels -- `Network` where the caller imported the bare name and
-// `std.resources.Network` where it wrote the qualified one. The COMPARATOR does not share the
-// RENDERER's defect, but it is NOT spelling-independent either, and an earlier revision of this
-// note said it was (review 70620). established_resource_binding compares the nodes
-// resource_declaration_identity resolves each side to, and a bare resource name resolves to a
-// kernel-spanned node while the qualified `std.resources.X` resolves to the corpus declaration --
-// so a callee that spells its requirement qualified refuses every caller, however the caller
-// spells it (measured by a two-module fixture; recorded in gunbc.recurring_failure_mode
-// a_sibling_refusal_masks_a_ratchet_rows_observation, owned as its own lane, and the one corpus
-// site it refuses is a frontier row below). What IS identity-decided is the case the witness
-// covers: a bare callee with a caller that binds under another name and spells it qualified. The
-// RENDERER's defect was separate,
-// and the renderer is what the frontier roster keys on -- so one resource would have held TWO
-// ROSTER KEYS, DESIGN section 3's fork arriving in the consumer rather than in the comparator.
-// The consequence is worse than a duplicate row: an unrelated edit to a caller's import spelling
-// moves an EXISTING admitted site off its key, at which point it takes the blocking arm and the
-// ratchet fires over a population change nobody made.
-// The Absent arm falls back to the written spelling and fabricates nothing: a resource whose name
-// resolves to no declaration establishes nothing either, so that call is already refused and the
-// label is only carried for the message.
-fn resource_identity_label(scope: InferScope, resource: Node) -> String {
-  match resource_declaration_identity(scope: scope, resource: resource) {
-    Present { value: declaration } => type_node_label(n: declaration, source_indices: scope.type_env.source_indices)
-    Absent => type_node_label(n: resource, source_indices: scope.type_env.source_indices)
-  }
-}
-
-fn resource_requirement_established(scope: InferScope, required: ResourceRequirement, established: List<ResourceRequirement>) -> Bool {
-  established_resource_binding(scope: scope, required: required, established: established) != none
-}
-
-// A TEST-MARKED DECLARATION IS AN EXECUTION ROOT WHOSE RESOURCES THE CLAIM HARNESS SUPPLIES. The
-// interpreter serves resources ambiently at a test root (hermetic fixtures for the network, the
-// process's own filesystem), and it keys that provision on the root NOT declaring `uses` -- a test
-// fn given `uses net: Network` bypassed the hermetic fixture and reached api.github.com (measured
-// 2026-09-22). So a test root establishes every resource by being the root, and the requirement
-// wall admits it without a `uses` clause. Ordinary declarations get no such arm: their resources
-// arrive as parameters in every emitted realization, and only a `uses` row can bind one.
-fn caller_is_test_root(scope: InferScope) -> Bool {
-  match constructor_declaration_for_admission(type_env: scope.type_env, owner_module_path: scope.module_name, name: scope.caller_decl_name) {
-    ExactConstructorDeclaration { identity: _, declaration: declaration } =>
-      match declaration.declaration_marker {
-        TestMarked => true
-        Unmarked => false
-      }
-    _ => false
-  }
-}
-
 fn caller_resource_requirements(scope: InferScope) -> List<ResourceRequirement> {
   match map_get(scope.item_registry, callable_identity(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: scope.caller_decl_name })) {
     Present { value: info } => info.resource_requirements
     Absent => []
-  }
-}
-
-fn callee_declaration_for_target(scope: InferScope, call_target: CallTargetOutcome) -> Node? {
-  match call_target {
-    DeclaredCallableResolved { sig: _, declared: declared } =>
-      match constructor_declaration_for_admission(type_env: scope.type_env, owner_module_path: declared.owner_module_path, name: declared.decl_name) {
-        ExactConstructorDeclaration { identity: _, declaration: declaration } => Present { value: declaration }
-        _ => none
-      }
-    DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: declaration } => Present { value: declaration }
-    _ => none
-  }
-}
-
-// THE DECLARED FRONTIER FOR CALL SITES THAT DO NOT ESTABLISH THEIR CALLEE'S RESOURCE, and it is
-// the gunbc.roster_registry DeclaredFrontier shape reused rather than a second frontier vocabulary
-// minted beside v1.compiler.infer unresolved_method_frontier (the registration and the
-// DissolutionCondition carrier are literally the same ones; only the KEY differs, because a
-// resource row is keyed on two declaration identities and the resource between them rather than on
-// a receiver shape).
-//
-// WHY A ROSTER AT ALL, stated as the two fabrications it sits between. The wall this file lands
-// refuses a call whose caller establishes none of the resources its callee declares through `uses`.
-// That rule is correct and it is the contract's own rule -- but the corpus predates it, and the
-// measured sites are CORRECT WORKING CODE under the interpreter, which serves resources ambiently
-// and therefore never needed the authored clause. Refusing them outright would fabricate a refusal
-// over code that runs; admitting them silently would fabricate a success, which is exactly the
-// fail-open this wall exists to close. The rows carry the residue as counted
-// ResourceRequirementFrontierAdmitted diagnostics instead.
-//
-// WHAT THE KEY BUYS, and it is condition (2) of the ruling that admitted this shape: the key is
-// (caller module, caller declaration, callee module, callee declaration, resource) -- five
-// DECLARATION-IDENTITY facts, no module prefix and no file path anywhere in it. A prefix key would
-// admit the next undeclared use in the same module for free, which is DESIGN section 5's absorbing
-// fallback wearing a roster's clothes. With this key a newly authored undeclared use matches no row
-// and REDS, and so does the SAME caller acquiring a second, different unestablished callee.
-//
-// EMISSION DOES NOT ADMIT. A rostered row admits the call at the TYPECHECK only. The realization
-// still has no binding to pass, so v1.compiler.emit_rust emit_typed_call refuses it with a located
-// diagnostic before any artifact is published. That is what keeps this from being the meaning fork
-// the roster was chosen over: there is ONE rule about whether a call site establishes its callee's
-// resource, and the roster is declared, counted, dissolving DEBT against enforcing it at the
-// typecheck -- not a second answer to the question.
-type ResourceRequirementFrontierRow {
-  caller_module_path: String
-  caller_decl_name: String
-  callee_module_path: String
-  callee_decl_name: String
-  resource: String
-  occurrences: Int
-  cause: String
-  dissolution: DissolutionCondition
-}
-
-// WHAT MAKES A NEW UNDECLARED USE RED, AND THE HONEST STANDING OF THAT CLAIM: PROVEN BY
-// CONSTRUCTION, UNEXECUTED. A call site is admitted only by an EXACT match on all five identity
-// facts, so a newly authored undeclared use -- a new caller, a new callee, a new resource, or the
-// same caller acquiring a second unestablished callee -- matches no row and takes the refusing arm.
-// The rows below are exhaustive over the census population, so every site outside them is new by
-// definition. That is a construction argument and it is NOT an executed one: there is no
-// discriminating pair in the required path that refuses a newly authored use and admits a rostered
-// one. The precedent for writing one is frontier_occurrence_budget_diags, whose ratchet is
-// exercised AT THE MECHANISM with synthesized diagnostics at the declared count, one more and zero
-// -- authorable for this fold too.
-// THE REASON THAT PAIR IS NOT SIMPLY WRITTEN HERE, and any reader who finds it later must know
-// this: its home, v1.compiler.compiler_tests_rust, runs under `cargo test -p v1-compiler --lib`,
-// which is OFF THE MERGE PATH under gunbc.rung_drop rust_unit_tests_off_the_merge_path. Evidence
-// placed there executes on demand and GATES NOTHING, so finding a discriminating pair in that file
-// is not evidence that this roster is protected against a regression. Reading it as coverage is
-// the specific mistake this paragraph exists to prevent.
-// TRIGGER for this condition: an EXECUTABLE HOME on the required path for a discriminating pair
-// over the frontier's admitting and refusing arms -- sufficient that a newly authored undeclared
-// use fails a lane rather than waiting for someone to invoke the evidence by hand.
-// HOW THE POPULATION WAS DISCOVERED, NAMED AS AN INSTRUMENT RATHER THAN TRANSCRIBED AS A COUNT.
-// A monotone debt contract is honest only over a universe that is independently discovered and
-// CLOSED (DESIGN section 5), so the rows below are the output of a WHOLE-CORPUS census, not of any
-// one closure. Re-derive them with the command gunbc.emit_stage_blocking_population_census names --
-// build the seed, then `gunbc compile` over both source roots with --repository and
-// --measured-root-demands -- and count distinct (caller declaration, callee declaration, resource)
-// with its distinct spans. No population figure is stored here on purpose: a stored count is the
-// hand-count-beside-structure class this repository keeps filing rows about, and it would rot while
-// both ends stayed untouched.
-//
-// WHY THE CLOSURE VIEW WAS NOT ENOUGH, recorded because it nearly was. The required floor surfaced
-// this class while resolving ONE witness closure, and that view holds roughly a third of the sites
-// the whole-corpus census finds. A roster built from it would have been an ALLOWLIST that omitted
-// two thirds of its own subject while calling itself complete -- and every omitted site would have
-// refused the first time an unrelated lane's closure happened to reach it.
-//
-// THE 11 TEST-MODULE CALLERS BELOW ARE NOT TEST ROOTS, which was checked rather than assumed
-// before they were rostered. caller_is_test_root admits a declaration carrying TestMarked, which
-// the parser attaches only to an authored `test fn` or `test data` (v1.compiler.parse
-// test_marker_admits_form restricts the marker to the fn and data forms precisely so `test pattern`
-// and `test interface` cannot carry it). Every caller below is a plain `fn` -- one is a `pattern` --
-// that merely LIVES in a test module, so the admission correctly does not reach it. No row here
-// covers a site the wall should not have refused.
-fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
-  [
-    {
-      caller_module_path: "gunbc.auth.credentials",
-      caller_decl_name: "gcp_oauth_access_token",
-      callee_module_path: "gunbc.auth.credentials",
-      callee_decl_name: "gcp_oauth_access_token_adc_for_path",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.auth.patterns",
-      caller_decl_name: "acquire_subject_token",
-      callee_module_path: "gunbc.auth.patterns",
-      callee_decl_name: "github_oidc",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.auth.patterns",
-      caller_decl_name: "acquire_subject_token",
-      callee_module_path: "gunbc.auth.patterns",
-      callee_decl_name: "metadata_oidc",
-      resource: "Network",
-      occurrences: 2,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.github_app_acquisition",
-      caller_decl_name: "census_app_acquisition_standing",
-      callee_module_path: "gunbc.github_app_acquisition",
-      callee_decl_name: "live_custody_standing",
-      resource: "Filesystem",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.instruments.github_app_acquire",
-      caller_decl_name: "census_app_acquire_for",
-      callee_module_path: "gunbc.instruments.github_app_acquire",
-      callee_decl_name: "read_handoff_value",
-      resource: "Filesystem",
-      occurrences: 3,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.instruments.github_app_acquire",
-      caller_decl_name: "census_app_acquire_receipt",
-      callee_module_path: "gunbc.instruments.github_app_acquire",
-      callee_decl_name: "observed_acquisition_reading",
-      resource: "Filesystem",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.instruments.github_app_acquire",
-      caller_decl_name: "census_app_acquire_with_code",
-      callee_module_path: "gunbc.instruments.github_app_acquire",
-      callee_decl_name: "custody_preflight",
-      resource: "Filesystem",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.instruments.github_app_acquire",
-      caller_decl_name: "census_app_acquisition_receipt",
-      callee_module_path: "gunbc.instruments.github_app_acquire",
-      callee_decl_name: "observed_acquisition_reading",
-      resource: "Filesystem",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.instruments.github_app_acquire",
-      caller_decl_name: "census_app_installations_receipt",
-      callee_module_path: "gunbc.instruments.github_app_acquire",
-      callee_decl_name: "installations_read_exit",
-      resource: "Filesystem",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.instruments.github_app_acquire",
-      caller_decl_name: "census_app_observe_receipt",
-      callee_module_path: "gunbc.instruments.github_app_acquire",
-      callee_decl_name: "observed_acquisition_reading",
-      resource: "Filesystem",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.instruments.github_app_acquire",
-      caller_decl_name: "census_app_registration_instruction_receipt",
-      callee_module_path: "gunbc.instruments.github_app_acquire",
-      callee_decl_name: "observed_acquisition_reading",
-      resource: "Filesystem",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.instruments.github_app_acquire",
-      caller_decl_name: "census_app_registration_instruction_receipt",
-      callee_module_path: "gunbc.instruments.github_app_acquire",
-      callee_decl_name: "read_handoff_value",
-      resource: "Filesystem",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.instruments.github_app_acquire",
-      caller_decl_name: "custody_preflight_receipt",
-      callee_module_path: "gunbc.instruments.github_app_acquire",
-      callee_decl_name: "custody_preflight",
-      resource: "Filesystem",
-      occurrences: 2,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.instruments.github_app_acquire",
-      caller_decl_name: "custody_write_receipt",
-      callee_module_path: "gunbc.instruments.github_app_acquire",
-      callee_decl_name: "persist_issued_credentials",
-      resource: "Filesystem",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.instruments.github_app_acquire",
-      caller_decl_name: "persist_then_read_back",
-      callee_module_path: "gunbc.instruments.github_app_acquire",
-      callee_decl_name: "persist_issued_credentials",
-      resource: "Filesystem",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.review_sheet_spreadsheet_actuator",
-      caller_decl_name: "converge_review_spreadsheet",
-      callee_module_path: "gunbc.review_sheet_legacy_extent_producer",
-      callee_decl_name: "read_operator_legacy_declaration",
-      resource: "Filesystem",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "test.claim.gcp_oauth_access_token_witness",
-      caller_decl_name: "gcp_oauth_access_token_dispatch_swapped",
-      callee_module_path: "gunbc.auth.credentials",
-      callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "test.claim.gcp_oauth_access_token_witness",
-      caller_decl_name: "witness_adc_refresh_absent_routes_to_adc_leaf",
-      callee_module_path: "gunbc.auth.credentials",
-      callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "test.claim.gcp_oauth_access_token_witness",
-      caller_decl_name: "witness_adc_refresh_null_optional_routes_to_adc_leaf",
-      callee_module_path: "gunbc.auth.credentials",
-      callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "test.claim.gcp_oauth_access_token_witness",
-      caller_decl_name: "witness_adc_refresh_present_routes_to_adc_leaf",
-      callee_module_path: "gunbc.auth.credentials",
-      callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "test.claim.gcp_oauth_access_token_witness",
-      caller_decl_name: "witness_leaves_are_distinguishable",
-      callee_module_path: "gunbc.auth.credentials",
-      callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "test.claim.gcp_oauth_access_token_witness",
-      caller_decl_name: "witness_swapped_gcloud_hits_adc_leaf",
-      callee_module_path: "gunbc.auth.credentials",
-      callee_decl_name: "gcp_oauth_access_token_via_adc_refresh",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "test.claim.review_sheet_header_init_witness",
-      caller_decl_name: "plan_over_fixture",
-      callee_module_path: "gunbc.review_sheet_formula_observation",
-      callee_decl_name: "observe_formula_whole_tab",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "test.claim.review_sheet_legacy_declaration_wet_witness",
-      caller_decl_name: "candidacy_over_declaration_file",
-      callee_module_path: "gunbc.review_sheet_legacy_extent_producer",
-      callee_decl_name: "read_operator_legacy_declaration",
-      resource: "Filesystem",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "test.claim.review_sheet_legacy_declaration_wet_witness",
-      caller_decl_name: "decision_over_declaration_file",
-      callee_module_path: "gunbc.review_sheet_legacy_extent_producer",
-      callee_decl_name: "read_operator_legacy_declaration",
-      resource: "Filesystem",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "test.probe.census_app_acquisition_forged_probe",
-      caller_decl_name: "mint_a_receipt_from_authored_standings",
-      callee_module_path: "gunbc.github_app_acquisition",
-      callee_decl_name: "census_app_acquisition_standing",
-      resource: "Filesystem",
-      occurrences: 1,
-      cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.instruments.github_app_acquire",
-      caller_decl_name: "census_app_acquire_with_code",
-      callee_module_path: "gunbc.instruments.github_app_acquire",
-      callee_decl_name: "persist_then_read_back",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.instruments.github_app_acquire",
-      caller_decl_name: "census_app_acquisition_receipt",
-      callee_module_path: "gunbc.instruments.github_app_acquire",
-      callee_decl_name: "census_app_acquisition_receipt_for",
-      resource: "Filesystem",
-      occurrences: 1,
-      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.machine_intake_mtcollins1_media_attach",
-      caller_decl_name: "mtcollins1_attach_absent_image_control",
-      callee_module_path: "gunbc.machine_intake_megarac_media_attach",
-      callee_decl_name: "megarac_attach_remote_image",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.machine_intake_mtcollins1_media_attach",
-      caller_decl_name: "mtcollins1_attach_diskless_image",
-      callee_module_path: "gunbc.machine_intake_megarac_media_attach",
-      callee_decl_name: "megarac_attach_remote_image",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.review_sheet_converge_cli",
-      caller_decl_name: "converge_drive_half_cli",
-      callee_module_path: "gunbc.review_sheet_converge_cli",
-      callee_decl_name: "converge_drive_half",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.review_sheet_converge_cli",
-      caller_decl_name: "format_converged_spreadsheet",
-      callee_module_path: "gunbc.review_sheet_converge_cli",
-      callee_decl_name: "format_with_validated_schema",
-      resource: "Network",
-      occurrences: 3,
-      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.runner_host_file_converge",
-      caller_decl_name: "run_runner_host_files",
-      callee_module_path: "gunbc.runner_host_file_converge",
-      callee_decl_name: "plan_runner_host_file",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.srv3_boot_once_cd",
-      caller_decl_name: "srv3_boot_once_cd_gated",
-      callee_module_path: "gunbc.srv3_bmc_credential_resolve",
-      callee_decl_name: "observe_and_resolve_srv3_bmc_credential",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.srv3_os_install_actuate",
-      caller_decl_name: "srv3_bmcweb_session_login",
-      callee_module_path: "gunbc.srv3_bmc_credential_resolve",
-      callee_decl_name: "observe_and_resolve_srv3_bmc_credential",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.tools.bmc_onboard",
-      caller_decl_name: "srv1_converge_credential",
-      callee_module_path: "gunbc.tools.bmc_onboard",
-      callee_decl_name: "bmc_converge_credential_selected",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.tools.bmc_onboard",
-      caller_decl_name: "srv2_converge_credential",
-      callee_module_path: "gunbc.tools.bmc_onboard",
-      callee_decl_name: "bmc_converge_credential_selected",
-      resource: "Network",
-      occurrences: 1,
-      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
-      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },
-    {
-      caller_module_path: "gunbc.instruments.github_app_acquire",
-      caller_decl_name: "census_app_acquisition_receipt_for",
-      callee_module_path: "gunbc.github_app_acquisition",
-      callee_decl_name: "census_app_acquisition_standing",
-      resource: "Filesystem",
-      occurrences: 1,
-      cause: "The resource-identity fork, not an absent clause. The caller DOES declare this resource; the callee spells it `std.resources.Filesystem`, which resolves to the corpus declaration, while the requirement join resolves the caller's binding to a different, kernel-spanned node, so the two never compare equal (gunbc.recurring_failure_mode a_sibling_refusal_masks_a_ratchet_rows_observation). Respelling either side to make the spellings agree would route around the fork rather than repair it.",
-      dissolution: unbound_dissolution(description: "one resolved identity per resource regardless of spelling -- sufficient that a bare and a qualified reference to the same resource declaration resolve to one node at the requirement join, so this caller's authored clause establishes its callee's requirement and the typecheck admits the call directly; this row is then deleted")
-    }
-  ]
-}
-
-fn resource_requirement_frontier_trigger(
-  caller_module_path: String,
-  caller_decl_name: String,
-  callee_module_path: String,
-  callee_decl_name: String,
-  resource: String
-) -> DissolutionCondition? {
-  match resource_requirement_frontier()
-    |> filter(r =>
-        r.caller_module_path == caller_module_path
-          && r.caller_decl_name == caller_decl_name
-          && r.callee_module_path == callee_module_path
-          && r.callee_decl_name == callee_decl_name
-          && r.resource == resource)
-    |> first {
-    Present { value: row } => Present { value: row.dissolution }
-    Absent => none
-  }
-}
-
-fn resource_frontier_diag_matches_row(d: CompilerDiagnostic, row: ResourceRequirementFrontierRow) -> Bool {
-  match diagnostic_resource_frontier_key(d: d) {
-    Present { value: key } =>
-      key.caller_module_path == row.caller_module_path
-        && key.caller_decl_name == row.caller_decl_name
-        && key.callee_module_path == row.callee_module_path
-        && key.callee_decl_name == row.callee_decl_name
-        && key.resource == row.resource
-    Absent => false
-  }
-}
-
-fn resource_frontier_row_observed(diagnostics: List<ErrorNode>, row: ResourceRequirementFrontierRow) -> List<ErrorNode> {
-  diagnostics |> filter(e => resource_frontier_diag_matches_row(d: e.diagnostic, row: row))
-}
-
-// THE COUNT IS WHAT MAKES THIS A RATCHET RATHER THAN AN EXEMPTION, and the comparison is EQUALITY
-// in both directions for the reason frontier_occurrence_budget_note records against its own earlier
-// ceiling: a ceiling lets a declared N shrink to N-1 while the headroom stays open, so a
-// reintroduction slips back in silently. With equality, REPAIRING a site reds until its row's count
-// is lowered or the row is deleted, and adding one reds immediately. The check runs per module, and
-// every occurrence of a module's rows is present whenever that module is typechecked at all, so
-// there is no partial-closure case that equality would wrongly red.
-fn resource_frontier_row_budget_diags(row: ResourceRequirementFrontierRow, diagnostics: List<ErrorNode>, module_name: String, module_span: SourceSpan) -> List<ErrorNode> {
-  let observed = resource_frontier_row_observed(diagnostics: diagnostics, row: row)
-  if (observed |> count) == row.occurrences {
-    []
-  } else {
-    [make_error_node(
-      diagnostic: ResourceFrontierOccurrenceBudgetExceeded {
-        caller_decl_name: row.caller_decl_name,
-        callee_module_path: row.callee_module_path,
-        callee_decl_name: row.callee_decl_name,
-        resource: row.resource,
-        declared: row.occurrences,
-        observed: observed |> count,
-        span: match observed |> first {
-          Present { value: witness } => diagnostic_to_span(d: witness.diagnostic)
-          Absent => module_span
-        }
-      },
-      module_name: module_name)]
-  }
-}
-
-fn resource_frontier_occurrence_budget_diags(module_name: String, module_span: SourceSpan, diagnostics: List<ErrorNode>) -> List<ErrorNode> {
-  resource_requirement_frontier()
-    |> filter(r => r.caller_module_path == module_name)
-    |> flat_map(r => resource_frontier_row_budget_diags(row: r, diagnostics: diagnostics, module_name: module_name, module_span: module_span))
-}
-
-// AN IDENTIFIED CALLEE WHOSE DECLARATION CANNOT BE READ IS A REFUSAL, NOT AN ADMISSION (review
-// 70193). The inner Absent arm below returned [] and was a fail-open: the resolver had already
-// selected a declaration identity, so reaching it means the `uses` clause exists and this fold
-// cannot see it -- exactly the state where admitting fabricates a success, which the frontier
-// roster's own note says this wall exists to prevent. DESIGN section 5 rules that a failure arm
-// must REFUSE, never widen, and that every degradation is a typed, located, countable diagnostic.
-// It refuses as InternalError, the vocabulary this file already uses for the sibling state -- a
-// resolved call whose declared formal authority is unavailable (formal_authority_diags) -- rather
-// than a second name for one condition.
-// THE OUTER Absent ARM STAYS [] AND IS NOT THE SAME STATE: there the target is not a declared
-// callable at all, so there is no `uses` clause to have missed.
-fn resource_requirement_diags(scope: InferScope, call_target: CallTargetOutcome, span: SourceSpan) -> List<ErrorNode> {
-  let callee_identity = match call_target {
-    DeclaredCallableResolved { sig: _, declared: declared } => Present { value: declared }
-    DeclaredCallableIdentityResolved { declared: declared, borrowed_declaration: _ } => Present { value: declared }
-    _ => none
-  }
-  match callee_identity {
-    Absent => []
-    Present { value: callee } =>
-      match callee_declaration_for_target(scope: scope, call_target: call_target) {
-        Absent =>
-          [make_error_node(
-            diagnostic: InternalError {
-              message: concat(
-                "resource requirement contract unreadable for resolved callee '",
-                callee.owner_module_path, ".", callee.decl_name,
-                "': the call resolved to a declaration identity but its declaration could not be read, so its `uses` clause cannot be compared against the caller's. Admitting the call here would fabricate a success over a contract this fold cannot see"
-              ),
-              span: span
-            },
-            module_name: scope.module_name
-          )]
-        Present { value: declaration } =>
-          let required = resource_requirements_of_uses(uses: declaration.uses, source_indices: scope.type_env.source_indices)
-          if required |> count == 0 { [] }
-          else if caller_is_test_root(scope: scope) { [] }
-          else {
-            let established = caller_resource_requirements(scope: scope)
-            let caller_name = if scope.caller_decl_name == "" { "<module scope>" } else { scope.caller_decl_name }
-            required
-              |> filter(r => !resource_requirement_established(scope: scope, required: r, established: established))
-              |> map(r =>
-                let resource_label = resource_identity_label(scope: scope, resource: r.resource)
-                match resource_requirement_frontier_trigger(
-                  caller_module_path: scope.module_name,
-                  caller_decl_name: caller_name,
-                  callee_module_path: callee.owner_module_path,
-                  callee_decl_name: callee.decl_name,
-                  resource: resource_label
-                ) {
-                  Present { value: trigger } =>
-                    make_error_node(
-                      diagnostic: ResourceRequirementFrontierAdmitted {
-                        callee_module_path: callee.owner_module_path,
-                        callee_decl_name: callee.decl_name,
-                        resource: resource_label,
-                        caller_module_path: scope.module_name,
-                        caller_decl_name: caller_name,
-                        trigger: dissolution_description(condition: trigger),
-                        span: span
-                      },
-                      module_name: scope.module_name
-                    )
-                  Absent =>
-                    make_error_node(
-                      diagnostic: ResourceRequirementUnestablished {
-                        callee_module_path: callee.owner_module_path,
-                        callee_decl_name: callee.decl_name,
-                        resource: resource_label,
-                        caller_module_path: scope.module_name,
-                        caller_decl_name: caller_name,
-                        span: span
-                      },
-                      module_name: scope.module_name
-                    )
-                }
-              )
-          }
-      }
-  }
-}
-
-fn diag_is_resource_requirement_admitted(e: ErrorNode) -> Bool {
-  diagnostic_resource_frontier_key(d: e.diagnostic) != none
-}
-
-// The admitted rows are SPLIT OFF from the blocking ones rather than sharing the refusal path,
-// because an admitted call must still TYPE -- it is correct working code and its result type feeds
-// everything downstream. Returning an error node for it would have turned a declared debt into the
-// cascade the wall is supposed to avoid. The admitted diagnostics are carried instead on the
-// resolved direct-call InferResult, which is the same join that established the callee identity
-// they are keyed on.
-fn resource_requirement_admitted_diags(scope: InferScope, call_target: CallTargetOutcome, span: SourceSpan) -> List<ErrorNode> {
-  resource_requirement_diags(scope: scope, call_target: call_target, span: span)
-    |> filter(e => diag_is_resource_requirement_admitted(e: e))
-}
-
-fn resource_requirement_refusal(func_name: String, scope: InferScope, call_target: CallTargetOutcome, span: SourceSpan) -> InferResult? {
-  let diags = resource_requirement_diags(scope: scope, call_target: call_target, span: span)
-    |> filter(e => !diag_is_resource_requirement_admitted(e: e))
-  match diags |> first {
-    Absent => none
-    Present { value: _ } =>
-      Present { value: InferResult {
-        typed: semantic_expr_error_node(
-          message: concat("resource requirement unestablished for call to '", func_name, "'"),
-          span: span
-        ),
-        diagnostics: diags
-      } }
   }
 }
 
@@ -6434,9 +5713,7 @@ fn frontier_occurrence_budget_diags(module_name: String, module_span: SourceSpan
 data frontier_occurrence_budget_note: String = "THE COUNT IS WHAT MAKES THE FRONTIER A RATCHET INSTEAD OF AN EXEMPTION. Keying admission on (module, method, receiver_shape) bounds WHERE an unresolved call may live but not HOW MANY may live there, so a second call in the same module, on the same method, failing to resolve the same way, inherited the admission — and that is not hypothetical: the measured rows have not all been singletons: v2.compiler.tokenize admitted seven `apply` calls, and the extdeps.mercurial `any` and gunbc.scm_compatibility.mercurial `map` rows cited here were three apiece — every one of them a lambda-parameter receiver, and all three rows are now DELETED at zero observed, tokenize's by the generic-substitution repair method_existence_wall_note describes. NO MULTI-OCCURRENCE ROW SURVIVES TODAY, which is a fact about the current corpus and not a change to this check: the count field is what makes the frontier a ratchet whether or not any row presently exceeds one, so a row admitting seven would silently admit an eighth (codex review 45464). Each row therefore declares its MEASURED occurrence count and this fold refuses the excess, located on the first offending call. THE COMPARISON IS EQUALITY, AND IT WAS FIRST WRITTEN AS A CEILING, WHICH DID NOT RATCHET. `observed > declared` was justified here on the reasoning that a narrower compile closure sees fewer occurrences of a module's rows, so equality would red a partial build. That reasoning is WRONG about this check: it runs per MODULE, and every occurrence of a module's rows is present whenever that module is typechecked at all — a closure that omits the module never runs its rows, so there is no partial-visibility case to protect. What the ceiling actually did was let seven shrink to six while the declared seven stood, so a seventh call could return silently: a static limit, not a ratchet, and the note claimed the ratchet anyway (codex review 45491). Equality closes it in the only way that works — fixing a call reds until the declared count is lowered, which removes the headroom a reintroduction would have slipped into. Both directions are asserted in the witness, because the under-count half is the half that makes it a ratchet and it is the one an author is tempted to relax. WHY NOT A STABLE PER-OCCURRENCE KEY, which would close this exactly: std.occurrence_identity is the corpus authority for occurrence identity and its own scope law forbids filename, SourceSpan, authored name, structural Node equality and content hash as identity inputs, allocating OccurrenceId inside one graph-scoped allocator instead. An allocator-assigned integer cannot appear as a literal in a declared row, because it is not stable across compiles — so a per-occurrence key is not merely unimplemented here, it is unavailable from the authority that owns the concept. The count is the strongest bound the substrate currently supports. Dissolve-on: a content-addressed occurrence identity stable across edits (the namespace lane's containment addressing), at which point rows key on the occurrence itself and the count field deletes."
 
 fn frontier_occurrence_budget_checked(module_name: String, module_span: SourceSpan, diagnostics: List<ErrorNode>) -> List<ErrorNode> {
-  concat(
-    concat(diagnostics, frontier_occurrence_budget_diags(module_name: module_name, module_span: module_span, diagnostics: diagnostics)),
-    resource_frontier_occurrence_budget_diags(module_name: module_name, module_span: module_span, diagnostics: diagnostics))
+  concat(diagnostics, frontier_occurrence_budget_diags(module_name: module_name, module_span: module_span, diagnostics: diagnostics))
 }
 
 fn unresolved_method_frontier_trigger(module_name: String, method: String, receiver_shape: String) -> DissolutionCondition? {
@@ -7696,9 +6973,6 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       match constructor_reference_admission_unshadowed(callee_name: func_name, span: span, scope: scope) {
         Present { value: refusal } => refusal
         Absent =>
-      match resource_requirement_refusal(func_name: func_name, scope: scope, call_target: call_target, span: span) {
-        Present { value: refusal } => refusal
-        Absent =>
       let sig = call_target_declared_sig(outcome: call_target)
       let sig_params = match sig {
         Present { value: s } => s.params
@@ -7895,7 +7169,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             span: span,
             name_span: node_name_span(n: texpr)
           ),
-          diagnostics: concat(resource_requirement_admitted_diags(scope: scope, call_target: call_target, span: span), concat(formal_authority_diags, concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, concat(inhabitance_arg_diags, generic_type_argument_inhabitance_diags)))))))
+          diagnostics: concat(formal_authority_diags, concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, concat(inhabitance_arg_diags, generic_type_argument_inhabitance_diags))))))
         }
         }
       } else {
@@ -8232,7 +7506,6 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
         }
         }
-      }
       }
       }
       }

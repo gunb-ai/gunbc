@@ -11894,31 +11894,19 @@ fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
 // population the emitter knows least about.
 // RESOURCE ARGUMENTS AT A CALL SITE ARE THE CALLER'S BINDINGS, NOT THE CALLEE'S SPELLINGS. In
 // emit_typed_call each callee requirement (ItemInfo.resource_requirements, read by the resolved
-// callee identity) is matched to the enclosing declaration's own `uses` row through the same
-// fold the typecheck consulted (v1.compiler.infer established_resource_binding), and the
-// identifier emitted is the caller's. Before this the emitter appended `&<callee's name>`
-// unconditionally: arity agreed with the declaration, the argument named nothing in the caller's
-// scope, and the file was published for rustc to refuse. A requirement the fold cannot establish
-// is a located refusal, and it renders compile_error!, not the emitter's ordinary error expression.
-// THAT DISTINCTION WAS A DEFECT AND IS WORTH KEEPING WRITTEN DOWN (review 69961). The arm first
-// rendered emit_error_expr, whose Rust template is panic!({0}) -- and panic! has type `!`, which
-// coerces to any parameter type, so rustc ACCEPTED the emitted call and the program panicked at
-// run time. That is this file's own recurring class, and the worse half of it: not an artifact the
-// target compiler refuses, but one it compiles and that misbehaves in production.
-// THE ARM IS NOT UNREACHABLE, WHICH IS WHAT THAT DEFECT EXPOSED. An earlier version of this note
-// claimed the typecheck blocks every instance so an accepted program cannot reach here. That is
-// true only of ORDINARY callers. v1.compiler.infer caller_is_test_root admits a TestMarked caller
-// with no `uses` row, because the interpreter serves a test root's resources ambiently and keys
-// that provision on the absence of the clause -- and test roots ARE rendered (extract_test_projections).
-// So an Accepted program does reach this arm, through exactly that door. compile_error! makes it a
-// target-compiler refusal instead of a runtime panic, which is a real improvement and is NOT a
-// refusal before publishing: the artifact is still written. The remaining gap is the interpreter
-// and the emitter disagreeing about how a test root obtains its resources. NOTHING HERE HOLDS THAT
-// GAP AS DECLARED DEBT, and an earlier draft of this note claimed the resource-requirement frontier
-// does (review 69984). It does not and cannot: that roster's rows key on a caller that establishes
-// NOTHING, while a test root is admitted by a separate arm (v1.compiler.infer caller_is_test_root),
-// so no row could name one. The gap is carried as the next-rung trigger on
-// test.claim.resource_requirement_call_admission_witness and by nothing else.
+// callee identity) is matched to the enclosing declaration's own `uses` row through
+// v1.compiler.infer established_resource_binding, and the identifier emitted is the caller's.
+// Before this the emitter appended `&<callee's name>` unconditionally: arity agreed with the
+// declaration, the argument named nothing in the caller's scope, and the file was published for
+// rustc to refuse. A requirement the fold cannot establish renders compile_error!, NOT the
+// emitter's ordinary error expression, whose Rust template is panic!({0}): panic! has type `!`,
+// which coerces to any parameter type, so rustc ACCEPTED that call and the program panicked at run
+// time (review 69961). THIS IS RUNG 2, NOT A REFUSAL BEFORE PUBLISHING: the artifact is still
+// written and the target compiler is what refuses it. No typecheck wall stands in front of this arm
+// -- whether a caller establishes a resource is owned by D13's derived DependencyDemand, which does
+// not exist yet, so a caller whose demand is derived rather than authored reaches this arm. The
+// return of a pre-emission refusal is the next-rung trigger on gunbc.recurring_failure_mode
+// accepted_source_emits_uncompilable_target.
 // emit_func_def names the declaration it renders on the body scope (caller_decl_name) so that read
 // has a subject.
 

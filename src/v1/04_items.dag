@@ -58,9 +58,9 @@ type ItemKind = FnItem | TypeItem | DataItem | ServiceItem | OtherItem
 // CALLEE's binding name at a call site in a CALLER that never bound it: the arity of the emitted
 // call agreed with the declaration while its argument named nothing in scope, and only rustc
 // refused, after the file was published (DESIGN section 5, silent wrongness at the realization
-// boundary). The requirement is checked at the call site by v1.compiler.infer
-// resource_requirement_diags and consumed by v1.compiler.emit_rust emit_typed_call, both keyed
-// on declaration identity.
+// boundary). It is consumed by v1.compiler.emit_rust emit_typed_call through v1.compiler.infer
+// established_resource_binding, keyed on the resolved resource declaration. Whether a caller
+// ESTABLISHES a requirement is D13 DependencyDemand's question, not this carrier's.
 type ResourceRequirement {
   binding_name: String
   resource: Node

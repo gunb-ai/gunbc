@@ -1,6 +1,5 @@
 module gunbc.review_sheet_converge_cli
 
-import std.resources { Network }
 import std.types { NonEmptyStr, String, Bool, Secret, List }
 import gunbc.review_sheet_format_actuator {
   FormatConvergeOutcome,
@@ -162,9 +161,7 @@ fn converge_review_sheet_all(
   writer: ServiceAccountEmail,
   drive_id: NonEmptyStr,
   policy: EnsurePolicy,
-) -> ReviewSheetConvergeReport
-  uses net: Network
-{
+) -> ReviewSheetConvergeReport {
   ReviewSheetConvergeReport {
     sheets_api: converge_service_enablement(
       token: token,
@@ -325,9 +322,7 @@ fn converge_drive_half(
   drive_id: NonEmptyStr,
   writer: ServiceAccountEmail,
   policy: EnsurePolicy,
-) -> DriveHalfReport
-  uses net: Network
-{
+) -> DriveHalfReport {
   DriveHalfReport {
     membership: converge_drive_membership(drive_id: drive_id, writer: writer, policy: policy),
     spreadsheet: converge_review_spreadsheet(
@@ -392,9 +387,7 @@ type FormatDisposition
 // The composition order is the cheap refusal first: validating the schema costs nothing and
 // reaches no network, while locating the tab is a spreadsheets.get. A run that cannot format
 // anyway should not spend a request discovering that.
-fn format_with_validated_schema(id: NonEmptyStr) -> FormatDisposition
-  uses net: Network
-{
+fn format_with_validated_schema(id: NonEmptyStr) -> FormatDisposition {
   match validate_header_schema(schema: ci_prospect_sheet_schema()) {
     HeaderSchemaRefused { refusal: _, reason: r } => FormatSkipped { cause: r }
     HeaderSchemaValidated { validated: v } => format_located_tab(file_id: id, validated: v)
@@ -418,9 +411,7 @@ fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposit
   }
 }
 
-fn format_located_tab(file_id: NonEmptyStr, validated: ValidatedHeaderSchema) -> FormatDisposition
-  uses net: Network
-{
+fn format_located_tab(file_id: NonEmptyStr, validated: ValidatedHeaderSchema) -> FormatDisposition {
   let standing = locate_review_tab(spreadsheet_id: file_id)
   match standing {
     TabLocated { tab: t } =>

@@ -1,6 +1,5 @@
 module gunbc.spark.vllm_runtime_image_build
 
-import std.resources { Network }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
@@ -1075,7 +1074,6 @@ fn with_spark_build_host(
 // reads off the recipe itself. The v41 fallback and the GLM SM121 image are the two current
 // callers; a third family adds a recipe row and a one-line entry, not a copy of this body.
 fn vllm_runtime_image_build_entry(r: VllmContainerBuildRecipe) -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   match spark_converge_target_selection(execute_apply: true) {
@@ -1124,7 +1122,6 @@ fn vllm_runtime_image_build_entry(r: VllmContainerBuildRecipe) -> ProcessExit
 }
 
 fn vllm_runtime_image_build_ci_wet() -> ProcessExit
-  uses net: Network
 {
   vllm_runtime_image_build_entry(r: v41_gb10_recipe())
 }
@@ -1133,7 +1130,6 @@ fn vllm_runtime_image_build_ci_wet() -> ProcessExit
 // vllm_8d09804_sm121_recipe) and the derived stage follows it; the product is the image the GLM
 // native arm's declared reference is repointed to once a build through this lane has served.
 fn glm53_runtime_image_build_wet() -> ProcessExit
-  uses net: Network
 {
   vllm_runtime_image_build_entry(r: vllm_8d09804_sm121_recipe)
 }
