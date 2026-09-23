@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.a_census_is_cited_wider_than_the_closure_its_instrument_compiles
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_census_is_cited_wider_than_the_closure_its_instrument_compiles: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_census_is_cited_wider_than_the_closure_its_instrument_compiles" as NonEmptyStr,
+
+  receipts: [
+    "**a census is reported at corpus grain when its instrument only ever compiled one closure, so a count that is exactly right for what ran is cited as a fact about the whole tree.** The measurement is not wrong and the instrument is not broken; the SCOPE SENTENCE around the number is wider than the population that produced it. INVALID STATE: a phrase of the form `N across the whole tree` standing on a run whose instrument reaches a proper subset of the tree, with nothing in the report naming the subset.",
+
+    "DISTINGUISHING IT FROM ITS TWO NEAREST NEIGHBOURS, both of which are about a DIFFERENT defect in the observation itself. `empty_observation_narrow` is an observation that could not express what changed being rendered as a verdict -- an absent reading treated as an answer. This row's reading is PRESENT, specific and correct; only its stated reach is inflated. `doctrine_safety_claim_stated_wider_than_the_census_that_delivers_it` is a normative sentence in the design authority outrunning a ruling's declared subset -- the claim lives in doctrine and the gap is authored. Here the claim lives in a PR body or a status message, the gap is incidental, and the author is usually the same person who ran the instrument correctly.",
+
+    "MEASURED SPECIMEN, 2026-09-22, gunbc#12045, and the author caught it on himself rather than a reviewer catching it. A new declared-type inhabitance wall was censused by the required floor lane and reported as `exactly one new refusal across the whole tree`, with that phrase carried into the PR body as the headline evidence that the wall was correctly scoped. It was true of the floor's closure. It was not true of the corpus: merging main and running `claim_executor --required-regen` surfaced a SECOND refusal, in `v1.compiler.emit_rust`, because the regen round runs a v2 SELF-COMPILE phase whose closure the floor lane never reaches. Two populations, one of them reported as the tree.",
+
+    "WHY IT SURVIVED THE OBVIOUS CHECK, which is the transferable part: the second refusal could not appear until the wall was IN THE BUILT BINARY, because the self-compile phase runs the built compiler over the seed's own sources. Every earlier regen on that branch ran an instrument built before the wall landed in its mirror, so the phase that would have refused was executing a compiler that could not refuse. The census was therefore honest at every point it was taken and became incomplete only once the instrument caught up -- which is the same instrument-vintage hazard that governs any `gunbc` measurement, arriving through a phase boundary rather than through a stale binary on PATH.",
+
+    "HARM. A scope sentence is what a reader carries forward. `one new refusal, and it is a real defect` reads as a closed census and invites the reviewer's next question to be about that one site rather than about the boundary; the second site then surfaces at merge time, when the cost of discovering it is highest. It also corrupts the ratio that made the change look correctly scoped: one false-positive-free refusal across a corpus is strong evidence a wall is well aimed, and the same number across a subset is not the same evidence.",
+
+    "RUNG FOUND AT: mitigatable -- the number is recoverable and the fix is a sentence. CEILING: mechanically preventable, not structural. The populations are modeled facts, so an instrument can print the closure it compiled beside its count, and a report that names the instrument (DESIGN section 6: name the instrument, never transcribe its output) inherits that scope automatically. It cannot be made structurally impossible, because the inflation happens in PROSE that no Accepted program reads (section 4c).",
+
+    "NEXT-RUNG TRIGGER, NAMED AS A CAPABILITY: every census-producing instrument states the closure it compiled as part of its own output, so a citation that names the instrument carries the scope with it and a reader cannot silently widen it. Sufficient for making `across the whole tree` either true by construction or absent. NOT satisfied by an author remembering to qualify a sentence, which is what failed here.",
+
+    "NOT CLAIMED HERE: how many other phases have closures the required floor does not reach. The self-compile phase is the one this specimen found by execution; the regen round has several phases and nothing enumerated their closures against the floor's. That enumeration is the honest next measurement and would tell any lane citing the floor as `the tree` exactly what it is citing.",
+  ],
+
+  evidence: [],
+}

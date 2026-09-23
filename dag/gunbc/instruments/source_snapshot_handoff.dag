@@ -1,0 +1,1160 @@
+module tools.source_snapshot_handoff
+
+// THE WET DRIVER FOR THE SOURCE-SNAPSHOT HANDOFF, AND WHAT IT IS EVIDENCE OF.
+//
+// gunbc.fabric_source_snapshot is a join between two closed things -- std.fabric_storage's
+// content-addressed objects and a source tree -- and a join is exactly the shape that typechecks
+// while establishing nothing. DESIGN section 5 names the trap: a typecheck and a grep are not
+// consumers. So the subject here is a REQUEST that runs, and the question each scenario answers is
+// whether the executor received the source that was intended.
+//
+// WHAT MAKES IT A REAL REQUEST RATHER THAN A DEMONSTRATION. The argv is not authored here. It is
+// gunbc.roadmap_execution_contract validation_operation_command over a GunbcClaimValidation, bound
+// to the same PinnedPublicPlusLocalRoot layout that contract already spells for a pinned public
+// checkout beside a local root -- so the words this driver hands a child process are the words the
+// dispatch path hands a worker, derived from one authority. If that spelling changes, this
+// instrument changes with it, because it never carried a copy.
+//
+// AND THE CHILD IS A CHILD. The request crosses a real process boundary through gunbc.WitnessBin.Run
+// with its workdir set to the materialized destination, so the compiler that answers it resolves
+// every module from the snapshot's roots and from nothing this driver holds. An in-process
+// composition would pass while carrying state a real second invocation would have had to recover.
+//
+// WHAT IS NOT CLAIMED, stated because the neighbouring claim is the tempting one. This is one
+// executor on ONE HOST reading a store on that host's disk. It establishes that the bytes travel by
+// content identity and that the caller's repository is never read or written -- which is what makes
+// the route serviceable across a boundary -- and it does NOT establish that a remote executor works,
+// because no remote one ran. The fabric's transport is gunbc.fabric_storage_client's served store,
+// and binding this route to it is the next step, not this one.
+
+// THE INSTRUMENT IS NAMED RATHER THAN ITS OUTPUT TRANSCRIBED (DESIGN section 6). Re-derive every
+// figure this module produces with:
+//
+//   CTRL_BUILD_MODE=local gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/source_snapshot_handoff.dag --function source_snapshot_handoff
+//
+// CTRL_BUILD_MODE IS PART OF THE COMMAND AND NOT ENVIRONMENT TRIVIA, for the reason
+// gunbc.scm.scm_wet_execution_receipt records about its own driver: this instrument BUILDS the
+// binary it spends, PATH cargo in a session container is a shim that dispatches to a remote
+// amd64 builder, and an unforced run produces a binary this host cannot execute. Measured here:
+// the first attempt refused with `build refused for gunbc: ctrl-build: dispatching remote build
+// via BuildBuddy`, which is the located refusal doing its job rather than a flake.
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.gunbc
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.fabric_storage {
+  FabricObject,
+  FabricObjectRef,
+  FabricPut,
+  FabricObjectStored,
+  FabricPutRefused,
+  fabric_object_ref_of,
+  fabric_object_ref_wire,
+}
+import gunbc.fabric_storage_file_store {
+  FabricStorageFileRoot,
+  fabric_storage_file_root,
+  fabric_storage_file_root_ensure,
+  fabric_storage_object_path,
+  fabric_storage_file_put,
+  FabricStorageRootStanding,
+  FabricStorageRootReady,
+  FabricStorageRootRefused,
+}
+import gunbc.fabric_source_snapshot {
+  SourceComposition,
+  PublicOnlyComposition,
+  PublicAndPrivateComposition,
+  SnapshotInclusion,
+  SnapshotCapture,
+  SnapshotCaptured,
+  SnapshotCaptureRefused,
+  SnapshotCaptureRefusal,
+  SnapshotFileUnreadable,
+  SnapshotFileAbsent,
+  SnapshotFileEmpty,
+  SnapshotPathOutsideComposition,
+  SnapshotPathNotRelative,
+  SnapshotStoreRefusedObject,
+  SnapshotManifestNotStored,
+  SnapshotMaterialization,
+  SnapshotMaterialized,
+  SnapshotMaterializeRefused,
+  SnapshotMaterializeRefusal,
+  SnapshotManifestUnavailable,
+  SnapshotCompositionMismatch,
+  SnapshotEntryUnavailable,
+  SnapshotEntryMalformed,
+  SnapshotEntryOutsideComposition,
+  SnapshotEntryPathNotRelative,
+  SnapshotDuplicatePath,
+  SnapshotDestinationNotCreated,
+  ProviderWorkspace,
+  ProviderWorkspaceAllocation,
+  ProviderWorkspaceAllocated,
+  ProviderWorkspaceRefused,
+  ProviderRootAdmission,
+  ProviderRootAdmitted,
+  ProviderRootRefused,
+  ProviderBaseLayout,
+  TrustedOwners,
+  ProviderPrincipal,
+  establish_provider_base,
+  trusted_owners_of,
+  observe_provider_principal,
+  provider_base_layouts,
+  provider_layout,
+  provider_base_leaf,
+  provider_root_default,
+  allocate_provider_workspace,
+  release_provider_workspace,
+  provider_workspace_root,
+  SnapshotDirectoryNotCreated,
+  SnapshotFileNotWritten,
+  snapshot_entry_object,
+  snapshot_manifest_object,
+  capture_source_snapshot,
+  materialize_source_snapshot,
+  snapshot_leaf_object,
+  source_composition_wire,
+}
+import gunbc.ensure { EnsurePolicy, EnsureObserveOnly }
+import gunbc.roadmap_execution_contract {
+  ValidationOperation,
+  GunbcClaimValidation,
+  ClaimSourceRootLayout,
+  PinnedPublicPlusLocalRoot,
+  ExecutionCapability,
+  GunbcClaimRunnerCapability,
+  CapabilityRealization,
+  DispatchHostEnvironment,
+  ModeledValidationCommand,
+  validation_operation_command,
+}
+import tools.scm_acceptance_binary {
+  ScmAcceptanceBinary,
+  ScmAcceptanceBinaryAcquisition,
+  ScmAcceptanceBinaryReady,
+  ScmAcceptanceBinaryBuildRefused,
+  ScmAcceptanceBinarySelectionRefused,
+  ScmAcceptanceBinaryDigestRefused,
+  ScmAcceptanceBinaryRetentionRefused,
+  ScmAcceptanceBinaryNotRunnableHere,
+  acquire_scm_acceptance_binary,
+  release_scm_acceptance_binary,
+  scm_acceptance_binary_executable,
+  cargo_selection_detail,
+}
+
+// ── THE SNAPSHOT'S CONTENTS ──────────────────────────────────────────────────────────────────
+//
+// THREE FILES, ONE PER SOURCE ROOT, AND EVERY ONE OF THEM LOAD-BEARING. The claim in the private
+// root imports a declaration from each public root, so a materialization that dropped, corrupted or
+// mislaid any single file does not produce a claim that answers false -- it produces a compiler
+// that cannot resolve a name, and the request exits nonzero. That is what makes the positive
+// control discriminating rather than decorative: there is no arrangement of two of these three
+// files under which the request succeeds.
+//
+// THEY ARE WRITTEN AT CAPTURE TIME AND ARE NOT REPOSITORY FILES, deliberately and as the point. The
+// property under test is that a snapshot carries what the REQUESTER intended, including a file that
+// exists only in a working tree; a fixture committed under fixtures/ would be a file git already
+// knows, so capturing it would prove nothing about the one case the git route cannot serve. These
+// are also outside dag/test/claim by construction, so the required floor never enrols a module that
+// exists only inside a temporary directory.
+data snapshot_public_probe_source: String = "module gunbc.snapshot_public_probe\n\nfn snapshot_public_answer() -> Int {\n  41\n}\n"
+
+data snapshot_marker_source: String = "module v2.std.snapshot_marker\n\nfn snapshot_marker_answer() -> Int {\n  2\n}\n"
+
+data snapshot_claim_source: String = "module test.claim.snapshot_executed_request\n\nimport gunbc.snapshot_public_probe { snapshot_public_answer }\nimport v2.std.snapshot_marker { snapshot_marker_answer }\n\ntest fn snapshot_request_consumed_every_root() -> Bool {\n  (snapshot_public_answer() + snapshot_marker_answer()) == 43\n}\n"
+
+data snapshot_public_prefix: NonEmptyStr = "public" as NonEmptyStr
+data snapshot_private_root: NonEmptyStr = "dag" as NonEmptyStr
+
+// THE COMPOSITION NAMES TRUST DOMAINS, NOT SOURCE ROOTS, and the difference is why two arms serve
+// three roots. `public/dag` and `public/src/v2` are two --source-root words and ONE origin: a
+// pinned public checkout. The private root is the other origin. What an executor must agree about
+// before it is handed bytes is which ORIGINS it is receiving, because that is what its
+// authorization is over; how many root words those origins spell is the compiler's business.
+fn snapshot_handoff_composition() -> SourceComposition {
+  PublicAndPrivateComposition {
+    public_root: snapshot_public_prefix,
+    private_root: snapshot_private_root,
+  }
+}
+
+fn snapshot_handoff_layout() -> ClaimSourceRootLayout {
+  PinnedPublicPlusLocalRoot { public_prefix: snapshot_public_prefix }
+}
+
+fn snapshot_handoff_validation() -> ValidationOperation {
+  GunbcClaimValidation {
+    entry: "dag/test/claim/snapshot_executed_request.dag" as NonEmptyStr,
+    function: "snapshot_request_consumed_every_root" as NonEmptyStr,
+  }
+}
+
+// ── THE SCENARIO ROSTER ──────────────────────────────────────────────────────────────────────
+//
+// A CLOSED VARIANT, AND THE REPORTABLE SUCCESS IS SEALED BEHIND IT for the reason
+// tools.scm_acceptance records at length: .dag has no module privacy, so every function here is a
+// live entry point, and a runner that accepted a caller-supplied scenario list would let any caller
+// mint a pass from the empty list or from the positive control alone. The roster is the vocabulary,
+// and each member derives its own sequence.
+type SnapshotScenario
+  = ExecutedRequestScenario
+  | MissingObjectScenario
+  | CorruptedBytesScenario
+  | CompositionMismatchScenario
+  | EscapingPathScenario
+  | DuplicatePathScenario
+  | UnsafeAllocationRootScenario
+  | SquattedBaseScenario
+
+fn snapshot_scenario_name(scenario: SnapshotScenario) -> String {
+  match scenario {
+    ExecutedRequestScenario => "executed-request"
+    MissingObjectScenario => "missing-object"
+    CorruptedBytesScenario => "corrupted-bytes"
+    CompositionMismatchScenario => "composition-mismatch"
+    EscapingPathScenario => "escaping-path"
+    DuplicatePathScenario => "duplicate-path"
+    UnsafeAllocationRootScenario => "unsafe-allocation-root"
+    SquattedBaseScenario => "squatted-base"
+  }
+}
+
+fn snapshot_scenarios() -> List<SnapshotScenario> {
+  [
+    ExecutedRequestScenario,
+    MissingObjectScenario,
+    CorruptedBytesScenario,
+    CompositionMismatchScenario,
+    EscapingPathScenario,
+    DuplicatePathScenario,
+    UnsafeAllocationRootScenario,
+    SquattedBaseScenario,
+  ]
+}
+
+// THE OUTCOME IS LOCATED. A conjunction over four scenarios answers false and says nothing about
+// which obligation failed, which is the state-space conflation DESIGN section 5 refuses: the line
+// must stop, and the stop must say where.
+type SnapshotScenarioOutcome
+  = SnapshotScenarioPassed { scenario: String, detail: String }
+  | SnapshotScenarioFailed { scenario: String, step: String, detail: String }
+
+fn snapshot_outcome_passed(outcome: SnapshotScenarioOutcome) -> Bool {
+  match outcome {
+    SnapshotScenarioPassed { scenario: _, detail: _ } => true
+    SnapshotScenarioFailed { scenario: _, step: _, detail: _ } => false
+  }
+}
+
+fn snapshot_outcome_line(outcome: SnapshotScenarioOutcome) -> String {
+  match outcome {
+    SnapshotScenarioPassed { scenario: s, detail: d } =>
+      join(["[source-snapshot] PASS ", s, " ", d], "")
+    SnapshotScenarioFailed { scenario: s, step: st, detail: d } =>
+      join(["[source-snapshot] FAIL ", s, " at ", st, ": ", d], "")
+  }
+}
+
+// ── THE WORKSPACE ────────────────────────────────────────────────────────────────────────────
+//
+// THE PATH IS TRIMMED, and the bug that rule exists for is recorded at tools.scm_acceptance
+// prepare_scm_scenario: mktemp prints a trailing newline, mkdir -p obligingly creates a directory
+// literally named with one, and the whole scenario then goes green against a sibling while the real
+// temporary directory stays empty and is leaked. Green with a leak is the worst shape a defect can
+// take.
+type SnapshotWorkspace sole_constructor {
+  root: String
+  authoring: String
+  store: FabricStorageFileRoot
+  provider: ProviderWorkspace
+}
+
+type SnapshotWorkspaceStanding
+  = SnapshotWorkspaceReady { workspace: SnapshotWorkspace }
+  | SnapshotWorkspaceUnavailable { detail: String }
+
+// THE EXECUTOR'S TREE IS ALLOCATED BY THE PROVIDER, NOT BY THIS DRIVER. A scenario cannot hand the
+// materializer a directory of its own choosing, because there is no longer a parameter for one --
+// which is the whole content of the destination repair, so the instrument has to obtain a workspace
+// the same way any other caller does.
+fn prepare_snapshot_workspace() -> SnapshotWorkspaceStanding {
+  let made = shell.Mktemp.Dir()
+  if !made.success {
+    SnapshotWorkspaceUnavailable { detail: "no temporary directory" }
+  } else {
+    let root = trim(s: made.path as String)
+    let store = fabric_storage_file_root(root: join([root, "/store"], "") as NonEmptyStr)
+    match fabric_storage_file_root_ensure(root: store) {
+      FabricStorageRootRefused { area: a, detail: d } =>
+        SnapshotWorkspaceUnavailable { detail: join(["store ", a, ": ", d], "") }
+      FabricStorageRootReady =>
+        let authoring = join([root, "/authored"], "")
+        match allocate_provider_workspace() {
+          ProviderWorkspaceRefused { detail: d } =>
+            SnapshotWorkspaceUnavailable { detail: d }
+          ProviderWorkspaceAllocated { workspace: provider } =>
+            SnapshotWorkspaceReady {
+              workspace: SnapshotWorkspace {
+                root: root,
+                authoring: authoring,
+                store: store,
+                provider: provider,
+              },
+            }
+        }
+    }
+  }
+}
+
+// ── AUTHORING THE SOURCE TO BE CAPTURED ──────────────────────────────────────────────────────
+
+type AuthoredSource
+  = SourceAuthored { inclusions: List<SnapshotInclusion> }
+  | SourceNotAuthored { path: String, detail: String }
+
+fn author_one(directory: String, name: String, content: String) -> Bool {
+  if !shell.Mkdir.Parents(path: directory as FilePath).success {
+    false
+  } else {
+    Filesystem.Write(path: join([directory, "/", name], ""), content: content).success
+  }
+}
+
+// THE SOURCE PATH AND THE MANIFEST PATH ARE DIFFERENT HERE ON PURPOSE. The files are authored under
+// a flat scratch directory and land under three roots, so nothing in this scenario could succeed by
+// the destination happening to equal the author's layout -- which is the property a snapshot exists
+// to provide and the one a copy of a directory would not test.
+fn author_snapshot_source(workspace: SnapshotWorkspace) -> AuthoredSource {
+  if !author_one(directory: workspace.authoring, name: "probe.dag", content: snapshot_public_probe_source) {
+    SourceNotAuthored { path: "probe.dag", detail: "could not write the public probe" }
+  } else {
+    if !author_one(directory: workspace.authoring, name: "marker.dag", content: snapshot_marker_source) {
+      SourceNotAuthored { path: "marker.dag", detail: "could not write the v2 marker" }
+    } else {
+      if !author_one(directory: workspace.authoring, name: "claim.dag", content: snapshot_claim_source) {
+        SourceNotAuthored { path: "claim.dag", detail: "could not write the claim" }
+      } else {
+        SourceAuthored {
+          inclusions: [
+            SnapshotInclusion {
+              source_path: join([workspace.authoring, "/probe.dag"], "") as NonEmptyStr,
+              directory: "public/dag/gunbc" as NonEmptyStr,
+              name: "snapshot_public_probe.dag" as NonEmptyStr,
+            },
+            SnapshotInclusion {
+              source_path: join([workspace.authoring, "/marker.dag"], "") as NonEmptyStr,
+              directory: "public/src/v2/std" as NonEmptyStr,
+              name: "snapshot_marker.dag" as NonEmptyStr,
+            },
+            SnapshotInclusion {
+              source_path: join([workspace.authoring, "/claim.dag"], "") as NonEmptyStr,
+              directory: "dag/test/claim" as NonEmptyStr,
+              name: "snapshot_executed_request.dag" as NonEmptyStr,
+            },
+          ],
+        }
+      }
+    }
+  }
+}
+
+// ── THE EXECUTED REQUEST ─────────────────────────────────────────────────────────────────────
+
+type ExecutedRequest
+  = RequestRan { exit_code: Int, stderr: String }
+  | RequestUnspellable
+
+// THE ENVIRONMENT IS THE CONTRACT'S, NOT A LOCAL STRUCT. validation_operation_command resolves the
+// executable through a declared CapabilityRealization, so the binary this driver acquired enters
+// the request the same way a dispatch host's does -- and a capability the environment does not
+// realize answers `none` rather than a fabricated command, which is the arm RequestUnspellable
+// carries rather than swallows.
+fn snapshot_request_environment(binary: ScmAcceptanceBinary) -> DispatchHostEnvironment {
+  DispatchHostEnvironment {
+    realizations: [
+      CapabilityRealization {
+        capability: GunbcClaimRunnerCapability,
+        executable: scm_acceptance_binary_executable(binary: binary) as FilePath,
+        identity_args: ["--version"],
+        identity_contains: "gunbc" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
+      },
+    ],
+  }
+}
+
+fn run_snapshot_request(destination: String, binary: ScmAcceptanceBinary) -> ExecutedRequest {
+  match validation_operation_command(
+    validation: snapshot_handoff_validation(),
+    environment: snapshot_request_environment(binary: binary),
+    source_roots: snapshot_handoff_layout(),
+  ) {
+    Absent => RequestUnspellable
+    Present { value: command } =>
+      let ran = gunbc.WitnessBin.Run(
+        workdir: destination as FilePath,
+        bin_path: command.program,
+        args: command.args,
+      )
+      RequestRan { exit_code: ran.exit_code, stderr: ran.stderr }
+  }
+}
+
+// ── SCENARIO STEPS SHARED BY ALL FOUR ────────────────────────────────────────────────────────
+
+type CapturedSnapshot
+  = SnapshotReady { manifest: FabricObjectRef, files: Int }
+  | SnapshotNotReady { detail: String }
+
+// THE CAPTURE FAMILY IS DISCRIMINATED HERE, AND ITS ABSENCE WAS THE CONFLATION THIS MODULE'S OWN
+// AUTHORITY ARGUES AGAINST. gunbc.fabric_source_snapshot keeps seven capture refusals apart
+// precisely so that "the file is not there", "the file is empty", "this path is not under a root
+// you declared" and "the store would not take it" do not arrive at one place -- and the only
+// consumer in the corpus answered all seven with the constant "the capture refused", naming neither
+// the file nor which of four unrelated defects had occurred. A located family whose sole reader
+// flattens it is worse than no family: it costs the authoring and review of seven arms and delivers
+// the diagnostic of one. Caught by review 69627 on gunbc#11960; the sibling wire for the
+// materialize family was already right, which is what makes the omission a slip rather than a
+// disagreement about the rule.
+fn capture_refusal_wire(cause: SnapshotCaptureRefusal) -> String {
+  match cause {
+    SnapshotFileUnreadable { path: p, detail: d } =>
+      join(["capture: ", p, " is unreadable: ", d], "")
+    SnapshotFileAbsent { path: p } =>
+      join(["capture: ", p, " is not there"], "")
+    SnapshotFileEmpty { path: p } =>
+      join(["capture: ", p, " is empty, and an empty object has no constructor"], "")
+    SnapshotPathOutsideComposition { path: p, composition: c } =>
+      join(["capture: ", p, " is under no root of ", c], "")
+    SnapshotPathNotRelative { path: p, cause: why } =>
+      join(["capture: ", p, " is not an admissible relative path: ", why], "")
+    SnapshotStoreRefusedObject { path: p, fault: f } =>
+      join(["capture: the store refused the object for ", p, ": ", f], "")
+    SnapshotManifestNotStored { fault: f } =>
+      join(["capture: the store refused the manifest: ", f], "")
+  }
+}
+
+fn capture_for_scenario(workspace: SnapshotWorkspace) -> CapturedSnapshot {
+  match author_snapshot_source(workspace: workspace) {
+    SourceNotAuthored { path: p, detail: d } =>
+      SnapshotNotReady { detail: join(["authoring ", p, ": ", d], "") }
+    SourceAuthored { inclusions: inclusions } =>
+      match capture_source_snapshot(
+        root: workspace.store,
+        composition: snapshot_handoff_composition(),
+        inclusions: inclusions,
+      ) {
+        SnapshotCaptureRefused { cause: c } =>
+          SnapshotNotReady { detail: capture_refusal_wire(cause: c) }
+        SnapshotCaptured { manifest: m, files: f, composition: _ } =>
+          SnapshotReady { manifest: m, files: f }
+      }
+  }
+}
+
+fn snapshot_refusal_wire(cause: SnapshotMaterializeRefusal) -> String {
+  match cause {
+    SnapshotEntryPathNotRelative { path: _, cause: _ } => "entry-path-not-relative"
+    SnapshotDuplicatePath { path: _ } => "duplicate-path"
+    SnapshotDestinationNotCreated { parent: _ } => "destination-not-created"
+    SnapshotManifestUnavailable { manifest: _, fault: f } => join(["manifest-unavailable:", f], "")
+    SnapshotCompositionMismatch { expected: _, found: _ } => "composition-mismatch"
+    SnapshotEntryUnavailable { object: _, fault: f } => join(["entry-unavailable:", f], "")
+    SnapshotEntryMalformed { detail: _ } => "entry-malformed"
+    SnapshotEntryOutsideComposition { path: _, composition: _ } => "entry-outside-composition"
+    SnapshotDirectoryNotCreated { directory: _ } => "directory-not-created"
+    SnapshotFileNotWritten { path: _, detail: _ } => "file-not-written"
+  }
+}
+
+// THE OBJECT A CONTROL REACHES FOR IS DERIVED, NOT SEARCHED. Its ref is the content hash of the
+// bytes this module authored, so the path is computed by the same rule the store published it
+// under; a control that listed the objects directory and picked one would be asserting over
+// whichever object happened to sort first.
+fn authored_object_path(workspace: SnapshotWorkspace, body: String) -> String {
+  fabric_storage_object_path(
+    root: workspace.store,
+    object: fabric_object_ref_of(object: snapshot_leaf_object(body: body as NonEmptyStr)),
+  )
+}
+
+// ── THE FOUR SCENARIOS ───────────────────────────────────────────────────────────────────────
+
+// THE POSITIVE CONTROL, AND ITS TWO ASSERTIONS ARE NOT THE SAME ASSERTION. The request exits zero,
+// which establishes that a real compiler resolved three modules across three roots out of bytes
+// that reached the disk only through the store; and the destination holds no .git, which
+// establishes that nothing on this route reconstituted a repository to do it. A route that shelled
+// out to git archive would satisfy the first and fail the second.
+fn run_executed_request_scenario(workspace: SnapshotWorkspace, binary: ScmAcceptanceBinary) -> SnapshotScenarioOutcome {
+  match capture_for_scenario(workspace: workspace) {
+    SnapshotNotReady { detail: d } =>
+      SnapshotScenarioFailed { scenario: "executed-request", step: "capture", detail: d }
+    SnapshotReady { manifest: manifest, files: _ } =>
+      match materialize_source_snapshot(
+        store: workspace.store,
+        manifest: manifest,
+        workspace: workspace.provider,
+        expected: snapshot_handoff_composition(),
+      ) {
+        SnapshotMaterializeRefused { cause: c } =>
+          SnapshotScenarioFailed {
+            scenario: "executed-request",
+            step: "materialize",
+            detail: snapshot_refusal_wire(cause: c),
+          }
+        SnapshotMaterialized { manifest: consumed, destination: created, files: files, composition: _ } =>
+          if shell.Test.IsDirectory(path: join([created as String, "/.git"], "") as FilePath).is_directory {
+            SnapshotScenarioFailed {
+              scenario: "executed-request",
+              step: "no-git",
+              detail: "the destination holds a git directory",
+            }
+          } else {
+            match run_snapshot_request(destination: created as String, binary: binary) {
+              RequestUnspellable =>
+                SnapshotScenarioFailed {
+                  scenario: "executed-request",
+                  step: "spell-request",
+                  detail: "the claim-runner capability is unrealized",
+                }
+              RequestRan { exit_code: code, stderr: err } =>
+                if code == 0 {
+                  SnapshotScenarioPassed {
+                    scenario: "executed-request",
+                    detail: join([
+                      "manifest=",
+                      fabric_object_ref_wire(object: consumed) as String,
+                      " files=",
+                      to_string(files),
+                      " exit=0",
+                    ], ""),
+                  }
+                } else {
+                  SnapshotScenarioFailed {
+                    scenario: "executed-request",
+                    step: "run-request",
+                    detail: join(["exit ", to_string(code), ": ", err], ""),
+                  }
+                }
+            }
+          }
+      }
+  }
+}
+
+// THE MUTATION CONTROL, AND IT MUTATES THE STORE RATHER THAN THE DESTINATION. Editing a
+// materialized file would test nothing about a snapshot: it would establish that a compiler notices
+// changed source, which no one doubts. What is under test is that bytes which no longer hash to the
+// ref that names them cannot be served AS that ref, so the edit happens where the identity lives.
+fn run_corrupted_bytes_scenario(workspace: SnapshotWorkspace, binary: ScmAcceptanceBinary) -> SnapshotScenarioOutcome {
+  match capture_for_scenario(workspace: workspace) {
+    SnapshotNotReady { detail: d } =>
+      SnapshotScenarioFailed { scenario: "corrupted-bytes", step: "capture", detail: d }
+    SnapshotReady { manifest: manifest, files: _ } =>
+      let target = authored_object_path(workspace: workspace, body: snapshot_public_probe_source)
+      if !Filesystem.Write(path: target, content: "fabric_storage.object;B7:corrupt").success {
+        SnapshotScenarioFailed { scenario: "corrupted-bytes", step: "mutate", detail: target }
+      } else {
+        match materialize_source_snapshot(
+          store: workspace.store,
+          manifest: manifest,
+          workspace: workspace.provider,
+          expected: snapshot_handoff_composition(),
+        ) {
+          SnapshotMaterialized { manifest: _, destination: _, files: _, composition: _ } =>
+            SnapshotScenarioFailed {
+              scenario: "corrupted-bytes",
+              step: "materialize",
+              detail: "a snapshot whose bytes moved materialized instead of refusing",
+            }
+          SnapshotMaterializeRefused { cause: c } =>
+            match c {
+              SnapshotEntryUnavailable { object: _, fault: f } =>
+                SnapshotScenarioPassed {
+                  scenario: "corrupted-bytes",
+                  detail: join(["refused: ", f], ""),
+                }
+              _ =>
+                SnapshotScenarioFailed {
+                  scenario: "corrupted-bytes",
+                  step: "materialize",
+                  detail: join(["refused for the wrong reason: ", snapshot_refusal_wire(cause: c)], ""),
+                }
+            }
+        }
+      }
+  }
+}
+
+// THE MISSING-OBJECT CONTROL. A store that has lost an object must refuse the request rather than
+// materialize the rest of the tree: a partial checkout is the fabricated plausible output DESIGN
+// section 5 forbids, and it is the dangerous one here because the missing file is the one the
+// executor would then compile without.
+fn run_missing_object_scenario(workspace: SnapshotWorkspace, binary: ScmAcceptanceBinary) -> SnapshotScenarioOutcome {
+  match capture_for_scenario(workspace: workspace) {
+    SnapshotNotReady { detail: d } =>
+      SnapshotScenarioFailed { scenario: "missing-object", step: "capture", detail: d }
+    SnapshotReady { manifest: manifest, files: _ } =>
+      let target = authored_object_path(workspace: workspace, body: snapshot_claim_source)
+      if !shell.Remove.FileForce(path: target as FilePath).success {
+        SnapshotScenarioFailed { scenario: "missing-object", step: "remove", detail: target }
+      } else {
+        match materialize_source_snapshot(
+          store: workspace.store,
+          manifest: manifest,
+          workspace: workspace.provider,
+          expected: snapshot_handoff_composition(),
+        ) {
+          SnapshotMaterialized { manifest: _, destination: _, files: _, composition: _ } =>
+            SnapshotScenarioFailed {
+              scenario: "missing-object",
+              step: "materialize",
+              detail: "a snapshot missing an object materialized instead of refusing",
+            }
+          SnapshotMaterializeRefused { cause: c } =>
+            match c {
+              SnapshotEntryUnavailable { object: _, fault: f } =>
+                SnapshotScenarioPassed { scenario: "missing-object", detail: join(["refused: ", f], "") }
+              _ =>
+                SnapshotScenarioFailed {
+                  scenario: "missing-object",
+                  step: "materialize",
+                  detail: join(["refused for the wrong reason: ", snapshot_refusal_wire(cause: c)], ""),
+                }
+            }
+        }
+      }
+  }
+}
+
+// THE COMPOSITION CONTROL, AND IT CHECKS THAT NOTHING WAS WRITTEN. A refusal that arrives after the
+// private bytes are already on the executor's disk has refused the report and not the transfer,
+// which is the whole reason the admission sits before the fold rather than inside it.
+// THE WHOLE PROVIDER WORKSPACE MUST STILL BE EMPTY. The destination is created by the
+// materialization itself, so a refusal that fires before creation leaves the workspace with no
+// snapshot directory in it at all -- a stronger fact than "the private root is absent", and one
+// that cannot be satisfied by a partial tree under another name.
+fn run_composition_mismatch_scenario(workspace: SnapshotWorkspace, binary: ScmAcceptanceBinary) -> SnapshotScenarioOutcome {
+  match capture_for_scenario(workspace: workspace) {
+    SnapshotNotReady { detail: d } =>
+      SnapshotScenarioFailed { scenario: "composition-mismatch", step: "capture", detail: d }
+    SnapshotReady { manifest: manifest, files: _ } =>
+      match materialize_source_snapshot(
+        store: workspace.store,
+        manifest: manifest,
+        workspace: workspace.provider,
+        expected: PublicOnlyComposition { public_root: snapshot_public_prefix },
+      ) {
+        SnapshotMaterialized { manifest: _, destination: _, files: _, composition: _ } =>
+          SnapshotScenarioFailed {
+            scenario: "composition-mismatch",
+            step: "materialize",
+            detail: "a public-only executor received a snapshot carrying a private root",
+          }
+        SnapshotMaterializeRefused { cause: c } =>
+          match c {
+            SnapshotCompositionMismatch { expected: e, found: f } =>
+              if length(Filesystem.List(path: provider_workspace_root(workspace: workspace.provider) as String).entries) != 0 {
+                SnapshotScenarioFailed {
+                  scenario: "composition-mismatch",
+                  step: "materialize",
+                  detail: "the refusal arrived after a destination had been created",
+                }
+              } else {
+                SnapshotScenarioPassed {
+                  scenario: "composition-mismatch",
+                  detail: join(["refused expected=", e, " found=", f], ""),
+                }
+              }
+            _ =>
+              SnapshotScenarioFailed {
+                scenario: "composition-mismatch",
+                step: "materialize",
+                detail: join(["refused for the wrong reason: ", snapshot_refusal_wire(cause: c)], ""),
+              }
+          }
+      }
+  }
+}
+
+
+// THE TRAVERSAL CONTROL, AND ITS MANIFEST IS HONEST IN EVERY RESPECT BUT ONE. Every object below is
+// stored through the real store and hashes to the ref that names it, so the integrity half of this
+// route passes completely -- which is the point. A content-addressed store says what the bytes ARE
+// and nothing about where they go, so the escape has to be refused by the path rule or not at all.
+// The manifest is assembled here rather than captured because capture refuses it at the same wall:
+// building it directly is what puts the materialization boundary under test on its own.
+fn escaping_entry_manifest(workspace: SnapshotWorkspace) -> FabricObjectRef? {
+  match fabric_storage_file_put(root: workspace.store, object: snapshot_leaf_object(body: "outside.dag" as NonEmptyStr)) {
+    FabricPutRefused { fault: _ } => none
+    FabricObjectStored { object: name_ref } =>
+      match fabric_storage_file_put(root: workspace.store, object: snapshot_leaf_object(body: "module escaped\n" as NonEmptyStr)) {
+        FabricPutRefused { fault: _ } => none
+        FabricObjectStored { object: content_ref } =>
+          match fabric_storage_file_put(
+            root: workspace.store,
+            object: snapshot_entry_object(
+              name: name_ref,
+              content: content_ref,
+              directory: "public/../.." as NonEmptyStr,
+            ),
+          ) {
+            FabricPutRefused { fault: _ } => none
+            FabricObjectStored { object: entry_ref } =>
+              match fabric_storage_file_put(
+                root: workspace.store,
+                object: snapshot_manifest_object(
+                  entries: [entry_ref],
+                  composition: snapshot_handoff_composition(),
+                ),
+              ) {
+                FabricPutRefused { fault: _ } => none
+                FabricObjectStored { object: manifest } => Present { value: manifest }
+              }
+          }
+      }
+  }
+}
+
+// THE REFUSAL MUST PRECEDE THE WRITE, NOT FOLLOW IT, AND THE ASSERTION MUST LOOK WHERE THE WRITE
+// WOULD HAVE LANDED. The snapshot directory is `<provider workspace>/gunbc-snapshot-XXXXXX`, so
+// `public/../..` from inside it resolves to the provider workspace itself -- which is the path this
+// scenario then checks. An earlier revision weakened the fixture to `public/..` while leaving the
+// check where it was: that lands INSIDE the snapshot directory, so the fixture had stopped being an
+// escape at all and the second half of the control was asserting about a location the fixture would
+// never have written to. Green, and vacuous. Caught by the side-chat review of gunbc#11960; the
+// lesson is that a control has two halves and moving one of them is moving the claim.
+fn run_escaping_path_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
+  match escaping_entry_manifest(workspace: workspace) {
+    Absent =>
+      SnapshotScenarioFailed {
+        scenario: "escaping-path",
+        step: "author-manifest",
+        detail: "the store would not hold the escaping manifest",
+      }
+    Present { value: manifest } =>
+      match materialize_source_snapshot(
+        store: workspace.store,
+        manifest: manifest,
+        workspace: workspace.provider,
+        expected: snapshot_handoff_composition(),
+      ) {
+        SnapshotMaterialized { manifest: _, destination: _, files: _, composition: _ } =>
+          SnapshotScenarioFailed {
+            scenario: "escaping-path",
+            step: "materialize",
+            detail: "a manifest whose entry leaves the destination materialized instead of refusing",
+          }
+        SnapshotMaterializeRefused { cause: c } =>
+          match c {
+            SnapshotEntryPathNotRelative { path: p, cause: why } =>
+              if shell.Test.IsFile(
+                path: join([provider_workspace_root(workspace: workspace.provider) as String, "/outside.dag"], "") as FilePath
+              ).is_file {
+                SnapshotScenarioFailed {
+                  scenario: "escaping-path",
+                  step: "materialize",
+                  detail: "the refusal arrived after the escaping file had been written",
+                }
+              } else {
+                SnapshotScenarioPassed {
+                  scenario: "escaping-path",
+                  detail: join(["refused ", p, ": ", why], ""),
+                }
+              }
+            _ =>
+              SnapshotScenarioFailed {
+                scenario: "escaping-path",
+                step: "materialize",
+                detail: join(["refused for the wrong reason: ", snapshot_refusal_wire(cause: c)], ""),
+              }
+          }
+      }
+  }
+}
+
+// THE DUPLICATE CONTROL. Two entries naming one path are two different objects -- different bytes,
+// different refs, both verifying -- so nothing upstream of the write can tell them apart. Whichever
+// landed second would have silently replaced the first, and the resulting tree would be one the
+// manifest does not describe while every digest in it checked out.
+fn duplicate_entry_manifest(workspace: SnapshotWorkspace) -> FabricObjectRef? {
+  match fabric_storage_file_put(root: workspace.store, object: snapshot_leaf_object(body: "twice.dag" as NonEmptyStr)) {
+    FabricPutRefused { fault: _ } => none
+    FabricObjectStored { object: name_ref } =>
+      match fabric_storage_file_put(root: workspace.store, object: snapshot_leaf_object(body: "module first\n" as NonEmptyStr)) {
+        FabricPutRefused { fault: _ } => none
+        FabricObjectStored { object: first_content } =>
+          match fabric_storage_file_put(root: workspace.store, object: snapshot_leaf_object(body: "module second\n" as NonEmptyStr)) {
+            FabricPutRefused { fault: _ } => none
+            FabricObjectStored { object: second_content } =>
+              match fabric_storage_file_put(
+                root: workspace.store,
+                object: snapshot_entry_object(name: name_ref, content: first_content, directory: "dag" as NonEmptyStr),
+              ) {
+                FabricPutRefused { fault: _ } => none
+                FabricObjectStored { object: first_entry } =>
+                  match fabric_storage_file_put(
+                    root: workspace.store,
+                    object: snapshot_entry_object(name: name_ref, content: second_content, directory: "dag" as NonEmptyStr),
+                  ) {
+                    FabricPutRefused { fault: _ } => none
+                    FabricObjectStored { object: second_entry } =>
+                      match fabric_storage_file_put(
+                        root: workspace.store,
+                        object: snapshot_manifest_object(
+                          entries: [first_entry, second_entry],
+                          composition: snapshot_handoff_composition(),
+                        ),
+                      ) {
+                        FabricPutRefused { fault: _ } => none
+                        FabricObjectStored { object: manifest } => Present { value: manifest }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn run_duplicate_path_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
+  match duplicate_entry_manifest(workspace: workspace) {
+    Absent =>
+      SnapshotScenarioFailed {
+        scenario: "duplicate-path",
+        step: "author-manifest",
+        detail: "the store would not hold the duplicate manifest",
+      }
+    Present { value: manifest } =>
+      match materialize_source_snapshot(
+        store: workspace.store,
+        manifest: manifest,
+        workspace: workspace.provider,
+        expected: snapshot_handoff_composition(),
+      ) {
+        SnapshotMaterialized { manifest: _, destination: _, files: _, composition: _ } =>
+          SnapshotScenarioFailed {
+            scenario: "duplicate-path",
+            step: "materialize",
+            detail: "two entries naming one path materialized instead of refusing",
+          }
+        SnapshotMaterializeRefused { cause: c } =>
+          match c {
+            SnapshotDuplicatePath { path: p } =>
+              SnapshotScenarioPassed { scenario: "duplicate-path", detail: join(["refused ", p], "") }
+            _ =>
+              SnapshotScenarioFailed {
+                scenario: "duplicate-path",
+                step: "materialize",
+                detail: join(["refused for the wrong reason: ", snapshot_refusal_wire(cause: c)], ""),
+              }
+          }
+      }
+  }
+}
+
+// THE ALLOCATION-ROOT CONTROL, AND WHY IT IS THE CROSS-UID CASE EVEN THOUGH IT RUNS AS ONE UID.
+//
+// The threat is a second principal renaming the provider workspace out from under a materialization
+// in flight. What makes that possible is not the other principal's cleverness, it is the PARENT: a
+// shared, writable, non-sticky directory lets anyone rename anyone's entry. So the discriminating
+// question is whether the route will allocate in such a parent at all, and that is decidable here
+// without a second uid -- which is the point, because a control that needed one could not run in
+// this harness and would not run anywhere.
+//
+// BOTH SETUP EFFECTS SIT UNDER CONTROL FLOW RATHER THAN UNDER A BOOLEAN. `&&` and `||` in this
+// substrate evaluate BOTH operands, so `mkdir(p) || chmod(p)` runs the chmod even when the mkdir
+// failed -- harmless in a fixture that wants both, and the exact shape that chmodded a squatted
+// directory into compliance in the module under test. The idiom is removed here too, so nothing in
+// this file relies on an evaluation order the substrate does not promise.
+fn author_open_directory(path: String) -> Bool {
+  if !shell.Mkdir.Parents(path: path as FilePath).success {
+    false
+  } else {
+    shell.Chmod.WorldWritableDirectory(path: path as FilePath).success
+  }
+}
+
+// THE ADMITTED HALF USES A LAYOUT THE MODULE CONSTRUCTS, NOT ONE THIS CONTROL SPELLS. A control
+// that re-spells the production base is asserting over its own copy: the spelling could drift from
+// provider_base_layouts and the control would keep passing while production admitted something
+// else. It asks the module for its layouts and requires that at least one of them is admissible on
+// this host, which is the same question a real allocation asks.
+fn admit_a_real_provider_layout() -> ProviderRootAdmission {
+  match observe_provider_principal() {
+    Absent =>
+      ProviderRootRefused { root: "", cause: "this process could not name its own principal" }
+    Present { value: principal } =>
+      fold(
+        provider_base_layouts(principal: principal),
+        init: ProviderRootRefused { root: "", cause: "no layout was considered" },
+        f: fn(acc, layout) {
+          match acc {
+            ProviderRootAdmitted { root: r } => ProviderRootAdmitted { root: r }
+            ProviderRootRefused { root: _, cause: previous } =>
+              match establish_provider_base(
+                layout: layout,
+                trusted: trusted_owners_of(principal: principal),
+              ) {
+                ProviderRootAdmitted { root: r } => ProviderRootAdmitted { root: r }
+                ProviderRootRefused { root: r2, cause: c } =>
+                  ProviderRootRefused { root: r2, cause: join([previous, "; ", c], "") }
+              }
+          }
+        },
+      )
+  }
+}
+
+// THE UNSAFE-ANCESTRY CONTROL, AND THE THREE THINGS IT HAS TO GET RIGHT.
+//
+// FIRST, IT ENTERS THROUGH THE REAL CONSTRUCTION. It supplies a CHAIN to `provider_layout` -- the
+// same function `provider_base_layouts` uses -- so the base and the ancestry are derived the way
+// production derives them. A control that authored an ancestry list by hand would be asserting over
+// a shape production never produces, and could keep passing while the two drifted apart.
+//
+// SECOND, THE BASE IS EXACTLY WHAT THE MODULE REQUIRES OF ITS OWN: canonical, owned by this
+// process, and created at 0700 by the very call under test. The ONLY defect is the parent, which is
+// world-writable and non-sticky. So a refusal here can only be the ancestry rule firing -- a
+// fixture that was also mis-owned or mis-moded would pass for the wrong reason.
+//
+// THIRD, THE REFUSAL MUST PRECEDE CREATION. The base must NOT EXIST afterwards: an admission that
+// creates first and refuses second has left an owner-only directory inside a tree it just decided
+// it does not trust, for whoever watches that parent to act on. Asserting only the refusal arm
+// would pass for exactly that implementation, which is the one this control replaced.
+fn run_unsafe_allocation_root_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
+  match observe_provider_principal() {
+    Absent =>
+      SnapshotScenarioFailed {
+        scenario: "unsafe-allocation-root",
+        step: "identity",
+        detail: "this process could not name its own principal",
+      }
+    Present { value: principal } =>
+      let trusted = trusted_owners_of(principal: principal)
+      let open_parent = join([workspace.root, "/open-parent"], "")
+      if !author_open_directory(path: open_parent) {
+        SnapshotScenarioFailed {
+          scenario: "unsafe-allocation-root",
+          step: "author-ancestry",
+          detail: "the unsafe parent could not be created",
+        }
+      } else {
+        let layout = provider_layout(
+          chain: ["/", provider_root_default as String, workspace.root, open_parent],
+          leaf: provider_base_leaf,
+        )
+        match establish_provider_base(layout: layout, trusted: trusted) {
+          ProviderRootAdmitted { root: _ } =>
+            SnapshotScenarioFailed {
+              scenario: "unsafe-allocation-root",
+              step: "admit",
+              detail: "a base under a world-writable non-sticky parent was admitted",
+            }
+          ProviderRootRefused { root: _, cause: why } =>
+            if shell.Test.IsDirectory(path: layout.base as FilePath).is_directory {
+              SnapshotScenarioFailed {
+                scenario: "unsafe-allocation-root",
+                step: "admit",
+                detail: "the refusal was correct but the base had already been created under the unsafe parent",
+              }
+            } else {
+              match admit_a_real_provider_layout() {
+                ProviderRootRefused { root: _, cause: c } =>
+                  SnapshotScenarioFailed {
+                    scenario: "unsafe-allocation-root",
+                    step: "admit",
+                    detail: join(["no real provider layout was admissible: ", c], ""),
+                  }
+                ProviderRootAdmitted { root: _ } =>
+                  SnapshotScenarioPassed {
+                    scenario: "unsafe-allocation-root",
+                    detail: join(["refused before creating anything: ", why], ""),
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+// THE SQUAT CONTROL. /tmp/gunbc-provider-<user> is a PREDICTABLE name, so another principal can get
+// there first -- and the first writing of this admission handed them the win by running `mkdir -p`,
+// which succeeds on an existing name, and then chmodding what it found. This control pre-creates
+// the base and leaves it world-writable, which is what a squatted directory looks like from the
+// inside: the admission must REFUSE rather than adopt it, and must not have chmodded it into
+// compliance on the way.
+//
+// WHAT THIS HARNESS CANNOT STAGE, said plainly: a base owned by ANOTHER uid, because chown needs a
+// privilege it does not have. That case is claimed over supplied observations against the same
+// base_is_admissible this control executes, in test.claim.fabric_source_snapshot_witness.
+//
+// THE TWO HALVES NOW SIT AT DIFFERENT RUNGS, AND SAYING SO KEEPS THE SECOND FROM BEING READ AS A
+// LIVE DISCRIMINATOR. The refusal half still discriminates: neutralise base_is_admissible and this
+// scenario reports the squatted base as adopted, at exit 1. The untouched half CANNOT fail against
+// the current module, because the mode is applied by `mkdir -m 0700` at creation and there is no
+// follow-up chmod to aim anywhere -- it is a regression control over a wall that has landed, which
+// is what DESIGN section 4b(4) says such a probe becomes rather than something that retires. It
+// goes red again the moment a second pathname operation reappears between creating the base and
+// trusting it.
+fn run_squatted_base_scenario(workspace: SnapshotWorkspace) -> SnapshotScenarioOutcome {
+  match observe_provider_principal() {
+    Absent =>
+      SnapshotScenarioFailed {
+        scenario: "squatted-base",
+        step: "identity",
+        detail: "this process could not name its own principal",
+      }
+    Present { value: principal } =>
+      let trusted = trusted_owners_of(principal: principal)
+      let squatted = join([workspace.root, "/squatted-base"], "")
+      if !author_open_directory(path: squatted) {
+        SnapshotScenarioFailed {
+          scenario: "squatted-base",
+          step: "author-squat",
+          detail: "the squatted base could not be created",
+        }
+      } else {
+        match establish_provider_base(
+          layout: ProviderBaseLayout {
+            base: squatted as NonEmptyStr,
+            ancestry: [workspace.root],
+          },
+          trusted: trusted,
+        ) {
+          ProviderRootAdmitted { root: _ } =>
+            SnapshotScenarioFailed {
+              scenario: "squatted-base",
+              step: "admit",
+              detail: "a pre-created world-writable base was adopted instead of refused",
+            }
+          ProviderRootRefused { root: _, cause: why } =>
+            if trim(s: shell.Stat.ModeOf(path: squatted as FilePath).stdout) != "777" {
+              SnapshotScenarioFailed {
+                scenario: "squatted-base",
+                step: "admit",
+                detail: "the refusal was correct but the base had been chmodded on the way to it",
+              }
+            } else {
+              SnapshotScenarioPassed {
+                scenario: "squatted-base",
+                detail: join(["refused and left untouched: ", why], ""),
+              }
+            }
+        }
+      }
+  }
+}
+
+// A LEAK IS A FAILURE, AND DISCARDING THE RELEASE RESULT MADE IT INVISIBLE. `release_provider_
+// workspace` answers whether the provider workspace actually went away, and an earlier revision
+// bound it to `_released` and threw it away -- so a scenario that leaked a workspace, with the
+// executor's whole materialized tree in it, still reported PASS. Both cleanups are consumed here,
+// and both name their own step, because "the provider workspace survived" and "the scenario's own
+// directory survived" are different leaks with different owners. A passing scenario that leaked is
+// reported as a failure rather than as a pass with a footnote; a scenario that had already failed
+// keeps its original finding, because a cleanup failure must not overwrite the verdict that
+// explains why the run stopped.
+fn finalize_scenario(
+  outcome: SnapshotScenarioOutcome,
+  released: Bool,
+  cleaned: Bool,
+) -> SnapshotScenarioOutcome {
+  match outcome {
+    SnapshotScenarioFailed { scenario: s, step: st, detail: d } =>
+      SnapshotScenarioFailed { scenario: s, step: st, detail: d }
+    SnapshotScenarioPassed { scenario: s, detail: detail } =>
+      if !released {
+        SnapshotScenarioFailed {
+          scenario: s,
+          step: "release-provider-workspace",
+          detail: "the scenario passed but its provider workspace could not be released",
+        }
+      } else if !cleaned {
+        SnapshotScenarioFailed {
+          scenario: s,
+          step: "cleanup",
+          detail: "the scenario passed but its own workspace could not be removed",
+        }
+      } else {
+        SnapshotScenarioPassed { scenario: s, detail: detail }
+      }
+  }
+}
+
+// EACH SCENARIO GETS ITS OWN WORKSPACE, so a control that mutates or removes a store object cannot
+// leave the next scenario's store damaged and turn one finding into four.
+fn run_snapshot_scenario(scenario: SnapshotScenario, binary: ScmAcceptanceBinary) -> SnapshotScenarioOutcome {
+  match prepare_snapshot_workspace() {
+    SnapshotWorkspaceUnavailable { detail: d } =>
+      SnapshotScenarioFailed {
+        scenario: snapshot_scenario_name(scenario: scenario),
+        step: "workspace",
+        detail: d,
+      }
+    SnapshotWorkspaceReady { workspace: workspace } =>
+      let outcome = match scenario {
+        ExecutedRequestScenario => run_executed_request_scenario(workspace: workspace, binary: binary)
+        MissingObjectScenario => run_missing_object_scenario(workspace: workspace, binary: binary)
+        CorruptedBytesScenario => run_corrupted_bytes_scenario(workspace: workspace, binary: binary)
+        CompositionMismatchScenario => run_composition_mismatch_scenario(workspace: workspace, binary: binary)
+        EscapingPathScenario => run_escaping_path_scenario(workspace: workspace)
+        DuplicatePathScenario => run_duplicate_path_scenario(workspace: workspace)
+        UnsafeAllocationRootScenario => run_unsafe_allocation_root_scenario(workspace: workspace)
+        SquattedBaseScenario => run_squatted_base_scenario(workspace: workspace)
+      }
+      let released = release_provider_workspace(workspace: workspace.provider)
+      let cleaned = shell.Remove.RecursiveForce(path: workspace.root as FilePath)
+      finalize_scenario(outcome: outcome, released: released, cleaned: cleaned.success)
+  }
+}
+
+// ── THE INSTRUMENT ENTRY ─────────────────────────────────────────────────────────────────────
+
+fn binary_refusal_detail(acquisition: ScmAcceptanceBinaryAcquisition) -> String {
+  match acquisition {
+    ScmAcceptanceBinaryReady { binary: _ } => ""
+    ScmAcceptanceBinaryBuildRefused { target_name: t, stderr: e } =>
+      join(["build refused for ", t, ": ", e], "")
+    ScmAcceptanceBinarySelectionRefused { selection: s } =>
+      join(["selection refused: ", cargo_selection_detail(selection: s)], "")
+    ScmAcceptanceBinaryDigestRefused { detail: d } => join(["digest refused: ", d], "")
+    ScmAcceptanceBinaryRetentionRefused { detail: d } => join(["retention refused: ", d], "")
+    ScmAcceptanceBinaryNotRunnableHere { detail: d } => join(["not runnable here: ", d], "")
+  }
+}
+
+// THE BINARY IS ACQUIRED ONCE ABOVE THE WHOLE POPULATION and released after it, because four
+// scenarios sharing one executable is the same subject measured four ways -- and a rebuild between
+// them would let two scenarios disagree about which compiler answered.
+fn source_snapshot_handoff() -> ProcessExit {
+  let acquisition = acquire_scm_acceptance_binary()
+  match acquisition {
+    ScmAcceptanceBinaryReady { binary: binary } =>
+      let outcomes = map(snapshot_scenarios(), s => run_snapshot_scenario(scenario: s, binary: binary))
+      let _emitted = map(outcomes, o => trace_mark(label: snapshot_outcome_line(outcome: o)))
+      let _released = release_scm_acceptance_binary(binary: binary)
+      let report = join(map(outcomes, o => snapshot_outcome_line(outcome: o)), "\n")
+      if all(outcomes, o => snapshot_outcome_passed(outcome: o)) {
+        ExitSuccess
+      } else {
+        exit_failure(reason: report)
+      }
+    ScmAcceptanceBinaryBuildRefused { target_name: _, stderr: _ } =>
+      exit_failure(reason: join(["[source-snapshot] FAIL binary ", binary_refusal_detail(acquisition: acquisition)], ""))
+    ScmAcceptanceBinarySelectionRefused { selection: _ } =>
+      exit_failure(reason: join(["[source-snapshot] FAIL binary ", binary_refusal_detail(acquisition: acquisition)], ""))
+    ScmAcceptanceBinaryDigestRefused { detail: _ } =>
+      exit_failure(reason: join(["[source-snapshot] FAIL binary ", binary_refusal_detail(acquisition: acquisition)], ""))
+    ScmAcceptanceBinaryRetentionRefused { detail: _ } =>
+      exit_failure(reason: join(["[source-snapshot] FAIL binary ", binary_refusal_detail(acquisition: acquisition)], ""))
+    ScmAcceptanceBinaryNotRunnableHere { detail: _ } =>
+      exit_failure(reason: join(["[source-snapshot] FAIL binary ", binary_refusal_detail(acquisition: acquisition)], ""))
+  }
+}
