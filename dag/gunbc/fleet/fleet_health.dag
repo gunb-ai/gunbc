@@ -6,7 +6,6 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.nat { Nat }
 import std.measure { celsius_count }
-import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.goal_assessment {
   GoalAssessmentRefused,
@@ -150,7 +149,6 @@ fn fleet_health_goals() -> ObservationAttempt<List<HostHealthGoal>, NonEmptyStr>
 }
 
 fn observe_rostered_host(host: ComputeHost, token: Secret) -> KeyedHostObservation
-  uses net: Network
 {
   match host_telemetry_profile(host: host) {
     ObservationRefused { cause } => return KeyedHostObservation { host: host.identity, attempt: ObservationRefused { cause: cause } }
@@ -234,7 +232,6 @@ fn write_receipt(rendered: String) -> Bool {
 // THE ENTRY. Exit 0 only when the whole fleet is satisfied; every other answer is nonzero and the
 // receipt says which hosts and why. Read only end to end.
 fn fleet_health_check() -> ProcessExit
-  uses net: Network
 {
   match fleet_health_goals() {
     ObservationRefused { cause } => return exit_failure(reason: concat("fleet health: no goal: ", cause as String))

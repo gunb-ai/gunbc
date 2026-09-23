@@ -241,7 +241,6 @@ fn mtcollins1_census_publish_host_admission(expected_host: String) -> MtCollins1
 }
 
 fn mtcollins1_census_image_publish_wet() -> ProcessExit
-  uses fs: std.resources.Filesystem
 {
   match actions_variable_read(name: fleet_converge_expected_host_env_name) {
     ActionsVariableAbsent { variable: v, detail: d } =>
@@ -255,7 +254,6 @@ fn mtcollins1_census_image_publish_wet() -> ProcessExit
 }
 
 fn mtcollins1_census_image_publish_admitted() -> ProcessExit
-  uses fs: std.resources.Filesystem
 {
   match mtcollins1_census_image_publish() {
     SeededImagePublicationRefused { reason: r } =>
