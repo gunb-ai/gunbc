@@ -1,0 +1,204 @@
+module gunbc.auth.mtcollins1_boot_federation
+
+import std.types { Bool, List, Map, NonEmptyStr, String }
+import v2.std.optional { Present }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifPool, WifProvider, wif_provider_resource, wif_pool_resource }
+import extdeps.cloud.gcp.iam { IamCondition, role_secretmanager_secret_accessor }
+import extdeps.cloud.gcp.secret_ref { SecretRef, gcp_version_resource_by_number }
+import gunbc.auth.github_gcp_federation {
+  fleet_secrets_project_id, fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member,
+}
+import gunbc.auth.gcp_secret_access { SecretAccessGrant }
+import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
+import gunbc.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
+import gunbc.repository { gunbc_repository, gunbc_repository_numeric_identity }
+import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
+import gunbc.repo_identity { gunbc_default_branch_name }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, dedicated_federation_provision_with_supplied_token }
+import std.process { ProcessExit }
+import std.resources { Network }
+
+// ── THE MT. COLLINS BOOT'S OWN FEDERATION (operator ruling 2026-09-23) ─────────────────────────
+//
+// The boot is a recurring automated effect, so gunbc.auth.privileged_effect_census derives
+// FederatedScopedGrant for it: the run's own workload identity, holding one cell per secret it
+// reads, with no human per run. The grant must be scoped to THIS job -- this repository, the
+// fleet-converge workflow file at main, a workflow_dispatch on refs/heads/main, the mtcollins1-boot
+// job -- and never repo-wide.
+//
+// WHY NOT gunbc.auth.github_gcp_federation github_wif_provider (option B and C, refused). That pool's
+// one provider admits every job in the repository (`assertion.repository == 'gunb-ai/gunbc'`), and a
+// WIF principal is POOL-scoped: principal://.../workloadIdentityPools/<pool>/subject/<sub> names the
+// same identity whichever provider in the pool minted it. So a binding scoped to the boot job's
+// subject inside the repo pool is reachable by any other provider or claim path in that pool that
+// can produce the subject, and a mapped attribute added to the shared provider would change the
+// token exchange of every workflow in the repository. gunbc#10887 is the receipt: a heal job
+// reached an App key through exactly that repo-wide path, which is why
+// gunbc.auth.heal_publisher_federation has its own pool. This module inhabits that precedent rather
+// than forking it: a DEDICATED POOL WITH ONE PROVIDER whose attribute condition is the whole
+// membership rule, and one service account reachable only from that pool.
+//
+// THE JOB IS PINNED BY THE ENVIRONMENT CLAIM. OIDC tokens are minted per job and carry no job id;
+// the one job-grain claim GitHub asserts is `environment`, present only for a job that declares one.
+// The boot job declares mtcollins1-boot (gunbc.fleet_converge_workflow), so the condition pins it
+// beside the workflow file, the ref and the event. The honest residue: any job in fleet-converge.yml
+// AT MAIN that declared the same environment would also be admitted -- membership is a reviewed-main
+// fact, which is the same trust the workflow file itself carries.
+//
+// THE RUNNER IS NOT PINNED, and that differs from the heal publisher on purpose: the boot must run on
+// the srv1 self-hosted runner (the unit hold store and the BMC route are there), so
+// `runner_environment == 'github-hosted'` would refuse the job this admits. What the heal publisher
+// bought with that pin -- no pull-request code on the runner presents the identity -- is bought here
+// by workflow_ref at main plus workflow_dispatch: a pull request cannot cause either.
+
+data mtcollins1_boot_wif_pool_id: NonEmptyStr = "github-mtcollins1-boot"
+
+// Under the 32-character ceiling createWorkloadIdentityPool enforces (measured on the heal pool).
+data mtcollins1_boot_wif_pool_display_name: NonEmptyStr = "Mt. Collins boot (one job)"
+
+data mtcollins1_boot_wif_provider_id: NonEmptyStr = "github-mtcollins1-boot-oidc"
+
+data mtcollins1_boot_service_account_id: NonEmptyStr = "mtcollins1-boot"
+
+data mtcollins1_boot_service_account: ServiceAccountEmail = "mtcollins1-boot@gunbai-secrets.iam.gserviceaccount.com"
+
+data mtcollins1_boot_service_account_display_name: NonEmptyStr = "Mt. Collins boot (WIF-only, pinned versions, no keys)"
+
+data mtcollins1_boot_environment: NonEmptyStr = "mtcollins1-boot"
+
+data mtcollins1_boot_wif_event_name: String = "workflow_dispatch"
+
+fn mtcollins1_boot_workflow_ref() -> String {
+  join([
+    gunbc_repository.full_name as String, "/",
+    artifact_path(a: FleetConvergeYamlArtifact),
+    "@refs/heads/", gunbc_default_branch_name
+  ], "")
+}
+
+// ── ONE LIST OF PINS, TWO PROJECTIONS ───────────────────────────────────────────────────────────
+// The CEL condition GCP stores and the admission this corpus evaluates are both folds over this one
+// list, so the witness that refuses another workflow or ref is refusing on the condition that is
+// provisioned, not on a second description of it.
+type OidcClaimPin {
+  claim: NonEmptyStr
+  value: String
+}
+
+fn mtcollins1_boot_claim_pins() -> List<OidcClaimPin> {
+  [
+    OidcClaimPin { claim: "repository_id", value: to_string(gunbc_repository_numeric_identity.repository_id) },
+    OidcClaimPin { claim: "repository_owner_id", value: to_string(gunbc_repository_numeric_identity.owner_id) },
+    OidcClaimPin { claim: "workflow_ref", value: mtcollins1_boot_workflow_ref() },
+    OidcClaimPin { claim: "ref", value: concat("refs/heads/", gunbc_default_branch_name) },
+    OidcClaimPin { claim: "event_name", value: mtcollins1_boot_wif_event_name },
+    OidcClaimPin { claim: "environment", value: mtcollins1_boot_environment as String },
+  ]
+}
+
+fn mtcollins1_boot_wif_attribute_condition() -> String {
+  join(map(mtcollins1_boot_claim_pins(), p => join(["assertion.", p.claim as String, " == '", p.value, "'"], "")), " && ")
+}
+
+// A presented token's claims, as the provider sees them. An absent claim is simply not in the list,
+// which is how a job with no environment presents.
+fn claim_value_is(claims: List<OidcClaimPin>, pin: OidcClaimPin) -> Bool {
+  filter(claims, c => (c.claim as String) == (pin.claim as String) && c.value == pin.value).length() > 0
+}
+
+fn mtcollins1_boot_claims_admitted(claims: List<OidcClaimPin>) -> Bool {
+  filter(mtcollins1_boot_claim_pins(), p => !claim_value_is(claims: claims, pin: p)).length() == 0
+}
+
+data mtcollins1_boot_wif_attribute_mapping: Map<String, String> = {
+  "google.subject": "assertion.sub",
+  "attribute.repository_id": "assertion.repository_id",
+  "attribute.workflow_ref": "assertion.workflow_ref"
+}
+
+data mtcollins1_boot_wif_pool: WifPool = WifPool {
+  name: mtcollins1_boot_wif_pool_id
+  project: fleet_secrets_project_id as String
+  display_name: Present { value: mtcollins1_boot_wif_pool_display_name }
+  disabled: false
+}
+
+data mtcollins1_boot_wif_provider: WifProvider = WifProvider {
+  name: mtcollins1_boot_wif_provider_id
+  pool: mtcollins1_boot_wif_pool_id
+  issuer_uri: github_wif_issuer_uri
+  attribute_mapping: Present { value: mtcollins1_boot_wif_attribute_mapping }
+  attribute_condition: Present { value: mtcollins1_boot_wif_attribute_condition() }
+}
+
+fn mtcollins1_boot_wif_provider_resource() -> String {
+  wif_provider_resource(project_number: fleet_secrets_project_number, provider: mtcollins1_boot_wif_provider)
+}
+
+// Who may impersonate the service account: every identity in the dedicated pool, which is exactly
+// the identities the one provider's condition admitted.
+fn mtcollins1_boot_wif_principal_set() -> String {
+  join([
+    "principalSet://iam.googleapis.com/",
+    wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: mtcollins1_boot_wif_pool_id as String),
+    "/*"
+  ], "")
+}
+
+fn mtcollins1_boot_service_account_member() -> String {
+  federated_service_account_member(email: mtcollins1_boot_service_account)
+}
+
+// ── THE CELLS: EXACTLY THE PINNED VERSIONS THE RUN READS ──────────────────────────────────────
+// The BMC credential (the attach, boot-device, power and SOL all present it) and the fleet key (the
+// census medium readback on srv2 runs over fleet ssh). The approval submission MAC key is NOT here:
+// it existed in this run only to sign the approval filing, which the ruling removed. Each cell is
+// conditioned on its one version resource, so a rotation to a new version is refused until the pin
+// and the cell move together.
+fn pinned_version_accessor_grant(target: SecretRef) -> SecretAccessGrant {
+  let resource = gcp_version_resource_by_number(project_number: fleet_secrets_project_number, secret: target.secret, version: target.version)
+  SecretAccessGrant {
+    target: target,
+    role: role_secretmanager_secret_accessor,
+    condition: Present { value: IamCondition {
+      title: join(["mtcollins1-boot pinned ", target.secret as String, " v", target.version as String], ""),
+      expression: join(["resource.name == \"", resource, "\""], ""),
+      description: Present { value: "gunbc.auth.mtcollins1_boot_federation: the one version the mtcollins1 boot job reads" },
+    } },
+  }
+}
+
+fn mtcollins1_boot_secret_grants() -> List<SecretAccessGrant> {
+  [
+    pinned_version_accessor_grant(target: mtcollins1_bmc_gunbc_secret_ref),
+    pinned_version_accessor_grant(target: fleet_automation_ssh_privkey_secret),
+  ]
+}
+
+// ── THE PROVISIONING, THROUGH THE ONE DEDICATED-FEDERATION PROTOCOL ──────────────────────────
+// Out-of-band: run by the grant administrator in their own session with a control-plane token
+// (gunbc.auth.access_token_source secret_access_token_path_env), the census's interim realization
+// for setIamPolicy (gunbc.auth.privileged_effect_census interim_gcp_iam_adapter_unlanded). No
+// workflow run and no session relay performs it.
+fn mtcollins1_boot_dedicated_federation() -> DedicatedFederation {
+  DedicatedFederation {
+    label: "mtcollins1 boot federation provision",
+    pool_id: mtcollins1_boot_wif_pool_id,
+    pool_display_name: mtcollins1_boot_wif_pool_display_name,
+    provider_id: mtcollins1_boot_wif_provider_id,
+    attribute_mapping: mtcollins1_boot_wif_attribute_mapping,
+    attribute_condition: mtcollins1_boot_wif_attribute_condition(),
+    principal_set: mtcollins1_boot_wif_principal_set(),
+    service_account: mtcollins1_boot_service_account,
+    service_account_id: mtcollins1_boot_service_account_id,
+    service_account_display_name: mtcollins1_boot_service_account_display_name,
+    service_account_member: mtcollins1_boot_service_account_member(),
+    secret_grants: mtcollins1_boot_secret_grants(),
+  }
+}
+
+fn mtcollins1_boot_federation_provision_with_supplied_token() -> ProcessExit
+  uses net: Network
+{
+  dedicated_federation_provision_with_supplied_token(f: mtcollins1_boot_dedicated_federation())
+}

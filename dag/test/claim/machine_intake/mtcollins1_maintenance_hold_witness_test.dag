@@ -1,0 +1,125 @@
+module test.claim.machine_intake.mtcollins1_maintenance_hold_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.durable_compare_and_set { CasGeneration, cas_generation_first }
+import gunbc.durable_exclusive_hold_file_store {
+  FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldSlotUndecodable,
+}
+import gunbc.machine_intake_mtcollins1_maintenance_hold {
+  BootHoldAdmission, BootHoldAcquired, BootHoldRefused,
+  mtcollins1_boot_hold_admission, operator_maintenance_owner, boot_run_owner, mtcollins1_unit_hold_key,
+}
+import gunbc.auth.mtcollins1_boot_federation {
+  OidcClaimPin, mtcollins1_boot_claim_pins, mtcollins1_boot_claims_admitted, mtcollins1_boot_wif_attribute_condition,
+  mtcollins1_boot_secret_grants, mtcollins1_boot_wif_principal_set,
+}
+import gunbc.auth.gcp_secret_access { SecretAccessGrant }
+import v2.std.optional { Present, Absent }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── The interlock: the boot refuses under an active maintenance hold ──────────────────────────
+// Supplied at the interface (DESIGN §3, a witness discriminates at one interface): the outcomes are
+// the typed values gunbc.durable_exclusive_hold_file_store file_hold_acquire returns, whose store
+// route is exercised by test.claim.durable_exclusive_hold_file_store_wet_witness.
+
+fn first_generation() -> CasGeneration {
+  cas_generation_first()
+}
+
+fn refused_naming(a: BootHoldAdmission, pattern: String) -> Bool {
+  match a {
+    BootHoldRefused { reason: r } => string_contains(s: r as String, pattern: pattern) && string_contains(s: r as String, pattern: "controller untouched")
+    BootHoldAcquired { owner: _, generation: _ } => false
+  }
+}
+
+fn acquired(a: BootHoldAdmission) -> Bool {
+  match a {
+    BootHoldAcquired { owner: _, generation: _ } => true
+    BootHoldRefused { reason: _ } => false
+  }
+}
+
+// THE RED: the operator holds the unit (DIMM reseat), and the boot refuses before any BMC write,
+// naming the holder. THE CONTROL beside it: the same unit, free, is acquired by the boot.
+test fn the_boot_refuses_under_an_active_maintenance_hold_and_names_the_holder() -> Bool {
+  let held = FileHoldOccupied {
+    slot_key: mtcollins1_unit_hold_key,
+    holder: operator_maintenance_owner(reason: "reseating DIMMs"),
+    generation: first_generation(),
+  }
+  refused_naming(a: mtcollins1_boot_hold_admission(outcome: held), pattern: "operator-maintenance:reseating DIMMs")
+    && acquired(a: mtcollins1_boot_hold_admission(outcome: FileHoldAcquired { slot_key: mtcollins1_unit_hold_key, owner: boot_run_owner(run_id: "42"), generation: first_generation() }))
+}
+
+// ANOTHER BOOT IS A HOLDER TOO: the exclusion the grant-keyed claim slot supplied is now the unit's.
+test fn a_second_boot_refuses_while_the_first_holds_the_unit() -> Bool {
+  refused_naming(
+    a: mtcollins1_boot_hold_admission(outcome: FileHoldOccupied { slot_key: mtcollins1_unit_hold_key, holder: boot_run_owner(run_id: "41"), generation: first_generation() }),
+    pattern: "mtcollins1-boot:41",
+  )
+}
+
+// AN INTERLOCK THAT CANNOT BE READ IS NOT RELEASED: a lost race and an undecodable slot refuse.
+test fn an_unreadable_or_contended_hold_refuses_rather_than_proceeding() -> Bool {
+  refused_naming(a: mtcollins1_boot_hold_admission(outcome: FileHoldAcquireLost { slot_key: mtcollins1_unit_hold_key }), pattern: "lost the race")
+    && refused_naming(a: mtcollins1_boot_hold_admission(outcome: FileHoldSlotUndecodable { slot_key: mtcollins1_unit_hold_key, generation: first_generation(), detail: "garbage" }), pattern: "undecodable")
+}
+
+// ── The federation: only this workflow, at main, dispatched, in the boot environment ───────────
+fn boot_job_claims() -> List<OidcClaimPin> {
+  mtcollins1_boot_claim_pins()
+}
+
+fn with_claim(claims: List<OidcClaimPin>, claim: NonEmptyStr, value: String) -> List<OidcClaimPin> {
+  concat(filter(claims, c => (c.claim as String) != (claim as String)), [OidcClaimPin { claim: claim, value: value }])
+}
+
+fn without_claim(claims: List<OidcClaimPin>, claim: NonEmptyStr) -> List<OidcClaimPin> {
+  filter(claims, c => (c.claim as String) != (claim as String))
+}
+
+// THE CONTROL: the boot job's own token is admitted. THE REDS: another workflow file, another ref,
+// a pull_request event, another environment, and a job with no environment (every other job in
+// fleet-converge.yml) are each refused -- one claim changed at a time, so each red is attributable.
+test fn only_the_boot_jobs_oidc_subject_is_admitted_to_the_dedicated_pool() -> Bool {
+  let c = boot_job_claims()
+  mtcollins1_boot_claims_admitted(claims: c)
+    && !mtcollins1_boot_claims_admitted(claims: with_claim(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main"))
+    && !mtcollins1_boot_claims_admitted(claims: with_claim(claims: c, claim: "ref", value: "refs/heads/feature"))
+    && !mtcollins1_boot_claims_admitted(claims: with_claim(claims: c, claim: "workflow_ref", value: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/feature"))
+    && !mtcollins1_boot_claims_admitted(claims: with_claim(claims: c, claim: "event_name", value: "pull_request"))
+    && !mtcollins1_boot_claims_admitted(claims: with_claim(claims: c, claim: "environment", value: "production"))
+    && !mtcollins1_boot_claims_admitted(claims: without_claim(claims: c, claim: "environment"))
+}
+
+// THE PROVISIONED CONDITION IS THE ADMISSION'S OWN PINS: every pin appears in the CEL string GCP
+// stores, so the refusal above is the provider's, not a second description of it.
+test fn the_provider_condition_carries_every_pin() -> Bool {
+  let cond = mtcollins1_boot_wif_attribute_condition()
+  all(mtcollins1_boot_claim_pins(), p => string_contains(s: cond, pattern: join(["assertion.", p.claim as String, " == '", p.value, "'"], "")))
+    && string_contains(s: cond, pattern: "fleet-converge.yml@refs/heads/main")
+    && string_contains(s: cond, pattern: "assertion.environment == 'mtcollins1-boot'")
+}
+
+// EXACTLY TWO CELLS, EACH ON ONE PINNED VERSION, AND THE IMPERSONATION MEMBER IS THE DEDICATED POOL,
+// never the repository pool.
+fn grant_is_version_pinned(g: SecretAccessGrant) -> Bool {
+  match g.condition {
+    Present { value: c } => string_contains(s: c.expression, pattern: join(["/secrets/", g.target.secret as String, "/versions/", g.target.version as String, "\""], ""))
+    Absent => false
+  }
+}
+
+test fn the_boot_account_reads_exactly_two_pinned_versions_from_the_dedicated_pool() -> Bool {
+  let gs = mtcollins1_boot_secret_grants()
+  (gs |> count) == 2
+    && all(gs, g => grant_is_version_pinned(g: g))
+    && any(gs, g => (g.target.secret as String) == "bmc-mtcollins1-gunbc")
+    && any(gs, g => (g.target.secret as String) == "fleet-automation-ssh-key")
+    && !any(gs, g => (g.target.secret as String) == "approval-submission-mac-key")
+    && string_contains(s: mtcollins1_boot_wif_principal_set(), pattern: "/workloadIdentityPools/github-mtcollins1-boot/*")
+    && !string_contains(s: mtcollins1_boot_wif_principal_set(), pattern: "/workloadIdentityPools/github-actions/")
+}

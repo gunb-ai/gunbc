@@ -1,0 +1,159 @@
+module gunbc.machine_intake_mtcollins1_maintenance_hold
+
+import std.types { Bool, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.durable_compare_and_set { CasGeneration }
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, DurableHoldReleaseRef,
+  HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
+}
+import gunbc.durable_exclusive_hold_file_store {
+  FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
+  FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
+  FileHoldReleasePlanned, FileHoldReleaseNotEligible,
+  FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable,
+  file_hold_acquire, file_hold_release_assess, file_hold_release_commit, observe_file_hold,
+}
+import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_machine }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+
+// ── THE INTERLOCK THE PER-RUN APPROVAL WAS PROVIDING WITHOUT SAYING SO ────────────────────────
+//
+// Until 2026-09-23 every Mt. Collins boot waited for one operator tap, and the operator tapped only
+// when nobody had hands in the chassis. That consent carried two facts: "this effect may run" and
+// "the unit is not under maintenance right now". The operator ruling of 2026-09-23 retired the
+// first (the boot is a recurring automated effect; gunbc.auth.privileged_effect_census derives the
+// federated pattern for it). The second is a physical-safety fact about the unit, not about who may
+// authorize, so it does not dissolve with the approval stage: a boot that power-cycles a unit whose
+// DIMMs are being reseated is the harm. It is carried here as ONE std.durable_exclusive_hold slot
+// per unit, keyed by the machine name the signed subject already uses.
+//
+// ONE SLOT, TWO KINDS OF HOLDER, AND THAT IS THE POINT. The operator takes the slot for
+// maintenance; the boot run takes the SAME slot before any BMC actuation and frees it after. So
+// the boot refuses while the operator holds it (FileHoldOccupied, typed, naming the holder), the
+// operator cannot start maintenance mid-boot without seeing the run as holder, and two boot runs
+// exclude each other -- the exclusion the grant-keyed authorization claim slot supplied, now keyed
+// by the unit rather than by an approval that no longer exists.
+//
+// THE STORE IS THE FILE-BACKED CAS ON THE RUNNER HOST (gunbc.durable_exclusive_hold_file_store),
+// where the boot job runs and where the operator's own session takes the hold. An undecodable slot
+// or an unavailable store REFUSES the boot: an interlock that cannot be read is not released.
+
+data unit_hold_store_root: NonEmptyStr = "/var/lib/gunbc/unit-holds" as NonEmptyStr
+
+data mtcollins1_unit_hold_key: NonEmptyStr = mtcollins1_boot_machine
+
+data operator_maintenance_owner_prefix: String = "operator-maintenance:"
+
+data boot_run_owner_prefix: String = "mtcollins1-boot:"
+
+// The operator names why they hold the unit; the reason is the owner, so a refused boot prints it.
+data mtcollins1_maintenance_reason_env: NonEmptyStr = "GUNBC_MTCOLLINS1_MAINTENANCE_REASON"
+
+fn operator_maintenance_owner(reason: NonEmptyStr) -> DurableHoldOwnerRef {
+  concat(operator_maintenance_owner_prefix, reason as String) as DurableHoldOwnerRef
+}
+
+fn boot_run_owner(run_id: NonEmptyStr) -> DurableHoldOwnerRef {
+  concat(boot_run_owner_prefix, run_id as String) as DurableHoldOwnerRef
+}
+
+// ── The boot's side ──────────────────────────────────────────────────────────────────────────
+type BootHoldAdmission
+  = BootHoldAcquired { owner: DurableHoldOwnerRef, generation: CasGeneration }
+  | BootHoldRefused { reason: NonEmptyStr }
+
+// THE DECISION IS A PURE FOLD OVER THE STORE'S TYPED OUTCOME, so the refusal under an active hold is
+// decided here and exercised by test.claim.mtcollins1_maintenance_hold_witness over the same
+// outcome type the live acquire returns; the store route itself is exercised by
+// test.claim.durable_exclusive_hold_file_store_wet_witness.
+fn mtcollins1_boot_hold_admission(outcome: FileHoldAcquireOutcome) -> BootHoldAdmission {
+  match outcome {
+    FileHoldAcquired { slot_key: _, owner: o, generation: g } => BootHoldAcquired { owner: o, generation: g }
+    FileHoldOccupied { slot_key: k, holder: h, generation: _ } =>
+      BootHoldRefused { reason: join(["mtcollins1 boot: unit ", k as String, " is held by '", h as String, "'; no BMC actuation until it is released; controller untouched"], "") as NonEmptyStr }
+    FileHoldAcquireLost { slot_key: k } =>
+      BootHoldRefused { reason: join(["mtcollins1 boot: lost the race for unit hold ", k as String, "; controller untouched"], "") as NonEmptyStr }
+    FileHoldAcquireStoreUnavailable { slot_key: k, cause: _ } =>
+      BootHoldRefused { reason: join(["mtcollins1 boot: unit hold store unavailable for ", k as String, "; an unreadable interlock is not a released one; controller untouched"], "") as NonEmptyStr }
+    FileHoldSlotUndecodable { slot_key: k, generation: _, detail: d } =>
+      BootHoldRefused { reason: join(["mtcollins1 boot: unit hold ", k as String, " undecodable (", d as String, "); controller untouched"], "") as NonEmptyStr }
+    FileHoldKeyNotSlotAddressable { slot_key: k } =>
+      BootHoldRefused { reason: join(["mtcollins1 boot: unit hold key ", k as String, " is not slot-addressable; controller untouched"], "") as NonEmptyStr }
+  }
+}
+
+fn mtcollins1_boot_acquire_unit_hold(root: NonEmptyStr, run_id: NonEmptyStr) -> BootHoldAdmission {
+  mtcollins1_boot_hold_admission(outcome: file_hold_acquire(root: root, slot_key: mtcollins1_unit_hold_key, requested_owner: boot_run_owner(run_id: run_id)))
+}
+
+// THE RELEASE KEEPS THE STEP'S OWN OUTCOME AND SAYS WHEN THE HOLD WAS LEFT: a boot that actuated and
+// then failed to free the unit has still actuated, and an operator reading a bare success would not
+// know the next boot will refuse on a stale holder.
+fn mtcollins1_boot_release_unit_hold(root: NonEmptyStr, owner: DurableHoldOwnerRef, generation: CasGeneration, outcome: ProcessExit) -> ProcessExit {
+  let left = match file_hold_release_assess(root: root, slot_key: mtcollins1_unit_hold_key, owner: owner, acquired_generation: generation, released_by: owner as String as DurableHoldReleaseRef) {
+    FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => "the slot no longer showed this run's hold"
+    FileHoldReleasePlanned { plan: p } =>
+      match file_hold_release_commit(plan: p) {
+        FileHoldReleased { slot_key: _, generation: _ } => ""
+        FileHoldReleaseLost { slot_key: _ } => "the slot moved before the release committed"
+        FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => "the store refused the release"
+        FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => "the key is not slot-addressable"
+      }
+  }
+  if left == "" {
+    outcome
+  } else {
+    exit_failure(reason: join(["mtcollins1 boot: unit hold left held (", left, "); step outcome was: ", match outcome {
+      ExitSuccess => "success"
+      ExitFailure { code: _, reason: r } => concat("failure: ", r)
+    }], ""))
+  }
+}
+
+// ── The operator's side: two entries run in the operator's own session on the runner host ──────
+fn mtcollins1_maintenance_hold_take() -> ProcessExit {
+  let reason = actions_variable_trimmed(name: mtcollins1_maintenance_reason_env)
+  if reason == "" {
+    return exit_failure(reason: concat(mtcollins1_maintenance_reason_env as String, " is unset; a maintenance hold names why the unit is held"))
+  }
+  match file_hold_acquire(root: unit_hold_store_root, slot_key: mtcollins1_unit_hold_key, requested_owner: operator_maintenance_owner(reason: reason as NonEmptyStr)) {
+    FileHoldAcquired { slot_key: _, owner: _, generation: _ } => ExitSuccess
+    FileHoldOccupied { slot_key: _, holder: h, generation: _ } =>
+      exit_failure(reason: concat("mtcollins1 maintenance hold: unit already held by ", h as String))
+    FileHoldAcquireLost { slot_key: _ } => exit_failure(reason: "mtcollins1 maintenance hold: lost the race; re-run")
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: "mtcollins1 maintenance hold: store unavailable; the unit is NOT held")
+    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } => exit_failure(reason: concat("mtcollins1 maintenance hold: slot undecodable: ", d as String))
+    FileHoldKeyNotSlotAddressable { slot_key: _ } => exit_failure(reason: "mtcollins1 maintenance hold: key not slot-addressable")
+  }
+}
+
+fn is_operator_maintenance_owner(owner: DurableHoldOwnerRef) -> Bool {
+  starts_with(s: owner as String, prefix: operator_maintenance_owner_prefix)
+}
+
+// THE OPERATOR RELEASES ONLY AN OPERATOR HOLD: a boot's own hold is the boot's to free, and freeing
+// it from outside would let a second boot start while the first still drives the BMC.
+fn mtcollins1_maintenance_hold_release() -> ProcessExit {
+  match observe_file_hold(root: unit_hold_store_root, key: mtcollins1_unit_hold_key) {
+    HoldSlotAbsent => exit_failure(reason: "mtcollins1 maintenance hold: no hold was ever taken")
+    HoldSlotFree { generation: _, released_by: b } => exit_failure(reason: concat("mtcollins1 maintenance hold: already free (released by ", concat(b as String, ")")))
+    HoldSlotUndecodable { generation: _, detail: d } => exit_failure(reason: concat("mtcollins1 maintenance hold: slot undecodable: ", d as String))
+    HoldObservationUnavailable { cause: _ } => exit_failure(reason: "mtcollins1 maintenance hold: store unavailable")
+    HoldSlotHeld { generation: g, owner: o } =>
+      if !is_operator_maintenance_owner(owner: o) {
+        exit_failure(reason: concat("mtcollins1 maintenance hold: held by a boot run, not by maintenance: ", o as String))
+      } else {
+        match file_hold_release_assess(root: unit_hold_store_root, slot_key: mtcollins1_unit_hold_key, owner: o, acquired_generation: g, released_by: "operator-maintenance-release" as DurableHoldReleaseRef) {
+          FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => exit_failure(reason: "mtcollins1 maintenance hold: slot moved before release; re-run")
+          FileHoldReleasePlanned { plan: p } =>
+            match file_hold_release_commit(plan: p) {
+              FileHoldReleased { slot_key: _, generation: _ } => ExitSuccess
+              FileHoldReleaseLost { slot_key: _ } => exit_failure(reason: "mtcollins1 maintenance hold: lost the release race; re-run")
+              FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: "mtcollins1 maintenance hold: store refused the release; the unit is STILL held")
+              FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => exit_failure(reason: "mtcollins1 maintenance hold: key not slot-addressable")
+            }
+        }
+      }
+  }
+}

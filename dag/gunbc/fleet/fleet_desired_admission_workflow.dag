@@ -220,6 +220,7 @@ fn fleet_desired_admission_job() -> Job {
     id: fleet_desired_admission_workflow_job_id,
     name: none,
     runner: gunbc_ci_deploy_srv1_runner_spec(),
+    environment: none,
     steps: [
       fleet_desired_admission_checkout_step(),
       toolchain_home_isolation_step(),

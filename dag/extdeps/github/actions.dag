@@ -195,6 +195,11 @@ type Job {
   id: String
   name: String?
   runner: RunnerSpec
+  // The job's deployment environment (docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment,
+  // read 2026-09-23). It is a real job key with a security consequence: a job that names one carries
+  // it in its OIDC token as the `environment` claim and its `sub` becomes
+  // repo:<owner>/<repo>:environment:<name>, so a federation can pin one job by it.
+  environment: String?
   steps: List<Step>
   needs: List<String>
 

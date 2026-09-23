@@ -14,6 +14,7 @@ import gunbc.spark.bootstrap_provision {
 }
 import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
 import gunbc.github_app_acquisition { census_app_registration_submit_step }
+import gunbc.auth.mtcollins1_boot_federation { mtcollins1_boot_service_account_member }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
   WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
@@ -210,9 +211,65 @@ fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
   }
 }
 
+// THE MT. COLLINS BOOT (operator ruling 2026-09-23), with its parameters stated as they are.
+// RECURRING: the boot is dispatched every time the unit is re-censused, with nobody at the end of
+// it, so EveryProvision -- an attendance premise the selection turns into "must run unattended".
+// REVERSIBLE BY REAPPLY: the actuation is a BMC virtual-media attach, a one-shot boot-device set, a
+// power cycle and a SOL session. Each is undone by the next boot or by detaching; the unit is an
+// intake unit that runs only the diskless census live image this mode itself boots (nothing is
+// written to its disks), so what a power cycle interrupts is a RAM-only session the mode reproduces.
+// The one harm that is NOT undone by reapplying -- power-cycling a unit a technician has hands in --
+// is not a property of the effect but of the unit's state, and it is excluded by the maintenance
+// hold rostered in privileged_effect_interlocks below, which the boot must acquire before any BMC
+// write. Without that interlock this row's reversibility would be false.
+// MINTS NO CREDENTIAL: it reads the pinned BMC credential and the pinned fleet key; the approval
+// submission MAC key it used to read existed only to sign the approval filing, which is gone.
+// WORKLOAD IDENTITY: the dedicated account of gunbc.auth.mtcollins1_boot_federation, reachable only
+// from a token the dedicated provider admitted (this workflow at main, workflow_dispatch, the
+// mtcollins1-boot environment) -- never the repo-wide convergence principal.
+fn mtcollins1_boot_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "mtcollins1 boot: BMC virtual-media attach, one-shot CD boot device, power cycle and SOL capture under the pinned BMC credential, plus the census medium readback over the pinned fleet key" as NonEmptyStr,
+    frequency: EveryProvision,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityBindable { member: mtcollins1_boot_service_account_member() as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+  }
+}
+
+// ── INTERLOCKS: the state an effect's parameters are honest only under ─────────────────────────
+// A row's reversibility can depend on a fact about the world rather than about the call: the boot
+// above is reversible by reapply only while nobody is working on the unit. That condition is not a
+// selection input (the selection is about who may authorize), so it is carried here, joined to the
+// census by site identity, naming the hold the site must acquire and the fold that refuses under it.
+// The witness asserts every interlocked site is a census row and that the refusal fires under an
+// active hold.
+type PrivilegedEffectInterlock {
+  site: DeclarationRef
+  hold: DeclarationRef
+  refusal: DeclarationRef
+  premise: NonEmptyStr
+}
+
+data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
+  PrivilegedEffectInterlock {
+    site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
+    hold: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_unit_hold_key"),
+    refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_boot_hold_admission"),
+    premise: "ReversibleByReapply holds only while no operator maintenance hold is on the unit: the boot takes the unit's one durable exclusive hold before any BMC write and refuses FileHoldOccupied naming the holder" as NonEmptyStr,
+  },
+]
+
+fn interlocked_sites_missing_from_census() -> List<DeclarationRef> {
+  let rostered = map(privileged_effect_census, row => row.site)
+  filter(map(privileged_effect_interlocks, i => i.site), s => !declaration_ref_in_list(target: s, refs: rostered))
+}
+
 // THE DIVERGENCE REASONS THAT RECUR, each stated once with its dissolution.
 data interim_gcp_iam_adapter_unlanded: DivergenceReason = DivergenceReason {
-  statement: "the approval loop's authority adapter for GCP IAM and Secret Manager effects is not landed on main (gunbc#11484 carries the first executing consumer, mtcollins1_boot); until it lands the grant administrator's own session on the grant administrator's own workstation is the interim realization, and relaying that token through chat or a message is the refused pattern" as NonEmptyStr,
+  statement: "the approval loop's authority adapter for GCP IAM and Secret Manager effects is not landed on main (gunbc#11484 carried the approval loop's first executing consumer); until it lands the grant administrator's own session on the grant administrator's own workstation is the interim realization, and relaying that token through chat or a message is the refused pattern" as NonEmptyStr,
   dissolution: unbound_dissolution(description: "an approval-loop authority adapter that performs getIamPolicy/setIamPolicy and Secret Manager create/addVersion under a redeemed capability, executing as the grant administrator identity on the roadmap server; owner: this lane (nimble-otter-774), sequenced after gunbc#11734 and gunbc#11484" as NonEmptyStr),
 }
 
@@ -311,6 +368,26 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     },
     realized: RealizedRunSelected,
     divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
+    effect: mtcollins1_boot_effect(),
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.mtcollins1_boot_federation", decl_name: "mtcollins1_boot_federation_provision_with_supplied_token"),
+    effect: PrivilegedEffect {
+      subject: "create the mtcollins1 boot's dedicated pool, provider and service account, bind who may act as it, and its two version-pinned accessor cells" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: grant_administrator_unbindable,
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+    },
+    realized: RealizedOperatorSession { arm: OperatorTokenFile },
+    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.cloudflare.r2_permission_group_observe", decl_name: "observe_account_permission_groups_standing"),

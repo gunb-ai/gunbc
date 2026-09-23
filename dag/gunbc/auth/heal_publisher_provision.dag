@@ -1,7 +1,7 @@
 module gunbc.auth.heal_publisher_provision
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import std.types { NonEmptyStr, String, Secret, List, Bool }
+import std.types { NonEmptyStr, String, Secret, List, Bool, Map }
 import std.resources { Network }
 import v2.std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam {
@@ -10,6 +10,7 @@ import extdeps.cloud.gcp.iam {
   reconcile_gcp_policy, gcp_policy_cells, gcp_cell_in, gcp_policy_from_wire
 }
 import extdeps.cloud.gcp.iam_admin
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import gunbc.auth.access_token_source {
   read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable,
@@ -22,7 +23,7 @@ import gunbc.auth.heal_publisher_federation {
   heal_publisher_wif_principal_set, heal_publisher_service_account, heal_publisher_service_account_id,
   heal_publisher_service_account_display_name, heal_publisher_service_account_member
 }
-import gunbc.auth.gcp_secret_access { secret_accessor_grant, secret_access_ensure_for_member }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant, secret_access_ensure_for_member }
 import gunbc.auth.github_apps { gunbai_bot_app_pem_secret }
 import gunbc.gcp_estate_observation { role_iam_workload_identity_user }
 
@@ -55,6 +56,44 @@ fn rest_ok(o: RestOutcome) -> Bool {
   }
 }
 
+// ONE DEDICATED FEDERATION, AS A RECORD. The heal publisher was the first job to get its own pool,
+// provider and service account; the Mt. Collins boot (gunbc.auth.mtcollins1_boot_federation) is the
+// second. The provisioning below was written against the heal publisher's names, and a second copy
+// differing only in those names would be two authorities for one provisioning protocol (DESIGN §3),
+// so the names are a record and each federation binds its own. Everything else -- the 409 handling,
+// the impersonation reconcile with readback, the grant last -- is the one protocol.
+type DedicatedFederation {
+  label: String
+  pool_id: NonEmptyStr
+  pool_display_name: NonEmptyStr
+  provider_id: NonEmptyStr
+  attribute_mapping: Map<String, String>
+  attribute_condition: String
+  principal_set: String
+  service_account: ServiceAccountEmail
+  service_account_id: NonEmptyStr
+  service_account_display_name: NonEmptyStr
+  service_account_member: String
+  secret_grants: List<SecretAccessGrant>
+}
+
+fn heal_publisher_dedicated_federation() -> DedicatedFederation {
+  DedicatedFederation {
+    label: "heal publisher provision",
+    pool_id: heal_publisher_wif_pool_id,
+    pool_display_name: heal_publisher_wif_pool_display_name,
+    provider_id: heal_publisher_wif_provider_id,
+    attribute_mapping: heal_publisher_wif_attribute_mapping,
+    attribute_condition: heal_publisher_wif_attribute_condition(),
+    principal_set: heal_publisher_wif_principal_set(),
+    service_account: heal_publisher_service_account,
+    service_account_id: heal_publisher_service_account_id,
+    service_account_display_name: heal_publisher_service_account_display_name,
+    service_account_member: heal_publisher_service_account_member(),
+    secret_grants: [secret_accessor_grant(target: gunbai_bot_app_pem_secret)],
+  }
+}
+
 // THE ONE CELL THIS ENTRY OWNS on the service account's own policy: who may act as it.
 //
 // THE MEMBER IS THE WHOLE POOL, AND THIS NOTE USED TO CLAIM MORE THAN THAT BUYS. It read "the only
@@ -74,62 +113,70 @@ fn rest_ok(o: RestOutcome) -> Bool {
 //
 // Until then the pool is the honest description of the member, and the guard that actually holds is
 // the provider's attribute condition -- one provider, whose condition is the wall.
-fn heal_publisher_impersonation_cell() -> GcpIamBindingCell {
+fn impersonation_cell(f: DedicatedFederation) -> GcpIamBindingCell {
   GcpIamBindingCell {
     role: role_iam_workload_identity_user,
-    member: heal_publisher_wif_principal_set(),
+    member: f.principal_set,
     condition: none
   }
 }
 
-fn heal_publisher_impersonation_owned() -> GcpIamOwnedCellUniverse {
-  GcpIamOwnedCellUniverse { cells: [heal_publisher_impersonation_cell()] }
+fn heal_publisher_impersonation_cell() -> GcpIamBindingCell {
+  impersonation_cell(f: heal_publisher_dedicated_federation())
+}
+
+fn impersonation_owned(f: DedicatedFederation) -> GcpIamOwnedCellUniverse {
+  GcpIamOwnedCellUniverse { cells: [impersonation_cell(f: f)] }
 }
 
 // A WHOLE-POLICY REPLACE THAT RETURNED 200 HAS NOT BEEN SHOWN TO CONTAIN THE CELL IT WAS WRITTEN FOR,
 // so the write is followed by looking for that cell in what came back.
-fn impersonation_binding_present(policy: GcpPolicy) -> Bool {
-  gcp_cell_in(c: heal_publisher_impersonation_cell(), xs: gcp_policy_cells(p: policy))
+fn impersonation_binding_present_for(f: DedicatedFederation, policy: GcpPolicy) -> Bool {
+  gcp_cell_in(c: impersonation_cell(f: f), xs: gcp_policy_cells(p: policy))
 }
 
-fn bind_publisher_impersonation(token: Secret) -> ProcessExit
+fn impersonation_binding_present(policy: GcpPolicy) -> Bool {
+  impersonation_binding_present_for(f: heal_publisher_dedicated_federation(), policy: policy)
+}
+
+fn bind_impersonation(f: DedicatedFederation, token: Secret) -> ProcessExit
   uses net: Network
 {
   let observed = gcp.IamAdmin.GetServiceAccountIamPolicy(
     access_token: token,
     project_id: fleet_secrets_project_id,
-    service_account: heal_publisher_service_account
+    service_account: f.service_account
   )
   if !rest_ok(o: observed.outcome) {
-    exit_failure(reason: concat("heal publisher provision: the service account's policy could not be read: ", rest_refusal_text(o: observed.outcome)))
+    exit_failure(reason: join([f.label, ": the service account's policy could not be read: ", rest_refusal_text(o: observed.outcome)], ""))
   } else {
     let observed_policy = gcp_policy_from_wire(bindings: observed.bindings, etag: observed.etag, version: observed.version)
     match reconcile_gcp_policy(
       observed: observed_policy,
-      desired_owned: [heal_publisher_impersonation_cell()],
-      owned_universe: heal_publisher_impersonation_owned()
+      desired_owned: [impersonation_cell(f: f)],
+      owned_universe: impersonation_owned(f: f)
     ) {
       GcpPolicyRepresentationLossy { conditional_roles: _ } =>
-        exit_failure(reason: "heal publisher provision: the service account's policy was read at a representation that mangles conditional bindings, so reconciling against it could replace somebody's restricted access. Refusing.")
+        exit_failure(reason: concat(concat(f.label, ": "), "the service account's policy was read at a representation that mangles conditional bindings, so reconciling against it could replace somebody's restricted access. Refusing."))
       GcpPolicyAlreadyConverged { policy: p } =>
-        if impersonation_binding_present(policy: p) {
+        if impersonation_binding_present_for(f: f, policy: p) {
           ExitSuccess
         } else {
-          exit_failure(reason: "heal publisher provision: reconciliation reported the service account policy converged, but the impersonation cell is absent from the policy it reported")
+          exit_failure(reason: concat(concat(f.label, ": "), "reconciliation reported the service account policy converged, but the impersonation cell is absent from the policy it reported"))
         }
       GcpPolicyDeltaRequired { policy: desired_policy, added: _, removed: _, preserved: _ } => {
         let written = gcp.IamAdmin.SetServiceAccountIamPolicy(
           access_token: token,
           project_id: fleet_secrets_project_id,
-          service_account: heal_publisher_service_account,
+          service_account: f.service_account,
           policy: desired_policy
         )
         if !rest_ok(o: written.outcome) {
-          exit_failure(reason: concat("heal publisher provision: the service account's policy could not be written: ", rest_refusal_text(o: written.outcome)))
-        } else if impersonation_binding_present(policy: gcp_policy_from_wire(bindings: written.bindings, etag: written.etag, version: written.version)) {
+          exit_failure(reason: join([f.label, ": the service account's policy could not be written: ", rest_refusal_text(o: written.outcome)], ""))
+        } else if impersonation_binding_present_for(f: f, policy: gcp_policy_from_wire(bindings: written.bindings, etag: written.etag, version: written.version)) {
           ExitSuccess
         } else {
-          exit_failure(reason: "heal publisher provision: setIamPolicy returned 200 but the policy it returned does not carry the impersonation cell")
+          exit_failure(reason: concat(concat(f.label, ": "), "setIamPolicy returned 200 but the policy it returned does not carry the impersonation cell"))
         }
       }
     }
@@ -200,13 +247,22 @@ fn federation_verdict(
   provider: SubjectCreation,
   account: SubjectCreation
 ) -> FederationDisposition {
+  federation_verdict_for(label: "heal publisher provision", pool: pool, provider: provider, account: account)
+}
+
+fn federation_verdict_for(
+  label: String,
+  pool: SubjectCreation,
+  provider: SubjectCreation,
+  account: SubjectCreation
+) -> FederationDisposition {
   let refusals = join([
     creation_refusal(subject: "the pool", c: pool),
     creation_refusal(subject: "the provider", c: provider),
     creation_refusal(subject: "the service account", c: account)
   ], "")
   if refusals != "" {
-    FederationStopped { reason: concat("heal publisher provision: a subject could not be created -- ", refusals) }
+    FederationStopped { reason: join([label, ": a subject could not be created -- ", refusals], "") }
   } else {
     FederationBindable
   }
@@ -224,13 +280,17 @@ fn unverified_subjects(pool: SubjectCreation, provider: SubjectCreation, account
 }
 
 fn bound_verdict(unverified: String, bound: ProcessExit) -> ProcessExit {
+  bound_verdict_for(label: "heal publisher provision", unverified: unverified, bound: bound)
+}
+
+fn bound_verdict_for(label: String, unverified: String, bound: ProcessExit) -> ProcessExit {
   if unverified == "" {
     bound
   } else {
     match bound {
       ExitSuccess =>
         exit_failure(reason: join([
-          "heal publisher provision: the impersonation binding is reconciled and read back, but these subjects already ",
+          label, ": the impersonation binding is reconciled and read back, but these subjects already ",
           "existed and this run did not read their configuration: ", unverified,
           "-- classify them against gunbc.gcp_estate_adoption gcp_estate_desired_roster before treating this federation ",
           "as provisioned. A provider whose attribute condition differs from the declared one admits workflows this ",
@@ -241,42 +301,42 @@ fn bound_verdict(unverified: String, bound: ProcessExit) -> ProcessExit {
   }
 }
 
-fn provision_federation(token: Secret) -> FederationOutcome
+fn provision_federation(f: DedicatedFederation, token: Secret) -> FederationOutcome
   uses net: Network
 {
   let pool = gcp.IamAdmin.CreateWorkloadIdentityPool(
     access_token: token,
     project_id: fleet_secrets_project_id,
-    pool_id: heal_publisher_wif_pool_id,
-    display_name: heal_publisher_wif_pool_display_name
+    pool_id: f.pool_id,
+    display_name: f.pool_display_name
   )
   let provider = gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(
     access_token: token,
     project_id: fleet_secrets_project_id,
-    pool_id: heal_publisher_wif_pool_id,
-    provider_id: heal_publisher_wif_provider_id,
+    pool_id: f.pool_id,
+    provider_id: f.provider_id,
     issuer_uri: github_wif_issuer_uri,
-    attribute_mapping: heal_publisher_wif_attribute_mapping,
-    attribute_condition: heal_publisher_wif_attribute_condition() as NonEmptyStr
+    attribute_mapping: f.attribute_mapping,
+    attribute_condition: f.attribute_condition as NonEmptyStr
   )
   let account = gcp.IamAdmin.CreateServiceAccount(
     access_token: token,
     project_id: fleet_secrets_project_id,
-    account_id: heal_publisher_service_account_id,
-    display_name: heal_publisher_service_account_display_name
+    account_id: f.service_account_id,
+    display_name: f.service_account_display_name
   )
   let pool_c = subject_creation(o: pool.outcome)
   let provider_c = subject_creation(o: provider.outcome)
   let account_c = subject_creation(o: account.outcome)
-  match federation_verdict(pool: pool_c, provider: provider_c, account: account_c) {
+  match federation_verdict_for(label: f.label, pool: pool_c, provider: provider_c, account: account_c) {
     FederationStopped { reason: r } => FederationHalted { reason: r }
     FederationBindable =>
       match account_c {
         SubjectCreated =>
-          if (account.email as String) != (heal_publisher_service_account as String) {
+          if (account.email as String) != (f.service_account as String) {
             FederationHalted { reason: join([
-              "heal publisher provision: the created service account is ", account.email as String,
-              ", not the declared ", heal_publisher_service_account as String,
+              f.label, ": the created service account is ", account.email as String,
+              ", not the declared ", f.service_account as String,
               " -- the federation declares the account the workflow presents, so a different address would leave the workflow federating to nothing"
             ], "") }
           } else {
@@ -303,13 +363,14 @@ fn provision_federation(token: Secret) -> FederationOutcome
 // THE GRANT IS LAST, AND ON PURPOSE. The accessor binding names the service account, so it cannot be
 // made before that account exists; running it against a missing principal would write a policy for a
 // member that is not there, and setIamPolicy is a whole-policy replace.
-fn grant_publisher_read_of_the_app_key(token: Secret) -> ProcessExit
+fn grant_secret_reads(fed: DedicatedFederation, token: Secret) -> ProcessExit
   uses net: Network
 {
-  secret_access_ensure_for_member(
-    grant: secret_accessor_grant(target: gunbai_bot_app_pem_secret),
-    member: heal_publisher_service_account_member(),
-    token_source: OperatorSuppliedToken { token: token }
+  fold(fed.secret_grants, init: ExitSuccess, f: (acc, g) =>
+    match acc {
+      ExitSuccess => secret_access_ensure_for_member(grant: g, member: fed.service_account_member, token_source: OperatorSuppliedToken { token: token })
+      failed => failed
+    }
   )
 }
 
@@ -317,35 +378,35 @@ fn grant_publisher_read_of_the_app_key(token: Secret) -> ProcessExit
 // it wrong in a way only a rerun could show. It applied the unverified verdict to the impersonation
 // binding and then gated the accessor grant on that ProcessExit -- so on the SECOND run, where the
 // three creates answer 409 and the verdict is a refusal by design, the grant became unreachable and
-// silently never happened. The first run cannot expose it, because on a first run nothing is
-// unverified. That is the same reasoning already written above bind_publisher_impersonation, applied
-// to only one of the two steps it governs.
-//
-// So the refusal is applied ONCE, at the end, to the pair. A step that fails on its own merits still
-// reports its own cause, because that cause is what the operator needs and the unverified wording
-// must never replace it.
-fn provision_publisher_identity(token: Secret) -> ProcessExit
+// silently never happened. So the refusal is applied ONCE, at the end, to the pair.
+fn provision_dedicated_federation(f: DedicatedFederation, token: Secret) -> ProcessExit
   uses net: Network
 {
-  match provision_federation(token: token) {
+  match provision_federation(f: f, token: token) {
     FederationHalted { reason: r } => exit_failure(reason: r)
     FederationReconcilable { unverified: u } =>
-      match bind_publisher_impersonation(token: token) {
+      match bind_impersonation(f: f, token: token) {
         ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
         ExitSuccess =>
-          match grant_publisher_read_of_the_app_key(token: token) {
+          match grant_secret_reads(fed: f, token: token) {
             ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
-            ExitSuccess => bound_verdict(unverified: u, bound: ExitSuccess)
+            ExitSuccess => bound_verdict_for(label: f.label, unverified: u, bound: ExitSuccess)
           }
       }
+  }
+}
+
+fn dedicated_federation_provision_with_supplied_token(f: DedicatedFederation) -> ProcessExit
+  uses net: Network
+{
+  match read_supplied_access_token() {
+    SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
+    SuppliedTokenReady { token: t } => provision_dedicated_federation(f: f, token: t)
   }
 }
 
 fn heal_publisher_federation_provision_with_supplied_token() -> ProcessExit
   uses net: Network
 {
-  match read_supplied_access_token() {
-    SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
-    SuppliedTokenReady { token: t } => provision_publisher_identity(token: t)
-  }
+  dedicated_federation_provision_with_supplied_token(f: heal_publisher_dedicated_federation())
 }

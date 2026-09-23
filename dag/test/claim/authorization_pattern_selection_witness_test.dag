@@ -21,6 +21,7 @@ import gunbc.auth.privileged_effect_census {
   unrostered_unreasoned_divergences, rostered_but_not_diverging, follow_up_sites,
   reasoned_divergences, reasoned_divergences_with_fired_triggers,
   site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
+  mtcollins1_boot_effect, privileged_effect_interlocks, interlocked_sites_missing_from_census,
 }
 import std.human_intervention {
   HumanIntervention, HumanInterventionIdentity, FleetOnce, DeviceOnce, EveryProvision, BreakGlassOnly,
@@ -232,4 +233,51 @@ test fn the_census_has_conforming_exemplars_of_two_patterns() -> Bool {
 // belongs in follow_up_sites rather than behind a statement (review 68720).
 test fn no_reasoned_divergence_has_a_fired_trigger() -> Bool {
   (reasoned_divergences() |> count) > 0 && (reasoned_divergences_with_fired_triggers() |> count) == 0
+}
+
+// THE MT. COLLINS BOOT (operator ruling 2026-09-23): the census row runs through the real fold and
+// DERIVES the federated pattern, and the site's realization conforms -- the boot is no longer an
+// unrostered per-run approval.
+test fn the_mtcollins1_boot_selects_federation_and_conforms() -> Bool {
+  any(census_verdicts(), v =>
+    declaration_ref_display_key(ref: v.site) == "gunbc.machine_intake_mtcollins1_boot_run::mtcollins1_boot_wet"
+      && selected_federated(s: v.selection)
+      && match v.conformance {
+        Conforms => true
+        DivergesWithReason { reason: _ } => false
+        Diverges => false
+        SiteNotDecidable { standing: _ } => false
+      })
+}
+
+// THE REVERSIBILITY IS WHAT THE DERIVATION RESTS ON, so the mutation is that one field. The same
+// boot declared irreversible (what the hands-on harm would be without the maintenance hold) owes a
+// witness AND must run unattended, and no pattern satisfies both: the fold refuses rather than
+// quietly picking approval or federation. This is the red that keeps the row's
+// ReversibleByReapply honest -- it is admissible only beside the interlock claimed below.
+test fn the_mtcollins1_boot_declared_irreversible_has_no_admissible_pattern() -> Bool {
+  let e = mtcollins1_boot_effect()
+  let mutated = PrivilegedEffect {
+    subject: e.subject,
+    frequency: e.frequency,
+    reversibility: IrreversibleEffect { what_is_lost: "a unit power-cycled under a technician's hands" as NonEmptyStr },
+    surface: e.surface,
+    workload_identity: e.workload_identity,
+    minted_reach: e.minted_reach,
+    billing: e.billing,
+  }
+  selected_federated(s: select_authorization_pattern(e: e))
+    && match select_authorization_pattern(e: mutated) {
+      NoAdmissiblePattern { causes: _, scope: _ } => true
+      _ => false
+    }
+}
+
+// THE CENSUS SHOWS THE INTERLOCK: every interlocked site is a census row, and the boot's names the
+// unit hold and the refusal fold that honors it.
+test fn the_mtcollins1_boot_interlock_is_rostered_against_a_census_row() -> Bool {
+  (interlocked_sites_missing_from_census() |> count) == 0
+    && any(privileged_effect_interlocks, i =>
+      declaration_ref_display_key(ref: i.site) == "gunbc.machine_intake_mtcollins1_boot_run::mtcollins1_boot_wet"
+        && declaration_ref_display_key(ref: i.refusal) == "gunbc.machine_intake_mtcollins1_maintenance_hold::mtcollins1_boot_hold_admission")
 }
