@@ -1,9 +1,9 @@
 module v2.test.claim.provenance.loaded_carrier_receipts
 
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
-import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.normalized_tree { NormalizedTree, no_import_bindings }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_root_nodes }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.extdeps.languages.dag {
   dag_language_model,
   qualified_name_from_module_node
@@ -13,18 +13,25 @@ import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
 import v2.std.optional { Absent, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.lens.module_graph { LocatedModuleRoot, located_roots_from_source_root_ingest, reference_derived_pool_from_located_roots }
+import v2.std.namespace_alias { ModuleBindingSource }
+import v2.std.collection { List }
 import v2.std.symbol_index {
+  DeclaredPayloadKind,
   GlobalBareHit,
+  RecordTypePayload,
+  VariantArmPayload,
   GlobalBareLookupAmbiguous,
   GlobalBareLookupUnbound,
   SymbolIndex,
   empty_symbol_index,
+  symbol_index_declared_payload_at,
   symbol_index_global_unique_lookup,
   symbol_index_lookup
 }
@@ -103,8 +110,34 @@ fn lcr_root_nodes() -> FreeMonoid<Node> {
   )
 }
 
+// THE INDEX ALONE, WITHOUT IMPORT ROWS, AND WITH ITS RECORDS. The receipts below ask what the index
+// answers on import-free resolution -- the namespace cut's target, where the index is the only path
+// -- so the import rows the carrier also holds are left out on purpose, by name. The record
+// declarations are not: they are the declared-payload half of what the index answers, and a source
+// that dropped them would answer Absent for a record (adhoc-68dc5afb-a90).
+fn lcr_declaration_source_step(
+  acc: FreeMonoid<ModuleBindingSource>,
+  tree: NormalizedTree
+) -> FreeMonoid<ModuleBindingSource> {
+  list_snoc_item(
+    xs: acc,
+    item: ModuleBindingSource {
+      root: tree.root,
+      import_bindings: no_import_bindings(),
+      record_declarations: tree.record_declarations
+    }
+  )
+}
+
 fn lcr_index() -> SymbolIndex {
-  symbol_index_fill_module_root_nodes(index: empty_symbol_index(), roots: lcr_root_nodes())
+  symbol_index_fill_module_roots(
+    index: empty_symbol_index(),
+    roots: fold_list(
+      xs: lcr_loaded_roots(),
+      empty: Empty,
+      cons: fn(acc, tree) { lcr_declaration_source_step(acc: acc, tree: tree) }
+    )
+  )
 }
 
 fn lcr_root_named_step(acc: FreeMonoid<Node>, root: Node, wanted: QualifiedName) -> FreeMonoid<Node> {
@@ -133,7 +166,7 @@ fn lcr_indexed(dotted: String) -> Bool {
 fn lcr_globally_bound(name: Symbol) -> Bool {
   match symbol_index_global_unique_lookup(index: lcr_index(), name: name) {
     GlobalBareHit { node: _, path: _ } => true
-    GlobalBareLookupAmbiguous => false
+    GlobalBareLookupAmbiguous { paths: _ } => false
     GlobalBareLookupUnbound => false
   }
 }
@@ -304,4 +337,48 @@ test fn function_bodies_are_token_level_in_the_normalized_carrier_holds() -> Boo
   let the_callee_is_not_a_node = lcr_atoms_in(module_qn: lcr_consumer_qn, wanted: ^producer_anchor) == 0
   let but_the_callee_is_indexed = lcr_globally_bound(name: ^producer_anchor)
   a_raw_token_is_present && the_callee_is_not_a_node && but_the_callee_is_indexed
+}
+
+// A RECORD BUILT THROUGH EITHER FORMERLY RECORD-LESS DOOR IS A DECLARED PAYLOAD (adhoc-68dc5afb-a90,
+// from review 70544 on gunbc#12082). Before this change v2.compiler.symbol_index_fill
+// symbol_index_fill_module_root and the deleted symbol_index_fill_module_root_nodes filled
+// declarations with no record carrier, so an index built through them answered Absent from
+// symbol_index_declared_payload_at for `CrossFileMarker` -- the record a resolve-style reader
+// would then take for a binder. Both claims are red on the parent of that change and green on it.
+// The index is asked by PATH, and `CrossFileMarker` is absent from `entries` on this load (the
+// receipt above), so the answer comes from the carrier captured at normalize and not from any
+// shape the grafted root still shows -- which is the route the claim exists to exercise.
+fn lcr_is_record_payload(index: SymbolIndex) -> Bool {
+  match symbol_index_declared_payload_at(
+    index: index,
+    qualified_path: qualified_name_from_dotted_string(dotted: "lcr.producer.CrossFileMarker")
+  ) {
+    Present { value: kind } =>
+      match kind {
+        RecordTypePayload => true
+        VariantArmPayload => false
+      }
+    Absent => false
+  }
+}
+
+// The single-root door, reached through its production consumer: the reference-derived pool that
+// v2.lens.module_graph builds from the located roots of a real ingest.
+// NULLARY AND PURE so the floor prepares it once (v2.workflow.floor_pure_producer_share), as
+// lcr_loaded_roots is: the ingest is the whole cost and neither claim is about it.
+fn lcr_located_roots() -> Outcome<List<LocatedModuleRoot>> {
+  located_roots_from_source_root_ingest(ingest: lcr_ingest)
+}
+
+test fn a_record_through_the_located_pool_is_a_declared_payload_holds() -> Bool {
+  match lcr_located_roots() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: items, diagnostics: _ } =>
+      lcr_is_record_payload(index: reference_derived_pool_from_located_roots(items: items).index)
+  }
+}
+
+// The multi-root door this file used to fill through, now the corpus builder over the real carriers.
+test fn a_record_through_the_loaded_corpus_index_is_a_declared_payload_holds() -> Bool {
+  lcr_is_record_payload(index: lcr_index())
 }
