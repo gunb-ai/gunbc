@@ -130,6 +130,8 @@ data known_frontier_causes: List<CauseOwnership> = [
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "flips when a v2 stage lowers early exit (an else-less `if` statement) to control flow, a model-first package staffed once the workload shows it on its critical path; until then the statement refuses here rather than being dropped or rewritten (gunbc#11998 batch 2, ruling via neat-boar-16)"
+  },
+  CauseOwnership {
     cause: ^body_lowering_reason_field_decl_unlowered,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,

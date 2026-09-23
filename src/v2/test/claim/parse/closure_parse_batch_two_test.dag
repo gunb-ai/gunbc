@@ -1,13 +1,37 @@
 module v2.test.parse.closure_parse_batch_two
 
-import v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse { cp_normalized, cp_normalizes, cp_parses }
-import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.test.parse.supplied_token_stream_support {
+  supplied_stream_matches_tokenize,
+  supplied_stream_normalize,
+  supplied_stream_parse
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.logic { Bool }
 import v2.std.node { Node, NodeFold, Symbol, fold_node, name_occurrences }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INPUT IS SUPPLIED; PARSE AND NORMALIZE STILL EXECUTE, over the shared supplied route
+// (v2.test.parse.supplied_token_stream_support). Each specimen's stream owes a cb2_fidelity_* claim
+// that it IS what the real tokenizer emits for the specimen text, so a stream that drifted from the
+// tokenizer reddens there rather than greening a claim about a stream the compiler never produces.
+fn cb2_parses(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cb2_normalizes(o: Outcome<NormalizedTree>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
 
 // Subject: five constructs of the workload closure (//v2/test/parse/expression_bodied_fn_decl_parse:all)
 // the native front end refused, each a row of the one dag grammar (v2.extdeps.languages.dag), each
@@ -16,11 +40,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // B -- dag_grammar_generic_arg_expr (std.integer `MachineWidth<8>`).
 test fn int_literal_generic_argument_parses_holds() -> Bool {
-  cp_parses(text: "module m.t\n\ntype I8 = Compose<Int, W<8>>\n")
+  cb2_parses(o: supplied_stream_parse(tokens: cb2_stream_0()))
 }
 
 test fn bare_int_literal_is_not_a_type_holds() -> Bool {
-  match cp_parses(text: "module m.t\n\ntype T = 8\n") {
+  match cb2_parses(o: supplied_stream_parse(tokens: cb2_stream_1())) {
     true => false
     false => true
   }
@@ -28,11 +52,11 @@ test fn bare_int_literal_is_not_a_type_holds() -> Bool {
 
 // C -- dag_grammar_primary_name_expr (std.cross_tree.resolution `{ module: module }`).
 test fn module_keyword_as_a_value_parses_holds() -> Bool {
-  cp_parses(text: "module m.t\n\nfn f(x: Q) -> Q {\n  module\n}\n")
+  cb2_parses(o: supplied_stream_parse(tokens: cb2_stream_2()))
 }
 
 test fn other_keywords_are_not_values_holds() -> Bool {
-  match cp_parses(text: "module m.t\n\nfn f(x: Q) -> Q {\n  data\n}\n") {
+  match cb2_parses(o: supplied_stream_parse(tokens: cb2_stream_3())) {
     true => false
     false => true
   }
@@ -40,27 +64,23 @@ test fn other_keywords_are_not_values_holds() -> Bool {
 
 // D -- the field_decl_block arm of dag_grammar_type_expr (std.pareto `type AxisScan = { .. }`).
 test fn anonymous_record_type_expression_parses_holds() -> Bool {
-  cp_parses(text: "module m.t\n\ntype S = { p: Int, c: Int }\n")
+  cb2_parses(o: supplied_stream_parse(tokens: cb2_stream_4()))
 }
 
 // E -- dag_grammar_admit_callers_clause_expr (std.integer qualified_octets). Parsed and discarded
 // (gunbc.rung_drop admit_callers_discarded_on_the_native_route).
 test fn admit_callers_clause_parses_holds() -> Bool {
-  cp_parses(
-    text: "module m.t\n\nfn q(m: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"a\", decl_name: \"c\")]\n{\n  m\n}\n"
-  )
+  cb2_parses(o: supplied_stream_parse(tokens: cb2_stream_5()))
 }
 
 // The clause is consumed at fn lowering: the declaration normalizes to an Arrow with the clause
 // discarded, which is the rung drop's population, so a retained clause shell would fail here.
 test fn admit_callers_clause_normalizes_holds() -> Bool {
-  cp_normalizes(
-    text: "module m.t\n\nfn q(m: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"a\", decl_name: \"c\")]\n{\n  m\n}\n"
-  )
+  cb2_normalizes(o: supplied_stream_normalize(tokens: cb2_stream_5()))
 }
 
 test fn empty_admit_callers_refuses_as_in_v1_holds() -> Bool {
-  match cp_parses(text: "module m.t\n\nfn q(m: Int) -> Int\n  admit_callers: []\n{\n  m\n}\n") {
+  match cb2_parses(o: supplied_stream_parse(tokens: cb2_stream_6())) {
     true => false
     false => true
   }
@@ -69,7 +89,7 @@ test fn empty_admit_callers_refuses_as_in_v1_holds() -> Bool {
 // A -- dag_grammar_else_less_if_stmt_expr (extdeps.uri_path guards): parsed, then refused at
 // lowering with its own typed cause, never dropped or rewritten.
 test fn else_less_if_refuses_at_lowering_with_its_cause_holds() -> Bool {
-  match cp_normalized(text: "module m.t\n\nfn f(x: Bool) -> Int {\n  if x {\n    return 1\n  }\n  2\n}\n") {
+  match supplied_stream_normalize(tokens: cb2_stream_7()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
       diagnostics_fatal_reason(d: d) == ^body_lowering_reason_else_less_if_unlowered
@@ -92,13 +112,11 @@ fn named_edge_count_anywhere(root: Node, name: Symbol) -> Int {
 }
 
 test fn two_declarations_named_node_projection_normalize_holds() -> Bool {
-  cp_normalizes(
-    text: "module m.t\n\nfn a_value_node_projection(x: V) -> P {\n  x\n}\n\nfn b_node_projection(v: V) -> P {\n  v\n}\n"
-  )
+  cb2_normalizes(o: supplied_stream_normalize(tokens: cb2_stream_8()))
 }
 
 test fn declaration_named_node_projection_is_kept_holds() -> Bool {
-  match cp_normalized(text: "module m.t\n\nfn a_node_projection(x: V) -> P {\n  x\n}\n") {
+  match supplied_stream_normalize(tokens: cb2_stream_9()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       named_edge_count_anywhere(root: tree.root, name: ^a_node_projection) == 1
@@ -108,9 +126,346 @@ test fn declaration_named_node_projection_is_kept_holds() -> Bool {
 // The roster still sees through real projection structure: an ordinary module normalizes and
 // its authored member is reachable once, exactly as above, so the change is not a blanket accept.
 test fn ordinary_declaration_is_kept_once_holds() -> Bool {
-  match cp_normalized(text: "module m.t\n\nfn a(x: V) -> P {\n  x\n}\n") {
+  match supplied_stream_normalize(tokens: cb2_stream_10()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       named_edge_count_anywhere(root: tree.root, name: ^a) == 1
   }
+}
+
+fn cb2_stream_0() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^closure_parse_batch_two_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^closure_parse_batch_two_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^closure_parse_batch_two_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^closure_parse_batch_two_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^closure_parse_batch_two_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "I8", file: ^closure_parse_batch_two_probe, start: 17, end: 19 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^closure_parse_batch_two_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_ident, lexeme: "Compose", file: ^closure_parse_batch_two_probe, start: 22, end: 29 },
+    Token { class: ^dag_token_lt, lexeme: "<", file: ^closure_parse_batch_two_probe, start: 29, end: 30 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^closure_parse_batch_two_probe, start: 30, end: 33 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^closure_parse_batch_two_probe, start: 33, end: 34 },
+    Token { class: ^dag_token_ident, lexeme: "W", file: ^closure_parse_batch_two_probe, start: 35, end: 36 },
+    Token { class: ^dag_token_lt, lexeme: "<", file: ^closure_parse_batch_two_probe, start: 36, end: 37 },
+    Token { class: ^dag_token_int_literal, lexeme: "8", file: ^closure_parse_batch_two_probe, start: 37, end: 38 },
+    Token { class: ^dag_token_gt, lexeme: ">", file: ^closure_parse_batch_two_probe, start: 38, end: 39 },
+    Token { class: ^dag_token_gt, lexeme: ">", file: ^closure_parse_batch_two_probe, start: 39, end: 40 }
+  ])
+}
+
+test fn cb2_fidelity_0() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype I8 = Compose<Int, W<8>>\n",
+    file: ^closure_parse_batch_two_probe,
+    supplied: cb2_stream_0()
+  )
+}
+fn cb2_stream_1() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^closure_parse_batch_two_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^closure_parse_batch_two_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^closure_parse_batch_two_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^closure_parse_batch_two_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^closure_parse_batch_two_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "T", file: ^closure_parse_batch_two_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^closure_parse_batch_two_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_int_literal, lexeme: "8", file: ^closure_parse_batch_two_probe, start: 21, end: 22 }
+  ])
+}
+
+test fn cb2_fidelity_1() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype T = 8\n",
+    file: ^closure_parse_batch_two_probe,
+    supplied: cb2_stream_1()
+  )
+}
+fn cb2_stream_2() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^closure_parse_batch_two_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^closure_parse_batch_two_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^closure_parse_batch_two_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^closure_parse_batch_two_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^closure_parse_batch_two_probe, start: 12, end: 14 },
+    Token { class: ^dag_token_ident, lexeme: "f", file: ^closure_parse_batch_two_probe, start: 15, end: 16 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^closure_parse_batch_two_probe, start: 16, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^closure_parse_batch_two_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^closure_parse_batch_two_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_ident, lexeme: "Q", file: ^closure_parse_batch_two_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^closure_parse_batch_two_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^closure_parse_batch_two_probe, start: 23, end: 25 },
+    Token { class: ^dag_token_ident, lexeme: "Q", file: ^closure_parse_batch_two_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^closure_parse_batch_two_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^closure_parse_batch_two_probe, start: 32, end: 38 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^closure_parse_batch_two_probe, start: 39, end: 40 }
+  ])
+}
+
+test fn cb2_fidelity_2() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\nfn f(x: Q) -> Q {\n  module\n}\n",
+    file: ^closure_parse_batch_two_probe,
+    supplied: cb2_stream_2()
+  )
+}
+fn cb2_stream_3() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^closure_parse_batch_two_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^closure_parse_batch_two_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^closure_parse_batch_two_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^closure_parse_batch_two_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^closure_parse_batch_two_probe, start: 12, end: 14 },
+    Token { class: ^dag_token_ident, lexeme: "f", file: ^closure_parse_batch_two_probe, start: 15, end: 16 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^closure_parse_batch_two_probe, start: 16, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^closure_parse_batch_two_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^closure_parse_batch_two_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_ident, lexeme: "Q", file: ^closure_parse_batch_two_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^closure_parse_batch_two_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^closure_parse_batch_two_probe, start: 23, end: 25 },
+    Token { class: ^dag_token_ident, lexeme: "Q", file: ^closure_parse_batch_two_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^closure_parse_batch_two_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^closure_parse_batch_two_probe, start: 32, end: 36 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^closure_parse_batch_two_probe, start: 37, end: 38 }
+  ])
+}
+
+test fn cb2_fidelity_3() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\nfn f(x: Q) -> Q {\n  data\n}\n",
+    file: ^closure_parse_batch_two_probe,
+    supplied: cb2_stream_3()
+  )
+}
+fn cb2_stream_4() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^closure_parse_batch_two_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^closure_parse_batch_two_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^closure_parse_batch_two_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^closure_parse_batch_two_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^closure_parse_batch_two_probe, start: 12, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "S", file: ^closure_parse_batch_two_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^closure_parse_batch_two_probe, start: 19, end: 20 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^closure_parse_batch_two_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_ident, lexeme: "p", file: ^closure_parse_batch_two_probe, start: 23, end: 24 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^closure_parse_batch_two_probe, start: 24, end: 25 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^closure_parse_batch_two_probe, start: 26, end: 29 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^closure_parse_batch_two_probe, start: 29, end: 30 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^closure_parse_batch_two_probe, start: 31, end: 32 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^closure_parse_batch_two_probe, start: 32, end: 33 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^closure_parse_batch_two_probe, start: 34, end: 37 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^closure_parse_batch_two_probe, start: 38, end: 39 }
+  ])
+}
+
+test fn cb2_fidelity_4() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\ntype S = { p: Int, c: Int }\n",
+    file: ^closure_parse_batch_two_probe,
+    supplied: cb2_stream_4()
+  )
+}
+fn cb2_stream_5() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^closure_parse_batch_two_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^closure_parse_batch_two_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^closure_parse_batch_two_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^closure_parse_batch_two_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^closure_parse_batch_two_probe, start: 12, end: 14 },
+    Token { class: ^dag_token_ident, lexeme: "q", file: ^closure_parse_batch_two_probe, start: 15, end: 16 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^closure_parse_batch_two_probe, start: 16, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^closure_parse_batch_two_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^closure_parse_batch_two_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^closure_parse_batch_two_probe, start: 20, end: 23 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^closure_parse_batch_two_probe, start: 23, end: 24 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^closure_parse_batch_two_probe, start: 25, end: 27 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^closure_parse_batch_two_probe, start: 28, end: 31 },
+    Token { class: ^dag_token_ident, lexeme: "admit_callers", file: ^closure_parse_batch_two_probe, start: 34, end: 47 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^closure_parse_batch_two_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_lbracket, lexeme: "[", file: ^closure_parse_batch_two_probe, start: 49, end: 50 },
+    Token { class: ^dag_token_ident, lexeme: "decl_ref", file: ^closure_parse_batch_two_probe, start: 50, end: 58 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^closure_parse_batch_two_probe, start: 58, end: 59 },
+    Token { class: ^dag_token_ident, lexeme: "module_path", file: ^closure_parse_batch_two_probe, start: 59, end: 70 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^closure_parse_batch_two_probe, start: 70, end: 71 },
+    Token { class: ^dag_token_string_literal, lexeme: "\"a\"", file: ^closure_parse_batch_two_probe, start: 72, end: 75 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^closure_parse_batch_two_probe, start: 75, end: 76 },
+    Token { class: ^dag_token_ident, lexeme: "decl_name", file: ^closure_parse_batch_two_probe, start: 77, end: 86 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^closure_parse_batch_two_probe, start: 86, end: 87 },
+    Token { class: ^dag_token_string_literal, lexeme: "\"c\"", file: ^closure_parse_batch_two_probe, start: 88, end: 91 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^closure_parse_batch_two_probe, start: 91, end: 92 },
+    Token { class: ^dag_token_rbracket, lexeme: "]", file: ^closure_parse_batch_two_probe, start: 92, end: 93 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^closure_parse_batch_two_probe, start: 94, end: 95 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^closure_parse_batch_two_probe, start: 98, end: 99 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^closure_parse_batch_two_probe, start: 100, end: 101 }
+  ])
+}
+
+test fn cb2_fidelity_5() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\nfn q(m: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"a\", decl_name: \"c\")]\n{\n  m\n}\n",
+    file: ^closure_parse_batch_two_probe,
+    supplied: cb2_stream_5()
+  )
+}
+fn cb2_stream_6() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^closure_parse_batch_two_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^closure_parse_batch_two_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^closure_parse_batch_two_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^closure_parse_batch_two_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^closure_parse_batch_two_probe, start: 12, end: 14 },
+    Token { class: ^dag_token_ident, lexeme: "q", file: ^closure_parse_batch_two_probe, start: 15, end: 16 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^closure_parse_batch_two_probe, start: 16, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^closure_parse_batch_two_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^closure_parse_batch_two_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^closure_parse_batch_two_probe, start: 20, end: 23 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^closure_parse_batch_two_probe, start: 23, end: 24 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^closure_parse_batch_two_probe, start: 25, end: 27 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^closure_parse_batch_two_probe, start: 28, end: 31 },
+    Token { class: ^dag_token_ident, lexeme: "admit_callers", file: ^closure_parse_batch_two_probe, start: 34, end: 47 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^closure_parse_batch_two_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_lbracket, lexeme: "[", file: ^closure_parse_batch_two_probe, start: 49, end: 50 },
+    Token { class: ^dag_token_rbracket, lexeme: "]", file: ^closure_parse_batch_two_probe, start: 50, end: 51 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^closure_parse_batch_two_probe, start: 52, end: 53 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^closure_parse_batch_two_probe, start: 56, end: 57 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^closure_parse_batch_two_probe, start: 58, end: 59 }
+  ])
+}
+
+test fn cb2_fidelity_6() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\nfn q(m: Int) -> Int\n  admit_callers: []\n{\n  m\n}\n",
+    file: ^closure_parse_batch_two_probe,
+    supplied: cb2_stream_6()
+  )
+}
+fn cb2_stream_7() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^closure_parse_batch_two_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^closure_parse_batch_two_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^closure_parse_batch_two_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^closure_parse_batch_two_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^closure_parse_batch_two_probe, start: 12, end: 14 },
+    Token { class: ^dag_token_ident, lexeme: "f", file: ^closure_parse_batch_two_probe, start: 15, end: 16 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^closure_parse_batch_two_probe, start: 16, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^closure_parse_batch_two_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^closure_parse_batch_two_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_ident, lexeme: "Bool", file: ^closure_parse_batch_two_probe, start: 20, end: 24 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^closure_parse_batch_two_probe, start: 24, end: 25 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^closure_parse_batch_two_probe, start: 26, end: 28 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^closure_parse_batch_two_probe, start: 29, end: 32 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^closure_parse_batch_two_probe, start: 33, end: 34 },
+    Token { class: ^dag_token_kw_if, lexeme: "if", file: ^closure_parse_batch_two_probe, start: 37, end: 39 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^closure_parse_batch_two_probe, start: 40, end: 41 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^closure_parse_batch_two_probe, start: 42, end: 43 },
+    Token { class: ^dag_token_kw_return, lexeme: "return", file: ^closure_parse_batch_two_probe, start: 48, end: 54 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^closure_parse_batch_two_probe, start: 55, end: 56 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^closure_parse_batch_two_probe, start: 59, end: 60 },
+    Token { class: ^dag_token_int_literal, lexeme: "2", file: ^closure_parse_batch_two_probe, start: 63, end: 64 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^closure_parse_batch_two_probe, start: 65, end: 66 }
+  ])
+}
+
+test fn cb2_fidelity_7() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\nfn f(x: Bool) -> Int {\n  if x {\n    return 1\n  }\n  2\n}\n",
+    file: ^closure_parse_batch_two_probe,
+    supplied: cb2_stream_7()
+  )
+}
+fn cb2_stream_8() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^closure_parse_batch_two_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^closure_parse_batch_two_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^closure_parse_batch_two_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^closure_parse_batch_two_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^closure_parse_batch_two_probe, start: 12, end: 14 },
+    Token { class: ^dag_token_ident, lexeme: "a_value_node_projection", file: ^closure_parse_batch_two_probe, start: 15, end: 38 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^closure_parse_batch_two_probe, start: 38, end: 39 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^closure_parse_batch_two_probe, start: 39, end: 40 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^closure_parse_batch_two_probe, start: 40, end: 41 },
+    Token { class: ^dag_token_ident, lexeme: "V", file: ^closure_parse_batch_two_probe, start: 42, end: 43 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^closure_parse_batch_two_probe, start: 43, end: 44 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^closure_parse_batch_two_probe, start: 45, end: 47 },
+    Token { class: ^dag_token_ident, lexeme: "P", file: ^closure_parse_batch_two_probe, start: 48, end: 49 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^closure_parse_batch_two_probe, start: 50, end: 51 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^closure_parse_batch_two_probe, start: 54, end: 55 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^closure_parse_batch_two_probe, start: 56, end: 57 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^closure_parse_batch_two_probe, start: 59, end: 61 },
+    Token { class: ^dag_token_ident, lexeme: "b_node_projection", file: ^closure_parse_batch_two_probe, start: 62, end: 79 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^closure_parse_batch_two_probe, start: 79, end: 80 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^closure_parse_batch_two_probe, start: 80, end: 81 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^closure_parse_batch_two_probe, start: 81, end: 82 },
+    Token { class: ^dag_token_ident, lexeme: "V", file: ^closure_parse_batch_two_probe, start: 83, end: 84 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^closure_parse_batch_two_probe, start: 84, end: 85 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^closure_parse_batch_two_probe, start: 86, end: 88 },
+    Token { class: ^dag_token_ident, lexeme: "P", file: ^closure_parse_batch_two_probe, start: 89, end: 90 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^closure_parse_batch_two_probe, start: 91, end: 92 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^closure_parse_batch_two_probe, start: 95, end: 96 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^closure_parse_batch_two_probe, start: 97, end: 98 }
+  ])
+}
+
+test fn cb2_fidelity_8() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\nfn a_value_node_projection(x: V) -> P {\n  x\n}\n\nfn b_node_projection(v: V) -> P {\n  v\n}\n",
+    file: ^closure_parse_batch_two_probe,
+    supplied: cb2_stream_8()
+  )
+}
+fn cb2_stream_9() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^closure_parse_batch_two_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^closure_parse_batch_two_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^closure_parse_batch_two_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^closure_parse_batch_two_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^closure_parse_batch_two_probe, start: 12, end: 14 },
+    Token { class: ^dag_token_ident, lexeme: "a_node_projection", file: ^closure_parse_batch_two_probe, start: 15, end: 32 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^closure_parse_batch_two_probe, start: 32, end: 33 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^closure_parse_batch_two_probe, start: 33, end: 34 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^closure_parse_batch_two_probe, start: 34, end: 35 },
+    Token { class: ^dag_token_ident, lexeme: "V", file: ^closure_parse_batch_two_probe, start: 36, end: 37 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^closure_parse_batch_two_probe, start: 37, end: 38 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^closure_parse_batch_two_probe, start: 39, end: 41 },
+    Token { class: ^dag_token_ident, lexeme: "P", file: ^closure_parse_batch_two_probe, start: 42, end: 43 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^closure_parse_batch_two_probe, start: 44, end: 45 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^closure_parse_batch_two_probe, start: 48, end: 49 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^closure_parse_batch_two_probe, start: 50, end: 51 }
+  ])
+}
+
+test fn cb2_fidelity_9() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\nfn a_node_projection(x: V) -> P {\n  x\n}\n",
+    file: ^closure_parse_batch_two_probe,
+    supplied: cb2_stream_9()
+  )
+}
+fn cb2_stream_10() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^closure_parse_batch_two_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^closure_parse_batch_two_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^closure_parse_batch_two_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^closure_parse_batch_two_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^closure_parse_batch_two_probe, start: 12, end: 14 },
+    Token { class: ^dag_token_ident, lexeme: "a", file: ^closure_parse_batch_two_probe, start: 15, end: 16 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^closure_parse_batch_two_probe, start: 16, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^closure_parse_batch_two_probe, start: 17, end: 18 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^closure_parse_batch_two_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_ident, lexeme: "V", file: ^closure_parse_batch_two_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^closure_parse_batch_two_probe, start: 21, end: 22 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^closure_parse_batch_two_probe, start: 23, end: 25 },
+    Token { class: ^dag_token_ident, lexeme: "P", file: ^closure_parse_batch_two_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^closure_parse_batch_two_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^closure_parse_batch_two_probe, start: 32, end: 33 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^closure_parse_batch_two_probe, start: 34, end: 35 }
+  ])
+}
+
+test fn cb2_fidelity_10() -> Bool {
+  supplied_stream_matches_tokenize(
+    text: "module m.t\n\nfn a(x: V) -> P {\n  x\n}\n",
+    file: ^closure_parse_batch_two_probe,
+    supplied: cb2_stream_10()
+  )
 }
