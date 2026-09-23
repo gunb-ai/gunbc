@@ -1,0 +1,1375 @@
+module gunbc.fabric_source_snapshot
+
+// CAPTURING SOURCE INTO THE FABRIC OBJECT STORE, AND MATERIALIZING IT SOMEWHERE ELSE.
+//
+// std.fabric_storage already owns immutable content-addressed objects, and
+// gunbc.fabric_storage_file_store already realizes them over a directory. product.fabric.work
+// already rules that a Work consumes a SOURCE MANIFEST rather than a tree digest, and that a Git
+// tree id is one BINDING-LEVEL realization of that manifest and not the fabric's source type. What
+// no module did was JOIN those two facts: nothing put a source tree into that store, and nothing
+// rebuilt one out of it. This module is that join, and it is the whole of it.
+//
+// WHY IT MAY NOT REACH FOR GIT, stated as a property of the consumer rather than a preference. The
+// executor this serves does not hold the caller's object store: it is a different checkout, and in
+// the fabric it is a different machine under a different trust domain. `git archive`, `git
+// worktree add` and `git stash` all answer by reading objects the caller holds, so each of them
+// makes the executor a second reader of the caller's repository -- and two of them WRITE, to the
+// index or to .git/worktrees, which makes preparing a request mutate the tree the author is still
+// editing. A content-addressed object store answers the same question with neither property: the
+// bytes travel, the caller's repository is untouched, and what the executor consumed is a digest
+// rather than a promise.
+//
+// AND THAT IS WHY AN INCLUSION IS EXPLICIT RATHER THAN A WALK. A tracked-file enumeration is a git
+// question wearing a filesystem costume -- it answers with what the index knows, so a file the
+// author created and has not added is INVISIBLE to it, which is exactly the file a build request
+// most often needs. There is no directory walk here for the reason gunbc.scm.write_spine_ingress
+// gives for its own absence: a recursive acquisition needs a modeled traversal with its own
+// refusals -- symlinks, cycles, unreadable subtrees, binary content -- and inventing one inside a
+// capture would be the second path beside an existing modeled route that DESIGN section 6 names.
+// Every file in a snapshot is named by its requester, so a new file and a tracked file enter by one
+// route and neither is privileged.
+//
+// WHAT IS NOT MODELLED HERE, named so it is not mistaken for covered. File MODE (an executable
+// bit), symlinks, submodules and non-text content are all part of the source-manifest contract
+// product.fabric.work declares, and none of them is carried: a captured file is text at a path.
+// A request whose correctness depends on any of them is NOT served by this route, and the honest
+// consequence is that it must not be routed here rather than that it degrades quietly.
+// dissolve-on: a modeled file-mode and link-kind carrier reaching the inclusion, at which point the
+// entry object gains those facts and this paragraph names what it covers instead.
+
+// ── WHAT THE EXECUTOR'S CLI ONCE DEMANDED OF A TREE, AND NO LONGER DOES ──────────────────────
+//
+// THIS SECTION RECORDS A REPAIR RATHER THAN A CARRIER, because the carrier it used to hold was a
+// workaround and the honest fix was one link upstream.
+//
+// The first writing of this module ended with `prepare_executor_tree`, which planted an empty git
+// repository and a workspace manifest at the destination so the seed CLI would consent to run
+// there. It was named, typed and declared -- and it was still a workaround: "an executor with
+// source and no repository" is exactly the capability this module exists to provide, so a function
+// that manufactures a repository to obtain it had answered the symptom at the link where the
+// symptom appeared. DESIGN section 6b names that shape and names the remedy: re-derive the slice
+// and stop at the earliest boundary that cannot justify itself.
+//
+// THAT BOUNDARY WAS v1_compiler.cli_run process_workspace_root. What the workspace root ESTABLISHES
+// is a base such that every source root and module file has a stable repo-relative spelling; what
+// it DID was ask git for a checkout carrying Cargo.toml beside dag/, and PANIC when none answered.
+// The checkout is a proxy for the base, correct in a checkout and unable to say anything at all
+// outside one -- while the base was sitting in the request the whole time, because a relative
+// `--source-root` spelling is by definition relative to the directory the run starts in.
+//
+// So the root is now bound from the request at the verb, before anything reads it, and a run that
+// can name no base refuses with a located cause at exit 2 instead of aborting inside a helper. The
+// same derivation binds the checkout root, discharging for this population the dissolution that
+// scaffold already named -- release bins receive the checkout root at spawn. Measured: a directory
+// holding three modules, no .git and no Cargo.toml now resolves three source roots and exits 0,
+// where before the repair it exited 101.
+//
+// WHAT IS DELETED WITH IT: prepare_executor_tree, ExecutorTreeStanding, the workspace-manifest
+// constant, and executor_tree_requires_repository_marker_frontier. A frontier row is a statement
+// that something is owed; this one is paid, and keeping it would leave a reader looking for a
+// workaround that is no longer there.
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemExactRead,
+  FilesystemExactPathRead,
+  FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable,
+  FilesystemExactPathKindUnrecognized,
+  filesystem_exact_read,
+  filesystem_failure_kind_name,
+  FilesystemCreateNew,
+  FilesystemCreated,
+  FilesystemCreateTargetOccupied,
+  FilesystemCreateRefused,
+  FilesystemCreateKindUnrecognized,
+  filesystem_create_new,
+}
+import std.fabric_storage {
+  FabricObject,
+  FabricObjectRef,
+  FabricStoredObject,
+  FabricStorageFault,
+  FabricPut,
+  FabricObjectStored,
+  FabricPutRefused,
+  FabricObjectGet,
+  FabricObjectFetched,
+  FabricObjectGetRefused,
+  fabric_object_ref_wire,
+  fabric_storage_fault_wire,
+}
+import gunbc.fabric_storage_file_store {
+  FabricStorageFileRoot,
+  fabric_storage_file_get,
+  fabric_storage_file_put,
+}
+
+// WHAT THIS DOES AND DOES NOT REPLACE, AND THE SECOND ROUTE IT WOULD OTHERWISE BE.
+//
+// gunbc.roadmap_dispatch_actuator materializes source for a dispatched attempt with
+// `git worktree add`, twice: once for the MUTABLE ATTEMPT TREE the agent edits, and once for the
+// DETACHED VERIFICATION CHECKOUT at an exact head. Those are two different facts wearing one verb,
+// and this module's disposition for them is different.
+//
+// THE ATTEMPT TREE IS NOT REPLACED AND IS NOT A SECOND ROUTE TO THIS FACT. Its subject is a working
+// tree an agent will COMMIT FROM -- it needs branch, index, history and a remote to push to, which
+// are the whole content of "a git worktree" and none of which a source snapshot models or should.
+// A snapshot is immutable by construction, so it cannot be the carrier for a tree whose purpose is
+// to be edited. That is a boundary between subjects rather than a gap.
+//
+// THE VERIFICATION CHECKOUT IS THE SAME FACT, AND IT IS KEPT AS A DECLARED BINDING WITH THE TRIGGER
+// BELOW RATHER THAN QUIETLY DOUBLED. `dispatch_verification_checkout_path_for_instance` asks exactly
+// the question this module answers -- give an executor the exact immutable source at a named
+// identity -- and answers it through the caller's object store. Leaving two answers standing with no
+// statement is the fork DESIGN section 3 forbids, so the statement is here: git remains the binding
+// for that path today because every verification executor is a process on the host that holds the
+// repository, where the caller's object store IS the executor's and the snapshot route buys nothing
+// it does not already have. The moment that stops being true -- a verification executor off that
+// host -- the git binding stops being able to serve it at all, and this route is what replaces it.
+data verification_checkout_git_binding_frontier: FrontierRow = frontier_row_decl(
+  ref: decl_ref(
+    module_path: "gunbc.roadmap_dispatch_actuator",
+    decl_name: "dispatch_verification_checkout_path_for_instance",
+  ),
+  reason: "the detached verification checkout asks this module's question and answers it with git worktree add; both answers stand, and the git one is retained deliberately because its executor shares the caller's object store",
+  dissolution: unbound_dissolution(
+    description: "a verification executor that does not share the caller's repository -- an off-host or differently-trusted process -- is dispatched, at which point git worktree add cannot serve it and dispatch_verification_checkout_path_for_instance is cut over to materialize_source_snapshot against a served store. Not satisfied by this module existing, by the handoff instrument passing, or by a local executor being routed through a snapshot it did not need" as NonEmptyStr,
+  ),
+)
+
+// ── WHAT A PATH INSIDE A SNAPSHOT MAY BE ─────────────────────────────────────────────────────
+//
+// A TEXT PREFIX IS NOT CONTAINMENT, and the first writing of this module used one. It asked
+// `starts_with(path, "public/")` and called the answer "inside the composition" -- so a manifest
+// entry whose directory read `public/../..` passed, and the materialization then created that
+// directory and wrote a file OUTSIDE the destination entirely. The bytes were honest: every object
+// hashed to the ref that named it and the store verified all of them. Integrity of the CONTENTS
+// says nothing about where they land, and conflating the two is how a content-addressed store
+// becomes an arbitrary-write primitive.
+//
+// SO A PATH IS ADMITTED, NOT CHECKED AT THE POINT OF USE. `RelativeSourcePath` is sole-constructed
+// behind `admit_relative_source_path`, so a path that was never admitted cannot be passed to
+// anything that writes -- the containment question is answered once, at construction, rather than
+// re-asked by every consumer that remembers to. This is also the carrier
+// `gunbc.scm.object_store.CorpusManifestEntry` and `gunbc.scm.write_spine_ingress` both name as
+// their own widening trigger: "a path type whose CONSTRUCTION refuses an empty segment and a
+// parent-directory segment". It exists now.
+//
+// THE SEGMENT RULES ARE AN EXHAUSTIVE ENUMERATION OF FORMS, not a sample of dangerous-looking text,
+// and the argument is worth writing down because it is what makes this a wall. Over a POSIX
+// "/"-separated relative path, a segment equal to ".." can occur in exactly four positions and each
+// has a distinct textual form: the whole path (`..`), the first segment (`../` prefix), an interior
+// segment (`/../` infix), or the last segment (`/..` suffix). The same four hold for ".". An empty
+// segment is a leading "/", a trailing "/", or an interior "//". There is no fifth position, so the
+// disjunction below is complete rather than heuristic -- which is precisely the question DESIGN
+// section 4b says to ask before writing a check: is the forbidden state still authorable once this
+// runs? For a "/"-separated relative path, it is not.
+//
+// SCOPE, stated rather than implied: separators are "/" only. A backslash is an ordinary character
+// in a POSIX path component and is admitted as one; a realization on a platform where it separates
+// would need its own admission, and would be a different carrier rather than a wider one.
+type RelativeSourcePath sole_constructor {
+  text: NonEmptyStr
+}
+
+fn relative_source_path_text(path: RelativeSourcePath) -> NonEmptyStr {
+  path.text
+}
+
+type RelativePathAdmission
+  = RelativePathAdmitted { path: RelativeSourcePath }
+  | RelativePathRefused { text: String, cause: String }
+
+fn admit_relative_source_path(text: String) -> RelativePathAdmission {
+  if text == "" {
+    RelativePathRefused { text: text, cause: "the path is empty" }
+  } else if starts_with(s: text, prefix: "/") {
+    RelativePathRefused { text: text, cause: "the path is absolute" }
+  } else if ends_with(s: text, suffix: "/") {
+    RelativePathRefused { text: text, cause: "the path ends in a separator, so its last segment is empty" }
+  } else if string_contains(s: text, pattern: "//") {
+    RelativePathRefused { text: text, cause: "the path holds an empty segment" }
+  } else if text == ".." || starts_with(s: text, prefix: "../")
+    || string_contains(s: text, pattern: "/../") || ends_with(s: text, suffix: "/..") {
+    RelativePathRefused { text: text, cause: "the path holds a parent-directory segment and would leave the destination" }
+  } else if text == "." || starts_with(s: text, prefix: "./")
+    || string_contains(s: text, pattern: "/./") || ends_with(s: text, suffix: "/.") {
+    RelativePathRefused { text: text, cause: "the path holds a current-directory segment, so it is not canonical" }
+  } else {
+    RelativePathAdmitted { path: RelativeSourcePath { text: text as NonEmptyStr } }
+  }
+}
+
+// ── THE COMPOSITION ──────────────────────────────────────────────────────────────────────────
+//
+// A source composition is WHICH ROOTS a snapshot is made of, and it is a closed variant rather than
+// a list of strings because the two arms are two different contracts. A public-only snapshot may be
+// served to any executor; a snapshot carrying a private root may not, and an executor that expects
+// one and is handed the other has been handed a DIFFERENT SUBJECT under the same name -- the
+// meaning fork DESIGN section 3 forbids. With a list, "public + private" and "public" differ by a
+// membership test someone has to remember to perform; with arms, the mismatch is a match arm.
+//
+// THE ROOT NAMES ARE CARRIED RATHER THAN FIXED, because the prefix a snapshot is materialized under
+// is the caller's to choose -- gunbc.roadmap_execution_contract PinnedPublicPlusLocalRoot takes the
+// same prefix as a parameter, and hard-coding one here would fork that decision.
+type SourceComposition
+  = PublicOnlyComposition { public_root: NonEmptyStr }
+  | PublicAndPrivateComposition { public_root: NonEmptyStr, private_root: NonEmptyStr }
+
+// THE WIRE IS THE COMPARISON, AND IT IS ONE STRING ON PURPOSE. The manifest object carries this
+// text as its body, so agreement between what a snapshot IS and what an executor EXPECTS is a
+// string equality over a canonical rendering rather than a structural walk performed twice. The
+// arm tag is inside the text, so PublicOnly named "x" and PublicAndPrivate whose public root is "x"
+// cannot render alike.
+fn source_composition_wire(composition: SourceComposition) -> NonEmptyStr {
+  match composition {
+    PublicOnlyComposition { public_root: p } =>
+      join(["gunbc.fabric_source_snapshot.composition.v1;public=", p as String], "") as NonEmptyStr
+    PublicAndPrivateComposition { public_root: p, private_root: q } =>
+      join([
+        "gunbc.fabric_source_snapshot.composition.v1;public=",
+        p as String,
+        ";private=",
+        q as String,
+      ], "") as NonEmptyStr
+  }
+}
+
+// EVERY ROOT THE COMPOSITION DECLARES, IN THE ORDER A SOURCE-ROOT ARGUMENT LIST NAMES THEM.
+fn source_composition_roots(composition: SourceComposition) -> List<NonEmptyStr> {
+  match composition {
+    PublicOnlyComposition { public_root: p } => [p]
+    PublicAndPrivateComposition { public_root: p, private_root: q } => [p, q]
+  }
+}
+
+// A PATH IS INSIDE THE COMPOSITION ONLY UNDER A DECLARED ROOT'S BOUNDARY. The trailing separator is
+// the whole point: "publicity/x" must not pass as being under "public", and a bare prefix test
+// admits it. The same boundary rule gunbc.roadmap_execution_contract allowed_prefix_boundary
+// applies to an edit scope applies here to a snapshot's contents, for the same reason.
+fn snapshot_root_boundary(root: NonEmptyStr) -> String {
+  join([root as String, "/"], "")
+}
+
+// THE ROOT TEST IS FIRST-SEGMENT EQUALITY, AND IT IS SOUND ONLY OVER AN ADMITTED PATH. Once no
+// segment is empty and none is "." or "..", `starts_with(text, "<root>/")` says exactly "the first
+// segment is <root>" -- "publicity/x" does not match "public/", and nothing can re-enter the
+// destination from outside because nothing can leave it. The parameter type is what carries that
+// precondition: this function cannot be called on a string somebody has not admitted.
+fn snapshot_path_inside_composition(composition: SourceComposition, path: RelativeSourcePath) -> Bool {
+  any(
+    source_composition_roots(composition: composition),
+    root => starts_with(s: relative_source_path_text(path: path) as String, prefix: snapshot_root_boundary(root: root)),
+  )
+}
+
+// ── THE OBJECTS ──────────────────────────────────────────────────────────────────────────────
+//
+// THREE KINDS, AND NOT ONE DOCUMENT, BECAUSE NOTHING HERE MAY PARSE. A manifest encoded as one
+// document would need a decoder, and a decoder is a second authority over what a snapshot means
+// that can drift from the encoder -- and there is no split or line-scan primitive to write one with
+// honestly, so the tempting spelling would be a hand-rolled scan whose failure arms are guesses.
+// So the structure is carried by LINKS, which std.fabric_storage already walks and verifies:
+//
+//   content object   links: []                          body: the file's bytes
+//   entry object     links: [name object, content]      body: the directory, relative to the root
+//   manifest object  links: [entry, entry, ...]         body: the composition wire
+//
+// Every one of them is content-addressed by the same rule, so a mutated byte anywhere changes the
+// ref that names it and the store's own verification refuses -- this module writes no second
+// integrity check, because writing one would be the re-statement DESIGN section 5 rejects.
+fn snapshot_leaf_object(body: NonEmptyStr) -> FabricObject {
+  FabricObject { links: [] as List<FabricObjectRef>, body: body }
+}
+
+fn snapshot_entry_object(name: FabricObjectRef, content: FabricObjectRef, directory: NonEmptyStr) -> FabricObject {
+  FabricObject { links: [name, content], body: directory }
+}
+
+fn snapshot_manifest_object(entries: List<FabricObjectRef>, composition: SourceComposition) -> FabricObject {
+  FabricObject { links: entries, body: source_composition_wire(composition: composition) }
+}
+
+// ── WHAT A CAPTURE IS ASKED FOR ──────────────────────────────────────────────────────────────
+//
+// THE SOURCE AND THE DESTINATION ARE TWO FACTS, and fusing them was the first cut's defect. A file
+// is READ from wherever it is now -- a checkout, a scratch directory, a path an agent just wrote --
+// and LANDS at a path relative to the snapshot's roots. A single path field would silently require
+// the requester's layout to equal the executor's, which is exactly the property a snapshot exists
+// not to need.
+type SnapshotInclusion {
+  source_path: NonEmptyStr
+  directory: NonEmptyStr
+  name: NonEmptyStr
+}
+
+fn snapshot_inclusion_relative_path(inclusion: SnapshotInclusion) -> String {
+  join([inclusion.directory as String, "/", inclusion.name as String], "")
+}
+
+// ── REFUSALS ────────────────────────────────────────────────────────────────────────────────
+//
+// EVERY ARM NAMES ITS SUBJECT AND WHAT WENT WRONG WITH IT. A capture that answered one
+// SnapshotCaptureRefused would send "the file is not there", "the file is empty", "this path is not
+// under a root you declared" and "the store would not take it" to one place, and three of those are
+// the requester's defect while the fourth is the store's.
+type SnapshotCaptureRefusal
+  = SnapshotFileUnreadable { path: String, detail: String }
+  | SnapshotFileAbsent { path: String }
+  | SnapshotFileEmpty { path: String }
+  | SnapshotPathOutsideComposition { path: String, composition: String }
+  | SnapshotPathNotRelative { path: String, cause: String }
+  | SnapshotStoreRefusedObject { path: String, fault: String }
+  | SnapshotManifestNotStored { fault: String }
+
+type SnapshotCapture
+  = SnapshotCaptured { manifest: FabricObjectRef, files: Int, composition: String }
+  | SnapshotCaptureRefused { cause: SnapshotCaptureRefusal }
+
+// THE MATERIALIZATION REFUSALS ARE A DIFFERENT FAMILY FROM THE CAPTURE'S, and deliberately so: a
+// capture's failures are about a tree that exists and a store that would not take it, while these
+// are about a store that cannot answer for what it was asked -- which is the whole class this route
+// exists to make loud. Two of them are answered by std.fabric_storage rather than derived here:
+// a missing object is FabricObjectMissing and a byte that moved is FabricObjectCorrupt, both
+// carried through in `fault` rather than re-decided.
+// ONE FIELD, ONE SUBJECT. `SnapshotEntryUnavailable.object` names WHICHEVER object could not be
+// fetched -- the entry, its name or its content -- because all three are the same kind of failure
+// and the ref is what a reader needs to look it up. It was first spelled `manifest`, and three
+// call sites then passed three different subjects into a field whose name asserted a fourth: an
+// operator reading "manifest <ref>" would have gone looking for a manifest that was never the
+// thing missing. Caught by review 69557 on gunbc#11960, and it is the same meaning fork this
+// module's own header warns about, reproduced inside the refusal family meant to remove it.
+type SnapshotMaterializeRefusal
+  = SnapshotManifestUnavailable { manifest: String, fault: String }
+  | SnapshotCompositionMismatch { expected: String, found: String }
+  | SnapshotEntryUnavailable { object: String, fault: String }
+  | SnapshotEntryMalformed { detail: String }
+  | SnapshotEntryOutsideComposition { path: String, composition: String }
+  | SnapshotEntryPathNotRelative { path: String, cause: String }
+  | SnapshotDuplicatePath { path: String }
+  | SnapshotDestinationNotCreated { parent: String }
+  | SnapshotDirectoryNotCreated { directory: String }
+  | SnapshotFileNotWritten { path: String, detail: String }
+
+// THE RESULT NAMES THE SOURCE IT CONSUMED. A materialization that answered only "ok" would leave
+// its consumer -- the thing about to RUN against these bytes -- with no way to say what it ran
+// against, and a receipt naming the destination directory says where the bytes landed rather than
+// which bytes they were. The manifest ref is the source's identity, so it is what travels into the
+// executed request's own result.
+type SnapshotMaterialization
+  = SnapshotMaterialized { manifest: FabricObjectRef, destination: NonEmptyStr, files: Int, composition: String }
+  | SnapshotMaterializeRefused { cause: SnapshotMaterializeRefusal }
+
+// ── CAPTURE ─────────────────────────────────────────────────────────────────────────────────
+
+type SnapshotCaptureAcc {
+  entries: List<FabricObjectRef>
+  files: Int
+  refusal: SnapshotCaptureRefusal?
+}
+
+// THE READ IS THE EXACT-PATH ONE, so "absent" and "unreadable" stay apart: a capture that treated an
+// unreadable file as an absent one would let a permissions fault look like a requester's typo.
+fn snapshot_read_source(path: NonEmptyStr) -> FilesystemExactRead {
+  let read = Filesystem.Read(path: path as String)
+  filesystem_exact_read(
+    path: path as String,
+    content: read.content,
+    success: read.success,
+    error: read.error,
+    error_kind: read.error_kind,
+  )
+}
+
+fn snapshot_capture_refuse(acc: SnapshotCaptureAcc, cause: SnapshotCaptureRefusal) -> SnapshotCaptureAcc {
+  SnapshotCaptureAcc { entries: acc.entries, files: acc.files, refusal: Present { value: cause } }
+}
+
+// STORING ONE FILE IS THREE PUTS AND THE ORDER IS NOT INCIDENTAL: the name and the content are
+// stored before the entry that links them, so the store never holds an entry pointing at an object
+// it does not have. That is the same discipline gunbc.scm.object_store store_node applies to a
+// node's children, for the same reason -- a reachable hole is the state a closure walk exists to
+// refuse, and publishing one is how it gets created.
+fn snapshot_store_inclusion(
+  root: FabricStorageFileRoot,
+  acc: SnapshotCaptureAcc,
+  inclusion: SnapshotInclusion,
+  content: NonEmptyStr,
+) -> SnapshotCaptureAcc {
+  match fabric_storage_file_put(root: root, object: snapshot_leaf_object(body: inclusion.name)) {
+    FabricPutRefused { fault: f } =>
+      snapshot_capture_refuse(acc: acc, cause: SnapshotStoreRefusedObject {
+        path: snapshot_inclusion_relative_path(inclusion: inclusion),
+        fault: fabric_storage_fault_wire(fault: f),
+      })
+    FabricObjectStored { object: name_ref } =>
+      match fabric_storage_file_put(root: root, object: snapshot_leaf_object(body: content)) {
+        FabricPutRefused { fault: f } =>
+          snapshot_capture_refuse(acc: acc, cause: SnapshotStoreRefusedObject {
+            path: snapshot_inclusion_relative_path(inclusion: inclusion),
+            fault: fabric_storage_fault_wire(fault: f),
+          })
+        FabricObjectStored { object: content_ref } =>
+          match fabric_storage_file_put(
+            root: root,
+            object: snapshot_entry_object(
+              name: name_ref,
+              content: content_ref,
+              directory: inclusion.directory,
+            ),
+          ) {
+            FabricPutRefused { fault: f } =>
+              snapshot_capture_refuse(acc: acc, cause: SnapshotStoreRefusedObject {
+                path: snapshot_inclusion_relative_path(inclusion: inclusion),
+                fault: fabric_storage_fault_wire(fault: f),
+              })
+            FabricObjectStored { object: entry_ref } =>
+              SnapshotCaptureAcc {
+                entries: concat(acc.entries, [entry_ref]),
+                files: acc.files + 1,
+                refusal: acc.refusal,
+              }
+          }
+      }
+  }
+}
+
+// THE COMPOSITION IS CHECKED BEFORE THE BYTES ARE STORED, not after. A path outside every declared
+// root is a requester defect, and storing its content first would leave the object in the store
+// with nothing referring to it -- harmless to the store and misleading to anyone reading it.
+fn snapshot_capture_step(
+  root: FabricStorageFileRoot,
+  composition: SourceComposition,
+  acc: SnapshotCaptureAcc,
+  inclusion: SnapshotInclusion,
+) -> SnapshotCaptureAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match admit_relative_source_path(text: snapshot_inclusion_relative_path(inclusion: inclusion)) {
+        RelativePathRefused { text: t, cause: c } =>
+          snapshot_capture_refuse(acc: acc, cause: SnapshotPathNotRelative { path: t, cause: c })
+        RelativePathAdmitted { path: relative } =>
+      if !snapshot_path_inside_composition(composition: composition, path: relative) {
+        snapshot_capture_refuse(acc: acc, cause: SnapshotPathOutsideComposition {
+          path: relative_source_path_text(path: relative) as String,
+          composition: source_composition_wire(composition: composition) as String,
+        })
+      } else {
+        match snapshot_read_source(path: inclusion.source_path) {
+          FilesystemExactPathAbsent { path: p } =>
+            snapshot_capture_refuse(acc: acc, cause: SnapshotFileAbsent { path: p })
+          FilesystemExactPathUnreadable { path: p, kind: k, error: _ } =>
+            snapshot_capture_refuse(acc: acc, cause: SnapshotFileUnreadable {
+              path: p,
+              detail: filesystem_failure_kind_name(kind: k),
+            })
+          FilesystemExactPathKindUnrecognized { path: p, observed: o, error: _ } =>
+            snapshot_capture_refuse(acc: acc, cause: SnapshotFileUnreadable { path: p, detail: o })
+          FilesystemExactPathRead { path: p, content: c } =>
+            if c == "" {
+              snapshot_capture_refuse(acc: acc, cause: SnapshotFileEmpty { path: p })
+            } else {
+              snapshot_store_inclusion(
+                root: root,
+                acc: acc,
+                inclusion: inclusion,
+                content: c as NonEmptyStr,
+              )
+            }
+        }
+      }
+      }
+  }
+}
+
+// THE MANIFEST IS PUBLISHED LAST AND ONLY IF EVERY FILE LANDED. A manifest published over a refused
+// capture would name a snapshot whose contents were never stored -- the reachable hole again, and
+// this time at the root, where a materialization would find it and refuse one entry at a time
+// instead of refusing the request.
+fn capture_source_snapshot(
+  root: FabricStorageFileRoot,
+  composition: SourceComposition,
+  inclusions: List<SnapshotInclusion>,
+) -> SnapshotCapture {
+  match fold(
+    inclusions,
+    init: SnapshotCaptureAcc { entries: [] as List<FabricObjectRef>, files: 0, refusal: none },
+    f: fn(acc, inclusion) {
+      snapshot_capture_step(root: root, composition: composition, acc: acc, inclusion: inclusion)
+    },
+  ) {
+    SnapshotCaptureAcc { entries: entries, files: files, refusal: refusal } =>
+      match refusal {
+        Present { value: cause } => SnapshotCaptureRefused { cause: cause }
+        Absent =>
+          match fabric_storage_file_put(
+            root: root,
+            object: snapshot_manifest_object(entries: entries, composition: composition),
+          ) {
+            FabricPutRefused { fault: f } =>
+              SnapshotCaptureRefused {
+                cause: SnapshotManifestNotStored { fault: fabric_storage_fault_wire(fault: f) },
+              }
+            FabricObjectStored { object: manifest } =>
+              SnapshotCaptured {
+                manifest: manifest,
+                files: files,
+                composition: source_composition_wire(composition: composition) as String,
+              }
+          }
+      }
+  }
+}
+
+// ── WHERE A MATERIALIZATION IS ALLOWED TO LAND ───────────────────────────────────────────────
+//
+// A FREE-FORM DESTINATION IS A PATHNAME, AND A PATHNAME IS RE-RESOLVED ON EVERY CALL. The first
+// writing of this module took the parent as a String and created its own child inside it with
+// `mktemp -d`, which made the tree's CONTENTS exact and left its LOCATION addressed by name: every
+// later `mkdir -p` and every file write walks that name again from the root. An actor able to write
+// in the parent can rename the child between two of those calls and leave a symlink in its place,
+// and the rest of the materialization then lands wherever the link points -- while
+// `SnapshotMaterialized` is still returned, naming a path whose contents are somebody else's.
+// Reproduced at the filesystem level by the side-chat review of gunbc#11960 and again here before
+// this carrier was written; it is not a hypothesis.
+//
+// SO THE PARENT IS NOT A PARAMETER ANY MORE. `ProviderWorkspace` is sole-constructed behind
+// `allocate_provider_workspace`, which creates it through `mktemp -d` -- no caller-chosen location,
+// mode 0700 asserted rather than assumed -- and `materialize_source_snapshot` accepts only that
+// carrier. A caller cannot name a directory it merely knows about, which is the difference between
+// a check and a construction: the attacker's precondition is WRITE ACCESS TO THE PARENT, and there
+// is now no parent a caller can choose.
+//
+// AND THE LOCATION IS THE PROVIDER'S OWN, BECAUSE DELETING THE PARAMETER DID NOT DELETE THE CHOICE. The first
+// repair allocated with a bare `mktemp -d`, which honours TMPDIR -- so the parent was still
+// selectable, through the environment instead of through an argument, and under a shared writable
+// non-sticky TMPDIR a DIFFERENT uid can rename the workspace out from under the route. The side
+// chat reproduced that with two non-root uids. This module claimed at that moment that no actor
+// but the owner could substitute anything, and the claim was FALSE: it silently depended on a
+// property of whatever directory TMPDIR happened to name. A guarantee that rests on an unexamined
+// environment variable is not a guarantee, and asserting it was the DESIGN section 4d
+// over-assertion this corpus is supposed to catch.
+//
+// So the candidate parent is OBSERVED and ADMITTED before anything is created in it:
+// `establish_provider_base` requires a directory that is either STICKY -- the rule that stops a
+// principal renaming an entry it does not own, which is what makes a shared temporary directory
+// safe to allocate in -- or OWNER-ONLY, which no other principal can even traverse. Anything else
+// refuses, and the allocation does not happen.
+//
+// WHAT THAT CLOSES, AND WHAT IT DOES NOT, stated at its real strength because the neighbouring
+// claim would be inflation. The base is the provider's own fixed location -- created by this
+// process, or verified as its own at owner-only mode and never adopted -- with a literal ancestry
+// each level of which is owned by this process or by root and is not writable by others unless it
+// is sticky. Under that, an actor which is NOT the owning uid cannot substitute anything on this
+// route: it cannot rename a level it does not own inside a sticky or closed directory, and it
+// cannot write inside a 0700 workspace. THE CONDITIONAL IS LOAD-BEARING AND IS NOT DECORATION.
+// Three earlier revisions of this paragraph asserted the same conclusion while the admission
+// underneath was still accepting a squatted base, an over-deep ancestry and an aliased one, so the
+// sentence was true of an admission that did not exist yet.
+//
+// AN ACTOR RUNNING AS THE OWNING UID IS NOT CLOSED, AND NO PATHNAME-ADDRESSED DESIGN CLOSES IT.
+// Every operation available here -- `mkdir`, `mktemp`, `Filesystem.WriteCreateNew` -- takes a path
+// and re-resolves its ancestry at the moment of the call, so between any two of them the ancestry
+// can change. A one-time `lstat` or canonicalization before the writes would not close it either:
+// it would move the window, not remove it, and citing it as coverage is worse than not having it
+// (DESIGN section 4b -- ask whether the check's red is authorable before writing the check). The
+// state is genuinely OUTSIDE the modeled guarantee for that principal, and it is named rather than
+// papered over.
+//
+// ONE THING IS ALREADY STRUCTURAL AND IS WORTH RECORDING because it bounds the residual: a file
+// lands through `Filesystem.WriteCreateNew`, whose `O_CREAT|O_EXCL` REFUSES a symlinked final
+// component. Measured alongside the reproduction above. So the residual is substitution of a
+// DIRECTORY component the route already created, never of the file itself.
+//
+// WHAT STAYS OPEN, IN ONE SENTENCE SO IT CANNOT BE READ PAST: ANCESTRY SUBSTITUTION BY THE OWNING
+// UID, GIVEN AN ADMITTED ALLOCATION ROOT. An actor holding the uid this process runs as can rename a directory component of the
+// destination between two of this route's operations and leave a symlink in its place, and the
+// remaining writes follow it. Nothing narrower is open -- not the file, which `O_CREAT|O_EXCL`
+// refuses to redirect; not any other principal, which the 0700 workspace excludes; and not the
+// snapshot's CONTENTS, which the store verifies. It is the destination's ancestry, and only for
+// that one principal.
+//
+// AND IT IS NEVER ISOLATION BETWEEN UNTRUSTED SESSIONS SHARING A UID. The admitted parent and the
+// 0700 workspace separate PRINCIPALS; two sessions running as one uid are one principal to every
+// mechanism involved, so each can rename the other's workspace, read its bytes and substitute its
+// ancestry, and nothing here will notice. Two mutually untrusting workloads on one host need
+// separate uids, or a sandbox that is not a permission bit -- this route is not evidence that they
+// have either, and citing it as such would be the isolation claim it cannot support. The scope is
+// exactly: an actor at a DIFFERENT uid cannot substitute, and the owning uid is inside the trust
+// boundary by assumption (operator ruling, 2026-09-21).
+//
+// NEXT-RUNG TRIGGER, NAMING THE CAPABILITY RATHER THAN AN ARTIFACT: directory-anchored filesystem
+// primitives, openat-style, exist in the `.dag` filesystem surface -- an opened directory handle
+// plus `openat`/`mkdirat` with `O_NOFOLLOW`, so a path is resolved once and every later operation
+// is relative to the handle that resolution produced. No primitive in this repository provides one
+// today: `extdeps.shell` and `extdeps.filesystem.filesystem_io` are path-addressed without
+// exception, so this is a missing host capability and not an unwritten check. It is NOT retired by
+// a pre-flight `lstat`, by canonicalizing the destination, by re-checking it after the writes, or
+// by any single operation gaining `O_NOFOLLOW` while its siblings stay path-addressed: the
+// capability is the HANDLE that every operation in the sequence shares. When it lands,
+// `ProviderWorkspace` carries the handle instead of the path and this residual closes for every
+// principal.
+//
+// WHY THIS IS A FAILURE-MODE ROW AND NOT A DECLARED RUNG DROP, since a reader is entitled to ask.
+// A section 4b(3) drop records a rung that HELD and was lowered, with a restoration trigger. This
+// class never held higher here: the route is new, and its first honest reading is the one written
+// above. So it is rostered as `gunbc.recurring_failure_mode`
+// `a_pathname_reresolves_its_ancestry_between_calls` -- found at mitigatable, ceiling structurally
+// impossible, trigger as stated -- and nothing is owed to `docs/design-rung-drops.md`.
+type ProviderWorkspace sole_constructor {
+  root: NonEmptyStr
+}
+
+fn provider_workspace_root(workspace: ProviderWorkspace) -> NonEmptyStr {
+  workspace.root
+}
+
+type ProviderWorkspaceAllocation
+  = ProviderWorkspaceAllocated { workspace: ProviderWorkspace }
+  | ProviderWorkspaceRefused { detail: String }
+
+// WHY THIS STOPPED BEING A PATH-ADMISSION PROBLEM AND BECAME A LOCATION DECISION.
+//
+// Three admissions stood here in turn, each repairing the last and each defeated by the same shape.
+// A single-directory check missed the grandparent. A per-level walk up "/.." never inspected
+// symlinked components, so their owner could repoint them after admission. Canonicalizing first and
+// then walking left a WINDOW between the two -- the side chat redirected a write through it with
+// uid 33 against a uid 65534 provider -- and the walk's terminating observation, "a level whose
+// device and inode equal those of its own '..' is the root", is falsifiable outright: a bind mount
+// of D at D/repeat makes D/repeat and D/repeat/.. share a device and inode well below /.
+//
+// EACH REPAIR WAS A BETTER HEURISTIC OVER AN ARBITRARY PATH, AND THE FOURTH WOULD HAVE BEEN TOO.
+// The thing being defended was a caller-supplied prefix, and every property of it has to be
+// re-established at the moment of use because any of it can change; that is not a wall a check can
+// reach. DESIGN section 5's construction-over-validation says what to do instead: remove the state
+// rather than keep checking it. So the provider does not ADMIT a base, it OWNS one.
+//
+// THE BASE IS A CONSTRUCTED LOCATION WITH A DERIVED ANCESTRY. /run/user/<uid>/gunbc, built from the
+// uid this process observes, when that runtime home exists -- it is root-PROVISIONED and USER-owned
+// -- otherwise /tmp/gunbc-provider-<user> under root-owned sticky /tmp. Neither discriminator
+// applies any more: there is no attacker-supplied prefix to swap, because every component is a
+// literal this module wrote or a uid it observed; and the root needs no detection, because each
+// ancestry is the chain above its own base, enumerated rather than walked.
+//
+// WHAT IS CHECKED IS STILL CHECKED, AND IT IS SHORT. Each named level must be owned by this process
+// or by root and must not be writable by others unless it is sticky -- the same level rule, over a
+// list this module authored instead of over a path a caller handed it. And the base must be its own
+// canonical spelling: if `realpath` disagrees with the literal, something in the chain is a symlink
+// and the location is not the one this module named, so it refuses rather than following it.
+
+type ProviderRootAdmission
+  = ProviderRootAdmitted { root: NonEmptyStr }
+  | ProviderRootRefused { root: String, cause: String }
+
+// ADMITTING A CALLER-NAMED BASE IS A DECLARED FRONTIER, NOT A CAPABILITY THIS MODULE WITHHOLDS OUT
+// OF CAUTION. It is unreachable with path-addressed primitives for the reason four rounds of
+// repair demonstrated: every property of a supplied prefix must hold AT THE MOMENT OF USE, and each
+// observation is separated from that moment by a window. The capability that closes it is the one
+// this module's residual already names -- directory-anchored primitives, openat-style -- under
+// which a caller's base is resolved once to a handle and every later operation is relative to it,
+// so there is nothing left to re-resolve. NOT retired by a better path check, a canonicalization,
+// or a longer walk; those are the four attempts this row exists to stop repeating.
+data caller_named_allocation_base_frontier: FrontierRow = frontier_row_decl(
+  ref: decl_ref(
+    module_path: "gunbc.fabric_source_snapshot",
+    decl_name: "provider_base_layouts",
+  ),
+  reason: "the provider owns one fixed base because admitting an arbitrary caller-named one is unreachable with path-addressed primitives: the grandparent, the symlinked component, the realpath-to-walk window and the bind-mount root are four defeats of the same check-then-use shape",
+  dissolution: unbound_dissolution(
+    description: "directory-anchored filesystem primitives, openat-style, exist in the .dag filesystem surface, so a caller-named base is resolved ONCE to a handle and every later operation is relative to that handle rather than to a name. Not satisfied by a stricter path check, by canonicalizing before the walk, by a deeper walk, or by a better root observation -- those are the four attempts this frontier exists to stop repeating" as NonEmptyStr,
+  ),
+)
+
+data provider_base_leaf: NonEmptyStr = "gunbc" as NonEmptyStr
+data provider_base_tmp_leaf_prefix: NonEmptyStr = "gunbc-provider-" as NonEmptyStr
+data provider_base_runtime_prefix: NonEmptyStr = "/run/user/" as NonEmptyStr
+data provider_root_default: NonEmptyStr = "/tmp" as NonEmptyStr
+
+// THE BASE AND ITS ANCESTRY COME FROM ONE CHAIN, so they cannot disagree about which tree they
+// describe.
+//
+// They were two fields a caller filled in separately, and the environment-supplied prefix then got
+// an ancestry that belonged to a different path entirely -- a list that CLAIMED to be the base's
+// ancestors and named three directories above somewhere else. A derived pair removes the state in
+// which that is expressible: `provider_layout` takes the chain root-first, builds the base inside
+// its deepest member, and returns that same chain as the ancestry. There is no way to hand it one
+// and get the other.
+//
+// IT IS ALSO WHAT LETS A CONTROL ENTER THROUGH THE REAL MECHANISM. A scenario that wants a base
+// under an unsafe parent supplies a CHAIN and gets its ancestry derived by this function, rather
+// than authoring an ancestry list a production layout would never produce -- so the control
+// exercises the same construction production does, and a divergence between them is not something
+// the control can paper over.
+type ProviderBaseLayout {
+  base: NonEmptyStr
+  ancestry: List<String>
+}
+
+fn provider_layout(chain: List<String>, leaf: NonEmptyStr) -> ProviderBaseLayout {
+  match get(chain, length(chain) - 1) {
+    Absent =>
+      ProviderBaseLayout { base: leaf, ancestry: ["/"] }
+    Present { value: home } =>
+      ProviderBaseLayout {
+        base: join([home, "/", leaf as String], "") as NonEmptyStr,
+        ancestry: chain,
+      }
+  }
+}
+
+// THE ENVIRONMENT IS NOT CONSULTED AT ALL, AND THE REASON IS A DEFECT THIS MODULE ALREADY WROTE
+// DOWN AND THEN COMMITTED AGAIN ONE VARIABLE OVER. The first narrowing dropped TMPDIR because an
+// environment-named directory is a choice with no name on it, then read XDG_RUNTIME_DIR and
+// hard-coded an ancestry as if that value were a literal. So the uid is OBSERVED and the path is
+// CONSTRUCTED here: every component of both chains is a literal this module wrote or a uid it read
+// from `id -u`.
+//
+// /run/user/<uid> IS ROOT-PROVISIONED AND USER-OWNED, and the distinction matters to the rule
+// applied to it: the level check trusts this process's own uid as well as root, so a user-owned
+// runtime home is admissible as an ANCESTOR, and the base inside it must be owned by this process
+// under the stricter base rule. An earlier revision of this comment called it root-owned, which
+// would have made the level rule look like it was relying on something it is not.
+type ProviderPrincipal { uid: NonEmptyStr, name: NonEmptyStr }
+
+fn provider_base_layouts(principal: ProviderPrincipal) -> List<ProviderBaseLayout> {
+  [
+    provider_layout(
+      chain: [
+        "/",
+        "/run",
+        "/run/user",
+        join([provider_base_runtime_prefix as String, principal.uid as String], ""),
+      ],
+      leaf: provider_base_leaf,
+    ),
+    provider_layout(
+      chain: ["/", provider_root_default as String],
+      leaf: join([provider_base_tmp_leaf_prefix as String, principal.name as String], "") as NonEmptyStr,
+    ),
+  ]
+}
+
+type LevelObservation
+  = LevelObserved { owner: String, mode: String, sticky: Bool }
+  | LevelUnobservable { detail: String }
+
+fn observe_level(path: String) -> LevelObservation {
+  let owner = shell.Stat.OwnerOf(path: path as FilePath)
+  if !owner.success {
+    LevelUnobservable { detail: join(["owner unreadable: ", owner.stderr], "") }
+  } else {
+    let mode = shell.Stat.ModeOf(path: path as FilePath)
+    if !mode.success {
+      LevelUnobservable { detail: join(["mode unreadable: ", mode.stderr], "") }
+    } else {
+      LevelObserved {
+        owner: trim(s: owner.stdout),
+        mode: trim(s: mode.stdout),
+        sticky: shell.Test.IsSticky(path: path as FilePath).is_sticky,
+      }
+    }
+  }
+}
+
+type TrustedOwners { me: NonEmptyStr }
+
+data provider_root_trusted_root_owner: NonEmptyStr = "root" as NonEmptyStr
+
+// THE MODES WITH NO GROUP OR OTHER WRITE BIT, COMPARED AS WHOLE STRINGS because the substrate has
+// no string indexing and a hand-rolled digit scan would be a parser standing where a comparison was
+// available. The roster covers what a protected ancestry is actually spelled with; anything outside
+// it refuses. The cost is over-refusal and it is deliberate (DESIGN section 4d), and widening is a
+// matter of adding spellings rather than loosening the rule.
+data provider_root_unwritable_modes: List<String> = [
+  "700", "0700", "750", "0750", "755", "0755", "711", "0711",
+  "500", "0500", "550", "0550", "555", "0555", "444", "0444",
+]
+
+// THE DECISION, SEPARATED FROM THE OBSERVATION SO IT CAN BE CLAIMED OVER INPUTS THIS HOST CANNOT
+// PRODUCE. A sticky directory owned by another uid is a real defect and creating one requires a
+// privilege the harness does not have, so the wet control feeds this function real observations
+// while the witness feeds it that one.
+fn level_is_safe(observed: LevelObservation, trusted: TrustedOwners) -> Bool {
+  match observed {
+    LevelUnobservable { detail: _ } => false
+    LevelObserved { owner: owner, mode: mode, sticky: sticky } =>
+      ((owner == (trusted.me as String)) || (owner == (provider_root_trusted_root_owner as String)))
+        && (sticky || any(provider_root_unwritable_modes, m => m == mode))
+  }
+}
+
+// THE PRINCIPAL IS OBSERVED ONCE AND EVERYTHING ABOUT IT IS DERIVED FROM THAT ONE READING.
+//
+// There were two observations of the same fact: a second observer, since deleted, ran `id -un` for
+// the ownership predicate while `observe_provider_principal` ran it again for the base name, and
+// the selection called both. (The deleted one is described rather than named, because a citation to
+// a symbol that no longer resolves is the stale reference DESIGN section 3 makes decidable.) Two reads of one fact can disagree, so the name in
+// /tmp/gunbc-provider-<name> and the name the level rule trusts could come from different readings
+// -- and this module argues against exactly that one field over, where the base and its ancestry
+// were two values a caller filled separately until they were derived from one chain. Found by
+// review 69871 on gunbc#11960; the same law, the same module, one type along.
+fn trusted_owners_of(principal: ProviderPrincipal) -> TrustedOwners {
+  TrustedOwners { me: principal.name }
+}
+
+fn observe_provider_principal() -> ProviderPrincipal? {
+  let name = shell.Id.UserName()
+  if !name.success {
+    none
+  } else {
+    let id = shell.Id.UserId()
+    if !id.success {
+      none
+    } else {
+      let named = trim(s: name.stdout)
+      let numeric = trim(s: id.stdout)
+      if named == "" || numeric == "" {
+        none
+      } else {
+        Present {
+          value: ProviderPrincipal { uid: numeric as NonEmptyStr, name: named as NonEmptyStr },
+        }
+      }
+    }
+  }
+}
+
+type AncestryVerdict
+  = AncestrySafe
+  | AncestryRefused { level: String, detail: String }
+
+fn ancestry_refusal_detail(observed: LevelObservation) -> String {
+  match observed {
+    LevelUnobservable { detail: d } => d
+    LevelObserved { owner: o, mode: m, sticky: st } =>
+      join([
+        "owner=", o, " mode=", m, " sticky=", if st { "yes" } else { "no" },
+        " -- every named level must be owned by this process or root, and must not be writable by",
+        " others unless it is sticky",
+      ], "")
+  }
+}
+
+// A LEVEL MUST ALSO BE ITS OWN CANONICAL SPELLING. `stat` FOLLOWS a symlink, so a level that is one
+// reports the owner and mode of its TARGET while the base is created inside that target -- the
+// enumerated chain would then describe a tree the base does not live in, which is the same
+// disagreement between the base and its ancestry that deriving them from one chain removes at the
+// other end. Checked here rather than assumed of the literals, because /run/user/<uid> is
+// provisioned by the host and this module does not get to decide what it is.
+fn level_spelling_is_canonical(level: String) -> Bool {
+  let resolved = shell.Path.Canonical(path: level as FilePath)
+  if !resolved.success { false } else { trim(s: resolved.stdout) == level }
+}
+
+// THE ENUMERATED LEVELS, FOLDED. There is no walk and no bound: the list is the ancestry, so
+// running out of it is completion rather than exhaustion, and the two cannot be confused.
+fn ancestry_is_safe(levels: List<String>, trusted: TrustedOwners) -> AncestryVerdict {
+  fold(
+    levels,
+    init: AncestrySafe,
+    f: fn(acc, level) {
+      match acc {
+        AncestryRefused { level: l, detail: d } => AncestryRefused { level: l, detail: d }
+        AncestrySafe =>
+          let observed = observe_level(path: level)
+          if !level_is_safe(observed: observed, trusted: trusted) {
+            AncestryRefused { level: level, detail: ancestry_refusal_detail(observed: observed) }
+          } else if !level_spelling_is_canonical(level: level) {
+            AncestryRefused {
+              level: level,
+              detail: "the level is not its own canonical spelling, so it is a link and what was observed is its target",
+            }
+          } else {
+            AncestrySafe
+          }
+      }
+    },
+  )
+}
+
+// A PREDICTABLE NAME IS A NAME SOMEBODY ELSE CAN GET TO FIRST, and the first writing of this
+// function handed them the win. It ran `mkdir -p` and then `chmod 0700`: `mkdir -p` succeeds when
+// the name already exists, so a directory another principal pre-created at
+// /tmp/gunbc-provider-<user> was ADOPTED, and the chmod then either failed or -- if the squatted
+// name was a symlink -- changed the mode of whatever it pointed at. Reusing a squatted path and
+// modifying a directory this process did not create are both wrong, and the second is wrong even
+// when the first is caught.
+//
+// SO CREATION AND ADOPTION ARE SEPARATED, AND ONLY WHAT THIS PROCESS CREATED IS EVER MODIFIED.
+// Plain `mkdir` fails if the name exists at all, including as a symlink, so its success is proof
+// this process created the directory -- and only on that branch is a mode set. An existing base is
+// VERIFIED as it stands and never chmodded: if it is not a directory this process owns at
+// owner-only mode, it refuses. A denial of service is the right outcome there (operator ruling,
+// 2026-09-21): the alternative is executing against a location somebody else controls.
+data provider_base_owner_only_modes: List<String> = ["700", "0700"]
+
+fn base_is_admissible(observed: LevelObservation, trusted: TrustedOwners) -> Bool {
+  match observed {
+    LevelUnobservable { detail: _ } => false
+    LevelObserved { owner: owner, mode: mode, sticky: _ } =>
+      (owner == (trusted.me as String))
+        && any(provider_base_owner_only_modes, m => m == mode)
+  }
+}
+
+// THE BASE ITSELF IS HELD TO A STRICTER RULE THAN ITS ANCESTRY, and the difference is what each
+// level is for. An ancestor only has to be un-substitutable by another principal, which sticky or
+// the absence of a write bit both deliver -- /tmp is root-owned, sticky and world-writable, and
+// that is exactly right for /tmp. The base HOLDS THE SNAPSHOT, so it must be owned by this process
+// and readable by nobody else: a 0755 base would satisfy the ancestry rule and publish every
+// materialized tree to every principal on the host.
+// THE MODE IS APPLIED AT CREATION, SO THERE IS NO SECOND PATHNAME OPERATION TO REDIRECT.
+//
+// This was `mkdir` followed by `chmod 0700`, and the chmod addressed the base BY NAME -- so a
+// principal able to rename entries in the parent could swap the fresh directory for a link between
+// the two calls and send the chmod somewhere else, and the base would then exist at whatever mode
+// the umask gave it. Even without a swap, the name existed briefly at a wider mode, long enough for
+// another principal to open it and keep a descriptor.
+//
+// `mkdir -m 0700` removes both: the directory is never present at any other mode, and there is no
+// follow-up call to aim. That is the construction form of the repair rather than an argument about
+// whether the window is reachable -- and the argument WOULD have held here (for /tmp, sticky and
+// root-owned means only the entry's owner may rename it, and the fresh entry is ours; for
+// /run/user/<uid>, mode 0700 means no other principal can traverse it at all), which is exactly why
+// it is not the version to ship: a window closed by reasoning has to be re-argued every time the
+// surrounding code moves, and one that does not exist does not.
+//
+// A PREVIOUS REVISION ALSO GUARDED THE CHMOD WITH `created && !chmod(base)`, and `&&` demands its
+// right operand under a false left, so the chmod ran on a SQUATTED directory and the admission then
+// accepted it. The authority for that property is `test.claim.eval_model_probe`
+// `and_short_circuit_direct_probe`; the squatted-base control caught the instance. With the mode
+// applied at creation there is no guarded effect left here to get wrong.
+// THE ANCESTRY IS CHECKED BEFORE THE FIRST MUTATION, AND THE ORDER IS THE CONTRACT.
+//
+// This created the base and then examined the tree above it, so a base under an unprotected
+// ancestry was brought into existence and only afterwards refused -- leaving an owner-only
+// directory inside a tree this module had just decided it does not trust, for anybody watching that
+// parent to act on. A refusal that arrives after the mutation has refused the REPORT and not the
+// act, which is the same ordering argument this module already makes about admitting a composition
+// before any byte is written.
+fn establish_provider_base(layout: ProviderBaseLayout, trusted: TrustedOwners) -> ProviderRootAdmission {
+  match ancestry_is_safe(levels: layout.ancestry, trusted: trusted) {
+    AncestryRefused { level: l, detail: d } =>
+      ProviderRootRefused {
+        root: layout.base as String,
+        cause: join(["the ancestry is unprotected at ", l, ": ", d, " (refused before creating anything)"], ""),
+      }
+    AncestrySafe =>
+      let created = shell.Mkdir.NewOwnerOnly(path: layout.base as FilePath).success
+      verify_provider_base(layout: layout, trusted: trusted, created: created)
+  }
+}
+
+fn verify_provider_base(
+  layout: ProviderBaseLayout,
+  trusted: TrustedOwners,
+  created: Bool,
+) -> ProviderRootAdmission {
+  let base = layout.base as String
+  let resolved = shell.Path.Canonical(path: base as FilePath)
+    if !resolved.success {
+      ProviderRootRefused {
+        root: base,
+        cause: join(["the provider base does not resolve: ", resolved.stderr], ""),
+      }
+    } else if trim(s: resolved.stdout) != base {
+      ProviderRootRefused {
+        root: base,
+        cause: join([
+          "the provider base resolves to ", trim(s: resolved.stdout),
+          ", so a component of the location this module named is a link",
+        ], ""),
+      }
+    } else if !shell.Test.IsDirectory(path: base as FilePath).is_directory {
+      ProviderRootRefused { root: base, cause: "the provider base is not a directory" }
+    } else if !base_is_admissible(observed: observe_level(path: base), trusted: trusted) {
+      ProviderRootRefused {
+        root: base,
+        cause: join([
+          "the provider base is not owned by this process at owner-only mode",
+          if created { " even though this process created it" } else { ", and an existing base is never adopted or chmodded" },
+        ], ""),
+      }
+    } else {
+      ProviderRootAdmitted { root: layout.base }
+    }
+}
+
+type ProviderRootSelection
+  = ProviderRootSelected { root: NonEmptyStr }
+  | ProviderRootNoneAdmissible { detail: String }
+
+fn select_provider_root() -> ProviderRootSelection {
+  match observe_provider_principal() {
+    Absent =>
+      ProviderRootNoneAdmissible {
+        detail: "this process could not name its own principal, so no base can be constructed and no owner is trusted",
+      }
+    Present { value: principal } => select_admissible_base(principal: principal)
+  }
+}
+
+// THE FIRST LAYOUT THAT ADMITS WINS, AND A LAYOUT THAT DOES NOT IS CARRIED AS A CAUSE RATHER THAN
+// DROPPED. A host with no /run/user/<uid> should not have to guess why it ended up in /tmp, and a
+// host where NEITHER admits gets both refusals in one message instead of only the last.
+fn select_admissible_base(principal: ProviderPrincipal) -> ProviderRootSelection {
+  let trusted = trusted_owners_of(principal: principal)
+  fold(
+    provider_base_layouts(principal: principal),
+    init: ProviderRootNoneAdmissible { detail: "no provider base was considered" },
+    f: fn(acc, layout) {
+      match acc {
+        ProviderRootSelected { root: r } => ProviderRootSelected { root: r }
+        ProviderRootNoneAdmissible { detail: previous } =>
+          match establish_provider_base(layout: layout, trusted: trusted) {
+            ProviderRootAdmitted { root: r } => ProviderRootSelected { root: r }
+            ProviderRootRefused { root: r, cause: c } =>
+              ProviderRootNoneAdmissible { detail: join([previous, "; ", r, ": ", c], "") }
+          }
+      }
+    },
+  )
+}
+
+fn allocate_provider_workspace() -> ProviderWorkspaceAllocation {
+  match select_provider_root() {
+    ProviderRootNoneAdmissible { detail: d } =>
+      ProviderWorkspaceRefused {
+        detail: join(["no admissible provider base: ", d], ""),
+      }
+    ProviderRootSelected { root: admitted } =>
+      allocate_under_admitted_root(root: admitted)
+  }
+}
+
+// THE TEMPLATE IS EXPLICIT SO THE ADMITTED ROOT IS THE ONE USED. `mktemp -d` with no argument would
+// re-read TMPDIR and could land somewhere other than the directory just admitted -- the admission
+// and the creation would then be about two different places, which is the check-and-use gap in its
+// most avoidable form.
+fn allocate_under_admitted_root(root: NonEmptyStr) -> ProviderWorkspaceAllocation {
+  let made = shell.Mktemp.DirWithTemplate(
+    template: join([root as String, "/gunbc-provider-XXXXXX"], "") as FilePath,
+  )
+  if !made.success {
+    ProviderWorkspaceRefused {
+      detail: join(["no workspace could be created under ", root as String], ""),
+    }
+  } else {
+    let root = trim(s: made.path as String)
+    if !shell.Chmod.OwnerOnlyDirectory(path: root as FilePath).success {
+      ProviderWorkspaceRefused { detail: join(["the workspace could not be made owner-only: ", root], "") }
+    } else {
+      ProviderWorkspaceAllocated { workspace: ProviderWorkspace { root: root as NonEmptyStr } }
+    }
+  }
+}
+
+// RELEASING IT IS THE CALLER'S, AND IT IS A SEPARATE VERB BECAUSE THE SNAPSHOT OUTLIVES THE CALL.
+// A materialization hands back a tree an executor is about to run in, so the workspace cannot be
+// removed when the fold returns; whoever allocated it decides when the run is over.
+fn release_provider_workspace(workspace: ProviderWorkspace) -> Bool {
+  shell.Remove.RecursiveForce(path: provider_workspace_root(workspace: workspace) as FilePath).success
+}
+
+// ── MATERIALIZE ─────────────────────────────────────────────────────────────────────────────
+
+type SnapshotMaterializeAcc {
+  files: Int
+  refusal: SnapshotMaterializeRefusal?
+}
+
+fn snapshot_materialize_refuse(acc: SnapshotMaterializeAcc, cause: SnapshotMaterializeRefusal) -> SnapshotMaterializeAcc {
+  SnapshotMaterializeAcc { files: acc.files, refusal: Present { value: cause } }
+}
+
+// WRITING ONE FILE IS A DIRECTORY AND THEN A FILE, and both outcomes are read. `Filesystem.Write`
+// into a directory that does not exist fails, so a materialization that skipped the mkdir would
+// report a write failure whose cause is a missing parent -- a located diagnostic naming the wrong
+// subject.
+fn snapshot_write_file(
+  destination: NonEmptyStr,
+  acc: SnapshotMaterializeAcc,
+  relative_directory: NonEmptyStr,
+  name: NonEmptyStr,
+  content: NonEmptyStr,
+) -> SnapshotMaterializeAcc {
+  let directory = join([destination as String, "/", relative_directory as String], "")
+  let made = shell.Mkdir.Parents(path: directory as FilePath)
+  if !made.success {
+    snapshot_materialize_refuse(acc: acc, cause: SnapshotDirectoryNotCreated { directory: directory })
+  } else {
+    let path = join([directory, "/", name as String], "")
+    let written = Filesystem.WriteCreateNew(path: path, content: content as String)
+    match filesystem_create_new(
+      path: path,
+      success: written.success,
+      error: written.error,
+      error_kind: written.error_kind,
+    ) {
+      FilesystemCreated { path: _ } =>
+        SnapshotMaterializeAcc { files: acc.files + 1, refusal: acc.refusal }
+      FilesystemCreateTargetOccupied { path: p } =>
+        snapshot_materialize_refuse(acc: acc, cause: SnapshotDuplicatePath { path: p })
+      FilesystemCreateRefused { path: p, kind: k, error: _ } =>
+        snapshot_materialize_refuse(acc: acc, cause: SnapshotFileNotWritten {
+          path: p,
+          detail: filesystem_failure_kind_name(kind: k),
+        })
+      FilesystemCreateKindUnrecognized { path: p, observed: o, error: _ } =>
+        snapshot_materialize_refuse(acc: acc, cause: SnapshotFileNotWritten { path: p, detail: o })
+    }
+  }
+}
+
+fn snapshot_materialize_entry_content(
+  destination: NonEmptyStr,
+  composition: SourceComposition,
+  acc: SnapshotMaterializeAcc,
+  directory: NonEmptyStr,
+  name: NonEmptyStr,
+  content: NonEmptyStr,
+) -> SnapshotMaterializeAcc {
+  match admit_relative_source_path(text: join([directory as String, "/", name as String], "")) {
+    RelativePathRefused { text: t, cause: c } =>
+      snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryPathNotRelative { path: t, cause: c })
+    RelativePathAdmitted { path: relative } =>
+      if !snapshot_path_inside_composition(composition: composition, path: relative) {
+        snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryOutsideComposition {
+          path: relative_source_path_text(path: relative) as String,
+          composition: source_composition_wire(composition: composition) as String,
+        })
+      } else {
+        snapshot_write_file(
+          destination: destination,
+          acc: acc,
+          relative_directory: directory,
+          name: name,
+          content: content,
+        )
+      }
+  }
+}
+
+fn snapshot_materialize_entry_links(
+  store: FabricStorageFileRoot,
+  destination: NonEmptyStr,
+  composition: SourceComposition,
+  acc: SnapshotMaterializeAcc,
+  directory: NonEmptyStr,
+  name_ref: FabricObjectRef,
+  content_ref: FabricObjectRef,
+) -> SnapshotMaterializeAcc {
+  match fabric_storage_file_get(root: store, object: name_ref) {
+    FabricObjectGetRefused { fault: f } =>
+      snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryUnavailable {
+        object: fabric_object_ref_wire(object: name_ref) as String,
+        fault: fabric_storage_fault_wire(fault: f),
+      })
+    FabricObjectFetched { stored: name } =>
+      match fabric_storage_file_get(root: store, object: content_ref) {
+        FabricObjectGetRefused { fault: f } =>
+          snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryUnavailable {
+            object: fabric_object_ref_wire(object: content_ref) as String,
+            fault: fabric_storage_fault_wire(fault: f),
+          })
+        FabricObjectFetched { stored: content } =>
+          snapshot_materialize_entry_content(
+            destination: destination,
+            composition: composition,
+            acc: acc,
+            directory: directory,
+            name: name.content.body,
+            content: content.content.body,
+          )
+      }
+  }
+}
+
+// AN ENTRY IS EXACTLY TWO LINKS AND A DIRECTORY, AND ANYTHING ELSE IS MALFORMED RATHER THAN
+// INTERPRETED. The store verified the entry's bytes against the ref that named it, so an entry with
+// the wrong link count is not corruption -- it is an object of another kind under a manifest link,
+// and reading its first two links anyway is how a snapshot quietly materializes something else's
+// data. The count is checked before either link is taken, so the optional arms below cannot be
+// reached by a short list and are not a second, silent membership rule.
+fn snapshot_materialize_entry(
+  store: FabricStorageFileRoot,
+  destination: NonEmptyStr,
+  composition: SourceComposition,
+  acc: SnapshotMaterializeAcc,
+  entry_ref: FabricObjectRef,
+  entry: FabricStoredObject,
+) -> SnapshotMaterializeAcc {
+  if length(entry.content.links) != 2 {
+    snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryMalformed {
+      detail: join([
+        "entry ",
+        fabric_object_ref_wire(object: entry_ref) as String,
+        " carries ",
+        to_string(length(entry.content.links)),
+        " links where a name and a content object are required",
+      ], ""),
+    })
+  } else {
+    match get(entry.content.links, 0) {
+      Absent =>
+        snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryMalformed {
+          detail: join(["entry ", fabric_object_ref_wire(object: entry_ref) as String, " has no name link"], ""),
+        })
+      Present { value: name_ref } =>
+        match get(entry.content.links, 1) {
+          Absent =>
+            snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryMalformed {
+              detail: join(["entry ", fabric_object_ref_wire(object: entry_ref) as String, " has no content link"], ""),
+            })
+          Present { value: content_ref } =>
+            snapshot_materialize_entry_links(
+              store: store,
+              destination: destination,
+              composition: composition,
+              acc: acc,
+              directory: entry.content.body,
+              name_ref: name_ref,
+              content_ref: content_ref,
+            )
+        }
+    }
+  }
+}
+
+fn snapshot_materialize_step(
+  store: FabricStorageFileRoot,
+  destination: NonEmptyStr,
+  composition: SourceComposition,
+  acc: SnapshotMaterializeAcc,
+  entry_ref: FabricObjectRef,
+) -> SnapshotMaterializeAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match fabric_storage_file_get(root: store, object: entry_ref) {
+        FabricObjectGetRefused { fault: f } =>
+          snapshot_materialize_refuse(acc: acc, cause: SnapshotEntryUnavailable {
+            object: fabric_object_ref_wire(object: entry_ref) as String,
+            fault: fabric_storage_fault_wire(fault: f),
+          })
+        FabricObjectFetched { stored: entry } =>
+          snapshot_materialize_entry(
+            store: store,
+            destination: destination,
+            composition: composition,
+            acc: acc,
+            entry_ref: entry_ref,
+            entry: entry,
+          )
+      }
+  }
+}
+
+// THE DESTINATION IS CREATED BY THIS CALL, AND THAT IS WHAT MAKES THE TREE EXACT.
+//
+// A CALLER-SUPPLIED DIRECTORY CANNOT CARRY AN EXACT-MEMBERSHIP CLAIM, and the first writing of this
+// function accepted one. Whatever already sat in it survived and was then walked by the executor as
+// though it had come from the snapshot -- so "the executor received the intended source" was false
+// in the one direction nobody looks: not a missing file, an EXTRA one. A stale module from an
+// earlier run, or anything a third party had put there, compiled beside the snapshot's own bytes
+// with every digest verifying.
+//
+// So the parameter is the PARENT, and the destination is a fresh directory this call creates inside
+// it through `mktemp -d`, whose name no caller chose and whose contents are therefore exactly what
+// the manifest put there. Membership is established by construction rather than by inspecting a
+// directory afterwards, which is DESIGN section 5's preference stated for a filesystem: the
+// polluted-destination state is unwritable, not validated.
+//
+// THREE CONSEQUENCES FOLLOW FROM THE SAME PROPERTY, and they are the three the reviewer asked for.
+// A prepopulated destination cannot add source, because no destination the route did not create is
+// ever written to. Duplicate logical paths refuse rather than overwrite, because every file lands
+// through `Filesystem.WriteCreateNew` in a tree that started empty, so the second occurrence of a
+// path finds the first one there. And a failed or partial materialization can never later be
+// accepted as complete: the tree it left behind is not reachable by any subsequent call -- each one
+// makes its own -- and the only value that says "complete" is the receipt, which exists on no
+// refusal arm.
+//
+// IT IS ALSO WHAT ANSWERS THE SYMLINK QUESTION, stated plainly rather than claimed as a check. This
+// route creates directories and regular files and nothing else, into a tree that began empty, so no
+// component of any path it writes can be a symlink: there was nothing to plant one, and a regular
+// file cannot be traversed as a directory. A caller-supplied destination is exactly where a planted
+// symlink component would have come from, and there is no longer such a thing.
+//
+// THE COMPOSITION IS ADMITTED BEFORE THE DESTINATION IS EVEN CREATED. An executor that expected a
+// public-only snapshot and was handed one carrying a private root must not end up with the private
+// bytes on its disk and a refusal in its log; on this ordering nothing has been created at all when
+// that refusal fires.
+fn materialize_source_snapshot(
+  store: FabricStorageFileRoot,
+  manifest: FabricObjectRef,
+  workspace: ProviderWorkspace,
+  expected: SourceComposition,
+) -> SnapshotMaterialization {
+  match fabric_storage_file_get(root: store, object: manifest) {
+    FabricObjectGetRefused { fault: f } =>
+      SnapshotMaterializeRefused {
+        cause: SnapshotManifestUnavailable {
+          manifest: fabric_object_ref_wire(object: manifest) as String,
+          fault: fabric_storage_fault_wire(fault: f),
+        },
+      }
+    FabricObjectFetched { stored: found } =>
+      let wire = source_composition_wire(composition: expected)
+      if (found.content.body as String) != (wire as String) {
+        SnapshotMaterializeRefused {
+          cause: SnapshotCompositionMismatch {
+            expected: wire as String,
+            found: found.content.body as String,
+          },
+        }
+      } else {
+        let made = shell.Mktemp.DirWithTemplate(
+          template: join([
+            provider_workspace_root(workspace: workspace) as String,
+            "/gunbc-snapshot-XXXXXX",
+          ], "") as FilePath,
+        )
+        if !made.success {
+          SnapshotMaterializeRefused {
+            cause: SnapshotDestinationNotCreated {
+              parent: provider_workspace_root(workspace: workspace) as String,
+            },
+          }
+        } else {
+          let destination = trim(s: made.path as String) as NonEmptyStr
+          match fold(
+            found.content.links,
+            init: SnapshotMaterializeAcc { files: 0, refusal: none },
+            f: fn(acc, entry_ref) {
+              snapshot_materialize_step(
+                store: store,
+                destination: destination,
+                composition: expected,
+                acc: acc,
+                entry_ref: entry_ref,
+              )
+            },
+          ) {
+            SnapshotMaterializeAcc { files: files, refusal: refusal } =>
+              match refusal {
+                Present { value: cause } => SnapshotMaterializeRefused { cause: cause }
+                Absent =>
+                  SnapshotMaterialized {
+                    manifest: manifest,
+                    destination: destination,
+                    files: files,
+                    composition: wire as String,
+                  }
+              }
+          }
+        }
+      }
+  }
+}

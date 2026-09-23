@@ -26,7 +26,6 @@ import gunbc.remote_shell_command { openbmc_dropbear_interpretation, RemoteExecC
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.command_runner { run_shell_command }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.os_install { srv4_ubuntu_autoinstall_on_iso }
@@ -168,7 +167,6 @@ data bmc_netboot_provision_dissolution_trigger: DissolutionCondition = unbound_d
 // ArgvCommand as the parameter the words must already have come from a builder, so this function
 // forwards a constructed command instead of laundering a list into one.
 fn bmc_netboot_run_bmc(plan: BmcNetbootServePlan, command: ArgvCommand) -> ProcessExit
-  uses net: Network
 {
   run_shell_command(command: command, transport: bmc_transport(plan: plan))
 }
@@ -182,7 +180,6 @@ fn bmc_staged_file_basename(remote_path: NonEmptyStr) -> String {
 }
 
 fn bmc_netboot_put_path(plan: BmcNetbootServePlan, local: NonEmptyStr, remote_path: NonEmptyStr) -> ProcessExit
-  uses net: Network
 {
   let remote_target = join([bmc_ssh_target(plan: plan) as String, ":", remote_path as String], "") as NonEmptyStr
   let cmd = scp_command(local_path: local, remote_target: remote_target)
@@ -190,7 +187,6 @@ fn bmc_netboot_put_path(plan: BmcNetbootServePlan, local: NonEmptyStr, remote_pa
 }
 
 fn bmc_netboot_stage_file(plan: BmcNetbootServePlan, file: BmcStagedFile) -> ProcessExit
-  uses net: Network
 {
   match file.content {
     LocalArtifact { path: p } => bmc_netboot_put_path(plan: plan, local: p, remote_path: file.remote_path)
@@ -202,7 +198,6 @@ fn bmc_netboot_stage_file(plan: BmcNetbootServePlan, file: BmcStagedFile) -> Pro
 }
 
 fn bmc_netboot_stage_inline(plan: BmcNetbootServePlan, remote_path: NonEmptyStr, content: String) -> ProcessExit
-  uses net: Network
 {
   let local = join(["/tmp/gunbc-bmc-", bmc_staged_file_basename(remote_path: remote_path)], "") as NonEmptyStr
   let w = Filesystem.Write(path: local as String, content: content)
@@ -218,7 +213,6 @@ data bmc_path_resolved_mkdir_applet: NonEmptyStr = "mkdir"
 // repository has never read that image's filesystem (extdeps.tools.mkdir mkdir_parents_command_at,
 // extdeps.exec.command program_spelling_is_an_observation_claim).
 fn bmc_netboot_provision(plan: BmcNetbootServePlan) -> ProcessExit
-  uses net: Network
 {
   let mk = bmc_netboot_run_bmc(
     plan: plan,
@@ -243,7 +237,6 @@ fn bmc_netboot_provision(plan: BmcNetbootServePlan) -> ProcessExit
 }
 
 fn srv4_bmc_netboot_provision() -> ProcessExit
-  uses net: Network
 {
   bmc_netboot_provision(plan: srv4_bmc_netboot_serve_plan)
 }
