@@ -24,7 +24,10 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // too: v2.compiler.resolve resolve_match_node_walk scopes those binders as the arm's lexical frame, and
 // v2.test.claim.match_arm_binder_frame holds that a binder binds. What is NOT established is the
 // capability this row's subject names: that the NATIVE ROUTE, the emitted compiler, lowers fields and
-// binds binders. The emitted compiler does not build today, so nothing observes it there.
+// binds binders. Nothing has observed it there yet. When this row was declared the emitted
+// compiler did not build; it has built on main since gunbc#12089 (emit-build is green on this PR's
+// head), so what remains is the native-route RUN over the specimen and the workload, deferred until
+// gunbc#12100 lands, which repairs the compile.emit cost regression #12089 introduced.
 //
 // A HARM SENTENCE THIS ROW USED TO CARRY IS RETRACTED, AND THE RETRACTION IS RECORDED HERE. An
 // earlier revision said the binder `node` in v2.std.symbol_index symbol_index_candidates_at
@@ -39,7 +42,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // with Named edges), and gunbc#12082 replaces it with the declaration kind the symbol index records.
 // That is construction with no behavioural delta on this corpus, so it does not retire this row.
 data variant_fields_unlowered_on_the_native_route_population: List<String> = [
-  "the emitted (native-route) compiler: variant-field lowering and match-arm binder binding are executed by the interpreted v2 stages but unobserved on the native route, because the emitted compiler does not build; specimen: the binder `node` of the `Present { value: node }` arms of v2.std.symbol_index symbol_index_candidates_at",
+  "the emitted (native-route) compiler: variant-field lowering and match-arm binder binding are executed by the interpreted v2 stages but not yet observed on the native route (the emitted compiler builds since gunbc#12089; the native run over the specimen is deferred until gunbc#12100 fixes the compile.emit cost); specimen: the binder `node` of the `Present { value: node }` arms of v2.std.symbol_index symbol_index_candidates_at",
 ]
 
 data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
