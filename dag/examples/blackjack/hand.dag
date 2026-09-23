@@ -5,4 +5,50 @@ module examples.blackjack.hand
 // section 4.2 (authority gunbc.plans.blackjack_onboarding). The anchor is the derived value
 // a hand evaluates to; the raw total and the soft flag are distinct facts, which is the
 // first modeling lesson of that section.
-type HandValue { total: Int, soft: Bool }
+
+import examples.blackjack.cards { Card, Rank, Ace, rank_pips, is_ace }
+
+type Hand {
+    cards: List<Card>
+    }
+
+type HandValue {
+    total: Int
+    soft: Bool
+    }
+
+fn soften(total: Int, aces: Int) -> Int {
+    if total > 21 && aces > 0 {
+        soften(total: total - 10,aces:  aces - 1)
+    } else {
+        total
+    }
+}
+
+fn hard_total(hand: Hand) -> Int {
+    fold(hand.cards, init: 0, f: (acc, c) => acc + rank_pips(r: c.rank))
+}
+
+fn hand_value(hand: Hand) -> HandValue {
+    let raw_total = hard_total(hand: hand)
+    let ace_count = length(hand.cards |> filter(c => is_ace(c: c)))
+    let total = soften(total: raw_total, aces: ace_count)
+    let all_aces_low_total = raw_total - ace_count * 10
+
+    HandValue {
+        total: total,
+        soft: ace_count > 0 && all_aces_low_total + 10 <= 21
+    }
+}
+
+fn is_bust(v: HandValue) -> Bool {
+    v.total > 21
+}
+
+fn is_blackjack(hand: Hand) -> Bool {
+    (length(hand.cards) == 2) && (hand_value(hand: hand).total == 21)
+}
+
+fn add_card(hand: Hand, card: Card) -> Hand {
+    Hand { cards: concat(hand.cards, [card]) }
+}
