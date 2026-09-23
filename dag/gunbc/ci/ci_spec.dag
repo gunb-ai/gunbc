@@ -99,7 +99,7 @@ import gunbc.commit_workflow {
   project_ci_floor_witness_entries
 }
 import std.realization_schedule { ScheduleWitnessEntry }
-import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.ci_diff_policy { DiffMergeBase, DiffTwoDot, DiffPolicy, gunbc_ci_diff_policy }
 import gunbc.auth.heal_publisher_federation {
   heal_publisher_installation_token_request_body,
   heal_publisher_key_unreadable_message,
@@ -139,8 +139,6 @@ import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { EmitDirective, SeverityWarning }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-
-type DiffMode = DiffMergeBase | DiffTwoDot
 
 type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
 
@@ -247,12 +245,6 @@ data gunbc_ci_floor_batch_stop_policy_claim_executor_seed_disposition: Dispositi
   }
 }
 
-type DiffPolicy {
-  base: String
-  head: String
-  mode: DiffMode
-}
-
 type DeployStage {
   id: String
   step_name: String
@@ -321,11 +313,7 @@ data gunbc_ci_spec: CiSpec = {
   gates: gunbc_ci_floor_gates,
   witness_entries: gunbc_ci_floor_witness_entries,
   discovery_scan_dirs: witness_discovery_scan_dirs,
-  diff_policy: {
-    base: gunbc_merge_target_ref as String,
-    head: "HEAD",
-    mode: DiffMergeBase
-  },
+  diff_policy: gunbc_ci_diff_policy,
   notice_title: "v2 claim corpus",
   deploy_stages: gunbc_ci_deploy_stages,
 }
@@ -854,7 +842,7 @@ data gunbc_ci_runner_microvm_host_converge_target: GunbcRunStepTarget = GunbcRun
 }
 
 data gunbc_ci_runner_microvm_network_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/runner/runner_microvm_network_converge.dag",
+  entry: "dag/gunbc/runner/runner_microvm_network_observe.dag",
   function: "runner_microvm_network_observe_wet",
 }
 
@@ -1013,6 +1001,13 @@ data gunbc_ci_spark_v41_runtime_image_build_target: GunbcRunStepTarget = GunbcRu
 data gunbc_ci_spark_v41_checkpoint_materialize_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/v41_checkpoint_materialize.dag",
   function: "v41_checkpoint_materialize_ci_wet",
+}
+
+// ITS SECOND STEP, THE .engram. SELECTION OVER THE PINNED INDEX, run in its own process so a parse
+// stopped for memory cannot take the fetch's receipts with it.
+data gunbc_ci_spark_v41_index_selection_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_checkpoint_materialize.dag",
+  function: "v41_index_selection_ci_wet",
 }
 
 data gunbc_ci_collect_fleet_convergence_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -2539,6 +2534,17 @@ fn gunbc_ci_spark_v41_checkpoint_materialize_invoke() -> String {
     function: gunbc_ci_spark_v41_checkpoint_materialize_target.function,
     claim_run: false,
     receipt_rel: "target/v41-checkpoint-materialize-receipt.txt"
+  )
+}
+
+fn gunbc_ci_spark_v41_index_selection_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_v41_index_selection_target.entry,
+    function: gunbc_ci_spark_v41_index_selection_target.function,
+    claim_run: false,
+    receipt_rel: "target/v41-index-selection-receipt.txt"
   )
 }
 

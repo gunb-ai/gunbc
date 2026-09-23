@@ -1,5 +1,7 @@
 module gunbc.host_identity_access
 
+import gunbc.fleet_posix_accounts { fleet_hostnamectl_command_path }
+
 data host_identity_hostnamectl_path: NonEmptyStr = fleet_hostnamectl_command_path
 
 fn host_identity_ssh_access(host: ComputeHost, ssh_host: NonEmptyStr) -> DeployAccess {

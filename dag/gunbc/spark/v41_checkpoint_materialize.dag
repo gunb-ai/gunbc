@@ -8,7 +8,10 @@ import std.algebra { trim }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import v2.std.optional { Present, Absent }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemListingObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
+  FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+}
 import extdeps.crypto.hash { sha256sum_argv, sha256sum_line_digest }
 import extdeps.tools.sha256sum { sha256sum_byte_span_argv }
 import extdeps.tools.findutils { find_regular_file_sizes_argv }
@@ -43,6 +46,15 @@ import gunbc.spark.v41_engram_row_store {
   V41PublishedSpanDigest, v41_published_span_plan,
 }
 import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
+import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point }
+import extdeps.linux.cgroup_v2_memory {
+  CgroupMemoryLevel, CgroupMemoryLevelRead, CgroupMemoryLevelWithoutFiles, CgroupMemoryLevelUnread,
+  CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable, parse_cgroup_memory_limit,
+  CgroupHardLimitBinds, CgroupNoHardLimit, cgroup_tightest_hard_memory_limit, cgroup_v2_bounding_dirs,
+}
+import extdeps.linux.proc_self_cgroup { read_unified_cgroup_membership, CurrentCgroupObserved, MembershipMissing, MembershipAmbiguous, MembershipMalformed }
+import gunbc.spark.v41_index_engram_selection { V41IndexParse, V41IndexParsed, V41IndexParseRefused, v41_select_index_document, v41_index_engram_selector }
+import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_safetensors_index_path }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { admit_host_held_by_subject }
@@ -579,6 +591,99 @@ fn v41_spans_after(ctx: SparkMaterializeContext, receipts: List<V41FileReceipt>)
   }
 }
 
+// THE .engram. SELECTION OVER THE PINNED INDEX (gunbc.spark.v41_index_engram_selection), READ IN ITS OWN
+// PROCESS. The index is first checked against its manifest row through the same observe the acquisition
+// uses, so only a file that verifies is read; its digest and size are read back on the host, its bytes are
+// fetched, and parse_json_document runs over them here. The `index-selection` lines are what
+// v41_index_engram_selection_reading is transcribed from.
+//
+// WHY A SEPARATE ENTRY AND NOT A TAIL OF THE MATERIALIZE RUN. The parse's working set is large and was not
+// measured to fit anywhere yet; the run that fetches half a terabyte must not lose its per-file receipts
+// because a parse after it was stopped. So the read is v41_index_selection_ci_wet, a second step of the
+// same fleet-converge mode. What bounds its memory on the executor is the runner slot's own grant
+// (gunbc.runner_slot_allocation); gunbc.memory_cgroup_binding cannot nest a tighter bound under a hard
+// limit that already binds the process, by design.
+type V41IndexSelectionOutcome
+  = V41IndexSelectionRead { sha256_hex: String, bytes: ByteSize, parse: V41IndexParse }
+  | V41IndexSelectionUnread { cause: NonEmptyStr }
+
+fn v41_index_selection_read(ctx: SparkMaterializeContext) -> V41IndexSelectionOutcome {
+  match v41_checkpoint_population() {
+    V41CheckpointPopulationRefused { defects: _ } => V41IndexSelectionUnread { cause: "the published population is not admitted, so the index row is not either" as NonEmptyStr }
+    V41CheckpointPopulationAdmitted { files: files } =>
+      match first(filter(files, f => (f.path as String) == (deepseek_v4_1_flash_safetensors_index_path as String))) {
+        Absent => V41IndexSelectionUnread { cause: "the admitted population carries no index row" as NonEmptyStr }
+        Present { value: row } => {
+          match v41_observe(ctx: ctx, subject: v41_checkpoint_subject(file: row)) {
+            AcquisitionAbsent => V41IndexSelectionUnread { cause: "the index is not on the host; run the materialize step first" as NonEmptyStr }
+            AcquisitionDigestMismatch => V41IndexSelectionUnread { cause: "the index on the host does not match its manifest row, so it is not read" as NonEmptyStr }
+            AcquisitionProbeFailed { reason: r } => V41IndexSelectionUnread { cause: join(["the index could not be checked against its manifest row: ", r as String], "") as NonEmptyStr }
+            AcquisitionVerified => v41_index_selection_of_verified(ctx: ctx, path: v41_install_path(path: deepseek_v4_1_flash_safetensors_index_path))
+          }
+        }
+      }
+  }
+}
+
+fn v41_index_selection_of_verified(ctx: SparkMaterializeContext, path: NonEmptyStr) -> V41IndexSelectionOutcome {
+  match v41_read_file_digest(ctx: ctx, path: path) {
+    V41FileDigestUnread { cause: c } => V41IndexSelectionUnread { cause: c }
+    V41FileDigestRead { hex: h } =>
+      match spark_remote_run(ctx: ctx, argv: ["wc", "--bytes", path as String]) {
+        RemoteUnreachable { cause: c } => V41IndexSelectionUnread { cause: join(["the size read did not run: ", c], "") as NonEmptyStr }
+        RemoteRan { exit_code: e, stdout: out, stderr: _ } =>
+          if e != 0 { V41IndexSelectionUnread { cause: join(["wc exited ", to_string(e)], "") as NonEmptyStr } } else {
+            match v41_wc_bytes(out: out) {
+              Absent => V41IndexSelectionUnread { cause: join(["wc answered no byte count: ", out], "") as NonEmptyStr }
+              Present { value: b } =>
+                match spark_remote_run(ctx: ctx, argv: ["cat", "--", path as String]) {
+                  RemoteUnreachable { cause: c } => V41IndexSelectionUnread { cause: join(["the index read did not run: ", c], "") as NonEmptyStr }
+                  RemoteRan { exit_code: e2, stdout: text, stderr: _ } =>
+                    if e2 != 0 { V41IndexSelectionUnread { cause: join(["cat exited ", to_string(e2)], "") as NonEmptyStr } } else {
+                      V41IndexSelectionRead { sha256_hex: h, bytes: b, parse: v41_select_index_document(text: text, selector: v41_index_engram_selector) }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+// wc --bytes prints `<count> <path>`; anything else is no size, never an empty one.
+fn v41_wc_bytes(out: String) -> ByteSize? {
+  match first(split(s: trim(s: out), delimiter: " ")) {
+    Absent => none
+    Present { value: w } => match parse_int(s: w) {
+      Absent => none
+      Present { value: n } => if n < 0 { none } else {
+        match checked_int_magnitude(a: n) {
+          CheckedNatOverflow { cause: _ } => none
+          CheckedNatReady { value: v } => Present { value: byte_size(count: v) }
+        }
+      }
+    }
+  }
+}
+
+fn v41_index_selection_is_read(o: V41IndexSelectionOutcome) -> Bool {
+  match o {
+    V41IndexSelectionRead { sha256_hex: _, bytes: _, parse: pr } => match pr { V41IndexParsed { name_count: _, members: _ } => true  V41IndexParseRefused { cause: _ } => false }
+    V41IndexSelectionUnread { cause: _ } => false
+  }
+}
+
+fn v41_index_selection_lines(o: V41IndexSelectionOutcome) -> String {
+  match o {
+    V41IndexSelectionUnread { cause: c } => join(["index-selection unread: ", c as String, "\n"], "")
+    V41IndexSelectionRead { sha256_hex: h, bytes: b, parse: pr } => match pr {
+      V41IndexParseRefused { cause: c } => join(["index-selection refused sha256=", h, ": ", c as String, "\n"], "")
+      V41IndexParsed { name_count: n, members: ms } =>
+        join(concat([join(["index-selection sha256=", h, " bytes=", to_string(byte_size_count(b: b)), " names=", to_string(n), " selector=", v41_index_engram_selector as String, "\n"], "")],
+          map(ms, m => join(["index-selection member ", m.name as String, " ", m.shard as String, "\n"], ""))), "")
+    }
+  }
+}
+
 fn v41_run_succeeded(run: V41MaterializeRun) -> Bool {
   match run {
     V41MaterializeRefusedBeforeFetch { cause: _, disk: _ } => false
@@ -602,25 +707,33 @@ fn v41_run_body(run: V41MaterializeRun) -> String {
 data v41_checkpoint_ci_attempt_raw: String = "v41-checkpoint-materialize-ci"
 data v41_checkpoint_ci_receipt_path: String = "target/v41-checkpoint-materialize-receipt.txt"
 
-fn v41_checkpoint_materialize_ci_wet() -> ProcessExit
+// ONE BRACKET FOR BOTH STEPS OF THE MODE. Target selection, Group A admission, the executor's reach,
+// the administrator credential, known-hosts trust and the ssh key file are the same for the fetch and for
+// the index read, so they are established here once and each step supplies only its work and its receipt.
+type V41CiReport {
+  body: String
+  succeeded: Bool
+}
+
+fn v41_group_a_ci_run(attempt_raw: String, identity_file_name: NonEmptyStr, receipt_path: String, title: String, work: fn(SparkMaterializeContext) -> V41CiReport) -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
   match spark_converge_target_selection(execute_apply: true) {
     SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
     SparkConvergeTargetAllObserveOnly =>
-      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: this mode writes the V4.1 checkpoint to ONE host, so it refuses rather than choosing one")
+      exit_failure(reason: join(["SPARK_CONVERGE_TARGET is unset: ", title, " acts on ONE host, so it refuses rather than choosing one"], ""))
     SparkConvergeTargetSingle { host: target_host } =>
       match admit_host_held_by_subject(raw: target_host, subject: PairServingUnitOn { group: FabricGroupA }) {
         Present { value: why } => exit_failure(reason: why)
         Absent =>
           match observe_executor_reach() {
-            ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["v41_checkpoint_materialize_ci: ", c], ""))
+            ExecutorReachUnknown { cause: c } => exit_failure(reason: join([title, ": ", c], ""))
             ExecutorReachKnown { short_hostname: executor, path: path } =>
               match read_bootstrap_credential() {
                 BootstrapCredentialNotMaterialized { cause: c } => exit_failure(reason: c as String)
                 BootstrapCredentialReady { secret: administrator } =>
-                  match fleet_ssh_attempt_identity(raw: v41_checkpoint_ci_attempt_raw) {
+                  match fleet_ssh_attempt_identity(raw: attempt_raw) {
                     Absent => exit_failure(reason: "attempt identity is not a safe path segment")
                     Present { value: attempt } => {
                       let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
@@ -628,10 +741,10 @@ fn v41_checkpoint_materialize_ci_wet() -> ProcessExit
                         Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
                         Present { value: trust } =>
                           match with_materialized_ssh_key_file(
-                            identity_file_name: "gunbc-v41-checkpoint-materialize-admin-password" as NonEmptyStr,
+                            identity_file_name: identity_file_name,
                             secret_bytes: administrator as Secret,
                             use: fn(file) {
-                              v41_materialize_checkpoint(ctx: SparkMaterializeContext {
+                              work(SparkMaterializeContext {
                                 host: target_host,
                                 trust: trust,
                                 path: path,
@@ -642,20 +755,20 @@ fn v41_checkpoint_materialize_ci_wet() -> ProcessExit
                             },
                           ) {
                             MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
-                            MaterializedSshKeyFileBracketCompleted { value: run } => {
+                            MaterializedSshKeyFileBracketCompleted { value: report } => {
                               let body = join([
-                                join(["v41 checkpoint materialize probed_at=", probed_at_word(reading: now) as String, " host=", target_host as String, " revision=", deepseek_v4_1_flash_revision as String, "\n"], ""),
-                                v41_run_body(run: run),
+                                join([title, " probed_at=", probed_at_word(reading: now) as String, " host=", target_host as String, " revision=", deepseek_v4_1_flash_revision as String, "\n"], ""),
+                                report.body,
                                 join(["executor=", executor, "\n"], ""),
                                 known_hosts_materialization_receipt(outcome: materialization),
                               ], "")
-                              let w = Filesystem.Write(path: v41_checkpoint_ci_receipt_path, content: body)
+                              let w = Filesystem.Write(path: receipt_path, content: body)
                               if !w.success {
-                                exit_failure(reason: join(["v41 checkpoint materialize receipt write failed: ", w.error], ""))
-                              } else if v41_run_succeeded(run: run) {
+                                exit_failure(reason: join([title, " receipt write failed: ", w.error], ""))
+                              } else if report.succeeded {
                                 ExitSuccess
                               } else {
-                                exit_failure(reason: join(["the checkpoint is not fully materialized and read on ", target_host as String, ":\n", body], ""))
+                                exit_failure(reason: join([title, " did not complete on ", target_host as String, ":\n", body], ""))
                               }
                             }
                           }
@@ -666,4 +779,133 @@ fn v41_checkpoint_materialize_ci_wet() -> ProcessExit
           }
       }
   }
+}
+
+fn v41_checkpoint_materialize_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  v41_group_a_ci_run(
+    attempt_raw: v41_checkpoint_ci_attempt_raw,
+    identity_file_name: "gunbc-v41-checkpoint-materialize-admin-password" as NonEmptyStr,
+    receipt_path: v41_checkpoint_ci_receipt_path,
+    title: "v41 checkpoint materialize",
+    work: fn(ctx) {
+      let run = v41_materialize_checkpoint(ctx: ctx)
+      V41CiReport { body: v41_run_body(run: run), succeeded: v41_run_succeeded(run: run) }
+    },
+  )
+}
+
+// THE PARSE RUNS ONLY INSIDE A HARD MEMORY FENCE. The executor shares its host with other tenants, and the
+// parse's working set is unmeasured, so before the index is read this process reads what bounds it: its
+// own cgroup and every ancestor (extdeps.linux.cgroup_v2_memory cgroup_tightest_hard_memory_limit), the
+// tightest memory.max among them, with the directory it came from. A process under memory.high alone is
+// throttled, not fenced -- an allocation may cross it and reach the host -- so that is a refusal, located
+// at the levels it read. gunbc.memory_cgroup_binding cannot nest a tighter bound under an existing hard
+// limit, by design; that is a separate change (see the PR that introduced this read).
+type V41MemoryFence
+  = V41MemoryFenced { dir: NonEmptyStr, bytes: ByteSize, levels: List<CgroupMemoryLevel> }
+  | V41MemoryUnfenced { cause: NonEmptyStr, levels: List<CgroupMemoryLevel> }
+
+fn v41_file_observed(dir: String, name: String, listing: FilesystemListingObservation) -> FilesystemFileObservation {
+  let path = join([dir, "/", name], "")
+  let read = Filesystem.Read(path: path)
+  filesystem_file_observation(listing: listing, name: name, path: path, read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error))
+}
+
+fn v41_cgroup_level(dir: NonEmptyStr) -> CgroupMemoryLevel {
+  let l = Filesystem.List(path: dir as String)
+  let listing = filesystem_listing_observation(directory: dir as String, success: l.success, entries: l.entries, error: l.error)
+  match v41_file_observed(dir: dir as String, name: "memory.max", listing: listing) {
+    FilesystemFileAbsent(_) => CgroupMemoryLevelWithoutFiles { dir: dir }
+    FilesystemFileIndeterminate { cause: c } => CgroupMemoryLevelUnread { dir: dir, cause: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => CgroupMemoryLevelUnread { dir: dir, cause: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => CgroupMemoryLevelUnread { dir: dir, cause: c }
+    FilesystemFileRead { path: _, content: max_body } =>
+      match v41_file_observed(dir: dir as String, name: "memory.high", listing: listing) {
+        FilesystemFileRead { path: _, content: high_body } =>
+          CgroupMemoryLevelRead { dir: dir, max: parse_cgroup_memory_limit(body: max_body), high: parse_cgroup_memory_limit(body: high_body) }
+        FilesystemFileAbsent(_) => CgroupMemoryLevelUnread { dir: dir, cause: "memory.max is present and memory.high is not" }
+        FilesystemFileIndeterminate { cause: c } => CgroupMemoryLevelUnread { dir: dir, cause: c }
+        FilesystemFileObservationsDisagree { path: _, cause: c } => CgroupMemoryLevelUnread { dir: dir, cause: c }
+        FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => CgroupMemoryLevelUnread { dir: dir, cause: c }
+      }
+  }
+}
+
+fn v41_limit_word(v: CgroupMemoryLimitValue) -> String {
+  match v {
+    CgroupMemoryLimited { bytes: b } => to_string(byte_size_count(b: b))
+    CgroupMemoryUnlimited => "max"
+    CgroupMemoryLimitUnparseable { body: body } => join(["unparseable(", trim(s: body), ")"], "")
+  }
+}
+
+fn v41_level_word(level: CgroupMemoryLevel) -> String {
+  match level {
+    CgroupMemoryLevelRead { dir: d, max: m, high: h } => join([d as String, " memory.max=", v41_limit_word(v: m), " memory.high=", v41_limit_word(v: h)], "")
+    CgroupMemoryLevelWithoutFiles { dir: d } => join([d as String, " no memory files"], "")
+    CgroupMemoryLevelUnread { dir: d, cause: c } => join([d as String, " unread: ", c], "")
+  }
+}
+
+fn v41_memory_fence() -> V41MemoryFence {
+  let membership = Filesystem.Read(path: "/proc/self/cgroup")
+  if !membership.success {
+    V41MemoryUnfenced { cause: join(["/proc/self/cgroup could not be read: ", membership.error], "") as NonEmptyStr, levels: [] as List<CgroupMemoryLevel> }
+  } else {
+    match read_unified_cgroup_membership(content: membership.content) {
+      MembershipMissing => V41MemoryUnfenced { cause: "/proc/self/cgroup names no unified-hierarchy cgroup" as NonEmptyStr, levels: [] as List<CgroupMemoryLevel> }
+      MembershipAmbiguous { first: a, second: b } => V41MemoryUnfenced { cause: join(["/proc/self/cgroup names two unified-hierarchy cgroups: ", a as String, " and ", b as String], "") as NonEmptyStr, levels: [] as List<CgroupMemoryLevel> }
+      MembershipMalformed { cause: _ } => V41MemoryUnfenced { cause: "/proc/self/cgroup carries a malformed line" as NonEmptyStr, levels: [] as List<CgroupMemoryLevel> }
+      CurrentCgroupObserved { relative_path: rel } => {
+        let levels = map(cgroup_v2_bounding_dirs(mount_point: cgroup_v2_mount_point, relative_path: rel), d => v41_cgroup_level(dir: d))
+        match cgroup_tightest_hard_memory_limit(levels: levels) {
+          CgroupHardLimitBinds { dir: d, bytes: b } => V41MemoryFenced { dir: d, bytes: b, levels: levels }
+          CgroupNoHardLimit => V41MemoryUnfenced {
+            cause: join(["no hard memory.max binds this process (cgroup ", rel as String, "); memory.high is a throttle an allocation may cross, not a fence, so the index is not parsed here"], "") as NonEmptyStr,
+            levels: levels,
+          }
+        }
+      }
+    }
+  }
+}
+
+fn v41_memory_fence_lines(f: V41MemoryFence) -> String {
+  match f {
+    V41MemoryFenced { dir: d, bytes: b, levels: ls } =>
+      join(concat([join(["memory-fence hard memory.max=", to_string(byte_size_count(b: b)), " at ", d as String, "\n"], "")], map(ls, l => join(["memory-fence level ", v41_level_word(level: l), "\n"], ""))), "")
+    V41MemoryUnfenced { cause: c, levels: ls } =>
+      join(concat([join(["memory-fence refused: ", c as String, "\n"], "")], map(ls, l => join(["memory-fence level ", v41_level_word(level: l), "\n"], ""))), "")
+  }
+}
+
+fn v41_index_selection_report(ctx: SparkMaterializeContext) -> V41CiReport {
+  let fence = v41_memory_fence()
+  match fence {
+    V41MemoryUnfenced { cause: c, levels: _ } =>
+      V41CiReport { body: join([v41_memory_fence_lines(f: fence), v41_index_selection_lines(o: V41IndexSelectionUnread { cause: c })], ""), succeeded: false }
+    V41MemoryFenced { dir: _, bytes: _, levels: _ } => {
+      let o = v41_index_selection_read(ctx: ctx)
+      V41CiReport { body: join([v41_memory_fence_lines(f: fence), v41_index_selection_lines(o: o)], ""), succeeded: v41_index_selection_is_read(o: o) }
+    }
+  }
+}
+
+// THE INDEX READ, THE MODE'S SECOND STEP (see V41IndexSelectionOutcome for why it is its own process).
+
+data v41_index_selection_ci_attempt_raw: String = "v41-index-selection-ci"
+data v41_index_selection_ci_receipt_path: String = "target/v41-index-selection-receipt.txt"
+
+fn v41_index_selection_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  v41_group_a_ci_run(
+    attempt_raw: v41_index_selection_ci_attempt_raw,
+    identity_file_name: "gunbc-v41-index-selection-admin-password" as NonEmptyStr,
+    receipt_path: v41_index_selection_ci_receipt_path,
+    title: "v41 index selection",
+    work: fn(ctx) { v41_index_selection_report(ctx: ctx) },
+  )
 }

@@ -2,13 +2,14 @@ module gunbc.spark.v41_engram_staging
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.content_hash { ContentHash, serialize_content_hash }
+import std.content_hash { ContentHash, Sha256Hash, serialize_content_hash }
 import std.artifact_store { artifact_realization_digest }
 import std.decl_ref { DeclarationRef }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.v41_identity_input { v41_input }
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncoding, V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
+  V41RankStoreIdentity, v41_store_key,
 }
 import gunbc.spark.v41_runtime_realized { V41OciImageDigest }
 import extdeps.container.oci.digest { OciContentDigest, render_oci_content_digest_wire }
@@ -38,19 +39,20 @@ import gunbc.spark.vllm_runtime_image_build { VllmImageProvenance, BuiltByThisRu
 // equivalent once the local artifact exists. A missing local store still refuses at token time
 // (gunbc.spark.v41_runtime_realized v41_token_time); staging never records an NFS token-time path.
 type V41StagedRankStore sole_constructor {
+  layer: Nat
   rank: Nat
   identity: ContentHash
   readback: ContentHash
 }
 
-fn v41_staged_rank_store(rank: Nat, identity: ContentHash, readback: ContentHash) -> V41StagedRankStore {
-  V41StagedRankStore { rank: rank, identity: identity, readback: readback }
+fn v41_staged_rank_store(layer: Nat, rank: Nat, identity: ContentHash, readback: ContentHash) -> V41StagedRankStore {
+  V41StagedRankStore { layer: layer, rank: rank, identity: identity, readback: readback }
 }
 
 fn v41_staged_matching(encoding: V41RowStoreEncoding) -> List<V41StagedRankStore> {
   match encoding {
     V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: rs, content_digest: _ } =>
-      map(rs, r => v41_staged_rank_store(rank: r.rank, identity: r.digest, readback: r.digest))
+      map(rs, r => v41_staged_rank_store(layer: r.layer, rank: r.rank, identity: Sha256Hash(r.digest), readback: Sha256Hash(r.digest)))
     V41RowStoreEncodingUnestablished { obligation: _ } => [] as List<V41StagedRankStore>
     V41RowStoreEncodingRefused { defects: _ } => [] as List<V41StagedRankStore>
   }
@@ -59,7 +61,7 @@ fn v41_staged_matching(encoding: V41RowStoreEncoding) -> List<V41StagedRankStore
 fn v41_staged_with_readback(encoding: V41RowStoreEncoding, readback: ContentHash) -> List<V41StagedRankStore> {
   match encoding {
     V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: rs, content_digest: _ } =>
-      map(rs, r => v41_staged_rank_store(rank: r.rank, identity: r.digest, readback: readback))
+      map(rs, r => v41_staged_rank_store(layer: r.layer, rank: r.rank, identity: Sha256Hash(r.digest), readback: readback))
     V41RowStoreEncodingUnestablished { obligation: _ } => [] as List<V41StagedRankStore>
     V41RowStoreEncodingRefused { defects: _ } => [] as List<V41StagedRankStore>
   }
@@ -67,13 +69,13 @@ fn v41_staged_with_readback(encoding: V41RowStoreEncoding, readback: ContentHash
 
 type V41StagingRequest sole_constructor {
   image: V41OciImageDigest
-  ranks: List<ContentHash>
+  ranks: List<V41RankStoreIdentity>
 }
 
 fn v41_staging_request(image: V41OciImageDigest, encoding: V41RowStoreEncoding) -> V41StagingRequest? {
   match encoding {
     V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: rs, content_digest: _ } =>
-      Present { value: V41StagingRequest { image: image, ranks: map(rs.sort_by(r => r.rank), r => r.digest) } }
+      Present { value: V41StagingRequest { image: image, ranks: rs } }
     V41RowStoreEncodingUnestablished { obligation: _ } => none
     V41RowStoreEncodingRefused { defects: _ } => none
   }
@@ -89,10 +91,13 @@ type V41StagingReceipt
   | V41StagingUnestablished { obligation: NonEmptyStr }
   | V41StagingRefused { defects: List<NonEmptyStr> }
 
-fn v41_rank_readbacks_match(desired: List<ContentHash>, rank_readbacks: List<V41StagedRankStore>) -> Bool {
+// EVERY DESIRED (LAYER, RANK) STORE IS READ BACK AS ITSELF: same key, same identity, and a readback
+// equal to that identity. Matching by position would let two stores swap and still pass.
+fn v41_rank_readbacks_match(desired: List<V41RankStoreIdentity>, rank_readbacks: List<V41StagedRankStore>) -> Bool {
   length(rank_readbacks) == length(desired)
-    && all(enumerate(desired), p => any(rank_readbacks, s =>
-      s.rank == p.first && (serialize_content_hash(hash: s.identity) as String) == (serialize_content_hash(hash: p.second) as String)
+    && all(desired, d => any(rank_readbacks, s =>
+      s.layer == d.layer && s.rank == d.rank
+        && (serialize_content_hash(hash: s.identity) as String) == (serialize_content_hash(hash: Sha256Hash(d.digest)) as String)
         && (serialize_content_hash(hash: s.readback) as String) == (serialize_content_hash(hash: s.identity) as String)))
 }
 
@@ -104,7 +109,7 @@ fn v41_stage_rank_stores(encoding: V41RowStoreEncoding, rank_readbacks: List<V41
     V41RowStoreEncodingUnestablished { obligation: o } => V41StagingUnestablished { obligation: o }
     V41RowStoreEncodingRefused { defects: d } => V41StagingRefused { defects: d }
     V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: rs, content_digest: _ } =>
-      if v41_rank_readbacks_match(desired: map(rs.sort_by(r => r.rank), r => r.digest), rank_readbacks: rank_readbacks) {
+      if v41_rank_readbacks_match(desired: rs, rank_readbacks: rank_readbacks) {
         V41RankStoresVerified { ranks: rank_readbacks }
       } else {
         V41StagingRefused { defects: ["rank-local readback does not match the requested row-store identities" as NonEmptyStr] }
@@ -137,7 +142,7 @@ fn v41_stage(
               v41_input(identity: "image.manifest", value: render_oci_content_digest_wire(d: request.image.manifest)),
               v41_input(identity: "image.config", value: render_oci_content_digest_wire(d: request.image.config)),
             ],
-            map(enumerate(request.ranks), p => v41_input(identity: join(["rank.", to_string(p.first)], ""), value: serialize_content_hash(hash: p.second) as String)))),
+            map(request.ranks, r => v41_input(identity: v41_store_key(layer: r.layer, rank: r.rank), value: serialize_content_hash(hash: Sha256Hash(r.digest)) as String)))),
           image_readback: image_readback,
           ranks: rank_readbacks,
         }
