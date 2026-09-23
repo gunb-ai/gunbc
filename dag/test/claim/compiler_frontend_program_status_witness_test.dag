@@ -697,10 +697,10 @@ test fn xl2_prerequisites_partition_into_six_delivered_and_five_outstanding() ->
     && xl2_delivered_by(p: ResolveOccurrenceCompleteness, pr: 12116, merge_sha: "d759da1c50")
     && xl2_delivered_by(p: OperatorExpressionLoweredWhole, pr: 12145, merge_sha: "ada85b9452")
     && xl2_delivered_by(p: StrippedTreeRehearsalComposition, pr: 12097, merge_sha: "1d4fa51a3d")
-    && xl2_outstanding_tracked_by(p: IfArmCallArgumentReferenceVisibility, decl_name: "lowering_accessor_collapses_a_sequence_operand")
+    && xl2_outstanding_tracked_by(p: IfArmCallArgumentReferenceVisibility, decl_name: "the_if_arm_call_argument_is_reported_dropped_holds")
     && xl2_outstanding_tracked_by(p: OptionalAccessorLocatedRefusal, decl_name: "lowering_accessor_collapses_a_sequence_operand")
     && xl2_outstanding_tracked_by(p: BlockStatementReferenceVisibility, decl_name: "unbound_statement_prefix_refuses_holds")
-    && xl2_outstanding_tracked_by(p: LoweringOccurrenceProjection, decl_name: "lowering_rebuilds_authored_atoms_without_their_occurrence")
+    && xl2_outstanding_tracked_by(p: LoweringOccurrenceProjection, decl_name: "lowering_rebuilds_an_authored_atom_without_its_occurrence")
     && xl2_outstanding_tracked_by(p: ListLiteralElementVisibility, decl_name: "list_literal_elements_dropped_at_v2_body_lowering")
     && count(xl2_prerequisites_outstanding()) == 5
     && all(xl2_prerequisites_outstanding(),

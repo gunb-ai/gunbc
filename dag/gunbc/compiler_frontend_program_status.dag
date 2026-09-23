@@ -266,8 +266,8 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
       qualification: "CORRECTION: the earlier premise that call arguments were represented after lowering was FALSE. At b8e0cc4eb9 v2.compiler.body_lowering_fold body_lower_call_args_from_capture read the argument capture with the parameter-list spine reader, so every argument of a plain call, named or positional, lowered to a call with ZERO arguments -- the fact was absent from the normalized tree, not lost between the tree and the denominator. #12108 replaced it with a structural, fail-closed argument reader; an undeclared name used only as an argument now refuses at resolve located at the argument (v2.test.claim.namespace_xl0.call_argument_resolve_refusal). Bounded to PLAIN calls: arguments inside an if-arm are IfArmCallArgumentReferenceVisibility." as NonEmptyStr,
     }
     IfArmCallArgumentReferenceVisibility => PrerequisiteOutstanding {
-      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_accessor_collapses_a_sequence_operand", decl_name: "lowering_accessor_collapses_a_sequence_operand"),
-      why: "a call argument inside an if-arm reaches no reference site: v2.compiler.body_lowering_fold body_lower_if_arm_operand_optional does not read it (found by gunbc#12145's probe, recorded as a sibling on the tracking row). No fix has merged." as NonEmptyStr,
+      tracked_by: decl_ref(module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "the_if_arm_call_argument_is_reported_dropped_holds"),
+      why: "a call argument inside an if-arm reaches no reference site: v2.compiler.body_lowering_fold body_lower_if_arm_operand_optional does not read it, and the conservation check reports it dropped (the tracking claim pins that drop). No fix has merged." as NonEmptyStr,
     }
     BareFieldTypeVisibility => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.declaring_identity_spelling.production_ingest", decl_name: "a_bare_parameter_type_reaches_and_a_bare_field_type_does_too"),
@@ -307,8 +307,8 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
       why: "v2.compiler.body_lowering_fold body_lower_primary_expr answers a list literal `[a]` with its first atom `[`, so its elements are dropped on every route -- data initializers, let values, call arguments (fierce-hawk-274, main 1b2f64fd49). As a call argument the shape refuses (body_lowering_reason_call_argument_unread) rather than drops, which is loud but still hides the elements. No fix has merged." as NonEmptyStr,
     }
     LoweringOccurrenceProjection => PrerequisiteOutstanding {
-      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_rebuilds_authored_atoms_without_their_occurrence", decl_name: "lowering_rebuilds_authored_atoms_without_their_occurrence"),
-      why: "only a minority of authored atoms keep their minted occurrence through normalize (cool-crab-649, main fec339d561, a seven-file std sample plus fixtures; the figure is that row's). Lowering rebuilds type-position atoms, field projections, match and record constructors, pipe and lambda arguments and dotted spines as node_synthetic, and binders become Named edge labels with no occurrence. Their census rows therefore cannot be located back to a source occurrence, and XL-5's waves are exact occurrence rewrites. No fix has merged." as NonEmptyStr,
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_rebuilds_an_authored_atom_without_its_occurrence", decl_name: "lowering_rebuilds_an_authored_atom_without_its_occurrence"),
+      why: "most authored atoms do not keep their minted occurrence through normalize: lowering rebuilds type-position atoms, field projections, match and record constructors, pipe and lambda arguments and dotted spines as node_synthetic, and binders become Named edge labels with no occurrence. Their census rows therefore cannot be located back to a source occurrence, and XL-5's waves are exact occurrence rewrites. The per-module count is the conservation check's, re-derived by v2.compiler.reference_conservation_census reference_conservation_stratified_sample_census rather than transcribed here. No fix has merged." as NonEmptyStr,
     }
   }
 }
