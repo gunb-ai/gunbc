@@ -358,3 +358,36 @@ test fn mab_binder_spelling_a_sibling_module_binds_the_arm() -> Bool {
   mab_outcome_accepts(o: mab_resolved_module_named_binder())
     && mab_has_atom(o: mab_resolved_module_named_binder(), id: ^node)
 }
+
+// AN UNIMPORTED CONSTRUCTOR IN A PATTERN REFUSES RATHER THAN BINDING. `None` is declared only in
+// p.o and not imported into p.q, so it is off the arm's lexical chain and the classifier takes its
+// LexicalUnbound -> global-bare branch. A variant is indexed under its containment path AND its
+// unique alias, so that lookup answers GlobalBareLookupAmbiguous, which reads as constructor: the
+// atom resolves as a reference and refuses unbound, rather than becoming a catch-all binder that
+// matches every A(_). WHAT IT DISCRIMINATES, measured: red with the GlobalBareLookupAmbiguous arm
+// answering binder; still green with the declared-payload fact forced false, because this spelling
+// never reaches the GlobalBareHit arm. It is the executed receipt for the bridge's fail-safe
+// direction, not evidence for the index-keyed payload fact.
+fn mab_resolved_unimported_constructor() -> Outcome<Node> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: mab_file(src: "module p.o\n\ntype Opt = Some(Int) | None\n", id: ^match_arm_binder_unimported_o_cu),
+      tail: Cons {
+        head: mab_file(src: "module p.q\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(None) => None\n    B => 0\n  }\n}\n", id: ^match_arm_binder_unimported_q_cu),
+        tail: Empty
+      }
+    },
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^p, tail: Cons { head: ^q, tail: Empty } } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+}
+
+test fn mab_unimported_constructor_in_a_pattern_refuses_rather_than_binding() -> Bool {
+  mab_outcome_refuses_with(
+    o: mab_resolved_unimported_constructor(),
+    reason: ^resolve_reason_unbound_symbol
+  )
+}
