@@ -32,7 +32,7 @@ import gunbc.spark.remote_step_sequence {
 }
 import gunbc.spark.vllm_runtime_image_build {
   VllmImageBuild, VllmImageBuilt, VllmImageBuildRefused, VllmImageIdentity,
-  SparkBuildHostSession, SparkBuildHostRan, SparkBuildHostRefused, with_spark_build_host, spark_build_host_work,
+  SparkBuildHostSession, SparkBuildHostRan, SparkBuildHostRefused, SparkBuildHostWork, with_spark_build_host,
   vllm_build_root, vllm_build_host_effect_term, vllm_build_host_purpose, vllm_build_host_residue,
   vllm_image_receipt_line,
 }
@@ -451,10 +451,10 @@ fn v41_runtime_image_produce_ci_wet() -> ProcessExit
                   identity_file_name: "gunbc-v41-runtime-image-produce-admin-password" as NonEmptyStr,
                   use: fn(target, context, ctx) {
                     let produced = converge_v41_produced_runtime_image(target: target, context: context, ctx: ctx)
-                    spark_build_host_work(
+                    SparkBuildHostWork {
                       receipt: v41_production_receipt(p: produced),
                       converged: v41_production_succeeded(p: produced),
-                    )
+                    }
                   },
                 ) {
                   SparkBuildHostRefused { cause: c } => exit_failure(reason: c)

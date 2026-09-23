@@ -965,22 +965,19 @@ fn converge_vllm_runtime_image(target: SshTarget, context: FleetSshExecutionCont
 // parameters through the generic-fn split, so a `uses` row and a type parameter can coexist on one
 // declaration. That is the capability, not this file: until it lands, every effectful bracket in
 // the corpus is monomorphic or hands back an erased pair, and this one hands back the pair.
-type SparkBuildHostWork sole_constructor {
+// PLAIN DATA, DELIBERATELY NOT `sole_constructor`. Every caller of `with_spark_build_host` is in
+// another module by construction -- the bracket exists so a mode entry elsewhere can borrow this one
+// -- and each caller derives `converged` from its OWN typed outcome, which this module cannot see
+// (the parametric bracket that could see it is the substrate refusal above). A seal here could only
+// be honoured by a mint accepting any receipt and any verdict, which is a seal in name alone (DESIGN
+// section 4b: a brand is cosmetic until construction enforces the distinction). As merged on #12008
+// the type WAS sealed and the converge module constructed it anyway, which the compiler refuses by
+// name; the honest repair is to stop claiming a guarantee nobody here can hold. The restoring
+// trigger is the generic-effectful-declaration capability above: once the bracket can return the
+// body's own value, the verdict is derived inside this module and a seal becomes meaningful again.
+type SparkBuildHostWork {
   receipt: String
   converged: Bool
-}
-
-// THE ONLY MINT, AND WHY IT HAS TO EXIST. `SparkBuildHostWork` is what the `use` body of
-// `with_spark_build_host` hands back, so EVERY caller of that bracket is in another module by
-// construction -- the bracket exists precisely so a mode entry elsewhere can borrow this one. But
-// the type is `sole_constructor`, which the compiler enforces by refusing construction outside this
-// file (*sole_constructor type 'SparkBuildHostWork' cannot be constructed outside its defining
-// module*), so the bracket's own interface was unusable from where it is meant to be used: a caller
-// could name the type in its `use` signature and could not produce a value of it. That is not a
-// preference for a helper -- without this function the seal and the bracket contradict each other,
-// and the contradiction is invisible until something RESOLVES the caller's module.
-fn spark_build_host_work(receipt: String, converged: Bool) -> SparkBuildHostWork {
-  SparkBuildHostWork { receipt: receipt, converged: converged }
 }
 
 type SparkBuildHostSession
@@ -1107,13 +1104,13 @@ fn vllm_runtime_image_build_entry(r: VllmContainerBuildRecipe) -> ProcessExit
               identity_file_name: "gunbc-vllm-image-build-admin-password" as NonEmptyStr,
               use: fn(target, context, ctx) {
                 let build = converge_vllm_image_for_recipe(target: target, context: context, ctx: ctx, r: r)
-                spark_build_host_work(
+                SparkBuildHostWork {
                   receipt: join([
                     join(["recipe arch_list=", vllm_torch_cuda_arch_list_wire(archs: r.torch_cuda_arch_list), " cuda=", r.cuda_version as String, " base=", r.build_base_image as String, "\n"], ""),
                     vllm_image_receipt_line(b: build),
                   ], ""),
                   converged: vllm_image_build_succeeded(b: build),
-                )
+                }
               },
             ) {
               SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
