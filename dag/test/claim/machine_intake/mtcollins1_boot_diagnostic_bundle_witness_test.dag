@@ -14,6 +14,7 @@ import gunbc.machine_intake_sel_stimulus_listener { sel_read }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootDiagnosticBundle, InventoryReading, MembersRead, MembersUnread, MembersNotTaken,
   SelSnapshotRead, SelSnapshotUnread, SelSnapshotNotTaken, ConsoleNotConfigured,
+  SdrCacheDumped, SdrCacheUnread, SdrCacheNotTaken,
   BmcUnreachable, BmcTimeout, BmcAuthRefused, BmcHttpRefused, BmcSessionUnestablished,
   bmc_curl_read_cause, bmc_ipmitool_read_cause, inventory_not_taken,
   mtcollins1_boot_bundle_findings, mtcollins1_boot_bundle_text, mtcollins1_boot_outcome_with_findings,
@@ -22,7 +23,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   CollectionComplete, CollectionRefused, redfish_collection_assembly, redfish_budget_refusal, member_not_reached,
   MemberBody, assemble_memory_members, BmcResponseMalformed, mtcollins1_system_inventory_links,
   mtcollins1_boot_diagnostics_allowance, mtcollins1_boot_redfish_read_budget, mtcollins1_boot_collection_member_bound,
-  console_size_of_stat, mtcollins1_boot_outcome_after_bundle, BundleWritten, bundle_write_receipt_line,
+  console_size_of_stat, mtcollins1_systems_link, BmcLinkUnpublished,
 }
 import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_ended_before_bmc, BmcAccessNotReached, mtcollins1_boot_attempt_identity }
 import gunbc.actions_run_binding { ActionsVariablePresent, ActionsVariableAbsent }
@@ -80,6 +81,7 @@ fn bundle_socket1_absent() -> MtCollins1BootDiagnosticBundle {
     outcome: "refused: mtcollins1 boot: host qualification REFUSED (nproc observed 80, qualification expects 160)",
     sel_before: SelSnapshotRead { raw: sel_before_fixture, at: "2026-09-23T00:59:00Z" },
     sel_after: SelSnapshotRead { raw: sel_after_fixture, at: "2026-09-23T01:10:00Z" },
+    sdr_cache: SdrCacheDumped { path: "/w/_temp/mtcollins1-bmc-credential.sdr-cache", at: "2026-09-23T00:58:50Z" },
     inventory: InventoryReading {
       system_id: "Self",
       memory: MembersRead { members: concat(parsed_memory(body: memory_member_present_fixture), socket1_absent_members()) },
@@ -98,6 +100,7 @@ fn bundle_bmc_silent() -> MtCollins1BootDiagnosticBundle {
     outcome: "refused: mtcollins1 boot: approval window expired; controller untouched",
     sel_before: SelSnapshotUnread { cause: ipmi },
     sel_after: SelSnapshotUnread { cause: ipmi },
+    sdr_cache: SdrCacheUnread { cause: ipmi },
     inventory: InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: true },
     console: ConsoleNotConfigured,
   }
@@ -218,7 +221,7 @@ test fn a_link_is_used_exactly_or_refused_never_rebuilt() -> Bool {
 test fn an_incomplete_memory_collection_mints_no_short_inventory_finding() -> Bool {
   let cause = BmcCollectionIncomplete { endpoint: "https://192.168.1.228/redfish/v1/Systems/Self/Memory", at: "2026-09-23T01:00:00Z", detail: "Members@odata.nextLink not followed" }
   let b = bundle_socket1_absent()
-  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after,
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache,
     inventory: InventoryReading { system_id: "/redfish/v1/Systems/Self", memory: MembersUnread { cause: cause }, processors: b.inventory.processors, credential_removed: true },
     console: ConsoleNotConfigured }
   !any_contains(xs: mtcollins1_boot_bundle_findings(bundle: bundle), pattern: "Memory member(s); the census board")
@@ -227,9 +230,9 @@ test fn an_incomplete_memory_collection_mints_no_short_inventory_finding() -> Bo
 
 // ── THE DIAGNOSTICS DEADLINE ─────────────────────────────────────────────────────────────────
 
-// 2 SEL snapshots x (20 s + 5 s kill-after) + 48 Redfish reads x 15 s + 60 s publish.
+// 2 SEL snapshots and 1 SDR dump x (20 s + 5 s kill-after) + 48 Redfish reads x 15 s + 60 s publish.
 test fn the_allowance_is_the_sum_of_the_bounds() -> Bool {
-  (second_count(s: mtcollins1_boot_diagnostics_allowance()) as Int) == 2 * 25 + mtcollins1_boot_redfish_read_budget * 15 + 60
+  (second_count(s: mtcollins1_boot_diagnostics_allowance()) as Int) == 3 * 25 + mtcollins1_boot_redfish_read_budget * 15 + 60
 }
 
 test fn a_spent_budget_refuses_the_read_and_names_what_was_not_reached() -> Bool {
@@ -243,7 +246,7 @@ test fn a_spent_budget_refuses_the_read_and_names_what_was_not_reached() -> Bool
 test fn a_partial_bundle_renders_the_reads_not_reached() -> Bool {
   let b = bundle_socket1_absent()
   let cause = BmcDeadlineReached { endpoint: "https://192.168.1.228/redfish/v1/Systems/Self/Memory/DIMM_20", at: "t", not_reached: member_not_reached(total: 32, read: 20) }
-  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after,
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache,
     inventory: InventoryReading { system_id: "/redfish/v1/Systems/Self", memory: MembersUnread { cause: cause }, processors: b.inventory.processors, credential_removed: true },
     console: ConsoleNotConfigured }
   contains(mtcollins1_boot_bundle_text(bundle: bundle), "memory: UNREAD: diagnostics read budget spent before https://192.168.1.228/redfish/v1/Systems/Self/Memory/DIMM_20 (t); not reached: 12 of 32 member read(s)")
@@ -335,7 +338,7 @@ test fn an_ambiguous_ipmi_failure_is_not_rendered_as_did_not_answer() -> Bool {
 test fn only_definitive_no_answers_say_the_bmc_did_not_answer() -> Bool {
   let b = bundle_bmc_silent()
   let timeout = bmc_ipmitool_read_cause(endpoint: "ipmi lanplus 192.168.1.228", at: "2026-09-23T00:59:00Z", exit_code: 124, stderr: "")
-  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: SelSnapshotUnread { cause: timeout }, sel_after: SelSnapshotUnread { cause: timeout }, inventory: b.inventory, console: b.console }
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: SelSnapshotUnread { cause: timeout }, sel_after: SelSnapshotUnread { cause: timeout }, sdr_cache: b.sdr_cache, inventory: b.inventory, console: b.console }
   any_contains(xs: mtcollins1_boot_bundle_findings(bundle: bundle), pattern: "every BMC read failed and the BMC did not answer; first: BMC timed out at ipmi lanplus 192.168.1.228")
 }
 
@@ -358,6 +361,7 @@ test fn a_bundle_from_an_attempt_that_never_reached_the_bmc_names_why_in_every_s
     outcome: "refused: mtcollins1 boot: approval window expired; controller untouched",
     sel_before: SelSnapshotNotTaken { reason: why },
     sel_after: SelSnapshotNotTaken { reason: why },
+    sdr_cache: SdrCacheNotTaken { reason: why },
     inventory: inventory_not_taken(reason: why),
     console: ConsoleNotConfigured,
   }
@@ -408,41 +412,6 @@ test fn a_capture_over_the_byte_bound_is_reported_whole() -> Bool {
   }
 }
 
-// THE stat SIZE REACHES A ByteSize BY EXECUTION. Every console claim above SUPPLIES its ByteSize,
-// so none of them ran the one conversion the production route makes, and that conversion was an
-// `as Nat` the evaluator refuses: fleet-converge run 35871654468 died there with
-// "cannot cast Int to Nat" after its SEL and Redfish reads were already typed, and wrote no bundle
-// and no receipt. This is the inhabitance claim for that boundary (DESIGN section 3: supplying an
-// input may never remove the last execution of the real path). RED: restoring the cast errors here.
-test fn a_stat_size_text_becomes_a_byte_size() -> Bool {
-  (match console_size_of_stat(size_text: "173529\n") { Present { value: b } => (byte_size_count(b: b) as Int) == 173529 Absent => false })
-    && (match console_size_of_stat(size_text: "0") { Present { value: b } => (byte_size_count(b: b) as Int) == 0 Absent => false })
-    && console_size_of_stat(size_text: "-1") == none
-    && console_size_of_stat(size_text: "stat: cannot stat") == none
-}
-
-// THE SPECIMEN, END TO END OVER THE PURE CONCLUSION: the post-boot SEL read timed out (coreutils
-// exit 124), the Systems collection answered 404, and the console was sized through stat. The
-// bundle still renders the typed timeout, the receipt line names the written bundle, and the
-// verdict the capture supports -- a boot that reached the OS -- is not flipped by a failed read.
-test fn a_post_boot_sel_timeout_is_recorded_and_leaves_the_verdict_alone() -> Bool {
-  let timeout = bmc_ipmitool_read_cause(endpoint: "ipmi lanplus 192.168.1.228", at: "2026-09-23T15:12:43Z", exit_code: 124, stderr: "")
-  let http = bmc_curl_read_cause(endpoint: "https://192.168.1.228/redfish/v1/Systems", at: "2026-09-23T15:13:03Z", exit_code: 22, stderr: "curl: (22) The requested URL returned error: 404")
-  let size = match console_size_of_stat(size_text: "51") { Present { value: b } => b Absent => byte_size(count: 0) }
-  let bundle = MtCollins1BootDiagnosticBundle {
-    attempt: AttemptRunId { run_id: "35871654468" },
-    outcome: "ok",
-    sel_before: SelSnapshotRead { raw: sel_after_fixture, at: "2026-09-23T15:00:00Z" },
-    sel_after: SelSnapshotUnread { cause: timeout },
-    inventory: InventoryReading { system_id: "", memory: MembersUnread { cause: http }, processors: MembersUnread { cause: http }, credential_removed: true },
-    console: mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: size, capture: "SK0 MC0 trained\n", read_ok: true, read_error: ""),
-  }
-  let text = mtcollins1_boot_bundle_text(bundle: bundle)
-  contains(text, "after: UNREAD: BMC timed out at ipmi lanplus 192.168.1.228 (2026-09-23T15:12:43Z): no answer within the diagnostics deadline (coreutils timeout exit 124)")
-    && bundle_write_receipt_line(w: BundleWritten) == "diagnostics=artifacts/mtcollins1-boot-diagnostics.txt"
-    && match mtcollins1_boot_outcome_after_bundle(outcome: ExitSuccess, bundle: bundle, write: BundleWritten) { ExitSuccess => true _ => false }
-}
-
 // ── THE ATTEMPT'S IDENTITY ───────────────────────────────────────────────────────────────────
 
 test fn a_missing_run_id_is_a_typed_unavailable_identity_not_a_blank() -> Bool {
@@ -455,7 +424,7 @@ test fn a_missing_run_id_is_a_typed_unavailable_identity_not_a_blank() -> Bool {
 
 test fn the_unavailable_identity_is_rendered_as_such() -> Bool {
   let b = bundle_bmc_silent()
-  let bundle = MtCollins1BootDiagnosticBundle { attempt: AttemptIdentityUnavailable { variable: "GITHUB_RUN_ID", detail: "not set" }, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, inventory: b.inventory, console: b.console }
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: AttemptIdentityUnavailable { variable: "GITHUB_RUN_ID", detail: "not set" }, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, inventory: b.inventory, console: b.console }
   contains(mtcollins1_boot_bundle_text(bundle: bundle), "attempt=UNAVAILABLE: GITHUB_RUN_ID could not be read: not set")
 }
 
@@ -468,6 +437,7 @@ test fn an_empty_dram_socket_in_the_console_reaches_the_refusal() -> Bool {
     outcome: "refused: x",
     sel_before: SelSnapshotNotTaken { reason: "t" },
     sel_after: SelSnapshotNotTaken { reason: "t" },
+    sdr_cache: SdrCacheNotTaken { reason: "t" },
     inventory: inventory_not_taken(reason: "t"),
     console: mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 200), capture: capture, read_ok: true, read_error: ""),
   }
@@ -560,5 +530,69 @@ test fn a_system_answering_at_its_own_link_yields_its_inventory_links() -> Bool 
   match mtcollins1_system_inventory_links(requested: system_link_a, body: system_body(odata_id: "/redfish/v1/Systems/Self")) {
     ObservationEstablished { observed: l } => l.memory == Present { value: "/redfish/v1/Systems/Self/Memory" } && l.processors == Present { value: "/redfish/v1/Systems/Self/Processors" }
     ObservationRefused { cause: _ } => false
+  }
+}
+
+// ── RUN 35871654468: THE STAT SIZE, AND A POST-BOOT SEL TIMEOUT ──────────────────────────────
+//
+// THE RED THIS FILE WAS MISSING. On that run the post-boot SEL read timed out (coreutils exit 124)
+// and was typed correctly; the attempt then ABORTED one read later, in console_size_of_stat, on
+// "cannot cast Int to Nat", so no bundle and no receipt were written. Every console claim above
+// supplies byte_size(count: <literal>), so the one Int-to-Nat crossing on the real path was never
+// evaluated by any claim. This one evaluates it on the size stat(1) prints: restoring `n as Nat`
+// turns it red with the run's own error.
+test fn a_stat_size_crosses_to_its_byte_size() -> Bool {
+  match console_size_of_stat(size_text: "31449\n") {
+    Present { value: b } => (byte_size_count(b: b) as Int) == 31449
+    Absent => false
+  }
+}
+
+// CONTROL: a size stat(1) cannot have printed is no size, never its magnitude or a zero.
+test fn a_negative_or_non_numeric_stat_size_is_no_size() -> Bool {
+  (match console_size_of_stat(size_text: "-1") { Absent => true Present { value: _ } => false })
+    && (match console_size_of_stat(size_text: "stat: cannot statx") { Absent => true Present { value: _ } => false })
+}
+
+// THE SPECIMEN'S SEL SHAPE: before read, after timed out. The bundle renders the typed timeout in
+// the after section, mints no SEL delta from half a window, and the verdict is the one the rest
+// of the attempt supports: a success stays a success, a refusal keeps its reason.
+test fn a_post_boot_sel_timeout_is_a_typed_after_section_and_moves_no_verdict() -> Bool {
+  let b = bundle_socket1_absent()
+  let timeout = bmc_ipmitool_read_cause(endpoint: "ipmi lanplus 192.168.1.228", at: "2026-09-23T15:12:43Z", exit_code: 124, stderr: "")
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: AttemptRunId { run_id: "35871654468" }, outcome: "accepted", sel_before: b.sel_before, sel_after: SelSnapshotUnread { cause: timeout }, sdr_cache: b.sdr_cache, inventory: b.inventory, console: ConsoleNotConfigured }
+  let text = mtcollins1_boot_bundle_text(bundle: bundle)
+  let findings = mtcollins1_boot_bundle_findings(bundle: bundle)
+  contains(text, "after: UNREAD: BMC timed out at ipmi lanplus 192.168.1.228 (2026-09-23T15:12:43Z): no answer within the diagnostics deadline (coreutils timeout exit 124)")
+    && !contains(text, "Memory training failure")
+    && (match mtcollins1_boot_outcome_with_findings(outcome: ExitSuccess, findings: findings) { ExitSuccess => true _ => false })
+}
+
+// ── THE INVENTORY STARTS AT THE SERVICE ROOT ─────────────────────────────────────────────────
+//
+// Run 35871654468 requested an authored /redfish/v1/Systems and got 404. The reader now requests
+// only DSP0266's fixed service root and follows the Systems link that root publishes. The bodies are
+// SPEC-SHAPED (DMTF ServiceRoot schema), not observed: no service-root response from mtcollins1 is in
+// the corpus.
+test fn the_systems_collection_is_the_link_the_service_root_publishes() -> Bool {
+  match mtcollins1_systems_link(root_body: "{\"@odata.id\": \"/redfish/v1/\", \"Systems\": {\"@odata.id\": \"/redfish/v1/Systems\"}}", at: "t") {
+    ObservationEstablished { observed: p } => (p as String) == "/redfish/v1/Systems"
+    ObservationRefused { cause: _ } => false
+  }
+}
+
+// A root that publishes no Systems link is that typed absence, not an empty inventory.
+test fn a_service_root_without_a_systems_link_is_an_unpublished_link() -> Bool {
+  match mtcollins1_systems_link(root_body: "{\"@odata.id\": \"/redfish/v1/\", \"Managers\": {\"@odata.id\": \"/redfish/v1/Managers\"}}", at: "t") {
+    ObservationRefused { cause: BmcLinkUnpublished { endpoint: e, at: _, property: p } } => (p as String) == "Systems" && (e as String) == "https://192.168.1.228/redfish/v1/"
+    _ => false
+  }
+}
+
+// A Systems link off the service's own origin is refused before a credential is presented to it.
+test fn a_cross_origin_systems_link_is_refused() -> Bool {
+  match mtcollins1_systems_link(root_body: "{\"Systems\": {\"@odata.id\": \"https://elsewhere.example/redfish/v1/Systems\"}}", at: "t") {
+    ObservationRefused { cause: BmcResponseMalformed { endpoint: _, at: _, detail: d } } => contains(d, "service root Systems link refused")
+    _ => false
   }
 }
