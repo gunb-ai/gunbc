@@ -77,3 +77,11 @@ test fn every_sealed_mtcollins1_write_refuses_an_outside_caller() -> Bool {
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "oob_boot_handoff") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "megarac_attach_remote_image") >= 1
 }
+
+// THE SKIP-THE-READ MUTATION REFUSES AT COMPILE TIME: a forged confirmation has no constructor, and
+// the hold-owning boot path admits only the entry that performs the read.
+test fn a_boot_that_skips_the_standing_ruling_read_does_not_compile() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "StandingRulingConfirmation") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_under_live_unit_hold") >= 1
+}

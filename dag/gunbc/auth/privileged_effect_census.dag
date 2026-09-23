@@ -15,6 +15,7 @@ import gunbc.spark.bootstrap_provision {
 import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
 import gunbc.github_app_acquisition { census_app_registration_submit_step }
 import gunbc.auth.mtcollins1_boot_federation { mtcollins1_boot_service_account_member }
+import gunbc.machine_intake_mtcollins1_standing_ruling { mtcollins1_boot_standing_ruling_text }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
   WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
@@ -221,18 +222,20 @@ fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
 // no reapply restores that. An earlier revision of this row declared ReversibleByReapply, and its own
 // mutation claim showed that label was what selected federation -- a relabel standing where a
 // decision belonged (side-chat review 5286225278).
-// THE DECISION IS THE OPERATOR'S, CARRIED AS ONE: a standing authorization for this recurring
-// destructive effect, conditional on the unit's durable maintenance hold being released before any
-// BMC write. It discharges the per-instance witness for irreversibility and nothing else; the
+// THE DECISION IS THE OPERATOR'S, AND IT IS ATTESTED BY THE OPERATOR, NOT BY THIS ROW (review 70369):
+// the ruling's words are filed once through the approval loop and every boot reads the stored
+// approval of those exact words before the unit hold (gunbc.machine_intake_mtcollins1_standing_ruling),
+// refusing if it is absent, denied or for other words. It is conditional on the unit's durable
+// maintenance hold being released before any BMC write. It discharges the per-instance witness for irreversibility and nothing else; the
 // interlock it names is rostered in privileged_effect_interlocks below, and a ruling whose interlock
 // is not rostered against its site is red (rulings_without_a_rostered_interlock).
 // MINTS NO CREDENTIAL: it reads the pinned BMC credential and the pinned fleet key.
 // WORKLOAD IDENTITY: the dedicated account of gunbc.auth.mtcollins1_boot_federation.
 data mtcollins1_boot_standing_authorization: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
-  ruled_by: "operator (in chat, relayed by eager-owl-205)" as NonEmptyStr,
-  ruled_on: "2026-09-23" as NonEmptyStr,
+  ruling_text: mtcollins1_boot_standing_ruling_text,
   effect_subject: "mtcollins1 boot: BMC virtual-media attach, one-shot CD boot device, power cycle and SOL capture" as NonEmptyStr,
   interlock: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_unit_hold_key"),
+  confirmation_read: site(module_path: "gunbc.machine_intake_mtcollins1_standing_ruling", decl_name: "mtcollins1_boot_standing_ruling_read"),
 }
 
 fn mtcollins1_boot_effect() -> PrivilegedEffect {

@@ -5,12 +5,17 @@ module test.probe.unit_hold_proof_forged_probe
 // (test.claim.machine_intake.mtcollins1_maintenance_hold_witness_test enrolls the refusals):
 //   - a UnitHoldProof authored outside the hold module: SoleConstructorViolation at the literal;
 //   - a call to each admit_callers-sealed write from outside its admitted callers:
-//     ConstructorCallAdmissionRefused, keyed by the callee's name.
+//     ConstructorCallAdmissionRefused, keyed by the callee's name;
+//   - THE SKIP-THE-READ MUTATION: a boot path that does not read the operator's stored approval of the
+//     standing ruling has only a forged StandingRulingConfirmation to pass (SoleConstructorViolation),
+//     and the hold-owning path refuses any caller but mtcollins1_boot_wet_on_srv1.
 
 import std.types { NonEmptyStr, String }
 import std.durable_compare_and_set { cas_generation_first }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import gunbc.machine_intake_mtcollins1_maintenance_hold { UnitHoldProof }
+import gunbc.machine_intake_mtcollins1_standing_ruling { StandingRulingConfirmation }
+import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_under_live_unit_hold }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_drive_handoff, mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
@@ -44,5 +49,14 @@ fn power_cycle_through_the_generic_handoff_from_outside() -> String {
 
 fn attach_through_the_generic_megarac_route_from_outside() -> String {
   let _x = megarac_attach_remote_image(bmc_host: mtcollins1_endpoint.host, username: "admin", password_file: "/tmp/pw", cookie_jar: "/tmp/jar", image_name: "x.iso", firmware: mtcollins1_firmware)
+  ""
+}
+
+fn forged_ruling_confirmation() -> StandingRulingConfirmation {
+  StandingRulingConfirmation { revision: "sha256:forged" }
+}
+
+fn boot_without_reading_the_standing_ruling() -> String {
+  let _x = mtcollins1_boot_under_live_unit_hold(ruling: forged_ruling_confirmation(), run_id: "forged", subject: mtcollins1_boot_subject(execution_revision: "0000000000000000000000000000000000000000"), password_file: "/tmp/pw", sol_pid_path: "/tmp/pid", sol_capture_path: "/tmp/cap")
   ""
 }

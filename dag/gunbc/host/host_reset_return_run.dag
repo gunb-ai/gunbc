@@ -462,6 +462,8 @@ fn host_reset_return_attempt(
   }
 }
 
+// A HOLD-GATED SUBJECT IS NOT WRITTEN WITHOUT A PROOF FOR ITS SLOT, and the proof exists only if the
+// entry's live acquire committed (gunbc.machine_intake_mtcollins1_maintenance_hold UnitHoldProof).
 fn host_reset_return_issue_and_watch(
   proof: UnitHoldProof?,
   candidate: ResetSubjectCandidate,
@@ -473,8 +475,6 @@ fn host_reset_return_issue_and_watch(
   issued_at: EpochMs,
 ) -> ResetAttemptMint
 {
-  // A HOLD-GATED SUBJECT IS NOT WRITTEN WITHOUT A PROOF FOR ITS SLOT, and the proof exists only if
-  // the entry's live acquire committed (gunbc.machine_intake_mtcollins1_maintenance_hold UnitHoldProof).
   match reset_unit_hold_gate(candidate: candidate, proof: proof) {
     Present { value: why } =>
       return mint_reset_attempt_receipt(

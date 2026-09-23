@@ -1,0 +1,74 @@
+module test.claim.machine_intake.mtcollins1_standing_ruling_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String }
+import v2.std.optional { Present, Absent }
+import gunbc.auth.approval_request_client { ApprovalPollStanding, PollApproved, PollDenied, PollNotFiled, PollStillPending }
+import gunbc.auth.approval_decision_store { request_revision_of }
+import gunbc.machine_intake_mtcollins1_standing_ruling {
+  standing_ruling_request, standing_ruling_refusal, mtcollins1_boot_standing_ruling_request, mtcollins1_boot_standing_ruling_text,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE STANDING RULING IS CONFIRMED ONLY BY THE OPERATOR'S STORED APPROVAL OF ITS EXACT WORDS (review
+// 70369; decision A). Poll standings are supplied here to the PURE refusal fold, which returns a
+// reason or nothing and never a confirmation; the confirmation's only mint is the live read, and the
+// skip-the-read route is refused at compile time by test.probe.unit_hold_proof_forged_probe.
+
+fn approved_for(text: NonEmptyStr) -> ApprovalPollStanding {
+  PollApproved {
+    revision: request_revision_of(request: standing_ruling_request(text: text)),
+    decided_by: "operator" as NonEmptyStr,
+    decided_at: "2026-09-23T12:00:00Z",
+    execute_by: "2026-09-23T12:30:00Z",
+  }
+}
+
+fn refused_with(r: NonEmptyStr?, pattern: String) -> Bool {
+  match r {
+    Present { value: why } => string_contains(s: why as String, pattern: pattern) && string_contains(s: why as String, pattern: "controller untouched")
+    Absent => false
+  }
+}
+
+fn confirmed(r: NonEmptyStr?) -> Bool {
+  match r {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// THE CONTROL: an approval over these words confirms (and stays confirmed after its execute-by, since
+// a standing ruling is a recorded decision, not a one-shot grant).
+test fn an_approval_of_the_exact_words_confirms_the_ruling() -> Bool {
+  confirmed(r: standing_ruling_refusal(poll: approved_for(text: mtcollins1_boot_standing_ruling_text), request: mtcollins1_boot_standing_ruling_request()))
+}
+
+// RED: never filed -> every boot refuses.
+test fn an_absent_decision_refuses() -> Bool {
+  refused_with(r: standing_ruling_refusal(poll: PollNotFiled, request: mtcollins1_boot_standing_ruling_request()), pattern: "not confirmed")
+    && refused_with(r: standing_ruling_refusal(poll: PollStillPending, request: mtcollins1_boot_standing_ruling_request()), pattern: "not confirmed")
+}
+
+// RED: the operator said no.
+test fn a_denied_decision_refuses() -> Bool {
+  let req = mtcollins1_boot_standing_ruling_request()
+  refused_with(r: standing_ruling_refusal(poll: PollDenied { revision: request_revision_of(request: req), decided_by: "operator" as NonEmptyStr, decided_at: "2026-09-23T12:00:00Z", reason: "not yet" as NonEmptyStr }, request: req), pattern: "not confirmed")
+}
+
+// RED: the operator approved these words; the ruling is then edited by ONE character. The stored
+// approval is for the old hash, so the edited ruling refuses until the operator taps again.
+test fn a_one_character_edit_voids_the_stored_approval() -> Bool {
+  let edited = concat(mtcollins1_boot_standing_ruling_text as String, "!") as NonEmptyStr
+  refused_with(r: standing_ruling_refusal(poll: approved_for(text: mtcollins1_boot_standing_ruling_text), request: standing_ruling_request(text: edited)), pattern: "not confirmed")
+    && request_revision_of(request: standing_ruling_request(text: edited)) != request_revision_of(request: mtcollins1_boot_standing_ruling_request())
+}
+
+// THE OPERATOR APPROVES THE WORDS THE SELECTOR CONSUMES: the request's purpose (what the ntfy request
+// shows) is the ruling text itself.
+test fn the_request_shows_and_hashes_the_ruling_text() -> Bool {
+  (mtcollins1_boot_standing_ruling_request().purpose as String) == (mtcollins1_boot_standing_ruling_text as String)
+    && string_contains(s: mtcollins1_boot_standing_ruling_text as String, pattern: "cannot be undone")
+    && string_contains(s: mtcollins1_boot_standing_ruling_text as String, pattern: "maintenance hold")
+}

@@ -23,6 +23,9 @@ import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootSubject,
   mtcollins1_boot_subject,
 }
+import gunbc.machine_intake_mtcollins1_standing_ruling {
+  StandingRulingConfirmation, StandingRulingConfirmed, StandingRulingRefused, mtcollins1_boot_standing_ruling_read,
+}
 import gunbc.machine_intake_mtcollins1_maintenance_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused,
   mtcollins1_boot_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal, mtcollins1_unit_hold_key,
@@ -767,6 +770,7 @@ fn mtcollins1_boot_actuate(
 // compare-and-set this call made committed. Nothing is supplied: there is no admission parameter a
 // caller could author. The hold is freed whatever the actuation answered.
 fn mtcollins1_boot_under_live_unit_hold(
+  ruling: StandingRulingConfirmation,
   run_id: NonEmptyStr,
   subject: MtCollins1BootSubject,
   password_file: String,
@@ -774,6 +778,9 @@ fn mtcollins1_boot_under_live_unit_hold(
   sol_capture_path: String,
 ) -> ProcessExit
   uses net: std.resources.Network
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet_on_srv1"),
+  ]
 {
   match mtcollins1_boot_acquire_unit_hold(run_id: run_id) {
     UnitHoldRefused { reason: r } => exit_failure(reason: concat("mtcollins1 boot: ", r as String))
@@ -853,7 +860,12 @@ fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
   if !pw_read.success {
     return exit_failure(reason: concat("mtcollins1 boot: BMC credential unreadable: ", pw_read.error))
   }
+  let ruling = match mtcollins1_boot_standing_ruling_read() {
+    StandingRulingRefused { reason: r } => return exit_failure(reason: r as String)
+    StandingRulingConfirmed { confirmation: c } => c
+  }
   let actuated = mtcollins1_boot_under_live_unit_hold(
+    ruling: ruling,
     run_id: run_id as NonEmptyStr,
     subject: mtcollins1_boot_subject(execution_revision: sha as NonEmptyStr),
     password_file: cred,

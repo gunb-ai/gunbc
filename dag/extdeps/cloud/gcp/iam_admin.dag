@@ -54,6 +54,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // goes through. The WRITE carries the same optionality for the same reason and one nobody had hit:
 // setIamPolicy returns the policy it stored, so revoking the LAST binding answers with an etag alone.
 // Rostered as gunbc.recurring_failure_mode required_output_field_absent_for_an_empty_upstream_resource.
+// ListWorkloadIdentityPoolProviders READS THE WHOLE PROVIDER POPULATION OF ONE POOL, deleted ones
+// included: a soft-deleted provider can be undeleted into the pool within its retention window, so a
+// classification that could not see it would call a pool single-provider while a second admission
+// rule waits one call away. GetWorkloadIdentityPool and it are what a provisioning run reads before
+// it writes anything through an existing pool (gunbc.auth.heal_publisher_provision).
 service gcp.IamAdmin {
   config {
     endpoint: "https://iam.googleapis.com"
@@ -236,9 +241,6 @@ service gcp.IamAdmin {
     }
   }
 
-  // THE WHOLE PROVIDER POPULATION OF ONE POOL, deleted ones included: a soft-deleted provider can be
-  // undeleted into the pool within its retention window, so a classification that could not see it
-  // would call a pool single-provider while a second admission rule waits one call away.
   operation ListWorkloadIdentityPoolProviders {
     input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr }
     output { providers: List<WifProviderWire>? from "workloadIdentityPoolProviders", outcome: RestOutcome }
