@@ -126,6 +126,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-09 at fatal grain by the gunbc.witness_v2_native_route census (2 modules)"
   },
   CauseOwnership {
+    cause: ^body_lowering_reason_else_less_if_unlowered,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "flips when a v2 stage lowers early exit (an else-less `if` statement) to control flow, a model-first package staffed once the workload shows it on its critical path; until then the statement refuses here rather than being dropped or rewritten (gunbc#11998 batch 2, ruling via neat-boar-16)"
+  },
+  CauseOwnership {
     cause: ^body_lowering_reason_field_decl_unlowered,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
@@ -142,6 +148,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "body-lowering stage frontier on the self-host critical path: a record-literal field initializer whose shape is not `name: value`. Measured 2026-09-22 at fatal grain by the workload adjudicate over dag + src/v2 (count on the PR)"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_postfix_suffix_carried,
+    grain: HeadGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a postfix chain step whose suffix is neither empty nor a parenthesised argument row -- today the module-qualified record construction `a.b.C { f: v }` and an `as` suffix. gunbc#12057 deleted body_lower_try_postfix_projection and with it the unowned FATAL cause postfix_field_access_refused, which had refused these shapes loudly on base; refusing them from the new one-walk door instead was MEASURED to turn 32 modules that ACCEPT on base into refusals (28 directly, 4 as match_arm_navigation_refused propagating out of a match scrutinee), so the door declines them to the pre-existing arms as gunbc#11683 did for the call-before-end class. This row is what keeps that decline ON the ladder rather than below it (review 70078): the residue is located and counted at head grain instead of vanishing silently, the file still Accepts, and 8 of the 42 base-refusing files carry this shape so the population is real. The drop from the base refusal is declared in full as gunbc.rung_drop postfix_suffix_step_declined_to_the_pre_existing_arms (review 70293). Flips to Blocking when a construct tag can carry a qualified name, which is what the brace-suffix shape needs to LOWER and is a wider package than gunbc#12057. Measured 2026-09-22 at head grain by the workload adjudicate over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_value_carried_unlowered,

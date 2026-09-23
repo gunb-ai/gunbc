@@ -843,7 +843,6 @@ fn observe_runner_host_file_path(
   path: String,
   reading: RunnerHostFileMetadataReading,
 ) -> RunnerHostFilePathStanding
-  uses net: Network
 {
   match reading {
     HostFileMetadataRead { file_type: t } => HostFilePathPresent { file_type: t }

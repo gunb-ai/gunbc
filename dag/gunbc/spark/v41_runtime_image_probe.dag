@@ -632,7 +632,6 @@ fn v41_privileged_stdout(run: SparkRemoteRun) -> String {
 // published entry's own first leg. The build lane (gunbc.spark.v41_runtime_image_converge) reaches
 // this fold directly with the tag its own readback returned.
 fn v41_probe_image_in_place(ctx: SparkMaterializeContext, reference: NonEmptyStr) -> V41ProbeOutcome
-  uses net: Network
 {
   let inspect_run = spark_remote_run(ctx: ctx, argv: v41_probe_config_id_argv(image_reference: reference))
   match inspect_run {
