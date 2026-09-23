@@ -10,7 +10,7 @@ import extdeps.standards.rfc_5280 {
   oid_basic_constraints, oid_key_usage,
 }
 import extdeps.apple.app_attest { ca_authority_refusal, AttestationChainUntrusted }
-import test.claim.app_attest_verifier_witness_test { vf_x5c }
+import test.claim.app_attest_verifier_witness_test { sample_leaf, sample_ca }
 
 // THE SUBJECT IS ONE INTERFACE, rfc_5280 x509_ca_authority (§6.1.4 (k), (m), (n)). The positive
 // control is Apple's real App Attestation intermediate; each RED is that same certificate with ONE
@@ -51,14 +51,14 @@ fn cawt_label(s: X509CaStanding) -> String {
 }
 
 fn cawt_on_intermediate_without(oid: String) -> String {
-  match vf_x5c(i: 1) {
+  match sample_ca() {
     Absent => "undecoded"
     Present { value: ca } => cawt_label(s: x509_ca_authority(cert: cawt_with_extensions(cert: ca, extensions: fold(ca.tbs.extensions, init: [], f: (acc, x) => if x.oid == oid { acc } else { acc |> list_push(x) })), intermediates_below: 0))
   }
 }
 
 fn cawt_on_intermediate(oid: String, value: List<UInt8>?, below: Int) -> String {
-  match vf_x5c(i: 1) {
+  match sample_ca() {
     Absent => "undecoded"
     Present { value: ca } => cawt_label(s: x509_ca_authority(cert: cawt_replacing(cert: ca, oid: oid, value: value), intermediates_below: below))
   }
@@ -66,7 +66,7 @@ fn cawt_on_intermediate(oid: String, value: List<UInt8>?, below: Int) -> String 
 
 // POSITIVE CONTROL: Apple's real intermediate, unmodified, is authorized.
 test fn apple_intermediate_is_authorized_to_act_as_a_ca() -> Bool {
-  match vf_x5c(i: 1) {
+  match sample_ca() {
     Absent => false
     Present { value: ca } => cawt_label(s: x509_ca_authority(cert: ca, intermediates_below: 0)) == "authorized"
   }
@@ -74,7 +74,7 @@ test fn apple_intermediate_is_authorized_to_act_as_a_ca() -> Bool {
 
 // RED on real bytes: the credential (end-entity) certificate may not sign certificates.
 test fn apple_credential_certificate_is_not_a_ca() -> Bool {
-  match vf_x5c(i: 0) {
+  match sample_leaf() {
     Absent => false
     Present { value: leaf } => {
       let l = cawt_label(s: x509_ca_authority(cert: leaf, intermediates_below: 0))
@@ -128,7 +128,7 @@ test fn path_len_constraint_zero_bounds_intermediates_below() -> Bool {
 // THE APPLE FOLD CONSUMES IT: ca_authority_refusal passes the real intermediate and refuses the
 // non-CA one as AttestationChainUntrusted.
 test fn attestation_chain_refuses_an_intermediate_without_ca_authority() -> Bool {
-  match vf_x5c(i: 1) {
+  match sample_ca() {
     Absent => false
     Present { value: ca } =>
       match ca_authority_refusal(ca: ca) {
@@ -150,7 +150,7 @@ test fn path_len_constraint_above_the_carrier_is_never_exceeded() -> Bool {
 
 // RED: a negative intermediate count is refused, not compared.
 test fn negative_intermediates_below_refuses() -> Bool {
-  match vf_x5c(i: 1) {
+  match sample_ca() {
     Absent => false
     Present { value: ca } => cawt_label(s: x509_ca_authority(cert: ca, intermediates_below: 0 - 1)) == "negative-below"
   }

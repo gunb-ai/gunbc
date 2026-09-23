@@ -251,6 +251,13 @@ fn sample_certificates() -> SampleCertificates? {
   }
 }
 
+fn sample_ca() -> X509Certificate? {
+  match attestation_parts(object: sample_attestation_octets) {
+    AttestationPartsRefused { cause: _ } => none
+    AttestationPartsOk { parts: p } => app_attest_certificate(octets: p.ca)
+  }
+}
+
 fn sample_leaf() -> X509Certificate? {
   match attestation_parts(object: sample_attestation_octets) {
     AttestationPartsRefused { cause: _ } => none
