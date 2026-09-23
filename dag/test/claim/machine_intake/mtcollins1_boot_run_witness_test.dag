@@ -5,6 +5,8 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { second_count, minute_count, hardware_thread_count, hardware_thread_count_value }
 import v2.std.optional { Present }
 import gunbc.machine_intake_mtcollins1_boot_run {
+  SolAcquirePlan, SolAcquireRefuse, SolAcquireBindHeldCollector, SolAcquireReleaseThenStart,
+  SolAcquireStart, sol_acquire_plan,
   mtcollins1_boot_approval_window, mtcollins1_boot_poll_cadence, mtcollins1_boot_poll_tick_budget,
   mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance,
   mtcollins1_boot_issue_allowance, mtcollins1_boot_cleanup_allowance,
@@ -13,12 +15,14 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_sol_held_from_observations,
   mtcollins1_sol_observed_from_collector,
   mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_refusal_text, mtcollins1_boot_terminal_cause_text,
+  mtcollins1_boot_pre_os_verdict,
   MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRefused, TerminalPending,
   HardwareThreadCountMismatch, WorkloadWriteFailed,
   mtcollins1_boot_medium_refusal,
   mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1,
 }
 import gunbc.auth.approval_gate { approval_status_from_get, approval_instant_from_probe }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_diagnostics_allowance }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 import gunbc.fleet_converge_workflow { fleet_converge_fleet_ssh_key_step_if }
 import std.process { ExitSuccess }
@@ -57,6 +61,7 @@ test fn the_step_timeout_covers_the_poll_window_and_the_actuation_allowance() ->
     + (second_count(s: mtcollins1_boot_issue_allowance) as Int)
     + (second_count(s: mtcollins1_boot_actuation_allowance) as Int)
     + (second_count(s: mtcollins1_boot_cleanup_allowance) as Int)
+    + (second_count(s: mtcollins1_boot_diagnostics_allowance()) as Int)
   (minute_count(m: mtcollins1_boot_step_timeout_minutes()) as Int) * 60 >= covered
 }
 
@@ -210,6 +215,12 @@ fn refused_with(v: MtCollins1BootTerminalVerdict, texts: List<String>) -> Bool {
   }
 }
 
+// An open envelope that refuses names every qualification it had not yet read
+// (mtcollins1_boot_run open_unresolved_causes), after the causes that refused.
+fn unobserved(name: String) -> String {
+  concat(name, " not yet observed when the open envelope refused; unqualified")
+}
+
 fn refused_with_prefix(v: MtCollins1BootTerminalVerdict, prefix: String) -> Bool {
   match v {
     TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => starts_with(s: mtcollins1_boot_terminal_cause_text(cause: c), prefix: prefix))
@@ -219,6 +230,12 @@ fn refused_with_prefix(v: MtCollins1BootTerminalVerdict, prefix: String) -> Bool
 
 fn is_pending(v: MtCollins1BootTerminalVerdict) -> Bool {
   match v { TerminalPending { reason: _ } => true  _ => false }
+}
+
+// A PENDING CARRIES WHAT WAS OBSERVED, which is what the deadline reports instead of a bare
+// "timed out": the reason is the evidence, so it is asserted rather than discarded here too.
+fn pending_because(v: MtCollins1BootTerminalVerdict, fragment: String) -> Bool {
+  match v { TerminalPending { reason: r } => string_contains(s: r, pattern: fragment)  _ => false }
 }
 
 // THE FOUR WALLS OF REVIEW 5269655400, each with its RED and its positive control:
@@ -268,13 +285,13 @@ fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium:
   (match mtcollins1_boot_terminal_verdict(capture: restarted, subject: census_subject, medium: census_medium) {
     TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => string_contains(s: mtcollins1_boot_terminal_cause_text(cause: c), pattern: "second begin marker"))
     _ => false })
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: concat(begin_a, refusing_nproc), subject: census_subject, medium: census_medium), texts: ["nproc observed 80, qualification expects 160"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: concat(begin_a, refusing_nproc), subject: census_subject, medium: census_medium), texts: ["nproc observed 80, qualification expects 160", unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "workload"), unobserved(name: "edac-after")])
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: no_argv, subject: census_subject, medium: census_medium))
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: exit_before_argv, subject: census_subject, medium: census_medium))
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: two_argv, subject: census_subject, medium: census_medium), texts: ["section nproc carries two ARGV boundaries; which output the exit belongs to is not a fact"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: two_argv, subject: census_subject, medium: census_medium), texts: ["section nproc carries two ARGV boundaries; which output the exit belongs to is not a fact", unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "workload"), unobserved(name: "edac-after")])
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: unterminated, subject: census_subject, medium: census_medium))
     && refused_with(v: mtcollins1_boot_terminal_verdict(capture: closed_unterminated_workload, subject: census_subject, medium: census_medium), texts: ["workload write rc=1", "closed envelope's edac-after section never printed its EXIT line"])
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: terminated, subject: census_subject, medium: census_medium), texts: ["workload write rc=1"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: terminated, subject: census_subject, medium: census_medium), texts: ["workload write rc=1", unobserved(name: "nproc"), unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "edac-after")])
     && (match mtcollins1_boot_terminal_verdict(capture: clean, subject: same_name_other_digest, medium: census_medium) {
       TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => {
         let t = mtcollins1_boot_terminal_cause_text(cause: c)
@@ -460,7 +477,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     && refused_with(v: mtcollins1_boot_terminal_verdict(capture: digest_mismatch, subject: census_subject, medium: census_medium), texts: ["workload digest not stable across passes"])
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: begin_only, subject: census_subject, medium: census_medium))
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: begin_with_spurious_end, subject: census_subject, medium: census_medium))
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: boot23_open, subject: census_subject, medium: census_medium), texts: ["nproc observed 80, qualification expects 160", "workload write rc=1"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: boot23_open, subject: census_subject, medium: census_medium), texts: ["nproc observed 80, qualification expects 160", "workload write rc=1", unobserved(name: "edac-after")])
     && review_5269655400_walls(census_subject: census_subject, census_medium: census_medium, clean: clean, boot23_open: boot23_open)
     && string_contains(s: mtcollins1_boot_terminal_refusal_text(causes: [HardwareThreadCountMismatch { expected: hardware_thread_count(count: 160), observed: "80" }, WorkloadWriteFailed { rc: "1" }]), pattern: "nproc observed 80, qualification expects 160; workload write rc=1")
 }
@@ -512,4 +529,73 @@ test fn the_census_medium_passes_the_gate_and_binds_the_verdict_to_its_label() -
         Present { value: label } => (label as String) == "GUNBC_MTC1_CENSUS_2404_3"
       }
   }
+}
+
+// PRE-OS REFUSALS END THE BOOT BEFORE ANY ENVELOPE. Fixtures are the console lines boot 23
+// attempt 7 (run 35669747413) and the 2026-09-12 DDR-init captures actually printed. A GRUB error
+// while the loader is still trying, and the bare menu banner, stay PENDING: the boot may proceed.
+test fn a_pre_os_refusal_on_the_console_is_a_typed_refusal_not_a_timeout() -> Bool {
+  let grub_failed = concat(
+    "Checkpoint AD\n",
+    "GNU GRUB  version 2.12\n",
+    "      Press enter to boot the selected OS, `e' to edit the commands       \n",
+    "error: you need to load the kernel first.\n",
+    "Press any key to continue...\n",
+    "  Failed to boot both default and fallback entries.\n",
+    "Press any key to continue...\n",
+    "GNU GRUB  version 2.12\n")
+  let grub_trying = "GNU GRUB  version 2.12\nerror: failure reading sector 0xc5130 from `cd0'.\n"
+  let banner_only = "Checkpoint AD\nGNU GRUB  version 2.12\n"
+  let ddr = "NOTICE:  DRAM FW version 210525\nERROR:   SK[1]: 00110010\nERROR:     MC[4]: 00f10081\nERROR:   DDR initialization failure. STOP!\n"
+  let unterminated_failure = "GNU GRUB  version 2.12\n  Failed to boot both default and fallback entries."
+  (match mtcollins1_boot_pre_os_verdict(capture: grub_failed) {
+    TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => {
+      let t = mtcollins1_boot_terminal_cause_text(cause: c)
+      starts_with(s: t, prefix: "boot loader failed both default and fallback entries") && string_contains(s: t, pattern: "you need to load the kernel first")
+    })
+    _ => false })
+    && is_pending(v: mtcollins1_boot_pre_os_verdict(capture: grub_trying))
+    && pending_because(v: mtcollins1_boot_pre_os_verdict(capture: grub_trying), fragment: "media read failed on cd0")
+    && is_pending(v: mtcollins1_boot_pre_os_verdict(capture: banner_only))
+    && is_pending(v: mtcollins1_boot_pre_os_verdict(capture: ""))
+    && is_pending(v: mtcollins1_boot_pre_os_verdict(capture: unterminated_failure))
+    && (match mtcollins1_boot_pre_os_verdict(capture: ddr) {
+      TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => mtcollins1_boot_terminal_cause_text(cause: c) == "firmware refused before any kernel: ERROR:   DDR initialization failure. STOP! [socket 1] [memory controller 4]")
+      _ => false })
+    && (match mtcollins1_boot_terminal_verdict(capture: grub_failed, subject: mtcollins1_boot_subject_for(medium: MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr), medium: MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }) {
+      TerminalRefused { causes: cs } => count(cs) == 1
+      _ => false })
+}
+
+// EVERY ACQUISITION THAT GOES ON TO READ THE CAPTURE BINDS IT TO THIS ATTEMPT FIRST. This is the
+// claim that was RED before the repair it guards: the converged arm -- a collector we already hold
+// -- returned plain success without ever binding the capture, so a GRUB refusal left in the file by
+// an EARLIER attempt was readable as this attempt's evidence, and the typed pre-OS refusal beside
+// it would have aborted the claim on another boot's failure. The live workflow truncated the file
+// in its shell prelude, so CI was green on a second safety net while the fold's own annotation
+// claimed a construction it did not have.
+//
+// The assertion is on the MAPPING rather than on a predicate over the sum: a predicate answering
+// true for every arm is permanently green by construction (section 4b calls that a decoration), so
+// what is asserted is that converged yields the BINDING arm and that each refusing observation
+// still refuses -- which is exactly what flips if the bypass returns.
+test fn every_acquisition_that_reads_the_capture_binds_it_to_this_attempt() -> Bool {
+  let pid = "/run/mtcollins1-sol.pid"
+  let cap = "/run/mtcollins1-sol.out"
+  (match sol_acquire_plan(verdict: Converged, pid_path: pid, capture_path: cap) {
+    SolAcquireBindHeldCollector => true  _ => false })
+    && (match sol_acquire_plan(verdict: Absent, pid_path: pid, capture_path: cap) {
+      SolAcquireStart => true  _ => false })
+    && (match sol_acquire_plan(verdict: Drifted, pid_path: pid, capture_path: cap) {
+      SolAcquireReleaseThenStart => true  _ => false })
+    && (match sol_acquire_plan(verdict: Conflict, pid_path: pid, capture_path: cap) {
+      SolAcquireRefuse { reason: _ } => true  _ => false })
+    && (match sol_acquire_plan(verdict: Inaccessible, pid_path: pid, capture_path: cap) {
+      SolAcquireRefuse { reason: _ } => true  _ => false })
+    && (match sol_acquire_plan(verdict: UnknownRefused, pid_path: pid, capture_path: cap) {
+      SolAcquireRefuse { reason: _ } => true  _ => false })
+    && (match sol_acquire_plan(verdict: Converged, pid_path: pid, capture_path: "") {
+      SolAcquireRefuse { reason: _ } => true  _ => false })
+    && (match sol_acquire_plan(verdict: Converged, pid_path: "", capture_path: cap) {
+      SolAcquireRefuse { reason: _ } => true  _ => false })
 }

@@ -77,8 +77,11 @@ fn resolve_dimm_diagram_identity(connector: Nat, banks: List<MtCollinsDimmFigure
   } else { if pair_count != 1 {
     DimmDiagramIdentityRefused { connector: connector, cause: ConnectorRepeatedInPairTable }
   } else {
-    let bank = matching_banks.first()
-    let pair = matching_pairs.first()
+    match matching_banks.first() {
+    Absent => DimmDiagramIdentityRefused { connector: connector, cause: ConnectorMissingFromLayout }
+    Present { value: bank } => match matching_pairs.first() {
+    Absent => DimmDiagramIdentityRefused { connector: connector, cause: ConnectorMissingFromPairTable }
+    Present { value: pair } =>
     if bank.processor_socket != pair.processor_socket {
       DimmDiagramIdentityRefused { connector: connector, cause: ProcessorSocketDisagrees }
     } else {
@@ -95,6 +98,7 @@ fn resolve_dimm_diagram_identity(connector: Nat, banks: List<MtCollinsDimmFigure
         }
       }
     }
+    } }
   } } } }
 }
 
@@ -162,8 +166,8 @@ data operator_projection_frontier: FrontierRow = FrontierRow {
     decl_name: "population_diagram_identity",
     field: WholeDeclaration,
   } },
-  reason: "The named later change Mt. Collins rack-facing DIMM population projection will consume population_diagram_identity for each enumerated population. It must show orientation, ordered banks and per-connector J diagram labels while keeping physical silkscreen and colour gaps visible. No rack UI lands here.",
+  reason: "The operator-facing projection now exists for mtcollins1: gunbc.machine_intake_mtcollins1_physical_orientation render_slot_map consumes this join, renders physical left-to-right slots with the physical identification gaps, and refuses count-inconsistent or unresolved populations. It still renders nothing for the real unit: it refuses until a firmware anchor resolves the view orientation and the operator reports which chassis end they face.",
   dissolution: UnboundDissolution {
-    description: "An operator-facing population projection executes this join, renders the selected population and all physical identification gaps, and refuses partial or count-inconsistent population rows (including Table 11's known 32-DIMM omission). Colour-only or silkscreen-specific instructions require separately cited physical evidence; a diagram legend does not discharge that boundary.",
+    description: "mtcollins1_slot_map returns SlotMapRendered on production rows: mtcollins1_placement_anchors resolves to one hypothesis and mtcollins1_operator_viewpoint is ViewpointReported. Colour-only or silkscreen-specific instructions still require separately cited physical evidence; a diagram legend does not discharge that boundary.",
   },
 }

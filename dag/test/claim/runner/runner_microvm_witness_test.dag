@@ -110,7 +110,7 @@ import gunbc.floor_demand {
   floor_storage_demand, StorageDemandStated, StorageDemandUnrepresentable, floor_memory_requirement,
   round_up_to_gibibyte_grain,
   gunbc_floor_held_set_standing, HeldSetUnmeasured, HeldSetMeasured, HeldSetReceiptUnrepresentable,
-  receipt_last_unstalled_beat, beat_reclaimable_cache,
+  receipt_last_unstalled_beat, beat_reclaimable_cache, beat_stall_is_zero,
 }
 import std.measure { MeasureDifference, MeasureSubtrahendExceedsMinuend, GrainRounded, GrainUnrepresentable }
 import std.checked_arithmetic { int_inclusive_max }
@@ -736,28 +736,37 @@ test fn the_production_shape_answers_according_to_the_floor_demand_standing() ->
   }
 }
 
-// THE EXPECTING-RED PROBE PINNED TO TODAY (DESIGN 4b(4); review 68307). The either-state witness
-// above cannot record WHICH state production is in, so this one does: at the 2026-09-19 receipt
-// and the 26 GiB cell row, the production shape refuses on the memory remainder, and the refusal
-// carries the floor's stated demand, the derived allowance and the cell's remainder. The day the
-// cell row or the demand receipt moves so the sum fits, this reds -- and it is then FLIPPED to
-// assert resolution, citing what moved, rather than deleted. The stall it evidences is
-// gunbc.guarantee_stall.runner_microvm_floor_fit_stall.
-test fn the_production_shape_refuses_today_on_the_memory_remainder_with_all_three_figures() -> Bool {
+// THE FLIP HAS HAPPENED: THIS WAS THE EXPECTING-RED PROBE AND IS NOW ITS REGRESSION CONTROL (DESIGN
+// 4b(4); review 68307). It was pinned to the production shape REFUSING on the memory remainder with
+// all three figures -- the floor's stated demand, the derived cache allowance and the cell's
+// remainder -- and its stated trigger was the cell row or the demand receipt moving so the sum fits.
+//
+// WHAT MOVED, cited as 4b(4) requires: the DEMAND RECEIPT, not the cell row. gunbc.floor_demand's
+// standing moved from gunbc_floor_memory_stat_receipt_2026_09_21 to _2026_09_23 (required-floor run
+// 35815214135), a run on a base carrying gunbc#12081 (one corpus read for both prepares) and gunbc#12088
+// (the diff observer no longer resolves the whole CI spec), whose peak reads uncensored. The cell
+// row (gunbc.runner_slot_allocation, 26 GiB) and the declared realization allowance are unchanged;
+// nothing was deleted to make the sum fit. The figures are not copied here: this claim DERIVES them
+// through the same folds the refusal carried, and asserts the shape is the remainder's.
+//
+// THE REFUSAL'S EXECUTED RED IS NOT LOST BY THE FLIP. The either-state witness above keeps the
+// refusal arm's triple asserted whenever production is back over the line, and the supplied-input
+// controls in this module drive ShapeRefusedWorkMemoryExceedsCellRemainder directly.
+test fn the_production_shape_resolves_on_the_memory_remainder_since_the_2026_09_23_receipt() -> Bool {
   match floor_memory_requirement() {
     Absent => false
     Present { value: need } =>
-      match gunbc_runner_microvm_shape() {
-        MicroVmShapeResolved { shape: _ } => false
-        MicroVmShapeRefused { refusal: r } =>
-          match r {
-            ShapeRefusedWorkMemoryExceedsCellRemainder { required: n, allowance: a, remainder: m } =>
-              byte_size_count(b: n) == byte_size_count(b: need.min_bytes)
-                && allowance_is(bytes: a)
-                && byte_size_count(b: m) == byte_size_count(b: gunbc_runner_slot_desired().memory_max) - byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance))
-                && byte_size_count(b: n) + byte_size_count(b: a) > byte_size_count(b: m)
-            _ => false
-          }
+      match gunbc_runner_microvm_guest_cache_allowance() {
+        AllowanceUnderivable { cause: _ } => false
+        AllowanceDerived { bytes: a } =>
+          byte_size_count(b: need.min_bytes) + byte_size_count(b: a)
+              <= byte_size_count(b: gunbc_runner_slot_desired().memory_max) - byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance))
+            && match gunbc_runner_microvm_shape() {
+              MicroVmShapeResolved { shape: s } =>
+                mebibyte_count(m: s.size.memory)
+                  == (byte_size_count(b: gunbc_runner_slot_desired().memory_max) - byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance))) / (1024 * 1024)
+              MicroVmShapeRefused { refusal: _ } => false
+            }
       }
   }
 }
@@ -811,7 +820,7 @@ test fn the_guest_cache_allowance_derives_from_the_receipts_last_unstalled_beat(
             MeasureDifference { value: cache } =>
               match round_up_to_gibibyte_grain(bytes: cache) {
                 GrainUnrepresentable { cause: _ } => false
-                GrainRounded { bytes: g } => allowance_is(bytes: g) && events_per_minute_count(r: b.stall) == 0
+                GrainRounded { bytes: g } => allowance_is(bytes: g) && beat_stall_is_zero(b: b)
               }
           }
       }

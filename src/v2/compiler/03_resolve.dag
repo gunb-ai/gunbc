@@ -22,7 +22,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list, length, list_snoc_item }
+import v2.std.algebra { fold_list, length, list_append, list_snoc_item }
 import v2.std.collection {
   Map,
   PointwisePower,
@@ -56,7 +56,13 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   rejected_with_pending
 }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_snoc }
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_from_node,
+  qualified_name_last_segment,
+  qualified_name_snoc,
+  qualified_name_spine_node
+}
 import v2.std.resolution_policy {
   ImportScoped,
   NameResolutionPolicy,
@@ -64,18 +70,18 @@ import v2.std.resolution_policy {
   default_name_resolution_policy
 }
 import v2.std.symbol_index {
-  GlobalBareHit,
-  GlobalBareLookupAmbiguous,
-  GlobalBareLookupUnbound,
   LexicalAmbiguous,
   LexicalBindingCandidate,
   LexicalHit,
   LexicalUnbound,
   SymbolIndex,
   empty_symbol_index,
+  GlobalBareHit,
+  GlobalBareLookupAmbiguous,
+  GlobalBareLookupUnbound,
+  symbol_index_absolute_candidates,
   symbol_index_global_unique_lookup,
-  symbol_index_lexical_lookup,
-  symbol_index_lookup
+  symbol_index_lexical_lookup
 }
 import v2.std.node {
   Arrow,
@@ -85,6 +91,7 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
+  Match,
   Named,
   Node,
   NodeFold,
@@ -93,8 +100,17 @@ import v2.std.node {
   Transform,
   TypeNode,
   fold_node,
+  match_arm_body,
+  match_arm_pattern,
   node_with_occurrence_id,
   well_formed,
+}
+import v2.std.node_query {
+  construct_field_edges,
+  construct_tag_optional,
+  declared_field_list,
+  find_named_child,
+  pattern_wildcard_name
 }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId }
 
@@ -127,12 +143,6 @@ type ResolveContext {
   lm: LanguageModel
   under_module_root: Bool
 }
-
-type EdgeResolveAcc
-  = EdgeResolveAccMk { have_seen_first: Bool, acc: Outcome<List<Edge>> }
-
-type BindEdgeAcc
-  = BindEdgeAccMk { idx: Int, acc: Outcome<List<Edge>> }
 
 type DeclaredBinding {
   name: Symbol
@@ -402,18 +412,48 @@ fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
-// A QUALIFIED HIT ON A NON-ATOM DECLARATION HAS NO IDENTITY THIS RESOLVER CAN CARRY, SO IT REFUSES.
-// The resolved value here is a canonical Atom -- one Symbol -- and a fn (an Arrow) or a record
-// found by its full path is a DECLARATION, not a symbol: collapsing it to its leaf name would make
-// `a.run` and `b.run` indistinguishable downstream, which is an identity fork the import cut's
-// replacement graph cannot be built on. Until resolution answers with an exact declaring-identity
-// carrier (the unique-on-chain lane's changeover), the hit is refused with this located reason
-// rather than minted from a leaf. Enrolled: v2.test.claim.namespace_xl0.cross_module_reference_resolution.
-fn qualified_target_identity_unrepresentable_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^resolve_reason_qualified_target_identity_unrepresentable,
-    at: node_locus(node: n),
-    correction: Unavailable { reason: UserInputBoundary }
+// AN UNBOUND NAME THE CORPUS DOES DECLARE IS A MISSING BINDING, NOT A TYPO, AND THE REFUSAL SAYS SO.
+// Deleting the corpus-wide spelling search makes a reference refuse when nothing on its chain binds
+// it -- correct, and the point of the package -- but on its own it hands the author of a module
+// that was quietly relying on that search a bare "unbound symbol here". That population is not
+// hypothetical: a lane with no knowledge of this work (gunbc#12035) found a production reference
+// resolving with nothing importing it, confirmed by a mutation that reds. Every such module starts
+// refusing when the search goes, and the difference between a diagnostic they can act on and a
+// puzzle is whether the refusal names where the name IS declared.
+//
+// THE ORACLE IS THE RIGHT SOURCE FOR THIS AND THE WRONG SOURCE FOR RESOLUTION, which is the whole
+// distinction docs/plans/namespace-resolution-design.md section 13 draws when it keeps global_bare
+// as a migration oracle after deleting it as a mechanism. Asking the corpus "does this spelling
+// exist anywhere" may not CHOOSE a meaning -- that is the defect -- but it is exactly the right
+// question for explaining an absence. So the advisory rides in front and the fatal stays last, the
+// carriage order every consumer folds to; the advisory carries a DeclarationLocus so the author is
+// pointed at a declaration rather than a spelling.
+//
+// IT DISCRIMINATES THE TWO CAUSES, which is why the third arm exists rather than defaulting: a name
+// no module declares gets NO advisory, because the honest reading there is a typo or a deleted
+// declaration and pointing anywhere would be fabrication.
+fn unbound_symbol_diagnostics(ctx: ResolveContext, n: Node, name: Symbol) -> NonEmptyDiagnostics {
+  let fatal = unbound_symbol_diagnostic(n: n)
+  match symbol_index_global_unique_lookup(index: ctx.namespace.symbol_index, name: name) {
+    GlobalBareHit { node: _, path: path } =>
+      NonEmptyDiagnostics {
+        head: Diagnostic {
+          reason: ^resolve_unbound_name_is_declared_elsewhere,
+          at: declaration_locus(declaration: path),
+          correction: Unavailable { reason: UserInputBoundary }
+        },
+        tail: [fatal]
+      }
+    GlobalBareLookupAmbiguous =>
+      NonEmptyDiagnostics {
+        head: Diagnostic {
+          reason: ^resolve_unbound_name_is_declared_in_several_modules,
+          at: node_locus(node: n),
+          correction: Unavailable { reason: UserInputBoundary }
+        },
+        tail: [fatal]
+      }
+    GlobalBareLookupUnbound => NonEmptyDiagnostics { head: fatal, tail: [] }
   }
 }
 
@@ -439,14 +479,18 @@ fn ambiguous_symbol_diagnostic(n: Node) -> Diagnostic {
 // whole path also hits absolutely -- and a reader repairing the reference needs to know which
 // one, because the repair differs (qualify the reference; rename one declaration; drop the
 // shadowing binder). The competing declarations ride WHERE THE LOOKUP RETAINED THEM: the lexical
-// collector keeps every candidate's path; the global-bare index collapsed its binders to one
-// GlobalBareAmbiguous state at fill time and has nothing to name, which this arm says by carrying
-// nothing rather than by naming a list it does not have; the qualified case names the absolute
-// path that competed. Collapsing all three to one bare SymbolIndexAtomAmbiguous was where the
-// class and the candidates were dropped -- one symbol standing where the resolver had a list.
+// collector keeps every candidate's path; the qualified case names the absolute path that
+// competed. Collapsing them to one bare SymbolIndexAtomAmbiguous was where the class and the
+// candidates were dropped -- one symbol standing where the resolver had a list.
+//
+// THE THIRD ARM IS GONE WITH ITS MECHANISM. AmbiguousOnGlobalBare reported an ambiguity found by
+// searching the corpus for a spelling, and it was the one arm that could name NO competing
+// declaration, because the bare index had already collapsed its binders at fill time. Deleting the
+// search deleted the arm: every ambiguity the resolver can now reach was found among candidates it
+// still holds, so "competing declarations where available" is no longer a caveat this type needs.
 type AmbiguousLookupClass
   = AmbiguousOnLexicalChain { candidates: FreeMonoid<LexicalBindingCandidate> }
-  | AmbiguousOnGlobalBare
+  | AmbiguousAtBindingPosition { candidates: FreeMonoid<LexicalBindingCandidate> }
   | AmbiguousQualifiedHeadShadowsAbsolute { path: QualifiedName }
 
 fn ambiguous_lookup_class_diagnostic(n: Node, reason: Symbol) -> Diagnostic {
@@ -492,10 +536,19 @@ fn ambiguous_symbol_diagnostics(n: Node, class: AmbiguousLookupClass) -> NonEmpt
           item: fatal
         )
       }
-    AmbiguousOnGlobalBare =>
+    AmbiguousAtBindingPosition { candidates: candidates } =>
       NonEmptyDiagnostics {
-        head: ambiguous_lookup_class_diagnostic(n: n, reason: ^resolve_ambiguous_on_global_bare),
-        tail: [fatal]
+        head: ambiguous_lookup_class_diagnostic(n: n, reason: ^resolve_ambiguous_at_binding_position),
+        tail: list_snoc_item(
+          xs: fold_list(
+            xs: candidates,
+            empty: Empty,
+            cons: fn(acc, candidate) {
+              list_snoc_item(xs: acc, item: ambiguous_competing_declaration_diagnostic(path: candidate.path))
+            }
+          ),
+          item: fatal
+        )
       }
     AmbiguousQualifiedHeadShadowsAbsolute { path: path } =>
       NonEmptyDiagnostics {
@@ -524,18 +577,71 @@ fn symbol_index_lookup_position(ctx: ResolveContext) -> QualifiedName {
   }
 }
 
-fn symbol_index_node_identity(node: Node, fallback: Symbol) -> Symbol {
-  match node.kind {
-    TypeNode { connective: Atom { identity: sym } } => sym
-    _ => fallback
+// WHAT A RESOLVED REFERENCE IS, DECIDED ONCE. A reference that binds to a corpus declaration is
+// carried as that declaration's containment path -- the identity the index key, the candidate
+// rows, DeclarationLocus and DeclarationRef already name -- and never as its leaf: two declarations
+// spelled `run` in two modules are two paths, and a leaf would collapse them silently (the class
+// gunbc.recurring_failure_mode refusal_reason_minted_as_canonical_identity records, whose interim
+// refusal resolve_reason_qualified_target_identity_unrepresentable stood where this carrier now
+// stands). A reference whose LEAF is a kernel canonical symbol resolves to the kernel atom, as it did
+// before this carrier: the language model owns those names, they are not free for the corpus to
+// re-declare, and every downstream kernel judgment (infer's Bool and Int checks, translate's
+// binding spellings) is keyed on the canonical symbol. That arm is the whole of what stays
+// spelling-keyed here, on a closed set the language model declares; a corpus twin of a kernel name
+// is a pre-existing fork beside this seam, not one this decision widens.
+type ResolvedReferenceIdentity
+  = ResolvedToKernelSymbol { symbol: Symbol }
+  | ResolvedToDeclaration { path: QualifiedName }
+
+fn resolved_reference_identity(ctx: ResolveContext, path: QualifiedName) -> ResolvedReferenceIdentity {
+  match qualified_name_last_segment(qn: path) {
+    Present { value: leaf } =>
+      if namespace_has_canonical_symbol(namespace: ctx.namespace, name: leaf) {
+        ResolvedToKernelSymbol { symbol: leaf }
+      } else {
+        ResolvedToDeclaration { path: path }
+      }
+    Absent => ResolvedToDeclaration { path: path }
+  }
+}
+
+// THE ONE PRODUCER OF A RESOLVED CORPUS REFERENCE. Both doors that bind a module-level name -- the
+// bare door (resolve_atom_bound) and the qualified door (try_resolve_qualified_name_node) -- mint
+// through here, so the carrier cannot differ by how the reference was spelled. The rung this buys
+// (DESIGN section 4b) is structurally guaranteed, not impossible: an Atom naming a corpus
+// declaration is still constructible by a fixture or a hand-built node, but no Accepted resolved
+// body contains one, because this module is the only producer of resolved bodies and its remaining
+// canonical_atom sites are the frame-local binder, the literal, and the kernel arm above.
+fn resolved_reference_node(identity: ResolvedReferenceIdentity, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  match identity {
+    ResolvedToKernelSymbol { symbol: symbol } => canonical_atom(identity: symbol, occurrence_id: occurrence_id)
+    ResolvedToDeclaration { path: path } => qualified_name_spine_node(qn: path, occurrence_id: occurrence_id)
   }
 }
 
 type SymbolIndexAtomLookup
-  = SymbolIndexAtomHit { canonical: Symbol, path: QualifiedName }
+  = SymbolIndexAtomHit { path: QualifiedName }
   | SymbolIndexAtomAmbiguous { class: AmbiguousLookupClass }
   | SymbolIndexAtomUnbound
 
+// NOTHING FOLLOWS AN EXHAUSTED CHAIN, which is what the LexicalUnbound arm below now says by
+// answering SymbolIndexAtomUnbound. That arm used to ask the corpus-wide bare-name index under
+// NamespaceOnlyY, and that question has no answer it is entitled to give: a name the reference's
+// own ancestor chain does not bind has no meaning AT THE REFERENCE, whatever else the corpus spells
+// the same way. docs/plans/namespace-resolution-design.md section 13 deletes the tier by name --
+// "global_bare dies as a mechanism" -- and the reference model this corpus grounds lookup in agrees
+// by ABSENCE: [basic.lookup.unqual] walks outward to the parent scope and, exhausted, the program
+// is ill-formed; there is no clause that searches a whole program for a unique declaration.
+//
+// WHAT REPLACES THE TIER IS NOT A WEAKER ANSWER BUT A BINDING THE AUTHOR WROTE. An import is
+// transmuted into a row at the importing position (v2.extdeps.languages.dag
+// import_binding_rows_from_decl_node, bound by v2.compiler.symbol_index_fill), so the names a
+// module actually uses are ON its chain and the lexical collector finds them there. Deleting the
+// tier without that transmutation would not have made these references resolve; it would have made
+// them unbound, which is why the two are one change.
+//
+// THE INDEX'S global_bare MAP SURVIVES, and only as what section 13 leaves it: a migration oracle
+// for the divergence census. No resolution path reaches it.
 fn lookup_symbol_index_atom_identity(
   ctx: ResolveContext,
   name: Symbol
@@ -545,30 +651,10 @@ fn lookup_symbol_index_atom_identity(
     position: symbol_index_lookup_position(ctx: ctx),
     name: name
   ) {
-    LexicalHit { node: node, path: path } =>
-      SymbolIndexAtomHit {
-        canonical: symbol_index_node_identity(node: node, fallback: name),
-        path: path
-      }
+    LexicalHit { node: _, path: path } => SymbolIndexAtomHit { path: path }
     LexicalAmbiguous { candidates: candidates } =>
       SymbolIndexAtomAmbiguous { class: AmbiguousOnLexicalChain { candidates: candidates } }
-    LexicalUnbound =>
-      match ctx.policy {
-        NamespaceOnlyY =>
-          match symbol_index_global_unique_lookup(
-            index: ctx.namespace.symbol_index,
-            name: name
-          ) {
-            GlobalBareHit { node: node, path: path } =>
-              SymbolIndexAtomHit {
-                canonical: symbol_index_node_identity(node: node, fallback: name),
-                path: path
-              }
-            GlobalBareLookupAmbiguous => SymbolIndexAtomAmbiguous { class: AmbiguousOnGlobalBare }
-            GlobalBareLookupUnbound => SymbolIndexAtomUnbound
-          }
-        ImportScoped => SymbolIndexAtomUnbound
-      }
+    LexicalUnbound => SymbolIndexAtomUnbound
   }
 }
 
@@ -581,9 +667,13 @@ fn lookup_symbol_index_atom_identity(
 // began to (see body_lower_dotted_reference_optional). One revision of gunbc#11582 replaced the
 // reason with the path's last segment; the side-chat ruling on that head found the leaf equally
 // fabricated -- two declarations named `run` in two modules collapse to one Atom -- so a hit whose
-// declaration is not itself an Atom now REFUSES (qualified_target_identity_unrepresentable_diagnostic)
-// until resolution carries exact declaring identity. Measured: a cross-module reference to a fn
-// came back Accepted with identity resolve_reason_unbound_symbol before the first repair.
+// declaration was not itself an Atom REFUSED (resolve_reason_qualified_target_identity_unrepresentable)
+// until resolution carried exact declaring identity. It now does: the hit is minted through
+// resolved_reference_node as the declaration's path, the same producer the bare door uses, and the
+// interim refusal is deleted with nothing left for it to guard -- every index hit IS a path, so a
+// control for a refusal with no authorable red would be a decoration (DESIGN section 4b). Measured:
+// a cross-module reference to a fn came back Accepted with identity resolve_reason_unbound_symbol
+// before the first repair.
 // THE HALF OF UNIQUE-ON-CHAIN THAT CAN BE HONEST BEFORE THE PROJECTION EXISTS (review 67651 on
 // gunbc#11582). Section 13 resolves a chain's FIRST segment on the ancestor chain and projects the
 // rest; the projection is unfired here, and this arm reads the whole path as corpus-root
@@ -627,53 +717,8 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
           Rejected { diagnostics: r } =>
             optional_present(value: Rejected { diagnostics: rejected_with_pending(pending: pending, rejected: r) })
           Accepted { value: head_bound, diagnostics: chain_pending } =>
-        match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
-          Present { value: resolved_node } =>
-            if head_bound {
-              optional_present(
-                value: Rejected {
-                  diagnostics: rejected_with_pending(
-                    pending: diagnostics_merge(outer: pending, inner: chain_pending),
-                    rejected: ambiguous_symbol_diagnostics(
-                      n: n,
-                      class: AmbiguousQualifiedHeadShadowsAbsolute { path: path }
-                    )
-                  )
-                }
-              )
-            } else {
-            match test_code_reach(index: ctx.namespace.test_code, path: path) {
-              ReachesTestMarkedDeclaration =>
-                optional_present(
-                  value: Rejected {
-                    diagnostics: rejected_with_pending(
-                      pending: diagnostics_merge(outer: pending, inner: chain_pending),
-                      rejected: diagnostics_singleton(d: test_code_referenced_diagnostic(reason: ^resolve_reason_test_code_referenced, n: n))
-                    )
-                  }
-                )
-              ReachesNoTestCode =>
-            match resolved_node.kind {
-              TypeNode { connective: Atom { identity: declared } } =>
-                optional_present(
-                  value: Accepted {
-                    value: canonical_atom(identity: declared, occurrence_id: n.occurrence_id),
-                    diagnostics: diagnostics_merge(outer: pending, inner: chain_pending)
-                  }
-                )
-              _ =>
-                optional_present(
-                  value: Rejected {
-                    diagnostics: rejected_with_pending(
-                      pending: diagnostics_merge(outer: pending, inner: chain_pending),
-                      rejected: diagnostics_singleton(d: qualified_target_identity_unrepresentable_diagnostic(n: n))
-                    )
-                  }
-                )
-            }
-            }
-            }
-          Absent =>
+        match symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path) {
+          Empty =>
             optional_present(
               value: Rejected {
                 diagnostics: rejected_with_pending(
@@ -682,6 +727,46 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
                 )
               }
             )
+          Cons { head: candidate, tail: rest } =>
+            match rest {
+              Empty =>
+                if head_bound {
+                  optional_present(
+                    value: Rejected {
+                      diagnostics: rejected_with_pending(
+                        pending: diagnostics_merge(outer: pending, inner: chain_pending),
+                        rejected: ambiguous_symbol_diagnostics(
+                          n: n,
+                          class: AmbiguousQualifiedHeadShadowsAbsolute { path: path }
+                        )
+                      )
+                    }
+                  )
+                } else {
+                  optional_present(
+                    value: resolve_atom_bound(
+                      ctx: ctx,
+                      n: n,
+                      path: candidate.path,
+                      pending: diagnostics_merge(outer: pending, inner: chain_pending)
+                    )
+                  )
+                }
+              Cons { head: _, tail: _ } =>
+                optional_present(
+                  value: Rejected {
+                    diagnostics: rejected_with_pending(
+                      pending: diagnostics_merge(outer: pending, inner: chain_pending),
+                      rejected: ambiguous_symbol_diagnostics(
+                        n: n,
+                        class: AmbiguousAtBindingPosition {
+                          candidates: Cons { head: candidate, tail: rest }
+                        }
+                      )
+                    )
+                  }
+                )
+            }
         }
         }
       } else {
@@ -708,26 +793,31 @@ fn test_code_referenced_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
 // THE WALL (owner ruling 2026-09-16/17): `test` segregates test code from serving code, and no code
 // may reference a test-marked declaration, a test fn in the same module included. It is decided here,
 // where the reference binds, from the path it bound to, and it refuses with the reference's own locus.
-// TWO ENFORCEMENT SITES, ONE DECISION. This function is reached by the doors whose accepted result is
-// a canonical atom -- the root scope and the symbol index. The qualified-path door
-// (try_resolve_qualified_name_node) cannot route through it, because its accepted arm must first read
-// the resolved node's kind and carry the chain's own pending diagnostics, so it refuses inline
-// instead. Both sites decide from ONE authority, test_code_reach over ctx.namespace.test_code, and
-// raise the same reason through the same test_code_referenced_diagnostic: a change to the RULE is a
-// change to that fold, not to either site. What a later door must not do is bind a module-level name
-// without asking test_code_reach at all -- the per-door reds in
+// ONE ENFORCEMENT SITE, ONE DECISION. Every door that binds a module-level name -- the root scope,
+// the symbol index, and the qualified-path door (try_resolve_qualified_name_node) -- accepts through
+// this function, which asks test_code_reach over ctx.namespace.test_code and then mints the resolved
+// reference through the one producer, resolved_reference_node, from the DECLARING path the door
+// selected. The qualified door used to refuse inline because its accepted arm had to read the
+// resolved node's kind first; the carrier no longer depends on the kind, so that second site is
+// gone. The path a door hands in is the declaration's own (the candidate rows name claimants by
+// declaring path, v2.std.symbol_index symbol_index_candidates_at), never the binding position it
+// was seen at -- an import or alias position would have minted one declaration into as many
+// identities as it has importers. What a later door must not do is bind a module-level name
+// without passing through here -- the per-door reds in
 // v2.test.claim.name_resolve.test_code_reference_wall are what hold that, one per door.
 fn resolve_atom_bound(
   ctx: ResolveContext,
   n: Node,
-  canonical: Symbol,
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
   match test_code_reach(index: ctx.namespace.test_code, path: path) {
     ReachesNoTestCode =>
       Accepted {
-        value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
+        value: resolved_reference_node(
+          identity: resolved_reference_identity(ctx: ctx, path: path),
+          occurrence_id: n.occurrence_id
+        ),
         diagnostics: pending
       }
     ReachesTestMarkedDeclaration =>
@@ -755,18 +845,17 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node>
             value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
             diagnostics: pending
           }
-        BoundAtRoot { canonical: canonical } =>
+        BoundAtRoot { canonical: _ } =>
           resolve_atom_bound(
             ctx: ctx,
             n: n,
-            canonical: canonical,
             path: qualified_name_snoc(qn: root_binding_origin(namespace: ctx.namespace, name: identity), segment: identity),
             pending: pending
           )
         ScopeUnbound =>
           match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
-            SymbolIndexAtomHit { canonical: canonical, path: path } =>
-              resolve_atom_bound(ctx: ctx, n: n, canonical: canonical, path: path, pending: pending)
+            SymbolIndexAtomHit { path: path } =>
+              resolve_atom_bound(ctx: ctx, n: n, path: path, pending: pending)
             SymbolIndexAtomAmbiguous { class: class } =>
               Rejected {
                 diagnostics: rejected_with_pending(
@@ -787,7 +876,7 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node>
                 Rejected {
                   diagnostics: rejected_with_pending(
                     pending: pending,
-                    rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
+                    rejected: unbound_symbol_diagnostics(ctx: ctx, n: n, name: identity)
                   )
                 }
               }
@@ -820,99 +909,516 @@ fn resolve_surface_operator_atom(
   }
 }
 
+// ── THE CHILD WALK: ONE OBSERVATION FOR THE FOUR CHILD FOLDS ─────────────────────────────────
+//
+// WHAT WAS WRONG. Each of the four walks below folded an Outcome<List<Edge>> and returned the
+// accumulator untouched once it went Rejected. That is not a policy choice about how much to
+// report -- the accumulator CONFLATES the successful output with the refusal state, so the moment
+// it rejects, the edge list is gone and there is no value left to continue accumulating into.
+// Stopping was forced by the carrier's shape. A module with two independent post-cut refusals
+// therefore recorded the first and never observed the second: truthful at MODULE grain, an
+// undercount at OCCURRENCE grain, which is the grain XL-2's rehearsal residual needs
+// (gunbc.compiler_frontend_program_status ExactOccurrenceResidualCensus).
+//
+// WHY THE POPULATION IS A LIST OF CHAINS AND NOT ONE LONGER CHAIN. NonEmptyDiagnostics means
+// "pending advisories followed by exactly ONE fatal" -- v2.std.diagnostic diagnostics_fatal reads
+// the LAST element as the cause, and says so as the single authority for that ordering.
+// Concatenating N independent failures into one chain would make the Nth arbitrarily "the" cause
+// and silently change what every consumer of diagnostics_fatal answers. So each independent failure
+// keeps its own chain, where that contract stays true, and the walk carries an ORDERED POPULATION
+// of them.
+//
+// WHY THE POPULATION CROSSES EVERY NODE BOUNDARY. A population collected per fold and projected back
+// to one Outcome at each node survives exactly one level: the parent fold sees a single chain from
+// each refused child and the rest are gone before the module root. So every recursive step returns
+// ResolveNodeWalk, the refused arm carries the whole population upward, and the ONE projection to
+// Outcome sits at the legacy entries (resolve_node, resolve_with_namespace_policy,
+// resolve_with_admission_context_policy), which keep answering what they answered.
+//
+// WHY ORDINAL IS CARRIED SEPARATELY, and it is load-bearing rather than tidy: resolve_transform_children
+// used `length(done) == 0` to mean "this is the operator child" -- the accumulated EDGE LIST
+// standing in for the child index. Once a refused child stops appending, that proxy promotes the
+// SECOND child to operator position whenever the first refuses. resolve_bind_edges had already
+// found this and threaded its own `idx`; the other three had not. The ordinal advances on every
+// arm, refused or not.
+//
+// WHY CONTINUING IS SOUND, checkable rather than assumed: a child's scope is fixed BEFORE the fold
+// runs -- one ctx, a child_ctx computed above the fold, or scope_outer/scope_inner as parameters --
+// with ONE exception, and the exception is recorded rather than guessed through. A Bind's inner
+// scope is add_bind_atom_binder over its FIRST child, so when that binder is itself refused the
+// inner scope would be built from a binder the walk just rejected. resolve_bind_edges therefore
+// marks the site that scope would have governed ObservationIncomplete instead of resolving it: an
+// unobserved site is reported as unobserved, never as clean, and never as a refusal it may not own.
+type ObservationCompleteness
+  = ObservationComplete
+  | ObservationIncomplete { reason: Symbol }
+
+fn observation_meet(a: ObservationCompleteness, b: ObservationCompleteness) -> ObservationCompleteness {
+  match a {
+    ObservationIncomplete { reason: _ } => a
+    ObservationComplete => b
+  }
+}
+
+// ONE RESOLUTION OBSERVATION OF ONE NODE. The refused arm carries the ORDERED POPULATION of
+// independent failure chains, `first` then `rest`, so "refused with no chain" has no constructor;
+// the accepted arm carries no completeness because incompleteness only ever follows a refusal, so
+// "an accepted tree that skipped a site" has no constructor either. Each chain is its own
+// NonEmptyDiagnostics: pending advisories followed by exactly ONE fatal, which is what
+// v2.std.diagnostic diagnostics_fatal reads as the LAST element.
+//
+// ORDER IS WALK ORDER -- depth first, children in edge order. Membership is the identity content
+// (each chain's fatal and its locus); reversing sibling order reverses those chains' positions and
+// changes nothing else. `first` is therefore the one the old short-circuiting walk would have
+// stopped at, which is what makes the legacy projection below answer exactly what it answered.
+type ResolveNodeWalk
+  = ResolveWalkAccepted { value: Node, diagnostics: Diagnostics }
+  | ResolveWalkRefused {
+      first: NonEmptyDiagnostics
+      rest: List<NonEmptyDiagnostics>
+      observation: ObservationCompleteness
+    }
+
+fn resolve_walk_refused_one(chain: NonEmptyDiagnostics) -> ResolveNodeWalk {
+  ResolveWalkRefused { first: chain, rest: [], observation: ObservationComplete }
+}
+
+fn resolve_walk_of_outcome(o: Outcome<Node>) -> ResolveNodeWalk {
+  match o {
+    Accepted { value: v, diagnostics: d } => ResolveWalkAccepted { value: v, diagnostics: d }
+    Rejected { diagnostics: r } => resolve_walk_refused_one(chain: r)
+  }
+}
+
+// THE LEGACY PROJECTION. resolve's Outcome carries ONE chain, and the population's FIRST chain is
+// projected -- the chain the previous walk produced, because it stopped at that same child with the
+// same advisories before it. The remaining chains are not discarded: census-resolve reads the walk
+// itself through resolve_walk_with_admission_context_policy.
+fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
+  match w {
+    ResolveWalkAccepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
+    ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
+  }
+}
+
+// PENDING ADVISORIES STAY WITH THEIR OWN FATAL. A refused child's chains arrive intact; the walk
+// prefixes the advisories accepted siblings raised SINCE THE PREVIOUS REFUSAL onto the child's
+// first chain only, then resets them. So every advisory lands in at most one chain, the one whose
+// fatal it preceded, and the first chain carries exactly the advisories main's walk carried.
+// Advisories raised after the last refusal are dropped with the rejected tree, as they were.
+fn resolve_walk_prefix_pending(pending: Diagnostics, w: ResolveNodeWalk) -> ResolveNodeWalk {
+  match w {
+    ResolveWalkAccepted { value: v, diagnostics: d } =>
+      ResolveWalkAccepted { value: v, diagnostics: diagnostics_merge(outer: pending, inner: d) }
+    ResolveWalkRefused { first: f, rest: r, observation: o } =>
+      ResolveWalkRefused {
+        first: rejected_with_pending(pending: pending, rejected: f),
+        rest: r,
+        observation: o
+      }
+  }
+}
+
+type ChildWalk {
+  ordinal: Int
+  edges: List<Edge>
+  pending: Diagnostics
+  failures: List<NonEmptyDiagnostics>
+  observation: ObservationCompleteness
+  scope_prerequisite_refused: Bool
+}
+
+fn child_walk_init() -> ChildWalk {
+  ChildWalk {
+    ordinal: 0,
+    edges: empty_edge_list(),
+    pending: None,
+    failures: [],
+    observation: ObservationComplete,
+    scope_prerequisite_refused: false
+  }
+}
+
+// ONE CONCATENATION PER REFUSED CHILD, NOT ONE PUSH PER CHAIN (review 70392): a child's `rest`
+// arrives already built, so it is joined whole rather than re-walked at every level it crosses on
+// its way to the module root. list_snoc_item and list_append are the persistent carrier's push and
+// concat (v2.std.algebra), neither of which copies its left operand.
+fn child_walk_refused(
+  w: ChildWalk,
+  first: NonEmptyDiagnostics,
+  rest: List<NonEmptyDiagnostics>,
+  observation: ObservationCompleteness
+) -> ChildWalk {
+  ChildWalk {
+    ordinal: w.ordinal + 1,
+    edges: w.edges,
+    pending: None,
+    failures: list_append(
+      left: list_snoc_item(xs: w.failures, item: rejected_with_pending(pending: w.pending, rejected: first)),
+      right: rest
+    ),
+    observation: observation_meet(a: w.observation, b: observation),
+    scope_prerequisite_refused: w.scope_prerequisite_refused
+  }
+}
+
+fn child_walk_accepted(w: ChildWalk, edge: Edge, d: Diagnostics) -> ChildWalk {
+  ChildWalk {
+    ordinal: w.ordinal + 1,
+    edges: list_snoc_item(xs: w.edges, item: edge),
+    pending: diagnostics_merge(outer: w.pending, inner: d),
+    failures: w.failures,
+    observation: w.observation,
+    scope_prerequisite_refused: w.scope_prerequisite_refused
+  }
+}
+
+// THE SITE WHOSE SCOPE COULD NOT BE BUILT IS RECORDED AS UNOBSERVED, NOT AS CLEAN AND NOT AS A
+// REFUSAL: it is not resolved at all, because resolving it under a scope built from a refused
+// prerequisite would report whatever that invented scope happens to answer.
+fn child_walk_unobservable(w: ChildWalk, reason: Symbol) -> ChildWalk {
+  ChildWalk {
+    ordinal: w.ordinal + 1,
+    edges: w.edges,
+    pending: w.pending,
+    failures: w.failures,
+    observation: ObservationIncomplete { reason: reason },
+    scope_prerequisite_refused: w.scope_prerequisite_refused
+  }
+}
+
+fn child_walk_step(w: ChildWalk, e: Edge, r: ResolveNodeWalk) -> ChildWalk {
+  match r {
+    ResolveWalkRefused { first: f, rest: rs, observation: o } =>
+      child_walk_refused(w: w, first: f, rest: rs, observation: o)
+    ResolveWalkAccepted { value: t, diagnostics: ed } =>
+      child_walk_accepted(w: w, edge: Edge { label: e.label, target: t }, d: ed)
+  }
+}
+
+// THE SCOPE-PRODUCING PREREQUISITE: identical to child_walk_step, and additionally remembers that
+// the child every later inner-scope site depends on was refused.
+fn child_walk_step_prerequisite(w: ChildWalk, e: Edge, r: ResolveNodeWalk) -> ChildWalk {
+  let stepped = child_walk_step(w: w, e: e, r: r)
+  ChildWalk {
+    ordinal: stepped.ordinal,
+    edges: stepped.edges,
+    pending: stepped.pending,
+    failures: stepped.failures,
+    observation: stepped.observation,
+    scope_prerequisite_refused: match r {
+      ResolveWalkRefused { first: _, rest: _, observation: _ } => true
+      ResolveWalkAccepted { value: _, diagnostics: _ } => false
+    }
+  }
+}
+
+// THE ACCEPTED ARM IS REACHABLE ONLY WHEN THE POPULATION IS EMPTY, so "never return a partially
+// accepted tree" is enforced by this match rather than by a caller's discipline. An incomplete
+// observation with no refusal does not arise today (an unobservable site only follows a refused
+// prerequisite, which is itself a chain); should a future walk produce one, the node is still not
+// reported accepted -- it refuses with its own reason rather than borrowing another refusal's.
+fn child_walk_node(w: ChildWalk, n: Node) -> ResolveNodeWalk {
+  match w.failures {
+    Empty =>
+      match w.observation {
+        ObservationComplete =>
+          ResolveWalkAccepted {
+            value: node_with_occurrence_id(kind: n.kind, children: w.edges, occurrence_id: n.occurrence_id),
+            diagnostics: w.pending
+          }
+        ObservationIncomplete { reason: _ } =>
+          resolve_walk_refused_one(chain: diagnostics_singleton(d: Diagnostic {
+            reason: ^resolve_reason_observation_incomplete,
+            at: node_locus(node: n),
+            correction: Unavailable { reason: UserInputBoundary }
+          }))
+      }
+    Cons { head: first, tail: rest } =>
+      ResolveWalkRefused { first: first, rest: rest, observation: w.observation }
+  }
+}
+
 fn resolve_transform_operator_child(
   ctx: ResolveContext,
   n: Node
-) -> Outcome<Node> {
+) -> ResolveNodeWalk {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      resolve_surface_operator_atom(ctx: ctx, n: n, identity: id)
-    _ => resolve_node(ctx: ctx, n: n)
+      resolve_walk_of_outcome(o: resolve_surface_operator_atom(ctx: ctx, n: n, identity: id))
+    _ => resolve_node_walk(ctx: ctx, n: n)
   }
 }
 
 fn resolve_transform_children(
   ctx: ResolveContext,
   n: Node
-) -> Outcome<Node> {
-  match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
-    match acc {
-      Rejected { diagnostics: r } =>
-        Rejected { diagnostics: r }
-      Accepted { value: done, diagnostics: ad } =>
-        match e.label {
-          Positional =>
+) -> ResolveNodeWalk {
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+    child_walk_step(
+      w: acc,
+      e: e,
+      r: match e.label {
+        Positional =>
+          if acc.ordinal == 0 {
+            resolve_transform_operator_child(ctx: ctx, n: e.target)
+          } else {
+            resolve_node_walk(ctx: ctx, n: e.target)
+          }
+        _ => resolve_node_walk(ctx: ctx, n: e.target)
+      }
+    )
+  }))
+}
 
-            if length(xs: done) == 0 {
-              match resolve_transform_operator_child(
-                ctx: ctx,
-                n: e.target
-              ) {
-                Rejected { diagnostics: r } =>
-                  Rejected {
-                    diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                  }
-                Accepted { value: resolved_target, diagnostics: ed } =>
-                  Accepted {
-                    value: list_snoc_item(xs: done, item: Edge {
-                      label: e.label,
-                      target: resolved_target
-                    }),
-                    diagnostics: diagnostics_merge(outer: ad, inner: ed)
-                  }
-              }
-            } else {
-              match resolve_node(ctx: ctx, n: e.target) {
-                Rejected { diagnostics: r } =>
-                  Rejected {
-                    diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                  }
-                Accepted { value: resolved_target, diagnostics: ed } =>
-                  Accepted {
-                    value: list_snoc_item(xs: done, item: Edge {
-                      label: e.label,
-                      target: resolved_target
-                    }),
-                    diagnostics: diagnostics_merge(outer: ad, inner: ed)
-                  }
-              }
-            }
-          _ =>
-            match resolve_node(ctx: ctx, n: e.target) {
-              Rejected { diagnostics: r } =>
-                Rejected {
-                  diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                }
-              Accepted { value: resolved_target, diagnostics: ed } =>
-                Accepted {
-                  value: list_snoc_item(xs: done, item: Edge {
-                    label: e.label,
-                    target: resolved_target
-                  }),
-                  diagnostics: diagnostics_merge(outer: ad, inner: ed)
-                }
-            }
-        }
-    }
-  }) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: resolved_children, diagnostics: d } =>
-      Accepted {
-        value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
-        diagnostics: d
+
+// A MATCH ARM'S BINDERS ARE A LEXICAL FRAME, LIKE PARAMETERS AND `let`. Normalize lowers a pat
+// over a fielded variant to the construct shape (v2.std.node_query construct_node): a tag edge that
+// names the constructor and one edge per field the pat names, whose target is the
+// sub-pat -- a binder atom, `_`, a literal, or a nested construct. The arm's BODY resolves
+// under one ScopeFrame holding those binders (name -> name, as add_arrow_domain_named_params
+// does); the scrutinee and the sibling arms keep the outer scope, so a binder neither leaks to a
+// sibling nor past the match. lookup_chain answers a frame local BoundInFrame before it reaches the
+// root or the symbol index, so a binder that spells an outer name shadows it -- a lexical frame,
+// deliberately not a namespace binding: a namespace claimant at the same position would be the
+// located ambiguity the namespace chain refuses (docs/plans/namespace-resolution-design.md section
+// 13), which is right for containment positions and wrong for binders. WHICH FIELD-TARGET ATOMS
+// ARE BINDERS: the seed's rule (v1.compiler.04_patterns) -- an atom the symbol index binds to a
+// declared payload is a nullary constructor and stays a reference, a canonical symbol is a
+// constant; any other atom is a binder (a fn or data of the same name does not make it one); `_`
+// binds nothing. The constructor TAG is never a binder: it resolves as
+// an ordinary reference, so a misspelled variant in a pat refuses instead of quietly becoming
+// a binder that matches everything. A pat that is not a construct (a bare atom, a literal)
+// binds nothing and resolves as before.
+// A DECLARED PAYLOAD IS A CONSTRUCTOR; A VALUE CONSTRUCT IS NOT. Both are Conj, so the connective
+// alone cannot decide it, and the difference is load-bearing here: this stage now lowers
+// `data d: R = R { .. }` to the construct shape (body_lowering_fold body_lower_try_record_literal),
+// so a plain `TypeNode { connective: Conj }` test classifies that data row as a constructor and a
+// pattern binder spelling its name -- `match c { A(d) => d }` beside `data d: Rec = Rec { .. }` --
+// gets no frame local, leaving the arm body's `d` bound to the data row. That is Accepted with the
+// wrong value and no diagnostic, which DESIGN section 5 forbids outright, and it contradicts the
+// rule stated below that a fn or data of the same name does not make an atom a constructor.
+// construct_tag_optional is the existing authority for the distinction: Present exactly for a
+// construct (first child is the tag self-edge, label == target atom identity), Absent for a
+// declared payload, whose first edge labels a FIELD and targets that field's TYPE.
+// A DECLARED PAYLOAD IS IDENTIFIED POSITIVELY, NOT BY NOT BEING SOMETHING ELSE. The first repair
+// of this predicate (gunbc#12033, review 69994) excluded the construct shape and left `Absent =>
+// true`, so every Conj that is not a construct was still answered "constructor". That default is
+// the widening arm DESIGN section 5 forbids, arriving inside the remedy: parse mints Conj for
+// ordinary sequence nodes (v2.std.grammar grammar_expr_node, the 02_parse sequence snoc), the
+// namespace graft binds a data or alias NAME to its declaration parse node, and symbol_index_fill
+// puts that Conj in the index under the name -- so a match-arm binder spelling a module-level
+// data or alias name was classified a constructor, skipped by resolve_pattern_binders, and
+// resolved as a reference to that declaration. Silently, because the name resolves.
+//
+// So the test asks what a declared payload IS: a Conj that is nullary (a bare variant arm) or
+// whose every child is a declared field (v2.std.node_query declared_field_list, Named edges to
+// type expressions). A construct is excluded on top of that, because its tag self-edge reads as a
+// field of the same name and would otherwise satisfy the field test.
+//
+// WHAT THIS DOES NOT CLOSE, NAMED PRECISELY. This test is strictly narrower than the fail-open
+// default it replaces, but the shape still cannot tell a declared payload from a module container:
+// v2.std.node_query declared_field_from_edge accepts ANY Named edge, so a module container would
+// be answered "constructor" IF a binder's lookup ever reached one. No route is known to. The
+// review-sourced specimen (binder `node` beside module v2.std.node in v2.std.symbol_index
+// symbol_index_candidates_at) was executed by gunbc#12082's v2.test.claim.match_arm_binder_frame
+// mab_binder_spelling_a_sibling_module_binds_the_arm and binds, because symbol_index_fill inserts
+// no module path. An earlier revision of this note asserted that specimen resolved silently to the
+// module without running it; that is retracted.
+//
+// AND WHY A FOURTH SHAPE DISCRIMINATOR IS REFUSED RATHER THAN ATTEMPTED. Three have been tried
+// here -- the bare connective, the construct tag, and declared-field coverage -- and each admitted
+// a wider set than its author intended, because a declared payload, a module container and a
+// declaration parse-rest node are ALL Conj with Named edges. The fact this predicate needs is what
+// the NAME DENOTES, which is a declaration-kind fact v2.compiler.symbol_index_fill holds at insert
+// time and the node does not carry. Sniffing the node is asking the wrong carrier (DESIGN section
+// 6b: the earliest unjustified boundary is the link, not the predicate), and the repair is filed
+// as its own subject rather than guessed at again here.
+fn resolve_pattern_node_is_declared_payload(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      if count(node.children) == 0 {
+        true
+      } else {
+        count(declared_field_list(payload: node)) == count(node.children)
+      }
+    _ => false
+  }
+}
+
+fn resolve_pattern_node_is_constructor(node: Node) -> Bool {
+  resolve_pattern_node_is_declared_payload(node: node)
+    && (match construct_tag_optional(n: node) {
+      Absent => true
+      Present { value: _ } => false
+    })
+}
+
+// The seed's rule, at this resolver's grain: a field-target atom is a constructor when the symbol
+// index binds it to a declared payload (a variant arm, module.Type.Variant or its unique alias,
+// resolves to its payload Conj; so does a record type), or when it is a canonical symbol (`true`,
+// `false`). A fn or data declaration of the same name does NOT make it a constructor: the seed
+// binds `x` in `A(x)` even when a fn x exists, and so does this frame.
+//
+// THE LexicalUnbound BRANCH IS NOT A BRIDGE ANY MORE, AND WHY IT STAYS. It was first written as
+// DISSOLVE-ON gunbc#12009: before imports were bindings on the lexical chain, an imported
+// constructor in pattern position was reachable only through the corpus-wide spelling census.
+// #12009 closed unmerged, but its content landed on main inside gunbc#12048 (stacked on it), so
+// imports ARE chain bindings now and an imported constructor hits lexically. That trigger has
+// fired. What survives it is a different job: the census here never CHOOSES a meaning that
+// succeeds. A LexicalUnbound atom it classifies as a constructor is resolved as a reference by
+// resolve_pattern_node, finds nothing on the chain, and REFUSES as unbound, carrying main's
+// declared-elsewhere advisory (unbound_symbol_diagnostics). So the census only decides between
+// "binder" and "refuse". That is the oracle role docs/plans/namespace-resolution-design.md
+// section 13 keeps for global_bare -- explaining an absence -- and not the resolution mechanism
+// #12048 deleted. EXECUTED, not only read: gunbc#12082's v2.test.claim.match_arm_binder_frame
+// mab_unimported_constructor_in_a_pattern_refuses_rather_than_binding (`None` declared in one
+// module, not imported, `A(None) => None` in another) refuses resolve_reason_unbound_symbol. The
+// route is GlobalBareLookupAmbiguous (a variant's containment path plus its unique alias), not
+// GlobalBareHit: the claim reds with the Ambiguous arm forced to binder and stays green with the
+// payload fact forced false.
+//
+// DELETING IT, the retirement this marker used to promise, would be the wrong move: with
+// `LexicalUnbound => namespace_has_canonical_symbol(..)`, an unimported constructor spelling
+// (`None` with no import of it) becomes a fresh binder that matches every value. That is Accepted,
+// wrong, and silent, which DESIGN section 5 forbids. The cost of keeping it is an
+// over-prohibition, stated so it can be priced (DESIGN section 4d): a genuinely fresh binder whose
+// spelling is a variant declared somewhere in the corpus refuses, loudly, and the author renames
+// it. The branch retires when an unbound pattern atom that spells a declared constructor has its
+// own typed refusal that does not consult the corpus-wide census.
+fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bool {
+  match symbol_index_lexical_lookup(
+    index: ctx.namespace.symbol_index,
+    position: symbol_index_lookup_position(ctx: ctx),
+    name: id
+  ) {
+    LexicalHit { node: node, path: _ } => resolve_pattern_node_is_constructor(node: node)
+    LexicalAmbiguous { candidates: _ } => true
+    LexicalUnbound =>
+      match symbol_index_global_unique_lookup(index: ctx.namespace.symbol_index, name: id) {
+        GlobalBareHit { node: node, path: _ } => resolve_pattern_node_is_constructor(node: node)
+        GlobalBareLookupAmbiguous => true
+        GlobalBareLookupUnbound => namespace_has_canonical_symbol(namespace: ctx.namespace, name: id)
       }
   }
 }
 
+fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+  match construct_tag_optional(n: pat) {
+    Absent => acc
+    Present { value: _ } =>
+      fold(construct_field_edges(n: pat), init: acc, f: fn(m, e) {
+        match e.target.kind {
+          TypeNode { connective: Atom { identity: id } } =>
+            if id == pattern_wildcard_name() {
+              m
+            } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
+              m
+            } else {
+              map_insert(m, id, id)
+            }
+          _ => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
+        }
+      })
+  }
+}
+
+// The pat resolves under the ARM frame: the tag and any nested constructor resolve as
+// references, a binder answers BoundInFrame and stays itself, and `_` is kept as it is.
+//
+// THESE ARE WALKS, ON gunbc#12116's CHILD WALK (XL-2 P4). A pattern, an arm and a match each fold
+// their children through child_walk_step and close with child_walk_node, so every independent
+// refusal under a match -- a misspelled tag in one arm, an unbound reference in another arm's body
+// -- is its own chain in the population, in walk order, and the node is never reported accepted
+// while any chain stands. No scope here is built from a resolved child: the arm frame's binders
+// come from resolve_pattern_binders over the pattern's SYNTAX and the symbol index, before the
+// fold runs, so a refused pattern does not leave the body under an invented scope and no site is
+// marked unobservable (P4's one exception, a Bind's binder, has no counterpart here).
+fn resolve_pattern_field_target_walk(ctx: ResolveContext, target: Node) -> ResolveNodeWalk {
+  match target.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == pattern_wildcard_name() {
+        ResolveWalkAccepted { value: target, diagnostics: None }
+      } else {
+        resolve_node_walk(ctx: ctx, n: target)
+      }
+    _ => resolve_pattern_node_walk(ctx: ctx, pat: target)
+  }
+}
+
+fn resolve_pattern_node_walk(ctx: ResolveContext, pat: Node) -> ResolveNodeWalk {
+  match construct_tag_optional(n: pat) {
+    Absent => resolve_node_walk(ctx: ctx, n: pat)
+    Present { value: _ } =>
+      child_walk_node(n: pat, w: fold(pat.children, init: child_walk_init(), f: fn(acc, e) {
+        child_walk_step(w: acc, e: e, r: resolve_pattern_field_target_walk(ctx: ctx, target: e.target))
+      }))
+  }
+}
+
+fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
+  match find_named_child(root: arm, name: match_arm_pattern) {
+    Rejected { diagnostics: _ } => resolve_children_homogeneous_scope(ctx: ctx, n: arm)
+    Accepted { value: pat, diagnostics: _ } =>
+      let arm_ctx = resolve_ctx_with_scope(
+        ctx: ctx,
+        scope: ScopeFrame {
+          locals: resolve_pattern_binders(ctx: ctx, pat: pat, acc: empty_map()),
+          outer: ctx.scope
+        }
+      )
+      child_walk_node(n: arm, w: fold(arm.children, init: child_walk_init(), f: fn(acc, e) {
+        child_walk_step(
+          w: acc,
+          e: e,
+          r: match e.label {
+            Named { name: label } =>
+              if label == match_arm_pattern {
+                resolve_pattern_node_walk(ctx: arm_ctx, pat: e.target)
+              } else {
+                resolve_node_walk(ctx: arm_ctx, n: e.target)
+              }
+            Positional => resolve_node_walk(ctx: arm_ctx, n: e.target)
+          }
+        )
+      }))
+  }
+}
+
+// children[0] is the scrutinee (outer scope); every later child is an arm. The ordinal advances on
+// every child, refused or not, so a refused scrutinee never promotes the first arm into its place.
+fn resolve_match_node_walk(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+    child_walk_step(
+      w: acc,
+      e: e,
+      r: if acc.ordinal == 0 {
+        resolve_node_walk(ctx: ctx, n: e.target)
+      } else {
+        resolve_match_arm_walk(ctx: ctx, arm: e.target)
+      }
+    )
+  }))
+}
+
+// THE LEGACY ENTRY: one node, one chain. Every caller that asks for an Outcome keeps the answer
+// the short-circuiting walk gave; the population is resolve_node_walk.
 fn resolve_node(
   ctx: ResolveContext,
   n: Node
 ) -> Outcome<Node> {
+  resolve_walk_outcome(w: resolve_node_walk(ctx: ctx, n: n))
+}
+
+fn resolve_node_walk(
+  ctx: ResolveContext,
+  n: Node
+) -> ResolveNodeWalk {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      resolve_atom(ctx: ctx, n: n, identity: id)
+      resolve_walk_of_outcome(o: resolve_atom(ctx: ctx, n: n, identity: id))
     TypeNode { connective: Arrow } =>
-      match resolve_edges_first_outer_then_inner(
+      child_walk_node(n: n, w: resolve_edges_first_outer_then_inner(
         ctx: ctx,
         edges: n.children,
         scope_outer: ctx.scope,
@@ -920,21 +1426,16 @@ fn resolve_node(
           locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
           outer: ctx.scope
         }
-      ) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: resolved_children, diagnostics: d } =>
-          Accepted {
-            value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
-            diagnostics: d
-          }
-      }
+      ))
     ComputationNode { behavior: Bind } =>
       resolve_bind_node(ctx: ctx, n: n)
+    ComputationNode { behavior: Match } =>
+      resolve_match_node_walk(ctx: ctx, n: n)
     ComputationNode { behavior: Transform } =>
       resolve_transform_children(ctx: ctx, n: n)
     TypeNode { connective: Conj } =>
       match try_resolve_qualified_name_node(ctx: ctx, n: n) {
-        Present { value: outcome } => outcome
+        Present { value: outcome } => resolve_walk_of_outcome(o: outcome)
         Absent => resolve_children_homogeneous_scope(ctx: ctx, n: n)
       }
     TypeNode { connective: _ } =>
@@ -956,15 +1457,18 @@ fn resolve_preserve_module_root_named_edge(name: Symbol, target: Node) -> Bool {
   }
 }
 
+
+// ONE EDGE'S TARGET, OBSERVED. A preserved metadata edge is accepted as its own target unchanged,
+// so the caller rebuilding Edge { label, target } reproduces the edge exactly.
 fn resolve_child_edge(
   ctx: ResolveContext,
   e: Edge
-) -> Outcome<Edge> {
+) -> ResolveNodeWalk {
   match e.label {
     Named { name: sym } =>
       if ctx.under_module_root
         && resolve_preserve_module_root_named_edge(name: sym, target: e.target) {
-        Accepted { value: e, diagnostics: None }
+        ResolveWalkAccepted { value: e.target, diagnostics: None }
       } else {
         let child_ctx = if ctx.under_module_root
           && !dag_surface_module_header_metadata_edge(name: sym) {
@@ -972,28 +1476,14 @@ fn resolve_child_edge(
         } else {
           ctx
         }
-        match resolve_node(ctx: child_ctx, n: e.target) {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: resolved_target, diagnostics: d } =>
-            Accepted {
-              value: Edge { label: e.label, target: resolved_target },
-              diagnostics: d
-            }
-        }
+        resolve_node_walk(ctx: child_ctx, n: e.target)
       }
     Positional =>
       if ctx.under_module_root
         && dag_resolve_preserve_module_metadata_subtree(node: e.target) {
-        Accepted { value: e, diagnostics: None }
+        ResolveWalkAccepted { value: e.target, diagnostics: None }
       } else {
-        match resolve_node(ctx: ctx, n: e.target) {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: resolved_target, diagnostics: d } =>
-            Accepted {
-              value: Edge { label: e.label, target: resolved_target },
-              diagnostics: d
-            }
-        }
+        resolve_node_walk(ctx: ctx, n: e.target)
       }
   }
 }
@@ -1036,7 +1526,7 @@ fn arrow_domain_has_named_bindings(n: Node) -> Bool {
 fn resolve_children_homogeneous_scope(
   ctx: ResolveContext,
   n: Node
-) -> Outcome<Node> {
+) -> ResolveNodeWalk {
   let at_module_root = ctx.under_module_root || dag_node_is_module_root_conj(n: n)
   let scope_here = match arrow_domain_has_named_bindings(n: n) {
     true =>
@@ -1050,229 +1540,82 @@ fn resolve_children_homogeneous_scope(
     ctx: resolve_ctx_with_under_module_root(ctx: ctx, under_module_root: at_module_root),
     scope: scope_here
   )
-  match fold(n.children, init: Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
-    match acc {
-      Rejected { diagnostics: r } =>
-        Rejected { diagnostics: r }
-      Accepted { value: done, diagnostics: ad } =>
-        match resolve_child_edge(ctx: child_ctx, e: e) {
-          Rejected { diagnostics: r } =>
-            Rejected {
-              diagnostics: rejected_with_pending(pending: ad, rejected: r)
-            }
-          Accepted { value: resolved_edge, diagnostics: ed } =>
-            Accepted {
-              value: list_snoc_item(xs: done, item: resolved_edge),
-              diagnostics: diagnostics_merge(outer: ad, inner: ed)
-            }
-        }
-    }
-  }) {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: resolved_children, diagnostics: d } =>
-      Accepted {
-        value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
-        diagnostics: d
-      }
-  }
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+    child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: child_ctx, e: e))
+  }))
 }
 
+// THE ARROW'S DOMAIN IS NOT A SCOPE-PRODUCING PREREQUISITE in the sense the Bind binder is: its
+// parameter names are read syntactically by add_arrow_domain_named_params, so a domain that refuses
+// to RESOLVE a parameter's type still binds the parameter's name, and the codomain's scope is not
+// invented by that refusal.
 fn resolve_edges_first_outer_then_inner(
   ctx: ResolveContext,
   edges: List<Edge>,
   scope_outer: Scope,
   scope_inner: Scope
-) -> Outcome<List<Edge>> {
-  match fold(
-    edges,
-    init: EdgeResolveAccMk {
-      have_seen_first: false,
-      acc: Accepted { value: empty_edge_list(), diagnostics: None }
-    },
-    f: fn(state, e) {
-      match state {
-        EdgeResolveAccMk { have_seen_first: seen, acc: acc_state } =>
-          match acc_state {
-            Rejected { diagnostics: r } =>
-              EdgeResolveAccMk {
-                have_seen_first: true,
-                acc: Rejected { diagnostics: r }
-              }
-            Accepted { value: done, diagnostics: ad } =>
-              if seen {
-                match resolve_node(
-                  ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_inner),
-                  n: e.target
-                ) {
-                  Rejected { diagnostics: r } =>
-                    EdgeResolveAccMk {
-                      have_seen_first: true,
-                      acc: Rejected {
-                        diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                      }
-                    }
-                  Accepted { value: resolved_target, diagnostics: ed } =>
-                    EdgeResolveAccMk {
-                      have_seen_first: true,
-                      acc: Accepted {
-                        value: list_snoc_item(xs: done, item: Edge {
-                            label: e.label,
-                            target: resolved_target
-                          }),
-                        diagnostics: diagnostics_merge(outer: ad, inner: ed)
-                      }
-                    }
-                }
-              } else {
-                match resolve_node(
-                  ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_outer),
-                  n: e.target
-                ) {
-                  Rejected { diagnostics: r } =>
-                    EdgeResolveAccMk {
-                      have_seen_first: true,
-                      acc: Rejected {
-                        diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                      }
-                    }
-                  Accepted { value: resolved_target, diagnostics: ed } =>
-                    EdgeResolveAccMk {
-                      have_seen_first: true,
-                      acc: Accepted {
-                        value: list_snoc_item(xs: done, item: Edge {
-                            label: e.label,
-                            target: resolved_target
-                          }),
-                        diagnostics: diagnostics_merge(outer: ad, inner: ed)
-                      }
-                    }
-                }
-              }
-          }
-      }
-    }
-  ) {
-    EdgeResolveAccMk { acc: acc_state, have_seen_first: _ } => acc_state
-  }
+) -> ChildWalk {
+  fold(edges, init: child_walk_init(), f: fn(acc, e) {
+    child_walk_step(
+      w: acc,
+      e: e,
+      r: resolve_node_walk(
+        ctx: resolve_ctx_with_scope(
+          ctx: ctx,
+          scope: if acc.ordinal == 0 { scope_outer } else { scope_inner }
+        ),
+        n: e.target
+      )
+    )
+  })
 }
 
-fn resolve_bind_binder_target(t: Node) -> Outcome<Node> {
+fn resolve_bind_binder_target(t: Node) -> ResolveNodeWalk {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      Accepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: None }
+      ResolveWalkAccepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: None }
     _ =>
-      Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)) }
+      resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
   }
 }
 
+// ORDINAL 0 IS THE BINDER, AND IT PRODUCES THE INNER SCOPE. Ordinal 1 resolves under the outer
+// scope, which the binder does not touch, so it is observed whatever the binder did. Ordinal 2 and
+// beyond resolve under the scope the binder produced; when the binder was refused that scope would
+// be invented, so those sites are recorded ObservationIncomplete and NOT resolved.
 fn resolve_bind_edges(
   ctx: ResolveContext,
   edges: List<Edge>,
   scope_outer: Scope,
   scope_inner: Scope
-) -> Outcome<List<Edge>> {
-  match fold(
-    edges,
-    init: BindEdgeAccMk {
-      idx: 0,
-      acc: Accepted { value: empty_edge_list(), diagnostics: None }
-    },
-    f: fn(state, e) {
-      match state {
-        BindEdgeAccMk { idx: i, acc: acc_state } =>
-          match acc_state {
-            Rejected { diagnostics: r } =>
-              BindEdgeAccMk {
-                idx: i + 1,
-                acc: Rejected { diagnostics: r }
-              }
-            Accepted { value: done, diagnostics: ad } =>
-              if i == 0 {
-                match resolve_bind_binder_target(t: e.target) {
-                  Rejected { diagnostics: r } =>
-                    BindEdgeAccMk {
-                      idx: i + 1,
-                      acc: Rejected {
-                        diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                      }
-                    }
-                  Accepted { value: rt, diagnostics: ed } =>
-                    BindEdgeAccMk {
-                      idx: i + 1,
-                      acc: Accepted {
-                        value: list_snoc_item(xs: done, item: Edge {
-                            label: e.label,
-                            target: rt
-                          }),
-                        diagnostics: diagnostics_merge(outer: ad, inner: ed)
-                      }
-                    }
-                }
-              } else {
-                if i == 1 {
-                  match resolve_node(
-                    ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_outer),
-                    n: e.target
-                  ) {
-                    Rejected { diagnostics: r } =>
-                      BindEdgeAccMk {
-                        idx: i + 1,
-                        acc: Rejected {
-                          diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                        }
-                      }
-                    Accepted { value: rt, diagnostics: ed } =>
-                      BindEdgeAccMk {
-                        idx: i + 1,
-                        acc: Accepted {
-                          value: list_snoc_item(xs: done, item: Edge {
-                              label: e.label,
-                              target: rt
-                            }),
-                          diagnostics: diagnostics_merge(outer: ad, inner: ed)
-                        }
-                      }
-                  }
-                } else {
-                  match resolve_node(
-                    ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_inner),
-                    n: e.target
-                  ) {
-                    Rejected { diagnostics: r } =>
-                      BindEdgeAccMk {
-                        idx: i + 1,
-                        acc: Rejected {
-                          diagnostics: rejected_with_pending(pending: ad, rejected: r)
-                        }
-                      }
-                    Accepted { value: rt, diagnostics: ed } =>
-                      BindEdgeAccMk {
-                        idx: i + 1,
-                        acc: Accepted {
-                          value: list_snoc_item(xs: done, item: Edge {
-                              label: e.label,
-                              target: rt
-                            }),
-                          diagnostics: diagnostics_merge(outer: ad, inner: ed)
-                        }
-                      }
-                  }
-                }
-              }
-          }
-      }
+) -> ChildWalk {
+  fold(edges, init: child_walk_init(), f: fn(acc, e) {
+    if acc.ordinal == 0 {
+      child_walk_step_prerequisite(w: acc, e: e, r: resolve_bind_binder_target(t: e.target))
+    } else if acc.ordinal == 1 {
+      child_walk_step(
+        w: acc,
+        e: e,
+        r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_outer), n: e.target)
+      )
+    } else if acc.scope_prerequisite_refused {
+      child_walk_unobservable(w: acc, reason: ^resolve_observation_bind_scope_prerequisite_refused)
+    } else {
+      child_walk_step(
+        w: acc,
+        e: e,
+        r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_inner), n: e.target)
+      )
     }
-  ) {
-    BindEdgeAccMk { acc: acc_state, idx: _ } => acc_state
-  }
+  })
 }
 
 fn resolve_bind_node(
   ctx: ResolveContext,
   n: Node
-) -> Outcome<Node> {
+) -> ResolveNodeWalk {
   if count(n.children) == 3 {
-    match resolve_bind_edges(
+    child_walk_node(n: n, w: resolve_bind_edges(
       ctx: ctx,
       edges: n.children,
       scope_outer: ctx.scope,
@@ -1280,16 +1623,9 @@ fn resolve_bind_node(
         locals: add_bind_atom_binder(n: n, acc: empty_map()),
         outer: ctx.scope
       }
-    ) {
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      Accepted { value: resolved_children, diagnostics: d } =>
-        Accepted {
-          value: node_with_occurrence_id(kind: n.kind, children: resolved_children, occurrence_id: n.occurrence_id),
-          diagnostics: d
-        }
-    }
+    ))
   } else {
-    Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)) }
+    resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)))
   }
 }
 
@@ -1320,12 +1656,26 @@ fn resolve_with_namespace_policy(
   lm: LanguageModel,
   policy: NameResolutionPolicy
 ) -> Outcome<ResolvedTree> {
+  resolve_walk_outcome(w: resolve_walk_with_namespace_policy(
+    tree: tree,
+    namespace: namespace,
+    lm: lm,
+    policy: policy
+  ))
+}
+
+fn resolve_walk_with_namespace_policy(
+  tree: NormalizedTree,
+  namespace: Namespace,
+  lm: LanguageModel,
+  policy: NameResolutionPolicy
+) -> ResolveNodeWalk {
   if well_formed(n: tree.root) {
-    resolve_node(
+    resolve_node_walk(
       ctx: resolve_ctx_init(namespace: namespace, lm: lm, policy: policy),
       n: tree.root
     )
   } else {
-    Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: tree.root)) }
+    resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: tree.root)))
   }
 }

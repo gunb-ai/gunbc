@@ -3,15 +3,20 @@ module v2.compiler.name_resolve
 import v2.std.language_model { LanguageModel }
 
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
-import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_binding_sources }
 import v2.std.declaration_marker { TestCodeIndex, test_code_index_add_module, test_code_index_empty }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.compiler.resolve {
   DeclaredBinding,
   Namespace,
   namespace_bindings_augment_from_module_atoms,
+  ObservationIncomplete,
+  ResolveNodeWalk,
+  ResolveWalkRefused,
   ResolvedTree,
-  resolve_with_namespace_policy,
+  resolve_walk_outcome,
+  resolve_walk_prefix_pending,
+  resolve_walk_with_namespace_policy,
   try_edge_declared_binding
 }
 import v2.std.resolution_policy {
@@ -130,7 +135,7 @@ fn resolution_context(
           roots: validated_roots,
           symbol_index: symbol_index_fill_module_roots(
             index: empty_symbol_index(),
-            roots: normalized_tree_roots_to_nodes(roots: validated_roots.roots)
+            roots: normalized_tree_roots_to_binding_sources(roots: validated_roots.roots)
           )
         },
         diagnostics: d
@@ -774,8 +779,33 @@ fn resolve_with_admission_context_policy(
   active_roots: FreeMonoid<SourceRootRef>,
   policy: NameResolutionPolicy
 ) -> Outcome<ResolvedTree> {
+  resolve_walk_outcome(w: resolve_walk_with_admission_context_policy(
+    context: context,
+    admission: admission,
+    index: index,
+    active_roots: active_roots,
+    policy: policy
+  ))
+}
+
+// THE SUBJECT'S WHOLE RESOLUTION OBSERVATION, every independent failure chain in walk order. The
+// Outcome entry above is its projection and answers what it always answered. A context or
+// namespace refusal means the walk was never entered, so none of the subject's sites were observed:
+// that is recorded as ObservationIncomplete, never as a complete observation holding one refusal.
+fn resolve_walk_with_admission_context_policy(
+  context: Outcome<ResolutionContext>,
+  admission: Admission,
+  index: SourceRootIndex,
+  active_roots: FreeMonoid<SourceRootRef>,
+  policy: NameResolutionPolicy
+) -> ResolveNodeWalk {
   match context {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Rejected { diagnostics: r } =>
+      ResolveWalkRefused {
+        first: r,
+        rest: [],
+        observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
+      }
     Accepted { value: shared, diagnostics: _ } =>
       match namespace_for_subject_in_context(
         context: context,
@@ -785,23 +815,21 @@ fn resolve_with_admission_context_policy(
         policy: policy
       ) {
         Accepted { value: admitted, diagnostics: namespace_diag } =>
-          match resolve_with_namespace_policy(
-            tree: admitted.subject_root,
-            namespace: admitted.namespace,
-            lm: shared.lm,
-            policy: policy
-          ) {
-            Accepted { value: resolved, diagnostics: resolve_diag } =>
-              Accepted {
-                value: resolved,
-                diagnostics: diagnostics_merge(outer: namespace_diag, inner: resolve_diag)
-              }
-            Rejected { diagnostics: r } =>
-              Rejected {
-                diagnostics: rejected_with_pending(pending: namespace_diag, rejected: r)
-              }
+          resolve_walk_prefix_pending(
+            pending: namespace_diag,
+            w: resolve_walk_with_namespace_policy(
+              tree: admitted.subject_root,
+              namespace: admitted.namespace,
+              lm: shared.lm,
+              policy: policy
+            )
+          )
+        Rejected { diagnostics: r } =>
+          ResolveWalkRefused {
+            first: r,
+            rest: [],
+            observation: ObservationIncomplete { reason: ^resolve_observation_namespace_refused }
           }
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
   }
 }

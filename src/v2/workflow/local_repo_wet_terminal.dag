@@ -141,10 +141,18 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 //   three ask whether `&&` demands its right operand under a false left. Each answers by writing a
 //   marker file, running the operation under test, and then asking whether the marker survived --
 //   so the verdict rests on an observed effect and not on a reading of the source. The polarity
-//   was taken FROM the measurement: `and_short_circuit_direct_probe` asserts the marker is GONE
-//   after `false && shell.Remove.RecursiveForce(...)`, which is a claim that the right operand ran,
-//   and it holds. Had the substrate short-circuited, that fn would be ExpectedToRefuse and the
-//   disagreement among the five would itself have been the finding.
+//   was taken FROM the measurement, and the measurement has since MOVED, which is why this
+//   paragraph now reads the other way. On 2026-09-02 `and_short_circuit_direct_probe` asserted the
+//   marker was GONE after `false && shell.Remove.RecursiveForce(...)` -- a claim that the right
+//   operand ran -- and it held, because the interpreter demanded both operands while the emitted
+//   Rust did not (gunbc.recurring_failure_mode
+//   realization_arms_diverge_on_whether_the_program_refuses). std.operator_realization
+//   operand_demand now declares that And asks for its right operand only under a true left, and
+//   BOTH realizations read it, so the marker SURVIVES and the two short-circuit probes assert its
+//   survival. The polarity was re-derived from the new measurement, never edited to stay green, and
+//   `a_let_bound_effect_still_runs` is enrolled beside them as the control that the same removal on
+//   the same path does run when it is demanded -- without it a surviving marker would be
+//   indistinguishable from a broken probe. The member count above this paragraph moves with it.
 //
 //   EIGHT MATERIALIZATION-STORE MEMBERS (added 2026-09-11, the provider-spine lane). Their admitted
 //   effect is the evaluation-model probes' effect with one widening named here rather than folded
@@ -242,6 +250,29 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // bin-witness wet class, whose standing excl_bin_wet_reason carries. Measured wet through
 // `gunbc run --claim-run` over this tree before enrollment: all ten held, and every metacharacter
 // probe failed without output rather than running its payload.
+// THE ATTEMPT-LIFECYCLE MEMBERS ARE EVERY TEST FN IN THAT FILE (2026-09-22, gunbc#12040), and the
+// membership is stated as that RULE rather than as a count. It said NINE until review 70036, by
+// which time the file held ten: the claim added for the fabricated-settlement finding was written,
+// executed by hand, and enrolled NOWHERE -- and it was the sole executing control for the
+// AttemptUnsettleable arm, so the finding was answered with a control that does not run. A count
+// asserting completeness over a population that grows underneath it is what hid that, which is the
+// same defect in the other direction from the one this file's route-gap sibling avoids by being an
+// observation rather than a policy. Here the policy is the honest form: the admitting property is
+// the EFFECT, every function in the file has it, so no member can be added without being covered.
+//
+// Same admitted effect as the seven host_capacity members directly below, and enrolled the same way: a real compare-and-set against a
+// real generation-file store inside a directory the witness creates with shell.Mktemp.DirWithTemplate
+// and removes -- no repository, no network, no cargo, no remote host, no install media. The floor
+// PLANNED all nine and the hermetic route reached no subject for most of them: the #12040 run named
+// five (cause route_gap, 'the hermetic route has no arm for DirWithTemplate'), and a hermetic
+// claim_batch over this tree ended six that way with three verdicts. A changed witness ending in a
+// route gap is admitted only when a wet terminal joins it. The whole file is enrolled rather than
+// the gapped subset, and the two measurements disagreeing on which subset is itself the reason: a
+// claim reaches a verdict hermetically only by not touching the directory on that path, which is a
+// property of the evaluation order and not of the claim, and it moves under an edit. The file's exclusion row is gunbc.ci.ci_layer_roots
+// excl_local_repo_wet_tempdir_write_reason, and it retires on the same mock coverage as its
+// neighbours. Measured wet over this tree before enrollment: every member held -- 9/9 at the time
+// the first nine were enrolled, and the tenth PASS with its mutation RED when it was added.
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
@@ -284,6 +315,90 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "two_instances_on_one_host_resolve_to_one_pool_at_one_root" },
       entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
       function: "two_instances_on_one_host_resolve_to_one_pool_at_one_root",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.manager_unaskable_wet_witness", function: "a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting" },
+      entry: "dag/test/claim/compute/manager_unaskable_wet_witness_test.dag",
+      function: "a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.host_capacity_wet_witness", function: "releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing" },
+      entry: "dag/test/claim/compute/host_capacity_wet_witness_test.dag",
+      function: "releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "a_launch_that_won_refuses_a_recovery_arriving_behind_it" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "a_launch_that_won_refuses_a_recovery_arriving_behind_it",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "the_unit_binding_is_read_back_from_the_record_the_attempt_wrote" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "the_unit_binding_is_read_back_from_the_record_the_attempt_wrote",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "settling_records_why_and_does_not_erase_what_it_settled" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "settling_records_why_and_does_not_erase_what_it_settled",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "the_union_keeps_every_arm_either_list_carried_and_each_refuses_as_before" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "the_union_keeps_every_arm_either_list_carried_and_each_refuses_as_before",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "recovery_cannot_fire_inside_the_window_the_producer_declared" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "recovery_cannot_fire_inside_the_window_the_producer_declared",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "a_launched_attempt_is_recovered_only_on_an_ended_unit" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "a_launched_attempt_is_recovered_only_on_an_ended_unit",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "an_undecodable_slot_is_unreadable_and_never_absent" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "an_undecodable_slot_is_unreadable_and_never_absent",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "a_terminal_verdict_outside_the_closed_set_is_unreadable" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "a_terminal_verdict_outside_the_closed_set_is_unreadable",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "an_over_long_pre_launch_declaration_refuses_at_open_and_is_not_clamped",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_lifecycle_wet_witness", function: "the_ceiling_retry_opens_its_own_attempt_and_a_held_slot_refuses_it_before_spawn" },
+      entry: "dag/test/claim/compute/attempt_lifecycle_wet_witness_test.dag",
+      function: "the_ceiling_retry_opens_its_own_attempt_and_a_held_slot_refuses_it_before_spawn",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -857,9 +972,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.eval_model_probe", function: "and_demands_right_even_when_left_false" },
+      identity: WitnessIdentity { module_path: "test.claim.eval_model_probe", function: "and_does_not_demand_right_when_left_false" },
       entry: "dag/test/claim/eval_model_probe_test.dag",
-      function: "and_demands_right_even_when_left_false",
+      function: "and_does_not_demand_right_when_left_false",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -872,6 +987,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.eval_model_probe", function: "and_with_true_left_removes_file" },
       entry: "dag/test/claim/eval_model_probe_test.dag",
       function: "and_with_true_left_removes_file",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.eval_model_probe", function: "a_let_bound_effect_still_runs" },
+      entry: "dag/test/claim/eval_model_probe_test.dag",
+      function: "a_let_bound_effect_still_runs",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -1478,6 +1599,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.spark.v41_source_patch_converge_witness", function: "empty_diff_has_a_real_digest" },
       entry: "dag/test/claim/spark/v41_source_patch_converge_witness_test.dag",
       function: "empty_diff_has_a_real_digest",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.v41_published_row_store_witness", function: "a_reading_of_exactly_the_planned_spans_keys" },
+      entry: "dag/test/claim/spark/v41_published_row_store_witness_test.dag",
+      function: "a_reading_of_exactly_the_planned_spans_keys",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.v41_published_row_store_witness", function: "the_key_moves_with_the_bytes_and_the_table_set" },
+      entry: "dag/test/claim/spark/v41_published_row_store_witness_test.dag",
+      function: "the_key_moves_with_the_bytes_and_the_table_set",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

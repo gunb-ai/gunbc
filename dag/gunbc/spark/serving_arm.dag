@@ -34,7 +34,7 @@ import gunbc.spark.runtime_architecture_registry_reading {
   glm53_nope_derived_registry_reading, glm53_derived_registry_reading,
 }
 import gunbc.spark.model_snapshot_acquisition {
-  SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root,
+  SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root, spark_models_root,
 }
 // A SERVING ARM IS A CHECKPOINT, A RUNTIME AND A TOPOLOGY -- NOT A MODEL.
 //
@@ -234,7 +234,7 @@ data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
   checkpoint: Glm53Exl3_205,
   repo: HubRepoId { kind: HubModelRepo, path: "turboderp/GLM-5.3-Flash-exl3" as NonEmptyStr },
   revision: "51058cd551c7e570d87bd32a4adee720edce2349" as NonEmptyStr,
-  placement: LocalDirectoryPlacement { host_path: "/home/briansrls/models/glm53-flash-exl3-2.05" as NonEmptyStr },
+  placement: LocalDirectoryPlacement { host_path: join([spark_models_root as String, "/glm53-flash-exl3-2.05"], "") as NonEmptyStr },
   architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
   weight_gib: gibibyte(count: 80),
   quantization: QuantizationSpelledOnArgv { wire: "exl3" as NonEmptyStr },

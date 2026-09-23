@@ -1,0 +1,194 @@
+module gunbc.auth.github_app_control_plane_observe
+
+import std.types { String, NonEmptyStr, Int, List, Secret, EpochSecs }
+import std.resources { Network }
+import extdeps.clock {
+  clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused, epoch_secs_of_millis,
+}
+import extdeps.auth.jws { JwsSigningKeyRef }
+import extdeps.transports.rest {
+  RestOutcome, RestReadExchange, classify_rest_outcome,
+  RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeCommitAmbiguous,
+  RestExchangeUnreached, RestExchangeUndecodable,
+}
+import extdeps.github.app {
+  GitHubAppId, GitHubAppInstallationId, GitHubAppPermission,
+  GitHubAppPublicRecord, GitHubAppInstallationRecord,
+  installation_from_record, InstallationDecoded, InstallationSelectionUnreadable,
+  InstallationPermissionsUnreadable, InstallationSlugEmpty, InstallationHtmlUrlUnreadable,
+  observed_permissions_from_wire_map, ObservedPermissionsDecoded,
+  ObservedPermissionAccessUnreadable, ObservedPermissionKeyUnanswered,
+}
+import extdeps.github.app
+import gunbc.auth.github_apps {
+  DeclaredGitHubApp, GitHubAppControlPlaneState, app_control_plane_state,
+  SignerCustody, SignerCustodyObserved, SignerReadbackFailed, ObservedGitHubAppSigner,
+  SignerKeyRejected, SignerReadbackNotReached,
+  ObservedAppRegistration, AppRegistrationReadback, AppRegistrationReadbackUnavailable,
+  ObservedInstallation, InstallationReadback, InstallationReadbackUnavailable,
+  InstallationReadbackNotAttempted, InstallationReadbackFailed,
+}
+import gunbc.github_effect_perform { app_jwt_for, AppJwtSigned, AppJwtUnsigned }
+import v2.std.optional { Absent, Present }
+
+// THE PRODUCER OF gunbc.auth.github_apps GitHubAppControlPlaneState, for a process that HOLDS the
+// App's key. Custody, registration and installation grant are read with ONE JWT signed in-process
+// by gunbc.github_effect_perform app_jwt_for -- the same signer the JIT mint uses, so the state
+// observes the key the mint will sign with rather than some other principal's view of the App. The
+// key reaches the host through the federated custody converge (gunbc.auth.privileged_effect_census
+// rows host_credential_custody_converge_ci_wet and this module's own row); no token is taken from
+// the environment or from an operator.
+//
+// EVERY FAILURE IS THE STATE'S OWN ARM, never a default: an unsigned JWT or an unread clock is
+// SignerReadbackNotReached, a 401 at GET /app is SignerKeyRejected, a key GitHub accepts as another
+// App is SignerNamesDifferentApp (decided by sealed_control_plane_state, not here), and an
+// installation read that fails is InstallationUnobserved with its detail. The installation is read
+// only once custody is observed: a read under a rejected key would be a second 401 reported as a
+// missing installation.
+//
+// The decisions over RestOutcomes are separated from the effects so each arm is reachable from a
+// supplied value (DESIGN §3: a witness discriminates at one interface).
+//
+// DECLARED CONSUMER (DESIGN §3c), landing in a named later change: gunbc.runner_microvm_slot_controller
+// observe_app_control_plane (gunbc#12011), whose app_control_plane_producer_frontier names this
+// producer as its trigger. TRIGGER: once #12011 is on main, the wiring change makes
+// observe_app_control_plane call observe_github_app_control_plane with
+// gunbc.github_effect_perform lifecycle_controller_app and lifecycle_controller_app_key,
+// gunbai_ci_declared_installation_id and gunbai_ci_registration_goal's required_permissions, and
+// deletes that frontier row and SlotControllerRefusal AppControlPlaneUnproduced. Until then the
+// only callers are test.claim.github_app_control_plane_observe's witnesses.
+
+fn rest_read_failure_detail(what: String, outcome: RestOutcome) -> String {
+  match classify_rest_outcome(standing: RestReadExchange { rest: outcome }) {
+    RestExchangeSucceeded => concat(what, ": succeeded")
+    RestExchangeStatusRefused { status: s, body: b } =>
+      concat(concat(concat(what, ": status "), to_string(s)), concat(" ", b))
+    RestExchangeCommitAmbiguous { detail: d } => concat(concat(what, ": "), d)
+    RestExchangeUnreached { cause: c } => concat(concat(what, ": unreached: "), c)
+    RestExchangeUndecodable { status: s, cause: c } =>
+      concat(concat(concat(what, ": undecodable at status "), to_string(s)), concat(": ", c))
+  }
+}
+
+fn signer_custody_of_app_read(
+  key: JwsSigningKeyRef,
+  observed_at: EpochSecs,
+  outcome: RestOutcome,
+  record: GitHubAppPublicRecord,
+) -> SignerCustody {
+  match classify_rest_outcome(standing: RestReadExchange { rest: outcome }) {
+    RestExchangeSucceeded =>
+      SignerCustodyObserved {
+        signer: ObservedGitHubAppSigner {
+          key: key,
+          accepted_as: GitHubAppId { value: record.id },
+          observed_at: observed_at,
+        },
+      }
+    RestExchangeStatusRefused { status: s, body: b } =>
+      if s == 401 {
+        SignerReadbackFailed { cause: SignerKeyRejected { status: s, body: b } }
+      } else {
+        SignerReadbackFailed { cause: SignerReadbackNotReached { detail: rest_read_failure_detail(what: "GET /app", outcome: outcome) } }
+      }
+    _ =>
+      SignerReadbackFailed { cause: SignerReadbackNotReached { detail: rest_read_failure_detail(what: "GET /app", outcome: outcome) } }
+  }
+}
+
+fn registration_of_app_read(outcome: RestOutcome, record: GitHubAppPublicRecord) -> ObservedAppRegistration {
+  match classify_rest_outcome(standing: RestReadExchange { rest: outcome }) {
+    RestExchangeSucceeded =>
+      match observed_permissions_from_wire_map(m: record.permissions) {
+        ObservedPermissionsDecoded { permissions: perms } =>
+          AppRegistrationReadback { app_id: GitHubAppId { value: record.id }, requested_permissions: perms }
+        ObservedPermissionAccessUnreadable { wire_name: _, access: _ } => AppRegistrationReadbackUnavailable
+        ObservedPermissionKeyUnanswered { wire_name: _ } => AppRegistrationReadbackUnavailable
+      }
+    _ => AppRegistrationReadbackUnavailable
+  }
+}
+
+fn installation_failed(detail: String) -> ObservedInstallation {
+  InstallationReadbackUnavailable {
+    cause: InstallationReadbackFailed { detail: concat("GET /app/installations/\{id\}: ", detail) as NonEmptyStr },
+  }
+}
+
+fn installation_of_read(outcome: RestOutcome, record: GitHubAppInstallationRecord) -> ObservedInstallation {
+  match classify_rest_outcome(standing: RestReadExchange { rest: outcome }) {
+    RestExchangeSucceeded =>
+      match installation_from_record(record: record) {
+        InstallationDecoded { installation: i } => InstallationReadback { installation: i }
+        InstallationSelectionUnreadable { raw: r } => installation_failed(detail: concat("repository_selection unreadable: ", r))
+        InstallationPermissionsUnreadable { decode: _ } => installation_failed(detail: "permissions unreadable")
+        InstallationSlugEmpty => installation_failed(detail: "app_slug empty")
+        InstallationHtmlUrlUnreadable { raw: r } => installation_failed(detail: concat("html_url unreadable: ", r))
+      }
+    _ => installation_failed(detail: rest_read_failure_detail(what: "read", outcome: outcome))
+  }
+}
+
+// Nothing was read: custody is unreached and the other two were never attempted.
+fn control_plane_unreached(
+  app: DeclaredGitHubApp,
+  detail: String,
+  required: List<GitHubAppPermission>,
+  reason: NonEmptyStr,
+) -> GitHubAppControlPlaneState {
+  app_control_plane_state(
+    app: app,
+    custody: SignerReadbackFailed { cause: SignerReadbackNotReached { detail: detail } },
+    registration: AppRegistrationReadbackUnavailable,
+    observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
+    required: required,
+    reason: reason,
+  )
+}
+
+fn observe_github_app_control_plane(
+  app: DeclaredGitHubApp,
+  key: JwsSigningKeyRef,
+  installation: GitHubAppInstallationId,
+  required: List<GitHubAppPermission>,
+  reason: NonEmptyStr,
+) -> GitHubAppControlPlaneState uses net: Network {
+  match clock_unix_millis_read() {
+    ClockUnixMillisRefused { detail: d } =>
+      control_plane_unreached(app: app, detail: concat("clock unread: ", d), required: required, reason: reason)
+    ClockUnixMillisObserved { millis: ms } => {
+      let now = epoch_secs_of_millis(millis: ms)
+      match app_jwt_for(dispatch_app_id: app.app_id.value, key: key, now_epoch_secs: now) {
+        AppJwtUnsigned { detail: d } =>
+          control_plane_unreached(app: app, detail: concat("App JWT unsigned: ", d), required: required, reason: reason)
+        AppJwtSigned { jwt: jwt } => {
+          let read = github.AuthenticatedApp.GetAuthenticatedApp(app_jwt: jwt as Secret)
+          let custody = signer_custody_of_app_read(key: key, observed_at: now, outcome: read.outcome, record: read.result)
+          let registration = registration_of_app_read(outcome: read.outcome, record: read.result)
+          match custody {
+            SignerCustodyObserved { signer: _ } => {
+              let inst = github.AuthenticatedApp.GetAppInstallation(app_jwt: jwt as Secret, installation_id: installation.value)
+              app_control_plane_state(
+                app: app,
+                custody: custody,
+                registration: registration,
+                observed: installation_of_read(outcome: inst.outcome, record: inst.result),
+                required: required,
+                reason: reason,
+              )
+            }
+            _ =>
+              app_control_plane_state(
+                app: app,
+                custody: custody,
+                registration: registration,
+                observed: InstallationReadbackUnavailable { cause: InstallationReadbackNotAttempted },
+                required: required,
+                reason: reason,
+              )
+          }
+        }
+      }
+    }
+  }
+}

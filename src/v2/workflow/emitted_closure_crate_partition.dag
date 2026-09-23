@@ -1,6 +1,6 @@
 module v2.workflow.emitted_closure_crate_partition
 
-import std.types { List, String, Bool, Int }
+import std.types { List, String, Bool, Int, Map }
 import v2.std.algebra { any }
 import v2.workflow.compiler_closure_ingest_transport { closure_entry }
 import v2.lens.module_graph {
@@ -35,8 +35,9 @@ import v2.workflow.rust_crate_partition {
 //
 // WHAT THIS DAG DOES NOT CARRY, stated so nothing reads its absence as a fact. exports and
 // type_definitions are empty maps. The interfaces a partition_fold_outcome would derive from them
-// are the source_authority ingest's to supply (the frontier v2.workflow.rust_crate_partition
-// stage0_frontier_grounding_target names), so this DAG is fed to resolve_partition_outcome -- which
+// are the module-binding supply's to carry (the capability
+// v2.workflow.rust_crate_partition stage0_module_interface_grounding_target names), so this DAG is
+// fed to resolve_partition_outcome -- which
 // reads modules and edges only -- and to NOTHING that builds CompilationUnit interfaces. The edges
 // are source dependency edges: emitter-added and runtime edges are not in them, and they enter
 // when the emitted-crate rendering does (demand_engine_program names the classification).

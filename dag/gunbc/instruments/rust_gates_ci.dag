@@ -5,8 +5,8 @@ import extdeps.git
 import extdeps.cargo_build
 import extdeps.cargo_build { cargo_nextest_build_jobs_flag }
 import tools.rust_stage0_gates { should_run_gates }
-import gunbc.ci_spec {
-  gunbc_ci_spec,
+import gunbc.ci_diff_policy {
+  gunbc_ci_diff_policy,
   DiffMergeBase,
   DiffTwoDot,
 }
@@ -51,7 +51,7 @@ fn run_gates() -> ProcessExit {
 }
 
 fn run_rust_monolith_gate() -> ProcessExit {
-  let policy = gunbc_ci_spec.diff_policy
+  let policy = gunbc_ci_diff_policy
   let changed = match policy.mode {
     DiffMergeBase => git.Core.DiffNameOnlyMerge(base: policy.base, head: policy.head)
     DiffTwoDot => git.Core.DiffNameOnly(base: policy.base, head: policy.head)
