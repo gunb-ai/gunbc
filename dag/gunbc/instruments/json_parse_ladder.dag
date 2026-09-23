@@ -1,0 +1,148 @@
+module tools.json_parse_ladder
+
+import std.types { String, Int, List }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
+import extdeps.languages.json.emit { JsonObject, serialize_json }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+// THE INSTRUMENT THAT LOCATED THE COST OF extdeps.languages.json parse_json_document ON LARGE
+// DOCUMENTS (gunbc#12065, gunbc.recurring_failure_mode memo_key_cost_proportional_to_argument_size).
+// Each entry below is one rung, run as its own process so each reading is independent:
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/json_parse_ladder.dag --function <rung>
+//
+// with the process timed by the caller. EVERY RUNG CHECKS ITS OWN VALUE: it exits 0 only when it
+// returned what it owes (the member count it built, the step count it walked), and otherwise exits
+// with a located failure naming what it saw -- so a semantic regression stops the reading instead of
+// scrolling past it. The equivalence rungs take `--arg path=<file>` and write the re-serialized
+// document there, for a byte comparison across binaries. Every run pays one corpus-resolve baseline, and every
+// document rung also pays its own construction, so a rung is read as its distance above the
+// build_only rung of the same size -- and only CURVES are compared, never absolute seconds: memo on
+// against GUNBC_EVAL_MEMO=0 on one binary, or a fixed binary against an unfixed one on one tree.
+//
+// THE DOCUMENTS ARE BUILT HERE, NOT READ FROM FIXTURES, so the instrument re-derives on a fresh
+// clone with nothing beside it. They mimic a safetensors index: a small metadata object and one
+// weight_map object whose member count is the rung. The builder deliberately never threads a growing
+// value through a deep recursion -- entries are assembled in chunks of at most
+// ladder_chunk_width and joined -- because that is exactly the shape this instrument measures, and
+// a builder that paid it would confound every reading it produced.
+
+fn ladder_chunk_width() -> Int { 300 }
+
+fn ladder_entry(i: Int) -> String {
+  let layer = i / ladder_chunk_width()
+  let expert = i - layer * ladder_chunk_width()
+  join([
+    "    \"model.layers.", to_string(value: layer),
+    ".mlp.experts.", to_string(value: expert),
+    ".w", to_string(value: i - (i / 3) * 3),
+    ".weight\": \"model-", to_string(value: 10001 + i - (i / 46) * 46),
+    "-of-00046.safetensors\"",
+  ], "")
+}
+
+fn ladder_chunk_entries(i: Int, hi: Int, acc: List<String>) -> List<String> {
+  if i >= hi { acc } else { ladder_chunk_entries(i: i + 1, hi: hi, acc: acc |> list_push(ladder_entry(i: i))) }
+}
+
+fn ladder_chunks(lo: Int, n: Int, acc: List<String>) -> List<String> {
+  if lo >= n {
+    acc
+  } else {
+    let hi = if lo + ladder_chunk_width() > n { n } else { lo + ladder_chunk_width() }
+    ladder_chunks(lo: hi, n: n, acc: acc |> list_push(join(ladder_chunk_entries(i: lo, hi: hi, acc: []), ",\n")))
+  }
+}
+
+fn ladder_document(n: Int) -> String {
+  join([
+    "{\n  \"metadata\": {\n    \"total_size\": 123456789\n  },\n  \"weight_map\": {\n",
+    join(ladder_chunks(lo: 0, n: n, acc: []), ",\n"),
+    "\n  }\n}\n",
+  ], "")
+}
+
+fn weight_map_members(text: String) -> Int {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => 0 - 1
+    JsonDocumentParsed { value: v } =>
+      match json_object_unique_member(v: v, key: "weight_map") {
+        JsonMemberFound { value: JsonObject { members: ms } } => count(ms)
+        _ => 0 - 2
+      }
+  }
+}
+
+fn reserialized(text: String) -> String {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => "UNREADABLE"
+    JsonDocumentParsed { value: v } => serialize_json(v: v)
+  }
+}
+
+fn rung_owes(rung: String, observed: Int, owed: Int) -> ProcessExit {
+  if observed == owed {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join([rung, " returned ", to_string(value: observed), " where it owes ", to_string(value: owed)], ""))
+  }
+}
+
+fn rung_built(rung: String, text: String) -> ProcessExit {
+  if text.length() > 0 { ExitSuccess } else { exit_failure(reason: concat(rung, " built an empty document")) }
+}
+
+fn rung_written(path: String, content: String) -> ProcessExit {
+  let w = Filesystem.Write(path: path, content: content)
+  if w.success { ExitSuccess } else { exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error))) }
+}
+
+// PARSER RUNGS: the parse over the built document, and its construction-only baseline.
+fn build_only_1000() -> ProcessExit { rung_built(rung: "build_only_1000", text: ladder_document(n: 1000)) }
+fn build_only_16000() -> ProcessExit { rung_built(rung: "build_only_16000", text: ladder_document(n: 16000)) }
+fn build_only_48000() -> ProcessExit { rung_built(rung: "build_only_48000", text: ladder_document(n: 48000)) }
+fn build_only_96000() -> ProcessExit { rung_built(rung: "build_only_96000", text: ladder_document(n: 96000)) }
+fn parse_1000() -> ProcessExit { rung_owes(rung: "parse_1000", observed: weight_map_members(text: ladder_document(n: 1000)), owed: 1000) }
+fn parse_4000() -> ProcessExit { rung_owes(rung: "parse_4000", observed: weight_map_members(text: ladder_document(n: 4000)), owed: 4000) }
+fn parse_16000() -> ProcessExit { rung_owes(rung: "parse_16000", observed: weight_map_members(text: ladder_document(n: 16000)), owed: 16000) }
+fn parse_48000() -> ProcessExit { rung_owes(rung: "parse_48000", observed: weight_map_members(text: ladder_document(n: 48000)), owed: 48000) }
+fn parse_96000() -> ProcessExit { rung_owes(rung: "parse_96000", observed: weight_map_members(text: ladder_document(n: 96000)), owed: 96000) }
+
+// SEMANTIC EQUIVALENCE: the parsed document re-serialized to `path`. Two binaries agree on a
+// document when the files they write are byte-identical.
+fn reserialize_1000(path: String) -> ProcessExit { rung_written(path: path, content: reserialized(text: ladder_document(n: 1000))) }
+fn reserialize_16000(path: String) -> ProcessExit { rung_written(path: path, content: reserialized(text: ladder_document(n: 16000))) }
+
+// THE ROUTE DISCRIMINATOR: one recursion of fixed step count that only PASSES a string, over a large
+// text and a small one. If the large one costs more, the cost is in carrying the argument, not in
+// anything the recursion does with it. pass_held_in_scope is the control: the same recursion with
+// the large text bound in scope but not passed.
+fn pass_steps() -> Int { 50000 }
+
+fn pass_only(s: String, i: Int) -> Int { if i >= pass_steps() { i } else { pass_only(s: s, i: i + 1) } }
+fn scope_only(i: Int) -> Int { if i >= pass_steps() { i } else { scope_only(i: i + 1) } }
+
+fn pass_large_text() -> ProcessExit { rung_owes(rung: "pass_large_text", observed: pass_only(s: ladder_document(n: 96000), i: 0), owed: pass_steps()) }
+fn pass_small_text() -> ProcessExit { rung_owes(rung: "pass_small_text", observed: pass_only(s: substring(s: ladder_document(n: 96000), start: 0, end: pass_steps()), i: 0), owed: pass_steps()) }
+fn pass_held_in_scope() -> ProcessExit {
+  let t = ladder_document(n: 96000)
+  rung_owes(rung: "pass_held_in_scope", observed: scope_only(i: 0) + t.length(), owed: pass_steps() + t.length())
+}
+
+// THE INTERPRETER CONTROL: plain recursion at fixed total call count and varying depth. Flat curves
+// here rule out call cost as the explanation for anything above.
+fn deep(i: Int, n: Int, acc: Int) -> Int { if i >= n { acc } else { deep(i: i + 1, n: n, acc: acc + 1) } }
+fn chunked(k: Int, per: Int, acc: Int) -> Int { if k <= 0 { acc } else { chunked(k: k - 1, per: per, acc: acc + deep(i: 0, n: per, acc: 0)) } }
+fn depth_20000_times_4() -> ProcessExit { rung_owes(rung: "depth_20000_times_4", observed: deep(i: 0, n: 20000, acc: 0) + deep(i: 0, n: 20000, acc: 0) + deep(i: 0, n: 20000, acc: 0) + deep(i: 0, n: 20000, acc: 0), owed: 80000) }
+fn depth_80000() -> ProcessExit { rung_owes(rung: "depth_80000", observed: deep(i: 0, n: 80000, acc: 0), owed: 80000) }
+fn flat_80000() -> ProcessExit { rung_owes(rung: "flat_80000", observed: chunked(k: 400, per: 200, acc: 0), owed: 80000) }
+fn flat_320000() -> ProcessExit { rung_owes(rung: "flat_320000", observed: chunked(k: 1600, per: 200, acc: 0), owed: 320000) }
+
+// THE ACCUMULATOR DISCRIMINATOR: a recursion threading a growing list. Its curve with the memo on
+// against GUNBC_EVAL_MEMO=0 is the reading for the instance the carrier repair does not close.
+fn grow(i: Int, n: Int, acc: List<Int>) -> Int { if i >= n { count(acc) } else { grow(i: i + 1, n: n, acc: acc |> list_push(i)) } }
+fn accumulate_10000() -> ProcessExit { rung_owes(rung: "accumulate_10000", observed: grow(i: 0, n: 10000, acc: []), owed: 10000) }
+fn accumulate_20000() -> ProcessExit { rung_owes(rung: "accumulate_20000", observed: grow(i: 0, n: 20000, acc: []), owed: 20000) }
+fn accumulate_40000() -> ProcessExit { rung_owes(rung: "accumulate_40000", observed: grow(i: 0, n: 40000, acc: []), owed: 40000) }
