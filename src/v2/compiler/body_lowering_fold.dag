@@ -2033,7 +2033,6 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
         }
     }
     }
-      }
   }
 }
 
@@ -3195,6 +3194,7 @@ fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Optional<Outcome<Li
           } else {
             Absent
           }
+        Absent => Absent
       }
   }
 }
@@ -3489,20 +3489,6 @@ fn body_lower_dotted_chain_lowered_optional(node: Node) -> Outcome<Optional<Node
               )
             }
           )
-        Present { value: call_elem } =>
-          match body_lower_postfix_projection_args(repeat_elem: call_elem) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: args, diagnostics: d } =>
-              outcome_with_diagnostics(
-                value: optional_present(
-                  value: body_lower_transform_call(
-                    operator: body_lower_qualified_name_spine_node(segments: chain.segments, source: node),
-                    args: args
-                  )
-                ),
-                diagnostics: d
-              )
-          }
       }
   }
 }
@@ -5853,7 +5839,6 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
       }
       }
   }
-      }
   }
       }
 }
@@ -6046,7 +6031,6 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
                   }
               }
           }
-      }
       }
       }
       }
