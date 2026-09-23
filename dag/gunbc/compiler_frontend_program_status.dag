@@ -204,6 +204,7 @@ type Xl2Prerequisite
   | StrippedTreeRehearsalComposition
   | SequenceOperandReferenceVisibility
   | BlockStatementReferenceVisibility
+  | LoweringOccurrenceProjection
 
 type Xl2PrerequisiteEvidence {
   pr: Int
@@ -232,6 +233,7 @@ data xl2_prerequisites: List<Xl2Prerequisite> = [
   StrippedTreeRehearsalComposition,
   SequenceOperandReferenceVisibility,
   BlockStatementReferenceVisibility,
+  LoweringOccurrenceProjection,
 ]
 
 fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
@@ -240,8 +242,9 @@ fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
     BareFieldTypeVisibility => "BARE field-position type names reach the containment tree"
     WholeTreeResolveCensus => "a whole-tree v2 census that RESOLVES per module"
     ResolveOccurrenceCompleteness => "occurrence completeness: every independent refusal reaches the census"
+    LoweringOccurrenceProjection => "every lowered node built from an authored atom keeps that atom's minted occurrence, so a census row locates back to one source occurrence"
     BlockStatementReferenceVisibility => "every statement of a brace body, not only its first expression, reaches resolve"
-    SequenceOperandReferenceVisibility => "references inside BOTH operands of a sequence (a + b) reach resolve"
+    SequenceOperandReferenceVisibility => "references inside every operand of a chained or comparison operator expression reach resolve"
     StrippedTreeRehearsalComposition => "the stripped-tree rehearsal composition: import strip over a throwaway tree fed through the census-resolve route"
   }
 }
@@ -251,7 +254,7 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
     CallArgumentReferenceVisibility => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.call_argument_mention_survival", decl_name: "a_call_argument_mention_reaches_the_denominator_holds"),
       evidence: Xl2PrerequisiteEvidence { pr: 12108, merge_sha: "b0d307c31b" as NonEmptyStr, measured_at: "b8e0cc4eb9" as NonEmptyStr },
-      qualification: "CORRECTION: the earlier premise that call arguments were represented after lowering was FALSE. At b8e0cc4eb9 v2.compiler.body_lowering_fold body_lower_call_args_from_capture read the argument capture with the parameter-list spine reader, so every argument of a plain call, named or positional, lowered to a call with ZERO arguments -- the fact was absent from the normalized tree, not lost between the tree and the denominator. #12108 replaced it with a structural, fail-closed argument reader; an undeclared name used only as an argument now refuses at resolve located at the argument (v2.test.claim.namespace_xl0.call_argument_resolve_refusal). DELIVERED for PLAIN call arguments; a call argument inside an IF-ARM is still unread (v2.compiler.body_lowering_fold body_lower_if_arm_operand_optional does not read it, found by gunbc#12145's probe on main), and that part is OUTSTANDING under this arm's qualification rather than delivered. The sibling narrowing of a sequence operand (body_lower_operand_ref_optional answering pair.left, gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand) stays open as SequenceOperandReferenceVisibility, so an argument `a + b` reaches resolve as `a`. This is P1 only: it does not claim XL-2 and does not make the rehearsal producer available." as NonEmptyStr,
+      qualification: "CORRECTION: the earlier premise that call arguments were represented after lowering was FALSE. At b8e0cc4eb9 v2.compiler.body_lowering_fold body_lower_call_args_from_capture read the argument capture with the parameter-list spine reader, so every argument of a plain call, named or positional, lowered to a call with ZERO arguments -- the fact was absent from the normalized tree, not lost between the tree and the denominator. #12108 replaced it with a structural, fail-closed argument reader; an undeclared name used only as an argument now refuses at resolve located at the argument (v2.test.claim.namespace_xl0.call_argument_resolve_refusal). DELIVERED for PLAIN call arguments; a call argument inside an IF-ARM is still unread (v2.compiler.body_lowering_fold body_lower_if_arm_operand_optional does not read it, found by gunbc#12145's probe on main), and that part is OUTSTANDING under this arm's qualification rather than delivered. The sibling narrowing of a sequence operand (body_lower_operand_ref_optional answering pair.left, gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand) stays open as SequenceOperandReferenceVisibility, so a chained or comparison argument such as `a == b` loses an operand. This is P1 only: it does not claim XL-2 and does not make the rehearsal producer available." as NonEmptyStr,
     }
     BareFieldTypeVisibility => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.declaring_identity_spelling.production_ingest", decl_name: "a_bare_parameter_type_reaches_and_a_bare_field_type_does_too"),
@@ -274,7 +277,11 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
     }
     SequenceOperandReferenceVisibility => PrerequisiteOutstandingRostered {
       tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_accessor_collapses_a_sequence_operand", decl_name: "lowering_accessor_collapses_a_sequence_operand"),
-      why: "v2.compiler.body_lowering_fold body_lower_operand_ref_optional narrows a sequence operand to pair.left, so in `a + b` the references in `b` never reach resolve and cannot refuse there -- an undercount of the residual by construction. No lane is in flight; the gap is rostered. The stripped-tree rehearsal (gunbc#12097) refuses completeness on it as Xl2SequenceOperandReferencesUnobservable rather than reporting over it." as NonEmptyStr,
+      why: "v2.compiler.body_lowering_fold body_lower_operand_ref_optional narrows a sequence operand to its left pair, and the drop is in CHAINED and COMPARISON shapes -- `a == b`, `a + b * c > d` -- where references in the narrowed operands never reach resolve and cannot refuse there, an undercount of the residual by construction. A plain `a + b` keeps both operands (corrected 2026-09-23 on cool-crab-649's measurement at main fec339d561). No lane has merged; gunbc#12145 is open against it, and this arm stays outstanding until it lands. The stripped-tree rehearsal (gunbc#12097) refuses completeness on it as Xl2SequenceOperandReferencesUnobservable rather than reporting over it." as NonEmptyStr,
+    }
+    LoweringOccurrenceProjection => PrerequisiteOutstandingRostered {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_rebuilds_authored_atoms_without_their_occurrence", decl_name: "lowering_rebuilds_authored_atoms_without_their_occurrence"),
+      why: "only a minority of authored atoms keep their minted occurrence through normalize (cool-crab-649, main fec339d561, a seven-file std sample plus fixtures; the figure is that row's). Lowering rebuilds type-position atoms, field projections, match and record constructors, pipe and lambda arguments and dotted spines as node_synthetic, and binders become Named edge labels with no occurrence. Their census rows therefore cannot be located back to a source occurrence, and XL-5's waves are exact occurrence rewrites. No lane is in flight." as NonEmptyStr,
     }
     BlockStatementReferenceVisibility => PrerequisiteOutstandingRostered {
       tracked_by: decl_ref(module_path: "v2.test.claim.body_lowering.statement_let_bind", decl_name: "unbound_statement_prefix_refuses_holds"),
