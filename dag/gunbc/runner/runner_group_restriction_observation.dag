@@ -105,6 +105,34 @@ fn observe_shakedown_runner_group_restriction(group: JitRunnerGroupId, listed: R
   }
 }
 
+// THE SAME READING, WITH THE GROUP NAMED BY ITS NAME. A group this repository creates has an id
+// GitHub assigns at creation, so a caller that knows only the name it asked for finds the group by
+// name -- and a name held by two groups is refused, not resolved to either.
+fn observe_shakedown_runner_group_named(name: NonEmptyStr, listed: RunnerGroupListDecode) -> RunnerGroupNameReading {
+  match listed {
+    RunnerGroupListDecodeRefused { reason } => RunnerGroupNameUnreadable { reason: reason }
+    RunnerGroupListDecoded { groups } => {
+      let rows = filter(groups, g => (g.name as String) == (name as String))
+      if count(rows) > 1 {
+        RunnerGroupNameAmbiguous { count: count(rows) }
+      } else {
+        match rows.first() {
+          Absent => RunnerGroupNameAbsent
+          Present { value: row } => RunnerGroupNamed {
+            standing: observe_shakedown_runner_group_restriction(group: JitRunnerGroupId { value: row.id }, listed: listed),
+          }
+        }
+      }
+    }
+  }
+}
+
+type RunnerGroupNameReading
+  = RunnerGroupNamed { standing: MicrovmRunnerGroupStanding }
+  | RunnerGroupNameAbsent
+  | RunnerGroupNameAmbiguous { count: Int }
+  | RunnerGroupNameUnreadable { reason: NonEmptyStr }
+
 // THE STANDING A CALLER HOLDS BEFORE ANY READ. It is a refusal, named, so a controller that has not
 // read the groups yet still carries a cause through to its operator rather than a bare "no".
 fn runner_group_restriction_not_yet_observed(group: JitRunnerGroupId) -> MicrovmRunnerGroupStanding {

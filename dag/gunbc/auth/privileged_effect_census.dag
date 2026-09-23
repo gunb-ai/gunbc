@@ -286,6 +286,25 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     realized: RealizedFederatedGrant,
     divergence_reason: none,
   },
+  // THE FIRST SITE REALIZED THROUGH THE APPROVAL CAPABILITY. The reach is the performing
+  // credential's: a gunbai-ci installation token holding organization self-hosted-runners write,
+  // which administers every runner group in the organization. That the dispatch_jit_mint row above
+  // classifies the same token mint as resource-scoped is filed as
+  // gunbc.recurring_failure_mode one_credential_mint_classified_at_two_reaches and not changed here.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner_group_restriction_ensure_run", decl_name: "microvm_runner_group_after_gate"),
+    effect: PrivilegedEffect {
+      subject: "create the microVM runner group restricted to the shakedown workflow, under an org-admin installation token" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsAccountWideCredential,
+      billing: NoBillingConsequence,
+    },
+    realized: RealizedApprovalCapability,
+    divergence_reason: none,
+  },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.host_credential_custody_converge", decl_name: "host_credential_custody_converge_ci_wet"),
     effect: recurring_credential_read(subject: "read one rostered custody credential over WIF -- the gunbai-ci App key for the microVM lifecycle controller, or the approval ntfy publisher token -- and place it on one fleet host at its row's owner, group and mode" as NonEmptyStr),

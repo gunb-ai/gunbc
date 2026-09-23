@@ -14,6 +14,14 @@ type RunnerGroupVisibility
   = AllRepositories
   | SelectedRepositories
 
+// The request/response wire spelling of a visibility, as the docs name it.
+fn runner_group_visibility_wire(v: RunnerGroupVisibility) -> NonEmptyStr {
+  match v {
+    AllRepositories => "all" as NonEmptyStr
+    SelectedRepositories => "selected" as NonEmptyStr
+  }
+}
+
 // The runner_groups[] element shape. selected_repositories_url is populated only when
 // visibility is selected; allows_public_repositories gates whether public-repo workflows
 // may use the group (public forks running on self-hosted hardware is the canonical
@@ -65,6 +73,41 @@ service github.CliOrgRunnerGroups {
     readonly
     transport shell {
       argv: ["gh", "api", "orgs/{org}/actions/runner-groups/{runner_group_id}/repositories"]
+    }
+  }
+
+  // POST /orgs/{org}/actions/runner-groups (REST API version 2022-11-28, read 2026-09-23): name is
+  // required; visibility is one of selected | all | private (default all); selected_repository_ids,
+  // allows_public_repositories (default false), restricted_to_workflows (default false) and
+  // selected_workflows are optional. 201 returns the created group in the OrgRunnerGroup shape.
+  // Every body member is an INPUT: which group, which repository and which workflow are the
+  // caller's policy, never a literal of this interface. `-F` sends JSON-typed values (integers and
+  // booleans) and `-f` sends strings; the `[]` suffix sends a one-element array.
+  operation CreateRunnerGroupJson {
+    input {
+      org: NonEmptyStr
+      name: NonEmptyStr
+      visibility: NonEmptyStr
+      selected_repository_id: Int
+      allows_public_repositories: Bool
+      restricted_to_workflows: Bool
+      selected_workflow: NonEmptyStr
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "gh", "api", "--method", "POST", "orgs/{org}/actions/runner-groups",
+        "-f", "name={name}",
+        "-f", "visibility={visibility}",
+        "-F", "selected_repository_ids[]={selected_repository_id}",
+        "-F", "allows_public_repositories={allows_public_repositories}",
+        "-F", "restricted_to_workflows={restricted_to_workflows}",
+        "-f", "selected_workflows[]={selected_workflow}"
+      ]
     }
   }
 }
