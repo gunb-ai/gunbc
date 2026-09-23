@@ -163,15 +163,15 @@ fn microvm_shakedown_known_task_script() -> Outcome<String> {
   bash_emit_stmts(statements: microvm_shakedown_known_task_statements(), set_e: true)
 }
 
+// THE INPUT REACHES THE SCRIPT THROUGH THE ENVIRONMENT, NEVER BY INTERPOLATION INTO IT: an
+// expression spliced into `run:` is evaluated before the shell parses it, so a crafted input would
+// become script text.
 fn microvm_shakedown_known_task_step(script: String) -> Step {
   RunStep {
     name: Present { value: "Known task: hash the fixed payload and compare with the model's digest" },
     id: Present { value: "known_task" },
     run: script,
     shell: Present { value: Bash },
-    // THE INPUT REACHES THE SCRIPT THROUGH THE ENVIRONMENT, NEVER BY INTERPOLATION INTO IT: an
-    // expression spliced into `run:` is evaluated before the shell parses it, so a crafted input
-    // would become script text.
     env: Present { value: [kv(key: "MICROVM_SHAKEDOWN_ATTEMPT", value: yaml_string(s: microvm_shakedown_attempt_expression()))] },
     working_directory: none,
     if_condition: none,
