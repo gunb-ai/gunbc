@@ -4,6 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.nat { Nat }
 import std.content_hash { Sha256Digest }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { ByteSize, byte_size_count }
 import gunbc.spark.v41_checkpoint_materialize { v41_checkpoint_repo_directory }
 import v2.std.optional { Present, Absent }
@@ -96,6 +97,8 @@ data v41_row_store_encoder_program_lines: List<String> = [
 ]
 
 data v41_row_store_encoder_program: String = concat(join(v41_row_store_encoder_program_lines, "\n"), "\n")
+
+data v41_row_store_encoder_program_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.spark.v41_row_store_encode v41_row_store_encoder_program -- a hand-authored two-stream interleaver kept as program text and run with python3 -c (medium-as-string), beside the modeled v41_place_row / v41_store_bytes. DISSOLVES WHEN an emitted .dag encoder runs on the host with (1) a ranged binary read (Filesystem read of an offset and length), (2) a streaming binary append with rename-to-publish, (3) a bounded-memory chunked driver over v41_place_row, and (4) an emitted arm64 tool entry taking argv -- and encodes all eight published stores. This row, this program and gunbc.rung_drop v41_row_store_host_realized_by_sample delete together.")
 
 // The rows per read. Not a layout fact: any positive value yields the same bytes.
 data v41_row_store_encoder_chunk_rows: Nat = 65536
