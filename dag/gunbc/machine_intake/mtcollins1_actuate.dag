@@ -136,7 +136,6 @@ fn mtcollins1_drive_handoff(
   capability_row: BmcFirmwareReleaseCapabilityRow,
   selection: IpmiBootSelection,
 ) -> ProcessExit
-  uses net: std.resources.Network
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]

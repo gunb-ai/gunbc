@@ -79,7 +79,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ github.event.inputs.expected_revision || github.ref }}
+          ref: ${{ github.event.inputs.mode == 'mtcollins1_boot' && github.sha || github.event.inputs.expected_revision || github.ref }}
       - name: Isolate toolchain dirs
         run: |
           rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
@@ -182,14 +182,14 @@ jobs:
       actions: read
       id-token: write
     concurrency:
-      group: ${{ github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || github.event.inputs.mode == 'spark_v41_checkpoint_materialize' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'pair_serving_d0' && 'gunbc-host-mutation-srv1' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
+      group: ${{ github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || github.event.inputs.mode == 'spark_v41_checkpoint_materialize' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_v41_runtime_image_build' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'pair_serving_d0' && 'gunbc-host-mutation-srv1' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
       cancel-in-progress: false
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ github.event.inputs.expected_revision || github.ref }}
+          ref: ${{ github.event.inputs.mode == 'mtcollins1_boot' && github.sha || github.event.inputs.expected_revision || github.ref }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -1163,24 +1163,24 @@ jobs:
         if: always()
         timeout-minutes: 5
   mtcollins1-boot:
-    runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
+    runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
     environment: mtcollins1-boot
     timeout-minutes: 60
-    if: github.event.inputs.mode == 'mtcollins1_boot'
+    if: github.event.inputs.mode == 'mtcollins1_boot' && github.event.inputs.host == 'srv1'
     permissions:
       contents: read
       actions: read
       id-token: write
     concurrency:
-      group: ${{ github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'spark_native_serving_apply' && 'gunbc-arm-mutation-glm-group-b-native' || github.event.inputs.mode == 'spark_v41_checkpoint_materialize' && 'gunbc-host-mutation-srv1' || github.event.inputs.mode == 'pair_serving_d0' && 'gunbc-host-mutation-srv1' || format('gunbc-host-mutation-{0}', github.event.inputs.host) }}
+      group: gunbc-host-mutation-srv1
       cancel-in-progress: false
     steps:
-      - name: Checkout
+      - name: Checkout (the event sha only; no dispatch input selects these bytes)
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ github.event.inputs.expected_revision || github.ref }}
+          ref: ${{ github.sha }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -1288,7 +1288,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ github.event.inputs.expected_revision || github.ref }}
+          ref: ${{ github.event.inputs.mode == 'mtcollins1_boot' && github.sha || github.event.inputs.expected_revision || github.ref }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -1337,7 +1337,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ github.event.inputs.expected_revision || github.ref }}
+          ref: ${{ github.event.inputs.mode == 'mtcollins1_boot' && github.sha || github.event.inputs.expected_revision || github.ref }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -1407,7 +1407,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ github.event.inputs.expected_revision || github.ref }}
+          ref: ${{ github.event.inputs.mode == 'mtcollins1_boot' && github.sha || github.event.inputs.expected_revision || github.ref }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
@@ -1446,7 +1446,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-          ref: ${{ github.event.inputs.expected_revision || github.ref }}
+          ref: ${{ github.event.inputs.mode == 'mtcollins1_boot' && github.sha || github.event.inputs.expected_revision || github.ref }}
       - name: Download release-bins artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:

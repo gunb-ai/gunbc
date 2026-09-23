@@ -166,7 +166,6 @@ fn oob_power_cycle_after_confirmed_selection(
   device: NonEmptyStr,
   power_action: NonEmptyStr,
 ) -> OobBootHandoffOutcome
-  uses net: std.resources.Network
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_boot_handoff"),
   ]
@@ -203,7 +202,6 @@ fn oob_boot_handoff(
   selection: IpmiBootSelection,
   power_action: NonEmptyStr,
 ) -> OobBootHandoffOutcome
-  uses net: std.resources.Network
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_actuate", decl_name: "mtcollins1_drive_handoff"),
     decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_issue_and_watch"),

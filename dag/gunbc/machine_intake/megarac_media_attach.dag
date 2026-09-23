@@ -269,7 +269,6 @@ fn megarac_close_and_reobserve(
   csrf_token: NonEmptyStr,
   csrf: SessionCsrfStanding,
 ) -> SessionRelease
-  uses net: std.resources.Network
 {
   let before_get = megarac.Media.ProbeSessionOnMediaRoute(
     bmc_host: bmc_host,
@@ -299,7 +298,6 @@ fn megarac_attach_remote_image(
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
 ) -> MegaRacAttachResult
-  uses net: std.resources.Network
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_attach_diskless_image"),
   ]
@@ -353,7 +351,6 @@ fn megarac_release_unreadable_session(
   cookie_jar: NonEmptyStr,
   session_body: String,
 ) -> MegaRacAttachResult
-  uses net: std.resources.Network
 {
   let _closed = megarac.Media.CloseSession(
     bmc_host: bmc_host,
@@ -376,7 +373,6 @@ fn megarac_attach_then_release(
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
 ) -> MegaRacAttachResult
-  uses net: std.resources.Network
 {
   let outcome = megarac_attach_with_token(
     bmc_host: bmc_host,
@@ -412,7 +408,6 @@ fn megarac_attach_with_token(
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
 ) -> MegaRacAttachOutcome
-  uses net: std.resources.Network
 {
   presented = megarac.Media.GetRemoteConfigurations(
     bmc_host: bmc_host,
@@ -586,7 +581,6 @@ fn megarac_start_and_confirm(
   image_index: String,
   firmware: BmcFirmwareReleaseIdentity,
 ) -> MegaRacAttachOutcome
-  uses net: std.resources.Network
 {
   start = megarac.Media.StartMedia(
     bmc_host: bmc_host,

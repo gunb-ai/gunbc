@@ -2,7 +2,6 @@ module gunbc.auth.heal_publisher_provision
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.types { NonEmptyStr, String, Secret, List, Bool, Map }
-import std.resources { Network }
 import v2.std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam {
   GcpPolicy, GcpBinding, GcpIamBindingCell, GcpIamOwnedCellUniverse,
@@ -140,7 +139,6 @@ fn impersonation_binding_present(policy: GcpPolicy) -> Bool {
 }
 
 fn bind_impersonation(f: DedicatedFederation, token: Secret) -> ProcessExit
-  uses net: Network
 {
   let observed = gcp.IamAdmin.GetServiceAccountIamPolicy(
     access_token: token,
@@ -356,7 +354,6 @@ fn federation_fully_present(c: FederationClassification) -> Bool {
 }
 
 fn read_pool(f: DedicatedFederation, token: Secret) -> PoolReading
-  uses net: Network
 {
   let r = gcp.IamAdmin.GetWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id)
   if rest_ok(o: r.outcome) {
@@ -369,7 +366,6 @@ fn read_pool(f: DedicatedFederation, token: Secret) -> PoolReading
 }
 
 fn read_providers(f: DedicatedFederation, token: Secret) -> ProvidersReading
-  uses net: Network
 {
   let r = gcp.IamAdmin.ListWorkloadIdentityPoolProviders(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id)
   if rest_ok(o: r.outcome) {
@@ -382,7 +378,6 @@ fn read_providers(f: DedicatedFederation, token: Secret) -> ProvidersReading
 }
 
 fn read_account(f: DedicatedFederation, token: Secret) -> AccountReading
-  uses net: Network
 {
   let r = gcp.IamAdmin.GetServiceAccount(access_token: token, project_id: fleet_secrets_project_id, sa_email: f.service_account)
   if rest_ok(o: r.outcome) {
@@ -395,7 +390,6 @@ fn read_account(f: DedicatedFederation, token: Secret) -> AccountReading
 }
 
 fn observe_and_classify(f: DedicatedFederation, token: Secret) -> FederationClassification
-  uses net: Network
 {
   classify_dedicated_federation(f: f, pool: read_pool(f: f, token: token), providers: read_providers(f: f, token: token), account: read_account(f: f, token: token))
 }
@@ -419,7 +413,6 @@ fn create_if(wanted: Bool, subject: String, outcome: RestOutcome) -> String {
 }
 
 fn create_absent_subjects(f: DedicatedFederation, token: Secret, c: FederationClassification) -> String
-  uses net: Network
 {
   match c {
     FederationUnclassified { reasons: _ } => "unclassified; nothing created"
@@ -444,7 +437,6 @@ fn create_absent_subjects(f: DedicatedFederation, token: Secret, c: FederationCl
 }
 
 fn grant_secret_reads(fed: DedicatedFederation, token: Secret) -> ProcessExit
-  uses net: Network
 {
   fold(fed.secret_grants, init: ExitSuccess, f: (acc, g) =>
     match acc {
@@ -459,7 +451,6 @@ fn grant_secret_reads(fed: DedicatedFederation, token: Secret) -> ProcessExit
 // it may read. No policy write precedes a matching readback of the pool, its whole provider
 // population and the account.
 fn provision_dedicated_federation(f: DedicatedFederation, token: Secret) -> ProcessExit
-  uses net: Network
 {
   let before = observe_and_classify(f: f, token: token)
   match before {
@@ -486,7 +477,6 @@ fn provision_dedicated_federation(f: DedicatedFederation, token: Secret) -> Proc
 }
 
 fn dedicated_federation_provision_with_supplied_token(f: DedicatedFederation) -> ProcessExit
-  uses net: Network
 {
   match read_supplied_access_token() {
     SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
@@ -495,7 +485,6 @@ fn dedicated_federation_provision_with_supplied_token(f: DedicatedFederation) ->
 }
 
 fn heal_publisher_federation_provision_with_supplied_token() -> ProcessExit
-  uses net: Network
 {
   dedicated_federation_provision_with_supplied_token(f: heal_publisher_dedicated_federation())
 }
