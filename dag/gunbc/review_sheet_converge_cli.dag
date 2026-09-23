@@ -162,7 +162,9 @@ fn converge_review_sheet_all(
   writer: ServiceAccountEmail,
   drive_id: NonEmptyStr,
   policy: EnsurePolicy,
-) -> ReviewSheetConvergeReport {
+) -> ReviewSheetConvergeReport
+  uses net: Network
+{
   ReviewSheetConvergeReport {
     sheets_api: converge_service_enablement(
       token: token,
@@ -323,7 +325,9 @@ fn converge_drive_half(
   drive_id: NonEmptyStr,
   writer: ServiceAccountEmail,
   policy: EnsurePolicy,
-) -> DriveHalfReport {
+) -> DriveHalfReport
+  uses net: Network
+{
   DriveHalfReport {
     membership: converge_drive_membership(drive_id: drive_id, writer: writer, policy: policy),
     spreadsheet: converge_review_spreadsheet(
@@ -388,7 +392,9 @@ type FormatDisposition
 // The composition order is the cheap refusal first: validating the schema costs nothing and
 // reaches no network, while locating the tab is a spreadsheets.get. A run that cannot format
 // anyway should not spend a request discovering that.
-fn format_with_validated_schema(id: NonEmptyStr) -> FormatDisposition {
+fn format_with_validated_schema(id: NonEmptyStr) -> FormatDisposition
+  uses net: Network
+{
   match validate_header_schema(schema: ci_prospect_sheet_schema()) {
     HeaderSchemaRefused { refusal: _, reason: r } => FormatSkipped { cause: r }
     HeaderSchemaValidated { validated: v } => format_located_tab(file_id: id, validated: v)

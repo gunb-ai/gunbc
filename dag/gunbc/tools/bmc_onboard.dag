@@ -497,11 +497,13 @@ fn srv3_probe_credential_phase() -> BmcCredentialProbeResult
 }
 
 fn srv3_converge_credential() -> ProcessExit
+  uses net: Network
 {
   bmc_converge_credential(plan: srv3_onboarding_plan, token_source: GcloudPrintToken)
 }
 
 fn srv4_converge_credential() -> ProcessExit
+  uses net: Network
 {
   bmc_converge_credential(plan: srv4_onboarding_plan, token_source: GcloudPrintToken)
 }
@@ -510,6 +512,7 @@ fn srv4_converge_credential() -> ProcessExit
 // workflow, or an operator token file in a session -- through the one selection authority, rather
 // than the gcloud CLI the older srv3/srv4 entries hard-code.
 fn bmc_converge_credential_selected(plan: BmcOnboardingPlan) -> ProcessExit
+  uses net: Network
 {
   match select_access_token_source() {
     AccessTokenSourceUnavailable { cause: c } => return exit_failure(reason: c as String)

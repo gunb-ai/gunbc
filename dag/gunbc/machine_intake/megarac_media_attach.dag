@@ -299,6 +299,7 @@ fn megarac_attach_remote_image(
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
 ) -> MegaRacAttachResult
+  uses net: Network
 {
   session = megarac.Media.OpenSession(
     bmc_host: bmc_host,

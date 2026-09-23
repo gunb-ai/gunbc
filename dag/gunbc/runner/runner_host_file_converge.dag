@@ -1178,6 +1178,7 @@ fn plan_runner_host_file(
   context: FleetSshExecutionContext,
   file: RunnerHostFileDesired,
 ) -> RunnerHostFilePlanned
+  uses net: Network
 {
   let observation = observe_runner_host_file(subject: subject, context: context, file: file)
   RunnerHostFilePlanned { file: file, observation: observation, action: runner_host_file_action(observation: observation) }
