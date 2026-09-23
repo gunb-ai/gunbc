@@ -102,6 +102,26 @@ type SignatureVerification
 // ECDSA verification over those bytes is the realization's trust, not this module's (not
 // structural). Length checks happen HERE, before the implementation is consulted, because they are
 // facts of the suite and not of the curve arithmetic.
+// THE CARRIER REFUSALS, the suite facts alone: a suite mismatch or a wrong key or signature size.
+// They are one function so the seam below and the join that feeds it read ONE authority for them,
+// and the join can ask before it consults the implementation at all.
+fn signature_carrier_refusal(
+  key: VerifyingKey,
+  key_size: ByteSize,
+  signature: SignatureBytes,
+  signature_size: ByteSize,
+) -> SignatureVerification? {
+  if key.suite != signature.suite {
+    Present { value: SignatureSuiteMismatch { key_suite: key.suite, signature_suite: signature.suite } }
+  } else if byte_size_count(b: key_size) != byte_size_count(b: signature_suite_public_key_size(s: key.suite)) {
+    Present { value: VerifyingKeyMalformed { declared: key_size, expected: signature_suite_public_key_size(s: key.suite) } }
+  } else if byte_size_count(b: signature_size) != byte_size_count(b: signature_suite_signature_size(s: signature.suite)) {
+    Present { value: SignatureMalformed { declared: signature_size, expected: signature_suite_signature_size(s: signature.suite) } }
+  } else {
+    none
+  }
+}
+
 fn signature_verification_from_implementation(
   key: VerifyingKey,
   key_size: ByteSize,
@@ -110,16 +130,14 @@ fn signature_verification_from_implementation(
   message: NonEmptyStr,
   implementation_verified: Bool,
 ) -> SignatureVerification {
-  if key.suite != signature.suite {
-    SignatureSuiteMismatch { key_suite: key.suite, signature_suite: signature.suite }
-  } else if byte_size_count(b: key_size) != byte_size_count(b: signature_suite_public_key_size(s: key.suite)) {
-    VerifyingKeyMalformed { declared: key_size, expected: signature_suite_public_key_size(s: key.suite) }
-  } else if byte_size_count(b: signature_size) != byte_size_count(b: signature_suite_signature_size(s: signature.suite)) {
-    SignatureMalformed { declared: signature_size, expected: signature_suite_signature_size(s: signature.suite) }
-  } else if implementation_verified {
-    SignatureVerified { verified: SignedMessage { key: key, message: message } }
-  } else {
-    SignatureInvalid { suite: signature.suite }
+  match signature_carrier_refusal(key: key, key_size: key_size, signature: signature, signature_size: signature_size) {
+    Present { value: r } => r
+    Absent =>
+      if implementation_verified {
+        SignatureVerified { verified: SignedMessage { key: key, message: message } }
+      } else {
+        SignatureInvalid { suite: signature.suite }
+      }
   }
 }
 
@@ -141,16 +159,23 @@ fn decoded_or_empty(b64url: NonEmptyStr) -> List<UInt8> {
 fn verify_signature(key: VerifyingKey, signature: SignatureBytes, message: NonEmptyStr) -> SignatureVerification {
   let key_octets = decoded_or_empty(b64url: key.point_b64url)
   let signature_octets = decoded_or_empty(b64url: signature.b64url)
-  let implementation_verified = match key.suite {
-    EcdsaP256Sha256 =>
-      match p256_ecdsa_verify_octets(key: key_octets, signature: signature_octets, message: bytes_octets(b: utf8_encode_bytes(s: message as String))) {
-        Present { value: v } => v
-        Absent => false
+  let key_size = byte_size(count: count(key_octets))
+  let signature_size = byte_size(count: count(signature_octets))
+  match signature_carrier_refusal(key: key, key_size: key_size, signature: signature, signature_size: signature_size) {
+    Present { value: r } => r
+    Absent => {
+      let implementation_verified = match key.suite {
+        EcdsaP256Sha256 =>
+          match p256_ecdsa_verify_octets(key: key_octets, signature: signature_octets, message: bytes_octets(b: utf8_encode_bytes(s: message as String))) {
+            Present { value: v } => v
+            Absent => false
+          }
       }
+      signature_verification_from_implementation(
+        key: key, key_size: key_size,
+        signature: signature, signature_size: signature_size,
+        message: message, implementation_verified: implementation_verified,
+      )
+    }
   }
-  signature_verification_from_implementation(
-    key: key, key_size: byte_size(count: count(key_octets)),
-    signature: signature, signature_size: byte_size(count: count(signature_octets)),
-    message: message, implementation_verified: implementation_verified,
-  )
 }
