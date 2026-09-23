@@ -295,6 +295,12 @@ type EnrolmentMarginStanding =
 // without a ceiling) establishes expensiveness only if the bound ITSELF is above the line; a bound
 // at or under it proves nothing, so on the Roster ground it blocks under the same bound or censored
 // arm an undeclared identity would get, whose remedy is to produce a reading that decides.
+//
+// THE DEAD BAND IS SELF-STALING, and only an EXACT reading can hold it: strictly above the margin and
+// at or under the line. At or under the margin the row is stale (the claim is cheap enough to enrol
+// without it); above the line it is the wrong ground (ordinary typed cost debt is the authority
+// there). A lower bound, with or without a ceiling, decides nothing about a band and blocks under the
+// arm an undeclared identity with the same reading would get.
 fn enrolment_declared_measured_standing(
   witness_identity: String,
   ground: EnrolmentExpensivenessGround,
@@ -309,11 +315,6 @@ fn enrolment_declared_measured_standing(
   }
   match ground {
     EnrolmentExpensivenessLongHome => declared
-    // THE DEAD BAND IS SELF-STALING, and only an EXACT reading can hold it: strictly above the
-    // margin and at or under the line. At or under the margin the row is stale (the claim is cheap
-    // enough to enrol without it); above the line it is the wrong ground (ordinary typed cost debt
-    // is the authority there). A lower bound, with or without a ceiling, decides nothing about a
-    // band and blocks under the arm an undeclared identity with the same reading would get.
     EnrolmentExpensivenessDeadBand =>
       match reading {
         ObservedCpuReading { cpu_ms: c, eval_steps: _ } =>
