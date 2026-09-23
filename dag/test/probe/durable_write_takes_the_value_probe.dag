@@ -19,10 +19,9 @@ module test.probe.durable_write_takes_the_value_probe
 // (test.probe.data_effect_permit_forged_probe).
 
 import std.types { NonEmptyStr, FilePath }
-import std.resources { Network }
 import gunbc.auth.access_token_source { AccessTokenSource }
 import gunbc.fabric_m0_origin_commit { OriginObjectWrite, commit_object_to_origin }
 
-fn write_the_path(token_source: AccessTokenSource) -> OriginObjectWrite uses net: Network {
+fn write_the_path(token_source: AccessTokenSource) -> OriginObjectWrite {
   commit_object_to_origin(permit: "dag/test/fixture/fabric_m0_origin_readback/other_object.txt" as FilePath, key: "probe/never" as NonEmptyStr, token_source: token_source)
 }
