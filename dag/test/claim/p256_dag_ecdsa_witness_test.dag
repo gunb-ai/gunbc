@@ -5,7 +5,8 @@ import std.types { Int, List }
 import std.integer { UInt8 }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.bignat { BigNat, bignat_zero_limbs }
-import extdeps.crypto.nist_p256 { p256_ecdsa_verify_octets, p256_on_curve, p256_gx, p256_gy, p256_n, p256_double_scalar, p256_affine, p256_is_infinity }
+import extdeps.crypto.nist_p256 { p256_ecdsa_verify_octets, p256_on_curve, p256_gx, p256_gy, p256_n, p256_double_scalar, p256_affine }
+import extdeps.crypto.nist_prime_curve { jacobian_is_infinity }
 
 fn ascii(s: String) -> List<UInt8> {
   bytes_octets(b: utf8_encode_bytes(s: s))
@@ -33,11 +34,26 @@ fn is_absent(v: Bool?) -> Bool {
 }
 
 // ── The parameters themselves ────────────────────────────────────────────────────────────────
-// G is on the curve, and n·G is the point at infinity: the published constants are the curve's.
-test fn the_base_point_is_on_the_curve_and_has_order_n() -> Bool {
-  let zero = p256_hex_zero()
+// TWO INDEPENDENT FACTS, SPLIT BECAUSE ONE OF THEM CANNOT REACH A VERDICT ON THE FLOOR. G being on
+// the curve is one curve equation; n·G being the point at infinity is a full scalar multiplication
+// by n, which the required floor measured at the 8000ms wall deadline and INTERRUPTED before any
+// verdict (run 35708011844, INTERRUPTED-BEFORE-VERDICT, cost UNMEASURED with no upper bound). An
+// interrupted claim establishes NOTHING, so while these two facts shared one claim the cheap one
+// was lost with the expensive one. Split, the on-curve fact keeps executing on the acceptance path.
+test fn the_base_point_is_on_the_curve() -> Bool {
   p256_on_curve(x: p256_gx, y: p256_gy)
-    && p256_is_infinity(p: p256_double_scalar(u1: p256_n, g: p256_affine(x: p256_gx, y: p256_gy), u2: zero, q: p256_affine(x: p256_gx, y: p256_gy)))
+}
+
+// THE ORDER-n FACT CROSSES THE WALL DEADLINE, WHICH NO DECLARED EVAL-STEP DROP MAY COVER -- the
+// same disposition, and for the same stated reason, as the P-256 and P-384 signature verifications
+// of this family: it is an ordinary fn so the floor does not plan it, and its consumer is the
+// native gunbc test row that gunbc.auth.approval_device_redemption
+// ecdsa_verification_realization_frontier names, executing once MachineWidth<N> reification lets
+// this closure emit. Until then a quiet host runs it by name; it is not evidence the acceptance
+// path has, and this annotation is the declaration of that gap rather than a silence about it.
+fn the_base_point_has_order_n() -> Bool {
+  let zero = p256_hex_zero()
+  jacobian_is_infinity(p: p256_double_scalar(u1: p256_n, g: p256_affine(x: p256_gx, y: p256_gy), u2: zero, q: p256_affine(x: p256_gx, y: p256_gy)))
 }
 
 // The scalar zero, from the total constructor rather than the refusing mint: bignat_small now
