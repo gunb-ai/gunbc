@@ -276,6 +276,7 @@ type FloorSeam
   | SeamDiffChangedWitnessIdentities
   | SeamDiffTouchedModuleSeeds
   | SeamArmSetPlanning
+  | SeamInterfaceConsumerPlanning
   | SeamNominalSubjectSeeds
   | SeamPrepareClosureResolve
   | SeamPreparedSubjectWarm
@@ -290,6 +291,54 @@ type FloorSeam
   | SeamUnrecorded
   | SeamUnreadable
   | SeamMovedDuringSample { before: NonEmptyStr, after: NonEmptyStr }
+
+// THE TOKEN EACH ARM IS PRINTED AS, one row per arm the instrument emits or has emitted, so a
+// transcriber reads a beat's `seam=` token into exactly one constructor and never maps a token onto
+// a neighbour. A token no row names reads as Absent -- not as a nearby arm, and not as
+// SeamUnrecorded, which is a line that carried NO seam field.
+//
+// THE PLANNING SEAM CHANGED NAME AT A VERSION BOUNDARY, and both spellings keep their own arm:
+//   before gunbc#12130 -- `arm-set-planning` -> SeamArmSetPlanning: the phase then planned only
+//     match readers of a coproduct whose arm set changed; every committed beat taken before the
+//     rename (the positional mapping below, beats 13-14) stays on this arm;
+//   at and after gunbc#12130 -- `interface-consumer-planning` -> SeamInterfaceConsumerPlanning:
+//     the phase plans every ground-specific reader of a declaration whose interface changed, a
+//     wider phase, so its memory is not the old phase's and is not read as it.
+// The instrument no longer emits the old token. A control keeps every token the Rust passes to
+// `floor_seam` joined to a row here (required_floor_runner
+// `every_floor_seam_literal_has_a_typed_arm`).
+type FloorSeamToken {
+  token: String
+  seam: FloorSeam
+}
+
+data floor_seam_tokens: List<FloorSeamToken> = [
+  FloorSeamToken { token: "lane-roster", seam: SeamLaneRoster },
+  FloorSeamToken { token: "parse", seam: SeamParse },
+  FloorSeamToken { token: "declarations", seam: SeamDeclarations },
+  FloorSeamToken { token: "floor-entry", seam: SeamFloorEntry },
+  FloorSeamToken { token: "changed-witness-planning", seam: SeamChangedWitnessPlanning },
+  FloorSeamToken { token: "diff-base-decl-census", seam: SeamDiffBaseDeclCensus },
+  FloorSeamToken { token: "diff-edits", seam: SeamDiffEdits },
+  FloorSeamToken { token: "diff-changed-witness-identities", seam: SeamDiffChangedWitnessIdentities },
+  FloorSeamToken { token: "diff-touched-module-seeds", seam: SeamDiffTouchedModuleSeeds },
+  FloorSeamToken { token: "arm-set-planning", seam: SeamArmSetPlanning },
+  FloorSeamToken { token: "interface-consumer-planning", seam: SeamInterfaceConsumerPlanning },
+  FloorSeamToken { token: "nominal-subject-seeds", seam: SeamNominalSubjectSeeds },
+  FloorSeamToken { token: "prepare-closure-resolve", seam: SeamPrepareClosureResolve },
+  FloorSeamToken { token: "prepared-subject-warm", seam: SeamPreparedSubjectWarm },
+  FloorSeamToken { token: "publication", seam: SeamPublication },
+  FloorSeamToken { token: "strict-preparation", seam: SeamStrictPreparation },
+  FloorSeamToken { token: "published-mock-projection", seam: SeamPublishedMockProjection },
+  FloorSeamToken { token: "site-projection", seam: SeamSiteProjection },
+  FloorSeamToken { token: "discovery-authority", seam: SeamDiscoveryAuthority },
+  FloorSeamToken { token: "claim-scope-projection", seam: SeamClaimScopeProjection },
+  FloorSeamToken { token: "claim-evaluation-fold", seam: SeamClaimEvaluationFold },
+]
+
+fn floor_seam_of_token(token: String) -> FloorSeam? {
+  fold(floor_seam_tokens, init: none, f: (acc, row) => if row.token == token { Present { value: row.seam } } else { acc })
+}
 
 type FloorMemoryStatBeat {
   beat: Int
@@ -579,6 +628,7 @@ fn receipt_peak_seam(r: FloorHeldSetReceipt) -> PeakSeamAttribution {
         SeamDiffChangedWitnessIdentities => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamDiffTouchedModuleSeeds => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamArmSetPlanning => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamInterfaceConsumerPlanning => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamNominalSubjectSeeds => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamPrepareClosureResolve => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamPreparedSubjectWarm => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
@@ -1042,7 +1092,8 @@ fn peak_standing_from_swap_policy(policy: RunSwapPolicy) -> PeakReadingStanding 
 //   1=seam-lane-roster, 2=seam-parse, 3=seam-declarations, 4=seam-floor-entry, 5=floor-entry,
 //   6=seam-strict-preparation, 7=seam-changed-witness-planning, 8=seam-diff-base-decl-census,
 //   9=seam-diff-edits, 10=beat-1, 11=seam-diff-changed-witness-identities,
-//   12=seam-diff-touched-module-seeds, 13=seam-arm-set-planning, 14=beat-2,
+//   12=seam-diff-touched-module-seeds, 13=seam-arm-set-planning (the pre-gunbc#12130 token,
+//   SeamArmSetPlanning -- see floor_seam_tokens), 14=beat-2,
 //   15=seam-nominal-subject-seeds, 16=beat-3, 17=beat-4, 18=seam-prepare-closure-resolve,
 //   19=beat-5, 20=beat-6, 21=beat-7, 22=beat-8, 23=beat-9, 24=beat-10,
 //   25=seam-prepared-subject-warm, 26=seam-published-mock-projection, 27=seam-site-projection,
