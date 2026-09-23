@@ -2,9 +2,7 @@ module gunbc.spark.model_snapshot_materialize
 
 import std.types { String, Bool, List, NonEmptyStr, Secret, Int }
 import std.nat { Nat }
-import std.integer { UInt8 }
-import std.bytes { bytes_octets, utf8_encode_bytes }
-import extdeps.crypto.sha2 { sha256_hex }
+import std.content_hash { content_hash_atom }
 import product.placement_supply { HostIdentity }
 import std.algebra { trim }
 import gunbc.fleet_bootstrap_principal_session {
@@ -400,14 +398,21 @@ fn spark_snapshot_ensure_parent(ctx: SparkMaterializeContext, subject: Acquisiti
 // the assertion that "this fleet's paths are well inside that" -- a bet, never measured, and wrong:
 // a DeepSeek V4.1 shard's name came to 252 characters, 260 with the suffix, so systemd-run refused
 // all 48 shards on srv5 (fleet-converge run 35806250877) while the index and tokenizer files, a few
-// characters shorter, went through. The name is now `gunbc-materialize-` and the sha256 of the whole
-// tuple, 82 characters whatever the tuple, so the bound holds by construction rather than by the
+// characters shorter, went through. The name is now `gunbc-materialize-` and the std.content_hash
+// Fnv1a64Structural fingerprint of the whole tuple (content_hash_atom, the family that exists for
+// structural identity), 34 characters whatever the tuple, so the bound holds by construction rather than by the
 // paths this fleet happens to use today. Readability moves to `--description`, which has no such
 // bound and is what `systemctl status` prints beside the name.
 //
-// THE PREIMAGE IS LENGTH-PREFIXED, NOT SEPARATOR-JOINED. Every component is written as its octet
-// count, a colon and its octets (a netstring without the trailing comma), so no choice of characters
-// inside an identity or a path can make two different tuples encode to the same bytes.
+// THE PREIMAGE IS LENGTH-PREFIXED, NOT SEPARATOR-JOINED. Every component is written as its length, a
+// colon and its text (a netstring without the trailing comma), so no choice of characters inside an
+// identity or a path can make two different tuples encode to the same preimage.
+//
+// WHY NOT SHA-256. extdeps.crypto.sha2 sha256_hex is evaluated in .dag and cost about 760k eval steps
+// per name on the required floor, and the name is derived at every state read, start, clear and poll.
+// A 64-bit fingerprint is enough for a name: two tuples colliding would share a unit, and the V4.1
+// route still digests the staged file against its manifest row before publishing, so a shared unit
+// cannot publish a wrong file.
 // THE UNIT NAME CARRIES THE KEY, because a transfer is identified by WHAT IT IS FETCHING and not only
 // by where it lands. Keyed on identity and path alone, two runs pinned to DIFFERENT REVISIONS of the
 // same checkpoint share one unit name: the second run polls the first one's unit, reads its clean exit,
@@ -425,15 +430,15 @@ fn spark_transfer_unit_for(subject: AcquisitionSubject) -> NonEmptyStr {
 }
 
 fn spark_transfer_unit_digest(subject: AcquisitionSubject) -> String {
-  sha256_hex(message: concat(concat(
+  content_hash_atom(value: join([
     unit_preimage_component(s: subject.identity as String),
-    unit_preimage_component(s: acquisition_key_wire(key: subject.key) as String)),
-    unit_preimage_component(s: subject.install_path as String)))
+    unit_preimage_component(s: acquisition_key_wire(key: subject.key) as String),
+    unit_preimage_component(s: subject.install_path as String),
+  ], "") as NonEmptyStr).digest as String
 }
 
-fn unit_preimage_component(s: String) -> List<UInt8> {
-  let octets = bytes_octets(b: utf8_encode_bytes(s: s))
-  concat(bytes_octets(b: utf8_encode_bytes(s: join([to_string(length(octets)), ":"], ""))), octets)
+fn unit_preimage_component(s: String) -> String {
+  join([to_string(length(s)), ":", s], "")
 }
 
 fn spark_transfer_unit_description(subject: AcquisitionSubject) -> String {
