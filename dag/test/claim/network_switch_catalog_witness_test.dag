@@ -9,6 +9,7 @@ import std.measure {
   milliwatt_count, watt_count, hertz_count,
   gigabyte_count, mebibyte_count, volt_count,
   millimeter_count, celsius_count, nanosecond_count, percent_count,
+  Bandwidth
 }
 import extdeps.network.switch_types { SwitchPortGroup, TrackedGap }
 import extdeps.network.tp_link { tp_link_tl_sg1024s_catalog }
