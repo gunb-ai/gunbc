@@ -577,6 +577,36 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // KEY CALLS THAT CAN NEVER HIT -- a step whose loop index differs each time -- is a demand-graph
 // question under std.materialization_ladder that this change deliberately leaves open.
 
+// THE LIST HALF OF THE SAME KEY DEFECT, ADMITTED ON ITS OWN ROW BECAUSE IT IS A SEPARATE CHANGE TO
+// THE SEED (gunbc#12066). THE CHANGE: both `list_push` arms of the interpreter call
+// eval_recompute_extend_push_hash, which, when the parent list's content hash is already alive in
+// the eval-call memo's identity hash memo, records the pushed list's hash as mix(parent, item).
+// No carrier, type or exported item changes; the new function is private to the interpreter.
+//
+// THE DEFECT, and why it is key derivation rather than admission. The list content hash is a left
+// fold mix(h, child) from a fixed seed with no finalizer, so hash(push(xs, x)) == mix(hash(xs),
+// hash(x)) exactly. A recursion threading a growing list_push accumulator handed every call a new
+// Rc, missed the identity memo, and refolded the whole accumulator: one relation realized at
+// per-call O(|xs|). The question the row above leaves open -- should the memo key calls that can
+// never hit -- is answered NO CRITERION IS NEEDED: "can never recur" is undecidable, any proxy is a
+// heuristic that fails silently in the cost direction (DESIGN section 5), and with the key at
+// O(item) an unrecurrable call costs a bounded constant. Per-call RETENTION of stored arguments is
+// the residual admission question and stays open; it needs a recurrence census, not a threshold.
+//
+// THE PURPOSE TEST is satisfied on the row above's argument: the interpreter is the engine the v2
+// self-host program runs on, and a recursion threading a list accumulator is its ordinary shape; a
+// cost-shape defect fixed under DESIGN section 6's bare-minimum-cost rule regardless of n.
+// BehaviorPreservingRedundancyRemoval: every key VALUE is unchanged -- the recorded hash is the
+// value the full fold computes -- and memo hits
+// still verify arguments by equality, so a key can cost a lookup and never an answer.
+// PUBLICSURFACEGROWTH: none; nothing exported is added.
+//
+// THE CONTROL, VALUE AND ROUTE: interpreter test push_hash_extension_tests
+// pushed_list_hash_is_the_full_fold_and_is_demand_gated drives list_push through BOTH production
+// arms (eval_builtin, eval_algebra_method_inner) and asserts the extended entry equals the full
+// fold; deleting the extension call from either arm turns it red. Unlike the string half's key
+// sites, this route is pinned.
+
 data v1_maintenance_typecheck_progress_admission_note: String = "AN ADMISSION UNDER THE 2026-08-20 PURPOSE TEST, recorded in the same PR as the change it admits, because an admission written afterwards is indistinguishable from an author's own classification. THE RULING, verbatim and relayed through the requesting session's parent (snappy-dove-250, import/namespace manager) on 2026-08-25: 'ah yeah - we need to fix the typecheckmoduleresult issue'. There is no PR review or transcript to point at; the relay is the record and this row is the citation, stated plainly rather than dressed up as pointing at a document that does not exist -- the same shape as v1_maintenance_purpose_ruling_note above.\n\nTHE DEFECT, at the grain that makes it a defect rather than an improvement. v1.compiler.infer typecheck_module has an early return: when build_type_env yields error diagnostics it hands back a TypedModule whose items list is EMPTY and never reaches item analysis. The seed therefore renders two different facts as one value -- a module that COMPLETED item checking and legitimately has no items, and a module that was ABANDONED before item checking started. Every downstream reader of TypedModule.items receives the same empty list for both, so a consumer wanting the distinction must infer it from 'items is empty AND there are error diagnostics', and that inference is unreliable in the direction that matters: a module that completed and has item-level errors presents identically. This is the state-space conflation DESIGN names, in the seed, on a carrier read by the whole back end.\n\nWHY THE FIELD LANDS ON TypedModule AND NOT ON TypecheckModuleResult, since the ruling names the result type and the change does not edit it. realize_module destructures the result and inserts only .typed into the module index; a progress field on the result alone would be discarded one line after it was set, which is this same defect one level out. The result type is where the issue was NOTICED; the carrier that survives the destructure is where the fact has to live.\n\nTHE EXHIBITED COST, because a defect with no demonstrated victim is a preference. A demand oracle built in this lane to score resolution producers read TypedModule.items to derive per-module demand, and was found DEAD as a scoring instrument for exactly this reason: an abandoned module reports total_arm1=1, which is indistinguishable from a genuine single-ask module, so the instrument's error is ANTI-CORRELATED with the defect it was built to find -- the modules most likely to abandon are the ones whose demand it most understates. That oracle was discarded rather than repaired, which is the measured price of the conflation and is why this is not speculative hardening.\n\nWHY IT SERVES THE V2 SELF-HOST PROGRAM, which is the whole admission test. The v2 resolution work this lane exists to do reads seed-produced TypedModule values to measure and compare producers. An instrument that cannot tell 'not checked' from 'nothing to check' cannot score a producer, and the program's next steps (one closure authority, exact denotation) are measurement-gated. This repairs the seed's report of its own progress; it adds no language behavior, no compatibility obligation, no escape hatch, and completes no seed feature.\n\nTHE SCOPE LIMIT, stated because this row will be cited and its limit is the part most likely to be dropped in the citing. THE RULING ADMITS THIS CHANGE ONLY. It does NOT settle whether PublicSurfaceGrowth means a NEW EXPORTED DECLARATION or ANY CHANGE TO EXPORTED SURFACE -- this change adds a coproduct and a record field to a type the seed exports, so it sits squarely on that unresolved boundary and was ruled admissible without the boundary being drawn. Nobody may cite this row as the answer to that question. A later proposal that needs the boundary decided must route it for its own ruling; treating this admission as precedent for a general reading of PublicSurfaceGrowth would be the authority-substitution failure DESIGN names -- borrowing one authority's answer to settle a question it never addressed. The five refused classes are untouched and still dominate every admission, including this one."
 
 // gunbc#10727 MERGED WHILE ITS OBJECTION STOOD UNANSWERED, filed as the row below. The mechanical
