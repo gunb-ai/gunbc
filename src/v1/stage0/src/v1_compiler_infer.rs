@@ -1515,25 +1515,13 @@ pub fn resource_declaration_identity(
     scope: Rc<InferScope>,
     resource: Rc<Node>,
 ) -> Option<Rc<Node>> {
-    match crate::v1_compiler_infer_env::lookup_type_by_name(
+    crate::v1_compiler_infer_env::lookup_type_by_name(
         scope.type_env.clone(),
         type_node_label(
             resource.clone(),
             scope.type_env.clone().source_indices.clone(),
         ),
-    ) {
-        std::option::Option::None => std::option::Option::None,
-        Some(declaration) => {
-            if overlay_skips_kernel_name(declaration.name.clone()) {
-                crate::v1_compiler_infer_env::lookup_type_by_name(
-                    scope.type_env.clone(),
-                    declaration.name.clone(),
-                )
-            } else {
-                Some(declaration.clone())
-            }
-        }
-    }
+    )
 }
 
 pub fn established_resource_binding(
@@ -2044,6 +2032,15 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     occurrences: 1,
     cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
+}), Rc::new(ResourceRequirementFrontierRow {
+    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
+    caller_decl_name: "census_app_acquisition_receipt_for".to_string(),
+    callee_module_path: "gunbc.github_app_acquisition".to_string(),
+    callee_decl_name: "census_app_acquisition_standing".to_string(),
+    resource: "Filesystem".to_string(),
+    occurrences: 1,
+    cause: "The resource-identity fork, not an absent clause. The caller DOES declare this resource; the callee spells it `std.resources.Filesystem`, which resolves to the corpus declaration, while the requirement join resolves the caller's binding to a different, kernel-spanned node, so the two never compare equal (gunbc.recurring_failure_mode a_sibling_refusal_masks_a_ratchet_rows_observation). Respelling either side to make the spellings agree would route around the fork rather than repair it.".to_string(),
+    dissolution: crate::std_dissolution::unbound_dissolution("one resolved identity per resource regardless of spelling -- sufficient that a bare and a qualified reference to the same resource declaration resolve to one node at the requirement join, so this caller's authored clause establishes its callee's requirement and the typecheck admits the call directly; this row is then deleted".to_string()),
 })])
 }
 
