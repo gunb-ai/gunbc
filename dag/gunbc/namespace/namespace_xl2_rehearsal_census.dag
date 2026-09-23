@@ -102,6 +102,11 @@ type Xl2UnobservedScope
 // lowers to every reference it carries). It is kept a REFUSAL rather than an excluded population by
 // the namespace-cut manager's ruling of 2026-09-23: those references depend on imports and XL-5
 // must rewrite them, so omitting them undercounts the cut's own population.
+// TODO(rebind to gunbc.compiler_frontend_program_status Xl2Prerequisite): this arm names ONE
+// lowering undercount; two more are known (call arguments inside if-arms are unread, and a block
+// `{ 1 \n 2 }` drops its second expression) and are not minted as causes here. The carrier's
+// Xl2Prerequisite arms, landed by the namespace-cut manager's prerequisite-truth change, are their
+// one home; this refusal is rebound to them then. Completeness stays unreachable either way.
 type Xl2CompletenessRefusal
   = Xl2SequenceOperandReferencesUnobservable
   | Xl2ScopeUnobserved { scope: Xl2UnobservedScope }
