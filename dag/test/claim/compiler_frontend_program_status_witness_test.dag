@@ -667,7 +667,7 @@ test fn xl2_is_not_derivable_while_the_rehearsal_residual_has_no_producer() -> B
 // THE XL-2 PREREQUISITE PARTITION, AT IDENTITY GRAIN. Delivered and outstanding are decided by
 // each arm's standing, and this pins WHICH arms sit on each side, with the PR each delivery
 // cites -- so flipping an arm's standing, or re-attributing it, reddens a conjunct rather than
-// leaving a label check green. The roster is also checked exact: five arms, each once.
+// leaving a label check green. The roster is also checked exact: every arm, each once.
 fn xl2_delivered_by(p: Xl2Prerequisite, pr: Int) -> Bool {
   match xl2_prerequisite_standing(p: p) {
     PrerequisiteDelivered { owner: _, evidence, qualification: _ } => evidence.pr == pr
