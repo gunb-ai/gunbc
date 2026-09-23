@@ -19,7 +19,7 @@ pub use crate::std_algebra::carrier_container_equality_rows;
 pub use crate::std_algebra::AlgebraFieldTemplate;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
-pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
+pub use crate::std_coercion::{dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type};
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_content_hash::ContentHash::*;
@@ -8421,37 +8421,54 @@ pub fn validate_cast(
             if (source_name.clone() == target_name.clone()) {
                 std::option::Option::None
             } else {
-                if !crate::std_coercion::is_dag_cast_domain_type(source_name.clone()) {
-                    std::option::Option::None
+                if crate::std_coercion::dag_cast_requires_proof(
+                    source_name.clone(),
+                    target_name.clone(),
+                ) {
+                    {
+                        let msg = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("invalid cast: ".to_string(), source_name.clone()), " as ".to_string()), target_name.clone()), " is a refinement cast, not a re-typing -- an arbitrary ".to_string()), source_name.clone()), " has no ".to_string()), target_name.clone()), "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)".to_string());
+                        let diag = Rc::new(CompilerDiagnostic::InternalError {
+                            message: msg.clone(),
+                            span: span.clone(),
+                        });
+                        Some(crate::v1_std_core::make_error_node(
+                            diag.clone(),
+                            module_name.clone(),
+                        ))
+                    }
                 } else {
-                    if !crate::std_coercion::is_dag_cast_domain_type(target_name.clone()) {
+                    if !crate::std_coercion::is_dag_cast_domain_type(source_name.clone()) {
                         std::option::Option::None
                     } else {
-                        if crate::std_coercion::dag_can_cast(
-                            source_name.clone(),
-                            target_name.clone(),
-                        ) {
+                        if !crate::std_coercion::is_dag_cast_domain_type(target_name.clone()) {
                             std::option::Option::None
                         } else {
-                            {
-                                let msg = v1_rt::concat(
-                                    v1_rt::concat(
+                            if crate::std_coercion::dag_can_cast(
+                                source_name.clone(),
+                                target_name.clone(),
+                            ) {
+                                std::option::Option::None
+                            } else {
+                                {
+                                    let msg = v1_rt::concat(
                                         v1_rt::concat(
-                                            "invalid cast: ".to_string(),
-                                            source_name.clone(),
+                                            v1_rt::concat(
+                                                "invalid cast: ".to_string(),
+                                                source_name.clone(),
+                                            ),
+                                            " as ".to_string(),
                                         ),
-                                        " as ".to_string(),
-                                    ),
-                                    target_name.clone(),
-                                );
-                                let diag = Rc::new(CompilerDiagnostic::InternalError {
-                                    message: msg.clone(),
-                                    span: span.clone(),
-                                });
-                                Some(crate::v1_std_core::make_error_node(
-                                    diag.clone(),
-                                    module_name.clone(),
-                                ))
+                                        target_name.clone(),
+                                    );
+                                    let diag = Rc::new(CompilerDiagnostic::InternalError {
+                                        message: msg.clone(),
+                                        span: span.clone(),
+                                    });
+                                    Some(crate::v1_std_core::make_error_node(
+                                        diag.clone(),
+                                        module_name.clone(),
+                                    ))
+                                }
                             }
                         }
                     }
