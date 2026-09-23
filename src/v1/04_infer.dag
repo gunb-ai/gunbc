@@ -63,7 +63,9 @@ import v1.std.core { Unmarked,
   FieldAccessStyle, StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue, FieldSummary,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding,
-  CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
+  CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall,
+  call_semantics_target,
+  SiblingOperandEffectOrderUndetermined,
   CallSemantics, PlainCallSemantics, ResolvedDirectCallSemantics, ResolvedFormal, ResolvedCallFormal, LookupCallSemantics, FunctionValueCallSemantics,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
   ServiceMethodSemantics,
@@ -188,7 +190,7 @@ import v1.compiler.infer_items {
   ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem,
   ItemInfo, TypedModule, TypedGraph, ResolvedGraph, ModuleInterface, leaf_owner_modules_from_registry,
   ModuleTypecheckProgress, ItemsChecked, AbandonedBeforeItems,
-  inferred_to_outputs, item_kind
+  inferred_to_outputs, item_kind, item_is_effectful_callee
 }
 import v1.compiler.infer_service {
   UniqueAccum, OpEntry, ServiceMethodResult,
@@ -4791,6 +4793,93 @@ fn direct_call_structured_application_mismatch_diags(
 // The sibling relation `direct_call_arg_type_mismatch` excludes callables for the
 // same reason; callable-formal inhabitance is therefore ABSENT from the census
 // (no obligation producer), not judged undecidable.
+// SIBLING OPERANDS THAT EACH REACH A DECLARED EFFECT ARE REFUSED, BECAUSE NOTHING ORDERS THEM.
+//
+// THE CLASS: gunbc.recurring_failure_mode
+// sibling_operand_effect_order_is_underdetermined_and_unenforced. Between two siblings of one
+// operand list there is no dependency edge to derive an order from, and no row declares one. That
+// absence is not a fact nobody got round to writing -- it is DECLARED, three times over, and this
+// wall is the enforcement the declarations never had.
+//
+// WHY A REFUSAL AND NOT A DECLARED ORDER, since that is the move a reader reaches for first.
+// Bind, Branch and Match each already sequence exactly ONE pair by their interpreter contracts, so
+// sequencing is in the vocabulary and is carried per behavior. gunbc.host_effect_realize
+// srv3_chown_then_read_back already RULES that argument position is not a sequencing authority, and
+// was rewritten by hand into a let for that reason. And v2.std.node
+// canonicalize_labeled_for_content_hash SORTS labeled children before hashing, so for a record
+// literal two spellings differing only in field order are THE SAME NODE -- a declared order over
+// named siblings would be a semantic fact the identity relation cannot see. Declaring an order
+// would contradict all three; refusing the program contradicts none.
+//
+// THE URGENCY IS NOT HYPOTHETICAL. Two routes that ship today are SPECIFIED to order these
+// differently: v1.compiler.emit order_typed_call_args_from_semantics selects arguments by
+// matched_argument_index over the application_plan, so emitted Rust evaluates them in FORMAL
+// order, while v1_compiler.interpreter eval_call evaluates node.children in CALL-SITE order.
+// Nothing adjudicates that disagreement, which is why an oracle cannot settle this class and a
+// refusal is what it needs.
+//
+// THE PREDICATE IS CONSUMED, NOT MINTED. item_is_effectful_callee is the ONE authority for
+// "this callee has effects", hoisted into v1.compiler.infer_items and shared with the emitter's
+// five sites. This wall asks that question and no other, so it cannot drift from what the emitter
+// believes about the same callee.
+//
+// WHAT IT DELIBERATELY DOES NOT CATCH, so the rung is not read higher than it is: a sibling that
+// reaches an effect through a call chain without the callee itself being effectful. That is
+// call-reachability, the capability v2.std.effect_reach already names as its own next-rung
+// trigger, and this wall is structural over the population it covers and silent over the rest.
+fn effectful_callee_name_of_expr(v: Node, scope: InferScope) -> String? {
+  let cs = match v.expr_data {
+    ExprCall { call_semantics: c, descent_evidence: _ } => c
+    _ => none
+  }
+  if cs == none { none } else {
+    match call_semantics_target(cs: cs) {
+      SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
+        match map_get(scope.item_registry, callable_identity(id: DeclaredCallableIdentity { owner_module_path: owner, decl_name: decl })) {
+          Present { value: info } =>
+            if item_is_effectful_callee(info: info) { Present { value: concat(owner, ".", decl) } } else { none }
+          Absent => none
+        }
+      RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => none
+      LocallyBoundCall { name: _ } => none
+      CallableTargetUndetermined => none
+    }
+  }
+}
+
+// THE REFUSAL NAMES THE FIRST TWO OFFENDERS RATHER THAN ALL OF THEM, because two is what makes the
+// order undetermined and a reader repairing the site sees the rest when the wall fires again.
+fn sibling_effect_order_diags(construct: String, effectful: List<String>, span: SourceSpan, module_name: String) -> List<ErrorNode> {
+  if effectful |> count > 1 {
+    let a = match effectful |> first { Present { value: x } => x  Absent => "" }
+    let b = match effectful |> skip(1) |> first { Present { value: x } => x  Absent => "" }
+    [make_error_node(
+      diagnostic: SiblingOperandEffectOrderUndetermined {
+        construct: construct,
+        first_operand: a,
+        second_operand: b,
+        span: span
+      },
+      module_name: module_name
+    )]
+  } else { [] }
+}
+
+fn direct_call_sibling_effect_order_diags(
+  func_name: String,
+  typed_args: List<Node>,
+  span: SourceSpan,
+  scope: InferScope
+) -> List<ErrorNode> {
+  let effectful = flat_map(typed_args, ta =>
+    match effectful_callee_name_of_expr(v: arg_value(n: ta), scope: scope) {
+      Present { value: n } => [n]
+      Absent => []
+    }
+  )
+  sibling_effect_order_diags(construct: func_name, effectful: effectful, span: span, module_name: scope.module_name)
+}
+
 fn direct_call_argument_inhabitance_diags(
   plan: List<ResolvedCallFormal>,
   typed_args: List<Node>,
@@ -7119,6 +7208,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           typed_args: typed_args,
           scope: scope
         )
+        let sibling_effect_order_arg_diags = direct_call_sibling_effect_order_diags(
+          func_name: func_name,
+          typed_args: typed_args,
+          span: span,
+          scope: scope
+        )
         InferResult {
           typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
             name: func_name, expr_data: ExprCall { call_semantics: Present { value: ResolvedDirectCallSemantics { target: resolved_plain_call_target_for_outcome(outcome: call_target), application_plan: call_application_plan } }, descent_evidence: none },
@@ -7127,7 +7222,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             span: span,
             name_span: node_name_span(n: texpr)
           ),
-          diagnostics: concat(formal_authority_diags, concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, concat(inhabitance_arg_diags, generic_type_argument_inhabitance_diags))))))
+          diagnostics: concat(formal_authority_diags, concat(arg_diags, concat(arg_shape_diags, concat(arg_compat_diags, concat(structured_arg_diags, concat(inhabitance_arg_diags, concat(generic_type_argument_inhabitance_diags, sibling_effect_order_arg_diags)))))))
         }
         }
       } else {
@@ -9094,7 +9189,22 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     }
   )
   let typed_fields = fi_infer_results |> map(fir => fir.typed_field)
-  let fi_diags = flat_map(fi_infer_results, fir => fir.diagnostics)
+  let fi_own_diags = flat_map(fi_infer_results, fir => fir.diagnostics)
+  let record_effectful_fields = flat_map(typed_fields, tf =>
+    match effectful_callee_name_of_expr(v: field_init_node_value(n: tf), scope: scope) {
+      Present { value: n } => [n]
+      Absent => []
+    }
+  )
+  let fi_diags = concat(
+    fi_own_diags,
+    sibling_effect_order_diags(
+      construct: match type_name { Present { value: tn } => tn  Absent => "record literal" },
+      effectful: record_effectful_fields,
+      span: span,
+      module_name: scope.module_name
+    )
+  )
   if type_name == none {
     let child_nodes = fi_infer_results |> map(fir =>
       Node {
