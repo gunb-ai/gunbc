@@ -345,70 +345,63 @@ fn realized_workflow_reading(path: String, source: String) -> RealizedWorkflowRe
   }
 }
 
-type RealizedUsesScan {
-  uses: List<RealizedActionUse>
-  refusal: String
-}
+// ONE READING PER USE SITE, IN DOCUMENT ORDER: a use, or the refusal that site produces. The job-level
+// `uses:` comes before the job's steps, and jobs and steps keep their order, so the first refusal in
+// the flattened readings is the one a scan that stopped at it would have reported -- and the scan no
+// longer carries a stop flag through every step, or copies its accumulated uses at every use.
+type RealizedUseRead
+  = RealizedUseFound { found: RealizedActionUse }
+  | RealizedUseRefused { reason: String }
 
 fn realized_jobs_reading(path: String, jobs: List<YamlKeyValue>) -> RealizedWorkflowReading {
-  let scan = fold(jobs, init: RealizedUsesScan { uses: [], refusal: "" }, f: fn(acc, job) {
-    if acc.refusal != "" { acc } else { realized_job_scan(path: path, acc: acc, job_id: job.key, job: job.value) }
-  })
-  if scan.refusal != "" {
-    RealizedWorkflowUnreadable { workflow_path: path, reason: scan.refusal }
-  } else {
-    RealizedWorkflowUses { workflow_path: path, uses: scan.uses }
+  let reads = flat_map(jobs, job => realized_job_reads(path: path, job_id: job.key, job: job.value))
+  match get(xs: flat_map(reads, r => match r { RealizedUseRefused { reason: why } => [why]  RealizedUseFound { found: _ } => [] }), index: 0) {
+    Present { value: why } => RealizedWorkflowUnreadable { workflow_path: path, reason: why }
+    Absent => RealizedWorkflowUses { workflow_path: path, uses: flat_map(reads, r => match r { RealizedUseFound { found: u } => [u]  RealizedUseRefused { reason: _ } => [] }) }
   }
 }
 
-fn realized_uses_value(path: String, job_id: String, site: ActionUseSite, where_: String, v: YamlValue, acc: RealizedUsesScan) -> RealizedUsesScan {
+fn realized_use_read(path: String, job_id: String, site: ActionUseSite, where_: String, v: YamlValue) -> RealizedUseRead {
   match v {
     YamlString { value: t } =>
       if t == "" {
-        RealizedUsesScan { uses: acc.uses, refusal: join(["job ", job_id, ": ", where_, " `uses` is empty"], "") }
+        RealizedUseRefused { reason: join(["job ", job_id, ": ", where_, " `uses` is empty"], "") }
       } else {
-        RealizedUsesScan { uses: concat(acc.uses, [RealizedActionUse { workflow_path: path, job_id: job_id, site: site, uses_text: t }]), refusal: "" }
+        RealizedUseFound { found: RealizedActionUse { workflow_path: path, job_id: job_id, site: site, uses_text: t } }
       }
-    _ => RealizedUsesScan { uses: acc.uses, refusal: join(["job ", job_id, ": ", where_, " `uses` is not a string"], "") }
+    _ => RealizedUseRefused { reason: join(["job ", job_id, ": ", where_, " `uses` is not a string"], "") }
   }
 }
 
-fn realized_job_scan(path: String, acc: RealizedUsesScan, job_id: String, job: YamlValue) -> RealizedUsesScan {
+fn realized_step_reads(path: String, job_id: String, step: YamlValue) -> List<RealizedUseRead> {
+  match step {
+    YamlMapping { entries: step_fields } =>
+      match yaml_lookup(entries: step_fields, key: "uses") {
+        YamlKeyAbsent => []
+        YamlKeyPresent { value: v } => [realized_use_read(path: path, job_id: job_id, site: StepActionUse, where_: "a step", v: v)]
+      }
+    _ => [RealizedUseRefused { reason: join(["job ", job_id, ": a step is not a mapping"], "") }]
+  }
+}
+
+fn realized_job_reads(path: String, job_id: String, job: YamlValue) -> List<RealizedUseRead> {
   match job {
     YamlMapping { entries: fields } => {
       let named = filter(fields, e => (e.key == "uses") || (e.key == "steps"))
-      let with_job_use = match yaml_lookup(entries: named, key: "uses") {
-        YamlKeyAbsent => acc
-        YamlKeyPresent { value: v } => realized_uses_value(path: path, job_id: job_id, site: JobReusableWorkflowUse, where_: "the job-level", v: v, acc: acc)
+      let job_use = match yaml_lookup(entries: named, key: "uses") {
+        YamlKeyAbsent => []
+        YamlKeyPresent { value: v } => [realized_use_read(path: path, job_id: job_id, site: JobReusableWorkflowUse, where_: "the job-level", v: v)]
       }
-      if with_job_use.refusal != "" {
-        with_job_use
-      } else {
-        match yaml_lookup(entries: named, key: "steps") {
-          YamlKeyAbsent => with_job_use
-          YamlKeyPresent { value: steps } =>
-            match steps {
-              YamlSequence { elements: els } =>
-                fold(els, init: with_job_use, f: fn(a, step) {
-                  if a.refusal != "" {
-                    a
-                  } else {
-                    match step {
-                      YamlMapping { entries: step_fields } =>
-                        match yaml_lookup(entries: step_fields, key: "uses") {
-                          YamlKeyAbsent => a
-                          YamlKeyPresent { value: v } => realized_uses_value(path: path, job_id: job_id, site: StepActionUse, where_: "a step", v: v, acc: a)
-                        }
-                      _ => RealizedUsesScan { uses: a.uses, refusal: join(["job ", job_id, ": a step is not a mapping"], "") }
-                    }
-                  }
-                })
-              _ => RealizedUsesScan { uses: with_job_use.uses, refusal: join(["job ", job_id, ": `steps` is not a sequence"], "") }
-            }
-        }
+      match yaml_lookup(entries: named, key: "steps") {
+        YamlKeyAbsent => job_use
+        YamlKeyPresent { value: steps } =>
+          match steps {
+            YamlSequence { elements: els } => concat(job_use, flat_map(els, st => realized_step_reads(path: path, job_id: job_id, step: st)))
+            _ => concat(job_use, [RealizedUseRefused { reason: join(["job ", job_id, ": `steps` is not a sequence"], "") }])
+          }
       }
     }
-    _ => RealizedUsesScan { uses: acc.uses, refusal: join(["job ", job_id, " is not a mapping"], "") }
+    _ => [RealizedUseRefused { reason: join(["job ", job_id, " is not a mapping"], "") }]
   }
 }
 
@@ -483,7 +476,7 @@ type RealizedUseSet {
 fn realized_distinct_uses(uses: List<RealizedActionUse>) -> List<RealizedActionUse> {
   fold(uses, init: RealizedUseSet { seen: empty_map(), uses: [] }, f: fn(acc, u) {
     let key = concat(match u.site { StepActionUse => "step "  JobReusableWorkflowUse => "job " }, u.uses_text)
-    if map_contains_key(acc.seen, key) { acc } else { RealizedUseSet { seen: map_insert(acc.seen, key, true), uses: concat(acc.uses, [u]) } }
+    if map_contains_key(acc.seen, key) { acc } else { RealizedUseSet { seen: map_insert(acc.seen, key, true), uses: acc.uses |> list_push(u) } }
   }).uses
 }
 

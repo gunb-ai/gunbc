@@ -777,8 +777,17 @@ fn yaml_block(text: String, n: Int, seq: Bool, base: Int) -> YamlBlockResult {
       yaml_one_chunk_block(text: text, n: n, seq: seq, base: base)
     } else {
       let raw = split(s: replace(replace(text, k.nl, k.marked), k.marked_deeper, k.deeper), delimiter: k.marked)
-      let merge = if string_contains(s: text, pattern: k.comment) { true } else if n == 0 { yaml_root_needs_merge(text: text, seq: seq) } else if seq { false } else { string_contains(s: text, pattern: k.item) }
-      let chunks = if merge { yaml_merge_chunks(chunks: raw, sp: substring(s: yaml_spaces, start: 0, end: n), seq: seq) } else { raw }
+      let chunks = if string_contains(s: text, pattern: k.comment) {
+        yaml_merge_chunks(chunks: raw, sp: substring(s: yaml_spaces, start: 0, end: n), seq: seq)
+      } else if n == 0 {
+        if yaml_root_needs_merge(text: text, seq: seq) { yaml_merge_chunks(chunks: raw, sp: "", seq: seq) } else { raw }
+      } else if seq {
+        raw
+      } else if string_contains(s: text, pattern: k.item) {
+        yaml_merge_chunks(chunks: raw, sp: substring(s: yaml_spaces, start: 0, end: n), seq: seq)
+      } else {
+        raw
+      }
       if seq { yaml_seq_block(chunks: chunks, n: n, base: base) } else { yaml_map_block(chunks: chunks, n: n, base: base) }
     }
   }
