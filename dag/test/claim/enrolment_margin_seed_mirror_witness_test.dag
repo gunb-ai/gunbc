@@ -1,0 +1,57 @@
+module test.claim.enrolment_margin_seed_mirror_witness_test
+
+import extdeps.filesystem.filesystem_io
+import std.measure { millisecond }
+import v2.std.collection { List }
+import v2.workflow.floor_enrolment_margin {
+  EnrolmentMarginStanding,
+  EnrolmentWithinMargin, EnrolmentOverMargin, EnrolmentCeilingCensored, EnrolmentBoundWithoutCeiling,
+  EnrolmentNotMeasured, EnrolmentOutsideThisRunsExecution, EnrolmentExpensivenessDeclared,
+  EnrolmentRosterGroundStale, EnrolmentDeadBandStale, EnrolmentDeadBandWrongGround,
+  EnrolmentExpensivenessDeadBand, EnrolmentCostAbsent,
+  enrolment_margin_standing_name, enrolment_margin_blocking_cause,
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE SEED MIRROR OF THE ENROLMENT-MARGIN STANDING IS PINNED TO ITS .dag AUTHORITY. The decision lives
+// in v2.workflow.floor_enrolment_margin; src/v1/stage0/src/cli_run/required_floor_runner.rs
+// EnrolmentMarginStanding is its host rendering (gunbc.enrolment_dead_band_seed_growth). This claim
+// builds one value of EVERY arm of the model's coproduct, derives each arm's wire name and blocking
+// cause from the model's own functions, and requires each to appear, quoted, in the seed file. So an
+// arm the model gains (as the dead-band arms were) with no mirror, or a mirror spelling that drifts
+// from the model, reds here. The expectations are never written in this file: they are the model's
+// output, which is the seed_mirror_constant_lens pattern applied to a coproduct's wire vocabulary.
+// It pins the VOCABULARY, not the decision logic; the seed's decision logic is pinned by its own unit
+// test the_dead_band_ground_holds_only_an_exact_reading_inside_margin_and_line and the roster-ground
+// sibling, and the model's by v2.test.floor_enrolment_margin.
+data seed_path: String = "src/v1/stage0/src/cli_run/required_floor_runner.rs"
+
+fn every_arm() -> List<EnrolmentMarginStanding> {
+  let m = millisecond(count: 1)
+  [
+    EnrolmentWithinMargin { exact_cpu_ms: m, budget_ms: m },
+    EnrolmentOverMargin { exact_cpu_ms: m, budget_ms: m },
+    EnrolmentCeilingCensored { cpu_lower_bound_ms: m, censoring_ceiling_ms: m },
+    EnrolmentBoundWithoutCeiling { cpu_lower_bound_ms: m },
+    EnrolmentNotMeasured { witness_identity: "x", cause: "x" },
+    EnrolmentOutsideThisRunsExecution { witness_identity: "x", disposition: "x" },
+    EnrolmentExpensivenessDeclared { witness_identity: "x", ground: EnrolmentExpensivenessDeadBand, reading: EnrolmentCostAbsent { witness_identity: "x", cause: "x" } },
+    EnrolmentRosterGroundStale { witness_identity: "x", observed_cpu_ms: m, line_ms: m },
+    EnrolmentDeadBandStale { witness_identity: "x", observed_cpu_ms: m, budget_ms: m },
+    EnrolmentDeadBandWrongGround { witness_identity: "x", observed_cpu_ms: m, line_ms: m },
+  ]
+}
+
+fn seed_quotes(word: String) -> Bool {
+  string_contains(s: filesystem_read(path: seed_path).content, pattern: "\"" + word + "\"")
+}
+
+test fn every_enrolment_standing_name_is_mirrored_in_the_seed() -> Bool {
+  every_arm() |> all(s => seed_quotes(word: enrolment_margin_standing_name(standing: s)))
+}
+
+test fn every_enrolment_blocking_cause_is_mirrored_in_the_seed() -> Bool {
+  every_arm() |> all(s => enrolment_margin_blocking_cause(standing: s) == "" || seed_quotes(word: enrolment_margin_blocking_cause(standing: s)))
+}
