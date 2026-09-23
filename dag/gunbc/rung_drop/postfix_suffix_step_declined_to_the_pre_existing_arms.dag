@@ -22,7 +22,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // construct_node's tag is a Symbol, so that is a change to the construct shape gunbc#12033 lands and
 // a wider package than this one.
 data postfix_suffix_step_declined_to_the_pre_existing_arms_population: List<String> = [
-  "every module over dag + src/v2 for which v2.compiler.body_lowering_fold emits body_lowering_reason_postfix_suffix_carried: a postfix chain step whose suffix is a brace record-literal (`a.b.C { f: v }`) or an `as` suffix. Measured at 8 of the 42 modules that refused postfix_field_access_refused on base; re-derived by the workload adjudicate over dag + src/v2 (claim_executor --v2-native-route), which counts the advisory per module",
+  "every module over dag + src/v2 for which v2.compiler.body_lowering_fold emits body_lowering_reason_postfix_suffix_carried: a postfix chain step whose suffix is a brace record-literal (`a.b.C { f: v }`) or an `as` suffix. the population is re-derived, not transcribed: the workload adjudicate over dag + src/v2 (claim_executor --v2-native-route) counts the advisory per module",
 ]
 
 data postfix_suffix_step_declined_to_the_pre_existing_arms: RungDrop = RungDrop {
