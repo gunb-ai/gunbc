@@ -1,11 +1,11 @@
 module v2.workflow.floor_diff_observe
 
-import gunbc.ci_spec {
+import gunbc.ci_diff_policy {
   DiffMode,
   DiffPolicy,
   DiffMergeBase,
   DiffTwoDot,
-  gunbc_ci_spec
+  gunbc_ci_diff_policy
 }
 import gunbc.diff_baseline {
   CiDiffEvent,
@@ -250,7 +250,7 @@ fn floor_observe_git_diff_unified(policy: DiffPolicy) -> FloorUnifiedDiffResult 
 }
 
 fn floor_observe_git_diff_unified_for_ci() -> FloorUnifiedDiffResult {
-  floor_observe_git_diff_unified(policy: gunbc_ci_spec.diff_policy)
+  floor_observe_git_diff_unified(policy: gunbc_ci_diff_policy)
 }
 
 data floor_diff_baseline_readout_note: String = "A PROJECTION of the already-resolved baseline FOR DIAGNOSTICS ONLY — it observes no git, decides nothing, and adds no second baseline authority (resolve_diff_baseline stays the single one, DESIGN section 3). Its consumer is the affected-set no-observed-change diagnostic in the seed executor: when the observation returns zero changed paths, the receipt must be able to NAME the baseline the comparison was made against, because 'nothing changed' and 'the baseline could not express what changed' are different states with different remedies and the second is what a self-referential baseline produces (a push whose base ref is the pushed ref itself). Locating the state requires naming its base and event, so the diagnostic reads them from here rather than re-deriving them.
@@ -284,7 +284,7 @@ fn floor_observe_diff_baseline_readout(policy: DiffPolicy) -> FloorDiffBaselineR
 }
 
 fn floor_observe_diff_baseline_readout_for_ci() -> FloorDiffBaselineReadout {
-  floor_observe_diff_baseline_readout(policy: gunbc_ci_spec.diff_policy)
+  floor_observe_diff_baseline_readout(policy: gunbc_ci_diff_policy)
 }
 
 data floor_diff_comparison_readout_law: String = "THE PROJECTION A DECIDING CONSUMER MUST TAKE, and the defect that produced it. The baseline readout above answers 'which ref' and nothing else, which is exactly enough to LOCATE a diagnostic and not nearly enough to COMPARE two trees. gunbc#7953 took that lossy projection into the frozen-roster monotonicity gate and then reconstructed the missing half in Rust by imposing merge-base on every arm — deleting the origin/main source fork and immediately re-forking the RELATION instead. That is a fail-open, not a cosmetic slip: PushBefore and ExactReplayBoundary are exact two-dot comparisons, so a non-fast-forward push whose before SHA is not an ancestor gets compared against the common ancestor instead, and a frozen row REINTRODUCED by that push reads as no addition at all. Executed counterexample: roster A=\{X\}, push before B=\{\} (X removed), pushed head H=\{X\} off A; the true two-dot answer H minus B is \{X\} and must refuse, while merge-base(B,H)=A gives H minus A=\{\} and passes real growth.
@@ -345,7 +345,7 @@ fn floor_observe_diff_comparison_readout(policy: DiffPolicy) -> FloorDiffCompari
 }
 
 fn floor_observe_diff_comparison_readout_for_ci() -> FloorDiffComparisonReadout {
-  floor_observe_diff_comparison_readout(policy: gunbc_ci_spec.diff_policy)
+  floor_observe_diff_comparison_readout(policy: gunbc_ci_diff_policy)
 }
 
 fn floor_name_status_from_raw(raw: String) -> FloorNameStatusDiffResult {
@@ -413,7 +413,7 @@ fn floor_observe_git_diff_name_status(policy: DiffPolicy) -> FloorNameStatusDiff
 }
 
 fn floor_observe_git_diff_name_status_for_ci() -> FloorNameStatusDiffResult {
-  floor_observe_git_diff_name_status(policy: gunbc_ci_spec.diff_policy)
+  floor_observe_git_diff_name_status(policy: gunbc_ci_diff_policy)
 }
 
 // BASE-REVISION TEST-DECLARATION CENSUS.

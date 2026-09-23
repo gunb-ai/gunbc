@@ -1,0 +1,39 @@
+module gunbc.recurring_failure_mode.a_control_that_shares_its_derivation_with_its_subject
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_control_that_shares_its_derivation_with_its_subject: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_control_that_shares_its_derivation_with_its_subject" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a control whose content is DERIVED FROM the thing it is meant to discriminate, so it cannot disagree with it. The general form is one sentence -- A CONTROL WRITTEN FROM THE IMPLEMENTATION CAN ONLY AGREE WITH IT -- and the two routes to it look different enough that neither author recognised the other's until they were put side by side. DESCRIBING: read what the code does, write the assertion that says so. COPYING: inline the production body into the control with one input swapped. Copying is simply the most literal way of writing a control from the implementation.",
+
+    "HARM: the suite reports coverage where it has none, and reports it most confidently exactly where the subject is most load-bearing, because a heavily-relied-on fold is the one an author is most likely to describe accurately rather than interrogate. The mutation that removes the wall leaves the control green, so the wall's absence is invisible to every later reader -- and the control is then CITED as the reason the wall is safe to lean on.",
+
+    "SPECIMEN ONE, DESCRIBING (gunbc#11962, review 69784, 2026-09-21). A witness over the /proc/meminfo parse asserted count(all_metrics) == 8 against a fixture whose eighth line is `HugePages_Total: 0` -- a unitless page count the parse was minting as a Kibibyte. The control did not catch the defect; it RECORDED it, because it was written by reading the fold and stating the result. The same change carried a second instance: a termination control that asserted completed-plus-unknown frees a seat, which was the defect the four-state predicate existed to remove.",
+
+    "SPECIMEN TWO, COPYING (gunbc#12017, review 69791, 2026-09-21, session loyal-swift-608). a_refused_identity_refuses_the_store -- a RED written to satisfy a previous review -- carried the production door's body INLINED with only the verdict source swapped, so it evaluated its own copy of the green test it existed to guard. Deleting that test from the real door would have left the control green. The annotation above it asserted the opposite in as many words.",
+
+    "THE SMELL THAT NEEDS NO RUN, and it is what makes this cheaper to catch than to prove: ASK WHAT THE CONTROL SHARES WITH ITS SUBJECT. If it re-derives, re-implements or re-describes the thing under test, it is suspect before any mutation is attempted. Specimen two shared a copied body; specimen one shared a description. The mutation is the proof; the shared-derivation question is the smell that says to go looking.",
+
+    "AND THE REPAIR HAS ITS OWN FAILURE MODE, WHICH IS THE MORE TRANSFERABLE HALF. The first fix of specimen one added the missing unit comparison -- and mutating that comparison away left the control STILL GREEN. A unitless line is excluded by the ARITY requirement rather than by the comparison, and /proc/meminfo publishes no wrong-unit line at all, so the comparison had no instance in the fixture population to discriminate and was a permanently green decoration (DESIGN 4b: worse than absent, because it is cited as coverage). THE FIXTURE POPULATION HAS TO CONTAIN THE CASE THE CHECK EXISTS FOR -- and a REAL-WORLD CORPUS IS EXACTLY WHERE THAT CASE TENDS NOT TO OCCUR, which is why the fixture is where it must be authored. Adding `SomeFutureField: 64 MB` is what made the mutation fail.",
+
+    "NOT predicate_vacuously_true_on_an_empty_domain, and the boundary matters because the remedy differs. There the domain is EMPTY and the check answers true about nothing. Here the domain is POPULATED and healthy-looking -- seven real metrics -- and merely lacks the one case the check discriminates. An emptiness guard does not catch it; only asking what case this check exists for, and whether the fixture contains it, does.",
+
+    "RUNG FOUND AT: mitigatable, by the two habits above -- run the mutation before reporting a control, and ask what the control shares with its subject. Nothing refuses a control that agrees with its subject, because agreement is what a passing control looks like.",
+
+    "CEILING: mechanically preventable. A mutation pass that rebinds each control's subject to a wrong arm and requires the control to red is decidable over the corpus, and a control that survives every mutation of its own subject is reportable as establishing nothing.",
+
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: every control is executed against a mutated subject and must red, with a control that survives all mutations of its subject reported as non-discriminating. Deliberately not 'review controls for copied bodies' -- specimen one had no copied body and would pass that review unchanged.",
+
+    "CONSUMPTION: the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster includes this per-class declaration.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "extdeps.linux.proc_meminfo", decl_name: "meminfo_line_metric"),
+    decl_ref(module_path: "test.claim.os_proc_meminfo_witness", decl_name: "parsing_meminfo_reads_the_named_fields_and_refuses_a_missing_one"),
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "unit_termination_decide"),
+  ],
+}

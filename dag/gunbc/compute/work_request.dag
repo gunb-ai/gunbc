@@ -127,11 +127,17 @@ type WorkOutput {
 // THE FIVE ENDINGS, and only five (compute-exact-work-contract's red control: a machine that killed
 // the work cannot render as the work having failed). Every arm carries the identity so a caller can
 // never attach a verdict to a different request.
+// A CANCELLATION CARRIES WHY, and the arm was a bare identity until a real run made the gap
+// visible. The only producer of this arm is a launch refused by the attempt gate -- somebody else
+// ended this attempt before it spawned -- and an ending of "cancelled" with no cause cannot be
+// told apart from any other cancellation by the caller who reads the document. The detail is in
+// the durable outcome for the same reason every other arm's is: the next reader of this identity
+// gets the same account the first caller got.
 type WorkOutcome
   = WorkSucceeded { identity: String, outputs: List<WorkOutput>, log_path: String }
   | WorkFailed { identity: String, exit_code: Int, log_path: String }
   | WorkRefusedByInfrastructure { identity: String, cause: WorkInfrastructureRefusal }
-  | WorkCancelled { identity: String }
+  | WorkCancelled { identity: String, detail: String }
   | WorkOutputMismatch { identity: String, detail: String }
 
 // Infrastructure refusals are typed and counted, never a widen: a producer already holds the lease
@@ -178,19 +184,53 @@ fn work_outcome_identity(o: WorkOutcome) -> String {
     WorkSucceeded { identity, outputs: _, log_path: _ } => identity
     WorkFailed { identity, exit_code: _, log_path: _ } => identity
     WorkRefusedByInfrastructure { identity, cause: _ } => identity
-    WorkCancelled { identity } => identity
+    WorkCancelled { identity, detail: _ } => identity
     WorkOutputMismatch { identity, detail: _ } => identity
   }
 }
 
-fn work_outcome_ending(o: WorkOutcome) -> String {
+// HOW A WORK OUTCOME ENDED, WITH ITS PAYLOAD DROPPED. It is the closed set the ending words were
+// always drawn from, typed once so a reader that stores an ending (the attempt slot's terminal
+// generation) decodes against the set rather than accepting any word. work_outcome_ending is its
+// spelling, and work_ending_decode is the inverse of that one spelling, not a second vocabulary.
+type WorkEnding
+  = WorkEndedSucceeded
+  | WorkEndedFailed
+  | WorkEndedRefusedByInfrastructure
+  | WorkEndedCancelled
+  | WorkEndedOutputMismatch
+
+fn work_outcome_ending_of(o: WorkOutcome) -> WorkEnding {
   match o {
-    WorkSucceeded { identity: _, outputs: _, log_path: _ } => "succeeded"
-    WorkFailed { identity: _, exit_code: _, log_path: _ } => "failed"
-    WorkRefusedByInfrastructure { identity: _, cause: _ } => "refused_by_infrastructure"
-    WorkCancelled { identity: _ } => "cancelled"
-    WorkOutputMismatch { identity: _, detail: _ } => "output_mismatch"
+    WorkSucceeded { identity: _, outputs: _, log_path: _ } => WorkEndedSucceeded
+    WorkFailed { identity: _, exit_code: _, log_path: _ } => WorkEndedFailed
+    WorkRefusedByInfrastructure { identity: _, cause: _ } => WorkEndedRefusedByInfrastructure
+    WorkCancelled { identity: _, detail: _ } => WorkEndedCancelled
+    WorkOutputMismatch { identity: _, detail: _ } => WorkEndedOutputMismatch
   }
+}
+
+fn work_ending_wire(e: WorkEnding) -> String {
+  match e {
+    WorkEndedSucceeded => "succeeded"
+    WorkEndedFailed => "failed"
+    WorkEndedRefusedByInfrastructure => "refused_by_infrastructure"
+    WorkEndedCancelled => "cancelled"
+    WorkEndedOutputMismatch => "output_mismatch"
+  }
+}
+
+fn work_ending_decode(word: String) -> WorkEnding? {
+  if word == work_ending_wire(e: WorkEndedSucceeded) { Present { value: WorkEndedSucceeded } }
+  else if word == work_ending_wire(e: WorkEndedFailed) { Present { value: WorkEndedFailed } }
+  else if word == work_ending_wire(e: WorkEndedRefusedByInfrastructure) { Present { value: WorkEndedRefusedByInfrastructure } }
+  else if word == work_ending_wire(e: WorkEndedCancelled) { Present { value: WorkEndedCancelled } }
+  else if word == work_ending_wire(e: WorkEndedOutputMismatch) { Present { value: WorkEndedOutputMismatch } }
+  else { none }
+}
+
+fn work_outcome_ending(o: WorkOutcome) -> String {
+  work_ending_wire(e: work_outcome_ending_of(o: o))
 }
 
 fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
@@ -242,7 +282,9 @@ fn work_outcome_json(o: WorkOutcome, subject: WorkSubject, op: WorkOperation) ->
     WorkRefusedByInfrastructure { identity: _, cause } => [
       json_kv(key: "cause", value: json_string(s: work_refusal_detail(r: cause))),
     ]
-    WorkCancelled { identity: _ } => []
+    WorkCancelled { identity: _, detail } => [
+      json_kv(key: "detail", value: json_string(s: detail)),
+    ]
     WorkOutputMismatch { identity: _, detail } => [
       json_kv(key: "detail", value: json_string(s: detail)),
     ]
