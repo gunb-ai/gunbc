@@ -11,32 +11,13 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(tag = "_variant")]
 pub enum EmittedEdgeProvenance {
-    SemanticSourceReference,
     RuntimePrelude,
     ReexportFacade,
-    EmitterHelper { realized_type: String },
-    ServiceRuntimeSurface,
-}
-impl EmittedEdgeProvenance {
-    pub fn realized_type(&self) -> String {
-        match self {
-            EmittedEdgeProvenance::SemanticSourceReference => {
-                panic!("no realized_type on unit variant")
-            }
-            EmittedEdgeProvenance::RuntimePrelude => panic!("no realized_type on unit variant"),
-            EmittedEdgeProvenance::ReexportFacade => panic!("no realized_type on unit variant"),
-            EmittedEdgeProvenance::EmitterHelper {
-                realized_type: __val,
-                ..
-            } => __val.clone(),
-            EmittedEdgeProvenance::ServiceRuntimeSurface => {
-                panic!("no realized_type on unit variant")
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -58,7 +39,7 @@ impl EmittedEdgeTarget {
 pub struct EmittedEdge {
     pub from: String,
     pub to: Rc<EmittedEdgeTarget>,
-    pub provenance: Rc<EmittedEdgeProvenance>,
+    pub provenance: EmittedEdgeProvenance,
 }
 
 pub fn rust_runtime_prelude_module() -> String {
@@ -75,7 +56,7 @@ pub fn rust_prelude_emitted_edges(module: String) -> Rc<Vec<Rc<EmittedEdge>>> {
         Rc::new(vec![Rc::new(EmittedEdge {
             from: module.clone(),
             to: Rc::new(EmittedEdgeTarget::EmittedCrateRootTarget),
-            provenance: Rc::new(EmittedEdgeProvenance::ReexportFacade),
+            provenance: EmittedEdgeProvenance::ReexportFacade,
         })])
     } else {
         Rc::new(vec![
@@ -84,12 +65,12 @@ pub fn rust_prelude_emitted_edges(module: String) -> Rc<Vec<Rc<EmittedEdge>>> {
                 to: Rc::new(EmittedEdgeTarget::EmittedModuleTarget {
                     module: rust_runtime_prelude_module(),
                 }),
-                provenance: Rc::new(EmittedEdgeProvenance::RuntimePrelude),
+                provenance: EmittedEdgeProvenance::RuntimePrelude,
             }),
             Rc::new(EmittedEdge {
                 from: module.clone(),
                 to: Rc::new(EmittedEdgeTarget::EmittedCrateRootTarget),
-                provenance: Rc::new(EmittedEdgeProvenance::ReexportFacade),
+                provenance: EmittedEdgeProvenance::ReexportFacade,
             }),
         ])
     }
@@ -103,3 +84,8 @@ pub fn emitted_edge_target_module(edge: Rc<EmittedEdge>) -> Rc<Vec<String>> {
         EmittedEdgeTarget::EmittedCrateRootTarget => Rc::new(vec![]),
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RuntimePrelude;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ReexportFacade;

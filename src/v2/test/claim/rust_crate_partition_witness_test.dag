@@ -25,7 +25,6 @@ import v2.std.compilers.compilation_unit {
 import gunbc.rust_emitted_edge {
   EmittedEdge,
   EmittedModuleTarget,
-  EmitterHelper,
   RuntimePrelude,
   rust_runtime_prelude_module
 }
@@ -50,6 +49,8 @@ import v2.workflow.rust_crate_partition {
   stage0_source_module_dag,
   stage0_module_dag_merge,
   stage0_resolve_partition_outcome,
+  Stage0PartitionResolved,
+  Stage0PartitionResolveRefused,
   module_dag_with_emitted_edges,
   module_dag_runtime_prelude_edges,
   ModuleDagEmittedMerge,
@@ -396,11 +397,11 @@ test fn witness_partition_r4_valid_on_interim_holds() -> Bool {
 
 test fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
   match stage0_resolve_partition_outcome {
-    ResolvePartitionOk { assignment: resolved, provenance: _ } => {
+    Stage0PartitionResolved { module_dag: _, assignment: resolved } => {
       let expected = stage0_interim_explicit_assignment()
       (resolved |> count) == (expected |> count)
     }
-    ResolvePartitionRefused { cause: _ } => false
+    Stage0PartitionResolveRefused { cause: _ } => false
   }
 }
 
@@ -580,14 +581,14 @@ test fn witness_emitter_reverse_edge_is_refused_by_name_holds() -> Bool {
   let reverse = EmittedEdge {
     from: "std_algebra",
     to: EmittedModuleTarget { module: "v1_std_core" },
-    provenance: EmitterHelper { realized_type: "FreeMonoid" }
+    provenance: RuntimePrelude
   }
   match module_dag_with_emitted_edges(
     module_dag: stage0_source_module_dag,
     emitted: module_dag_runtime_prelude_edges(module_dag: stage0_source_module_dag) |> list_push(reverse)
   ) {
-    ModuleDagEmittedRefused { cause: EmitterReverseEdge { from: from, to: to, provenance: EmitterHelper { realized_type: realized } } } =>
-      (from as String) == "std_algebra" && (to as String) == "v1_std_core" && realized == "FreeMonoid"
+    ModuleDagEmittedRefused { cause: EmitterReverseEdge { from: from, to: to, provenance: RuntimePrelude } } =>
+      (from as String) == "std_algebra" && (to as String) == "v1_std_core"
     _ => false
   }
 }

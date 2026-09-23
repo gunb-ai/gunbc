@@ -13,12 +13,12 @@ import std.types { List, String }
 // This module lives under dag/ because the v1 emitter imports it and the v2 partition imports it:
 // one producer, two readers, no second list.
 
+// Only the provenances a producer below emits are arms. The typed use-line rows (helper
+// carriers, authored and reference-derived imports, service/CLI surfaces) add their arms in the
+// change that lands their producer, not before it.
 type EmittedEdgeProvenance
-  = SemanticSourceReference
-  | RuntimePrelude
+  = RuntimePrelude
   | ReexportFacade
-  | EmitterHelper { realized_type: String }
-  | ServiceRuntimeSurface
 
 type EmittedEdgeTarget
   = EmittedModuleTarget { module: String }

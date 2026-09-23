@@ -15599,7 +15599,7 @@ pub fn emit_prelude(module_name: String) -> String {
             let mut __result = Vec::new();
             for edge in edges.iter().cloned() {
                 __result.extend(
-                    (*match (*edge.provenance.clone()).clone() {
+                    (*match edge.provenance.clone() {
                         EmittedEdgeProvenance::RuntimePrelude => {
                             crate::gunbc_rust_emitted_edge::emitted_edge_target_module(edge.clone())
                         }
@@ -15614,7 +15614,7 @@ pub fn emit_prelude(module_name: String) -> String {
         let has_facade = {
             let mut __found = false;
             for edge in edges.iter().cloned() {
-                if match (*edge.provenance.clone()).clone() {
+                if match edge.provenance.clone() {
                     EmittedEdgeProvenance::ReexportFacade => true,
                     _ => false,
                 } {

@@ -928,27 +928,37 @@ fn admit_partition_assignment(
 // shared-state least common ancestor -- DESIGN section 2 calls that authored duplication, not a
 // caching opportunity, and says to carry the first value rather than let the second recompute it.
 // Binding it here is the same move this change makes for stage0_module_dag_merge one declaration up.
-data stage0_resolve_partition_outcome: ResolvePartitionOutcome = match stage0_module_dag_merge {
+// The resolve carries the merged DAG it decided over, so the receipt and the re-export derivation
+// read that DAG from the resolution rather than re-matching the merge: an emitted-edge refusal is
+// answered once, here, and has no second arm downstream to exist at.
+type Stage0PartitionResolve
+  = Stage0PartitionResolved {
+      module_dag: ModuleDag
+      assignment: Map<ModuleId, CompilationUnitId>
+    }
+  | Stage0PartitionResolveRefused { cause: ResolvePartitionRefusalCause }
+
+data stage0_resolve_partition_outcome: Stage0PartitionResolve = match stage0_module_dag_merge {
   ModuleDagEmittedRefused { cause: cause } =>
-    ResolvePartitionRefused { cause: PartitionEmittedEdgeRefused { cause: cause } }
+    Stage0PartitionResolveRefused { cause: PartitionEmittedEdgeRefused { cause: cause } }
   ModuleDagEmittedMerged { module_dag: module_dag } =>
-    resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: module_dag)
+    match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: module_dag) {
+      ResolvePartitionOk { assignment: assignment, provenance: _ } =>
+        Stage0PartitionResolved { module_dag: module_dag, assignment: assignment }
+      ResolvePartitionRefused { cause: cause } =>
+        Stage0PartitionResolveRefused { cause: cause }
+    }
 }
 
 data stage0_partition_receipt_outcome: Stage0PartitionReceiptOutcome = match stage0_resolve_partition_outcome {
-  ResolvePartitionOk { assignment: assignment, provenance: _ } =>
-    match stage0_module_dag_merge {
-      ModuleDagEmittedRefused { cause: cause } =>
-        Stage0PartitionReceiptResolveRefused { cause: PartitionEmittedEdgeRefused { cause: cause } }
-      ModuleDagEmittedMerged { module_dag: module_dag } =>
-        match partition_fold_outcome(module_dag: module_dag, assignment: assignment) {
-          PartitionFoldOk { units: units } =>
-            Stage0PartitionReceiptOk { units: units }
-          PartitionFoldRefused { cause: cause } =>
-            Stage0PartitionReceiptFoldRefused { cause: cause }
-        }
+  Stage0PartitionResolved { module_dag: module_dag, assignment: assignment } =>
+    match partition_fold_outcome(module_dag: module_dag, assignment: assignment) {
+      PartitionFoldOk { units: units } =>
+        Stage0PartitionReceiptOk { units: units }
+      PartitionFoldRefused { cause: cause } =>
+        Stage0PartitionReceiptFoldRefused { cause: cause }
     }
-  ResolvePartitionRefused { cause: cause } =>
+  Stage0PartitionResolveRefused { cause: cause } =>
     Stage0PartitionReceiptResolveRefused { cause: cause }
 }
 
@@ -1183,8 +1193,8 @@ fn stage0_partition_row_lookups_resolved() -> Bool {
 // the valid verdict; asking validate_partition_r4 again here would pay the same verdict twice.
 fn stage0_partition_r4_valid() -> Bool {
   match stage0_resolve_partition_outcome {
-    ResolvePartitionOk { assignment: _, provenance: _ } => true
-    ResolvePartitionRefused { cause: _ } => false
+    Stage0PartitionResolved { module_dag: _, assignment: _ } => true
+    Stage0PartitionResolveRefused { cause: _ } => false
   }
 }
 
@@ -1414,28 +1424,21 @@ type Stage0ReexportDerivationDisagreements
 
 fn stage0_reexport_derivation_disagreements() -> Stage0ReexportDerivationDisagreements {
   match stage0_resolve_partition_outcome {
-    ResolvePartitionRefused { cause: cause } =>
+    Stage0PartitionResolveRefused { cause: cause } =>
       Stage0ReexportDisagreementsUnavailable {
         cause: Stage0ReexportPartitionResolveRefused { cause: cause }
       }
-    ResolvePartitionOk { assignment: assignment, provenance: _ } =>
-      match stage0_module_dag_merge {
-        ModuleDagEmittedRefused { cause: cause } =>
+    Stage0PartitionResolved { module_dag: module_dag, assignment: assignment } =>
+      match reexport_derivation_disagreements_over(
+        edges: assignment_unit_dep_edges(module_dag: module_dag, assignment: assignment),
+        rows: stage0_module_bearing_crate_rows()
+      ) {
+        ReexportDisagreementScanUnitHasNoRow { unit_id: unit_id } =>
           Stage0ReexportDisagreementsUnavailable {
-            cause: Stage0ReexportPartitionResolveRefused { cause: PartitionEmittedEdgeRefused { cause: cause } }
+            cause: Stage0ReexportDepUnitHasNoPackageRow { unit_id: unit_id }
           }
-        ModuleDagEmittedMerged { module_dag: module_dag } =>
-          match reexport_derivation_disagreements_over(
-            edges: assignment_unit_dep_edges(module_dag: module_dag, assignment: assignment),
-            rows: stage0_module_bearing_crate_rows()
-          ) {
-            ReexportDisagreementScanUnitHasNoRow { unit_id: unit_id } =>
-              Stage0ReexportDisagreementsUnavailable {
-                cause: Stage0ReexportDepUnitHasNoPackageRow { unit_id: unit_id }
-              }
-            ReexportDisagreementScanOk { packages: packages } =>
-              Stage0ReexportDisagreementsDerived { packages: packages }
-          }
+        ReexportDisagreementScanOk { packages: packages } =>
+          Stage0ReexportDisagreementsDerived { packages: packages }
       }
   }
 }
