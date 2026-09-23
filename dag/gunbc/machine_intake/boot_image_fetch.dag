@@ -117,7 +117,6 @@ fn fetch_verified_boot_image(
   image_name: NonEmptyStr,
   expected_sha256: NonEmptyStr,
 ) -> BootImageFetchOutcome
-  uses net: std.resources.Network
 {
   let published_path = boot_image_published_path(export_dir: export_dir, image_name: image_name)
   let staging_path = boot_image_staging_path(published_path: published_path)
@@ -147,7 +146,6 @@ fn verify_and_publish_boot_image(
   export_dir: NonEmptyStr,
   expected_sha256: NonEmptyStr,
 ) -> BootImageFetchOutcome
-  uses net: std.resources.Network
 {
   let measured = sha256sum_file_digest_via_shell(path: staging_path)
   return match measured {

@@ -8,7 +8,7 @@ import product.capacity.event_chain { PartitionId }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance, dashboard_instance_compute_root }
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
-  compute_capacity_subject, compute_capacity_root, compute_memory_partition,
+  compute_capacity_subject, compute_capacity_root, compute_memory_partition, compute_memory_ceiling,
   HostMemoryObservation, HostMemoryObserved, HostMemoryUnobserved, observe_host_memory,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
   compute_reserve_on, compute_reserve_against, compute_release, ComputeRelease, ComputeReleased, ComputeReleaseRefused,
@@ -28,6 +28,25 @@ import gunbc.compute.host_capacity {
 
 data one_gibibyte_in_kibibytes: Int = 1048576
 
+// THIS FILE RUNS ON THE LOCAL-REPO WET LANE, AND THAT TAKES THREE ROWS IN THREE AUTHORITIES.
+// Named here because the carriers do not reference each other and nothing refuses a file that has
+// some of them and not all -- the state this file was in from gunbc#11962 until gunbc#12025, which
+// blocked the merge queue for gunbc#11829 with route_gap_unenrolled=5.
+//
+//   1. v2.workflow.local_repo_wet_terminal local_repo_wet_schedule -- a WetScheduledClaim per
+//      identity. This is the ROUTE, and it is what discharges the hold.
+//   2. gunbc.ci_layer_roots witness_exclusion_frontier -- the row classifying this file
+//      LocalRepoWetLane. It does NOT keep the nominal floor from planning these identities: a
+//      changed witness is admitted regardless of any exclusion, deliberately, so an exclusion list
+//      cannot be how a witness opts out of the commit that introduces it.
+//   3. v2.workflow.floor_route_gap floor_route_gap_expectation_chunk_21 -- the expectation for the
+//      five identities below that reach fresh_root(). Without it the nominal floor counts a measured
+//      identity as unmeasured and BLOCKS instead of holding.
+//
+// ONLY THE FIVE THAT CALL fresh_root() ARE ENROLLED IN (3). the_real_observation_reads_this_machine
+// and two_instances_on_one_host_resolve_to_one_pool_at_one_root reach their subjects hermetically;
+// enrolling either would be a stale_route_gap, which is its own red. So a claim added below that
+// calls fresh_root() owes a chunk_21 row, and one that does not must not have one.
 fn fresh_root() -> String {
   shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_compute_capacity.XXXXXX").path
 }
@@ -149,10 +168,10 @@ test fn an_appropriation_larger_than_the_machine_refuses_rather_than_admitting()
 test fn two_instances_on_one_host_resolve_to_one_pool_at_one_root() -> Bool {
   let live = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
-  match compute_capacity_subject(instance: live) {
+  match compute_capacity_subject(instance: live, request: compute_memory_ceiling(instance: live)) {
     ComputeSubjectHostUnresolved { host: _ } => false
     ComputeSubjectResolved { subject: a } =>
-      match compute_capacity_subject(instance: lab) {
+      match compute_capacity_subject(instance: lab, request: compute_memory_ceiling(instance: lab)) {
         ComputeSubjectHostUnresolved { host: _ } => false
         ComputeSubjectResolved { subject: b } =>
           (live.instance_id as String) != (lab.instance_id as String)

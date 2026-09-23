@@ -6657,10 +6657,47 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
 
         ExprData::ExprVar { binding_kind } => eval_var(node, binding_kind.as_deref(), env, ctx),
 
+        // WHICH OPERANDS ARE EVALUATED IS READ FROM THE DECLARED ROW, NOT DECIDED HERE.
+        //
+        // This arm used to evaluate BOTH operands through `?` and then dispatch, which made the
+        // interpreter strict for every operator while the Rust emitter rendered `&&`, `||` and
+        // `??` as host forms that demand the right operand only conditionally. One accepted
+        // program, two behaviours: `false && Filesystem.Write(..)` wrote the file under this arm
+        // and not under the emitted one, and `n != 0 && (100 / n) > 1` at n = 0 refused here and
+        // returned false there. The class is gunbc.recurring_failure_mode
+        // realization_arms_diverge_on_whether_the_program_refuses, whose next-rung trigger named
+        // the capability this now consumes: std.operator_realization operand_demand, one row that
+        // THIS ARM AND THE RUST EMITTER read -- those two, and not every realization of BinOp. The
+        // Rust emitter derives its rendering from the same fold (v1.compiler.emit_rust
+        // emit_rust_demanded_host_bin_op), so neither of those two arms carries an evaluation-order
+        // decision of its own. The Go, Python and dag emission paths still reach BinOp through
+        // v1.compiler.emit emit_default_bin_op, which consults no demand row; that gap and its
+        // trigger are recorded on the failure-mode row rather than implied away here.
+        //
+        // The row is derived from std.logic, not invented: classical_and is
+        // `match a { False => False  True => b }`, so the right operand is demanded only under one
+        // left value, and the interpreter was the arm disagreeing with the corpus's own logic
+        // authority.
         ExprData::ExprBinOp { op, .. } => {
             let left = eval_expr(&binop_left(node.clone()), env, ctx)?;
-            let right = eval_expr(&binop_right(node.clone()), env, ctx)?;
-            eval_binop(&op, left, right, ctx)
+            match &*crate::std_operator_realization::operand_demand(op.clone()) {
+                crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIs {
+                    deciding,
+                } if left.is_truthy() != *deciding => {
+                    // `a && b` with a false, or `a || b` with a true: the result IS the left
+                    // value's truth and the right operand is never asked for.
+                    Ok(Value::Bool(left.is_truthy()))
+                }
+                crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIsAbsent
+                    if !matches!(left, Value::Null) =>
+                {
+                    Ok(left)
+                }
+                _ => {
+                    let right = eval_expr(&binop_right(node.clone()), env, ctx)?;
+                    eval_binop(&op, left, right, ctx)
+                }
+            }
         }
 
         ExprData::ExprUnaryOp { op } => {
@@ -8774,10 +8811,7 @@ fn is_structural_pure_fn(name: &str) -> bool {
 }
 
 fn eval_recompute_str_hash(s: &str) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    s.hash(&mut h);
-    h.finish()
+    v1_rt::str_content_hash(s)
 }
 
 fn eval_recompute_mix(seed: u64, x: u64) -> u64 {
@@ -8927,10 +8961,9 @@ fn eval_recompute_value_hash(
                 Value::Float(f) => {
                     EvalRecomputeStep::Have(eval_recompute_mix(0xA5A5_0030, f.to_bits()))
                 }
-                Value::Str(s) => EvalRecomputeStep::Have(eval_recompute_mix(
-                    0xA5A5_0040,
-                    eval_recompute_str_hash(s),
-                )),
+                Value::Str(s) => {
+                    EvalRecomputeStep::Have(eval_recompute_mix(0xA5A5_0040, s.content_hash()))
+                }
                 Value::Fn { node } => EvalRecomputeStep::Have(eval_recompute_mix(
                     0xA5A5_0050,
                     Rc::as_ptr(node) as u64,
@@ -9092,6 +9125,46 @@ fn eval_recompute_value_hash(
     }
 }
 
+/// THE PUSH CONSTRUCTOR CARRIES THE LIST KEY FORWARD, because the list content hash is a left
+/// fold with no finalizer: `hash(push(xs, x)) == mix(hash(xs), hash(x))` exactly. A recursion that
+/// threads a growing `list_push` accumulator hands every call a NEW `Rc`, so the identity memo
+/// missed on every step and the key rehashed the whole accumulator: one relation realized at
+/// per-call O(size), the same key-derivation defect #12065 closed for strings. The failing link is
+/// the key derivation, not memo admission -- once the key is O(item), a call that never recurs
+/// costs a bounded constant, so no "can this recur" heuristic is needed to decide admission.
+///
+/// DEMAND-GATED: it extends only a parent hash that a key derivation already paid for (alive in the
+/// memo). An accumulator no call ever keyed is never hashed here, so a program that does not key
+/// lists pays nothing. The item is hashed through the same memo the key would use, so the result is
+/// the value the full fold would compute; a Closure item bails and the result is simply left
+/// unmemoized, to be refused by the ordinary derivation.
+fn eval_recompute_extend_push_hash(
+    ctx: &InterpContext,
+    parent: &Rc<RrbVector<Value>>,
+    item: &Value,
+    pushed: &Value,
+) {
+    let Value::List(child) = pushed else { return };
+    let Ok(mut memo) = ctx.eval_recompute_hash_memo.try_borrow_mut() else {
+        return;
+    };
+    let parent_h = match memo.get(&(Rc::as_ptr(parent) as usize)) {
+        Some((w, h)) if w.alive() => *h,
+        _ => return,
+    };
+    let interner = ctx.symbols.borrow();
+    let Some(item_h) = eval_recompute_value_hash(&mut memo, &interner, item) else {
+        return;
+    };
+    memo.insert(
+        Rc::as_ptr(child) as usize,
+        (
+            CompositeWeak::List(Rc::downgrade(child)),
+            eval_recompute_mix(parent_h, item_h),
+        ),
+    );
+}
+
 fn eval_recompute_arg_key(
     memo: &mut EvalRecomputeHashMemo,
     interner: &SymbolInterner,
@@ -9102,7 +9175,7 @@ fn eval_recompute_arg_key(
         Value::Bool(b) => Some(EvalRecomputeArgKey::Bool(*b)),
         Value::Int(i) => Some(EvalRecomputeArgKey::Int(*i)),
         Value::Float(f) => Some(EvalRecomputeArgKey::FloatBits(f.to_bits())),
-        Value::Str(s) => Some(EvalRecomputeArgKey::StrHash(eval_recompute_str_hash(s))),
+        Value::Str(s) => Some(EvalRecomputeArgKey::StrHash(s.content_hash())),
         Value::Variant {
             type_name,
             variant_name,
@@ -11127,8 +11200,10 @@ macro_rules! v1_algebra_method_arms {
                         counters.list_push_items_copied += copied;
                         drop(counters);
                         let mut result = (*items).clone();
-                        result.push_back(item);
-                        Ok(list_value(result))
+                        result.push_back(item.clone());
+                        let pushed = list_value(result);
+                        eval_recompute_extend_push_hash($ctx, &items, &item, &pushed);
+                        Ok(pushed)
                     }
                     None => Err(InterpError::TypeError {
                         msg: format!("list_push on non-list: {}", $receiver.type_label()),
@@ -20047,7 +20122,9 @@ macro_rules! v1_builtin_arms {
                         drop(counters);
                         let mut result = (*items).clone();
                         result.push_back((*item).clone());
-                        Ok(Some(list_value(result)))
+                        let pushed = list_value(result);
+                        eval_recompute_extend_push_hash($ctx, &items, item, &pushed);
+                        Ok(Some(pushed))
                     }
                     None => Ok(None),
                 },
@@ -25591,5 +25668,96 @@ mod the_emitted_listing_producer_refuses_too {
              assert_eq!(file_content, \"\", \"a refused listing carries no population\");\n    \
              assert_eq!(file_byte_count, 0i64, \"a refused listing counts nothing\");",
         );
+    }
+}
+
+#[cfg(test)]
+mod push_hash_extension_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use super::*;
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+
+    fn test_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn full_fold_hash(ctx: &InterpContext, v: &Value) -> u64 {
+        // A fresh memo: the reference is the whole fold, with nothing served from identity.
+        let mut fresh = EvalRecomputeHashMemo::default();
+        eval_recompute_value_hash(&mut fresh, &ctx.symbols.borrow(), v).expect("keyable")
+    }
+
+    /// THROUGH THE PRODUCTION ARMS, never the helper: `i` selects the free-call arm
+    /// (`eval_builtin`) or the method arm (`eval_algebra_method_inner`), alternating so deleting
+    /// the extension from EITHER arm turns the test red (DESIGN section 3: deleting the
+    /// integration must make a control fail).
+    fn push(ctx: &InterpContext, xs: &Rc<RrbVector<Value>>, item: Value, i: i64) -> Value {
+        let receiver = Value::List(xs.clone());
+        if i % 2 == 0 {
+            eval_builtin("list_push", &[(None, receiver), (None, item)], ctx)
+                .expect("free list_push evaluates")
+                .expect("free list_push is a builtin")
+        } else {
+            eval_algebra_method_inner("list_push", receiver, &[item], &Env::empty(), ctx)
+                .expect("method list_push evaluates")
+        }
+    }
+
+    /// The extended entry must be the value the full fold computes, for scalar and composite
+    /// items alike -- otherwise two equal accumulators would key apart (or two distinct ones
+    /// together). And it must be demand-gated: an unkeyed parent is never extended.
+    #[test]
+    fn pushed_list_hash_is_the_full_fold_and_is_demand_gated() {
+        let ctx = test_ctx();
+        let mut acc = list_value(Vec::<Value>::new());
+        // Unkeyed parent: no entry may appear for the child.
+        let Value::List(rc0) = acc.clone() else {
+            unreachable!()
+        };
+        let child = push(&ctx, &rc0, Value::Int(0), 0);
+        let Value::List(child_rc) = &child else {
+            unreachable!()
+        };
+        assert!(ctx
+            .eval_recompute_hash_memo
+            .borrow()
+            .get(&(Rc::as_ptr(child_rc) as usize))
+            .is_none());
+        // Key the root once, then thread the accumulator.
+        {
+            let mut m = ctx.eval_recompute_hash_memo.borrow_mut();
+            eval_recompute_value_hash(&mut m, &ctx.symbols.borrow(), &acc).unwrap();
+        }
+        for i in 0..64 {
+            let Value::List(rc) = acc.clone() else {
+                unreachable!()
+            };
+            let item = if i % 3 == 0 {
+                list_value(vec![Value::Int(i), str_value(format!("s{i}"))])
+            } else {
+                Value::Int(i)
+            };
+            acc = push(&ctx, &rc, item, i);
+            let Value::List(now) = &acc else {
+                unreachable!()
+            };
+            let served = ctx
+                .eval_recompute_hash_memo
+                .borrow()
+                .get(&(Rc::as_ptr(now) as usize))
+                .map(|(_, h)| *h)
+                .expect("a keyed lineage is extended on push");
+            assert_eq!(served, full_fold_hash(&ctx, &acc));
+        }
     }
 }

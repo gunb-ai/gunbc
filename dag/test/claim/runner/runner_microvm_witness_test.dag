@@ -110,7 +110,7 @@ import gunbc.floor_demand {
   floor_storage_demand, StorageDemandStated, StorageDemandUnrepresentable, floor_memory_requirement,
   round_up_to_gibibyte_grain,
   gunbc_floor_held_set_standing, HeldSetUnmeasured, HeldSetMeasured, HeldSetReceiptUnrepresentable,
-  receipt_last_unstalled_beat, beat_reclaimable_cache,
+  receipt_last_unstalled_beat, beat_reclaimable_cache, beat_stall_is_zero,
 }
 import std.measure { MeasureDifference, MeasureSubtrahendExceedsMinuend, GrainRounded, GrainUnrepresentable }
 import std.checked_arithmetic { int_inclusive_max }
@@ -811,7 +811,7 @@ test fn the_guest_cache_allowance_derives_from_the_receipts_last_unstalled_beat(
             MeasureDifference { value: cache } =>
               match round_up_to_gibibyte_grain(bytes: cache) {
                 GrainUnrepresentable { cause: _ } => false
-                GrainRounded { bytes: g } => allowance_is(bytes: g) && events_per_minute_count(r: b.stall) == 0
+                GrainRounded { bytes: g } => allowance_is(bytes: g) && beat_stall_is_zero(b: b)
               }
           }
       }

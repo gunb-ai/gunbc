@@ -575,7 +575,39 @@ import v2.std.collection { List }
 // THE CLI TRAILING-TOKEN PROBE ROW: v2.test.cli.v2_native_cli drives v2_cli_run over a two-file
 // supplied ingest whose second file refuses at parse; two claims read one field each of the
 // CliRunOutcome. Stored value is a refused outcome (a Symbol and a String), portable.
+// THE NAMESPACE CANDIDATE RULE PROBE ROW IS THE SAME GROUND AGAIN, and the most expensive instance
+// of it: v2.test.claim.resolve.namespace_candidate_rule drives native_test_context_from_ingest over
+// a TWELVE-specimen supplied ingest TWICE -- once in declared order and once permuted -- because the
+// file-order claim's whole content is that the two orders agree, and a second front end is the only
+// way to have two orders. Nine claims then read one field each of the stored value. The stored value
+// is verdict arms plus two Bool oracle readings (reason symbols, competing declaration paths, counts):
+// no resolution context and no closure, portable for the same reason census_probe_outcomes is. WARM
+// because the fill is two front ends over twelve modules, many times one claim's budget, and the
+// alternative is paying it nine times.
+// THE XL-2 CALL-ARGUMENT RESOLVE ROW IS THE SAME GROUND AT FOUR SPECIMENS.
+// v2.test.claim.namespace_xl0.call_argument_resolve_refusal drives native_test_context_from_ingest
+// once over four inline modules and resolves each; four claims read one verdict each. Absent, each
+// claim paid the whole front end and the first floor run of gunbc#12108 refused all four as
+// ENROLMENT-MARGIN-REFUSED at ~1.4s CPU. The stored value is verdict arms carrying a reason symbol
+// and an optional atom symbol -- no resolution context, no Node, no closure -- portable for the same
+// reason ncr_outcomes is.
+// THE BODY-LOWERING NORMALIZE ROW IS THE SAME GROUND, FOUND BY BEING EXPOSED RATHER THAN BY BEING
+// NEW. v2.test.manual.body_lowering_normalize_add calls body_lowering_normalized_module() -- one
+// front end over a source literal -- from NINETEEN sites, and the value is an Optional<NormalizedTree>:
+// a root Node, a marker channel and a binding row list, no resolution context and no closure,
+// portable for the same reason ndp_resolutions is.
+//
+// IT WAS ALWAYS THIS EXPENSIVE; what changed is that it became visible. gunbc#12009 altered the
+// arity of admit_normalized_tree, which this file calls, so its identities were read as changed and
+// a withheld cost debt stopped being withheld -- body_lowering_normalized_arrow_root_resolves at
+// 115,051 steps against the 72,300 new-witness budget, the single remaining blocker on that head.
+// The verdict did NOT move: it returns true on origin/main and on that head, same interpreter,
+// sources the only variable. So this is not a regression to revert but a pre-existing recompute the
+// change surfaced, and the honest repair is the one this roster exists for rather than re-hiding it.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_module",
+  "v2.test.claim.resolve.namespace_candidate_rule.ncr_outcomes",
+  "v2.test.claim.namespace_xl0.call_argument_resolve_refusal.xl2_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",
   "v2.test.claim.native_census.whole_tree_census_resolve.census_probe_outcomes",
@@ -617,6 +649,10 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_shadowing_consumer",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_consumer_a",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_consumer_b",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_method_call_consumer",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_import_consumer_a",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_import_consumer_b",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_relay_consumer",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_normalized",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_parsed",
   "v2.extdeps.languages.dag.dag_canonical_symbol_map",
