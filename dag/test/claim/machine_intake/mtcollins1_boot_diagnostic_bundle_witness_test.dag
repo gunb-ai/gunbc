@@ -22,6 +22,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   CollectionComplete, CollectionRefused, redfish_collection_assembly, redfish_budget_refusal, member_not_reached,
   MemberBody, assemble_memory_members, BmcResponseMalformed, mtcollins1_system_inventory_links,
   mtcollins1_boot_diagnostics_allowance, mtcollins1_boot_redfish_read_budget, mtcollins1_boot_collection_member_bound,
+  console_size_of_stat, mtcollins1_boot_outcome_after_bundle, BundleWritten, bundle_write_receipt_line,
 }
 import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_ended_before_bmc, BmcAccessNotReached, mtcollins1_boot_attempt_identity }
 import gunbc.actions_run_binding { ActionsVariablePresent, ActionsVariableAbsent }
@@ -405,6 +406,41 @@ test fn a_capture_over_the_byte_bound_is_reported_whole() -> Bool {
     ConsoleExceedsBound { path: _, size: s, bound: b } => (byte_size_count(b: s) as Int) == 16777217 && (byte_size_count(b: b) as Int) == 16777216
     _ => false
   }
+}
+
+// THE stat SIZE REACHES A ByteSize BY EXECUTION. Every console claim above SUPPLIES its ByteSize,
+// so none of them ran the one conversion the production route makes, and that conversion was an
+// `as Nat` the evaluator refuses: fleet-converge run 35871654468 died there with
+// "cannot cast Int to Nat" after its SEL and Redfish reads were already typed, and wrote no bundle
+// and no receipt. This is the inhabitance claim for that boundary (DESIGN section 3: supplying an
+// input may never remove the last execution of the real path). RED: restoring the cast errors here.
+test fn a_stat_size_text_becomes_a_byte_size() -> Bool {
+  (match console_size_of_stat(size_text: "173529\n") { Present { value: b } => (byte_size_count(b: b) as Int) == 173529 Absent => false })
+    && (match console_size_of_stat(size_text: "0") { Present { value: b } => (byte_size_count(b: b) as Int) == 0 Absent => false })
+    && console_size_of_stat(size_text: "-1") == none
+    && console_size_of_stat(size_text: "stat: cannot stat") == none
+}
+
+// THE SPECIMEN, END TO END OVER THE PURE CONCLUSION: the post-boot SEL read timed out (coreutils
+// exit 124), the Systems collection answered 404, and the console was sized through stat. The
+// bundle still renders the typed timeout, the receipt line names the written bundle, and the
+// verdict the capture supports -- a boot that reached the OS -- is not flipped by a failed read.
+test fn a_post_boot_sel_timeout_is_recorded_and_leaves_the_verdict_alone() -> Bool {
+  let timeout = bmc_ipmitool_read_cause(endpoint: "ipmi lanplus 192.168.1.228", at: "2026-09-23T15:12:43Z", exit_code: 124, stderr: "")
+  let http = bmc_curl_read_cause(endpoint: "https://192.168.1.228/redfish/v1/Systems", at: "2026-09-23T15:13:03Z", exit_code: 22, stderr: "curl: (22) The requested URL returned error: 404")
+  let size = match console_size_of_stat(size_text: "51") { Present { value: b } => b Absent => byte_size(count: 0) }
+  let bundle = MtCollins1BootDiagnosticBundle {
+    attempt: AttemptRunId { run_id: "35871654468" },
+    outcome: "ok",
+    sel_before: SelSnapshotRead { raw: sel_after_fixture, at: "2026-09-23T15:00:00Z" },
+    sel_after: SelSnapshotUnread { cause: timeout },
+    inventory: InventoryReading { system_id: "", memory: MembersUnread { cause: http }, processors: MembersUnread { cause: http }, credential_removed: true },
+    console: mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: size, capture: "SK0 MC0 trained\n", read_ok: true, read_error: ""),
+  }
+  let text = mtcollins1_boot_bundle_text(bundle: bundle)
+  contains(text, "after: UNREAD: BMC timed out at ipmi lanplus 192.168.1.228 (2026-09-23T15:12:43Z): no answer within the diagnostics deadline (coreutils timeout exit 124)")
+    && bundle_write_receipt_line(w: BundleWritten) == "diagnostics=artifacts/mtcollins1-boot-diagnostics.txt"
+    && match mtcollins1_boot_outcome_after_bundle(outcome: ExitSuccess, bundle: bundle, write: BundleWritten) { ExitSuccess => true _ => false }
 }
 
 // ── THE ATTEMPT'S IDENTITY ───────────────────────────────────────────────────────────────────

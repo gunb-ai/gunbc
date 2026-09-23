@@ -1,7 +1,7 @@
 module gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle
 
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
-import std.nat { Nat }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import std.algebra { trim }
 import std.measure { Second, second, second_count, ByteSize, byte_size, byte_size_count }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
@@ -1038,10 +1038,22 @@ fn console_path_retained(path: String) -> Bool {
   starts_with(s: path, prefix: mtcollins1_boot_retained_artifact_prefix) || string_contains(s: path, pattern: concat("/", mtcollins1_boot_retained_artifact_prefix))
 }
 
+// THE STAT SIZE CROSSES Int TO Nat THROUGH std.checked_arithmetic, NOT THROUGH `as Nat`. The cast
+// typechecks and the seed evaluator refuses it ("cannot cast Int to Nat"), so this sizing aborted
+// the whole conclude step of fleet-converge run 35871654468 AFTER every BMC read had already been
+// typed -- no bundle and no receipt were written, and the job exited 1 over a boot the capture
+// shows reached the OS. The negative guard stays: checked_int_magnitude returns a magnitude, and a
+// negative size must be unread, not the size of its absolute value.
 fn console_size_of_stat(size_text: String) -> ByteSize? {
   match parse_int(s: trim(size_text)) {
     Absent => none
-    Present { value: n } => if n < 0 { none } else { Present { value: byte_size(count: n as Nat) } }
+    Present { value: n } =>
+      if n < 0 { none } else {
+        match checked_int_magnitude(a: n) {
+          CheckedNatOverflow { cause: _ } => none
+          CheckedNatReady { value: m } => Present { value: byte_size(count: m) }
+        }
+      }
   }
 }
 
