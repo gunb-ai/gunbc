@@ -1,0 +1,60 @@
+module gunbc.rust_emitted_edge
+
+import std.types { List, String }
+
+// THE EDGES THE RUST EMITTER WRITES, ONE HOME FOR THEIR PROVENANCE. v1.compiler.emit_rust renders
+// module paths; the crate partition (v2.workflow.rust_crate_partition) must see every module edge
+// the emitted code carries, not only the edges the source imports declare. A source-acyclic
+// closure can still be emitted into a crate graph that does not compile, so an edge whose origin
+// is the EMITTER rather than the source is a realization edge the partition consumes with its
+// provenance attached. An emitter-added edge that closes a cycle against the source edges is an
+// emitter defect and the partition refuses it by name; it is never merged silently.
+//
+// This module lives under dag/ because the v1 emitter imports it and the v2 partition imports it:
+// one producer, two readers, no second list.
+
+// Only the provenances a producer below emits are arms. The typed use-line rows (helper
+// carriers, authored and reference-derived imports, service/CLI surfaces) add their arms in the
+// change that lands their producer, not before it.
+type EmittedEdgeProvenance
+  = RuntimePrelude
+  | ReexportFacade
+
+type EmittedEdgeTarget
+  = EmittedModuleTarget { module: String }
+  | EmittedCrateRootTarget
+
+type EmittedEdge {
+  from: String
+  to: EmittedEdgeTarget
+  provenance: EmittedEdgeProvenance
+}
+
+// The runtime-support module every emitted module paths into. emit_prelude renders its prelude
+// lines from the rows below, so the module named in the text and the module named by the edge are
+// the same value.
+data rust_runtime_prelude_module: String = "v1_rt"
+
+fn rust_prelude_emitted_edges(module: String) -> List<EmittedEdge> {
+  if module == rust_runtime_prelude_module {
+    [
+      EmittedEdge { from: module, to: EmittedCrateRootTarget, provenance: ReexportFacade }
+    ]
+  } else {
+    [
+      EmittedEdge {
+        from: module,
+        to: EmittedModuleTarget { module: rust_runtime_prelude_module },
+        provenance: RuntimePrelude
+      },
+      EmittedEdge { from: module, to: EmittedCrateRootTarget, provenance: ReexportFacade }
+    ]
+  }
+}
+
+fn emitted_edge_target_module(edge: EmittedEdge) -> List<String> {
+  match edge.to {
+    EmittedModuleTarget { module: target } => [target]
+    EmittedCrateRootTarget => []
+  }
+}

@@ -1,9 +1,14 @@
 module v2.test.parse.supplied_token_stream_support
 
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
 import v2.std.compilers.lexing { Token, TokenStream, symbol_lexeme }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Node }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -44,5 +49,31 @@ fn supplied_stream_matches_tokenize(text: String, file: Symbol, supplied: TokenS
     Rejected { diagnostics: _ } => false
     Accepted { value: real, diagnostics: _ } =>
       supplied_stream_projection(ts: real) == supplied_stream_projection(ts: supplied)
+  }
+}
+
+// THE SUPPLIED ROUTE ITSELF: the prepared-grammar parse the native route runs over a supplied
+// stream, then normalize. One home for it, so every adopter's claims exercise the same boundary
+// rather than each test module carrying its own copy.
+fn supplied_stream_parse(tokens: TokenStream) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      match parse_module_prepared(
+        tokens: tokens,
+        prepared: prepared,
+        validation_residue: residue
+      ) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: artifact, diagnostics: d } =>
+          Accepted { value: artifact.tree, diagnostics: d }
+      }
+  }
+}
+
+fn supplied_parsed_normalize(parsed: Outcome<Node>) -> Outcome<NormalizedTree> {
+  match parsed {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: _ } => normalize(parse_tree: tree)
   }
 }

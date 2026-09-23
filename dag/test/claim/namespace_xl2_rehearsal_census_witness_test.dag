@@ -1,0 +1,202 @@
+module test.claim.namespace_xl2_rehearsal_census
+
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.git.object_store { git_sha1_object_id }
+import gunbc.namespace_step0_subject_collector { Step0CommitIdentityUnreadable }
+import tools.multi_module_compile_fixture { FixtureSource }
+import gunbc.namespace_xl2_rehearsal_census {
+  Xl2SequenceOperandReferencesUnobservable,
+  Xl2CensusCompletenessRefused,
+  Xl2MemberPathDuplicated,
+  Xl2ModuleObservationIncomplete,
+  Xl2RehearsalBaseUnobserved,
+  Xl2RehearsalObserved,
+  Xl2RehearsalRun,
+  Xl2ResidualChain,
+  Xl2ScopeUnobserved,
+  Xl2Strip,
+  Xl2StrippedMember,
+  xl2_rehearse_stripped,
+  xl2_strip_members
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.diagnostic { None, Some, diagnostics_eq }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CONTROLS THE BRIEF OWES, RUN THROUGH THE REHEARSAL'S OWN COMPOSITION: the typed strip
+// (gunbc.namespace_step0_strip_producer), path admission, the path-faithful ingest, and
+// v2.compiler.compile's census-resolve. Only the exact-base collector is replaced by supplied
+// sources, because it reads the repository's object store and the hermetic floor cannot reach that
+// (the collector's own note states the route deficit); every stage downstream of the vector is the
+// production one.
+//
+// THE RESIDUAL CONTROL IS THE CUT'S OWN SHAPE: a module whose body names a function ANOTHER MODULE
+// declares and it imports. Unstripped it resolves; stripped, the import is gone and the reference
+// dangles at NAME RESOLUTION. THE NAME IS A CORPUS DECLARATION, NOT A KERNEL NAME, and that is
+// measured rather than chosen: the first cut of this control relied on v2.std.logic Bool, and the
+// floor showed its stripped form still resolving, because v2.compiler.resolve
+// resolved_reference_identity binds a kernel canonical leaf with no import at all (carried on the run
+// as Xl2KernelCanonicalReferencesUncounted). Bool remains in these signatures only as a kernel type,
+// which is why stripping its import changes nothing.
+//
+// THE TWO-FAILURE CONTROL IS P4'S DISCRIMINATOR APPLIED TO THE REHEARSAL: two declarations in ONE
+// module, each naming a different provider function, so the stripped module refuses at two
+// independent sites. P4 (gunbc#12116) reports both chains and ObservationComplete; the census must
+// report exactly two rows, each carrying its own chain, and raise no incomplete-observation scope.
+//
+// THE PROVIDER AND THE CLEAN CONTROL IMPORT NOTHING but kernel names, so the strip leaves them
+// resolving.
+data xl2_provider_control_source: String = "module v2.xl2_control_provider\n\nimport v2.std.logic { Bool }\n\nfn xl2_control_provider_flag(p: Bool) -> Bool { p }\n\nfn xl2_control_provider_other(p: Bool) -> Bool { p }\n"
+
+data xl2_residual_control_source: String = "module v2.xl2_control_residual\n\nimport v2.std.logic { Bool }\nimport v2.xl2_control_provider { xl2_control_provider_flag }\n\nfn xl2_control_residual_value(p: Bool) -> Bool { xl2_control_provider_flag }\n"
+
+data xl2_two_failure_control_source: String = "module v2.xl2_control_two\n\nimport v2.std.logic { Bool }\nimport v2.xl2_control_provider { xl2_control_provider_flag, xl2_control_provider_other }\n\nfn xl2_control_two_first(p: Bool) -> Bool { xl2_control_provider_flag }\n\nfn xl2_control_two_second(p: Bool) -> Bool { xl2_control_provider_other }\n"
+
+data xl2_clean_control_source: String = "module v2.xl2_control_clean\n\nimport v2.std.logic { Bool }\n\nfn xl2_control_clean_value(p: Bool) -> Bool { p }\n"
+
+fn xl2_control_source(path: String, content: String) -> FixtureSource {
+  FixtureSource { path: path as NonEmptyStr, content: content }
+}
+
+// A placeholder revision: the controls exercise the composition, not the pin. An unreadable literal
+// is reported as the collector would report it, never replaced by a default.
+data xl2_control_revision_hex: String = "0000000000000000000000000000000000000000"
+
+fn xl2_control_rehearse(strip: Xl2Strip) -> Xl2RehearsalRun {
+  match git_sha1_object_id(hex: xl2_control_revision_hex) {
+    Absent => Xl2RehearsalBaseUnobserved { cause: Step0CommitIdentityUnreadable { hex: xl2_control_revision_hex } }
+    Present { value: oid } => xl2_rehearse_stripped(source_commit: oid, source_tree: oid, supplied: strip)
+  }
+}
+
+// THE PRE-CUT DIFFERENTIAL BYPASSES ONLY THE STRIP: the same sources, admitted unchanged, through the
+// same observation.
+fn xl2_unstripped(sources: List<FixtureSource>) -> Xl2Strip {
+  Xl2Strip {
+    members: fold(sources, init: [], f: fn(acc, s) { acc |> list_push(Xl2StrippedMember { source: s, base_coordinates: [] }) }),
+    unobserved: []
+  }
+}
+
+type Xl2ControlRuns {
+  cut: Xl2RehearsalRun
+  two: Xl2RehearsalRun
+  pre_cut: Xl2RehearsalRun
+  duplicated: Xl2RehearsalRun
+}
+
+// ONE NULLARY PRODUCER, WARM, FOR ALL FOUR RUNS (v2.workflow.floor_pure_producer_share carries its
+// row): each run is a front end plus its resolves, more than one claim's budget, and the first cut
+// of this file paid two of them inside claims and was refused over budget on the floor.
+fn xl2_control_runs() -> Xl2ControlRuns {
+  let provider = xl2_control_source(path: "dag/xl2_control_provider.dag", content: xl2_provider_control_source)
+  let residual = xl2_control_source(path: "dag/xl2_control_residual.dag", content: xl2_residual_control_source)
+  let clean = xl2_control_source(path: "dag/xl2_control_clean.dag", content: xl2_clean_control_source)
+  Xl2ControlRuns {
+    cut: xl2_control_rehearse(strip: xl2_strip_members(sources: [provider, residual, clean])),
+    two: xl2_control_rehearse(strip: xl2_strip_members(sources: [
+      provider,
+      xl2_control_source(path: "dag/xl2_control_two.dag", content: xl2_two_failure_control_source)
+    ])),
+    pre_cut: xl2_control_rehearse(strip: xl2_unstripped(sources: [provider, residual])),
+    duplicated: xl2_control_rehearse(strip: xl2_strip_members(sources: [
+      xl2_control_source(path: "dag/xl2_control_shared.dag", content: xl2_residual_control_source),
+      xl2_control_source(path: "dag/xl2_control_shared.dag", content: xl2_clean_control_source),
+      clean
+    ]))
+  }
+}
+
+// RED CONTROL: the residual module yields exactly one failure chain, and it is that module's.
+test fn xl2_residual_control_is_reported_holds() -> Bool {
+  match xl2_control_runs().cut {
+    Xl2RehearsalObserved { residual: residual } =>
+      count(residual) == 1 && all(residual, r => r.module == "v2.xl2_control_residual")
+    _ => false
+  }
+}
+
+// GREEN CONTROL: the provider and the clean module both resolved, and neither contributed a row.
+test fn xl2_clean_control_resolves_holds() -> Bool {
+  match xl2_control_runs().cut {
+    Xl2RehearsalObserved { residual: residual, resolved_module_count: n } =>
+      n == 2 && !any(residual, r => r.module == "v2.xl2_control_clean" || r.module == "v2.xl2_control_provider")
+    _ => false
+  }
+}
+
+// THE CUT IS WHAT MADE THE RED: the residual module unstripped, beside its provider, resolves on the
+// same route, so the row above is the strip's residual and not a defect in the specimen.
+test fn xl2_residual_control_resolves_before_the_cut_holds() -> Bool {
+  match xl2_control_runs().pre_cut {
+    Xl2RehearsalObserved { residual: residual, resolved_module_count: n } => count(residual) == 0 && n == 2
+    _ => false
+  }
+}
+
+// COMPLETENESS IS REFUSED, AND FOR THE NAMED REASON ONLY: the sequence-operand arm heads the roster,
+// and P4 observed the residual module completely, so NO incomplete-observation scope is raised for
+// it. The previous cut raised an abandonment scope for every refused module, which would have kept
+// the rehearsal incomplete for a reason P4 has since discharged.
+test fn xl2_control_completeness_is_refused_holds() -> Bool {
+  match xl2_control_runs().cut {
+    Xl2RehearsalObserved { completeness: Xl2CensusCompletenessRefused { first: Xl2SequenceOperandReferencesUnobservable, rest: rest } } =>
+      count(rest) == 0
+    _ => false
+  }
+}
+
+// The first and last rows' chains, compared through std.diagnostic's own equality.
+fn xl2_first_and_last_chains_differ(residual: List<Xl2ResidualChain>) -> Bool {
+  let chains = fold(residual, init: [], f: fn(acc, r) { acc |> list_push(Some { diagnostics: r.chain }) })
+  let first = fold(chains, init: None, f: fn(acc, c) {
+    match acc {
+      None => c
+      Some { diagnostics: _ } => acc
+    }
+  })
+  let last = fold(chains, init: None, f: fn(_acc, c) { c })
+  !diagnostics_eq(a: first, b: last)
+}
+
+// TWO INDEPENDENT FAILURES IN ONE MODULE: exactly two rows, both that module's, carrying DIFFERENT
+// chains, and the module's complete observation raises no scope.
+test fn xl2_two_failures_in_one_module_are_two_rows_holds() -> Bool {
+  match xl2_control_runs().two {
+    Xl2RehearsalObserved { residual: residual, completeness: Xl2CensusCompletenessRefused { first: _, rest: rest } } =>
+      count(residual) == 2
+        && all(residual, r => r.module == "v2.xl2_control_two")
+        && xl2_first_and_last_chains_differ(residual: residual)
+        && !any(rest, c => match c {
+             Xl2ScopeUnobserved { scope: Xl2ModuleObservationIncomplete { module: _, path: _, reason: _ } } => true
+             _ => false
+           })
+    _ => false
+  }
+}
+
+// THE WALLS AND THE EXCLUDED KERNEL POPULATION RIDE ON THEIR OWN AXES: an observed run names both
+// native requalification walls and the uncounted kernel-canonical class, and neither is among its
+// completeness refusals (the refusal type cannot carry them).
+test fn xl2_control_names_the_native_requalification_walls_holds() -> Bool {
+  match xl2_control_runs().cut {
+    Xl2RehearsalObserved { native_requalification: walls, excluded: excluded } => count(walls) == 2 && count(excluded) == 1
+    _ => false
+  }
+}
+
+// DUPLICATED PATH, REFUSED RATHER THAN CHOSEN: the residual and clean specimens supplied at ONE path,
+// beside the clean specimen at its own path. Neither shared member enters the ingest, so no row is
+// emitted, only the uniquely-pathed module resolves, and the path is reported once as unobserved.
+test fn xl2_duplicated_path_is_withheld_not_chosen_holds() -> Bool {
+  match xl2_control_runs().duplicated {
+    Xl2RehearsalObserved { residual: residual, resolved_module_count: n, completeness: Xl2CensusCompletenessRefused { first: _, rest: rest } } =>
+      count(residual) == 0 && n == 1
+        && count(filter(rest, c => match c {
+             Xl2ScopeUnobserved { scope: Xl2MemberPathDuplicated { path: _ } } => true
+             _ => false
+           })) == 1
+    _ => false
+  }
+}

@@ -591,6 +591,14 @@ import v2.std.collection { List }
 // ENROLMENT-MARGIN-REFUSED at ~1.4s CPU. The stored value is verdict arms carrying a reason symbol
 // and an optional atom symbol -- no resolution context, no Node, no closure -- portable for the same
 // reason ncr_outcomes is.
+// THE OPERATOR-SET ROWS ARE A PRODUCTION PRODUCER, THE SAME GROUND AS dag_prepared_grammar:
+// v2.compiler.body_lowering_fold body_lower_binary_operator_tokens / body_lower_prefix_operator_tokens
+// fold the grammar's binary and unary expressions to their terminal symbols. Every claim that lowers
+// an operator expression reads them, and building them per frame cost ~11.4k eval steps. The value
+// is a list of symbols.
+// THE XL-2 SEQUENCE-OPERAND RESOLVE ROW IS THE SAME GROUND AT FIVE SPECIMENS:
+// v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal sqo_outcomes drives one front end
+// over five inline modules and stores one verdict arm per module, portable for the same reason.
 // THE BODY-LOWERING NORMALIZE ROW IS THE SAME GROUND, FOUND BY BEING EXPOSED RATHER THAN BY BEING
 // NEW. v2.test.manual.body_lowering_normalize_add calls body_lowering_normalized_module() -- one
 // front end over a source literal -- from NINETEEN sites, and the value is an Optional<NormalizedTree>:
@@ -604,6 +612,12 @@ import v2.std.collection { List }
 // The verdict did NOT move: it returns true on origin/main and on that head, same interpreter,
 // sources the only variable. So this is not a regression to revert but a pre-existing recompute the
 // change surfaced, and the honest repair is the one this roster exists for rather than re-hiding it.
+// THE XL-2 REHEARSAL CONTROL ROW IS THE census_probe_outcomes GROUND AGAIN: test.claim
+// .namespace_xl2_rehearsal_census drives native_test_context_from_ingest three times (the cut, the
+// pre-cut differential, the duplicated-path control) over two- and three-specimen ingests, and its
+// claims each read one field of the resulting Xl2ControlRuns (GitObjectIds, diagnostics chains, strip coordinate rows -- no resolution context,
+// no closure). WARM for the same arithmetic: one front end is more than one claim's budget.
+//
 // THE OCCURRENCE-ATTRIBUTION ROWS ARE THE SAME GROUND A FIFTH TIME, AND THE LEDGER NAMED THE ROW.
 // v2.test.provenance.occurrence_file_attribution establishes that an occurrence resolves to a file
 // and byte range; its seven claims each inspect ONE field of a value produced by driving the whole
@@ -631,6 +645,7 @@ import v2.std.collection { List }
 // end over two files, which is more than one claim's budget on this lane, so an in-fold first touch
 // would die mid-flight and be abandoned un-stored exactly as prepare_grammar's did.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "test.claim.namespace_xl2_rehearsal_census.xl2_control_runs",
   "v2.test.provenance.occurrence_file_attribution.attribution_roots",
   "v2.test.provenance.occurrence_file_attribution.attribution_refused_assembly",
   "v2.test.provenance.occurrence_file_attribution.door_probe_cli_detail",
@@ -638,6 +653,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_module",
   "v2.test.claim.resolve.namespace_candidate_rule.ncr_outcomes",
   "v2.test.claim.namespace_xl0.call_argument_resolve_refusal.xl2_outcomes",
+  "v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal.sqo_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",
   "v2.test.claim.native_census.whole_tree_census_resolve.census_probe_outcomes",
@@ -645,6 +661,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
   "v2.compiler.program_assembly.dag_prepared_grammar",
+  "v2.compiler.body_lowering_fold.body_lower_binary_operator_tokens",
+  "v2.compiler.body_lowering_fold.body_lower_prefix_operator_tokens",
   "v2.test.long.emit_host_produced_module_equals_eval.produced_add_module_source",
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_arrow_with_body",
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_swapped_arrow_with_body",
@@ -690,6 +708,22 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_9",
   "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_10",
   "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_11",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_0",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_1",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_2",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_3",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_4",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_5",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_6",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_7",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_8",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_9",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_10",
+  "v2.test.parse.closure_parse_batch_two.cb2_normalized_5",
+  "v2.test.parse.closure_parse_batch_two.cb2_normalized_7",
+  "v2.test.parse.closure_parse_batch_two.cb2_normalized_8",
+  "v2.test.parse.closure_parse_batch_two.cb2_normalized_9",
+  "v2.test.parse.closure_parse_batch_two.cb2_normalized_10",
   "v2.test.claim.match_arm_binder_frame.mab_resolved_0",
   "v2.test.claim.match_arm_binder_frame.mab_resolved_1",
   "v2.test.claim.match_arm_binder_frame.mab_resolved_2",
