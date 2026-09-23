@@ -229,6 +229,8 @@ fn w_octets(hex: String) -> List<UInt8> {
   }
 }
 
+// The record must be what fetch_rows copies from [offset, offset + nbytes): the weight row, then
+// the scale row.
 fn w_real_placed_as(spec: V41RowStoreEncodingSpec, global_row: Nat, weight_hex: String, scale_hex: String, rank: Nat, local_row: Nat) -> Bool {
   let weight = w_octets(hex: weight_hex)
   let scale = w_octets(hex: scale_hex)
@@ -238,7 +240,6 @@ fn w_real_placed_as(spec: V41RowStoreEncodingSpec, global_row: Nat, weight_hex: 
       p.rank == rank && p.local_row == local_row
         && byte_size_count(b: p.offset) == byte_size_count(b: v41_row_store_magic_size()) + local_row * 264
         && length(p.record) == 264
-        // what fetch_rows copies from [offset, offset + nbytes): the weight row, then the scale row
         && (p.record |> take(n: 256)) == weight
         && (p.record |> skip(n: 256)) == scale
   }
