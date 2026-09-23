@@ -167,14 +167,18 @@ type CommitSha    = String
 // predicate deletes.
 
 // WHAT THIS COMPUTES: forty characters, each a lowercase hex digit. It is spelled as "remove every
-// hex digit and ask whether nothing is left" because removal is sixteen whole-string operations
-// whatever the text, where testing the characters one at a time is a recursion whose length is the
-// input's. That is a bare-minimum-cost defect in the sense DESIGN section 6 makes standing -- a
-// per-character recursion in a hot, widely-shared predicate is fixed regardless of the realized n,
-// because n is not a time-stable fact: this predicate is what every caller admitting a pinned ref
-// runs, and nothing bounds how many refs a caller will hold tomorrow.
+// hex digit and ask whether nothing is left" rather than as a test of each character. BOTH SPELLINGS
+// ARE LINEAR in the input, so the per-character one was never a cost-shape defect in the sense
+// DESIGN section 6 makes standing: what this spelling buys is a CONSTANT FACTOR, because the
+// interpreter charges a per-character lambda far more than one whole-string builtin. That is a
+// modeling loss (the alphabet is hard-coded and the word `hex` is gone) taken against an evaluator
+// cost, i.e. a workaround, and it is named as one here.
 //
-// THE RESPELLING IS ADMITTED ON THAT COST SHAPE AND ON NOTHING DOWNSTREAM OF IT (operator ruling,
+// DISSOLVE-ON: the per-character evaluation cost is fixed at its source, in the interpreter, so the
+// per-character spelling costs about what the whole-string one does; this predicate then returns to
+// testing each character against the hex alphabet, and the oracle below becomes its only spelling.
+//
+// THE RESPELLING IS ADMITTED ON ITS OWN COST AND ON NOTHING DOWNSTREAM OF IT (operator ruling,
 // stern-carp-604, 2026-09-20, on gunb-ai/gunbc#11730). A claim budget elsewhere in the tree fitting
 // afterwards is a consequence and was never the reason; anyone reading this as buying margin for a
 // census should read that ruling, which admits a fix to a shared predicate and refuses only an

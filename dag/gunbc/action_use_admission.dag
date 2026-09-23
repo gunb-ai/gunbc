@@ -467,7 +467,7 @@ data realized_census_cost_standing: RealizedCensusCostStanding = RealizedCensusC
     "a second, cheaper reader beside extdeps.languages.yaml.ingest" as NonEmptyStr,
     "a declared cost drop or debt row for the claim" as NonEmptyStr,
     "dropping a workflow file from the census, or splitting one file's parse across claims" as NonEmptyStr,
-    "respelling a shared predicate a second time to buy margin: the one respelling that happened, std.types commit_sha_text_holds, was admitted on ITS OWN cost shape by an operator ruling and not on this budget, and it is not a precedent this row extends" as NonEmptyStr,
+    "respelling a shared predicate a second time to buy margin: the one respelling that happened, std.types commit_sha_text_holds, was admitted on ITS OWN constant-factor cost by an operator ruling and not on this budget, and it is not a precedent this row extends" as NonEmptyStr,
   ],
 }
 
