@@ -2,7 +2,7 @@ module test.claim.approval_ntfy_access_readback_witness_test
 
 import std.logic { Bool }
 import std.types { String, List, NonEmptyStr, Int }
-import extdeps.ntfy.access { NtfyRoleAdmin, NtfyReadWrite, ntfy_access_read, NtfyAccessListed, NtfyAccessUnparseable }
+import extdeps.ntfy.access { NtfyRoleAdmin, NtfyReadWrite, ntfy_access_read, NtfyAccessListed, NtfyAccessUnparseable, NtfyUserAccess, AdminAllTopics, TopicGrants }
 import extdeps.exec.command { LocalExec, argv_words }
 import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned, process_observation }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
@@ -11,7 +11,7 @@ import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_count_for_subject }
 import gunbc.auth.approval_ntfy_access_readback {
   ApprovalNtfyAclVerdict, AclEstablished, AclRefused,
-  ApprovalNtfyAclDeviation, AclListingUnparseable, AclDefaultAccessNotDeny, AclAnonymousHasGrants,
+  ApprovalNtfyAclDeviation, AclListingUnparseable, AclDefaultAccessNotDeny, AclAnonymousHasAccess,
   AclPrincipalMissing, AclPrincipalDuplicated, AclPublisherNotWriteOnly, AclOperatorNotReadOnly, AclUnexpectedPrincipal,
   ActiveNtfyRuntimeUnbound, ActiveNtfyRuntimeGap,
   NtfyRuntimeRead, ReadUnitBefore, ReadPidStatBefore, ReadBootTime, ReadClockTicks, ReadCommandLine, ReadBinaryCtime,
@@ -775,7 +775,7 @@ test fn an_auth_file_swapped_during_the_listing_refuses() -> Bool {
 // clean copy. Under the pinned  the listing is the server's, and refuses...
 test fn an_ambient_auth_file_cannot_redirect_the_listing() -> Bool {
   match refused_with(v: verdict_of(fx: fx_ambient_auth_file)) {
-    Present { value: AclAnonymousHasGrants { grants: g } } => count(g) == 1
+    Present { value: AclAnonymousHasAccess { access: TopicGrants { grants: g } } } => count(g) == 1
     _ => false
   }
 }
@@ -855,35 +855,35 @@ test fn default_access_not_deny_in_the_listing_refuses() -> Bool {
 
 test fn an_anonymous_read_grant_refuses() -> Bool {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_anon_read))) {
-    Present { value: AclAnonymousHasGrants { grants: g } } => count(g) == 1
+    Present { value: AclAnonymousHasAccess { access: TopicGrants { grants: g } } } => count(g) == 1
     _ => false
   }
 }
 
 test fn a_publisher_that_can_read_refuses() -> Bool {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_pub_rw))) {
-    Present { value: AclPublisherNotWriteOnly { role: _, admin_all_topics: false, grants: _ } } => true
+    Present { value: AclPublisherNotWriteOnly { role: _, access: TopicGrants { grants: g } } } => count(g) == 1
     _ => false
   }
 }
 
 test fn an_admin_publisher_refuses() -> Bool {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_pub_admin))) {
-    Present { value: AclPublisherNotWriteOnly { role: NtfyRoleAdmin, admin_all_topics: true, grants: _ } } => true
+    Present { value: AclPublisherNotWriteOnly { role: NtfyRoleAdmin, access: AdminAllTopics } } => true
     _ => false
   }
 }
 
 test fn an_operator_that_can_write_refuses() -> Bool {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_op_rw))) {
-    Present { value: AclOperatorNotReadOnly { role: _, admin_all_topics: _, grants: _ } } => true
+    Present { value: AclOperatorNotReadOnly { role: _, access: _ } } => true
     _ => false
   }
 }
 
 test fn an_operator_without_the_grant_refuses() -> Bool {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_op_nogrant))) {
-    Present { value: AclOperatorNotReadOnly { role: _, admin_all_topics: _, grants: g } } => count(g) == 0
+    Present { value: AclOperatorNotReadOnly { role: _, access: TopicGrants { grants: g } } } => count(g) == 0
     _ => false
   }
 }
@@ -905,6 +905,22 @@ test fn a_further_admin_refuses() -> Bool {
 test fn a_further_wildcard_reader_refuses() -> Bool {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_wildcard_reader))) {
     Present { value: AclUnexpectedPrincipal { user: u, role: _ } } => u == "eve"
+    _ => false
+  }
+}
+
+// SYNTHETIC ORDERINGS the upstream never prints (showUsers prints the admin line OR the topic lines):
+// each is a listing that does not parse, naming the user, never a user holding both.
+test fn an_admin_line_after_topic_grants_refuses() -> Bool {
+  match ntfy_access_read(stdout: replace(s: stdout_of(fx: fx_exact, name: "access_list"), from: "- write-only access to topic gunbc-approvals\n", to: "- write-only access to topic gunbc-approvals\n- read-write access to all topics (admin role)\n")) {
+    NtfyAccessUnparseable { line: _, cause: c } => string_contains(s: c, pattern: "admin line after topic grants for user 'gunbc-approval-publisher'")
+    _ => false
+  }
+}
+
+test fn a_topic_grant_after_the_admin_line_refuses() -> Bool {
+  match ntfy_access_read(stdout: replace(s: listing_pub_admin, from: "- read-write access to all topics (admin role)\n", to: "- read-write access to all topics (admin role)\n- write-only access to topic gunbc-approvals\n")) {
+    NtfyAccessUnparseable { line: _, cause: c } => string_contains(s: c, pattern: "topic grant after the admin line for user 'gunbc-approval-publisher'")
     _ => false
   }
 }

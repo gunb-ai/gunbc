@@ -34,10 +34,6 @@ data ntfy_access_upstream_version: String = "v2.28.0"
 // THE LISTING VERB: `ntfy access` with no USER/TOPIC arguments prints the whole list
 // (cmd/access.go execUserAccess -> showAllAccess). The binary and the server config are the
 // caller's -- which install, which server -- so they are parameters, never literals here.
-fn ntfy_access_list_argv(binary: NonEmptyStr, config: NonEmptyStr) -> List<String> {
-  [binary as String, "access", "--config", config as String]
-}
-
 fn ntfy_access_list_command(binary: NonEmptyStr, config: NonEmptyStr) -> ArgvCommand {
   argv_command(program: binary, arguments: ["access", "--config", config as String])
 }
@@ -61,13 +57,18 @@ type NtfyAccessGrant {
   permission: NtfyPermission
 }
 
-// admin_all_topics is the admin line; grants are the per-topic lines. The upstream prints one or
-// the other, never both, and a non-admin with neither prints "no topic-specific permissions".
+// A USER'S ACCESS IS ONE OF TWO SHAPES, and the upstream prints exactly one: the admin line
+// (showUsers: an admin role's "read-write access to all topics (admin role)") OR its per-topic
+// lines, where no lines is "no topic-specific permissions". A record holding an admin flag BESIDE a
+// grant list could represent both at once, which ntfy never prints; the sum cannot.
+type NtfyUserAccess
+  = AdminAllTopics
+  | TopicGrants { grants: List<NtfyAccessGrant> }
+
 type NtfyAccessUser {
   name: String
   role: NtfyRole
-  admin_all_topics: Bool
-  grants: List<NtfyAccessGrant>
+  access: NtfyUserAccess
 }
 
 type NtfyAccessListing {
@@ -206,15 +207,28 @@ fn ntfy_access_fold_step(st: NtfyAccessFold, line: String) -> NtfyAccessFold {
     Present { value: _ } => st
     Absent => match ntfy_access_line(line: line) {
       LineUnrecognized { cause: c } => ntfy_access_fold_fail(st: st, line: line, cause: c)
-      LineUser { name: n, role: r } => NtfyAccessFold { users: concat(st.users, [NtfyAccessUser { name: n, role: r, admin_all_topics: false, grants: [] }]), default_access: st.default_access, failure: none }
+      LineUser { name: n, role: r } => NtfyAccessFold { users: concat(st.users, [NtfyAccessUser { name: n, role: r, access: TopicGrants { grants: [] } }]), default_access: st.default_access, failure: none }
       item => match last(st.users) {
         Absent => ntfy_access_fold_fail(st: st, line: line, cause: "access line before any user line")
         Present { value: u } => {
           let head = st.users.take(n: count(st.users) - 1)
           match item {
-            LineAdminAllTopics => NtfyAccessFold { users: concat(head, [NtfyAccessUser { name: u.name, role: u.role, admin_all_topics: true, grants: u.grants }]), default_access: st.default_access, failure: none }
-            LineGrant { grant: g } => NtfyAccessFold { users: concat(head, [NtfyAccessUser { name: u.name, role: u.role, admin_all_topics: u.admin_all_topics, grants: concat(u.grants, [g]) }]), default_access: st.default_access, failure: none }
-            LineNoTopicGrants => st
+            LineAdminAllTopics => match u.access {
+              TopicGrants { grants: gs } =>
+                if count(gs) == 0 { NtfyAccessFold { users: concat(head, [NtfyAccessUser { name: u.name, role: u.role, access: AdminAllTopics }]), default_access: st.default_access, failure: none } }
+                else { ntfy_access_fold_fail(st: st, line: line, cause: "admin line after topic grants for user '" + u.name + "'") }
+              AdminAllTopics => ntfy_access_fold_fail(st: st, line: line, cause: "second admin line for user '" + u.name + "'")
+            }
+            LineGrant { grant: g } => match u.access {
+              TopicGrants { grants: gs } => NtfyAccessFold { users: concat(head, [NtfyAccessUser { name: u.name, role: u.role, access: TopicGrants { grants: concat(gs, [g]) } }]), default_access: st.default_access, failure: none }
+              AdminAllTopics => ntfy_access_fold_fail(st: st, line: line, cause: "topic grant after the admin line for user '" + u.name + "'")
+            }
+            LineNoTopicGrants => match u.access {
+              TopicGrants { grants: gs } =>
+                if count(gs) == 0 { st }
+                else { ntfy_access_fold_fail(st: st, line: line, cause: "'no topic-specific permissions' beside other access lines for user '" + u.name + "'") }
+              AdminAllTopics => ntfy_access_fold_fail(st: st, line: line, cause: "'no topic-specific permissions' beside other access lines for user '" + u.name + "'")
+            }
             LineDefaultAccess { permission: p } =>
               if u.name == ntfy_everyone_user { NtfyAccessFold { users: st.users, default_access: concat(st.default_access, [p]), failure: none } }
               else { ntfy_access_fold_fail(st: st, line: line, cause: "default-access line under a user other than '*'") }

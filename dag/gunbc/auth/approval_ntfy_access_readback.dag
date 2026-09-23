@@ -7,6 +7,7 @@ import std.resources { Network }
 import std.decl_ref { decl_ref }
 import extdeps.ntfy.access {
   NtfyAccessRead, NtfyAccessListed, NtfyAccessUnparseable, NtfyAccessListing, NtfyAccessUser, NtfyAccessGrant,
+  NtfyUserAccess, AdminAllTopics, TopicGrants,
   NtfyPermission, NtfyReadWrite, NtfyReadOnly, NtfyWriteOnly, NtfyDenyAll,
   NtfyRole, NtfyRoleAdmin, NtfyRoleUser, NtfyRoleAnonymous,
   ntfy_access_read, ntfy_everyone_user, ntfy_access_list_command, ntfy_access_upstream_version,
@@ -65,11 +66,11 @@ import gunbc.auth.approval_ntfy_deployment {
 type ApprovalNtfyAclDeviation
   = AclListingUnparseable { line: String, cause: String }
   | AclDefaultAccessNotDeny { observed: NtfyPermission }
-  | AclAnonymousHasGrants { grants: List<NtfyAccessGrant> }
+  | AclAnonymousHasAccess { access: NtfyUserAccess }
   | AclPrincipalMissing { user: String }
   | AclPrincipalDuplicated { user: String }
-  | AclPublisherNotWriteOnly { role: NtfyRole, admin_all_topics: Bool, grants: List<NtfyAccessGrant> }
-  | AclOperatorNotReadOnly { role: NtfyRole, admin_all_topics: Bool, grants: List<NtfyAccessGrant> }
+  | AclPublisherNotWriteOnly { role: NtfyRole, access: NtfyUserAccess }
+  | AclOperatorNotReadOnly { role: NtfyRole, access: NtfyUserAccess }
   | AclUnexpectedPrincipal { user: String, role: NtfyRole }
   | ActiveNtfyRuntimeUnbound { gap: ActiveNtfyRuntimeGap }
 
@@ -762,10 +763,18 @@ fn role_is_user(r: NtfyRole) -> Bool {
 
 // A named principal holds EXACTLY one grant, on the topic's literal name, with the wanted permission.
 fn holds_exactly(u: NtfyAccessUser, want: NtfyPermission) -> Bool {
-  role_is_user(r: u.role)
-    && !u.admin_all_topics
-    && count(u.grants) == 1
-    && all(u.grants, g => g.topic_pattern == (approval_ntfy_topic as String) && permission_is(p: g.permission, want: want))
+  role_is_user(r: u.role) && (match u.access {
+    AdminAllTopics => false
+    TopicGrants { grants: gs } =>
+      count(gs) == 1 && all(gs, g => g.topic_pattern == (approval_ntfy_topic as String) && permission_is(p: g.permission, want: want))
+  })
+}
+
+fn has_no_access(a: NtfyUserAccess) -> Bool {
+  match a {
+    AdminAllTopics => false
+    TopicGrants { grants: gs } => count(gs) == 0
+  }
 }
 
 fn is_declared_principal(name: String) -> Bool {
@@ -812,15 +821,15 @@ fn approval_ntfy_acl_of_principals(anonymous: List<NtfyAccessUser>, publisher: L
   match first(anonymous) {
     Absent => AclRefused { deviation: AclPrincipalMissing { user: ntfy_everyone_user } }
     Present { value: a } =>
-      if count(a.grants) != 0 || a.admin_all_topics { AclRefused { deviation: AclAnonymousHasGrants { grants: a.grants } } }
+      if !has_no_access(a: a.access) { AclRefused { deviation: AclAnonymousHasAccess { access: a.access } } }
       else { match first(publisher) {
         Absent => AclRefused { deviation: AclPrincipalMissing { user: approval_ntfy_publisher_user as String } }
         Present { value: p } =>
-          if !holds_exactly(u: p, want: NtfyWriteOnly) { AclRefused { deviation: AclPublisherNotWriteOnly { role: p.role, admin_all_topics: p.admin_all_topics, grants: p.grants } } }
+          if !holds_exactly(u: p, want: NtfyWriteOnly) { AclRefused { deviation: AclPublisherNotWriteOnly { role: p.role, access: p.access } } }
           else { match first(operator) {
             Absent => AclRefused { deviation: AclPrincipalMissing { user: approval_ntfy_operator_user as String } }
             Present { value: o } =>
-              if !holds_exactly(u: o, want: NtfyReadOnly) { AclRefused { deviation: AclOperatorNotReadOnly { role: o.role, admin_all_topics: o.admin_all_topics, grants: o.grants } } }
+              if !holds_exactly(u: o, want: NtfyReadOnly) { AclRefused { deviation: AclOperatorNotReadOnly { role: o.role, access: o.access } } }
               else { AclEstablished }
           } }
       } }
@@ -831,11 +840,11 @@ fn approval_ntfy_acl_deviation_sentence(d: ApprovalNtfyAclDeviation) -> String {
   match d {
     AclListingUnparseable { line: l, cause: c } => "the ntfy access listing did not parse at '" + l + "': " + c
     AclDefaultAccessNotDeny { observed: _ } => "the server's default access is not deny-all, so an unlisted principal may subscribe"
-    AclAnonymousHasGrants { grants: _ } => "the anonymous user '*' holds topic grants, so an unprivileged subscriber may read"
+    AclAnonymousHasAccess { access: _ } => "the anonymous user '*' holds access, so an unprivileged subscriber may read"
     AclPrincipalMissing { user: u } => "the access list has no user '" + u + "'"
     AclPrincipalDuplicated { user: u } => "the access list names user '" + u + "' more than once"
-    AclPublisherNotWriteOnly { role: _, admin_all_topics: _, grants: _ } => "the publisher '" + (approval_ntfy_publisher_user as String) + "' does not hold exactly write-only on '" + (approval_ntfy_topic as String) + "'"
-    AclOperatorNotReadOnly { role: _, admin_all_topics: _, grants: _ } => "the operator '" + (approval_ntfy_operator_user as String) + "' does not hold exactly read-only on '" + (approval_ntfy_topic as String) + "'"
+    AclPublisherNotWriteOnly { role: _, access: _ } => "the publisher '" + (approval_ntfy_publisher_user as String) + "' does not hold exactly write-only on '" + (approval_ntfy_topic as String) + "'"
+    AclOperatorNotReadOnly { role: _, access: _ } => "the operator '" + (approval_ntfy_operator_user as String) + "' does not hold exactly read-only on '" + (approval_ntfy_topic as String) + "'"
     AclUnexpectedPrincipal { user: u, role: _ } => "the access list names a further user '" + u + "', who is not the publisher or the operator"
     ActiveNtfyRuntimeUnbound { gap: g } => "the access list is not bound to the running ntfy server: " + approval_ntfy_runtime_gap_sentence(g: g)
   }
