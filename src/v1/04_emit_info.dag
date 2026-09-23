@@ -71,17 +71,18 @@ type TypeSurfaceOccurrence {
   applied_argument: Bool
 }
 
+// A type argument written two applications deep (PointerWidth in Compose<Int, MachineWidth<PointerWidth>>)
+// reaches this walk through child_type_node in RESOLVED form, which keeps the head and drops the authored
+// argument. So the walk also descends the authored child and reads the resolved application's
+// __applied_type_args property (the same property the Rust renderers read). Without both, that argument is
+// never an applied occurrence, the use-line planner does not classify it as a marker, and the import binds
+// the unit variant while the body renders the marker type (E0573).
 fn collect_type_node_import_surface_occurrences(n: Node, applied_argument: Bool, source_indices: Map<String, NewlineIndex>) -> List<TypeSurfaceOccurrence> {
   let peeled = normalize_access_type_node(n: n)
   let name = authored_name_at(source_indices: source_indices, node: peeled)
   let is_tv = if peeled.inferred != none { is_type_variable(inferred: peeled.inferred.value) } else { false }
   let own = if name != "" && name != "Dynamic" && !is_tv { [TypeSurfaceOccurrence { name: name, applied_argument: applied_argument }] } else { [] }
   let children_are_applied_arguments = name != "" && peeled.connective == NoConnective && peeled.children |> count > 0
-  // child_type_node swaps a child for its RESOLVED type, and resolution of a nested application
-  // (the MachineWidth<PointerWidth> inside Compose<Int, MachineWidth<PointerWidth>>) keeps the head
-  // and drops the authored argument. The authored child is therefore walked as well: without it the
-  // depth-two argument is never an applied occurrence, the use-line planner does not classify it as a
-  // marker, and the import binds the unit variant's owner while the body renders the marker (E0573).
   let child_names = peeled.children |> flat_map(ch =>
     let resolved_names = collect_type_node_import_surface_occurrences(n: child_type_node(ch: ch), applied_argument: children_are_applied_arguments, source_indices: source_indices)
     let authored_names = if ch.inferred != none {
@@ -93,11 +94,6 @@ fn collect_type_node_import_surface_occurrences(n: Node, applied_argument: Bool,
     Present { value: Resolved { node: rt } } => collect_type_node_import_surface_occurrences(n: rt, applied_argument: applied_argument, source_indices: source_indices)
     _ => []
   }
-  // The applied arguments of a RESOLVED application live on its __applied_type_args property, not
-  // its children: child_type_node hands a nested `MachineWidth<PointerWidth>` over in resolved form,
-  // so without this read the depth-two argument is never an applied occurrence, the use-line planner
-  // does not classify it as a marker, and the import binds the unit variant while the body renders
-  // the marker type (E0573). The Rust renderers already read the same property for the same answer.
   let applied_names = match find_property(props: peeled.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Present { value: applied } => applied.children |> flat_map(arg =>
       collect_type_node_import_surface_occurrences(n: arg, applied_argument: true, source_indices: source_indices)
