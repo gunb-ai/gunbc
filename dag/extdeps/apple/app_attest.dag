@@ -489,7 +489,11 @@ fn ca_authority_refused(reason: String) -> AttestationRefusal? {
   Present { value: AttestationChainUntrusted { detail: "the intermediate is not authorized to act as a CA: " + reason } }
 }
 
-fn ca_authority_refusal(ca: X509Certificate) -> AttestationRefusal? {
+fn ca_authority_refusal(ca: X509Certificate) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
   match x509_ca_authority(cert: ca, intermediates_below: 0) {
     X509CaAuthorized { path_len_constraint: _ } => none
     X509CaRefused { cause: c } => match c {
@@ -566,7 +570,11 @@ fn read_bundle_version(extensions: CborValue?, expected: NonEmptyStr) -> BundleV
   }
 }
 
-fn validation_category_refusal(extensions: CborValue?, admitted: List<Int>) -> AttestationRefusal? {
+fn validation_category_refusal(extensions: CborValue?, admitted: List<Int>) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
   match read_validation_category(extensions: extensions, admitted: admitted) {
     ValidationCategoryAdmitted => none
     ValidationCategoryReadAbsent => Present { value: AttestationValidationCategoryAbsent }
@@ -575,7 +583,11 @@ fn validation_category_refusal(extensions: CborValue?, admitted: List<Int>) -> A
   }
 }
 
-fn bundle_version_refusal(extensions: CborValue?, expected: NonEmptyStr) -> AttestationRefusal? {
+fn bundle_version_refusal(extensions: CborValue?, expected: NonEmptyStr) -> AttestationRefusal?
+  admit_callers: [
+    decl_ref(module_path: "extdeps.apple.app_attest", decl_name: "attestation_step_refusal"),
+  ]
+{
   match read_bundle_version(extensions: extensions, expected: expected) {
     BundleVersionMatched => none
     BundleVersionReadAbsent => Present { value: AttestationBundleVersionAbsent }

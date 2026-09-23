@@ -9,8 +9,11 @@ import extdeps.standards.rfc_5280 {
   X509KeyUsageMalformed, X509IntermediatesBelowNegative,
   oid_basic_constraints, oid_key_usage,
 }
-import extdeps.apple.app_attest { ca_authority_refusal, AttestationChainUntrusted }
-import test.claim.app_attest_verifier_witness_test { sample_leaf, sample_ca }
+import extdeps.apple.app_attest {
+  AttestationChainUntrusted, AttestationDecoded, ordered_step_refusal, OrderedStepRan, AttestationStepNotInOrder,
+  IntermediateCaAuthorityStep,
+}
+import test.claim.app_attest_verifier_witness_test { sample_leaf, sample_ca, sample_fold_inputs, sample_expectation }
 
 // THE SUBJECT IS ONE INTERFACE, rfc_5280 x509_ca_authority (§6.1.4 (k), (m), (n)). The positive
 // control is Apple's real App Attestation intermediate; each RED is that same certificate with ONE
@@ -125,20 +128,27 @@ test fn path_len_constraint_zero_bounds_intermediates_below() -> Bool {
     && cawt_on_intermediate(oid: oid_basic_constraints, value: pl0, below: 1) == "path-len"
 }
 
-// THE APPLE FOLD CONSUMES IT: ca_authority_refusal passes the real intermediate and refuses the
-// non-CA one as AttestationChainUntrusted.
-test fn attestation_chain_refuses_an_intermediate_without_ca_authority() -> Bool {
-  match sample_ca() {
-    Absent => false
-    Present { value: ca } =>
-      match ca_authority_refusal(ca: ca) {
-        Present { value: _ } => false
-        Absent =>
-          match ca_authority_refusal(ca: cawt_replacing(cert: ca, oid: oid_basic_constraints, value: Present { value: [48, 0] })) {
-            Present { value: AttestationChainUntrusted { detail: d } } => d == "the intermediate is not authorized to act as a CA: basicConstraints cA is not TRUE"
-            _ => false
-          }
+// THE APPLE FOLD CONSUMES IT: the CA-authority step, reached through the declared step order
+// (extdeps.apple.app_attest ordered_step_refusal -- the step itself is sealed to the fold's
+// dispatcher), passes the real intermediate and refuses the non-CA one as AttestationChainUntrusted.
+fn ca_step_reading(d: AttestationDecoded, ca: X509Certificate) -> String {
+  match ordered_step_refusal(step: IntermediateCaAuthorityStep, d: AttestationDecoded { parts: d.parts, leaf: d.leaf, ca: ca, root: d.root, auth: d.auth }, e: sample_expectation()) {
+    AttestationStepNotInOrder => "not-in-order"
+    OrderedStepRan { refusal: r } =>
+      match r {
+        Absent => "none"
+        Present { value: AttestationChainUntrusted { detail: dd } } => dd
+        Present { value: _ } => "other"
       }
+  }
+}
+
+test fn attestation_chain_refuses_an_intermediate_without_ca_authority() -> Bool {
+  match sample_fold_inputs() {
+    Absent => false
+    Present { value: d } =>
+      ca_step_reading(d: d, ca: d.ca) == "none"
+        && ca_step_reading(d: d, ca: cawt_replacing(cert: d.ca, oid: oid_basic_constraints, value: Present { value: [48, 0] })) == "the intermediate is not authorized to act as a CA: basicConstraints cA is not TRUE"
   }
 }
 
