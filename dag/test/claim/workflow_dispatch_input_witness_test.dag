@@ -15,7 +15,7 @@ import gunbc.fleet_converge_workflow {
   FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy,
   RunnerPasswordSessionToolConverge,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
-  fleet_converge_reset_observer_dispatch_admission_step, fleet_converge_build_job_steps,
+  fleet_converge_build_job_own_steps,
   fleet_converge_job_edges, fleet_converge_release_bins_job_id,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
@@ -31,14 +31,16 @@ import gunbc.fleet_converge_workflow {
 import gunbc.host_reset_return {
   DispatchAssignment, DispatchAssignmentRefused, reset_dispatch_pairings,
   ResetDispatchAdmitted, ResetDispatchNotThisMode, ResetDispatchObserverUnnamed, admit_reset_dispatch,
+  host_reset_observer_label_env,
 }
-import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_pair_serving_d0_invoke, gunbc_ci_sm_connect_timeout, gunbc_ci_sm_max_time, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_mtcollins1_boot_invoke, gunbc_ci_mtcollins1_fan_observe_invoke }
+import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
+import gunbc.ci_spec { gunbc_ci_host_reset_dispatch_admission_target, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_pair_serving_d0_invoke, gunbc_ci_sm_connect_timeout, gunbc_ci_sm_max_time, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_mtcollins1_boot_invoke, gunbc_ci_mtcollins1_fan_observe_invoke }
 import std.measure { minute_count, second_count }
 import gunbc.spark.pair_serving_d0_door { pair_serving_d0_step_timeout_minutes, d0_prelude_allowance, d0_approval_window, d0_transaction_allowance }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
-  YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping
+  YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping, YamlKeyValue
 }
 
 fn value_is_expected_input(v: YamlValue) -> Bool {
@@ -440,20 +442,43 @@ test fn a_whitespace_only_observer_is_refused_as_unnamed() -> Bool {
 // AND IT IS ACTUALLY IN THE JOB. A step function nothing calls is the dangling-declaration shape
 // (DESIGN section 3c) and would leave the guard passing its own witness while never running.
 //
-// IT ASKS THE STEP LIST, NOT THE WHOLE WORKFLOW, and that is a cost fact rather than a style one:
-// fleet_converge_build_job_steps() is the single authority the job's `steps:` field consumes, so
-// folding it answers the same question as indexing jobs[0] while building one
-// job's steps instead of five jobs. The first draft indexed the workflow and was interrupted at
-// cpu_at_least=507ms against the 500ms line, producing no verdict at all.
+// IT ASKS THE JOB'S OWN STEPS, NOT THE PRELUDE-PREFIXED LIST, and that is a subject fact before it is
+// a cost one (DESIGN section 3, a witness discriminates at one interface). The shared CI prelude is a
+// different producer with its own witnesses; folding it in made every prelude render part of this
+// claim's subject, and it was most of the cost that put the old claim over the 72,300 new-witness
+// budget (re-derive with claim_batch --entry on this file, its `[witness] ... eval_steps=` line). fleet_converge_build_job_steps() is prelude ++ own steps, and the job
+// and its backstop sum both consume it, so membership in the own list is membership in the job.
+//
+// IT ASSERTS THE ROUTE, NOT ONLY THE ID. This is the one claim that runs the real producer, so an id
+// match alone would stay green over a step whose env no longer hands the dispatch inputs to the
+// admission, or whose run invokes a different entry: it holds that the step reaches the modeled fold
+// (host_reset_return_dispatch_admission_wet reads both env names) with both inputs wired. Control:
+// dropping fleet_converge_reset_observer_dispatch_admission_step() from the own list turns this red.
 test fn the_build_job_carries_the_reset_observer_dispatch_admission() -> Bool {
   any(
-    fleet_converge_build_job_steps(),
+    fleet_converge_build_job_own_steps(),
     st => match st {
-      RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-        match i { Present { value: v } => v == "reset_observer_dispatch_admission"  Absent => false }
+      RunStep { name: _, id: i, run: r, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+        match i {
+          Present { value: v } =>
+            v == "reset_observer_dispatch_admission"
+              && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.entry)
+              && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.function)
+              && step_env_binds(env: e, key: host_reset_dispatch_mode_env as String, input: "${{ github.event.inputs.mode }}")
+              && step_env_binds(env: e, key: host_reset_observer_label_env as String, input: "${{ github.event.inputs.reset_observer }}")
+          Absent => false
+        }
       UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
     }
   )
+}
+
+fn step_env_binds(env: List<YamlKeyValue>?, key: String, input: String) -> Bool {
+  match env {
+    Present { value: kvs } =>
+      any(kvs, p => p.key == key && match p.value { YamlString { value: v } => v == input  _ => false })
+    Absent => false
+  }
 }
 
 // THE RESET JOB SHARES ITS SUBJECT'S MUTATION DOMAIN. Review 62030 found it carrying no concurrency
