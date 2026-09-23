@@ -2,7 +2,7 @@ module gunbc.rung_drop.v41_row_store_host_realized_by_sample
 
 import std.types { String, List, NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
-import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
+import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
 
 // DECLARED 4b(3) DROP (2026-09-23, ruling A from proud-deer-538). Until this row the published Engram
 // row stores had NO constructor: gunbc.spark.v41_engram_row_store v41_published_transform_standing was
@@ -14,6 +14,12 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 // model's bytes is DIFFERENTIAL evidence over a real published sample
 // (test.claim.spark.v41_row_store_encode_witness), not a derivation: a placement defect confined to
 // rows outside the sample, or a chunk-boundary defect the sample does not cross, is not excluded.
+//
+// WHY THE TEMPORARY RUNG IS MITIGATABLE AND NOT MECHANICALLY PREVENTABLE (review 70433). No enrolled check
+// EXECUTES the host program: the witness compares the fold against a receipt transcribed from one off-CI
+// run of the rendered text, tied to the current text only by that text's sha256. A regression in the
+// program is caught when the text changes (the digest claim goes red) and not by execution, and a defect
+// the sample does not reach is not caught at all. That is containment, not a gate over the host path.
 //
 // SCAFFOLD ADMISSION (2026-09-23): operator escalation msg_4de9efa4-51fb-4dbc-ab71-9ccf45f378e7, option
 // 'Admit scaffold, layout-free text'. It was approved by the dashboard's 15-minute default on the
@@ -31,7 +37,7 @@ data v41_row_store_host_realized_by_sample: RungDrop = RungDrop {
 
   declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
-    temporary: MechanicallyPreventable,
+    temporary: Mitigatable,
     reason: ReplacementStaged {
       replacement: "the .dag encoder (v41_place_row / v41_store_bytes) emitted and built, encoding every published store itself",
     },
