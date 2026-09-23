@@ -78,66 +78,119 @@ data xl2_ingest: SourceRootIngest = Cons {
   }
 }
 
-fn xl2_outcome(module_name: String) -> Optional<NativeCensusModuleOutcome> {
-  match native_test_context_from_ingest(ingest: xl2_ingest) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: context, diagnostics: _ } =>
-      fold_list(
-        xs: native_census_modules(ingest: xl2_ingest),
-        empty: optional_absent(),
-        cons: fn(acc, entry) {
-          if entry.module == module_name {
-            optional_present(
-              value: native_census_module_resolution(
-                context: context,
-                refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
-                entry: entry
-              )
-            )
-          } else {
-            acc
-          }
+// ONE FRONT END FOR ALL FOUR CLAIMS, SHARED THE WAY v2.test.claim.resolve.namespace_candidate_rule
+// ncr_outcomes IS. native_test_context_from_ingest tokenizes, parses, normalizes and indexes the
+// whole ingest, and the floor builds a fresh frame per claim, so each claim re-derived it at ~1.4s
+// against the enrolment margin (ENROLMENT-MARGIN-REFUSED on the first floor run of gunbc#12108).
+// xl2_outcomes is nullary and its sources are inline, so it is enrolled WARM in
+// v2.workflow.floor_pure_producer_share and forced once at preparation. THE SEAM IS RESOLUTION'S
+// OUTPUT READ AS A VERDICT: the stored value is a reason symbol and the atom the refusal names --
+// no resolution context, no Node, no closure -- and each claim reads one module's verdict.
+type Xl2Verdict
+  = Xl2Resolved
+  | Xl2Refused { reason: Symbol, at_atom: Optional<Symbol> }
+  | Xl2FileRefused
+  | Xl2Absent
+
+type Xl2Outcomes
+  = Xl2ContextRefused
+  | Xl2OutcomesDecided {
+      named: Xl2Verdict
+      positional: Xl2Verdict
+      declared: Xl2Verdict
+      callee_only: Xl2Verdict
+    }
+
+fn xl2_verdict_of(outcome: NativeCensusModuleOutcome) -> Xl2Verdict {
+  match outcome {
+    NativeCensusModuleResolved => Xl2Resolved
+    NativeCensusModuleFileRefused => Xl2FileRefused
+    NativeCensusModuleResolveRefused { diagnostics: d } =>
+      Xl2Refused {
+        reason: d.head.reason,
+        at_atom: match d.head.at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          _ => optional_absent()
         }
-      )
+      }
   }
 }
 
-fn xl2_resolved(module_name: String) -> Bool {
-  match xl2_outcome(module_name: module_name) {
-    Present { value: NativeCensusModuleResolved } => true
+fn xl2_verdict_in(context: NativeTestContext, module_name: String) -> Xl2Verdict {
+  fold_list(
+    xs: native_census_modules(ingest: xl2_ingest),
+    empty: Xl2Absent,
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        xl2_verdict_of(
+          outcome: native_census_module_resolution(
+            context: context,
+            refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+            entry: entry
+          )
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn xl2_outcomes() -> Xl2Outcomes {
+  match native_test_context_from_ingest(ingest: xl2_ingest) {
+    Rejected { diagnostics: _ } => Xl2ContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      Xl2OutcomesDecided {
+        named: xl2_verdict_in(context: context, module_name: "v2.test.xl2_named"),
+        positional: xl2_verdict_in(context: context, module_name: "v2.test.xl2_positional"),
+        declared: xl2_verdict_in(context: context, module_name: "v2.test.xl2_declared"),
+        callee_only: xl2_verdict_in(context: context, module_name: "v2.test.xl2_callee_only")
+      }
+  }
+}
+
+fn xl2_is_resolved(v: Xl2Verdict) -> Bool {
+  match v {
+    Xl2Resolved => true
     _ => false
   }
 }
 
 // Refused at resolve, the first refusal is unbound, and its locus is the argument's own atom.
-fn xl2_refused_unbound_at(module_name: String, spelling: Symbol) -> Bool {
-  match xl2_outcome(module_name: module_name) {
-    Present { value: NativeCensusModuleResolveRefused { diagnostics: d } } =>
-      (d.head.reason == ^resolve_reason_unbound_symbol)
-        && match d.head.at {
-          NodeLocus { anchor: a } =>
-            match node_atom_identity_optional(node: a.at) {
-              Present { value: id } => id == spelling
-              Absent => false
-            }
-          _ => false
-        }
+fn xl2_is_unbound_at(v: Xl2Verdict, spelling: Symbol) -> Bool {
+  match v {
+    Xl2Refused { reason: r, at_atom: Present { value: id } } =>
+      (r == ^resolve_reason_unbound_symbol) && (id == spelling)
     _ => false
   }
 }
 
 test fn an_undeclared_named_call_argument_refuses_at_resolve_at_the_argument() -> Bool {
-  xl2_refused_unbound_at(module_name: "v2.test.xl2_named", spelling: ^xl2_undeclared_argument)
+  match xl2_outcomes() {
+    Xl2OutcomesDecided { named: v, positional: _, declared: _, callee_only: _ } =>
+      xl2_is_unbound_at(v: v, spelling: ^xl2_undeclared_argument)
+    Xl2ContextRefused => false
+  }
 }
 
 test fn an_undeclared_positional_call_argument_refuses_at_resolve_at_the_argument() -> Bool {
-  xl2_refused_unbound_at(module_name: "v2.test.xl2_positional", spelling: ^xl2_undeclared_argument)
+  match xl2_outcomes() {
+    Xl2OutcomesDecided { named: _, positional: v, declared: _, callee_only: _ } =>
+      xl2_is_unbound_at(v: v, spelling: ^xl2_undeclared_argument)
+    Xl2ContextRefused => false
+  }
 }
 
 test fn a_declared_call_argument_resolves() -> Bool {
-  xl2_resolved(module_name: "v2.test.xl2_declared")
+  match xl2_outcomes() {
+    Xl2OutcomesDecided { named: _, positional: _, declared: v, callee_only: _ } => xl2_is_resolved(v: v)
+    Xl2ContextRefused => false
+  }
 }
 
 test fn a_callee_only_call_resolves() -> Bool {
-  xl2_resolved(module_name: "v2.test.xl2_callee_only")
+  match xl2_outcomes() {
+    Xl2OutcomesDecided { named: _, positional: _, declared: _, callee_only: v } => xl2_is_resolved(v: v)
+    Xl2ContextRefused => false
+  }
 }
