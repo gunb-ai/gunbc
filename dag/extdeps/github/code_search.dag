@@ -1,6 +1,7 @@
 module extdeps.github.code_search
 
 import std.types { Bool, Int, List, NonEmptyStr, String, Secret }
+import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -108,8 +109,10 @@ fn admit_code_search_page_size(observed: Int) -> CodeSearchPageSizeAdmission {
 }
 
 // The deepest page a caller may request without passing the ceiling, derived rather than authored
-// so that changing the ceiling or the page size cannot leave a stale bound behind.
-fn deepest_retrievable_page(page_size: CodeSearchPageSize) -> Int {
+// so that changing the ceiling or the page size cannot leave a stale bound behind. It is a Nat BY
+// CONSTRUCTION -- a positive ceiling over an admitted page size of at least one -- so the walk
+// consumes it as a Nat directly rather than asserting `as Nat` at the call site.
+fn deepest_retrievable_page(page_size: CodeSearchPageSize) -> Nat {
   retrievable_result_ceiling / page_size.size
 }
 

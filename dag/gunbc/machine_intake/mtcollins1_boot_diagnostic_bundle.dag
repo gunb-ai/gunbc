@@ -2,6 +2,7 @@ module gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle
 
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { trim }
 import std.measure { Second, second, second_count, ByteSize, byte_size, byte_size_count }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
@@ -1041,7 +1042,11 @@ fn console_path_retained(path: String) -> Bool {
 fn console_size_of_stat(size_text: String) -> ByteSize? {
   match parse_int(s: trim(size_text)) {
     Absent => none
-    Present { value: n } => if n < 0 { none } else { Present { value: byte_size(count: n as Nat) } }
+    Present { value: n } =>
+      match checked_int_to_nat(n: n) {
+        Absent => none
+        Present { value: count } => Present { value: byte_size(count: count) }
+      }
   }
 }
 

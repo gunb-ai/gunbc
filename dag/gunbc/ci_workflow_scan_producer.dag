@@ -296,7 +296,7 @@ fn scan_partition(
   let per_page = page_size.size
   let bound = deepest_retrievable_page(page_size: page_size)
   let walked = fold(
-    nat_range_inclusive(1, bound as Nat),
+    nat_range_inclusive(1, bound),
     init: initial_walk_state(),
     f: fn(acc, page) {
       advance_scan(

@@ -17,7 +17,7 @@ import std.literal_elaboration {
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows }
-import std.coercion { dag_can_cast, is_dag_cast_domain_type }
+import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
@@ -5726,6 +5726,11 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
       if source_name == target_name { none }
+      else if dag_cast_requires_proof(source_type: source_name, target_type: target_name) {
+        let msg = concat("invalid cast: ", source_name, " as ", target_name, " is a refinement cast, not a re-typing -- an arbitrary ", source_name, " has no ", target_name, "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)")
+        let diag = InternalError { message: msg, span: span }
+        Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
+      }
       else if !is_dag_cast_domain_type(name: source_name) { none }
       else if !is_dag_cast_domain_type(name: target_name) { none }
       else if dag_can_cast(source_type: source_name, target_type: target_name) { none }
