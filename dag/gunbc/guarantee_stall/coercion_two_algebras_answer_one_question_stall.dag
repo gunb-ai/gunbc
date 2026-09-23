@@ -1,0 +1,19 @@
+module gunbc.guarantee_stall.coercion_two_algebras_answer_one_question_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, ClimbableButUnbuilt, BoundedPopulation, climbs_when }
+
+data coercion_two_algebras_answer_one_question_stall: GuaranteeStall = GuaranteeStall {
+  subject: "Two unrelated algebras answer one question -- whether one model inhabits another, and how the crossing is spelled at a target. std.coercion answers it as a NAME-KEYED CAST TABLE (CastRule, CastSyntax, dag_cast_rules, dag_can_cast); v2.std.coercion answers it as the HOMOMORPHISM FOLD coercion_fold, which is the form DESIGN section 4 specifies when it says coercion, ingest and emit are one total decision procedure asked in three directions. THE CAST SIDE EXECUTES ON THE LOAD-BEARING PATH: v1.compiler.infer calls dag_can_cast at three separate decision points -- argument-versus-formal admission, literal admission, and a coercion decision in the type-relation fold. NOTHING JOINS THE TWO, so if they disagreed today no execution would go red; that absence is the finding rather than a gap beside it. WHY THIS IS RECORDED AS A STALL AND NOT AS DEFERRED: gunbc.plans.dag_v2_defork_audit already carries a coercion row whose verdict rests on the two modules SHARING ZERO TYPE NAMES, which is the right question for a resolver collision guard and the wrong one here -- zero shared names is exactly what makes a concept fork INVISIBLE rather than what makes it benign. A disposition that reads as adjudicated while answering a different question is worse than no row, which is how this stayed unrecorded.",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: [
+    "std.coercion.dag_can_cast",
+    "std.coercion.dag_cast_rules",
+    "std.coercion.is_dag_cast_domain_type",
+    "v2.std.coercion.coercion_fold",
+    "v1.compiler.infer"
+  ] },
+  next_rung_trigger: climbs_when(capability: "the coercion question is asked ONCE -- the homomorphism fold answering for the v1 cast sites as well as the v2 sites -- SUFFICIENT FOR dag_can_cast to have NO REMAINING CALLER and be DELETED rather than kept beside the fold. Deleting the last caller is the operative half and the only one that retires this row: a change that adds the fold beside the table, or that repoints some of the three v1.compiler.infer decision points while others still ask the table, leaves two algebras answering one question and does not fire this. Nor does the deletion of the v1 seed by itself: four extdeps language types modules author the cast checkpoint rows and survive v1, so the table outlives the seed and the trigger is the join, not the seed's removal.")
+}

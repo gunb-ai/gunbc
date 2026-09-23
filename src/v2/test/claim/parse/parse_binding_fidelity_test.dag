@@ -2,7 +2,7 @@ module v2.test.parse.parse_binding_fidelity
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.declaration_marker { test_marker_channel_empty }
-import v2.compiler.normalized_tree { NormalizedTree, admit_unmarked_normalized_roots, admit_normalized_tree }
+import v2.compiler.normalized_tree { NormalizedTree, admit_unmarked_normalized_roots, admit_normalized_tree, no_import_bindings}
 import v2.compiler.name_resolve {
   Admission,
   Import,
@@ -201,7 +201,7 @@ fn pbf_unbound_atom_tree() -> Node {
 }
 
 fn pbf_resolve_unbound_symbol_rejects() -> Bool {
-  match admit_normalized_tree(test_markers: test_marker_channel_empty(), root: pbf_unbound_atom_tree(), diagnostics: None) {
+  match admit_normalized_tree(import_bindings: no_import_bindings(), test_markers: test_marker_channel_empty(), root: pbf_unbound_atom_tree(), diagnostics: None) {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted_tree, diagnostics: _ } =>
   match resolve(

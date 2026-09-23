@@ -454,7 +454,10 @@ test fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
   }
 }
 
-test fn witness_partition_fold_compat_wrapper_not_receipt_path() -> Bool {
+// The positive control beside the zero-fuel refusal above: the same inputs, the default fuel, and
+// both units built. It was named for the List-returning compat wrapper it used to stand against;
+// that wrapper is deleted, so the name now says what the claim actually asserts.
+test fn witness_partition_fold_outcome_yields_both_units() -> Bool {
   match partition_fold_outcome(
     module_dag: witness_triangle_dag(),
     assignment: witness_two_unit_assignment()

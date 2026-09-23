@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.two_admission_authorities_keyed_on_different_relations
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data two_admission_authorities_keyed_on_different_relations: RecurringFailureMode = RecurringFailureMode {
+  identity: "two_admission_authorities_keyed_on_different_relations" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: two authorities answer one admission question -- may this value cross from one model to another -- and each is keyed on a DIFFERENT IDENTITY RELATION, with no conversion between the two keys anywhere in the corpus.",
+
+    "HARM: the ordinary single-authority fork (DESIGN section 3) is at least comparable -- two answers to one question, so a join can be written and a disagreement can be made to refuse. This class is worse in a way that hides it: the two answers cannot be compared AT ALL without an authored bridge, so no join exists to go red, no census counts the divergence, and the fork does not present as a fork. It presents as two unrelated modules. The cost is paid at consolidation, when the bridge must be authored anyway and every decision taken in the meantime was premised on whichever key the local caller happened to hold.",
+
+    "DISTINGUISHING FACTS, and the first is the recognition rule: A FIXTURE THAT WANTS TO ASK BOTH AUTHORITIES ABOUT ONE SUBJECT MUST AUTHOR THE SUBJECT TWICE. That is not fixture awkwardness -- it IS the measurement, and it is available before any execution. Further tells: the two admission sets differ in BOTH directions, so neither authority is merely the stricter one and the comfortable reading is unavailable; and one side's key is a SPELLING while the other's is a resolved structural identity.",
+
+    "SPECIMEN 1 (gunbc, 2026-09-22, v2.test.claim.coercion.two_algebra_fork). std.coercion dag_can_cast folds over dag_cast_rules and grounded_primitive_coproduct_identities, keyed on TYPE-NAME STRINGS, and it executes: v1.compiler.infer consults it at argument-versus-formal admission, at literal admission, and in the type-relation fold. v2.std.coercion coercion_fold asks v2.std.find_witness find_witness for a structure-preserving witness, keyed on NODE IDENTITY, and it has no established executing consumer. Measured over seven supplied pairs, the admission sets differ in both directions: Int->Float, Bool->Int and Int->Nat are admitted name-only, while String->String -- an IDENTITY crossing -- is admitted homomorphism-only, because dag_cast_rules carries no identity row for it. The sharpest single fact is that last one: the case everyone assumes is free is the case the executing authority refuses.",
+
+    "SPECIMEN 2 (gunbc, 2026-09-22, smart-tern-891, a different surface and an independent sighting). One resource appeared under two labels, Network and std.resources.Network, because a diagnostic field carried the caller's IMPORT SPELLING while the wall itself compared through the resolved declaration identity. Correct by identity in one place, keyed by spelling in another, and only the second was load-bearing for the new consumer. Two independent sightings on one day is what makes this a class rather than a fact about coercion.",
+
+    "RUNG FOUND AT: below the ladder for the divergence itself -- nothing refuses, nothing counts it, and each authority answers confidently within its own key. The coercion specimen is now MITIGATABLE at the measurement grain only: v2.test.claim.coercion.two_algebra_fork pins the admission relation pair by pair over a supplied population, so a change to either side's admission set reds a claim. That is a wall around the MEASUREMENT, not around the state.",
+
+    "CEILING: structurally impossible, and the derivation is ordinary rather than aspirational. Admission over a key relation is decidable and fully modeled, so one authority keyed on one relation makes the divergent state unwritable -- there is no second admission set to diverge from. The ceiling is reached by a replacement migration (DESIGN section 3, replacement migrations cut over at the root), not by a check: one key wins, the other algebra is cut at its root, and the surviving authority carries every refusal the cut one carried.",
+
+    "NEXT TRIGGER: the route belongs in the identity key. Concretely, an admission authority whose key is a resolved declaration identity rather than a spelling, and one conversion or one deletion -- not a bridge kept standing, which would be a third authority. The measurement lands first deliberately: the repair is a replacement migration with its own blast radius, and it should start from executed values rather than from the derivation that found them.",
+
+    "WHAT IS NOT CLAIMED: no wrong compiled output is attributed to the coercion specimen. The homomorphism side has no executing consumer, so the divergence has had no opportunity to produce one. The class is filed on the STATE SPACE -- two admission authorities that cannot be compared -- and a class that has produced no incident is the one that will otherwise be found last.",
+  ],
+
+  evidence: [],
+}
