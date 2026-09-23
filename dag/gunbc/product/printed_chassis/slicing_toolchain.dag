@@ -165,7 +165,6 @@ fn attempt_orca_execution(
   executable: OrcaExecutable,
   transport: CommandTransport,
 ) -> OrcaExecutionStanding
-  uses net: Network
 {
   match judge_host_abi(observation: observation) {
     HostAbiUnobserved => ExecutionUnattempted { abi: HostAbiUnobserved }

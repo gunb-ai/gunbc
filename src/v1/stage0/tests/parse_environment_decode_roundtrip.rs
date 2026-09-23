@@ -19,8 +19,8 @@ use std::path::Path;
 use std::process::Command;
 
 use v1_compiler::cli_run::namespace_baseline::{
-    blob_id_at, environment_load_refusal_text, evaluate_environment_in, load_parse_environment_at,
-    materialize_revision_paths,
+    blob_id_at, environment_load_refusal_text, evaluate_environment_in, kernel_set_serves_both,
+    load_parse_environment_at, materialize_revision_paths, EnvironmentLoadRefusal,
 };
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment;
@@ -166,6 +166,139 @@ fn the_loader_reads_the_revision_not_the_worktree() {
         "the loader returned the WORKTREE environment: the uncommitted `zzfnzz` spelling reached \
          it, so the revision argument selected nothing. keywords: {keywords:?}"
     );
+
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
+const KERNEL_TYPES_PATH: &str = "dag/std/types.dag";
+
+/// THE KERNEL GUARD DECIDES AT THE GRAIN OF THE NAME SET, NOT THE FILE'S BYTES.
+///
+/// Three revisions of one scratch repository, each compared against the live-tree baseline:
+///
+/// - a function-body and annotation edit to `dag/std/types.dag` changes the blob but cannot change
+///   the kernel names, so the guard must answer `true`. The earlier whole-blob guard answered `false`
+///   here and refused every such change repo-wide -- this is the discriminating RED for that shape;
+/// - a revision that adds a kernel name must answer `false`: the single head map cannot speak for it;
+/// - a revision whose `types.dag` does not declare `kernel_type_set` must REFUSE rather than
+///   substitute this binary's set.
+#[test]
+fn the_kernel_guard_compares_names_not_bytes() {
+    let root = workspace_root();
+    let scratch =
+        std::env::temp_dir().join(format!("gunbc-kernel-set-probe-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).expect("create scratch repo");
+    materialize_revision_paths(&root, "HEAD", &scratch, &["dag"]).unwrap_or_else(|e| {
+        panic!(
+            "materializing the scratch corpus failed: {}",
+            environment_load_refusal_text(&e)
+        )
+    });
+    git(&scratch, &["init", "--quiet"]);
+    git(&scratch, &["config", "user.email", "probe@example.invalid"]);
+    git(&scratch, &["config", "user.name", "probe"]);
+    git(&scratch, &["add", "-A"]);
+    git(&scratch, &["commit", "--quiet", "-m", "baseline"]);
+    let baseline = git(&scratch, &["rev-parse", "HEAD"]);
+
+    let types_path = scratch.join(KERNEL_TYPES_PATH);
+    let original = std::fs::read_to_string(&types_path).expect("read scratch types.dag");
+    let commit_variant = |label: &str, text: &str| -> String {
+        std::fs::write(&types_path, text).expect("write types.dag variant");
+        git(&scratch, &["commit", "--quiet", "-am", label]);
+        let id = git(&scratch, &["rev-parse", "HEAD"]);
+        git(
+            &scratch,
+            &["checkout", "--quiet", &baseline, "--", KERNEL_TYPES_PATH],
+        );
+        git(
+            &scratch,
+            &["commit", "--quiet", "--allow-empty", "-am", "restore"],
+        );
+        id
+    };
+
+    // Body-only: the kernel set is untouched, the bytes are not.
+    let body_edit = original.replacen("    Absent => false\n", "    Absent => (1 == 2)\n", 1);
+    assert_ne!(
+        original, body_edit,
+        "the probe could not find is_kernel_type's body to edit"
+    );
+    let body_rev = commit_variant("body-only edit", &body_edit);
+    assert_ne!(
+        blob_id_at(&scratch, &baseline, KERNEL_TYPES_PATH).ok(),
+        blob_id_at(&scratch, &body_rev, KERNEL_TYPES_PATH).ok(),
+        "the body edit did not change the blob, so the probe does not exercise the name-set arm"
+    );
+    match kernel_set_serves_both(&scratch, &body_rev, &baseline) {
+        Ok(true) => {}
+        other => panic!(
+            "a function-body edit to {KERNEL_TYPES_PATH} was judged to change the kernel set: {:?}",
+            other.map_err(|e| environment_load_refusal_text(&e))
+        ),
+    }
+
+    // A kernel name added: the base's set is not this binary's.
+    let widened = original.replacen("\"Bytes\": true", "\"Bytes\": true, \"ZzProbe\": true", 1);
+    assert_ne!(
+        original, widened,
+        "the probe could not find the kernel set to widen"
+    );
+    let widened_rev = commit_variant("kernel name added", &widened);
+    match kernel_set_serves_both(&scratch, &widened_rev, &baseline) {
+        Ok(false) => {}
+        other => panic!(
+            "a base revision declaring an extra kernel name was judged served by this binary's set: {:?}",
+            other.map_err(|e| environment_load_refusal_text(&e))
+        ),
+    }
+
+    // The set is not declared at all: refuse as an unreadable KERNEL SET, never substitute.
+    let renamed = original.replacen("data kernel_type_set:", "data zz_kernel_type_set:", 1);
+    assert_ne!(
+        original, renamed,
+        "the probe could not find the kernel set declaration"
+    );
+    let unreadable_rev = commit_variant(
+        "kernel set undeclared",
+        &renamed.replace("map_get(kernel_type_set,", "map_get(zz_kernel_type_set,"),
+    );
+    match kernel_set_serves_both(&scratch, &unreadable_rev, &baseline) {
+        Err(EnvironmentLoadRefusal::KernelSetNotReadable { revision, cause }) => {
+            assert_eq!(
+                revision, unreadable_rev,
+                "the refusal named a different revision than the one whose set was unreadable"
+            );
+            assert!(
+                cause.contains("`kernel_type_set` is not declared by"),
+                "the refusal did not locate the missing declaration: {cause}"
+            );
+        }
+        other => panic!(
+            "a base revision with no kernel_type_set declaration was not refused as an unreadable \
+             kernel set: {other:?}"
+        ),
+    }
+
+    // The HEAD has no declaring file: the compiled-in set must not stand in for an absent authority.
+    git(&scratch, &["rm", "--quiet", KERNEL_TYPES_PATH]);
+    git(&scratch, &["commit", "--quiet", "-m", "types.dag removed"]);
+    let headless_rev = git(&scratch, &["rev-parse", "HEAD"]);
+    match kernel_set_serves_both(&scratch, &baseline, &headless_rev) {
+        Err(EnvironmentLoadRefusal::KernelSetNotReadable { revision, .. }) => assert_eq!(
+            revision, headless_rev,
+            "the absent-head refusal named the wrong revision"
+        ),
+        other => panic!(
+            "a head revision with no {KERNEL_TYPES_PATH} was answered from the compiled-in set: {other:?}"
+        ),
+    }
+    // ...and an absent file on BOTH sides is not equality.
+    match kernel_set_serves_both(&scratch, &headless_rev, &headless_rev) {
+        Err(EnvironmentLoadRefusal::KernelSetNotReadable { .. }) => {}
+        other => panic!("two absent declaring files were judged to agree: {other:?}"),
+    }
 
     let _ = std::fs::remove_dir_all(&scratch);
 }

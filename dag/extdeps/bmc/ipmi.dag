@@ -3,7 +3,7 @@ module extdeps.bmc.ipmi
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { Bool, NonEmptyStr, Unit }
+import std.types { Bool, Int, NonEmptyStr, Unit }
 import std.string_type { String }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -58,6 +58,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // THIS PROSE SITS ABOVE THE SERVICE AND NOT BESIDE EACH OPERATION because §4c admits annotations at
 // module-item grain only; a `//` block inside a declaration body is a hard error, which is how the
 // first draft of these operations was caught.
+// SelListAuthenticated IS SelList WITH A CREDENTIAL, FOR THE SAME REASON SdrTypeList IS SdrList
+// WITH ONE: every controller in this fleet refuses an unauthenticated session, and changing what
+// SelList means would silently change its existing readers. It binds stderr and exit_code because
+// its consumer (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle) records WHY a read failed,
+// and it runs under coreutils `timeout` (extdeps.tools.gnu_coreutils timeout_command's argv shape,
+// --kill-after included; exit 124 on expiry) with the caller's bound, so a controller that does not
+// answer is a bounded reading, not a hung step, whatever ipmitool's own retry schedule is.
+//
 // SdrTypeList IS THE AUTHENTICATED, TYPE-SELECTED READ, AND IT EXISTS BECAUSE SdrList COULD NOT BE
 // USED. The three original readonly operations carry no credential, which the asymmetry paragraph
 // above already records as a real gap; every controller in this fleet now requires one, so a sensor
@@ -112,6 +120,22 @@ service diagnostic.ipmi.Tool {
     exit {
       0 => Unit
       nonzero => String "ipmitool sel failed"
+    }
+  }
+
+  operation SelListAuthenticated {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "sel", "elist"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool authenticated sel elist failed"
     }
   }
 

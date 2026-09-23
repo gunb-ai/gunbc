@@ -584,6 +584,13 @@ import v2.std.collection { List }
 // no resolution context and no closure, portable for the same reason census_probe_outcomes is. WARM
 // because the fill is two front ends over twelve modules, many times one claim's budget, and the
 // alternative is paying it nine times.
+// THE XL-2 CALL-ARGUMENT RESOLVE ROW IS THE SAME GROUND AT FOUR SPECIMENS.
+// v2.test.claim.namespace_xl0.call_argument_resolve_refusal drives native_test_context_from_ingest
+// once over four inline modules and resolves each; four claims read one verdict each. Absent, each
+// claim paid the whole front end and the first floor run of gunbc#12108 refused all four as
+// ENROLMENT-MARGIN-REFUSED at ~1.4s CPU. The stored value is verdict arms carrying a reason symbol
+// and an optional atom symbol -- no resolution context, no Node, no closure -- portable for the same
+// reason ncr_outcomes is.
 // THE BODY-LOWERING NORMALIZE ROW IS THE SAME GROUND, FOUND BY BEING EXPOSED RATHER THAN BY BEING
 // NEW. v2.test.manual.body_lowering_normalize_add calls body_lowering_normalized_module() -- one
 // front end over a source literal -- from NINETEEN sites, and the value is an Optional<NormalizedTree>:
@@ -606,6 +613,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "test.claim.namespace_xl2_rehearsal_census.xl2_control_runs",
   "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_module",
   "v2.test.claim.resolve.namespace_candidate_rule.ncr_outcomes",
+  "v2.test.claim.namespace_xl0.call_argument_resolve_refusal.xl2_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",
   "v2.test.claim.native_census.whole_tree_census_resolve.census_probe_outcomes",
