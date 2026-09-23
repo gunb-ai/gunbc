@@ -3021,6 +3021,186 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_RVJ5GW9Q2D7Y3PKAKTNRT0DCSB",
+      id: "egress-numeric-bit-sealed-carrier",
+      owner: "primitive-egress",
+      path: "docs/plans/demand-engine-program.md",
+      t: updated(t: fields(
+        headline: "NUMERIC-BIT cut 1: one sealed octet carrier minted only by admission (gunbc#11643)",
+        boundary: "A sole_constructor QualifiedOctets { members: List<UInt8> } minted only by the admission functions, RealizableWidth sole_constructor, and every bit-width operation consuming the sealed carrier. UInt8 is a Phantom transparent to Int and cannot carry the proof, so 256 inhabits List<UInt8> today.",
+        displaced_cost: "Every downstream encoder (base64, SHA-256, CBOR) re-checks or silently accepts an out-of-range octet; the forged-octet divergence row exists only because the carrier is literal-writable.",
+        first_slice: "Retarget gunbc#11643 onto the sealed carrier, delete base64_encode_forged_qualified_octet_diverges, floor clean, side-chat APPROVE on the exact head, land.",
+        red_control: "A literal QualifiedOctets outside the admission functions refuses at resolve; an admission fed 256 refuses with a typed cause; a forged-octet witness that once diverged has no author.",
+        out_of_scope: "Kernel arms and multi-limb carriers are the next two rows.",
+        handback: "Return the landed head, the admission roster, and the deleted divergence row."
+      ), on: "2026-09-20", note: "LANDED: gunbc#11643 merged at 6bb950a5589 with the sealed QualifiedOctets / QualifiedWord / RealizableWidth carriers and the mint proxy closed. The row stays active until its acceptance receipt is recorded; no further slice is owed on it.")
+    ),
+    active(
+      identity: "rn_06FZGM9B7W8J44J7R6QXA1MJWM",
+      id: "egress-numeric-bit-kernel-arms",
+      owner: "primitive-egress",
+      path: "docs/plans/demand-engine-program.md",
+      t: fields(
+        headline: "NUMERIC-BIT cut 2: Width32/Width64 kernel arms in the interpreter and the emitter",
+        boundary: "The bit operations over the sealed carrier at machine widths 32 and 64 realized as kernel arms in the v1 interpreter and in the Rust emitter, with one differential witness proving both targets agree on a discriminating corpus.",
+        displaced_cost: "SHA-256 and every rotate-heavy primitive run as interpreted folds over Int, which is the cost that gates CRYPTO-0's landing.",
+        first_slice: "FIRST the §3 fork: gunbc#11645 landed std.bitwise (word32_* over Int) beside std.machine_word in the same window -- two bit-operation authorities on main. Consolidate onto one before any kernel arm, then interpreter arms for the four rotate/shift/mask operations at Width32, the emitter twin, the differential witness.",
+        red_control: "A mutated emitter arm reds the differential witness while the interpreter arm stays green; an unrealized width refuses rather than falling back to the fold.",
+        out_of_scope: "Multi-limb widths above 64.",
+        handback: "Return both realizations, the witness, and the measured cost of SHA-256 through the arms."
+      )
+    ),
+    active(
+      identity: "rn_V42QB2G0GX8FK5APP66A0MPRNE",
+      id: "egress-numeric-bit-multi-limb",
+      owner: "primitive-egress",
+      path: "docs/plans/demand-engine-program.md",
+      t: fields(
+        headline: "NUMERIC-BIT cut 3: the multi-limb carrier for widths above 64",
+        boundary: "A carrier of N sealed limbs for P-256 field arithmetic and SHA-512 words, derived from the same width axis rather than a fresh type per width.",
+        displaced_cost: "P-256 and SHA-384/512 have no honest home without it.",
+        first_slice: "Limb carrier and add-with-carry over two limbs, with its witness.",
+        red_control: "A carry dropped between limbs reds; a limb outside its width refuses at admission.",
+        out_of_scope: "Curve arithmetic itself belongs to the CRYPTO-0 curve row.",
+        handback: "Return the carrier, the arithmetic roster, and the witness."
+      )
+    ),
+    active(
+      identity: "rn_SYXHP92KEGX92XNFBZRXBQW2BV",
+      id: "egress-crypto-0-sha256-landing",
+      owner: "primitive-egress",
+      path: "docs/plans/demand-engine-program.md",
+      t: fields(
+        headline: "CRYPTO-0: after the HMAC landing -- the native receipt instrument and the cost of interpreted SHA-256",
+        boundary: "SHA-256 landed on main as extdeps.crypto.sha2 over std.bitwise (gunbc#11645). HMAC-SHA-256 over it, utf8_encode_octets, and the deletion of the hmac interpreter primitives, crate and evidence rows were reconciled in gunbc#11895 and SPLIT OUT of its landing (operator ruling 2026-09-21): under the honest floor their witnesses run at 0.8-1.4M eval steps against the 100ms-equivalent new-witness budget, so they wait on the kernel arms. Also owed with that landing: the 4b(3) declared drop for the constant-time tag comparison that verify_slice realized mechanically and hmac_tag_difference cannot observe (review 69492). The reconciled tree is gunbc#11895 at its immutable quarry head 8fc4448575cd4955c2b3b6c34ac6e300f41d31f1 (tag quarry/11895); #11895 is a quarry and never lands.",
+        displaced_cost: "Without the instrument the .dag hash has no native receipt, and without the cost measurement the kernel-arms row is scheduled on a guess.",
+        first_slice: "Re-draft the HMAC landing from gunbc#11895 at its immutable quarry head 8fc4448575cd4955c2b3b6c34ac6e300f41d31f1 (tag quarry/11895) once egress-numeric-bit-kernel-arms brings interpreted SHA-256 inside the floor budget; the constant-time rung-drop row lands with it.",
+        red_control: "The native instrument refuses on a wrong label rather than reporting pass; a mutated round constant reds the FIPS 180-4 vectors in sha256_fips_witness_test.",
+        out_of_scope: "SHA-384/512, P-256 and ES256 are the next row.",
+        handback: "Return the instrument row and the measured cost."
+      )
+    ),
+    active(
+      identity: "rn_YFQ6WQM8AAHBKJ5CASXXZPJ569",
+      id: "egress-crypto-0-curve-and-sign",
+      owner: "primitive-egress",
+      path: "docs/plans/demand-engine-program.md",
+      t: fields(
+        headline: "CRYPTO-0: SHA-384/512, P-256 ECDSA, ES256 for APNs, App Attest verification",
+        boundary: "The remaining primitives App Attest and APNs consume, each pure .dag over the multi-limb carrier, replacing the typed ECDSA frontier at which ios_enrolment_admission currently refuses.",
+        displaced_cost: "Device enrolment cannot mint AttestationVerified; the openssl RS256 route stays the only signing path.",
+        first_slice: "SHA-384 and SHA-512 over the limb carrier with FIPS vectors.",
+        red_control: "A wrong-curve point refuses; a signature over a mutated digest fails verification; every vector row is a cited upstream value.",
+        out_of_scope: "Key custody stays a bound host effect (the gunbc#11677 ruling).",
+        handback: "Return each primitive with its cited vectors and the first AttestationVerified minted through the pure path."
+      )
+    ),
+    active(
+      identity: "rn_KKAGM3C9SB50J0KSHGPYXDTM4J",
+      id: "egress-encoding-0-cbor-der-landing",
+      owner: "primitive-egress",
+      path: "docs/plans/demand-engine-program.md",
+      t: updated(t: fields(
+        headline: "ENCODING-0: land pure .dag CBOR, DER and X.509 parsing (gunbc#11727)",
+        boundary: "Pure .dag CBOR, DER and X.509 parsing, reconciled in gunbc#11895 at its immutable quarry head 8fc4448575cd4955c2b3b6c34ac6e300f41d31f1 (tag quarry/11895) and DEFERRED, not landed: it waits on its witness redesign (claims supplying pre-parsed values plus one inhabitance claim on the real bytes) or on the kernel arms. The reconciled tree is KNOWN INCORRECT in five ways found by review after the split, each an acceptance obligation of this row with its own discriminating control: (1) DER OID arc accumulation is bounded before pending * 128 + low can overflow -- an over-long arc refuses; (2) the required App Attest bundle-version extension is enforced before the ECDSA frontier is returned -- an attestation lacking it refuses; (3) a DER BIT STRING whose declared-unused low bits are nonzero refuses; (4) element matching (der_is, der_expect, der_expect_universal) enforces the DER primitive/constructed bit IN BOTH DIRECTIONS -- a constructed type encoded primitive refuses (SEQUENCE, SET and constructed context-specific containers; control: the outer Certificate SEQUENCE mutated 0x30 -> 0x10 refuses, the exact reported exploit) AND a primitive type encoded constructed refuses (BOOLEAN, INTEGER, BIT STRING, OCTET STRING, OBJECT IDENTIFIER; control: a primitive universal value with the constructed bit set refuses); (5) CBOR map keys are checked for deterministic ordering -- an out-of-order map refuses.",
+        displaced_cost: "The attestation parsers sit approved but unlandable, and every consumer of std.octet_span waits on them.",
+        first_slice: "Re-draft from gunbc#11895 at its immutable quarry head 8fc4448575cd4955c2b3b6c34ac6e300f41d31f1 (tag quarry/11895) with the redesigned witnesses, repairing the five known defects in the boundary, each with its named refusal control.",
+        red_control: "The three mutant REDs of the gunbc#11727 receipt stay red, and each of the five boundary defects has a discriminating input that refuses.",
+        out_of_scope: "content_hash consolidation, UTF-8 causes and the bytes seam are their own rows.",
+        handback: "Return the landed head and the fresh receipt."
+      ), on: "2026-09-20", note: "Reconciled onto main in gunbc#11895 (quarry head 8fc4448575cd) and SPLIT OUT of its landing (operator ruling 2026-09-21): its whole-object App Attest witnesses parse a 4 KB attestation in the interpreter at ~4M eval steps against the 100ms-equivalent new-witness budget. Re-draft from the quarry head with the claims supplying pre-parsed values (DESIGN 3 standing rule) and one inhabitance claim on the real bytes, or behind the kernel arms.")
+    ),
+    active(
+      identity: "rn_TNT1ZEDDB0C3KNE6CYV9K4GJBX",
+      id: "egress-encoding-0-bytes-seam",
+      owner: "primitive-egress",
+      path: "docs/plans/demand-engine-program.md",
+      t: fields(
+        headline: "ENCODING-0: content_hash hex consolidation, UTF-8 typed causes, the std.bytes seam",
+        boundary: "std.content_hash consumes extdeps.numeric.base16 with the stage0 mirror regenerated and the seed population change declared; utf8_decode_octets refuses malformed, incomplete and bad-octet distinctly at construction instead of collapsing onto Absent; utf8_encode_bytes, utf8_decode_bytes, bytes_octets and octets_bytes switch to the .dag route with the displaced interpreter routes deleted and the registry deletion last and serialized.",
+        displaced_cost: "The hex alphabet still forks inside the emitted seed; UTF-8 failures are indistinguishable; the bytes primitives remain host routes.",
+        first_slice: "content_hash consolidation with its mirror regeneration and declared population row.",
+        red_control: "A mutated digit-15 spelling reds the content_hash witness; an incomplete UTF-8 sequence and a bad octet refuse with different causes.",
+        out_of_scope: "App Attest steps 2-5 and 10 wait on CRYPTO-0 SHA-256.",
+        handback: "Return each switched primitive with its deleted interpreter route and the registry deletion receipt."
+      )
+    ),
+    active(
+      identity: "rn_RTHC6H20EMH3K0C8TAMCJ6P527",
+      id: "egress-effects-1-filesystem-provider",
+      owner: "primitive-egress",
+      path: "docs/plans/demand-engine-program.md",
+      t: updated(t: fields(
+        headline: "EFFECTS-1: the E2 LocalFilesystem provider and the restatement refusal",
+        boundary: "Cut (c) lands through gunbc#11993 (the split-A landing; gunbc#11744 and gunbc#11895 are closed or quarry and do not land), and its in-flight population closed by the final-base census recorded in gunbc.plans.demand_restatement_follow_up: every authored uses row measured at the census base that range names (its tip), with that base's resolver, each with nonempty derived demand deleted except the identities retained under EditedWitnessHasNoHermeticRoute, and the retained population -- rows the criterion cannot type, and measured-deletable wet-witness rows blocked by a missing hermetic route -- carried at row identity with their own triggers. What remains open: E2 binds one native Filesystem handler at the NativeCliDriver root reusing emit_file_call's semantics, the follow-up roster rows it discharges retire, and a refusal lands on any new restatement row; separately, the route-blocked identities retire once extdeps.linux.cgroup_v2 ReadInterfaceFile gains a mock_response, which E2 does not provide.",
+        displaced_cost: "Filesystem effects in the emitted closure still reach a bare primitive that is neither the handler nor the interface, and restatement rows accrue without a wall.",
+        first_slice: "E2: bind one native Filesystem handler at the NativeCliDriver root reusing emit_file_call's semantics and retire the follow-up roster rows it discharges.",
+        red_control: "A new demand_restatement row refuses; an emitted closure reaching filesystem_read directly refuses under the handler binding.",
+        out_of_scope: "Network and process effects are later program cuts.",
+        handback: "Return the landed cut, the handler binding, and the restatement refusal."
+      ), on: "2026-09-20", note: "Cut (c) lands in gunbc#11993 with the follow-up roster re-derived by semantic census at the frozen landing base; E2 and the restatement refusal remain the open slices.")
+    ),
+    active(
+      identity: "rn_5NMAXZFR0Q4ER63G6VYDH6NHA5",
+      id: "egress-content-hash-fnv-kernel",
+      owner: "primitive-egress",
+      path: "docs/plans/demand-engine-program.md",
+      t: fields(
+        headline: "CONTENT-HASH cut 2: the FNV kernel arm and the final registry deletion",
+        boundary: "FNV realized as a kernel arm over the sealed carrier in both targets, then the content-hash registry entry deleted once nothing routes through it.",
+        displaced_cost: "The registry keeps a second producer of every content hash alive beside the .dag one.",
+        first_slice: "The FNV arm with a differential witness against the .dag fold.",
+        red_control: "A mutated prime reds both targets; the registry deletion reds any surviving route.",
+        out_of_scope: "Nothing beyond FNV and its registry row.",
+        handback: "Return the arm, the witness, and the deletion receipt."
+      )
+    ),
+    active(
+      identity: "rn_AEJBJV14KK79Y09AY00WVZ0056",
+      id: "egress-census-quiet-host-and-decomposition",
+      owner: "primitive-egress",
+      path: "docs/plans/demand-engine-program.md",
+      t: fields(
+        headline: "CENSUS-0 follow-ups: quiet-host runs at one sha and the open class rows",
+        boundary: "The -dag, -seed and full census runs executed on a quiet host at one sha; the reference_deps class-2 open row; the D13 DependencyDemand carrier join; decomposition of the 44 MixedSemanticQuestions rows; and retirement of the hmac evidence rows after CRYPTO-0 lands.",
+        displaced_cost: "157/212 Unresolved is honest but unranked without a same-sha run, and the mixed rows hide which primitive each question really asks.",
+        first_slice: "One same-sha run of all three census modes on a quiet host (srv1 access is required and was lost on a container restart).",
+        red_control: "Runs at differing shas refuse to join; a MixedSemanticQuestions row that decomposes to fewer questions than it names reds.",
+        out_of_scope: "No new census classes.",
+        handback: "Return the same-sha receipts and the decomposed rows."
+      )
+    ),
+    active(
+      identity: "rn_Q71AC17SGZB8PMP7PF756C3P13",
+      id: "egress-optional-at-required-tail",
+      owner: "primitive-egress",
+      path: "docs/plans/demand-engine-program.md",
+      t: fields(
+        headline: "Optional-at-required tail: five modules outside every gated closure",
+        boundary: "bmc_fan_monitor, bmc_fan_converge, fabric_required_build_cell, fleet_show_effective_read and srv3_install_media_fetch matched on their Optional first() sites so gunbc#11720's wall holds over them; the srv3 module's own Present/Absent variants shadow Optional's and must be qualified or renamed. Branch fierce-seal-607/optional-at-required-tail carries the uncommitted work.",
+        displaced_cost: "Five closures no gate compiles keep an Optional flowing into a required T, which the floor cannot see.",
+        first_slice: "Resolve the srv3 name collision, commit the branch, floor clean, land.",
+        red_control: "Each site's Absent arm refuses with a typed cause; a bare Present in srv3 resolves to exactly one declaration.",
+        out_of_scope: "The gunbc#11720 residuals in gated closures are already covered by the wall.",
+        handback: "Return the landed head and the collision resolution."
+      )
+    ),
+    active(
+      identity: "rn_1KRJKPNSVCMTVHGHXH91HYFPZ4",
+      id: "egress-program-residue",
+      owner: "primitive-egress",
+      path: "docs/plans/demand-engine-program.md",
+      t: fields(
+        headline: "Primitive-egress residue: TEXT-0 alphabet collapse, alias fixture enrolment, admission rows, hex literal",
+        boundary: "TEXT-0's alphabet collapse; enrolment of the applied-generic alias fixture; the 40 consumed ACTION-USE transition-admission rows deleted as gunbc#11790 deleted the first 11; a hex literal form for .dag; heal.yml dispatch-only with the dashboard readiness pending quirk recorded; batch floor 2 on a quiet host under ruling A; the unlanded demand-engine plan refinements on branch fierce-seal-607/plan-e2-handler (D11 realization ruling, E2 handler shape) folded into docs/plans/demand-engine-program.md.",
+        displaced_cost: "Each is a small known debt whose only cost today is being remembered by a person instead of a row.",
+        first_slice: "The 40 consumed admission rows, which is a deletion whose census is the floor.",
+        red_control: "A consumed admission row surviving deletion reds; a hex literal that lexes as two tokens refuses.",
+        out_of_scope: "None of these widens the program.",
+        handback: "Return each item landed or reclassified with its trigger."
+      )
+    ),
+    active(
       identity: "rn_3GKQ7WVZ4TNXPB8MHCDR5EJYA2",
       id: "review-sheet-identity-producer-and-admission",
       owner: "buyer-review",
@@ -3455,6 +3635,16 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "toolchain-rust-hermetic", parent: "toolchain-single-resolver"),
     edge(child: "toolchain-residue-zero", parent: "toolchain-rust-hermetic"),
     edge(child: "toolchain-system-floor", parent: "toolchain-single-resolver"),
+    edge(child: "egress-numeric-bit-kernel-arms", parent: "egress-numeric-bit-sealed-carrier"),
+    edge(child: "egress-numeric-bit-multi-limb", parent: "egress-numeric-bit-kernel-arms"),
+    edge(child: "egress-crypto-0-sha256-landing", parent: "egress-numeric-bit-kernel-arms"),
+    edge(child: "egress-crypto-0-curve-and-sign", parent: "egress-crypto-0-sha256-landing"),
+    edge(child: "egress-crypto-0-curve-and-sign", parent: "egress-numeric-bit-multi-limb"),
+    edge(child: "egress-encoding-0-cbor-der-landing", parent: "egress-numeric-bit-sealed-carrier"),
+    edge(child: "egress-encoding-0-bytes-seam", parent: "egress-encoding-0-cbor-der-landing"),
+    edge(child: "egress-encoding-0-bytes-seam", parent: "egress-crypto-0-sha256-landing"),
+    edge(child: "egress-content-hash-fnv-kernel", parent: "egress-numeric-bit-kernel-arms"),
+    edge(child: "egress-census-quiet-host-and-decomposition", parent: "egress-crypto-0-sha256-landing"),
   ], guarantee_ladder_edges())
 }
 
@@ -4383,8 +4573,8 @@ fn preamble() -> List<MarkdownBlock> {
 // hidden lane as retained and unexplained rather than as decided.
 
 data roadmap_focus_selection: RoadmapFocus = FocusOnOwners {
-  label: "the compute fabric + the infrastructure stabilisation lanes + fleet convergence from main + the harness, roadmap workflow and dashboard lanes",
-  owners: ["compute", "fleet", "ci-placement", "ci-control", "generated-artifact", "ci-cost", "confidence", "harness", "roadmap", "dashboard"],
+  label: "the compute fabric + the infrastructure stabilisation lanes + fleet convergence from main + the harness, roadmap workflow and dashboard lanes + the primitive-egress wind-down",
+  owners: ["compute", "fleet", "ci-placement", "ci-control", "generated-artifact", "ci-cost", "confidence", "harness", "roadmap", "dashboard", "primitive-egress"],
 }
 
 fn projected_roadmap_nodes_for_accepted(

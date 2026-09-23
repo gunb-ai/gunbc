@@ -127,11 +127,17 @@ type WorkOutput {
 // THE FIVE ENDINGS, and only five (compute-exact-work-contract's red control: a machine that killed
 // the work cannot render as the work having failed). Every arm carries the identity so a caller can
 // never attach a verdict to a different request.
+// A CANCELLATION CARRIES WHY, and the arm was a bare identity until a real run made the gap
+// visible. The only producer of this arm is a launch refused by the attempt gate -- somebody else
+// ended this attempt before it spawned -- and an ending of "cancelled" with no cause cannot be
+// told apart from any other cancellation by the caller who reads the document. The detail is in
+// the durable outcome for the same reason every other arm's is: the next reader of this identity
+// gets the same account the first caller got.
 type WorkOutcome
   = WorkSucceeded { identity: String, outputs: List<WorkOutput>, log_path: String }
   | WorkFailed { identity: String, exit_code: Int, log_path: String }
   | WorkRefusedByInfrastructure { identity: String, cause: WorkInfrastructureRefusal }
-  | WorkCancelled { identity: String }
+  | WorkCancelled { identity: String, detail: String }
   | WorkOutputMismatch { identity: String, detail: String }
 
 // Infrastructure refusals are typed and counted, never a widen: a producer already holds the lease
@@ -154,6 +160,12 @@ type WorkOutcome
 // all and that a caller must not confuse with it: the machine's LIVE availability being below what
 // this class needs is somebody else's memory, not this pool's commitments, and an unreadable
 // ledger is a store repair. One arm for three remedies is the conflation DESIGN 5 forbids.
+// A UNIT KILLED FOR MEMORY IS THE MACHINE ENDING THE WORK, NOT THE WORK FAILING, and it has its
+// own arm for the reason this vocabulary has five endings rather than one: rendering an OOM kill as
+// WorkFailed { exit_code: 137 } tells the caller to fix its code when the remedy is a larger
+// reservation. The arm is reached only when no larger reservation remains -- a grant below the
+// ceiling that is exceeded retries at the ceiling first (gunbc.compute.work_provider_local
+// compute_run_granted), and that retry is counted per class.
 type WorkInfrastructureRefusal
   = ProducerInFlight { lease_path: String }
   | HostComputeCapacityFull { wire: String }
@@ -164,25 +176,61 @@ type WorkInfrastructureRefusal
   | ToolchainUnobserved { detail: String }
   | DependencyNotSucceeded { dependency_identity: String, ending: String }
   | SubjectUnresolved { detail: String }
+  | UnitMemoryGrantExceeded { class: String, granted: Kibibyte, peak_upper: Kibibyte?, grant_was_ceiling: Bool }
+  | UnitEndingUnclassifiable { exit_code: Int, cause: String }
 
 fn work_outcome_identity(o: WorkOutcome) -> String {
   match o {
     WorkSucceeded { identity, outputs: _, log_path: _ } => identity
     WorkFailed { identity, exit_code: _, log_path: _ } => identity
     WorkRefusedByInfrastructure { identity, cause: _ } => identity
-    WorkCancelled { identity } => identity
+    WorkCancelled { identity, detail: _ } => identity
     WorkOutputMismatch { identity, detail: _ } => identity
   }
 }
 
-fn work_outcome_ending(o: WorkOutcome) -> String {
+// HOW A WORK OUTCOME ENDED, WITH ITS PAYLOAD DROPPED. It is the closed set the ending words were
+// always drawn from, typed once so a reader that stores an ending (the attempt slot's terminal
+// generation) decodes against the set rather than accepting any word. work_outcome_ending is its
+// spelling, and work_ending_decode is the inverse of that one spelling, not a second vocabulary.
+type WorkEnding
+  = WorkEndedSucceeded
+  | WorkEndedFailed
+  | WorkEndedRefusedByInfrastructure
+  | WorkEndedCancelled
+  | WorkEndedOutputMismatch
+
+fn work_outcome_ending_of(o: WorkOutcome) -> WorkEnding {
   match o {
-    WorkSucceeded { identity: _, outputs: _, log_path: _ } => "succeeded"
-    WorkFailed { identity: _, exit_code: _, log_path: _ } => "failed"
-    WorkRefusedByInfrastructure { identity: _, cause: _ } => "refused_by_infrastructure"
-    WorkCancelled { identity: _ } => "cancelled"
-    WorkOutputMismatch { identity: _, detail: _ } => "output_mismatch"
+    WorkSucceeded { identity: _, outputs: _, log_path: _ } => WorkEndedSucceeded
+    WorkFailed { identity: _, exit_code: _, log_path: _ } => WorkEndedFailed
+    WorkRefusedByInfrastructure { identity: _, cause: _ } => WorkEndedRefusedByInfrastructure
+    WorkCancelled { identity: _, detail: _ } => WorkEndedCancelled
+    WorkOutputMismatch { identity: _, detail: _ } => WorkEndedOutputMismatch
   }
+}
+
+fn work_ending_wire(e: WorkEnding) -> String {
+  match e {
+    WorkEndedSucceeded => "succeeded"
+    WorkEndedFailed => "failed"
+    WorkEndedRefusedByInfrastructure => "refused_by_infrastructure"
+    WorkEndedCancelled => "cancelled"
+    WorkEndedOutputMismatch => "output_mismatch"
+  }
+}
+
+fn work_ending_decode(word: String) -> WorkEnding? {
+  if word == work_ending_wire(e: WorkEndedSucceeded) { Present { value: WorkEndedSucceeded } }
+  else if word == work_ending_wire(e: WorkEndedFailed) { Present { value: WorkEndedFailed } }
+  else if word == work_ending_wire(e: WorkEndedRefusedByInfrastructure) { Present { value: WorkEndedRefusedByInfrastructure } }
+  else if word == work_ending_wire(e: WorkEndedCancelled) { Present { value: WorkEndedCancelled } }
+  else if word == work_ending_wire(e: WorkEndedOutputMismatch) { Present { value: WorkEndedOutputMismatch } }
+  else { none }
+}
+
+fn work_outcome_ending(o: WorkOutcome) -> String {
+  work_ending_wire(e: work_outcome_ending_of(o: o))
 }
 
 fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
@@ -196,6 +244,12 @@ fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
     ToolchainUnobserved { detail } => join(["toolchain unobserved: ", detail], "")
     DependencyNotSucceeded { dependency_identity, ending } => join(["dependency ", dependency_identity, " ended ", ending], "")
     SubjectUnresolved { detail } => join(["subject unresolved: ", detail], "")
+    UnitEndingUnclassifiable { exit_code, cause } =>
+      join(["the unit exited ", to_string(value: exit_code), " and its ending could not be classified, so it is neither reported as failed nor as grant-exceeded: ", cause], "")
+    UnitMemoryGrantExceeded { class, granted, peak_upper, grant_was_ceiling } =>
+      join(["the unit was OOM-killed at its memory grant: class ", class, " was granted ", to_string(value: kibibyte_count(k: granted)),
+        " KiB and its manager reported a peak of ", match peak_upper { Present { value: k } => join(["at most ", to_string(value: kibibyte_count(k: k)), " KiB"], "")  Absent => "NOTHING (no Memory peak line was reported)" },
+        if grant_was_ceiling { "; the grant was this host's ceiling, so no larger reservation exists to retry under" } else { "; the grant was below the ceiling and the retry at the ceiling was not taken -- the consumption record says why" }], "")
   }
 }
 
@@ -228,7 +282,9 @@ fn work_outcome_json(o: WorkOutcome, subject: WorkSubject, op: WorkOperation) ->
     WorkRefusedByInfrastructure { identity: _, cause } => [
       json_kv(key: "cause", value: json_string(s: work_refusal_detail(r: cause))),
     ]
-    WorkCancelled { identity: _ } => []
+    WorkCancelled { identity: _, detail } => [
+      json_kv(key: "detail", value: json_string(s: detail)),
+    ]
     WorkOutputMismatch { identity: _, detail } => [
       json_kv(key: "detail", value: json_string(s: detail)),
     ]

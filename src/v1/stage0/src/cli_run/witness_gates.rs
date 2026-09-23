@@ -346,7 +346,7 @@ pub(crate) fn compile_clean_whole_tree_sources_and_index(
 /// Uses `primary-precedence` pool indexing like shell compile, but a narrower root set than
 /// `compile_clean_source_roots()` (which adds `src/v1` for cross-tree perturb receipts).
 /// In CI (`GITHUB_ACTIONS=true`) or when `GUNBC_CI_DIFF_BASE` is set, scopes to affected
-/// shard entries from `tools.dag_compile_clean_scope` (lever a) using `gunbc_ci_spec.diff_policy`
+/// shard entries from `tools.dag_compile_clean_scope` (lever a) using `gunbc.ci_diff_policy` `gunbc_ci_diff_policy`
 /// defaults via `floor_diff_observe`; diff/disposition failure refuses (never widens).
 /// Skip/whole-tree/skip-vs-run authority lives in `tools.dag_compile_clean_scope` (including
 /// `RequireWholeTree` for non-docs infra/Rust touches with no shard intersection).

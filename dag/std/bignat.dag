@@ -146,6 +146,17 @@ fn bignat_is_zero(a: BigNat) -> Bool {
   fold(a.limbs, init: true, f: (acc, x) => acc && x == 0)
 }
 
+// Strict ordering predicates over the same total compare: `a < m`, and `0 < a < m` -- the range
+// checks a modular consumer asks of a residue or a scalar (moved here from extdeps.crypto per
+// review 69917 of gunbc#11981: ordering over BigNat is this layer's fact).
+fn bignat_below(a: BigNat, m: BigNat) -> Bool {
+  bignat_compare(a: a, b: m) < 0
+}
+
+fn bignat_nonzero_below(a: BigNat, m: BigNat) -> Bool {
+  !bignat_is_zero(a: a) && bignat_below(a: a, m: m)
+}
+
 // ── Addition and subtraction ─────────────────────────────────────────────────────────────────
 fn bignat_add(a: BigNat, b: BigNat) -> BigNat {
   BigNat { limbs: bignat_add_limbs(a: a.limbs, b: b.limbs, carry: 0, acc: []) }
@@ -217,9 +228,10 @@ fn bignat_bits(a: BigNat) -> List<Int> {
 // refusing admission on montgomery_modulus that establishes each invariant above and returns a typed
 // refusal naming the one that failed, SUFFICIENT FOR an inconsistent modulus to have no constructor
 // rather than merely no outside constructor. It is deferred to its own change because making this
-// admission refusing turns p256_field and p256_order into refusable data rows, cascading through
-// every consumer of the field arithmetic -- and the P-256 witness suite has never executed, so that
-// restructuring cannot yet be read for breakage.
+// admission refusing turns the field and order contexts extdeps.crypto.nist_prime_curve prime_curve
+// builds into refusable values, cascading through every consumer of the field arithmetic -- and
+// the P-256 witness suite has never executed on the floor, so that restructuring cannot yet be read
+// for breakage.
 type MontgomeryModulus sole_constructor {
   modulus: BigNat
   width: Int

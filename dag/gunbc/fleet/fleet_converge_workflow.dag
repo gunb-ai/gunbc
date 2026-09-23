@@ -119,6 +119,7 @@ import gunbc.ci_spec {
   gunbc_ci_spark_native_serving_apply_invoke,
   gunbc_ci_spark_runtime_image_probe_invoke,
   gunbc_ci_spark_v41_checkpoint_materialize_invoke,
+  gunbc_ci_spark_v41_index_selection_invoke,
   gunbc_ci_spark_v41_runtime_image_build_invoke,
   gunbc_fleet_converge_plan_artifact_name,
   gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
@@ -420,6 +421,11 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
 //     BMC, authorized by that same credential file via -f. THE SOL SESSION IS CARRIED BY IPMI TO THE
 //     BMC, not by an ssh channel to the host, so it presents the BMC credential and never an
 //     identity from the agent;
+//   - extdeps.bmc.ipmi Tool.SelListAuthenticated and extdeps.bmc.http redfish.Http
+//     GetSystemsCollection/GetMemoryCollection/GetMemory/GetProcessorCollection/GetProcessor, the
+//     readonly reads of gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle -- the same BMC
+//     credential, by -f for ipmitool and through a per-attempt gunbc.auth.netrc_binding netrc,
+//     shredded on every path, for curl;
 //   - extdeps.tools.env shell.Env.Get, extdeps.tools.sleep Delay.Seconds, extdeps.clock Clock.Now --
 //     no credential.
 //   - AND, SINCE CENSUS STAGE 0D, gunbc.machine_intake_mtcollins1_census_medium_readback
@@ -459,7 +465,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     FleetApply => FleetSshKeyConsumed
     AppControlPlaneObserve => FleetSshKeyConsumed
     MicrovmHostConverge => FleetSshKeyConsumed
-    MicrovmNetworkObserve => FleetSshKeyNotConsumed
+    MicrovmNetworkObserve => FleetSshKeyConsumed
     MicrovmNetworkApply => FleetSshKeyConsumed
     GuestImageObserve => FleetSshKeyConsumed
     GuestImageConverge => FleetSshKeyConsumed
@@ -720,13 +726,17 @@ data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"se
 fn fleet_converge_build_job_steps() -> List<Step> {
   concat(
     ci_prelude_steps_with_checkout(checkout: fleet_converge_checkout_step(), exact_head_preflight: []),
-    [
-      ci_release_build_step(),
-      fleet_converge_reset_observer_dispatch_admission_step(),
-      ci_release_bins_pack_step(),
-      ci_release_bins_upload_step(),
-    ],
+    fleet_converge_build_job_own_steps(),
   )
+}
+
+fn fleet_converge_build_job_own_steps() -> List<Step> {
+  [
+    ci_release_build_step(),
+    fleet_converge_reset_observer_dispatch_admission_step(),
+    ci_release_bins_pack_step(),
+    ci_release_bins_upload_step(),
+  ]
 }
 
 fn step_declared_timeout_minutes(st: Step) -> Int {
@@ -977,6 +987,14 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // the pair-serving apply -- which rewrites Group A's units from any executor -- joins that same key,
 // so an apply that read Active before D0's suspension CAS cannot execute across it. Belt, not the
 // wall: the wall is the authority log's lease and claim (gunbc.spark.pair_serving_d0).
+//
+// THE TWO V4.1 MODES JOIN THAT KEY FOR THE SAME REASON, AND THE PROBE DOES NOT. Both
+// `spark_v41_checkpoint_materialize` and `spark_v41_runtime_image_build` name a GROUP A host as their
+// target and are admitted by that group's pair subject holding it (gunbc.spark.host_commitment
+// `admit_host_held_by_subject`), so their subject is the arm, not whichever executor a dispatch
+// happened to name -- two dispatches for two Group A hosts must queue behind each other, and behind
+// D0 and the pair apply. `spark_runtime_image_probe` stays in the executor's domain because it is a
+// read: it pulls a pinned image and reports what is inside it, changing nothing on the host.
 type FleetMutationDomain
   = ArmDomain { group: String }
   | ExecutorDomain
@@ -1002,7 +1020,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     SparkNativeServingApply => ArmDomain { group: fleet_arm_mutation_group_glm_group_b_native }
     SparkRuntimeImageProbe => ExecutorDomain
     SparkV41CheckpointMaterialize => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
-    SparkV41RuntimeImageBuild => ExecutorDomain
+    SparkV41RuntimeImageBuild => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
     DashboardDeploy => ExecutorDomain
     RlmLaunchDeploymentReceipt => ExecutorDomain
     HostResetReturn => ExecutorDomain
@@ -2668,6 +2686,30 @@ fn fleet_converge_spark_v41_checkpoint_materialize_step() -> Step {
   }
 }
 
+// ITS SECOND STEP READS THE .engram. SELECTION OVER THE PINNED INDEX IN ITS OWN PROCESS, so a parse that
+// is stopped for memory cannot take the fetch's per-file receipts with it. It runs after the fetch whether
+// or not the fetch finished (`always()` under the mode's own condition), because it verifies the index
+// against its manifest row itself and reads nothing the fetch did not already vouch for; a fetch still in
+// flight does not stop an index that is already present from being read.
+fn fleet_converge_spark_v41_index_selection_step() -> Step {
+  RunStep {
+    name: Present { value: "Spark V4.1 index selection (verify the pinned index on the selected Group A Spark and read its .engram. selection with parse_json_document, in its own process)" },
+    id: Present { value: "spark_v41_index_selection" },
+    run: gunbc_ci_spark_v41_index_selection_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_spark_v41_checkpoint_materialize_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+  }
+}
+
 // EVERY JOB CHECKS OUT R, THE REVISION THE OPERATOR NAMED, NOT WHATEVER main IS WHEN THE RUNNER
 // FINALLY PICKS THE JOB UP. The run-revision guard in gunbc.fleet_converge_plan_cli compares the
 // checked-out tree to RLM_EXPECTED_REVISION and refuses on mismatch; with a plain branch checkout
@@ -2778,6 +2820,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_spark_native_serving_apply_step(),
         fleet_converge_spark_runtime_image_probe_step(),
         fleet_converge_spark_v41_checkpoint_materialize_step(),
+        fleet_converge_spark_v41_index_selection_step(),
         fleet_converge_spark_v41_runtime_image_build_step(),
         fleet_converge_runner_host_file_observe_step(),
         fleet_converge_runner_host_file_converge_step(),

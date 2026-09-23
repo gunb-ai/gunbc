@@ -18,16 +18,18 @@ import gunbc.floor_demand {
   HeldSetReceiptUnrepresentable,
   StorageComponentReceipt, storage_components_total, round_up_to_gibibyte_grain,
   gunbc_floor_storage_components, gunbc_floor_job_wall_receipt_2026_09_19,
-  FloorSeam, SeamStrictPreparation, SeamClaimEvaluationFold, SeamNotYetEntered, SeamUnrecorded,
+  FloorSeam, SeamStrictPreparation, SeamClaimEvaluationFold, SeamPublication, SeamNotYetEntered, SeamUnrecorded,
   receipt_peak_seam, PeakAttributedTo, PeakSeamUnattributable,
   PeakUnattributableCause, PeakBeatSampledBeforeAnySeam, PeakBeatSeamUnrecorded, ReceiptHasNoBeats, ReceiptTorn,
-  gunbc_floor_memory_stat_receipt_2026_09_21, receipt_peak_reading_standing, PeakReadingStanding,
+  gunbc_floor_memory_stat_receipt_2026_09_21, gunbc_floor_memory_stat_receipt_2026_09_23, peak_standing_from_swap_policy,
+  receipt_peak_reading_standing, PeakReadingStanding,
   PeakIsUncensoredSampledMaximum, PeakIsLowerBound, PeakUnreadable, PeakLowerBoundCause, RunDidNotComplete,
-  PeakBeatWasStalling, SwapCouldAbsorbAnonymousPages, SwapPolicyIsRead,
+  PeakBeatWasStalling, SwapCouldAbsorbAnonymousPages, SwapPolicyIsRead, SwapHeldPagesAtPeak, SwapRead, SwapUnread, BeatSwap,
   RunSwapPolicy, SwapMaxRead, SwapMaxDeclaredUnread, SwapDisabled,
   BeatStall, StallRead, StallUnread, SeamUnreadable, PeakBeatStallUnread, PeakBeatSeamUnreadable,
   SeamMovedDuringSample, PeakBeatSeamMovedDuringSample,
   beat_stall_is_zero, beat_stall_is_positive,
+  SeamArmSetPlanning, SeamInterfaceConsumerPlanning, floor_seam_of_token,
 }
 import gunbc.fabric_witness_run { floor_execution_requirements }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
@@ -142,7 +144,7 @@ fn seamed_beat(n: Int, seam: FloorSeam, anon: Int, file: Int, shmem: Int, unevic
     anon: byte_size(anon), file: byte_size(file), shmem: byte_size(shmem), unevictable: byte_size(unevictable),
     slab_unreclaimable: byte_size(4), slab_reclaimable: byte_size(1000), kernel_stack: byte_size(3),
     pagetables: byte_size(2), percpu: byte_size(1), sock: byte_size(0), file_dirty: byte_size(0),
-    stall: StallRead { rate: events_per_minute(count: stall) },
+    stall: StallRead { rate: events_per_minute(count: stall) }, swap: SwapUnread,
   }
 }
 
@@ -190,7 +192,7 @@ test fn a_beat_whose_held_set_cannot_be_represented_makes_the_receipt_torn() -> 
     anon: byte_size(int_inclusive_max()), file: byte_size(0), shmem: byte_size(1), unevictable: byte_size(0),
     slab_unreclaimable: byte_size(0), slab_reclaimable: byte_size(0), kernel_stack: byte_size(0),
     pagetables: byte_size(0), percpu: byte_size(0), sock: byte_size(0), file_dirty: byte_size(0),
-    stall: StallRead { rate: events_per_minute(count: 0) },
+    stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
   }
   let sum_refuses = match beat_held_set(b: torn) {
     CheckedIntOverflow { cause: _ } => true
@@ -424,15 +426,56 @@ test fn a_peak_beat_without_a_seam_refuses_rather_than_naming_a_phase() -> Bool 
 // it changes polarity and now asserts that the standing receipt IS attributable.
 //
 // WHAT MOVED, cited on the flip as 4b(4) requires: the standing's input, from the 2026-09-19
-// receipt to the 2026-09-21 one, taken on CI run 35652545009.
+// receipt to the 2026-09-21 one, taken on CI run 35652545009 -- and again on 2026-09-23 to
+// gunbc_floor_memory_stat_receipt_2026_09_23 (run 35815214135), whose peak lands during
+// publication rather than the claim fold. The 2026-09-21 attribution stays asserted below it, so
+// both receipts' readings remain executed.
 test fn the_standing_receipt_attributes_its_peak_to_a_named_seam() -> Bool {
-  match receipt_peak_seam(r: gunbc_floor_memory_stat_receipt_2026_09_21) {
+  let standing = match gunbc_floor_held_set_standing() {
+    HeldSetMeasured { receipt: r, peak: _ } => r.run_id == gunbc_floor_memory_stat_receipt_2026_09_23.run_id
+    _ => false
+  }
+  let now = match receipt_peak_seam(r: gunbc_floor_memory_stat_receipt_2026_09_23) {
+    PeakAttributedTo { seam: s, beat: b, bytes: _ } =>
+      b == 37 && match s {
+        SeamPublication => true
+        _ => false
+      }
+    PeakSeamUnattributable { cause: _ } => false
+  }
+  let before = match receipt_peak_seam(r: gunbc_floor_memory_stat_receipt_2026_09_21) {
     PeakAttributedTo { seam: s, beat: b, bytes: _ } =>
       b == 18 && match s {
         SeamClaimEvaluationFold => true
         _ => false
       }
     PeakSeamUnattributable { cause: _ } => false
+  }
+  standing && now && before
+}
+
+// THE UNCENSORED ARM IS INHABITED BY A REAL RECEIPT, AND BY THE ROUTE THE LEAF SWAP OPENED. The
+// 2026-09-23 run's slot DECLARES swap (its policy alone would censor), so reaching
+// PeakIsUncensoredSampledMaximum on its real rows is evidence that the peak beat's own leaf swap
+// reading decided it. Asserting the ROUTE as well as the answer: the same receipt with the peak
+// beat's swap unread falls back to the policy, which alone answers the censoring cause, so a green here
+// cannot come from some other mechanism reaching the same verdict (DESIGN 3's pairing rule).
+test fn the_2026_09_23_receipt_reads_an_uncensored_sampled_maximum_through_its_leaf_swap() -> Bool {
+  let real = match receipt_peak_reading_standing(r: gunbc_floor_memory_stat_receipt_2026_09_23) {
+    PeakIsUncensoredSampledMaximum => true
+    _ => false
+  }
+  let peak_swap_was_read_zero = match receipt_peak_beat(r: gunbc_floor_memory_stat_receipt_2026_09_23) {
+    Present { value: b } =>
+      match b.swap {
+        SwapRead { bytes: w } => byte_size_count(b: w) == 0
+        SwapUnread => false
+      }
+    Absent => false
+  }
+  real && peak_swap_was_read_zero && match peak_standing_from_swap_policy(policy: gunbc_floor_memory_stat_receipt_2026_09_23.swap_policy) {
+    PeakIsLowerBound { cause: SwapCouldAbsorbAnonymousPages { declared_swap_max: _ } } => true
+    _ => false
   }
 }
 
@@ -468,8 +511,9 @@ test fn neither_standing_receipt_reads_an_uncensored_demand() -> Bool {
 
 // THE POSITIVE CONTROL FOR PeakIsUncensoredSampledMaximum, so the arm that would let a figure SIZE something is not
 // a permanently unreachable decoration. A completed run whose peak beat did not stall, under a
-// policy that cannot spill, reads a demand -- and no receipt in this corpus satisfies that today,
-// which is precisely why the arm needs a supplied-input control to prove it is inhabitable.
+// policy that cannot spill, reads a demand. Since 2026-09-23 a real receipt also reaches this arm
+// (by the leaf-swap route, asserted above); this supplied-input control keeps the POLICY route to
+// it executed, which no real receipt exercises.
 test fn a_completed_unstalled_run_without_swap_reads_an_uncensored_sampled_maximum() -> Bool {
   let clean = FloorHeldSetReceipt {
     run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
@@ -495,7 +539,7 @@ test fn an_unread_stall_is_neither_stalled_nor_unstalled() -> Bool {
     anon: byte_size(90), file: byte_size(10), shmem: byte_size(1), unevictable: byte_size(0),
     slab_unreclaimable: byte_size(1), slab_reclaimable: byte_size(1), kernel_stack: byte_size(1),
     pagetables: byte_size(1), percpu: byte_size(1), sock: byte_size(0), file_dirty: byte_size(0),
-    stall: StallUnread,
+    stall: StallUnread, swap: SwapUnread,
   }
   !beat_stall_is_zero(b: unread) && !beat_stall_is_positive(b: unread)
 }
@@ -511,7 +555,7 @@ test fn a_torn_receipt_reading_standing_names_the_tear_not_an_absence() -> Bool 
     anon: byte_size(int_inclusive_max()), file: byte_size(0), shmem: byte_size(1), unevictable: byte_size(0),
     slab_unreclaimable: byte_size(0), slab_reclaimable: byte_size(0), kernel_stack: byte_size(0),
     pagetables: byte_size(0), percpu: byte_size(0), sock: byte_size(0), file_dirty: byte_size(0),
-    stall: StallRead { rate: events_per_minute(count: 0) },
+    stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
   }
   let torn = FloorHeldSetReceipt {
     run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
@@ -549,7 +593,7 @@ test fn a_peak_beat_whose_stall_did_not_read_is_not_a_demand() -> Bool {
     anon: byte_size(900), file: byte_size(100), shmem: byte_size(90), unevictable: byte_size(0),
     slab_unreclaimable: byte_size(4), slab_reclaimable: byte_size(1000), kernel_stack: byte_size(3),
     pagetables: byte_size(2), percpu: byte_size(1), sock: byte_size(0), file_dirty: byte_size(0),
-    stall: StallUnread,
+    stall: StallUnread, swap: SwapUnread,
   }
   let r = FloorHeldSetReceipt {
     run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
@@ -612,7 +656,7 @@ test fn a_beat_whose_seam_moved_during_the_sample_attributes_to_neither_phase() 
     anon: byte_size(900), file: byte_size(100), shmem: byte_size(90), unevictable: byte_size(0),
     slab_unreclaimable: byte_size(4), slab_reclaimable: byte_size(1000), kernel_stack: byte_size(3),
     pagetables: byte_size(2), percpu: byte_size(1), sock: byte_size(0), file_dirty: byte_size(0),
-    stall: StallRead { rate: events_per_minute(count: 0) },
+    stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
   }
   let r = FloorHeldSetReceipt {
     run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
@@ -623,4 +667,67 @@ test fn a_beat_whose_seam_moved_during_the_sample_attributes_to_neither_phase() 
       b == 5 && (x as String) == "strict-preparation" && (y as String) == "discovery-authority"
     _ => false
   }
+}
+
+// THE LEAF'S OWN SWAP AT THE PEAK DECIDES BEFORE THE POLICY DOES, IN BOTH DIRECTIONS. A slot whose
+// policy COULD swap censors its peak only while nothing says whether it DID; a peak beat that read
+// the leaf's memory.swap.current as zero held its whole anonymous set resident at that instant, so
+// the policy's might-have is answered, and a non-zero reading censors under its own cause naming
+// the bytes. The same declared-swap receipt is driven three ways so the only thing that moves the
+// verdict is the beat's swap field -- and SwapUnread falls through to the policy, not to a zero.
+fn declared_swap_receipt_with_peak_swap(sw: BeatSwap) -> FloorHeldSetReceipt {
+  let b = seamed_beat(n: 1, seam: SeamClaimEvaluationFold, anon: 900, file: 100, shmem: 90, unevictable: 0, stall: 0)
+  FloorHeldSetReceipt {
+    run_id: "fixture", runner_unit: "fixture", beat_cadence: second(count: 60), beats_sampled: 1,
+    beats: [FloorMemoryStatBeat {
+      beat: b.beat, seam: b.seam, charge: b.charge, anon: b.anon, file: b.file, shmem: b.shmem,
+      unevictable: b.unevictable, slab_unreclaimable: b.slab_unreclaimable, slab_reclaimable: b.slab_reclaimable,
+      kernel_stack: b.kernel_stack, pagetables: b.pagetables, percpu: b.percpu, sock: b.sock,
+      file_dirty: b.file_dirty, stall: b.stall, swap: sw,
+    }],
+    run_completed: true,
+    swap_policy: SwapMaxDeclaredUnread { declared: byte_size(34359738368), declaring_authority: "fixture row" },
+  }
+}
+
+test fn a_leaf_swap_reading_at_the_peak_decides_before_the_declared_policy() -> Bool {
+  let zero = match receipt_peak_reading_standing(r: declared_swap_receipt_with_peak_swap(sw: SwapRead { bytes: byte_size(0) })) {
+    PeakIsUncensoredSampledMaximum => true
+    _ => false
+  }
+  let spilled = match receipt_peak_reading_standing(r: declared_swap_receipt_with_peak_swap(sw: SwapRead { bytes: byte_size(8192) })) {
+    PeakIsLowerBound { cause: SwapHeldPagesAtPeak { beat: n, swapped: w } } => n == 1 && byte_size_count(b: w) == 8192
+    _ => false
+  }
+  let unread = match receipt_peak_reading_standing(r: declared_swap_receipt_with_peak_swap(sw: SwapUnread)) {
+    PeakIsLowerBound { cause: SwapCouldAbsorbAnonymousPages { declared_swap_max: d } } => byte_size_count(b: d) == 34359738368
+    _ => false
+  }
+  zero && spilled && unread
+}
+
+// THE PLANNING SEAM'S TWO SPELLINGS ARE TWO CONSTRUCTORS. `arm-set-planning` (every beat taken
+// before gunbc#12130) reads as SeamArmSetPlanning and `interface-consumer-planning` (at and after)
+// as SeamInterfaceConsumerPlanning: the wider phase's memory is never ingested as the narrower one,
+// and an unknown token reads as absent rather than as a neighbour.
+test fn the_two_planning_seam_tokens_read_as_distinct_constructors() -> Bool {
+  let old = match floor_seam_of_token(token: "arm-set-planning") {
+    Present { value: s } => match s {
+      SeamArmSetPlanning => true
+      _ => false
+    }
+    Absent => false
+  }
+  let new = match floor_seam_of_token(token: "interface-consumer-planning") {
+    Present { value: s } => match s {
+      SeamInterfaceConsumerPlanning => true
+      _ => false
+    }
+    Absent => false
+  }
+  let unknown = match floor_seam_of_token(token: "arm-set-plannning") {
+    Present { value: _ } => false
+    Absent => true
+  }
+  old && new && unknown
 }

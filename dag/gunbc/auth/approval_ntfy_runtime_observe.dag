@@ -1,0 +1,367 @@
+module gunbc.auth.approval_ntfy_runtime_observe
+
+import std.types { NonEmptyStr, String, Int, List }
+import v2.std.algebra { any }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_kv, json_string, json_int, json_array, json_object, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_members_named, json_field, json_field_int, json_field_string, json_field_string_list,
+  json_field_value, json_field_cause,
+}
+import gunbc.auth.approval_ntfy_deployment { approval_ntfy_principal_name }
+
+// THE CONTRACT OF THE NTFY RUNTIME-OBSERVATION HELPER, and only the contract. The enrolment-code
+// verb (gunbc.auth.approval_device_routes issue_device_enrolment_code, #12077) must join its ACL
+// readback to the LIVE ntfy process: its actual environment, its exe, and its open fds (the auth
+// file and the 127.0.0.1:2586 listening socket). Those are /proc/<MainPID> reads that only the
+// process's own uid (gunbc-ntfy) or root can make. The verb runs as the operator's account, so it
+// crosses to gunbc-ntfy through ONE exact sudoers grant for ONE released invocation of this entry.
+//
+// WHY AN ENTRY OF THE RELEASED BINARY AND NOT A SCRIPT OR A PER-PID ARGV. A per-PID `sudo -u
+// gunbc-ntfy cat /proc/<pid>/environ` needs a wildcard in sudoers to cover a PID that changes on
+// every restart, and a wildcard is refused. An authored `sh -c` helper was refused by review 70354.
+// This entry is modeled .dag run by the broker's own released gunbc
+// (gunbc.live_deploy.emit approval_broker_ntfy_runtime_observe_operation), with no arguments. So
+// the sudoers line is that exact argv and leaves the grantee nothing to choose.
+//
+// WHAT LIVES WHERE. This module owns: the entry's identity (file and function), the principal it
+// runs as, the typed observation, and its wire codec. That codec is the only way the observation
+// crosses the process boundary, and both directions of it are defined here. The release-scoped argv
+// and the grant are owned by gunbc.live_deploy.emit, because they are functions of the release
+// locus. This module cannot import emit: emit imports this module, and the import graph is acyclic.
+// The entry FUNCTION BODY -- the reads themselves -- and the four joins over its result land in
+// #12077, in this module. Until then the grant names a function that does not resolve on main. That
+// is a declared frontier, not a dangling one: its trigger is #12077 adding
+// `fn approval_ntfy_runtime_observe() -> CliWireResponse` here. A helper run before that refuses at
+// resolve (no function), which is a loud failure of the verb's read, never a widened answer.
+
+data approval_ntfy_runtime_observe_entry_rel: NonEmptyStr = "dag/gunbc/auth/approval_ntfy_runtime_observe.dag"
+data approval_ntfy_runtime_observe_function: NonEmptyStr = "approval_ntfy_runtime_observe"
+
+// THE PRINCIPAL IS THE NTFY SERVER'S OWN ACCOUNT, read from the deployment that creates it, so the
+// grant's run-as and the account the unit runs under are one value.
+fn approval_ntfy_runtime_observe_run_as() -> NonEmptyStr {
+  approval_ntfy_principal_name
+}
+
+// ONE OPEN FD OF THE MAINPID, as ONE record. Not two parallel lists: an index alignment between
+// targets and inodes would be an invariant every producer had to keep and every consumer had to
+// trust. A record makes the pairing structural.
+//
+//   target        `readlink /proc/<MainPID>/fd/<n>`, VERBATIM. That includes `socket:[N]`,
+//                 `pipe:[N]`, `anon_inode:[eventfd]`, and a trailing ` (deleted)` on an unlinked
+//                 file. None of them is normalized. A deleted auth file must stay visible so the
+//                 join refuses it.
+//   target_inode  `stat -L -c %i /proc/<MainPID>/fd/<n>`: the inode of the object the fd refers to.
+//                 For a regular file, it is that file's inode (still reported when the file is
+//                 deleted). For `socket:[N]` and `pipe:[N]` it is N, the same number the link text
+//                 carries, because sockfs and pipefs report their own inode. For an
+//                 `anon_inode:[...]` target it is the anon_inode filesystem's ONE shared inode, so
+//                 it identifies nothing and must not be joined on. Every fd yields an inode. An
+//                 unreadable stat refuses the whole observation instead of dropping the fd.
+type NtfyOpenFd {
+  target: String
+  target_inode: Int
+}
+
+// THE RAW READINGS OF ONE PROCESS. The helper reads MainPID itself and brackets its reads with the
+// process's starttime, before and after. So every field describes one process incarnation, or the
+// helper refuses. It returns readings, not verdicts. The joins (no NTFY_* names; exe == the declared
+// binary; auth-file inode in the fd set; the 2586 socket inode in the fd set) are the verb's.
+//
+//   main_pid            systemd's MainPID for gunbc-ntfy.service. The helper REFUSES if the unit is
+//                       not active or MainPID is 0. It never reports pid 0.
+//   start_ticks_*       field 22 of /proc/<MainPID>/stat, read first and last. The verb joins both
+//                       against its own bracket. Unequal values here are still reported, not refused,
+//                       because the verb owns that comparison.
+//   environment_names   the NAMES in /proc/<MainPID>/environ, in file order. Values are not carried:
+//                       they may hold secrets, and the join needs only the names.
+//   exe_target          `readlink /proc/<MainPID>/exe`, VERBATIM, ` (deleted)` included.
+//   exe_inode           `stat -L -c %i /proc/<MainPID>/exe`.
+type NtfyRuntimeProcessObservation {
+  main_pid: Int
+  start_ticks_before: Int
+  start_ticks_after: Int
+  environment_names: List<String>
+  exe_target: String
+  exe_inode: Int
+  open_fds: List<NtfyOpenFd>
+}
+
+// `read` names the read that failed (for example `unit`, `environ`, `fd`), and `cause` is its
+// diagnostic. A refusal is an outcome of the helper, not a transport failure. A helper that could
+// not run at all (no grant, no binary, resolve failure) reaches the verb as a nonzero exit.
+type NtfyRuntimeObserveOutcome
+  = NtfyRuntimeObserved { observation: NtfyRuntimeProcessObservation }
+  | NtfyRuntimeObserveRefused { read: String, cause: String }
+
+// ── THE WIRE: THE MODELED JSON GRAMMAR, AND ONE KEY TABLE PER OUTCOME ─────────────────────────
+// The observation crosses the process boundary as one JSON object, written by
+// extdeps.languages.json.emit serialize_json and read by extdeps.languages.json.parse
+// parse_json_document. That grammar is already modeled in both directions, so this module adds no
+// second lexical grammar and does no escaping of its own. A target containing a newline, a quote or
+// `=` is carried verbatim, because JSON string escaping carries every code point.
+//
+// WHICH KEYS AN OUTCOME MAY CARRY IS ONE TABLE, READ BY BOTH DIRECTIONS. The encoder emits exactly
+// the keys ntfy_runtime_wire_keys names for its arm. The decoder refuses an object that carries any
+// other member: the other arm's keys, an unknown key, or a duplicate. So an `observed` object with
+// refusal members, or a `refused` object with observation members, is undecodable. It is never read
+// as whichever arm the `outcome` member happens to name (review 70435).
+
+data ntfy_runtime_wire_outcome: String = "outcome"
+data ntfy_runtime_wire_observed: String = "observed"
+data ntfy_runtime_wire_refused: String = "refused"
+data ntfy_runtime_wire_main_pid: String = "main_pid"
+data ntfy_runtime_wire_start_before: String = "start_ticks_before"
+data ntfy_runtime_wire_start_after: String = "start_ticks_after"
+data ntfy_runtime_wire_environment_names: String = "environment_names"
+data ntfy_runtime_wire_exe_target: String = "exe_target"
+data ntfy_runtime_wire_exe_inode: String = "exe_inode"
+data ntfy_runtime_wire_open_fds: String = "open_fds"
+data ntfy_runtime_wire_fd_target: String = "target"
+data ntfy_runtime_wire_fd_target_inode: String = "target_inode"
+data ntfy_runtime_wire_read: String = "read"
+data ntfy_runtime_wire_cause: String = "cause"
+
+type NtfyRuntimeWireArm
+  = WireArmObserved
+  | WireArmRefused
+  | WireArmOpenFd
+
+fn ntfy_runtime_wire_keys(arm: NtfyRuntimeWireArm) -> List<String> {
+  match arm {
+    WireArmObserved => [
+      ntfy_runtime_wire_outcome,
+      ntfy_runtime_wire_main_pid,
+      ntfy_runtime_wire_start_before,
+      ntfy_runtime_wire_start_after,
+      ntfy_runtime_wire_environment_names,
+      ntfy_runtime_wire_exe_target,
+      ntfy_runtime_wire_exe_inode,
+      ntfy_runtime_wire_open_fds,
+    ]
+    WireArmRefused => [ntfy_runtime_wire_outcome, ntfy_runtime_wire_read, ntfy_runtime_wire_cause]
+    WireArmOpenFd => [ntfy_runtime_wire_fd_target, ntfy_runtime_wire_fd_target_inode]
+  }
+}
+
+// THE ENCODER'S MEMBERS ARE THE KEY TABLE MAPPED THROUGH ONE VALUE FUNCTION, so the population the
+// encoder writes and the population the decoder admits are the same list, not two lists kept in
+// step. A key a value function does not recognise encodes as null. The decoder refuses null for
+// every member, so a table row with no encoding cannot round-trip silently.
+fn ntfy_open_fd_value(fd: NtfyOpenFd, key: String) -> JsonValue {
+  if key == ntfy_runtime_wire_fd_target { json_string(s: fd.target) }
+  else if key == ntfy_runtime_wire_fd_target_inode { json_int(n: fd.target_inode) }
+  else { JsonNull }
+}
+
+fn ntfy_open_fd_json(fd: NtfyOpenFd) -> JsonValue {
+  json_object(members: map(ntfy_runtime_wire_keys(arm: WireArmOpenFd), k => json_kv(key: k, value: ntfy_open_fd_value(fd: fd, key: k))))
+}
+
+fn ntfy_runtime_observed_value(o: NtfyRuntimeProcessObservation, key: String) -> JsonValue {
+  if key == ntfy_runtime_wire_outcome { json_string(s: ntfy_runtime_wire_observed) }
+  else if key == ntfy_runtime_wire_main_pid { json_int(n: o.main_pid) }
+  else if key == ntfy_runtime_wire_start_before { json_int(n: o.start_ticks_before) }
+  else if key == ntfy_runtime_wire_start_after { json_int(n: o.start_ticks_after) }
+  else if key == ntfy_runtime_wire_environment_names { json_array(elements: map(o.environment_names, n => json_string(s: n))) }
+  else if key == ntfy_runtime_wire_exe_target { json_string(s: o.exe_target) }
+  else if key == ntfy_runtime_wire_exe_inode { json_int(n: o.exe_inode) }
+  else if key == ntfy_runtime_wire_open_fds { json_array(elements: map(o.open_fds, f => ntfy_open_fd_json(fd: f))) }
+  else { JsonNull }
+}
+
+fn ntfy_runtime_refused_value(read: String, cause: String, key: String) -> JsonValue {
+  if key == ntfy_runtime_wire_outcome { json_string(s: ntfy_runtime_wire_refused) }
+  else if key == ntfy_runtime_wire_read { json_string(s: read) }
+  else if key == ntfy_runtime_wire_cause { json_string(s: cause) }
+  else { JsonNull }
+}
+
+fn ntfy_runtime_observe_json(outcome: NtfyRuntimeObserveOutcome) -> JsonValue {
+  match outcome {
+    NtfyRuntimeObserveRefused { read: r, cause: c } =>
+      json_object(members: map(ntfy_runtime_wire_keys(arm: WireArmRefused), k => json_kv(key: k, value: ntfy_runtime_refused_value(read: r, cause: c, key: k))))
+    NtfyRuntimeObserved { observation: o } =>
+      json_object(members: map(ntfy_runtime_wire_keys(arm: WireArmObserved), k => json_kv(key: k, value: ntfy_runtime_observed_value(o: o, key: k))))
+  }
+}
+
+// TOTAL: every outcome has an encoding.
+fn ntfy_runtime_observe_encode(outcome: NtfyRuntimeObserveOutcome) -> String {
+  serialize_json(v: ntfy_runtime_observe_json(outcome: outcome))
+}
+
+// ── DECODE: TOTAL, AND EVERY MISMATCH IS A TYPED REFUSAL ──────────────────────────────────────
+type NtfyRuntimeObserveReading
+  = NtfyRuntimeReadingDecoded { outcome: NtfyRuntimeObserveOutcome }
+  | NtfyRuntimeReadingUndecodable { cause: String }
+
+// The first member whose key is not in the arm's table, or appears twice. Absent means the object
+// carries only keys from the table, each at most once. Presence and type of each key are checked
+// by the field reads that follow.
+fn ntfy_runtime_wire_stray_member(v: JsonValue, arm: NtfyRuntimeWireArm) -> String? {
+  match v {
+    JsonObject { members: ms } =>
+      fold(ms, init: none, f: (acc, m) =>
+        match acc {
+          Present { value: k } => Present { value: k }
+          Absent =>
+            if !any(ntfy_runtime_wire_keys(arm: arm), k => k == m.key) {
+              Present { value: concat("member not carried by this outcome: ", m.key) }
+            } else if count(json_object_members_named(members: ms, key: m.key)) > 1 {
+              Present { value: concat("member repeated: ", m.key) }
+            } else {
+              none
+            }
+        }
+      )
+    JsonNull => Present { value: "not an object" }
+    JsonBool { value: _ } => Present { value: "not an object" }
+    JsonNumber { lexeme: _ } => Present { value: "not an object" }
+    JsonString { value: _ } => Present { value: "not an object" }
+    JsonArray { elements: _ } => Present { value: "not an object" }
+  }
+}
+
+// FieldAbsent (missing or null) is a refusal for every field here: no member of either arm is
+// optional.
+fn ntfy_runtime_required_cause(key: String, cause: String?) -> String {
+  match cause {
+    Present { value: c } => c
+    Absent => concat("missing ", key)
+  }
+}
+
+fn ntfy_runtime_wire_read_open_fd(v: JsonValue) -> NtfyOpenFd? {
+  match ntfy_runtime_wire_stray_member(v: v, arm: WireArmOpenFd) {
+    Present { value: _ } => none
+    Absent =>
+      match json_field_value(r: json_field_string(obj: v, key: ntfy_runtime_wire_fd_target)) {
+        Absent => none
+        Present { value: t } =>
+          match json_field_value(r: json_field_int(obj: v, key: ntfy_runtime_wire_fd_target_inode)) {
+            Absent => none
+            Present { value: n } => Present { value: NtfyOpenFd { target: t, target_inode: n } }
+          }
+      }
+  }
+}
+
+fn ntfy_runtime_wire_open_fd_elements(elements: List<JsonValue>) -> List<NtfyOpenFd>? {
+  fold(elements, init: Present { value: [] }, f: (acc, e) =>
+    match acc {
+      Absent => none
+      Present { value: fds } =>
+        match ntfy_runtime_wire_read_open_fd(v: e) {
+          Absent => none
+          Present { value: fd } => Present { value: concat(fds, [fd]) }
+        }
+    }
+  )
+}
+
+fn ntfy_runtime_wire_read_open_fds(v: JsonValue) -> List<NtfyOpenFd>? {
+  match json_field_value(r: json_field(obj: v, key: ntfy_runtime_wire_open_fds)) {
+    Absent => none
+    Present { value: arr } =>
+      match arr {
+        JsonArray { elements: es } => ntfy_runtime_wire_open_fd_elements(elements: es)
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonString { value: _ } => none
+        JsonObject { members: _ } => none
+      }
+  }
+}
+
+fn ntfy_runtime_wire_int(v: JsonValue, key: String) -> Int? {
+  json_field_value(r: json_field_int(obj: v, key: key))
+}
+
+fn ntfy_runtime_decode_observed(v: JsonValue) -> NtfyRuntimeObserveReading {
+  match ntfy_runtime_wire_int(v: v, key: ntfy_runtime_wire_main_pid) {
+    Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_main_pid, cause: json_field_cause(r: json_field_int(obj: v, key: ntfy_runtime_wire_main_pid))) }
+    Present { value: pid } =>
+      match ntfy_runtime_wire_int(v: v, key: ntfy_runtime_wire_start_before) {
+        Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_start_before, cause: json_field_cause(r: json_field_int(obj: v, key: ntfy_runtime_wire_start_before))) }
+        Present { value: before } =>
+          match ntfy_runtime_wire_int(v: v, key: ntfy_runtime_wire_start_after) {
+            Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_start_after, cause: json_field_cause(r: json_field_int(obj: v, key: ntfy_runtime_wire_start_after))) }
+            Present { value: after } =>
+              match json_field_value(r: json_field_string_list(obj: v, key: ntfy_runtime_wire_environment_names)) {
+                Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_environment_names, cause: json_field_cause(r: json_field_string_list(obj: v, key: ntfy_runtime_wire_environment_names))) }
+                Present { value: names } =>
+                  match json_field_value(r: json_field_string(obj: v, key: ntfy_runtime_wire_exe_target)) {
+                    Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_exe_target, cause: json_field_cause(r: json_field_string(obj: v, key: ntfy_runtime_wire_exe_target))) }
+                    Present { value: exe } =>
+                      match ntfy_runtime_wire_int(v: v, key: ntfy_runtime_wire_exe_inode) {
+                        Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_exe_inode, cause: json_field_cause(r: json_field_int(obj: v, key: ntfy_runtime_wire_exe_inode))) }
+                        Present { value: exe_inode } =>
+                          match ntfy_runtime_wire_read_open_fds(v: v) {
+                            Absent => NtfyRuntimeReadingUndecodable { cause: "open_fds is missing, or an element is not exactly a target string plus a target_inode integer" }
+                            Present { value: fds } =>
+                              if pid <= 0 {
+                                NtfyRuntimeReadingUndecodable { cause: "main_pid is not positive: an observed outcome never carries pid 0" }
+                              } else {
+                                NtfyRuntimeReadingDecoded { outcome: NtfyRuntimeObserved { observation: NtfyRuntimeProcessObservation {
+                                  main_pid: pid,
+                                  start_ticks_before: before,
+                                  start_ticks_after: after,
+                                  environment_names: names,
+                                  exe_target: exe,
+                                  exe_inode: exe_inode,
+                                  open_fds: fds,
+                                } } }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn ntfy_runtime_decode_refused(v: JsonValue) -> NtfyRuntimeObserveReading {
+  match json_field_value(r: json_field_string(obj: v, key: ntfy_runtime_wire_read)) {
+    Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_read, cause: json_field_cause(r: json_field_string(obj: v, key: ntfy_runtime_wire_read))) }
+    Present { value: r } =>
+      match json_field_value(r: json_field_string(obj: v, key: ntfy_runtime_wire_cause)) {
+        Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_cause, cause: json_field_cause(r: json_field_string(obj: v, key: ntfy_runtime_wire_cause))) }
+        Present { value: c } => NtfyRuntimeReadingDecoded { outcome: NtfyRuntimeObserveRefused { read: r, cause: c } }
+      }
+  }
+}
+
+// THE ARM IS CHOSEN BY `outcome`, AND THEN THE WHOLE OBJECT MUST BELONG TO THAT ARM.
+fn ntfy_runtime_decode_arm(v: JsonValue, arm: NtfyRuntimeWireArm) -> NtfyRuntimeObserveReading {
+  match ntfy_runtime_wire_stray_member(v: v, arm: arm) {
+    Present { value: why } => NtfyRuntimeReadingUndecodable { cause: why }
+    Absent =>
+      match arm {
+        WireArmObserved => ntfy_runtime_decode_observed(v: v)
+        WireArmRefused => ntfy_runtime_decode_refused(v: v)
+        WireArmOpenFd => NtfyRuntimeReadingUndecodable { cause: "an open_fd record is not an outcome" }
+      }
+  }
+}
+
+fn ntfy_runtime_observe_decode(text: String) -> NtfyRuntimeObserveReading {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } => NtfyRuntimeReadingUndecodable { cause: concat("not one JSON document: ", json_document_gap_text(gap: g)) }
+    JsonDocumentParsed { value: v } =>
+      match json_field_value(r: json_field_string(obj: v, key: ntfy_runtime_wire_outcome)) {
+        Absent => NtfyRuntimeReadingUndecodable { cause: ntfy_runtime_required_cause(key: ntfy_runtime_wire_outcome, cause: json_field_cause(r: json_field_string(obj: v, key: ntfy_runtime_wire_outcome))) }
+        Present { value: o } =>
+          if o == ntfy_runtime_wire_observed {
+            ntfy_runtime_decode_arm(v: v, arm: WireArmObserved)
+          } else if o == ntfy_runtime_wire_refused {
+            ntfy_runtime_decode_arm(v: v, arm: WireArmRefused)
+          } else {
+            NtfyRuntimeReadingUndecodable { cause: concat("unknown outcome ", o) }
+          }
+      }
+  }
+}

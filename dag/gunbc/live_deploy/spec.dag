@@ -40,6 +40,7 @@ import gunbc.host_layout {
   srv1_dispatch_attempt_state_root,
   srv1_devboot_artifact_store_root,
 }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.fabric_storage_placement { fabric_storage_store_root, fabric_storage_placed_on, fabric_storage_https_port, fabric_storage_listen_port }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -1060,6 +1061,12 @@ fn deployment_ensured_packages() -> List<DeploymentDependencyStep> {
 // lives in, so no retract may remove it -- the property this category makes structural. It
 // replaced the per-instance event-log mirror root, which was owned and torn down with rm -rf;
 // that was harmless for a cache of a remote repository and would destroy the log itself here.
+//
+// THE ROOT ALONE IS NOT A STORE. The file store writes objects under `objects/` and heads under
+// `heads/` (gunbc.fabric_storage_file_store fabric_storage_file_root), and a create-new under an
+// absent area refuses not_found -- fleet-converge run 35818578751's host-effect claim did exactly
+// that. The areas are derived from the store's own root function, so the ensured paths and the
+// written paths cannot disagree, and this deployment is the store's one production creator.
 fn deployment_ensured_srv1_host_directories() -> List<DeploymentDependencyStep> {
   [
     DeploymentDependencyStep {
@@ -1073,6 +1080,20 @@ fn deployment_ensured_srv1_host_directories() -> List<DeploymentDependencyStep> 
       kind: FabricStorageStoreDirectory,
       subject: EnsuredHostDirectory {
         path: fabric_storage_store_root(),
+        owner: gunbc_service_user,
+      },
+    },
+    DeploymentDependencyStep {
+      kind: FabricStorageStoreDirectory,
+      subject: EnsuredHostDirectory {
+        path: fabric_storage_file_root(root: fabric_storage_store_root()).objects,
+        owner: gunbc_service_user,
+      },
+    },
+    DeploymentDependencyStep {
+      kind: FabricStorageStoreDirectory,
+      subject: EnsuredHostDirectory {
+        path: fabric_storage_file_root(root: fabric_storage_store_root()).heads,
         owner: gunbc_service_user,
       },
     },

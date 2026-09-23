@@ -8,6 +8,8 @@ import extdeps.filesystem.filesystem_io {
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
   FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
   FilesystemFailureKind,   filesystem_create_new, filesystem_exact_read, filesystem_failure_kind_name,
+  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+  filesystem_entry_presence, filesystem_listing_observation,
 }
 
 data authorization_claim_store_root: NonEmptyStr = "/var/lib/gunbc/authorization-claims" as NonEmptyStr
@@ -214,8 +216,12 @@ fn admit_cas_attempt_for_derived_payload(
 // The path a slot's generation occupies. The generation is IN the path, which
 // is what lets an exclusive create serve as the conditional write: two
 // generations of one slot are two different files, so the OS decides the race.
+fn cas_file_slot_name(key: NonEmptyStr, generation: CasGeneration) -> String {
+  concat(concat(key as String, "."), cas_generation_count(g: generation) as String)
+}
+
 fn cas_file_slot_path(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> String {
-  concat(concat(concat(concat(root as String, "/"), key as String), "."), cas_generation_count(g: generation) as String)
+  concat(concat(root as String, "/"), cas_file_slot_name(key: key, generation: generation))
 }
 
 // HOW THE SLOT IS OBSERVED, AND THE BOUND IS PART OF THE CONTRACT.
@@ -240,6 +246,7 @@ fn cas_file_slot_path(root: NonEmptyStr, key: NonEmptyStr, generation: CasGenera
 // and a decision caller would try to occupy it.
 type CasSlotProbe
   = ProbedAbsent
+  | ProbedAbsenceUnestablished { cause: String }
   | ProbedHead { generation: CasGeneration, value: NonEmptyStr }
   | ProbedBeyondBound { bound: Int }
   | ProbedUnreadable { generation: CasGeneration, kind: FilesystemFailureKind }
@@ -275,7 +282,7 @@ fn cas_probe_from_exact(
       cas_probe_from(root: root, key: key, generation: cas_generation_next(g: generation), previous: c as NonEmptyStr)
     FilesystemExactPathAbsent { path: _ } =>
       if cas_generation_count(g: generation) == 1 {
-        ProbedAbsent
+        cas_first_generation_absent(root: root, key: key)
       } else {
         ProbedHead { generation: cas_generation_count(g: generation) - 1, value: previous }
       }
@@ -283,6 +290,38 @@ fn cas_probe_from_exact(
       ProbedUnreadable { generation: generation, kind: k }
     FilesystemExactPathKindUnrecognized { path: _, observed: o, error: _ } =>
       ProbedReadKindUnrecognized { generation: generation, observed: o }
+  }
+}
+
+// AN ABSENT FIRST GENERATION IS AN EMPTY SLOT ONLY IN AN ESTABLISHED STORE. The host answers
+// NotFound for the generation path both when the file is missing and when the slot ROOT is
+// (extdeps.filesystem.filesystem_io FilesystemExactPathAbsent disclaims the directory), so reading
+// that answer as ProbedAbsent turned an UNINITIALIZED store into an EMPTY one: every reader saw "no
+// holder" and a decision caller admitted against a store it had never observed -- the absorbing
+// fallback DESIGN section 5 names, which hid fleet-converge run 35818578751's missing fabric store
+// until the first write.
+//
+// Absence is established by the filesystem authority's own route, not a second one beside it:
+// a listing of the slot root, asked through filesystem_entry_presence, is the only producer of
+// FilesystemEstablishedAbsence. A root that cannot be listed carries the host's cause into the
+// refusal; a listing that NAMES the generation the read just missed is two instants disagreeing,
+// and is refused rather than resolved in either direction. The listing is taken only on this arm
+// -- a slot with any generation never reaches it.
+fn cas_first_generation_absent(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe {
+  let name = cas_file_slot_name(key: key, generation: cas_generation_first())
+  let listed = Filesystem.List(path: root as String)
+  match filesystem_entry_presence(listing: filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error), name: name) {
+    FilesystemEntryAbsent(_) => ProbedAbsent
+    FilesystemEntryPresenceIndeterminate { cause: c } => ProbedAbsenceUnestablished { cause: c }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => ProbedAbsenceUnestablished { cause: c }
+    FilesystemEntryListed { directory: d, name: n } =>
+      ProbedAbsenceUnestablished { cause: join(["the read of ", n, " answered not found while the listing of ", d as String, " names it; the slot moved while it was being observed"], "") }
+  }
+}
+
+fn cas_absence_unestablished(cause: String) -> CasUnreadableSlot {
+  CasUnreadableReadRefused {
+    detail: join(["an absent first generation is not an empty slot here: ", cause], "") as NonEmptyStr
   }
 }
 
@@ -354,6 +393,7 @@ fn cas_probe_as_observation(probe: CasSlotProbe) -> CasSlotObservation<NonEmptyS
     ProbedReadKindUnrecognized { generation: g, observed: o } =>
       CasObservedUnreadable { cause: cas_generation_read_kind_unrecognized(generation: g, observed: o) }
     ProbedAbsent => CasObservedReadable { readable: CasReadableAbsent }
+    ProbedAbsenceUnestablished { cause: c } => CasObservedUnreadable { cause: cas_absence_unestablished(cause: c) }
     ProbedHead { generation: h, value: v } =>
       CasObservedReadable { readable: cas_head_as_readable(generation: h, value: v) }
   }
@@ -589,6 +629,7 @@ fn cas_owner_only_failed_publication(
         cas_publication_refused(detail: detail)
       }
     ProbedAbsent => cas_publication_refused(detail: detail)
+    ProbedAbsenceUnestablished { cause: c } => CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_absence_unestablished(cause: c) } }
     ProbedBeyondBound { bound: b } => cas_publication_beyond_bound(bound: b)
     ProbedUnreadable { generation: g, kind: k } =>
       CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_generation_unreadable(generation: g, kind: k) } }
@@ -660,6 +701,8 @@ fn file_compare_and_set(
       CasStoreRefused {
         cause: CasSlotObservationRefused { cause: cas_generation_read_kind_unrecognized(generation: g, observed: o) }
       }
+    ProbedAbsenceUnestablished { cause: c } =>
+      CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_absence_unestablished(cause: c) } }
     ProbedAbsent =>
       match attempt.expected {
         ExpectSlotAbsent =>

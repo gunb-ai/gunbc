@@ -1,12 +1,13 @@
 module test.claim.runner.runner_microvm_shakedown_workflow_witness_test
 
 import std.types { Bool, String }
-import extdeps.github.actions { self_hosted_provenance_label, SelfHosted }
+import extdeps.github.actions { self_hosted_provenance_label, SelfHosted, RunStep }
+import v2.std.optional { Present }
+import extdeps.languages.yaml.types { YamlValue, YamlString }
 import gunbc.runner_microvm_shakedown_workflow {
-  microvm_shakedown_job, microvm_shakedown_known_task_script, microvm_shakedown_attempt_expression,
+  microvm_shakedown_job, microvm_shakedown_known_task_step, microvm_shakedown_attempt_expression,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.diagnostic { Accepted, Rejected }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -25,17 +26,26 @@ test fn the_shakedown_job_asks_for_the_provenance_label_and_the_attempt_alone() 
   }
 }
 
-// NO EXPRESSION IS SPLICED INTO THE SCRIPT. An expression inside `run:` is evaluated before the
-// shell parses it, so a crafted input would become script text. The script reads the attempt from the
-// step's environment and every other fact from the runner's own variables, so the RENDERED script --
-// what v2.workflow.bash_emit actually produced, not a builder's intent -- carries no ${{ }} at all.
-// The red is the first writing of this script, which interpolated the input into its result line.
-// It is also the check that bash_emit accepted the program: a refusal there fails this claim.
-test fn no_expression_is_interpolated_into_the_rendered_known_task_script() -> Bool {
-  match microvm_shakedown_known_task_script() {
-    Accepted { value: script, diagnostics: _ } =>
-      !string_contains(s: script, pattern: "${{")
-        && string_contains(s: script, pattern: "$MICROVM_SHAKEDOWN_ATTEMPT")
-    Rejected { diagnostics: _ } => false
+// THE ATTEMPT REACHES THE SCRIPT THROUGH THE STEP'S ENVIRONMENT, and this claim asserts that ROUTE at
+// the step, not the rendered script's bytes. An expression inside `run:` is evaluated before the shell
+// parses it, so a crafted input would become script text; the step instead binds
+// MICROVM_SHAKEDOWN_ATTEMPT to the attempt input and the script reads the variable. The script is
+// supplied empty here because rendering it is v2.workflow.bash_emit's subject, not this claim's (DESIGN
+// section 3, a witness discriminates at one interface): the first writing of this claim rendered the
+// whole script to search its bytes and cost 247,268 eval steps against a 72,300 budget, every one of
+// them spent re-running the emitter. The real render is executed by the generated-artifact gate, which
+// holds the committed microvm-shakedown.yml to exactly what the emitter produces.
+fn env_value_is_attempt(v: YamlValue) -> Bool {
+  match v {
+    YamlString { value: t } => t == microvm_shakedown_attempt_expression()
+    _ => false
+  }
+}
+
+test fn the_known_task_step_binds_the_attempt_through_its_environment() -> Bool {
+  match microvm_shakedown_known_task_step(script: "") {
+    RunStep { name: _, id: _, run: _, shell: _, env: Present { value: kvs }, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      count(filter(kvs, kv => kv.key == "MICROVM_SHAKEDOWN_ATTEMPT" && env_value_is_attempt(v: kv.value))) == 1
+    _ => false
   }
 }

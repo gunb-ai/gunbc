@@ -36,7 +36,8 @@ import v2.extdeps.languages.go {
   go_named_edge,
   go_overflow_node,
   go_signed_int_width_node,
-  go_lex
+  go_lex,
+  go_emitted_add_fn_node
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
