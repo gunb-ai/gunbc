@@ -1872,7 +1872,7 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
 // so generic_params is the entire risk surface for the depth. An elided optional still occupies
 // its slot -- v2.compiler.parse `parse_expr_optional` returns grammar_empty_node on the rejected
 // arm -- so the depth does not shift when it is absent. Both arms are held by executing claims in
-// v2.test.manual.normalize_fn_body_cost_probe
+// test.claim.parse_test_fn_decl_return_clause
 // (`nfbcp_falsifier_generic_fn_return_type_holds`, `nfbcp_falsifier_eq_body_fn_return_type_holds`),
 // so INSERTING A THIRD OPTIONAL AHEAD OF THE RETURN CLAUSE REDDENS THEM rather than silently
 // shifting the read by one. That is the wall; this note is the reason it exists.
