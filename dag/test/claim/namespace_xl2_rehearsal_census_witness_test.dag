@@ -22,28 +22,34 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE TWO CONTROLS THE BRIEF OWES, RUN THROUGH THE REHEARSAL'S OWN COMPOSITION: the typed strip
-// (gunbc.namespace_step0_strip_producer), the path-faithful ingest, and v2.compiler.compile's
-// census-resolve. Only the exact-base collector is replaced by supplied sources, because it reads
-// the repository's object store and the hermetic floor cannot reach that (the collector's own note
-// states the route deficit); every stage downstream of the vector is the production one.
+// THE CONTROLS THE BRIEF OWES, RUN THROUGH THE REHEARSAL'S OWN COMPOSITION: the typed strip
+// (gunbc.namespace_step0_strip_producer), path admission, the path-faithful ingest, and
+// v2.compiler.compile's census-resolve. Only the exact-base collector is replaced by supplied
+// sources, because it reads the repository's object store and the hermetic floor cannot reach that
+// (the collector's own note states the route deficit); every stage downstream of the vector is the
+// production one.
 //
-// THE RESIDUAL CONTROL IS THE CUT'S OWN SHAPE: a module whose signature names a type it IMPORTS.
-// Unstripped it resolves; stripped, the import is gone and the reference dangles at NAME
-// RESOLUTION. The reference is a signature type rather than a call argument on purpose -- call
-// arguments do not reach resolve yet (the reason completeness is refused), so a control built on
-// one would be green for a reason the instrument cannot see.
+// THE RESIDUAL CONTROL IS THE CUT'S OWN SHAPE: a module whose signature names a type ANOTHER MODULE
+// declares and it imports. Unstripped it resolves; stripped, the import is gone and the reference
+// dangles at NAME RESOLUTION. THE TYPE IS A CORPUS DECLARATION, NOT A KERNEL NAME, and that is
+// measured rather than chosen: the first cut of this control imported v2.std.logic Bool, and the
+// floor showed its stripped form still resolving, because v2.compiler.resolve
+// resolved_reference_identity binds a kernel canonical leaf with no import at all. A kernel name
+// is outside the cut's population, so a control built on one is green for a reason the census never
+// sees. It is a signature type rather than a call argument for the same reason: call arguments do
+// not reach resolve yet (why completeness is refused).
 //
-// THE CLEAN CONTROL IMPORTS NOTHING: its only reference is to its own module's type, so the strip is
-// the identity on it and it must resolve. Both controls in one ingest share one front end.
-data xl2_residual_control_source: String = "module v2.xl2_control_residual\n\nimport v2.std.logic { Bool }\n\nfn xl2_control_residual_value(p: Bool) -> Bool { p }\n"
+// THE PROVIDER AND THE CLEAN CONTROL IMPORT NOTHING: each references only its own module's types, so
+// the strip is the identity on them and both must resolve.
+data xl2_provider_control_source: String = "module v2.xl2_control_provider\n\ntype Xl2ControlToken = Xl2ControlTokenA | Xl2ControlTokenB\n\nfn xl2_control_provider_value(p: Xl2ControlToken) -> Xl2ControlToken { p }\n"
+
+data xl2_residual_control_source: String = "module v2.xl2_control_residual\n\nimport v2.xl2_control_provider { Xl2ControlToken }\n\nfn xl2_control_residual_value(p: Xl2ControlToken) -> Xl2ControlToken { p }\n"
 
 data xl2_clean_control_source: String = "module v2.xl2_control_clean\n\ntype Xl2ControlShade = Xl2ControlLight | Xl2ControlDark\n\nfn xl2_control_clean_value(p: Xl2ControlShade) -> Xl2ControlShade { p }\n"
 
-data xl2_control_sources: List<FixtureSource> = [
-  FixtureSource { path: "dag/xl2_control_residual.dag" as NonEmptyStr, content: xl2_residual_control_source },
-  FixtureSource { path: "dag/xl2_control_clean.dag" as NonEmptyStr, content: xl2_clean_control_source }
-]
+fn xl2_control_source(path: String, content: String) -> FixtureSource {
+  FixtureSource { path: path as NonEmptyStr, content: content }
+}
 
 // A placeholder revision: the controls exercise the composition, not the pin. An unreadable literal
 // is reported as the collector would report it, never replaced by a default.
@@ -56,41 +62,62 @@ fn xl2_control_rehearse(strip: Xl2Strip) -> Xl2RehearsalRun {
   }
 }
 
-// ONE NULLARY PRODUCER, WARM: one front end plus two resolves, read by every claim below
-// (v2.workflow.floor_pure_producer_share carries its row).
-fn xl2_control_run() -> Xl2RehearsalRun {
-  xl2_control_rehearse(strip: xl2_strip_members(sources: xl2_control_sources))
+// THE PRE-CUT DIFFERENTIAL BYPASSES ONLY THE STRIP: the same sources, admitted unchanged, through the
+// same observation.
+fn xl2_unstripped(sources: List<FixtureSource>) -> Xl2Strip {
+  Xl2Strip {
+    members: fold(sources, init: [], f: fn(acc, s) { acc |> list_push(Xl2StrippedMember { source: s, base_coordinates: [] }) }),
+    unobserved: []
+  }
+}
+
+type Xl2ControlRuns {
+  cut: Xl2RehearsalRun
+  pre_cut: Xl2RehearsalRun
+  duplicated: Xl2RehearsalRun
+}
+
+// ONE NULLARY PRODUCER, WARM, FOR ALL THREE RUNS (v2.workflow.floor_pure_producer_share carries its
+// row): each run is a front end plus its resolves, more than one claim's budget, and the first cut
+// of this file paid two of them inside claims and was refused over budget on the floor.
+fn xl2_control_runs() -> Xl2ControlRuns {
+  let provider = xl2_control_source(path: "dag/xl2_control_provider.dag", content: xl2_provider_control_source)
+  let residual = xl2_control_source(path: "dag/xl2_control_residual.dag", content: xl2_residual_control_source)
+  let clean = xl2_control_source(path: "dag/xl2_control_clean.dag", content: xl2_clean_control_source)
+  Xl2ControlRuns {
+    cut: xl2_control_rehearse(strip: xl2_strip_members(sources: [provider, residual, clean])),
+    pre_cut: xl2_control_rehearse(strip: xl2_unstripped(sources: [provider, residual])),
+    duplicated: xl2_control_rehearse(strip: xl2_strip_members(sources: [
+      xl2_control_source(path: "dag/xl2_control_shared.dag", content: xl2_residual_control_source),
+      xl2_control_source(path: "dag/xl2_control_shared.dag", content: xl2_clean_control_source),
+      clean
+    ]))
+  }
 }
 
 // RED CONTROL: the residual module yields exactly one failure chain, and it is that module's.
 test fn xl2_residual_control_is_reported_holds() -> Bool {
-  match xl2_control_run() {
+  match xl2_control_runs().cut {
     Xl2RehearsalObserved { residual: residual } =>
       count(residual) == 1 && all(residual, r => r.module == "v2.xl2_control_residual")
     _ => false
   }
 }
 
-// GREEN CONTROL: the clean module resolved and contributed no row (the residual one did not).
+// GREEN CONTROL: the provider and the clean module both resolved, and neither contributed a row.
 test fn xl2_clean_control_resolves_holds() -> Bool {
-  match xl2_control_run() {
+  match xl2_control_runs().cut {
     Xl2RehearsalObserved { residual: residual, resolved_module_count: n } =>
-      n == 1 && !any(residual, r => r.module == "v2.xl2_control_clean")
+      n == 2 && !any(residual, r => r.module == "v2.xl2_control_clean" || r.module == "v2.xl2_control_provider")
     _ => false
   }
 }
 
-// THE CUT IS WHAT MADE THE RED: the same residual module unstripped resolves on the same route, so
-// the row above is the strip's residual and not a defect in the specimen.
+// THE CUT IS WHAT MADE THE RED: the residual module unstripped, beside its provider, resolves on the
+// same route, so the row above is the strip's residual and not a defect in the specimen.
 test fn xl2_residual_control_resolves_before_the_cut_holds() -> Bool {
-  match xl2_control_rehearse(strip: Xl2Strip {
-      members: [Xl2StrippedMember {
-        source: FixtureSource { path: "dag/xl2_control_residual.dag" as NonEmptyStr, content: xl2_residual_control_source },
-        base_coordinates: []
-      }],
-      unobserved: []
-    }) {
-    Xl2RehearsalObserved { residual: residual, resolved_module_count: n } => count(residual) == 0 && n == 1
+  match xl2_control_runs().pre_cut {
+    Xl2RehearsalObserved { residual: residual, resolved_module_count: n } => count(residual) == 0 && n == 2
     _ => false
   }
 }
@@ -99,7 +126,7 @@ test fn xl2_residual_control_resolves_before_the_cut_holds() -> Bool {
 // residual module was abandoned at its first failure. A run that answered Xl2CensusComplete here
 // would be presenting an undercount as the census.
 test fn xl2_control_completeness_is_refused_holds() -> Bool {
-  match xl2_control_run() {
+  match xl2_control_runs().cut {
     Xl2RehearsalObserved { completeness: Xl2CensusCompletenessRefused { first: Xl2CallArgumentReferencesUnobservable, rest: rest } } =>
       any(rest, c => match c {
         Xl2ScopeUnobserved { scope: Xl2ModuleResolveAbandonedAtFirstFailure { module: m, path: _ } } => m == "v2.xl2_control_residual"
@@ -112,21 +139,17 @@ test fn xl2_control_completeness_is_refused_holds() -> Bool {
 // THE WALLS RIDE ON THEIR OWN AXIS: an observed run names both native requalification walls, and
 // they are not among its completeness refusals (the refusal type cannot carry them).
 test fn xl2_control_names_the_native_requalification_walls_holds() -> Bool {
-  match xl2_control_run() {
+  match xl2_control_runs().cut {
     Xl2RehearsalObserved { native_requalification: walls } => count(walls) == 2
     _ => false
   }
 }
 
-// DUPLICATED PATH, REFUSED RATHER THAN CHOSEN: the residual specimen and the clean specimen supplied
-// at ONE path, beside the clean specimen at its own path. Neither shared member enters the ingest, so no row is emitted and only the uniquely-pathed module resolves,
-// and the path is reported as unobserved.
+// DUPLICATED PATH, REFUSED RATHER THAN CHOSEN: the residual and clean specimens supplied at ONE path,
+// beside the clean specimen at its own path. Neither shared member enters the ingest, so no row is
+// emitted, only the uniquely-pathed module resolves, and the path is reported once as unobserved.
 test fn xl2_duplicated_path_is_withheld_not_chosen_holds() -> Bool {
-  match xl2_control_rehearse(strip: xl2_strip_members(sources: [
-    FixtureSource { path: "dag/xl2_control_shared.dag" as NonEmptyStr, content: xl2_residual_control_source },
-    FixtureSource { path: "dag/xl2_control_shared.dag" as NonEmptyStr, content: xl2_clean_control_source },
-    FixtureSource { path: "dag/xl2_control_clean.dag" as NonEmptyStr, content: xl2_clean_control_source }
-  ])) {
+  match xl2_control_runs().duplicated {
     Xl2RehearsalObserved { residual: residual, resolved_module_count: n, completeness: Xl2CensusCompletenessRefused { first: _, rest: rest } } =>
       count(residual) == 0 && n == 1
         && count(filter(rest, c => match c {
