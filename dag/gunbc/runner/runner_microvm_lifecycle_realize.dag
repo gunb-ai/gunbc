@@ -1199,7 +1199,6 @@ fn run_launched_attempt(
 // guest that never booted from one that booted and idled to the deadline -- the two cases the
 // deadline alone cannot separate.
 fn observe_guest_bring_up(identity: AttemptIdentity, launch: AttemptLaunch) -> GuestBringUpReading
-  uses net: Network
 {
   match launch {
     VmmStarted { unit: u, receipt: _ } => {
