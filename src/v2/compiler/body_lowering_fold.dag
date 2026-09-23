@@ -1823,7 +1823,7 @@ fn body_lower_sequence_head_is_arrow(node: Node) -> Bool {
 // (DESIGN section 4b: construction over validation). Its sibling
 // body_lower_type_expr_after_arrow, a second blind arrow hunt with no consumer on main, is
 // deleted with it rather than left standing as a second authority for the same question.
-// Discriminating red: v2.test.manual.normalize_fn_body_cost_probe
+// Discriminating red: test.claim.parse_test_fn_decl_return_clause
 // `nfbcp_hazard_return_type_is_positional_holds`, which fails on the deleted reading and holds
 // on this one; `nfbcp_hazard_specimen_parses_holds` beside it separates "no hazard" from
 // "specimen does not parse", so the red cannot go green by the specimen ceasing to compile.
