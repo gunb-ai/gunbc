@@ -49,14 +49,10 @@ import v2.std.optional { Absent, Present }
 // The decisions over RestOutcomes are separated from the effects so each arm is reachable from a
 // supplied value (DESIGN §3: a witness discriminates at one interface).
 //
-// DECLARED CONSUMER (DESIGN §3c), landing in a named later change: gunbc.runner_microvm_slot_controller
-// observe_app_control_plane (gunbc#12011), whose app_control_plane_producer_frontier names this
-// producer as its trigger. TRIGGER: once #12011 is on main, the wiring change makes
-// observe_app_control_plane call observe_github_app_control_plane with
-// gunbc.github_effect_perform lifecycle_controller_app and lifecycle_controller_app_key,
-// gunbai_ci_declared_installation_id and gunbai_ci_registration_goal's required_permissions, and
-// deletes that frontier row and SlotControllerRefusal AppControlPlaneUnproduced. Until then the
-// only callers are test.claim.github_app_control_plane_observe's witnesses.
+// CONSUMER (DESIGN §3c): gunbc.runner_microvm_slot_controller observe_app_control_plane calls this
+// under the controller's own App key (gunbc.github_effect_perform lifecycle_controller_app and
+// lifecycle_controller_app_key) with gunbai_ci_declared_installation_id and
+// gunbai_ci_registration_goal's required_permissions, once per attempt, before the JIT mint.
 
 fn rest_read_failure_detail(what: String, outcome: RestOutcome) -> String {
   match classify_rest_outcome(standing: RestReadExchange { rest: outcome }) {
