@@ -27,9 +27,9 @@ import gunbc.live_deploy.emit { approval_broker_release_dir, approval_broker_rel
 // USER -- the owner of approval_device_store_root and a reader of the ntfy publisher token -- to
 // run gunbc.auth.approval_device_routes issue_device_enrolment_code from the broker's admitted
 // release tree. The remote verb writes the code's slot and delivers the code over the operator's
-// ntfy topic. The verb itself refuses before minting unless the channel reads back private
-// (its first match is gunbc.auth.approval_ntfy_access_readback's standing, read on the host), so
-// this step carries no second check beside it. What comes back over SSH, and what this step
+// ntfy topic. The verb itself refuses before minting unless its own live read on the host shows
+// the channel private and bound to the running server (gunbc.auth.approval_ntfy_access_readback),
+// so this step carries no second check beside it. What comes back over SSH, and what this step
 // prints, is the delivery receipt
 // only (decision msg_a1d8d1b9: the code never appears in a step log or a receipt artifact).
 //

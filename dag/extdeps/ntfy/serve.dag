@@ -1,0 +1,106 @@
+module extdeps.ntfy.serve
+
+import std.types { String, List, Bool, NonEmptyStr }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// ── `ntfy serve`: where the running server takes its access-control inputs from ─────────────
+// Cited to cmd/serve.go at ntfy v2.28.0 (flagsServe), read against `ntfy serve --help` of the
+// v2.28.0 release binary. Every option is read from THREE places, highest first: the command line
+// (`--auth-file`, `-H`, ...), the environment (`$NTFY_AUTH_FILE`, ...), and the YAML file named by
+// `--config` (default /etc/ntfy/server.yml, itself overridable by `$NTFY_CONFIG_FILE`), where the
+// key may be spelled with a dash or an underscore (`auth-file` / `auth_file`). So a config file is
+// the server's effective setting ONLY when neither of the higher sources names the option -- which
+// is why a reader of a config file must also read the process's argv and environment.
+//
+// The options that decide who may read a topic:
+//   auth-file            the sqlite auth database `ntfy access` reads and the server enforces
+//   auth-default-access  what an unmatched principal gets; upstream default read-write
+//   auth-access-cache    an in-memory ACL cache (default false): with it on, the running server
+//                        may answer from memory rather than from the database a reader inspects
+//   listen-http          the HTTP bind address; upstream default ":80", every interface
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/binwiederhier/ntfy/blob/v2.28.0/cmd/serve.go"
+  }
+}
+
+// cmd/app.go: the root command's `--version` prints `ntfy version <version>`, with no leading v.
+data ntfy_version_line_prefix: String = "ntfy version "
+
+data ntfy_serve_verb: NonEmptyStr = "serve"
+data ntfy_config_flag: NonEmptyStr = "--config"
+
+// Every ntfy environment variable carries this prefix (cmd/serve.go EnvVars: "NTFY_...").
+data ntfy_environment_prefix: String = "NTFY_"
+
+type NtfyServeOption
+  = NtfyAuthFile
+  | NtfyAuthDefaultAccess
+  | NtfyAuthAccessCache
+  | NtfyListenHttp
+
+// The config file's two spellings of one option (cmd/serve.go altsrc: the dash key, and the
+// underscore alias every flag also declares).
+fn ntfy_serve_option_keys(o: NtfyServeOption) -> List<String> {
+  match o {
+    NtfyAuthFile => ["auth-file", "auth_file"]
+    NtfyAuthDefaultAccess => ["auth-default-access", "auth_default_access"]
+    NtfyAuthAccessCache => ["auth-access-cache", "auth_access_cache"]
+    NtfyListenHttp => ["listen-http", "listen_http"]
+  }
+}
+
+// ── server.yml, the FLAT subset ──────────────────────────────────────────────────────────────
+// ntfy reads its config with a YAML decoder, and a file may hold lists (auth-users, auth-access)
+// and nested maps. This reader admits only `key: value` lines, comments and blank lines, and
+// REFUSES anything else naming the line: a structure it cannot read is a config it has not read,
+// never a config with fewer settings.
+type NtfyConfigEntry {
+  key: String
+  value: String
+}
+
+type NtfyConfigRead
+  = NtfyConfigFlat { entries: List<NtfyConfigEntry> }
+  | NtfyConfigUnreadable { line: String, cause: String }
+
+fn ntfy_config_unquote(v: String) -> String {
+  let n = string_length(s: v)
+  if n >= 2 && ((starts_with(s: v, prefix: "\"") && substring(s: v, start: n - 1, end: n) == "\"") || (starts_with(s: v, prefix: "'") && substring(s: v, start: n - 1, end: n) == "'")) {
+    substring(s: v, start: 1, end: n - 1)
+  } else { v }
+}
+
+fn ntfy_config_line(line: String) -> NtfyConfigRead {
+  let parts = split(s: line, delimiter: ": ")
+  match first(parts) {
+    Absent => NtfyConfigUnreadable { line: line, cause: "no key" }
+    Present { value: k } =>
+      if k == "" || string_contains(s: k, pattern: " ") || starts_with(s: line, prefix: " ") || starts_with(s: line, prefix: "-") {
+        NtfyConfigUnreadable { line: line, cause: "not a top-level `key: value` line" }
+      } else {
+        NtfyConfigFlat { entries: [NtfyConfigEntry { key: k, value: ntfy_config_unquote(v: trim(s: join(skip(parts, n: 1), ": "))) }] }
+      }
+  }
+}
+
+fn ntfy_config_read(text: String) -> NtfyConfigRead {
+  let lines = filter(split(s: text, delimiter: "\n"), l => trim(s: l) != "" && !starts_with(s: trim(s: l), prefix: "#"))
+  fold(lines, init: NtfyConfigFlat { entries: [] }, f: (acc, l) => match acc {
+    NtfyConfigUnreadable { line: _, cause: _ } => acc
+    NtfyConfigFlat { entries: es } => match ntfy_config_line(line: l) {
+      NtfyConfigUnreadable { line: bad, cause: c } => NtfyConfigUnreadable { line: bad, cause: c }
+      NtfyConfigFlat { entries: one } => NtfyConfigFlat { entries: concat(es, one) }
+    }
+  })
+}
+
+// Every value the file gives an option, under either spelling. More than one is a file the
+// server's decoder would resolve by an order this reader does not model, so the caller refuses it.
+fn ntfy_config_values(entries: List<NtfyConfigEntry>, o: NtfyServeOption) -> List<String> {
+  let keys = ntfy_serve_option_keys(o: o)
+  map(filter(entries, e => any(keys, k => k == e.key)), e => e.value)
+}

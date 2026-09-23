@@ -2,206 +2,355 @@ module test.claim.approval_ntfy_access_readback_witness_test
 
 import std.logic { Bool }
 import std.types { String, List, NonEmptyStr }
-import extdeps.ntfy.access { ntfy_access_read, NtfyAccessListed, NtfyAccessUnparseable, NtfyRoleAdmin, NtfyReadWrite }
-import extdeps.shell
+import extdeps.ntfy.access { NtfyRoleAdmin, NtfyReadWrite }
 import extdeps.exec.command { LocalExec, argv_words }
+import extdeps.shell.exec { ProcessNotSpawned }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
 import gunbc.command_runner { run_shell_command_observe }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_count_for_subject }
 import gunbc.auth.approval_ntfy_access_readback {
+  ApprovalNtfyAclVerdict, AclEstablished, AclRefused,
   ApprovalNtfyAclDeviation, AclReadbackDidNotRun, AclListingUnparseable, AclDefaultAccessNotDeny, AclAnonymousHasGrants,
   AclPrincipalMissing, AclPrincipalDuplicated, AclPublisherNotWriteOnly, AclOperatorNotReadOnly, AclUnexpectedPrincipal,
-  ApprovalNtfyPrivateChannelStanding, PrivateChannelObserved, PrivateChannelUnestablished,
-  approval_ntfy_access_readback_command, approval_ntfy_private_channel_standing_of,
+  ActiveNtfyRuntimeUnbound, ActiveNtfyRuntimeGap,
+  RuntimeObservationMalformed, RuntimeConfigChangedSinceStart, RuntimeExecutableNotDeclared,
+  RuntimeVersionNotModeled, RuntimeCommandLineNotDeclared, RuntimeEnvironmentOverrides,
+  RuntimeConfigDefaultAccessNotDeny, RuntimeConfigAccessCacheEnabled, RuntimeConfigListenNotDeclared,
+  RuntimeAuthFileNotHeldOpen, RuntimeListenerNotDeclared, RuntimeNoListener,
+  approval_ntfy_channel_verdict, approval_ntfy_channel_verdict_of_run, approval_ntfy_runtime_readback_command, approval_ntfy_runtime_readback_script,
 }
-import gunbc.auth.approval_device_routes { issue_device_enrolment_code_under }
+import gunbc.auth.approval_device_routes { issue_device_enrolment_code }
+import gunbc.auth.approval_device_redemption { approval_device_store_root }
 
-// ── Enrolment-code issuance is gated, AT THE VERB, on the ntfy ACL readback ──────────────────
-// Every listing below is REAL `ntfy access --config <server.yml>` stdout from the upstream
-// ntfy v2.28.0 linux/arm64 release binary, captured against a scratch auth database built with
-// `ntfy user add` / `ntfy access USER TOPIC PERM` / `ntfy user change-role` / an
-// auth-default-access change -- never transcribed from the source, so the parser is exercised
-// against what the producer actually emits. The ACL claims supply one listing to the standing fold
-// (approval_ntfy_private_channel_standing_of) and assert which standing and which typed deviation.
-// The ROUTE claims then drive the verb's own gate (issue_device_enrolment_code_under) and assert
-// what it TOUCHED, not only what it said.
-//
-// MUTATION RECEIPT (PR body): making the Unestablished arm of issue_device_enrolment_code_under
-// fall through to issue_device_enrolment_code_on_private_channel turns both route REDs red and
-// leaves the Observed route control green.
-data ntfy_access_exact: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
-data ntfy_access_default_rw: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- read-write access to all (other) topics (server config)\n"
-data ntfy_access_anon_read: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- read-only access to topic gunbc-approvals\n- no access to any (other) topics (server config)\n"
-data ntfy_access_pub_rw: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- read-write access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
-data ntfy_access_op_rw: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-write access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
-data ntfy_access_op_nogrant: String = "user gunbc-approval-operator (role: user, tier: none)\n- no topic-specific permissions\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
-data ntfy_access_op_missing: String = "user gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
-data ntfy_access_admin_extra: String = "user root (role: admin, tier: none)\n- read-write access to all topics (admin role)\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
-data ntfy_access_wildcard_reader: String = "user eve (role: user, tier: none)\n- read-only access to topic gunbc-*\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
-data ntfy_access_pub_admin: String = "user gunbc-approval-publisher (role: admin, tier: none)\n- read-write access to all topics (admin role)\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+// ── Enrolment-code issuance: one root, one live read, a verdict bound to the running server ────
+// EVERY rt_* OBSERVATION BELOW IS REAL: the stdout of approval_ntfy_runtime_readback_script -- the
+// exact text captured_with_script pins, which the_readback_is_one_elevated_read_as_the_server_principal
+// asserts the module still renders -- run against the upstream ntfy v2.28.0 linux/arm64 release
+// binary serving 127.0.0.1:2586 from a scratch config and auth database. Two edits are made to each
+// capture, and only these: scratch paths are rewritten to the declared ones (/usr/bin/ntfy,
+// /etc/gunbc-ntfy/server.yml, /var/lib/gunbc-ntfy/user.db, a log path), and the /proc/net/tcp and
+// tcp6 tables keep their header and LISTEN rows only (the classifier reads no other row). The
+// systemctl on the capture host was a stub answering the live server's PID, since that host runs no
+// systemd. Each deviation was produced on the real server: an NTFY_* variable, a command-line flag,
+// another executable path, a config key, a config touched after start, the auth database renamed
+// under the running server, a metrics listener. The listing_* rows are real ntfy access stdout from
+// the same binary, and the ACL claims place each one in the exact capture's @@access section.
+// Synthetic rows say so beside their claim.
+data rt_exact: String = "@@mainpid\n18202\n@@started\n1790125565\n@@exe\n/usr/bin/ntfy\n@@version\nntfy version 2.28.0\n@@cmdline\n/usr/bin/ntfy\nserve\n--config\n/etc/gunbc-ntfy/server.yml\n@@environ-names\n@@fds\n/dev/null\n/var/log/gunbc-ntfy/serve.log\n/var/log/gunbc-ntfy/serve.log\n/sys/fs/cgroup/cpu.max\n/var/lib/gunbc-ntfy/user.db\nanon_inode:[eventpoll]\nanon_inode:[eventfd]\nsocket:[2696556373]\n@@tcp\n  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2696556373 2 0000000000000000 100 0 0 10 0\n   1: 00000000:1E01 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2694509439 1 0000000000000000 100 0 0 10 0\n@@tcp6\n  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n@@config-mtime\n1790125555\n@@config\nauth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n@@access\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n@@end\n"
+data rt_envoverride: String = "@@mainpid\n18355\n@@started\n1790125568\n@@exe\n/usr/bin/ntfy\n@@version\nntfy version 2.28.0\n@@cmdline\n/usr/bin/ntfy\nserve\n--config\n/etc/gunbc-ntfy/server.yml\n@@environ-names\nNTFY_AUTH_DEFAULT_ACCESS\n@@fds\n/dev/null\n/var/log/gunbc-ntfy/serve.log\n/var/log/gunbc-ntfy/serve.log\n/sys/fs/cgroup/cpu.max\n/var/lib/gunbc-ntfy/user.db\nanon_inode:[eventpoll]\nanon_inode:[eventfd]\nsocket:[2696401734]\n@@tcp\n  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2696401734 2 0000000000000000 100 0 0 10 0\n   1: 00000000:1E01 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2694509439 1 0000000000000000 100 0 0 10 0\n@@tcp6\n  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n@@config-mtime\n1790125558\n@@config\nauth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n@@access\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n@@end\n"
+data rt_cmdoverride: String = "@@mainpid\n18511\n@@started\n1790125572\n@@exe\n/usr/bin/ntfy\n@@version\nntfy version 2.28.0\n@@cmdline\n/usr/bin/ntfy\nserve\n--config\n/etc/gunbc-ntfy/server.yml\n--auth-default-access\nread-write\n@@environ-names\n@@fds\n/dev/null\n/var/log/gunbc-ntfy/serve.log\n/var/log/gunbc-ntfy/serve.log\n/sys/fs/cgroup/cpu.max\n/var/lib/gunbc-ntfy/user.db\nanon_inode:[eventpoll]\nanon_inode:[eventfd]\nsocket:[2696404960]\n@@tcp\n  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2696404960 2 0000000000000000 100 0 0 10 0\n   1: 00000000:1E01 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2694509439 1 0000000000000000 100 0 0 10 0\n@@tcp6\n  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n@@config-mtime\n1790125562\n@@config\nauth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n@@access\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n@@end\n"
+data rt_otherexe: String = "@@mainpid\n18664\n@@started\n1790125575\n@@exe\n/opt/ntfy-other/ntfy\n@@version\nntfy version 2.28.0\n@@cmdline\n/opt/ntfy-other/ntfy\nserve\n--config\n/etc/gunbc-ntfy/server.yml\n@@environ-names\n@@fds\n/dev/null\n/var/log/gunbc-ntfy/serve.log\n/var/log/gunbc-ntfy/serve.log\n/sys/fs/cgroup/cpu.max\n/var/lib/gunbc-ntfy/user.db\nanon_inode:[eventpoll]\nanon_inode:[eventfd]\nsocket:[2696595554]\n@@tcp\n  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2696595554 2 0000000000000000 100 0 0 10 0\n   1: 00000000:1E01 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2694509439 1 0000000000000000 100 0 0 10 0\n@@tcp6\n  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n@@config-mtime\n1790125565\n@@config\nauth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n@@access\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n@@end\n"
+data rt_cache: String = "@@mainpid\n18821\n@@started\n1790125578\n@@exe\n/usr/bin/ntfy\n@@version\nntfy version 2.28.0\n@@cmdline\n/usr/bin/ntfy\nserve\n--config\n/etc/gunbc-ntfy/server.yml\n@@environ-names\n@@fds\n/dev/null\n/var/log/gunbc-ntfy/serve.log\n/var/log/gunbc-ntfy/serve.log\n/sys/fs/cgroup/cpu.max\n/var/lib/gunbc-ntfy/user.db\nanon_inode:[eventpoll]\nanon_inode:[eventfd]\nsocket:[2696579256]\n@@tcp\n  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2696579256 2 0000000000000000 100 0 0 10 0\n   1: 00000000:1E01 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2694509439 1 0000000000000000 100 0 0 10 0\n@@tcp6\n  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n@@config-mtime\n1790125568\n@@config\nauth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\nauth-access-cache: true\n@@access\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n@@end\n"
+data rt_wildcard_cfg: String = "@@mainpid\n18974\n@@started\n1790125581\n@@exe\n/usr/bin/ntfy\n@@version\nntfy version 2.28.0\n@@cmdline\n/usr/bin/ntfy\nserve\n--config\n/etc/gunbc-ntfy/server.yml\n@@environ-names\n@@fds\n/dev/null\n/var/log/gunbc-ntfy/serve.log\n/var/log/gunbc-ntfy/serve.log\n/sys/fs/cgroup/cpu.max\n/var/lib/gunbc-ntfy/user.db\nanon_inode:[eventpoll]\nanon_inode:[eventfd]\nsocket:[2696614966]\n@@tcp\n  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 00000000:1E01 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2694509439 1 0000000000000000 100 0 0 10 0\n@@tcp6\n  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 00000000000000000000000000000000:0A1A 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2696614966 2 0000000000000000 100 0 0 10 0\n@@config-mtime\n1790125571\n@@config\nauth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: \":2586\"\nbase-url: http://127.0.0.1:2586\n@@access\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n@@end\n"
+data rt_wildcard_cmd: String = "@@mainpid\n19133\n@@started\n1790125584\n@@exe\n/usr/bin/ntfy\n@@version\nntfy version 2.28.0\n@@cmdline\n/usr/bin/ntfy\nserve\n--config\n/etc/gunbc-ntfy/server.yml\n--listen-http\n:2586\n@@environ-names\n@@fds\n/dev/null\n/var/log/gunbc-ntfy/serve.log\n/var/log/gunbc-ntfy/serve.log\n/sys/fs/cgroup/cpu.max\n/var/lib/gunbc-ntfy/user.db\nanon_inode:[eventpoll]\nanon_inode:[eventfd]\nsocket:[2696531392]\n@@tcp\n  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 00000000:1E01 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2694509439 1 0000000000000000 100 0 0 10 0\n@@tcp6\n  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 00000000000000000000000000000000:0A1A 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2696531392 2 0000000000000000 100 0 0 10 0\n@@config-mtime\n1790125574\n@@config\nauth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n@@access\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n@@end\n"
+data rt_cfg_default_rw: String = "@@mainpid\n19291\n@@started\n1790125587\n@@exe\n/usr/bin/ntfy\n@@version\nntfy version 2.28.0\n@@cmdline\n/usr/bin/ntfy\nserve\n--config\n/etc/gunbc-ntfy/server.yml\n@@environ-names\n@@fds\n/dev/null\n/var/log/gunbc-ntfy/serve.log\n/var/log/gunbc-ntfy/serve.log\n/sys/fs/cgroup/cpu.max\n/var/lib/gunbc-ntfy/user.db\nanon_inode:[eventpoll]\nanon_inode:[eventfd]\nsocket:[2696551135]\n@@tcp\n  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2696551135 2 0000000000000000 100 0 0 10 0\n   1: 00000000:1E01 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2694509439 1 0000000000000000 100 0 0 10 0\n@@tcp6\n  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n@@config-mtime\n1790125577\n@@config\nauth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: read-write\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n@@access\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- read-write access to all (other) topics (server config)\n@@end\n"
+data rt_config_touched: String = "@@mainpid\n19445\n@@started\n1790125591\n@@exe\n/usr/bin/ntfy\n@@version\nntfy version 2.28.0\n@@cmdline\n/usr/bin/ntfy\nserve\n--config\n/etc/gunbc-ntfy/server.yml\n@@environ-names\n@@fds\n/dev/null\n/var/log/gunbc-ntfy/serve.log\n/var/log/gunbc-ntfy/serve.log\n/sys/fs/cgroup/cpu.max\n/var/lib/gunbc-ntfy/user.db\nanon_inode:[eventpoll]\nanon_inode:[eventfd]\nsocket:[2696619024]\n@@tcp\n  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2696619024 2 0000000000000000 100 0 0 10 0\n   1: 00000000:1E01 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2694509439 1 0000000000000000 100 0 0 10 0\n@@tcp6\n  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n@@config-mtime\n1790125593\n@@config\nauth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n@@access\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n@@end\n"
+data rt_authfile_replaced: String = "@@mainpid\n19601\n@@started\n1790125594\n@@exe\n/usr/bin/ntfy\n@@version\nntfy version 2.28.0\n@@cmdline\n/usr/bin/ntfy\nserve\n--config\n/etc/gunbc-ntfy/server.yml\n@@environ-names\n@@fds\n/dev/null\n/var/log/gunbc-ntfy/serve.log\n/var/log/gunbc-ntfy/serve.log\n/sys/fs/cgroup/cpu.max\n/var/lib/gunbc-ntfy/user.db.held\nanon_inode:[eventpoll]\nanon_inode:[eventfd]\nsocket:[2696592656]\n@@tcp\n  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2696592656 2 0000000000000000 100 0 0 10 0\n   1: 00000000:1E01 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2694509439 1 0000000000000000 100 0 0 10 0\n@@tcp6\n  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n@@config-mtime\n1790125584\n@@config\nauth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n@@access\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n@@end\n"
+data rt_notrunning: String = "@@mainpid\n0\n@@started\n"
+data rt_notrunning_stderr: String = "error: process ID out of range"
+data listing_default_rw: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- read-write access to all (other) topics (server config)\n"
+data listing_anon_read: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- read-only access to topic gunbc-approvals\n- no access to any (other) topics (server config)\n"
+data listing_pub_rw: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- read-write access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data listing_op_rw: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-write access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data listing_op_nogrant: String = "user gunbc-approval-operator (role: user, tier: none)\n- no topic-specific permissions\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data listing_op_missing: String = "user gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data listing_admin_extra: String = "user root (role: admin, tier: none)\n- read-write access to all topics (admin role)\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data listing_wildcard_reader: String = "user eve (role: user, tier: none)\n- read-only access to topic gunbc-*\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data listing_pub_admin: String = "user gunbc-approval-publisher (role: admin, tier: none)\n- read-write access to all topics (admin role)\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
+data rt_metrics_extra: String = "@@mainpid\n19884\n@@started\n1790125641\n@@exe\n/usr/bin/ntfy\n@@version\nntfy version 2.28.0\n@@cmdline\n/usr/bin/ntfy\nserve\n--config\n/etc/gunbc-ntfy/server.yml\n@@environ-names\n@@fds\n/dev/null\n/var/log/gunbc-ntfy/serve.log\n/var/log/gunbc-ntfy/serve.log\n/sys/fs/cgroup/cpu.max\n/var/lib/gunbc-ntfy/user.db\nanon_inode:[eventpoll]\nanon_inode:[eventfd]\nsocket:[2696562510]\nsocket:[2696588616]\n@@tcp\n  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2696562510 2 0000000000000000 100 0 0 10 0\n   1: 00000000:1E01 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2694509439 1 0000000000000000 100 0 0 10 0\n@@tcp6\n  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 00000000000000000000000000000000:2383 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2696588616 2 0000000000000000 100 0 0 10 0\n@@config-mtime\n1790125631\n@@config\nauth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\nmetrics-listen-http: \":9091\"\n@@access\nuser gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n@@end\n"
+data captured_with_script: String = "set -eu\npid=$('systemctl' 'show' 'gunbc-ntfy.service' '--property=MainPID' '--value')\necho '@@mainpid'; echo \"$pid\"\necho '@@started'; now=$(date +%s); et=$(ps -o etimes= -p \"$pid\"); echo $((now - et))\necho '@@exe'; readlink \"/proc/$pid/exe\"\necho '@@version'; \"/proc/$pid/exe\" --version\necho '@@cmdline'; tr '\\000' '\\n' < \"/proc/$pid/cmdline\"\necho '@@environ-names'; tr '\\000' '\\n' < \"/proc/$pid/environ\" | sed -n 's/^\\(NTFY_[A-Za-z0-9_]*\\)=.*/\\1/p'\necho '@@fds'; for f in \"/proc/$pid/fd/\"*; do readlink \"$f\"; done\necho '@@tcp'; cat /proc/net/tcp\necho '@@tcp6'; cat /proc/net/tcp6\necho '@@config-mtime'; stat -c %Y '/etc/gunbc-ntfy/server.yml'\necho '@@config'; cat '/etc/gunbc-ntfy/server.yml'\necho '@@access'; env -i '/usr/bin/ntfy' 'access' '--config' '/etc/gunbc-ntfy/server.yml'\necho '@@end'\n"
 
 
-fn standing_of(stdout: String) -> ApprovalNtfyPrivateChannelStanding {
-  approval_ntfy_private_channel_standing_of(exit_code: 0, stdout: stdout, stderr: "")
+fn verdict_of(stdout: String) -> ApprovalNtfyAclVerdict {
+  approval_ntfy_channel_verdict(exit_code: 0, stdout: stdout, stderr: "")
 }
 
-fn refused_with(s: ApprovalNtfyPrivateChannelStanding) -> ApprovalNtfyAclDeviation? {
-  match s {
-    PrivateChannelUnestablished { missing: d } => Present { value: d }
-    PrivateChannelObserved { listing: _ } => none
+fn refused_with(v: ApprovalNtfyAclVerdict) -> ApprovalNtfyAclDeviation? {
+  match v {
+    AclRefused { deviation: d } => Present { value: d }
+    AclEstablished => none
   }
 }
 
-// POSITIVE CONTROL: the exact ACL, and only it, is Observed.
-test fn the_exact_acl_is_observed_private() -> Bool {
-  match standing_of(stdout: ntfy_access_exact) {
-    PrivateChannelObserved { listing: l } => count(l.users) == 3
+fn gap_of(stdout: String) -> ActiveNtfyRuntimeGap? {
+  match refused_with(v: verdict_of(stdout: stdout)) {
+    Present { value: ActiveNtfyRuntimeUnbound { gap: g } } => Present { value: g }
+    _ => none
+  }
+}
+
+fn exact_head() -> String {
+  match first(split(s: rt_exact, delimiter: "@@access\n")) {
+    Present { value: h } => h
+    Absent => ""
+  }
+}
+
+fn exact_listing() -> String {
+  match last(split(s: rt_exact, delimiter: "@@access\n")) {
+    Present { value: tail } => replace(s: tail, from: "@@end\n", to: "")
+    Absent => ""
+  }
+}
+
+// The exact capture with its @@access section replaced by another real listing.
+fn with_listing(listing: String) -> String {
+  exact_head() + "@@access\n" + listing + "@@end\n"
+}
+
+// ── POSITIVE CONTROL ──────────────────────────────────────────────────────────────────────
+test fn the_bound_exact_acl_is_established() -> Bool {
+  match verdict_of(stdout: rt_exact) {
+    AclEstablished => true
     _ => false
   }
 }
 
-// The readback runs the server's own CLI as the server's principal, over the server's config.
-test fn the_readback_argv_is_ntfy_access_as_the_server_principal() -> Bool {
-  join(argv_words(command: approval_ntfy_access_readback_command()), " ") == "/usr/bin/sudo -n -u gunbc-ntfy /usr/bin/ntfy access --config /etc/gunbc-ntfy/server.yml"
+// The command is ONE elevated sh -c as the server's principal, and its script is the one every
+// rt_* capture was taken with.
+test fn the_readback_is_one_elevated_read_as_the_server_principal() -> Bool {
+  let words = argv_words(command: approval_ntfy_runtime_readback_command())
+  join(words.take(n: 6), " ") == "/usr/bin/sudo -n -u gunbc-ntfy sh -c"
+    && count(words) == 7
+    && approval_ntfy_runtime_readback_script() == captured_with_script
 }
 
-// UNOBSERVED IS REFUSED: a readback that did not exit zero, and one that printed nothing.
-test fn an_unobserved_readback_refuses() -> Bool {
-  (match refused_with(s: approval_ntfy_private_channel_standing_of(exit_code: 1, stdout: ntfy_access_exact, stderr: "sudo: a password is required")) {
-    Present { value: AclReadbackDidNotRun { detail: d } } => string_contains(s: d, pattern: "password")
+// ── RUNTIME BINDING REDS (each produced on the real server) ────────────────────────────────
+test fn a_unit_with_no_main_process_refuses() -> Bool {
+  match refused_with(v: approval_ntfy_channel_verdict(exit_code: 1, stdout: rt_notrunning, stderr: rt_notrunning_stderr)) {
+    Present { value: AclReadbackDidNotRun { detail: d } } => string_contains(s: d, pattern: "process ID out of range")
     _ => false
-  })
-    && (match refused_with(s: standing_of(stdout: "")) {
-      Present { value: AclListingUnparseable { line: _, cause: _ } } => true
-      _ => false
-    })
+  }
 }
 
-// A line the upstream does not print is not skipped.
-test fn an_unplaced_line_refuses() -> Bool {
-  match refused_with(s: standing_of(stdout: ntfy_access_exact + "WARN something unrelated\n")) {
+// A read whose process never started (no sudo on the host) is a typed refusal, not an abort.
+test fn a_read_that_could_not_spawn_refuses() -> Bool {
+  match refused_with(v: approval_ntfy_channel_verdict_of_run(run: ProcessNotSpawned { program: "/usr/bin/sudo", cause: "No such file or directory (os error 2)" })) {
+    Present { value: AclReadbackDidNotRun { detail: d } } => string_contains(s: d, pattern: "could not be spawned")
+    _ => false
+  }
+}
+
+test fn an_ntfy_environment_override_refuses() -> Bool {
+  match gap_of(stdout: rt_envoverride) {
+    Present { value: RuntimeEnvironmentOverrides { names: n } } => join(n, ",") == "NTFY_AUTH_DEFAULT_ACCESS"
+    _ => false
+  }
+}
+
+test fn a_command_line_override_refuses() -> Bool {
+  match gap_of(stdout: rt_cmdoverride) {
+    Present { value: RuntimeCommandLineNotDeclared { observed: a } } => any(a, w => w == "--auth-default-access")
+    _ => false
+  }
+}
+
+test fn a_command_line_listener_override_refuses() -> Bool {
+  match gap_of(stdout: rt_wildcard_cmd) {
+    Present { value: RuntimeCommandLineNotDeclared { observed: a } } => any(a, w => w == "--listen-http")
+    _ => false
+  }
+}
+
+test fn another_executable_refuses() -> Bool {
+  match gap_of(stdout: rt_otherexe) {
+    Present { value: RuntimeExecutableNotDeclared { observed: e } } => e == "/opt/ntfy-other/ntfy"
+    _ => false
+  }
+}
+
+test fn the_access_cache_refuses() -> Bool {
+  match gap_of(stdout: rt_cache) {
+    Present { value: RuntimeConfigAccessCacheEnabled { observed: v } } => v == "true"
+    _ => false
+  }
+}
+
+test fn a_config_default_access_not_deny_refuses() -> Bool {
+  match gap_of(stdout: rt_cfg_default_rw) {
+    Present { value: RuntimeConfigDefaultAccessNotDeny { observed: v } } => v == "read-write"
+    _ => false
+  }
+}
+
+test fn a_wildcard_config_listener_refuses() -> Bool {
+  match gap_of(stdout: rt_wildcard_cfg) {
+    Present { value: RuntimeConfigListenNotDeclared { observed: v } } => v == ":2586"
+    _ => false
+  }
+}
+
+// The config's listen-http is the declared endpoint, but the server ALSO listens (metrics, on ::).
+test fn a_second_listener_refuses_through_the_socket_join() -> Bool {
+  match gap_of(stdout: rt_metrics_extra) {
+    Present { value: RuntimeListenerNotDeclared { local_address: a } } => string_contains(s: a, pattern: ":2383")
+    _ => false
+  }
+}
+
+test fn a_config_written_after_start_refuses() -> Bool {
+  match gap_of(stdout: rt_config_touched) {
+    Present { value: RuntimeConfigChangedSinceStart { started: t0, config_mtime: m } } => m >= t0
+    _ => false
+  }
+}
+
+// The auth database was renamed under the running server and a copy put in its place: the server
+// holds the renamed file, while the config (and so ntfy access) name the copy.
+test fn an_auth_file_not_held_by_the_server_refuses() -> Bool {
+  match gap_of(stdout: rt_authfile_replaced) {
+    Present { value: RuntimeAuthFileNotHeldOpen { auth_file: f } } => f == "/var/lib/gunbc-ntfy/user.db"
+    _ => false
+  }
+}
+
+// SYNTHETIC: the exact capture with its version line edited -- no second ntfy release was run.
+test fn an_unmodeled_version_refuses() -> Bool {
+  match gap_of(stdout: replace(s: rt_exact, from: "ntfy version 2.28.0", to: "ntfy version 2.29.0")) {
+    Present { value: RuntimeVersionNotModeled { observed: v } } => v == "ntfy version 2.29.0"
+    _ => false
+  }
+}
+
+// SYNTHETIC: the exact capture with its listening socket's fd line renamed away.
+test fn no_listener_refuses() -> Bool {
+  match gap_of(stdout: replace(s: rt_exact, from: "\nsocket:[", to: "\nnot-a-socket:[")) {
+    Present { value: RuntimeNoListener } => true
+    _ => false
+  }
+}
+
+// SYNTHETIC: a truncated run (no @@end) is malformed, never a shorter observation.
+test fn a_truncated_observation_refuses() -> Bool {
+  match gap_of(stdout: replace(s: rt_exact, from: "@@end\n", to: "")) {
+    Present { value: RuntimeObservationMalformed { cause: _ } } => true
+    _ => false
+  }
+}
+
+// ── ACL REDS: the exact runtime, with each real listing in its @@access section ───────────
+test fn an_unplaced_listing_line_refuses() -> Bool {
+  match refused_with(v: verdict_of(stdout: with_listing(listing: exact_listing() + "WARN something unrelated\n"))) {
     Present { value: AclListingUnparseable { line: l, cause: _ } } => l == "WARN something unrelated"
     _ => false
   }
 }
 
-test fn default_access_not_deny_refuses() -> Bool {
-  match refused_with(s: standing_of(stdout: ntfy_access_default_rw)) {
+test fn default_access_not_deny_in_the_listing_refuses() -> Bool {
+  match refused_with(v: verdict_of(stdout: with_listing(listing: listing_default_rw))) {
     Present { value: AclDefaultAccessNotDeny { observed: NtfyReadWrite } } => true
     _ => false
   }
 }
 
 test fn an_anonymous_read_grant_refuses() -> Bool {
-  match refused_with(s: standing_of(stdout: ntfy_access_anon_read)) {
+  match refused_with(v: verdict_of(stdout: with_listing(listing: listing_anon_read))) {
     Present { value: AclAnonymousHasGrants { grants: g } } => count(g) == 1
     _ => false
   }
 }
 
 test fn a_publisher_that_can_read_refuses() -> Bool {
-  match refused_with(s: standing_of(stdout: ntfy_access_pub_rw)) {
+  match refused_with(v: verdict_of(stdout: with_listing(listing: listing_pub_rw))) {
     Present { value: AclPublisherNotWriteOnly { role: _, admin_all_topics: false, grants: _ } } => true
     _ => false
   }
 }
 
 test fn an_admin_publisher_refuses() -> Bool {
-  match refused_with(s: standing_of(stdout: ntfy_access_pub_admin)) {
+  match refused_with(v: verdict_of(stdout: with_listing(listing: listing_pub_admin))) {
     Present { value: AclPublisherNotWriteOnly { role: NtfyRoleAdmin, admin_all_topics: true, grants: _ } } => true
     _ => false
   }
 }
 
 test fn an_operator_that_can_write_refuses() -> Bool {
-  match refused_with(s: standing_of(stdout: ntfy_access_op_rw)) {
+  match refused_with(v: verdict_of(stdout: with_listing(listing: listing_op_rw))) {
     Present { value: AclOperatorNotReadOnly { role: _, admin_all_topics: _, grants: _ } } => true
     _ => false
   }
 }
 
 test fn an_operator_without_the_grant_refuses() -> Bool {
-  match refused_with(s: standing_of(stdout: ntfy_access_op_nogrant)) {
+  match refused_with(v: verdict_of(stdout: with_listing(listing: listing_op_nogrant))) {
     Present { value: AclOperatorNotReadOnly { role: _, admin_all_topics: _, grants: g } } => count(g) == 0
     _ => false
   }
 }
 
 test fn a_missing_operator_refuses() -> Bool {
-  match refused_with(s: standing_of(stdout: ntfy_access_op_missing)) {
+  match refused_with(v: verdict_of(stdout: with_listing(listing: listing_op_missing))) {
     Present { value: AclPrincipalMissing { user: u } } => u == "gunbc-approval-operator"
     _ => false
   }
 }
 
 test fn a_further_admin_refuses() -> Bool {
-  match refused_with(s: standing_of(stdout: ntfy_access_admin_extra)) {
+  match refused_with(v: verdict_of(stdout: with_listing(listing: listing_admin_extra))) {
     Present { value: AclUnexpectedPrincipal { user: u, role: NtfyRoleAdmin } } => u == "root"
     _ => false
   }
 }
 
-// A further non-admin user whose wildcard pattern matches the topic: refused by being present at all.
 test fn a_further_wildcard_reader_refuses() -> Bool {
-  match refused_with(s: standing_of(stdout: ntfy_access_wildcard_reader)) {
+  match refused_with(v: verdict_of(stdout: with_listing(listing: listing_wildcard_reader))) {
     Present { value: AclUnexpectedPrincipal { user: u, role: _ } } => u == "eve"
     _ => false
   }
 }
 
 test fn a_duplicated_principal_refuses() -> Bool {
-  match refused_with(s: standing_of(stdout: ntfy_access_exact + "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\n")) {
+  match refused_with(v: verdict_of(stdout: with_listing(listing: exact_listing() + "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\n"))) {
     Present { value: AclPrincipalDuplicated { user: u } } => u == "gunbc-approval-operator"
     _ => false
   }
 }
 
-fn dir_entries(path: String) -> String {
-  run_shell_command_observe(command: posix_sh_program_command(script: "ls -A '" + path + "'\n"), transport: LocalExec).stdout
+// ── THE ROOT, BY REAL EXECUTION (claim_batch --wet) ─────────────────────────────────────────
+// issue_device_enrolment_code accepts nothing, so this claim calls it exactly as production does.
+// On a host with no gunbc-ntfy principal (a CI runner, a session container) its own live read
+// fails, and the verb must refuse on THAT, before the store is touched. Removing the live read --
+// classifying anything but the run it just made -- turns this red: the verb then goes on to the
+// clock, the entropy and the store instead of answering that the readback did not run.
+fn path_exists(path: String) -> Bool {
+  run_shell_command_observe(command: posix_sh_program_command(script: "test -e '" + path + "'\n"), transport: LocalExec).exit_code == 0
 }
 
-fn unestablished_fixture() -> ApprovalNtfyPrivateChannelStanding {
-  PrivateChannelUnestablished { missing: AclDefaultAccessNotDeny { observed: NtfyReadWrite } }
-}
-
-fn refused_before_minting(r: CliWireResponse) -> Bool {
-  match r {
-    CliWireUnprintable { cause: c } => string_contains(s: c as String, pattern: "refused before any code was minted") && string_contains(s: c as String, pattern: "default access is not deny-all")
-    _ => false
-  }
-}
-
-// ROUTE RED, HERMETIC: Unestablished returns WITHOUT an effect. The hermetic route has no arm for
-// Urandom.ReadBytes, the store's mkdir/CAS or the publish, so reaching any of them fails this claim
-// as a route gap -- the claim is green only if the verb answered from the standing alone.
-test fn an_unestablished_channel_touches_no_effect() -> Bool {
-  refused_before_minting(r: issue_device_enrolment_code_under(standing: unestablished_fixture(), root: "/nonexistent/gunbc-enrol-red"))
-}
-
-// ROUTE RED, WET (claim_batch --wet): against a real, empty store root with no publisher token on
-// the machine, Unestablished leaves the root EMPTY -- no slot written.
-test fn an_unestablished_channel_writes_no_slot_by_real_execution() -> Bool {
-  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_enrol_red.XXXXXX").path
-  let r = issue_device_enrolment_code_under(standing: unestablished_fixture(), root: root_path as NonEmptyStr)
-  let after = dir_entries(path: root_path)
-  let removed = shell.Remove.RecursiveForce(path: root_path)
-  refused_before_minting(r: r) && after == "" && removed.success
-}
-
-// ROUTE CONTROL, WET: the same root under Observed DOES reach the clock, the entropy and the slot
-// (the root is no longer empty), and with no publisher token nothing is sent -- so the empty root
-// above is the gate's doing, not a route that never writes.
-test fn an_observed_channel_writes_the_slot_by_real_execution() -> Bool {
-  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_enrol_ctl.XXXXXX").path
-  let observed = standing_of(stdout: ntfy_access_exact)
-  let r = issue_device_enrolment_code_under(standing: observed, root: root_path as NonEmptyStr)
-  let after = dir_entries(path: root_path)
-  let removed = shell.Remove.RecursiveForce(path: root_path)
-  (match observed { PrivateChannelObserved { listing: _ } => true  _ => false })
+test fn the_root_refuses_on_its_own_failed_live_read_by_real_execution() -> Bool {
+  let before = path_exists(path: approval_device_store_root as String)
+  let r = issue_device_enrolment_code()
+  !before
     && (match r {
-      CliWireUnprintable { cause: c } => string_contains(s: c as String, pattern: "delivery was refused and never sent")
+      CliWireUnprintable { cause: c } => string_contains(s: c as String, pattern: "refused before any code was minted") && string_contains(s: c as String, pattern: "readback did not run")
       _ => false
     })
-    && after != ""
-    && removed.success
+    && !path_exists(path: approval_device_store_root as String)
+}
+
+// ── THE SEALS: no second root compiles ─────────────────────────────────────────────────────
+// A fresh module reaching each effect leaf from an unadmitted declaration. Each call must be
+// refused by admission, named by its subject, so a seal dropped from any one leaf reds this.
+data unadmitted_effect_caller_source: String = "module probe_enrolment_second_root\nimport gunbc.auth.approval_device_routes { mint_enrolment_code, issue_and_deliver_enrolment_code_until, deliver_enrolment_code, enrolment_code_notification }\nimport gunbc.auth.approval_device_redemption { issue_enrolment_code }\nimport gunbc.auth.approval_request_submission { read_publisher_token, publish_notification }\nfn second_root() -> Bool {\n  let a = mint_enrolment_code()\n  let t = read_publisher_token()\n  let b = issue_enrolment_code(root: \"/tmp/x\", code: \"c\", issued_at: \"2026-09-21T20:00:00Z\", expires_at: \"2026-09-21T20:10:00Z\")\n  let c = issue_and_deliver_enrolment_code_until(root: \"/tmp/x\", now: \"2026-09-21T20:00:00Z\", expires_at: \"2026-09-21T20:10:00Z\", code: \"c\", publisher: t)\n  let d = deliver_enrolment_code(code: \"c\", expires_at: \"2026-09-21T20:10:00Z\", publisher: t)\n  let e = publish_notification(message: enrolment_code_notification(code: \"c\", expires_at: \"2026-09-21T20:10:00Z\"), publisher: t)\n  true\n}\n"
+
+data sealed_effect_leaves: List<String> = ["mint_enrolment_code", "read_publisher_token", "issue_enrolment_code", "issue_and_deliver_enrolment_code_until", "deliver_enrolment_code", "publish_notification"]
+
+test fn a_second_root_is_refused_at_every_effect_leaf() -> Bool {
+  let census = compile_dag_diagnostic_census(unadmitted_effect_caller_source)
+  all(sealed_effect_leaves, leaf => match census_blocking_count_for_subject(census: census, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: leaf) {
+    Present { value: n } => n >= 1
+    Absent => false
+  })
+}
+
+// GREEN CONTROL: the admitted root compiles with no admission refusal, so the wall above is not
+// one that refuses everyone.
+data admitted_root_caller_source: String = "module probe_enrolment_admitted_root\nimport gunbc.cli_wire { CliWireResponse }\nimport std.resources { Network }\nimport gunbc.auth.approval_device_routes { issue_device_enrolment_code }\nfn through_the_root() -> CliWireResponse uses net: Network { issue_device_enrolment_code() }\n"
+
+test fn the_one_root_compiles_without_an_admission_refusal() -> Bool {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(admitted_root_caller_source), wanted: "ConstructorCallAdmissionRefused") {
+    Present { value: n } => n == 0
+    Absent => false
+  }
 }

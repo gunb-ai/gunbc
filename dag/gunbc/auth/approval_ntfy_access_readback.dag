@@ -1,20 +1,34 @@
 module gunbc.auth.approval_ntfy_access_readback
 
 import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.algebra { trim }
 import extdeps.ntfy.access {
   NtfyAccessRead, NtfyAccessListed, NtfyAccessUnparseable, NtfyAccessListing, NtfyAccessUser, NtfyAccessGrant,
   NtfyPermission, NtfyReadWrite, NtfyReadOnly, NtfyWriteOnly, NtfyDenyAll,
   NtfyRole, NtfyRoleAdmin, NtfyRoleUser, NtfyRoleAnonymous,
-  ntfy_access_read, ntfy_everyone_user, ntfy_access_list_argv,
+  ntfy_access_read, ntfy_everyone_user, ntfy_access_list_argv, ntfy_access_upstream_version,
 }
 import std.resources { Network }
 import extdeps.sudo.elevation { sudo_elevate_as_command }
-import extdeps.exec.command { ArgvCommand, argv_words, LocalExec }
-import gunbc.command_runner { run_shell_command_observe }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
+import extdeps.posix.sh_invocation { posix_sh_program }
+import extdeps.ntfy.serve {
+  NtfyServeOption, NtfyAuthFile, NtfyAuthDefaultAccess, NtfyAuthAccessCache, NtfyListenHttp,
+  NtfyConfigRead, NtfyConfigFlat, NtfyConfigUnreadable, NtfyConfigEntry,
+  ntfy_config_read, ntfy_config_values, ntfy_version_line_prefix, ntfy_serve_verb, ntfy_config_flag, ntfy_environment_prefix,
+}
+import extdeps.linux.proc_net_tcp {
+  TcpSocketRow, ProcNetTcpTable, ProcNetTcpParsed, ProcNetTcpUnparseable, TcpLocalPort, TcpPortBound, TcpPortUnbound,
+  proc_net_tcp_table, tcp_listen_state_hex, tcp_local_ipv4_dotted_little_endian,
+}
+import extdeps.systemd { MainPID }
+import extdeps.systemd.systemctl { systemctl_show_property_argv }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import gunbc.auth.approval_ntfy_deployment {
   approval_ntfy_principal_name, approval_ntfy_config_path, approval_ntfy_binary_path,
-  approval_ntfy_publisher_user, approval_ntfy_operator_user,
+  approval_ntfy_publisher_user, approval_ntfy_operator_user, approval_ntfy_unit_name,
+  approval_ntfy_listen_address, approval_ntfy_listen_port, approval_ntfy_endpoint,
 }
 
 // ── THE PRIVATE CHANNEL IS READ BACK, NOT DECLARED ──────────────────────────────────────────
@@ -24,7 +38,7 @@ import gunbc.auth.approval_ntfy_deployment {
 // NoDischargeSiteModeled); this module reads the live list back from the server and admits exactly
 // one shape -- anything else, including a readback that did not run or did not parse, refuses.
 // Refusal is the default: the only arm that admits is AclEstablished, and it is reached only by
-// every check below holding on an observed listing (DESIGN §5; §3b leasing/grants row -- a grant
+// the runtime join AND every listing check below holding on one observed run (DESIGN §5; §3b leasing/grants row -- a grant
 // is established by readback of who may perform the effect, never by the declaration).
 //
 // THE EXACT ACL, stated once:
@@ -46,15 +60,83 @@ type ApprovalNtfyAclDeviation
   | AclPublisherNotWriteOnly { role: NtfyRole, admin_all_topics: Bool, grants: List<NtfyAccessGrant> }
   | AclOperatorNotReadOnly { role: NtfyRole, admin_all_topics: Bool, grants: List<NtfyAccessGrant> }
   | AclUnexpectedPrincipal { user: String, role: NtfyRole }
+  | ActiveNtfyRuntimeUnbound { gap: ActiveNtfyRuntimeGap }
+
+// ── THE LISTING IS ONLY THE SERVER'S IF IT IS JOINED TO THE RUNNING SERVER ─────────────────
+// `ntfy access --config C` reads the auth database C names. It does not ask the running server,
+// which may run another binary or another config, may override auth-file or auth-default-access on
+// its command line or in its environment (extdeps.ntfy.serve), or may answer from its ACL cache.
+// So the listing is admitted only beside an observation of the ACTIVE runtime, taken in the same
+// elevated read, that binds it: the unit's MainPID; that process's executable is the declared
+// binary at the modeled version; its argv is exactly `<binary> serve --config <declared config>`;
+// it carries no NTFY_* variable; the declared config predates the process's start and is flat and names one auth-file, deny-all
+// default access, no access cache and the declared loopback listener; the process holds that
+// auth-file open; and every TCP socket it listens on is the declared loopback endpoint. Until every
+// join holds the channel is unestablished, whatever the listing says.
+type ActiveNtfyRuntimeGap
+  = RuntimeObservationMalformed { cause: String }
+  | RuntimeStartUnreadable { started: String, config_mtime: String }
+  | RuntimeConfigChangedSinceStart { started: Int, config_mtime: Int }
+  | RuntimeExecutableNotDeclared { observed: String }
+  | RuntimeVersionNotModeled { observed: String }
+  | RuntimeCommandLineNotDeclared { observed: List<String> }
+  | RuntimeEnvironmentOverrides { names: List<String> }
+  | RuntimeConfigUnreadable { line: String, cause: String }
+  | RuntimeConfigOptionNotSingle { key: String, values: List<String> }
+  | RuntimeConfigDefaultAccessNotDeny { observed: String }
+  | RuntimeConfigAccessCacheEnabled { observed: String }
+  | RuntimeConfigListenNotDeclared { observed: String }
+  | RuntimeAuthFileNotHeldOpen { auth_file: String }
+  | RuntimeSocketTableUnreadable { line: String }
+  | RuntimeListenerNotDeclared { local_address: String }
+  | RuntimeNoListener
 
 type ApprovalNtfyAclVerdict
   = AclEstablished
   | AclRefused { deviation: ApprovalNtfyAclDeviation }
 
-// The readback argv: the server's own CLI, as the server's own principal, over the server's own
-// config -- the auth database it reads is the one the running server enforces.
-fn approval_ntfy_access_readback_command() -> ArgvCommand {
-  sudo_elevate_as_command(user: approval_ntfy_principal_name, command: ntfy_access_list_argv(binary: approval_ntfy_binary_path, config: approval_ntfy_config_path))
+// ── THE ONE ELEVATED READ ───────────────────────────────────────────────────────────────────
+// Runs as the server's own principal (who can read its /proc entries, its config and its auth
+// database) and prints thirteen `@@` sections in a fixed order. It READS and prints; every decision is
+// the classifier's below. `set -eu`: any read that fails ends the run nonzero, and a nonzero run is
+// AclReadbackDidNotRun -- which is also how a unit with no main process (MainPID 0, no /proc/0)
+// reads. The environment is printed as NTFY_* NAMES only -- values may be secrets. The listing is
+// read under `env -i`, so no NTFY_* variable of the elevation reaches the CLI and it reads exactly
+// the config it is named. `started` (now minus the process's elapsed seconds, procps `etimes`) and
+// the config's mtime join the file to the process: the server read its config when it started, so
+// a config written since then may not be what it runs.
+// A `sh -c` word is extdeps.posix.sh_invocation's residual class, and this DIVERGES from it with a
+// reason: the reads must be one elevation (one exact sudoers line, no PID wildcard) over one
+// instant (the PID read at the top is the PID every later section describes).
+data approval_ntfy_runtime_sections: List<String> = ["mainpid", "started", "exe", "version", "cmdline", "environ-names", "fds", "tcp", "tcp6", "config-mtime", "config", "access", "end"]
+
+fn sh_quoted(word: String) -> String {
+  "'" + word + "'"
+}
+
+fn approval_ntfy_runtime_readback_script() -> String {
+  let cfg = sh_quoted(word: approval_ntfy_config_path as String)
+  join([
+    "set -eu",
+    "pid=$(" + join(map(systemctl_show_property_argv(unit: approval_ntfy_unit_name, property: MainPID), w => sh_quoted(word: w)), " ") + ")",
+    "echo '@@mainpid'; echo \"$pid\"",
+    "echo '@@started'; now=$(date +%s); et=$(ps -o etimes= -p \"$pid\"); echo $((now - et))",
+    "echo '@@exe'; readlink \"/proc/$pid/exe\"",
+    "echo '@@version'; \"/proc/$pid/exe\" --version",
+    "echo '@@cmdline'; tr '\\000' '\\n' < \"/proc/$pid/cmdline\"",
+    "echo '@@environ-names'; tr '\\000' '\\n' < \"/proc/$pid/environ\" | sed -n 's/^\\(" + ntfy_environment_prefix + "[A-Za-z0-9_]*\\)=.*/\\1/p'",
+    "echo '@@fds'; for f in \"/proc/$pid/fd/\"*; do readlink \"$f\"; done",
+    "echo '@@tcp'; cat /proc/net/tcp",
+    "echo '@@tcp6'; cat /proc/net/tcp6",
+    "echo '@@config-mtime'; stat -c %Y " + cfg,
+    "echo '@@config'; cat " + cfg,
+    "echo '@@access'; env -i " + join(map(ntfy_access_list_argv(binary: approval_ntfy_binary_path, config: approval_ntfy_config_path), w => sh_quoted(word: w)), " "),
+    "echo '@@end'",
+  ], "\n") + "\n"
+}
+
+fn approval_ntfy_runtime_readback_command() -> ArgvCommand {
+  sudo_elevate_as_command(user: approval_ntfy_principal_name, command: [posix_sh_program as String, "-c", approval_ntfy_runtime_readback_script()])
 }
 
 fn permission_is(p: NtfyPermission, want: NtfyPermission) -> Bool {
@@ -137,38 +219,196 @@ fn approval_ntfy_acl_of_principals(anonymous: List<NtfyAccessUser>, publisher: L
   }
 }
 
-// ── THE STANDING THE ISSUING VERB MATCHES FIRST ─────────────────────────────────────────────
-// PrivateChannelObserved carries the listing it was read from, and is constructed in exactly one
-// place: approval_ntfy_private_channel_standing_of below, on AclEstablished. The substrate has no
-// constructor privacy, so "only the readback constructs it" is held by review diligence, not by a
-// gate -- the same rung gunbc.auth.approval_ntfy_deployment's declared ACL sat at, now with the
-// readback it lacked.
-type ApprovalNtfyPrivateChannelStanding
-  = PrivateChannelObserved { listing: NtfyAccessListing }
-  | PrivateChannelUnestablished { missing: ApprovalNtfyAclDeviation }
-
-// FROM THE EXEC RESULT, parsed once: a readback that did not exit zero observed nothing, and
-// nothing observed is Unestablished -- never "no rules, so default".
-fn approval_ntfy_private_channel_standing_of(exit_code: Int, stdout: String, stderr: String) -> ApprovalNtfyPrivateChannelStanding {
-  if exit_code != 0 { PrivateChannelUnestablished { missing: AclReadbackDidNotRun { detail: "exit=" + to_string(exit_code) + " " + stderr } } }
-  else { match ntfy_access_read(stdout: stdout) {
-    NtfyAccessUnparseable { line: l, cause: c } => PrivateChannelUnestablished { missing: AclListingUnparseable { line: l, cause: c } }
-    NtfyAccessListed { listing: listing } => match approval_ntfy_acl_of_listing(listing: listing) {
-      AclRefused { deviation: d } => PrivateChannelUnestablished { missing: d }
-      AclEstablished => PrivateChannelObserved { listing: listing }
-    }
-  } }
+// ── THE OBSERVATION, SPLIT INTO ITS SECTIONS ───────────────────────────────────────────────
+type RuntimeSection {
+  name: String
+  lines: List<String>
 }
 
-// THE READBACK, run on the host the verb runs on (the ntfy server is loopback on that host), as the
-// server's principal over the server's config. The verb obtains its own standing rather than
-// receiving one, so no entrypoint -- the fleet step or a direct `gunbc run --function` -- reaches
-// the clock, the entropy, the slot or the publish without this read.
-fn approval_ntfy_private_channel_standing() -> ApprovalNtfyPrivateChannelStanding
-  uses net: Network
-{
-  let run = run_shell_command_observe(command: approval_ntfy_access_readback_command(), transport: LocalExec)
-  approval_ntfy_private_channel_standing_of(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr)
+fn runtime_sections(stdout: String) -> List<RuntimeSection> {
+  fold(split(s: stdout, delimiter: "\n"), init: [], f: (acc, line) =>
+    if starts_with(s: line, prefix: "@@") { concat(acc, [RuntimeSection { name: substring(s: line, start: 2, end: string_length(s: line)), lines: [] }]) }
+    else { match last(acc) {
+      Absent => concat(acc, [RuntimeSection { name: "", lines: [line] }])
+      Present { value: cur } => if line == "" { acc } else { concat(acc.take(n: count(acc) - 1), [RuntimeSection { name: cur.name, lines: concat(cur.lines, [line]) }]) }
+    } })
+}
+
+fn section_lines(sections: List<RuntimeSection>, name: String) -> List<String> {
+  match first(filter(sections, x => x.name == name)) {
+    Present { value: x } => x.lines
+    Absent => []
+  }
+}
+
+fn one_line(lines: List<String>) -> String {
+  if count(lines) == 1 { match first(lines) { Present { value: l } => trim(s: l)  Absent => "" } } else { join(lines, " | ") }
+}
+
+fn runtime_refused(gap: ActiveNtfyRuntimeGap) -> ApprovalNtfyAclVerdict {
+  AclRefused { deviation: ActiveNtfyRuntimeUnbound { gap: gap } }
+}
+
+fn socket_inode_of_fd(target: String) -> String? {
+  if starts_with(s: target, prefix: "socket:[") && listing_ends_with_bracket(s: target) {
+    Present { value: substring(s: target, start: 8, end: string_length(s: target) - 1) }
+  } else { none }
+}
+
+fn listing_ends_with_bracket(s: String) -> Bool {
+  let n = string_length(s: s)
+  n > 0 && substring(s: s, start: n - 1, end: n) == "]"
+}
+
+fn tcp_table_of(lines: List<String>) -> ProcNetTcpTable {
+  proc_net_tcp_table(text: join(lines, "\n"))
+}
+
+// A socket this process LISTENS on, in either table. Every one must be the declared endpoint in
+// the v4 table: a v6 listener (a `::` wildcard serves v4 too) or any other address is refused.
+fn listener_is_declared(r: TcpSocketRow, v6: Bool) -> Bool {
+  !v6
+    && (match r.local_port { TcpPortBound { port: p } => p == approval_ntfy_listen_port  TcpPortUnbound => false })
+    && (match tcp_local_ipv4_dotted_little_endian(local_address: r.local_address) { Present { value: a } => a == (approval_ntfy_listen_address as String)  Absent => false })
+}
+
+fn approval_ntfy_listeners(fds: List<String>, tcp: List<String>, tcp6: List<String>) -> ApprovalNtfyAclVerdict {
+  let inodes = fold(fds, init: [], f: (acc, fd) => match socket_inode_of_fd(target: fd) { Present { value: i } => concat(acc, [i])  Absent => acc })
+  match tcp_table_of(lines: tcp) {
+    ProcNetTcpUnparseable { line: l } => runtime_refused(gap: RuntimeSocketTableUnreadable { line: l })
+    ProcNetTcpParsed { rows: rows4 } => match tcp_table_of(lines: tcp6) {
+      ProcNetTcpUnparseable { line: l } => runtime_refused(gap: RuntimeSocketTableUnreadable { line: l })
+      ProcNetTcpParsed { rows: rows6 } => {
+        let mine4 = filter(rows4, r => r.state == tcp_listen_state_hex && any(inodes, i => i == r.inode))
+        let mine6 = filter(rows6, r => r.state == tcp_listen_state_hex && any(inodes, i => i == r.inode))
+        match first(filter(mine6, r => !listener_is_declared(r: r, v6: true))) {
+          Present { value: bad } => runtime_refused(gap: RuntimeListenerNotDeclared { local_address: bad.local_address })
+          Absent => match first(filter(mine4, r => !listener_is_declared(r: r, v6: false))) {
+            Present { value: bad } => runtime_refused(gap: RuntimeListenerNotDeclared { local_address: bad.local_address })
+            Absent => if count(mine4) == 0 { runtime_refused(gap: RuntimeNoListener) } else { AclEstablished }
+          }
+        }
+      }
+    }
+  }
+}
+
+// One value for an option in the flat config, or a refusal naming the key.
+fn single_config_value(entries: List<NtfyConfigEntry>, o: NtfyServeOption) -> String? {
+  let vs = ntfy_config_values(entries: entries, o: o)
+  if count(vs) == 1 { first(vs) } else { none }
+}
+
+fn approval_ntfy_config_binding(config: List<String>, fds: List<String>) -> ApprovalNtfyAclVerdict {
+  match ntfy_config_read(text: join(config, "\n")) {
+    NtfyConfigUnreadable { line: l, cause: c } => runtime_refused(gap: RuntimeConfigUnreadable { line: l, cause: c })
+    NtfyConfigFlat { entries: es } =>
+      match single_config_value(entries: es, o: NtfyAuthFile) {
+        Absent => runtime_refused(gap: RuntimeConfigOptionNotSingle { key: "auth-file", values: ntfy_config_values(entries: es, o: NtfyAuthFile) })
+        Present { value: auth_file } => match single_config_value(entries: es, o: NtfyAuthDefaultAccess) {
+          Absent => runtime_refused(gap: RuntimeConfigOptionNotSingle { key: "auth-default-access", values: ntfy_config_values(entries: es, o: NtfyAuthDefaultAccess) })
+          Present { value: default_access } =>
+            if default_access != "deny-all" { runtime_refused(gap: RuntimeConfigDefaultAccessNotDeny { observed: default_access }) }
+            else { match first(filter(ntfy_config_values(entries: es, o: NtfyAuthAccessCache), v => v != "false")) {
+              Present { value: v } => runtime_refused(gap: RuntimeConfigAccessCacheEnabled { observed: v })
+              Absent => match single_config_value(entries: es, o: NtfyListenHttp) {
+                Absent => runtime_refused(gap: RuntimeConfigOptionNotSingle { key: "listen-http", values: ntfy_config_values(entries: es, o: NtfyListenHttp) })
+                Present { value: listen } =>
+                  if listen != approval_ntfy_endpoint() { runtime_refused(gap: RuntimeConfigListenNotDeclared { observed: listen }) }
+                  else { if !any(fds, f => f == auth_file) { runtime_refused(gap: RuntimeAuthFileNotHeldOpen { auth_file: auth_file }) }
+                  else { AclEstablished } }
+              }
+            } }
+        }
+      }
+  }
+}
+
+fn approval_ntfy_declared_cmdline() -> List<String> {
+  [approval_ntfy_binary_path as String, ntfy_serve_verb as String, ntfy_config_flag as String, approval_ntfy_config_path as String]
+}
+
+fn string_lists_equal(a: List<String>, b: List<String>) -> Bool {
+  count(a) == count(b) && join(a, "\n") == join(b, "\n")
+}
+
+// THE RUNTIME JOIN, in a fixed order; the first gap is the cause.
+fn approval_ntfy_runtime_binding(sections: List<RuntimeSection>) -> ApprovalNtfyAclVerdict {
+  let names = map(sections, x => x.name)
+  if !string_lists_equal(a: names, b: approval_ntfy_runtime_sections) { runtime_refused(gap: RuntimeObservationMalformed { cause: "sections were [" + join(names, ",") + "]" }) }
+  else {
+    let exe = one_line(lines: section_lines(sections: sections, name: "exe"))
+    let version = one_line(lines: section_lines(sections: sections, name: "version"))
+    let cmdline = section_lines(sections: sections, name: "cmdline")
+    let env = section_lines(sections: sections, name: "environ-names")
+    let fds = map(section_lines(sections: sections, name: "fds"), f => trim(s: f))
+    let modeled = ntfy_version_line_prefix + substring(s: ntfy_access_upstream_version, start: 1, end: string_length(s: ntfy_access_upstream_version))
+    let started = one_line(lines: section_lines(sections: sections, name: "started"))
+    let mtime = one_line(lines: section_lines(sections: sections, name: "config-mtime"))
+    match parse_int(s: started) {
+      Absent => runtime_refused(gap: RuntimeStartUnreadable { started: started, config_mtime: mtime })
+      Present { value: t0 } => match parse_int(s: mtime) {
+    Absent => runtime_refused(gap: RuntimeStartUnreadable { started: started, config_mtime: mtime })
+    Present { value: m } =>
+    if m >= t0 { runtime_refused(gap: RuntimeConfigChangedSinceStart { started: t0, config_mtime: m }) }
+    else { if exe != (approval_ntfy_binary_path as String) { runtime_refused(gap: RuntimeExecutableNotDeclared { observed: exe }) }
+    else { if version != modeled { runtime_refused(gap: RuntimeVersionNotModeled { observed: version }) }
+    else { if !string_lists_equal(a: cmdline, b: approval_ntfy_declared_cmdline()) { runtime_refused(gap: RuntimeCommandLineNotDeclared { observed: cmdline }) }
+    else { if count(env) != 0 { runtime_refused(gap: RuntimeEnvironmentOverrides { names: env }) }
+    else { match approval_ntfy_config_binding(config: section_lines(sections: sections, name: "config"), fds: fds) {
+      AclRefused { deviation: d } => AclRefused { deviation: d }
+      AclEstablished => approval_ntfy_listeners(fds: fds, tcp: section_lines(sections: sections, name: "tcp"), tcp6: section_lines(sections: sections, name: "tcp6"))
+    } } } } } } } }
+  }
+}
+
+// ── THE CLASSIFIER: the fixture seam, and nothing but a verdict ────────────────────────────
+// Pure over one run's (exit, stdout, stderr). It returns AclEstablished or AclRefused and carries
+// no value an effectful function could accept in place of the read: the only caller that turns
+// AclEstablished into an effect is gunbc.auth.approval_device_routes issue_device_enrolment_code,
+// which performs the run itself immediately before it asks.
+fn approval_ntfy_channel_verdict(exit_code: Int, stdout: String, stderr: String) -> ApprovalNtfyAclVerdict {
+  if exit_code != 0 { AclRefused { deviation: AclReadbackDidNotRun { detail: "exit=" + to_string(exit_code) + " " + trim(s: stderr) } } }
+  else {
+    let sections = runtime_sections(stdout: stdout)
+    match approval_ntfy_runtime_binding(sections: sections) {
+      AclRefused { deviation: d } => AclRefused { deviation: d }
+      AclEstablished => match ntfy_access_read(stdout: join(section_lines(sections: sections, name: "access"), "\n")) {
+        NtfyAccessUnparseable { line: l, cause: c } => AclRefused { deviation: AclListingUnparseable { line: l, cause: c } }
+        NtfyAccessListed { listing: listing } => approval_ntfy_acl_of_listing(listing: listing)
+      }
+    }
+  }
+}
+
+// THE VERDICT OF ONE RUN, spawn included: a read whose process never started (no sudo, no sh)
+// observed nothing, and is refused the same as one that exited nonzero.
+fn approval_ntfy_channel_verdict_of_run(run: ProcessRunOutcome) -> ApprovalNtfyAclVerdict {
+  match run {
+    ProcessNotSpawned { program: p, cause: c } => AclRefused { deviation: AclReadbackDidNotRun { detail: "'" + (p as String) + "' could not be spawned: " + (c as String) } }
+    ProcessRan { observation: o } => approval_ntfy_channel_verdict(exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr)
+  }
+}
+
+fn approval_ntfy_runtime_gap_sentence(g: ActiveNtfyRuntimeGap) -> String {
+  match g {
+    RuntimeObservationMalformed { cause: c } => "the runtime observation was malformed (" + c + ")"
+    RuntimeStartUnreadable { started: a, config_mtime: m } => "the server's start time ('" + a + "') or the config's mtime ('" + m + "') did not read as an integer"
+    RuntimeConfigChangedSinceStart { started: a, config_mtime: m } => "the server config was written at " + to_string(m) + ", not before the server started at " + to_string(a) + ", so it may not be what the server runs"
+    RuntimeExecutableNotDeclared { observed: e } => "the running executable is '" + e + "', not " + (approval_ntfy_binary_path as String)
+    RuntimeVersionNotModeled { observed: v } => "the running server reports '" + v + "', not the modeled ntfy " + ntfy_access_upstream_version
+    RuntimeCommandLineNotDeclared { observed: a } => "the server's argv is [" + join(a, " ") + "], not [" + join(approval_ntfy_declared_cmdline(), " ") + "]"
+    RuntimeEnvironmentOverrides { names: n } => "the server's environment sets " + join(n, ", ") + ", which override its config"
+    RuntimeConfigUnreadable { line: l, cause: c } => "the server config did not read flat at '" + l + "': " + c
+    RuntimeConfigOptionNotSingle { key: k, values: v } => "the server config gives " + k + " " + to_string(count(v)) + " values, not one"
+    RuntimeConfigDefaultAccessNotDeny { observed: v } => "the server config sets auth-default-access '" + v + "', not deny-all"
+    RuntimeConfigAccessCacheEnabled { observed: v } => "the server config sets auth-access-cache '" + v + "'"
+    RuntimeConfigListenNotDeclared { observed: v } => "the server config listens on '" + v + "', not " + approval_ntfy_endpoint()
+    RuntimeAuthFileNotHeldOpen { auth_file: f } => "the running server does not hold the configured auth-file " + f + " open"
+    RuntimeSocketTableUnreadable { line: l } => "a socket table row did not read: " + l
+    RuntimeListenerNotDeclared { local_address: a } => "the server listens on " + a + ", not only " + approval_ntfy_endpoint()
+    RuntimeNoListener => "the server holds no listening socket on " + approval_ntfy_endpoint()
+  }
 }
 
 fn approval_ntfy_acl_deviation_sentence(d: ApprovalNtfyAclDeviation) -> String {
@@ -182,5 +422,6 @@ fn approval_ntfy_acl_deviation_sentence(d: ApprovalNtfyAclDeviation) -> String {
     AclPublisherNotWriteOnly { role: _, admin_all_topics: _, grants: _ } => "the publisher '" + (approval_ntfy_publisher_user as String) + "' does not hold exactly write-only on '" + (approval_ntfy_topic as String) + "'"
     AclOperatorNotReadOnly { role: _, admin_all_topics: _, grants: _ } => "the operator '" + (approval_ntfy_operator_user as String) + "' does not hold exactly read-only on '" + (approval_ntfy_topic as String) + "'"
     AclUnexpectedPrincipal { user: u, role: _ } => "the access list names a further user '" + u + "', who is not the publisher or the operator"
+    ActiveNtfyRuntimeUnbound { gap: g } => "the access list is not bound to the running ntfy server: " + approval_ntfy_runtime_gap_sentence(g: g)
   }
 }

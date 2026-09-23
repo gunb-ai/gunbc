@@ -1,5 +1,6 @@
 module gunbc.auth.approval_request_submission
 
+import std.decl_ref { decl_ref }
 import std.types { Bool, Int, NonEmptyStr, String, Secret, HttpStatus }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_exact_read }
@@ -85,7 +86,10 @@ type PublisherTokenRead
   = PublisherTokenLoaded { token: Secret }
   | PublisherTokenUnavailable { path: NonEmptyStr, detail: String }
 
-fn read_publisher_token() -> PublisherTokenRead {
+fn read_publisher_token() -> PublisherTokenRead admit_callers: [
+  decl_ref(module_path: "gunbc.auth.approval_broker_serve", decl_name: "approval_submit_admitted_response"),
+  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_device_enrolment_code"),
+] {
   let read = Filesystem.Read(path: approval_publisher_token_path as String)
   match filesystem_exact_read(path: approval_publisher_token_path as String, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
     FilesystemExactPathRead { path: _, content: c } =>
@@ -336,7 +340,10 @@ type NotificationPublish
   = NotificationAttempted { publish: NtfyPublishOutcome, acceptance: NtfyPublishAcceptance }
   | NotificationPublisherTokenUnavailable { detail: String }
 
-fn publish_notification(message: NtfyMessage, publisher: PublisherTokenRead) -> NotificationPublish {
+fn publish_notification(message: NtfyMessage, publisher: PublisherTokenRead) -> NotificationPublish admit_callers: [
+  decl_ref(module_path: "gunbc.auth.approval_request_submission", decl_name: "notify_filed"),
+  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "deliver_enrolment_code"),
+] {
   match publisher {
     PublisherTokenUnavailable { path: _, detail: d } => NotificationPublisherTokenUnavailable { detail: d }
     PublisherTokenLoaded { token: t } => {

@@ -539,7 +539,7 @@ test fn a_failed_connect_is_absence_only_when_the_head_unit_is_quiet() -> Bool {
             D0DecidedSuspend { next: _, reconciliation: DeclaredOccupantDrifted { drifted: ds } } => length(ds) == 4
             _ => false
           })
-      && (match d0w_t_decide(declared: declared, incumbent: IncumbentDidNotAnswer { receipt: "curl 7" as NonEmptyStr, head: HeadEndpointListening { port: d0w_port(n: 8000), rows: [TcpSocketRow { local_address: "00000000:1F40", local_port: TcpPortBound { port: 8000 }, state: "0A" }] } }, ranks: quiet_ranks, h: c) {
+      && (match d0w_t_decide(declared: declared, incumbent: IncumbentDidNotAnswer { receipt: "curl 7" as NonEmptyStr, head: HeadEndpointListening { port: d0w_port(n: 8000), rows: [TcpSocketRow { local_address: "00000000:1F40", local_port: TcpPortBound { port: 8000 }, state: "0A", inode: "0" }] } }, ranks: quiet_ranks, h: c) {
             D0DecidedFence { next: _, cause: D0IncumbentUnidentified { cause: _ } } => true
             _ => false
           })
