@@ -14,7 +14,8 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_engram,
   deepseek_v4_1_flash_engram_entries_layer_1, deepseek_v4_1_flash_engram_entries_layer_14,
 }
-import gunbc.spark.v41_runtime_candidate { V41EngramResidencyPartition, v41_candidate_partition }
+import gunbc.spark.v41_identity_input { V41EngramResidencyPartition }
+import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncodingSpec, V41SourceRow, V41RankStoreIdentity,
   V41RowStoreSpecStanding, V41RowStoreSpecAdmitted, V41RowStoreSpecRefused,

@@ -12,10 +12,10 @@ import std.realization { Placement, LocalFilesystem, RemoteNetwork, LocalInProce
 import v2.std.optional { Present, Absent }
 import gunbc.spark.v41_runtime_candidate {
   V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
-  V41RuntimeArtifactInputs, V41EngramResidencyPartition,
+  V41RuntimeArtifactInputs,
   V41IdentityKeyed, V41IdentityUnestablished, V41IdentityRefused, v41_runtime_artifact_key,
-  v41_input,
 }
+import gunbc.spark.v41_identity_input { V41EngramResidencyPartition, v41_input }
 import gunbc.spark.v41_source_patch_converge { V41ObservedSourceIdentity, v41_patched_image_build_key }
 import extdeps.container.oci.digest { OciContentDigest, render_oci_content_digest_wire }
 import gunbc.spark.vllm_runtime_image_build { VllmImageProvenance, BuiltByThisRun, AdoptedUnderExpectedTag }
