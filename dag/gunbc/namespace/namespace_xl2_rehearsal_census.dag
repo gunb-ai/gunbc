@@ -63,8 +63,15 @@ type Xl2ResidualChain {
   module: String
   path: Symbol
   chain: NonEmptyDiagnostics
-  base_coordinates: List<ImportStripCoordinateSegment>
+  base_join: Xl2BaseJoin
 }
+
+// THE JOIN BACK TO THE BASE IS TYPED, because an empty segment list is also what a strip that
+// removed nothing legitimately produces: a missing map rendered as [] would claim a one-to-one
+// join nobody established. A missing join is also an unobserved scope (below).
+type Xl2BaseJoin
+  = Xl2BaseCoordinates { segments: List<ImportStripCoordinateSegment> }
+  | Xl2BaseJoinMissing
 
 // WHAT THE RUN COULD NOT OBSERVE. Each arm is a scope whose occurrences may be missing from the
 // residual, so any one of them refuses completeness.
@@ -74,12 +81,15 @@ type Xl2ResidualChain {
 //     returns a Rejected accumulator without visiting the remaining children, so a second
 //     independent failure in the same module is unobserved (occurrence completeness, the
 //     obligation missing_instrument_label ExactOccurrenceResidualCensus names);
-//   - two members at one path cannot be told apart by any locus, so neither is picked.
+//   - two members at one path cannot be told apart by any locus, so EVERY member at that path is
+//     kept out of the ingest and the index -- neither is picked;
+//   - a residual whose file has no coordinate map cannot be joined to the base.
 type Xl2UnobservedScope
   = Xl2MemberNotStripped { cause: Step0StripProductionRefusalCause }
   | Xl2FileRefusedBeforeResolve { refusal: NativeTestFileRefusal }
   | Xl2ModuleResolveAbandonedAtFirstFailure { module: String, path: Symbol }
   | Xl2MemberPathDuplicated { path: Symbol }
+  | Xl2BaseJoinMissingFor { module: String, path: Symbol }
 
 // WHY COMPLETENESS IS REFUSED. The call-argument arm is unconditional today: resolve fails OPEN for
 // every dependent reached through a call argument (gunbc.recurring_failure_mode
@@ -172,23 +182,57 @@ fn xl2_stripped_ingest(members: List<Xl2StrippedMember>) -> SourceRootIngest {
   fold(members, init: Empty, f: fn(acc, member) { Cons { head: xl2_member_read(member: member), tail: acc } })
 }
 
-// ONE PATH-KEYED INDEX, BUILT ONCE (DESIGN section 6, bare minimum cost): the per-module arm looks
-// its coordinate map up rather than rescanning the members. A second member at a path already
-// indexed is refused, never chosen.
-type Xl2CoordinateIndex {
-  by_path: Map<Symbol, List<ImportStripCoordinateSegment>>
-  duplicated: List<Xl2UnobservedScope>
+// PATH ADMISSION, BEFORE THE INGEST. Paths are counted once; every member at a path held by more
+// than one member is withheld from BOTH the ingest and the coordinate index and reported once as
+// Xl2MemberPathDuplicated, so no residual row can carry another file's join and no module can be
+// resolved under a path two files claim.
+fn xl2_path_of(member: Xl2StrippedMember) -> Symbol {
+  symbol_intern_lexeme(lexeme: member.source.path as String)
 }
 
-fn xl2_coordinate_index(members: List<Xl2StrippedMember>) -> Xl2CoordinateIndex {
-  fold(members, init: Xl2CoordinateIndex { by_path: empty_map(), duplicated: [] }, f: fn(acc, member) {
-    let path = symbol_intern_lexeme(lexeme: member.source.path as String)
-    match map_lookup(acc.by_path, path) {
-      Present { value: _ } =>
-        Xl2CoordinateIndex { by_path: acc.by_path, duplicated: acc.duplicated |> list_push(Xl2MemberPathDuplicated { path: path }) }
-      Absent =>
-        Xl2CoordinateIndex { by_path: map_insert(acc.by_path, path, member.base_coordinates), duplicated: acc.duplicated }
+fn xl2_path_counts(members: List<Xl2StrippedMember>) -> Map<Symbol, Int> {
+  fold(members, init: empty_map(), f: fn(acc, member) {
+    let path = xl2_path_of(member: member)
+    match map_lookup(acc, path) {
+      Present { value: n } => map_insert(acc, path, n + 1)
+      Absent => map_insert(acc, path, 1)
     }
+  })
+}
+
+type Xl2PathAdmission {
+  admitted: List<Xl2StrippedMember>
+  reported: Map<Symbol, Int>
+  unobserved: List<Xl2UnobservedScope>
+}
+
+fn xl2_admit_unique_paths(strip: Xl2Strip) -> Xl2Strip {
+  let counts = xl2_path_counts(members: strip.members)
+  let admission = fold(strip.members, init: Xl2PathAdmission { admitted: [], reported: empty_map(), unobserved: strip.unobserved }, f: fn(acc, member) {
+    let path = xl2_path_of(member: member)
+    match map_lookup(counts, path) {
+      Present { value: 1 } =>
+        Xl2PathAdmission { admitted: acc.admitted |> list_push(member), reported: acc.reported, unobserved: acc.unobserved }
+      _ =>
+        match map_lookup(acc.reported, path) {
+          Present { value: _ } => acc
+          Absent =>
+            Xl2PathAdmission {
+              admitted: acc.admitted,
+              reported: map_insert(acc.reported, path, 1),
+              unobserved: acc.unobserved |> list_push(Xl2MemberPathDuplicated { path: path })
+            }
+        }
+    }
+  })
+  Xl2Strip { members: admission.admitted, unobserved: admission.unobserved }
+}
+
+// ONE PATH-KEYED INDEX, BUILT ONCE (DESIGN section 6, bare minimum cost), over admitted members
+// only, whose paths are unique by the admission above.
+fn xl2_coordinate_index(members: List<Xl2StrippedMember>) -> Map<Symbol, List<ImportStripCoordinateSegment>> {
+  fold(members, init: empty_map(), f: fn(acc, member) {
+    map_insert(acc, xl2_path_of(member: member), member.base_coordinates)
   })
 }
 
@@ -220,18 +264,23 @@ fn xl2_observe_module(
       Xl2Observation { residual: acc.residual, resolved: acc.resolved + 1, unobserved: acc.unobserved }
     NativeCensusModuleResolveRefused { diagnostics: d } =>
       Xl2Observation {
-        residual: acc.residual |> list_push(Xl2ResidualChain {
-          module: entry.module,
-          path: entry.path,
-          chain: d,
-          base_coordinates: match map_lookup(coordinates, entry.path) {
-            Present { value: c } => c
-            Absent => []
-          }
-        }),
-        resolved: acc.resolved,
-        unobserved: acc.unobserved |> list_push(Xl2ModuleResolveAbandonedAtFirstFailure { module: entry.module, path: entry.path })
-      }
+        match map_lookup(coordinates, entry.path) {
+          Present { value: c } =>
+            Xl2Observation {
+              residual: acc.residual |> list_push(Xl2ResidualChain { module: entry.module, path: entry.path, chain: d, base_join: Xl2BaseCoordinates { segments: c } }),
+              resolved: acc.resolved,
+              unobserved: acc.unobserved |> list_push(Xl2ModuleResolveAbandonedAtFirstFailure { module: entry.module, path: entry.path })
+            }
+          Absent =>
+            Xl2Observation {
+              residual: acc.residual |> list_push(Xl2ResidualChain { module: entry.module, path: entry.path, chain: d, base_join: Xl2BaseJoinMissing }),
+              resolved: acc.resolved,
+              unobserved: concat(acc.unobserved, [
+                Xl2ModuleResolveAbandonedAtFirstFailure { module: entry.module, path: entry.path },
+                Xl2BaseJoinMissingFor { module: entry.module, path: entry.path }
+              ])
+            }
+        }
   }
 }
 
@@ -240,12 +289,12 @@ fn xl2_observe(context: NativeTestContext, ingest: SourceRootIngest, members: Li
     acc |> list_push(Xl2FileRefusedBeforeResolve { refusal: r })
   })
   let refusal_index = native_lane_file_refusal_index(refusals: context.file_refusals)
-  let index = xl2_coordinate_index(members: members)
+  let coordinates = xl2_coordinate_index(members: members)
   fold_list(
     xs: native_census_modules(ingest: ingest),
-    empty: Xl2Observation { residual: [], resolved: 0, unobserved: concat(file_refused, index.duplicated) },
+    empty: Xl2Observation { residual: [], resolved: 0, unobserved: file_refused },
     cons: fn(acc, entry) {
-      xl2_observe_module(context: context, refusal_index: refusal_index, coordinates: index.by_path, acc: acc, entry: entry)
+      xl2_observe_module(context: context, refusal_index: refusal_index, coordinates: coordinates, acc: acc, entry: entry)
     }
   )
 }
@@ -267,10 +316,11 @@ fn xl2_member_source(member: Step0SubjectMember) -> FixtureSource {
 // object-store collector, so what arrives here is a pinned tree, never an authored population.
 fn xl2_rehearse_vector(vector: Step0SubjectVector) -> Xl2RehearsalRun {
   let strip = xl2_strip_members(sources: fold(vector.members, init: [], f: fn(acc, m) { acc |> list_push(xl2_member_source(member: m)) }))
-  xl2_rehearse_stripped(source_commit: vector.source_commit, source_tree: vector.source_tree, strip: strip)
+  xl2_rehearse_stripped(source_commit: vector.source_commit, source_tree: vector.source_tree, supplied: strip)
 }
 
-fn xl2_rehearse_stripped(source_commit: GitObjectId, source_tree: GitObjectId, strip: Xl2Strip) -> Xl2RehearsalRun {
+fn xl2_rehearse_stripped(source_commit: GitObjectId, source_tree: GitObjectId, supplied: Xl2Strip) -> Xl2RehearsalRun {
+  let strip = xl2_admit_unique_paths(strip: supplied)
   let ingest = xl2_stripped_ingest(members: strip.members)
   match native_test_context_from_ingest(ingest: ingest) {
     Rejected { diagnostics: d } => Xl2RehearsalContextRefused { source_commit: source_commit, diagnostics: d }

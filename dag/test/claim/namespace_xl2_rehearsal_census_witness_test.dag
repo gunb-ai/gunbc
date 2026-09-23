@@ -7,6 +7,7 @@ import tools.multi_module_compile_fixture { FixtureSource }
 import gunbc.namespace_xl2_rehearsal_census {
   Xl2CallArgumentReferencesUnobservable,
   Xl2CensusCompletenessRefused,
+  Xl2MemberPathDuplicated,
   Xl2ModuleResolveAbandonedAtFirstFailure,
   Xl2RehearsalBaseUnobserved,
   Xl2RehearsalObserved,
@@ -51,7 +52,7 @@ data xl2_control_revision_hex: String = "000000000000000000000000000000000000000
 fn xl2_control_rehearse(strip: Xl2Strip) -> Xl2RehearsalRun {
   match git_sha1_object_id(hex: xl2_control_revision_hex) {
     Absent => Xl2RehearsalBaseUnobserved { cause: Step0CommitIdentityUnreadable { hex: xl2_control_revision_hex } }
-    Present { value: oid } => xl2_rehearse_stripped(source_commit: oid, source_tree: oid, strip: strip)
+    Present { value: oid } => xl2_rehearse_stripped(source_commit: oid, source_tree: oid, supplied: strip)
   }
 }
 
@@ -113,6 +114,25 @@ test fn xl2_control_completeness_is_refused_holds() -> Bool {
 test fn xl2_control_names_the_native_requalification_walls_holds() -> Bool {
   match xl2_control_run() {
     Xl2RehearsalObserved { native_requalification: walls } => count(walls) == 2
+    _ => false
+  }
+}
+
+// DUPLICATED PATH, REFUSED RATHER THAN CHOSEN: the residual specimen and the clean specimen supplied
+// at ONE path, beside the clean specimen at its own path. Neither shared member enters the ingest, so no row is emitted and only the uniquely-pathed module resolves,
+// and the path is reported as unobserved.
+test fn xl2_duplicated_path_is_withheld_not_chosen_holds() -> Bool {
+  match xl2_control_rehearse(strip: xl2_strip_members(sources: [
+    FixtureSource { path: "dag/xl2_control_shared.dag" as NonEmptyStr, content: xl2_residual_control_source },
+    FixtureSource { path: "dag/xl2_control_shared.dag" as NonEmptyStr, content: xl2_clean_control_source },
+    FixtureSource { path: "dag/xl2_control_clean.dag" as NonEmptyStr, content: xl2_clean_control_source }
+  ])) {
+    Xl2RehearsalObserved { residual: residual, resolved_module_count: n, completeness: Xl2CensusCompletenessRefused { first: _, rest: rest } } =>
+      count(residual) == 0 && n == 1
+        && count(filter(rest, c => match c {
+             Xl2ScopeUnobserved { scope: Xl2MemberPathDuplicated { path: _ } } => true
+             _ => false
+           })) == 1
     _ => false
   }
 }
