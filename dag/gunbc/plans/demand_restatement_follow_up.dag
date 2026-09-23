@@ -1,0 +1,128 @@
+module gunbc.plans.demand_restatement_follow_up
+
+import std.types { NonEmptyStr, List, String }
+
+// THE CENSUS INTERVAL. Cut (c) deletes an authored `uses` row when the function's DERIVED service
+// demand is nonempty, measured by resolving the module and reading `ItemInfo.service_names`. The range
+// runs from cut (c)'s first measurement to the FINAL CENSUS BASE, its tip: the main at which every
+// authored row in the tree was last measured, with that main's own resolver. The lists below are not
+// rows that arrived over the range; they are the RETAINED EXCEPTIONS at that base, each with its own
+// trigger, and each is EITHER an identity the criterion cannot type OR an identity measured deletable
+// whose deletion is blocked by a named landing constraint.
+
+data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..4446f2e990f" as NonEmptyStr
+
+// THE FINAL-BASE CENSUS, AT USES-0 ROW IDENTITY -- (module, declaration, alias, type) -- not by
+// syntactic clause, since one clause can bind several aliases. At the range tip every authored `uses`
+// clause in the tree was enumerated, every ordinary fn carrying one was resolved, and its
+// ItemInfo.service_names read. Every identity with nonempty derived demand was deleted under the
+// unchanged criterion EXCEPT the identities retained under EditedWitnessHasNoHermeticRoute; none had
+// EMPTY demand, so no deletion flipped a function from effectful to pure. What was not deleted is
+// exactly the retained lists below, in two kinds: identities the criterion cannot type, and identities
+// MEASURED DELETABLE whose deletion is not yet landable. The retained population is read off the lists
+// rather than stated here. The counts of that pass are the landing change's receipt and are
+// not carried in this module: the census resolver has no entry point in the tree, so a figure written
+// here could not be re-derived and would rot (DESIGN 6). The re-derivable fact is the tree itself --
+// every authored `uses` row it still carries is one of the retained identities below, or a new
+// arrival: the roster of unmeasured modules is deleted rather than left empty, and nothing walls new
+// rows out yet (the restatement refusal is EFFECTS-1's open slice).
+
+// THE ROWS CUT (c) RETAINED, at the row identity USES-0 defined: the module, the declaration,
+// the alias the row binds, and the authored type. The grain matters because the earlier partition
+// here was by MODULE and was wrong in both directions: `gunbc.auth.patterns` holds two ordinary fns
+// AND a pattern, and `gunbc.assimilate.bmc_bootstrap_provision`'s row is a pattern rather than a
+// module-resolution casualty. Partitioning by module therefore attached a trigger to rows it is
+// false for -- "when the module resolves, the criterion types its rows" does not hold for a pattern,
+// because resolution only reveals the next blocker, which is that the criterion never ranged over
+// pattern declarations at all. Each row carries its own trigger instead.
+type RetainedRowTrigger
+  = ModuleResolutionBlocked
+  | CriterionDoesNotRangeOverPatterns
+  | ProbeLeavesCorpus
+  | EditedWitnessHasNoHermeticRoute
+
+type DemandRestatementRetainedRow {
+  module_path: NonEmptyStr
+  declaration: NonEmptyStr
+  alias: NonEmptyStr
+  authored_type: NonEmptyStr
+  trigger: RetainedRowTrigger
+}
+
+// THE ORDINARY FUNCTIONS THE CRITERION CANNOT TYPE, because their module refuses to resolve, so there
+// is no registry entry and no derived demand to compare against. Two causes, and they carry different
+// triggers. `gunbc.auth.patterns` (a pre-existing type error, expected String got Secret, measured at
+// 4446f2e990f) is a DEFECT this cut neither introduced nor repairs: TRIGGER, per row, the module
+// resolves and the criterion executes on it like any other fn row. `test.probe.census_app_acquisition_forged_probe` refuses BY DESIGN -- forging the
+// sole_constructor receipt is the probe's whole point -- so resolution is not coming; its one row
+// (two resources) is carried at each alias, and it leaves with the probe.
+//
+// ONE MODULE IS RETAINED FOR A DIFFERENT REASON: ITS ROWS ARE MEASURED, AND DELETING THEM IS NOT YET
+// LANDABLE. Every fn in test.manual.runner_microvm_lifecycle_wet_receipt has nonempty derived demand,
+// so the criterion says delete. But editing the module makes its wet tests changed witnesses, which
+// the required floor plans onto the hermetic route, and that route has no arm for
+// extdeps.linux.cgroup_v2 ReadInterfaceFile (it declares no mock_response): ten witnesses stopped at a
+// route gap before any verdict on this change's first head. Enrolling them in
+// v2.workflow.floor_route_gap would record that gap as debt, not make it acceptable, so the rows stay,
+// each carrying the capability that makes the deletion landable.
+
+data demand_restatement_retained_fn_rows: List<DemandRestatementRetainedRow> = [
+  DemandRestatementRetainedRow { module_path: "gunbc.auth.patterns" as NonEmptyStr, declaration: "github_oidc" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: ModuleResolutionBlocked },
+  DemandRestatementRetainedRow { module_path: "gunbc.auth.patterns" as NonEmptyStr, declaration: "metadata_oidc" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: ModuleResolutionBlocked },
+  DemandRestatementRetainedRow { module_path: "test.probe.census_app_acquisition_forged_probe" as NonEmptyStr, declaration: "mint_a_receipt_from_authored_standings" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: ProbeLeavesCorpus },
+  DemandRestatementRetainedRow { module_path: "test.probe.census_app_acquisition_forged_probe" as NonEmptyStr, declaration: "mint_a_receipt_from_authored_standings" as NonEmptyStr, alias: "fs" as NonEmptyStr, authored_type: "std.resources.Filesystem" as NonEmptyStr, trigger: ProbeLeavesCorpus },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "start_payload" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "clear_slice" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "slice_is_quiet" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_sigterm_ignoring_child_is_stopped_by_force" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_process_in_a_child_cgroup_is_found_and_the_flat_read_is_empty" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_missing_cgroup_events_is_unobservable_and_never_empty" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "show_property_reads_a_units_active_state" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "show_property_reads_a_units_environment" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "unit_property_text" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "the_unit_reports_the_attempt_invocation_id_it_was_started_with" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_unit_with_no_attempt_assignment_reads_as_unread" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "start_with_invocation" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "stop_incarnation_unit" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_successful_job_can_leave_the_cell_subtree_populated" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "the_cell_wide_force_ends_a_survivor_in_a_sibling_cgroup" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "the_cell_wide_force_ends_a_survivor_in_a_sibling_cgroup" as NonEmptyStr, alias: "fs" as NonEmptyStr, authored_type: "std.resources.Filesystem" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_clean_slice_reads_empty_and_absent_paths_read_absent" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+]
+
+// THE EIGHT PATTERN DECLARATIONS. These are outside the criterion's range rather than unmeasured
+// within it: a `pattern` is not in the function registry, so there is no ItemInfo to read
+// service_names from. Module resolution is not their blocker and would not discharge them.
+// TRIGGER, per row: derived demand ranges over pattern declarations.
+
+data demand_restatement_retained_pattern_rows: List<DemandRestatementRetainedRow> = [
+  DemandRestatementRetainedRow { module_path: "gunbc.auth.patterns" as NonEmptyStr, declaration: "credential_chain" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_secret_credential" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_oauth_access_token_via_adc_refresh" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_adc_token_from_credentials" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_oauth_access_token_adc_for_path" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { module_path: "gunbc.tailscale_acl_phase2_credential" as NonEmptyStr, declaration: "tailscale_acl_operator_ephemeral_credential" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { module_path: "gunbc.tailscale_acl_phase2_credential" as NonEmptyStr, declaration: "tailscale_acl_credential_with_operator_token" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { module_path: "gunbc.assimilate.bmc_bootstrap_provision" as NonEmptyStr, declaration: "bmc_bootstrap_provision_srv3" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
+]
+
+// EACH RETAINED ROW AS PROSE, so every field of the row identity reaches a reader and the trigger
+// travels with the row it is true for.
+
+fn retained_row_trigger_text(t: RetainedRowTrigger) -> String {
+  match t {
+    ModuleResolutionBlocked => "trigger: its module resolves, and the criterion executes on it"
+    CriterionDoesNotRangeOverPatterns => "trigger: derived demand ranges over pattern declarations"
+    EditedWitnessHasNoHermeticRoute => "trigger: extdeps.linux.cgroup_v2 ReadInterfaceFile gains a mock_response, so an edited witness in this module reaches a verdict on the floor's hermetic route instead of a route gap"
+    ProbeLeavesCorpus => "trigger: the probe declaration is deleted from the corpus -- its module refuses by design, so resolution will never type the row, and its identities leave with the probe"
+  }
+}
+
+fn retained_row_text(r: DemandRestatementRetainedRow) -> String {
+  join([r.module_path as String, "::", r.declaration as String, " (uses ", r.alias as String, ": ", r.authored_type as String, "; ", retained_row_trigger_text(t: r.trigger), ")"], "")
+}
+
+fn demand_restatement_retained_row_texts() -> List<String> {
+  concat(demand_restatement_retained_fn_rows, demand_restatement_retained_pattern_rows) |> map(r => retained_row_text(r: r))
+}
+

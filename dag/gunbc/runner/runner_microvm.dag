@@ -37,9 +37,12 @@ import product.fabric.isolation {
 }
 import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired,
+  gunbc_runner_slot_desired_for,
+  RunnerSlotDesired,
   CpuQuotaResolved,
   SlotCpuQuotaUnbounded,
 }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_unit {
   RunnerUnitLifecycleIntent,
   gunbc_runner_lifecycle_intent,
@@ -695,13 +698,21 @@ fn runner_microvm_shape_after_allowance(
 // THE GUEST'S CACHE ALLOWANCE IS DERIVED FROM THE DEMAND RECEIPT, NOT DECLARED BESIDE IT. A guest
 // whose RAM equals the Work's held-set demand runs the floor with no file cache at all, re-reading
 // every source and object from the workspace image on each touch. The receipt carries the last
-// beat at which the host slot was NOT thrashing (gunbc.floor_demand receipt_last_unstalled_beat:
-// the stall clause at zero, 1895120896 bytes of file beside the anonymous demand on 2026-09-19),
+// beat at which the host slot was NOT thrashing (gunbc.floor_demand receipt_last_unstalled_beat),
 // and the allowance is that beat's RECLAIMABLE cache -- file less shmem, the part reclaim can give
 // back -- rounded up to the corpus's whole-gibibyte grain: the smallest grain above a cache the
 // run held while it worked. It is a floor on a working operating point rather than a measured
 // optimum, which is the only honest reading of one beat; its revision is the in-guest cold receipt
 // (gunbc.floor_cold_build_receipt), which reads the same counters inside a guest.
+//
+// THE BEAT IS NAMED BY THE DERIVATION, NOT TRANSCRIBED HERE, and that is a correction rather than
+// a style preference. This note used to carry the 2026-09-19 receipt's beat-13 figure -- "the
+// stall clause at zero, 1895120896 bytes of file" -- beside a fold that reads whatever the
+// STANDING receipt says. When gunbc_floor_held_set_standing moved to the 2026-09-21 receipt, the
+// derivation moved with it to beat 17 and the allowance HALVED, while the sentence went on
+// describing a beat nothing reads (DESIGN 6: a transcribed number is unreachable from the thing
+// that owns it, so it rots without anyone touching either end). The figure now has exactly one
+// home, which is the standing receipt's own rows, and this note names the producer instead.
 //
 // THE ALLOWANCE IS A COPRODUCT BECAUSE ITS DERIVATION CAN REFUSE: the subtraction file - shmem is
 // typed (std.measure measure_sub), and a torn line with shmem > file, or a receipt with no beat to
@@ -739,7 +750,20 @@ fn gunbc_runner_microvm_guest_cache_allowance() -> GuestCacheAllowance {
 // task row and workspace grant. Every input is read from the authority that owns it; nothing here is a
 // parameter a caller could use to hand the guest an envelope the cell did not declare.
 fn gunbc_runner_microvm_shape() -> RunnerMicroVmShapeResolution {
-  let cell = gunbc_runner_slot_desired()
+  gunbc_runner_microvm_shape_in_cell(cell: gunbc_runner_slot_desired())
+}
+
+// THE SAME SHAPE, ASKED FOR A NAMED SLOT'S CELL. The slot controller (gunbc.runner_microvm_slot_
+// controller) shapes the guest for the cell its attempt was reserved on, and that cell's row is
+// gunbc_runner_slot_desired_for -- the 28 GiB shakedown row for srv1's shakedown slot, the fleet row
+// everywhere else. The parameter is a slot and not an envelope, so a caller still cannot hand the
+// guest a ceiling the cell did not declare; and the fleet-row entry above is unchanged, so the
+// expecting-red production-shape witness keeps reading the row it was written against.
+fn gunbc_runner_microvm_shape_for_slot(slot: RunnerSlotIdentity) -> RunnerMicroVmShapeResolution {
+  gunbc_runner_microvm_shape_in_cell(cell: gunbc_runner_slot_desired_for(slot: slot))
+}
+
+fn gunbc_runner_microvm_shape_in_cell(cell: RunnerSlotDesired) -> RunnerMicroVmShapeResolution {
   match floor_storage_demand() {
     StorageDemandUnrepresentable { cause: _ } =>
       MicroVmShapeRefused { refusal: ShapeRefusedWorkStorageUnstated { cause: "the floor's storage components do not sum within the representable bound, so the demand is not a figure" } }
@@ -751,7 +775,7 @@ fn gunbc_runner_microvm_shape() -> RunnerMicroVmShapeResolution {
         envelope: CellMemoryEnvelope { bytes: cell.memory_max },
         reserve: gunbc_runner_microvm_realization_reserve(),
         cache_allowance: gunbc_runner_microvm_guest_cache_allowance(),
-        task_ceiling: gunbc_runner_microvm_task_ceiling(),
+        task_ceiling: cell.tasks_max,
         workspace: runner_microvm_workspace_grant,
       )
   }

@@ -3490,6 +3490,7 @@ type InhabitanceUndecidableReason
 type InhabitanceRefusalReason
   = RefusedPayloadAtParent
   | RefusedKernelAtStructured
+  | RefusedCollectionAtEstablishedIdentity
   | RefusedDistinctProductConstructor
   | RefusedDistinctAppliedTypeArgument
   | RefusedOptionalAtRequired
@@ -3732,8 +3733,8 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
   } else if declared_realizes_as_kernel_numeric(
       declared: declared, produced: produced, source_indices: source_indices) {
     Inhabits
-  } else if collection_at_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
-    InhabitanceRefused { reason: RefusedKernelAtStructured }
+  } else if collection_versus_established_identity(declared: declared, produced: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedCollectionAtEstablishedIdentity }
   } else if record_at_scalar_needs_identity(declared: declared, produced: produced, scope: scope) {
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
   } else if coproduct_at_record_declared_type(declared: declared, produced: produced, scope: scope) {
@@ -3797,25 +3798,90 @@ fn optional_produced_at_required_declared(declared: Node, produced: Node, scope:
     && !direct_call_formal_has_unbound_type_variable(n: declared)
 }
 
-// Collection spelling has a measured representation gap: FreeMonoid<T> can arrive as List<T>,
-// so collection-vs-noncollection is not itself a proof of disjointness. Peel the declared side
-// through the existing nominal-alias authority and refuse only when that established base is a
-// kernel scalar. This catches List<_> at NonEmptyStr (whose base is String) without treating an
-// algebraic collection spelling as a scalar merely because its outer node is not List.
-fn collection_at_scalar_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
-  if node_is_collection(n: produced, source_indices: scope.type_env.source_indices) == false {
+// COLLECTION DISJOINTNESS IS A RELATION BETWEEN THE TWO SIDES, NOT A PROPERTY OF ONE OF THEM.
+// The predicate this replaces (`collection_at_scalar_declared_type`) asked "is the PRODUCED value
+// a collection AND does the DECLARED type peel to a kernel scalar", so every arm of
+// declared_type_inhabitance keyed on the kind of ONE side and the pair collection-vs-nominal-product
+// was judged by no arm at all: it reached the terminal `Inhabits` by fallthrough, in BOTH
+// directions. Measured on main ff2110b7e24 at the direct-call seam: a `List<String>` bound to a
+// `Rec { a: String }` parameter ran the callee body, and a `Rec` bound to a `List<Int>` parameter
+// did too, while Int<-String, Int<-List<Int>, Rec<-Other and Rec<-Optional<Int> all refused --
+// so the seam runs and this cell was the hole. That is a below-floor acceptance (DESIGN 4b:
+// "values inhabit declared types"), and it is a specimen of
+// gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel rather than
+// a new class: the wall was keyed on the KIND OF ONE SIDE and therefore silent wherever neither
+// side was the kind it names.
+//
+// The relation instead: EXACTLY ONE side is a collection and the other side is an ESTABLISHED
+// non-generic identity. A collection and a nominal product, coproduct or kernel scalar cannot be
+// two representations of one value, so the disjointness is decidable from the modeled facts
+// without any target-specific realization rule.
+//
+// BOTH SIDES ARE PEELED BEFORE THE COLLECTION QUESTION IS ASKED, and that is what the predicate
+// this replaces warned about without acting on: collection SPELLING has a measured representation
+// gap. `type Words = List<String>` is a declared alias whose outer node is not List, and
+// `FreeMonoid<T>` arrives as `List<T>` -- both are collections, and refusing either against the
+// other would be a fabricated refusal. Peeling both sides through the existing nominal-alias
+// authority decides alias identity in exactly one place, so an alias pair answers
+// collection==collection and is excluded before the established-identity question is reached.
+//
+// WHY "ESTABLISHED" IS THE GUARD AND NOT AN EXTRA. A generic formal, a type variable, a callable,
+// and an opaque or stuck type head all resolve to no identity this relation may contradict, so
+// none of them refuses here -- they fall through to the arms that own them. Only the three heads
+// that ARE settled -- kernel scalar, product, coproduct -- carry the disjointness fact. The kernel
+// side additionally consults the alias peel and the where-refinement base, which is exactly the
+// admission the replaced predicate made (List<_> at NonEmptyStr, whose base is String) and is
+// preserved rather than re-derived.
+fn side_is_collection_after_peel(n: Node, scope: InferScope) -> Bool {
+  let si = scope.type_env.source_indices
+  if node_is_element_collection(n: n, source_indices: si)
+      || node_is_keyed_collection(n: n, source_indices: si) {
+    true
+  } else {
+    let peeled = peel_nominal_alias_identity(n: n, env: scope.type_env, module_name: scope.module_name)
+    node_is_element_collection(n: peeled, source_indices: si)
+      || node_is_keyed_collection(n: peeled, source_indices: si)
+  }
+}
+
+fn side_is_established_non_collection_identity(n: Node, scope: InferScope) -> Bool {
+  let si = scope.type_env.source_indices
+  let is_generic = (n.params |> count) > 0 || match n.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ => false
+  }
+  if is_generic || type_node_is_callable(n: n) {
     false
   } else {
-    let peeled = peel_nominal_alias_identity(n: declared, env: scope.type_env, module_name: scope.module_name)
-    let peeled_is_kernel = is_kernel_type(name: authored_name_at(source_indices: scope.type_env.source_indices, node: peeled))
-    let refinement_base_is_kernel = if is_where_refinement_type(ty: declared) {
-      match declared.children |> first {
+    let peeled = peel_nominal_alias_identity(n: n, env: scope.type_env, module_name: scope.module_name)
+    let peeled_is_kernel = is_kernel_type(name: authored_name_at(source_indices: si, node: peeled))
+    let refinement_base_is_kernel = if is_where_refinement_type(ty: n) {
+      match n.children |> first {
         Present { value: base } =>
-          is_kernel_type(name: authored_name_at(source_indices: scope.type_env.source_indices, node: child_type_node(ch: base)))
+          is_kernel_type(name: authored_name_at(source_indices: si, node: child_type_node(ch: base)))
         Absent => false
       }
     } else { false }
-    peeled_is_kernel || refinement_base_is_kernel
+    if peeled_is_kernel || refinement_base_is_kernel {
+      true
+    } else {
+      let exposure = expected_type_head_exposure(formal: n, scope: scope)
+      type_head_exposure_is_kernel_scalar(exposure: exposure)
+        || type_head_exposure_is_product(exposure: exposure)
+        || type_head_exposure_is_coproduct(exposure: exposure)
+    }
+  }
+}
+
+fn collection_versus_established_identity(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  let declared_is_collection = side_is_collection_after_peel(n: declared, scope: scope)
+  let produced_is_collection = side_is_collection_after_peel(n: produced, scope: scope)
+  if declared_is_collection == produced_is_collection {
+    false
+  } else if produced_is_collection {
+    side_is_established_non_collection_identity(n: declared, scope: scope)
+  } else {
+    side_is_established_non_collection_identity(n: produced, scope: scope)
   }
 }
 
@@ -5233,6 +5299,31 @@ type Tier2bBt {
   kernel_diags: List<ErrorNode>
 }
 
+// `with` IS TWO CONTRACTS ON ONE SPELLING, AND THIS ARM DECIDES BETWEEN THEM BY THE RECEIVER'S
+// TYPE. v1.compiler.method registers `with` as the MAP operation -- three parameters, returning a
+// Map -- while the corpus also uses the RECORD-UPDATE form `with(base, { field: value })`, which
+// returns the base's product type. Nothing had to choose before, because the registry's Map answer
+// was the only one: the record update was typed as a Map, and every consumer that merely passed the
+// result along never noticed. The declared-type inhabitance wall is the first consumer that must
+// decide, and it refused a Map at a product formal -- correctly, on a true premise it was handed
+// wrongly (v1.compiler.emit_rust `with(emit_info, { movable: ... })`, where EmitGraphInfo really
+// does declare `movable`).
+//
+// THE DISCRIMINATOR IS THE RECEIVER'S TYPE, NOT THE ARITY AND NOT THE CALL'S SPELLING. A keyed
+// collection receiver is the map insert; an established product receiver is the record update and
+// the result is that product. An arity test would answer correctly for the sites that exist today
+// and lie about the next one, because arity is a property of the call rather than of the operation.
+// An unresolved or otherwise unestablished receiver keeps the registry's answer, so this arm
+// narrows nothing it cannot decide.
+//
+// WHAT THIS DOES NOT SETTLE, recorded as an open reading so the next reader starts here rather than
+// reaching for a rename: whether these are ultimately ONE concept -- functional update of a keyed
+// structure at two scales, a map by key and a record by field -- in which case DESIGN section 2's
+// horizontal move makes the answer a single polymorphic `with` rather than two names, and section 3
+// is satisfied by unifying rather than by splitting. This arm does not decide that. It makes the
+// existing two contracts distinguishable, which is the prerequisite for either answer. The name is
+// currently forked across v1.compiler.method, v1.compiler.languages (bridge_method_overrides maps
+// it to with_update), v1.compiler.parse and v1.compiler.emit_rust, each special-casing it apart.
 fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<Node>, scope: InferScope, span: SourceSpan) -> Tier2bBt {
   if func_name == "lookup" || func_name == "map_get" {
     Tier2bBt {
@@ -5244,6 +5335,26 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
                 Present { value: value_type } =>
                   with_optional_cardinality(n: value_type)
                 Absent => resolve_builtin_call_type(name: func_name)
+              }
+            _ => resolve_builtin_call_type(name: func_name)
+          }
+        Absent => resolve_builtin_call_type(name: func_name)
+      },
+      kernel_diags: []
+    }
+  } else if func_name == "with" {
+    Tier2bBt {
+      bt: match typed_args |> first {
+        Present { value: receiver_arg } =>
+          match arg_value(n: receiver_arg).inferred {
+            Present { value: Resolved { node: receiver_type } } =>
+              if node_is_keyed_collection(n: receiver_type, source_indices: scope.type_env.source_indices) {
+                resolve_builtin_call_type(name: func_name)
+              } else if type_head_exposure_is_product(
+                  exposure: expected_type_head_exposure(formal: receiver_type, scope: scope)) {
+                receiver_type
+              } else {
+                resolve_builtin_call_type(name: func_name)
               }
             _ => resolve_builtin_call_type(name: func_name)
           }

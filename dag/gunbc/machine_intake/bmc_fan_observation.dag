@@ -246,7 +246,6 @@ fn observe_fan_round(
   password_file: NonEmptyStr,
   round_index: Int,
 ) -> FanObservationRound
-  uses net: std.resources.Network, clock: std.resources.Clock
 {
   status = diagnostic.ipmi.Tool.ChassisStatus(
     bmc_host: bmc_host,
@@ -343,7 +342,6 @@ fn observe_fan_series(
   interval: Second,
   acc: List<FanObservationRound>,
 ) -> List<FanObservationRound>
-  uses net: std.resources.Network, clock: std.resources.Clock
 {
   if rounds_remaining <= 0 {
     return acc
@@ -537,7 +535,6 @@ fn observe_fan_policy(
   rounds: ObservationRoundCount,
   interval: Second,
 ) -> FanObservationSeries
-  uses net: std.resources.Network, clock: std.resources.Clock
 {
   if trim(username as String) == "" {
     return FanObservationRefused { cause: "no controller username supplied; contacting NO host" }

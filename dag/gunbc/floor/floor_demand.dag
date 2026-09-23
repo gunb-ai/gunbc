@@ -8,6 +8,7 @@ import std.measure {
   GrainRounding, GrainRounded, GrainUnrepresentable, round_up_to_grain, gibibyte_grain,
 }
 import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.checked_arithmetic {
   CheckedInt, CheckedIntReady, CheckedIntOverflow, IntegerOverflow, checked_int_add, checked_add_results,
 }
@@ -225,8 +226,123 @@ fn gunbc_floor_cgroup_charge_ceiling() -> ByteSize {
 // the carrier that clause's producer returns -- gunbc.memory_stall_refusal
 // memory_stall_major_fault_rate yields std.measure EventsPerMinute -- so the receipt and the
 // instrument hold one representation of one quantity.
+// THE SEAM A BEAT WAS SAMPLED IN, AS A CLOSED VOCABULARY, so which phase established the peak is
+// a value a fold reads rather than a sentence a transcriber wrote. The floor names its own seams
+// (v1_compiler.cli_run required_floor_runner floor_seam, and claim_executor's lane-roster, parse,
+// declarations and floor-entry seams before it), one arm per seam the instrument names; the
+// heartbeat has always read that slot for its human line, and the stat beat now prints it on its
+// OWN line beside the counters. Before that the two facts were separate stderr streams joined
+// only by the order the lines happened to appear in -- a positional citation (DESIGN 3), which any
+// line emitted between them by another thread invalidates silently.
+//
+// FOUR ARMS ARE NOT SEAMS AND THAT IS THE POINT. SeamNotYetEntered is a beat taken before the first
+// floor_seam call -- genuinely un-attributed, and rendering it as the first seam would attribute
+// entry-time memory to preparation. SeamUnrecorded is a beat transcribed from a line that carried
+// no seam field at all, which is every beat taken before the instrument grew one: the 2026-09-19
+// receipt below is such a receipt, and this arm is what makes its un-attributability structural
+// rather than a caveat in prose. SeamUnreadable is the instrument reporting that the seam SLOT
+// ITSELF could not be read -- a poisoned lock -- which is a third distinct fact and exists because
+// the instrument can print it (review 69767): a vocabulary that cannot receive a token its own
+// producer emits forces the transcriber to map it onto some OTHER arm, and that mapping is a
+// fabrication no reader can see.
+//
+// SeamMovedDuringSample IS THE FOURTH AND IT IS A DIFFERENT KIND OF NOT-KNOWING. The other three
+// say the seam was absent or unreadable; this one says the seam WAS READABLE AND CHANGED WHILE
+// THE SAMPLE WAS BEING TAKEN. The instrument reads the slot before and after it reads procfs and,
+// when the two differ, reports BOTH rather than choosing -- the beat's memory was sampled ACROSS
+// the boundary and belongs wholly to neither phase. Putting the seam on the beat's own line
+// removed the log-adjacency join; it did NOT bind the two observations in time, and those are
+// different fixes. A transition beat is precisely the one a reader most wants to trust, because
+// it is where a phase's cost gets attributed. None of the four may size or attribute anything.
+//
+// THE FIRST FOURTEEN ARMS ARE PHASE BOUNDARIES, NOT ONLY PHASES (2026-09-22). floor_seam now emits a
+// beat AT every seam, so a receipt carries a reading at each boundary as well as the watchdog's
+// minute readings inside a phase; the boundaries inside strict-preparation (changed-witness-planning
+// through prepared-subject-warm) are what split that phase's held-set growth by cause. A seam beat
+// carries StallUnread, because a boundary sample closes no stall window.
+//
+// WHAT THIS VOCABULARY DOES NOT COVER, stated so its absence is not read as a reading: checkout and
+// the toolchain build are JOB STEPS BEFORE THIS PROCESS EXISTS, so no in-process beat can carry
+// them. Their wall is the job's own step timing (gunbc_floor_job_wall_receipt_2026_09_19
+// build_step_wall), and attributing memory to them needs a reader outside claim_executor.
+type FloorSeam
+  = SeamLaneRoster
+  | SeamParse
+  | SeamDeclarations
+  | SeamFloorEntry
+  | SeamChangedWitnessPlanning
+  | SeamDiffBaseDeclCensus
+  | SeamDiffEdits
+  | SeamDiffChangedWitnessIdentities
+  | SeamDiffTouchedModuleSeeds
+  | SeamArmSetPlanning
+  | SeamInterfaceConsumerPlanning
+  | SeamNominalSubjectSeeds
+  | SeamPrepareClosureResolve
+  | SeamPreparedSubjectWarm
+  | SeamPublication
+  | SeamStrictPreparation
+  | SeamPublishedMockProjection
+  | SeamSiteProjection
+  | SeamDiscoveryAuthority
+  | SeamClaimScopeProjection
+  | SeamClaimEvaluationFold
+  | SeamNotYetEntered
+  | SeamUnrecorded
+  | SeamUnreadable
+  | SeamMovedDuringSample { before: NonEmptyStr, after: NonEmptyStr }
+
+// THE TOKEN EACH ARM IS PRINTED AS, one row per arm the instrument emits or has emitted, so a
+// transcriber reads a beat's `seam=` token into exactly one constructor and never maps a token onto
+// a neighbour. A token no row names reads as Absent -- not as a nearby arm, and not as
+// SeamUnrecorded, which is a line that carried NO seam field.
+//
+// THE PLANNING SEAM CHANGED NAME AT A VERSION BOUNDARY, and both spellings keep their own arm:
+//   before gunbc#12130 -- `arm-set-planning` -> SeamArmSetPlanning: the phase then planned only
+//     match readers of a coproduct whose arm set changed; every committed beat taken before the
+//     rename (the positional mapping below, beats 13-14) stays on this arm;
+//   at and after gunbc#12130 -- `interface-consumer-planning` -> SeamInterfaceConsumerPlanning:
+//     the phase plans every ground-specific reader of a declaration whose interface changed, a
+//     wider phase, so its memory is not the old phase's and is not read as it.
+// The instrument no longer emits the old token. A control keeps every token the Rust passes to
+// `floor_seam` joined to a row here (required_floor_runner
+// `every_floor_seam_literal_has_a_typed_arm`).
+type FloorSeamToken {
+  token: String
+  seam: FloorSeam
+}
+
+data floor_seam_tokens: List<FloorSeamToken> = [
+  FloorSeamToken { token: "lane-roster", seam: SeamLaneRoster },
+  FloorSeamToken { token: "parse", seam: SeamParse },
+  FloorSeamToken { token: "declarations", seam: SeamDeclarations },
+  FloorSeamToken { token: "floor-entry", seam: SeamFloorEntry },
+  FloorSeamToken { token: "changed-witness-planning", seam: SeamChangedWitnessPlanning },
+  FloorSeamToken { token: "diff-base-decl-census", seam: SeamDiffBaseDeclCensus },
+  FloorSeamToken { token: "diff-edits", seam: SeamDiffEdits },
+  FloorSeamToken { token: "diff-changed-witness-identities", seam: SeamDiffChangedWitnessIdentities },
+  FloorSeamToken { token: "diff-touched-module-seeds", seam: SeamDiffTouchedModuleSeeds },
+  FloorSeamToken { token: "arm-set-planning", seam: SeamArmSetPlanning },
+  FloorSeamToken { token: "interface-consumer-planning", seam: SeamInterfaceConsumerPlanning },
+  FloorSeamToken { token: "nominal-subject-seeds", seam: SeamNominalSubjectSeeds },
+  FloorSeamToken { token: "prepare-closure-resolve", seam: SeamPrepareClosureResolve },
+  FloorSeamToken { token: "prepared-subject-warm", seam: SeamPreparedSubjectWarm },
+  FloorSeamToken { token: "publication", seam: SeamPublication },
+  FloorSeamToken { token: "strict-preparation", seam: SeamStrictPreparation },
+  FloorSeamToken { token: "published-mock-projection", seam: SeamPublishedMockProjection },
+  FloorSeamToken { token: "site-projection", seam: SeamSiteProjection },
+  FloorSeamToken { token: "discovery-authority", seam: SeamDiscoveryAuthority },
+  FloorSeamToken { token: "claim-scope-projection", seam: SeamClaimScopeProjection },
+  FloorSeamToken { token: "claim-evaluation-fold", seam: SeamClaimEvaluationFold },
+]
+
+fn floor_seam_of_token(token: String) -> FloorSeam? {
+  fold(floor_seam_tokens, init: none, f: (acc, row) => if row.token == token { Present { value: row.seam } } else { acc })
+}
+
 type FloorMemoryStatBeat {
   beat: Int
+  seam: FloorSeam
   charge: ByteSize
   anon: ByteSize
   file: ByteSize
@@ -239,7 +355,47 @@ type FloorMemoryStatBeat {
   percpu: ByteSize
   sock: ByteSize
   file_dirty: ByteSize
-  stall: EventsPerMinute
+  stall: BeatStall
+  swap: BeatSwap
+}
+
+// THE LEAF'S OWN SWAP AT THE BEAT, WHICH MAY NOT HAVE BEEN READ. memory.swap.current is the bytes of
+// THIS cgroup's pages currently in swap; the instrument prints it on the beat's second line since
+// 2026-09-22 (v1_compiler.cli_run floor_cgroup_stat_beat swap_current=). Every beat transcribed
+// before then carries SwapUnread, and so does a beat whose line printed `na`: an unread swap is
+// not a zero, because zero is the reading that UNCENSORS a peak (receipt_peak_reading_standing),
+// so fabricating one would manufacture exactly the claim this field exists to ground.
+type BeatSwap
+  = SwapRead { bytes: ByteSize }
+  | SwapUnread
+
+// THE STALL CLAUSE, WHICH MAY NOT HAVE READ. The heartbeat computes its stall window from
+// /proc counters and renders `na` when they do not read, and the floor's entry beat carries no
+// window at all -- so an unread stall is a state the INSTRUMENT ROUTINELY EMITS and the receipt
+// must be able to receive it (review 69767). Before this it could not, and the only way to
+// transcribe such a beat was to write a rate of zero, which is the healthiest reading the field
+// can carry: fabricating progress, exactly inverted from the truth.
+//
+// StallUnread IS NOT UNSTALLED. receipt_last_unstalled_beat and receipt_peak_reading_standing both
+// treat it as failing their test rather than passing it, because "we could not tell" is not
+// evidence of calm, and the cache allowance derived from an unstalled beat would otherwise rest
+// on a beat nobody observed.
+type BeatStall
+  = StallRead { rate: EventsPerMinute }
+  | StallUnread
+
+fn beat_stall_is_zero(b: FloorMemoryStatBeat) -> Bool {
+  match b.stall {
+    StallUnread => false
+    StallRead { rate: r } => events_per_minute_count(r: r) == 0
+  }
+}
+
+fn beat_stall_is_positive(b: FloorMemoryStatBeat) -> Bool {
+  match b.stall {
+    StallUnread => false
+    StallRead { rate: r } => events_per_minute_count(r: r) > 0
+  }
 }
 
 // THE HELD-SET RULE, STATED ONCE AND EXPLICITLY NON-OVERLAPPING. memory.stat's counters are not a
@@ -298,6 +454,59 @@ fn beat_reclaimable_cache(b: FloorMemoryStatBeat) -> MeasureSubtraction<Memory, 
 // numbered beat before the peak whose stall clause read zero -- the cache the slot still held
 // while it was not thrashing, which the guest's cache allowance is derived from. Both folds refuse
 // (Absent) on an empty or all-stalled list rather than inventing a beat.
+// THE SWAP POLICY A READING WAS TAKEN UNDER, because a held set means DIFFERENT THINGS on each
+// side of it. With swap available, anonymous pages the workload still wants can leave residency
+// without the workload failing, so a held set read while swap-in is rising is a LOWER BOUND on
+// what the run wanted to hold -- censored on the axis reclaim cannot answer, which is exactly how
+// the 2026-09-19 receipt was censored. With swap off, a workload that exceeds its ceiling is
+// killed rather than spilled, so a run that COMPLETES under that policy read its true demand.
+//
+// THE ARM RECORDS HOW THE FIGURE WAS OBTAINED, NOT JUST WHAT IT IS (DESIGN 4d). The heartbeat's
+// cgroup envelope prints max, high, current and peak -- it does NOT print memory.swap.max -- so a
+// receipt taken from a job log CANNOT read the attempt's swap ceiling, only cite the row that
+// declares it. SwapMaxDeclaredUnread is that state and names its declaring authority; SwapMaxRead
+// is for an instrument that reads the file. Conflating them would let a declared row be consumed
+// as a reading, which is the bet-as-fact the corpus refuses.
+type RunSwapPolicy
+  = SwapMaxRead { swap_max: ByteSize }
+  | SwapMaxDeclaredUnread { declared: ByteSize, declaring_authority: NonEmptyStr }
+  | SwapDisabled
+
+// WHAT THE TYPED RECEIPT DOES NOT YET CARRY, NAMED RATHER THAN LEFT SILENT. The brief this
+// receipt was produced under asked for more per-beat facts than the carrier holds, and the gap is
+// stated here because an unstated gap reads as a claim of coverage. Every field below is either
+// PRINTED BY THE INSTRUMENT AND NOT TRANSCRIBED, or not observed at all -- and the difference
+// matters to whoever closes it, so it is recorded per field rather than as a sentence.
+//
+//   PSI pressure        printed for the LEAF on every beat's second line since 2026-09-22
+//                       (floor_cgroup_stat_beat pressure=), not carried
+//   oom_kill            printed on the same line as memory.events.local, not carried
+//   process overlap     OBSERVED since 2026-09-22 (the same line's procs=pid:comm:VmRSS), not
+//                       carried; it is a measurement obligation no longer, a transcription one now
+//
+// Leaf SWAP left this list on the same date: it is carried as FloorMemoryStatBeat.swap and read by
+// receipt_peak_reading_standing, which is the consumption this frontier's trigger asks for.
+//   wall and result     gunbc_floor_job_wall_receipt exists as its own row and is NOT joined to
+//                       the held-set receipt, so no reader can ask one object for both
+//   cold vs repeated    the receipts do not say which they are, so their accounting can be mixed
+//                       by a reader who does not check the run
+//
+// THE TRIGGER IS CONSUMPTION, NOT CARRIAGE, and that distinction is the whole reason this is a
+// frontier rather than a todo: a field added to FloorMemoryStatBeat that no fold reads would be
+// the dangling declaration DESIGN 3c refuses, and this module already carries one declared
+// frontier for exactly that reason.
+data floor_receipt_uncarried_observation_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: receipt_peak_reading_standing, or the fit fold in gunbc.runner_microvm that judges demand plus allowance against the cell remainder -- whichever of the two is the first to need a fact this receipt cannot currently state. TRIGGER: the field is CARRIED on FloorMemoryStatBeat or FloorHeldSetReceipt and READ by one of those folds, per field; a field carried and unread does not retire its line. SUFFICIENT FOR deleting the corresponding line above, and the row retires when every line has gone. NOT satisfied by printing the value in the job log -- PSI and oom_kill are printed today and that is precisely the state this row records. Process overlap's instrument now exists (floor_cgroup_stat_beat procs=), so its line is a transcription obligation like the others." as NonEmptyStr,
+)
+
+// run_completed MEANS THE MEASURED WORKLOAD RAN TO ITS END, NOT THAT THE FLOOR RETURNED CLEAN,
+// and the distinction decides a reading. Its consumer is receipt_peak_reading_standing, which asks
+// whether the peak could have been TRUNCATED -- a run that stopped early never reached whatever it
+// would have held later, so its maximum is a lower bound for that reason alone. A run whose
+// workload completed and whose VERDICT was a refusal is a different fact: the memory it held is
+// the memory it held, whatever any witness decided. Reading the field as "the floor was clean"
+// would mark every refusing run truncated and mask every other censoring cause behind it, which
+// is what it did to the 2026-09-21 receipt until this was stated.
 type FloorHeldSetReceipt {
   run_id: NonEmptyStr
   runner_unit: NonEmptyStr
@@ -305,6 +514,7 @@ type FloorHeldSetReceipt {
   beats_sampled: Int
   beats: List<FloorMemoryStatBeat>
   run_completed: Bool
+  swap_policy: RunSwapPolicy
 }
 
 // THE PEAK OVER A RUN'S BEATS, AS A COPRODUCT: the beat with the largest held set and that set's
@@ -344,8 +554,97 @@ fn receipt_peak_beat(r: FloorHeldSetReceipt) -> FloorMemoryStatBeat? {
   }
 }
 
+// WHICH SEAM ESTABLISHED THE PEAK, DERIVED FROM THE RECEIPT AND REFUSING WHERE IT CANNOT BE SAID.
+// The fold takes the peak beat the existing held-set fold already selects -- one derivation of
+// "the peak", not a second one -- and reports its seam, where until now that answer came from a
+// reader eyeballing which heartbeat line sat above which stat line.
+//
+// ITS CONSUMER IS A DECLARED FRONTIER, NOT AN EXECUTING ROUTE, AND SAYING SO IS THE POINT
+// (DESIGN 3c, review 69834). Today receipt_peak_seam and receipt_peak_reading_standing are
+// reached only by test.claim.floor_demand_witness_test. An earlier revision of this note named
+// the consumer as "a consumer asking what to reduce", which is a READER and not a route, and
+// carried no trigger -- so it claimed consumption it did not have. The frontier below states the
+// consumer and the change that lands it instead. The seam FIELD is a different matter and is
+// consumed now: the receipts carry it and the peak fold reads it, and the re-typed stall reaches
+// production through receipt_last_unstalled_beat into the guest cache allowance.
+//
+// IT REFUSES ON THE TWO NON-SEAM ARMS RATHER THAN NAMING THEM AS PHASES. A receipt whose peak beat
+// is SeamUnrecorded cannot attribute its peak at all, and saying so is the honest answer; the
+// alternative -- letting SeamUnrecorded flow out as though it were a phase -- would let a
+// pre-instrument receipt look attributed. The 2026-09-19 receipt is exactly that case, so this
+// function answers PeakSeamUnattributable for it today, which is a true statement about what that
+// run recorded rather than a defect in this fold.
+// THE REFUSAL CAUSE IS TYPED, NOT A SENTENCE, because the four ways a peak can fail to be
+// attributed are four different facts with four different remedies, and a reader who has to
+// parse prose to tell them apart is doing the same guessing this module exists to end (review
+// 69719). An earlier revision folded the seam through a Bool and could then only emit a
+// DISJUNCTIVE cause -- "sampled before the first seam, OR transcribed from a line without one" --
+// for a case where the arm is known exactly. Collapsing a known discriminator and then
+// apologising for it in the message is the absorbing fallback DESIGN 5 forbids, one layer up from
+// the positional join the seam field removes.
+//
+// PeakBeatSampledBeforeAnySeam is a live run whose first beat landed before any seam was entered:
+// the remedy is to read a later beat. PeakBeatSeamUnrecorded is a receipt transcribed from a
+// pre-instrument log: the remedy is a new run. ReceiptHasNoBeats is an unmeasured receipt.
+// ReceiptTorn carries the overflow from the beat whose held set does not sum. Different facts,
+// different remedies, no prose to parse.
+data floor_peak_attribution_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the reduction lane's before/after receipt, which states WHICH SEAM a landed reduction moved by evaluating receipt_peak_seam over the standing receipt on each side of the change -- the measurement gunbc.floor_demand exists to make possible and the reason the seam is carried at all. TRIGGER: the change that lands the first measured floor-memory reduction, whose receipt cites a PeakAttributedTo seam on both sides; that change reads these folds from a production declaration rather than from a claim. SUFFICIENT FOR deleting this row. NOT satisfied by another witness calling the folds, nor by a reader of the receipt's prose -- DESIGN 3c asks for a route by which a declaration reaches a consumer AT EXECUTION, and a claim is not that route. If the reduction lane instead derives its attribution some other way, these two folds and their cause vocabulary are unconsumed and are deleted rather than kept." as NonEmptyStr,
+)
+
+type PeakUnattributableCause
+  = PeakBeatSampledBeforeAnySeam { beat: Int }
+  | PeakBeatSeamUnrecorded { beat: Int }
+  | PeakBeatSeamUnreadable { beat: Int }
+  | PeakBeatSeamMovedDuringSample { beat: Int, before: NonEmptyStr, after: NonEmptyStr }
+  | ReceiptHasNoBeats
+  | ReceiptTorn { overflow: IntegerOverflow }
+
+type PeakSeamAttribution
+  = PeakAttributedTo { seam: FloorSeam, beat: Int, bytes: ByteSize }
+  | PeakSeamUnattributable { cause: PeakUnattributableCause }
+
+// THE MATCH IS ON THE PEAK BEAT'S SEAM DIRECTLY, so every arm of FloorSeam is answered here and
+// a new arm added to that coproduct cannot silently fall into either bucket -- it fails to
+// compile until this fold says which it is.
+fn receipt_peak_seam(r: FloorHeldSetReceipt) -> PeakSeamAttribution {
+  match receipt_held_set_peak(r: r) {
+    HeldSetPeakNoBeats => PeakSeamUnattributable { cause: ReceiptHasNoBeats }
+    HeldSetPeakUnrepresentable { cause: c } => PeakSeamUnattributable { cause: ReceiptTorn { overflow: c } }
+    HeldSetPeakAt { beat: b, bytes: v } =>
+      match b.seam {
+        SeamNotYetEntered => PeakSeamUnattributable { cause: PeakBeatSampledBeforeAnySeam { beat: b.beat } }
+        SeamUnrecorded => PeakSeamUnattributable { cause: PeakBeatSeamUnrecorded { beat: b.beat } }
+        SeamUnreadable => PeakSeamUnattributable { cause: PeakBeatSeamUnreadable { beat: b.beat } }
+        SeamMovedDuringSample { before: x, after: y } =>
+          PeakSeamUnattributable { cause: PeakBeatSeamMovedDuringSample { beat: b.beat, before: x, after: y } }
+        SeamLaneRoster => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamParse => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamDeclarations => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamFloorEntry => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamChangedWitnessPlanning => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamDiffBaseDeclCensus => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamDiffEdits => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamDiffChangedWitnessIdentities => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamDiffTouchedModuleSeeds => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamArmSetPlanning => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamInterfaceConsumerPlanning => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamNominalSubjectSeeds => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamPrepareClosureResolve => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamPreparedSubjectWarm => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamPublication => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamStrictPreparation => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamPublishedMockProjection => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamSiteProjection => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamDiscoveryAuthority => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamClaimScopeProjection => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamClaimEvaluationFold => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+      }
+  }
+}
+
 fn later_unstalled_before(peak: FloorMemoryStatBeat, a: FloorMemoryStatBeat, b: FloorMemoryStatBeat) -> FloorMemoryStatBeat {
-  if b.beat < peak.beat && events_per_minute_count(r: b.stall) == 0 && (b.beat > a.beat || !(a.beat < peak.beat && events_per_minute_count(r: a.stall) == 0)) { b } else { a }
+  if b.beat < peak.beat && beat_stall_is_zero(b: b) && (b.beat > a.beat || !(a.beat < peak.beat && beat_stall_is_zero(b: a))) { b } else { a }
 }
 
 // THE LAST UNSTALLED BEAT: the highest-numbered beat before the peak whose stall clause read zero.
@@ -356,7 +655,7 @@ fn receipt_last_unstalled_beat(r: FloorHeldSetReceipt) -> FloorMemoryStatBeat? {
     Absent => none
     Present { value: p } => {
       let best = fold(r.beats, init: p, f: (a, b) => later_unstalled_before(peak: p, a: a, b: b))
-      if best.beat < p.beat && events_per_minute_count(r: best.stall) == 0 { Present { value: best } } else { none }
+      if best.beat < p.beat && beat_stall_is_zero(b: best) { Present { value: best } } else { none }
     }
   }
 }
@@ -394,6 +693,15 @@ fn held_set_standing_of(receipt: FloorHeldSetReceipt, instrument: NonEmptyStr) -
 // charge ceiling -- the kernel was still holding the workload -- but on the axis reclaim cannot
 // answer. Beat 13 is the last unstalled beat: 24736395264 bytes anonymous beside 1895120896 bytes
 // of file at zero stall, one minute before the cache squeezed to 13 MiB.
+//
+// EVERY BEAT HERE IS SeamUnrecorded, AND THAT IS A FACT ABOUT THE RUN RATHER THAN A GAP IN THE
+// TRANSCRIPTION. This run predates the seam field on the stat line, so the lines it was read from
+// carried no seam at all and there is nothing to transcribe; receipt_peak_seam therefore answers
+// PeakSeamUnattributable for it. WHAT THAT COSTS IS THE POINT: this receipt sizes the Work's
+// memory minimum, the microVM guest shape and the fit stall, and it cannot say which phase
+// established the figure it sizes them with -- so nothing derived from it can name a reduction.
+// A dated successor taken under the seam-carrying instrument is what closes that, and until one
+// exists the demand below is a number without an attributable cause.
 data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeldSetReceipt {
   run_id: "35419304682",
   runner_unit: "actions-runner@srv4-04.service",
@@ -401,35 +709,706 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
   beats_sampled: 16,
   beats: [
     FloorMemoryStatBeat {
-      beat: 12, charge: byte_size(24022126592),
+      beat: 12, seam: SeamUnrecorded, charge: byte_size(24022126592),
       anon: byte_size(21794160640), file: byte_size(2022780928), shmem: byte_size(51593216), unevictable: byte_size(0),
       slab_unreclaimable: byte_size(1560576), slab_reclaimable: byte_size(156761160), kernel_stack: byte_size(1097728),
       pagetables: byte_size(44994560), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(0),
-      stall: events_per_minute(count: 0),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
     },
     FloorMemoryStatBeat {
-      beat: 13, charge: byte_size(26838556672),
+      beat: 13, seam: SeamUnrecorded, charge: byte_size(26838556672),
       anon: byte_size(24736395264), file: byte_size(1895120896), shmem: byte_size(51609600), unevictable: byte_size(0),
       slab_unreclaimable: byte_size(1574544), slab_reclaimable: byte_size(153271000), kernel_stack: byte_size(1114112),
       pagetables: byte_size(50749440), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(0),
-      stall: events_per_minute(count: 0),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
     },
     FloorMemoryStatBeat {
-      beat: 14, charge: byte_size(26841255936),
+      beat: 14, seam: SeamUnrecorded, charge: byte_size(26841255936),
       anon: byte_size(26664632320), file: byte_size(13160448), shmem: byte_size(3547136), unevictable: byte_size(0),
       slab_unreclaimable: byte_size(1560576), slab_reclaimable: byte_size(103120256), kernel_stack: byte_size(1097728),
       pagetables: byte_size(54919168), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(0),
-      stall: events_per_minute(count: 6),
+      stall: StallRead { rate: events_per_minute(count: 6) }, swap: SwapUnread,
     },
     FloorMemoryStatBeat {
-      beat: 15, charge: byte_size(26843291648),
+      beat: 15, seam: SeamUnrecorded, charge: byte_size(26843291648),
       anon: byte_size(26578046976), file: byte_size(28610560), shmem: byte_size(13893632), unevictable: byte_size(0),
       slab_unreclaimable: byte_size(1591640), slab_reclaimable: byte_size(103131208), kernel_stack: byte_size(1146880),
       pagetables: byte_size(54964224), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(0),
-      stall: events_per_minute(count: 66940),
+      stall: StallRead { rate: events_per_minute(count: 66940) }, swap: SwapUnread,
     },
   ],
   run_completed: false,
+  swap_policy: SwapMaxDeclaredUnread {
+    declared: byte_size(34359738368),
+    declaring_authority: "gunbc.runner_slot_allocation gunbc_runner_slot_desired memory_swap_max",
+  },
+}
+
+// THE DATED SUCCESSOR, AND THE FIRST RECEIPT THAT CAN NAME THE SEAM ITS PEAK WAS ESTABLISHED IN
+// (this change's own CI run 35652545009, job 106508550698, srv3-01, 2026-09-21, twenty-three beats
+// at sixty seconds, every beat derived from its own `[floor-cgroup] seam= stall_per_min=` line by
+// the instrument rather than joined to a neighbouring line by a reader). It supersedes
+// gunbc_floor_memory_stat_receipt_2026_09_19 as gunbc_floor_held_set_standing's input; that
+// receipt is RETAINED, not deleted, because it is the evidence the 26/25 GiB row was argued from
+// and a superseded reading is history rather than a mistake.
+//
+// WHAT IT SHOWS, AND IT IS NOT WHAT A PEAK SNAPSHOT WOULD HAVE SAID -- the SHAPE of the rows
+// below, which is the part a reader cannot get by looking up one number. receipt_peak_seam names
+// the peak's seam: it is in the claim-evaluation fold. But the held set rises MONOTONICALLY across
+// every preparation beat and never falls, so almost all of the peak is built before the fold
+// begins and is still held while the fold runs; the fold adds a comparatively small working set on
+// top. The peak SEAM and the demand's CAUSE are therefore different answers, and a reduction aimed
+// at the seam where the maximum occurs would chase the smaller term. The retained preparation set
+// is the subject.
+//
+// IT IS NOT A CACHE STORY AND THE ROWS SAY SO DIRECTLY rather than by inference: the file counter
+// is FLAT across every preparation beat and then FALLS during the fold. That is reclaim giving the
+// cache back to make room for anonymous memory, which is the opposite of cache accumulation -- a
+// direction, readable off the rows, that no single beat could establish.
+//
+// PROCESS OVERLAP IS NOT RULED OUT BY THESE ROWS AND MUST NOT BE SAID TO BE. The anonymous set
+// falling after the peak is CONSISTENT with the fold releasing retained state, but consistency is
+// not discrimination: these counters are per-cgroup totals and say nothing about which processes
+// held what, so no reading here separates one process growing from two overlapping. Overlap is
+// recorded as UNOBSERVED in floor_receipt_uncarried_observation_frontier, and its line there names
+// a missing INSTRUMENT rather than a missing transcription. The cache arm is excluded by the rows;
+// the overlap arm is simply not measured, and those are different states.
+//
+// SWITCHING THE STANDING MOVES TWO DERIVED QUANTITIES, NOT ONE, and the second is easy to miss
+// because nothing reds when it changes. The demand is the obvious one: floor_memory_requirement
+// reads this receipt's peak. The other is the GUEST CACHE ALLOWANCE -- gunbc.runner_microvm
+// gunbc_runner_microvm_guest_cache_allowance derives it from receipt_last_unstalled_beat, which
+// selects a different beat on this receipt than on its predecessor, so the allowance moves with
+// the standing and in the opposite direction to the demand.
+//
+// THE PRODUCERS ARE NAMED AND THE FIGURES ARE NOT COPIED HERE (DESIGN 6; review 69874). An earlier
+// revision of this note carried both moves as byte counts, which is the same defect this change
+// REMOVES from gunbc.runner_microvm's allowance note one file over -- deleting a transcribed beat
+// figure there and minting transcribed figures here would have moved the rot rather than ending
+// it, and the next standing switch would falsify these sentences exactly as it falsified that one.
+// Each quantity lives in its one home: the demand in this receipt's rows through
+// floor_memory_requirement, the allowance in gunbc_runner_microvm_guest_cache_allowance, the
+// remainder comparison in the shape-fit fold and its expecting-red probe.
+//
+// WHY THE CONSEQUENCE IS STATED AT ALL, given the figures are not: every claim over these
+// quantities is derivation-relative and stays green through the change -- including the production
+// shape's expecting-red probe, which still refuses, by a narrower margin than before. A quantity
+// that moves a fleet's sizing without reddening anything is exactly the change that lands
+// unnoticed, so the FACT that it moves is named at the row that moves it, and a reader who wants
+// the margin evaluates the fold.
+//
+// ITS WORKLOAD RAN TO ITS END, WHICH IS WHY run_completed IS TRUE ON A RUN THAT REFUSED. The
+// floor executed preparation and the whole claim-evaluation fold -- twenty-three beats, the
+// anonymous set rising to its peak and falling again as the fold released scopes -- and the
+// refusal came afterwards, from an unrelated lane (a local-repo wet terminal in
+// test.claim.mtcollins1_census_image_local_wet, a module this change does not touch). The peak is
+// therefore not truncated, which is the only question that field's consumer asks.
+//
+// STILL CENSORED, AND THE POLICY IS WHY. This ran at the live 26/25 GiB row with swap available,
+// and its own rows record the consequence: the peak beat's stall is NON-ZERO and the stalls rise
+// steeply across the beats after it, while the run's heartbeat shows host swap-in climbing. So
+// this receipt's peak is a LOWER BOUND on what the run wanted to hold, for the same reason the
+// 2026-09-19 figure was -- and receipt_peak_reading_standing DERIVES exactly that, answering
+// PeakIsLowerBound with the stalling peak beat as its cause rather than leaving a reader to
+// compare stall figures by eye. A cell whose MemoryHigh sits under the workload cannot
+// produce an uncensored demand reading by construction; only a run with no throttle line and no
+// swap can, which is the shape gunbc.runner_slot_allocation's shakedown slot declares and which
+// nothing can dispatch yet.
+data gunbc_floor_memory_stat_receipt_2026_09_21: FloorHeldSetReceipt = FloorHeldSetReceipt {
+  run_id: "35652545009",
+  runner_unit: "actions-runner@srv3-01.service",
+  beat_cadence: second(count: 60),
+  beats_sampled: 23,
+  beats: [
+    FloorMemoryStatBeat {
+      beat: 1, seam: SeamStrictPreparation, charge: byte_size(11185754112),
+      anon: byte_size(8961531904), file: byte_size(2043817984), shmem: byte_size(51085312), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1582592), slab_reclaimable: byte_size(157446672), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(19910656), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 2, seam: SeamStrictPreparation, charge: byte_size(12275265536),
+      anon: byte_size(10043535360), file: byte_size(2043871232), shmem: byte_size(51138560), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1574952), slab_reclaimable: byte_size(157440112), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(22028288), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 3, seam: SeamStrictPreparation, charge: byte_size(13392121856),
+      anon: byte_size(11163262976), file: byte_size(2044014592), shmem: byte_size(51277824), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1583464), slab_reclaimable: byte_size(157441264), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(24211456), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 4, seam: SeamStrictPreparation, charge: byte_size(15344836608),
+      anon: byte_size(13111832576), file: byte_size(2044022784), shmem: byte_size(51286016), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1582832), slab_reclaimable: byte_size(157441264), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(28033024), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 5, seam: SeamStrictPreparation, charge: byte_size(17292402688),
+      anon: byte_size(15055400960), file: byte_size(2044108800), shmem: byte_size(51347456), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1573992), slab_reclaimable: byte_size(157443376), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(31842304), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 6, seam: SeamStrictPreparation, charge: byte_size(18595463168),
+      anon: byte_size(16355950592), file: byte_size(2044157952), shmem: byte_size(51392512), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1573960), slab_reclaimable: byte_size(157438224), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(34381824), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 7, seam: SeamStrictPreparation, charge: byte_size(18599772160),
+      anon: byte_size(16360341504), file: byte_size(2044280832), shmem: byte_size(51515392), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1573776), slab_reclaimable: byte_size(157438248), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(34385920), percpu: byte_size(18720), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 8, seam: SeamStrictPreparation, charge: byte_size(19048484864),
+      anon: byte_size(16803909632), file: byte_size(2044297216), shmem: byte_size(51527680), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1587176), slab_reclaimable: byte_size(157438248), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(35262464), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 9, seam: SeamStrictPreparation, charge: byte_size(20070260736),
+      anon: byte_size(17827561472), file: byte_size(2044411904), shmem: byte_size(51621888), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1577264), slab_reclaimable: byte_size(157438072), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(37261312), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 10, seam: SeamStrictPreparation, charge: byte_size(20550725632),
+      anon: byte_size(18306572288), file: byte_size(2044424192), shmem: byte_size(51630080), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1583520), slab_reclaimable: byte_size(157442568), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(38203392), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 11, seam: SeamStrictPreparation, charge: byte_size(21960060928),
+      anon: byte_size(19708301312), file: byte_size(2044444672), shmem: byte_size(51634176), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1579216), slab_reclaimable: byte_size(157441320), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(40943616), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 12, seam: SeamStrictPreparation, charge: byte_size(23149056000),
+      anon: byte_size(20900843520), file: byte_size(2044465152), shmem: byte_size(51646464), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1574240), slab_reclaimable: byte_size(157424984), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(43278336), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 13, seam: SeamStrictPreparation, charge: byte_size(25035067392),
+      anon: byte_size(22782615552), file: byte_size(2044473344), shmem: byte_size(51654656), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1574240), slab_reclaimable: byte_size(157419320), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(46960640), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 14, seam: SeamStrictPreparation, charge: byte_size(26838876160),
+      anon: byte_size(24602337280), file: byte_size(2024910848), shmem: byte_size(51752960), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1579160), slab_reclaimable: byte_size(156877352), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(50524160), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 15, seam: SeamDiscoveryAuthority, charge: byte_size(26655379456),
+      anon: byte_size(25149386752), file: byte_size(1313783808), shmem: byte_size(51773440), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1570608), slab_reclaimable: byte_size(137433480), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(51597312), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 16, seam: SeamClaimEvaluationFold, charge: byte_size(26436517888),
+      anon: byte_size(25567625216), file: byte_size(692260864), shmem: byte_size(51789824), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1589856), slab_reclaimable: byte_size(120442472), kernel_stack: byte_size(1130496),
+      pagetables: byte_size(52424704), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(249856),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 17, seam: SeamClaimEvaluationFold, charge: byte_size(26437210112),
+      anon: byte_size(25567625216), file: byte_size(692744192), shmem: byte_size(51830784), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1580688), slab_reclaimable: byte_size(120452424), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(52424704), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(16384),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 18, seam: SeamClaimEvaluationFold, charge: byte_size(26592014336),
+      anon: byte_size(26053128192), file: byte_size(343584768), shmem: byte_size(27901952), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(2308664), slab_reclaimable: byte_size(110820952), kernel_stack: byte_size(1785856),
+      pagetables: byte_size(57630720), percpu: byte_size(54080), sock: byte_size(0), file_dirty: byte_size(44122112),
+      stall: StallRead { rate: events_per_minute(count: 11) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 19, seam: SeamClaimEvaluationFold, charge: byte_size(26263699456),
+      anon: byte_size(25416802304), file: byte_size(529440768), shmem: byte_size(33964032), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1773232), slab_reclaimable: byte_size(118102616), kernel_stack: byte_size(1245184),
+      pagetables: byte_size(55615488), percpu: byte_size(20800), sock: byte_size(0), file_dirty: byte_size(8871936),
+      stall: StallRead { rate: events_per_minute(count: 77) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 20, seam: SeamClaimEvaluationFold, charge: byte_size(26273968128),
+      anon: byte_size(25484472320), file: byte_size(475832320), shmem: byte_size(17645568), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1833776), slab_reclaimable: byte_size(116499168), kernel_stack: byte_size(1261568),
+      pagetables: byte_size(57765888), percpu: byte_size(20800), sock: byte_size(0), file_dirty: byte_size(13905920),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 21, seam: SeamClaimEvaluationFold, charge: byte_size(25807028224),
+      anon: byte_size(24980123648), file: byte_size(505786368), shmem: byte_size(19877888), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1972432), slab_reclaimable: byte_size(117167056), kernel_stack: byte_size(1540096),
+      pagetables: byte_size(64090112), percpu: byte_size(20800), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 22, seam: SeamClaimEvaluationFold, charge: byte_size(22858387456),
+      anon: byte_size(22282010624), file: byte_size(282931200), shmem: byte_size(21065728), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1613672), slab_reclaimable: byte_size(108947520), kernel_stack: byte_size(1130496),
+      pagetables: byte_size(52998144), percpu: byte_size(22880), sock: byte_size(0), file_dirty: byte_size(28672),
+      stall: StallRead { rate: events_per_minute(count: 3225) }, swap: SwapUnread,
+    },
+    FloorMemoryStatBeat {
+      beat: 23, seam: SeamClaimEvaluationFold, charge: byte_size(22990053376),
+      anon: byte_size(22406950912), file: byte_size(285155328), shmem: byte_size(22683648), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1765224), slab_reclaimable: byte_size(109118600), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(53231616), percpu: byte_size(37440), sock: byte_size(0), file_dirty: byte_size(32768),
+      stall: StallRead { rate: events_per_minute(count: 251) }, swap: SwapUnread,
+    },
+  ],
+  run_completed: true,
+  swap_policy: SwapMaxDeclaredUnread {
+    declared: byte_size(34359738368),
+    declaring_authority: "gunbc.runner_slot_allocation gunbc_runner_slot_desired memory_swap_max",
+  },
+}
+
+// MAY THIS RECEIPT'S PEAK BE READ AS A DEMAND, OR ONLY AS A LOWER BOUND? This is the question
+// the swap policy exists to answer, and the reason the policy is carried on the receipt rather
+// than described beside it. The rule the corpus already applies to a CHARGE at its throttle line
+// -- a pinned reading says "at least this much" and nothing about how far past it the workload
+// wanted to go -- applies to a HELD SET on the swap axis for the same reason, and neither the
+// 2026-09-19 nor the 2026-09-21 receipt escapes it.
+//
+// THE ORDER IS SEVERITY, NOT CONVENIENCE, and the first matching cause is the one reported: a run
+// that did not finish never reached whatever it would have held later; a peak beat already
+// stalling was being held by reclaim when it was sampled; and swap merely AVAILABLE is enough to
+// censor, because anonymous pages the workload still wants can leave residency without the
+// workload failing. Only a completed run, whose peak beat was not stalling, under a policy that
+// cannot spill, reads a demand.
+type PeakLowerBoundCause
+  = RunDidNotComplete
+  | PeakBeatWasStalling { beat: Int, stall: BeatStall }
+  | PeakBeatStallUnread { beat: Int }
+  | SwapCouldAbsorbAnonymousPages { declared_swap_max: ByteSize }
+  | SwapPolicyIsRead { swap_max: ByteSize }
+  | SwapHeldPagesAtPeak { beat: Int, swapped: ByteSize }
+
+// THE SUCCESSFUL ARM IS NAMED FOR WHAT IT ESTABLISHES, WHICH IS NOT EXACT DEMAND. It used to be
+// called PeakIsDemand, and that name asserted past its evidence in the way DESIGN 4d forbids: the
+// arm is reached when the workload completed, the SAMPLED peak showed no stall, and swap either
+// could not spill or, read on the leaf at the peak beat, held none of its pages. Those remove two CENSORING mechanisms -- they do not make a sampled maximum the true
+// maximum. memory.stat carries no high-water counter, so this receipt's peak is the largest value
+// a PERIODIC sample caught, and a spike that rose and fell between two beats is invisible to it.
+// This module's own beat-cadence note has said exactly that from the start; the fold promoted
+// past it anyway, and the ARM NAME was the assertion, because a later reader consumes an arm
+// called PeakIsDemand as a fact rather than as the bet it is.
+//
+// SO EVERY ARM OF THIS TYPE IS A LOWER BOUND, and they differ only in WHY. The uncensored arm is
+// the strongest reading available from this instrument and it is still a floor on demand. An
+// exact-demand standing would need a persistent high-water observation of the same held-set
+// quantity, or some other construction that cannot miss an intermediate maximum; neither exists
+// here, so neither is claimed.
+type PeakReadingStanding
+  = PeakIsUncensoredSampledMaximum
+  | PeakIsLowerBound { cause: PeakLowerBoundCause }
+  | PeakUnreadable { cause: PeakUnattributableCause }
+
+// MATCHES receipt_held_set_peak DIRECTLY, not receipt_peak_beat, and the difference is a false
+// cause. receipt_peak_beat collapses HeldSetPeakUnrepresentable into Absent, so routing through it
+// reported a TORN receipt as ReceiptHasNoBeats -- a located diagnostic naming a fact that is not
+// true of a receipt which plainly has beats, and it left ReceiptTorn unreachable from this fold
+// entirely (review 69767). That is this module's own stated bar turned against it: four causes,
+// four different remedies, and a cause naming the wrong thing is worse than an unlocated one.
+fn receipt_peak_reading_standing(r: FloorHeldSetReceipt) -> PeakReadingStanding {
+  match receipt_held_set_peak(r: r) {
+    HeldSetPeakNoBeats => PeakUnreadable { cause: ReceiptHasNoBeats }
+    HeldSetPeakUnrepresentable { cause: c } => PeakUnreadable { cause: ReceiptTorn { overflow: c } }
+    HeldSetPeakAt { beat: b, bytes: _ } =>
+      if !r.run_completed {
+        PeakIsLowerBound { cause: RunDidNotComplete }
+      } else {
+        if beat_stall_is_positive(b: b) {
+          PeakIsLowerBound { cause: PeakBeatWasStalling { beat: b.beat, stall: b.stall } }
+        } else if !beat_stall_is_zero(b: b) {
+          PeakIsLowerBound { cause: PeakBeatStallUnread { beat: b.beat } }
+        } else {
+          match b.swap {
+            SwapRead { bytes: sw } =>
+              if byte_size_count(b: sw) == 0 {
+                PeakIsUncensoredSampledMaximum
+              } else {
+                PeakIsLowerBound { cause: SwapHeldPagesAtPeak { beat: b.beat, swapped: sw } }
+              }
+            SwapUnread => peak_standing_from_swap_policy(policy: r.swap_policy)
+          }
+        }
+      }
+  }
+}
+
+// WITH NO LEAF SWAP READING, THE POLICY IS ALL THERE IS TO JUDGE BY: a slot that cannot swap
+// cannot have spilled, and a slot that can -- declared or read -- might have, so the peak stands
+// as a lower bound naming which. This was the whole rule until beats carried the leaf's own swap.
+fn peak_standing_from_swap_policy(policy: RunSwapPolicy) -> PeakReadingStanding {
+  match policy {
+    SwapDisabled => PeakIsUncensoredSampledMaximum
+    SwapMaxRead { swap_max: m } =>
+      if byte_size_count(b: m) == 0 { PeakIsUncensoredSampledMaximum } else { PeakIsLowerBound { cause: SwapPolicyIsRead { swap_max: m } } }
+    SwapMaxDeclaredUnread { declared: d, declaring_authority: _ } =>
+      PeakIsLowerBound { cause: SwapCouldAbsorbAnonymousPages { declared_swap_max: d } }
+  }
+}
+
+// THE 2026-09-23 RECEIPT, SUCCESSOR TO gunbc_floor_memory_stat_receipt_2026_09_21, FROM THE FIRST RUN
+// WHOSE BEATS CARRY A READING AT EVERY PHASE BOUNDARY AND THE LEAF'S OWN SWAP (required-floor run
+// 35815214135, job 107035188664, runner unit actions-runner@srv4-14.service, a pull_request run of
+// gunbc#12088 at 7c97cb2b62). WHAT IT MEASURES IS A COMBINED BASE, and the base is named so a reader
+// cannot credit either change with the other's share: main after gunbc#12081 (the floor reads the
+// corpus once for both prepares) plus gunbc#12088 (the diff observer resolves gunbc.ci_diff_policy
+// instead of the whole CI spec), with gunbc#12078's instrument.
+//
+// ROWS ARE EVERY stat beat the run printed, in the order printed, and `beat` is the SAMPLE'S ORDINAL in
+// that order -- not the watchdog's minute count, because seam beats sit between watchdog beats and
+// later_unstalled_before orders by this field. The instrument's `when=` token for each ordinal, so
+// a row can be joined back to its line in the job log (annotations are module-item grain, DESIGN
+// 4c, so the mapping lives here and not beside the rows):
+//   1=seam-lane-roster, 2=seam-parse, 3=seam-declarations, 4=seam-floor-entry, 5=floor-entry,
+//   6=seam-strict-preparation, 7=seam-changed-witness-planning, 8=seam-diff-base-decl-census,
+//   9=seam-diff-edits, 10=beat-1, 11=seam-diff-changed-witness-identities,
+//   12=seam-diff-touched-module-seeds, 13=seam-arm-set-planning (the pre-gunbc#12130 token,
+//   SeamArmSetPlanning -- see floor_seam_tokens), 14=beat-2,
+//   15=seam-nominal-subject-seeds, 16=beat-3, 17=beat-4, 18=seam-prepare-closure-resolve,
+//   19=beat-5, 20=beat-6, 21=beat-7, 22=beat-8, 23=beat-9, 24=beat-10,
+//   25=seam-prepared-subject-warm, 26=seam-published-mock-projection, 27=seam-site-projection,
+//   28=seam-discovery-authority, 29=beat-11, 30=beat-12, 31=seam-claim-scope-projection,
+//   32=seam-claim-evaluation-fold, 33=beat-13, 34=beat-14, 35=seam-publication, 36=beat-15,
+//   37=beat-16, 38=beat-17, 39=beat-18, 40=beat-19
+// Seam beats close no stall window and so carry StallUnread; every row read its leaf
+// memory.swap.current.
+//
+// WHAT IT ESTABLISHES, BY ITS OWN FOLDS rather than by a sentence here: receipt_peak_reading_standing
+// answers PeakIsUncensoredSampledMaximum -- the workload ran to its end, the peak beat read a zero
+// stall, and its leaf swap read zero, so neither censoring mechanism the 2026-09-19 and 2026-09-21
+// readings carried was acting at the peak. That is still a SAMPLED maximum and a lower bound on true
+// demand (PeakReadingStanding's own note), at 60 s cadence plus the seam beats.
+//
+// WHAT IT DOES NOT ESTABLISH. It is ONE WARM REPEATED run on a CI host slot -- the job's toolchain
+// build hit the shared compilation cache -- so it says nothing about a cold attempt, whose accounting
+// is gunbc.floor_cold_build_receipt's and is not mixed in here. It ran at the host slot's 26 GiB row,
+// not at the 28 GiB shakedown slot, and not in a fresh attempt cgroup: the leaf is the runner
+// service's own, whose memory.peak is history, which is why this receipt carries memory.stat beats
+// and never that peak. The slot's MemorySwapMax is declared, not read, and stated as such below --
+// the peak's standing does not rest on it, because the leaf's own swap was read at the peak.
+data gunbc_floor_memory_stat_receipt_2026_09_23: FloorHeldSetReceipt = FloorHeldSetReceipt {
+  run_id: "35815214135",
+  runner_unit: "actions-runner@srv4-14.service",
+  beat_cadence: second(count: 60),
+  beats_sampled: 40,
+  beats: [
+    FloorMemoryStatBeat {
+      beat: 1, seam: SeamLaneRoster, charge: byte_size(2310430720),
+      anon: byte_size(103022592), file: byte_size(2038042624), shmem: byte_size(48451584), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1674920), slab_reclaimable: byte_size(157784800), kernel_stack: byte_size(1130496),
+      pagetables: byte_size(2318336), percpu: byte_size(43680), sock: byte_size(0), file_dirty: byte_size(157601792),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 2, seam: SeamParse, charge: byte_size(8632606720),
+      anon: byte_size(6418354176), file: byte_size(2038923264), shmem: byte_size(49307648), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1578048), slab_reclaimable: byte_size(157629528), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(14729216), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 3, seam: SeamDeclarations, charge: byte_size(11707510784),
+      anon: byte_size(9481793536), file: byte_size(2039083008), shmem: byte_size(49446912), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1617728), slab_reclaimable: byte_size(157622848), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(20905984), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(12288),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 4, seam: SeamFloorEntry, charge: byte_size(10091241472),
+      anon: byte_size(7873503232), file: byte_size(2039132160), shmem: byte_size(49508352), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1580480), slab_reclaimable: byte_size(157576328), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(17883136), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(24576),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 5, seam: SeamFloorEntry, charge: byte_size(10091139072),
+      anon: byte_size(7873503232), file: byte_size(2039132160), shmem: byte_size(49508352), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1580480), slab_reclaimable: byte_size(157576328), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(17883136), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(24576),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 6, seam: SeamStrictPreparation, charge: byte_size(10091413504),
+      anon: byte_size(7873503232), file: byte_size(2039132160), shmem: byte_size(49508352), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1580480), slab_reclaimable: byte_size(157576328), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(17883136), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(24576),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 7, seam: SeamChangedWitnessPlanning, charge: byte_size(10091196416),
+      anon: byte_size(7873503232), file: byte_size(2039132160), shmem: byte_size(49508352), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1580480), slab_reclaimable: byte_size(157576328), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(17883136), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(24576),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 8, seam: SeamDiffBaseDeclCensus, charge: byte_size(10091798528),
+      anon: byte_size(7873523712), file: byte_size(2039156736), shmem: byte_size(49508352), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1627056), slab_reclaimable: byte_size(157566808), kernel_stack: byte_size(1130496),
+      pagetables: byte_size(17883136), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 9, seam: SeamDiffEdits, charge: byte_size(10094260224),
+      anon: byte_size(7873798144), file: byte_size(2039177216), shmem: byte_size(49508352), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1593832), slab_reclaimable: byte_size(157574776), kernel_stack: byte_size(1130496),
+      pagetables: byte_size(17883136), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(28672),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 10, seam: SeamDiffEdits, charge: byte_size(11720204288),
+      anon: byte_size(9499107328), file: byte_size(2039197696), shmem: byte_size(49528832), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1581208), slab_reclaimable: byte_size(157564680), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(21065728), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 11, seam: SeamDiffChangedWitnessIdentities, charge: byte_size(13058760704),
+      anon: byte_size(10835091456), file: byte_size(2039205888), shmem: byte_size(49528832), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1588208), slab_reclaimable: byte_size(157567592), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(23678976), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 12, seam: SeamDiffTouchedModuleSeeds, charge: byte_size(13060079616),
+      anon: byte_size(10835091456), file: byte_size(2039205888), shmem: byte_size(49528832), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1588208), slab_reclaimable: byte_size(157567592), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(23678976), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 13, seam: SeamArmSetPlanning, charge: byte_size(13060341760),
+      anon: byte_size(10835091456), file: byte_size(2039205888), shmem: byte_size(49528832), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1588208), slab_reclaimable: byte_size(157567592), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(23678976), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 14, seam: SeamArmSetPlanning, charge: byte_size(13061341184),
+      anon: byte_size(10837573632), file: byte_size(2039308288), shmem: byte_size(49614848), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1587448), slab_reclaimable: byte_size(157569328), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(23683072), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 15, seam: SeamNominalSubjectSeeds, charge: byte_size(13074247680),
+      anon: byte_size(10841444352), file: byte_size(2039558144), shmem: byte_size(49844224), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1654096), slab_reclaimable: byte_size(157566768), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(23691264), percpu: byte_size(43680), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 16, seam: SeamNominalSubjectSeeds, charge: byte_size(13065314304),
+      anon: byte_size(10841444352), file: byte_size(2039558144), shmem: byte_size(49844224), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1586432), slab_reclaimable: byte_size(157569208), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(23691264), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 17, seam: SeamNominalSubjectSeeds, charge: byte_size(13416562688),
+      anon: byte_size(11190599680), file: byte_size(2040041472), shmem: byte_size(50323456), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1580240), slab_reclaimable: byte_size(157571688), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(24383488), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 18, seam: SeamPrepareClosureResolve, charge: byte_size(14497591296),
+      anon: byte_size(12268060672), file: byte_size(2040070144), shmem: byte_size(50335744), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1589216), slab_reclaimable: byte_size(157566544), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(26492928), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 19, seam: SeamPrepareClosureResolve, charge: byte_size(14497411072),
+      anon: byte_size(12268470272), file: byte_size(2040082432), shmem: byte_size(50343936), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1598648), slab_reclaimable: byte_size(157568384), kernel_stack: byte_size(1130496),
+      pagetables: byte_size(26492928), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(0),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 20, seam: SeamPrepareClosureResolve, charge: byte_size(14779232256),
+      anon: byte_size(12550217728), file: byte_size(2040107008), shmem: byte_size(50348032), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1577848), slab_reclaimable: byte_size(157552568), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(27045888), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 21, seam: SeamPrepareClosureResolve, charge: byte_size(16054923264),
+      anon: byte_size(13821698048), file: byte_size(2040172544), shmem: byte_size(50409472), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1588640), slab_reclaimable: byte_size(157548784), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(29536256), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 22, seam: SeamPrepareClosureResolve, charge: byte_size(17164558336),
+      anon: byte_size(14930845696), file: byte_size(2040197120), shmem: byte_size(50429952), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1591512), slab_reclaimable: byte_size(157537928), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(31703040), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 23, seam: SeamPrepareClosureResolve, charge: byte_size(18063069184),
+      anon: byte_size(15827730432), file: byte_size(2040225792), shmem: byte_size(50442240), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1598384), slab_reclaimable: byte_size(157522880), kernel_stack: byte_size(1130496),
+      pagetables: byte_size(33460224), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(0),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 24, seam: SeamPrepareClosureResolve, charge: byte_size(21081182208),
+      anon: byte_size(18839920640), file: byte_size(2040233984), shmem: byte_size(50446336), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1583936), slab_reclaimable: byte_size(157503600), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(39350272), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 25, seam: SeamPreparedSubjectWarm, charge: byte_size(21536653312),
+      anon: byte_size(19293245440), file: byte_size(2040266752), shmem: byte_size(50458624), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1594968), slab_reclaimable: byte_size(157490992), kernel_stack: byte_size(1130496),
+      pagetables: byte_size(40239104), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 26, seam: SeamPublishedMockProjection, charge: byte_size(21535166464),
+      anon: byte_size(19293597696), file: byte_size(2040295424), shmem: byte_size(50458624), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1605928), slab_reclaimable: byte_size(157495848), kernel_stack: byte_size(1146880),
+      pagetables: byte_size(40239104), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 27, seam: SeamSiteProjection, charge: byte_size(21535678464),
+      anon: byte_size(19293597696), file: byte_size(2040311808), shmem: byte_size(50458624), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1605888), slab_reclaimable: byte_size(157495848), kernel_stack: byte_size(1146880),
+      pagetables: byte_size(40239104), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(20480),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 28, seam: SeamDiscoveryAuthority, charge: byte_size(21535424512),
+      anon: byte_size(19293597696), file: byte_size(2040311808), shmem: byte_size(50458624), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1596416), slab_reclaimable: byte_size(157495848), kernel_stack: byte_size(1130496),
+      pagetables: byte_size(40239104), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(24576),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 29, seam: SeamDiscoveryAuthority, charge: byte_size(21616402432),
+      anon: byte_size(19374346240), file: byte_size(2040315904), shmem: byte_size(50458624), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1600648), slab_reclaimable: byte_size(157496296), kernel_stack: byte_size(1130496),
+      pagetables: byte_size(40394752), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(0),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 30, seam: SeamDiscoveryAuthority, charge: byte_size(22198198272),
+      anon: byte_size(19954577408), file: byte_size(2040356864), shmem: byte_size(50483200), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1588192), slab_reclaimable: byte_size(157486920), kernel_stack: byte_size(1097728),
+      pagetables: byte_size(41549824), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 31, seam: SeamClaimScopeProjection, charge: byte_size(22442569728),
+      anon: byte_size(20198383616), file: byte_size(2040569856), shmem: byte_size(50487296), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1591240), slab_reclaimable: byte_size(157480840), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(42139648), percpu: byte_size(18720), sock: byte_size(0), file_dirty: byte_size(212992),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 32, seam: SeamClaimEvaluationFold, charge: byte_size(22442569728),
+      anon: byte_size(20198383616), file: byte_size(2040569856), shmem: byte_size(50487296), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1591240), slab_reclaimable: byte_size(157480840), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(42139648), percpu: byte_size(18720), sock: byte_size(0), file_dirty: byte_size(212992),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 33, seam: SeamClaimEvaluationFold, charge: byte_size(22442307584),
+      anon: byte_size(20198383616), file: byte_size(2040832000), shmem: byte_size(50524160), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1597056), slab_reclaimable: byte_size(157480456), kernel_stack: byte_size(1130496),
+      pagetables: byte_size(42139648), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(28672),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 34, seam: SeamClaimEvaluationFold, charge: byte_size(22443569152),
+      anon: byte_size(20197801984), file: byte_size(2041438208), shmem: byte_size(50704384), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1610792), slab_reclaimable: byte_size(157498520), kernel_stack: byte_size(1146880),
+      pagetables: byte_size(42143744), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(0),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 35, seam: SeamPublication, charge: byte_size(21825122304),
+      anon: byte_size(19577827328), file: byte_size(2041593856), shmem: byte_size(50704384), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1611096), slab_reclaimable: byte_size(157501992), kernel_stack: byte_size(1146880),
+      pagetables: byte_size(42156032), percpu: byte_size(16640), sock: byte_size(8192), file_dirty: byte_size(24576),
+      stall: StallUnread, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 36, seam: SeamPublication, charge: byte_size(23540035584),
+      anon: byte_size(21023707136), file: byte_size(2274979840), shmem: byte_size(50724864), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(2366952), slab_reclaimable: byte_size(171796440), kernel_stack: byte_size(1638400),
+      pagetables: byte_size(46731264), percpu: byte_size(72800), sock: byte_size(0), file_dirty: byte_size(203321344),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 37, seam: SeamPublication, charge: byte_size(25127854080),
+      anon: byte_size(22463975424), file: byte_size(2427375616), shmem: byte_size(50733056), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1990600), slab_reclaimable: byte_size(176601120), kernel_stack: byte_size(1392640),
+      pagetables: byte_size(53424128), percpu: byte_size(22880), sock: byte_size(0), file_dirty: byte_size(1093632),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 38, seam: SeamPublication, charge: byte_size(23996694528),
+      anon: byte_size(21614358528), file: byte_size(2155601920), shmem: byte_size(50814976), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1842192), slab_reclaimable: byte_size(169319624), kernel_stack: byte_size(1294336),
+      pagetables: byte_size(53415936), percpu: byte_size(20800), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 39, seam: SeamPublication, charge: byte_size(22545674240),
+      anon: byte_size(20577996800), file: byte_size(1756372992), shmem: byte_size(50978816), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1649136), slab_reclaimable: byte_size(155618824), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(42758144), percpu: byte_size(37440), sock: byte_size(0), file_dirty: byte_size(8192),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+    FloorMemoryStatBeat {
+      beat: 40, seam: SeamPublication, charge: byte_size(21626880000),
+      anon: byte_size(19662217216), file: byte_size(1756782592), shmem: byte_size(51159040), unevictable: byte_size(0),
+      slab_unreclaimable: byte_size(1623144), slab_reclaimable: byte_size(155736128), kernel_stack: byte_size(1114112),
+      pagetables: byte_size(40951808), percpu: byte_size(29120), sock: byte_size(0), file_dirty: byte_size(4096),
+      stall: StallRead { rate: events_per_minute(count: 0) }, swap: SwapRead { bytes: byte_size(0) },
+    },
+
+  ],
+  run_completed: true,
+  swap_policy: SwapMaxDeclaredUnread {
+    declared: byte_size(34359738368),
+    declaring_authority: "gunbc.runner_slot_allocation gunbc_runner_slot_desired memory_swap_max",
+  },
 }
 
 // THE WORK STATES WHAT IT MUST HOLD AND NOTHING MORE. The cache a guest is granted above this is a
@@ -449,10 +1428,10 @@ fn floor_memory_requirement_of(standing: FloorHeldSetStanding) -> MemoryRequirem
 // it stays constructible because a fresh corpus without the instrument's receipt is exactly the
 // state it represents; the Work states no memory while it stands, and the guest shape refuses on
 // that absence rather than being sized to the charge ceiling.
-data gunbc_floor_held_set_instrument: NonEmptyStr = "the required-witnesses-floor job's [floor-cgroup] stat_level= memory_stat= heartbeat lines on the host slot, raw beats transcribed, the held set derived by beat_held_set and its maximum taken over the run's beats"
+data gunbc_floor_held_set_instrument: NonEmptyStr = "the required-witnesses-floor job's [floor-cgroup] stat_level= seam= stall_per_min= memory_stat= heartbeat lines on the host slot, raw beats transcribed, the held set derived by beat_held_set and its maximum taken over the run's beats, and the peak's seam read from the same line by receipt_peak_seam"
 
 fn gunbc_floor_held_set_standing() -> FloorHeldSetStanding {
-  held_set_standing_of(receipt: gunbc_floor_memory_stat_receipt_2026_09_19, instrument: gunbc_floor_held_set_instrument)
+  held_set_standing_of(receipt: gunbc_floor_memory_stat_receipt_2026_09_23, instrument: gunbc_floor_held_set_instrument)
 }
 
 fn floor_memory_requirement() -> MemoryRequirement? {

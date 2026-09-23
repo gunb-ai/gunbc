@@ -4,8 +4,8 @@
 //!
 //! WHO CONSUMES THIS. The required floor's planning row (`run_required_floor`) reconstructs the
 //! base side of its own comparison window through `reconstruct_base_index` and selects the
-//! match-bearing consumers of coproducts whose arm set changed through
-//! `arm_set_changed_match_consumers` (gunbc#11194). `joint_claim_join` re-reads base-side sources
+//! untouched consumers of declarations whose interface changed through
+//! `interface_changed_consumers` (gunbc#11194, #12120). `joint_claim_join` re-reads base-side sources
 //! through `base_records` and splits a diff through `diff_sides`. `behavioral_receipt_host` runs
 //! git through `git_stdout`.
 //!
@@ -155,145 +155,402 @@ fn declarer_of(index: &DeclarationIndex, module: &str, name: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// THE DEPENDENTS DIRECTION — match-bearing consumers of a coproduct whose arm set changed
+// THE DEPENDENTS DIRECTION — untouched consumers of a declaration whose INTERFACE changed
 // ---------------------------------------------------------------------------
 
-/// One coproduct whose arm set differs between the base and head indexes.
+/// WHY A DECLARATION'S INTERFACE CHANGED between the base and head indexes. One change type
+/// with its grounds as arms, not one selector per kind of change: a coproduct growing an arm is
+/// one way a declaration's interface moves, a product field retyped or a function parameter
+/// retyped is another, and each strands the SAME population -- the untouched modules that
+/// reference the declaration (gunbc#11194 found the first; #11751 -> #12120 the second).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ArmSetChange {
-    pub module_path: String,
-    pub declaration: String,
-    pub arms_added: Vec<String>,
-    pub arms_removed: Vec<String>,
+pub(crate) enum InterfaceChangeGround {
+    /// A coproduct GREW arms and nothing else moved: no arm removed, every surviving arm's payload
+    /// unchanged, and the residual interface outside the arms (name, generic parameters) unchanged. A constructor or a projection cannot be stranded by growth; only an exhaustive
+    /// `match` can, so this ground plans MATCH READERS alone (gunbc#11194's original population).
+    ArmSetGrown { arms_added: Vec<String> },
+    /// A coproduct's arm set differs AND growth alone does not describe it -- an arm removed, or
+    /// a surviving arm's payload changed beside the growth -- so every reader is planned. Carried
+    /// apart from `SignatureChanged` because the receipt names the arms, and because a read that
+    /// names an arm (and not the type) is a consumer.
+    ArmSetChanged {
+        arms_added: Vec<String>,
+        arms_removed: Vec<String>,
+    },
+    /// The declaration's interface text (`ModuleDeclarationRecord::declaration_interfaces`,
+    /// the declaration with its body elided) differs: a field type, a parameter, a result, a
+    /// constructor payload, an alias target, a brand.
+    SignatureChanged,
+    /// A function's `admit_callers:` roster lost entries while its interface text stayed put.
+    /// Growing a roster strands nobody; narrowing it strands exactly the callers it dropped, so
+    /// this ground plans THOSE modules and no other reader -- the difference between planning one
+    /// module and every caller of a widely called constructor.
+    AdmittedCallersNarrowed {
+        removed_callers: Vec<(String, String)>,
+    },
+    /// A function that admitted ANY caller now carries an `admit_callers:` roster. Every reader
+    /// the roster does not name is stranded; the ones it names are not.
+    AdmissionIntroduced {
+        admitted_callers: Vec<(String, String)>,
+    },
+    /// The declaration exists at base in this module and not at head. A reader that still
+    /// names it is exactly as stale as one reading a retyped field.
+    DeclarationRemoved,
+    /// The declaration's own text is unchanged, but its interface REFERENCES a declaration whose
+    /// interface changed (a product whose field is an alias that was re-branded). Its consumers
+    /// are planned because its interface changed through that reference -- and ONLY then: a
+    /// module that merely references a changed declaration from a body is planned itself and
+    /// propagates no further.
+    PropagatedThrough {
+        module_path: String,
+        declaration: String,
+    },
 }
 
-/// How a consumer's match arm was bound to the changed coproduct, carried so the receipt can
+/// One declaration whose interface differs between the base and head indexes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DeclarationInterfaceChange {
+    pub module_path: String,
+    pub declaration: String,
+    pub ground: InterfaceChangeGround,
+}
+
+/// How a consumer's read was bound to the changed declaration, carried so the receipt can
 /// name the two populations apart: a read whose candidate set names the declaring module, and a
 /// bare read whose candidate set is EMPTY at this grain -- the flat last-writer-wins channel the
 /// namespace cut is retiring. The second is planned too (it is a consumer in the compiler's
 /// eyes, and a missed one is exactly the silent class this selector closes), but it is counted
 /// under its own name so the deficit stays visible instead of being absorbed into the answer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ArmConsumerBinding {
+pub(crate) enum InterfaceConsumerBinding {
     BoundToDeclaringModule,
     BoundThroughFlatBareChannel,
 }
 
-/// One module that carries a `match` naming an arm of a changed coproduct, with the declaring
-/// module that arm resolved to and the declarations in the consumer that carry the match.
+/// One untouched module that names a changed declaration (or, for a coproduct, one of its
+/// arms), with the declaring module that name resolved to and the declarations in the consumer
+/// that carry the read.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ArmSetMatchConsumer {
+pub(crate) struct InterfaceChangedConsumer {
     pub changed_module_path: String,
     pub changed_declaration: String,
     pub consumer_module_path: String,
     pub consumer_rel_path: String,
     pub in_declarations: Vec<String>,
-    pub binding: ArmConsumerBinding,
+    pub binding: InterfaceConsumerBinding,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct ArmSetConsumerSelection {
-    pub changes: Vec<ArmSetChange>,
-    pub consumers: Vec<ArmSetMatchConsumer>,
+pub(crate) struct InterfaceConsumerSelection {
+    pub changes: Vec<DeclarationInterfaceChange>,
+    pub consumers: Vec<InterfaceChangedConsumer>,
+}
+
+/// The declarations whose interface differs between one module's base and head records -- the
+/// DIRECT changes, before propagation. A module absent at head has every base declaration
+/// removed; a module absent at base is new and has no consumer that predates it.
+fn direct_interface_changes(
+    base_record: &ModuleDeclarationRecord,
+    head_record: Option<&ModuleDeclarationRecord>,
+) -> Vec<DeclarationInterfaceChange> {
+    let mut out = Vec::new();
+    for (declaration, base_text) in &base_record.declaration_interfaces {
+        let change = |ground| DeclarationInterfaceChange {
+            module_path: base_record.module_path.clone(),
+            declaration: declaration.clone(),
+            ground,
+        };
+        let Some(head_record) = head_record else {
+            out.push(change(InterfaceChangeGround::DeclarationRemoved));
+            continue;
+        };
+        let Some(head_text) = head_record.declaration_interfaces.get(declaration) else {
+            out.push(change(InterfaceChangeGround::DeclarationRemoved));
+            continue;
+        };
+        let base_arms = base_record.coproduct_arms.get(declaration);
+        let head_arms = head_record.coproduct_arms.get(declaration);
+        if let (Some(base_arms), Some(head_arms)) = (base_arms, head_arms) {
+            if base_arms != head_arms {
+                let arms_added: Vec<String> = head_arms.difference(base_arms).cloned().collect();
+                let arms_removed: Vec<String> = base_arms.difference(head_arms).cloned().collect();
+                let survivors_unchanged = base_arms.intersection(head_arms).all(|arm| {
+                    let key = (declaration.clone(), arm.clone());
+                    base_record.arm_interfaces.get(&key) == head_record.arm_interfaces.get(&key)
+                });
+                let residual_unchanged = base_record.coproduct_residuals.get(declaration)
+                    == head_record.coproduct_residuals.get(declaration);
+                out.push(change(
+                    if arms_removed.is_empty() && survivors_unchanged && residual_unchanged {
+                        InterfaceChangeGround::ArmSetGrown { arms_added }
+                    } else {
+                        InterfaceChangeGround::ArmSetChanged {
+                            arms_added,
+                            arms_removed,
+                        }
+                    },
+                ));
+                continue;
+            }
+        }
+        if base_text != head_text {
+            out.push(change(InterfaceChangeGround::SignatureChanged));
+            continue;
+        }
+        // THE FOUR ROSTER TRANSITIONS, decided on presence first and difference second:
+        //   absent  -> present  narrows "anyone" to the roster: every NON-admitted reader;
+        //   present -> absent   widens to anyone: nobody;
+        //   present -> larger   widens: nobody;
+        //   present -> smaller  narrows: exactly the dropped callers.
+        // Taking `base - head` before asking whether head HAS a roster would read a deleted
+        // roster as narrowing every entry away -- the inverse of what it does.
+        match (
+            base_record.admitted_callers.get(declaration),
+            head_record.admitted_callers.get(declaration),
+        ) {
+            (None, Some(admitted)) => {
+                out.push(change(InterfaceChangeGround::AdmissionIntroduced {
+                    admitted_callers: admitted.iter().cloned().collect(),
+                }));
+            }
+            (Some(base_admitted), Some(head_admitted)) => {
+                let removed_callers: Vec<(String, String)> =
+                    base_admitted.difference(head_admitted).cloned().collect();
+                if !removed_callers.is_empty() {
+                    out.push(change(InterfaceChangeGround::AdmittedCallersNarrowed {
+                        removed_callers,
+                    }));
+                }
+            }
+            (Some(_), None) | (None, None) => {}
+        }
+    }
+    out
+}
+
+/// Whether `spelling`, read inside `record`, binds to `(module_path, declaration)` on either
+/// side, and how. `None` is "not a read of this declaration": another declarer owns the
+/// spelling, or the leaf is some other name.
+fn read_binding(
+    base: &DeclarationIndex,
+    head: &DeclarationIndex,
+    record: &ModuleDeclarationRecord,
+    spelling: &str,
+    module_path: &str,
+    universe: &BTreeSet<String>,
+) -> Option<InterfaceConsumerBinding> {
+    let leaf = qualified_last_segment(spelling.to_string());
+    if !universe.contains(&leaf) {
+        return None;
+    }
+    let mut candidates = declaring_candidates(head, record, spelling);
+    candidates.extend(declaring_candidates(base, record, spelling));
+    if candidates.contains(module_path) {
+        Some(InterfaceConsumerBinding::BoundToDeclaringModule)
+    } else if candidates.is_empty() {
+        Some(InterfaceConsumerBinding::BoundThroughFlatBareChannel)
+    } else {
+        // Bound to another declarer of a same-spelled name: not this declaration's consumer.
+        None
+    }
+}
+
+/// The names a read of the changed declaration can spell: the declaration itself and, for a
+/// coproduct, every arm on either side -- a constructor call and a match arm both name an arm
+/// without naming the type.
+fn change_universe(
+    base: &DeclarationIndex,
+    head: &DeclarationIndex,
+    change: &DeclarationInterfaceChange,
+) -> BTreeSet<String> {
+    let mut universe: BTreeSet<String> = BTreeSet::new();
+    universe.insert(change.declaration.clone());
+    for index in [base, head] {
+        if let Some(record) = index_get(index, &change.module_path) {
+            if let Some(arms) = record.coproduct_arms.get(&change.declaration) {
+                universe.extend(arms.iter().cloned());
+            }
+        }
+    }
+    universe
 }
 
 /// THE SELECTOR THE REQUIRED FLOOR'S PLANNING ROW CONSUMES, derived from declarations and
 /// never from paths or names (DESIGN §3c: a declaration's consumers are a fact the namespace
 /// tree carries; the planned set is producer-derived, never a path filter).
 ///
-/// A `match` over a closed coproduct that was exhaustive when it landed goes stale when the
-/// coproduct grows an arm in ANOTHER module: the match site has an empty diff, so no
-/// diff-keyed selector can see it, and the required floor's prepared subject is the gate
-/// closure plus the changed set -- the consumer is never Strict-prepared and `check_match`
-/// never runs on it (gunbc#11194, found by a person reading arms). This is the DEPENDENTS
-/// direction; `touched_entry_files` seeding is the DEPENDENCY direction, and neither closes
-/// the class alone.
+/// THE CLASS. A declaration's interface changes in one module -- a coproduct grows an arm
+/// (gunbc#11194), a product field is retyped, an alias is re-branded, a parameter or result is
+/// retyped (#11751, whose stranded witness #12120 repaired) -- and a module that reads it has an
+/// empty diff, so no diff-keyed selector sees it and the required floor never Strict-prepares
+/// it. This is the DEPENDENTS direction; `touched_entry_files` seeding is the DEPENDENCY
+/// direction, and neither closes the class alone. `gunbc.recurring_failure_mode`
+/// `changed_declaration_signature_consumer_unplanned` is the row.
 ///
-/// THE RELATION IS `declaring_candidates`, THE ONE DECLARED ABOVE. A consumer is a module whose
-/// `matched_arms` (a pattern head, read at the one site that has no transport entry) names an
-/// arm of the changed coproduct and whose `declaring_candidates` for that spelling include the
-/// declaring module -- on EITHER side, because a match naming a REMOVED arm has no head-side
-/// candidate (the surface no longer exports it) while its base-side one names the declarer
-/// exactly. No second consumer relation is minted here; this is `declaring_candidates` asked
-/// one more question.
+/// THE CHANGED SET. Direct changes are read per module (`direct_interface_changes`), then
+/// closed under ONE propagation rule: a declaration whose INTERFACE references a changed
+/// declaration (`interface_references`, the parser's type occurrences outside any body) has
+/// itself changed, through that reference. Body references never propagate: a function whose
+/// body alone reads a changed type is a consumer and is planned, and its callers are not --
+/// that is what keeps a body-only change from planning every reverse importer.
 ///
-/// WHAT IS NOT SELECTED, deliberately: the declaring module itself (its own file is in the
-/// diff, so the dependency direction already seeds it); a coproduct that is NEW at head (no
-/// consumer can have matched it exhaustively before it existed); and a module whose match
-/// names the arm but whose candidate set names a DIFFERENT declarer (a same-spelled arm of an
-/// unrelated coproduct -- a consumer of that one, not of this one). A match that names none
-/// of the coproduct's arms -- a wildcard, or arms of another type -- is not a consumer, and it
-/// is also not stale.
-pub(crate) fn arm_set_changed_match_consumers(
+/// THE CONSUMERS. A module is a consumer of a changed declaration when one of its reads
+/// (`referenced`, `authored_type_references`, `called_occurrences`, `value_occurrences`,
+/// `matched_arms`) spells the declaration or one of
+/// its arms and `declaring_candidates` for that spelling includes the declaring module on
+/// EITHER side (a read of a REMOVED name has no head-side candidate; its base-side one names
+/// the declarer exactly). No second consumer relation is minted: this is `declaring_candidates`
+/// asked one more question. NOT every importer: an import that is never read is not a consumer.
+///
+/// WHAT IS NOT SELECTED, deliberately: the declaring module itself (its own file is in the diff,
+/// or -- for a propagated change -- it was planned as a consumer of the change it propagates);
+/// a declaration that is NEW at head; and a read whose candidate set names a DIFFERENT declarer.
+pub(crate) fn interface_changed_consumers(
     base: &DeclarationIndex,
     head: &DeclarationIndex,
-) -> ArmSetConsumerSelection {
-    let mut changes: Vec<ArmSetChange> = Vec::new();
-    for head_record in index_records(head) {
-        let Some(base_record) = index_get(base, &head_record.module_path) else {
-            continue;
-        };
-        for (declaration, head_arms) in &head_record.coproduct_arms {
-            let Some(base_arms) = base_record.coproduct_arms.get(declaration) else {
-                continue;
-            };
-            if head_arms == base_arms {
+) -> InterfaceConsumerSelection {
+    let mut changes: Vec<DeclarationInterfaceChange> = Vec::new();
+    for base_record in index_records(base) {
+        changes.extend(direct_interface_changes(
+            base_record,
+            index_get(head, &base_record.module_path),
+        ));
+    }
+    // PROPAGATION, a fixpoint over head interfaces. Bounded: each round adds at least one
+    // (module, declaration) pair not yet in `seen`, and the pairs are finite.
+    let mut seen: BTreeSet<(String, String)> = changes
+        .iter()
+        .map(|c| (c.module_path.clone(), c.declaration.clone()))
+        .collect();
+    let mut frontier: Vec<DeclarationInterfaceChange> = changes.clone();
+    while !frontier.is_empty() {
+        let mut next: Vec<DeclarationInterfaceChange> = Vec::new();
+        for change in &frontier {
+            // A narrowed admission changes who may call, not what the declaration's type is:
+            // nothing whose interface spells it has changed.
+            // Pure growth reaches only matches, and a match names the grown coproduct's arms
+            // directly wherever it sits, so nothing propagates through a carrier of it either.
+            if matches!(
+                change.ground,
+                InterfaceChangeGround::AdmittedCallersNarrowed { .. }
+                    | InterfaceChangeGround::AdmissionIntroduced { .. }
+                    | InterfaceChangeGround::ArmSetGrown { .. }
+            ) {
                 continue;
             }
-            changes.push(ArmSetChange {
-                module_path: head_record.module_path.clone(),
-                declaration: declaration.clone(),
-                arms_added: head_arms.difference(base_arms).cloned().collect(),
-                arms_removed: base_arms.difference(head_arms).cloned().collect(),
-            });
+            let universe = change_universe(base, head, change);
+            for record in index_records(head) {
+                for (in_declaration, spelling) in &record.interface_references {
+                    if seen.contains(&(record.module_path.clone(), in_declaration.clone())) {
+                        continue;
+                    }
+                    // A FLAT-CHANNEL interface read propagates too. `interface_references` are the
+                    // parser's own type occurrences, so an empty candidate set there is a genuine
+                    // read the compiler resolves last-writer-wins -- the same read that plans its
+                    // module. Refusing to propagate it would plan B and leave B's readers C
+                    // unplanned while the population read as closed.
+                    if read_binding(base, head, record, spelling, &change.module_path, &universe)
+                        .is_none()
+                    {
+                        continue;
+                    }
+                    seen.insert((record.module_path.clone(), in_declaration.clone()));
+                    next.push(DeclarationInterfaceChange {
+                        module_path: record.module_path.clone(),
+                        declaration: in_declaration.clone(),
+                        ground: InterfaceChangeGround::PropagatedThrough {
+                            module_path: change.module_path.clone(),
+                            declaration: change.declaration.clone(),
+                        },
+                    });
+                }
+            }
         }
+        changes.extend(next.iter().cloned());
+        frontier = next;
     }
-    let mut consumers: Vec<ArmSetMatchConsumer> = Vec::new();
+
+    let mut consumers: Vec<InterfaceChangedConsumer> = Vec::new();
     for change in &changes {
-        let universe: BTreeSet<&String> = {
-            let head_arms = &index_get(head, &change.module_path)
-                .expect("a change names a head module")
-                .coproduct_arms[&change.declaration];
-            let base_arms = &index_get(base, &change.module_path)
-                .expect("a change names a base module")
-                .coproduct_arms[&change.declaration];
-            head_arms.iter().chain(base_arms.iter()).collect()
+        let universe = change_universe(base, head, change);
+        let admitted_only: Option<BTreeSet<&str>> = match &change.ground {
+            InterfaceChangeGround::AdmittedCallersNarrowed { removed_callers } => Some(
+                removed_callers
+                    .iter()
+                    .map(|(module, _)| module.as_str())
+                    .collect(),
+            ),
+            _ => None,
         };
         for consumer in index_records(head) {
             if consumer.module_path == change.module_path {
                 continue;
             }
+            if admitted_only
+                .as_ref()
+                .is_some_and(|modules| !modules.contains(consumer.module_path.as_str()))
+            {
+                continue;
+            }
             let mut in_declarations: BTreeSet<String> = BTreeSet::new();
-            let mut binding: Option<ArmConsumerBinding> = None;
-            for (in_declaration, spelling) in &consumer.matched_arms {
-                let leaf = qualified_last_segment(spelling.clone());
-                if !universe.contains(&leaf) {
-                    continue;
-                }
-                let mut candidates = declaring_candidates(head, consumer, spelling);
-                candidates.extend(declaring_candidates(base, consumer, spelling));
-                let bound = if candidates.contains(&change.module_path) {
-                    ArmConsumerBinding::BoundToDeclaringModule
-                } else if candidates.is_empty() {
-                    ArmConsumerBinding::BoundThroughFlatBareChannel
-                } else {
-                    // Bound to another declarer of a same-spelled arm: not this coproduct's consumer.
+            let mut binding: Option<InterfaceConsumerBinding> = None;
+            // `referenced` over-collects binders and labels (see its field note), so a read
+            // there binds only when it RESOLVES to the declarer; the flat bare channel is
+            // admitted only from the parser's own type occurrences and match-arm heads, where a
+            // spelling is a genuine read. Otherwise every module with a local named like a
+            // changed function would be planned -- the widening this selector must not do.
+            let matches_only = matches!(change.ground, InterfaceChangeGround::ArmSetGrown { .. });
+            let reads = consumer
+                .referenced
+                .iter()
+                .map(|r| (r, false))
+                .chain(consumer.authored_type_references.iter().map(|r| (r, true)))
+                .chain(consumer.called_occurrences.iter().map(|r| (r, true)))
+                .chain(consumer.value_occurrences.iter().map(|r| (r, true)))
+                .filter(|_| !matches_only)
+                .chain(consumer.matched_arms.iter().map(|r| (r, true)));
+            for ((in_declaration, spelling), flat_admitted) in reads {
+                let Some(bound) = read_binding(
+                    base,
+                    head,
+                    consumer,
+                    spelling,
+                    &change.module_path,
+                    &universe,
+                ) else {
                     continue;
                 };
+                if bound == InterfaceConsumerBinding::BoundThroughFlatBareChannel && !flat_admitted
+                {
+                    continue;
+                }
                 in_declarations.insert(in_declaration.clone());
                 // A declarer-bound read wins over a flat one for the module's disposition: the
                 // module IS a resolved consumer if any read resolves, and the flat count is for
-                // modules that reach the coproduct by no other route.
+                // modules that reach the declaration by no other route.
                 binding = Some(match (binding, bound) {
-                    (Some(ArmConsumerBinding::BoundToDeclaringModule), _)
-                    | (_, ArmConsumerBinding::BoundToDeclaringModule) => {
-                        ArmConsumerBinding::BoundToDeclaringModule
+                    (Some(InterfaceConsumerBinding::BoundToDeclaringModule), _)
+                    | (_, InterfaceConsumerBinding::BoundToDeclaringModule) => {
+                        InterfaceConsumerBinding::BoundToDeclaringModule
                     }
-                    _ => ArmConsumerBinding::BoundThroughFlatBareChannel,
+                    _ => InterfaceConsumerBinding::BoundThroughFlatBareChannel,
                 });
             }
+            // An introduced roster strands only readers it does not name: a module whose every
+            // reading declaration is admitted stays valid.
+            if let InterfaceChangeGround::AdmissionIntroduced { admitted_callers } = &change.ground
+            {
+                let all_admitted = in_declarations.iter().all(|in_declaration| {
+                    admitted_callers.iter().any(|(module, decl)| {
+                        module == &consumer.module_path && decl == in_declaration
+                    })
+                });
+                if all_admitted {
+                    continue;
+                }
+            }
             if let Some(binding) = binding {
-                consumers.push(ArmSetMatchConsumer {
+                consumers.push(InterfaceChangedConsumer {
                     changed_module_path: change.module_path.clone(),
                     changed_declaration: change.declaration.clone(),
                     consumer_module_path: consumer.module_path.clone(),
@@ -304,7 +561,7 @@ pub(crate) fn arm_set_changed_match_consumers(
             }
         }
     }
-    ArmSetConsumerSelection { changes, consumers }
+    InterfaceConsumerSelection { changes, consumers }
 }
 
 // ---------------------------------------------------------------------------
@@ -532,15 +789,15 @@ pub(crate) fn reconstruct_base_index(
         }
     };
 
-    // THE KERNEL HALF, GUARDED NARROWLY. `declaring_candidates` consults this binary's own
-    // `kernel_type_set`, a head fact. Equal declaring blobs mean both revisions name the same kernel
-    // and one map serves; different blobs leave the question open, and an open question refuses.
+    // THE KERNEL HALF. `declaring_candidates` consults this binary's own `kernel_type_set`, a head
+    // fact, so one map serves exactly when the base declares the same kernel NAMES. That is decided
+    // at the grain of the name set, not the declaring file's bytes; distinct sets refuse.
     match kernel_set_serves_both(&workspace, &base, &head) {
         Ok(true) => {}
         Ok(false) => {
             return Ok(BaselineReconstruction::NotEvaluated {
                 reason: format!(
-                    "{KERNEL_TYPES_PATH} differs between {base} and {head}, so the kernel-name set this binary carries cannot speak for the base side"
+                    "the kernel-name set {KERNEL_TYPES_PATH} declares at {base} differs from the one this binary carries for {head}, so one kernel map cannot speak for the base side"
                 ),
             })
         }
@@ -830,6 +1087,12 @@ pub enum EnvironmentLoadRefusal {
     /// struct requires. Separate from `ClosureNotEvaluable` because the owners differ: that one is a
     /// defect in the revision being read, this one is THIS binary disagreeing with its own emitter.
     ValueNotDecodable { revision: String, cause: String },
+    /// The kernel-name set declared at this revision could not be read as a set of names.
+    ///
+    /// Separate from the environment arms because the subject differs: this is `std.types`
+    /// `kernel_type_set`, not the grammar, and an operator reading the refusal must be told which
+    /// fact was unreadable.
+    KernelSetNotReadable { revision: String, cause: String },
 }
 
 /// The operator-facing text of a refusal.
@@ -847,23 +1110,26 @@ pub fn environment_load_refusal_text(refusal: &EnvironmentLoadRefusal) -> String
             cause,
         } => format!("reading revision {revision} failed at {step}: {cause}"),
         EnvironmentLoadRefusal::EnvironmentModuleMissing { revision, path } => format!(
-            "{path} does not exist at revision {revision}, so that revision's parse \
-                 environment cannot be read"
+            "{path} does not exist at revision {revision}, so the value it declares cannot be \
+                 read"
         ),
-        EnvironmentLoadRefusal::ClosureNotEvaluable { revision, cause } => format!(
-            "the parse environment closure at revision {revision} did not evaluate: {cause}"
-        ),
+        EnvironmentLoadRefusal::ClosureNotEvaluable { revision, cause } => {
+            format!("the declaring closure at revision {revision} did not evaluate: {cause}")
+        }
         EnvironmentLoadRefusal::EnvironmentItemNotOwned {
             revision,
             item,
             module,
         } => format!(
             "`{item}` is not declared by `{module}` at revision {revision}, so the value a \
-                 bare-name lookup would return is not the grammar authority"
+                 bare-name lookup would return is not that declaration's"
         ),
         EnvironmentLoadRefusal::ValueNotDecodable { revision, cause } => format!(
             "the parse environment at revision {revision} evaluated but did not decode into \
                  this binary's `ParseEnvironment`: {cause}"
+        ),
+        EnvironmentLoadRefusal::KernelSetNotReadable { revision, cause } => format!(
+            "the kernel-name set declared at revision {revision} could not be read: {cause}"
         ),
     }
 }
@@ -1042,7 +1308,28 @@ pub fn evaluate_environment_in(
     root: &std::path::Path,
     revision: &str,
 ) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
-    let entry = root.join(ENVIRONMENT_MODULE_PATH);
+    let (value, ctx) =
+        evaluate_owned_item_in(root, ENVIRONMENT_MODULE_PATH, ENVIRONMENT_ITEM, revision)?;
+    decode_environment_value(&value, &ctx, revision)
+}
+
+/// Evaluate the data item `item`, as declared BY the file `entry_rel`, out of a materialized corpus.
+///
+/// The one evaluation route for a revision's declared value: the parse environment and the kernel
+/// name set both come through here, so ownership and hermeticity are checked once.
+fn evaluate_owned_item_in(
+    root: &std::path::Path,
+    entry_rel: &str,
+    item: &str,
+    revision: &str,
+) -> Result<
+    (
+        crate::v1_interpreter::Value,
+        crate::v1_interpreter::InterpContext,
+    ),
+    EnvironmentLoadRefusal,
+> {
+    let entry = root.join(entry_rel);
     if !entry.exists() {
         return Err(EnvironmentLoadRefusal::EnvironmentModuleMissing {
             revision: revision.to_string(),
@@ -1059,36 +1346,36 @@ pub fn evaluate_environment_in(
                 cause: e,
             },
         )?;
-    // HERMETIC, NOT WET. A static grammar declaration has no business acquiring permission to
-    // perform host effects while it is being decoded; `Wet` here would let a corpus under
-    // examination act during examination.
+    // HERMETIC, NOT WET. A static declaration has no business acquiring permission to perform host
+    // effects while it is being decoded; `Wet` here would let a corpus under examination act during
+    // examination.
     let ctx = super::make_eval_context(
         &graph,
         indices,
         crate::v1_interpreter::ExecutionMode::Hermetic,
     );
     // EXACT OWNERSHIP, NOT A BARE NAME. `eval_data_item_value` resolves by bare name across the
-    // closure, so a homonymous `dag_parse_environment` elsewhere in the corpus would silently
-    // supply the grammar. The environment must come from the declaration that owns it.
-    if !super::data_item_declared_in_file(&ctx, ENVIRONMENT_ITEM, &entry_display) {
+    // closure, so a homonymous item elsewhere in the corpus would silently supply the value. It must
+    // come from the declaration that owns it.
+    if !super::data_item_declared_in_file(&ctx, item, &entry_display) {
         return Err(EnvironmentLoadRefusal::EnvironmentItemNotOwned {
             revision: revision.to_string(),
-            item: ENVIRONMENT_ITEM.to_string(),
-            module: ENVIRONMENT_MODULE.to_string(),
+            item: item.to_string(),
+            module: entry_rel.to_string(),
         });
     }
     let value = crate::v1_interpreter::with_active_context(&ctx, || {
-        crate::v1_interpreter::eval_data_item_value(&ctx, ENVIRONMENT_ITEM)
+        crate::v1_interpreter::eval_data_item_value(&ctx, item)
     })
     .map_err(|e| EnvironmentLoadRefusal::ClosureNotEvaluable {
         revision: revision.to_string(),
-        cause: format!("eval {ENVIRONMENT_ITEM}: {e}"),
+        cause: format!("eval {item}: {e}"),
     })?
     .ok_or_else(|| EnvironmentLoadRefusal::ClosureNotEvaluable {
         revision: revision.to_string(),
-        cause: format!("{ENVIRONMENT_ITEM} is not a data item in `{ENVIRONMENT_MODULE}`"),
+        cause: format!("{item} is not a data item in `{entry_rel}`"),
     })?;
-    decode_environment_value(&value, &ctx, revision)
+    Ok((value, ctx))
 }
 
 /// THE LOADER: the parse environment git holds at `revision`.
@@ -1115,25 +1402,31 @@ pub fn load_parse_environment_with_closure(
     revision: &str,
     closure: &BTreeSet<String>,
 ) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dest =
-        // UNDER THE WORKSPACE, NOT /tmp. The module index and entry resolver refuse any path outside
-        // the workspace root (`repo_relative_path_normalized`), so a corpus materialized into the
-        // system temp directory cannot be read by the repository's own machinery -- the loader would
-        // refuse every call, in production as much as in test. `target/` is where generated and
-        // scratch trees already live (`target/stage0-regen-candidate` is the precedent).
-        super::workspace_root()
-            .join("target")
-            .join(format!("gunbc-parse-env-{}-{}", std::process::id(), stamp));
+    let dest = revision_scratch_root("parse-env");
     // If the base's closure has a member the head's does not, the materialized set is incomplete
     // and resolution refuses as ClosureNotEvaluable -- a located refusal, not a fabricated read.
     let outcome = materialize_environment_closure_at(repo, revision, &dest, closure)
         .and_then(|()| evaluate_environment_in(&dest, revision));
     let _ = std::fs::remove_dir_all(&dest);
     outcome
+}
+
+/// A fresh directory for one revision's materialized tree, owned and removed by the caller.
+///
+/// UNDER THE WORKSPACE, NOT /tmp. The module index and entry resolver refuse any path outside the
+/// workspace root (`repo_relative_path_normalized`), so a corpus materialized into the system temp
+/// directory cannot be read by the repository's own machinery. `target/` is where generated and
+/// scratch trees already live (`target/stage0-regen-candidate` is the precedent).
+fn revision_scratch_root(purpose: &str) -> std::path::PathBuf {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    super::workspace_root().join("target").join(format!(
+        "gunbc-{purpose}-{}-{}",
+        std::process::id(),
+        stamp
+    ))
 }
 
 /// The repo-relative files that declare the parse environment's closure, per the real resolver.
@@ -1143,8 +1436,13 @@ pub fn load_parse_environment_with_closure(
 /// go stale, silently, the first time `std.syntax` gained an import -- a stale roster still resolves.
 /// The resolved graph's own span files ARE the closure.
 pub fn environment_closure_paths() -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
+    closure_paths_of(ENVIRONMENT_MODULE_PATH)
+}
+
+/// The repository-relative files of the live tree's resolved closure rooted at `entry_rel`.
+fn closure_paths_of(entry_rel: &str) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
     let root = super::workspace_root();
-    let entry = root.join(ENVIRONMENT_MODULE_PATH);
+    let entry = root.join(entry_rel);
     let dag_root = root.join(DAG_SOURCE_ROOT);
     let index = super::build_multi_entry_index(&[dag_root.display().to_string()]);
     let (graph, _indices) =
@@ -1165,9 +1463,7 @@ pub fn environment_closure_paths() -> Result<BTreeSet<String>, EnvironmentLoadRe
     if paths.is_empty() {
         return Err(EnvironmentLoadRefusal::ClosureNotEvaluable {
             revision: "live-tree".to_string(),
-            cause: "the resolved environment closure named no files, so no agreement check is \
-                    possible"
-                .to_string(),
+            cause: format!("the resolved closure of {entry_rel} named no files"),
         });
     }
     Ok(paths)
@@ -1219,18 +1515,103 @@ pub fn environment_agreement(
 /// The path whose declarations the kernel-name set is derived from.
 const KERNEL_TYPES_PATH: &str = "dag/std/types.dag";
 
+/// The data item in `KERNEL_TYPES_PATH` that declares the kernel-name set.
+const KERNEL_TYPES_ITEM: &str = "kernel_type_set";
+
 /// Whether the kernel type set this binary carries can speak for both revisions.
 ///
-/// NARROW ON PURPOSE. `declaring_candidates` consults the RUNNING compiler's `kernel_type_set`,
-/// which is a fact about the head. Threading distinct base and head kernel maps is the general
-/// repair and is not this change's subject; what is needed here is honesty about when the single map
-/// is adequate. Equal blobs for the declaring file means both revisions name the same kernel, so one
-/// map serves. Different blobs means the question is open, and an open question is `NotEvaluated` --
-/// not a guess that the head's map is close enough.
+/// THE FACT IS THE NAME SET, NOT THE FILE. `declaring_candidates` consults the RUNNING compiler's
+/// `kernel_type_set` -- a head fact -- so the question is whether the base revision declares the same
+/// set of kernel names. An earlier shape answered it by comparing the whole declaring file's blob,
+/// a byte-level proxy for a name-set fact: every edit to `dag/std/types.dag`, a function body or a
+/// comment included, refused the reconstruction although no such edit can change the set.
+///
+/// Equal blobs still settle it for free, since equal content declares equal sets. Only when the file
+/// differs is the base's `kernel_type_set` evaluated out of that revision's own tree and its names
+/// compared to this binary's. Distinct sets remain `false` -- threading separate base and head kernel
+/// maps is the general repair and not this change's subject -- and an unreadable base set is a
+/// refusal, never a substitution of the head's.
 pub fn kernel_set_serves_both(
     repo: &std::path::Path,
     base: &str,
     head: &str,
 ) -> Result<bool, EnvironmentLoadRefusal> {
-    Ok(blob_id_at(repo, base, KERNEL_TYPES_PATH)? == blob_id_at(repo, head, KERNEL_TYPES_PATH)?)
+    let base_blob =
+        blob_id_at(repo, base, KERNEL_TYPES_PATH).map_err(|e| as_kernel_set_refusal(base, e))?;
+    // THE HEAD'S DECLARATION MUST EXIST. This binary's set speaks for the head only because the
+    // head declares it; a head with no declaring file has no authority for the binary to stand in
+    // for, so it refuses rather than letting the compiled-in set substitute.
+    let head_blob = blob_id_at(repo, head, KERNEL_TYPES_PATH)
+        .map_err(|e| as_kernel_set_refusal(head, e))?
+        .ok_or_else(|| EnvironmentLoadRefusal::KernelSetNotReadable {
+            revision: head.to_string(),
+            cause: format!("{KERNEL_TYPES_PATH} does not exist at this revision"),
+        })?;
+    // Equal CONTENT is the free answer; an absent base is not equal to anything and goes on to the
+    // base read, which refuses it.
+    if base_blob.as_deref() == Some(head_blob.as_str()) {
+        return Ok(true);
+    }
+    let head_names: BTreeSet<String> = crate::std_types::kernel_type_set()
+        .keys()
+        .cloned()
+        .collect();
+    Ok(kernel_names_at(repo, base)? == head_names)
+}
+
+/// The kernel names `std.types` declares at `revision`, read from that revision's own tree.
+///
+/// Same acquisition and evaluation route as the parse environment: materialize the declaring file's
+/// closure at the revision, evaluate the item it OWNS (not a bare-name homonym), and remove the tree.
+pub fn kernel_names_at(
+    repo: &std::path::Path,
+    revision: &str,
+) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
+    let closure = closure_paths_of(KERNEL_TYPES_PATH)?;
+    let dest = revision_scratch_root("kernel-set");
+    let outcome = materialize_revision_paths(
+        repo,
+        revision,
+        &dest,
+        &closure.iter().map(String::as_str).collect::<Vec<_>>(),
+    )
+    .and_then(|()| {
+        let (value, ctx) =
+            evaluate_owned_item_in(&dest, KERNEL_TYPES_PATH, KERNEL_TYPES_ITEM, revision)?;
+        let wire = super::value_to_wire_json(&value, &ctx).map_err(|e| {
+            EnvironmentLoadRefusal::KernelSetNotReadable {
+                revision: revision.to_string(),
+                cause: format!("wire-encode {KERNEL_TYPES_ITEM}: {e}"),
+            }
+        })?;
+        serde_json::from_value::<std::collections::BTreeMap<String, bool>>(wire)
+            .map(|m| m.into_keys().collect())
+            .map_err(|e| EnvironmentLoadRefusal::KernelSetNotReadable {
+                revision: revision.to_string(),
+                cause: format!("{KERNEL_TYPES_ITEM} is not a Map<String, Bool>: {e}"),
+            })
+    });
+    let _ = std::fs::remove_dir_all(&dest);
+    // ONE SUBJECT, ONE REFUSAL ARM. The shared route reports its failures in the parse
+    // environment's vocabulary; left as-is, an unreadable kernel set would reach the operator
+    // labelled as an unreadable grammar. Every failure here is about the kernel set.
+    outcome.map_err(|e| as_kernel_set_refusal(revision, e))
+}
+
+/// Relabel a refusal from the shared acquisition route as the kernel-set refusal it is here.
+///
+/// ONE SUBJECT, ONE REFUSAL ARM. The shared route is subject-neutral; the kernel guard's caller must
+/// still be told that it was the kernel-name set that could not be read. The inner refusal's text is
+/// kept as the cause, so the specific failure stays located.
+fn as_kernel_set_refusal(
+    revision: &str,
+    refusal: EnvironmentLoadRefusal,
+) -> EnvironmentLoadRefusal {
+    match refusal {
+        EnvironmentLoadRefusal::KernelSetNotReadable { .. } => refusal,
+        other => EnvironmentLoadRefusal::KernelSetNotReadable {
+            revision: revision.to_string(),
+            cause: environment_load_refusal_text(&other),
+        },
+    }
 }

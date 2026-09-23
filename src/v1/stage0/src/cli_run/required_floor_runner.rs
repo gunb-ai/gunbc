@@ -1293,7 +1293,9 @@ fn changed_and_enrolled_witness_identities_with_index(
         }
     }
     let dag_path_list: Vec<String> = dag_paths.into_iter().collect();
+    floor_seam("diff-base-decl-census");
     let base_test_decl_names = floor_base_test_decl_census(&dag_path_list)?;
+    floor_seam("diff-edits");
     let edits = floor_diff_edits_from_line_ranges(
         index,
         &line_ranges_by_file,
@@ -1303,6 +1305,7 @@ fn changed_and_enrolled_witness_identities_with_index(
         Some(&base_test_decl_names),
         &rename_from,
     )?;
+    floor_seam("diff-changed-witness-identities");
     let quarantined = quarantine_probe_admitted_pairs();
     let root = process_workspace_root();
     let changed = changed_witness_identities_from_edited_test_fns(
@@ -1322,6 +1325,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     // exhaustiveness is real at `gunbc compile` and silent on a required floor that never
     // resolved the file. Seeding the authored module pulls its both-closure into
     // `prepare_repository_closure` (`ResolveTypecheckGate::Strict`), which is the same pass.
+    floor_seam("diff-touched-module-seeds");
     let (touched_modules, touched_outside_floor_roots, seeded_pairs) =
         module_seeds_from_touched_entry_files(&root, &edits.touched_entry_files, source_roots)?;
     // THE ASSEMBLY'S OWN PREDICATE (`prepared_subject_exclusion_row_for`), asked here over the
@@ -1336,12 +1340,17 @@ fn changed_and_enrolled_witness_identities_with_index(
     }
     touched_excluded_from_preparation.sort();
     // THE FOURTH PROJECTION IS THE DEPENDENTS DIRECTION OF THE SAME CLASS. The third seeds the
-    // module whose declaration the diff touched; this one seeds the untouched modules whose
-    // `match` over a coproduct went stale because its arm set changed in the touched one
-    // (gunbc#11194). Same diff window as every projection above -- the base is the floor's own
+    // module whose declaration the diff touched; this one seeds the untouched modules that read
+    // a declaration whose INTERFACE changed in the touched one -- a coproduct's arm set
+    // (gunbc#11194), a field or parameter type, an alias or brand (#11751 -> #12120), or a
+    // removal -- closed through declarations whose own interface references a changed one. Same diff window as every projection above -- the base is the floor's own
     // resolved comparison, never a second baseline authority -- and the same Strict preparation
     // downstream, so a planned consumer is a prepared consumer and `check_match` runs on it.
-    let arm_set = arm_set_consumer_planning(planning_index)?;
+    // A NEW token for a wider phase, not the old one renamed: `arm-set-planning` stays its own
+    // arm (gunbc.floor_demand `SeamArmSetPlanning`) for every beat recorded before gunbc#12130,
+    // and this one reads as `SeamInterfaceConsumerPlanning` (`floor_seam_tokens`).
+    floor_seam("interface-consumer-planning");
+    let interface_consumers = interface_consumer_planning(planning_index)?;
     Ok(FloorDiffProjections {
         changed_witnesses: changed,
         newly_enrolled_witnesses: enrolled,
@@ -1349,7 +1358,7 @@ fn changed_and_enrolled_witness_identities_with_index(
             touched_modules,
             touched_outside_floor_roots,
             touched_excluded_from_preparation,
-            arm_set,
+            interface_consumers,
         },
     })
 }
@@ -1363,7 +1372,7 @@ pub(crate) struct FloorDiffProjections {
 }
 
 /// The modules the diff obliges Strict preparation to reach beyond the gate closure, in both
-/// directions of the stale-match class -- and, typed rather than counted, the touched files that
+/// directions of the changed-interface class -- and, typed rather than counted, the touched files that
 /// could NOT seed anything because they live outside the floor's source roots.
 pub(crate) struct CompileSubjectSeeds {
     /// `v2.workflow.floor_subject_seed` `SeedTouchedEntryModule`.
@@ -1377,12 +1386,12 @@ pub(crate) struct CompileSubjectSeeds {
     /// -- a designed-refusal probe, for instance. Said at the seed, so the planned-then-not-prepared
     /// state is a typed row and not a count of excluded modules.
     pub touched_excluded_from_preparation: Vec<(String, String, String)>,
-    pub arm_set: ArmSetConsumerPlanning,
+    pub interface_consumers: InterfaceConsumerPlanning,
 }
 
-/// `v2.workflow.floor_subject_seed` `SeedArmSetChangedMatchConsumer`, at the grain the seed list
+/// `v2.workflow.floor_subject_seed` `SeedDeclarationInterfaceChangedConsumer`, at the grain the seed list
 /// consumes: the selection, plus the window it was measured over so the receipt can name it.
-pub(crate) enum ArmSetConsumerPlanning {
+pub(crate) enum InterfaceConsumerPlanning {
     /// No parse-phase index was lent to this process (the standalone `--required-floor`
     /// entry), so this projection could not look. "Could not look" and "looked and found
     /// nothing" are different states; on a CI commit the runner refuses this arm rather than
@@ -1395,7 +1404,7 @@ pub(crate) enum ArmSetConsumerPlanning {
     Selected {
         base: String,
         head: String,
-        selection: crate::cli_run::namespace_baseline::ArmSetConsumerSelection,
+        selection: crate::cli_run::namespace_baseline::InterfaceConsumerSelection,
     },
 }
 
@@ -1410,22 +1419,22 @@ pub(crate) enum ArmSetConsumerPlanning {
 /// `::Floor` are both `Witnesses`), so it exists at planning time and is lent in rather than
 /// rebuilt. A floor invoked without it on a CI commit is refused below rather than planned
 /// blind; a local run without a diff baseline never reaches here.
-fn arm_set_consumer_planning(
+fn interface_consumer_planning(
     planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
-) -> Result<ArmSetConsumerPlanning, String> {
+) -> Result<InterfaceConsumerPlanning, String> {
     use crate::cli_run::namespace_baseline::{
-        arm_set_changed_match_consumers, git_stdout, reconstruct_base_index, BaselineReconstruction,
+        git_stdout, interface_changed_consumers, reconstruct_base_index, BaselineReconstruction,
     };
     let Some(head_index) = planning_index else {
-        return Ok(ArmSetConsumerPlanning::NotEvaluated {
+        return Ok(InterfaceConsumerPlanning::NotEvaluated {
             reason: "no parse-phase declaration index was lent to the floor, so the dependents \
-                     direction of the stale-match class cannot be planned"
+                     direction of the changed-interface class cannot be planned"
                 .to_string(),
         });
     };
     // THE FLOOR'S OWN WINDOW. A merge-base comparison reads the base tree at the merge base, a
     // direct comparison at the base ref itself -- the same relation the affected-set diff was
-    // taken under, so the arm-set delta and the line-range attribution describe one change.
+    // taken under, so the interface delta and the line-range attribution describe one change.
     let workspace = process_workspace_root();
     let (base_commit, head_commit) = match floor_diff_comparison_readout()? {
         FreezeBaselineComparison::Direct { base, head, .. } => (base, head),
@@ -1438,10 +1447,10 @@ fn arm_set_consumer_planning(
     let head_commit = git_stdout(&workspace, &["rev-parse", &head_commit])?;
     match reconstruct_base_index(&workspace, &base_commit, &head_commit, head_index)? {
         BaselineReconstruction::NoSubject { head } => {
-            Ok(ArmSetConsumerPlanning::NoSubject { head })
+            Ok(InterfaceConsumerPlanning::NoSubject { head })
         }
         BaselineReconstruction::NotEvaluated { reason } => Err(format!(
-            "arm-set-changed consumer planning: the base side could not be reconstructed \
+            "interface-changed consumer planning: the base side could not be reconstructed \
              ({reason}); the planned set is NOT widened and NOT narrowed on an unobservable base"
         )),
         BaselineReconstruction::Reconstructed {
@@ -1449,10 +1458,10 @@ fn arm_set_consumer_planning(
             head,
             base_index,
             ..
-        } => Ok(ArmSetConsumerPlanning::Selected {
+        } => Ok(InterfaceConsumerPlanning::Selected {
             base,
             head,
-            selection: arm_set_changed_match_consumers(&base_index, head_index),
+            selection: interface_changed_consumers(&base_index, head_index),
         }),
     }
 }
@@ -3943,7 +3952,7 @@ pub(crate) fn run_discovery_rows(
 /// run touches nothing: the gate's prefix roster and authored-module roster, both decoded from
 /// `v2.workflow.required_floor` in a frame over that module's own closure, and the local-repo wet
 /// schedule rows whose entry modules join the module seeds. The diff-derived seeds (changed
-/// witnesses, touched entries, arm-set consumers) are NOT here: they are a fact about one run's
+/// witnesses, touched entries, changed-interface consumers) are NOT here: they are a fact about one run's
 /// diff, and this is the part of the subject that holds for every run.
 ///
 /// ONE PRODUCER, TWO CONSUMERS, and that is the reason it is a function rather than a block in
@@ -3970,9 +3979,20 @@ pub fn required_floor_nominal_subject_seeds(
     source_roots: &[String],
     gate_entry_index: &MultiEntryIndex,
 ) -> Result<RequiredFloorNominalSubjectSeeds, String> {
+    let corpus = crate::cli_run::read_source_corpus_once(source_roots);
+    required_floor_nominal_subject_seeds_from_corpus(&corpus, gate_entry_index)
+}
+
+/// The seed fold over a corpus the CALLER read. `run_required_floor` is the least common ancestor
+/// of this prepare and the gate prepare below it, so it reads once and lends to both; the wrapper
+/// above stays for callers with only one demand (the lane resolution census).
+pub fn required_floor_nominal_subject_seeds_from_corpus(
+    corpus: &crate::cli_run::SourceCorpusRead,
+    gate_entry_index: &MultiEntryIndex,
+) -> Result<RequiredFloorNominalSubjectSeeds, String> {
     let policy_seed = [REQUIRED_FLOOR_POLICY_MODULE.to_string()];
-    let (policy_prepared, _) = prepare_repository_closure(
-        source_roots,
+    let (policy_prepared, _) = crate::cli_run::prepare_repository_from_corpus(
+        corpus,
         &floor_prepared_subject_exclusions(),
         Some((gate_entry_index, &[], &policy_seed)),
     )?;
@@ -4036,7 +4056,7 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // that edits a probe (gunbc#11343 at 76923b733, run 34874099243:
         // `[floor-phase] phase=touched-entry-compile-subject seeds=6 modules=[...,
         // "test.probe.bare_string_from_boundary_probe"]` while
-        // `phase=arm-set-changed-consumers ... consumers_added=0`) pulled its designed refusal
+        // `phase=interface-changed-consumers ... consumers_added=0`) pulled its designed refusal
         // into Strict preparation as a blocker. This row is applied AFTER the seed walk, so the
         // seed still prints (as `TouchedEntryExcludedFromPreparation`, a typed row rather than a
         // vanished seed), and `ExclusionOrphansImporter` refuses the day anything imports one.
@@ -4334,6 +4354,73 @@ pub fn floor_seam(name: &str) {
         g.clear();
         g.push_str(name);
     }
+    // EVERY SEAM IS A PHASE BOUNDARY, SO EVERY SEAM CARRIES A BEAT. The sixty-second watchdog
+    // names the minute a phase was in, never where it began or ended, so a phase shorter than a
+    // beat is invisible and a longer one is bounded only to the minute. A reading taken AT the
+    // boundary is what lets gunbc.floor_demand attribute a held-set delta to the phase between two
+    // seams rather than to whichever phase the next tick happened to land in.
+    floor_cgroup_stat_beat(&format!("seam-{name}"), None);
+    floor_heap_beat(name);
+}
+
+/// THE ALLOCATOR'S OWN SPLIT AT A SEAM: bytes live in allocations, and bytes the allocator holds
+/// free. A resident set that stays high across a phase boundary has two causes with opposite
+/// remedies -- state still owned by the program (shorten its ownership) or memory freed and kept
+/// by glibc (an allocator behaviour, not retention) -- and RSS cannot tell them apart.
+/// `malloc_trim` can, but it ACTS: it returns the free half, so the next phase would run on a
+/// different heap than the one being measured. `mallinfo2` only reads. Seams only, never the
+/// watchdog: it walks every arena, and a boundary is where the attribution is decided.
+///
+/// `in_use` is `uordblks` (allocated main-arena and thread-arena bytes) plus `hblkhd` (mmapped
+/// chunks, which are always live); `free` is `fordblks`. glibc-only, and `na` elsewhere rather
+/// than a zero, since zero free is a real reading.
+fn floor_heap_beat(seam: &str) {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        // SAFETY: mallinfo2 takes no arguments and returns a struct by value; it reads allocator
+        // bookkeeping under the arena locks and changes nothing.
+        let mi = unsafe { libc::mallinfo2() };
+        eprintln!(
+            "[floor-heap] seam={seam} in_use={} free={} mmapped={} arena={} {}",
+            mi.uordblks + mi.hblkhd,
+            mi.fordblks,
+            mi.hblkhd,
+            mi.arena,
+            crate::cli_run::entry_resolve::process_resolve_census(),
+        );
+    }
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+    eprintln!("[floor-heap] seam={seam} in_use=na free=na mmapped=na arena=na");
+}
+
+/// THE SEAM AS IT STANDS RIGHT NOW, so a reading can say WHERE IN THE RUN it was taken.
+///
+/// `floor_seam` writes this slot; the heartbeat has always read it for its human line. This
+/// reader exists because `floor_cgroup_stat_beat` needs the same fact on its OWN line: a beat
+/// and the seam it was sampled in were two separate stderr streams, joined only by the order
+/// the lines happened to appear in, which is a positional citation of the kind DESIGN 3 forbids
+/// — any line emitted between them by any other thread invalidates the join, and the reader
+/// transcribing a receipt is the one who silently guesses. With the seam ON the beat, which
+/// phase established a peak is a value a fold reads rather than an author's reading of a log.
+///
+/// THE READ IS THE SHARED FACT; THE RENDERING IS NOT. This returns the slot's own state and
+/// renders nothing, because its two consumers owe DIFFERENT spellings of the same state and
+/// collapsing them here would be a fork wearing a helper's clothes (review 69697 caught the
+/// first version of this function doing exactly that).
+///
+/// `None` is a poisoned lock — no reading at all. `Some("")` is the genuinely unset slot, before
+/// any `floor_seam` call. `Some(name)` is the seam.
+///
+/// Why the callers differ, and why this must not decide for them: the heartbeat's seam crosses
+/// into `gunbc.observation_seed_render` `seed_heartbeat_subject`, which branches on `seam == ""`
+/// to decide whether a beat carries a `PhaseSegment` at all — the empty string IS that model's
+/// representation of "no phase", pinned by `test.claim.observation_seed_heartbeat_witness_test`.
+/// Handing it the beat line's `none` would mint `PhaseSegment { name: "none" }`, fabricating a
+/// phase named after the absence of one. The stat beat, whose line is transcribed into a typed
+/// `gunbc.floor_demand` `FloorSeam`, wants a single non-empty token it can map to
+/// `SeamNotYetEntered`. Same fact, two boundaries, one read.
+pub(crate) fn floor_seam_current() -> Option<String> {
+    FLOOR_SEAM.lock().ok().map(|g| g.clone())
 }
 
 // THE CONSTRUCTOR A DECODE ACTUALLY OBSERVED, for refusals whose cause is a shape mismatch.
@@ -4359,6 +4446,156 @@ pub(crate) fn floor_value_shape(v: Option<&v1_interpreter::Value>) -> String {
         }
         Some(other) => floor_value_constructor(other).to_string(),
     }
+}
+
+/// One rostered corpus-census claim's eval-step allowance, as `v2.workflow.required_floor`
+/// `corpus_census_eval_step_allowance` derived it. The host holds the numbers it READ; it never
+/// computes `base + per_entry x entry_count` itself.
+#[derive(Debug, Clone)]
+pub(crate) struct CorpusCensusAllowanceReading {
+    pub subject_path: String,
+    pub entry_count: u64,
+    pub budget_steps: u64,
+}
+
+/// THE CORPUS-CENSUS ALLOWANCES, EVALUATED THROUGH THE POLICY FRAME (ruling stern-carp-604
+/// msg_8be78362, 2026-09-23 -- an operator DEFAULT-approval on a 15-minute timeout, not a
+/// deliberated ruling; host shape msg_4ba38011).
+///
+/// For each row of `corpus_census_roster` the host reads the subject's bytes (transport) and
+/// evaluates `corpus_census_eval_step_allowance` in `hermetic`; membership, the YAML parse, the entry
+/// count and the line are the `.dag`'s. Every failure REFUSES the run, typed and naming the identity
+/// and subject -- a rostered identity NEVER falls back to the flat tier budget, because that would
+/// answer with the population's budget exactly when the subject could not be read (DESIGN §5).
+///
+/// THE DERIVATION IS UNCHARGED: it runs here, while the floor plans, before any claim's measured
+/// window opens, so a census claim is charged its own work (its own parse included) and not the
+/// judge's.
+pub(crate) fn floor_corpus_census_allowances(
+    hermetic: &v1_interpreter::InterpContext,
+    workspace_root: &Path,
+) -> Result<std::collections::HashMap<String, CorpusCensusAllowanceReading>, String> {
+    use v1_interpreter::Value;
+    const ROSTER: &str = "v2.workflow.required_floor.corpus_census_roster";
+    const AUTHORITY: &str = "v2.workflow.required_floor.corpus_census_eval_step_allowance";
+    let value = v1_interpreter::run_in_context(hermetic, ROSTER, false)
+        .map_err(|e| format!("{ROSTER}: {e}"))?;
+    let items = floor_decode_list(hermetic, Some(&value)).map_err(|e| format!("{ROSTER}: {e}"))?;
+    let mut out = std::collections::HashMap::new();
+    for item in items {
+        let Value::Record { type_name, fields } = item else {
+            return Err(format!(
+                "{ROSTER}: expected CorpusCensusMember, got {}",
+                floor_value_shape(Some(&item))
+            ));
+        };
+        if !hermetic.sym_eq(*type_name, "CorpusCensusMember") {
+            return Err(format!(
+                "{ROSTER}: expected CorpusCensusMember, got record {}",
+                hermetic.resolve(*type_name)
+            ));
+        }
+        let str_field = |name: &str| -> Result<String, String> {
+            match hermetic.field(fields, name) {
+                Some(Value::Str(s)) => Ok(s.to_string()),
+                other => Err(format!(
+                    "{ROSTER}: {name} must be String, got {}",
+                    floor_value_shape(other)
+                )),
+            }
+        };
+        let identity = str_field("identity")?;
+        let subject_path = str_field("subject_path")?;
+        let refuse = |why: String| -> String {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=CorpusCensusAllowanceUnderived identity={identity} \
+                 subject={subject_path} — {why}. A rostered corpus-census claim is judged only \
+                 against the allowance v2.workflow.required_floor corpus_census_eval_step_allowance \
+                 derives; it never falls back to the flat tier budget."
+            )
+        };
+        if out.contains_key(&identity) {
+            return Err(refuse(
+                "corpus_census_roster names this identity twice".to_string(),
+            ));
+        }
+        let started = std::time::Instant::now();
+        let content = std::fs::read_to_string(workspace_root.join(&subject_path))
+            .map_err(|e| refuse(format!("the subject could not be read: {e}")))?;
+        let args = [
+            (Some("identity".to_string()), str_value(&identity)),
+            (Some("subject_content".to_string()), str_value(&content)),
+        ];
+        let result = v1_interpreter::run_in_context_with_args(hermetic, AUTHORITY, &args, false)
+            .map_err(|e| refuse(format!("{AUTHORITY} did not evaluate: {e}")))?;
+        let Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } = &result
+        else {
+            return Err(refuse(format!(
+                "{AUTHORITY} returned {}, expected CorpusCensusAllowance",
+                floor_value_shape(Some(&result))
+            )));
+        };
+        let reading = match hermetic.resolve(*variant_name).as_str() {
+            "CensusAllowanceDerived" => {
+                let entry_count = match hermetic.field(fields, "entry_count") {
+                    Some(Value::Int(n)) if *n > 0 => *n as u64,
+                    other => {
+                        return Err(refuse(format!(
+                            "CensusAllowanceDerived.entry_count is not a positive Int: {}",
+                            floor_value_shape(other)
+                        )))
+                    }
+                };
+                let budget_steps = match hermetic.field(fields, "budget_steps") {
+                    Some(Value::Record { fields: m, .. }) => match hermetic.field(m, "count") {
+                        Some(Value::Int(n)) if *n > 0 => *n as u64,
+                        other => {
+                            return Err(refuse(format!(
+                                "CensusAllowanceDerived.budget_steps has no positive count: {}",
+                                floor_value_shape(other)
+                            )))
+                        }
+                    },
+                    other => {
+                        return Err(refuse(format!(
+                            "CensusAllowanceDerived.budget_steps is not a Measure: {}",
+                            floor_value_shape(other)
+                        )))
+                    }
+                };
+                CorpusCensusAllowanceReading {
+                    subject_path: subject_path.clone(),
+                    entry_count,
+                    budget_steps,
+                }
+            }
+            "CensusAllowanceRefused" => {
+                let reason = match hermetic.field(fields, "reason") {
+                    Some(Value::Str(s)) => s.to_string(),
+                    other => floor_value_shape(other),
+                };
+                return Err(refuse(reason));
+            }
+            other => {
+                return Err(refuse(format!(
+                    "{AUTHORITY} returned an arm this host has no reading for: {other}"
+                )))
+            }
+        };
+        eprintln!(
+            "[floor-corpus-census] identity={identity} subject={subject_path} entry_count={} \
+             budget_steps={} derive_wall_ms={} charged=false",
+            reading.entry_count,
+            reading.budget_steps,
+            started.elapsed().as_millis()
+        );
+        out.insert(identity, reading);
+    }
+    Ok(out)
 }
 
 // ONE CARRIER, TWO REALIZATIONS -- decoded here rather than assumed to be one of them.
@@ -5565,8 +5802,27 @@ pub(crate) fn floor_cgroup_envelope(when: &str) {
 ///
 /// Every field is printed as read or as `na`; a missing key is never rendered as zero, for the
 /// reason `floor_resource_sample` gives.
-pub(crate) fn floor_cgroup_stat_beat(when: &str) {
+pub(crate) fn floor_cgroup_stat_beat(
+    when: &str,
+    stall: Option<&crate::memory_governor::MemoryStallObservation>,
+) {
     let leaf = floor_cgroup_dir();
+    // THE SEAM IS READ BEFORE AND AFTER THE SAMPLE, AND A TRANSITION IS NAMED RATHER THAN PICKED.
+    //
+    // Putting the seam on the beat's own line removed the LOG-ADJACENCY join; it did not bind the
+    // two observations IN TIME, and those are different fixes. This function reads memory.stat and
+    // memory.current from procfs and then renders; the floor thread can call `floor_seam` at any
+    // point in between, so a single read taken after the sample would label a beat with a seam the
+    // sampled memory was not taken under -- confidently, and with nothing in the line to say so.
+    // A transition beat is exactly the one a reader most wants to trust, because it is where a
+    // phase's cost is attributed.
+    //
+    // Bracketing is preferred over holding the seam lock across the reads: the lock is written by
+    // the floor thread on every phase change, and blocking that thread on two procfs reads would
+    // let the instrument perturb the workload it is measuring. Bracketing cannot do that, and it
+    // makes the uncertainty EXPLICIT (`transition:A>B`) instead of resolving it silently -- which
+    // is the difference between a typed refusal and a fabricated plausible reading (DESIGN 5).
+    let seam_before = floor_seam_current();
     let body = std::fs::read_to_string(format!("{leaf}/memory.stat")).ok();
     let key = |k: &str| -> String {
         body.as_deref()
@@ -5579,11 +5835,96 @@ pub(crate) fn floor_cgroup_stat_beat(when: &str) {
             })
             .unwrap_or_else(|| "na".to_string())
     };
-    let current = std::fs::read_to_string(format!("{leaf}/memory.current"))
-        .map(|v| v.trim().to_string())
+    let raw = |name: &str| -> String {
+        std::fs::read_to_string(format!("{leaf}/{name}"))
+            .map(|v| v.split_whitespace().collect::<Vec<_>>().join(","))
+            .unwrap_or_else(|_| "na".to_string())
+    };
+    let current = raw("memory.current");
+    // THE WALL CLOCK, so a beat is placed in time by its own line rather than by the log
+    // prefix the job runner happens to add, and a seam beat and a watchdog beat order by value.
+    let unix_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis().to_string())
+        .unwrap_or_else(|_| "na".to_string());
+    let seam_after = floor_seam_current();
+    // The beat line's own spelling, one token each and no spaces, because this line is parsed
+    // field-by-field into a typed receipt. `none` is the unset slot and maps to
+    // `SeamNotYetEntered`; `unreadable` is a poisoned lock; `transition:A>B` is a seam that MOVED
+    // while this sample was being taken, and maps to a `FloorSeam` arm that can neither size nor
+    // attribute anything. Only a seam that was the SAME before and after the sample is reported
+    // as that seam.
+    let spell = |r: &Option<String>| -> String {
+        match r {
+            None => "unreadable".to_string(),
+            Some(s) if s.is_empty() => "none".to_string(),
+            Some(s) => s.clone(),
+        }
+    };
+    let before = spell(&seam_before);
+    let after = spell(&seam_after);
+    let seam = if before == after {
+        before
+    } else {
+        format!("transition:{before}>{after}")
+    };
+    // THE STALL CLAUSE ON THE BEAT'S OWN LINE, for the same reason as the seam. It is the
+    // heartbeat's quantity and used to be readable only from the heartbeat line printed BESIDE
+    // this one, so `gunbc.floor_demand` `FloorMemoryStatBeat.stall` was transcribed by adjacency
+    // -- and `receipt_last_unstalled_beat` derives the guest's cache allowance from that field,
+    // so a mis-joined stall mis-sizes a guest. `na` where the window could not be read, never a
+    // zero: a zero stall is the healthiest reading this line can carry, so fabricating one would
+    // manufacture progress, which is the inverse of the error the counters exist to catch.
+    let stall_text = match stall {
+        Some(o) => crate::memory_governor::memory_stall_major_faults_per_minute(o).to_string(),
+        None => "na".to_string(),
+    };
+    // SWAP, PSI AND THE LEAF'S OWN EVENTS BESIDE THE COUNTERS, on every beat. The 2026-09-19
+    // receipt is censored on the held-set axis because anonymous pages were going to swap one beat
+    // after its peak, and the swap figure that showed it was the HOST's swap-in, read beside the
+    // leaf -- a different subject. `memory.swap.current` is this leaf's own; `memory.pressure` is
+    // the stall time that says whether reclaim cost the run anything; `memory.events.local`
+    // carries `oom` and `oom_kill` for this leaf alone. Printed raw, as the counters are.
+    //
+    // AND THE PROCESSES CHARGED TO THE LEAF, because a leaf charge is a sum over every process in
+    // it: a floor that shares its slot with a build daemon or a previous step's straggler reads
+    // their pages as its own, and that overlap is a different cause with a different remedy than
+    // retained application state. `pid:comm:rss_kb` per member, read from procfs, nothing summed.
+    let procs = std::fs::read_to_string(format!("{leaf}/cgroup.procs"))
+        .map(|body| {
+            body.lines()
+                .filter_map(|pid| {
+                    let pid = pid.trim();
+                    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+                    let field = |k: &str| {
+                        status.lines().find_map(|l| {
+                            l.strip_prefix(k).map(|r| {
+                                r.trim_start_matches(':')
+                                    .trim()
+                                    .trim_end_matches(" kB")
+                                    .to_string()
+                            })
+                        })
+                    };
+                    Some(format!(
+                        "{pid}:{}:{}",
+                        field("Name").unwrap_or_else(|| "na".to_string()),
+                        field("VmRSS").unwrap_or_else(|| "na".to_string())
+                    ))
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        })
         .unwrap_or_else(|_| "na".to_string());
     eprintln!(
-        "[floor-cgroup] when={when} stat_level={leaf} current={current} \
+        "[floor-cgroup] when={when} seam={seam} unix_ms={unix_ms} swap_current={} \
+         events_local=[{}] pressure=[{}] procs=[{procs}]",
+        raw("memory.swap.current"),
+        raw("memory.events.local"),
+        raw("memory.pressure"),
+    );
+    eprintln!(
+        "[floor-cgroup] when={when} stat_level={leaf} seam={seam} stall_per_min={stall_text} current={current} \
          memory_stat=[anon,{},file,{},shmem,{},unevictable,{},slab_unreclaimable,{},\
          slab_reclaimable,{},kernel_stack,{},pagetables,{},percpu,{},sock,{},file_dirty,{}]",
         key("anon"),
@@ -5603,7 +5944,7 @@ pub(crate) fn floor_cgroup_stat_beat(when: &str) {
 ///
 /// `planning_index` is the parse phase's `DeclarationIndex`, LENT rather than rebuilt: the
 /// floor's planning row derives the match-bearing consumers of a changed coproduct from it
-/// (`arm_set_consumer_planning`). `None` is "no such index in this process" -- the standalone
+/// (`interface_consumer_planning`). `None` is "no such index in this process" -- the standalone
 /// `--required-floor` entry -- and on a CI commit that is a refusal, not a blind plan.
 pub fn run_required_floor(
     source_roots: &[String],
@@ -5636,7 +5977,7 @@ pub fn run_required_floor(
         );
     }
     floor_cgroup_envelope("floor-entry");
-    floor_cgroup_stat_beat("floor-entry");
+    floor_cgroup_stat_beat("floor-entry", None);
     spawn_floor_heartbeat();
     floor_seam("strict-preparation");
     eprintln!("[floor-phase] phase=strict-preparation state=started");
@@ -5651,6 +5992,22 @@ pub fn run_required_floor(
     // 4,260-module corpus, measured 2026-08-29), so it is built once here and lent to the
     // policy-closure prepare and the gate-closure prepare alike.
     let gate_entry_index = build_multi_entry_index(source_roots);
+    floor_seam("changed-witness-planning");
+    // ONE CORPUS READ FOR BOTH PREPARES, CARRIED FROM THE ANCESTOR THAT OWNS BOTH DEMANDS.
+    //
+    // This function prepares TWO subjects -- the policy closure through
+    // `required_floor_nominal_subject_seeds_from_corpus`, then the gate closure below -- and both
+    // call sites pass identical source roots, identical exclusions and this same
+    // `gate_entry_index`, differing ONLY in their closure seeds. Each prepare used to begin with
+    // its own `build_module_index(source_roots)`, which is not memoised: it walked every root and
+    // `read_to_string`d every `.dag` file in the corpus. So the floor read and indexed the whole
+    // corpus twice, on every run, for two questions that differ in their seeds and in nothing else.
+    //
+    // That is DESIGN §2's authored duplication rather than a cache obligation, and §2 names the
+    // repair: when several demands share a least common ancestor, CARRY the first value. This is
+    // that ancestor. The entry index one line above was already shared for exactly this reason --
+    // the corpus read simply never was.
+    let floor_corpus = crate::cli_run::read_source_corpus_once(source_roots);
     // ONE DERIVATION, CONSUMED FOUR WAYS. The same diff observation supplies changed-witness
     // identities, newly enrolled identities, the compile-subject modules of
     // `touched_entry_files`, and the match-bearing consumers of every coproduct whose arm set
@@ -5699,6 +6056,7 @@ pub fn run_required_floor(
                 .to_string()
         })
         .collect();
+    floor_seam("nominal-subject-seeds");
     // THE NOMINAL SEEDS -- gate prefixes, gate authored modules, the wet schedule -- come from
     // the one producer the resolution census also reads, so what the floor prepares on a run
     // that touches nothing and what the census reports as reached are the same fact.
@@ -5706,7 +6064,7 @@ pub fn run_required_floor(
         required_gate_prefixes,
         required_gate_authored_modules,
         local_repo_wet_schedule_rows,
-    } = required_floor_nominal_subject_seeds(source_roots, &gate_entry_index)?;
+    } = required_floor_nominal_subject_seeds_from_corpus(&floor_corpus, &gate_entry_index)?;
     // THE FLOOR'S OWN AUTHORITIES ARE ALWAYS IN THE SUBJECT: the floor evaluates its rosters
     // (expected red, route gap, cost debt, the gate itself) in a frame over the prepared graph,
     // and a gate roster that happened not to reach `v2.workflow.required_floor` refused with
@@ -5727,8 +6085,8 @@ pub fn run_required_floor(
     // else here is an AUTHORED MODULE NAME and is matched at segment boundaries, so `a.b` seeds
     // `a.b` and `a.b.c` and never `a.bc`.
     let closure_prefix_seeds: Vec<String> = required_gate_prefixes.clone();
-    let mut arm_set_consumer_seeds: Vec<String> = Vec::new();
-    let mut arm_set_consumers_outside_floor_roots: Vec<(String, String)> = Vec::new();
+    let mut interface_consumer_seeds: Vec<String> = Vec::new();
+    let mut interface_consumers_outside_floor_roots: Vec<(String, String)> = Vec::new();
     if let Some(subject) = &compile_subject {
         // THE RECEIPT NAMES EACH SEED BY ITS GROUND, so the planned-set delta is attributable
         // per merge: which consumers were added, by which changed declaration, and which
@@ -5755,33 +6113,35 @@ pub fn run_required_floor(
                  -- not a seed: the floor's source roots do not index it"
             );
         }
-        match &subject.arm_set {
-            ArmSetConsumerPlanning::NotEvaluated { reason } => {
+        match &subject.interface_consumers {
+            InterfaceConsumerPlanning::NotEvaluated { reason } => {
                 if commit != "local" && !commit.is_empty() {
                     return Err(format!(
-                        "REQUIRED-FLOOR REFUSAL cause=ArmSetConsumerPlanningUnavailable {reason} \
+                        "REQUIRED-FLOOR REFUSAL cause=InterfaceConsumerPlanningUnavailable {reason} \
                          — a CI floor may not plan the prepared subject without the dependents \
-                         direction of the stale-match class"
+                         direction of the changed-interface class"
                     ));
                 }
                 eprintln!(
-                    "[floor-phase] phase=arm-set-changed-consumers state=not-evaluated \
+                    "[floor-phase] phase=interface-changed-consumers state=not-evaluated \
                      reason={reason:?}"
                 );
             }
-            ArmSetConsumerPlanning::NoSubject { head } => {
+            InterfaceConsumerPlanning::NoSubject { head } => {
                 eprintln!(
-                    "[floor-phase] phase=arm-set-changed-consumers state=completed \
+                    "[floor-phase] phase=interface-changed-consumers state=completed \
                      changed_declarations=0 consumers_added=0 base={head} head={head} \
                      (no subject: the window's base is its head)"
                 );
             }
-            ArmSetConsumerPlanning::Selected {
+            InterfaceConsumerPlanning::Selected {
                 base,
                 head,
                 selection,
             } => {
-                use crate::cli_run::namespace_baseline::ArmConsumerBinding;
+                use crate::cli_run::namespace_baseline::{
+                    InterfaceChangeGround, InterfaceConsumerBinding,
+                };
                 let floor_roots = floor_source_roots_workspace_relative(source_roots);
                 let mut flat_channel = 0usize;
                 for change in &selection.changes {
@@ -5793,52 +6153,71 @@ pub fn run_required_floor(
                     }) {
                         let name = &consumer.consumer_module_path;
                         if !path_under_floor_roots(&consumer.consumer_rel_path, &floor_roots) {
-                            arm_set_consumers_outside_floor_roots
+                            interface_consumers_outside_floor_roots
                                 .push((consumer.consumer_rel_path.clone(), name.clone()));
                             continue;
                         }
                         match consumer.binding {
-                            ArmConsumerBinding::BoundToDeclaringModule => {
+                            InterfaceConsumerBinding::BoundToDeclaringModule => {
                                 resolved.push(name.clone())
                             }
-                            ArmConsumerBinding::BoundThroughFlatBareChannel => {
+                            InterfaceConsumerBinding::BoundThroughFlatBareChannel => {
                                 flat_channel += 1;
                                 flat.push(name.clone())
                             }
                         }
-                        arm_set_consumer_seeds.push(name.clone());
+                        interface_consumer_seeds.push(name.clone());
                     }
+                    let ground = match &change.ground {
+                        InterfaceChangeGround::ArmSetChanged {
+                            arms_added,
+                            arms_removed,
+                        } => format!(
+                            "ArmSetChanged arms_added={arms_added:?} arms_removed={arms_removed:?}"
+                        ),
+                        InterfaceChangeGround::ArmSetGrown { arms_added } => {
+                            format!("ArmSetGrown arms_added={arms_added:?}")
+                        }
+                        InterfaceChangeGround::SignatureChanged => "SignatureChanged".to_string(),
+                        InterfaceChangeGround::DeclarationRemoved => {
+                            "DeclarationRemoved".to_string()
+                        }
+                        InterfaceChangeGround::AdmissionIntroduced { admitted_callers } => {
+                            format!("AdmissionIntroduced admitted_callers={admitted_callers:?}")
+                        }
+                        InterfaceChangeGround::AdmittedCallersNarrowed { removed_callers } => {
+                            format!("AdmittedCallersNarrowed removed_callers={removed_callers:?}")
+                        }
+                        InterfaceChangeGround::PropagatedThrough {
+                            module_path,
+                            declaration,
+                        } => format!("PropagatedThrough through={module_path}.{declaration}"),
+                    };
                     eprintln!(
-                        "[floor-plan] SeedArmSetChangedMatchConsumer declaration={}.{} \
-                         arms_added={:?} arms_removed={:?} consumers_added={:?} \
-                         flat_channel_consumers={:?}",
-                        change.module_path,
-                        change.declaration,
-                        change.arms_added,
-                        change.arms_removed,
-                        resolved,
-                        flat
+                        "[floor-plan] SeedDeclarationInterfaceChangedConsumer declaration={}.{} \
+                         ground={ground} consumers_added={:?} flat_channel_consumers={:?}",
+                        change.module_path, change.declaration, resolved, flat
                     );
                 }
-                arm_set_consumer_seeds.sort();
-                arm_set_consumer_seeds.dedup();
-                arm_set_consumers_outside_floor_roots.sort();
-                arm_set_consumers_outside_floor_roots.dedup();
-                for (path, module) in &arm_set_consumers_outside_floor_roots {
+                interface_consumer_seeds.sort();
+                interface_consumer_seeds.dedup();
+                interface_consumers_outside_floor_roots.sort();
+                interface_consumers_outside_floor_roots.dedup();
+                for (path, module) in &interface_consumers_outside_floor_roots {
                     eprintln!(
-                        "[floor-plan] ArmSetConsumerOutsideFloorRoots path={path} \
+                        "[floor-plan] InterfaceConsumerOutsideFloorRoots path={path} \
                          module_path={module} -- planned but not a seed: the floor's source \
                          roots do not index it, so its stale match is NOT checked here"
                     );
                 }
                 eprintln!(
-                    "[floor-phase] phase=arm-set-changed-consumers state=completed \
+                    "[floor-phase] phase=interface-changed-consumers state=completed \
                      changed_declarations={} consumers_added={} flat_channel_consumers={} \
                      outside_floor_roots={} base={base} head={head}",
                     selection.changes.len(),
-                    arm_set_consumer_seeds.len(),
+                    interface_consumer_seeds.len(),
                     flat_channel,
-                    arm_set_consumers_outside_floor_roots.len()
+                    interface_consumers_outside_floor_roots.len()
                 );
             }
         }
@@ -5854,10 +6233,11 @@ pub fn run_required_floor(
             .iter()
             .flat_map(|subject| subject.touched_modules.iter().cloned()),
     )
-    .chain(arm_set_consumer_seeds.iter().cloned())
+    .chain(interface_consumer_seeds.iter().cloned())
     .collect();
-    let (mut prepared, prepared_sources) = prepare_repository_closure(
-        source_roots,
+    floor_seam("prepare-closure-resolve");
+    let (mut prepared, prepared_sources) = crate::cli_run::prepare_repository_from_corpus(
+        &floor_corpus,
         &floor_prepared_subject_exclusions(),
         Some((
             &gate_entry_index,
@@ -5866,6 +6246,7 @@ pub fn run_required_floor(
         )),
     )?;
     drop(gate_entry_index);
+    floor_seam("prepared-subject-warm");
     // THE FULL INDEX THE DISCOVERY AUTHORITY WILL JUDGE, captured here because the prepared
     // graph is intentionally only the required gate closure. Declaration discovery is a
     // corpus-wide question: fold the one modeled producer over every indexed source, finalize
@@ -6795,6 +7176,13 @@ pub fn run_required_floor(
         grandfathered_eval_step_budget,
         new_witness_eval_step_budget
     );
+    // THE CORPUS-CENSUS ARM, EVALUATED AND NOT MIRRORED. A rostered whole-file census claim's budget
+    // is `v2.workflow.required_floor` `corpus_census_eval_step_allowance` over its subject, read here
+    // through the policy frame; the formula has no Rust spelling. It is consulted BEFORE the tiers at
+    // both budget sites below, so a rostered identity is judged only by its allowance, and a
+    // derivation that fails has already refused the run inside the call -- there is no path on which
+    // a rostered identity reaches the flat tier budget.
+    let corpus_census = floor_corpus_census_allowances(&hermetic, &workspace_root())?;
 
     // EXACTLY ONE DECLARED MECHANISM HOLDS A ROW, and when cost debt withholds one it is the
     // holder. `gunbc.quarantine_probe_disposition` states the rule this implements: the question
@@ -7057,7 +7445,9 @@ pub fn run_required_floor(
                 // other edit takes the new-witness one. The decision and the budget are the .dag's;
                 // the host supplies the head bytes and the comparison base it already resolved.
                 // Computed before the claim is built because the identity moves into it.
-                let eval_step_budget = if grandfathered_roster.contains(&identity) {
+                let eval_step_budget = if let Some(census) = corpus_census.get(&identity) {
+                    census.budget_steps
+                } else if grandfathered_roster.contains(&identity) {
                     grandfathered_eval_step_budget
                 } else if cost_debt_roster.contains(&identity) {
                     let base = floor_diff_comparison_readout()?.base().to_string();
@@ -7163,8 +7553,11 @@ pub fn run_required_floor(
                 identity: identity.clone(),
                 disposition: RequiredFloorDisposition::Planned,
             });
-            // THE TIER, DERIVED FROM ROSTER MEMBERSHIP AND FROM NOTHING ELSE.
-            let eval_step_budget = if grandfathered_roster.contains(&identity) {
+            // THE TIER, DERIVED FROM ROSTER MEMBERSHIP AND FROM NOTHING ELSE -- after the corpus-census
+            // arm, whose members are judged by their evaluated allowance alone.
+            let eval_step_budget = if let Some(census) = corpus_census.get(&identity) {
+                census.budget_steps
+            } else if grandfathered_roster.contains(&identity) {
                 grandfathered_eval_step_budget
             } else {
                 new_witness_eval_step_budget
@@ -7179,6 +7572,20 @@ pub fn run_required_floor(
                 cost_line_ms: claim_cost_line_ms,
                 cost_policy: ChangedWitnessCostPolicy::Ordinary,
             });
+        }
+    }
+    // A CORPUS-CENSUS ROW THAT PLANNED NO CLAIM IS STALE, AND STALENESS REFUSES. The allowance was
+    // derived for an identity the floor then never judged -- a renamed or deleted census claim, or
+    // one outside the gate -- and a roster row nothing consumes would keep asserting a line for a
+    // claim that no longer exists (DESIGN §3c).
+    for (identity, census) in &corpus_census {
+        if !claims.iter().any(|c| &c.qualified == identity) {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CorpusCensusRowPlannedNoClaim identity={identity} \
+                 subject={} — v2.workflow.required_floor corpus_census_roster names an identity \
+                 this floor run did not plan; delete the row or restore the claim.",
+                census.subject_path
+            ));
         }
     }
     // Taken BEFORE the declared population is folded in, so it is what the site loop offered and
@@ -8367,16 +8774,29 @@ pub fn run_required_floor(
             // ceiling it lived under, while a NEW row over 100ms-equivalent has never been inside
             // one, and telling an author "reduce it" without saying which line it crossed makes
             // them guess at the target.
-            let (tier_name, tier_remedy) = if grandfathered_roster.contains(&claim.qualified) {
+            let (tier_name, tier_remedy) = if let Some(census) = corpus_census.get(&claim.qualified)
+            {
+                (
+                    format!(
+                        "corpus-census (base + per_entry x {} entries of {}, derived by \
+                         v2.workflow.required_floor corpus_census_eval_step_allowance; over it is a \
+                         per-entry rate excess, since only per_entry grows with the subject)",
+                        census.entry_count, census.subject_path
+                    ),
+                    String::new(),
+                )
+            } else if grandfathered_roster.contains(&claim.qualified) {
                 (
                     "grandfathered (enrolled when the roster was cut; judged against the \
-                     500ms-equivalent budget)",
+                     500ms-equivalent budget)"
+                        .to_string(),
                     String::new(),
                 )
             } else {
                 (
                     "new-witness (not in the grandfathered roster; judged against the \
-                     100ms-equivalent budget for work arriving after the cut)",
+                     100ms-equivalent budget for work arriving after the cut)"
+                        .to_string(),
                     format!(" {new_witness_first_remedy}"),
                 )
             };
@@ -8384,7 +8804,8 @@ pub fn run_required_floor(
                 "{} reached its verdict and performed {} eval steps against a {} budget of {} \
                  (observed cpu_ms={}, wall_ms={}, recorded and NOT gated on). The budget is \
                  declared policy — v2.workflow.required_floor \
-                 claim_eval_step_budget_for_identity, grounded through the pinned calibration \
+                 claim_eval_step_budget_for_identity (for a rostered corpus census, \
+                 corpus_census_eval_step_allowance), grounded through the pinned calibration \
                  fixture in v2.workflow.floor_eval_step_calibration — so this is a statement about \
                  the claim's own work and not about the runner it landed on. Reduce what the \
                  witness reaches for, or enrol it in a lane that declares its own ceiling AND \
@@ -9709,6 +10130,7 @@ pub fn run_required_floor(
     // candidate-bound rather than carrying a commit-shaped lie. The roster identity is derived
     // inside the module from the identities being published, so no value here can disagree with
     // the population it names.
+    floor_seam("publication");
     {
         let snapshot_wire = if commit == "local" || commit.is_empty() {
             "unpublished"
@@ -11688,7 +12110,7 @@ mod changed_witness_projection_tests {
     fn an_edited_must_not_resolve_probe_is_seeded_then_excluded_and_preparation_stays_green() {
         let probe = "module armset.probe\n\nimport armset.x { Signal }\n\n\
 fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
-        let fx = arm_set_fixture("probe", "head", &[("x.dag", ARM_X_HEAD), ("w.dag", ARM_W)]);
+        let fx = interface_fixture("probe", "head", &[("x.dag", ARM_X_HEAD), ("w.dag", ARM_W)]);
         std::fs::create_dir_all(fx.join("test/probe")).expect("probe dir");
         std::fs::write(fx.join("test/probe/probe.dag"), probe).expect("probe source");
         let rel = fx
@@ -11809,9 +12231,9 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
 
     /// The fixture root, under the workspace's gitignored `target/`. Removed by the test that
     /// made it; a panicking test leaves it for the next run of the same name to replace.
-    fn arm_set_fixture(name: &str, side: &str, files: &[(&str, &str)]) -> PathBuf {
+    fn interface_fixture(name: &str, side: &str, files: &[(&str, &str)]) -> PathBuf {
         let root = process_workspace_root().join(format!(
-            "target/arm_set_red_{name}_{}/{side}",
+            "target/interface_red_{name}_{}/{side}",
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&root);
@@ -11822,7 +12244,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         root
     }
 
-    fn arm_set_index(fixture: &Path) -> crate::cli_run::declaration_index::DeclarationIndex {
+    fn interface_index(fixture: &Path) -> crate::cli_run::declaration_index::DeclarationIndex {
         let rel = fixture
             .strip_prefix(process_workspace_root())
             .expect("fixture is under the workspace")
@@ -11834,18 +12256,18 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         }
     }
 
-    fn arm_set_selection(
+    fn interface_selection(
         name: &str,
         base: &[(&str, &str)],
         head: &[(&str, &str)],
     ) -> (
-        crate::cli_run::namespace_baseline::ArmSetConsumerSelection,
+        crate::cli_run::namespace_baseline::InterfaceConsumerSelection,
         PathBuf,
     ) {
-        let base_fx = arm_set_fixture(name, "base", base);
-        let head_fx = arm_set_fixture(name, "head", head);
-        let base_index = arm_set_index(&base_fx);
-        let head_index = arm_set_index(&head_fx);
+        let base_fx = interface_fixture(name, "base", base);
+        let head_fx = interface_fixture(name, "head", head);
+        let base_index = interface_index(&base_fx);
+        let head_index = interface_index(&head_fx);
         let _ = std::fs::remove_dir_all(&base_fx);
         assert!(
             crate::cli_run::declaration_index::index_population(&base_index).modules > 0
@@ -11853,7 +12275,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
             "PLANT MALFORMED: a side indexed no modules"
         );
         (
-            crate::cli_run::namespace_baseline::arm_set_changed_match_consumers(
+            crate::cli_run::namespace_baseline::interface_changed_consumers(
                 &base_index,
                 &head_index,
             ),
@@ -11862,7 +12284,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     }
 
     fn consumers_of(
-        selection: &crate::cli_run::namespace_baseline::ArmSetConsumerSelection,
+        selection: &crate::cli_run::namespace_baseline::InterfaceConsumerSelection,
     ) -> Vec<&str> {
         let mut out: Vec<&str> = selection
             .consumers
@@ -11870,7 +12292,25 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
             .map(|c| c.consumer_module_path.as_str())
             .collect();
         out.sort();
+        out.dedup();
         out
+    }
+
+    /// The DIRECT changes a selection read in one module -- propagated changes excluded, so a
+    /// fixture asserts what the diff changed rather than what its readers' signatures inherit.
+    fn direct_changes_in<'a>(
+        selection: &'a crate::cli_run::namespace_baseline::InterfaceConsumerSelection,
+        module_path: &str,
+    ) -> Vec<&'a crate::cli_run::namespace_baseline::DeclarationInterfaceChange> {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        selection
+            .changes
+            .iter()
+            .filter(|c| {
+                c.module_path == module_path
+                    && !matches!(c.ground, InterfaceChangeGround::PropagatedThrough { .. })
+            })
+            .collect()
     }
 
     /// THE RED. Arm added in X; Y untouched; Y is selected; Y prepared under the floor's own
@@ -11878,8 +12318,8 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     /// -- see the positive control below, which prepares W without Y.
     #[test]
     fn arm_growth_selects_the_untouched_match_consumer_and_strict_preparation_refuses_it() {
-        use crate::cli_run::namespace_baseline::ArmConsumerBinding;
-        let (selection, head_fx) = arm_set_selection(
+        use crate::cli_run::namespace_baseline::{InterfaceChangeGround, InterfaceConsumerBinding};
+        let (selection, head_fx) = interface_selection(
             "red",
             &[
                 ("x.dag", ARM_X_BASE),
@@ -11894,14 +12334,16 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
                 ("z.dag", ARM_Z),
             ],
         );
-        assert_eq!(selection.changes.len(), 1, "{:?}", selection.changes);
-        let change = &selection.changes[0];
+        let direct = direct_changes_in(&selection, "armset.x");
+        assert_eq!(direct.len(), 1, "{:?}", selection.changes);
+        let change = direct[0];
+        assert_eq!(change.declaration, "Signal");
         assert_eq!(
-            (change.module_path.as_str(), change.declaration.as_str()),
-            ("armset.x", "Signal")
+            change.ground,
+            InterfaceChangeGround::ArmSetGrown {
+                arms_added: vec!["Amber".to_string()],
+            }
         );
-        assert_eq!(change.arms_added, vec!["Amber".to_string()]);
-        assert!(change.arms_removed.is_empty());
         // Y and W are consumers bound to the declarer; Z names `Red` but binds to its own
         // coproduct and is NOT selected; X itself is never selected here (the dependency
         // direction seeds it from the diff).
@@ -11909,11 +12351,11 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         assert!(selection
             .consumers
             .iter()
-            .all(|c| c.binding == ArmConsumerBinding::BoundToDeclaringModule));
+            .all(|c| c.binding == InterfaceConsumerBinding::BoundToDeclaringModule));
         let y = selection
             .consumers
             .iter()
-            .find(|c| c.consumer_module_path == "armset.y")
+            .find(|c| c.consumer_module_path == "armset.y" && c.changed_declaration == "Signal")
             .expect("y selected");
         assert_eq!(y.in_declarations, vec!["stop_of".to_string()]);
 
@@ -11941,7 +12383,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     /// refuses whatever is seeded.
     #[test]
     fn arm_growth_consumer_with_a_wildcard_is_planned_and_prepares_clean() {
-        let (selection, head_fx) = arm_set_selection(
+        let (selection, head_fx) = interface_selection(
             "wildcard",
             &[("x.dag", ARM_X_BASE), ("w.dag", ARM_W)],
             &[("x.dag", ARM_X_HEAD), ("w.dag", ARM_W)],
@@ -11959,18 +12401,23 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         assert!(prepared.modules_resolved >= 2, "x and w prepared");
     }
 
-    /// CONTROL: a type change with no match consumers plans nothing extra. The record type grows
-    /// a field; its user projects a field and matches nothing.
+    /// A RECORD THAT GROWS A FIELD IS AN INTERFACE CHANGE: its untouched reader is planned even
+    /// though it carries no match. Before the arm-set ground was generalized this fixture was the
+    /// control that planned NOTHING -- the latent failure itself, asserted as correct.
     #[test]
-    fn a_type_change_with_no_match_consumers_plans_nothing_extra() {
-        let (selection, fx) = arm_set_selection(
+    fn a_record_field_growth_plans_its_untouched_reader() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let (selection, fx) = interface_selection(
             "record",
             &[("rec.dag", REC_BASE), ("rec_user.dag", REC_USER)],
             &[("rec.dag", REC_HEAD), ("rec_user.dag", REC_USER)],
         );
         let _ = std::fs::remove_dir_all(&fx);
-        assert!(selection.changes.is_empty(), "{:?}", selection.changes);
-        assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
+        let direct = direct_changes_in(&selection, "armset.rec");
+        assert_eq!(direct.len(), 1, "{:?}", selection.changes);
+        assert_eq!(direct[0].declaration, "Box");
+        assert_eq!(direct[0].ground, InterfaceChangeGround::SignatureChanged);
+        assert_eq!(consumers_of(&selection), vec!["armset.rec_user"]);
     }
 
     /// SECOND CONTROL: a diff with no type change selects exactly nothing -- the planned set is
@@ -11978,31 +12425,39 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     #[test]
     fn a_diff_with_no_arm_set_change_plans_nothing_extra() {
         let y_edited = ARM_Y.replace("stop_of", "halts");
-        let (selection, fx) = arm_set_selection(
+        let (selection, fx) = interface_selection(
             "notype",
             &[("x.dag", ARM_X_BASE), ("y.dag", ARM_Y)],
             &[("x.dag", ARM_X_BASE), ("y.dag", y_edited.as_str())],
         );
         let _ = std::fs::remove_dir_all(&fx);
-        assert!(selection.changes.is_empty());
-        assert!(selection.consumers.is_empty());
+        // X is unchanged; Y's own rename is a removal nobody else reads.
+        assert!(direct_changes_in(&selection, "armset.x").is_empty());
+        assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
     }
 
     /// An arm REMOVED elsewhere is the same class in the other direction: Y's match names an
     /// arm that no longer exists, and only the base side can bind that spelling to X.
     #[test]
     fn arm_removal_selects_the_consumer_that_still_names_the_arm() {
-        let (selection, fx) = arm_set_selection(
+        let (selection, fx) = interface_selection(
             "removal",
             &[("x.dag", ARM_X_HEAD), ("y.dag", ARM_Y)],
             &[("x.dag", ARM_X_BASE), ("y.dag", ARM_Y)],
         );
-        assert_eq!(selection.changes.len(), 1);
-        assert_eq!(selection.changes[0].arms_removed, vec!["Amber".to_string()]);
+        let direct = direct_changes_in(&selection, "armset.x");
+        assert_eq!(direct.len(), 1);
+        assert_eq!(
+            direct[0].ground,
+            crate::cli_run::namespace_baseline::InterfaceChangeGround::ArmSetChanged {
+                arms_added: Vec::new(),
+                arms_removed: vec!["Amber".to_string()],
+            }
+        );
         // Y names Red and Green, both still present: it is a consumer of the changed coproduct.
         assert_eq!(consumers_of(&selection), vec!["armset.y"]);
         let _ = std::fs::remove_dir_all(&fx);
-        let (selection, fx) = arm_set_selection(
+        let (selection, fx) = interface_selection(
             "removal_named",
             &[
                 ("x.dag", ARM_X_HEAD),
@@ -12023,12 +12478,582 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         assert_eq!(consumers_of(&selection), vec!["armset.y"]);
     }
 
+    /// The #11751 shape (gunbc.runner_microvm_network `HelperStanding`, 99c2d33263): a product field
+    /// retyped from `Int` to a new product, read by an untouched constructor.
+    const IFACE_H_BASE: &str = "module iface.h\n\ntype Standing {\n  surface: Int\n}\n";
+    const IFACE_H_HEAD: &str = "module iface.h\n\ntype Reading {\n  value: Int\n}\n\n\
+type Standing {\n  surface: Reading\n}\n";
+    const IFACE_H_USER: &str = "module iface.hc\n\nimport iface.h { Standing }\n\n\
+fn standing() -> Standing {\n  Standing { surface: 3 }\n}\n";
+    /// The #11751 brand shape (`ConvergeGeneration`): an alias re-branded under a product that
+    /// is itself unchanged. The consumer names only the product, so it is reached ONLY through
+    /// propagation.
+    const IFACE_G_BASE: &str = "module iface.g\n\ntype Generation = Int\n\n\
+type Converged {\n  generation: Generation\n}\n";
+    const IFACE_G_HEAD: &str =
+        "module iface.g\n\ntype Generation = String where brand(\"Generation\")\n\n\
+type Converged {\n  generation: Generation\n}\n";
+    const IFACE_G_USER: &str = "module iface.gc\n\nimport iface.g { Converged }\n\n\
+fn converged() -> Converged {\n  Converged { generation: 3 }\n}\n";
+    /// A function whose parameter and result are retyped, its caller, and an importer that never
+    /// reads it.
+    const IFACE_F_BASE: &str = "module iface.f\n\nfn width_of(w: Int) -> Int {\n  w\n}\n";
+    const IFACE_F_HEAD: &str = "module iface.f\n\nfn width_of(w: String) -> String {\n  w\n}\n";
+    const IFACE_F_BODY_ONLY: &str = "module iface.f\n\nfn width_of(w: Int) -> Int {\n  w + 1\n}\n";
+    const IFACE_F_CALLER: &str = "module iface.fc\n\nimport iface.f { width_of }\n\n\
+fn twice() -> Int {\n  width_of(w: 2)\n}\n";
+    const IFACE_F_IDLE: &str = "module iface.fi\n\nimport iface.f\n\nfn idle() -> Int {\n  1\n}\n";
+
+    /// Prepare `seeds` over one fixture root under the floor's own Strict path.
+    fn prepare_seeds(root: &Path, seeds: &[&str]) -> Result<(), String> {
+        let roots = [root.to_string_lossy().into_owned()];
+        let (_lock, previous) = enter_workspace_cwd();
+        let index = build_multi_entry_index(&roots);
+        let seeds: Vec<String> = seeds.iter().map(|s| s.to_string()).collect();
+        let prepared = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
+        leave_workspace_cwd(&previous);
+        prepared.map(|_| ())
+    }
+
+    /// CONTROL (a) AND (e). A product field `Int -> Reading` plans the untouched constructor --
+    /// and the pair of preparations is the latent failure itself: the touched module alone (the
+    /// seed set before this ground existed) prepares GREEN over a non-typechecking importer, and
+    /// adding the planned consumer turns it RED. Removing the ground recreates the first arm.
+    #[test]
+    fn a_product_field_retype_plans_the_untouched_constructor_and_without_it_the_floor_is_green() {
+        let (selection, head_fx) = interface_selection(
+            "field",
+            &[("h.dag", IFACE_H_BASE), ("hc.dag", IFACE_H_USER)],
+            &[("h.dag", IFACE_H_HEAD), ("hc.dag", IFACE_H_USER)],
+        );
+        assert_eq!(consumers_of(&selection), vec!["iface.hc"]);
+        let touched_only = prepare_seeds(&head_fx, &["iface.h"]);
+        let planned = prepare_seeds(&head_fx, &["iface.h", "iface.hc"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(
+            touched_only.is_ok(),
+            "(e) the touched module alone must prepare green -- the latent failure: {touched_only:?}"
+        );
+        assert!(
+            planned.is_err(),
+            "(a) the planned consumer must refuse under Strict preparation"
+        );
+    }
+
+    /// CONTROL (b). `Int -> branded Generation` under an unchanged product: the consumer names
+    /// only `Converged`, so it is planned through `PropagatedThrough`, and refuses when prepared.
+    #[test]
+    fn a_rebranded_alias_plans_the_consumer_of_the_product_that_carries_it() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let (selection, head_fx) = interface_selection(
+            "brand",
+            &[("g.dag", IFACE_G_BASE), ("gc.dag", IFACE_G_USER)],
+            &[("g.dag", IFACE_G_HEAD), ("gc.dag", IFACE_G_USER)],
+        );
+        assert!(
+            selection
+                .changes
+                .iter()
+                .any(|c| c.declaration == "Converged"
+                    && c.ground
+                        == InterfaceChangeGround::PropagatedThrough {
+                            module_path: "iface.g".to_string(),
+                            declaration: "Generation".to_string(),
+                        }),
+            "{:?}",
+            selection.changes
+        );
+        assert_eq!(consumers_of(&selection), vec!["iface.gc"]);
+        let planned = prepare_seeds(&head_fx, &["iface.g", "iface.gc"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(planned.is_err(), "the planned consumer must refuse");
+    }
+
+    /// CONTROL (c). A function's parameter and result retyped plans its untouched caller -- and
+    /// NOT an importer that never reads it: the population is readers, not importers.
+    #[test]
+    fn a_function_signature_change_plans_its_caller_and_not_an_idle_importer() {
+        let (selection, head_fx) = interface_selection(
+            "signature",
+            &[
+                ("f.dag", IFACE_F_BASE),
+                ("fc.dag", IFACE_F_CALLER),
+                ("fi.dag", IFACE_F_IDLE),
+            ],
+            &[
+                ("f.dag", IFACE_F_HEAD),
+                ("fc.dag", IFACE_F_CALLER),
+                ("fi.dag", IFACE_F_IDLE),
+            ],
+        );
+        assert_eq!(consumers_of(&selection), vec!["iface.fc"]);
+        let planned = prepare_seeds(&head_fx, &["iface.f", "iface.fc"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(planned.is_err(), "the planned caller must refuse");
+    }
+
+    /// CONTROL (d). A body-only edit leaves the interface unchanged: nothing is planned, not the
+    /// caller and not the importer.
+    #[test]
+    fn a_body_only_change_plans_no_reverse_consumer() {
+        let (selection, fx) = interface_selection(
+            "body",
+            &[
+                ("f.dag", IFACE_F_BASE),
+                ("fc.dag", IFACE_F_CALLER),
+                ("fi.dag", IFACE_F_IDLE),
+            ],
+            &[
+                ("f.dag", IFACE_F_BODY_ONLY),
+                ("fc.dag", IFACE_F_CALLER),
+                ("fi.dag", IFACE_F_IDLE),
+            ],
+        );
+        let _ = std::fs::remove_dir_all(&fx);
+        assert!(selection.changes.is_empty(), "{:?}", selection.changes);
+        assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
+    }
+
+    /// A sealed constructor whose `admit_callers:` roster names two callers, the roster widened
+    /// by a third, and the roster narrowed by one.
+    const ADM_M_BASE: &str = "module adm.m\n\ntype Sealed sole_constructor { tag: String }\n\n\
+fn mint(tag: String) -> Sealed admit_callers: [decl_ref(module_path: \"adm.a\", decl_name: \"use_a\"), \
+decl_ref(module_path: \"adm.b\", decl_name: \"use_b\")] = Sealed { tag: tag }\n";
+    const ADM_M_WIDENED: &str = "module adm.m\n\ntype Sealed sole_constructor { tag: String }\n\n\
+fn mint(tag: String) -> Sealed admit_callers: [decl_ref(module_path: \"adm.a\", decl_name: \"use_a\"), \
+decl_ref(module_path: \"adm.b\", decl_name: \"use_b\"), decl_ref(module_path: \"adm.c\", decl_name: \"use_c\")] \
+= Sealed { tag: tag }\n";
+    const ADM_M_NARROWED: &str = "module adm.m\n\ntype Sealed sole_constructor { tag: String }\n\n\
+fn mint(tag: String) -> Sealed admit_callers: [decl_ref(module_path: \"adm.a\", decl_name: \"use_a\")] \
+= Sealed { tag: tag }\n";
+    const ADM_A: &str =
+        "module adm.a\n\nimport adm.m { mint, Sealed }\n\nfn use_a() -> Sealed {\n  mint(tag: \"a\")\n}\n";
+    const ADM_B: &str =
+        "module adm.b\n\nimport adm.m { mint, Sealed }\n\nfn use_b() -> Sealed {\n  mint(tag: \"b\")\n}\n";
+
+    /// GROWING A CALLER ROSTER IS NOT AN INTERFACE CHANGE: no existing caller can be stranded by
+    /// being admitted. Measured on 99c2d33263 (#11751), where appending three entries to
+    /// `extdeps.exec.command` `argv_command`'s roster planned every caller of it (72 modules)
+    /// while the declaration's type was unchanged.
+    #[test]
+    fn a_widened_caller_roster_plans_no_caller() {
+        let (selection, fx) = interface_selection(
+            "admit_widen",
+            &[("m.dag", ADM_M_BASE), ("a.dag", ADM_A), ("b.dag", ADM_B)],
+            &[("m.dag", ADM_M_WIDENED), ("a.dag", ADM_A), ("b.dag", ADM_B)],
+        );
+        let _ = std::fs::remove_dir_all(&fx);
+        assert!(selection.changes.is_empty(), "{:?}", selection.changes);
+        assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
+    }
+
+    /// NARROWING ONE PLANS EXACTLY THE CALLER IT DROPPED, and that caller refuses when prepared;
+    /// the caller still on the roster is not planned.
+    #[test]
+    fn a_narrowed_caller_roster_plans_only_the_dropped_caller() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let (selection, head_fx) = interface_selection(
+            "admit_narrow",
+            &[("m.dag", ADM_M_BASE), ("a.dag", ADM_A), ("b.dag", ADM_B)],
+            &[
+                ("m.dag", ADM_M_NARROWED),
+                ("a.dag", ADM_A),
+                ("b.dag", ADM_B),
+            ],
+        );
+        assert_eq!(
+            direct_changes_in(&selection, "adm.m")
+                .iter()
+                .map(|c| (c.declaration.as_str(), c.ground.clone()))
+                .collect::<Vec<_>>(),
+            vec![(
+                "mint",
+                InterfaceChangeGround::AdmittedCallersNarrowed {
+                    removed_callers: vec![("adm.b".to_string(), "use_b".to_string())],
+                }
+            )]
+        );
+        assert_eq!(consumers_of(&selection), vec!["adm.b"]);
+        let planned = prepare_seeds(&head_fx, &["adm.m", "adm.b"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(planned.is_err(), "the dropped caller must refuse");
+    }
+
+    /// WALL 1: A -> B through the FLAT channel -> C. B names A's alias with no import (the
+    /// last-writer-wins bare channel), C constructs B with the old `Int`.
+    const FLAT_A_BASE: &str = "module flat.a\n\ntype Gen = Int\n";
+    const FLAT_A_HEAD: &str = "module flat.a\n\ntype Gen = String\n";
+    const FLAT_B: &str = "module flat.b\n\ntype Holder {\n  gen: Gen\n}\n";
+    const FLAT_C: &str = "module flat.c\n\nimport flat.b { Holder }\n\n\
+fn holder() -> Holder {\n  Holder { gen: 3 }\n}\n";
+
+    #[test]
+    fn a_flat_channel_interface_read_propagates_to_its_own_readers() {
+        let (selection, head_fx) = interface_selection(
+            "flat_propagate",
+            &[("a.dag", FLAT_A_BASE), ("b.dag", FLAT_B), ("c.dag", FLAT_C)],
+            &[("a.dag", FLAT_A_HEAD), ("b.dag", FLAT_B), ("c.dag", FLAT_C)],
+        );
+        let consumers = consumers_of(&selection);
+        let planned = prepare_seeds(&head_fx, &["flat.a", "flat.b", "flat.c"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(
+            consumers.contains(&"flat.c"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+        assert!(planned.is_err(), "C must refuse under Strict preparation");
+    }
+
+    /// WALL 2: an added arm WITH a generic arity change is not pure growth.
+    const GROW_R_BASE: &str = "module grow.r\n\ntype Res<T>\n  = Ok { value: T }\n";
+    const GROW_R_HEAD: &str =
+        "module grow.r\n\ntype Res<T, E>\n  = Ok { value: T }\n  | Err { error: E }\n";
+    const GROW_R_USER: &str = "module grow.u\n\nimport grow.r { Res, Ok }\n\n\
+fn res() -> Res<Int> {\n  Ok { value: 1 }\n}\n";
+
+    #[test]
+    fn an_added_arm_with_an_arity_change_plans_every_reader() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let (selection, head_fx) = interface_selection(
+            "grow_arity",
+            &[("r.dag", GROW_R_BASE), ("u.dag", GROW_R_USER)],
+            &[("r.dag", GROW_R_HEAD), ("u.dag", GROW_R_USER)],
+        );
+        let direct = direct_changes_in(&selection, "grow.r");
+        assert!(
+            direct
+                .iter()
+                .all(|c| !matches!(c.ground, InterfaceChangeGround::ArmSetGrown { .. })),
+            "{direct:?}"
+        );
+        assert_eq!(consumers_of(&selection), vec!["grow.u"]);
+        let planned = prepare_seeds(&head_fx, &["grow.r", "grow.u"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(planned.is_err(), "the Res<Int> reader must refuse");
+    }
+
+    /// WALL 3: a numeric refinement bound is interface.
+    const RANGE_BASE: &str = "module rng.t\n\ntype Retry = Int where range(min: 1, max: 6)\n";
+    const RANGE_HEAD: &str = "module rng.t\n\ntype Retry = Int where range(min: 1, max: 5)\n";
+    const RANGE_USER: &str = "module rng.u\n\nimport rng.t { Retry }\n\ndata retries: Retry = 6\n";
+
+    #[test]
+    fn a_numeric_refinement_bound_change_plans_its_reader() {
+        let (selection, head_fx) = interface_selection(
+            "range",
+            &[("t.dag", RANGE_BASE), ("u.dag", RANGE_USER)],
+            &[("t.dag", RANGE_HEAD), ("u.dag", RANGE_USER)],
+        );
+        assert_eq!(
+            consumers_of(&selection),
+            vec!["rng.u"],
+            "{:?}",
+            selection.changes
+        );
+        let planned = prepare_seeds(&head_fx, &["rng.t", "rng.u"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(planned.is_err(), "6 outside max 5 must refuse");
+    }
+
+    /// WALL 4: the two roster transitions not covered above -- absent -> present narrows to the
+    /// roster (the non-admitted reader is planned, the admitted one is not), present -> absent
+    /// widens (nobody).
+    const ADM_M_NONE: &str = "module adm.m\n\ntype Sealed sole_constructor { tag: String }\n\n\
+fn mint(tag: String) -> Sealed = Sealed { tag: tag }\n";
+
+    #[test]
+    fn an_introduced_caller_roster_plans_only_the_non_admitted_readers() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let (selection, head_fx) = interface_selection(
+            "admit_intro",
+            &[("m.dag", ADM_M_NONE), ("a.dag", ADM_A), ("b.dag", ADM_B)],
+            &[
+                ("m.dag", ADM_M_NARROWED),
+                ("a.dag", ADM_A),
+                ("b.dag", ADM_B),
+            ],
+        );
+        assert!(direct_changes_in(&selection, "adm.m")
+            .iter()
+            .any(|c| matches!(c.ground, InterfaceChangeGround::AdmissionIntroduced { .. })));
+        assert_eq!(consumers_of(&selection), vec!["adm.b"]);
+        let planned = prepare_seeds(&head_fx, &["adm.m", "adm.b"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(planned.is_err(), "the non-admitted reader must refuse");
+    }
+
+    #[test]
+    fn a_removed_caller_roster_plans_no_caller() {
+        let (selection, fx) = interface_selection(
+            "admit_removed",
+            &[("m.dag", ADM_M_BASE), ("a.dag", ADM_A), ("b.dag", ADM_B)],
+            &[("m.dag", ADM_M_NONE), ("a.dag", ADM_A), ("b.dag", ADM_B)],
+        );
+        let _ = std::fs::remove_dir_all(&fx);
+        assert!(selection.changes.is_empty(), "{:?}", selection.changes);
+        assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
+    }
+
+    /// A globally unique bare fn called with NO import -- the compiler's global-bare channel.
+    const FLATFN_A_BASE: &str = "module flatfn.a\n\nfn convert(x: Int) -> Int {\n  x\n}\n";
+    const FLATFN_A_HEAD: &str = "module flatfn.a\n\nfn convert(x: String) -> String {\n  x\n}\n";
+    const FLATFN_B: &str = "module flatfn.b\n\nfn use_it() -> Int {\n  convert(x: 1)\n}\n";
+    /// A module whose only spelling of `convert` is a LOCAL BINDER: not a read.
+    const FLATFN_BINDER: &str =
+        "module flatfn.l\n\nfn local(convert: Int) -> Int {\n  convert\n}\n";
+    /// A bare read of a changed DATA declaration, no import.
+    const FLATDATA_A_BASE: &str = "module flatdata.a\n\ndata limit: Int = 3\n";
+    const FLATDATA_A_HEAD: &str = "module flatdata.a\n\ndata limit: String = \"3\"\n";
+    const FLATDATA_B: &str = "module flatdata.b\n\nfn bound() -> Int {\n  limit\n}\n";
+
+    /// THE RED: the bare caller is planned through the CALL channel and refuses; the touched
+    /// module alone prepares green (the latent failure); and the plan is attributable to the call
+    /// channel alone -- the caller has no type occurrence or match head naming `convert`, so
+    /// without `called_occurrences` it disappears. The binder-only module is not planned.
+    #[test]
+    fn a_bare_call_with_no_import_plans_its_caller_and_a_binder_plans_nothing() {
+        let (selection, head_fx) = interface_selection(
+            "flatfn",
+            &[
+                ("a.dag", FLATFN_A_BASE),
+                ("b.dag", FLATFN_B),
+                ("l.dag", FLATFN_BINDER),
+            ],
+            &[
+                ("a.dag", FLATFN_A_HEAD),
+                ("b.dag", FLATFN_B),
+                ("l.dag", FLATFN_BINDER),
+            ],
+        );
+        assert_eq!(
+            consumers_of(&selection),
+            vec!["flatfn.b"],
+            "{:?}",
+            selection.consumers
+        );
+        assert!(selection.consumers.iter().all(|c| c.binding
+            == crate::cli_run::namespace_baseline::InterfaceConsumerBinding::BoundThroughFlatBareChannel));
+        let head_index = interface_index(&head_fx);
+        let b = crate::cli_run::declaration_index::index_records(&head_index)
+            .into_iter()
+            .find(|r| r.module_path == "flatfn.b")
+            .expect("b indexed")
+            .clone();
+        assert!(
+            b.called_occurrences
+                .iter()
+                .any(|(_, callee)| callee == "convert")
+                && !b
+                    .authored_type_references
+                    .iter()
+                    .any(|(_, n)| n == "convert")
+                && !b.matched_arms.iter().any(|(_, n)| n == "convert"),
+            "the plan must be attributable to the call channel alone"
+        );
+        let touched_only = prepare_seeds(&head_fx, &["flatfn.a"]);
+        let planned = prepare_seeds(&head_fx, &["flatfn.a", "flatfn.b"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(
+            touched_only.is_ok(),
+            "latent green without the call channel: {touched_only:?}"
+        );
+        assert!(planned.is_err(), "the bare caller must refuse");
+    }
+
+    #[test]
+    fn a_bare_read_of_a_changed_data_value_plans_its_reader() {
+        let (selection, head_fx) = interface_selection(
+            "flatdata",
+            &[("a.dag", FLATDATA_A_BASE), ("b.dag", FLATDATA_B)],
+            &[("a.dag", FLATDATA_A_HEAD), ("b.dag", FLATDATA_B)],
+        );
+        assert_eq!(
+            consumers_of(&selection),
+            vec!["flatdata.b"],
+            "{:?}",
+            selection.changes
+        );
+        let planned = prepare_seeds(&head_fx, &["flatdata.a", "flatdata.b"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(planned.is_err(), "the bare data reader must refuse");
+    }
+
+    /// A changed global-bare fn read as a VALUE, no import: neither a call, a type occurrence nor
+    /// a match head. Bound by `let` and applied positionally, because that is the value-read shape
+    /// v1's Strict checker types today; passing the value to a `fn(Int) -> Int` parameter is
+    /// planned the same way but NOT refused by the checker (a function-typed argument's
+    /// compatibility goes unchecked -- a compiler gap, reported, not this planner's).
+    const FLATVAL_B: &str =
+        "module flatval.b\n\nfn use_it() -> Int {\n  let g = convert\n  g(1)\n}\n";
+    /// Same-spelled NON-reads of the data name: a parameter, a `let` binder, a record label and a
+    /// field name.
+    const FLATDATA_BINDERS: &str = "module flatdata.p\n\ntype Box {\n  limit: Int\n}\n\n\
+fn by_param(limit: Int) -> Int {\n  limit\n}\n\nfn by_let() -> Int {\n  let limit = 2\n  limit\n}\n\n\
+fn by_label() -> Box {\n  Box { limit: 1 }\n}\n";
+    /// A local value SHADOWING the same-named global fn and data, read after the shadow.
+    const FLAT_SHADOWS: &str =
+        "module flatshadow.s\n\nfn fn_shadow() -> Int {\n  let convert = 1\n  convert\n}\n\n\
+fn data_shadow(limit: Int) -> Int {\n  limit\n}\n";
+
+    /// CONTROL (1): a fn passed as a value with no import is planned through the value channel,
+    /// and refuses under Strict.
+    #[test]
+    fn a_changed_bare_fn_read_as_a_value_plans_its_reader() {
+        let (selection, head_fx) = interface_selection(
+            "flatval",
+            &[("a.dag", FLATFN_A_BASE), ("b.dag", FLATVAL_B)],
+            &[("a.dag", FLATFN_A_HEAD), ("b.dag", FLATVAL_B)],
+        );
+        assert_eq!(
+            consumers_of(&selection),
+            vec!["flatval.b"],
+            "{:?}",
+            selection.consumers
+        );
+        let planned = prepare_seeds(&head_fx, &["flatfn.a", "flatval.b"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        let base_fx = interface_fixture(
+            "flatval_base",
+            "base",
+            &[("a.dag", FLATFN_A_BASE), ("b.dag", FLATVAL_B)],
+        );
+        let base = prepare_seeds(&base_fx, &["flatfn.a", "flatval.b"]);
+        let _ = std::fs::remove_dir_all(&base_fx);
+        assert!(
+            base.is_ok(),
+            "the reader is valid against the old interface: {base:?}"
+        );
+        assert!(planned.is_err(), "the value reader must refuse");
+    }
+
+    /// CONTROLS (3) AND (4): a parameter, `let` binder, label or field sharing the changed data's
+    /// name, and a local shadowing the changed global fn or data, plan NOTHING -- while the
+    /// genuine bare data read beside them is planned.
+    #[test]
+    fn same_named_binders_labels_and_shadows_plan_nothing() {
+        let (selection, fx) = interface_selection(
+            "flatbinders",
+            &[
+                ("a.dag", FLATDATA_A_BASE),
+                ("f.dag", FLATFN_A_BASE),
+                ("b.dag", FLATDATA_B),
+                ("p.dag", FLATDATA_BINDERS),
+                ("s.dag", FLAT_SHADOWS),
+            ],
+            &[
+                ("a.dag", FLATDATA_A_HEAD),
+                ("f.dag", FLATFN_A_HEAD),
+                ("b.dag", FLATDATA_B),
+                ("p.dag", FLATDATA_BINDERS),
+                ("s.dag", FLAT_SHADOWS),
+            ],
+        );
+        let _ = std::fs::remove_dir_all(&fx);
+        assert_eq!(
+            consumers_of(&selection),
+            vec!["flatdata.b"],
+            "{:?}",
+            selection.consumers
+        );
+    }
+
+    /// LEXICAL CALLABLES named like the changed global: a function-typed parameter called in its
+    /// body, and a `let`-bound local called after the binding. The compiler resolves both locally.
+    const FLAT_CALL_SHADOWS: &str = "module flatcall.s\n\nfn by_param(convert: fn(Int) -> Int) -> Int {\n  convert(1)\n}\n\n\
+fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local\n  convert(1)\n}\n";
+
+    /// CONTROLS (2)-(4): a call of a lexical callable plans nothing, while the genuine global
+    /// call beside it (control 1, `a_bare_call_with_no_import_plans_its_caller_and_a_binder_plans_nothing`)
+    /// is still planned. The record is asserted to CARRY the calls before shadowing would drop
+    /// them, so the negative is the filter's work and not an absent call -- deleting the filter
+    /// plans `flatcall.s` and fails here while the global-call RED stays green.
+    #[test]
+    fn a_call_of_a_lexical_callable_plans_nothing() {
+        let (selection, head_fx) = interface_selection(
+            "flatcallshadow",
+            &[
+                ("a.dag", FLATFN_A_BASE),
+                ("b.dag", FLATFN_B),
+                ("s.dag", FLAT_CALL_SHADOWS),
+            ],
+            &[
+                ("a.dag", FLATFN_A_HEAD),
+                ("b.dag", FLATFN_B),
+                ("s.dag", FLAT_CALL_SHADOWS),
+            ],
+        );
+        let head_index = interface_index(&head_fx);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        let shadows = crate::cli_run::declaration_index::index_records(&head_index)
+            .into_iter()
+            .find(|r| r.module_path == "flatcall.s")
+            .expect("s indexed")
+            .clone();
+        assert!(
+            shadows.called.contains("convert"),
+            "PLANT MALFORMED: the fixture must carry calls spelled convert"
+        );
+        assert!(
+            !shadows
+                .called_occurrences
+                .iter()
+                .any(|(_, c)| c == "convert"),
+            "a lexically bound callee is not a call of the global: {:?}",
+            shadows.called_occurrences
+        );
+        assert_eq!(
+            consumers_of(&selection),
+            vec!["flatfn.b"],
+            "{:?}",
+            selection.consumers
+        );
+    }
+
+    /// EVERY `floor_seam` LITERAL THE INSTRUMENT CAN PRINT HAS A TYPED ARM: each token passed to
+    /// `floor_seam` in the floor's two hand-Rust sources is a row of gunbc.floor_demand
+    /// `floor_seam_tokens`, so a new or renamed seam cannot print a token the vocabulary cannot
+    /// ingest. A join by spelling across the language boundary, because the producer is Rust.
+    #[test]
+    fn every_floor_seam_literal_has_a_typed_arm() {
+        let sources = [
+            include_str!("required_floor_runner.rs"),
+            include_str!("../bin/claim_executor.rs"),
+        ];
+        let vocabulary = include_str!("../../../../../dag/gunbc/floor/floor_demand.dag");
+        let needle = concat!("floor_seam", "(\"");
+        let mut literals: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+        for source in sources {
+            for (at, _) in source.match_indices(needle) {
+                let rest = &source[at + needle.len()..];
+                if let Some(end) = rest.find('"') {
+                    literals.insert(&rest[..end]);
+                }
+            }
+        }
+        assert!(literals.len() >= 20, "PLANT MALFORMED: found {literals:?}");
+        let missing: Vec<&&str> = literals
+            .iter()
+            .filter(|token| {
+                !vocabulary.contains(&format!("FloorSeamToken {{ token: \"{token}\", seam: "))
+            })
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "floor_seam tokens with no typed arm: {missing:?}"
+        );
+        assert!(
+            !literals.contains("arm-set-planning"),
+            "the old token is no longer emitted"
+        );
+    }
+
     /// A module seed matches itself and the modules it CONTAINS by name, never a sibling that
     /// merely shares a textual prefix: `armset.y` must not seed `armset.yz`.
     #[test]
     fn a_module_seed_is_segment_bounded() {
         let yz = "module armset.yz\n\nfn nothing() -> Bool {\n  true\n}\n";
-        let fx = arm_set_fixture(
+        let fx = interface_fixture(
             "segment",
             "head",
             &[("x.dag", ARM_X_HEAD), ("y.dag", ARM_Y), ("yz.dag", yz)],

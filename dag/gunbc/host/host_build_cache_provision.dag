@@ -5,7 +5,6 @@ import std.cache_identity { CacheInterfaceId }
 import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, exit_failure }
-import std.resources { Network }
 import extdeps.cache.sccache { sccache_local_id }
 import gunbc.host_build_cache_catalog_gate {
   provision_build_cache_catalog_gate_verdict,
@@ -85,7 +84,6 @@ fn provision_build_cache_routes_through_host_effect_apply() -> Bool {
 }
 
 fn provision_build_cache(host: HostIdentity, catalog_id: CacheInterfaceId) -> ProcessExit
-  uses net: Network
 {
   match provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {
     ProvisionBuildCacheCatalogRefused { reason: reason } => exit_failure(reason: reason as String)

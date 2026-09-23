@@ -230,6 +230,10 @@ data fleet_tailscale_binary_path: NonEmptyStr = "/usr/bin/tailscale"
 
 data fleet_rm_binary_path: NonEmptyStr = "/usr/bin/rm"
 
+data fleet_cp_binary_path: NonEmptyStr = "/usr/bin/cp"
+
+data fleet_mv_binary_path: NonEmptyStr = "/usr/bin/mv"
+
 // nft LIVES IN sbin AND IS PRIVILEGED EVEN TO READ: listing a table needs CAP_NET_ADMIN, so a
 // readback of the installed ruleset is a granted command like any mutation.
 data fleet_nft_binary_path: NonEmptyStr = "/usr/sbin/nft"
@@ -279,6 +283,8 @@ type CiRunnerSudoBinary
   | SudoConntrack
   | SudoIptablesLegacySave
   | SudoNfct
+  | SudoCp
+  | SudoMv
 
 fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
   match b {
@@ -294,6 +300,8 @@ fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
     SudoConntrack => fleet_conntrack_binary_path
     SudoIptablesLegacySave => fleet_iptables_legacy_save_binary_path
     SudoNfct => fleet_nfct_binary_path
+    SudoCp => fleet_cp_binary_path
+    SudoMv => fleet_mv_binary_path
   }
 }
 
@@ -311,6 +319,8 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
     SudoConntrack => NopasswdExecuteCheck { check_argv: "--version" }
     SudoIptablesLegacySave => NopasswdExecuteCheck { check_argv: "--version" }
     SudoNfct => NopasswdExecuteCheck { check_argv: "--version" }
+    SudoCp => NopasswdExecuteCheck { check_argv: "--version" }
+    SudoMv => NopasswdExecuteCheck { check_argv: "--version" }
   }
 }
 
@@ -328,7 +338,20 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
 // binary like its siblings, probed with --help (exit 0); what it may change is decided by the one
 // operation that renders it, EnsureSupplementaryGroupMembership: append one named group to one
 // named login, never a primary-group, shell, home, or password change.
-data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm, SudoUseradd, SudoUsermod]
+// cp AND mv JOINED THE ROSTER 2026-09-23 WITH THE APPROVAL BROKER'S HELPER GRANT (#12124, parent
+// decision on escalation msg_14daeb59). They add NO PRIVILEGE CLASS: this roster already grants the
+// whole install and visudo binaries, and whole-binary install can write any file as root, so it is
+// root-equivalent. What they add is two operations install cannot express. mv -T is an atomic
+// rename(2), and it is the only way to swap a sudoers drop-in into place without a window where the
+// included path holds a partial file (GNU install unlinks the destination first). cp -R -P copies a
+// release's source tree into a ROOT-OWNED snapshot in one call, without following symlinks, so the
+// grantee of the helper grant cannot write the closure that grant executes
+// (gunbc.live_deploy.emit approval_broker_helper_snapshot_steps). Both are probed with --version.
+// This roster is what the deploy principal's drop-in (/etc/sudoers.d/gunbc-deploy, gunbc.ci_deploy_access
+// gunbc_deploy_sudoers_dropin) is rendered from, and the deploy preamble installs it
+// (gunbc.ci_deploy_sudoers deploy_sudoers_install_shell). So the new rows reach srv1 through the
+// operator-approved deploy that carries this change, not a hand edit.
+data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm, SudoUseradd, SudoUsermod, SudoCp, SudoMv]
 
 data fleet_useradd_binary_path: NonEmptyStr = "/usr/sbin/useradd"
 data fleet_usermod_binary_path: NonEmptyStr = "/usr/sbin/usermod"
@@ -1221,4 +1244,15 @@ fn automation_allocation_is_applied(a: FleetAutomationAllocationStanding) -> Boo
     AutomationAllocationApplied { host: _, user: _, source: _ } => true
     AutomationAllocationPending { host: _, cause: _ } => false
   }
+}
+
+// A LOGIN'S HOME DIRECTORY UNDER THE FLEET'S CONVENTION, SPELLED ONCE. Every fleet host creates its
+// accounts under /home/<login> (the provisioning rows above); a consumer that needs a home path --
+// the microVM slot controller reading the job user's guest image root -- derives it here rather
+// than joining the prefix itself. gunbc.spark.managed_access_bootstrap carries the same join and is
+// a consumer to move onto this row. It is the CONVENTION and not a readback: a host whose passwd
+// entry disagrees is a host this row is wrong about, and the reader's existence check is what
+// catches it.
+fn fleet_posix_home_directory(login: NonEmptyStr) -> NonEmptyStr {
+  join(["/home/", login as String], "") as NonEmptyStr
 }

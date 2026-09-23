@@ -38,7 +38,8 @@ import v2.std.compilers.sugar {
 }
 import v2.compiler.body_lowering_fold {
   body_lower_finish_for_normalize,
-  body_lower_is_deferred_lower_at_normalize
+  body_lower_is_deferred_lower_at_normalize,
+  body_lower_type_decl_record_name_optional
 }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
 import v2.compiler.test_marker_capture { test_marker_capture }
@@ -259,9 +260,14 @@ fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Nod
 // One import decl yields one row per name in its block; a decl this reader cannot understand
 // REFUSES rather than contributing nothing, because a silently empty row set is indistinguishable
 // from a module that imports nothing and would surface far away as unbound references.
-fn import_binding_capture(tree: ParseTree) -> Outcome<FreeMonoid<AliasBindingRow>> {
+// ONE WALK, TWO READERS (review 70175). Both captures ask the same question of the same tree --
+// every node, filtered by its emitted production identity -- so the subtree list is bound ONCE by
+// the caller and passed to each, rather than each folding node_subtree_nodes itself. DESIGN section
+// 2: two demands whose least common ancestor holds the value share it rather than recomputing it,
+// and this stage is one the floor already measures as over-budget.
+fn import_binding_capture(tree: ParseTree, nodes: List<Node>) -> Outcome<FreeMonoid<AliasBindingRow>> {
   fold_list(
-    xs: node_subtree_nodes(root: tree),
+    xs: nodes,
     empty: Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, n) {
       match acc {
@@ -292,6 +298,33 @@ fn import_binding_capture(tree: ParseTree) -> Outcome<FreeMonoid<AliasBindingRow
   )
 }
 
+// WHICH OF THIS MODULE'S TYPES ARE RECORDS, read from the parse tree for the reason
+// import_binding_capture reads imports there: after lowering, a record is a bare
+// `Conj { R: payload }` that no reader can tell from a where-alias or a module spine. The question is
+// answered by the rehome's own predicate (v2.compiler.body_lowering_fold
+// body_lower_type_decl_record_name_optional), so what is carried and what was rehomed are one
+// decision, not two.
+fn record_declaration_capture(nodes: List<Node>) -> FreeMonoid<Symbol> {
+  fold_list(
+    xs: nodes,
+    empty: Empty,
+    cons: fn(acc, n) {
+      match parse_production_emitted_identity_optional(node: n) {
+        Absent => acc
+        Present { value: id } =>
+          if id != ^dag_surface_type_decl {
+            acc
+          } else {
+            match body_lower_type_decl_record_name_optional(shell: n) {
+              Absent => acc
+              Present { value: name } => list_snoc_item(xs: acc, item: name)
+            }
+          }
+      }
+    }
+  )
+}
+
 fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
   match normalize_node(n: parse_tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -300,11 +333,12 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: grafted, diagnostics: d1 } =>
           if well_formed(n: grafted) {
+            let parse_nodes = node_subtree_nodes(root: parse_tree)
             match test_marker_capture(tree: parse_tree) {
               Rejected { diagnostics: r } =>
                 Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
               Accepted { value: markers, diagnostics: _ } =>
-                match import_binding_capture(tree: parse_tree) {
+                match import_binding_capture(tree: parse_tree, nodes: parse_nodes) {
                   Rejected { diagnostics: r } =>
                     Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
                   Accepted { value: bindings, diagnostics: _ } =>
@@ -312,6 +346,7 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
                       root: grafted,
                       test_markers: markers,
                       import_bindings: bindings,
+                      record_declarations: record_declaration_capture(nodes: parse_nodes),
                       diagnostics: d1
                     )
                 }

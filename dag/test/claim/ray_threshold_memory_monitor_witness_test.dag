@@ -19,6 +19,7 @@ import extdeps.ray.threshold_memory_monitor {
   ray_line_explains_absent_threshold_alarm,
   RayMinMemoryFree, MinMemoryFreeDisabled, MinMemoryFreeFloor
 }
+import v2.std.algebra { any }
 
 // THE ENV SPELLING IS DERIVED, SO THIS ROW GOES RED IF THE PREFIX RULE IS EDITED. Ray's pattern is
 // `RAY_` plus the config field name verbatim, which is why the variables are lowercase rather than

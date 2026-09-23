@@ -71,6 +71,13 @@ type TypeSurfaceOccurrence {
   applied_argument: Bool
 }
 
+// An applied type argument is walked as its AUTHORED node; every other child through child_type_node.
+// The resolved form of a nested application (MachineWidth<PointerWidth> inside Compose<Int, MachineWidth<PointerWidth>>)
+// keeps the head and drops the authored argument, so walking only that form never made PointerWidth an applied
+// occurrence, the use-line planner did not classify it as a marker, and the import bound the unit variant while the
+// body rendered the marker type (E0573). The authored node still reaches its resolved form through inferred_names,
+// so one walk covers both, with no second descent. Non-argument children (a product's fields) keep child_type_node,
+// so a field key is never read as a type name.
 fn collect_type_node_import_surface_occurrences(n: Node, applied_argument: Bool, source_indices: Map<String, NewlineIndex>) -> List<TypeSurfaceOccurrence> {
   let peeled = normalize_access_type_node(n: n)
   let name = authored_name_at(source_indices: source_indices, node: peeled)
@@ -78,7 +85,8 @@ fn collect_type_node_import_surface_occurrences(n: Node, applied_argument: Bool,
   let own = if name != "" && name != "Dynamic" && !is_tv { [TypeSurfaceOccurrence { name: name, applied_argument: applied_argument }] } else { [] }
   let children_are_applied_arguments = name != "" && peeled.connective == NoConnective && peeled.children |> count > 0
   let child_names = peeled.children |> flat_map(ch =>
-    collect_type_node_import_surface_occurrences(n: child_type_node(ch: ch), applied_argument: children_are_applied_arguments, source_indices: source_indices)
+    let walked = if children_are_applied_arguments { ch } else { child_type_node(ch: ch) }
+    collect_type_node_import_surface_occurrences(n: walked, applied_argument: children_are_applied_arguments, source_indices: source_indices)
   )
   let inferred_names = match peeled.inferred {
     Present { value: Resolved { node: rt } } => collect_type_node_import_surface_occurrences(n: rt, applied_argument: applied_argument, source_indices: source_indices)

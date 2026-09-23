@@ -15,26 +15,32 @@ import gunbc.fleet_converge_workflow {
   FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy,
   RunnerPasswordSessionToolConverge,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
-  fleet_converge_reset_observer_dispatch_admission_step, fleet_converge_build_job_steps,
+  fleet_converge_build_job_own_steps,
+  fleet_converge_job_edges, fleet_converge_release_bins_job_id,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
-  fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0, SparkServingApply, SparkNativeServingApply, FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
+  fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0, SparkServingApply, SparkV41CheckpointMaterialize, SparkV41RuntimeImageBuild, SparkRuntimeImageProbe, SparkNativeServingApply, FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
+  fleet_converge_mutation_concurrency_group_expression,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
   fleet_converge_workflow, expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
+  fleet_converge_credential_prelude_steps, fleet_converge_mutation_concurrency_group_expression, fleet_converge_spark_v41_checkpoint_materialize_step,
+  fleet_converge_dispatch_inputs,
 }
 import gunbc.host_reset_return {
   DispatchAssignment, DispatchAssignmentRefused, reset_dispatch_pairings,
   ResetDispatchAdmitted, ResetDispatchNotThisMode, ResetDispatchObserverUnnamed, admit_reset_dispatch,
+  host_reset_observer_label_env,
 }
-import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_pair_serving_d0_invoke, gunbc_ci_sm_connect_timeout, gunbc_ci_sm_max_time, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_mtcollins1_boot_invoke, gunbc_ci_mtcollins1_fan_observe_invoke }
+import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
+import gunbc.ci_spec { gunbc_ci_host_reset_dispatch_admission_target, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_inspect_invoke, gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_approval_broker_dark_install_invoke, gunbc_ci_pair_serving_d0_invoke, gunbc_ci_sm_connect_timeout, gunbc_ci_sm_max_time, gunbc_ci_approval_keyring_converge_invoke, gunbc_ci_mtcollins1_boot_invoke, gunbc_ci_mtcollins1_fan_observe_invoke }
 import std.measure { minute_count, second_count }
 import gunbc.spark.pair_serving_d0_door { pair_serving_d0_step_timeout_minutes, d0_prelude_allowance, d0_approval_window, d0_transaction_allowance }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
-  YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping
+  YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping, YamlKeyValue
 }
 
 fn value_is_expected_input(v: YamlValue) -> Bool {
@@ -107,7 +113,16 @@ test fn workflow_dispatch_empty_inputs_preserve_null_projection() -> Bool {
   }
 }
 
-fn mode_input_has_choice_options(v: YamlValue) -> Bool {
+// THE EXPECTED OPTION LIST IS A PARAMETER, NOT fleet_converge_mode_options HARD-WIRED.
+//
+// This predicate fused two subjects while the roster was baked in: the PROJECTION (an InputChoice's
+// options reach the yaml as a sequence of strings, all of them, and nothing else) and the CONTENT
+// (that the workflow's mode input carries the fleet's mode roster). Only the first is a fact about
+// workflow_trigger_entry, and the second is true by construction anyway -- the workflow literal
+// writes `options: fleet_converge_mode_options`, so asserting equality with that same row restates
+// a constraint the source already carries (DESIGN section 5). The roster's own coherence is
+// established separately by every_dispatch_option_is_a_wire_value_of_the_vocabulary.
+fn mode_input_has_choice_options(v: YamlValue, expected: List<String>) -> Bool {
   match v {
     YamlMapping { entries } =>
       fold(entries, init: false, f: fn(acc, entry) {
@@ -119,8 +134,8 @@ fn mode_input_has_choice_options(v: YamlValue) -> Bool {
                   fold(fields, init: false, f: fn(has_opts, field) {
                     has_opts || (field.key == "options" && match field.value {
                       YamlSequence { elements: opts } =>
-                        length(opts) == length(fleet_converge_mode_options)
-                          && all(fleet_converge_mode_options, m => any(opts, o => match o { YamlString { value } => value == m  _ => false }))
+                        length(opts) == length(expected)
+                          && all(expected, m => any(opts, o => match o { YamlString { value } => value == m  _ => false }))
                       YamlNull => false
                       YamlBool { value: _ } => false
                       YamlInt { lexeme: _ } => false
@@ -165,17 +180,37 @@ fn mode_input_has_choice_options(v: YamlValue) -> Bool {
 // and surfaced only from a local claim_batch run -- see
 // gunbc.recurring_failure_mode.witness_that_fails_to_compile_is_absent_rather_than_red (fourth
 // specimen: the falsifier is the compiler wall, not another file).
+// THE TRIGGER IS SUPPLIED, BECAUSE THE SUBJECT IS THE PROJECTION AND NOT THE WORKFLOW.
+//
+// This claim discriminates at ONE interface: workflow_trigger_entry turning a WorkflowDispatch
+// carrying a choice input into a yaml mapping with an `options` sequence under `mode`. It used to
+// reach that interface by forcing fleet_converge_workflow and taking its first trigger, which pays
+// to construct EVERY DispatchInput's description -- one of them is a multi-thousand-character
+// string -- for a fact about none of them. That is DESIGN section 3's tell verbatim: evaluation
+// dominated by one call whose result shape is all the claim inspects. Measured: 528572 eval steps
+// against a 72300 budget, and the cost rose with every input any lane added.
+//
+// The supplied trigger is the same construction the two sibling claims above already use. Its
+// PAIRING OBLIGATION -- that the real producer emits this shape -- is discharged by
+// fleet_converge_workflow_has_build_job_needs_release_bins and by the rendered-yaml claims below,
+// which run the real workflow end to end; deleting them would leave this input unpaired.
 test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
-  match fleet_converge_workflow.on.first() {
-    Present { value: trigger } =>
-      let entry = workflow_trigger_entry(trigger: trigger)
-      entry.key == "workflow_dispatch" && mode_input_has_choice_options(v: entry.value)
-    Absent => false
-  }
+  let entry = workflow_trigger_entry(trigger: WorkflowDispatch {
+    inputs: [DispatchInput {
+      name: "mode",
+      description: Present { value: "which convergence the run performs" },
+      required: true,
+      default: none,
+      type: InputChoice { options: ["plan", "apply"] },
+    }]
+  })
+  entry.key == "workflow_dispatch"
+    && mode_input_has_choice_options(v: entry.value, expected: ["plan", "apply"])
 }
 
 // THE COUNT IS KEPT BESIDE THE NAMES DELIBERATELY, and it moved from 2 to 3 because a
-// `dashboard-deploy` job was added -- not because the check was in the way. Naming each job without
+// `dashboard-deploy` job was added (and on to 7 with the broker dark install, the microVM controller
+// install and the launch-deployment receipt) -- not because the check was in the way. Naming each job without
 // pinning the total would let a fourth job appear unobserved; pinning the total without naming them
 // would pass for any set of jobs at all. Together they are an exact partition, which is the identity
 // join DESIGN section 5 asks for rather than a count standing in for one.
@@ -185,20 +220,59 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // that mutates a host without that edge would be installing whatever happened to be lying around.
 // `host-reset-return` is held to it for a sharper reason than the others -- it POWER-CYCLES its
 // subject, so a stale binary there would drive a real machine from a model nobody reviewed.
+// THE EDGE ROSTER IS READ, AND THAT IS A DIFFERENT MECHANISM FROM THE ATTEMPT BEFORE IT.
+//
+// This claim's subject is the job partition and its dependency edges. It first read them off
+// fleet_converge_workflow (521845 eval steps, budget 72300), then off a lifted List<Job>
+// (521510 -- 335 steps, 0.06%), because forcing a list of Jobs forces every Job including every
+// step body: the projection WAS the construction, filed as gunbc.recurring_failure_mode
+// extracting_a_collection_whose_elements_are_the_cost.
+//
+// gunbc.fleet_converge_workflow fleet_converge_job_edges is ids and lists of strings, built
+// independently of any Job and CONSUMED BY the seven builders for their `needs`, so reading it
+// forces no job body. The partition is still exact -- every row named, and the count pinned so an
+// eighth cannot appear unobserved -- and the property the witness is really about is unchanged:
+// every job that touches a host waits for `build`, because the release binaries are produced once
+// and a job without that edge installs whatever was lying around. host-reset-return is held to it
+// most sharply, since it POWER-CYCLES its subject.
+//
+// THE CLAIM IS TOTAL: NO INDEX IS READ, AND THAT IS WHAT MAKES ITS RED DISCRIMINATE.
+//
+// The first form indexed -- edges[0].id, edges[1].needs -- with the count conjunct FIRST so a short
+// row would fail before any index. It did not: dropping an edge row produced an EVALUATION ERROR
+// on the absent index rather than a clean false, with the count conjunct already ahead of it. So
+// `&&` here does not spare the later operands from evaluation, and no reordering fixes it.
+//
+// That matters because a control that DIES is weaker evidence than one that ANSWERS false: an eval
+// error is also what a typo, a renamed field or a broken fixture produces, so the red stops
+// discriminating the thing it was built for. Comparing the projected id list against the expected
+// spelling, and folding the edge property with `all`, reads no index at all -- a dropped or renamed
+// row makes the lists unequal and the claim returns false, while an eval error now means something
+// else genuinely broke.
+//
+// THE INHABITANCE OBLIGATION IS DISCHARGED ELSEWHERE AND DELIBERATELY: the rendered-yaml claims in
+// this file run the real workflow end to end, so the edges asserted here are known to reach the
+// emitted jobs. Reading the roster alone would otherwise establish the graph a builder was TOLD,
+// never the graph the workflow emits.
 test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
-  fleet_converge_workflow.jobs.length() == 6
-    && fleet_converge_workflow.jobs[0].id == "build"
-    && fleet_converge_workflow.jobs[1].id == "fleet-converge"
-    && fleet_converge_workflow.jobs[1].needs == ["build"]
-    && fleet_converge_workflow.jobs[2].id == "host-reset-return"
-    && fleet_converge_workflow.jobs[2].needs == ["build"]
-    && fleet_converge_workflow.jobs[3].id == "dashboard-deploy"
-    && fleet_converge_workflow.jobs[3].needs == ["build"]
-    && fleet_converge_workflow.jobs[4].id == "approval-broker-dark-install"
-    && fleet_converge_workflow.jobs[4].needs == ["build"]
-    && fleet_converge_workflow.jobs[5].id == "rlm-launch-deployment-receipt"
-    && fleet_converge_workflow.jobs[5].needs == ["build"]
+  let edges = fleet_converge_job_edges
+  let build = [fleet_converge_release_bins_job_id as String]
+  map(edges, e => e.id as String) == [
+    "build",
+    "fleet-converge",
+    "host-reset-return",
+    "dashboard-deploy",
+    "approval-broker-dark-install",
+    "microvm-controller-install",
+    "rlm-launch-deployment-receipt",
+  ]
+    && all(edges, e => if (e.id as String) == (fleet_converge_release_bins_job_id as String) {
+      e.needs == []
+    } else {
+      e.needs == build
+    })
 }
+
 
 fn expected_fleet_converge_yml_content() -> String {
   match expected_fleet_converge_yml() {
@@ -368,20 +442,43 @@ test fn a_whitespace_only_observer_is_refused_as_unnamed() -> Bool {
 // AND IT IS ACTUALLY IN THE JOB. A step function nothing calls is the dangling-declaration shape
 // (DESIGN section 3c) and would leave the guard passing its own witness while never running.
 //
-// IT ASKS THE STEP LIST, NOT THE WHOLE WORKFLOW, and that is a cost fact rather than a style one:
-// fleet_converge_build_job_steps() is the single authority the job's `steps:` field consumes, so
-// folding it answers the same question as indexing fleet_converge_workflow.jobs[0] while building one
-// job's steps instead of five jobs. The first draft indexed the workflow and was interrupted at
-// cpu_at_least=507ms against the 500ms line, producing no verdict at all.
+// IT ASKS THE JOB'S OWN STEPS, NOT THE PRELUDE-PREFIXED LIST, and that is a subject fact before it is
+// a cost one (DESIGN section 3, a witness discriminates at one interface). The shared CI prelude is a
+// different producer with its own witnesses; folding it in made every prelude render part of this
+// claim's subject, and it was most of the cost that put the old claim over the 72,300 new-witness
+// budget (re-derive with claim_batch --entry on this file, its `[witness] ... eval_steps=` line). fleet_converge_build_job_steps() is prelude ++ own steps, and the job
+// and its backstop sum both consume it, so membership in the own list is membership in the job.
+//
+// IT ASSERTS THE ROUTE, NOT ONLY THE ID. This is the one claim that runs the real producer, so an id
+// match alone would stay green over a step whose env no longer hands the dispatch inputs to the
+// admission, or whose run invokes a different entry: it holds that the step reaches the modeled fold
+// (host_reset_return_dispatch_admission_wet reads both env names) with both inputs wired. Control:
+// dropping fleet_converge_reset_observer_dispatch_admission_step() from the own list turns this red.
 test fn the_build_job_carries_the_reset_observer_dispatch_admission() -> Bool {
   any(
-    fleet_converge_build_job_steps(),
+    fleet_converge_build_job_own_steps(),
     st => match st {
-      RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-        match i { Present { value: v } => v == "reset_observer_dispatch_admission"  Absent => false }
+      RunStep { name: _, id: i, run: r, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+        match i {
+          Present { value: v } =>
+            v == "reset_observer_dispatch_admission"
+              && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.entry)
+              && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.function)
+              && step_env_binds(env: e, key: host_reset_dispatch_mode_env as String, input: "${{ github.event.inputs.mode }}")
+              && step_env_binds(env: e, key: host_reset_observer_label_env as String, input: "${{ github.event.inputs.reset_observer }}")
+          Absent => false
+        }
       UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
     }
   )
+}
+
+fn step_env_binds(env: List<YamlKeyValue>?, key: String, input: String) -> Bool {
+  match env {
+    Present { value: kvs } =>
+      any(kvs, p => p.key == key && match p.value { YamlString { value: v } => v == input  _ => false })
+    Absent => false
+  }
 }
 
 // THE RESET JOB SHARES ITS SUBJECT'S MUTATION DOMAIN. Review 62030 found it carrying no concurrency
@@ -508,6 +605,36 @@ fn step_env_text(step: Step) -> String {
   }
 }
 
+fn step_id_text(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match i { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match i { Present { value: v } => v  Absent => "" }
+  }
+}
+
+fn step_run_text(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => r
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+// THE CREDENTIAL PRELUDE'S STEP IDS IN EMISSION ORDER, read as the value the job concatenates rather
+// than re-derived from the rendered workflow (DESIGN section 3: a witness discriminates at one
+// interface, and rendering the whole workflow to grep it costs the render for every substring asked).
+fn fleet_converge_credential_prelude_ids() -> List<String> {
+  map(fleet_converge_credential_prelude_steps(), st => step_id_text(step: st))
+}
+
+fn step_index(ids: List<String>, id: String) -> Int {
+  match first(flat_map(enumerate(ids), pair => if pair.second == id { [pair.first] } else { [] as List<Int> })) {
+    Present { value: i } => i
+    Absent => -1
+  }
+}
+
 fn microvm_network_step_env_text() -> String {
   match fleet_converge_microvm_network_observe_step() {
     RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
@@ -519,23 +646,31 @@ fn microvm_network_step_env_text() -> String {
   }
 }
 
+// THE BINDING IS ONE PAIR, READ OFF THE STEP. This claim rendered the WHOLE fleet-converge workflow to
+// grep two substrings out of it: 706,541 eval steps against the 72,300 new-witness budget, and it sits
+// in NEITHER the floor_cost_debt roster nor the grandfathered one, so unlike its two neighbours in this
+// file it is unprotected -- it did not block only because changed-witness selection did not reach it.
+// Found by witty-moth-853 while repairing the same shape on the d0 and materialize claims.
+//
+// The two env conjuncts were also WEAKER than the line they stood beside: asserting the name and the
+// expression separately admits a step that carries both in DIFFERENT pairs. Reading the one rendered
+// pair keeps what the yml line established, and the step id comes off the step rather than the render.
 test fn the_microvm_network_step_binds_the_dispatched_host_into_its_environment() -> Bool {
   let env = microvm_network_step_env_text()
-  let yml = expected_fleet_converge_yml_content()
-  string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST")
-    && string_contains(s: env, pattern: "github.event.inputs.host")
-    && string_contains(s: yml, pattern: "id: microvm_network_observe")
-    && string_contains(s: yml, pattern: "FLEET_CONVERGE_EXPECTED_HOST: $\{\{ github.event.inputs.host \}\}")
+  string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST=$\{\{ github.event.inputs.host \}\}")
+    && step_id_text(step: fleet_converge_microvm_network_observe_step()) == "microvm_network_observe"
 }
 
-// THE MODE IS LOCAL, SO IT CLAIMS NO FLEET KEY. Every effect it has runs on the machine executing it:
-// its own hostname, its own staging writes, sudo -n over LocalExec, and procfs, ip, nft, xtables and
-// conntrack reads on that host. Materialising the fleet SSH key for it would widen a capability with
-// no consumer in the source (side-chat hold on #11751).
-test fn the_microvm_network_mode_claims_no_fleet_ssh_key() -> Bool {
+// THE OBSERVE NOW CLAIMS THE FLEET KEY, BECAUSE IT NOW HAS A CONSUMER FOR IT. The side-chat hold on
+// #11751 refused the key while every read ran locally; the root-only reads (the table listing, the
+// ruleset, xtables, userspace helpers, conntrack expectations) are taken by the host's administrator
+// over the fleet SSH edge in gunbc.runner_microvm_network_observe read_privileged_over_admin_edge,
+// because the job user is granted none of them (operator decision 2026-09-22). The key's consumer is
+// that fold, so the demand follows it rather than a preference.
+test fn the_microvm_network_observe_mode_claims_the_fleet_ssh_key_its_admin_reads_consume() -> Bool {
   match fleet_converge_mode_fleet_ssh_key_demand(mode: MicrovmNetworkObserve) {
-    FleetSshKeyNotConsumed => true
-    FleetSshKeyConsumed => false
+    FleetSshKeyConsumed => true
+    FleetSshKeyNotConsumed => false
   }
 }
 
@@ -560,8 +695,8 @@ test fn the_fabric_writer_identity_receipt_upload_survives_a_failed_observation(
 test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_before_credentials() -> Bool {
   let env = step_env_text(step: fleet_converge_pair_serving_d0_step())
   let admit_env = step_env_text(step: fleet_converge_pair_serving_d0_admit_step())
-  let yml = expected_fleet_converge_yml_content()
-  let before_wif = match first(split(yml, separator: "id: wif_auth")) { Present { value: p } => p  Absent => "" }
+  let ids = fleet_converge_credential_prelude_ids()
+  let group = fleet_converge_mutation_concurrency_group_expression
   string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST=$\{\{ github.event.inputs.host \}\}")
     && string_contains(s: env, pattern: "GUNBC_D0_CONSENT=$\{\{ github.event.inputs.d0_consent \}\}")
     && string_contains(s: env, pattern: "RLM_EXPECTED_REVISION=$\{\{ github.event.inputs.expected_revision \}\}")
@@ -570,10 +705,11 @@ test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_befo
     && string_contains(s: admit_env, pattern: "GUNBC_D0_CONSENT=")
     && !string_contains(s: admit_env, pattern: "WIF_ACCESS_TOKEN")
     && (match fleet_converge_mode_fleet_ssh_key_demand(mode: PairServingD0) { FleetSshKeyConsumed => true  FleetSshKeyNotConsumed => false })
-    && string_contains(s: yml, pattern: "id: pair_serving_d0\n")
-    && !string_contains(s: yml, pattern: "d0_group")
-    && string_contains(s: before_wif, pattern: "id: pair_serving_d0_admit")
-    && !string_contains(s: before_wif, pattern: "id: pair_serving_d0\n")
+    && step_id_text(step: fleet_converge_pair_serving_d0_step()) == "pair_serving_d0"
+    && !any(fleet_converge_dispatch_inputs, i => i.name == "d0_group")
+    && step_index(ids: ids, id: "pair_serving_d0_admit") >= 0
+    && step_index(ids: ids, id: "pair_serving_d0_admit") < step_index(ids: ids, id: "wif_auth")
+    && step_index(ids: ids, id: "pair_serving_d0") < 0
     && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") == fleet_converge_mutation_group_for(mode: SparkServingApply, host: "srv2")
     && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") == fleet_converge_mutation_group_for(mode: FleetApply, host: "srv1")
     && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") == fleet_converge_mutation_group_for(mode: ApprovalKeyringConverge, host: "srv1")
@@ -581,15 +717,49 @@ test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_befo
     && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") == fleet_converge_mutation_group_for(mode: ApprovalBrokerDarkInstall, host: "srv1")
     && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") != fleet_converge_mutation_group_for(mode: SparkNativeServingApply, host: "srv1")
     && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1") != fleet_converge_mutation_group_for(mode: FleetApply, host: "srv2")
-    && string_contains(s: yml, pattern: "github.event.inputs.mode == 'pair_serving_d0' && 'gunbc-host-mutation-srv1'")
-    && string_contains(s: yml, pattern: "github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1'")
+    && string_contains(s: group, pattern: "github.event.inputs.mode == 'pair_serving_d0' && 'gunbc-host-mutation-srv1'")
+    && string_contains(s: group, pattern: "github.event.inputs.mode == 'spark_serving_apply' && 'gunbc-host-mutation-srv1'")
+}
+
+// THE CHECKPOINT MATERIALIZE MODE IS IN GROUP A'S ARM DOMAIN, NOT ITS EXECUTOR'S: whichever executor a
+// dispatch names, it queues behind D0 and the pair apply, and two dispatches for two Group A hosts
+// queue behind each other. The emitted step reads the target and runs the modeled entry.
+test fn the_v41_checkpoint_materialize_mode_serializes_on_group_a() -> Bool {
+  let step = fleet_converge_spark_v41_checkpoint_materialize_step()
+  fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv3") == fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1")
+    && fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv2") == fleet_converge_mutation_group_for(mode: SparkServingApply, host: "srv2")
+    && fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv2") != fleet_converge_mutation_group_for(mode: SparkNativeServingApply, host: "srv2")
+    && string_contains(s: fleet_converge_mutation_concurrency_group_expression, pattern: "github.event.inputs.mode == 'spark_v41_checkpoint_materialize' && 'gunbc-host-mutation-srv1'")
+    && step_id_text(step: step) == "spark_v41_checkpoint_materialize"
+    && string_contains(s: step_run_text(step: step), pattern: "--function v41_checkpoint_materialize_ci_wet")
+}
+
+// THE V4.1 IMAGE BUILD IS IN GROUP A'S ARM DOMAIN AND THE PROBE BESIDE IT IS NOT, which is the
+// whole distinction: the build is admitted by the Group A pair subject holding its target and
+// occupies that host for hours, so two dispatches naming different executors must still queue
+// behind each other and behind D0; the probe reads a pinned image and changes nothing, so it stays
+// keyed to whichever executor runs it. A regression that quietly gave the build the executor key
+// would read as green everywhere else.
+test fn the_v41_runtime_image_build_serializes_on_group_a_and_the_probe_does_not() -> Bool {
+  let expression = fleet_converge_mutation_concurrency_group_expression
+  fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv3") == fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1")
+    && fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv3") == fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv2")
+    && fleet_converge_mutation_group_for(mode: SparkRuntimeImageProbe, host: "srv3") != fleet_converge_mutation_group_for(mode: SparkRuntimeImageProbe, host: "srv2")
+    && fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv3") != fleet_converge_mutation_group_for(mode: SparkRuntimeImageProbe, host: "srv3")
+    && string_contains(s: expression, pattern: "github.event.inputs.mode == 'spark_v41_runtime_image_build' && 'gunbc-host-mutation-srv1'")
 }
 
 // THE OPERATIONAL BOUNDS ARE A MAINTAINED INTERFACE, NOT A ONE-HEAD TEXT: the emitted invocation
-// carries the Secret Manager connect and total bounds, the prelude allowance covers the total
-// bound, the step timeout is the sum of the window and the two allowances rounded up, and a key
-// fetch that fails does not stop the door (no set -e exit on the curl; the door decides); and the
-// same bounds reach every prelude that fetches a secret, because they consume one producer.
+// carries the Secret Manager connect and total bounds, the prelude allowance covers the total bound,
+// the step timeout is the sum of the window and the two allowances rounded up, and a key fetch that
+// fails does not stop the door (no set -e exit on the curl; the door decides).
+//
+// SPLIT FROM THE SIBLING-PRELUDE CLAIM BELOW, which was the same claim's last three conjuncts. As one
+// claim it reached FOUR separate invocation producers and rendered each in full: 91,527 eval steps
+// against the 72,300 new-witness budget, and it refused the floor once a change to this file made it a
+// changed witness -- it is in neither the floor_cost_debt roster nor the grandfathered one. DESIGN
+// section 3: a claim reaches too far the moment its subject stops being ONE interface, and the d0
+// door's own bounds and the shared producer's reach are two subjects, not one.
 test fn the_pair_serving_d0_invocation_is_bounded_and_the_step_timeout_is_the_declared_sum() -> Bool {
   let inv = gunbc_ci_pair_serving_d0_invoke()
   let secs = (second_count(s: d0_approval_window()) as Int) + (second_count(s: d0_transaction_allowance) as Int) + (second_count(s: d0_prelude_allowance) as Int)
@@ -600,7 +770,23 @@ test fn the_pair_serving_d0_invocation_is_bounded_and_the_step_timeout_is_the_de
     && string_contains(s: inv, pattern: "a held lifecycle resumes without it")
     && (minute_count(m: pair_serving_d0_step_timeout_minutes()) as Int) == (secs + 59) / 60
     && (minute_count(m: pair_serving_d0_step_timeout_minutes()) as Int) == 47
-    && string_contains(s: gunbc_ci_approval_keyring_converge_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
-    && string_contains(s: gunbc_ci_mtcollins1_boot_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
-    && string_contains(s: gunbc_ci_mtcollins1_fan_observe_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
 }
+
+// THE SAME TOTAL BOUND REACHES EVERY PRELUDE THAT FETCHES A SECRET, because they consume one producer
+// -- and that is THREE producers, so it is three claims. Folding them into one was the defect that made
+// the parent claim expensive, and folding them into one NEW claim does not fix it: measured as a single
+// three-invocation claim it is 81,123 eval steps, still over the 72,300 new-witness budget. Each sibling
+// renders its own invocation in full, so the cost is the producer count and splitting by subject is the
+// only thing that moves it. Each claim now also fails under the name of the prelude that regressed.
+test fn the_approval_keyring_converge_prelude_carries_the_shared_total_bound() -> Bool {
+  string_contains(s: gunbc_ci_approval_keyring_converge_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
+}
+
+test fn the_mtcollins1_boot_prelude_carries_the_shared_total_bound() -> Bool {
+  string_contains(s: gunbc_ci_mtcollins1_boot_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
+}
+
+test fn the_mtcollins1_fan_observe_prelude_carries_the_shared_total_bound() -> Bool {
+  string_contains(s: gunbc_ci_mtcollins1_fan_observe_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
+}
+
