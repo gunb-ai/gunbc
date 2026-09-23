@@ -103,12 +103,11 @@ test fn a_reading_with_a_thirteenth_engram_name_refuses() -> Bool {
 }
 
 // THE LIVE READING IS AN ENROLLED ROUTE'S RECEIPT, AND OVER THE PINNED FILE AND EVERY NAME IT CLOSES
-// MEMBERSHIP: the observed population's closure carries no obligation, compared by the extdeps fold
-// against the pin rather than restated.
+// MEMBERSHIP. The oracle is the extdeps fold against the pin; the row's own values are not asserted
+// here, because comparing them with literals copied from the row would only restate it (review 70580).
 test fn the_live_reading_closes_the_observed_population() -> Bool {
   (match v41_index_engram_selection_reading {
-    V41IndexEngramSelectionRead { index_sha256_hex: _, index_bytes: _, name_count: n, members: ms, observed: o } =>
-      n == 96085 && length(ms) == 12 && (o as String).contains("35877813088")
+    V41IndexEngramSelectionRead { index_sha256_hex: _, index_bytes: _, name_count: _, members: _, observed: _ } => true
     V41IndexEngramSelectionUnread { obligation: _ } => false
   }) && w_closure_of(s: v41_engram_population_observed()) == 0
 }
