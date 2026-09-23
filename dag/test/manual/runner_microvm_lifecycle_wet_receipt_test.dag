@@ -2,7 +2,7 @@ module test.manual.runner_microvm_lifecycle_wet_receipt
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.algebra { trim }
-import std.resources { Filesystem }
+import std.resources { Network, Filesystem }
 import std.measure { Second, second }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.systemd { SliceProperty, SystemdUnitProperty, ActiveState, systemd_unit_property_wire, SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path }
@@ -64,6 +64,7 @@ fn wet_slice_property() -> SystemdRunProperty {
 }
 
 fn start_payload(unit: NonEmptyStr, argv: List<String>) -> Bool
+  uses net: Network
 {
   systemd.SystemdRun.RunTransient(
     unit: unit,
@@ -86,12 +87,14 @@ fn start_payload(unit: NonEmptyStr, argv: List<String>) -> Bool
 // until the slice reads EMPTY, and returns false if it never does -- so a claim whose slice could not
 // be cleared fails on its own setup instead of on a verdict about a cell it does not own.
 fn clear_slice() -> Bool
+  uses net: Network
 {
   let _stopped = systemd.Systemctl.Stop(unit: wet_slice).success
   slice_is_quiet(polls_remaining: 20)
 }
 
 fn slice_is_quiet(polls_remaining: Int) -> Bool
+  uses net: Network
 {
   if readback_is_empty(r: observe_cgroup_subtree(slice: wet_slice)) {
     true
@@ -176,6 +179,7 @@ fn readback_is_empty(r: CgroupSubtreeReadback) -> Bool {
 // SIGTERM. StoppedGracefully is the arm this must NOT return, and it is asserted separately below so
 // a future edit that weakens the positive still trips.
 test fn a_sigterm_ignoring_child_is_stopped_by_force() -> Bool
+  uses net: Network
 {
   if !clear_slice() {
     false
@@ -201,6 +205,7 @@ test fn a_sigterm_ignoring_child_is_stopped_by_force() -> Bool
 // it. This claim asserts the recursive readback finds a pid the flat read could not, and asserts the
 // flat read is in fact empty, so the discrimination is established rather than assumed.
 test fn a_process_in_a_child_cgroup_is_found_and_the_flat_read_is_empty() -> Bool
+  uses net: Network
 {
   if !clear_slice() {
     false
@@ -262,6 +267,7 @@ test fn a_process_in_a_child_cgroup_is_found_and_the_flat_read_is_empty() -> Boo
 // not blind is a red that cannot go red, which is the decoration DESIGN section 4b warns about at the
 // top rung; it is recorded here rather than quietly replaced.
 test fn a_missing_cgroup_events_is_unobservable_and_never_empty() -> Bool
+  uses net: Network
 {
   readback_is_read_failure(r: observe_cgroup_subtree(slice: "-.slice" as NonEmptyStr))
 }
@@ -285,6 +291,7 @@ test fn a_missing_cgroup_events_is_unobservable_and_never_empty() -> Bool
 // fails, the operation renders the variant name and every consumer that names a property whose two
 // spellings differ is reading an empty string as a fact.
 test fn show_property_reads_a_units_active_state() -> Bool
+  uses net: Network
 {
   if !clear_slice() {
     false
@@ -296,6 +303,7 @@ test fn show_property_reads_a_units_active_state() -> Bool
 }
 
 test fn show_property_reads_a_units_environment() -> Bool
+  uses net: Network
 {
   if !clear_slice() {
     false
@@ -307,6 +315,7 @@ test fn show_property_reads_a_units_environment() -> Bool
 }
 
 fn unit_property_text(unit: NonEmptyStr, property: SystemdUnitProperty) -> String
+  uses net: Network
 {
   let shown = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: property))
   if shown.success == false { "" } else { trim(s: shown.value) }
@@ -333,6 +342,7 @@ fn unit_property_text(unit: NonEmptyStr, property: SystemdUnitProperty) -> Strin
 // same start twice would get one start and compare a value against itself. Here the ids differ,
 // which is also what the claim is about.
 test fn the_unit_reports_the_attempt_invocation_id_it_was_started_with() -> Bool
+  uses net: Network
 {
   if !clear_slice() {
     false
@@ -368,6 +378,7 @@ fn invocation_text(reading: UnitInvocationReading) -> String {
 // empty string. The claim asserts the arm rather than the string, because a producer that returned
 // UnitInvocationRead { invocation_id: "" } would render identically through invocation_text above.
 test fn a_unit_with_no_attempt_assignment_reads_as_unread() -> Bool
+  uses net: Network
 {
   if !clear_slice() {
     false
@@ -389,6 +400,7 @@ fn incarnation_unit() -> NonEmptyStr {
 // as an Environment property. A claim that started it with --collect would read an empty Environment
 // back for a unit that had exited, which is the case the retained form exists for.
 fn start_with_invocation(unit: NonEmptyStr, invocation: String, sleep_for: String) -> Bool
+  uses net: Network
 {
   systemd.SystemdRun.RunTransientRetained(
     unit: unit,
@@ -412,6 +424,7 @@ fn start_with_invocation(unit: NonEmptyStr, invocation: String, sleep_for: Strin
 // realization_arms_diverge_on_whether_the_program_refuses), so the earlier spelling stopped the unit
 // on exactly the reading it was written to skip. An `if` means the same thing in both realizations.
 fn stop_incarnation_unit(after: String) -> Bool
+  uses net: Network
 {
   if after != "" {
     systemd.Systemctl.Stop(unit: incarnation_unit()).success
@@ -433,6 +446,7 @@ fn stop_incarnation_unit(after: String) -> Bool
 // could not reach a sibling cgroup. The repaired force ends it, so the surviving fact is the one
 // before teardown: a successful job CAN leave the cell dirty, and the readback sees it.
 test fn a_successful_job_can_leave_the_cell_subtree_populated() -> Bool
+  uses net: Network
 {
   if !clear_slice() {
     false
@@ -448,6 +462,7 @@ test fn a_successful_job_can_leave_the_cell_subtree_populated() -> Bool
 // cgroup, and the stop now reaches it. Before the repair this would have read
 // ForceStopBoundExceeded; a regression to a unit-scoped kill reds it.
 test fn the_cell_wide_force_ends_a_survivor_in_a_sibling_cgroup() -> Bool
+  uses net: Network, fs: Filesystem
 {
   if !clear_slice() {
     false
@@ -472,6 +487,7 @@ test fn the_cell_wide_force_ends_a_survivor_in_a_sibling_cgroup() -> Bool
 // supply -- would be established by nothing. A slice with nothing under it reads EMPTY, and the
 // attempt paths that were never created read ABSENT.
 test fn a_clean_slice_reads_empty_and_absent_paths_read_absent() -> Bool
+  uses net: Network
 {
   if !clear_slice() {
     false
