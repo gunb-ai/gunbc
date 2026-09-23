@@ -185,19 +185,23 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // that mutates a host without that edge would be installing whatever happened to be lying around.
 // `host-reset-return` is held to it for a sharper reason than the others -- it POWER-CYCLES its
 // subject, so a stale binary there would drive a real machine from a model nobody reviewed.
+// `mtcollins1-boot` power-cycles its subject too, as its own job since it federates as its own
+// identity (gunbc.auth.mtcollins1_boot_federation).
 test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
-  fleet_converge_workflow.jobs.length() == 6
+  fleet_converge_workflow.jobs.length() == 7
     && fleet_converge_workflow.jobs[0].id == "build"
     && fleet_converge_workflow.jobs[1].id == "fleet-converge"
     && fleet_converge_workflow.jobs[1].needs == ["build"]
-    && fleet_converge_workflow.jobs[2].id == "host-reset-return"
+    && fleet_converge_workflow.jobs[2].id == "mtcollins1-boot"
     && fleet_converge_workflow.jobs[2].needs == ["build"]
-    && fleet_converge_workflow.jobs[3].id == "dashboard-deploy"
+    && fleet_converge_workflow.jobs[3].id == "host-reset-return"
     && fleet_converge_workflow.jobs[3].needs == ["build"]
-    && fleet_converge_workflow.jobs[4].id == "approval-broker-dark-install"
+    && fleet_converge_workflow.jobs[4].id == "dashboard-deploy"
     && fleet_converge_workflow.jobs[4].needs == ["build"]
-    && fleet_converge_workflow.jobs[5].id == "rlm-launch-deployment-receipt"
+    && fleet_converge_workflow.jobs[5].id == "approval-broker-dark-install"
     && fleet_converge_workflow.jobs[5].needs == ["build"]
+    && fleet_converge_workflow.jobs[6].id == "rlm-launch-deployment-receipt"
+    && fleet_converge_workflow.jobs[6].needs == ["build"]
 }
 
 fn expected_fleet_converge_yml_content() -> String {
