@@ -636,14 +636,16 @@ test fn the_microvm_network_step_binds_the_dispatched_host_into_its_environment(
     && step_id_text(step: fleet_converge_microvm_network_observe_step()) == "microvm_network_observe"
 }
 
-// THE MODE IS LOCAL, SO IT CLAIMS NO FLEET KEY. Every effect it has runs on the machine executing it:
-// its own hostname, its own staging writes, sudo -n over LocalExec, and procfs, ip, nft, xtables and
-// conntrack reads on that host. Materialising the fleet SSH key for it would widen a capability with
-// no consumer in the source (side-chat hold on #11751).
-test fn the_microvm_network_mode_claims_no_fleet_ssh_key() -> Bool {
+// THE OBSERVE NOW CLAIMS THE FLEET KEY, BECAUSE IT NOW HAS A CONSUMER FOR IT. The side-chat hold on
+// #11751 refused the key while every read ran locally; the root-only reads (the table listing, the
+// ruleset, xtables, userspace helpers, conntrack expectations) are taken by the host's administrator
+// over the fleet SSH edge in gunbc.runner_microvm_network_observe read_privileged_over_admin_edge,
+// because the job user is granted none of them (operator decision 2026-09-22). The key's consumer is
+// that fold, so the demand follows it rather than a preference.
+test fn the_microvm_network_observe_mode_claims_the_fleet_ssh_key_its_admin_reads_consume() -> Bool {
   match fleet_converge_mode_fleet_ssh_key_demand(mode: MicrovmNetworkObserve) {
-    FleetSshKeyNotConsumed => true
-    FleetSshKeyConsumed => false
+    FleetSshKeyConsumed => true
+    FleetSshKeyNotConsumed => false
   }
 }
 
