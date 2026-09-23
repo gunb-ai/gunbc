@@ -36,6 +36,13 @@ fn sel_field(fields: List<String>, index: Int) -> String {
   match fields.skip(n: index).first() { Absent => "" Present { value: field } => field }
 }
 
+// A THRESHOLD EVENT CARRIES A SEVENTH FIELD. ipmitool renders a threshold-sensor record with its
+// reading appended ("... | Asserted | Reading 0 < Threshold 0.68 Volts"), and mtcollins1's
+// controller emits exactly those rows -- gunbc.machine_intake_mtcollins1_32dimm_bringup_observation
+// transcribes records 1084..1099 in that shape. A reader that admitted only six fields refused the
+// real log from the first threshold row, so a before/after snapshot of this BMC could never be
+// taken. The seventh field is admitted only when it is a rendered reading; any other seven-field
+// row stays refused.
 fn sel_rendered_record(line: String) -> ObservationAttempt<SelWindowEvent, NonEmptyStr> {
   let fields = map(split(s: line, delimiter: "|"), field => trim(field))
   let id = sel_record_id(text: sel_field(fields: fields, index: 0))
@@ -47,7 +54,7 @@ fn sel_rendered_record(line: String) -> ObservationAttempt<SelWindowEvent, NonEm
   match id {
     Absent => ObservationRefused { cause: "SEL record id is not a rendered 16-bit hexadecimal id" }
     Present { value: record_id } =>
-      if count(fields) != 6 || date == "" || clock == "" || sensor == "" {
+      if (count(fields) != 6 && !(count(fields) == 7 && starts_with(s: sel_field(fields: fields, index: 6), prefix: "Reading "))) || date == "" || clock == "" || sensor == "" {
         ObservationRefused { cause: "SEL record is truncated or unrecognized" }
       } else {
         ObservationEstablished { observed: SelWindowEvent {
