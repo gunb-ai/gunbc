@@ -12,7 +12,7 @@ import std.repair_input_origin {
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
 }
-import gunbc.rust_emitted_edge { EmittedEdge, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, RuntimePrelude, ReexportFacade }
+import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, RuntimePrelude, ReexportFacade }
 import gunbc.reference_derived_candidate {
   ReferenceDerivedCandidateDisposition,
   CandidateSurvived,
@@ -3593,15 +3593,10 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   EmitResult { files: files, diagnostics: module_refusals, emitted_edges: published_module_emissions |> flat_map(e => e.emitted_edges) }
 }
 
-// THE ONE PLACE A MODULE'S EMITTED FILENAME IS DECIDED, read by the renderer and by every
-// population-denominated aggregate that must name a module it did not render. `main` collides
-// with the crate's own entry file, so it renders as `main_mod`; that rename used to live inside
-// `emit_module_full` alone, where a second reader of the same fact had no way to reach it.
-fn rust_module_emit_filename(module_name: String) -> String {
-  let raw = module_to_filename(name: module_name)
-  if raw == "main" { "main_mod" } else { raw }
-}
-
+// A MODULE'S EMITTED PATH, read by the renderer and by every population-denominated aggregate that
+// must name a module it did not render. The basename is decided once, in gunbc.rust_emitted_edge
+// rust_module_emit_filename, because the emitter's edge rows name their endpoints by it and a
+// partition over dotted module names maps onto those endpoints with the same function.
 fn rust_module_emit_path(module_name: String) -> String {
   concat(rust_source_root(), rust_module_emit_filename(module_name: module_name), rust_source_ext())
 }

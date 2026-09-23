@@ -249,6 +249,7 @@ pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRe
 pub enum TargetProducer {
     SelfHost,
     V2NativeCli,
+    EmittedCrateWorkspace,
     HeadsReadingDifferential,
     BehavioralReceiptPlan,
     BehavioralReceiptCensus,
@@ -285,6 +286,12 @@ fn v2_native_cli_source_roots() -> Vec<String> {
     vec!["dag".to_string(), "src/v2".to_string()]
 }
 
+/// `gunbc.instrument_targets` `emitted_crate_workspace_label`: the closure is emitted from the same
+/// corpus the self-host step emits from, so the two instruments measure one closure two ways.
+fn emitted_crate_workspace_source_roots() -> Vec<String> {
+    vec!["dag".to_string(), "src/v2".to_string()]
+}
+
 fn instrument_registry() -> Vec<(Label, TargetProducer)> {
     vec![
         (
@@ -314,6 +321,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("v2-native-cli"),
             TargetProducer::V2NativeCli,
+        ),
+        (
+            instrument_label("emitted-crate-workspace"),
+            TargetProducer::EmittedCrateWorkspace,
         ),
         (
             instrument_label("evaluation-store-address-exact-head"),
@@ -710,6 +721,9 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::CompileCleanDiagnosticCensus => run_compile_clean_diagnostic_census(),
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
+        TargetProducer::EmittedCrateWorkspace => {
+            run_emitted_crate_workspace(&emitted_crate_workspace_source_roots())
+        }
         TargetProducer::EvaluationStoreAddressExactHead => {
             run_evaluation_store_address_exact_head()
         }
@@ -1028,6 +1042,41 @@ fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
                 held.door_exit_status,
                 held.door_emitted_bytes,
                 held.door_refusal_exit_status,
+            ),
+        },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
+    }
+}
+
+/// THE EMITTED-WORKSPACE PRODUCER (Pkg7e). SubjectUnreached when the emission, the plan, the render
+/// or either cargo run could not be reached or the red could not be attributed; the observation
+/// holds only when the derived partition built clean AND the dropped-dependency red refused with an
+/// error naming the dropped target module. Every refusal carries its typed cause from the runner.
+fn run_emitted_crate_workspace(source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_emitted_crate_workspace(source_roots) {
+        Ok(held) => InvocationOutcome {
+            termination: if held.green_exit_status == 0 && held.green_warning_count == 0 {
+                Termination::ObservationHeld
+            } else {
+                Termination::ObservationDidNotHold
+            },
+            message: format!(
+                "emitted-crate-workspace: head={} closure_modules={} crates={}                  facade_is_whole_closure={} rustc={} green_exit_status={} green_warning_count={}                  red=drop {} from {} ({} -> {}) red_refused=\"{}\"",
+                held.head,
+                held.closure_modules,
+                held.crate_count,
+                held.facade_is_whole_closure,
+                held.rustc_identity,
+                held.green_exit_status,
+                held.green_warning_count,
+                held.red_dropped_package,
+                held.red_package,
+                held.red_from_module,
+                held.red_to_module,
+                held.red_diagnostic,
             ),
         },
         Err(cause) => InvocationOutcome {
