@@ -59,10 +59,14 @@ fn serve_ready_sol_silent_pre_boot_observations() -> OsInstallActuationObservati
   )
 }
 
+// A SUPPLIED user-data body: the fixture needs the input's shape, not the renderer's output; the
+// real rendering route is exercised by test.claim.srv3_seeded_install_media.
+data srv3_seeded_user_data_fixture: NonEmptyStr = "#cloud-config\nautoinstall:\n  identity:\n    hostname: srv3\n" as NonEmptyStr
+
 // A SUPPLIED built image: the diagnostic fold decides over the digest it is handed, and which bytes
 // the actuator actually built is the resolution route's question, not this fold's.
 data srv3_diagnostic_image_fixture: UbuntuSeededInstallMediaBuilt = ubuntu_seeded_install_media_built(
-  input: srv3_seeded_install_media_input,
+  input: srv3_seeded_install_media_input_for(user_data_body: srv3_seeded_user_data_fixture),
   output_digest: "abababababababababababababababababababababababababababababababab",
 )
 
