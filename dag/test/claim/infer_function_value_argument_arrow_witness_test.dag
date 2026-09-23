@@ -3,59 +3,121 @@ module test.claim.infer_function_value_argument_arrow_witness_test
 import std.types { Bool, Int, String }
 import gunbc.compile_census_probe { total_blocking_count_for, any_class_count_for }
 
-// THE EXECUTING EVIDENCE FOR gunbc.recurring_failure_mode
-// function_value_argument_arrow_never_compared.
+// THE EXECUTING EVIDENCE FOR gunbc.recurring_failure_mode function_typed_argument_mismatch_accepted,
+// for the population gunbc#12143 repaired.
 //
-// Every cell is a source string compiled by the seed through gunbc.compile_census_probe. The RED
-// cells pass a NAMED FUNCTION VALUE whose arrow disagrees with the declared function-typed formal
-// -- in a parameter, in arity, in the return -- and one binds the same mismatch to an annotated
-// `let`, the declared-type position that shares the relation. Before the repair every RED cell
-// compiled with zero blocking rows. The controls hold what the repair must not refuse: a matching
-// function value, a polymorphic one whose type variable the ground-only judgment leaves unjudged,
-// and a lambda.
+// Every cell is a source string compiled by the seed through gunbc.compile_census_probe. Each
+// `_refuses` cell is a program the seed accepted before the repair; each `_accepted` cell is a
+// control the repair must not refuse. They are paired by wall: exact arrow comparison (parameter,
+// arity, return, annotated let), the nullary arity (a mismatching nullary function refuses in both
+// positions, a matching one is accepted as a function value), polymorphism (one substitution over
+// the whole arrow: a repeated variable must agree, distinct variables need not), the one-sided
+// cases in both directions, and depth (a ground mismatch nested nine arrows deep refuses, where a
+// depth cutoff answering `false` would accept it; the identical matching nesting is accepted).
 
 data mismatched_parameter_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn convert(s: String) -> String { s }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: convert) }\n"
 
-data mismatched_arity_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int }\nfn add(x: Int, y: Int) -> Int { x + y }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: add) }\n"
+data mismatched_arity_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn add(x: Int, y: Int) -> Int { x + y }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: add) }\n"
 
 data mismatched_return_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn show(x: Int) -> String { \"n\" }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: show) }\n"
 
 data mismatched_let_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn convert(s: String) -> String { s }\nfn host() -> Int {\n  let g: fn(Int) -> Int = convert\n  g(1)\n}\n"
 
-data matching_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int }\nfn inc(x: Int) -> Int { x + 1 }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: inc) }\n"
+data nullary_mismatch_direct_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn pick() -> String { \"a\" }\nfn apply(f: fn() -> Int) -> Int { f() }\nfn host() -> Int { apply(f: pick) }\n"
 
-data polymorphic_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int }\nfn ident<T>(x: T) -> T { x }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: ident) }\n"
+data nullary_mismatch_let_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn pick() -> String { \"a\" }\nfn host() -> Int {\n  let g: fn() -> Int = pick\n  g()\n}\n"
 
-data lambda_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: x => x + 1) }\n"
+data polymorphic_repeated_variable_mismatch_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn same<T>(x: T, y: T) -> T { x }\nfn apply(f: fn(Int, String) -> Int) -> Int { 0 }\nfn host() -> Int { apply(f: same) }\n"
+
+data polymorphic_return_variable_mismatch_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn same<T>(x: T) -> T { x }\nfn apply(f: fn(Int) -> String) -> Int { 0 }\nfn host() -> Int { apply(f: same) }\n"
+
+data non_function_value_at_function_formal_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: 7) }\n"
+
+data function_value_at_kernel_formal_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn inc(x: Int) -> Int { x + 1 }\nfn take(n: Int) -> Int { n }\nfn host() -> Int { take(n: inc) }\n"
+
+data deep_nested_ground_mismatch_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn deep(g: fn(fn(fn(fn(fn(fn(fn(fn(fn(String) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int { 0 }\nfn apply(f: fn(fn(fn(fn(fn(fn(fn(fn(fn(fn(Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int { 0 }\nfn host() -> Int { apply(f: deep) }\n"
+
+data matching_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn inc(x: Int) -> Int { x + 1 }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: inc) }\n"
+
+data nullary_matching_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn seven() -> Int { 7 }\nfn apply(f: fn() -> Int) -> Int { f() }\nfn host() -> Int { apply(f: seven) }\n"
+
+data polymorphic_identity_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn ident<T>(x: T) -> T { x }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: ident) }\n"
+
+data polymorphic_two_variables_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn pair<T, U>(x: T, y: U) -> T { x }\nfn apply(f: fn(Int, String) -> Int) -> Int { 0 }\nfn host() -> Int { apply(f: pair) }\n"
+
+data lambda_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: x => x + 1) }\n"
+
+data deep_nested_matching_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn deep(g: fn(fn(fn(fn(fn(fn(fn(fn(fn(Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int { 0 }\nfn apply(f: fn(fn(fn(fn(fn(fn(fn(fn(fn(fn(Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int) -> Int { 0 }\nfn host() -> Int { apply(f: deep) }\n"
+
 
 fn refuses_as_type_mismatch(source: String) -> Bool {
   any_class_count_for(source: source, wanted_class: "TypeMismatch") > 0
 }
 
-test fn mismatched_parameter_function_argument_refuses() -> Bool {
+test fn mismatched_parameter_refuses() -> Bool {
   refuses_as_type_mismatch(source: mismatched_parameter_source)
 }
 
-test fn mismatched_arity_function_argument_refuses() -> Bool {
+test fn mismatched_arity_refuses() -> Bool {
   refuses_as_type_mismatch(source: mismatched_arity_source)
 }
 
-test fn mismatched_return_function_argument_refuses() -> Bool {
+test fn mismatched_return_refuses() -> Bool {
   refuses_as_type_mismatch(source: mismatched_return_source)
 }
 
-test fn mismatched_function_value_let_refuses() -> Bool {
+test fn mismatched_let_refuses() -> Bool {
   refuses_as_type_mismatch(source: mismatched_let_source)
 }
 
-test fn matching_function_argument_accepted() -> Bool {
+test fn nullary_mismatch_direct_refuses() -> Bool {
+  refuses_as_type_mismatch(source: nullary_mismatch_direct_source)
+}
+
+test fn nullary_mismatch_let_refuses() -> Bool {
+  refuses_as_type_mismatch(source: nullary_mismatch_let_source)
+}
+
+test fn polymorphic_repeated_variable_mismatch_refuses() -> Bool {
+  refuses_as_type_mismatch(source: polymorphic_repeated_variable_mismatch_source)
+}
+
+test fn polymorphic_return_variable_mismatch_refuses() -> Bool {
+  refuses_as_type_mismatch(source: polymorphic_return_variable_mismatch_source)
+}
+
+test fn non_function_value_at_function_formal_refuses() -> Bool {
+  refuses_as_type_mismatch(source: non_function_value_at_function_formal_source)
+}
+
+test fn function_value_at_kernel_formal_refuses() -> Bool {
+  refuses_as_type_mismatch(source: function_value_at_kernel_formal_source)
+}
+
+test fn deep_nested_ground_mismatch_refuses() -> Bool {
+  refuses_as_type_mismatch(source: deep_nested_ground_mismatch_source)
+}
+
+test fn matching_accepted() -> Bool {
   total_blocking_count_for(source: matching_source) == 0
 }
 
-test fn polymorphic_function_argument_accepted() -> Bool {
-  total_blocking_count_for(source: polymorphic_source) == 0
+test fn nullary_matching_accepted() -> Bool {
+  total_blocking_count_for(source: nullary_matching_source) == 0
 }
 
-test fn lambda_function_argument_accepted() -> Bool {
+test fn polymorphic_identity_accepted() -> Bool {
+  total_blocking_count_for(source: polymorphic_identity_source) == 0
+}
+
+test fn polymorphic_two_variables_accepted() -> Bool {
+  total_blocking_count_for(source: polymorphic_two_variables_source) == 0
+}
+
+test fn lambda_accepted() -> Bool {
   total_blocking_count_for(source: lambda_source) == 0
+}
+
+test fn deep_nested_matching_accepted() -> Bool {
+  total_blocking_count_for(source: deep_nested_matching_source) == 0
 }

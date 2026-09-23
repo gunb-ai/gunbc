@@ -865,6 +865,22 @@ fn variant_value_reference_diagnostics(scope: InferScope, name: String, span: So
 // name -- so a parameter or `let` that happens to share the spelling carries its own declared type
 // and stays a local. No spelling shape is read: the refusal the ServiceValueBinding note records came
 // from deciding by case and dots.
+// A BARE NULLARY FUNCTION NAME IS A CALL, EXCEPT WHERE A FUNCTION TYPE IS EXPECTED. The seed reads
+// `pick` for `fn pick() -> Int` as `pick()`, and that reading is kept everywhere a value is wanted.
+// But where the expected type is an arrow the author asked for the function itself, and applying it
+// there typed the argument as its RETURN -- so `apply(f: pick)` against `fn apply(f: fn() -> Int)`
+// passed an Int into a function slot: the interpreter then applied an Int, and the Rust emitter
+// wrote `apply(pick())`. Deciding by the expected arrow rather than by the parameter count is what
+// keeps the count from standing in for callability (gunbc.recurring_failure_mode
+// arity_proxy_for_callability_misroutes_a_found_local): a nullary declaration is a function value
+// with arrow `fn() -> R`, minted from its signature exactly as a unary one is.
+fn expected_type_is_arrow(expected: Node?) -> Bool {
+  match expected {
+    Present { value: e } => e.connective == Arrow
+    Absent => false
+  }
+}
+
 fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
   match lookup_variant_parent_enum(scope: scope, name: name) {
     Present { value: parent_enum } => VariantValueBinding { parent_enum: parent_enum }
@@ -1342,8 +1358,11 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
       module_name: scope.module_name
     )]
   }
-  else if type_node_is_callable(n: declared) && type_node_is_callable(n: produced)
-      && callable_signature_mismatch(formal: declared, actual: produced, source_indices: si, depth: 0) {
+  else if (type_node_is_callable(n: declared) && type_node_is_callable(n: produced)
+        && callable_signature_mismatch(formal: declared, actual: produced, source_indices: si))
+      || ((type_node_is_callable(n: declared) || type_node_is_callable(n: produced))
+        && !(type_node_is_callable(n: declared) && type_node_is_callable(n: produced))
+        && one_sided_callable_mismatch(formal: declared, actual: produced, type_env: scope.type_env)) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),
@@ -4949,53 +4968,164 @@ fn direct_call_formal_has_unbound_type_variable_at(n: Node, depth: Int) -> Bool 
   }
 }
 
-// A FUNCTION VALUE STANDING WHERE A FUNCTION TYPE IS DECLARED is judged, not waved through.
+// A FUNCTION VALUE STANDING WHERE A FUNCTION TYPE IS DECLARED is judged, not waved through, and so
+// is a value that is not a function standing there, or a function standing where a nominal type is.
 // direct_call_arg_type_mismatch used to answer `false` for ANY callable on either side, so
 // `apply(f: convert)` against `fn apply(f: fn(Int) -> Int)` with `fn convert(s: String) -> String`
-// compiled clean: the one relation that judges a direct-call argument never compared the arrow at
-// all (gunbc.recurring_failure_mode function_value_argument_arrow_never_compared). The exclusion
-// was right for the relations it guards -- brand, element and kernel judgments read `params` as
-// generic parameters -- and wrong as an answer for the pair, so the pair gets its own arm here.
+// compiled clean: the relation that judges a direct-call argument never compared the arrow at all
+// (gunbc.recurring_failure_mode function_typed_argument_mismatch_accepted). The exclusion was right
+// for the relations it guards -- brand, element and kernel judgments read `params` as generic
+// parameters -- and wrong as an answer for the pair, so callables get their own relation here.
 //
-// The judgment is POSITIVE ESTABLISHMENT, the discipline declared_type_conformance_diags states:
-// arity must agree, and each aligned parameter and the return are refused only where BOTH sides are
-// ground (conformance_ground_type) and node_type_compatible denies them, or where both are arrows
-// that refuse recursively. Anything else -- a type variable, a brand, a nominal record -- is not
-// judged here, so a polymorphic function value is never refused by this arm. Parameter positions
-// are compared for equality of ground names rather than contravariantly, because ground kernel
-// scalars have no subtyping between them; that is exact, not an approximation.
+// ARROW COMPATIBILITY IS EXACT. The language has no subtype relation, so a parameter is compared
+// for equality exactly as the return is; no variance is modeled because there is none to model.
+// The arity must agree, and each aligned leaf is refused where BOTH sides are ground
+// (conformance_ground_type) and node_type_compatible denies them -- the positive-establishment
+// discipline declared_type_conformance_diags states, so a brand or nominal record leaf is unjudged
+// rather than falsely refused.
+//
+// A POLYMORPHIC FUNCTION VALUE IS INSTANTIATED ONCE, over its whole arrow. The actual's generic
+// declarations (its `<T>` parameters, carried in params and recognized by param_is_generic_decl)
+// are removed from its value parameters, and ONE substitution is built over every aligned leaf
+// pair, parameters and return alike, nested arrows included: unify_generics binds a name at its
+// first occurrence and never rebinds it. The substituted arrow is then compared leaf by leaf, so a
+// later occurrence of the same name must agree with its first binding. `same<T>(x: T, y: T) -> T`
+// at `fn(Int, String) -> Int` therefore refuses, while `pair<T, U>(x: T, y: U) -> T` at
+// `fn(Int, String) -> Int` is accepted.
+//
+// THE WALK HAS NO DEPTH LIMIT, and needs none: it descends only through the params and return of
+// the two arrow NODES it was handed, never through a name lookup, and a Node is a finite acyclic
+// value (DESIGN section 4: cyclic relations are encoded acyclically, never as cyclic values), so
+// the recursion is bounded by the size of its input. A depth cutoff answering `false` would accept
+// every mismatch below it -- the absorbing fallback section 5 forbids.
+fn callable_generic_names(arrow: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  arrow.params
+    |> filter(p => param_is_generic_decl(p: p, source_indices: source_indices))
+    |> map(p => param_node_name_at(n: p, source_indices: source_indices))
+}
+
+fn callable_value_params(arrow: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+  arrow.params |> filter(p => !param_is_generic_decl(p: p, source_indices: source_indices))
+}
+
+fn callable_param_type(p: Node) -> Node {
+  child_type_node(ch: param_node_type_expr(n: p))
+}
+
 fn callable_signature_view(n: Node) -> Node {
   if (n.connective == Arrow) { n } else { callable_inferred(n: n) }
 }
 
-fn callable_component_ground_mismatch(formal_part: Node, actual_part: Node, source_indices: Map<String, NewlineIndex>, depth: Int) -> Bool {
-  if (formal_part.connective == Arrow) && (actual_part.connective == Arrow) {
-    callable_signature_mismatch(formal: formal_part, actual: actual_part, source_indices: source_indices, depth: depth + 1)
-  } else if conformance_ground_type(n: formal_part, source_indices: source_indices)
-      && conformance_ground_type(n: actual_part, source_indices: source_indices) {
-    !node_type_compatible(left: formal_part, right: actual_part, source_indices: source_indices)
-  } else { false }
+fn callable_signature_substitution(
+  formal: Node,
+  actual: Node,
+  generic_names: List<String>,
+  source_indices: Map<String, NewlineIndex>,
+  acc: Map<String, Node>
+) -> Map<String, Node> {
+  let f_params = callable_value_params(arrow: formal, source_indices: source_indices)
+  let a_params = callable_value_params(arrow: actual, source_indices: source_indices)
+  let after_params = fold(f_params |> enumerate, init: acc, f: (st, pair) =>
+    match a_params |> skip(pair.first) |> first {
+      Present { value: ap } => callable_leaf_substitution(
+        formal_part: callable_param_type(p: pair.second), actual_part: callable_param_type(p: ap),
+        generic_names: generic_names, source_indices: source_indices, acc: st)
+      Absent => st
+    })
+  callable_leaf_substitution(
+    formal_part: resolved_type(n: formal), actual_part: resolved_type(n: actual),
+    generic_names: generic_names, source_indices: source_indices, acc: after_params)
 }
 
-fn callable_signature_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>, depth: Int) -> Bool {
-  if depth >= 8 { false } else {
-    let f = callable_signature_view(n: formal)
-    let a = callable_signature_view(n: actual)
-    if (f.connective != Arrow) || (a.connective != Arrow) { false }
-    else if (f.params |> count) != (a.params |> count) { true }
-    else {
-      let params_mismatch = f.params |> enumerate |> any(pair =>
-        match a.params |> skip(pair.first) |> first {
-          Present { value: ap } => callable_component_ground_mismatch(
-            formal_part: child_type_node(ch: param_node_type_expr(n: pair.second)),
-            actual_part: child_type_node(ch: param_node_type_expr(n: ap)),
-            source_indices: source_indices, depth: depth)
-          Absent => true
-        })
-      params_mismatch || callable_component_ground_mismatch(
-        formal_part: resolved_type(n: f), actual_part: resolved_type(n: a), source_indices: source_indices, depth: depth)
+fn callable_leaf_substitution(
+  formal_part: Node,
+  actual_part: Node,
+  generic_names: List<String>,
+  source_indices: Map<String, NewlineIndex>,
+  acc: Map<String, Node>
+) -> Map<String, Node> {
+  if (formal_part.connective == Arrow) && (actual_part.connective == Arrow) {
+    callable_signature_substitution(formal: formal_part, actual: actual_part,
+      generic_names: generic_names, source_indices: source_indices, acc: acc)
+  } else {
+    unify_generics(formal: actual_part, actual: formal_part, generic_names: generic_names,
+      source_indices: source_indices, acc: acc)
+  }
+}
+
+fn callable_component_ground_mismatch(
+  formal_part: Node,
+  actual_part: Node,
+  subst: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  if (formal_part.connective == Arrow) && (actual_part.connective == Arrow) {
+    callable_arrow_mismatch(formal: formal_part, actual: actual_part, subst: subst, source_indices: source_indices)
+  } else {
+    let instantiated = substitute_generics(n: actual_part, subst: subst, source_indices: source_indices)
+    if (formal_part.connective == Arrow) || (instantiated.connective == Arrow) {
+      conformance_ground_type(n: formal_part, source_indices: source_indices)
+        || conformance_ground_type(n: instantiated, source_indices: source_indices)
+    } else if conformance_ground_type(n: formal_part, source_indices: source_indices)
+        && conformance_ground_type(n: instantiated, source_indices: source_indices) {
+      !node_type_compatible(left: formal_part, right: instantiated, source_indices: source_indices)
+    } else { false }
+  }
+}
+
+fn callable_arrow_mismatch(formal: Node, actual: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let f_params = callable_value_params(arrow: formal, source_indices: source_indices)
+  let a_params = callable_value_params(arrow: actual, source_indices: source_indices)
+  if (f_params |> count) != (a_params |> count) { true }
+  else {
+    let params_mismatch = f_params |> enumerate |> any(pair =>
+      match a_params |> skip(pair.first) |> first {
+        Present { value: ap } => callable_component_ground_mismatch(
+          formal_part: callable_param_type(p: pair.second), actual_part: callable_param_type(p: ap),
+          subst: subst, source_indices: source_indices)
+        Absent => true
+      })
+    params_mismatch || callable_component_ground_mismatch(
+      formal_part: resolved_type(n: formal), actual_part: resolved_type(n: actual),
+      subst: subst, source_indices: source_indices)
+  }
+}
+
+fn callable_signature_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let f = callable_signature_view(n: formal)
+  let a = callable_signature_view(n: actual)
+  if (f.connective != Arrow) || (a.connective != Arrow) { false }
+  else {
+    let generic_names = callable_generic_names(arrow: a, source_indices: source_indices)
+    let subst = callable_signature_substitution(formal: f, actual: a, generic_names: generic_names,
+      source_indices: source_indices, acc: empty_map())
+    callable_arrow_mismatch(formal: f, actual: a, subst: subst, source_indices: source_indices)
+  }
+}
+
+// ONE SIDE A FUNCTION, THE OTHER POSITIVELY NOT ONE. A declared function type given an `Int`, or a
+// declared `Int` or nominal record given a function value, is refused -- but only where the
+// non-function side is established: a ground kernel type, or a nominal name whose declaration
+// resolves to a product or coproduct. An alias of a function type resolves to an arrow and is not
+// refused; a type variable, an unresolved name or an Optional is not established and is left
+// unjudged rather than guessed.
+fn type_node_positively_not_callable(n: Node, type_env: TypeEnv) -> Bool {
+  let si = type_env.source_indices
+  if type_node_is_callable(n: n) { false }
+  else if conformance_ground_type(n: n, source_indices: si) { true }
+  else {
+    match lookup_type_for(env: type_env, node: with_required_cardinality(n: n)) {
+      Present { value: resolved } =>
+        !type_node_is_callable(n: resolved)
+          && ((resolved.connective == Conj) || (resolved.connective == Disj))
+      Absent => false
     }
   }
+}
+
+fn one_sided_callable_mismatch(formal: Node, actual: Node, type_env: TypeEnv) -> Bool {
+  (type_node_is_callable(n: formal) && type_node_positively_not_callable(n: actual, type_env: type_env))
+    || (type_node_is_callable(n: actual) && type_node_positively_not_callable(n: formal, type_env: type_env))
 }
 
 fn direct_call_arg_type_mismatch(
@@ -5008,11 +5138,14 @@ fn direct_call_arg_type_mismatch(
 ) -> Bool {
   let substitution_is_optional = substitution_basis.return_cardinality == CardOptional
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: substitution_basis)) == "Optional"
-  if substitution_is_optional || direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) { false }
+  if substitution_is_optional { false }
   else if type_node_is_callable(n: formal) && type_node_is_callable(n: actual) {
-    callable_signature_mismatch(formal: formal, actual: actual, source_indices: source_indices, depth: 0)
+    callable_signature_mismatch(formal: formal, actual: actual, source_indices: source_indices)
   }
-  else if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
+  else if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) {
+    one_sided_callable_mismatch(formal: formal, actual: actual, type_env: type_env)
+  }
+  else if direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) { false }
   else {
     nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
@@ -6751,7 +6884,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent =>
           match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name) {
             FuncSigResolved { sig: fsig, declared: fsig_declared } =>
-                  match (fsig.params |> count) == 0 {
+                  match ((fsig.params |> count) == 0) && !expected_type_is_arrow(expected: expected) {
                     true =>
                       ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                         name: name,

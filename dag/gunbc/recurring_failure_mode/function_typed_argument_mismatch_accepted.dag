@@ -20,12 +20,28 @@ data function_typed_argument_mismatch_accepted: RecurringFailureMode = Recurring
 
     "RUNG FOUND AT: below the ladder (silent wrongness).",
 
+    "A SECOND SPECIMEN, AND A CORRECTION TO HOW IT WAS REPORTED. eager-pike-297, repairing gunbc#12130, found `apply(f: convert)` accepted with `fn apply(f: fn(Int) -> Int)` and `fn convert(s: String) -> String`, and reported that the annotated-let form `let g: fn(Int) -> Int = convert` WAS refused. Executed against the seed at `7caa4c9b092`, it was not: both compiled with zero blocking rows. The declared-type relation `declared_type_conformance_diags` judged only ground kernel scalars and element collections, so no position compared two arrows.",
+
+    "A THIRD FACT FOUND WHILE REPAIRING THE NULLARY ARITY: a bare nullary function name is read as a CALL. `apply(f: seven)` with `fn seven() -> Int` was inferred as `apply(f: seven())`, typing the argument as the RETURN, so the matching nullary case was not correct either -- the Rust emitter wrote `apply(seven())` into an `Rc<dyn Fn() -> i64>` slot. The mismatching nullary specimen (`fn pick() -> String` at `fn() -> Int`) was therefore a one-sided case, a String at a function boundary, not an arrow pair.",
+
+    "REPAIRED BY gunbc#12143, at the direct-call argument position (`v1.compiler.infer` `direct_call_arg_type_mismatch`) and at every position `declared_type_conformance_diags` serves (an annotated `let`, a fn body against its declared return, an early `return`, a `data` annotation): (a) ARROW PAIRS through `callable_signature_mismatch` -- arity must agree, and parameters and return are compared EXACTLY (the language has no subtype relation, so no variance is modeled); a leaf refuses where both sides are ground and `node_type_compatible` denies them, and a nested arrow is compared recursively with no depth cutoff, the walk being bounded by the finite acyclic Node it is handed. (b) POLYMORPHIC ACTUALS through ONE substitution over the whole arrow: the actual's generic declarations bind at their first occurrence by `unify_generics` and every later occurrence, return included, must agree, so `same<T>(x: T, y: T) -> T` refuses at `fn(Int, String) -> Int` and at `fn(Int) -> String`, while `ident<T>` at `fn(Int) -> Int` and `pair<T, U>` at `fn(Int, String) -> Int` are accepted. (c) ONE-SIDED CASES through `one_sided_callable_mismatch` -- a value that is positively not a function (a ground kernel type, or a name resolving to a product or coproduct) at a function boundary, and a function value at such a boundary. (d) NULLARY VALUES: `expected_type_is_arrow` makes a bare nullary name a function value where an arrow is expected, minted from its signature as a unary one is, instead of applying it.",
+
+    "EXECUTED EVIDENCE, named rather than transcribed: `test.claim.infer_function_value_argument_arrow_witness_test`, admitted to the required floor by the `test.claim.infer_` prefix. Its RED cells -- parameter, arity, return, annotated let, nullary direct and let, both polymorphic mismatches, both one-sided directions, and a ground mismatch nested past depth eight -- refuse; its matching unary, matching nullary, `ident`, `pair`, lambda and deep matching cells are the accepted controls.",
+
+    "RUNG NOW, at the subject grain named in the repair: 3, structurally guaranteed. BELOW CEILING, the remaining population, stated rather than implied: (1) the RECORD-FIELD specimen above -- `Cfg { cb: 7 }` against `cb: fn() -> Int` -- is not repaired; record-literal field checks do not consult these relations. (2) An arrow leaf that is a brand, a nominal record or coproduct, or a keyed collection is unjudged by the arrow relation. (3) A one-sided case whose non-function side is a type variable, an unresolved name or an Optional is unjudged. (4) Method and pipe argument positions do not pass through `direct_call_arg_type_mismatch`. (5) A generic FORMAL (`f: fn(T) -> U` inside a generic callee) leaves its type-variable leaves unjudged.",
+
+    "OUTSIDE THIS CLASS, found beside it: a nullary function value, now correctly typed, is still EMITTED to Rust as a bare `seven` where the formal renders `Rc<dyn Fn() -> i64>`, so the emitted crate does not compile (the unary formal renders `impl Fn` and compiles). The interpreter path executes it correctly. That is an emission-realization gap, not a checker gap, and it is reported to the owning lane rather than folded in here.",
+
     "CEILING: 3, structurally guaranteed -- arrow inhabitance (parameter count, parameter and return types) is decidable from the modeled types.",
 
-    "NEXT-RUNG TRIGGER, named as the capability: a declared-type judgment for function types at every site `type_node_is_callable` exempts, sufficient that each specimen above refuses located, with a passed function of matching arrow type as its accepted positive control.",
+    "NEXT-RUNG TRIGGER, named as the capability: the same judgment consulted at the record-literal field seam and the method/pipe argument seam, and a peeling conformance relation that grounds brands and nominal identities so arrow leaves of those kinds are judged -- sufficient that the record-field specimen above refuses located with a matching-arrow field as its control.",
   ],
 
   evidence: [
     DeclarationRef { module_path: "v1.compiler.infer", decl_name: "type_node_is_callable", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "callable_signature_mismatch", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "one_sided_callable_mismatch", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "expected_type_is_arrow", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.infer_function_value_argument_arrow_witness_test", decl_name: "polymorphic_repeated_variable_mismatch_refuses", field: WholeDeclaration },
   ],
 }
