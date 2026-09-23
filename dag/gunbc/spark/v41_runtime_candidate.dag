@@ -42,7 +42,7 @@ import gunbc.spark.serving_deployment_selection { TopologyShape, topology_shape 
 import gunbc.spark.v41_identity_input { V41EngramResidencyPartition, v41_input }
 import gunbc.spark.v41_engram_row_store {
   V41PublishedRowStoreKey, V41PublishedRowStoreKeyed, V41PublishedRowStoreUnestablished, V41PublishedRowStoreRefused,
-  v41_published_row_store_key, v41_published_span_readings, v41_live_head_sizes,
+  v41_row_store_encoding_key, v41_published_span_readings, v41_published_store_readings, v41_live_head_sizes,
 }
 import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell, sha256sum_stdin_digest_via_shell }
@@ -772,18 +772,18 @@ fn v41_manifest_digest(text: String, subject: String) -> V41ManifestStanding {
   }
 }
 
-// THE ROW-STORE ENCODING AXIS, KEYED BY THE PUBLISHED SPANS AND THE ENCODING SPEC
-// (gunbc.spark.v41_engram_row_store v41_published_row_store_key). What it keys is the transform's input
-// read from the published shards plus the spec the encoder follows. The four rank-file identities are
-// a DIFFERENT fact: they are the encoder's produced artifacts, whole-file sha256 as the file-backed patch
-// checks on open, and D1 owes them as a readback of that output before it authorizes over "the four
-// row-store identities". A keyed candidate does not discharge that obligation.
+// THE ROW-STORE ENCODING AXIS, KEYED BY THE ENCODED STORES (gunbc.spark.v41_engram_row_store
+// v41_row_store_encoding_key): the spec key and the sha256 of each of the eight (layer, rank) stores the
+// encoder produced -- the whole-file digests the file-backed patch checks on open, which are D1's
+// "row-store identities" -- admitted by v41_identify_row_store. The published spans are the encoder's
+// input and are joined to the span plan before a key is minted, but they do not key the axis.
 fn v41_row_store_encoding_standing() -> V41ManifestStanding {
-  match v41_published_row_store_key(
+  match v41_row_store_encoding_key(
     partition: v41_candidate_partition,
     sharded: deepseek_v4_1_flash_engram_sharded_entries,
     shards: deepseek_v4_1_flash_engram_shard_files,
-    readings: v41_published_span_readings,
+    spans: v41_published_span_readings,
+    stores: v41_published_store_readings,
     head_sizes: fn() { v41_live_head_sizes(tables: deepseek_v4_1_flash_engram) },
   ) {
     V41PublishedRowStoreKeyed { digest: d } => V41ManifestObserved { digest: d }

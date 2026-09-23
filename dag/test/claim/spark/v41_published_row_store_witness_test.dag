@@ -15,14 +15,16 @@ import gunbc.spark.v41_engram_row_store {
   V41PublishedSpan, V41PublishedSpanPlan, V41PublishedSpansPlanned, V41PublishedSpansUnplannable,
   V41PublishedSpanDigest, V41PublishedSpanReadings, V41PublishedSpansRead, V41PublishedSpansUnread,
   V41PublishedRowStoreKey, V41PublishedRowStoreKeyed, V41PublishedRowStoreUnestablished, V41PublishedRowStoreRefused,
-  v41_published_span_plan, v41_published_row_store_key,
+  V41PublishedStoreReadings, V41PublishedStoresRead, V41PublishedStoresUnread, V41RankStoreIdentity,
+  v41_published_span_plan, v41_row_store_encoding_key, v41_rank_store_identity,
 }
 import extdeps.safetensors.format { SafetensorsShardFile }
 
-// THE KEY OVER THE PUBLISHED STORAGE-BACKED SPANS, AT ITS OWN INTERFACE. The span digests are SUPPLIED
-// values -- a fixture of the reading a Spark would return -- because this claim is about what the key
-// does with a reading, not about a host. The plan the readings are joined against is the REAL
-// derivation over the publisher's header rows, so the regions below are the ones the mode reads.
+// THE ROW-STORE ENCODING KEY, AT ITS OWN INTERFACE. The span digests and the store digests are SUPPLIED
+// values -- fixtures of what a Spark's reads return -- because these claims are about what the key does
+// with readings, not about a host. The plan the span readings are joined against is the REAL
+// derivation over the publisher's header rows, so the regions below are the ones the mode reads. The
+// spans are the encoder's input identity (joined, not hashed); the eight encoded stores key the axis.
 
 fn w_sha(c: String) -> Sha256Digest {
   Sha256Digest { hex: join([c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c, c], "") as Sha256DigestHex }
@@ -39,8 +41,19 @@ fn w_read(spans: List<V41PublishedSpan>, c: String) -> V41PublishedSpanReadings 
   V41PublishedSpansRead { host: "srv5" as NonEmptyStr, observed_at: "fixture" as NonEmptyStr, spans: map(spans, sp => V41PublishedSpanDigest { span: sp, sha256: w_sha(c: c) }) }
 }
 
+// ONE STORE PER (LAYER, RANK) OF THE GIVEN LAYERS, ALL WITH DIGEST c.
+fn w_stores(layers: List<Nat>, c: String) -> V41PublishedStoreReadings {
+  V41PublishedStoresRead { host: "srv5" as NonEmptyStr, observed_at: "fixture" as NonEmptyStr, stores: flat_map(layers, l => map([0, 1, 2, 3], k => v41_rank_store_identity(layer: l, rank: k, digest: w_sha(c: c)))) }
+}
+
+data w_candidate_layers: List<Nat> = [1, 14]
+
+fn w_key_with(p: V41EngramResidencyPartition, r: V41PublishedSpanReadings, st: V41PublishedStoreReadings) -> V41PublishedRowStoreKey {
+  v41_row_store_encoding_key(partition: p, sharded: deepseek_v4_1_flash_engram_sharded_entries, shards: deepseek_v4_1_flash_engram_shard_files, spans: r, stores: st, head_sizes: fn() { w_published_head_sizes() })
+}
+
 fn w_key(p: V41EngramResidencyPartition, r: V41PublishedSpanReadings) -> V41PublishedRowStoreKey {
-  v41_published_row_store_key(partition: p, sharded: deepseek_v4_1_flash_engram_sharded_entries, shards: deepseek_v4_1_flash_engram_shard_files, readings: r, head_sizes: fn() { w_published_head_sizes() })
+  w_key_with(p: p, r: r, st: w_stores(layers: w_candidate_layers, c: "c"))
 }
 
 fn w_hex(k: V41PublishedRowStoreKey) -> String {
@@ -95,17 +108,20 @@ test fn an_absent_shard_file_row_refuses_as_unread_not_contradicted() -> Bool {
   w_unplannable_with(plan: plan, fragment: "has no shard file row") && !w_unplannable_with(plan: plan, fragment: "shard file rows")
 }
 
-// POSITIVE CONTROL: the exact plan, read, keys.
+// POSITIVE CONTROL: the exact plan read, and all eight stores read, keys.
 test fn a_reading_of_exactly_the_planned_spans_keys() -> Bool {
   w_hex(k: w_key(p: v41_candidate_partition, r: w_read(spans: w_plan(p: v41_candidate_partition), c: "a"))).length() == 64
 }
 
 // THE DISCRIMINATING RED: a digest over a different table set does not key the candidate's partition.
 // Readings of layer 14's pair alone are two spans short and refuse by name.
+// And a STORE set over a different table set -- layer 14's four stores alone -- refuses even with the
+// right input spans: the declared layer-1 stores carry no digest.
 test fn a_digest_over_a_different_table_set_does_not_key() -> Bool {
   let other = w_read(spans: w_plan(p: w_other_partition), c: "a")
   w_refused_with(k: w_key(p: v41_candidate_partition, r: other), fragment: "layers.1.engram.embed.weight")
     && w_refused_with(k: w_key(p: v41_candidate_partition, r: other), fragment: "was not read")
+    && w_refused_with(k: w_key_with(p: v41_candidate_partition, r: w_read(spans: w_plan(p: v41_candidate_partition), c: "a"), st: w_stores(layers: [14], c: "c")), fragment: "layer.1.rank.0")
 }
 
 // AND A READING OF A TENSOR THE PARTITION KEEPS RESIDENT IS FOREIGN, EVEN ALONGSIDE THE RIGHT FOUR.
@@ -120,21 +136,28 @@ test fn a_shifted_region_refuses() -> Bool {
   w_refused_with(k: w_key(p: v41_candidate_partition, r: w_read(spans: shifted, c: "a")), fragment: "was not read")
 }
 
-// THE KEY MOVES WITH THE BYTES AND WITH THE SPEC, NOT WITH THE ORDER THE READINGS ARRIVED IN.
+// THE KEY MOVES WITH THE ENCODED STORES' BYTES AND WITH THE TABLE SET -- and NOT with the input spans'
+// digests, which are joined but not hashed, nor with the order the readings arrived in.
 test fn the_key_moves_with_the_bytes_and_the_table_set() -> Bool {
-  let base = w_hex(k: w_key(p: v41_candidate_partition, r: w_read(spans: w_plan(p: v41_candidate_partition), c: "a")))
-  let other_bytes = w_hex(k: w_key(p: v41_candidate_partition, r: w_read(spans: w_plan(p: v41_candidate_partition), c: "b")))
-  let reversed = w_hex(k: w_key(p: v41_candidate_partition, r: w_read(spans: reverse(w_plan(p: v41_candidate_partition)), c: "a")))
-  let other_set = w_hex(k: w_key(p: w_other_partition, r: w_read(spans: w_plan(p: w_other_partition), c: "a")))
-  base.length() == 64 && other_bytes.length() == 64 && other_set.length() == 64
-    && base != other_bytes && base == reversed && base != other_set
+  let spans = w_read(spans: w_plan(p: v41_candidate_partition), c: "a")
+  let base = w_hex(k: w_key_with(p: v41_candidate_partition, r: spans, st: w_stores(layers: w_candidate_layers, c: "c")))
+  let other_store_bytes = w_hex(k: w_key_with(p: v41_candidate_partition, r: spans, st: w_stores(layers: w_candidate_layers, c: "d")))
+  let other_span_bytes = w_hex(k: w_key_with(p: v41_candidate_partition, r: w_read(spans: w_plan(p: v41_candidate_partition), c: "b"), st: w_stores(layers: w_candidate_layers, c: "c")))
+  let reversed = w_hex(k: w_key_with(p: v41_candidate_partition, r: w_read(spans: reverse(w_plan(p: v41_candidate_partition)), c: "a"), st: w_stores(layers: [14, 1], c: "c")))
+  let other_set = w_hex(k: w_key_with(p: w_other_partition, r: w_read(spans: w_plan(p: w_other_partition), c: "a"), st: w_stores(layers: [14], c: "c")))
+  base.length() == 64 && other_store_bytes.length() == 64 && other_set.length() == 64
+    && base != other_store_bytes && base == other_span_bytes && base == reversed && base != other_set
 }
 
-// UNREAD IS AN OBLIGATION, NEVER A KEY; and the live row is unread until a run's receipt lands.
+// UNREAD IS AN OBLIGATION, NEVER A KEY: unread spans, or read spans with the stores not yet encoded.
 test fn an_unread_reading_is_unestablished() -> Bool {
-  match w_key(p: v41_candidate_partition, r: V41PublishedSpansUnread { obligation: "fixture: not read" as NonEmptyStr }) {
+  (match w_key(p: v41_candidate_partition, r: V41PublishedSpansUnread { obligation: "fixture: not read" as NonEmptyStr }) {
     V41PublishedRowStoreUnestablished { obligation: o } => (o as String).contains("not read")
     V41PublishedRowStoreKeyed { digest: _ } => false
     V41PublishedRowStoreRefused { defects: _ } => false
-  }
+  }) && (match w_key_with(p: v41_candidate_partition, r: w_read(spans: w_plan(p: v41_candidate_partition), c: "a"), st: V41PublishedStoresUnread { obligation: "fixture: not encoded" as NonEmptyStr }) {
+    V41PublishedRowStoreUnestablished { obligation: o } => (o as String).contains("not encoded")
+    V41PublishedRowStoreKeyed { digest: _ } => false
+    V41PublishedRowStoreRefused { defects: _ } => false
+  })
 }
