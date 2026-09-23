@@ -1,0 +1,135 @@
+module test.claim.corpus_census_allowance_witness_test
+
+import v2.std.logic { Bool }
+import v2.std.integer { Int, int_add, int_mul }
+import v2.std.text { String }
+import std.measure { EvalStepCount, eval_step_count, eval_step_count_value }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.workflow.required_floor {
+  CorpusCensusMember, CorpusCensusAllowancePolicy, corpus_census_allowance_policy,
+  CorpusCensusAllowance, CensusAllowanceDerived, CensusAllowanceRefused,
+  CorpusCensusStanding, CensusWithinAllowance, CensusPerEntryRateExceeded, CensusAllowanceUnderived,
+  corpus_census_eval_step_allowance_in, corpus_census_eval_step_allowance,
+  corpus_census_standing, corpus_census_standing_blocks,
+}
+
+// Every subject below is authored in this module; nothing is read from the checkout.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECTS ARE SYNTHETIC AND THEIR ENTRY COUNTS ARE THE FIXTURE'S OWN, which is what makes the
+// counts legitimate oracles (DESIGN section 5): each document below is authored here, and its count
+// follows from its text -- every mapping entry and sequence element at every depth -- not from a
+// measurement of the tree. `synthetic_census_subject` has 5 entries (jobs, a, a.runs-on, b,
+// b.runs-on); `synthetic_census_subject_grown` is the same shape with twice the jobs, 9 entries.
+data synthetic_census_subject: String = "jobs:\n  a:\n    runs-on: x\n  b:\n    runs-on: y\n"
+
+data synthetic_census_subject_grown: String = "jobs:\n  a:\n    runs-on: x\n  b:\n    runs-on: y\n  c:\n    runs-on: z\n  d:\n    runs-on: w\n"
+
+data synthetic_census_identity: String = "test.claim.synthetic_census.census_synthetic_uses"
+
+fn synthetic_roster() -> List<CorpusCensusMember> {
+  [CorpusCensusMember { identity: synthetic_census_identity, subject_path: "synthetic/census.yml" }]
+}
+
+fn synthetic_allowance(subject: String) -> CorpusCensusAllowance {
+  corpus_census_eval_step_allowance_in(
+    roster: synthetic_roster(),
+    policy: corpus_census_allowance_policy,
+    identity: synthetic_census_identity,
+    subject_content: subject,
+  )
+}
+
+// A SYNTHETIC CENSUS'S OBSERVED WORK: a fixed cost at the policy's base plus `rate` steps per entry.
+// The claims below vary `rate` only, so what separates red from green is the per-entry cost and
+// nothing else.
+fn synthetic_observed_steps(entries: Int, rate: Int) -> EvalStepCount {
+  eval_step_count(
+    count: int_add(
+      a: eval_step_count_value(s: corpus_census_allowance_policy.base_steps),
+      b: int_mul(a: rate, b: entries),
+    ),
+  )
+}
+
+fn policy_per_entry() -> Int {
+  eval_step_count_value(s: corpus_census_allowance_policy.per_entry_steps)
+}
+
+fn synthetic_standing(subject: String, entries: Int, rate: Int) -> CorpusCensusStanding {
+  corpus_census_standing(
+    allowance: synthetic_allowance(subject: subject),
+    observed_steps: synthetic_observed_steps(entries: entries, rate: rate),
+  )
+}
+
+// THE COUNT IS THE PARSE'S. A rostered identity over the synthetic subject derives exactly the
+// fixture's entry count through extdeps.languages.yaml.ingest, and the allowance is the policy's
+// line at that count.
+test fn census_allowance_derives_the_entry_count_from_the_census_parse() -> Bool {
+  match synthetic_allowance(subject: synthetic_census_subject) {
+    CensusAllowanceDerived { identity: _, subject_path: p, entry_count: n, budget_steps: b } =>
+      n == 5
+        && p == "synthetic/census.yml"
+        && eval_step_count_value(s: b)
+          == eval_step_count_value(s: synthetic_observed_steps(entries: 5, rate: policy_per_entry()))
+    CensusAllowanceRefused { identity: _, reason: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: a census whose per-entry cost is exactly the policy's per_entry sits ON the line
+// and is admitted, at both subject sizes -- growth raises the budget with the subject.
+test fn census_at_the_policy_rate_is_within_its_allowance_as_the_subject_grows() -> Bool {
+  !corpus_census_standing_blocks(standing: synthetic_standing(subject: synthetic_census_subject, entries: 5, rate: policy_per_entry()))
+    && !corpus_census_standing_blocks(standing: synthetic_standing(subject: synthetic_census_subject_grown, entries: 9, rate: policy_per_entry()))
+    && match synthetic_standing(subject: synthetic_census_subject_grown, entries: 9, rate: policy_per_entry()) {
+      CensusWithinAllowance { observed_steps: _, budget_steps: _, entry_count: n } => n == 9
+      CensusPerEntryRateExceeded { observed_steps: _, budget_steps: _, entry_count: _ } => false
+      CensusAllowanceUnderived { reason: _ } => false
+    }
+}
+
+// DISCRIMINATING RED, THE SLOPE GATE: the same synthetic census with its per-entry cost inflated by
+// ONE step per entry is refused as a per-entry rate excess -- on the small subject AND on the grown
+// one, so a larger subject does not buy an inflated rate its way under the line.
+test fn census_with_an_inflated_per_entry_cost_is_refused_at_every_subject_size() -> Bool {
+  let inflated = int_add(a: policy_per_entry(), b: 1)
+  let small = synthetic_standing(subject: synthetic_census_subject, entries: 5, rate: inflated)
+  let grown = synthetic_standing(subject: synthetic_census_subject_grown, entries: 9, rate: inflated)
+  corpus_census_standing_blocks(standing: small)
+    && corpus_census_standing_blocks(standing: grown)
+    && match grown {
+      CensusPerEntryRateExceeded { observed_steps: _, budget_steps: _, entry_count: n } => n == 9
+      CensusWithinAllowance { observed_steps: _, budget_steps: _, entry_count: _ } => false
+      CensusAllowanceUnderived { reason: _ } => false
+    }
+}
+
+// NO FALLBACK TO A FLAT BUDGET: every arm that cannot derive a count refuses, and the standing over a
+// refused allowance BLOCKS even when the observed work is trivially small.
+test fn census_allowance_refuses_rather_than_falling_back_when_it_cannot_derive_a_count() -> Bool {
+  let unrostered = corpus_census_eval_step_allowance_in(
+    roster: synthetic_roster(),
+    policy: corpus_census_allowance_policy,
+    identity: "test.claim.synthetic_census.not_rostered",
+    subject_content: synthetic_census_subject,
+  )
+  // Not YAML at all: a block sequence entry after a block mapping at the same indentation.
+  let unparsed = synthetic_allowance(subject: "a: 1\n- b\n")
+  let empty = synthetic_allowance(subject: "")
+  refused(a: unrostered) && refused(a: unparsed) && refused(a: empty)
+    && corpus_census_standing_blocks(standing: corpus_census_standing(allowance: unparsed, observed_steps: eval_step_count(count: 1)))
+}
+
+fn refused(a: CorpusCensusAllowance) -> Bool {
+  match a {
+    CensusAllowanceRefused { identity: _, reason: _ } => true
+    CensusAllowanceDerived { identity: _, subject_path: _, entry_count: _, budget_steps: _ } => false
+  }
+}
+
+// THE PRODUCTION ENTRY POINT READS THE DECLARED ROSTER: an identity no row names is refused through
+// it, which is the route the floor's runner takes.
+test fn census_allowance_entry_point_refuses_an_identity_the_roster_does_not_name() -> Bool {
+  refused(a: corpus_census_eval_step_allowance(identity: synthetic_census_identity, subject_content: synthetic_census_subject))
+}
