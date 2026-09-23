@@ -207,6 +207,7 @@ type Xl2Prerequisite
   | StrippedTreeRehearsalComposition
   | BlockStatementReferenceVisibility
   | LoweringOccurrenceProjection
+  | ListLiteralElementVisibility
 
 type Xl2PrerequisiteEvidence {
   pr: Int
@@ -238,6 +239,7 @@ data xl2_prerequisites: List<Xl2Prerequisite> = [
   StrippedTreeRehearsalComposition,
   BlockStatementReferenceVisibility,
   LoweringOccurrenceProjection,
+  ListLiteralElementVisibility,
 ]
 
 fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
@@ -251,6 +253,7 @@ fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
     OptionalAccessorLocatedRefusal => "the Optional operand accessor carries a located refusal instead of answering Absent"
     StrippedTreeRehearsalComposition => "the stripped-tree rehearsal composition: import strip over a throwaway tree fed through the census-resolve route"
     BlockStatementReferenceVisibility => "every statement of a brace body, not only its first expression, reaches resolve"
+    ListLiteralElementVisibility => "every element of a list literal reaches resolve on every route"
     LoweringOccurrenceProjection => "every lowered node built from an authored atom keeps that atom's minted occurrence, so a census row locates back to one source occurrence"
   }
 }
@@ -298,6 +301,10 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
     BlockStatementReferenceVisibility => PrerequisiteOutstanding {
       tracked_by: decl_ref(module_path: "v2.test.claim.body_lowering.statement_let_bind", decl_name: "unbound_statement_prefix_refuses_holds"),
       why: "`{ 1 \n 2 }` is ACCEPTED by normalize with the `2` dropped: v2.compiler.body_lowering_fold body_lower_body_from_fn_captured lowers only the first binary expression of the body (body_lower_body_subtree_lower_from_binary), so references in every later statement never reach resolve. The wall that exists for it, the tracking claim, is RED on main. No fix has merged." as NonEmptyStr,
+    }
+    ListLiteralElementVisibility => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.list_literal_elements_dropped_at_v2_body_lowering", decl_name: "list_literal_elements_dropped_at_v2_body_lowering"),
+      why: "v2.compiler.body_lowering_fold body_lower_primary_expr answers a list literal `[a]` with its first atom `[`, so its elements are dropped on every route -- data initializers, let values, call arguments (fierce-hawk-274, main 1b2f64fd49). As a call argument the shape refuses (body_lowering_reason_call_argument_unread) rather than drops, which is loud but still hides the elements. No fix has merged." as NonEmptyStr,
     }
     LoweringOccurrenceProjection => PrerequisiteOutstanding {
       tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_rebuilds_authored_atoms_without_their_occurrence", decl_name: "lowering_rebuilds_authored_atoms_without_their_occurrence"),
