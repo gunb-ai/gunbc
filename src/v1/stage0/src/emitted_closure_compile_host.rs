@@ -685,17 +685,35 @@ pub fn required_ci_emit_compile_probe_root() -> Result<PrivateProbeRoot, String>
 /// ever wanted, is a keyed materialization (`std.materialization_ladder`) with its own complete
 /// key, not a scratch directory two runs happen to agree on.
 ///
-/// The directory is NOT removed on drop: its path is printed on every route and the retention file
-/// inside it is read after the run. It lives under the declared base (`RUNNER_TEMP`, torn down per
-/// job in CI; the system temp locally).
+/// THE DIRECTORY IS REMOVED WHEN THE VALUE DROPS, because a per-run directory nobody removes
+/// grows the host temp by one emitted crate per local run (review 70325; the shared root it
+/// replaced was overwritten in place and stayed flat). A caller that prints the root for a reader
+/// to open after the run says so with `retain`, which is the one arm that keeps it.
 #[derive(Debug)]
 pub struct PrivateProbeRoot {
     path: PathBuf,
+    retained: bool,
 }
 
 impl PrivateProbeRoot {
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Keep the directory past the run, for a reader who opens what the run printed. The returned
+    /// path is no longer owned by any value; its lifetime is the declared base's (`RUNNER_TEMP`,
+    /// torn down per job in CI; the system temp locally).
+    pub fn retain(mut self) -> PathBuf {
+        self.retained = true;
+        self.path.clone()
+    }
+}
+
+impl Drop for PrivateProbeRoot {
+    fn drop(&mut self) {
+        if !self.retained {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
     }
 }
 
@@ -732,7 +750,10 @@ fn create_private_probe_root(base: &Path) -> Result<PrivateProbeRoot, String> {
 /// was created by someone else and is refused, never adopted.
 fn create_exclusive_probe_root(path: PathBuf) -> Result<PrivateProbeRoot, String> {
     match std::fs::create_dir(&path) {
-        Ok(()) => Ok(PrivateProbeRoot { path }),
+        Ok(()) => Ok(PrivateProbeRoot {
+            path,
+            retained: false,
+        }),
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(format!(
             "the private probe root {} already exists — another run created it, and a root this \
              run did not create is not one it may write or read",
@@ -2836,6 +2857,15 @@ mod tests {
             adopted.is_err(),
             "a root another run created must be refused, not adopted"
         );
+
+        let dropped = second.path().to_path_buf();
+        drop(second);
+        assert!(
+            !dropped.exists(),
+            "a dropped root is removed, not left in the base"
+        );
+        let kept = first.retain();
+        assert!(kept.is_dir(), "a retained root survives its value");
         let _ = std::fs::remove_dir_all(&base);
     }
 

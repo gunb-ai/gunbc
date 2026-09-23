@@ -1170,6 +1170,9 @@ fn run() -> Result<ExitCode, ExitCode> {
                 for line in report {
                     eprintln!("{line}");
                 }
+                // The report printed this root and the retention file inside it, so it is kept
+                // for the reader rather than removed with the value.
+                let _ = probe_root.retain();
                 return if not_passed == 0 && retention_error.is_none() {
                     Ok(ExitCode::SUCCESS)
                 } else {
