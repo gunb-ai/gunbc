@@ -13848,11 +13848,10 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         );
     }
 
-    /// THE ROSTER GROUND IS LIVE-CONDITIONED (gunbc#11622 review 68363). A typed cost-debt row
-    /// carries no reading, so it admits only on THIS run's reading strictly above the per-subject
-    /// line: over the line admits, at or under it is stale and blocks, and no cost row blocks as
-    /// NotMeasured exactly as an undeclared planned identity does. LongHome is the control that
-    /// the same absent reading is still only reported there (the declared drop).
+    /// THE DEAD-BAND GROUND IS SELF-STALING (gunbc#11989; mirror of v2.workflow.floor_enrolment_margin
+    /// EnrolmentExpensivenessDeadBand). It holds only an exact reading strictly above the margin and at
+    /// or under the line (303, 420 and 500 admit); at the margin it is stale and blocks (302), above
+    /// the line it is the wrong ground and blocks (501), and no cost row blocks as NotMeasured.
     #[test]
     fn the_dead_band_ground_holds_only_an_exact_reading_inside_margin_and_line() {
         let identity = "m.dead_band";
@@ -13909,6 +13908,11 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         );
     }
 
+    /// THE ROSTER GROUND IS LIVE-CONDITIONED (gunbc#11622 review 68363). A typed cost-debt row
+    /// carries no reading, so it admits only on THIS run's reading strictly above the per-subject
+    /// line: over the line admits, at or under it is stale and blocks, and no cost row blocks as
+    /// NotMeasured exactly as an undeclared planned identity does. LongHome is the control that
+    /// the same absent reading is still only reported there (the declared drop).
     #[test]
     fn the_roster_ground_admits_only_on_a_live_reading_over_the_line() {
         let identity = "m.roster";
