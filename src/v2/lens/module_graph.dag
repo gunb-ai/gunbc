@@ -239,9 +239,13 @@ type ReferenceDerivedPool {
   qn_by_path: Map<String, QualifiedName>
 }
 
+// record_declarations rides beside the root for the same reason ModuleBindingSource carries it:
+// the record rehome erased it from the root, and the pool's symbol index answers the
+// declared-payload question from it (v2.compiler.symbol_index_fill symbol_index_fill_module_root).
 type LocatedModuleRoot {
   path: String
   root: Node
+  record_declarations: FreeMonoid<Symbol>
 }
 
 type ReferenceDerivedEdgeFold {
@@ -293,7 +297,11 @@ fn located_roots_from_source_root_ingest(
           cons: fn(acc, item) {
             list_snoc_item(
               xs: acc,
-              item: LocatedModuleRoot { path: item.path, root: item.tree.root }
+              item: LocatedModuleRoot {
+                path: item.path,
+                root: item.tree.root,
+                record_declarations: item.tree.record_declarations
+              }
             )
           }
         )
@@ -392,13 +400,14 @@ fn sites_for_reference_edge_fold(root: Node) -> ReferenceSiteCollection {
 }
 
 fn emit_reference_edges_for_located_root(
-  item: LocatedModuleRoot,
+  path: String,
+  root: Node,
   pool: ReferenceDerivedPool
 ) -> ReferenceDerivedEdgeFold {
   reference_edges_for_located_root_sites(
-    item: item,
+    path: path,
     pool: pool,
-    collected: sites_for_reference_edge_fold(root: item.root)
+    collected: sites_for_reference_edge_fold(root: root)
   )
 }
 
@@ -416,11 +425,11 @@ fn emit_reference_edges_for_located_root(
 // with a body and no header) - review 66859 on gunbc#11461 read this arm as uncounted; it
 // is counted one call earlier, and counting it here again would double the roster.
 fn reference_edges_for_located_root_sites(
-  item: LocatedModuleRoot,
+  path: String,
   pool: ReferenceDerivedPool,
   collected: ReferenceSiteCollection
 ) -> ReferenceDerivedEdgeFold {
-  match map_lookup_where_rejected_unreachable(m: pool.qn_by_path, key: item.path) {
+  match map_lookup_where_rejected_unreachable(m: pool.qn_by_path, key: path) {
     Absent =>
       ReferenceDerivedEdgeFold {
         edges: no_reference_derived_edges,
@@ -429,7 +438,7 @@ fn reference_edges_for_located_root_sites(
     Present { value: module_qn } =>
       ReferenceDerivedEdgeFold {
         edges: edges_from_provenance_owners(
-          rel_path: item.path,
+          rel_path: path,
           provenance: module_dependencies_from_sites(
             index: pool.index,
             roster: pool.roster,
@@ -461,14 +470,22 @@ fn reference_derived_pool_from_located_roots(
       match qualified_name_from_module_node(root: item.root) {
         Rejected { diagnostics: _ } =>
           ReferenceDerivedPool {
-            index: symbol_index_fill_module_root(index: pool.index, root: item.root),
+            index: symbol_index_fill_module_root(
+              index: pool.index,
+              root: item.root,
+              record_declarations: item.record_declarations
+            ),
             trees: map_insert(m: pool.trees, key: item.path, value: item.root),
             roster: pool.roster,
             qn_by_path: pool.qn_by_path
           }
         Accepted { value: module_qn, diagnostics: _ } =>
           ReferenceDerivedPool {
-            index: symbol_index_fill_module_root(index: pool.index, root: item.root),
+            index: symbol_index_fill_module_root(
+              index: pool.index,
+              root: item.root,
+              record_declarations: item.record_declarations
+            ),
             trees: map_insert(m: pool.trees, key: item.path, value: item.root),
             roster: list_snoc_item(xs: pool.roster, item: module_qn),
             qn_by_path: map_insert(m: pool.qn_by_path, key: item.path, value: module_qn)
@@ -486,7 +503,7 @@ fn reference_derived_edges_from_located_roots(
     xs: items,
     empty: empty_reference_derived_edge_fold,
     cons: fn(acc, item) {
-      let piece = emit_reference_edges_for_located_root(item: item, pool: pool)
+      let piece = emit_reference_edges_for_located_root(path: item.path, root: item.root, pool: pool)
       ReferenceDerivedEdgeFold {
         edges: list_append(left: acc.edges, right: piece.edges),
         unreadable_roots: list_append(left: acc.unreadable_roots, right: piece.unreadable_roots)
@@ -518,7 +535,8 @@ fn emit_reference_edges_for_importer(
     Present { value: root } =>
       outcome_accepted(
         value: emit_reference_edges_for_located_root(
-          item: LocatedModuleRoot { path: fact.path, root: root },
+          path: fact.path,
+          root: root,
           pool: pool
         )
       )

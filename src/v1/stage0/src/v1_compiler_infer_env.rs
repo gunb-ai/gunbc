@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_env
 
 use self::GlobalBareLookupState::*;
+use self::UnitVariantPhantomLookup::*;
 pub use crate::std_algebra::FreeMonoid;
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
@@ -1828,27 +1829,108 @@ pub fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: 
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum UnitVariantPhantomLookup {
+    UnitVariantPhantomPresent { variant: Rc<Node> },
+    UnitVariantPhantomAbsent,
+    UnitVariantPhantomEvidenceUnavailable,
+}
+impl UnitVariantPhantomLookup {
+    pub fn variant(&self) -> Rc<Node> {
+        match self {
+            UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: __val, .. } => {
+                __val.clone()
+            }
+            UnitVariantPhantomLookup::UnitVariantPhantomAbsent => {
+                panic!("no variant on unit variant")
+            }
+            UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => {
+                panic!("no variant on unit variant")
+            }
+        }
+    }
+}
+
+pub fn lookup_unit_variant_phantom_type(
+    env: Rc<TypeEnv>,
+    variant_name: String,
+) -> Rc<UnitVariantPhantomLookup> {
+    if !env.unit_variant_index_observed.clone() {
+        Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable)
+    } else {
+        match v1_rt::map_get(&env.unit_variant_index.clone(), variant_name.clone()) {
+            Some(contribs) => {
+                let total = Rc::new(v1_rt::map_values(&contribs))
+                    .iter()
+                    .cloned()
+                    .fold(0, |acc: i64, c: Rc<UnitVariantContribution>| {
+                        (acc + c.count.clone())
+                    });
+                if (total.clone() == 1) {
+                    match Rc::new({
+                        let mut __result = Vec::new();
+                        for c in Rc::new(v1_rt::map_values(&contribs)).iter().cloned() {
+                            if (c.count.clone() == 1) {
+                                __result.push(c);
+                            }
+                        }
+                        __result
+                    })
+                    .first()
+                    .cloned()
+                    {
+                        Some(single) => {
+                            Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomPresent {
+                                variant: single.variant.clone(),
+                            })
+                        }
+                        std::option::Option::None => {
+                            Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomAbsent)
+                        }
+                    }
+                } else {
+                    Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomAbsent)
+                }
+            }
+            std::option::Option::None => {
+                Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomAbsent)
+            }
+        }
+    }
+}
+
 pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> bool {
     match lookup_binding_on_chain(env.clone(), name.clone()) {
         Some(_) => true,
         std::option::Option::None => {
-            if v1_rt::contains(name.clone(), ".".to_string()) {
-                {
-                    let prefix = qualified_all_but_last(name.clone());
-                    if type_ref_module_path_is_containment_prefix(
-                        prefix.clone(),
-                        env.module_path.clone(),
-                    ) {
-                        match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
-                            Some(_) => true,
-                            std::option::Option::None => false,
-                        }
-                    } else {
-                        false
-                    }
-                }
+            let variant_resolves =
+                match (*lookup_unit_variant_phantom_type(env.clone(), name.clone())).clone() {
+                    UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: _, .. } => true,
+                    UnitVariantPhantomLookup::UnitVariantPhantomAbsent => false,
+                    UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => false,
+                };
+            if variant_resolves.clone() {
+                true
             } else {
-                false
+                if v1_rt::contains(name.clone(), ".".to_string()) {
+                    {
+                        let prefix = qualified_all_but_last(name.clone());
+                        if type_ref_module_path_is_containment_prefix(
+                            prefix.clone(),
+                            env.module_path.clone(),
+                        ) {
+                            match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
+                                Some(_) => true,
+                                std::option::Option::None => false,
+                            }
+                        } else {
+                            false
+                        }
+                    }
+                } else {
+                    false
+                }
             }
         }
     }
