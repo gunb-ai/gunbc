@@ -1,0 +1,40 @@
+module gunbc.kind_reflection_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the seed divergences left by the kind-reflection work merged from
+// gunbc#11819 (via gunbc#11996). Review 69733 found the growth undeclared, and
+// gunbc.seed_growth_admission makes undeclared hand growth in src/v1 a stop-line.
+//
+// NARROWED, NOT RETIRED (gunbc#12163, after review 70608). This row first cited ONE declaration:
+// the literal-false stub binding_resolves_to_type_parameter. It stood where v1.compiler.infer
+// declares name_is_enclosing_declared_type_parameter. The regen in gunbc#12045 carried that half:
+// the stub is gone, the seed's InferScope carries enclosing_declared_type_param_names, and
+// TypeParameterInValuePosition now refuses (test.claim.type_argument_kind_inhabitance_witness_test
+// a_type_parameter_in_value_position_must_refuse). But the row's trigger ALSO required the regen to
+// carry the four-parameter kind-inhabitance fold, and that half has NOT landed. Deleting the row on
+// the first half would retire it with an artifact short of its stated capability (DESIGN 4b(3)),
+// and would leave the two remaining divergences with no typed carrier (DESIGN 7).
+//
+// THE TWO DIVERGENCES STILL LIVE, each hand-carried seed bytes that disagree with the .dag authority:
+//   - v1.compiler.infer_resolve type_arg_kind_inhabitance takes FOUR parameters (arg, kind_node, env,
+//     module_name) and consults kind_inhabitant_matches_resolved. The seed's takes THREE, and
+//     kind_inhabitant_matches_resolved does not exist in the seed.
+//   - std.machine_constraints WidthResolution is a TWO-ARM coproduct (StaticWidthIndex |
+//     PointerWidth). The seed's std_machine_constraints carries `pub type WidthResolution =
+//     PointerWidth`, the single-arm alias the .dag was changed away from.
+// The kind-wall claims pass on the seed as it stands, so neither divergence is observed to change a
+// verdict today. That is a reading over the witness fixtures, not over the corpus, and it is why
+// these rows stay declared rather than dismissed.
+data kind_reflection_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_compiler_infer_resolve", decl_name: "type_arg_kind_inhabitance", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.std_machine_constraints", decl_name: "WidthResolution", field: WholeDeclaration }
+  ],
+  reason: "Hand-carried seed bytes that approximate the .dag authority rather than being generated from it. The seed's type_arg_kind_inhabitance is the three-parameter form without the resolved-identity comparison (kind_inhabitant_matches_resolved) that v1.compiler.infer_resolve declares. The seed's WidthResolution is the single-arm alias the .dag replaced with the two-arm coproduct StaticWidthIndex | PointerWidth, because an alias kind is unreadable at the kind-check site. Hand-patching either to match would cement compiler logic into the seed, which DESIGN section 7 refuses; the regen is the repair.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Regenerate the stage0 mirror from v1.compiler.infer_resolve and std.machine_constraints -- SUFFICIENT FOR the built compiler to carry the four-parameter kind-inhabitance fold including kind_inhabitant_matches_resolved, and for the seed's WidthResolution to be the two-arm coproduct the .dag declares, so the seed's kind check is the authority's rather than a hand-carried approximation of it. The regen is what deletes this row; a further hand patch to either declaration would not, because it would leave the seed and the authority disagreeing. The value-position half of this row's original trigger was discharged by gunbc#12045 and is not re-cited here.",
+  current_boundary: "Every claim in test.claim.type_argument_kind_inhabitance_witness_test passes on the seed as it stands: named and same-shaped wrong-kind arguments refuse, both declared arms are admitted, and a type parameter in value position refuses. So the divergence is not observed to change a verdict on those fixtures. It is still a disagreement between the seed and its authority about how the check is computed, and a kind declared as an alias, or an argument that matches only by resolved identity, would be judged by the seed's form, not the .dag's."
+}
