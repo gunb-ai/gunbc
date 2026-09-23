@@ -8,6 +8,8 @@ import gunbc.machine_intake_host_capture_envelope {
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_cause_text, MtCollins1BootTerminalVerdict, TerminalRefused,
 }
+import extdeps.posix.termios { termios_onlcr_output_lines }
+import gunbc.machine_intake_terminal_transcript { terminal_transcript_lines }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject_for, MtCollins1CensusMedium }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -123,4 +125,14 @@ test fn open_refusal_names_an_absent_nproc_as_unobserved() -> Bool {
       ]
     _ => false
   }
+}
+
+// TWO FACTS, TWO AUTHORITIES, ONE COMPOSITION. termios' ONLCR framing keeps NUL as content (it
+// removes only the mapped CR); the composed transcript framing removes it. And NUL is removed FIRST:
+// a line whose bytes read CR NUL NL still has its mapped CR recognised -- ONLCR-then-NUL would
+// leave "a\r" and every line-start reader past it would still match, but an EXIT code would read "0\r".
+test fn transcript_framing_composes_nul_fill_before_onlcr() -> Bool {
+  termios_onlcr_output_lines(text: "a\x00b\r\n") == ["a\x00b", ""]
+    && terminal_transcript_lines(text: "a\x00b\r\n") == ["ab", ""]
+    && terminal_transcript_lines(text: "----EXIT nproc: 0\r\x00\n") == ["----EXIT nproc: 0", ""]
 }

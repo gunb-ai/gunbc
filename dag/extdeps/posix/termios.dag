@@ -4,7 +4,6 @@ import std.types { List, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.render.ansi { ansi_null_fill }
 
 // THE GENERAL TERMINAL INTERFACE's output line discipline. A byte stream read off a terminal
 // device -- a serial console, an IPMI Serial-over-LAN session -- is what the tty's output
@@ -38,19 +37,9 @@ data termios_onlcr_mapped_carriage_return: String = "\r"
 // THE INVERSE OF THAT MAPPING, ONCE, for every reader of a terminal transcript. A line is the text
 // before NL with the one mapped CR removed; a stream whose channel does not map NL (an LF-only file)
 // frames identically. Only the terminator's CR is removed -- any other byte, whitespace included,
-// is the line's content and reaches its reader unchanged -- except NUL, below.
-//
-// NUL FILL IS REMOVED IN THIS SAME FRAMING, NOT BY A SEPARATE STEP BESIDE IT. A terminal output
-// stream may carry NUL as media- or time-fill, whose removal ECMA-48 defines as not changing the
-// stream's content (extdeps.render.ansi ansi_null_fill cites it); this row owns only WHERE it is
-// removed. The mtcollins1 SOL transcript of run 35808203121 carried 550,330 NULs, runs of them at
-// line starts before "80" and "----EXIT nproc: 0", so no line-start reader matched them and the
-// nproc section read as unfinished. Which hop inserts them is not observed. It is done here rather
-// than as a second function composed with this one because every reader of a terminal transcript
-// already calls exactly this function: a composed step would be a second call every such reader
-// must remember, and the one that forgot would read the fill as content.
+// is the line's content and reaches its reader unchanged.
 fn termios_onlcr_output_lines(text: String) -> List<String> {
-  map(split(s: join(split(s: text, delimiter: ansi_null_fill), ""), delimiter: "\n"), line => termios_onlcr_line_without_mapped_cr(line: line))
+  map(split(s: text, delimiter: "\n"), line => termios_onlcr_line_without_mapped_cr(line: line))
 }
 
 fn termios_onlcr_line_without_mapped_cr(line: String) -> String {

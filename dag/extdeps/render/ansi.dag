@@ -24,6 +24,10 @@ data ansi_horizontal_tab: String = "\x09"
 // A reader framing text off a device channel may therefore remove every NUL without losing a fact.
 data ansi_null_fill: String = "\x00"
 
+fn ansi_without_null_fill(text: String) -> String {
+  join(split(s: text, delimiter: ansi_null_fill), "")
+}
+
 data ansi_c0_controls: List<String> = [
   "\x00",
   "\x01",
