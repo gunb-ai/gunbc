@@ -383,7 +383,7 @@ test fn symbol_index_global_unique_lookup_ambiguous_leaf_holds() -> Bool {
     resolved: yes_b
   )
   match symbol_index_global_unique_lookup(index: idx, name: ^Yes) {
-    GlobalBareLookupAmbiguous => true
+    GlobalBareLookupAmbiguous { paths: _ } => true
     _ => false
   }
 }
@@ -400,7 +400,7 @@ test fn symbol_index_global_unique_lookup_unbound_on_unknown_leaf_holds() -> Boo
 
 test fn symbol_index_fill_marks_duplicate_leaf_ambiguous_holds() -> Bool {
   match symbol_index_global_unique_lookup(index: si_index, name: ^Yes) {
-    GlobalBareLookupAmbiguous => true
+    GlobalBareLookupAmbiguous { paths: _ } => true
     _ => false
   }
 }

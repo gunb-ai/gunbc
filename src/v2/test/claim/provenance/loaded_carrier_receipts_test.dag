@@ -133,7 +133,7 @@ fn lcr_indexed(dotted: String) -> Bool {
 fn lcr_globally_bound(name: Symbol) -> Bool {
   match symbol_index_global_unique_lookup(index: lcr_index(), name: name) {
     GlobalBareHit { node: _, path: _ } => true
-    GlobalBareLookupAmbiguous => false
+    GlobalBareLookupAmbiguous { paths: _ } => false
     GlobalBareLookupUnbound => false
   }
 }

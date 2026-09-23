@@ -36,13 +36,20 @@ import v2.std.qualified_name {
   qualified_name_snoc
 }
 
+// AN AMBIGUOUS LEAF CARRIES ITS CLAIMANTS' DECLARING PATHS. Ambiguity is a fact about a set of
+// declarations, and a reader that must decide something about them -- is any of them a declared
+// payload? -- needs the set, not only its size. Without it the pattern classifier in
+// v2.compiler.resolve read every ambiguous spelling as a constructor, so an ordinary binder `d`
+// refused because unrelated modules declare non-payloads named `d`. Paths are PREPENDED, so a leaf
+// shared by many modules costs one step per declaration rather than a scan per insert; the order is
+// therefore newest-first and carries no meaning.
 type GlobalBareBindingState
   = GlobalBareUnique { node: Node, path: QualifiedName }
-  | GlobalBareAmbiguous
+  | GlobalBareAmbiguous { paths: FreeMonoid<QualifiedName> }
 
 type GlobalBareLookup
   = GlobalBareHit { node: Node, path: QualifiedName }
-  | GlobalBareLookupAmbiguous
+  | GlobalBareLookupAmbiguous { paths: FreeMonoid<QualifiedName> }
   | GlobalBareLookupUnbound
 
 type LexicalBindingCandidate {
@@ -161,7 +168,17 @@ fn symbol_index_track_global_bare(
     Present { value: leaf } =>
       match v2.std.collection.map_get(index.global_bare, leaf) {
         Accepted { value: opt, diagnostics: _ } => match opt {
-          Present { value: GlobalBareAmbiguous } => index
+          Present { value: GlobalBareAmbiguous { paths: paths } } =>
+            SymbolIndex {
+              entries: index.entries,
+              global_bare: map_insert(
+                m: index.global_bare,
+                key: leaf,
+                value: GlobalBareAmbiguous { paths: Cons { head: qualified_path, tail: paths } }
+              ),
+              bound_declarings: index.bound_declarings,
+              declared_payloads: index.declared_payloads
+            }
           Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
             if existing_path == qualified_path && existing == resolved {
               index
@@ -171,7 +188,9 @@ fn symbol_index_track_global_bare(
                 global_bare: map_insert(
                   m: index.global_bare,
                   key: leaf,
-                  value: GlobalBareAmbiguous
+                  value: GlobalBareAmbiguous {
+                    paths: Cons { head: qualified_path, tail: Cons { head: existing_path, tail: Empty } }
+                  }
                 ),
                 bound_declarings: index.bound_declarings,
                 declared_payloads: index.declared_payloads
@@ -247,7 +266,7 @@ fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> Global
   match v2.std.collection.map_get(index.global_bare, name) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: GlobalBareUnique { node: n, path: p } } => GlobalBareHit { node: n, path: p }
-      Present { value: GlobalBareAmbiguous } => GlobalBareLookupAmbiguous
+      Present { value: GlobalBareAmbiguous { paths: paths } } => GlobalBareLookupAmbiguous { paths: paths }
       Absent => GlobalBareLookupUnbound
     }
     Rejected { diagnostics: _ } => GlobalBareLookupUnbound
