@@ -86,7 +86,7 @@ fn type_param_in_value_position_source() -> String {
   "module kindprobe.neg_valuepos\n\nimport std.types { Int, String }\n\ntype WidthResolution\n  = StaticWidthIndex\n  | PointerWidth\n\ntype Phantom\ntype Width<bits: WidthResolution> = Phantom\n\nfn any_param<T>(x: T) -> Int {\n  T\n}\n\n"
 }
 
-// THIS PINS A DEFECT, NOT A GUARANTEE. READ THE ASSERTION BACKWARDS.
+// THIS IS A REGRESSION CONTROL FOR A WALL THAT NOW FIRES. The assertion reads forwards.
 //
 // A type parameter is not a value: `T` in the body of `fn any_param<T>(x: T) -> Int` names a TYPE
 // where a value is required. v1.std.core declares TypeParameterInValuePosition with SeverityError
