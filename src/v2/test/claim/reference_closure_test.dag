@@ -2,28 +2,33 @@ module v2.test.claim.reference_closure
 
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.compiler.name_resolve { ResolutionContext, resolution_context }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolution_context,
+  resolve_with_admission_context_policy
+}
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
-import v2.compiler.reference_closure { reference_closure_member_from_context, reference_derived_closure }
+import v2.compiler.reference_closure { ReferenceClosureMember, reference_derived_closure }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
 import v2.std.algebra { contains, fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.cross_tree.resolution { source_root_index_empty }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, node_synthetic }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
+import v2.std.resolution_policy { default_name_resolution_policy }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // WHAT THIS FILE ESTABLISHES, AND NO MORE. v2.compiler.reference_closure reference_derived_closure,
-// with its member resolution supplied from a whole-ingest ResolutionContext over the inline corpus
-// below, answers set-equal at module identity with the expected closure, and refuses where it must.
+// with each member's resolution supplied by the real resolver over the inline corpus below, answers set-equal at module identity with the expected closure, and refuses where it must.
 // That is a SUPPLIED-INPUT claim at the fold's interface (DESIGN section 3). The owed inhabitance
 // claim -- the same fold on the door route, with non-member declarations from the census, set-equal
 // with the seed's reference-derived closure of v2.compiler.compile -- is declared in
@@ -71,6 +76,72 @@ data rc_ingest: SourceRootIngest = [
   rc_read(source: rc_broken_entry_source, id: ^rc_broken_entry_read, path: "src/v2/test/fixture/reference_closure/broken_entry.dag")
 ]
 
+// THE SHARE POINTS ARE THE STAGES NO CLAIM HERE IS ABOUT: the parse-and-normalize of the inline
+// corpus, and the resolution of each member. Both are NULLARY PRODUCERS enrolled in
+// v2.workflow.floor_pure_producer_share, the shape v2.test.claim.namespace_xl0
+// cross_module_reference_resolution already inhabits and for the same measured reason: resolving
+// even a one-fn subject costs more than a new witness may spend, and the first floor run of this
+// file (gunbc#12186, run 35932249293) re-paid the whole ingest in every claim at ~841k eval steps.
+// The real path still runs -- the floor's preparation executes each producer once and refuses
+// loudly if it cannot -- and every claim below executes the closure FOLD itself, which is what each
+// claim is about.
+fn rc_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: rc_ingest, lm: dag_language_model())
+}
+
+fn rc_resolve_subject(subject: String) -> Outcome<Node> {
+  match rc_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_with_admission_context_policy(
+        context: resolution_context(lm: dag_language_model(), roots: roots),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        },
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: default_name_resolution_policy()
+      )
+  }
+}
+
+fn rc_resolved_entry() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_entry") }
+
+fn rc_resolved_imported() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_imported") }
+
+fn rc_resolved_dotted() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_dotted") }
+
+fn rc_resolved_transitive() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_transitive") }
+
+fn rc_resolved_logic() -> Outcome<Node> { rc_resolve_subject(subject: "v2.std.logic") }
+
+fn rc_resolved_broken_entry() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_broken_entry") }
+
+fn rc_resolved_of(dotted: String) -> Outcome<Node> {
+  if dotted == "v2.test.rc_entry" { rc_resolved_entry() }
+  else if dotted == "v2.test.rc_imported" { rc_resolved_imported() }
+  else if dotted == "v2.test.rc_dotted" { rc_resolved_dotted() }
+  else if dotted == "v2.test.rc_transitive" { rc_resolved_transitive() }
+  else if dotted == "v2.std.logic" { rc_resolved_logic() }
+  else if dotted == "v2.test.rc_broken_entry" { rc_resolved_broken_entry() }
+  else { rc_resolve_subject(subject: dotted) }
+}
+
+fn rc_import_targets(roots: FreeMonoid<NormalizedTree>, member_module: QualifiedName) -> FreeMonoid<QualifiedName> {
+  fold_list(xs: roots, empty: Empty, cons: fn(acc, tree) {
+    match qualified_name_from_module_node(root: tree.root) {
+      Accepted { value: qn, diagnostics: _ } =>
+        if qn == member_module {
+          fold_list(xs: tree.import_bindings, empty: acc, cons: fn(a, row) { Cons { head: row.target, tail: a } })
+        } else {
+          acc
+        }
+      Rejected { diagnostics: _ } => acc
+    }
+  })
+}
+
 fn rc_roster(roots: FreeMonoid<NormalizedTree>) -> FreeMonoid<QualifiedName> {
   fold_list(xs: roots, empty: Empty, cons: fn(acc, tree) {
     match qualified_name_from_module_node(root: tree.root) {
@@ -81,24 +152,21 @@ fn rc_roster(roots: FreeMonoid<NormalizedTree>) -> FreeMonoid<QualifiedName> {
 }
 
 fn rc_closure_of(entry: String) -> Outcome<FreeMonoid<QualifiedName>> {
-  let lm = dag_language_model()
   bind_outcome(
-    o: module_roots_from_source_root_ingest(ingest: rc_ingest, lm: lm),
+    o: rc_fixture_normalized(),
     f: fn(roots) {
-      bind_outcome(
-        o: resolution_context(lm: lm, roots: roots),
-        f: fn(context) {
-          reference_derived_closure(
-            entry: qualified_name_from_dotted_string(dotted: entry),
-            entry_locus: node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^rc_entry_locus } }, children: []),
-            roster: rc_roster(roots: roots),
-            resolve_member: fn(member_module) {
-              reference_closure_member_from_context(
-                context: context,
-                index: source_root_index_empty(),
-                active_roots: Empty,
-                member_module: member_module
-              )
+      reference_derived_closure(
+        entry: qualified_name_from_dotted_string(dotted: entry),
+        entry_locus: node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^rc_entry_locus } }, children: []),
+        roster: rc_roster(roots: roots),
+        resolve_member: fn(member_module) {
+          bind_outcome(
+            o: rc_resolved_of(dotted: qualified_name_to_dotted_string(qn: member_module)),
+            f: fn(resolved) {
+              outcome_accepted(value: ReferenceClosureMember {
+                resolved: resolved,
+                import_targets: rc_import_targets(roots: roots, member_module: member_module)
+              })
             }
           )
         }

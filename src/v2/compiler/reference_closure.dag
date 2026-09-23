@@ -2,15 +2,10 @@ module v2.compiler.reference_closure
 
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { contains, fold_list, list_snoc_item }
-import v2.std.collection { map_lookup }
-import v2.std.cross_tree.import_model { SourceRootRef }
-import v2.std.cross_tree.resolution { SourceRootIndex }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
-  NonEmptyDiagnostics,
   Outcome,
-  Rejected,
   Unavailable,
   bind_outcome,
   node_locus,
@@ -19,20 +14,12 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.optional { Absent, Present }
 import v2.std.qualified_name {
   QualifiedName,
   declaration_reference_path_optional,
   qualified_name_owning_module
 }
-import v2.std.resolution_policy { default_name_resolution_policy }
-import v2.compiler.name_resolve {
-  Admission,
-  ResolutionContext,
-  ResolutionSubject,
-  resolve_walk_with_admission_context_policy
-}
-import v2.compiler.resolve { ResolveWalkAccepted, ResolveWalkRefused }
 
 // THE REFERENCE-DERIVED CLOSURE OF ONE ENTRY: every module the entry reaches through a resolved
 // declaration reference or an import row, to a fixpoint. It is the set the seed computes as
@@ -51,9 +38,9 @@ import v2.compiler.resolve { ResolveWalkAccepted, ResolveWalkRefused }
 //
 // HOW A MEMBER IS RESOLVED IS SUPPLIED, NOT DECIDED HERE. The fold owns the graph: which modules are
 // reached, in what order, and which refusals stop it. The resolution of one member comes from the
-// caller, so the same fold runs over a whole-ingest ResolutionContext today and over a context whose
-// non-members come from the census (v2.std.namespace_alias ModuleBindingSource rows) when that
-// producer lands. That later route is the one this fold exists for; see
+// caller, so the same fold runs over members resolved against a whole-ingest context today and
+// against a context whose non-members come from the census (v2.std.namespace_alias
+// ModuleBindingSource rows) when that producer lands; the door change brings that supplier. That later route is the one this fold exists for; see
 // the owed claim below.
 //
 // EVERY DEFICIT REFUSES; NONE WIDENS. A member that does not resolve, a reference whose declaring
@@ -228,43 +215,5 @@ fn reference_derived_closure(
       reason: ^reference_closure_entry_not_rostered,
       at: entry_locus
     ))
-  }
-}
-
-// THE MEMBER SUPPLIER OVER A RESOLUTION CONTEXT: the subject-scoped resolver walk
-// (v2.compiler.name_resolve resolve_walk_with_admission_context_policy, the same call
-// v2.compiler.compile native_test_resolve_module_walk makes) plus the member's captured import rows.
-// Every refusal chain the walk recorded is carried; the first one is the stop. A subject the walk
-// accepted is a validated root, so its absence from by_name is a broken invariant between two
-// readings of one context, and it refuses rather than reading as a module that imports nothing.
-fn reference_closure_member_from_context(
-  context: ResolutionContext,
-  index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>,
-  member_module: QualifiedName
-) -> Outcome<ReferenceClosureMember> {
-  match resolve_walk_with_admission_context_policy(
-    context: outcome_accepted(value: context),
-    admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty },
-    index: index,
-    active_roots: active_roots,
-    policy: default_name_resolution_policy()
-  ) {
-    ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
-    ResolveWalkAccepted { value: resolved, diagnostics: _ } =>
-      match map_lookup(m: context.roots.by_name, key: member_module) {
-        Absent =>
-          outcome_rejected(d: reference_closure_diagnostic(
-            reason: ^reference_closure_member_root_absent,
-            at: resolved
-          ))
-        Present { value: tree } =>
-          outcome_accepted(value: ReferenceClosureMember {
-            resolved: resolved,
-            import_targets: fold_list(xs: tree.import_bindings, empty: Empty, cons: fn(acc, row) {
-              list_snoc_item(xs: acc, item: row.target)
-            })
-          })
-      }
   }
 }
