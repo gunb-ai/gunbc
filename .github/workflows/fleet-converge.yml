@@ -827,7 +827,7 @@ jobs:
           SUB_FILE="$RUNNER_TEMP/approval-submission-mac-key"
           trap 'cleanup; rm -f "$HDR_FILE" "$RESP_FILE" "$SUB_FILE"' EXIT
           printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
-          DEST_FILE="$SUB_FILE"; curl -sSf --connect-timeout 10 --max-time 60 -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access" && python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE"
+          DEST_FILE="$SUB_FILE"; curl -sSf --connect-timeout 10 --max-time 60 -o "$RESP_FILE" -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/approval-submission-mac-key/versions/1:access" && python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE" || { echo 'ApprovalSubmissionMacKeyNotMaterialized: the pinned submission MAC key version could not be fetched and decoded; no request can be filed' >&2; exit 1; }
           chmod 600 "$SUB_FILE"
           rm -f "$HDR_FILE" "$RESP_FILE"
           export GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE="$SUB_FILE"

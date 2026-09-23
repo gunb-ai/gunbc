@@ -2774,7 +2774,10 @@ fn gunbc_ci_microvm_runner_group_ensure_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "SUB_FILE=\"$RUNNER_TEMP/approval-submission-mac-key\"") },
     Do { run: ci_retry_body_run(command: "trap 'cleanup; rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$SUB_FILE\"' EXIT") },
     Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_submission_mac_access_url()))) },
+    Do { run: ci_retry_body_run(command: join([
+      "DEST_FILE=\"$SUB_FILE\"; ", gunbc_ci_sm_secret_to_dest_file_command(url: approval_submission_mac_access_url()),
+      " || { echo 'ApprovalSubmissionMacKeyNotMaterialized: the pinned submission MAC key version could not be fetched and decoded; no request can be filed' >&2; exit 1; }",
+    ], "")) },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
     Do { run: ci_retry_body_run(command: "rm -f \"$HDR_FILE\" \"$RESP_FILE\"") },
     Do { run: ci_retry_body_run(command: concat("export ", concat(approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\""))) },
