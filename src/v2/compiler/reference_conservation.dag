@@ -548,8 +548,8 @@ fn report_count_locus_erased(report: ReferenceConservationReport) -> ReferenceCo
 // ---- the declaration-scoped spelling pool (the LocusErased disposition) ------------------------
 //
 // WHY THIS EXISTS, AND WHY IT IS A SEPARATE COUNT. Measured at main fec339d561, most authored atoms
-// do NOT keep their occurrence through lowering: type-position atoms are rebuilt synthetic
-// (v2.compiler.body_lowering_fold body_lower_type_atom_node), field projections, constructors and
+// do NOT keep their occurrence through lowering (type-position atoms have kept theirs since
+// #11985; see occurrence_spelling_conserved): field projections, constructors and
 // dotted spines are rebuilt, and binders become Named edge labels, which carry no occurrence. Those
 // atoms are not dropped, but "same locus" cannot be decided for them on today's carrier. Reporting
 // them as drops would bury the real drops; reporting them as conserved would claim a locus the tree
@@ -726,6 +726,16 @@ fn absent_cause(declared: ItemDeclarationStanding) -> DroppedReferenceCause {
   }
 }
 
+// THE SAME OCCURRENCE UNDER LOWERING'S CANONICAL SPELLING IS CONSERVED. Since #11985 a type atom
+// keeps its minted occurrence through lowering, and v2.compiler.body_lowering_fold
+// body_lower_resolved_type_binding rewrites its spelling (`Bool` -> `bool_node_symbol`, `Int` ->
+// `dag_binding_type_int`) at that same occurrence. That is the single authority the spelling pool
+// below already consults, so it is asked here too: the locus is held and the spelling is the one
+// the rewrite derives. Any other spelling at the occurrence is still RespelledInNormalizedTree.
+fn occurrence_spelling_conserved(found: Symbol, identity: Symbol) -> Bool {
+  found == identity || found == body_lower_resolved_type_binding(sym: identity)
+}
+
 type TreeConservationState {
   report: ReferenceConservationReport
   pools: ItemPools
@@ -744,7 +754,7 @@ fn conservation_against_tree(path: String, population: AuthoredAtomPopulation, t
     cons: fn(state, atom) {
       match map_lookup(m: index, key: atom.occurrence) {
         Present { value: found } =>
-          if found == atom.identity {
+          if occurrence_spelling_conserved(found: found, identity: atom.identity) {
             TreeConservationState { report: report_count_conserved(report: state.report), pools: state.pools }
           } else {
             TreeConservationState {
