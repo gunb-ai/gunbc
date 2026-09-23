@@ -2585,15 +2585,14 @@ fn witness_floor_triggers() -> List<WorkflowTrigger> {
 // same tree. `rust_clippy_all_targets_step` is the worked example: it kept its step id, its
 // verdict and its coverage, and stopped costing a job, by moving onto `required-witnesses-build`.
 //
-// THE SECOND WORKED EXAMPLE, AND ITS SIGN-OFF (operator decision msg_4a9045fc, 2026-09-23, which
-// supersedes the ~20 min pricing of msg_f1ade7cf-77e4-4896-a8b3-476747692c37). The stage0 mirror
-// adjudication -- generation 1 of this file's build lane, which no job had run since #11742 --
-// returns as ONE merge_group-only STEP on the emitted floor job
-// (gunbc.compiler_gate_workflow compiler_gate_stage0_regen_step), not as a job: that job already
-// checks out and builds claim_executor. Measured at ~30 min, it fits after the floor process
-// exits; the lane's second emit did not fit and stays declared by
-// gunbc.rung_drop.floor_cut_regen_second_generation_agreement. The sign-off covers exactly
-// that step on that event; it admits no per-PR run and no new job.
+// THE SECOND WORKED EXAMPLE, AND ITS SIGN-OFF (operator decision msg_6e36a6a2, 2026-09-23, which
+// supersedes msg_4a9045fc and the ~20 min pricing of msg_f1ade7cf-77e4-4896-a8b3-476747692c37).
+// This file's build lane -- the stage0 mirrors' generated-artifact and regen-fixed-point phases,
+// which no job had run since #11742 -- returns as ONE merge_group-only STEP on the emitted floor
+// job (gunbc.compiler_gate_workflow compiler_gate_stage0_regen_step), not as a job: that job
+// already checks out and builds claim_executor, and the lane measured 22.5 min on the fleet (run
+// 35890770775), fitting after the floor process exits. The sign-off covers exactly that step on
+// that event; it admits no per-PR run and no new job.
 //
 // THIS COMMENT IS RATIONALE, NOT A GATE. No `Accepted` program reads it, so it stops nobody --
 // it records WHY the roster is small so the next author meets the reasoning rather than

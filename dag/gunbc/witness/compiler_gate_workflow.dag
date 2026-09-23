@@ -61,7 +61,7 @@ import gunbc.witness_floor_workflow {
   witness_floor_build_step,
   witness_floor_required_bins,
   witness_floor_run_script,
-  required_lane_run_script,
+  build_lane_run_script,
   witness_floor_precondition,
   witness_toolchain_homes_isolated_guard_step,
   witness_step_status_guard,
@@ -76,8 +76,6 @@ import gunbc.witness_floor_workflow {
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
-import gunbc.claim_executor_cli { claim_executor_command }
-import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 import gunbc.ci_spec {
   gunbc_ci_generated_artifact_verify_invoke,
@@ -97,7 +95,7 @@ import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 // The fork clauses are heal's authorship; the fleet lane inherited the work they guarded.
 import gunbc.heal_workflow { heal_same_repository_clause, heal_not_dependabot_clause }
 import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command }
-import extdeps.exec.command { ArgvCommand, shell_command_render }
+import extdeps.exec.command { shell_command_render }
 import extdeps.github.expressions { interpolate, ContextAccess, Needs, default_expression_spellings }
 import extdeps.github.log_annotations { emit_line_shell }
 import gunbc.emitted_subject_build_gate {
@@ -415,48 +413,41 @@ fn compiler_gate_drift_step() -> Step {
   }
 }
 
-// THE STAGE0 MIRRORS ARE CHECKED ON THE QUEUE'S COMPOSED REVISION, AND ONLY THERE, AND ONLY ONE
-// GENERATION DEEP. Operator decision msg_4a9045fc (2026-09-23), which supersedes the pricing of
-// msg_f1ade7cf-77e4-4896-a8b3-476747692c37: merge_group only, generation 1 only.
-// The drift step above reads gunbc.generated_artifact alone; the ~157 compile_stage0 mirrors are
-// adjudicated by claim_executor's required-regen host, and no job had run it since #11742 -- so
-// std_measure.rs drifted onto main under a green required run (gunbc#12067), and 32 more mirrors
-// had drifted by the time this step was first executed (control run 35810815149).
+// THE STAGE0 MIRRORS ARE CHECKED ON THE QUEUE'S COMPOSED REVISION, AND ONLY THERE, BOTH
+// GENERATIONS DEEP. Operator decision msg_6e36a6a2 (2026-09-23), which supersedes msg_4a9045fc's
+// generation-1-only ruling and msg_f1ade7cf-77e4-4896-a8b3-476747692c37's ~20 min pricing.
+// The drift step above reads gunbc.generated_artifact alone; the ~158 compile_stage0 mirrors are
+// adjudicated by claim_executor's build lane -- the GeneratedArtifact phase (first generation) and
+// the RegenFixedPoint phase (second generation against the first's receipt) -- and no job had run
+// that lane since #11742, so std_measure.rs drifted onto main under a green required run
+// (gunbc#12067) and more mirrors had drifted by the time this step first executed.
 //
-// WHY `--required-regen` AND NOT `--required-lane build`. The build lane is that same first
-// generation (its GeneratedArtifact phase calls the same run_required_regen) PLUS the
-// RegenFixedPoint second emit. Measured on the control: generation 1 took 30 min (compile.emit 26
-// min) and the second emit was cut off by the job's 90-min timeout. The ruling bought generation
-// 1 only, and `--required-regen` is the binary's existing standalone entry for exactly it, so no
-// lane was split and no phase moved. The lane's other GeneratedArtifact populations (registry and
-// docs projections) are already the drift step's. The second emit stays a declared drop, and it
-// already has its row: gunbc.rung_drop.floor_cut_regen_second_generation_agreement, whose trigger
-// is the capability (a required lane refusing a generation disagreement) -- this step does not
-// meet it, and a second row for the same loss would be a second authority for one fact.
+// THE LANE'S OWN COMMAND, so which phases run is still decided by the binary's exhaustive
+// partition (gunbc.witness_floor_workflow build_lane_run_script over gunbc.fabric_witness_run
+// build_lane_run_command), never by this YAML. Measured on the fleet (run 35890770775, after
+// #12100 removed the field-name re-export leak that had inflated generation 1 to 30 min): the
+// whole lane, both generations, took 22.5 min, and the floor job ~58 min against
+// compiler_gate_floor_timeout_minutes.
 //
 // A STEP ON THIS JOB, NOT A NEW JOB. The floor lane already checks out and builds claim_executor
 // from this tree; a separate job would pay that prelude again on every queued landing.
 //
 // A SEPARATE PROCESS AFTER THE FLOOR EXITS, which is the measured constraint rather than a
 // preference: the floor process peaks at its slot's memory.high (run 35716368507) and the stage0
-// pass near 12.9 GiB, so the two fit sequentially and never additively. The floor's steps before
-// this one took ~41 min on the control, so ~71 min fits compiler_gate_floor_timeout_minutes.
+// pass near 12.9 GiB, so the two fit sequentially and never additively.
 //
 // MERGE_GROUP ONLY BECAUSE A PULL REQUEST DOES NOT LAND. The queue's run judges the sha that
-// becomes main; paying ~30 min on every PR push was the cost the ruling declined, and the price
-// is that an author learns of drift at queue time. `!cancelled()` rather than the default
-// success(): a floor red must not disarm this check (see witness_floor_workflow's measured
-// correction).
-// THE SOURCE ROOTS ARE REQUIRED EVEN THOUGH THE WHOLE-POPULATION ROUND DOES NOT READ THEM:
-// claim_executor refuses any invocation without one ("provide at least one --source-root", exit
-// 2). The first control run of this step (run 35890764226) went red on exactly that, so they are
-// taken from gunbc.ci_layer_roots witness_layer_roots, the one authority every lane command folds.
-data compiler_gate_stage0_regen_command: ArgvCommand = claim_executor_command(
-  mode_flag: "--required-regen",
-  operands: fold(witness_layer_roots, init: [], f: fn(acc, root) { append(acc, items: ["--source-root", root]) }),
-)
-
-data compiler_gate_stage0_regen_step_name: String = "Stage0 mirrors match what this seed emits, first generation (merge_group only)"
+// becomes main; the price is that an author learns of drift at queue time. `!cancelled()` rather
+// than the default success(): a floor red must not disarm this check (see witness_floor_workflow's
+// measured correction).
+//
+// gunbc.rung_drop.floor_cut_regen_second_generation_agreement IS NOT RETIRED BY THIS STEP. Its
+// trigger is second-generation refusal for EVERY phase that regenerates a committed population,
+// shown by a red on a generation-unstable fixture under this execution model. RegenFixedPoint
+// compares a second generation for the stage0 mirror population only (it reads
+// target/stage0-regen-receipt.json); the registry-rostered projections have no second
+// generation, and no unstable fixture has been run.
+data compiler_gate_stage0_regen_step_name: String = "Stage0 mirrors match what this seed emits, both generations (merge_group only): required CI build lane"
 
 fn compiler_gate_stage0_regen_condition() -> String {
   concat(
@@ -472,7 +463,7 @@ fn compiler_gate_stage0_regen_step() -> Step {
   RunStep {
     name: Present { value: compiler_gate_stage0_regen_step_name },
     id: Present { value: "stage0_regen" },
-    run: concat(wrap_command_with_floor_attempt_receipt(command: required_lane_run_script(command: compiler_gate_stage0_regen_command)), "\n"),
+    run: concat(wrap_command_with_floor_attempt_receipt(command: build_lane_run_script()), "\n"),
     shell: none,
     env: none,
     working_directory: none,
@@ -683,7 +674,7 @@ fn compiler_gate_floor_capability_closure_holds() -> Bool {
 
 fn compiler_gate_floor_scripts_are_renderable() -> Bool {
   wrap_command_is_renderable(command: witness_floor_run_script())
-    && wrap_command_is_renderable(command: required_lane_run_script(command: compiler_gate_stage0_regen_command))
+    && wrap_command_is_renderable(command: build_lane_run_script())
     && wrap_command_is_renderable(command: repo_self_build_command(bins: witness_floor_required_bins))
     && required_ci_measurement_scripts_are_renderable()
 }
