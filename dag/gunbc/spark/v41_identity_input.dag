@@ -1,0 +1,24 @@
+module gunbc.spark.v41_identity_input
+
+import std.types { String, List, NonEmptyStr }
+import std.content_hash { content_hash_atom }
+import std.artifact_store { ArtifactRealizationInput }
+
+// ── THE TWO FACTS EVERY V4.1 IDENTITY MODULE SHARES, BELOW ALL OF THEM ─────────────────────────
+//
+// gunbc.spark.v41_runtime_candidate keys the candidate and gunbc.spark.v41_engram_row_store keys
+// the row-store encoding. The candidate's Engram axis is keyed BY the row-store encoding, so the
+// candidate imports the row store; both need the residency partition and the named-input
+// constructor, and while those lived in the candidate the row store imported the candidate back.
+// They are facts about neither module in particular, so they sit here and the graph stays acyclic.
+
+// WHICH OF THE TWELVE ENGRAM TENSORS ARE READ FROM STORAGE AND WHICH STAY RESIDENT. Admitted against
+// the cited population by gunbc.spark.v41_runtime_candidate v41_admit_partition.
+type V41EngramResidencyPartition {
+  storage_backed: List<NonEmptyStr>
+  resident: List<NonEmptyStr>
+}
+
+fn v41_input(identity: String, value: String) -> ArtifactRealizationInput {
+  ArtifactRealizationInput { identity: identity as NonEmptyStr, content_digest: content_hash_atom(value: value as NonEmptyStr) }
+}
