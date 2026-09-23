@@ -121,6 +121,34 @@ fn belt_served_observation_exit(instance: HostDashboardInstance, observed_at: St
   }
 }
 
+// OPERATOR ENTRY FOR THE OBSERVATION ALONE. The serve refuses to render live by design (the
+// served-observation module names the absorbing fallback), so when the monolithic pass is too slow
+// to reach its own observation write, the page freezes at the last completed tick's bytes. This
+// entry runs ONLY the observation fold — the smallest affected projection, refreshed on demand —
+// so an operator can republish current state without running the passes. It changes no workflow
+// state: it reads the durable authorities and writes the served-observation documents, exactly as
+// the tick's tail does.
+fn belt_observe_once_cli() -> ProcessExit {
+  match shell.Env.Get(name: belt_spawn_workdir_env_var).value {
+    Absent =>
+      exit_failure(reason: "belt_observe_once_cli: GUNBC_BELT_SPAWN_WORKDIR not set — the instance root is a per-deployment fact (fail-closed)")
+    Present { value: workdir } =>
+      if string_length(s: workdir) == 0 {
+        exit_failure(reason: "belt_observe_once_cli: GUNBC_BELT_SPAWN_WORKDIR is empty — the instance root is a per-deployment fact (fail-closed)")
+      } else {
+        match dashboard_instance_for_repo_root(repo_root: workdir) {
+          DashboardInstanceRootUnknown { repo_root: w } =>
+            exit_failure(reason: join([
+              "belt_observe_once_cli: GUNBC_BELT_SPAWN_WORKDIR does not match a known dashboard instance repo root: ",
+              w,
+            ], ""))
+          DashboardInstanceResolved { instance } =>
+            belt_served_observation_exit(instance: instance, observed_at: belt_tick_observed_at())
+        }
+      }
+  }
+}
+
 
 // OPERATOR ENTRIES FOR THE REVIEW FUNCTION, for seeing it run on a chosen head without waiting for
 // the belt's own trigger. belt_review_head_cli realizes the plan's calls for an attempt's current head
