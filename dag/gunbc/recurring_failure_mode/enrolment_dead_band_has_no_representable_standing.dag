@@ -1,0 +1,15 @@
+module gunbc.recurring_failure_mode.enrolment_dead_band_has_no_representable_standing
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data enrolment_dead_band_has_no_representable_standing: RecurringFailureMode = RecurringFailureMode {
+  identity: "enrolment_dead_band_has_no_representable_standing" as NonEmptyStr,
+
+  receipts: [
+    "**a newly enrolled witness whose honest CPU lies in (enrolment margin, per-subject line] has no standing that holds** (INVALID STATE: an identity v2.workflow.floor_enrolment_margin cannot admit under any disposition it offers. Undeclared, the reading is over the margin and blocks as enrolment_measured_over_margin. Declared through floor_cost_debt_typed_admissions, the live reading is at or under the line, so the admission is stale and blocks as enrolment_roster_ground_stale. HARM: the only moves left to an author are to delete the claim, to make it an ordinary function so the floor stops executing it, or to inflate its cost past the line with unrelated work. Each removes or corrupts evidence, and the first two were proposed and nearly taken on gunbc#11989. DISTINGUISHING FACTS: the witness is new (the enrolment gate applies), its verdict is reached and true, and its cost is its own subject's work, not duplicated reach. A reading under the margin, or over the line with a typed admission, is not this class. RUNG FOUND AT: mitigatable, found by review of a PR that briefly made both claims ordinary functions. CEILING: structurally guaranteed. The band is a fact the gate already computes, so a general dead-band standing (self-staling on both sides, exact readings only) is decidable and expressible in the model. NEXT TRIGGER: a general repair of the dead-band policy in v2.workflow.floor_enrolment_margin, replacing the exact-identity authority v2.workflow.floor_enrolment_dead_band, which is the declared drop gunbc.rung_drop app_attest_verifier_enrolment_dead_band_observed_only.)",
+    "SPECIMEN, gunbc#11989 (2026-09-23). test.claim.app_attest_verifier_witness_test the_key_id_step_admits_the_real_key_and_reds_on_another_key_id and the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions measured between the margin and the line on the required floor, whose required-ci-measurement-receipt names them. First they were admitted as typed cost debt, which went stale. Then they were made ordinary functions, which deleted their floor execution, and the side chat reversed that (PR comment 5795659115) in favour of an exact-two, self-staling observed-only authority.",
+  ],
+
+  evidence: [],
+}

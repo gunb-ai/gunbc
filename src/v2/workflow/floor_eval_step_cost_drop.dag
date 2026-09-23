@@ -173,14 +173,13 @@ data floor_eval_step_cost_drop_interpreted_crypto_rows: List<EvalStepCostDropMea
 
 
 // SIXTH DROP, SAME MEMBERSHIP TEST: the App Attest VERIFIER claims (`gunbc.rung_drop`
-// `app_attest_verifier_new_witness_eval_step_cost`). Four identities, and each row states its own
-// billed work (review 70013). ONE is the attestation's real-path inhabitance claim, which runs
-// Apple's object end to end and supplies nothing. TWO are single named steps of the structural fold
-// over supplied inputs, whose whole cost is that step's own interpreted SHA-256s. The FOURTH is the
-// wire-carrier join, refused on size before any implementation runs. Claims of the same witness under
-// the budget (the environment, validity, chain-link, undecodable-key and step-order claims) are not
-// members; the key-id step and the assertion real path left the floor for the native row.
-// The P-256 verifications are not members and not on the floor: they cross the wall deadline.
+// `app_attest_verifier_new_witness_eval_step_cost`). Six identities, and each row states its own
+// billed work (review 70013). TWO are real-path inhabitance claims (the attestation and the
+// assertion), which run Apple's objects end to end and supply nothing. THREE are single named steps of
+// the structural fold over supplied inputs, whose cost is that step's own interpreted SHA-256s (nonce,
+// key id, App ID). The SIXTH is the wire-carrier join, refused on size before any implementation runs.
+// Claims of the same witness under the budget (the environment, validity, chain-link, undecodable-key
+// and step-order claims) are not members.
 data floor_eval_step_cost_drop_app_attest_verifier_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
     identity: "test.claim.app_attest_verifier_witness_test.the_sample_passes_every_step_before_the_extension_steps" as NonEmptyStr,
@@ -193,6 +192,14 @@ data floor_eval_step_cost_drop_app_attest_verifier_rows: List<EvalStepCostDropMe
   EvalStepCostDropMeasurement {
     identity: "test.claim.app_attest_verifier_witness_test.the_app_id_step_reds_on_another_app_id" as NonEmptyStr,
     measured_by: "claim_batch --hermetic [witness] receipt at session/nimble-eagle-216-step3b 4d089af1cb9 (gunbc#11989): verdict pass, wall under the 8 s deadline, eval_steps read from that receipt's own line and over the new-witness budget; the billed work is app_id_step alone over supplied inputs: one interpreted SHA-256 of the App ID" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.app_attest_verifier_witness_test.the_key_id_step_admits_the_real_key_and_reds_on_another_key_id" as NonEmptyStr,
+    measured_by: "claim_batch --hermetic [witness] receipt at session/nimble-eagle-216-step3b (gunbc#11989), and the required floor's required-ci-measurement-receipt: verdict pass, wall under the 8 s deadline, eval_steps read from that receipt's own line and over the new-witness budget; the billed work is key_id_step alone over supplied inputs, paired over its own subject: one interpreted SHA-256 of the credential certificate's 65-octet public key (the second comparison reuses it)" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.app_attest_verifier_witness_test.the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions" as NonEmptyStr,
+    measured_by: "claim_batch --hermetic [witness] receipt at session/nimble-eagle-216-step3b (gunbc#11989), and the required floor's required-ci-measurement-receipt: verdict pass, wall under the 8 s deadline, eval_steps read from that receipt's own line and over the new-witness budget; the billed work is the assertion's real path: the assertion object through assertion_parts and the fold's RP ID SHA-256, plus the attestation's leaf certificate read for the credential key (the attestation-to-assertion join). It is the assertion path's one inhabitance claim, paired with a wrong-App-ID refusal over the same subject" as NonEmptyStr,
   },
   EvalStepCostDropMeasurement {
     identity: "test.claim.signature_verify_join_witness_test.malformed_carriers_refuse_before_the_curve" as NonEmptyStr,

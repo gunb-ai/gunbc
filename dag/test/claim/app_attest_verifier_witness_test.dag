@@ -142,7 +142,8 @@ test fn the_nonce_step_reds_on_other_client_data() -> Bool {
 }
 
 // The key id step, paired over the same subject (the #11981 pattern): the real key's id admits and
-// another key id refuses by name -- one SHA-256 of the real key each.
+// another key id refuses by name. Its honest cost lies in the enrolment gate's dead band, so its
+// enrolment standing is v2.workflow.floor_enrolment_dead_band's (self-staling), not typed cost debt.
 test fn the_key_id_step_admits_the_real_key_and_reds_on_another_key_id() -> Bool {
   let e = sample_expectation()
   match sample_fold_inputs() {
@@ -241,7 +242,8 @@ test fn the_sample_assertion_counter_is_the_published_one() -> Bool {
 }
 
 // INHABITANCE, THE ASSERTION'S REAL PATH, and its same-subject RED (the #11981 pattern): the pass and
-// the wrong-App-ID refusal are both the assertion fold over Apple's real assertion.
+// the wrong-App-ID refusal are both the assertion fold over Apple's real assertion. Its honest cost
+// lies in the enrolment gate's dead band: v2.workflow.floor_enrolment_dead_band holds its standing.
 // THE ASSERTION'S REAL PATH, including the attestation -> assertion key join.
 // The assertion fold: RP ID passes on real bytes and the first refusal is step 7's absence (the
 // 37-octet prefix carries no extensions); the counter is carried out as 1 either way; a wrong App

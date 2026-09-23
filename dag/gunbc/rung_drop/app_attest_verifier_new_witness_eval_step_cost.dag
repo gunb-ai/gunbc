@@ -11,7 +11,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_app_att
 // app_attest_interpreted_crypto drop covers the curve and hash PRIMITIVES; this one covers the
 // verifier FOLDS over Apple's real objects.
 //
-// WHAT IS LOST IS ONE WALL, AND THE CLAIMS ARE UNTOUCHED. The four identities are planned, executed
+// WHAT IS LOST IS ONE WALL, AND THE CLAIMS ARE UNTOUCHED. The six identities are planned, executed
 // and measured on every pull request that edits them; a semantic red and a wall-clock crossing
 // still block. Only the eval-step overrun is reported as `EvalStepsOverBudgetUnderDeclaredDrop`
 // rather than refusing. The budget is not raised.
@@ -19,13 +19,11 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_app_att
 // WHY THE OVERRUN IS NOT THE CLAIMS' SHAPE (DESIGN section 3, a witness discriminates at one
 // interface). The verifier witness was re-cut so that every claim whose subject sits downstream of
 // decoding calls its one step over supplied inputs; most of those fell under the budget and are not
-// members. What remains is: the attestation's real-path inhabitance claim (Apple's bytes end to end --
-// supplying anything there would remove the only execution of the readers on the acceptance path,
-// the pairing obligation); TWO single steps whose whole cost is their own interpreted SHA-256s (nonce,
-// App ID); and the carrier-join claim, which touches no Apple object and prices only base64url
-// decoding of two RFC 6979 carriers. Each row says which. The key-id step and the assertion's real
-// path are not members: they measured in the enrolment gate's dead band and left the floor for the
-// native row (the #11981 precedent), which names them as its executing consumers.
+// members. What remains is: the TWO real-path inhabitance claims (the attestation and the assertion
+// run end to end over Apple's bytes -- supplying anything there would remove the only execution of
+// the readers on the acceptance path, the pairing obligation); THREE single steps whose cost is their
+// own interpreted SHA-256s (nonce, key id, App ID); and the carrier-join claim, which touches no Apple
+// object and prices only base64url decoding of two RFC 6979 carriers. Each row says which.
 //
 // THE P-256 VERIFICATIONS OF THESE WITNESSES ARE NOT MEMBERS: they cross the wall deadline, which
 // this drop does not and may not cover; they left the required floor and run on the native row
@@ -35,7 +33,7 @@ data app_attest_verifier_new_witness_eval_step_cost_population: List<String> = f
 data app_attest_verifier_new_witness_eval_step_cost: RungDrop = RungDrop {
   identity: "app_attest_verifier_new_witness_eval_step_cost" as NonEmptyStr,
 
-  subject: "new-witness eval-step cost gate over four App Attest verifier claims -- the attestation's real-path inhabitance claim over Apple's object, two single structural steps priced by their own SHA-256s, and the wire-carrier join: they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+  subject: "new-witness eval-step cost gate over six App Attest verifier claims -- the two real-path inhabitance claims over Apple's objects, three single structural steps priced by their own SHA-256s, and the wire-carrier join: they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
 
   declared: "2026-09-22",
 
@@ -48,6 +46,6 @@ data app_attest_verifier_new_witness_eval_step_cost: RungDrop = RungDrop {
       replacement: "the CBOR, DER and SHA-256 readers executing as natively emitted code over the sample objects rather than as interpreted octet-list folds",
     },
     population: app_attest_verifier_new_witness_eval_step_cost_population,
-    restoration_trigger: "THE CAPABILITY. MachineWidth<N> reification (gunbc#11819) lets the extdeps.apple.app_attest closure emit, and these four identities execute on the natively emitted route -- the gunbc test instrument row the ecdsa_verification_realization_frontier names -- while each still exercises its own production code over its own inputs -- Apple's object end to end for the inhabitance claim, its one named step for the two step claims, the RFC 6979 carriers for the carrier-join claim; WHAT THAT MUST BE SUFFICIENT FOR: the verifier folds are exercised over the real sample on the acceptance path, and the carrier join over its real carriers, with no interpreted octet walk inside a claim frame, and the identities then measure under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives, or leave the floor for that native row. Supplying the inhabitance claim's inputs as fixtures, precomputing a step's hashes, or deleting the identities satisfies neither.",
+    restoration_trigger: "THE CAPABILITY. MachineWidth<N> reification (gunbc#11819) lets the extdeps.apple.app_attest closure emit, and these six identities execute on the natively emitted route -- the gunbc test instrument row the ecdsa_verification_realization_frontier names -- while each still exercises its own production code over its own inputs -- Apple's objects end to end for the two inhabitance claims, its one named step for the three step claims, the RFC 6979 carriers for the carrier-join claim; WHAT THAT MUST BE SUFFICIENT FOR: the verifier folds are exercised over the real sample on the acceptance path, and the carrier join over its real carriers, with no interpreted octet walk inside a claim frame, and the identities then measure under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives, or leave the floor for that native row. Supplying the two inhabitance claims' inputs as fixtures, precomputing a step's hashes, or deleting the identities satisfies neither.",
   }
 }
