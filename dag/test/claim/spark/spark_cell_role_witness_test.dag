@@ -8,6 +8,7 @@ import gunbc.spark.cell_role {
   SparkCellRoleLookup, SparkCellRoleAbsent, SparkCellRoleUnique, SparkCellRoleAmbiguous,
   spark_cell_role_of, spark_serving_cell_hosts, spark_training_cell_hosts,
 }
+import v2.std.algebra { any }
 
 // BOTH FIRST-PAIR HOSTS ARE ASSIGNED THE SERVING ROLE BY THE OPERATOR DECISION, and a host outside
 // the roster resolves to no role rather than a default one.

@@ -44879,7 +44879,7 @@ pub use emitted_closure_compile_host::{
     emit_compile_selection_universe_digest, lane_emit_compile_probe_root,
     local_emit_compile_probe_root, required_ci_emit_compile_probe_root,
     required_emit_compile_entries, retain_not_selected_identities, run_required_emit_compile,
-    CargoVerdict, EmitCompileOutcome, EmitCompileSelection, MutationVerdict,
+    CargoVerdict, EmitCompileOutcome, EmitCompileSelection, MutationVerdict, PrivateProbeRoot,
 };
 
 /// THE FIXTURE ROUTE IS TEST-FACING ONLY, AND THAT IS WHY IT HAS ITS OWN `use` RATHER THAN A LINE
