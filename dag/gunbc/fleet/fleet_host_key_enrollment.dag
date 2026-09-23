@@ -3,7 +3,6 @@ module gunbc.fleet_host_key_enrollment
 import std.types { String, Bool, List, NonEmptyStr }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import std.resources { Network }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -229,7 +228,6 @@ data fleet_host_key_scan_receipt_path: String = "target/fleet-host-key-scan-rece
 // verify that REFUSED emitted the literal receipt line "outcome=" -- a fabricated plausible output
 // standing where the answer was unknown, written into a receipt someone would later read as fact.
 fn verify_enrollment_outcome() -> String
-  uses net: Network
 {
   match run_shell_command_capture(
     command: posix_sh_program_command(script: "H=$(getent passwd \"$(whoami)\" | cut -d: -f6); grep -qxF \"$(cat target/fleet-authorized-key-line | head -1)\" \"$H/.ssh/authorized_keys\" && echo enrolled || echo ABSENT-after-apply"),
@@ -289,7 +287,6 @@ fn scan_host_key_lines(host: String) -> String {
 }
 
 fn fleet_host_key_scan_wet() -> ProcessExit
-  uses net: Network
 {
   let body = join(map(fleet_reach_probe_targets, h => scan_host_key_lines(host: h)), "")
   let w = Filesystem.Write(path: fleet_host_key_scan_receipt_path, content: body)
@@ -335,7 +332,6 @@ data fleet_host_key_enroll_receipt_path: String = "target/fleet-host-key-enroll-
 // HOME by fleet_host_key_enroll_apply, which the probe entry calls FIRST — enrollment
 // rides with every probe run instead of pretending to persist.
 fn fleet_host_key_enroll_apply() -> String
-  uses net: Network
 {
   if length(fleet_host_key_enrollments) == 0 {
     "enroll outcome=refused cause=registry-empty\n"
@@ -379,7 +375,6 @@ fn fleet_host_key_enroll_apply() -> String
 }
 
 fn fleet_host_key_enroll_wet() -> ProcessExit
-  uses net: Network
 {
   let receipt = fleet_host_key_enroll_apply()
   let wr = Filesystem.Write(path: fleet_host_key_enroll_receipt_path, content: receipt)
@@ -419,7 +414,6 @@ fn fleet_automation_authorized_keys_line() -> String {
 // state impossible to fall through: a refusal now refuses instead of mutating the file.
 
 fn fleet_authorized_key_self_enroll_wet() -> ProcessExit
-  uses net: Network
 {
   let user = run_shell_command_capture(command: whoami_command(), transport: LocalExec)
   let hostname = run_shell_command_capture(command: hostname_read_command(), transport: LocalExec)
