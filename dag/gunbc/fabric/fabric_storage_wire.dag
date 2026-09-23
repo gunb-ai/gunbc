@@ -2,7 +2,7 @@ module gunbc.fabric_storage_wire
 
 import std.types { String, NonEmptyStr, Int, List }
 import std.durable_compare_and_set {
-  CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, CasUnreadableSlot,
+  CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, CasGenerationSpaceExhausted, CasUnreadableSlot,
   CasUnreadableMalformed, CasUnreadableContentMissing, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded,
   cas_generation_count,
 }
@@ -68,6 +68,7 @@ fn fault_words(fault: FabricStorageFault) -> List<String> {
     FabricStoreRefused { cause: c } =>
       match c {
         CasGenerationPublicationRefused { detail: d } => ["store-publish", d as String]
+        CasGenerationSpaceExhausted { head: h } => ["store-exhausted", to_string(h)]
         CasSlotObservationRefused { cause: u } =>
           match u {
             CasUnreadableMalformed { detail: d } => ["store-malformed", d as String]
@@ -193,6 +194,7 @@ fn decode_fault(ws: List<String>, i: Int, line: String) -> FabricStorageFault {
     "store-malformed" => FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableMalformed { detail: nonempty_or(text: detail, fallback: "unspecified") } } }
     "store-read-refused" => FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableReadRefused { detail: nonempty_or(text: detail, fallback: "unspecified") } } }
     "store-content-missing" => match content_hash_from_structural_digest(digest: detail) { Present { value: h } => FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableContentMissing { referenced: h } } }  Absent => undecodable(line: line) }
+    "store-exhausted" => match parse_int(s: detail) { Present { value: h } => FabricStoreRefused { cause: CasGenerationSpaceExhausted { head: h } }  Absent => undecodable(line: line) }
     "store-bound" => match parse_int(s: detail) { Present { value: b } => FabricStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableObservationBoundExceeded { bound: b } } }  Absent => undecodable(line: line) }
     _ => undecodable(line: line)
   }
