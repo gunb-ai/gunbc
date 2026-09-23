@@ -5,7 +5,7 @@ import v2.compiler.body_lowering_fold { body_lower_resolved_type_binding }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly {
   program_assembly_phase_normalize,
-  program_assembly_phase_parse,
+  program_assembly_phase_parse_measured_seeded,
   program_assembly_phase_tokenize
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
@@ -41,7 +41,7 @@ import v2.std.text { String }
 import v2.std.integer { Int, integer_int_to_decimal_string }
 import v2.std.witness { Holds, Violates }
 import std.algebra { Cons, Empty, FreeMonoid }
-import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceId, occurrence_id_allocator_initial, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
 
 // REFERENCE CONSERVATION ACROSS LOWERING (XL-2).
 //
@@ -827,11 +827,16 @@ fn reference_conservation_subject_of_read(
   prepared: PreparedGrammar,
   residue: Diagnostics
 ) -> ReferenceConservationSubject {
-  let parsed = program_assembly_phase_parse(
+  // ONE MODULE, ONE ALLOCATOR SCOPE. The check parses each module on its own, which is the
+  // standalone-parse case std.occurrence_identity occurrence_identity_scope_law names: an isolated
+  // allocator scope, so the seed is the initial allocator. Occurrence ids are compared only within
+  // this one subject, never across modules.
+  let parsed = program_assembly_phase_parse_measured_seeded(
     tokens: program_assembly_phase_tokenize(read: read, lm: lm),
     prepared: prepared,
-    residue: residue
-  )
+    residue: residue,
+    seed: occurrence_id_allocator_initial()
+  ).outcome
   ReferenceConservationSubject {
     path: read.artifact.file_path,
     parsed: parsed,
