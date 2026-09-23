@@ -5,7 +5,6 @@ import std.algebra { trim }
 import v2.std.algebra { zip_map, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import product.placement_supply { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { shell_quote }
@@ -204,7 +203,6 @@ fn spark_native_grant_standing_detail(standing: SparkManagedGrantStanding) -> St
 }
 
 fn spark_native_grant_preflight_host(context: FleetSshExecutionContext, host: HostIdentity) -> SparkNativeGrantPreflight
-  uses net: Network
 {
   let outcome = spark_grant_probe_outcome(context: context, host: host)
   let details = flat_map(
@@ -850,7 +848,6 @@ fn spark_native_run_stage(
   credential_file_name: NonEmptyStr,
   plans: List<SparkPairHostApplyPlan>,
 ) -> SparkNativeStageResult
-  uses net: Network
 {
   match with_materialized_ssh_key_file(
     identity_file_name: credential_file_name,
@@ -988,7 +985,6 @@ fn spark_native_image_readback_gap(spec: DockerCreateSpec, observed: ContainerIn
 }
 
 fn spark_native_rank_readback(ctx: SparkMaterializeContext, step: SparkNativeHostStep) -> SparkNativeRankReadback
-  uses net: Network
 {
   let subject = observed_rank_subject(host: step.host, container: step.launch.container.name)
   match observe_rank_container(ctx: ctx, subject: subject) {
@@ -1051,7 +1047,6 @@ fn spark_native_readback_arm(
   trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
   steps: List<SparkNativeHostStep>,
 ) -> SparkNativeArmReadback
-  uses net: Network
 {
   match with_materialized_ssh_key_file(
     identity_file_name: "gunbc-spark-native-readback-admin-password" as NonEmptyStr,
@@ -1086,7 +1081,6 @@ fn spark_native_refuse_before_actuation(
   trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
   steps: List<SparkNativeHostStep>, stage: SparkNativeStage, transaction_id: String, so_far: String,
 ) -> SparkNativeArmTransaction
-  uses net: Network
 {
   if !spark_native_stage_created_removable_artifacts(st: stage) {
     NativeArmRefusedBeforeActuation { stage: stage, receipt: join([so_far, "  THE SERVING ARM WAS NOT MUTATED, and this stage created nothing on any host, so no removal pass ran. Any transaction artifact still present belongs to an earlier run and is what this refusal is about.
@@ -1112,7 +1106,6 @@ fn spark_native_after_mutation(
   trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
   steps: List<SparkNativeHostStep>, stage: SparkNativeStage, transaction_id: String, so_far: String,
 ) -> SparkNativeArmTransaction
-  uses net: Network
 {
   match spark_native_run_stage(
     trust: trust, path: path, administrator: administrator,
@@ -1147,7 +1140,6 @@ fn spark_native_stage_then(
   credential_file_name: NonEmptyStr, plans: List<SparkPairHostApplyPlan>, so_far: String,
   next: fn(String) -> SparkNativeArmTransaction,
 ) -> SparkNativeArmTransaction
-  uses net: Network
 {
   match spark_native_run_stage(trust: trust, path: path, administrator: administrator, credential_file_name: credential_file_name, plans: plans) {
     NativeStageCredentialRefused { cause: c } => {
@@ -1180,7 +1172,6 @@ fn spark_native_commit_or_pending(
   trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
   steps: List<SparkNativeHostStep>, transaction_id: String, so_far: String,
 ) -> SparkNativeArmTransaction
-  uses net: Network
 {
   match spark_native_run_stage(
     trust: trust, path: path, administrator: administrator,
@@ -1204,7 +1195,6 @@ fn spark_native_transaction_body(
   trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
   steps: List<SparkNativeHostStep>, transaction_id: String,
 ) -> SparkNativeArmTransaction
-  uses net: Network
 {
   spark_native_stage_then(
     trust: trust, path: path, administrator: administrator, steps: steps, transaction_id: transaction_id,
@@ -1290,7 +1280,6 @@ fn spark_native_transaction_exit(t: SparkNativeArmTransaction, body: String) -> 
 }
 
 fn spark_native_serving_apply_wet() -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   match spark_native_arm_steps() {

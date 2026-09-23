@@ -1,0 +1,429 @@
+module v2.test.provenance.occurrence_file_attribution
+
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.compile { native_test_context_from_ingest }
+import v2.compiler.program_assembly {
+  IngestAssembly,
+  LocatedIngestRoots,
+  assemble_program_from_ingest_located,
+  LocatedNormalizedTree,
+  located_roots_and_spans_from_source_root_ingest
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { Empty, fold_list, length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.cli.compile_cli {
+  CliEmitClosure,
+  CliEmitted,
+  CliPlanParsed,
+  CliRunRefused,
+  v2_cli_run
+}
+import v2.std.algebra { list_reverse, list_starts_with }
+import v2.std.text { char_eq }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual, WholeFile }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.compiler.normalized_tree { NormalizedTree }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.diagnostic { Outcome, outcome_accepted }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_textual_locus_optional }
+import v2.std.text { String }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceMinted,
+  OccurrenceProjected,
+  OccurrenceSynthetic
+}
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// TWO FILES, DELIBERATELY IDENTICAL IN SHAPE. The two modules differ only in their name, so the two
+// parses walk the same productions in the same order and mint the same ORDINALS as each other. That
+// is the whole point of the pair: under a per-file allocator reset both files' roots are occurrence
+// #N for the same N, so a merged span index answers one file's locus for the other file's node --
+// silently, plausibly and wrongly. Seeded from the ingest's running mark they are different ids, and
+// each answers its own file. The claim below is therefore a discriminator and not a demonstration:
+// delete the seeding and it reports one file twice.
+data attribution_source_a: String = "module v2.test.fixture.attribution_a\n\nimport v2.std.logic { Bool }\n\nfn attribution_a_fn() -> Bool { true }\n"
+
+data attribution_source_b: String = "module v2.test.fixture.attribution_b\n\nimport v2.std.logic { Bool }\n\nfn attribution_b_fn() -> Bool { true }\n"
+
+fn attribution_read_a() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: attribution_source_a, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: ^attribution_read_a,
+      file_path: "src/v2/test/fixture/attribution/attribution_a.dag"
+    },
+    compilation_unit: ^attribution_file_a,
+    source_root: DagTree
+  }
+}
+
+fn attribution_read_b() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: attribution_source_b, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: ^attribution_read_b,
+      file_path: "src/v2/test/fixture/attribution/attribution_b.dag"
+    },
+    compilation_unit: ^attribution_file_b,
+    source_root: DagTree
+  }
+}
+
+fn attribution_occurrence_file(index: SpanIndex, node: Node) -> Optional<Symbol> {
+  match node_occurrence_id_optional(node: node) {
+    Absent => optional_absent()
+    Present { value: id } => attribution_file_of_id(index: index, id: id)
+  }
+}
+
+fn attribution_file_of_id(index: SpanIndex, id: OccurrenceId) -> Optional<Symbol> {
+  match span_index_textual_locus_optional(index: index, id: id) {
+    Absent => optional_absent()
+    Present { value: locus } =>
+      match locus {
+        Textual { file: f, extent: _ } => optional_present(value: f)
+        _ => optional_absent()
+      }
+  }
+}
+
+fn attribution_has_byte_range(index: SpanIndex, id: OccurrenceId) -> Bool {
+  match span_index_textual_locus_optional(index: index, id: id) {
+    Absent => false
+    Present { value: locus } =>
+      match locus {
+        Textual { file: _, extent: ext } =>
+          match ext {
+            ByteRange { start: s, end: e } => (s >= 0) && (e > s)
+            WholeFile => false
+          }
+        _ => false
+      }
+  }
+}
+
+
+fn attribution_roots() -> Outcome<LocatedIngestRoots> {
+  located_roots_and_spans_from_source_root_ingest(
+    ingest: [attribution_read_a(), attribution_read_b()],
+    lm: dag_language_model()
+  )
+}
+
+// THE DISCRIMINATOR. Each file's module root is looked up in the ONE ingest-wide span index and
+// must report ITS OWN compilation unit -- not the other file's, and not nothing. Two conjuncts
+// carry the two ways this can fail, and they fail differently on purpose: reporting the wrong file
+// is the silent-wrongness arm an unseeded allocator produces, and reporting no file at all is the
+// arm a dropped span carry produces. A claim that only checked "some file" would pass under the
+// first and is the claim worth not writing.
+test fn two_files_attribute_to_their_own_files_holds() -> Bool {
+  match attribution_roots() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      (length(xs: roots.located) == 2)
+        && attribution_root_names_file(
+             roots: roots,
+             path: "src/v2/test/fixture/attribution/attribution_a.dag",
+             expected: ^attribution_file_a
+           )
+        && attribution_root_names_file(
+             roots: roots,
+             path: "src/v2/test/fixture/attribution/attribution_b.dag",
+             expected: ^attribution_file_b
+           )
+  }
+}
+
+// THE ROOT IS FOUND BY ITS PATH, WHICH IS THE IDENTITY JOIN THE FOLD ALREADY CARRIES, never by
+// position in the list -- a positional pick would agree with a fold that had swapped the two files
+// and would report the same verdict either way (DESIGN section 5: completeness is an identity join,
+// not a count equality).
+fn attribution_root_names_file(
+  roots: LocatedIngestRoots,
+  path: String,
+  expected: Symbol
+) -> Bool {
+  match attribution_root_for_path(located: roots.located, path: path) {
+    Absent => false
+    Present { value: tree } =>
+      match attribution_occurrence_file(index: roots.spans, node: tree.root) {
+        Absent => false
+        Present { value: file } => file == expected
+      }
+  }
+}
+
+fn attribution_root_for_path(
+  located: FreeMonoid<LocatedNormalizedTree>,
+  path: String
+) -> Optional<NormalizedTree> {
+  fold_list(
+    xs: located,
+    empty: optional_absent(),
+    cons: fn(acc, item) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if item.path == path {
+            optional_present(value: item.tree)
+          } else {
+            optional_absent()
+          }
+      }
+    }
+  )
+}
+
+// THE TWO IDS MUST ACTUALLY DIFFER, which is the seeding fact stated directly rather than inferred
+// from the lookup above. Without it a reader cannot tell whether the files attribute correctly
+// because the ids are distinct or because the index happened to be filled in a forgiving order.
+test fn two_files_mint_distinct_root_occurrences_holds() -> Bool {
+  match attribution_roots() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      match attribution_root_for_path(located: roots.located, path: "src/v2/test/fixture/attribution/attribution_a.dag") {
+        Absent => false
+        Present { value: tree_a } =>
+          match attribution_root_for_path(located: roots.located, path: "src/v2/test/fixture/attribution/attribution_b.dag") {
+            Absent => false
+            Present { value: tree_b } =>
+              match node_occurrence_id_optional(node: tree_a.root) {
+                Absent => false
+                Present { value: id_a } =>
+                  match node_occurrence_id_optional(node: tree_b.root) {
+                    Absent => false
+                    Present { value: id_b } => !(id_a == id_b)
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE BYTE RANGE, not merely the file. A locus that named a file with no extent would satisfy the
+// claims above and would still leave the operator hunting through the file by hand, which is the
+// state this package exists to end.
+test fn attributed_occurrence_carries_a_byte_range_holds() -> Bool {
+  match attribution_roots() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      match attribution_root_for_path(located: roots.located, path: "src/v2/test/fixture/attribution/attribution_a.dag") {
+        Absent => false
+        Present { value: tree } =>
+          match node_occurrence_id_optional(node: tree.root) {
+            Absent => false
+            Present { value: id } => attribution_has_byte_range(index: roots.spans, id: id)
+          }
+      }
+  }
+}
+
+// THE REAL CONSUMER, ENTERED THROUGH ITS OWN DOOR. The claims above establish that the assembly can
+// attribute an occurrence; this one establishes that the LINE AN OPERATOR READS says so, which is
+// the capability this package exists to close. It calls `v2_cli_run` -- the same fold the emitted
+// native CLI's main calls -- rather than re-deriving the detail string here, because a claim that
+// built the sentence itself would pass while the CLI printed something else.
+//
+// THE COMPILATION UNIT IS INTERNED FROM THE PATH, because that is what the production caller
+// supplies: the emitted main sets `compilation_unit: path.clone()`
+// (v1.compiler.emit_rust emit_source_root_eval_driver_main_rs). A caret literal here would be a
+// different input wearing the specimen's name, and would have reported a mangled symbol while the
+// real path rendered correctly -- so this supplies the value the real walk supplies.
+//
+// THE PATH NAMES NO COMMITTED FILE, AND THAT IS DELIBERATE (review 69628). An earlier revision also
+// committed `fixtures/native_cli_door/door_probe.dag` holding this same text. Nothing read it: the
+// claim constructs its read from the string below and uses the path only as an identity, so the
+// file was a second source for one fact, free to drift from this one -- DESIGN section 2's
+// duplication test, and section 6's "new artifact with no final consumer". The string is the single
+// source; the path is a value under test (it is what the rendered line must name), not a lookup.
+data door_probe_source: String = "module fixture.native_cli_door.door_probe\n\nimport v2.std.logic { Bool }\n\nfn door_probe_fn() -> Bool { true }\n"
+
+data door_probe_path: String = "fixtures/native_cli_door/door_probe.dag"
+
+fn door_probe_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: door_probe_source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: ^door_probe_read,
+      file_path: door_probe_path
+    },
+    compilation_unit: symbol_intern_lexeme(lexeme: door_probe_path),
+    source_root: DagTree
+  }
+}
+
+fn door_probe_cli_detail() -> String {
+  match v2_cli_run(
+    plan: CliPlanParsed {
+      verb: CliEmitClosure {
+        entry: "fixture.native_cli_door.door_probe",
+        source_roots: Empty
+      }
+    },
+    ingest: [door_probe_read()]
+  ) {
+    CliEmitted { text: _, closure_size: _, layer_count: _, ready_size: _ } => ""
+    CliRunRefused { reason: _, detail: detail } => detail
+  }
+}
+
+// THE ASSERTION IS A SUFFIX MATCH, WHICH IS EXACT WITHOUT BEING BRITTLE. `FATAL AT ...` is the last
+// thing the detail says, so comparing the sentence's tail to the expected text is an equality on
+// the part under test -- it cannot be satisfied by a path appearing somewhere else in the chain,
+// and it does not break when the chain ahead of it grows a link. Suffix comparison is prefix
+// comparison on the reversed carriers; a String is a list of Char, so this is the list algebra that
+// already exists rather than a new text primitive.
+//
+// THE EXPECTED TEXT CARRIES THE FILE AND THE BYTES TOGETHER, because they fail separately and a
+// file-only assertion would pass for a renderer that found the index entry and dropped its extent --
+// leaving the operator with the right file and no idea where to look in it.
+fn detail_ends_with(detail: String, expected: String) -> Bool {
+  list_starts_with(
+    xs: list_reverse(xs: detail),
+    prefix: list_reverse(xs: expected),
+    eq: char_eq
+  )
+}
+
+test fn cli_fatal_line_names_the_file_and_bytes_holds() -> Bool {
+  detail_ends_with(
+    detail: door_probe_cli_detail(),
+    expected: "FATAL AT fixtures/native_cli_door/door_probe.dag bytes 0..6"
+  )
+}
+
+// THE NEGATIVE HALF, AND THE SHAPE OF IT IS THE POINT. Every answer
+// `lens_verdict_node_occurrence_text` gives when it cannot resolve is a bracketed placeholder, so
+// every one of them ends in `>`; a resolved locus ends in the last digit of its byte range. Testing
+// the final character therefore covers all three unresolved renderings at once -- including
+// `<node occurrence #N>`, whose N is not known in advance and which a fixed-needle comparison could
+// never match as a suffix. That matters more than brevity: a needle that cannot match is
+// permanently green and carries no information, which DESIGN section 4b calls a decoration and
+// counts as worse than no check, because it would be cited as coverage. This conjunct has an
+// authorable red -- drop the span carry and the line ends in `>` again.
+test fn cli_fatal_line_no_longer_reports_a_bare_occurrence_holds() -> Bool {
+  !detail_ends_with(detail: door_probe_cli_detail(), expected: ">")
+}
+
+// A REFUSED ASSEMBLY STILL LOCATES THE FILES IT GOT THROUGH (review 69607, finding 1). The failed
+// arm of the fold used to return an empty index, so every refusal that happened AFTER a file had
+// parsed -- a normalize or namespace-graft refusal, which is precisely where this PR starts
+// carrying occurrences onto the module spine -- handed the renderer nothing to look up. The
+// annotation claimed otherwise, which is the DESIGN section 4c failure of prose asserting a
+// behavior the code did not have.
+//
+// THE SECOND READ IS UNPARSEABLE ON PURPOSE. It forces the fold to refuse after the FIRST read has
+// already parsed and recorded its spans, which is the exact state the repair is about: the answer
+// must be "file A's occurrences are still resolvable", not "the assembly failed, so nothing is
+// known". Before the repair this claim reds, because the index is empty regardless of how much was
+// recorded before the stop.
+data attribution_unparseable_source: String = "module v2.test.fixture.attribution_bad\n\nfn (((\n"
+
+fn attribution_read_unparseable() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: attribution_unparseable_source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: ^attribution_read_bad,
+      file_path: "src/v2/test/fixture/attribution/attribution_bad.dag"
+    },
+    compilation_unit: ^attribution_file_bad,
+    source_root: DagTree
+  }
+}
+
+fn attribution_refused_assembly() -> IngestAssembly {
+  assemble_program_from_ingest_located(
+    ingest: [attribution_read_a(), attribution_read_unparseable()],
+    admission: Admission {
+      subject: ResolutionSubject { name: [^v2, ^test, ^fixture, ^attribution_a] },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+}
+
+// BOTH FACTS ARE ASSERTED, because either alone is satisfiable by the wrong program. That the
+// assembly REFUSED is what puts the claim on the arm under test -- if the fixture ever started
+// parsing, a spans-only assertion would keep passing while testing the accepted path instead.
+test fn refused_assembly_still_locates_the_files_it_parsed_holds() -> Bool {
+  let assembled = attribution_refused_assembly()
+  match assembled.program {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } =>
+      match attribution_first_recorded_file(index: assembled.spans) {
+        Absent => false
+        Present { value: file } => file == ^attribution_file_a
+      }
+  }
+}
+
+// The lookup is by the id the FIRST read minted. Occurrence 0 is the ingest's first mint and the
+// fold parses reads in order, so it belongs to file A by construction rather than by a search.
+fn attribution_first_recorded_file(index: SpanIndex) -> Optional<Symbol> {
+  attribution_file_of_id(index: index, id: OccurrenceId { value: 0 })
+}
+
+// THE SECOND INGEST FOLD, WHICH HAD THE SAME DEFECT AND NO CLAIM (review 69644).
+// `native_test_context_from_ingest` walks a whole ingest and so IS "a production source graph" in
+// the sense `occurrence_identity_scope_law` uses, but it called the UNSEEDED per-file door, so every
+// read restarted at #0 and the roots it accumulated carried ids that collided across files. The
+// route now threads the mark; this is the claim that says so, because a fix to a second fold with
+// evidence only over the first is a fix nobody can tell was made.
+//
+// THE SAME TWO IDENTICAL-SHAPE FIXTURES ARE REUSED ON PURPOSE: they mint the same ordinals as each
+// other under a per-file reset, so distinct root occurrences here can only come from threading.
+fn native_route_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  match native_test_context_from_ingest(
+    ingest: [attribution_read_a(), attribution_read_b()]
+  ) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: context, diagnostics: _ } =>
+      match context.resolution {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: ctx, diagnostics: _ } => outcome_accepted(value: ctx.roots.roots)
+      }
+  }
+}
+
+test fn native_route_threads_the_occurrence_mark_across_files_holds() -> Bool {
+  match native_route_roots() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      (length(xs: roots) == 2) && native_route_roots_have_distinct_occurrences(roots: roots)
+  }
+}
+
+// Compared pairwise by identity rather than by counting distinct values: two roots is the whole
+// population here, and asserting they differ is the fact under test stated directly.
+fn native_route_roots_have_distinct_occurrences(roots: FreeMonoid<NormalizedTree>) -> Bool {
+  match roots {
+    Empty => false
+    Cons { head: first, tail: rest } =>
+      match rest {
+        Empty => false
+        Cons { head: second, tail: _ } =>
+          match node_occurrence_id_optional(node: first.root) {
+            Absent => false
+            Present { value: id_a } =>
+              match node_occurrence_id_optional(node: second.root) {
+                Absent => false
+                Present { value: id_b } => !(id_a == id_b)
+              }
+          }
+      }
+  }
+}

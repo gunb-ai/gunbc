@@ -206,7 +206,6 @@ fn render_round_standings(round: FanObservationRound, first_posted: Int?, interv
 // with no credential produces an authentication failure, and an authentication failure read as a
 // machine fact is how "the fans could not be observed" becomes "the fans are not reporting".
 fn mtcollins1_fan_observe_wet() -> ProcessExit
-  uses net: std.resources.Network, clock: std.resources.Clock
 {
   match mtcollins1_secured_account() {
     Absent =>
