@@ -13,7 +13,7 @@ import gunbc.machine_intake_mtcollins1_physical_orientation {
   MtCollins1PlacementAnchor, MtCollins1ViewHypothesis, MtCollins1SlotMap,
   FigureOrder, FullMirror, SocketHalvesSwapped,
   AnchorContradicted, AnchorConsistent, AnchorUnevaluable, AnchorFrameUnreported,
-  OrientationResolved, OrientationAmbiguous, OrientationContradicted, OrientationUnevaluable, OrientationAnchorFrameUnreported,
+  OrientationResolved, OrientationAmbiguous, OrientationContradicted, OrientationUnevaluable, OrientationAnchorFrameUnreported, OrientationAnchorFramesDisagree,
   DamagedCandidates, DamagedCandidatesRefused, DamageFrameUnreported, MtCollins1DamagedConnectorReport,
   PopulationAvoidsDamage, PopulationUsesDamaged, PopulationDamageUndetermined,
   SlotMapRendered, SlotMapRefused, SlotMapOrientationUnresolved, SlotMapDamageUnresolved, SlotMapPopulationUsesDamaged,
@@ -69,6 +69,7 @@ fn resolves_to(anchors: List<MtCollins1PlacementAnchor>, banks: List<MtCollinsDi
     OrientationContradicted => false
     OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => false
     OrientationAnchorFrameUnreported { run_id: _ } => false
+    OrientationAnchorFramesDisagree { run_ids: _ } => false
   }
 }
 
@@ -96,6 +97,7 @@ test fn w_three_stick_anchor_alone_leaves_the_orientation_ambiguous() -> Bool {
     OrientationContradicted => false
     OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => false
     OrientationAnchorFrameUnreported { run_id: _ } => false
+    OrientationAnchorFramesDisagree { run_ids: _ } => false
   }
   let candidates = damaged_connector_candidates(report: mtcollins1_damaged_connector_report, orientation: o, banks: dimm_figure_banks)
   let both = match candidates {
@@ -131,6 +133,7 @@ test fn w_production_anchors_resolve_the_full_mirror_and_j5() -> Bool {
     OrientationContradicted => false
     OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => false
     OrientationAnchorFrameUnreported { run_id: _ } => false
+    OrientationAnchorFramesDisagree { run_ids: _ } => false
   }
   let candidates = mtcollins1_damaged_candidates()
   let j5 = match candidates {
@@ -348,9 +351,9 @@ fn anchor_in(anchor: MtCollins1PlacementAnchor, frame: MtCollins1Viewpoint) -> M
 
 // THE ANCHORS CARRY THEIR FRAME and are normalised into the canonical (front) frame. The same
 // labels and readback observed from the rear resolve to the opposite canonical reading, so a
-// rear anchor can never be read as a front one; an unframed anchor refuses the resolution. A
-// population whose anchors came from different ends is normalised, not refused: each anchor's
-// own end is what makes it comparable, and a rear anchor recorded consistently agrees.
+// rear anchor can never be read as a front one. An unframed anchor refuses, and a population
+// from mixed ends REFUSES: with run 35808203121 mis-framed as rear, normalisation alone would
+// resolve SocketHalvesSwapped without any contradiction.
 test fn w_anchors_resolve_only_in_their_own_frame() -> Bool {
   let three = mtcollins1_three_stick_anchor
   let two = mtcollins1_two_stick_anchor
@@ -362,15 +365,17 @@ test fn w_anchors_resolve_only_in_their_own_frame() -> Bool {
     OrientationAmbiguous { surviving: _ } => false
     OrientationContradicted => false
     OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => false
+    OrientationAnchorFramesDisagree { run_ids: _ } => false
   }
-  let mislabelled_mix = match resolve_orientation(anchors: [three, anchor_in(anchor: two, frame: rear_fixture)], banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
+  let mixed = match resolve_orientation(anchors: [three, anchor_in(anchor: two, frame: rear_fixture)], banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
+    OrientationAnchorFramesDisagree { run_ids: rs } => rs == [35805796492, 35808203121]
     OrientationResolved { hypothesis: _, order: _ } => false
     OrientationAmbiguous { surviving: _ } => false
-    OrientationContradicted => true
+    OrientationContradicted => false
     OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => false
     OrientationAnchorFrameUnreported { run_id: _ } => false
   }
-  front && rear && unframed && mislabelled_mix
+  front && rear && unframed && mixed
 }
 
 // NO INSTALL LINE WITHOUT A LOCATED, AVOIDED DAMAGE. An unframed damage report and the 16-DIMM
