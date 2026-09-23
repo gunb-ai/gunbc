@@ -45,6 +45,7 @@ type JitMintPlan
       unsatisfied: List<CredentialCapability>
     }
   | JitMintRefusedAttemptUnbound { cause: String }
+  | JitMintRefusedRunnerGroupUnrestricted { group: Int }
 
 // THE RUNNER NAME IS THE UNIT NAME, not a fresh identifier minted beside it. A second naming scheme
 // for one attempt is a nickname (DESIGN §3), and it is the expensive kind: an orphaned GitHub runner
@@ -78,8 +79,19 @@ fn microvm_attempt_registration_labels(attempt: MicroVmAttempt) -> List<String> 
   [self_hosted_provenance_label, jit_runner_name_for(attempt: attempt).value as String]
 }
 
+// THE RUNNER GROUP IS A STANDING, NOT A BARE ID, and the mint refuses every standing but one. The
+// shakedown mints into the org's Default group today (gunbc.runner_microvm_shakedown
+// microvm_shakedown_runner_group, id 1), which every workflow may use; if a JIT registration also
+// receives GitHub's OS and architecture defaults, a runner there would match witnesses.yml, heal.yml
+// and a fleet-converge job. So a mint is authorized only into a group OBSERVED restricted to the
+// shakedown workflow file, and until an observer produces that arm every real attempt is refused
+// here -- the block the frontier row below states is this match, not a sentence.
+type MicrovmRunnerGroupStanding
+  = RunnerGroupRestrictedToShakedownWorkflow { group: JitRunnerGroupId }
+  | RunnerGroupRestrictionUnobserved { group: JitRunnerGroupId }
+
 data microvm_jit_runner_group_restriction_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: plan_jit_mint. TRIGGER: the mint's runner_group_id is a group OBSERVED restricted to the shakedown workflow (GitHub runner groups: restricted_to_workflows with selected_workflows naming it), carried as a value only that observation constructs, so a mint into the org's Default group (runner_microvm_shakedown microvm_shakedown_runner_group, id 1, open to every workflow) is unwritable. SUFFICIENT FOR deleting this row: with it, a JIT registration that received the OS and architecture defaults still cannot take a witnesses.yml, heal.yml or fleet-converge job. BLOCKS every real attempt until it lands." as NonEmptyStr,
+  description: "NAMED CONSUMER: plan_jit_mint, which refuses RunnerGroupRestrictionUnobserved (JitMintRefusedRunnerGroupUnrestricted) and is handed that arm by gunbc.runner_microvm_slot_controller mint_attempt_credential today. TRIGGER: an observer of the org's runner groups that constructs RunnerGroupRestrictedToShakedownWorkflow only on reading restricted_to_workflows with selected_workflows naming .github/workflows/microvm-shakedown.yml, and the controller passes its result. SUFFICIENT FOR deleting this row: a JIT registration that received the OS and architecture defaults still cannot take a witnesses.yml, heal.yml or fleet-converge job. Until then every real attempt refuses at the mint." as NonEmptyStr,
 )
 
 fn jit_config_request_for(
@@ -99,7 +111,7 @@ fn plan_jit_mint(
   authority: GitHubCredentialAuthority,
   control_plane: GitHubAppControlPlaneState,
   organization: GitHubOrganizationRef,
-  runner_group_id: JitRunnerGroupId,
+  runner_group: MicrovmRunnerGroupStanding,
   attempt_binding: JitAdmissionAxisStanding
 ) -> JitMintPlan {
   match binding {
@@ -117,9 +129,14 @@ fn plan_jit_mint(
            effect: GenerateOrganizationJitConfig { organization: organization }
          ) {
         if attempt_binding_admits_mint_name(standing: attempt_binding) {
-          JitMintAuthorized {
-            attempt: attempt,
-            request: jit_config_request_for(attempt: attempt, runner_group_id: runner_group_id),
+          match runner_group {
+            RunnerGroupRestrictionUnobserved { group: g } =>
+              JitMintRefusedRunnerGroupUnrestricted { group: g.value }
+            RunnerGroupRestrictedToShakedownWorkflow { group: g } =>
+              JitMintAuthorized {
+                attempt: attempt,
+                request: jit_config_request_for(attempt: attempt, runner_group_id: g),
+              }
           }
         } else {
           JitMintRefusedAttemptUnbound {

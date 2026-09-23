@@ -1,6 +1,7 @@
 module gunbc.runner_microvm_shakedown_workflow
 
 import std.types { String, List, NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.sha2 { sha256_hex }
 import extdeps.languages.yaml.emit { serialize_yaml }
@@ -73,8 +74,11 @@ fn microvm_shakedown_runs_on() -> List<String> {
 // readable from GitHub's record of the job rather than only from the guest. It names the attempt, the
 // runner GitHub says served it, the repository revision and the run -- the join the brief asks a
 // result to bind -- and the digest the guest computed.
+data microvm_shakedown_known_task_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: microvm_shakedown_known_task_script — concat-built foreign-executor (GitHub Actions run:) known-task runner; the payload, the expected digest and the result line are derived from this module, but the comparison and the summary write remain hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the step through orchestration emit without a medium-as-string concat scaffold")
+
 fn microvm_shakedown_known_task_script() -> String {
   join([
+    "# ", dissolution_description(condition: microvm_shakedown_known_task_shell_emit_dissolution_trigger), "\n",
     "set -euo pipefail\n",
     "observed=$(printf '%s' '", microvm_shakedown_known_task_payload as String, "' | sha256sum | cut -d' ' -f1)\n",
     "expected='", microvm_shakedown_known_task_digest(), "'\n",
