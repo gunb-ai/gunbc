@@ -141,10 +141,18 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 //   three ask whether `&&` demands its right operand under a false left. Each answers by writing a
 //   marker file, running the operation under test, and then asking whether the marker survived --
 //   so the verdict rests on an observed effect and not on a reading of the source. The polarity
-//   was taken FROM the measurement: `and_short_circuit_direct_probe` asserts the marker is GONE
-//   after `false && shell.Remove.RecursiveForce(...)`, which is a claim that the right operand ran,
-//   and it holds. Had the substrate short-circuited, that fn would be ExpectedToRefuse and the
-//   disagreement among the five would itself have been the finding.
+//   was taken FROM the measurement, and the measurement has since MOVED, which is why this
+//   paragraph now reads the other way. On 2026-09-02 `and_short_circuit_direct_probe` asserted the
+//   marker was GONE after `false && shell.Remove.RecursiveForce(...)` -- a claim that the right
+//   operand ran -- and it held, because the interpreter demanded both operands while the emitted
+//   Rust did not (gunbc.recurring_failure_mode
+//   realization_arms_diverge_on_whether_the_program_refuses). std.operator_realization
+//   operand_demand now declares that And asks for its right operand only under a true left, and
+//   BOTH realizations read it, so the marker SURVIVES and the two short-circuit probes assert its
+//   survival. The polarity was re-derived from the new measurement, never edited to stay green, and
+//   `a_let_bound_effect_still_runs` is enrolled beside them as the control that the same removal on
+//   the same path does run when it is demanded -- without it a surviving marker would be
+//   indistinguishable from a broken probe. The member count above this paragraph moves with it.
 //
 //   EIGHT MATERIALIZATION-STORE MEMBERS (added 2026-09-11, the provider-spine lane). Their admitted
 //   effect is the evaluation-model probes' effect with one widening named here rather than folded
@@ -857,9 +865,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.eval_model_probe", function: "and_demands_right_even_when_left_false" },
+      identity: WitnessIdentity { module_path: "test.claim.eval_model_probe", function: "and_does_not_demand_right_when_left_false" },
       entry: "dag/test/claim/eval_model_probe_test.dag",
-      function: "and_demands_right_even_when_left_false",
+      function: "and_does_not_demand_right_when_left_false",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -872,6 +880,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.eval_model_probe", function: "and_with_true_left_removes_file" },
       entry: "dag/test/claim/eval_model_probe_test.dag",
       function: "and_with_true_left_removes_file",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.eval_model_probe", function: "a_let_bound_effect_still_runs" },
+      entry: "dag/test/claim/eval_model_probe_test.dag",
+      function: "a_let_bound_effect_still_runs",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -1478,6 +1492,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.spark.v41_source_patch_converge_witness", function: "empty_diff_has_a_real_digest" },
       entry: "dag/test/claim/spark/v41_source_patch_converge_witness_test.dag",
       function: "empty_diff_has_a_real_digest",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.v41_published_row_store_witness", function: "a_reading_of_exactly_the_planned_spans_keys" },
+      entry: "dag/test/claim/spark/v41_published_row_store_witness_test.dag",
+      function: "a_reading_of_exactly_the_planned_spans_keys",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.v41_published_row_store_witness", function: "the_key_moves_with_the_bytes_and_the_table_set" },
+      entry: "dag/test/claim/spark/v41_published_row_store_witness_test.dag",
+      function: "the_key_moves_with_the_bytes_and_the_table_set",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

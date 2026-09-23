@@ -1,7 +1,8 @@
 module test.claim.github_app_manifest_witness
 
-import std.types { NonEmptyStr, String, Bool, List, Map, Secret }
+import std.types { NonEmptyStr, String, Bool, List, Map, Int, Secret }
 import std.upsert_decision {
+  UpsertClassification,
   Converged,
   Absent,
   Drifted,
@@ -16,6 +17,15 @@ import extdeps.uri { Uri, Https, uri_wire, uri_from_wire }
 import std.list { first_duplicate_by_key }
 
 import extdeps.github.github { GitHubUser, Organization }
+import std.page_fold {
+  PageBound,
+  PageObservation,
+  OffsetPage,
+  ContinuationClosed,
+  ContinuationNext,
+  PageFoldSubject,
+  page_fold_run,
+}
 import extdeps.transports.rest {
   RestOk,
   RestStatusRefused,
@@ -24,6 +34,7 @@ import extdeps.transports.rest {
 }
 import extdeps.github.app {
   GitHubAppId,
+  GitHubAppInstallation,
   GitHubAppInstallationId,
   GitHubAppPermission,
   AppAccessRead,
@@ -37,9 +48,12 @@ import extdeps.github.app {
   AppPrivateToOwner,
   app_visibility_wire_bool,
   GitHubWebhookEvent,
-  WebhookInstallation,
   WebhookInstallationRepositories,
   WebhookPush,
+  WebhookCheckRun,
+  MetadataAxis,
+  WorkflowsAxis,
+  IdTokenAxis,
   webhook_event_wire_name,
   webhook_event_from_wire,
   permission_access_wire_name,
@@ -51,6 +65,13 @@ import extdeps.github.app {
   ManifestAdmitted,
   ManifestDuplicatePermission,
   ManifestDuplicateEvent,
+  ManifestAccessNotAdmittedOnAxis,
+  permission_axis_access_verdict,
+  AxisAccessAdmitted,
+  AxisAccessRefusedByAuthority,
+  AxisAccessUnjudged,
+  permission_axis_level_read_obligation,
+  ManifestEventNotSubscribable,
   admit_app_manifest,
   AppManifestRendered,
   AppManifestNotRenderable,
@@ -72,7 +93,9 @@ import extdeps.github.app {
   InstallationHtmlUrlUnreadable,
   installation_from_record,
   SelectionAll,
+  GitHubAppRepositorySelectionMode,
   SelectionSelected,
+  as_observed_permission,
   repository_selection_wire_name,
   GitHubInstallationTokenRequest,
   RepositoryNarrowingOmitted,
@@ -93,7 +116,6 @@ import gunbc.github_app_acquisition {
   AppAcquired,
   census_app_manifest,
   census_app_permissions,
-  census_app_default_events,
   census_app_name,
   AppRecordObserved,
   AppRecordAbsent,
@@ -103,16 +125,12 @@ import gunbc.github_app_acquisition {
   classify_census_app,
   AppAgreesWithManifest,
   AppPermissionDrift,
-  AppEventDrift,
   AppPermissionsUnreadable,
   AppIdentityDrift,
   PermissionsAgree,
   PermissionAxisMissing,
   PermissionAxisWeaker,
   permission_agreement,
-  EventsAgree,
-  EventNotSubscribed,
-  event_agreement,
   ExchangeIssued,
   ExchangeCodeNotLive,
   ExchangeRefused,
@@ -143,8 +161,56 @@ import gunbc.github_app_acquisition {
   reconcile_acquisition_record,
   app_registration_submit_intervention,
   app_registration_capture_intervention,
-  adopted_app_key_supply_intervention,
+  app_key_supply_intervention,
+  app_installation_consent_intervention,
+  AppInstallationInstruction,
+  InstallationInstructionReady,
+  InstallationInstructionUnavailable,
+  census_app_installation_instruction,
+  RegistrationStanding,
+  RegistrationEstablished,
+  RegistrationNotEstablished,
+  registration_standing,
+  InstallationAdmissionDisposition,
+  InstallationAdmissible,
+  census_app_installation_subject,
+  InstallationNotEstablished,
+  InstallationUnreadable,
+  InstallationInsufficient,
+  InstallationAmbiguous,
+  InstallationPopulation,
+  PopulationWalked,
+  PopulationUnreadable,
+  installation_admission_disposition,
+  CustodyStanding,
+  CustodyAtHandoff,
+  CustodyAtHandoffOnly,
+  CustodyNotEstablished,
+  CensusAppAcquisitionStanding,
+  CensusAppAcquired,
+  AcquisitionIncomplete,
+  AcquisitionFactMissing,
+  RegistrationMissing,
+  InstallationConsentMissing,
+  InstallationConsentInsufficient,
+  InstallationReadingAmbiguous,
+  InstallationReadingUnavailable,
+  CustodyMissing,
+  AcquisitionJudgment,
+  AcquisitionFactsHold,
+  AcquisitionFactsMissing,
+  census_app_acquisition_judgment,
+  acquisition_receipt_line,
+  acquisition_missing_line,
+  HandoffValueRead,
+  HandoffValueMissing,
+  ManifestCodeAdmitted,
+  ManifestCodeStateMismatch,
+  ManifestCodeUnavailable,
+  admit_manifest_code,
   census_app_identity,
+  GitHubAppDeclaredIdentity,
+  census_app_registration_target,
 }
 import std.human_intervention { EveryProvision, human_intervention_frequency_eq }
 import gunbc.instruments.github_app_acquire {
@@ -153,12 +219,7 @@ import gunbc.instruments.github_app_acquire {
   census_app_observed_state_path,
   installations_report,
   installations_report_path,
-  HandoffValueRead,
-  HandoffValueMissing,
-  ManifestCodeAdmitted,
-  ManifestCodeStateMismatch,
-  ManifestCodeUnavailable,
-  admit_manifest_code,
+  next_acquisition_step,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -181,10 +242,11 @@ data declared_permission_wire_map: Map<String, String> = {
   "pull_requests": "read",
   "checks": "read",
   "actions": "read",
-  "workflows": "read",
 }
 
-data declared_event_wire_list: List<String> = ["installation", "installation_repositories"]
+// EMPTY BECAUSE THE SUBSCRIPTION IS EMPTY: the installation events GitHub delivers unconditionally
+// are not listed on the public record's events, and the census manifest subscribes to nothing else.
+data declared_event_wire_list: List<String> = []
 
 data census_slug: NonEmptyStr = "gunbc-global-census"
 
@@ -224,7 +286,9 @@ test fn w_manifest_renders_every_declared_permission_at_its_wire_name() -> Bool 
       string_contains(s: d, pattern: "\"default_permissions\": {")
         && string_contains(s: d, pattern: "\"metadata\": \"read\"")
         && string_contains(s: d, pattern: "\"pull_requests\": \"read\"")
-        && string_contains(s: d, pattern: "\"workflows\": \"read\"")
+        && string_contains(s: d, pattern: "\"actions\": \"read\"")
+        && !string_contains(s: d, pattern: "\"workflows\"")
+        && string_contains(s: d, pattern: "\"default_events\": []")
         && !string_contains(s: d, pattern: "\"administration\"")
         && !string_contains(s: d, pattern: "\"write\"")
   }
@@ -236,7 +300,7 @@ test fn w_manifest_renders_hook_events_visibility_and_redirect() -> Bool {
     AppManifestRendered { document: d } =>
       string_contains(s: d, pattern: "\"name\": \"gunbc-global-census\"")
         && string_contains(s: d, pattern: "\"hook_attributes\": {\"url\": \"https://github.com/gunb-ai/gunbc/blob/main/DESIGN.md\", \"active\": false}")
-        && string_contains(s: d, pattern: "\"default_events\": [\"installation\", \"installation_repositories\"]")
+        && string_contains(s: d, pattern: "\"default_events\": []")
         && string_contains(s: d, pattern: "\"public\": true")
         && string_contains(s: d, pattern: "\"redirect_url\": \"https://gunb.ai/github-app-manifest-return\"")
         && !string_contains(s: d, pattern: "\"setup_url\"")
@@ -302,14 +366,104 @@ test fn w_manifest_refuses_a_duplicated_permission_axis() -> Bool {
     ManifestDuplicatePermission { axis: a } => a == ContentsAxis
     ManifestAdmitted { manifest: _ } => false
     ManifestDuplicateEvent { event: _ } => false
+    ManifestAccessNotAdmittedOnAxis { axis: _, access: _ } => false
+    ManifestEventNotSubscribable { event: _ } => false
   }
 }
 
 test fn w_manifest_refuses_a_duplicated_event() -> Bool {
-  match admit_app_manifest(m: manifest_with_events(events: [WebhookInstallation, WebhookPush, WebhookInstallation])) {
-    ManifestDuplicateEvent { event: e } => e == WebhookInstallation
+  match admit_app_manifest(m: manifest_with_events(events: [WebhookPush, WebhookCheckRun, WebhookPush])) {
+    ManifestDuplicateEvent { event: e } => e == WebhookPush
     ManifestAdmitted { manifest: _ } => false
     ManifestDuplicatePermission { axis: _ } => false
+    ManifestAccessNotAdmittedOnAxis { axis: _, access: _ } => false
+    ManifestEventNotSubscribable { event: _ } => false
+  }
+}
+
+// THE TWO REFUSALS GITHUB RETURNED ON THE FIRST LIVE SUBMISSION, reproduced over the pure fold so
+// the operator is never handed that form again. Each is the exact pair the census manifest carried.
+test fn w_manifest_refuses_read_on_the_write_only_workflows_axis() -> Bool {
+  match admit_app_manifest(m: manifest_with_permissions(perms: [
+    GitHubAppPermission { name: MetadataAxis, access: AppAccessRead },
+    GitHubAppPermission { name: WorkflowsAxis, access: AppAccessRead },
+  ])) {
+    ManifestAccessNotAdmittedOnAxis { axis: a, access: ac } => a == WorkflowsAxis && ac == AppAccessRead
+    ManifestAdmitted { manifest: _ } => false
+    ManifestDuplicatePermission { axis: _ } => false
+    ManifestDuplicateEvent { event: _ } => false
+    ManifestEventNotSubscribable { event: _ } => false
+  }
+}
+
+test fn w_manifest_admits_write_on_workflows_and_refuses_write_on_metadata() -> Bool {
+  let write_ok = match admit_app_manifest(m: manifest_with_permissions(perms: [
+    GitHubAppPermission { name: WorkflowsAxis, access: AppAccessWrite },
+  ])) {
+    ManifestAdmitted { manifest: _ } => true
+    ManifestDuplicatePermission { axis: _ } => false
+    ManifestDuplicateEvent { event: _ } => false
+    ManifestAccessNotAdmittedOnAxis { axis: _, access: _ } => false
+    ManifestEventNotSubscribable { event: _ } => false
+  }
+  let metadata_write_refused = match admit_app_manifest(m: manifest_with_permissions(perms: [
+    GitHubAppPermission { name: MetadataAxis, access: AppAccessWrite },
+  ])) {
+    ManifestAccessNotAdmittedOnAxis { axis: a, access: ac } => a == MetadataAxis && ac == AppAccessWrite
+    ManifestAdmitted { manifest: _ } => false
+    ManifestDuplicatePermission { axis: _ } => false
+    ManifestDuplicateEvent { event: _ } => false
+    ManifestEventNotSubscribable { event: _ } => false
+  }
+  write_ok && metadata_write_refused
+}
+
+// THE THIRD VALUE IS THE POINT: an axis this module never read is UNJUDGED, not admitted, and an
+// unjudged pair reaches GitHub rather than being refused here. The three arms are discriminated on
+// three different axes -- workflows:read is a grounded refusal, workflows:write a grounded
+// admission, and id_token (never read; GitHub publishes it as write-only, which this module does
+// NOT assert) is unjudged -- so collapsing any two would turn one of these reds green.
+test fn w_an_unread_axis_is_unjudged_rather_than_admitted() -> Bool {
+  let grounded_refusal = match permission_axis_access_verdict(axis: WorkflowsAxis, access: AppAccessRead) {
+    AxisAccessRefusedByAuthority { authority: _ } => true
+    AxisAccessAdmitted { authority: _ } => false
+    AxisAccessUnjudged { read_obligation: _ } => false
+  }
+  let grounded_admission = match permission_axis_access_verdict(axis: WorkflowsAxis, access: AppAccessWrite) {
+    AxisAccessAdmitted { authority: _ } => true
+    AxisAccessRefusedByAuthority { authority: _ } => false
+    AxisAccessUnjudged { read_obligation: _ } => false
+  }
+  let unread_is_unjudged = match permission_axis_access_verdict(axis: IdTokenAxis, access: AppAccessRead) {
+    AxisAccessUnjudged { read_obligation: o } => (o as String) == (permission_axis_level_read_obligation as String)
+    AxisAccessAdmitted { authority: _ } => false
+    AxisAccessRefusedByAuthority { authority: _ } => false
+  }
+  grounded_refusal && grounded_admission && unread_is_unjudged
+}
+
+// AND THE UNJUDGED ARM DOES NOT REFUSE AT THE MANIFEST BOUNDARY. A manifest naming an unread axis
+// is admitted here and judged upstream, which is the same disposition the events side gives
+// installation_target and meta.
+test fn w_a_manifest_naming_an_unread_axis_is_admitted_here() -> Bool {
+  match admit_app_manifest(m: manifest_with_permissions(perms: [
+    GitHubAppPermission { name: IdTokenAxis, access: AppAccessRead },
+  ])) {
+    ManifestAdmitted { manifest: _ } => true
+    ManifestDuplicatePermission { axis: _ } => false
+    ManifestDuplicateEvent { event: _ } => false
+    ManifestAccessNotAdmittedOnAxis { axis: _, access: _ } => false
+    ManifestEventNotSubscribable { event: _ } => false
+  }
+}
+
+test fn w_manifest_refuses_an_installation_event_as_a_subscription() -> Bool {
+  match admit_app_manifest(m: manifest_with_events(events: [WebhookPush, WebhookInstallationRepositories])) {
+    ManifestEventNotSubscribable { event: e } => e == WebhookInstallationRepositories
+    ManifestAdmitted { manifest: _ } => false
+    ManifestDuplicatePermission { axis: _ } => false
+    ManifestDuplicateEvent { event: _ } => false
+    ManifestAccessNotAdmittedOnAxis { axis: _, access: _ } => false
   }
 }
 
@@ -381,13 +535,736 @@ test fn w_registration_url_for_a_user_is_a_different_path() -> Bool {
   }
 }
 
-test fn w_registration_instruction_carries_the_url_and_the_manifest() -> Bool {
+// A SUPPLIED INSTALLATION. Every field the admission reads -- app id, account, repository
+// selection, observed permissions -- is an input under test in the claims below, so it is constructed
+// at this boundary rather than decoded from a wire record; the decoder has its own claims beside it.
+// The default is the USABLE installation: the census account, a selected-repositories consent and
+// exactly the manifest's permission set. An earlier fixture carried `permissions: []` and still
+// contributed to CensusAppAcquired, which is the defect these claims now go red on. The paired
+// inhabitance claim for the real route is the executing entry point
+// gunbc.instruments.github_app_acquire census_app_installations_receipt, which performs
+// GET /app/installations for real and decodes what comes back.
+fn installation_of(
+  app_id: Int,
+  installation_id: Int,
+  account: GitHubUser,
+  selection: GitHubAppRepositorySelectionMode,
+  permissions: List<ObservedGitHubPermission>,
+) -> GitHubAppInstallation {
+  GitHubAppInstallation {
+    installation_id: GitHubAppInstallationId { value: installation_id },
+    app_id: GitHubAppId { value: app_id },
+    app_slug: "gunbc-global-census" as NonEmptyStr,
+    html_url: Uri { scheme: Https, locator: "github.com/settings/installations/991" as NonEmptyStr },
+    account: account,
+    repository_selection: selection,
+    permissions: permissions,
+    subscribed_events: ["installation" as NonEmptyStr, "installation_repositories" as NonEmptyStr],
+  }
+}
+
+fn usable_installation(app_id: Int, installation_id: Int) -> GitHubAppInstallation {
+  installation_of(
+    app_id: app_id,
+    installation_id: installation_id,
+    account: probe_owner,
+    selection: SelectionSelected,
+    permissions: map(census_app_permissions, p => as_observed_permission(p: p)),
+  )
+}
+
+data foreign_owner: GitHubUser = GitHubUser { login: "someone-else", id: 2, type: Organization }
+
+data census_registration: RegistrationStanding = RegistrationEstablished {
+  app_id: GitHubAppId { value: 7 },
+  slug: "gunbc-global-census" as NonEmptyStr,
+}
+
+data installation_walk_subject: PageFoldSubject = PageFoldSubject { operation: "GET /app/installations" as NonEmptyStr }
+
+// THE POPULATION IS WALKED BY THE REAL PAGE FOLD, not declared closed by the fixture: the pages below
+// go through std.page_fold page_fold_run, so "closed" means the last page carried the authority's
+// ContinuationClosed and "incomplete" means the fold itself refused.
+fn walked(pages: List<PageObservation<GitHubAppInstallation>>) -> InstallationPopulation {
+  PopulationWalked {
+    outcome: page_fold_run(
+      subject: installation_walk_subject,
+      bound: PageBound { max_pages: 10 },
+      first: OffsetPage { page: 1 },
+      pages: pages,
+    )
+  }
+}
+
+fn closed_population(installations: List<GitHubAppInstallation>) -> InstallationPopulation {
+  walked(pages: [PageObservation { items: installations, continuation: ContinuationClosed }])
+}
+
+// THE ORDERING LAW HAS TO BE RED OVER THE PURE JUDGMENT, NOT ONLY AT THE MINT (review 69684). The
+// judgment used to bind InstallationAdmissible { installation: i } -- a strict subset of the
+// variant's declared fields, so `subject` became an implicit wildcard, which is the rostered class
+// gunbc.recurring_failure_mode a_pattern_binding_a_subset_of_fields_is_an_implicit_wildcard. The
+// consequence was not stylistic: census_app_acquisition_judgment returned AcquisitionFactsHold for
+// an admissible installation whose subject named a DIFFERENT app than the registration, and the
+// disagreement was caught afterwards at the mint site. So the ordering law lived in two functions
+// and the half that was witnessable was not the whole law. The judgment now carries it, and this is
+// the claim that could not have existed before: it goes red over the PURE fold, with no seal and no
+// live read anywhere in it.
+test fn w_an_installation_admitted_for_another_app_does_not_hold_the_facts() -> Bool {
+  let foreign = InstallationAdmissible {
+    installation: usable_installation(app_id: 7, installation_id: 991),
+    subject: census_app_installation_subject(app_id: GitHubAppId { value: 8 }),
+  }
+  match census_app_acquisition_judgment(
+    registration: census_registration,
+    installation: foreign,
+    custody: CustodyAtHandoffOnly { custody: CustodyAtHandoff { path: ".gunbc/k.pem", destination: census_app_private_key_custody } },
+  ) {
+    AcquisitionFactsHold { app_id: _, slug: _, installation: _, key_custody: _ } => false
+    AcquisitionFactsMissing { missing: m } =>
+      match m {
+        InstallationReadingUnavailable { reason: r } =>
+          string_contains(s: r as String, pattern: "app id 8")
+            && string_contains(s: r as String, pattern: "registration names app id 7")
+        _ => false
+      }
+  }
+}
+
+fn admit(installations: List<GitHubAppInstallation>) -> InstallationAdmissionDisposition {
+  installation_admission_disposition(registration: census_registration, population: closed_population(installations: installations))
+}
+
+// AN ADMISSIBLE DISPOSITION, reached through the pure admission over a closed walk. It is a judgment,
+// not the sealed admission: only the live producer mints that, so these claims exercise the ordering
+// of the four-fact judgment and never the receipt.
+fn admitted_installation(installation_id: Int) -> InstallationAdmissionDisposition {
+  admit(installations: [usable_installation(app_id: 7, installation_id: installation_id)])
+}
+
+// ----- the registration artifact: the defect this lane existed to remove -----
+
+// THE CLAIM THAT USED TO STAND HERE IS THE SPECIMEN, NOT A CASUALTY. It asserted that the instruction
+// carried the registration URL and the manifest document, and it was green while the step it
+// certified could not be run: the instruction told an operator to paste the manifest into the
+// create page's "manifest field", and that page has no such field. Carrying the URL and carrying the
+// manifest were both true and neither was the property that mattered, which is why the assertion
+// below is about the SHAPE OF THE SUBMISSION rather than about what text appears in an instruction.
+//
+// THE DISCRIMINATION. The manifest protocol is a POST to the registration endpoint carrying one form
+// parameter named `manifest`; a GET of the same URL renders GitHub's ordinary create form and ignores
+// manifests entirely. So a document that is not a form, or a form that is not a POST, or a POST whose
+// field is named anything else, is the old defect in a new spelling -- and each of those is what this
+// claim goes red on. The positive control is the accepted one beside it: the real declared manifest,
+// through the real entry-point fold, produces a document carrying all four.
+test fn w_the_registration_artifact_is_a_form_that_posts_the_manifest_parameter() -> Bool {
   match census_app_registration_instruction(state: "nonce-1" as NonEmptyStr) {
     RegistrationInstructionUnavailable { reason: _ } => false
-    RegistrationInstructionReady { intervention: i } =>
-      string_contains(s: i.instruction as String, pattern: "?state=nonce-1")
-        && string_contains(s: i.instruction as String, pattern: "\"default_permissions\": {")
+    RegistrationInstructionReady { intervention: _, artifact_path: _, artifact_html: html } =>
+      string_contains(s: html, pattern: "<form")
+        && string_contains(s: html, pattern: "method=\"post\"")
+        && string_contains(s: html, pattern: "action=\"https://github.com/organizations/gunb-ai/settings/apps/new?state=nonce-1\"")
+        && string_contains(s: html, pattern: "name=\"manifest\"")
+        && string_contains(s: html, pattern: "type=\"submit\"")
+  }
+}
+
+// THE MANIFEST IS JSON AND THE FIELD IS AN HTML ATTRIBUTE, so every quote in it must be escaped or the
+// attribute closes at the first key and the browser POSTs a TRUNCATED manifest -- an App registered
+// with permissions nobody declared, from a page that looked fine. The escape is std.markup's, reached
+// through the HTML serializer; this pins that the rendering actually goes through it rather than
+// concatenating the document.
+test fn w_the_manifest_is_attribute_escaped_into_the_form_field() -> Bool {
+  match census_app_registration_instruction(state: "nonce-1" as NonEmptyStr) {
+    RegistrationInstructionUnavailable { reason: _ } => false
+    RegistrationInstructionReady { intervention: _, artifact_path: _, artifact_html: html } =>
+      string_contains(s: html, pattern: "value=\"{&quot;name&quot;: &quot;gunbc-global-census&quot;")
+        && !string_contains(s: html, pattern: "value=\"{\"")
+        && string_contains(s: html, pattern: "&quot;default_permissions&quot;")
+  }
+}
+
+// THE INSTRUCTION NAMES THE ARTIFACT THE SAME FOLD PRODUCED, and it names it by the path the acquire
+// entry point writes. The two halves of RegistrationInstructionReady are produced together, so an
+// operator can never be handed a path nothing wrote -- and the old wording is asserted GONE, because
+// a reader who follows "paste it into the manifest field" loses an hour finding out there is none.
+test fn w_the_registration_instruction_names_the_artifact_and_not_a_field_that_does_not_exist() -> Bool {
+  match census_app_registration_instruction(state: "nonce-1" as NonEmptyStr) {
+    RegistrationInstructionUnavailable { reason: _ } => false
+    RegistrationInstructionReady { intervention: i, artifact_path: path, artifact_html: _ } =>
+      (path == ".gunbc/github-app-gunbc-global-census-register.html")
+        && string_contains(s: i.instruction as String, pattern: path)
+        && string_contains(s: i.instruction as String, pattern: "DO NOT open the registration URL directly")
+        && !string_contains(s: i.instruction as String, pattern: "paste the manifest")
+        && !string_contains(s: i.instruction as String, pattern: "manifest field")
         && ((i.subject as String) == (census_app_name as String))
+  }
+}
+
+// THE SUBMISSION DOCUMENT'S PATH IS A WRITE TARGET, SO AN UNSAFE NAME MUST REFUSE RATHER THAN WRITE.
+// An earlier cut of this PR built that path with a bare custody_handoff_path call, outside the guard
+// the same module applies to the other four per-App files -- so a name carrying a separator would
+// have escaped the git-ignored handoff directory under a real Filesystem.Write, with the modeled
+// refusal for exactly that state one function away (review 69495). The path now comes only from
+// custody_handoff_addressing, which means the guard cannot be bypassed rather than merely being
+// applied here. Both legs run: the intervention text refuses for an unsafe name, and it names the
+// addressed path for a safe one.
+test fn w_an_unsafe_app_name_refuses_the_submission_artifact_instead_of_writing_it() -> Bool {
+  let unsafe_name = "../../etc/gunbc" as NonEmptyStr
+  let refused = match custody_handoff_addressing(name: unsafe_name) {
+    CustodyAddressed { paths: _ } => false
+    CustodyNameNotPathSafe { name: n } => (n as String) == (unsafe_name as String)
+  }
+  let step_refuses = string_contains(
+    s: app_registration_submit_intervention(
+      identity: GitHubAppDeclaredIdentity { name: unsafe_name, target: census_app_registration_target },
+      addressing: custody_handoff_addressing(name: unsafe_name),
+    ).instruction as String,
+    pattern: "NO SUBMISSION DOCUMENT WAS WRITTEN",
+  )
+  let safe_step_names_the_addressed_path = string_contains(
+    s: app_registration_submit_intervention(
+      identity: census_app_identity,
+      addressing: custody_handoff_addressing(name: census_app_identity.name),
+    ).instruction as String,
+    pattern: ".gunbc/github-app-gunbc-global-census-register.html",
+  )
+  refused && step_refuses && safe_step_names_the_addressed_path
+}
+
+// AND THE REGISTRATION FORM IS ONE OF THE ADDRESSED PATHS, not a fifth one built beside them. This is
+// the structural half of the claim above: if a future edit moves it back out of the addressing, the
+// guard stops covering it and this goes red.
+test fn w_the_registration_form_is_one_of_the_addressed_handoff_paths() -> Bool {
+  match custody_handoff_addressing(name: census_app_identity.name) {
+    CustodyNameNotPathSafe { name: _ } => false
+    CustodyAddressed { paths: p } =>
+      (p.registration_form == ".gunbc/github-app-gunbc-global-census-register.html")
+        && starts_with(p.registration_form, prefix: concat(census_app_custody_handoff_directory, "/"))
+        && (p.registration_form != p.pem)
+  }
+}
+
+// ----- the four facts, and the implications between them that must not exist -----
+
+// FACT 2 IS NOT ADDRESSABLE FROM FACT 1'S DECLARATION. The install page is keyed on the slug, and an
+// App that was never registered has none, so the step refuses rather than assembling a URL out of the
+// declared name -- which would send an operator to a 404 and tell them nothing about which fact is
+// missing.
+test fn w_the_installation_step_refuses_before_registration_and_addresses_the_slug_after() -> Bool {
+  let before = match census_app_installation_instruction(record: AppNeverAcquired) {
+    InstallationInstructionReady { intervention: _, install_url: _ } => false
+    InstallationInstructionUnavailable { reason: r } =>
+      string_contains(s: r as String, pattern: "not registered")
+  }
+  let after = match census_app_installation_instruction(
+    record: AppAcquired { app_id: GitHubAppId { value: 7 }, slug: "gunbc-global-census" as NonEmptyStr }
+  ) {
+    InstallationInstructionUnavailable { reason: _ } => false
+    InstallationInstructionReady { intervention: i, install_url: url } =>
+      (url == "https://github.com/apps/gunbc-global-census/installations/new")
+        && string_contains(s: i.instruction as String, pattern: "is NOT the registration step")
+  }
+  before && after
+}
+
+// THE DISCRIMINATING RED ON THE ACCEPTANCE PATH. A later fact's success must never mint an earlier
+// one. Here installation and custody are BOTH established and registration is not, which is exactly
+// the reading a fold assembled out of whichever observations succeeded would report as acquired; the
+// only admissible answer is that REGISTRATION is what is missing. Inverting the fold's order, or
+// letting any arm construct a receipt without a registration, turns this red.
+test fn w_an_installation_and_a_key_do_not_establish_a_registration() -> Bool {
+  match census_app_acquisition_judgment(
+    registration: RegistrationNotEstablished { reason: "the public read found no App" as NonEmptyStr },
+    installation: admitted_installation(installation_id: 991),
+    custody: CustodyAtHandoffOnly { custody: CustodyAtHandoff { path: ".gunbc/k.pem", destination: census_app_private_key_custody } },
+  ) {
+    AcquisitionFactsHold { app_id: _, slug: _, installation: _, key_custody: _ } => false
+    AcquisitionFactsMissing { missing: m } =>
+      match m {
+        RegistrationMissing { reason: r } => string_contains(s: r as String, pattern: "found no App")
+        InstallationConsentMissing { reason: _ } => false
+        InstallationConsentInsufficient { reason: _ } => false
+        InstallationReadingAmbiguous { reason: _ } => false
+        InstallationReadingUnavailable { reason: _ } => false
+        CustodyMissing { reason: _ } => false
+      }
+  }
+}
+
+// AN INSTALLATION OF A DIFFERENT APP IS A TRUE FACT ABOUT A DIFFERENT SUBJECT. The installations read
+// authenticates AS an App, so a list arriving under another App's JWT is real and irrelevant; taking
+// it would let one App's consent install another's.
+test fn w_an_installation_of_another_app_does_not_install_this_one() -> Bool {
+  let foreign_refuses = match admit(installations: [usable_installation(app_id: 8, installation_id: 991)]) {
+    InstallationNotEstablished { reason: r } => string_contains(s: r as String, pattern: "0 of this App")
+    InstallationAdmissible { installation: _ } => false
+    InstallationInsufficient { reason: _ } => false
+    InstallationAmbiguous { reason: _ } => false
+    InstallationUnreadable { reason: _ } => false
+  }
+  let empty_says_consent_is_missing = match admit(installations: []) {
+    InstallationNotEstablished { reason: r } => string_contains(s: r as String, pattern: "grants it access to nothing")
+    InstallationAdmissible { installation: _ } => false
+    InstallationInsufficient { reason: _ } => false
+    InstallationAmbiguous { reason: _ } => false
+    InstallationUnreadable { reason: _ } => false
+  }
+  foreign_refuses && empty_says_consent_is_missing
+}
+
+// THE JUDGMENT RENDERED THROUGH THE SAME TWO LINE-BUILDERS THE RECEIPT USES, so a claim over the pure
+// judgment pins the text the receipt file would carry without needing a sealed admission.
+fn judgment_line(j: AcquisitionJudgment) -> String {
+  match j {
+    AcquisitionFactsHold { app_id: id, slug: s, installation: i, key_custody: c } =>
+      acquisition_receipt_line(app_id: id, slug: s, installation: i, key_custody: c)
+    AcquisitionFactsMissing { missing: m } => acquisition_missing_line(missing: m)
+  }
+}
+
+// AN AUTHORED POPULATION REACHES THE JUDGMENT AND NOTHING PAST IT. This authors the strongest
+// evidence a caller can write -- a closed population, walked by the real page fold, holding one
+// exactly usable installation -- and the pure judgment admits it, as it should: the judgment is
+// ordinary so that this claim can exist. What it can no longer do is hand that judgment, or any
+// standing, to the receipt's mint: census_app_acquisition_standing takes the acquisition RECORD and
+// performs the registration read, the installation walk and the custody read itself, so the
+// refusal is at resolution rather than at evaluation and cannot be enrolled as a claim in this
+// module. It is enrolled instead as an EXECUTED RED in
+// test.claim.census_app_acquisition_refusal_probe_witness, which hands the compiler
+// test.probe.census_app_acquisition_forged_probe -- a source that spells exactly the old route,
+// three authored standings into the mint beside an admissible disposition, and the receipt literal
+// -- and requires each refused by class at its subject. This claim is that probe's positive
+// control: the same authored population, admitted where admission is a judgment and refused where
+// it would become a receipt.
+test fn w_an_authored_closed_population_cannot_mint_the_acquisition_receipt() -> Bool {
+  let custody = CustodyAtHandoffOnly { custody: CustodyAtHandoff { path: ".gunbc/k.pem", destination: census_app_private_key_custody } }
+  let authored = admit(installations: [usable_installation(app_id: 7, installation_id: 991)])
+  match census_app_acquisition_judgment(
+    registration: census_registration,
+    installation: authored,
+    custody: custody,
+  ) {
+    AcquisitionFactsHold { app_id: _, slug: _, installation: i, key_custody: _ } => i.installation_id.value == 991
+    AcquisitionFactsMissing { missing: _ } => false
+  }
+}
+
+// ----- the admission's five controls: the subject is complete, the population exhausted -----
+
+// CONTROL 1 -- SAME APP, FOREIGN ACCOUNT. The App id matches and every other fact is usable; only
+// the account differs. Filtering by app id alone admits it, which is the defect; removing the
+// account term from admit_census_installation turns this red.
+test fn w_an_installation_on_a_foreign_account_is_refused() -> Bool {
+  match admit(installations: [
+    installation_of(
+      app_id: 7,
+      installation_id: 992,
+      account: foreign_owner,
+      selection: SelectionSelected,
+      permissions: map(census_app_permissions, p => as_observed_permission(p: p)),
+    )
+  ]) {
+    InstallationNotEstablished { reason: r } =>
+      string_contains(s: r as String, pattern: "1 of this App) holds none on account gunb-ai")
+    InstallationAdmissible { installation: _ } => false
+    InstallationInsufficient { reason: _ } => false
+    InstallationAmbiguous { reason: _ } => false
+    InstallationUnreadable { reason: _ } => false
+  }
+}
+
+// CONTROL 2 -- SAME APP, INSUFFICIENT PERMISSION. The census account's installation lacks one axis
+// the manifest declares (contents), and a second one holds every axis but was consented over ALL
+// repositories rather than the selection the consent step asked for. Both are refused as
+// insufficient -- not as absent, because the remedy is widening an existing consent, not installing.
+// A write grant where read is declared is at least as strong and is admitted, so the check is
+// directional rather than equality.
+test fn w_an_installation_granting_less_than_the_manifest_is_refused() -> Bool {
+  let lacking = map(
+    filter(census_app_permissions, p => p.name != ContentsAxis),
+    p => as_observed_permission(p: p),
+  )
+  let missing_axis = match admit(installations: [
+    installation_of(app_id: 7, installation_id: 993, account: probe_owner, selection: SelectionSelected, permissions: lacking)
+  ]) {
+    InstallationInsufficient { reason: r } => string_contains(s: r as String, pattern: "does not hold contents:read")
+    InstallationAdmissible { installation: _ } => false
+    InstallationNotEstablished { reason: _ } => false
+    InstallationAmbiguous { reason: _ } => false
+    InstallationUnreadable { reason: _ } => false
+  }
+  let wrong_selection = match admit(installations: [
+    installation_of(
+      app_id: 7,
+      installation_id: 994,
+      account: probe_owner,
+      selection: SelectionAll,
+      permissions: map(census_app_permissions, p => as_observed_permission(p: p)),
+    )
+  ]) {
+    InstallationInsufficient { reason: r } => string_contains(s: r as String, pattern: "repository selection all")
+    InstallationAdmissible { installation: _ } => false
+    InstallationNotEstablished { reason: _ } => false
+    InstallationAmbiguous { reason: _ } => false
+    InstallationUnreadable { reason: _ } => false
+  }
+  let stronger_is_admitted = match admit(installations: [
+    installation_of(
+      app_id: 7,
+      installation_id: 995,
+      account: probe_owner,
+      selection: SelectionSelected,
+      permissions: concat(
+        [ObservedGitHubPermission { name: ObservedGitHubPermissionName { wire_name: "contents" }, access: AppAccessWrite }],
+        map(filter(census_app_permissions, p => p.name != ContentsAxis), p => as_observed_permission(p: p)),
+      ),
+    )
+  ]) {
+    InstallationAdmissible { installation: a } => a.installation_id.value == 995
+    InstallationNotEstablished { reason: _ } => false
+    InstallationInsufficient { reason: _ } => false
+    InstallationAmbiguous { reason: _ } => false
+    InstallationUnreadable { reason: _ } => false
+  }
+  missing_axis && wrong_selection && stronger_is_admitted
+}
+
+// CONTROL 3 -- TWO APP-ID MATCHES. Two installations of this App on the census account contradict
+// upstream (one installation per App per account) and neither is admitted; taking the first is the
+// defect. Beside it, two app-id matches on DIFFERENT accounts are not ambiguous at the subject's
+// grain: the complete subject picks the census account's one regardless of listing order.
+test fn w_two_matches_of_the_app_are_ambiguous_unless_the_subject_separates_them() -> Bool {
+  let doubled = match admit(installations: [
+    usable_installation(app_id: 7, installation_id: 996),
+    usable_installation(app_id: 7, installation_id: 997),
+  ]) {
+    InstallationAmbiguous { reason: r } => string_contains(s: r as String, pattern: "holds 2 installations of app id 7")
+    InstallationAdmissible { installation: _ } => false
+    InstallationNotEstablished { reason: _ } => false
+    InstallationInsufficient { reason: _ } => false
+    InstallationUnreadable { reason: _ } => false
+  }
+  let separated = match admit(installations: [
+    installation_of(
+      app_id: 7,
+      installation_id: 998,
+      account: foreign_owner,
+      selection: SelectionSelected,
+      permissions: map(census_app_permissions, p => as_observed_permission(p: p)),
+    ),
+    usable_installation(app_id: 7, installation_id: 999),
+  ]) {
+    InstallationAdmissible { installation: a } => a.installation_id.value == 999
+    InstallationNotEstablished { reason: _ } => false
+    InstallationInsufficient { reason: _ } => false
+    InstallationAmbiguous { reason: _ } => false
+    InstallationUnreadable { reason: _ } => false
+  }
+  doubled && separated
+}
+
+// CONTROL 4 -- AN INCOMPLETE PAGE WALK IS UNREADABLE, NOT ABSENT. Page one says another page exists
+// and the sequence ends there; the page fold refuses, and the intended installation may be on the
+// page nobody read. The admission reports it UNREADABLE, and the distinction survives into the
+// prescription: the operator is not sent to the install page. The same installation behind a walk
+// that the authority closed on page two is admitted -- so the refusal is about the walk, not the
+// installation. Reading an unclosed walk's items as the population turns the first leg red.
+test fn w_an_incomplete_installation_walk_is_unreadable_and_never_absent() -> Bool {
+  let truncated = installation_admission_disposition(
+    registration: census_registration,
+    population: walked(pages: [
+      PageObservation {
+        items: [usable_installation(app_id: 8, installation_id: 900)],
+        continuation: ContinuationNext { cursor: OffsetPage { page: 2 } },
+      }
+    ]),
+  )
+  let unreadable = match truncated {
+    InstallationUnreadable { reason: r } => string_contains(s: r as String, pattern: "not read to exhaustion")
+    InstallationNotEstablished { reason: _ } => false
+    InstallationAdmissible { installation: _ } => false
+    InstallationInsufficient { reason: _ } => false
+    InstallationAmbiguous { reason: _ } => false
+  }
+  let prescribed = match census_app_acquisition_judgment(
+    registration: census_registration,
+    installation: truncated,
+    custody: CustodyAtHandoffOnly { custody: CustodyAtHandoff { path: ".gunbc/k.pem", destination: census_app_private_key_custody } },
+  ) {
+    AcquisitionFactsHold { app_id: _, slug: _, installation: _, key_custody: _ } => false
+    AcquisitionFactsMissing { missing: m } => {
+      let step = next_acquisition_step(
+        record: AppAcquired { app_id: GitHubAppId { value: 7 }, slug: "gunbc-global-census" as NonEmptyStr },
+        missing: m,
+      )
+      !string_contains(s: step, pattern: "installations/new") && !string_contains(s: step, pattern: "choose the repositories")
+    }
+  }
+  let closed_later = match installation_admission_disposition(
+    registration: census_registration,
+    population: walked(pages: [
+      PageObservation {
+        items: [usable_installation(app_id: 8, installation_id: 900)],
+        continuation: ContinuationNext { cursor: OffsetPage { page: 2 } },
+      },
+      PageObservation { items: [usable_installation(app_id: 7, installation_id: 991)], continuation: ContinuationClosed },
+    ]),
+  ) {
+    InstallationAdmissible { installation: a } => a.installation_id.value == 991
+    InstallationNotEstablished { reason: _ } => false
+    InstallationInsufficient { reason: _ } => false
+    InstallationAmbiguous { reason: _ } => false
+    InstallationUnreadable { reason: _ } => false
+  }
+  unreadable && prescribed && closed_later
+}
+
+// CONTROL 5 -- ONE EXACT USABLE INSTALLATION IS ADMITTED, and the receipt carries THAT installation:
+// its id and its account, beside an unrelated App's installation in the same listing.
+test fn w_one_exact_usable_installation_is_admitted_into_the_receipt() -> Bool {
+  let standing = census_app_acquisition_judgment(
+    registration: census_registration,
+    installation: admit(installations: [
+      usable_installation(app_id: 8, installation_id: 990),
+      usable_installation(app_id: 7, installation_id: 991),
+    ]),
+    custody: CustodyAtHandoffOnly { custody: CustodyAtHandoff { path: ".gunbc/k.pem", destination: census_app_private_key_custody } },
+  )
+  let line = judgment_line(j: standing)
+  match standing {
+    AcquisitionFactsMissing { missing: _ } => false
+    AcquisitionFactsHold { app_id: app_id, slug: slug, installation: inst, key_custody: kc } =>
+      (inst.installation_id.value == 991)
+        && (inst.account.login == "gunb-ai")
+        && string_contains(s: line, pattern: "installation_id=991 account=gunb-ai")
+  }
+}
+
+// THE TWO NEW MISSING-FACT ARMS PRESCRIBE NEITHER A NEW INSTALL NOR A CREDENTIAL. An insufficient
+// installation is widened on its own settings page; an ambiguous reading is re-read. Sending either
+// to installations/new would ask for a second installation GitHub will not create.
+test fn w_an_insufficient_or_ambiguous_installation_prescribes_neither_a_new_install_nor_a_credential() -> Bool {
+  let record = AppAcquired { app_id: GitHubAppId { value: 7 }, slug: "gunbc-global-census" as NonEmptyStr }
+  let widen = next_acquisition_step(record: record, missing: InstallationConsentInsufficient { reason: "lacks contents:read" as NonEmptyStr })
+  let reread = next_acquisition_step(record: record, missing: InstallationReadingAmbiguous { reason: "two installations" as NonEmptyStr })
+  string_contains(s: widen, pattern: "approve every permission")
+    && !string_contains(s: widen, pattern: "installations/new")
+    && !string_contains(s: widen, pattern: "GITHUB_APP_JWT")
+    && string_contains(s: reread, pattern: "re-run this receipt")
+    && !string_contains(s: reread, pattern: "installations/new")
+}
+
+// A LIST WE COULD NOT READ IS NOT AN EMPTY LIST. "The App has no installation" prescribes going to an
+// install page; "the JWT was stale" prescribes minting one. Collapsing them would send an operator to
+// re-consent an installation that already exists.
+test fn w_an_unreadable_installation_list_is_not_an_absent_installation() -> Bool {
+  match census_app_acquisition_judgment(
+    registration: RegistrationEstablished { app_id: GitHubAppId { value: 7 }, slug: "gunbc-global-census" as NonEmptyStr },
+    installation: InstallationUnreadable { reason: "GET /app/installations refused with status 401" as NonEmptyStr },
+    custody: CustodyAtHandoffOnly { custody: CustodyAtHandoff { path: ".gunbc/k.pem", destination: census_app_private_key_custody } },
+  ) {
+    AcquisitionFactsHold { app_id: _, slug: _, installation: _, key_custody: _ } => false
+    AcquisitionFactsMissing { missing: m } =>
+      match m {
+        InstallationReadingUnavailable { reason: r } =>
+          string_contains(s: r as String, pattern: "401")
+            && !string_contains(s: r as String, pattern: "grants it access to nothing")
+        InstallationConsentMissing { reason: _ } => false
+        InstallationConsentInsufficient { reason: _ } => false
+        InstallationReadingAmbiguous { reason: _ } => false
+        RegistrationMissing { reason: _ } => false
+        CustodyMissing { reason: _ } => false
+      }
+  }
+}
+
+// THE PRESCRIPTION IS WHERE THE DISTINCTION HAS TO LAND, AND THE CLAIM ABOVE DID NOT REACH IT. That
+// one asserts the REASON keeps unreadable apart from empty, and it was green while
+// next_acquisition_step matched a single collapsed arm, discarded the reason, and told the operator
+// to go grant a consent on a stale-JWT 401 -- a state in which the App may ALREADY be installed
+// (review 69499). A wall that does not execute over the thing it names is not a wall, so this one
+// executes over the PRESCRIPTION.
+//
+// THE DISCRIMINATION IS TWO-WAY AND BOTH LEGS MATTER. The unreadable arm must send the operator to
+// the credential and must NOT send them to the install page; the consent arm must do the opposite.
+// Asserting only the first would pass a prescription that named both acts at once.
+test fn w_an_unreadable_installation_prescribes_the_credential_and_never_the_consent() -> Bool {
+  let record = AppAcquired { app_id: GitHubAppId { value: 7 }, slug: "gunbc-global-census" as NonEmptyStr }
+  let unreadable_step = next_acquisition_step(
+    record: record,
+    missing: InstallationReadingUnavailable { reason: "GET /app/installations refused with status 401" as NonEmptyStr },
+  )
+  let consent_step = next_acquisition_step(
+    record: record,
+    missing: InstallationConsentMissing { reason: "the App has no installations" as NonEmptyStr },
+  )
+  let unreadable_sends_them_to_the_credential =
+    string_contains(s: unreadable_step, pattern: "GITHUB_APP_JWT")
+      && !string_contains(s: unreadable_step, pattern: "installations/new")
+      && !string_contains(s: unreadable_step, pattern: "choose the repositories")
+  let consent_sends_them_to_the_install_page =
+    string_contains(s: consent_step, pattern: "installations/new")
+      && string_contains(s: consent_step, pattern: "choose the repositories")
+      && !string_contains(s: consent_step, pattern: "GITHUB_APP_JWT")
+  unreadable_sends_them_to_the_credential
+    && consent_sends_them_to_the_install_page
+    && (unreadable_step != consent_step)
+}
+
+// A REGISTERED AND INSTALLED APP WHOSE KEY IS GONE IS NOT ACQUIRED, and the receipt says which fact
+// is missing rather than reporting two out of three. An App nobody can authenticate as lifts no rate
+// limit, so this is not a technicality -- it is the whole purpose of the acquisition.
+test fn w_a_registered_and_installed_app_with_no_key_is_not_acquired() -> Bool {
+  let standing = census_app_acquisition_judgment(
+    registration: RegistrationEstablished { app_id: GitHubAppId { value: 7 }, slug: "gunbc-global-census" as NonEmptyStr },
+    installation: admitted_installation(installation_id: 991),
+    custody: CustodyNotEstablished { reason: "no private key at .gunbc/github-app-gunbc-global-census.pem" as NonEmptyStr },
+  )
+  let refused = match standing {
+    AcquisitionFactsHold { app_id: _, slug: _, installation: _, key_custody: _ } => false
+    AcquisitionFactsMissing { missing: m } =>
+      match m {
+        CustodyMissing { reason: r } => string_contains(s: r as String, pattern: "no private key at")
+        RegistrationMissing { reason: _ } => false
+        InstallationConsentMissing { reason: _ } => false
+        InstallationConsentInsufficient { reason: _ } => false
+        InstallationReadingAmbiguous { reason: _ } => false
+        InstallationReadingUnavailable { reason: _ } => false
+      }
+  }
+  refused && string_contains(s: judgment_line(j: standing), pattern: "KEY CUSTODY is missing")
+}
+
+// THE ACCEPTED POSITIVE CONTROL. All three facts established, and the receipt names all three --
+// which is the sentence this lane is closed against. It also pins that custody is reported as the
+// HANDOFF and not as the destination: the second hop into the fleet custody roster has not landed,
+// and a receipt that read as though it had would be the rung inflation this change removed.
+test fn w_all_three_facts_established_is_a_receipt_naming_all_three() -> Bool {
+  let standing = census_app_acquisition_judgment(
+    registration: RegistrationEstablished { app_id: GitHubAppId { value: 7 }, slug: "gunbc-global-census" as NonEmptyStr },
+    installation: admitted_installation(installation_id: 991),
+    custody: CustodyAtHandoffOnly {
+      custody: CustodyAtHandoff {
+        path: ".gunbc/github-app-gunbc-global-census.pem",
+        destination: census_app_private_key_custody,
+      }
+    },
+  )
+  let acquired = match standing {
+    AcquisitionFactsMissing { missing: _ } => false
+    AcquisitionFactsHold { app_id: app_id, slug: slug, installation: inst, key_custody: kc } =>
+      (app_id.value == 7)
+        && ((slug as String) == "gunbc-global-census")
+        && (inst.installation_id.value == 991)
+  }
+  let line = judgment_line(j: standing)
+  acquired
+    && string_contains(s: line, pattern: "app_id=7")
+    && string_contains(s: line, pattern: "installation_id=991")
+    && string_contains(s: line, pattern: ".gunbc/github-app-gunbc-global-census.pem")
+    && string_contains(s: line, pattern: (census_app_private_key_custody.secret as String))
+    && string_contains(s: line, pattern: "second hop into the fleet custody roster is pending")
+}
+
+// REGISTRATION IS ESTABLISHED BY THE INDEPENDENT READ AGREEING, NOT BY THE RECORD SAYING SO. A drift
+// verdict proves an App exists and is still not this App; taking it would establish a registration
+// whose permissions the census reads depend on and do not have.
+test fn w_only_a_converged_classification_establishes_registration() -> Bool {
+  let record = AppAcquired { app_id: GitHubAppId { value: 7 }, slug: "gunbc-global-census" as NonEmptyStr }
+  let converged = registration_standing(
+    record: record,
+    classification: UpsertClassification { verdict: Converged, decision: Noop },
+  )
+  let drifted = registration_standing(
+    record: record,
+    classification: UpsertClassification {
+      verdict: Drifted,
+      decision: Refuse { reason: "census App does not hold declared permission contents" as NonEmptyStr },
+    },
+  )
+  let established = match converged {
+    RegistrationEstablished { app_id: id, slug: s } => (id.value == 7) && ((s as String) == "gunbc-global-census")
+    RegistrationNotEstablished { reason: _ } => false
+  }
+  let refused = match drifted {
+    RegistrationEstablished { app_id: _, slug: _ } => false
+    RegistrationNotEstablished { reason: r } => string_contains(s: r as String, pattern: "declared permission")
+  }
+  established && refused
+}
+
+// A PUBLIC RECORD AT THE RECORDED SLUG IS NOT THE RECORDED APP UNLESS ITS ID AGREES TOO. This is the
+// counterexample the factory accepted by type after d12b76dd190: a record naming App A under App
+// B's slug, a public read at slug B that agrees with the manifest, an installation of A admitted,
+// and a receipt naming A with B's slug -- three real reads that never established one App. The
+// agreement now joins GitHubAppPublicRecord.id to the record's app id, so this reads as a Conflict
+// and registration is NOT established, with both ids in the reason.
+fn public_record_of_id(id: Int, slug: String) -> GitHubAppPublicRecord {
+  GitHubAppPublicRecord {
+    id: id,
+    slug: slug,
+    node_id: "MDM6QXBwNDI0Mg==",
+    name: census_app_name as String,
+    html_url: "https://github.com/apps/gunbc-global-census",
+    permissions: declared_permission_wire_map,
+    events: declared_event_wire_list,
+  }
+}
+
+fn registration_over_public_record(record: GitHubAppAcquisitionRecord, observed: GitHubAppPublicRecord) -> RegistrationStanding {
+  registration_standing(
+    record: record,
+    classification: classify_census_app(
+      policy: EnsureObserveOnly,
+      record: record,
+      observation: AppRecordObserved { record: observed },
+      code: none,
+    ),
+  )
+}
+
+test fn w_a_public_app_at_the_recorded_slug_with_another_id_does_not_establish_registration() -> Bool {
+  match registration_over_public_record(
+    record: AppAcquired { app_id: GitHubAppId { value: 7 }, slug: "gunbc-global-census" as NonEmptyStr },
+    observed: public_record_of_id(id: 8, slug: "gunbc-global-census"),
+  ) {
+    RegistrationEstablished { app_id: _, slug: _ } => false
+    RegistrationNotEstablished { reason: r } =>
+      string_contains(s: r as String, pattern: "app id 8")
+        && string_contains(s: r as String, pattern: "recorded app id 7")
+  }
+}
+
+// THE POSITIVE CONTROL, WHICH MATTERS AS MUCH AS THE REFUSAL: without it the join could be an
+// over-prohibition that refuses a legitimate acquisition (DESIGN 4d). Same id, same slug, agreeing
+// manifest -- registration is established and carries the id the read confirmed.
+test fn w_a_public_app_with_the_recorded_id_and_slug_establishes_registration() -> Bool {
+  match registration_over_public_record(
+    record: AppAcquired { app_id: GitHubAppId { value: 7 }, slug: "gunbc-global-census" as NonEmptyStr },
+    observed: public_record_of_id(id: 7, slug: "gunbc-global-census"),
+  ) {
+    RegistrationEstablished { app_id: id, slug: s } => (id.value == 7) && ((s as String) == "gunbc-global-census")
+    RegistrationNotEstablished { reason: _ } => false
+  }
+}
+
+// TWO SOURCES SHARING A SLUG AND NAMING DIFFERENT APP IDS ARE STILL TWO APPS. An earlier cut
+// reconciled on the slug alone and let the handoff win here; the module's own rule is that two
+// sources naming different Apps conflict, and the id is half of the name.
+test fn w_an_adoption_row_and_a_handoff_with_one_slug_and_different_app_ids_conflict() -> Bool {
+  let handoff = acquisition_record_from_document(
+    path: ".gunbc/probe.identity",
+    content_document: custody_identity_document(issuance: probe_issuance),
+  )
+  match reconcile_acquisition_record(
+    declared: AppAcquired { app_id: GitHubAppId { value: 9 }, slug: "gunbc-global-census" as NonEmptyStr },
+    from_handoff: Present { value: handoff },
+  ) {
+    AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
+      (da.value == 9) && (ha.value == 4242) && ((d as String) == (h as String))
+    AcquisitionRecordRead { record: _, source: _ } => false
+    AcquisitionRecordUnparseable { path: _, cause: _ } => false
   }
 }
 
@@ -414,7 +1291,7 @@ test fn w_permission_map_decode_refuses_an_unreadable_access() -> Bool {
 test fn w_permission_map_decode_reads_every_declared_axis() -> Bool {
   match observed_permissions_from_wire_map(m: declared_permission_wire_map) {
     ObservedPermissionsDecoded { permissions: ps } =>
-      (count(ps) == 7)
+      (count(ps) == count(census_app_permissions))
         && match permission_agreement(declared: census_app_permissions, observed: ps) {
           PermissionsAgree => true
           PermissionAxisMissing { axis: _ } => false
@@ -463,13 +1340,6 @@ test fn w_webhook_event_round_trips_and_refuses_an_unmodeled_event() -> Bool {
     Present { value: v } =>
       (v == WebhookInstallationRepositories)
         && match webhook_event_from_wire(name: "package") { Absent => true  Present { value: _ } => false }
-  }
-}
-
-test fn w_event_agreement_flags_a_missing_subscription() -> Bool {
-  match event_agreement(declared: census_app_default_events, observed: ["installation"]) {
-    EventNotSubscribed { event: e } => e == WebhookInstallationRepositories
-    EventsAgree => false
   }
 }
 
@@ -585,7 +1455,7 @@ test fn w_permission_drift_on_a_live_app_refuses_and_says_why() -> Bool {
     observation: AppRecordObserved {
       record: public_record(
         slug: "gunbc-global-census",
-        permissions: { "metadata": "read", "contents": "read", "issues": "read", "pull_requests": "read", "checks": "read", "actions": "read" },
+        permissions: { "metadata": "read", "contents": "read", "issues": "read", "pull_requests": "read", "checks": "read" },
         events: declared_event_wire_list,
       )
     },
@@ -594,30 +1464,8 @@ test fn w_permission_drift_on_a_live_app_refuses_and_says_why() -> Bool {
   match classified.decision {
     Refuse { reason: r } =>
       (classified.verdict == Drifted)
-        && string_contains(s: r as String, pattern: "does not hold declared permission workflows")
+        && string_contains(s: r as String, pattern: "does not hold declared permission actions")
         && string_contains(s: r as String, pattern: "cannot edit one")
-    Apply { plan: _ } => false
-    Noop => false
-  }
-}
-
-test fn w_event_drift_on_a_live_app_refuses() -> Bool {
-  let classified = classify_census_app(
-    policy: EnsureMayApply,
-    record: acquired_record,
-    observation: AppRecordObserved {
-      record: public_record(
-        slug: "gunbc-global-census",
-        permissions: declared_permission_wire_map,
-        events: ["installation"],
-      )
-    },
-    code: none,
-  )
-  match classified.decision {
-    Refuse { reason: r } =>
-      (classified.verdict == Drifted)
-        && string_contains(s: r as String, pattern: "installation_repositories")
     Apply { plan: _ } => false
     Noop => false
   }
@@ -827,11 +1675,10 @@ test fn w_a_readback_at_a_different_slug_disagrees() -> Bool {
   ) {
     ReadbackDisagrees { agreement: a } =>
       match a {
-        AppIdentityDrift { expected_slug: e, observed_slug: o } =>
-          ((e as String) == "gunbc-global-census") && (o == "someone-elses-app")
+        AppIdentityDrift { expected_app_id: ei, observed_app_id: oi, expected_slug: e, observed_slug: o } =>
+          (ei.value == 4242) && (oi == 4242) && ((e as String) == "gunbc-global-census") && (o == "someone-elses-app")
         AppAgreesWithManifest => false
         AppPermissionDrift { agreement: _ } => false
-        AppEventDrift { agreement: _ } => false
         AppPermissionsUnreadable { decode: _ } => false
       }
     ReadbackConverged { record: _ } => false
@@ -899,7 +1746,7 @@ test fn w_installation_decode_reads_selection_permissions_and_url() -> Bool {
       (i.installation_id.value == 77)
         && (i.app_id.value == 4242)
         && (i.repository_selection == SelectionSelected)
-        && (count(i.permissions) == 7)
+        && (count(i.permissions) == count(census_app_permissions))
         && ((i.html_url.locator as String) == "github.com/settings/installations/77")
     InstallationSelectionUnreadable { raw: _ } => false
     InstallationPermissionsUnreadable { decode: _ } => false
@@ -1006,7 +1853,7 @@ test fn w_the_written_identity_document_parses_back_into_the_acquisition_record(
           (id.value == 4242) && ((s as String) == "gunbc-global-census")
         AppNeverAcquired => false
       }
-    AcquisitionRecordConflict { declared_slug: _, handoff_slug: _ } => false
+    AcquisitionRecordConflict { declared_app_id: _, declared_slug: _, handoff_app_id: _, handoff_slug: _ } => false
     AcquisitionRecordUnparseable { path: _, cause: _ } => false
   }
 }
@@ -1019,7 +1866,7 @@ test fn w_a_handoff_missing_its_app_id_refuses_rather_than_reading_as_never_acqu
     AcquisitionRecordUnparseable { path: _, cause: c } =>
       string_contains(s: c as String, pattern: "app_id")
     AcquisitionRecordRead { record: _, source: _ } => false
-    AcquisitionRecordConflict { declared_slug: _, handoff_slug: _ } => false
+    AcquisitionRecordConflict { declared_app_id: _, declared_slug: _, handoff_app_id: _, handoff_slug: _ } => false
   }
 }
 
@@ -1034,8 +1881,8 @@ test fn w_an_adoption_row_and_a_handoff_naming_different_apps_conflict() -> Bool
     declared: AppAcquired { app_id: GitHubAppId { value: 9 }, slug: "some-other-app" as NonEmptyStr },
     from_handoff: Present { value: handoff },
   ) {
-    AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
-      ((d as String) == "some-other-app") && ((h as String) == "gunbc-global-census")
+    AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
+      (da.value == 9) && ((d as String) == "some-other-app") && (ha.value == 4242) && ((h as String) == "gunbc-global-census")
     AcquisitionRecordRead { record: _, source: _ } => false
     AcquisitionRecordUnparseable { path: _, cause: _ } => false
   }
@@ -1048,7 +1895,7 @@ test fn w_an_adoption_row_and_a_handoff_naming_different_apps_conflict() -> Bool
         AppAcquired { app_id: _, slug: s } => (s as String) == "adopted-app"
         AppNeverAcquired => false
       }
-    AcquisitionRecordConflict { declared_slug: _, handoff_slug: _ } => false
+    AcquisitionRecordConflict { declared_app_id: _, declared_slug: _, handoff_app_id: _, handoff_slug: _ } => false
     AcquisitionRecordUnparseable { path: _, cause: _ } => false
   }
   conflicting && adoption_alone
@@ -1063,12 +1910,17 @@ test fn w_an_adoption_row_and_a_handoff_naming_different_apps_conflict() -> Bool
 test fn w_the_human_steps_are_separate_identities_keyed_on_the_app() -> Bool {
   let submit = app_registration_submit_intervention(
     identity: census_app_identity,
-    url: "https://github.com/organizations/gunb-ai/settings/apps/new?state=n",
-    manifest_document: "{}",
+    addressing: custody_handoff_addressing(name: census_app_identity.name),
   )
   let capture = app_registration_capture_intervention(identity: census_app_identity)
-  let supply = adopted_app_key_supply_intervention(identity: census_app_identity)
-  ((submit.identity as String) == "github-app-submit-gunbc-global-census")
+  let supply = app_key_supply_intervention(identity: census_app_identity)
+  let install = app_installation_consent_intervention(
+    identity: census_app_identity,
+    install_url: "https://github.com/apps/gunbc-global-census/installations/new",
+  )
+  ((install.identity as String) == "github-app-install-gunbc-global-census")
+    && ((install.identity as String) != (submit.identity as String))
+    && ((submit.identity as String) == "github-app-submit-gunbc-global-census")
     && ((capture.identity as String) == "github-app-capture-code-gunbc-global-census")
     && ((supply.identity as String) == "github-app-supply-pem-gunbc-global-census")
     && ((submit.identity as String) != (capture.identity as String))
@@ -1082,16 +1934,33 @@ test fn w_the_human_steps_are_separate_identities_keyed_on_the_app() -> Bool {
 // assertion exists to prevent, and it reds if the instruction is softened back into a limitation.
 test fn w_the_capture_step_declares_itself_a_choice_and_submit_declares_the_consent() -> Bool {
   let capture = app_registration_capture_intervention(identity: census_app_identity)
-  let supply = adopted_app_key_supply_intervention(identity: census_app_identity)
+  let supply = app_key_supply_intervention(identity: census_app_identity)
   let submit = app_registration_submit_intervention(
     identity: census_app_identity,
-    url: "https://x",
-    manifest_document: "{}",
+    addressing: custody_handoff_addressing(name: census_app_identity.name),
   )
   string_contains(s: capture.instruction as String, pattern: "A DECLARED CHOICE, NOT A LIMIT")
     && string_contains(s: capture.instruction as String, pattern: "redirect catcher")
     && string_contains(s: submit.instruction as String, pattern: "ownership consent")
     && string_contains(s: supply.instruction as String, pattern: "does not dissolve with browser automation")
+}
+
+// THE SUPPLY STEP MUST NOT ASSERT HOW THE APP CAME TO EXIST. next_acquisition_step reaches it
+// whenever KEY CUSTODY is the missing fact, and the receipt has established no such thing: an App
+// this converge registered whose pem was never stored, or was later cleaned out of .gunbc/, is in
+// exactly the same unrecoverable position as an adopted one. Its text used to open "This App was
+// created outside this converge", which is an inference presented as established -- the first arm of
+// DESIGN 4d, and the precise class this whole PR exists to remove, so it was worth catching inside it
+// (review 69488). The step now states the OBSERVED fact and the upstream rule, and this claim goes
+// red if a provenance premise comes back.
+test fn w_the_key_supply_step_asserts_no_provenance_only_the_observed_absence() -> Bool {
+  let supply = app_key_supply_intervention(identity: census_app_identity)
+  let text = supply.instruction as String
+  !string_contains(s: text, pattern: "created outside this converge")
+    && !string_contains(s: text, pattern: "This App was created")
+    && string_contains(s: text, pattern: "No private key for this App is at its custody path")
+    && string_contains(s: text, pattern: "says nothing about how the App came to exist")
+    && string_contains(s: text, pattern: "does not dissolve with browser automation")
 }
 
 // ----- the handoff paths derive from one declared directory -----
@@ -1110,8 +1979,9 @@ test fn w_every_handoff_path_derives_from_the_declared_custody_directory() -> Bo
 }
 
 // THE LISTING IS A REPORT, NOT A REFUSAL REASON. The successful read writes this and returns
-// ExitSuccess; it carries the count and one token-request line per installation, which is the budget
-// fact the whole App exists for. It must carry no secret -- an installation listing names accounts and
+// ExitSuccess; it carries the first page's count and one token-request line per installation, and it
+// says that a first page is not the population, because the transport cannot observe whether the
+// listing continues. It must carry no secret -- an installation listing names accounts and
 // endpoints, and the tokens themselves are minted elsewhere.
 test fn w_the_installations_report_carries_the_count_and_a_token_request_per_installation() -> Bool {
   let one = GitHubAppInstallation {
@@ -1125,11 +1995,12 @@ test fn w_the_installations_report_carries_the_count_and_a_token_request_per_ins
     subscribed_events: [],
   }
   let report = installations_report(installations: [one])
-  string_contains(s: report, pattern: "installations=1")
+  string_contains(s: report, pattern: "installations_on_first_page=1")
+    && string_contains(s: report, pattern: "this is not the population")
     && string_contains(s: report, pattern: "https://api.github.com/app/installations/77/access_tokens")
     && string_contains(s: report, pattern: "selection all")
     && string_contains(s: report, pattern: "account gunb-ai")
-    && (installations_report(installations: []) == "installations=0\n\n")
+    && starts_with(installations_report(installations: []), prefix: "installations_on_first_page=0 ")
 }
 
 // ----- the URI decode refuses rather than minting an empty NonEmptyStr -----

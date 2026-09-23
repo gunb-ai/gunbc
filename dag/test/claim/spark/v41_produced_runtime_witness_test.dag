@@ -9,8 +9,9 @@ import gunbc.spark.vllm_image_identity { vllm_image_tag_for_key }
 import gunbc.spark.vllm_runtime_image_build { BuiltByThisRun, AdoptedUnderExpectedTag, VllmImageProvenance }
 import gunbc.spark.v41_source_patch_converge { V41ObservedSourceIdentity, v41_observed_source_identity_of, v41_patched_image_build_key }
 import extdeps.flashinfer.flashinfer { FlashInferWheel, flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_wheels }
+import gunbc.spark.v41_identity_input { V41EngramResidencyPartition }
 import gunbc.spark.v41_runtime_candidate {
-  V41RuntimeArtifactInputs, V41EngramResidencyPartition,
+  V41RuntimeArtifactInputs,
   V41EnginePatch, v41_engine_patch, V41PatchesObserved, PartitionByLaunchConfiguration,
   v41_candidate_recipe, v41_candidate_partition,
 }

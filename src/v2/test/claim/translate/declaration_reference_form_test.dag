@@ -1,0 +1,155 @@
+module v2.test.claim.translate.declaration_reference_form
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.translate {
+  target_serialize_source_from_model,
+  translate_type_expression_project
+}
+import v2.extdeps.languages.rust { rust_type_expression_projection }
+import v2.extdeps.languages.rust_test { rust_sg2_type_expression_projection_target_model }
+import v2.std.compilers.target_model {
+  DeclarationReferenceForm,
+  ModuleScopedPath,
+  NoDeclarationReferenceForm,
+  TargetModel,
+  TargetTypeExpressionProjection,
+  type_expression_projection_from_target
+}
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
+import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_spine_node }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE TRANSLATE SIDE OF THE DECLARING-IDENTITY CARRIER, AT ONE INTERFACE. Resolution carries a
+// reference to a corpus declaration as its qualified path -- a qualified-name spine
+// (v2.compiler.resolve resolved_reference_node) -- and the type-expression fold
+// (v2.compiler.translate translate_algebra) must emit that spine through the target's declaration
+// reference form (v2.std.compilers.target_model DeclarationReferenceForm), never as the record its
+// Conj connective resembles and never as its leaf. The inputs here are SUPPLIED at the boundary
+// (DESIGN section 3, a witness discriminates at one interface): the spine is built by the same
+// constructor resolution uses, and the projection is the rust row or a fixture row derived from
+// it. The inhabitance claim that the real resolver emits this shape is
+// v2.test.claim.namespace_xl0.cross_module_reference_resolution.
+//
+// TWO SUBJECTS, STATED SEPARATELY BECAUSE A CENSUS OVER ONE IS NOT A CONTROL FOR THE OTHER. The rows
+// below are over (a) the FOLD: a spine is emitted as the derived module-scoped spelling, a spine
+// with no form REFUSES located, and a bare Atom is unchanged; and (b) the TARGET ROWS: the rust
+// projection declares a module-scoped path form and the bundle a target actually hands the fold
+// decodes to that same form. Neither says anything about how many declarations share a leaf; that
+// is a different subject with its own instrument.
+
+data drf_target: TargetModel = rust_sg2_type_expression_projection_target_model()
+
+data drf_expected_spelling: String = "crate::v2_test_drf_provider::DrfDeclared"
+
+fn drf_reference_spine() -> Node {
+  qualified_name_spine_node(
+    qn: qualified_name_from_dotted_string(dotted: "v2.test.drf_provider.DrfDeclared"),
+    occurrence_id: OccurrenceSynthetic
+  )
+}
+
+fn drf_bare_atom() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^DrfBareAtom } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// THE FIXTURE ROW WITH NO PATH FORM: the rust projection with its reference form withdrawn. This is
+// what makes the refusal's red authorable (DESIGN section 4b): no emitted target lacks the form
+// today, and a refusal whose population is empty and whose red cannot be written is a decoration.
+fn drf_projection_without_reference_form() -> TargetTypeExpressionProjection {
+  let row = rust_type_expression_projection()
+  TargetTypeExpressionProjection {
+    atom_form: row.atom_form,
+    conj_form: row.conj_form,
+    disj_form: row.disj_form,
+    arrow_form: row.arrow_form,
+    cardinality_form: row.cardinality_form,
+    instantiation_form: row.instantiation_form,
+    declaration_reference_form: NoDeclarationReferenceForm
+  }
+}
+
+fn drf_last_reason(d: NonEmptyDiagnostics) -> Symbol {
+  fold(d.tail, init: d.head.reason, f: fn(acc, x) { x.reason })
+}
+
+fn drf_serialized(emitted: Outcome<Node>) -> Outcome<String> {
+  match emitted {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: node, diagnostics: _ } =>
+      match target_serialize_source_from_model(target: drf_target, emitted: node) {
+        Accepted { value: source, diagnostics: d } => Accepted { value: source.carried, diagnostics: d }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+  }
+}
+
+// (a) THE FOLD. A reference spine under the rust row emits the crate-rooted, module-joined path.
+test fn a_declaration_reference_emits_the_module_scoped_spelling_holds() -> Bool {
+  match drf_serialized(
+    emitted: translate_type_expression_project(
+      node: drf_reference_spine(),
+      target: drf_target,
+      projection: rust_type_expression_projection()
+    )
+  ) {
+    Accepted { value: text, diagnostics: _ } => text == drf_expected_spelling
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE RED: the same spine under a row with no path form refuses, located, with the form-absent
+// reason -- and does not print the leaf.
+test fn a_declaration_reference_with_no_path_form_refuses_located() -> Bool {
+  match translate_type_expression_project(
+    node: drf_reference_spine(),
+    target: drf_target,
+    projection: drf_projection_without_reference_form()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => drf_last_reason(d: d) == ^target_declaration_reference_form_absent
+  }
+}
+
+// THE CONTROL: a bare Atom is not a declaration reference and still emits through the atom row,
+// under either projection -- the arm added for the spine changed nothing for it.
+test fn a_bare_atom_still_emits_through_the_atom_row_holds() -> Bool {
+  match drf_serialized(
+    emitted: translate_type_expression_project(
+      node: drf_bare_atom(),
+      target: drf_target,
+      projection: drf_projection_without_reference_form()
+    )
+  ) {
+    Accepted { value: text, diagnostics: _ } => text == "DrfBareAtom"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn drf_form_is_module_scoped(form: DeclarationReferenceForm) -> Bool {
+  match form {
+    ModuleScopedPath { root_text: _, scope_separator_text: _, module_segment_joiner: _ } => true
+    NoDeclarationReferenceForm => false
+  }
+}
+
+// (b) THE TARGET ROWS. The rust projection declares a module-scoped path form, and the bundle the
+// fold reads at run time (the encoded projection a TargetModel carries) decodes to a module-scoped
+// form too -- the encoder and decoder agree, so a target cannot declare the form and hand the fold
+// a bundle without it.
+test fn the_rust_target_declares_a_module_scoped_path_form_and_its_bundle_carries_it_holds() -> Bool {
+  drf_form_is_module_scoped(form: rust_type_expression_projection().declaration_reference_form)
+    && (match type_expression_projection_from_target(target: drf_target) {
+      Accepted { value: decoded, diagnostics: _ } =>
+        drf_form_is_module_scoped(form: decoded.declaration_reference_form)
+      Rejected { diagnostics: _ } => false
+    })
+}
