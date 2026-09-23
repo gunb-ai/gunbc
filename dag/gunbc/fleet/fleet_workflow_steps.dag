@@ -48,7 +48,7 @@ import gunbc.ci_spec {
 }
 import gunbc.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
 import gunbc.spark.vllm_runtime_image_build { vllm_build_host_effect_term }
-import gunbc.spark.v41_checkpoint_materialize { v41_checkpoint_host_effect_term }
+import gunbc.spark.v41_checkpoint_plan { v41_checkpoint_host_effect_term }
 import std.types { List, String, Int }
 
 import gunbc.roadmap_execution_contract {

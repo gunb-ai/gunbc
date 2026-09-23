@@ -1,0 +1,207 @@
+module gunbc.spark.v41_checkpoint_plan
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size, byte_size_count, Second, second }
+import v2.std.optional { Present, Absent }
+import extdeps.huggingface.hub { hub_resolve_url }
+import extdeps.deepseek.deepseek_v4_1_flash {
+  DeepseekV41PublishedFile,
+  WeightManifestAdmitted, WeightManifestRefused, deepseek_v4_1_flash_weight_manifest_standing,
+  TokenizerPopulationAdmitted, TokenizerPopulationRefused, deepseek_v4_1_flash_tokenizer_standing,
+  deepseek_v4_1_flash_hub_repo, deepseek_v4_1_flash_revision,
+}
+import gunbc.artifact_acquisition {
+  AcquisitionSubject, AcquisitionSource, ContentDigestSha256,
+  AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch, AcquisitionProbeFailed,
+  AcquisitionOutcome, AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused,
+  SourceArgv, acquisition_refusal_text,
+}
+import gunbc.spark.model_snapshot_acquisition { ModelSnapshotPinned, ModelSnapshotUnpinned, deepseek_v4_1_flash_snapshot, snapshot_install_path }
+
+// ── THE PUBLISHED V4.1 FILES AS PER-FILE DIGEST-KEYED SUBJECTS: THE PURE HALF ──────────────────
+//
+// The population, one subject per admitted row, and the decision over what a host answered. It
+// contacts nothing: gunbc.spark.v41_checkpoint_materialize binds the observations to one Spark and
+// executes the plan, so the decision is witnessed over supplied observations without loading any
+// host-effect closure.
+
+data v41_checkpoint_subject_identity_prefix: NonEmptyStr = "deepseek-v4.1-flash:" as NonEmptyStr
+data v41_checkpoint_hub_source_identity: NonEmptyStr = "huggingface-hub-resolve" as NonEmptyStr
+data v41_checkpoint_materialize_attempt_raw: String = "v41-checkpoint-materialize"
+data v41_checkpoint_materialize_receipt_path: String = "target/v41-checkpoint-materialize-receipt.txt"
+data v41_checkpoint_staging_suffix: NonEmptyStr = ".part" as NonEmptyStr
+
+// THE CLAIM'S BOUND AND PURPOSE. 510 GB over a Spark's radio is longer than one fleet job may run
+// (extdeps.github.actions max_job_timeout_minutes), so a host is materialized across SEVERAL
+// dispatches rather than one long one: every dispatch re-observes, a verified file is a noop, and a
+// fetch still running in its transient unit is reattached, never restarted. The term is therefore the
+// same three hours as the image build's, and the step budget is derived from it; a dispatch that
+// ends with a fetch still running releases nothing it cannot prove quiet, so the host stays held.
+data v41_checkpoint_host_effect_term: Second = second(count: 10800)
+
+// ── THE ADMITTED POPULATION ────────────────────────────────────────────────────────────────────
+
+type V41CheckpointPopulation
+  = V41CheckpointPopulationAdmitted { files: List<DeepseekV41PublishedFile>, install_root: NonEmptyStr }
+  | V41CheckpointPopulationRefused { defects: List<NonEmptyStr> }
+
+// Shards, the index and the tokenizer files, from the two admissions, into the one install root the
+// snapshot row's placement derives.
+fn v41_checkpoint_population() -> V41CheckpointPopulation {
+  match deepseek_v4_1_flash_snapshot {
+    ModelSnapshotUnpinned { identity: _, repo: _, cause: c } => V41CheckpointPopulationRefused { defects: [c] }
+    ModelSnapshotPinned { identity: _, repo: r, revision: rev, placement: pl, revision_provenance: _ } =>
+      match deepseek_v4_1_flash_weight_manifest_standing() {
+        WeightManifestRefused { defects: d } => V41CheckpointPopulationRefused { defects: d }
+        WeightManifestAdmitted { files: shards, index: index, canonical_text: _ } =>
+          match deepseek_v4_1_flash_tokenizer_standing() {
+            TokenizerPopulationRefused { defects: d } => V41CheckpointPopulationRefused { defects: d }
+            TokenizerPopulationAdmitted { files: tok, canonical_text: _ } =>
+              V41CheckpointPopulationAdmitted {
+                files: concat(concat(shards, [index]), tok),
+                install_root: snapshot_install_path(placement: pl, repo: r, revision: rev),
+              }
+          }
+      }
+  }
+}
+
+fn v41_population_bytes(files: List<DeepseekV41PublishedFile>) -> Nat {
+  fold(files, init: 0, f: (acc, r) => acc + byte_size_count(b: r.file_bytes))
+}
+
+// ── ONE ROW AS ONE SUBJECT ─────────────────────────────────────────────────────────────────────
+
+fn v41_install_path(root: NonEmptyStr, file: DeepseekV41PublishedFile) -> NonEmptyStr {
+  join([root as String, "/", file.path as String], "") as NonEmptyStr
+}
+
+// The parent of the install path: the root for a top-level file, `<root>/encoding` for the encoder.
+fn v41_parent_directory(root: NonEmptyStr, file: DeepseekV41PublishedFile) -> NonEmptyStr {
+  let segments = split(s: file.path as String, delimiter: "/")
+  if length(segments) <= 1 {
+    root
+  } else {
+    join([root as String, "/", join(segments |> take(n: length(segments) - 1), "/")], "") as NonEmptyStr
+  }
+}
+
+fn v41_staging_path(root: NonEmptyStr, file: DeepseekV41PublishedFile) -> NonEmptyStr {
+  join([v41_install_path(root: root, file: file) as String, v41_checkpoint_staging_suffix as String], "") as NonEmptyStr
+}
+
+// THE FETCH ARGV. `--fail` so an HTTP error is a non-zero exit and never an error page written as
+// the file; `--location` because /resolve/ redirects to the content store; retries for the radio.
+fn v41_fetch_argv(file: DeepseekV41PublishedFile, staging: NonEmptyStr) -> List<String> {
+  [
+    "curl", "--fail", "--location", "--silent", "--show-error",
+    "--retry", "5", "--retry-delay", "10", "--continue-at", "-",
+    "--output", staging as String,
+    hub_resolve_url(repo: deepseek_v4_1_flash_hub_repo, revision: deepseek_v4_1_flash_revision, path_in_repo: file.path) as String,
+  ]
+}
+
+fn v41_checkpoint_subject(root: NonEmptyStr, file: DeepseekV41PublishedFile) -> AcquisitionSubject {
+  let staging = v41_staging_path(root: root, file: file)
+  AcquisitionSubject {
+    identity: join([v41_checkpoint_subject_identity_prefix as String, file.path as String], "") as NonEmptyStr,
+    key: ContentDigestSha256 { hex: file.sha256.hex as NonEmptyStr },
+    install_path: v41_install_path(root: root, file: file),
+    staging_path: Present { value: staging },
+    parent_directory: v41_parent_directory(root: root, file: file),
+    sources: [AcquisitionSource {
+      identity: v41_checkpoint_hub_source_identity,
+      locator: SourceArgv { argv: v41_fetch_argv(file: file, staging: staging) },
+    }],
+  }
+}
+
+// ── THE POPULATION PLAN: OBSERVE ALL, THEN DECIDE ──────────────────────────────────────────────
+
+type V41FileObservation sole_constructor {
+  file: DeepseekV41PublishedFile
+  subject: AcquisitionSubject
+  observation: AcquisitionObservation
+}
+
+type V41CheckpointPlan
+  = V41PlanFetch { present: List<V41FileObservation>, missing: List<V41FileObservation>, missing_bytes: Nat, available_bytes: Nat }
+  | V41PlanRefused { reason: String, observed: List<V41FileObservation> }
+
+fn v41_is_absent(o: V41FileObservation) -> Bool {
+  match o.observation { AcquisitionAbsent => true  _ => false }
+}
+
+fn v41_is_verified(o: V41FileObservation) -> Bool {
+  match o.observation { AcquisitionVerified => true  _ => false }
+}
+
+fn v41_is_mismatch(o: V41FileObservation) -> Bool {
+  match o.observation { AcquisitionDigestMismatch => true  _ => false }
+}
+
+fn v41_probe_failures(obs: List<V41FileObservation>) -> List<String> {
+  fold(obs, init: [] as List<String>, f: (acc, o) => match o.observation {
+    AcquisitionProbeFailed { reason: r } => concat(acc, [join([o.file.path as String, ": ", r as String], "")])
+    _ => acc
+  })
+}
+
+// FREE BYTES ON THE INSTALL ROOT'S FILESYSTEM. The root may not exist yet, so the nearest existing
+// ancestor is asked: `df` resolves the filesystem of the path it is given, and the parents are made
+// before the read so the answer is about the filesystem the files will land on.
+type V41FreeSpace
+  = V41FreeSpaceRead { bytes: Nat }
+  | V41FreeSpaceUnread { reason: String }
+
+// THE DECISION, PURE OVER THE OBSERVATIONS AND THE FREE-SPACE READING, so a witness exercises every
+// arm by supplying them. Mismatch dominates: a wrong file is investigated before anything is added.
+fn v41_checkpoint_decide(observed: List<V41FileObservation>, free: V41FreeSpace) -> V41CheckpointPlan {
+  let mismatched = filter(observed, o => v41_is_mismatch(o: o))
+  let unread = v41_probe_failures(obs: observed)
+  let missing = filter(observed, o => v41_is_absent(o: o))
+  let need = fold(missing, init: 0, f: (acc, o) => acc + byte_size_count(b: o.file.file_bytes))
+  if length(mismatched) != 0 {
+    V41PlanRefused { reason: join(["installed files disagree with their manifest rows and are left in place for investigation; nothing was fetched: ", join(map(mismatched, o => o.subject.install_path as String), ", ")], ""), observed: observed }
+  } else if length(unread) != 0 {
+    V41PlanRefused { reason: join(["some installed files could not be read, so the population is unobserved and nothing was fetched: ", join(unread, "; ")], ""), observed: observed }
+  } else if need == 0 {
+    V41PlanFetch { present: filter(observed, o => v41_is_verified(o: o)), missing: missing, missing_bytes: 0, available_bytes: 0 }
+  } else {
+    match free {
+      V41FreeSpaceUnread { reason: r } => V41PlanRefused { reason: join(["the free space on the install root could not be read, so the ", to_string(need), " missing bytes were not fetched: ", r], ""), observed: observed }
+      V41FreeSpaceRead { bytes: avail } =>
+        if avail < need {
+          V41PlanRefused { reason: join(["the install root's filesystem has ", to_string(avail), " bytes free and the missing files need ", to_string(need), "; nothing was fetched"], ""), observed: observed }
+        } else {
+          V41PlanFetch { present: filter(observed, o => v41_is_verified(o: o)), missing: missing, missing_bytes: need, available_bytes: avail }
+        }
+    }
+  }
+}
+
+// ── RECEIPTS ───────────────────────────────────────────────────────────────────────────────────
+
+fn v41_observation_word(o: AcquisitionObservation) -> String {
+  match o {
+    AcquisitionAbsent => "absent"
+    AcquisitionVerified => "verified"
+    AcquisitionDigestMismatch => "digest-mismatch"
+    AcquisitionProbeFailed { reason: _ } => "unread"
+  }
+}
+
+fn v41_outcome_line(file: DeepseekV41PublishedFile, outcome: AcquisitionOutcome) -> String {
+  let head = join(["file ", file.path as String, " sha256=", file.sha256.hex as String, " bytes=", to_string(byte_size_count(b: file.file_bytes))], "")
+  match outcome {
+    AcquisitionAlreadyPresent { identity: _, install_path: p } => join([head, " outcome=noop-verified path=", p as String, "\n"], "")
+    AcquisitionFetched { identity: _, install_path: p, source: s } => join([head, " outcome=fetched-verified source=", s.identity as String, " path=", p as String, "\n"], "")
+    AcquisitionRefused { cause: c } => join([head, " outcome=refused cause=", acquisition_refusal_text(cause: c), "\n"], "")
+  }
+}
+
+fn v41_observed_line(o: V41FileObservation) -> String {
+  join(["file ", o.file.path as String, " sha256=", o.file.sha256.hex as String, " bytes=", to_string(byte_size_count(b: o.file.file_bytes)), " observed=", v41_observation_word(o: o.observation), "\n"], "")
+}
+

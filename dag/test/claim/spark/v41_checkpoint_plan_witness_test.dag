@@ -1,4 +1,4 @@
-module test.claim.spark.v41_checkpoint_materialize_witness
+module test.claim.spark.v41_checkpoint_plan_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
@@ -14,7 +14,7 @@ import gunbc.artifact_acquisition {
   AcquisitionObservation, AcquisitionAbsent, AcquisitionVerified, AcquisitionDigestMismatch, AcquisitionProbeFailed,
   ContentDigestSha256, SourceArgv, SourceUrl,
 }
-import gunbc.spark.v41_checkpoint_materialize {
+import gunbc.spark.v41_checkpoint_plan {
   V41CheckpointPopulationAdmitted, V41CheckpointPopulationRefused, v41_checkpoint_population,
   V41FileObservation, v41_checkpoint_subject,
   V41CheckpointPlan, V41PlanFetch, V41PlanRefused, v41_checkpoint_decide,
