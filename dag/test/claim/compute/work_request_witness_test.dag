@@ -382,17 +382,18 @@ test fn an_undropped_lease_is_recorded_and_never_becomes_the_works_verdict() -> 
 // THE RED THIS GOES TO: map ShellSpawnRefused to a queried reading, or delete the arm, and the
 // first conjunct fails. That is the mapping the settlement and recovery routes depend on -- a
 // refused spawn is NOT an answer, so it may not arrive as one.
+//
+// THE INPUT THAT ACTUALLY DISCRIMINATES, and the first attempt at this claim did not carry it.
+// Supplying success: false and an empty value alongside the refusal makes the correct arm and a
+// WRONG arm that reads the flag instead of the outcome produce the SAME reading, so the claim
+// passed against a fold mutated to `ShellSpawnRefused => { queried: success, value: value }`.
+// The fold's contract is that the OUTCOME decides: a spawn that produced no process is not a
+// reading whatever the transport's other fields say, so the separating input is a refusal
+// carrying a successful-looking flag and a value.
 test fn a_refused_spawn_is_a_property_not_queried_and_never_a_reading() -> Bool {
   let refused = unit_property_from_shell(
     outcome: ShellSpawnRefused { program: "systemctl" as NonEmptyStr, cause: "No such file or directory" as NonEmptyStr },
     success: false, value: "")
-  // THE INPUT THAT ACTUALLY DISCRIMINATES, and the first attempt at this claim did not carry it.
-  // Supplying success: false and an empty value alongside the refusal makes the correct arm and a
-  // WRONG arm that reads the flag instead of the outcome produce the SAME reading, so the claim
-  // passed against a fold mutated to `ShellSpawnRefused => { queried: success, value: value }`.
-  // The fold's contract is that the OUTCOME decides: a spawn that produced no process is not a
-  // reading whatever the transport's other fields say, so the separating input is a refusal
-  // carrying a successful-looking flag and a value.
   let refused_with_a_flattering_flag = unit_property_from_shell(
     outcome: ShellSpawnRefused { program: "systemctl" as NonEmptyStr, cause: "No such file or directory" as NonEmptyStr },
     success: true, value: "active")
