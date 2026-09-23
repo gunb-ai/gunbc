@@ -81,7 +81,6 @@ import gunbc.spark.managed_grant_reconcile {
   spark_managed_grant_dropin_path,
   spark_managed_grant_sudoers_content,
 }
-import std.resources { Network }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -408,7 +407,6 @@ fn spark_grant_install_execute(
   administrator: SparkCredentialStanding,
   grant: SparkManagedGrant,
 ) -> SparkGrantInstallOutcome
-  uses net: Network
 {
   let plan = spark_grant_install_plan(grant: grant, principal: principal)
   match plan {
@@ -531,7 +529,6 @@ fn spark_grant_read_back(
   host: HostIdentity,
   grant: SparkManagedGrant,
 ) -> SparkGrantReadback
-  uses net: Network
 {
   let outcome = spark_grant_probe_outcome(context: context, host: host)
   match spark_managed_grant_standing_from_outcome(grant: grant, outcome: outcome) {
@@ -675,7 +672,6 @@ fn spark_grant_install_host(
   principal: NonEmptyStr,
   administrator: SparkCredentialStanding,
 ) -> SparkGrantInstallRun
-  uses net: Network
 {
   let outcome = spark_grant_probe_outcome(context: context, host: host)
   SparkGrantInstallRun {
@@ -784,7 +780,6 @@ fn spark_grant_probe_outcome(
   context: FleetSshExecutionContext,
   host: HostIdentity,
 ) -> SparkGrantOutcome
-  uses net: Network
 {
   match run_typed_argv_transport(
     argv: ["sudo", "-n", "-l"],
@@ -808,7 +803,6 @@ fn spark_grant_probe_outcome(
 // and for the same reason: writing sudoers across a whole fleet from an unset variable is a fan-out
 // nobody asked for, and the observe entry's all-hosts arm exists for reading, not writing.
 fn spark_grant_install_ci_wet() -> ProcessExit
-  uses net: Network
 {
   match prepare_fleet_ssh_agent_context(attempt_raw: spark_grant_install_ci_attempt_raw) {
     FleetSshContextRefused { cause: cause } => exit_failure(reason: cause)

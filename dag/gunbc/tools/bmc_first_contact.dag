@@ -30,7 +30,6 @@ fn bmc_first_contact_host(value: String?) -> NonEmptyStr {
 // Keeping one authentication path means the leaky one has nowhere to survive, so first-contact
 // writes the same 0600 netrc as every other Redfish caller and refuses loudly if it cannot.
 fn bmc_first_contact() -> ProcessExit
-  uses net: std.resources.Network
 {
   host = shell.Env.Get(name: "BMC_HOST")
   let bmc = bmc_first_contact_host(value: host.value)

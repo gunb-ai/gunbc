@@ -240,3 +240,95 @@ test fn infer_atom_operator_is_counted_formal_unresolved_holds() -> Bool {
       )
   }
 }
+
+// THE COLLECTION-VERSUS-NOMINAL-PRODUCT CELL, MEASURED ON THIS PATH BECAUSE THE SEED'S SAME CELL
+// WAS A HOLE. `v1.compiler.infer` admitted a `List<String>` at a `Rec { a: String }` formal and a
+// `Rec` at a `List<Int>` formal, in both directions, by falling through a chain of arms each
+// keyed on the kind of ONE side (gunbc.recurring_failure_mode
+// declared_type_wall_keyed_on_the_value_being_a_kernel, measured specimen three). This path's
+// relation is different in kind -- `declared_type_inhabitance` is find_witness over
+// preservation_rule_exact_structural_equality_zip_fold, which reads BOTH sides -- so the seed's
+// repair does not transfer and the cell had to be measured rather than assumed.
+//
+// WHAT IS MEASURED (captured diagnostics, not inferred from the classifier): neither direction
+// reaches that fold, and the two directions stop at DIFFERENT earlier boundaries. With the
+// product declared and the collection supplied as the argument, the argument is a type node with
+// no derived value type, so the obligation is counted as UndecidableArgumentTypeNotDerived
+// (alongside infer_grounding_not_derived) before the formal is classified. With the collection
+// declared, `inhabitance_node_undecidable_reason` classifies the Instantiation formal as
+// UndecidableGenericFormal. Either way this path does not silently answer Inhabits the way the
+// seed did -- it counts the obligation as undecidable and the route advances, which is exactly
+// the standing of gunbc.recurring_failure_mode argument_type_obligation_absent_while_the_route_advances
+// and not a second class. The next-rung trigger is that row's: an argument whose value type is
+// derived as an APPLIED collection type, and a classifier that distinguishes an applied type whose
+// constructor and arguments are all established from a type variable, which it cannot do today
+// because both are Instantiation.
+fn inhabitance_collection_type_node() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_type_atom_node(identity: ^inhabitance_type_list)
+      },
+      Edge {
+        label: Positional,
+        target: dag_type_atom_node(identity: ^dag_binding_type_int)
+      }
+    ]
+  )
+}
+
+fn inhabitance_nominal_product_type_node() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^inhabitance_field_a },
+        target: dag_type_atom_node(identity: ^dag_binding_type_int)
+      }
+    ]
+  )
+}
+
+fn inhabitance_declared_formal_tree(declared: Node, arg: Node) -> Node {
+  inhabitance_apply(
+    domain: inhabitance_named_conj_domain(
+      parameter: ^inhabitance_param_x,
+      declared: declared
+    ),
+    arg: arg
+  )
+}
+
+test fn inhabitance_collection_produced_at_a_product_formal_is_counted_frontier_holds() -> Bool {
+  match infer(
+    tree: inhabitance_declared_formal_tree(
+      declared: inhabitance_nominal_product_type_node(),
+      arg: inhabitance_collection_type_node()
+    )
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(
+        d: d,
+        reason: ^inhabitance_undecidable_argument_type_not_derived
+      )
+  }
+}
+
+test fn inhabitance_product_produced_at_a_collection_formal_is_counted_frontier_holds() -> Bool {
+  match infer(
+    tree: inhabitance_declared_formal_tree(
+      declared: inhabitance_collection_type_node(),
+      arg: inhabitance_nominal_product_type_node()
+    )
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(
+        d: d,
+        reason: ^inhabitance_undecidable_generic_formal
+      )
+  }
+}
