@@ -15,7 +15,7 @@ import gunbc.machine_intake_mtcollins1_physical_orientation {
   FirmwareTrainedFact, OperatorByEyeReport,
   AnchorContradicted, AnchorConsistent, AnchorUnevaluable,
   OrientationResolved, OrientationAmbiguous, OrientationContradicted, OrientationUnevaluable,
-  DamagedCandidates, DamagedCandidatesRefused,
+  DamagedCandidates, DamagedCandidatesRefused, DamageFrameUnreported, MtCollins1DamagedConnectorReport,
   PopulationAvoidsDamage, PopulationUsesDamaged, PopulationDamageUndetermined,
   ViewpointReported, ViewpointNotYetReported, RearEnd, FrontEnd,
   SlotMapRendered, SlotMapRefused, SlotMapOrientationUnresolved, SlotMapViewpointNotReported,
@@ -57,6 +57,10 @@ data rear_fixture: MtCollins1Viewpoint = ViewpointReported { end: RearEnd, repor
   observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 }, relay: "controlled fixture", method: "controlled fixture",
 } }
 
+data front_fixture: MtCollins1Viewpoint = ViewpointReported { end: FrontEnd, report: OperatorByEyeReport {
+  observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 }, relay: "controlled fixture", method: "controlled fixture",
+} }
+
 fn resolves_to(anchors: List<MtCollins1PlacementAnchor>, banks: List<MtCollinsDimmFigureBank>, want: MtCollins1ViewHypothesis) -> Bool {
   match resolve_orientation(anchors: anchors, banks: banks, pairs: mt_collins_channel_connector_pairs) {
     OrientationResolved { hypothesis: h, order: _ } => h == want
@@ -89,10 +93,11 @@ test fn w_three_stick_anchor_alone_leaves_the_orientation_ambiguous() -> Bool {
     OrientationContradicted => false
     OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => false
   }
-  let candidates = damaged_connector_candidates(report: mtcollins1_damaged_connector_report, orientation: o, banks: dimm_figure_banks)
+  let candidates = damaged_connector_candidates(report: mtcollins1_damaged_connector_report, orientation: o, order_frame: front_fixture, banks: dimm_figure_banks)
   let both = match candidates {
     DamagedCandidates { connectors: cs, hypotheses: _ } => same_nats(a: cs, b: [5, 13])
     DamagedCandidatesRefused { orientation: _ } => false
+    DamageFrameUnreported => false
   }
   let sixteen = match population_damage_standing(population: mt_collins_population_16_dimms, candidates: candidates) {
     PopulationUsesDamaged { population: _, connectors: cs } => same_nats(a: cs, b: [5, 13])
@@ -125,6 +130,7 @@ test fn w_production_anchors_resolve_the_full_mirror_and_j5() -> Bool {
   let j5 = match candidates {
     DamagedCandidates { connectors: cs, hypotheses: _ } => same_nats(a: cs, b: [5])
     DamagedCandidatesRefused { orientation: _ } => false
+    DamageFrameUnreported => false
   }
   let sixteen = match population_damage_standing(population: mt_collins_population_16_dimms, candidates: candidates) {
     PopulationUsesDamaged { population: _, connectors: cs } => same_nats(a: cs, b: [5])
@@ -158,13 +164,15 @@ test fn w_production_anchors_resolve_the_full_mirror_and_j5() -> Bool {
 test fn w_discriminating_anchor_resolves_the_damaged_connector() -> Bool {
   let mirror = [mtcollins1_three_stick_anchor, two_stick_fixture(controller: 4)]
   let swapped = [mtcollins1_three_stick_anchor, two_stick_fixture(controller: 0)]
-  let j5 = match damaged_connector_candidates(report: mtcollins1_damaged_connector_report, orientation: resolve_orientation(anchors: mirror, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs), banks: dimm_figure_banks) {
+  let j5 = match damaged_connector_candidates(report: mtcollins1_damaged_connector_report, orientation: resolve_orientation(anchors: mirror, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs), order_frame: front_fixture, banks: dimm_figure_banks) {
     DamagedCandidates { connectors: cs, hypotheses: _ } => same_nats(a: cs, b: [5])
     DamagedCandidatesRefused { orientation: _ } => false
+    DamageFrameUnreported => false
   }
-  let j13 = match damaged_connector_candidates(report: mtcollins1_damaged_connector_report, orientation: resolve_orientation(anchors: swapped, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs), banks: dimm_figure_banks) {
+  let j13 = match damaged_connector_candidates(report: mtcollins1_damaged_connector_report, orientation: resolve_orientation(anchors: swapped, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs), order_frame: front_fixture, banks: dimm_figure_banks) {
     DamagedCandidates { connectors: cs, hypotheses: _ } => same_nats(a: cs, b: [13])
     DamagedCandidatesRefused { orientation: _ } => false
+    DamageFrameUnreported => false
   }
   resolves_to(anchors: mirror, banks: dimm_figure_banks, want: FullMirror)
     && resolves_to(anchors: swapped, banks: dimm_figure_banks, want: SocketHalvesSwapped)
@@ -185,9 +193,10 @@ test fn w_mutations_move_the_verdict() -> Bool {
   let ascending = map(dimm_figure_banks, b => if b.processor_socket == 0 && b.side == RightOfProcessor {
     MtCollinsDimmFigureBank { figure: b.figure, processor_socket: 0, processor_figure_label: b.processor_figure_label, side: b.side, connectors_left_to_right: [9, 10, 11, 12, 13, 14, 15, 16] }
   } else { b })
-  let moved = match damaged_connector_candidates(report: mtcollins1_damaged_connector_report, orientation: resolve_orientation(anchors: [mtcollins1_three_stick_anchor], banks: ascending, pairs: mt_collins_channel_connector_pairs), banks: ascending) {
+  let moved = match damaged_connector_candidates(report: mtcollins1_damaged_connector_report, orientation: resolve_orientation(anchors: [mtcollins1_three_stick_anchor], banks: ascending, pairs: mt_collins_channel_connector_pairs), order_frame: front_fixture, banks: ascending) {
     DamagedCandidates { connectors: cs, hypotheses: _ } => !same_nats(a: cs, b: [5, 13])
     DamagedCandidatesRefused { orientation: _ } => true
+    DamageFrameUnreported => false
   }
   resolves_to(anchors: [only_mc0], banks: dimm_figure_banks, want: FigureOrder) && moved
 }
@@ -204,7 +213,8 @@ test fn w_slot_map_renders_left_to_right_for_a_tech() -> Bool {
     SlotMapRendered { end: _, readback: rb, lines: ls, damage: _, agreement: a, text: t } =>
       list_length(items: ls) == 32
       && fold(ls, init: true, f: (ok, l) => ok && ((l.connector == 5) == (l.state == SlotDamaged)) && ((l.connector == 1 || l.connector == 17) == (l.state == SlotPopulated)))
-      && a == ViewpointAgreesWithFigureBet
+      && match a { ViewpointAgreesWithFigureBet { bet: _ } => true  ViewpointDisagreesWithFigureBet { expected: _, bet: _ } => false  ViewpointAgreementUnknown => false }
+      && string_contains(s: t, pattern: "Cross-check: the reported end agrees with reading Figure 9 in Figure 10's frame. That reading is uncited: ")
       && string_contains(s: t, pattern: "Standing at the FRONT (NVMe backplane and six fans (front)), from LEFT edge to RIGHT edge:\n1. blue  J25  SK1 MC4  empty\n")
       && string_contains(s: t, pattern: "\n16. blue  J17  SK1 MC0  populated\n17. blue  J9  SK0 MC4  empty\n")
       && string_contains(s: t, pattern: "\n28. blue  J5  SK0 MC2  DAMAGED - do not use\n")
@@ -231,6 +241,33 @@ test fn w_eight_dimm_plan_expects_both_sockets() -> Bool {
   }
   let live_filtered = expected_firmware_readback(connectors: mt_collins_population_8_dimms.connectors, live_sockets: mtcollins1_two_stick_anchor.live_sockets, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
   plan && list_length(items: live_filtered.predicted) == 4
+}
+
+fn damage_report_in(frame: MtCollins1Viewpoint) -> MtCollins1DamagedConnectorReport {
+  let r = mtcollins1_damaged_connector_report
+  MtCollins1DamagedConnectorReport { frame: frame, counted_from: r.counted_from, ordinal: r.ordinal, damage: r.damage, report: r.report, supersedes: r.supersedes }
+}
+
+// THE DAMAGE REPORT CARRIES ITS OWN FRAME. The same "5th from the right edge" names J5 from
+// the front and J29 from the rear, so without a reported end it must not mint any J.
+test fn w_damage_report_resolves_only_in_its_own_frame() -> Bool {
+  let o = mtcollins1_orientation()
+  let front = match damaged_connector_candidates(report: damage_report_in(frame: front_fixture), orientation: o, order_frame: mtcollins1_operator_viewpoint, banks: dimm_figure_banks) {
+    DamagedCandidates { connectors: cs, hypotheses: _ } => cs == [5]
+    DamagedCandidatesRefused { orientation: _ } => false
+    DamageFrameUnreported => false
+  }
+  let rear = match damaged_connector_candidates(report: damage_report_in(frame: rear_fixture), orientation: o, order_frame: mtcollins1_operator_viewpoint, banks: dimm_figure_banks) {
+    DamagedCandidates { connectors: cs, hypotheses: _ } => cs == [29]
+    DamagedCandidatesRefused { orientation: _ } => false
+    DamageFrameUnreported => false
+  }
+  let unframed = match damaged_connector_candidates(report: damage_report_in(frame: ViewpointNotYetReported { asked: "controlled fixture" }), orientation: o, order_frame: mtcollins1_operator_viewpoint, banks: dimm_figure_banks) {
+    DamageFrameUnreported => true
+    DamagedCandidates { connectors: _, hypotheses: _ } => false
+    DamagedCandidatesRefused { orientation: _ } => false
+  }
+  front && rear && unframed
 }
 
 // The same physical row seen from the other end: left and right reverse, and every
@@ -285,7 +322,14 @@ test fn w_socket1_silence_and_mask_correlation_are_derived() -> Bool {
     MaskDiverged { run_id: _, mask: m, bitmap: bm } => m == 1 && bm == 16
     MaskMatchedTrainedControllers { runs: _, not_printed: _ } => false
   }
-  let readback = mtcollins1_placement_readbacks() == [PlacementReadbackMatches { run_id: 35810323032 }]
+  let readback = match mtcollins1_placement_readbacks().first() {
+    Present { value: r } => match r {
+      PlacementReadbackDiffers { run_id: i, expected: e } => i == 35810323032 && trained_sets_equal(a: e, b: [MtCollins1TrainedSlot { socket: 0, controller: 0, slot: 0 }, MtCollins1TrainedSlot { socket: 1, controller: 0, slot: 0 }])
+      PlacementReadbackMatches { run_id: _ } => false
+      PlacementReadbackUnevaluable { run_id: _ } => false
+    }
+    Absent => false
+  } && list_length(items: mtcollins1_placement_readbacks()) == 1
   let readback_red = match placement_readbacks(boots: [MtCollins1Socket1InvestigationBoot { run_id: 7, capture_sha256: b.capture_sha256, intended: IntendedAtPhysicalConnectors { connectors: [5] }, roster_lines: b.roster_lines,
     trained: b.trained, dram_total_gib: b.dram_total_gib, mcu_enable_mask: b.mcu_enable_mask, mcu_enable_mask_line: b.mcu_enable_mask_line, host: b.host, live_sockets: b.live_sockets, findings: b.findings }], banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs).first() {
     Present { value: r } => match r { PlacementReadbackDiffers { run_id: i, expected: _ } => i == 7  PlacementReadbackMatches { run_id: _ } => false  PlacementReadbackUnevaluable { run_id: _ } => false }

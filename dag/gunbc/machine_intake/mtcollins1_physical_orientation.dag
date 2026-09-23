@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.roster_frontier { FrontierRow, DeclSubject }
 import std.dissolution { UnboundDissolution }
 import extdeps.publication { SpecificationDocumentDate }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsChannelConnectorPair, MtCollinsDimmPopulationRow,
   mt_collins_channel_connector_pairs, mt_collins_population_rows,
@@ -274,7 +274,10 @@ type MtCollins1SupersededDamageReport {
   cause: MtCollins1SupersessionCause
 }
 
+// The edge is only meaningful in a frame: the report carries the chassis end the operator
+// faced when counting, and an unreported frame refuses rather than borrowing another report's.
 type MtCollins1DamagedConnectorReport {
+  frame: MtCollins1Viewpoint
   counted_from: MtCollins1RowEdge
   ordinal: Nat
   damage: NonEmptyStr
@@ -283,6 +286,14 @@ type MtCollins1DamagedConnectorReport {
 }
 
 data mtcollins1_damaged_connector_report: MtCollins1DamagedConnectorReport = MtCollins1DamagedConnectorReport {
+  frame: ViewpointReported {
+    end: FrontEnd,
+    report: OperatorByEyeReport {
+      observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 },
+      relay: "eager-owl-205 messages msg_3007d41b-4817-487f-8b2c-806c5bd77437 and msg_7a56693a-abd1-40c8-84de-4242a728a8d2",
+      method: "Asked which end they faced for this count, the operator said, verbatim: 'i am usually facing the front or J1 side'.",
+    },
+  },
   counted_from: OperatorRightEdge,
   ordinal: 5,
   damage: "cracked connector (one blue socket snapped)",
@@ -310,15 +321,35 @@ fn connector_counted_from(order: List<Nat>, edge: MtCollins1RowEdge, ordinal: Na
 type MtCollins1DamagedCandidates
   = DamagedCandidates { connectors: List<Nat>, hypotheses: List<MtCollins1ViewHypothesis> }
   | DamagedCandidatesRefused { orientation: MtCollins1OrientationOutcome }
+  | DamageFrameUnreported
 
-fn damaged_connector_candidates(report: MtCollins1DamagedConnectorReport, orientation: MtCollins1OrientationOutcome, banks: List<MtCollinsDimmFigureBank>) -> MtCollins1DamagedCandidates {
+fn frame_end(frame: MtCollins1Viewpoint) -> MtCollins1ChassisEnd? {
+  match frame {
+    ViewpointReported { end: e, report: _ } => Present { value: e }
+    ViewpointNotYetReported { asked: _ } => Absent
+  }
+}
+
+// The orientation's order is the row as seen from order_frame, the end the anchors' operator
+// faced. A report counted from the other end reads the reversed row.
+fn damaged_connector_candidates(report: MtCollins1DamagedConnectorReport, orientation: MtCollins1OrientationOutcome, order_frame: MtCollins1Viewpoint, banks: List<MtCollinsDimmFigureBank>) -> MtCollins1DamagedCandidates {
+  match frame_end(frame: order_frame) {
+    Absent => DamageFrameUnreported
+    Present { value: order_end } => match frame_end(frame: report.frame) {
+      Absent => DamageFrameUnreported
+      Present { value: report_end } => damaged_candidates_in_frame(report: report, orientation: orientation, same_end: order_end == report_end, banks: banks)
+    }
+  }
+}
+
+fn damaged_candidates_in_frame(report: MtCollins1DamagedConnectorReport, orientation: MtCollins1OrientationOutcome, same_end: Bool, banks: List<MtCollinsDimmFigureBank>) -> MtCollins1DamagedCandidates {
   let surviving = match orientation {
     OrientationResolved { hypothesis: h, order: _ } => [h]
     OrientationAmbiguous { surviving: s } => s
     OrientationContradicted => []
     OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => []
   }
-  let located = fold(surviving, init: [], f: (acc, h) => match connector_counted_from(order: view_order(hypothesis: h, banks: banks), edge: report.counted_from, ordinal: report.ordinal) {
+  let located = fold(surviving, init: [], f: (acc, h) => match connector_counted_from(order: if same_end { view_order(hypothesis: h, banks: banks) } else { reverse(view_order(hypothesis: h, banks: banks)) }, edge: report.counted_from, ordinal: report.ordinal) {
     Present { value: c } => if nat_member(xs: acc, x: c) { acc } else { concat(acc, [c]) }
     Absent => acc
   })
@@ -330,7 +361,7 @@ fn damaged_connector_candidates(report: MtCollins1DamagedConnectorReport, orient
 }
 
 fn mtcollins1_damaged_candidates() -> MtCollins1DamagedCandidates {
-  damaged_connector_candidates(report: mtcollins1_damaged_connector_report, orientation: mtcollins1_orientation(), banks: dimm_figure_banks)
+  damaged_connector_candidates(report: mtcollins1_damaged_connector_report, orientation: mtcollins1_orientation(), order_frame: mtcollins1_operator_viewpoint, banks: dimm_figure_banks)
 }
 
 // CONSEQUENCE FOR POPULATION CHOICE. Every candidate is excluded, not only the likeliest: a
@@ -343,6 +374,7 @@ type MtCollins1PopulationDamageStanding
 fn population_damage_standing(population: MtCollinsDimmPopulationRow, candidates: MtCollins1DamagedCandidates) -> MtCollins1PopulationDamageStanding {
   match candidates {
     DamagedCandidatesRefused { orientation: _ } => PopulationDamageUndetermined { candidates: candidates }
+    DamageFrameUnreported => PopulationDamageUndetermined { candidates: candidates }
     DamagedCandidates { connectors: cs, hypotheses: _ } => {
       let hit = filter(population.connectors, c => nat_member(xs: cs, x: c))
       if list_length(items: hit) == 0 { PopulationAvoidsDamage { population: population } } else { PopulationUsesDamaged { population: population, connectors: hit } }
@@ -405,8 +437,8 @@ data figure_nine_shares_figure_ten_viewpoint: MtCollins1PhysicalFactStanding = V
 }
 
 type MtCollins1ViewpointAgreement
-  = ViewpointAgreesWithFigureBet
-  | ViewpointDisagreesWithFigureBet { expected: MtCollins1ViewHypothesis? }
+  = ViewpointAgreesWithFigureBet { bet: MtCollins1PhysicalFactStanding }
+  | ViewpointDisagreesWithFigureBet { expected: MtCollins1ViewHypothesis?, bet: MtCollins1PhysicalFactStanding }
   | ViewpointAgreementUnknown
 
 fn viewpoint_agreement(viewpoint: MtCollins1Viewpoint, hypothesis: MtCollins1ViewHypothesis) -> MtCollins1ViewpointAgreement {
@@ -414,7 +446,7 @@ fn viewpoint_agreement(viewpoint: MtCollins1Viewpoint, hypothesis: MtCollins1Vie
     ViewpointNotYetReported { asked: _ } => ViewpointAgreementUnknown
     ViewpointReported { end: e, report: _ } => {
       let expected = match e { RearEnd => FigureOrder  FrontEnd => FullMirror }
-      if expected == hypothesis { ViewpointAgreesWithFigureBet } else { ViewpointDisagreesWithFigureBet { expected: Present { value: expected } } }
+      if expected == hypothesis { ViewpointAgreesWithFigureBet { bet: figure_nine_shares_figure_ten_viewpoint } } else { ViewpointDisagreesWithFigureBet { expected: Present { value: expected }, bet: figure_nine_shares_figure_ten_viewpoint } }
     }
   }
 }
@@ -510,7 +542,8 @@ fn boot_history_line(boot: MtCollins1Socket1InvestigationBoot, orientation: MtCo
 
 // A placement made by physical J number is not an orientation anchor (it was placed using the
 // resolved orientation, so it cannot test it without circularity). It is a readback check: the
-// firmware must train exactly the expected roster of the connectors placed.
+// firmware must train exactly what a correct install on this board reads back, every socket
+// included, so a silent socket is a PlacementReadbackDiffers, never a match.
 type MtCollins1PlacementReadback
   = PlacementReadbackMatches { run_id: Nat }
   | PlacementReadbackDiffers { run_id: Nat, expected: List<MtCollins1TrainedSlot> }
@@ -519,7 +552,7 @@ type MtCollins1PlacementReadback
 fn placement_readbacks(boots: List<MtCollins1Socket1InvestigationBoot>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> List<MtCollins1PlacementReadback> {
   fold(boots, init: [], f: (acc, b) => match b.intended {
     IntendedAtPhysicalConnectors { connectors: cs } => {
-      let e = expected_firmware_readback(connectors: cs, live_sockets: b.live_sockets, banks: banks, pairs: pairs)
+      let e = expected_firmware_readback(connectors: cs, live_sockets: board_sockets(banks: banks), banks: banks, pairs: pairs)
       concat(acc, [if list_length(items: e.unresolved) > 0 { PlacementReadbackUnevaluable { run_id: b.run_id } } else { if trained_sets_equal(a: e.predicted, b: b.trained) { PlacementReadbackMatches { run_id: b.run_id } } else { PlacementReadbackDiffers { run_id: b.run_id, expected: e.predicted } } }])
     }
     IntendedAsDescribed { description: _ } => acc
@@ -580,6 +613,27 @@ fn slot_colour(connector: Nat) -> NonEmptyStr {
 
 fn slot_state_text(state: MtCollins1SlotState) -> String {
   match state { SlotPopulated => "populated"  SlotEmpty => "empty"  SlotDamaged => "DAMAGED - do not use" }
+}
+
+// The cross-check is rendered with the bet's standing: it corroborates, it does not decide.
+// The J numbers above come from the firmware anchors in the reported frame alone.
+fn agreement_text(agreement: MtCollins1ViewpointAgreement) -> String {
+  match agreement {
+    ViewpointAgreesWithFigureBet { bet: _ } => concat("Cross-check: the reported end agrees with reading Figure 9 in Figure 10's frame. That reading is uncited: ", figure_bet_obligation())
+    ViewpointDisagreesWithFigureBet { expected: _, bet: _ } => concat("Cross-check: the reported end DISAGREES with reading Figure 9 in Figure 10's frame; the firmware anchors decide the J numbers. That reading is uncited: ", figure_bet_obligation())
+    ViewpointAgreementUnknown => "Cross-check against the vendor figures not possible: no reported end."
+  }
+}
+
+fn figure_bet_obligation() -> String {
+  match figure_nine_shares_figure_ten_viewpoint {
+    VendorFigureFact { figure: _, standing: st } => match st {
+      TranscribedUncited { read_obligation: o } => o
+      CitedToAuthority { authority: _ } => "cited."
+    }
+    OperatorByEyeReport { observed_on: _, relay: _, method: _ } => "not a vendor figure."
+    FirmwareTrainedFact { run_id: _, artifact: _, roster_lines: _ } => "not a vendor figure."
+  }
 }
 
 fn trained_slot_text(slot: MtCollins1TrainedSlot) -> String {
@@ -645,8 +699,8 @@ fn render_slot_map(orientation: MtCollins1OrientationOutcome, viewpoint: MtColli
           PopulationCountDisagrees { declared: _, listed: _ } => SlotMapRefused { refusal: SlotMapPopulationUnresolved { identity: identity } }
           PopulationConnectorRepeated { connectors: _ } => SlotMapRefused { refusal: SlotMapPopulationUnresolved { identity: identity } }
           PopulationDiagramResolved { population: _, slots: _, orientation: _, physical_gaps: gaps, photographed_colours: _, user_guide_citation: _, mirror_read: _ } => {
-            let candidates = damaged_connector_candidates(report: report, orientation: orientation, banks: banks)
-            let damaged = match candidates { DamagedCandidates { connectors: cs, hypotheses: _ } => cs  DamagedCandidatesRefused { orientation: _ } => [] }
+            let candidates = damaged_connector_candidates(report: report, orientation: orientation, order_frame: viewpoint, banks: banks)
+            let damaged = match candidates { DamagedCandidates { connectors: cs, hypotheses: _ } => cs  DamagedCandidatesRefused { orientation: _ } => []  DamageFrameUnreported => [] }
             let resolved = map(positions(order: tech_order), p => match resolve_dimm_diagram_identity(connector: p.connector, banks: banks, pairs: pairs) {
               DimmDiagramIdentityRefused { connector: _, cause: _ } => Absent
               DimmDiagramIdentityResolved { identity: i } => Present { value: MtCollins1SlotMapLine {
@@ -675,7 +729,7 @@ fn render_slot_map(orientation: MtCollins1OrientationOutcome, viewpoint: MtColli
                 lines: lines,
                 damage: damage,
                 agreement: viewpoint_agreement(viewpoint: viewpoint, hypothesis: h),
-                text: join(concat(concat(concat(concat([header], map(lines, l => slot_map_line_text(line: l))), [damage_standing_text(standing: damage), place_line, readback_line]), map(gaps, g => gap_text(gap: g))), history_block(history: history, orientation: orientation, banks: banks)), "\n"),
+                text: join(concat(concat(concat(concat([header], map(lines, l => slot_map_line_text(line: l))), [damage_standing_text(standing: damage), place_line, readback_line, agreement_text(agreement: viewpoint_agreement(viewpoint: viewpoint, hypothesis: h))]), map(gaps, g => gap_text(gap: g))), history_block(history: history, orientation: orientation, banks: banks)), "\n"),
               }
             }
           }
