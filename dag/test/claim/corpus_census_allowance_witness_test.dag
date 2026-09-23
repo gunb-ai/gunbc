@@ -106,7 +106,8 @@ test fn census_with_an_inflated_per_entry_cost_is_refused_at_every_subject_size(
 }
 
 // NO FALLBACK TO A FLAT BUDGET: every arm that cannot derive a count refuses, and the standing over a
-// refused allowance BLOCKS even when the observed work is trivially small.
+// refused allowance BLOCKS even when the observed work is trivially small. The unparsable subject is
+// not YAML at all: a block sequence entry after a block mapping at the same indentation.
 test fn census_allowance_refuses_rather_than_falling_back_when_it_cannot_derive_a_count() -> Bool {
   let unrostered = corpus_census_eval_step_allowance_in(
     roster: synthetic_roster(),
@@ -114,7 +115,6 @@ test fn census_allowance_refuses_rather_than_falling_back_when_it_cannot_derive_
     identity: "test.claim.synthetic_census.not_rostered",
     subject_content: synthetic_census_subject,
   )
-  // Not YAML at all: a block sequence entry after a block mapping at the same indentation.
   let unparsed = synthetic_allowance(subject: "a: 1\n- b\n")
   let empty = synthetic_allowance(subject: "")
   refused(a: unrostered) && refused(a: unparsed) && refused(a: empty)
