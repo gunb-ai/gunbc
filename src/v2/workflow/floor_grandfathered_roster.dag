@@ -125,6 +125,15 @@ type GrandfatheredRemoval =
 // old one is not -- and one is a deletion, because the band-grounding check it named was replaced
 // by the floored-ratio grounding rather than renamed into it.
 data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
+  WitnessRenamed {
+    previous_identity: "v2.test.claim.c_compilation_unit_witness.witness_partition_fold_compat_wrapper_not_receipt_path" as NonEmptyStr,
+    new_identity: "v2.test.claim.c_compilation_unit_witness.witness_partition_fold_outcome_yields_both_units" as NonEmptyStr,
+    renamed_in: "the compilation-unit refusal-swallowing cut: the witness was named for the compat WRAPPER it stood against, and that wrapper is deleted by this change, so the name pointed at something no longer in the tree. It now names the fact it actually establishes -- partition_fold_outcome yields both units -- and as a new identity it is judged against the new-witness tier rather than inheriting the cut row's grandfathered one" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler_materialization_witness.single_site_demands_are_accepted_single_recompute" as NonEmptyStr,
+    deleted_in: "Pkg19 precursor: the claim asserted BOTH carrier demands were AcceptedSingleRecompute, which was true only because each demand row described a single non-emergent site. Naming the parse-table demand's grammar-emergent expansion frame moves that demand onto the discharge path, so one claim can no longer answer for both identities and the conjunction would have hidden which half moved. Its subject survives, split, at v2.test.claim.compiler_materialization_witness.parse_table_demand_is_discharged_by_its_catalog_provider and compile_stage_demand_is_accepted_single_recompute -- two new identities, judged against the new-witness tier, as a split of a grandfathered row must be" as NonEmptyStr,
+  },
   WitnessDeleted {
     identity: "v2.test.claim.rust_crate_partition_witness.witness_policy_partition_refuses_holds" as NonEmptyStr,
     deleted_in: "Pkg7a/b policy partition resolver: it pinned PolicyResolverUnimplemented, the refusal the resolver replaces. The arm and its cause are deleted; the policy arm's refusal (PolicyTargetCountNotPositive) and admission are asserted at v2.test.claim.rust_crate_partition_witness.policy_target_below_one_refuses and policy_partition_admits_a_balanced_acyclic_assignment, new identities judged against the new-witness tier" as NonEmptyStr,
