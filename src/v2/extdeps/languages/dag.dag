@@ -1822,6 +1822,23 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
   )
 }
 
+// A POSITIONAL READER DEPENDS ON THIS SPINE, so adding or reordering a constituent here is a
+// change to that reader's contract and not a local grammar edit.
+// v2.compiler.body_lowering_fold `body_lower_fn_decl_return_clause_optional` reaches the return
+// clause by walking the sequence spine RIGHT FOUR TIMES from the production's captured child and
+// taking the left, rather than by searching the subtree for an arrow -- searching is what
+// returned a PARAMETER's fn-type arrow as the function's return type before #12062, and the class
+// is gunbc.recurring_failure_mode a_positional_fact_is_obtained_by_searching_for_its_shape.
+//
+// WHAT THAT READER RELIES ON, stated so it is checkable rather than folded into its own comment:
+// this production has exactly TWO optionals, and only generic_params precedes the return clause,
+// so generic_params is the entire risk surface for the depth. An elided optional still occupies
+// its slot -- v2.compiler.parse `parse_expr_optional` returns grammar_empty_node on the rejected
+// arm -- so the depth does not shift when it is absent. Both arms are held by executing claims in
+// v2.test.manual.normalize_fn_body_cost_probe
+// (`nfbcp_falsifier_generic_fn_return_type_holds`, `nfbcp_falsifier_eq_body_fn_return_type_holds`),
+// so INSERTING A THIRD OPTIONAL AHEAD OF THE RETURN CLAUSE REDDENS THEM rather than silently
+// shifting the read by one. That is the wall; this note is the reason it exists.
 fn dag_grammar_fn_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_fn),

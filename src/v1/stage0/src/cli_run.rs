@@ -97,7 +97,8 @@ pub mod rostered_row_join;
 pub mod scope_rank_view;
 mod serve_budget_refusal;
 pub use native_lane_runner::{
-    run_required_v2_native, run_self_host, run_v2_native_cli, SelfHostHeld, V2NativeCliHeld,
+    run_required_v2_native, run_self_host, run_v2_native_cli, NativeMemberTermination,
+    NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
@@ -43127,10 +43128,12 @@ fn spawn_floor_heartbeat() {
     };
     std::thread::spawn(move || loop {
         std::thread::sleep(std::time::Duration::from_secs(period_s));
-        let seam = FLOOR_SEAM
-            .lock()
-            .map(|g| g.clone())
-            .unwrap_or_else(|_| "<seam unreadable>".to_string());
+        // ONE READER OF THE SLOT (`floor_seam_current`), this caller's own rendering. The empty
+        // string is deliberate and load-bearing: `gunbc.observation_seed_render`
+        // `seed_heartbeat_subject` branches on `seam == ""` to omit the `PhaseSegment`, so an
+        // unset seam must reach the mirror as "" and not as any word standing for absence.
+        let seam = required_floor_runner::floor_seam_current()
+            .unwrap_or_else(|| "<seam unreadable>".to_string());
         // Read both counters through the governor's readers -- `self_user_cpu_ms` is utime alone
         // BY CONSTRUCTION, which is the whole point of routing through it rather than re-reading
         // /proc here as the resource sample does.
@@ -43173,7 +43176,7 @@ fn spawn_floor_heartbeat() {
         beat += 1;
         // The raw memory.stat counters every beat (one file read); the full multi-level
         // envelope every tenth. See floor_cgroup_stat_beat for why the cadences differ.
-        floor_cgroup_stat_beat(&format!("beat-{beat}"));
+        floor_cgroup_stat_beat(&format!("beat-{beat}"), stall.as_ref());
         if beat % 10 == 0 {
             floor_cgroup_envelope(&format!("beat-{beat}"));
         }

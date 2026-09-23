@@ -1,6 +1,9 @@
 module test.claim.native_lane_import_refusal
 
-import v2.compiler.compile { native_lane_universe, native_lane_universe_selected }
+import v2.compiler.compile {
+  native_lane_source_facts, native_lane_universe, native_lane_universe_of_facts,
+  native_lane_universe_selected
+}
 import extdeps.bazel.target_pattern {
   TargetPatternParsed, TargetPatternRefused, parse_target_pattern
 }
@@ -15,7 +18,13 @@ import v2.std.integer { Int }
 import v2.std.algebra { any, contains, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
-import gunbc.witness_v2_native_route { native_route_identity_qualified }
+import v2.workflow.floor_discovery_source_authority {
+  FloorDiscoveryAccepted,
+  FloorDiscoveryRefused,
+  discover_floor_rows_for_source,
+  floor_discovery_finalize_source_outcomes
+}
+import gunbc.witness_v2_native_route { native_route_default_pattern, native_route_identity_qualified }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -121,9 +130,13 @@ data selection_inside_read: DagSourceReadWitness = DagSourceReadWitness {
 }
 
 // `v2.testing.` shares the character prefix `v2.test` and is NOT under the `v2.test.` namespace --
-// the case the selection separator exists to separate. It must DISCOVER cleanly and be excluded by
-// selection alone; were it to refuse discovery, the whole derivation would refuse and this pair
-// would prove nothing.
+// the case the selection separator exists to separate. It must be excluded by SELECTION alone and
+// must not refuse the derivation on its way there; were it to refuse, the whole derivation would
+// refuse and this pair would prove nothing.
+//
+// It is also a universe NON-MEMBER, so discovery no longer walks it at all -- the row-count arm
+// below reads that as zero enrolled rows, and the refusal arms further down read it as a sidecar
+// violation this lane no longer raises.
 data selection_outside_read: DagSourceReadWitness = DagSourceReadWitness {
   source: Medium {
     carried: "module v2.testing.selection_probe\n\ntest fn probe_one() -> Bool { true }\n",
@@ -231,12 +244,19 @@ fn universe_accepted(ingest: SourceRootIngest) -> Bool {
 }
 
 // THE CONTROL THAT MAKES THE EXCLUSION ATTRIBUTABLE, and it asserts ACCEPTANCE rather than a
-// population. The derivation finalizes discovery over every supplied source BEFORE selection
-// filters, so a malformed source refuses the whole thing -- meaning an excluded module and a
-// broken one both yield no identity, and a population arm alone cannot tell them apart. This says
-// the out-of-selection source is discovered fine; the arm below then attributes its absence from
-// the combined ingest to selection and to nothing else.
-test fn the_out_of_selection_source_is_discovered_not_refused() -> Bool {
+// population. The derivation finalizes discovery BEFORE selection filters, so a source that
+// refused discovery would refuse the whole thing -- meaning an excluded module and a broken one
+// both yield no identity, and a population arm alone cannot tell them apart. This says the
+// out-of-selection source is ACCEPTED and contributes no identity; the arm below then attributes
+// its absence from the combined ingest to selection and to nothing else.
+//
+// THE NAME IS DELIBERATELY NOT `..._is_discovered_...`, which is what it was called until discovery
+// was scoped to the sources that consult it. This source is a universe non-member, so it is no
+// longer walked, and an arm whose name claims it was discovered would assert the opposite of what
+// the code now does while staying green -- the stale-name defect, one rename ahead of a reader
+// citing it as coverage for a walk that no longer happens. Acceptance is what this arm establishes
+// and all it establishes.
+test fn the_out_of_selection_source_is_accepted_not_refused() -> Bool {
   universe_accepted(ingest: selection_outside_ingest)
   && (length(xs: universe_qualified_names(ingest: selection_outside_ingest)) == 0)
 }
@@ -366,4 +386,242 @@ test fn a_single_target_naming_a_module_refuses_with_the_module_spelling() -> Bo
 test fn the_suggested_module_spelling_selects_the_module() -> Bool {
   selected_admits(ingest: selection_combined_ingest, text: "//v2/test/selection_probe:all", qualified: "v2.test.selection_probe.probe_one")
   && selected_admits(ingest: selection_combined_ingest, text: "//v2/test/selection_probe:all", qualified: "v2.test.selection_probe.probe_two")
+}
+
+// ── the facts-taking entry carries every refusal ──────────────────────────────────────────────
+//
+// WHAT THESE ARMS ESTABLISH, AND THE ARM SHAPE THEY DELIBERATELY DO NOT USE. The lane's rendered
+// main binds `source_facts` for the closure derivation and then derived the universe from the
+// INGEST again, re-running the whole-corpus discovery fold it already held. The repair splits the
+// producer so the main hands in the facts it holds.
+//
+// THE OBVIOUS WITNESS FOR THAT IS A DECORATION, AND IT WAS WRITTEN AND DELETED HERE RATHER THAN
+// SHIPPED. Pairing the two entries over one fixture and asserting they agree reads like a strong
+// equivalence control. It is not one: after the split `native_lane_universe_selected(ingest, p)` IS
+// `native_lane_universe_of_facts(native_lane_source_facts(ingest), p)`, so the comparison is an
+// expression against itself -- permanently green by construction. A mutation dropping a refusal
+// from the shared body moves BOTH sides and the agreement still holds. DESIGN section 4b calls that
+// worse than absent, because it is cited as coverage. (Measured: bypassing the malformed-import
+// check failed four arms here and left the two accepted-path controls green.)
+//
+// So these arms assert the FACTS-TAKING ENTRY DIRECTLY, over facts derived by a separate call and
+// handed in -- coverage that did not exist before, since nothing invoked that body with externally
+// supplied facts. The three fixtures cover both refusal causes and the accepted path rather than
+// three files; an arm over the accepted path alone would stay green if the entry refused nothing.
+//
+// WHAT THEY CANNOT REACH, said so the set is not over-read: whether the RENDERED MAIN passes the
+// facts it already bound rather than re-deriving them. That is a property of emitted Rust, so no
+// `.dag` arm holds it -- and a SUCCESSFUL NATIVE BUILD DOES NOT HOLD IT EITHER, because a build
+// proves the emitted program compiles, not that a second fold is gone. Closing it means reading
+// the produced main and its call path for the carried binding, with the runtime claim taken from
+// the lane's existing `[native-cost-partition]` observations.
+
+fn carried_at_default(ingest: SourceRootIngest) -> Bool {
+  match native_lane_universe_of_facts(
+    facts: native_lane_source_facts(ingest: ingest),
+    pattern: native_route_default_pattern()
+  ) {
+    Rejected { diagnostics: d } => d.head.reason == ^native_lane_import_line_names_no_module
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn the_facts_taking_entry_admits_the_well_formed_source() -> Bool {
+  match native_lane_universe_of_facts(
+    facts: native_lane_source_facts(ingest: well_formed_import_ingest),
+    pattern: native_route_default_pattern()
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn the_facts_taking_entry_keeps_the_malformed_import_refusal() -> Bool {
+  carried_at_default(ingest: malformed_import_ingest)
+}
+
+test fn the_facts_taking_entry_keeps_the_bare_import_refusal() -> Bool {
+  carried_at_default(ingest: bare_import_ingest)
+}
+
+// ── discovery is walked where it is consulted, and nowhere else ────────────────────────────────
+//
+// THE ARM THAT MAKES THE SCOPING OBSERVABLE RATHER THAN ASSERTED. The refusal arms above cannot
+// see it: they check what the derivation ANSWERS, and scoping discovery changes what it SPENDS.
+// Both fixtures are accepted either way, so a set that only read verdicts would stay green if the
+// walk were restored to every file.
+//
+// The two reads differ in ONE thing -- the declared namespace, `v2.test.` versus `v2.testing.` --
+// and both carry `test fn` declarations that discovery would enrol. So rows on the inside read and
+// no rows on the outside read is the scoping itself, at the one place it is decidable: the outside
+// module is never consulted by `native_lane_label_universe` (its own universe-member guard) nor by
+// `native_lane_unowned_row_path` (it declares a module), and the corpus-wide finalize that was its
+// only other reader is repository hygiene the required floor owns.
+//
+// REMOVING THE SCOPING TURNS THIS RED, which is what distinguishes it from a restatement of the
+// fixtures: the outside read would enrol its declaration and the second assertion would fail.
+
+// A read with NO `module` header: the one shape whose discovery rows the unowned-row refusal
+// reads, and therefore the one that must keep its walk regardless of membership.
+data unowned_row_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: Medium {
+    carried: "test fn orphan_probe() -> Bool { true }\n",
+    fidelity: Lossless
+  },
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^unowned_row_artifact,
+    file_path: "src/v2/test/unowned_row_test.dag"
+  },
+  compilation_unit: symbol_intern_lexeme(lexeme: "src/v2/test/unowned_row_test.dag"),
+  source_root: v2.std.cross_tree.import_model.V2Tree
+}
+
+data unowned_row_ingest: SourceRootIngest = [unowned_row_read]
+
+fn discovery_row_count(ingest: SourceRootIngest) -> Int {
+  fold_list(
+    xs: native_lane_source_facts(ingest: ingest),
+    empty: 0,
+    cons: fn(acc, f) { acc + length(xs: f.discovery.rows) }
+  )
+}
+
+test fn a_universe_member_is_walked_and_an_outsider_is_not() -> Bool {
+  (discovery_row_count(ingest: selection_inside_ingest) == 2)
+    && (discovery_row_count(ingest: selection_outside_ingest) == 0)
+}
+
+// A module-less file keeps its walk, because the unowned-row refusal reads exactly those rows --
+// scoping on membership must not reach the arm that has no membership to test.
+test fn a_source_declaring_no_module_is_still_walked() -> Bool {
+  discovery_row_count(ingest: unowned_row_ingest) > 0
+}
+
+// ── the scoping's boundary, read in REFUSALS rather than in row counts ─────────────────────────
+//
+// WHY THE ROW-COUNT PAIR ABOVE IS NOT ENOUGH. `a_universe_member_is_walked_and_an_outsider_is_not`
+// observes what discovery SPENDS. It does not observe what the lane still REFUSES, and refusing is
+// the guarantee the scoping actually moves: `floor_discovery_finalize_source_outcomes` refuses on a
+// walk failure, a disposition refusal or a sidecar violation, and handing it a zero state for a
+// non-member removes that source's ability to refuse. A set that counted rows alone would stay
+// green if the finalize were disarmed outright, because a disarmed finalize still enrols the same
+// rows.
+//
+// THE THREE FIXTURES DIFFER FROM EACH OTHER IN ONE PROPERTY, AND FROM THE ACCEPTED ONES IN ONE
+// MORE. Each carries `test fn` at a path that does NOT end `_test.dag`, which is the
+// `TestMarkedDecl` sidecar violation -- one real refusal cause, reached through the real producer,
+// rather than a hand-built walk state. They then differ only in the module header: `v2.test.`
+// (member, walked), `v2.testing.` (non-member, not walked), and none at all (no membership to
+// test, so walked). Because the violation arm collects a violation INSTEAD of enrolling rows, the
+// module-less fixture enrols nothing and therefore does not trip the unowned-row refusal on its
+// way to the finalize -- which is what lets the fourth arm attribute its refusal to the finalize.
+//
+// THE SECOND ARM IS A NARROWING, AND IT IS STATED AS ONE. It asserts that this lane NO LONGER
+// refuses a real corpus violation. On its own that reads as a safety regression, so the third arm
+// pairs it: the floor's own producer and finalize, over THE SAME BYTES the lane declined to walk,
+// still refuse. Without that arm the second is an unwitnessed loss.
+//
+// BE EXACT ABOUT WHAT THAT THIRD ARM EXECUTES, because it is easy to claim more. It runs
+// `discover_floor_rows_for_source` and `floor_discovery_finalize_source_outcomes` -- the producer
+// and finalizer THEMSELVES. It does NOT run the host runner and does not demonstrate a failing CI
+// exit. That `required_floor_runner` calls that same finalize, and surfaces its refusal as
+// `REQUIRED-FLOOR REFUSAL cause=FloorDiscoveryRefused`, is established by SOURCE INSPECTION of the
+// runner, not by a newly executed merge-blocking control. The preserved caller is read; the
+// preserved computation is run.
+
+// ONE LOCATION, ONE ARTIFACT IDENTITY, ONE SOURCE ROOT -- the three specimens differ in their
+// MODULE HEADER AND IN NOTHING ELSE. They are built by one constructor taking only the content, so
+// the isolation is STRUCTURAL rather than a promise three hand-copied records keep. An earlier
+// revision authored them separately and let the path vary with the namespace
+// (`src/v2/test/...` against `src/v2/testing/...`), which is not a cosmetic difference here:
+// `compilation_unit` is what discovery receives as its entry path, so it is an operational input.
+//
+// THE SHARED PATH IS THE DISCRIMINATOR, NOT MERELY TIDINESS. All three sit at a path under
+// `src/v2/test/`, so the NON-MEMBER declares `module v2.testing.violation_probe` from a path whose
+// prefix looks like a member's. An implementation that decided membership from the PATH rather than
+// from the declared module would walk it, raise its violation, and turn
+// `a_non_member_sidecar_violation_no_longer_refuses_the_lane` red. With the paths varying alongside
+// the namespace, that wrong implementation satisfied every specimen. This is a missing
+// discriminator closed, not a defect found in `native_route_universe_member`, which reads the
+// declared module today.
+//
+// The path deliberately does NOT end `_test.dag`: that is what makes `test fn` in the content a
+// `TestMarkedDecl` sidecar violation, which is the real refusal cause these arms are built on.
+fn violation_read_for(content: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: content, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: ^violation_probe_artifact,
+      file_path: "src/v2/test/violation_probe.dag"
+    },
+    compilation_unit: symbol_intern_lexeme(lexeme: "src/v2/test/violation_probe.dag"),
+    source_root: v2.std.cross_tree.import_model.V2Tree
+  }
+}
+
+data member_violation_read: DagSourceReadWitness = violation_read_for(
+  content: "module v2.test.violation_probe\n\ntest fn probe_one() -> Bool { true }\n"
+)
+
+data non_member_violation_read: DagSourceReadWitness = violation_read_for(
+  content: "module v2.testing.violation_probe\n\ntest fn probe_one() -> Bool { true }\n"
+)
+
+data module_less_violation_read: DagSourceReadWitness = violation_read_for(
+  content: "test fn probe_one() -> Bool { true }\n"
+)
+
+data member_violation_ingest: SourceRootIngest = [member_violation_read]
+data non_member_violation_ingest: SourceRootIngest = [non_member_violation_read]
+data module_less_violation_ingest: SourceRootIngest = [module_less_violation_read]
+
+// A WALKED MEMBER STILL REFUSES: the scoping narrowed which sources are walked, not what a walked
+// source's violation does. This is the positive control the two narrowing arms are read against.
+test fn a_universe_member_sidecar_violation_still_refuses_the_lane() -> Bool {
+  match native_lane_universe(ingest: member_violation_ingest) {
+    Rejected { diagnostics: d } => d.head.reason == ^native_lane_universe_derivation_refused
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// THE NARROWING ITSELF, asserted rather than implied. Identical content and identical violation,
+// one namespace segment away from the arm above. Restore the walk for non-members and this goes
+// red -- which is what makes it the discriminating arm for the scoping and not a restatement of
+// the row counts.
+test fn a_non_member_sidecar_violation_no_longer_refuses_the_lane() -> Bool {
+  match native_lane_universe(ingest: non_member_violation_ingest) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE PRESERVED CONSUMER, OVER THE SAME BYTES. The required floor reaches this producer and this
+// finalize independently of the lane, so the corpus refusal the arm above gave up still exists at
+// its home. The content is READ OFF THE FIXTURE rather than restated, so the two arms cannot drift
+// apart into agreeing about different sources.
+test fn the_required_floor_producer_still_refuses_that_non_member_violation() -> Bool {
+  match floor_discovery_finalize_source_outcomes(
+    outcomes: [
+      discover_floor_rows_for_source(
+        repo_path: symbol_lexeme(sym: non_member_violation_read.compilation_unit),
+        content: non_member_violation_read.source.carried
+      )
+    ]
+  ) {
+    FloorDiscoveryRefused { reason: _ } => true
+    FloorDiscoveryAccepted { rows: _ } => false
+  }
+}
+
+// A MODULE-LESS SOURCE HAS NO MEMBERSHIP TO TEST, so the scoping must not reach it. The row-count
+// arm above establishes that such a file is still walked; this one establishes that its walk still
+// REFUSES, which is the property the finalize consumer actually needs and the one a zero state
+// would silently remove.
+test fn a_module_less_sidecar_violation_still_refuses_the_lane() -> Bool {
+  match native_lane_universe(ingest: module_less_violation_ingest) {
+    Rejected { diagnostics: d } => d.head.reason == ^native_lane_universe_derivation_refused
+    Accepted { value: _, diagnostics: _ } => false
+  }
 }
