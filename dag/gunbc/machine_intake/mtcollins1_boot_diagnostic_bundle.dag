@@ -12,6 +12,8 @@ import v2.std.optional { Present }
 import extdeps.bmc.ipmi
 import extdeps.bmc.http
 import extdeps.bmc.ipmi_sel { FirmwareError, FirmwareHang, FirmwareProgress }
+import extdeps.bmc.ipmi_sdr { SdrLineResult, sdr_decode_lines }
+import gunbc.machine_intake_mtcollins1_bmc_sensor_observation { mtcollins1_sensor_findings, mtcollins1_sensor_table_text }
 import extdeps.bmc.redfish_memory_inventory {
   RedfishMemoryMember, RedfishProcessorMember, RedfishResourceStatus, RedfishMemoryLocation,
   RedfishResourceState, StateAbsent, StateDisabled, StateUnavailableOffline, StateStandbyOffline,
@@ -36,8 +38,12 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
 import gunbc.machine_intake_ampere_dram_console_observation {
   AmpereDramConsoleObservation, ampere_dram_console_observation, ampere_dram_findings, ampere_dram_console_text,
 }
+import gunbc.machine_intake_ampere_socket_console_observation {
+  AmpereSocketConsoleObservation, AmpereSummaryObserved, AmpereSummaryNotPrinted, AmpereSocketReferenceComparison,
+  ampere_socket_console_observation, ampere_socket_console_text, ampere_socket_reference_comparison, ampere_socket_reference_comparison_text,
+}
 import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
-import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_slots }
+import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_slots, mtcollins1_census_sol_artifact_path }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 
 // THE DIAGNOSTIC BUNDLE OF ONE mtcollins1 BOOT ATTEMPT: what the BMC and the pre-OS console
@@ -196,6 +202,19 @@ type SdrCacheReading
   | SdrCacheUnread { cause: BmcReadCause }
   | SdrCacheNotTaken { reason: NonEmptyStr }
 
+// THE BMC'S SENSOR TABLE, read once after the boot through the same SDR cache the SEL snapshots
+// use (extdeps.bmc.ipmi SdrElistAuthenticatedCached). THIS IS THE IPMI-ONLY PER-SOCKET CHANNEL:
+// gunbc.machine_intake_mtcollins1_access_observation records that this MegaRAC answers 404 at the
+// Redfish service root itself, so the inventory section may legitimately come back refused on
+// every attempt, and a socket's rails and temperatures must still be readable. Each line is kept
+// decoded or unstructured (extdeps.bmc.ipmi_sdr), never dropped. Without a dumped cache the read
+// is not made, and the reading says why: an uncached `sdr elist` re-reads the whole repository
+// from a controller that has just been power-cycled, the cost the cache exists to avoid.
+type SensorReading
+  = SensorsRead { lines: List<SdrLineResult>, at: NonEmptyStr }
+  | SensorsUnread { cause: BmcReadCause }
+  | SensorsNotTaken { reason: NonEmptyStr }
+
 type MembersReading<T>
   = MembersRead { members: List<T> }
   | MembersUnread { cause: BmcReadCause }
@@ -220,7 +239,7 @@ type InventoryReading {
 // those bytes would under-count multi-byte console output. The size is taken before the content is
 // read, so a capture over the bound is reported without being loaded.
 type ConsoleReading
-  = ConsoleRetained { path: NonEmptyStr, size: ByteSize, lines: Int, firmware: FirmwareConsoleReport, dram: AmpereDramConsoleObservation }
+  = ConsoleRetained { path: NonEmptyStr, size: ByteSize, lines: Int, firmware: FirmwareConsoleReport, dram: AmpereDramConsoleObservation, sockets: AmpereSocketConsoleObservation, against_reference: AmpereSocketReferenceComparison }
   | ConsoleExceedsBound { path: NonEmptyStr, size: ByteSize, bound: ByteSize }
   | ConsoleNotRetained { path: NonEmptyStr }
   | ConsoleUnread { path: NonEmptyStr, detail: String }
@@ -251,6 +270,7 @@ type MtCollins1BootDiagnosticBundle {
   sel_before: SelSnapshotReading
   sel_after: SelSnapshotReading
   sdr_cache: SdrCacheReading
+  sensors: SensorReading
   inventory: InventoryReading
   console: ConsoleReading
 }
@@ -337,9 +357,30 @@ fn mtcollins1_census_socket_count() -> Int {
   count(mtcollins1_census_sockets())
 }
 
+// THE FIRMWARE'S OWN SOCKET COUNT AGAINST THE CENSUS. A summary that prints fewer active sockets
+// than the census holds is a finding; one that was not printed says nothing either way.
+fn socket_summary_findings(o: AmpereSocketConsoleObservation) -> List<String> {
+  match o.summary {
+    AmpereSummaryNotPrinted => []
+    AmpereSummaryObserved { summary: s, summaries_printed: _ } => match s.active_sockets {
+      Absent => []
+      Present { value: n } => if n >= mtcollins1_census_socket_count() { [] } else {
+        [concat("firmware boot summary: ", to_string(n), " active socket(s), the census holds ", to_string(mtcollins1_census_socket_count()))]
+      }
+    }
+  }
+}
+
 fn console_findings(c: ConsoleReading) -> List<String> {
   match c {
-    ConsoleRetained { path: _, size: _, lines: _, firmware: _, dram: d } => ampere_dram_findings(observation: d, expected_sockets: mtcollins1_census_sockets())
+    ConsoleRetained { path: _, size: _, lines: _, firmware: _, dram: d, sockets: o, against_reference: _ } => concat(ampere_dram_findings(observation: d, expected_sockets: mtcollins1_census_sockets()), socket_summary_findings(o: o))
+    _ => []
+  }
+}
+
+fn sensor_findings(s: SensorReading) -> List<String> {
+  match s {
+    SensorsRead { lines: ls, at: _ } => mtcollins1_sensor_findings(lines: ls, sockets: mtcollins1_census_sockets())
     _ => []
   }
 }
@@ -476,7 +517,7 @@ fn mtcollins1_boot_bundle_findings(bundle: MtCollins1BootDiagnosticBundle) -> Li
   let shred = if bundle.inventory.credential_removed { nothing } else { ["the per-attempt Redfish netrc could not be removed; credential material may remain on the runner"] }
   concat(unreachable, concat(processor_findings(processors: bundle.inventory.processors),
     concat(memory_findings(memory: bundle.inventory.memory),
-    concat(sel_findings(delta: sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)), concat(console_findings(c: bundle.console), shred)))))
+    concat(sel_findings(delta: sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)), concat(sensor_findings(s: bundle.sensors), concat(console_findings(c: bundle.console), shred))))))
 }
 
 // THE ONE-LINE CONSEQUENCE ON THE RUN'S OUTCOME: findings are appended to a refusal reason, and a
@@ -582,14 +623,22 @@ fn firmware_report_text(report: FirmwareConsoleReport) -> String {
 
 fn console_text(c: ConsoleReading) -> String {
   match c {
-    ConsoleRetained { path: p, size: b, lines: n, firmware: f, dram: d } =>
-      concat("capture ", p as String, " retained in this artifact: ", to_string(byte_size_count(b: b)), " bytes (stat), ", to_string(n), " line(s), within the ", to_string(byte_size_count(b: mtcollins1_boot_console_bound)), "-byte bound; ", firmware_report_text(report: f), "\n", ampere_dram_console_text(observation: d, expected_sockets: mtcollins1_census_sockets()))
+    ConsoleRetained { path: p, size: b, lines: n, firmware: f, dram: d, sockets: o, against_reference: cmp } =>
+      concat("capture ", p as String, " retained in this artifact: ", to_string(byte_size_count(b: b)), " bytes (stat), ", to_string(n), " line(s), within the ", to_string(byte_size_count(b: mtcollins1_boot_console_bound)), "-byte bound; ", firmware_report_text(report: f), "\n", ampere_dram_console_text(observation: d, expected_sockets: mtcollins1_census_sockets()), "\n", ampere_socket_console_text(o: o), ampere_socket_reference_comparison_text(c: cmp))
     ConsoleExceedsBound { path: p, size: b, bound: bound } =>
       concat("capture ", p as String, " is ", to_string(byte_size_count(b: b)), " bytes (stat), OVER the ", to_string(byte_size_count(b: bound)), "-byte bound; the collector does not truncate, so the artifact carries it whole")
     ConsoleNotRetained { path: p } =>
       concat("capture ", p as String, " is NOT under ", mtcollins1_boot_retained_artifact_prefix, " and is not uploaded with this artifact")
     ConsoleUnread { path: p, detail: d } => concat("capture ", p as String, " UNREAD: ", d)
     ConsoleNotConfigured => "NOT CONFIGURED: the SOL capture path was unset for this attempt"
+  }
+}
+
+fn sensors_text(s: SensorReading) -> String {
+  match s {
+    SensorsRead { lines: ls, at: a } => concat("read at ", a as String, ": ", mtcollins1_sensor_table_text(lines: ls, sockets: mtcollins1_census_sockets()))
+    SensorsUnread { cause: c } => concat("UNREAD: ", bmc_read_cause_text(cause: c))
+    SensorsNotTaken { reason: why } => concat("NOT TAKEN: ", why as String)
   }
 }
 
@@ -608,6 +657,8 @@ fn mtcollins1_boot_bundle_text(bundle: MtCollins1BootDiagnosticBundle) -> String
     sel_delta_text(delta: sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)),
     sel_raw_text(label: "before", s: bundle.sel_before),
     sel_raw_text(label: "after", s: bundle.sel_after),
+    "== bmc sensors (ipmi sdr elist) ==",
+    sensors_text(s: bundle.sensors),
     "== bmc inventory (redfish) ==",
     concat("system=", if bundle.inventory.system_id == "" { "not-read" } else { bundle.inventory.system_id }),
     processor_members_text(m: bundle.inventory.processors),
@@ -638,8 +689,9 @@ data mtcollins1_boot_ipmi_read_deadline: Second = second(count: 20)
 
 data mtcollins1_boot_ipmi_kill_after: Second = second(count: 5)
 
-// The two SEL snapshots and the one SDR dump each run under the same coreutils bound.
-data mtcollins1_boot_ipmi_read_count: Int = 3
+// The two SEL snapshots, the one SDR dump and the one sensor read each run under the same
+// coreutils bound.
+data mtcollins1_boot_ipmi_read_count: Int = 4
 
 data mtcollins1_boot_redfish_read_budget: Int = 48
 
@@ -681,6 +733,30 @@ fn mtcollins1_boot_sdr_cache(username: NonEmptyStr, password_file: NonEmptyStr, 
     SdrCacheDumped { path: path, at: at }
   } else {
     SdrCacheUnread { cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: at, exit_code: r.exit_code, stderr: r.transport_stderr) }
+  }
+}
+
+fn mtcollins1_boot_sensors(username: NonEmptyStr, password_file: NonEmptyStr, sdr: SdrCacheReading) -> SensorReading
+{
+  match sdr {
+    SdrCacheDumped { path: p, at: _ } => {
+      let at = clock_now_probed_at_or_unknown()
+      let r = diagnostic.ipmi.Tool.SdrElistAuthenticatedCached(
+        bmc_host: mtcollins1_endpoint.host,
+        username: username,
+        password_file: password_file,
+        sdr_cache_file: p,
+        deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+        kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
+      )
+      if r.success {
+        SensorsRead { lines: sdr_decode_lines(stdout: r.stdout), at: at }
+      } else {
+        SensorsUnread { cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: at, exit_code: r.exit_code, stderr: r.transport_stderr) }
+      }
+    }
+    SdrCacheUnread { cause: c } => SensorsNotTaken { reason: concat("no SDR cache was dumped (", bmc_read_cause_kind(cause: c), "), and an uncached sdr elist is not made") as NonEmptyStr }
+    SdrCacheNotTaken { reason: why } => SensorsNotTaken { reason: why }
   }
 }
 
@@ -1127,8 +1203,21 @@ fn console_size_of_stat(size_text: String) -> ByteSize? {
   }
 }
 
+// THE TWO-SOCKET REFERENCE BOOT every capture is compared against: the census run of 2026-09-10,
+// which reported 2 sockets and 160 CPUs and printed both the firmware summary and the Ampere CPER
+// records for both sockets (gunbc.machine_intake_mtcollins1_memory_census_observation
+// mtcollins1_census_sol_artifact_path; the comparison is
+// gunbc.machine_intake_ampere_socket_console_observation ampere_socket_console_differences). It is
+// read from the checkout the run executes in, so a reference that cannot be read is an UNREAD line
+// in the bundle, never an empty comparison.
+type ReferenceCaptureRead {
+  text: String
+  ok: Bool
+  error: String
+}
+
 // THE PURE DECISION over the capture's stat size and, when within the bound, its content.
-fn mtcollins1_boot_console_reading(path: String, size: ByteSize, capture: String, read_ok: Bool, read_error: String) -> ConsoleReading {
+fn mtcollins1_boot_console_reading(path: String, size: ByteSize, capture: String, read_ok: Bool, read_error: String, reference: ReferenceCaptureRead) -> ConsoleReading {
   if path == "" {
     ConsoleNotConfigured
   } else if !console_path_retained(path: path) {
@@ -1139,7 +1228,12 @@ fn mtcollins1_boot_console_reading(path: String, size: ByteSize, capture: String
     ConsoleUnread { path: path as NonEmptyStr, detail: read_error }
   } else {
     let lines = host_capture_lines(capture: HostCaptureLiveStream { text: capture })
-    ConsoleRetained { path: path as NonEmptyStr, size: size, lines: count(lines), firmware: firmware_console_report(lines: lines), dram: ampere_dram_console_observation(lines: lines) }
+    let sockets = ampere_socket_console_observation(lines: lines)
+    ConsoleRetained {
+      path: path as NonEmptyStr, size: size, lines: count(lines), firmware: firmware_console_report(lines: lines), dram: ampere_dram_console_observation(lines: lines),
+      sockets: sockets,
+      against_reference: ampere_socket_reference_comparison(reference_path: mtcollins1_census_sol_artifact_path, reference_text: reference.text, read_ok: reference.ok, read_error: reference.error, subject: sockets),
+    }
   }
 }
 
@@ -1157,7 +1251,9 @@ fn mtcollins1_boot_console(path: String) -> ConsoleReading {
           ConsoleExceedsBound { path: path as NonEmptyStr, size: size, bound: mtcollins1_boot_console_bound }
         } else {
           let r = Filesystem.Read(path: path)
-          mtcollins1_boot_console_reading(path: path, size: size, capture: r.content, read_ok: r.success, read_error: r.error)
+          let reference = Filesystem.Read(path: mtcollins1_census_sol_artifact_path as String)
+          mtcollins1_boot_console_reading(path: path, size: size, capture: r.content, read_ok: r.success, read_error: r.error,
+            reference: ReferenceCaptureRead { text: reference.content, ok: reference.success, error: reference.error })
         }
     }
   }

@@ -1,0 +1,187 @@
+module extdeps.ampere.ras_error_section
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.optional { Present }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/mchehab/rasdaemon/blob/c6a34bc292a41ed40a85046c619232049e86f84a/events-arch-arm/non-standard-ampere.h"
+  }
+}
+
+data ampere_ras_decoder_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/mchehab/rasdaemon/blob/c6a34bc292a41ed40a85046c619232049e86f84a/events-arch-arm/non-standard-ampere.c"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ampere.ras_error_section",
+      decl_name: "AmpereRasSectionHeader",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [ampere_ras_decoder_authority]
+}
+
+// THE SUBJECT IS AMPERE'S VENDOR-DEFINED CPER ERROR SECTION, the one Altra firmware emits through
+// APEI GHES and BERT under the section-type GUID below. Linux has no decoder for it and prints
+// "section type: unknown, <guid>" followed by a hex dump; the only public decoder is Ampere's own
+// contribution to rasdaemon (copyright Ampere Computing LLC, 2020), cited above at a pinned commit.
+// Everything in this module is transcribed from that header and source file and nothing else.
+//
+// WHAT IS DECODED AND WHAT IS NOT (DESIGN §4d). The HEADER is decoded: its first byte is the error
+// type (bits 0-5) and the payload type (bits 6-7), the second byte the subtype, and the next
+// sixteen bits the instance (bits 0-13) and the socket (bits 14-15) -- rasdaemon's TYPE,
+// PAYLOAD_TYPE, INSTANCE and SOCKET_NUM macros. The error-type TABLE is decoded. A SUBTYPE is carried
+// as its number only: rasdaemon names some subtypes and not others (a PMpro FW subtype past
+// RAS_MSG_ERR has no name there), and a name read off the wrong row of a table this module did not
+// transcribe would be invention. The payload body after the header is not decoded at all.
+//
+// THE DWORD IS AS THE LINUX KERNEL PRINTS IT. drivers/firmware/efi/cper.c print_hex_dump renders
+// the section as 32-bit words in the CPU's byte order; Altra is little-endian, so the header's
+// first byte is the low byte of the first printed word. `00000005` is type 5, subtype 0, instance
+// 0, socket 0; `40000005` is the same record from socket 1.
+
+data ampere_ras_section_guid: NonEmptyStr = "e8ed898d-df16-43cc-8ecc-54f060ef157f"
+
+// AMP_RAS_TYPE_* from non-standard-ampere.h, one arm per defined code. The code is kept beside the
+// arm by ampere_ras_error_type_code so the table is the single authority in both directions.
+type AmpereRasErrorType
+  = AmpereRasCpm
+  | AmpereRasMcu
+  | AmpereRasMesh
+  | AmpereRas2pLinkAltra
+  | AmpereRas2pLinkAltraMax
+  | AmpereRasGic
+  | AmpereRasSmmu
+  | AmpereRasPcieAer
+  | AmpereRasPcieRasdp
+  | AmpereRasOcm
+  | AmpereRasSmpro
+  | AmpereRasPmpro
+  | AmpereRasAtfFw
+  | AmpereRasSmproFw
+  | AmpereRasPmproFw
+  | AmpereRasBert
+
+data ampere_ras_error_types: List<AmpereRasErrorType> = [
+  AmpereRasCpm, AmpereRasMcu, AmpereRasMesh, AmpereRas2pLinkAltra, AmpereRas2pLinkAltraMax,
+  AmpereRasGic, AmpereRasSmmu, AmpereRasPcieAer, AmpereRasPcieRasdp, AmpereRasOcm,
+  AmpereRasSmpro, AmpereRasPmpro, AmpereRasAtfFw, AmpereRasSmproFw, AmpereRasPmproFw, AmpereRasBert,
+]
+
+fn ampere_ras_error_type_code(t: AmpereRasErrorType) -> Int {
+  match t {
+    AmpereRasCpm => 0
+    AmpereRasMcu => 1
+    AmpereRasMesh => 2
+    AmpereRas2pLinkAltra => 3
+    AmpereRas2pLinkAltraMax => 4
+    AmpereRasGic => 5
+    AmpereRasSmmu => 6
+    AmpereRasPcieAer => 7
+    AmpereRasPcieRasdp => 8
+    AmpereRasOcm => 9
+    AmpereRasSmpro => 10
+    AmpereRasPmpro => 11
+    AmpereRasAtfFw => 12
+    AmpereRasSmproFw => 13
+    AmpereRasPmproFw => 14
+    AmpereRasBert => 63
+  }
+}
+
+// The name rasdaemon prints for the type (its amp_payload_error_type[].name).
+fn ampere_ras_error_type_name(t: AmpereRasErrorType) -> String {
+  match t {
+    AmpereRasCpm => "CPM"
+    AmpereRasMcu => "MCU"
+    AmpereRasMesh => "MESH"
+    AmpereRas2pLinkAltra => "2P Link(Altra)"
+    AmpereRas2pLinkAltraMax => "2P Link(Altra Max)"
+    AmpereRasGic => "GIC"
+    AmpereRasSmmu => "SMMU"
+    AmpereRasPcieAer => "PCIe AER"
+    AmpereRasPcieRasdp => "PCIe RASDP"
+    AmpereRasOcm => "OCM"
+    AmpereRasSmpro => "SMPRO"
+    AmpereRasPmpro => "PMPRO"
+    AmpereRasAtfFw => "ATF FW"
+    AmpereRasSmproFw => "SMPRO FW"
+    AmpereRasPmproFw => "PMPRO FW"
+    AmpereRasBert => "BERT"
+  }
+}
+
+// A six-bit code with no row in the table is carried as its number, never mapped to a near row.
+type AmpereRasErrorTypeReading
+  = AmpereRasTypeDefined { error_type: AmpereRasErrorType }
+  | AmpereRasTypeUndefined { code: Int }
+
+fn ampere_ras_error_type_of(code: Int) -> AmpereRasErrorTypeReading {
+  match filter(ampere_ras_error_types, t => ampere_ras_error_type_code(t: t) == code).first() {
+    Absent => AmpereRasTypeUndefined { code: code }
+    Present { value: t } => AmpereRasTypeDefined { error_type: t }
+  }
+}
+
+// PAYLOAD_TYPE_0..3: which amp_payloadN_type_sec layout follows the header.
+type AmpereRasPayloadType
+  = AmperePayloadArmv8RasRecord
+  | AmperePayloadPcieAer
+  | AmperePayloadPcieRasdp
+  | AmperePayloadFirmwareSpecific
+
+fn ampere_ras_payload_type_of(code: Int) -> AmpereRasPayloadType {
+  if code == 0 { AmperePayloadArmv8RasRecord }
+  else if code == 1 { AmperePayloadPcieAer }
+  else if code == 2 { AmperePayloadPcieRasdp }
+  else { AmperePayloadFirmwareSpecific }
+}
+
+type AmpereRasSectionHeader {
+  error_type: AmpereRasErrorTypeReading
+  payload_type: AmpereRasPayloadType
+  subtype: Int
+  instance: Int
+  socket: Int
+}
+
+// The header from the first 32-bit word, as a non-negative integer below 2^32. A value outside that
+// range is not a dword and refuses rather than wrapping.
+fn ampere_ras_section_header_of(dword: Int) -> AmpereRasSectionHeader? {
+  if dword < 0 || dword > 4294967295 { none } else {
+    let byte0 = dword % 256
+    let instance16 = (dword / 65536) % 65536
+    Present { value: AmpereRasSectionHeader {
+      error_type: ampere_ras_error_type_of(code: byte0 % 64),
+      payload_type: ampere_ras_payload_type_of(code: byte0 / 64),
+      subtype: (dword / 256) % 256,
+      instance: instance16 % 16384,
+      socket: instance16 / 16384,
+    } }
+  }
+}
+
+fn ampere_ras_header_is_type(h: AmpereRasSectionHeader, t: AmpereRasErrorType) -> Bool {
+  match h.error_type {
+    AmpereRasTypeDefined { error_type: e } => ampere_ras_error_type_code(t: e) == ampere_ras_error_type_code(t: t)
+    AmpereRasTypeUndefined { code: _ } => false
+  }
+}
+
+fn ampere_ras_error_type_reading_text(r: AmpereRasErrorTypeReading) -> String {
+  match r {
+    AmpereRasTypeDefined { error_type: t } => ampere_ras_error_type_name(t: t)
+    AmpereRasTypeUndefined { code: c } => concat("undefined type ", to_string(c))
+  }
+}
