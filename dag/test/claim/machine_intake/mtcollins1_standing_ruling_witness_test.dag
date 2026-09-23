@@ -162,8 +162,8 @@ test fn a_reassembled_ruling_encodes_to_the_same_bytes() -> Bool {
 // implementation (Python hashlib over the 1369-character encoding, 2026-09-23). A ruling edit moves
 // this value on purpose: the operator must approve the new words, and this claim must be re-pinned in
 // the same change. It pays one real SHA-256 in the interpreter and is admitted for that cost at
-// v2.workflow.floor_cost_debt_admission, under the interpreted-crypto drop
-// (gunbc.rung_drop.app_attest_interpreted_crypto_new_witness_eval_step_cost).
+// v2.workflow.floor_cost_debt_admission, under its own one-member drop
+// (gunbc.rung_drop.mtcollins1_standing_ruling_digest_new_witness_eval_step_cost).
 data production_ruling_sha256_hex: String = "e13583e1e645469d3228e32aa5b464b9c38c78cb739b7e44ffbfe9ab25bd6568"
 
 test fn the_production_ruling_digest_is_the_sha256_of_its_encoding_and_the_request_carries_it() -> Bool {
