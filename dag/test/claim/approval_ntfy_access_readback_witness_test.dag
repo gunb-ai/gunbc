@@ -2,7 +2,7 @@ module test.claim.approval_ntfy_access_readback_witness_test
 
 import std.logic { Bool }
 import std.types { String, List, NonEmptyStr, Int }
-import extdeps.ntfy.access { NtfyRoleAdmin, NtfyReadWrite, ntfy_access_read, NtfyAccessListed, NtfyAccessUnparseable, NtfyUserAccess, AdminAllTopics, TopicGrants }
+import extdeps.ntfy.access { NtfyRoleAdmin, NtfyRoleUser, NtfyReadWrite, ntfy_access_read, NtfyAccessListed, NtfyAccessUnparseable, NtfyUserAccess, AdminAllTopics, TopicGrants }
 import extdeps.exec.command { LocalExec, argv_words }
 import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned, process_observation }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
@@ -11,7 +11,7 @@ import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_count_for_subject }
 import gunbc.auth.approval_ntfy_access_readback {
   ApprovalNtfyAclVerdict, AclEstablished, AclRefused,
-  ApprovalNtfyAclDeviation, AclListingUnparseable, AclDefaultAccessNotDeny, AclAnonymousHasAccess,
+  ApprovalNtfyAclDeviation, AclAnonymousRoleNotAnonymous, AclListingUnparseable, AclDefaultAccessNotDeny, AclAnonymousHasAccess,
   AclPrincipalMissing, AclPrincipalDuplicated, AclPublisherNotWriteOnly, AclOperatorNotReadOnly, AclUnexpectedPrincipal,
   ActiveNtfyRuntimeUnbound, ActiveNtfyRuntimeGap,
   NtfyRuntimeRead, ReadUnitBefore, ReadPidStatBefore, ReadBootTime, ReadClockTicks, ReadCommandLine, ReadBinaryCtime,
@@ -24,6 +24,7 @@ import gunbc.auth.approval_ntfy_access_readback {
   RuntimeConfigListenNotDeclared, RuntimeConfigAuthFileNotDeclared, RuntimeAuthFileBirthUnknown,
   RuntimeAuthFileReplacedSinceStart, RuntimeListenerNotDeclared, RuntimeNoListener, FrontDoorFunnelled,
   RuntimeConfigChangedDuringRead, RuntimeAuthFileChangedDuringRead, ActiveProcessJoinsUnbound,
+  RuntimeConfigNotRegularFile, RuntimeAuthFileNotRegularFile,
   ActiveProcessJoin, JoinProcessEnvironmentNames, JoinProcessExecutable, JoinAuthFileHeldByProcess, JoinListenerSocketHeldByProcess,
   approval_ntfy_modeled_joins_verdict, approval_ntfy_acl_of_listing,
   NtfyRuntimeReading, RuntimeUnitUnresolved, RuntimeReadsTaken, NtfyRuntimeReads,
@@ -60,419 +61,465 @@ type FxRead {
 }
 
 data fx_exact: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=52754\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "52754 (ntfy) S 52749 52754 52754 0 -1 4194304 5505 67 0 0 7 3 0 0 20 0 40 0 244345301 4317421568 9984 18446744073709551615 4194304 74414103 281474879539792 0 0 0 0 0 2143420159 0 0 0 17 87 0 0 0 0 0 74488800 75479617 166576128 281474879542305 281474879542570 281474879542570 281474879557500 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=83665\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "83665 (ntfy) S 83658 83665 83665 0 -1 4194304 5397 67 0 0 7 3 0 0 20 0 39 0 245597768 4307460096 9728 18446744073709551615 4194304 74414103 281474169339232 0 0 0 0 0 2143420159 0 0 0 17 26 0 0 0 0 0 74488800 75479617 485081088 281474169340961 281474169341226 281474169341226 281474169356156 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140719\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
-  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700822598 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703658130 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
   FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184383 1790140785 1790140732\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790153310 1790140876 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184383 1790140785 1790140732\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153310 1790140876 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=52754\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "52754 (ntfy) S 52749 52754 52754 0 -1 4194304 5505 67 0 0 7 3 0 0 20 0 40 0 244345301 4317421568 9984 18446744073709551615 4194304 74414103 281474879539792 0 0 0 0 0 2143420159 0 0 0 17 87 0 0 0 0 0 74488800 75479617 166576128 281474879542305 281474879542570 281474879542570 281474879557500 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=83665\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "83665 (ntfy) S 83658 83665 83665 0 -1 4194304 5397 67 0 0 7 3 0 0 20 0 39 0 245597768 4307460096 9728 18446744073709551615 4194304 74414103 281474169339232 0 0 0 0 0 2143420159 0 0 0 17 26 0 0 0 0 0 74488800 75479617 485081088 281474169340961 281474169341226 281474169341226 281474169356156 0\n", stderr: "" },
 ]
 
 data fx_cmdoverride: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=52918\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "52918 (ntfy) S 52749 52918 52918 0 -1 4194304 5332 67 0 0 7 3 0 0 20 0 39 0 244345919 4240269312 9984 18446744073709551615 4194304 74414103 281474544109888 0 0 0 0 0 2143420159 0 0 0 17 113 0 0 0 0 0 74488800 75479617 353529856 281474544112640 281474544112938 281474544112938 281474544127868 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=83831\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "83831 (ntfy) S 83658 83831 83831 0 -1 4194304 5604 66 0 0 8 3 0 0 20 0 40 0 245598387 4383293440 10496 18446744073709551615 4194304 74414103 281474403699744 0 0 0 0 0 2143420159 0 0 0 17 15 0 0 0 0 0 74488800 75479617 587857920 281474403701760 281474403702058 281474403702058 281474403716988 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00--auth-default-access\x00read-write\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140719\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
-  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700776015 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703679727 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
   FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184383 1790140791 1790140732\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790153316 1790140876 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184383 1790140791 1790140732\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153316 1790140876 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=52918\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "52918 (ntfy) S 52749 52918 52918 0 -1 4194304 5332 67 0 0 7 3 0 0 20 0 39 0 244345919 4240269312 9984 18446744073709551615 4194304 74414103 281474544109888 0 0 0 0 0 2143420159 0 0 0 17 113 0 0 0 0 0 74488800 75479617 353529856 281474544112640 281474544112938 281474544112938 281474544127868 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=83831\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "83831 (ntfy) S 83658 83831 83831 0 -1 4194304 5604 66 0 0 8 3 0 0 20 0 40 0 245598387 4383293440 10496 18446744073709551615 4194304 74414103 281474403699744 0 0 0 0 0 2143420159 0 0 0 17 15 0 0 0 0 0 74488800 75479617 587857920 281474403701760 281474403702058 281474403702058 281474403716988 0\n", stderr: "" },
 ]
 
 data fx_wildcard_cmd: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=53079\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "53079 (ntfy) S 52749 53079 53079 0 -1 4194304 5452 67 0 0 8 4 0 0 20 0 39 0 244346537 4307730432 10240 18446744073709551615 4194304 74414103 281474209077968 0 0 0 0 0 2143420159 0 0 0 17 106 0 0 0 0 0 74488800 75479617 857088000 281474209080333 281474209080618 281474209080618 281474209095548 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=83999\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "83999 (ntfy) S 83658 83999 83999 0 -1 4194304 5416 67 0 0 8 3 0 0 20 0 39 0 245599005 4240801792 9984 18446744073709551615 4194304 74414103 281474672021616 0 0 0 0 0 2143420159 0 0 0 17 112 0 0 0 0 0 74488800 75479617 661200896 281474672026637 281474672026922 281474672026922 281474672041852 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00--listen-http\x00:2586\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140719\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
   FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 00000000000000000000000000000000:0A1A 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700767740 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184383 1790140798 1790140732\n", stderr: "" },
+  FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 00000000000000000000000000000000:0A1A 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703641093 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790153322 1790140876 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184383 1790140798 1790140732\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153322 1790140876 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=53079\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "53079 (ntfy) S 52749 53079 53079 0 -1 4194304 5452 67 0 0 8 4 0 0 20 0 39 0 244346537 4307730432 10240 18446744073709551615 4194304 74414103 281474209077968 0 0 0 0 0 2143420159 0 0 0 17 106 0 0 0 0 0 74488800 75479617 857088000 281474209080333 281474209080618 281474209080618 281474209095548 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=83999\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "83999 (ntfy) S 83658 83999 83999 0 -1 4194304 5416 67 0 0 8 3 0 0 20 0 39 0 245599005 4240801792 9984 18446744073709551615 4194304 74414103 281474672021616 0 0 0 0 0 2143420159 0 0 0 17 112 0 0 0 0 0 74488800 75479617 661200896 281474672026637 281474672026922 281474672026922 281474672041852 0\n", stderr: "" },
 ]
 
 data fx_otherexe: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=53240\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "53240 (ntfy) S 52749 53240 53240 0 -1 4194304 5408 67 0 0 7 5 0 0 20 0 40 0 244347156 4316086272 9984 18446744073709551615 4194304 74414103 281474335761952 0 0 0 0 0 2143420159 0 0 0 17 43 0 0 0 0 0 74488800 75479617 525152256 281474335765535 281474335765801 281474335765801 281474335780731 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=84166\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "84166 (ntfy) S 83658 84166 84166 0 -1 4194304 5382 67 0 0 9 2 0 0 20 0 40 0 245599624 4314783744 9728 18446744073709551615 4194304 74414103 281474544373056 0 0 0 0 0 2143420159 0 0 0 17 88 0 0 0 0 0 74488800 75479617 1039921152 281474544374815 281474544375081 281474544375081 281474544390011 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/opt/ntfy-other/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140719\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
-  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700742169 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703617727 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
   FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184383 1790140804 1790140732\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790153328 1790140876 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184383 1790140804 1790140732\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153328 1790140876 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=53240\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "53240 (ntfy) S 52749 53240 53240 0 -1 4194304 5408 67 0 0 7 5 0 0 20 0 40 0 244347156 4316086272 9984 18446744073709551615 4194304 74414103 281474335761952 0 0 0 0 0 2143420159 0 0 0 17 43 0 0 0 0 0 74488800 75479617 525152256 281474335765535 281474335765801 281474335765801 281474335780731 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=84166\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "84166 (ntfy) S 83658 84166 84166 0 -1 4194304 5382 67 0 0 9 2 0 0 20 0 40 0 245599624 4314783744 9728 18446744073709551615 4194304 74414103 281474544373056 0 0 0 0 0 2143420159 0 0 0 17 88 0 0 0 0 0 74488800 75479617 1039921152 281474544374815 281474544375081 281474544375081 281474544390011 0\n", stderr: "" },
 ]
 
 data fx_envoverride: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=53404\nEnvironment=NTFY_AUTH_DEFAULT_ACCESS=read-write\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "53404 (ntfy) S 52749 53404 53404 0 -1 4194304 5416 67 0 0 8 4 0 0 20 0 40 0 244347775 4383277056 10240 18446744073709551615 4194304 74414103 281473999817328 0 0 0 0 0 2143420159 0 0 0 17 75 0 0 0 0 0 74488800 75479617 804155392 281473999819773 281473999820038 281473999820038 281473999835004 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=84334\nEnvironment=NTFY_AUTH_DEFAULT_ACCESS=read-write\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "84334 (ntfy) S 83658 84334 84334 0 -1 4194304 5527 67 0 0 8 3 0 0 20 0 40 0 245600243 4316626944 9728 18446744073709551615 4194304 74414103 281474185473248 0 0 0 0 0 2143420159 0 0 0 17 103 0 0 0 0 0 74488800 75479617 645607424 281474185475069 281474185475334 281474185475334 281474185490300 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140719\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
-  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700721833 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703603445 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
   FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184383 1790140810 1790140732\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790153335 1790140876 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184383 1790140810 1790140732\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153335 1790140876 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=53404\nEnvironment=NTFY_AUTH_DEFAULT_ACCESS=read-write\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "53404 (ntfy) S 52749 53404 53404 0 -1 4194304 5416 67 0 0 8 4 0 0 20 0 40 0 244347775 4383277056 10240 18446744073709551615 4194304 74414103 281473999817328 0 0 0 0 0 2143420159 0 0 0 17 75 0 0 0 0 0 74488800 75479617 804155392 281473999819773 281473999820038 281473999820038 281473999835004 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=84334\nEnvironment=NTFY_AUTH_DEFAULT_ACCESS=read-write\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "84334 (ntfy) S 83658 84334 84334 0 -1 4194304 5527 67 0 0 8 3 0 0 20 0 40 0 245600243 4316626944 9728 18446744073709551615 4194304 74414103 281474185473248 0 0 0 0 0 2143420159 0 0 0 17 103 0 0 0 0 0 74488800 75479617 645607424 281474185475069 281474185475334 281474185475334 281474185490300 0\n", stderr: "" },
 ]
 
 data fx_cache: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=53576\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "53576 (ntfy) S 52749 53576 53576 0 -1 4194304 5509 68 0 0 8 3 0 0 20 0 40 0 244348394 4383801344 9984 18446744073709551615 4194304 74414103 281474370988800 0 0 0 0 0 2143420159 0 0 0 17 16 0 0 0 0 0 74488800 75479617 1054306304 281474370991137 281474370991402 281474370991402 281474371006332 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=84499\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "84499 (ntfy) S 83658 84499 84499 0 -1 4194304 5391 67 0 0 9 2 0 0 20 0 40 0 245600862 4383285248 9984 18446744073709551615 4194304 74414103 281474717224208 0 0 0 0 0 2143420159 0 0 0 17 72 0 0 0 0 0 74488800 75479617 475402240 281474717226017 281474717226282 281474717226282 281474717241212 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140719\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
-  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700722932 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703706119 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
   FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184383 1790140816 1790140732\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790153341 1790140876 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\nauth-access-cache: true\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184383 1790140816 1790140732\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153341 1790140876 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=53576\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "53576 (ntfy) S 52749 53576 53576 0 -1 4194304 5509 68 0 0 8 3 0 0 20 0 40 0 244348394 4383801344 9984 18446744073709551615 4194304 74414103 281474370988800 0 0 0 0 0 2143420159 0 0 0 17 16 0 0 0 0 0 74488800 75479617 1054306304 281474370991137 281474370991402 281474370991402 281474371006332 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=84499\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "84499 (ntfy) S 83658 84499 84499 0 -1 4194304 5391 67 0 0 9 2 0 0 20 0 40 0 245600862 4383285248 9984 18446744073709551615 4194304 74414103 281474717224208 0 0 0 0 0 2143420159 0 0 0 17 72 0 0 0 0 0 74488800 75479617 475402240 281474717226017 281474717226282 281474717226282 281474717241212 0\n", stderr: "" },
 ]
 
 data fx_cfg_default_rw: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=53743\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "53743 (ntfy) S 52749 53743 53743 0 -1 4194304 5648 68 0 0 9 4 0 0 20 0 41 0 244349013 4393009152 10240 18446744073709551615 4194304 74414103 281474797002224 0 0 0 0 0 2143420159 0 0 0 17 35 0 0 0 0 0 74488800 75479617 157601792 281474797003809 281474797004074 281474797004074 281474797019004 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=84664\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "84664 (ntfy) S 83658 84664 84664 0 -1 4194304 5508 67 0 0 8 3 0 0 20 0 40 0 245601480 4384055296 10240 18446744073709551615 4194304 74414103 281474078264192 0 0 0 0 0 2143420159 0 0 0 17 5 0 0 0 0 0 74488800 75479617 596008960 281474078266401 281474078266666 281474078266666 281474078281596 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140719\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
-  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700742183 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703594203 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
   FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184383 1790140822 1790140732\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790153347 1790140876 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: read-write\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184383 1790140822 1790140732\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153347 1790140876 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- read-write access to all (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=53743\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "53743 (ntfy) S 52749 53743 53743 0 -1 4194304 5648 68 0 0 9 4 0 0 20 0 41 0 244349013 4393009152 10240 18446744073709551615 4194304 74414103 281474797002224 0 0 0 0 0 2143420159 0 0 0 17 35 0 0 0 0 0 74488800 75479617 157601792 281474797003809 281474797004074 281474797004074 281474797019004 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=84664\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "84664 (ntfy) S 83658 84664 84664 0 -1 4194304 5508 67 0 0 8 3 0 0 20 0 40 0 245601480 4384055296 10240 18446744073709551615 4194304 74414103 281474078264192 0 0 0 0 0 2143420159 0 0 0 17 5 0 0 0 0 0 74488800 75479617 596008960 281474078266401 281474078266666 281474078266666 281474078281596 0\n", stderr: "" },
 ]
 
 data fx_wildcard_cfg: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=53906\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "53906 (ntfy) S 52749 53906 53906 0 -1 4194304 5397 67 0 0 9 2 0 0 20 0 39 0 244349632 4240277504 9472 18446744073709551615 4194304 74414103 281474096250848 0 0 0 0 0 2143420159 0 0 0 17 53 0 0 0 0 0 74488800 75479617 177262592 281474096251937 281474096252202 281474096252202 281474096267132 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=84832\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "84832 (ntfy) S 83658 84832 84832 0 -1 4194304 5553 67 0 0 8 2 0 0 20 0 40 0 245602100 4317675520 10240 18446744073709551615 4194304 74414103 281474318912144 0 0 0 0 0 2143420159 0 0 0 17 60 0 0 0 0 0 74488800 75479617 558931968 281474318914593 281474318914858 281474318914858 281474318929788 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140719\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
   FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 00000000000000000000000000000000:0A1A 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700648404 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184383 1790140828 1790140732\n", stderr: "" },
+  FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 00000000000000000000000000000000:0A1A 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703532026 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790153353 1790140876 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: \":2586\"\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184383 1790140828 1790140732\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153353 1790140876 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=53906\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "53906 (ntfy) S 52749 53906 53906 0 -1 4194304 5397 67 0 0 9 2 0 0 20 0 39 0 244349632 4240277504 9472 18446744073709551615 4194304 74414103 281474096250848 0 0 0 0 0 2143420159 0 0 0 17 53 0 0 0 0 0 74488800 75479617 177262592 281474096251937 281474096252202 281474096252202 281474096267132 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=84832\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "84832 (ntfy) S 83658 84832 84832 0 -1 4194304 5553 67 0 0 8 2 0 0 20 0 40 0 245602100 4317675520 10240 18446744073709551615 4194304 74414103 281474318912144 0 0 0 0 0 2143420159 0 0 0 17 60 0 0 0 0 0 74488800 75479617 558931968 281474318914593 281474318914858 281474318914858 281474318929788 0\n", stderr: "" },
 ]
 
 data fx_metrics_extra: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=54069\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "54069 (ntfy) S 52749 54069 54069 0 -1 4194304 5374 67 0 0 9 3 0 0 20 0 40 0 244350252 4315570176 9984 18446744073709551615 4194304 74414103 281474097600880 0 0 0 0 0 2143420159 0 0 0 17 61 0 0 0 0 0 74488800 75479617 783720448 281474097603617 281474097603882 281474097603882 281474097618812 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=84997\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "84997 (ntfy) S 83658 84997 84997 0 -1 4194304 5614 68 0 0 10 3 0 0 20 0 41 0 245602719 4391927808 9984 18446744073709551615 4194304 74414103 281474866498496 0 0 0 0 0 2143420159 0 0 0 17 11 0 0 0 0 0 74488800 75479617 383995904 281474866500641 281474866500906 281474866500906 281474866515836 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140719\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
-  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700736364 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
-  FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 00000000000000000000000000000000:2383 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700752532 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184383 1790140835 1790140732\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703606428 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 00000000000000000000000000000000:2383 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703665349 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790153359 1790140876 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\nmetrics-listen-http: \":9091\"\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184383 1790140835 1790140732\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153359 1790140876 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=54069\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "54069 (ntfy) S 52749 54069 54069 0 -1 4194304 5374 67 0 0 9 3 0 0 20 0 40 0 244350252 4315570176 9984 18446744073709551615 4194304 74414103 281474097600880 0 0 0 0 0 2143420159 0 0 0 17 61 0 0 0 0 0 74488800 75479617 783720448 281474097603617 281474097603882 281474097603882 281474097618812 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=84997\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "84997 (ntfy) S 83658 84997 84997 0 -1 4194304 5614 68 0 0 10 3 0 0 20 0 41 0 245602719 4391927808 9984 18446744073709551615 4194304 74414103 281474866498496 0 0 0 0 0 2143420159 0 0 0 17 11 0 0 0 0 0 74488800 75479617 383995904 281474866500641 281474866500906 281474866500906 281474866515836 0\n", stderr: "" },
 ]
 
 data fx_authfile_other: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=54234\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "54234 (ntfy) S 52749 54234 54234 0 -1 4194304 5560 67 0 0 9 2 0 0 20 0 39 0 244350871 4307390464 9984 18446744073709551615 4194304 74414103 281474192912464 0 0 0 0 0 2143420159 0 0 0 17 10 0 0 0 0 0 74488800 75479617 881307648 281474192913441 281474192913706 281474192913706 281474192928636 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=85163\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "85163 (ntfy) S 83658 85163 85163 0 -1 4194304 5421 66 0 0 8 4 0 0 20 0 40 0 245603337 4316356608 9472 18446744073709551615 4194304 74414103 281474063660560 0 0 0 0 0 2143420159 0 0 0 17 33 0 0 0 0 0 74488800 75479617 696414208 281474063664161 281474063664426 281474063664426 281474063679356 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140719\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
-  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700740379 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703650127 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
   FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184383 1790140841 1790140732\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790153366 1790140876 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/other.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184383 1790140841 1790140732\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153366 1790140876 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=54234\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "54234 (ntfy) S 52749 54234 54234 0 -1 4194304 5560 67 0 0 9 2 0 0 20 0 39 0 244350871 4307390464 9984 18446744073709551615 4194304 74414103 281474192912464 0 0 0 0 0 2143420159 0 0 0 17 10 0 0 0 0 0 74488800 75479617 881307648 281474192913441 281474192913706 281474192913706 281474192928636 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=85163\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "85163 (ntfy) S 83658 85163 85163 0 -1 4194304 5421 66 0 0 8 4 0 0 20 0 40 0 245603337 4316356608 9472 18446744073709551615 4194304 74414103 281474063660560 0 0 0 0 0 2143420159 0 0 0 17 33 0 0 0 0 0 74488800 75479617 696414208 281474063664161 281474063664426 281474063664426 281474063679356 0\n", stderr: "" },
 ]
 
 data fx_config_touched: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=54397\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "54397 (ntfy) S 52749 54397 54397 0 -1 4194304 5500 66 0 0 10 3 0 0 20 0 40 0 244351491 4316110848 9728 18446744073709551615 4194304 74414103 281474012087728 0 0 0 0 0 2143420159 0 0 0 17 111 0 0 0 0 0 74488800 75479617 1116033024 281474012091425 281474012091690 281474012091690 281474012106620 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=85333\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "85333 (ntfy) S 83658 85333 85333 0 -1 4194304 5473 67 0 0 9 2 0 0 20 0 40 0 245603956 4316372992 10240 18446744073709551615 4194304 74414103 281474719930160 0 0 0 0 0 2143420159 0 0 0 17 43 0 0 0 0 0 74488800 75479617 1097424896 281474719933473 281474719933738 281474719933738 281474719948668 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140719\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
-  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700800501 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703705233 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
   FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184383 1790140851 1790140732\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790153376 1790140876 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184383 1790140851 1790140732\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153376 1790140876 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=54397\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "54397 (ntfy) S 52749 54397 54397 0 -1 4194304 5500 66 0 0 10 3 0 0 20 0 40 0 244351491 4316110848 9728 18446744073709551615 4194304 74414103 281474012087728 0 0 0 0 0 2143420159 0 0 0 17 111 0 0 0 0 0 74488800 75479617 1116033024 281474012091425 281474012091690 281474012091690 281474012106620 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=85333\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "85333 (ntfy) S 83658 85333 85333 0 -1 4194304 5473 67 0 0 9 2 0 0 20 0 40 0 245603956 4316372992 10240 18446744073709551615 4194304 74414103 281474719930160 0 0 0 0 0 2143420159 0 0 0 17 43 0 0 0 0 0 74488800 75479617 1097424896 281474719933473 281474719933738 281474719933738 281474719948668 0\n", stderr: "" },
 ]
 
 data fx_binary_touched: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=54561\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "54561 (ntfy) S 52749 54561 54561 0 -1 4194304 5550 67 0 0 8 4 0 0 20 0 40 0 244352110 4317405184 9984 18446744073709551615 4194304 74414103 281474485018608 0 0 0 0 0 2143420159 0 0 0 17 72 0 0 0 0 0 74488800 75479617 881311744 281474485019681 281474485019946 281474485019946 281474485034876 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=85498\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "85498 (ntfy) S 83658 85498 85498 0 -1 4194304 5454 68 0 0 9 3 0 0 20 0 40 0 245604575 4316626944 9984 18446744073709551615 4194304 74414103 281473915573824 0 0 0 0 0 2143420159 0 0 0 17 76 0 0 0 0 0 74488800 75479617 723382272 281473915577377 281473915577642 281473915577642 281473915592572 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790153382\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
-  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700743602 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703713392 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
   FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184383 1790140853 1790140732\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790153378 1790140876 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184383 1790140853 1790140732\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153378 1790140876 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11160326 1790140746 1790140736\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140901 1790140882 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=54561\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "54561 (ntfy) S 52749 54561 54561 0 -1 4194304 5550 67 0 0 8 4 0 0 20 0 40 0 244352110 4317405184 9984 18446744073709551615 4194304 74414103 281474485018608 0 0 0 0 0 2143420159 0 0 0 17 72 0 0 0 0 0 74488800 75479617 881311744 281474485019681 281474485019946 281474485019946 281474485034876 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=85498\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "85498 (ntfy) S 83658 85498 85498 0 -1 4194304 5454 68 0 0 9 3 0 0 20 0 40 0 245604575 4316626944 9984 18446744073709551615 4194304 74414103 281473915573824 0 0 0 0 0 2143420159 0 0 0 17 76 0 0 0 0 0 74488800 75479617 723382272 281473915577377 281473915577642 281473915577642 281473915592572 0\n", stderr: "" },
 ]
 
 data fx_authfile_replaced: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=54723\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "54723 (ntfy) S 52749 54723 54723 0 -1 4194304 5542 68 0 0 9 2 0 0 20 0 40 0 244352729 4384333824 10240 18446744073709551615 4194304 74414103 281474559158416 0 0 0 0 0 2143420159 0 0 0 17 37 0 0 0 0 0 74488800 75479617 483643392 281474559161377 281474559161642 281474559161642 281474559176572 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=85666\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "85666 (ntfy) S 83658 85666 85666 0 -1 4194304 5439 67 0 0 8 4 0 0 20 0 40 0 245605193 4316364800 10240 18446744073709551615 4194304 74414103 281474962865696 0 0 0 0 0 2143420159 0 0 0 17 101 0 0 0 0 0 74488800 75479617 254009344 281474962867233 281474962867498 281474962867498 281474962882428 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790153382\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
-  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700774774 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703704240 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
   FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184383 1790140859 1790140732\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790153384 1790140876 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184383 1790140859 1790140732\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184377 1790140863 1790140863\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153384 1790140876 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11141484 1790153388 1790153388 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184377 1790140863 1790140863\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11141484 1790153388 1790153388 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=54723\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "54723 (ntfy) S 52749 54723 54723 0 -1 4194304 5542 68 0 0 9 2 0 0 20 0 40 0 244352729 4384333824 10240 18446744073709551615 4194304 74414103 281474559158416 0 0 0 0 0 2143420159 0 0 0 17 37 0 0 0 0 0 74488800 75479617 483643392 281474559161377 281474559161642 281474559161642 281474559176572 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=85666\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "85666 (ntfy) S 83658 85666 85666 0 -1 4194304 5439 67 0 0 8 4 0 0 20 0 40 0 245605193 4316364800 10240 18446744073709551615 4194304 74414103 281474962865696 0 0 0 0 0 2143420159 0 0 0 17 101 0 0 0 0 0 74488800 75479617 254009344 281474962867233 281474962867498 281474962867498 281474962882428 0\n", stderr: "" },
 ]
 
 data fx_config_unreadable: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=54888\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "54888 (ntfy) S 52749 54888 54888 0 -1 4194304 5317 67 0 0 7 4 0 0 20 0 40 0 244353347 4314529792 10240 18446744073709551615 4194304 74414103 281474832119520 0 0 0 0 0 2143420159 0 0 0 17 48 0 0 0 0 0 74488800 75479617 364417024 281474832122913 281474832123178 281474832123178 281474832138108 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=85833\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "85833 (ntfy) S 83658 85833 85833 0 -1 4194304 5487 68 0 0 8 3 0 0 20 0 39 0 245605813 4308516864 9984 18446744073709551615 4194304 74414103 281474602175888 0 0 0 0 0 2143420159 0 0 0 17 122 0 0 0 0 0 74488800 75479617 1074888704 281474602177569 281474602177834 281474602177834 281474602192764 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790153382\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
-  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700704725 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703558583 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
   FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184383 1790140870 1790140732\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790153394 1790140876 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 1, stdout: "", stderr: "cat: /etc/gunbc-ntfy/server.yml: Permission denied" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184383 1790140870 1790140732\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184377 1790140865 1790140863\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790153394 1790140876 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11141484 1790153389 1790153388 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 1, stdout: "", stderr: "open /etc/gunbc-ntfy/server.yml: permission denied" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184377 1790140865 1790140863\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11141484 1790153389 1790153388 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=54888\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "54888 (ntfy) S 52749 54888 54888 0 -1 4194304 5317 67 0 0 7 4 0 0 20 0 40 0 244353347 4314529792 10240 18446744073709551615 4194304 74414103 281474832119520 0 0 0 0 0 2143420159 0 0 0 17 48 0 0 0 0 0 74488800 75479617 364417024 281474832122913 281474832123178 281474832123178 281474832138108 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=85833\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "85833 (ntfy) S 83658 85833 85833 0 -1 4194304 5487 68 0 0 8 3 0 0 20 0 39 0 245605813 4308516864 9984 18446744073709551615 4194304 74414103 281474602175888 0 0 0 0 0 2143420159 0 0 0 17 122 0 0 0 0 0 74488800 75479617 1074888704 281474602177569 281474602177834 281474602177834 281474602192764 0\n", stderr: "" },
 ]
 
 data fx_config_swapped: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=55052\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "55052 (ntfy) S 52749 55052 55052 0 -1 4194304 5571 67 0 0 8 4 0 0 20 0 40 0 244353965 4316889088 10240 18446744073709551615 4194304 74414103 281474179845280 0 0 0 0 0 2143420159 0 0 0 17 78 0 0 0 0 0 74488800 75479617 290537472 281474179847201 281474179847466 281474179847466 281474179862396 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=85998\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "85998 (ntfy) S 83658 85998 85998 0 -1 4194304 5412 67 0 0 8 3 0 0 20 0 39 0 245606432 4240080896 10240 18446744073709551615 4194304 74414103 281474459991936 0 0 0 0 0 2143420159 0 0 0 17 75 0 0 0 0 0 74488800 75479617 258056192 281474459993121 281474459993386 281474459993386 281474460008316 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790153382\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
-  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700806556 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703645559 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
   FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184383 1790140872 1790140732\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790153396 1790140876 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: read-write\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790140876 1790140876\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184377 1790140865 1790140863\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11141485 1790153401 1790153401 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11141484 1790153389 1790153388 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- read-write access to all (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184377 1790140865 1790140863\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11141484 1790153389 1790153388 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=55052\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "55052 (ntfy) S 52749 55052 55052 0 -1 4194304 5571 67 0 0 8 4 0 0 20 0 40 0 244353965 4316889088 10240 18446744073709551615 4194304 74414103 281474179845280 0 0 0 0 0 2143420159 0 0 0 17 78 0 0 0 0 0 74488800 75479617 290537472 281474179847201 281474179847466 281474179847466 281474179862396 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=85998\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "85998 (ntfy) S 83658 85998 85998 0 -1 4194304 5412 67 0 0 8 3 0 0 20 0 39 0 245606432 4240080896 10240 18446744073709551615 4194304 74414103 281474459991936 0 0 0 0 0 2143420159 0 0 0 17 75 0 0 0 0 0 74488800 75479617 258056192 281474459993121 281474459993386 281474459993386 281474460008316 0\n", stderr: "" },
 ]
 
 data fx_auth_swapped: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=55215\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "55215 (ntfy) S 52749 55215 55215 0 -1 4194304 5532 67 0 0 8 3 0 0 20 0 40 0 244354582 4316897280 10240 18446744073709551615 4194304 74414103 281474733137856 0 0 0 0 0 2143420159 0 0 0 17 95 0 0 0 0 0 74488800 75479617 923615232 281474733138977 281474733139242 281474733139242 281474733154172 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=86165\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "86165 (ntfy) S 83658 86165 86165 0 -1 4194304 5493 66 0 0 9 2 0 0 20 0 40 0 245607051 4384342016 9728 18446744073709551615 4194304 74414103 281474164970864 0 0 0 0 0 2143420159 0 0 0 17 47 0 0 0 0 0 74488800 75479617 475688960 281474164974625 281474164974890 281474164974890 281474164989820 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790153382\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
-  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700814605 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703640467 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
   FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790140878 1790140876\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11141485 1790153403 1790153401 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790140878 1790140876\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184377 1790140865 1790140863\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11141485 1790153403 1790153401 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11141484 1790153389 1790153388 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140882 1790140882\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11141486 1790153407 1790153407 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=55215\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "55215 (ntfy) S 52749 55215 55215 0 -1 4194304 5532 67 0 0 8 3 0 0 20 0 40 0 244354582 4316897280 10240 18446744073709551615 4194304 74414103 281474733137856 0 0 0 0 0 2143420159 0 0 0 17 95 0 0 0 0 0 74488800 75479617 923615232 281474733138977 281474733139242 281474733139242 281474733154172 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=86165\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "86165 (ntfy) S 83658 86165 86165 0 -1 4194304 5493 66 0 0 9 2 0 0 20 0 40 0 245607051 4384342016 9728 18446744073709551615 4194304 74414103 281474164970864 0 0 0 0 0 2143420159 0 0 0 17 47 0 0 0 0 0 74488800 75479617 475688960 281474164974625 281474164974890 281474164974890 281474164989820 0\n", stderr: "" },
 ]
 
 data fx_ambient_auth_file: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=55421\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "55421 (ntfy) S 52749 55421 55421 0 -1 4194304 5555 67 0 0 8 3 0 0 20 0 40 0 244355207 4384063488 9984 18446744073709551615 4194304 74414103 281474263956240 0 0 0 0 0 2143420159 0 0 0 17 62 0 0 0 0 0 74488800 75479617 885325824 281474263958561 281474263958826 281474263958826 281474263973756 0\n", stderr: "" },
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=86373\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "86373 (ntfy) S 83658 86373 86373 0 -1 4194304 5490 68 0 0 9 2 0 0 20 0 40 0 245607676 4383285248 9984 18446744073709551615 4194304 74414103 281474759051744 0 0 0 0 0 2143420159 0 0 0 17 64 0 0 0 0 0 74488800 75479617 990441472 281474759054369 281474759054634 281474759054634 281474759069564 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790153382\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
-  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700711791 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703709348 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
   FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790140884 1790140876\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11141485 1790153409 1790153401 regular file\n", stderr: "" },
   FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790140884 1790140876\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140883 1790140882\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11141485 1790153409 1790153401 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11141486 1790153408 1790153407 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- read-only access to topic gunbc-approvals\n- no access to any (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140883 1790140882\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11141486 1790153408 1790153407 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=55421\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "55421 (ntfy) S 52749 55421 55421 0 -1 4194304 5555 67 0 0 8 3 0 0 20 0 40 0 244355207 4384063488 9984 18446744073709551615 4194304 74414103 281474263956240 0 0 0 0 0 2143420159 0 0 0 17 62 0 0 0 0 0 74488800 75479617 885325824 281474263958561 281474263958826 281474263958826 281474263973756 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=86373\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "86373 (ntfy) S 83658 86373 86373 0 -1 4194304 5490 68 0 0 9 2 0 0 20 0 40 0 245607676 4383285248 9984 18446744073709551615 4194304 74414103 281474759051744 0 0 0 0 0 2143420159 0 0 0 17 64 0 0 0 0 0 74488800 75479617 990441472 281474759054369 281474759054634 281474759054634 281474759069564 0\n", stderr: "" },
 ]
 
 data fx_access_without_env_i_under_ambient_auth_file: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n"
 
-data fx_restarted: List<FxRead> = [
-  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=55626\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "55626 (ntfy) S 52749 55626 55626 0 -1 4194304 5450 68 0 0 8 3 0 0 20 0 40 0 244355832 4316905472 10240 18446744073709551615 4194304 74414103 281473984748352 0 0 0 0 0 2143420159 0 0 0 17 59 0 0 0 0 0 74488800 75479617 1137184768 281473984750625 281473984750890 281473984750890 281473984765820 0\n", stderr: "" },
+data fx_config_symlink: List<FxRead> = [
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=86583\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "86583 (ntfy) S 83658 86583 86583 0 -1 4194304 5376 67 0 0 8 3 0 0 20 0 40 0 245608300 4316880896 9984 18446744073709551615 4194304 74414103 281474846253936 0 0 0 0 0 2143420159 0 0 0 17 28 0 0 0 0 0 74488800 75479617 867254272 281474846258209 281474846258474 281474846258474 281474846273404 0\n", stderr: "" },
   FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
   FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
   FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
-  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790140857\n", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790153382\n", stderr: "" },
   FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
   FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
   FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
-  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2700811808 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703720529 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
   FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
-  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11184389 1790140890 1790140876\n", stderr: "" },
-  FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
-  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11184389 1790140890 1790140876\n", stderr: "" },
-  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11184383 1790140889 1790140882\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11141484 1790153414 1790153414 symbolic link\n", stderr: "" },
+  FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n# changed between the reads\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11141484 1790153414 1790153414 symbolic link\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11141486 1790153414 1790153407 regular file\n", stderr: "" },
   FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
-  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11184383 1790140889 1790140882\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11141486 1790153414 1790153407 regular file\n", stderr: "" },
   FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
-  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=55788\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
-  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "55788 (ntfy) S 52749 55788 55788 0 -1 4194304 5414 67 0 0 8 3 0 0 20 0 40 0 244356250 4316618752 9984 18446744073709551615 4194304 74414103 281474583891200 0 0 0 0 0 2143420159 0 0 0 17 65 0 0 0 0 0 74488800 75479617 1046941696 281474583893025 281474583893290 281474583893290 281474583908220 0\n", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=86583\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "86583 (ntfy) S 83658 86583 86583 0 -1 4194304 5376 67 0 0 8 3 0 0 20 0 40 0 245608300 4316880896 9984 18446744073709551615 4194304 74414103 281474846253936 0 0 0 0 0 2143420159 0 0 0 17 28 0 0 0 0 0 74488800 75479617 867254272 281474846258209 281474846258474 281474846258474 281474846273404 0\n", stderr: "" },
+]
+
+data fx_auth_symlink: List<FxRead> = [
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=86757\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "86757 (ntfy) S 83658 86757 86757 0 -1 4194304 5454 67 0 0 8 3 0 0 20 0 40 0 245608919 4384079872 9984 18446744073709551615 4194304 74414103 281474546208768 0 0 0 0 0 2143420159 0 0 0 17 81 0 0 0 0 0 74488800 75479617 1070911488 281474546209825 281474546210090 281474546210090 281474546225020 0\n", stderr: "" },
+  FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
+  FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
+  FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790153382\n", stderr: "" },
+  FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
+  FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
+  FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703719526 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11141485 1790153421 1790153401 regular file\n", stderr: "" },
+  FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11141485 1790153421 1790153401 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11141484 1790153420 1790153420 symbolic link\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11141484 1790153420 1790153420 symbolic link\n", stderr: "" },
+  FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=86757\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "86757 (ntfy) S 83658 86757 86757 0 -1 4194304 5454 67 0 0 8 3 0 0 20 0 40 0 245608919 4384079872 9984 18446744073709551615 4194304 74414103 281474546208768 0 0 0 0 0 2143420159 0 0 0 17 81 0 0 0 0 0 74488800 75479617 1070911488 281474546209825 281474546210090 281474546210090 281474546225020 0\n", stderr: "" },
+]
+
+data fx_restarted: List<FxRead> = [
+  FxRead { read: "unit_before", exit_code: 0, stdout: "ActiveState=active\nMainPID=86923\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_before", exit_code: 0, stdout: "86923 (ntfy) S 83658 86923 86923 0 -1 4194304 5516 66 0 0 9 3 0 0 20 0 41 0 245609539 4459634688 9984 18446744073709551615 4194304 74414103 281474010342768 0 0 0 0 0 2143420159 0 0 0 17 107 0 0 0 0 0 74488800 75479617 843436032 281474010346529 281474010346794 281474010346794 281474010361724 0\n", stderr: "" },
+  FxRead { read: "boot_time", exit_code: 0, stdout: "btime 1787697334\n", stderr: "" },
+  FxRead { read: "clock_ticks", exit_code: 0, stdout: "100\n", stderr: "" },
+  FxRead { read: "command_line", exit_code: 0, stdout: "/usr/bin/ntfy\x00serve\x00--config\x00/etc/gunbc-ntfy/server.yml\x00", stderr: "" },
+  FxRead { read: "binary_ctime", exit_code: 0, stdout: "1790153382\n", stderr: "" },
+  FxRead { read: "version", exit_code: 0, stdout: "ntfy version 2.28.0\n", stderr: "" },
+  FxRead { read: "manager_environment", exit_code: 0, stdout: "LANG=C.UTF-8\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n", stderr: "" },
+  FxRead { read: "server_uid", exit_code: 0, stdout: "1000\n", stderr: "" },
+  FxRead { read: "net_tcp", exit_code: 0, stdout: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:0A1A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 2703688826 2 0000000000000000 100 0 0 10 0\n", stderr: "" },
+  FxRead { read: "net_tcp6", exit_code: 0, stdout: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", stderr: "" },
+  FxRead { read: "config_identity_before", exit_code: 0, stdout: "11141485 1790153428 1790153401 regular file\n", stderr: "" },
+  FxRead { read: "config", exit_code: 0, stdout: "auth-file: /var/lib/gunbc-ntfy/user.db\nauth-default-access: deny-all\nlisten-http: 127.0.0.1:2586\nbase-url: http://127.0.0.1:2586\n", stderr: "" },
+  FxRead { read: "config_identity_after", exit_code: 0, stdout: "11141485 1790153428 1790153401 regular file\n", stderr: "" },
+  FxRead { read: "auth_file_identity_before", exit_code: 0, stdout: "11141486 1790153427 1790153407 regular file\n", stderr: "" },
+  FxRead { read: "access_list", exit_code: 0, stdout: "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- no access to any (other) topics (server config)\n", stderr: "" },
+  FxRead { read: "auth_file_identity_after", exit_code: 0, stdout: "11141486 1790153427 1790153407 regular file\n", stderr: "" },
+  FxRead { read: "front_door", exit_code: 0, stdout: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}", stderr: "" },
+  FxRead { read: "unit_after", exit_code: 0, stdout: "ActiveState=active\nMainPID=87088\nEnvironment=\nEnvironmentFiles=\nPassEnvironment=\n", stderr: "" },
+  FxRead { read: "pid_stat_after", exit_code: 0, stdout: "87088 (ntfy) S 83658 87088 87088 0 -1 4194304 5553 66 0 0 8 3 0 0 20 0 40 0 245609956 4317151232 10496 18446744073709551615 4194304 74414103 281474617439264 0 0 0 0 0 2143420159 0 0 0 17 57 0 0 0 0 0 74488800 75479617 355835904 281474617443361 281474617443626 281474617443626 281474617458556 0\n", stderr: "" },
 ]
 
 data listing_default_rw: String = "user gunbc-approval-operator (role: user, tier: none)\n- read-only access to topic gunbc-approvals\nuser gunbc-approval-publisher (role: user, tier: none)\n- write-only access to topic gunbc-approvals\nuser * (role: anonymous, tier: none)\n- no topic-specific permissions\n- read-write access to all (other) topics (server config)\n"
@@ -586,11 +633,11 @@ test fn pin_manager_environment() -> Bool { pinned(read: ReadManagerEnvironment,
 test fn pin_server_uid() -> Bool { pinned(read: ReadServerUid, want: "timeout --kill-after 2s 10s id -u -- gunbc-ntfy") }
 test fn pin_net_tcp() -> Bool { pinned(read: ReadNetTcp, want: "timeout --kill-after 2s 10s cat /proc/net/tcp") }
 test fn pin_net_tcp6() -> Bool { pinned(read: ReadNetTcp6, want: "timeout --kill-after 2s 10s cat /proc/net/tcp6") }
-test fn pin_config_identity_before() -> Bool { pinned(read: ReadConfigIdentityBefore, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n -u gunbc-ntfy /usr/bin/stat -c %i %Z %W -- /etc/gunbc-ntfy/server.yml") }
-test fn pin_config_identity_after() -> Bool { pinned(read: ReadConfigIdentityAfter, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n -u gunbc-ntfy /usr/bin/stat -c %i %Z %W -- /etc/gunbc-ntfy/server.yml") }
+test fn pin_config_identity_before() -> Bool { pinned(read: ReadConfigIdentityBefore, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n -u gunbc-ntfy /usr/bin/stat -c %i %Z %W %F -- /etc/gunbc-ntfy/server.yml") }
+test fn pin_config_identity_after() -> Bool { pinned(read: ReadConfigIdentityAfter, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n -u gunbc-ntfy /usr/bin/stat -c %i %Z %W %F -- /etc/gunbc-ntfy/server.yml") }
 test fn pin_config() -> Bool { pinned(read: ReadConfig, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n -u gunbc-ntfy cat /etc/gunbc-ntfy/server.yml") }
-test fn pin_auth_file_identity_before() -> Bool { pinned(read: ReadAuthFileIdentityBefore, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n -u gunbc-ntfy /usr/bin/stat -c %i %Z %W -- /var/lib/gunbc-ntfy/user.db") }
-test fn pin_auth_file_identity_after() -> Bool { pinned(read: ReadAuthFileIdentityAfter, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n -u gunbc-ntfy /usr/bin/stat -c %i %Z %W -- /var/lib/gunbc-ntfy/user.db") }
+test fn pin_auth_file_identity_before() -> Bool { pinned(read: ReadAuthFileIdentityBefore, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n -u gunbc-ntfy /usr/bin/stat -c %i %Z %W %F -- /var/lib/gunbc-ntfy/user.db") }
+test fn pin_auth_file_identity_after() -> Bool { pinned(read: ReadAuthFileIdentityAfter, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n -u gunbc-ntfy /usr/bin/stat -c %i %Z %W %F -- /var/lib/gunbc-ntfy/user.db") }
 test fn pin_access_list_under_an_empty_environment() -> Bool { pinned(read: ReadAccessList, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n -u gunbc-ntfy /usr/bin/env -i /usr/bin/ntfy access --config /etc/gunbc-ntfy/server.yml") }
 test fn pin_front_door() -> Bool { pinned(read: ReadFrontDoor, want: "timeout --kill-after 2s 10s /usr/bin/sudo -n tailscale serve status --json") }
 
@@ -792,9 +839,29 @@ test fn without_env_i_the_ambient_auth_file_would_have_passed() -> Bool {
   }
 }
 
+// REAL: the declared config path is a STABLE symlink whose target was rewritten between the reads.
+// The link's own identity is the same before and after -- the bracket alone would pass it -- and
+// the regular-file requirement is what refuses.
+test fn a_symlinked_config_path_refuses() -> Bool {
+  (match gap_of(fx: fx_config_symlink) {
+    Present { value: RuntimeConfigNotRegularFile { observed: t } } => t == "symbolic link"
+    _ => false
+  })
+    && stdout_of(fx: fx_config_symlink, name: "config_identity_before") == stdout_of(fx: fx_config_symlink, name: "config_identity_after")
+}
+
+// REAL: the same for the auth-file path, its target replaced by another database before the listing.
+test fn a_symlinked_auth_file_path_refuses() -> Bool {
+  (match gap_of(fx: fx_auth_symlink) {
+    Present { value: RuntimeAuthFileNotRegularFile { observed: t } } => t == "symbolic link"
+    _ => false
+  })
+    && stdout_of(fx: fx_auth_symlink, name: "auth_file_identity_before") == stdout_of(fx: fx_auth_symlink, name: "auth_file_identity_after")
+}
+
 // SYNTHETIC: the exact capture's auth-file identity with its birth field zeroed -- a filesystem that reports no birth time (%W prints 0).
 test fn an_unknown_auth_file_birth_refuses() -> Bool {
-  let zeroed = "11160326 1790140746 0\n"
+  let zeroed = "11184383 1790140901 0 regular file\n"
   match gap_of(fx: with_read(fx: with_read(fx: fx_exact, name: "auth_file_identity_before", exit_code: 0, stdout: zeroed, stderr: ""), name: "auth_file_identity_after", exit_code: 0, stdout: zeroed, stderr: "")) {
     Present { value: RuntimeAuthFileBirthUnknown } => true
     _ => false
@@ -905,6 +972,33 @@ test fn a_further_admin_refuses() -> Bool {
 test fn a_further_wildcard_reader_refuses() -> Bool {
   match refused_with(v: verdict_of(fx: with_listing(listing: listing_wildcard_reader))) {
     Present { value: AclUnexpectedPrincipal { user: u, role: _ } } => u == "eve"
+    _ => false
+  }
+}
+
+// THE `*` ROW MUST BE AT THE ANONYMOUS ROLE. SYNTHETIC role edits of the exact listing: a `*` row
+// at role user, or at role admin, is refused even with the no-access shape; the real listing
+// (role anonymous) is the control and is admitted by the same fold.
+test fn a_star_row_at_role_user_refuses() -> Bool {
+  match refused_with(v: verdict_of(fx: with_listing(listing: replace(s: stdout_of(fx: fx_exact, name: "access_list"), from: "user * (role: anonymous, tier: none)", to: "user * (role: user, tier: none)")))) {
+    Present { value: AclAnonymousRoleNotAnonymous { observed: NtfyRoleUser } } => true
+    _ => false
+  }
+}
+
+test fn a_star_row_at_role_admin_refuses() -> Bool {
+  match refused_with(v: verdict_of(fx: with_listing(listing: replace(s: stdout_of(fx: fx_exact, name: "access_list"), from: "user * (role: anonymous, tier: none)\n- no topic-specific permissions", to: "user * (role: admin, tier: none)\n- no topic-specific permissions")))) {
+    Present { value: AclAnonymousRoleNotAnonymous { observed: NtfyRoleAdmin } } => true
+    _ => false
+  }
+}
+
+test fn a_star_row_at_role_anonymous_is_the_accepted_control() -> Bool {
+  match ntfy_access_read(stdout: stdout_of(fx: fx_exact, name: "access_list")) {
+    NtfyAccessListed { listing: l } => match approval_ntfy_acl_of_listing(listing: l) {
+      AclEstablished => true
+      _ => false
+    }
     _ => false
   }
 }

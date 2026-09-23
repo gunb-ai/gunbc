@@ -23,7 +23,7 @@ import extdeps.exec.command { ArgvCommand, argv_words, LocalExec, env_cleared_co
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
 import extdeps.tools.gnu_coreutils { cat_command, timeout_command }
-import extdeps.tools.stat { stat_ctime_epoch_command, stat_identity_command }
+import extdeps.tools.stat { stat_ctime_epoch_command, stat_identity_command, stat_regular_file_type }
 import extdeps.tools.id { id_uid_of_command }
 import extdeps.posix.getconf { getconf_clock_ticks_command, clock_ticks_reading, ClockTicksReading, ClockTicksObserved }
 import extdeps.systemd { SystemdUnitProperty, ActiveState, MainPID, EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty }
@@ -66,6 +66,7 @@ import gunbc.auth.approval_ntfy_deployment {
 type ApprovalNtfyAclDeviation
   = AclListingUnparseable { line: String, cause: String }
   | AclDefaultAccessNotDeny { observed: NtfyPermission }
+  | AclAnonymousRoleNotAnonymous { observed: NtfyRole }
   | AclAnonymousHasAccess { access: NtfyUserAccess }
   | AclPrincipalMissing { user: String }
   | AclPrincipalDuplicated { user: String }
@@ -165,6 +166,8 @@ type ActiveNtfyRuntimeGap
   | RuntimeConfigChangedSinceStart { started: Int, config_ctime: Int }
   | RuntimeConfigChangedDuringRead { before: String, after: String }
   | RuntimeAuthFileChangedDuringRead { before: String, after: String }
+  | RuntimeConfigNotRegularFile { observed: String }
+  | RuntimeAuthFileNotRegularFile { observed: String }
   | RuntimeConfigUnreadable { line: String, cause: String }
   | RuntimeConfigOptionNotSingle { key: String, values: List<String> }
   | RuntimeConfigDefaultAccessNotDeny { observed: String }
@@ -556,13 +559,14 @@ fn approval_ntfy_environment(started: Int, r: NtfyRuntimeReads) -> ApprovalNtfyA
   if files != "" { runtime_refused(gap: RuntimeEnvironmentFilesPresent { files: files }) }
   else { if count(overrides) != 0 { runtime_refused(gap: RuntimeEnvironmentOverrides { names: overrides }) }
   else { match file_identity(text: run_stdout(run: r.config_identity_before)) {
-    Absent => unparseable(read: ReadConfigIdentityBefore, detail: "not `inode ctime birth`")
+    Absent => unparseable(read: ReadConfigIdentityBefore, detail: "not `inode ctime birth type`")
     Present { value: before } => match file_identity(text: run_stdout(run: r.config_identity_after)) {
-      Absent => unparseable(read: ReadConfigIdentityAfter, detail: "not `inode ctime birth`")
+      Absent => unparseable(read: ReadConfigIdentityAfter, detail: "not `inode ctime birth type`")
       Present { value: after } =>
         if !file_identity_same(a: before, b: after) { runtime_refused(gap: RuntimeConfigChangedDuringRead { before: file_identity_label(i: before), after: file_identity_label(i: after) }) }
+        else { if before.file_type != stat_regular_file_type { runtime_refused(gap: RuntimeConfigNotRegularFile { observed: before.file_type }) }
         else { if before.ctime >= started { runtime_refused(gap: RuntimeConfigChangedSinceStart { started: started, config_ctime: before.ctime }) }
-        else { approval_ntfy_config_binding(started: started, r: r) } }
+        else { approval_ntfy_config_binding(started: started, r: r) } } }
     }
   } } }
 }
@@ -598,16 +602,18 @@ fn approval_ntfy_config_binding(started: Int, r: NtfyRuntimeReads) -> ApprovalNt
   }
 }
 
-// A file's identity as stat printed it: inode, ctime, birth (0 = the filesystem does not say).
+// A path's identity as stat printed it: inode, ctime, birth (0 = the filesystem does not say), and
+// its type ("regular file", "symbolic link", ...).
 type FileIdentity {
   inode: String
   ctime: Int
   birth: Int
+  file_type: String
 }
 
 fn file_identity(text: String) -> FileIdentity? {
   let words = filter(split(s: trim(s: text), delimiter: " "), w => w != "")
-  if count(words) != 3 { none } else {
+  if count(words) < 4 { none } else {
     match get(xs: words, index: 0) {
       Absent => none
       Present { value: inode } => match get(xs: words, index: 1) {
@@ -618,7 +624,7 @@ fn file_identity(text: String) -> FileIdentity? {
             Absent => none
             Present { value: ctime } => match parse_int(s: b) {
               Absent => none
-              Present { value: birth } => if parse_int(s: inode) == none { none } else { Present { value: FileIdentity { inode: inode, ctime: ctime, birth: birth } } }
+              Present { value: birth } => if parse_int(s: inode) == none { none } else { Present { value: FileIdentity { inode: inode, ctime: ctime, birth: birth, file_type: join(skip(words, n: 3), " ") } } }
             }
           }
         }
@@ -628,7 +634,7 @@ fn file_identity(text: String) -> FileIdentity? {
 }
 
 fn file_identity_same(a: FileIdentity, b: FileIdentity) -> Bool {
-  a.inode == b.inode && a.ctime == b.ctime && a.birth == b.birth
+  a.inode == b.inode && a.ctime == b.ctime && a.birth == b.birth && a.file_type == b.file_type
 }
 
 fn file_identity_label(i: FileIdentity) -> String {
@@ -637,14 +643,15 @@ fn file_identity_label(i: FileIdentity) -> String {
 
 fn approval_ntfy_auth_file(started: Int, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
   match file_identity(text: run_stdout(run: r.auth_file_identity_before)) {
-    Absent => unparseable(read: ReadAuthFileIdentityBefore, detail: "not `inode ctime birth`")
+    Absent => unparseable(read: ReadAuthFileIdentityBefore, detail: "not `inode ctime birth type`")
     Present { value: before } => match file_identity(text: run_stdout(run: r.auth_file_identity_after)) {
-      Absent => unparseable(read: ReadAuthFileIdentityAfter, detail: "not `inode ctime birth`")
+      Absent => unparseable(read: ReadAuthFileIdentityAfter, detail: "not `inode ctime birth type`")
       Present { value: after } =>
         if !file_identity_same(a: before, b: after) { runtime_refused(gap: RuntimeAuthFileChangedDuringRead { before: file_identity_label(i: before), after: file_identity_label(i: after) }) }
+        else { if before.file_type != stat_regular_file_type { runtime_refused(gap: RuntimeAuthFileNotRegularFile { observed: before.file_type }) }
         else { if before.birth == 0 { runtime_refused(gap: RuntimeAuthFileBirthUnknown) }
         else { if before.birth >= started { runtime_refused(gap: RuntimeAuthFileReplacedSinceStart { born: before.birth, started: started }) }
-        else { approval_ntfy_listeners(r: r) } } }
+        else { approval_ntfy_listeners(r: r) } } } }
     }
   }
 }
@@ -732,6 +739,8 @@ fn approval_ntfy_runtime_gap_sentence(g: ActiveNtfyRuntimeGap) -> String {
     RuntimeEnvironmentOverrides { names: n } => "the server's launch environment sets " + join(n, ", ") + ", which override its config"
     RuntimeConfigChangedSinceStart { started: a, config_ctime: m } => "the server config changed at " + to_string(m) + ", not before the server started at " + to_string(a)
     RuntimeConfigChangedDuringRead { before: b, after: a } => "the server config changed while it was read (" + b + " -> " + a + ")"
+    RuntimeConfigNotRegularFile { observed: t } => "the declared config path is a " + t + ", not a regular file, so its identity is not the identity of what is read through it"
+    RuntimeAuthFileNotRegularFile { observed: t } => "the declared auth-file path is a " + t + ", not a regular file, so its identity is not the identity of what is listed through it"
     RuntimeAuthFileChangedDuringRead { before: b, after: a } => "the auth file changed while it was listed (" + b + " -> " + a + ")"
     RuntimeConfigUnreadable { line: l, cause: c } => "the server config did not read flat at '" + l + "': " + c
     RuntimeConfigOptionNotSingle { key: k, values: v } => "the server config gives " + k + " " + to_string(count(v)) + " values, not one"
@@ -768,6 +777,13 @@ fn holds_exactly(u: NtfyAccessUser, want: NtfyPermission) -> Bool {
     TopicGrants { grants: gs } =>
       count(gs) == 1 && all(gs, g => g.topic_pattern == (approval_ntfy_topic as String) && permission_is(p: g.permission, want: want))
   })
+}
+
+// THE `*` ROW IS THE ANONYMOUS PRINCIPAL ONLY AT THE anonymous ROLE (user/types.go Everyone,
+// RoleAnonymous). A `*` row at another role is not the principal ntfy's authorizer applies to an
+// unauthenticated subscriber, so its no-access shape says nothing about that subscriber.
+fn role_is_anonymous(r: NtfyRole) -> Bool {
+  match r { NtfyRoleAnonymous => true  _ => false }
 }
 
 fn has_no_access(a: NtfyUserAccess) -> Bool {
@@ -821,7 +837,8 @@ fn approval_ntfy_acl_of_principals(anonymous: List<NtfyAccessUser>, publisher: L
   match first(anonymous) {
     Absent => AclRefused { deviation: AclPrincipalMissing { user: ntfy_everyone_user } }
     Present { value: a } =>
-      if !has_no_access(a: a.access) { AclRefused { deviation: AclAnonymousHasAccess { access: a.access } } }
+      if !role_is_anonymous(r: a.role) { AclRefused { deviation: AclAnonymousRoleNotAnonymous { observed: a.role } } }
+      else { if !has_no_access(a: a.access) { AclRefused { deviation: AclAnonymousHasAccess { access: a.access } } }
       else { match first(publisher) {
         Absent => AclRefused { deviation: AclPrincipalMissing { user: approval_ntfy_publisher_user as String } }
         Present { value: p } =>
@@ -832,7 +849,7 @@ fn approval_ntfy_acl_of_principals(anonymous: List<NtfyAccessUser>, publisher: L
               if !holds_exactly(u: o, want: NtfyReadOnly) { AclRefused { deviation: AclOperatorNotReadOnly { role: o.role, access: o.access } } }
               else { AclEstablished }
           } }
-      } }
+      } } }
   }
 }
 
@@ -840,6 +857,7 @@ fn approval_ntfy_acl_deviation_sentence(d: ApprovalNtfyAclDeviation) -> String {
   match d {
     AclListingUnparseable { line: l, cause: c } => "the ntfy access listing did not parse at '" + l + "': " + c
     AclDefaultAccessNotDeny { observed: _ } => "the server's default access is not deny-all, so an unlisted principal may subscribe"
+    AclAnonymousRoleNotAnonymous { observed: _ } => "the access list's '*' row is not at the anonymous role, so it is not the unauthenticated principal"
     AclAnonymousHasAccess { access: _ } => "the anonymous user '*' holds access, so an unprivileged subscriber may read"
     AclPrincipalMissing { user: u } => "the access list has no user '" + u + "'"
     AclPrincipalDuplicated { user: u } => "the access list names user '" + u + "' more than once"
