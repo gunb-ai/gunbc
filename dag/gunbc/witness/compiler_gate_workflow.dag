@@ -446,7 +446,7 @@ fn compiler_gate_drift_step() -> Step {
 // is that an author learns of drift at queue time. `!cancelled()` rather than the default
 // success(): a floor red must not disarm this check (see witness_floor_workflow's measured
 // correction).
-data compiler_gate_stage0_regen_command: ArgvCommand = claim_executor_command(mode_flag: "--required-regen", operands: [])
+data compiler_gate_stage0_regen_command: ArgvCommand = claim_executor_command(mode_flag: "--required-ci", operands: ["--source-root", "dag", "--source-root", "src/v2", "--required-lane", "build"])
 
 data compiler_gate_stage0_regen_step_name: String = "Stage0 mirrors match what this seed emits, first generation (merge_group only)"
 
