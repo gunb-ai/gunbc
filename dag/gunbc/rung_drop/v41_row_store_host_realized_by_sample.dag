@@ -21,11 +21,13 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
 // program is caught when the text changes (the digest claim goes red) and not by execution, and a defect
 // the sample does not reach is not caught at all. That is containment, not a gate over the host path.
 //
-// SCAFFOLD ADMISSION (2026-09-23): operator escalation msg_4de9efa4-51fb-4dbc-ab71-9ccf45f378e7, option
-// 'Admit scaffold, layout-free text'. It was approved by the dashboard's 15-minute default on the
-// recommendation of proud-deer-538 (DS4.1), NOT by an explicit operator reply. Scope: the host program
-// text is layout-free (every V4.1 fact is an operand rendered from the .dag plan), and this admission
-// ends when the emitted .dag encoder encodes all eight stores.
+// SCAFFOLD ADMISSION OF RECORD (2026-09-23): the operator's EXPLICIT ruling, a direct reply in the
+// proud-deer-538 (DS4.1) session ('follow your rec' = admit), recorded on #12122 at
+// https://github.com/gunb-ai/gunbc/pull/12122#issuecomment-5797563990 .
+// Scope: the host program text is layout-free (every V4.1 fact is an operand rendered from the .dag
+// plan), and the admission ends when the emitted .dag encoder encodes all eight stores. It supersedes
+// escalation msg_4de9efa4-51fb-4dbc-ab71-9ccf45f378e7, which was approved only by the dashboard's
+// 15-minute default and which reviews 70433 and 70470 rightly held was not an operator admission.
 data v41_row_store_host_realized_by_sample: RungDrop = RungDrop {
   identity: "v41_row_store_host_realized_by_sample" as NonEmptyStr,
 
