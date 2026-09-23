@@ -12,6 +12,7 @@ import extdeps.languages.json.grammar {
   JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
   json_text_skip_ws, json_text_parse_string, json_text_parse_number,
   json_number_lexeme_unchecked, is_json_digit_char,
+  json_hex_nibble, json_hex4_at,
 }
 
 // parse_json is the FORWARD reading of RFC 8259: text -> JsonValue, the inverse of
@@ -21,20 +22,20 @@ import extdeps.languages.json.grammar {
 // standalone parser (a second reading alongside emit); DISSOLVES WHEN json_production_rows are
 // wired into the general GrammarRelationRow ingest machinery (src/v2/compiler/03_ingest) so parse
 // is a witnessed instance of emit^-1 (DESIGN 4). Escapes: the span scanner in grammar.dag decides
-// the escape SET (json_text_escape_end, RFC 8259 section 7), so an unknown escape or a short \u
-// refuses the parse before a value is built and never reaches the unescaper below - see
-// json_escape_production_note for why that refusal lives at the scan and what it prevents (review
-// 45642). The unknown-escape arm in json_unescape_from is therefore unreachable for any span this
-// parser accepts; it is retained as a total fallback because json_unescape is exported and a caller
-// could hand it an unvalidated span. \uXXXX IS decoded to its code point, which is what makes the
-// round-trip total against escape_json_string: that emitter maps code points 0-31 other than the
-// six with short escapes to \uXXXX, so a parser that passed \u through would silently corrupt every
-// control character a receipt detail field can carry. Surrogate PAIRS are not recombined -
-// serialize_json never emits one (it escapes only 0-31), so a lone \uXXXX decode is exact over this
-// emitter's output; foreign JSON carrying an astral character as a surrogate pair is outside the
-// declared fragment. A malformed \u (fewer than four hex digits, or a non-hex digit) refuses at the
-// scanner, so json_hex4_at's negative arm is likewise unreachable from parse_json and kept only for
-// the exported-caller case.
+// the escape SET (one native split per string body, RFC 8259 section 7), so an unknown escape or
+// a short \u refuses the parse before a value is built and never reaches the unescaper below -
+// see json_escape_production_note for why that refusal lives at the scan and what it prevents
+// (review 45642). The malformed-\u arm in json_unescape_decode_piece is therefore unreachable for
+// any span this parser accepts; it is retained as a total fallback because json_unescape is
+// exported and a caller could hand it an unvalidated span. \uXXXX IS decoded to its code point,
+// which is what makes the round-trip total against escape_json_string: that emitter maps code
+// points 0-31 other than the six with short escapes to \uXXXX, so a parser that passed \u through
+// would silently corrupt every control character a receipt detail field can carry. Surrogate
+// PAIRS are not recombined - serialize_json never emits one (it escapes only 0-31), so a lone
+// \uXXXX decode is exact over this emitter's output; foreign JSON carrying an astral character as
+// a surrogate pair is outside the declared fragment. A malformed \u (fewer than four hex digits,
+// or a non-hex digit) refuses at the scan, so json_hex4_at's negative arm is likewise unreachable
+// from parse_json and kept only for the exported-caller case.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -47,94 +48,95 @@ type JsonParse =
     JsonParsed { value: JsonValue, next: Int }
   | JsonParseFail { at: Int }
 
-fn json_hex_nibble(c: String) -> Int {
-  if c == "0" { 0 }
-  else if c == "1" { 1 }
-  else if c == "2" { 2 }
-  else if c == "3" { 3 }
-  else if c == "4" { 4 }
-  else if c == "5" { 5 }
-  else if c == "6" { 6 }
-  else if c == "7" { 7 }
-  else if c == "8" { 8 }
-  else if c == "9" { 9 }
-  else if c == "a" || c == "A" { 10 }
-  else if c == "b" || c == "B" { 11 }
-  else if c == "c" || c == "C" { 12 }
-  else if c == "d" || c == "D" { 13 }
-  else if c == "e" || c == "E" { 14 }
-  else if c == "f" || c == "F" { 15 }
-  else { 0 - 1 }
-}
-
-fn json_hex4_at(s: String, i: Int) -> Int {
-  if i + 4 > s.length() {
-    0 - 1
-  } else {
-    let h0 = json_hex_nibble(c: char_at(s: s, pos: i))
-    let h1 = json_hex_nibble(c: char_at(s: s, pos: i + 1))
-    let h2 = json_hex_nibble(c: char_at(s: s, pos: i + 2))
-    let h3 = json_hex_nibble(c: char_at(s: s, pos: i + 3))
-    if h0 < 0 || h1 < 0 || h2 < 0 || h3 < 0 {
-      0 - 1
-    } else {
-      h0 * 4096 + h1 * 256 + h2 * 16 + h3
-    }
+// THE UNESCAPER MOVES IN ESCAPE-SIZED STEPS, NOT PER CHARACTER (measured 2026-09-23 on
+// corpus-scale shards: even with the span unescape, the per-character next-escape scan put the
+// parse at roughly fourteen interpreter-minutes per megabyte, which is the 104 MB envelope's
+// wall). One native split on the backslash resolves the whole escape structure — the pieces'
+// boundaries ARE the parity answer, so `\\` and `\u` sequences cannot be misparsed the way
+// sequential replacement passes would misparse them — and each piece decodes in one interpreted
+// step. The decoded pieces stay in document order (the recursion carries the first piece
+// first) and the join is one native pass; neither side copies an accumulator per escape.
+// THE FIRST PIECE IS LITERAL BY CONSTRUCTION (it precedes the first backslash); the rest are
+// escapes. The split is walked once, head by head, and each decoded piece is carried in
+// document order.
+fn json_unescape_decoded_pieces(pieces: List<String>) -> List<String> {
+  match pieces.first() {
+    Absent => []
+    Present { value: head } =>
+      concat(
+        [head],
+        json_unescape_decode_rest(pieces: json_unescape_drop_first(xs: pieces), literal_next: false),
+      )
   }
 }
 
-// THE UNESCAPER MOVES IN SPANS, NOT PER CHARACTER (measured 2026-09-23 on corpus-scale shards:
-// concat(acc, c) per char copied the whole accumulator at every step, so one 15KB source token
-// cost the square of its length and a sharded envelope load paid that per shard). Each iteration
-// appends the whole span since the last escape in ONE substring move; the copy work is one span
-// per escape sequence plus the tail, and the bytes out are identical to the per-char walk.
-fn json_next_escape(s: String, i: Int) -> Int {
-  if i >= s.length() {
-    i
-  } else if char_at(s: s, pos: i) == "\\" {
-    i
-  } else {
-    json_next_escape(s: s, i: i + 1)
-  }
-}
-
-fn json_unescape_from(s: String, i: Int, acc: String) -> String {
-  if i >= s.length() {
-    acc
-  } else {
-    let j = json_next_escape(s: s, i: i)
-    if j >= s.length() {
-      concat(acc, substring(s: s, start: i, end: s.length()))
-    } else {
-      let acc2 = if j > i { concat(acc, substring(s: s, start: i, end: j)) } else { acc }
-      let e = char_at(s: s, pos: j + 1)
-      if j + 1 >= s.length() {
-        acc2
+// THE WALK CARRIES THE PARITY ANSWER: an empty piece is a \\ pair, and the piece after a pair
+// is LITERAL — its head was never an escape letter, because the backslash that would have made
+// it one is the pair's second half. (Without the flag, `\\b` decodes the b as \b and `\q`
+// refuses a valid document.) The flag lasts exactly one piece.
+fn json_unescape_decode_rest(pieces: List<String>, literal_next: Bool) -> List<String> {
+  match pieces.first() {
+    Absent => []
+    Present { value: head } =>
+      if literal_next {
+        concat(
+          [head],
+          json_unescape_decode_rest(pieces: json_unescape_drop_first(xs: pieces), literal_next: false),
+        )
+      } else if head == "" {
+        concat(
+          ["\\"],
+          json_unescape_decode_rest(pieces: json_unescape_drop_first(xs: pieces), literal_next: true),
+        )
       } else {
-        if e == "u" {
-          let cp = json_hex4_at(s: s, i: j + 2)
-          if cp < 0 {
-            json_unescape_from(s: s, i: j + 2, acc: concat(acc2, e))
-          } else {
-            json_unescape_from(s: s, i: j + 6, acc: concat(acc2, from_code_point(cp: cp)))
-          }
-        } else {
-          let u = if e == "n" { from_code_point(cp: 10) }
-            else if e == "t" { from_code_point(cp: 9) }
-            else if e == "r" { from_code_point(cp: 13) }
-            else if e == "b" { from_code_point(cp: 8) }
-            else if e == "f" { from_code_point(cp: 12) }
-            else { e }
-          json_unescape_from(s: s, i: j + 2, acc: concat(acc2, u))
-        }
+        concat(
+          [json_unescape_decode_piece(piece: head)],
+          json_unescape_decode_rest(pieces: json_unescape_drop_first(xs: pieces), literal_next: false),
+        )
       }
+  }
+}
+
+type JsonUnescapeDropAcc { skipped: Bool, kept: List<String> }
+
+fn json_unescape_drop_first(xs: List<String>) -> List<String> {
+  (fold(xs, init: JsonUnescapeDropAcc { skipped: false, kept: [] }, f: fn(acc, x) {
+    if acc.skipped { JsonUnescapeDropAcc { skipped: true, kept: concat(acc.kept, [x]) } } else { JsonUnescapeDropAcc { skipped: true, kept: [] } }
+  })).kept
+}
+
+// AN EMPTY PIECE IS THE ESCAPED BACKSLASH; any other piece's head is its escape letter, with \u
+// carrying exactly four hex digits. The malformed-\u arm is the exported-caller fallback (the
+// grammar refuses before value building, so a short or non-hex \u never reaches this builder
+// from the parser): it drops the backslash and rescans the remainder as literal text, the
+// total-fallback semantics, piece-local.
+fn json_unescape_decode_piece(piece: String) -> String {
+  if piece == "" {
+    "\\"
+  } else {
+    let c = char_at(s: piece, pos: 0)
+    if c == "u" {
+      let cp = json_hex4_at(s: piece, i: 1)
+      if cp < 0 {
+        concat("u", json_unescape(s: substring(s: piece, start: 1, end: piece.length())))
+      } else {
+        concat(from_code_point(cp: cp), substring(s: piece, start: 5, end: piece.length()))
+      }
+    } else {
+      let u = if c == "n" { from_code_point(cp: 10) }
+        else if c == "t" { from_code_point(cp: 9) }
+        else if c == "r" { from_code_point(cp: 13) }
+        else if c == "b" { from_code_point(cp: 8) }
+        else if c == "f" { from_code_point(cp: 12) }
+        else { c }
+      concat(u, substring(s: piece, start: 1, end: piece.length()))
     }
   }
 }
 
 fn json_unescape(s: String) -> String {
   if string_contains(s: s, pattern: "\\") {
-    json_unescape_from(s: s, i: 0, acc: "")
+    join(json_unescape_decoded_pieces(pieces: split(s: s, delimiter: "\\")), "")
   } else {
     s
   }

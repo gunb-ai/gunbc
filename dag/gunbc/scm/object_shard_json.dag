@@ -2,7 +2,7 @@ module gunbc.scm.object_shard_json
 
 import std.types { String, Int, List, NonEmptyStr }
 import std.content_hash { content_hash_atom }
-import extdeps.languages.json.emit { JsonValue, json_string, json_int, json_array, json_object, json_kv, serialize_json }
+import extdeps.languages.json.emit { JsonValue, json_string, json_array, json_object, json_kv, serialize_json }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
 }
@@ -10,7 +10,7 @@ import gunbc.scm.json_member {
   read_string_member, read_member_value, read_member,
   MemberString, MemberArray, MemberObject, MemberFailed, MemberValue, MemberLookupFailed,
 }
-import gunbc.scm.object_store { ScmObject, ObjectId, scm_object_identity }
+import gunbc.scm.object_store { ScmObject, ObjectId, scm_object_identity, store_admission_store }
 import gunbc.scm.object_table_json { encode_object, EncodePositions, decode_object_table, DecodeAcc }
 
 // THE OBJECT SHARD, RE-GRAINED AT FIRST SAVE (2026-09-23): one shard per object put 7,050 host
@@ -82,11 +82,12 @@ type ObjectShardDecode
 
 fn decode_object_shard_doc(named_identity: String, values: List<JsonValue>) -> ObjectShardDecode {
   match decode_object_table(object_values: values) {
-    DecodeAcc { store, positions: _, next: _, refusal } =>
+    DecodeAcc { admission, positions: _, next: _, refusal } =>
       match refusal {
         Present { value: _ } =>
           ObjectShardNotDecodable { reason: "the shard's objects member refused the table decoder" }
-        Absent =>
+        Absent => {
+          let store = store_admission_store(admission: admission)
           if shard_identity_of(member_digests: shard_members_of(objects: store.objects)) == named_identity {
             ObjectShardDecoded { objects: store.objects }
           } else {
@@ -97,17 +98,19 @@ fn decode_object_shard_doc(named_identity: String, values: List<JsonValue>) -> O
               ], ""),
             }
           }
+        }
       }
   }
 }
 
 fn decode_object_shard_v1_doc(named_identity: String, doc: JsonValue) -> ObjectShardDecode {
   match decode_object_table(object_values: [doc]) {
-    DecodeAcc { store, positions: _, next: _, refusal } =>
+    DecodeAcc { admission, positions: _, next: _, refusal } =>
       match refusal {
         Present { value: _ } =>
           ObjectShardNotDecodable { reason: "the v1 shard's object member refused the table decoder" }
-        Absent =>
+        Absent => {
+          let store = store_admission_store(admission: admission)
           if count(store.objects) == 1 {
             match store.objects.first() {
               Absent => ObjectShardNotDecodable { reason: "the v1 shard decoded to no object" }
@@ -126,6 +129,7 @@ fn decode_object_shard_v1_doc(named_identity: String, doc: JsonValue) -> ObjectS
           } else {
             ObjectShardNotDecodable { reason: "the v1 shard's object member did not decode to exactly one object" }
           }
+        }
       }
   }
 }

@@ -236,13 +236,56 @@ fn is_json_hex_digit_char(c: String) -> Bool {
   (c != "") && string_contains(s: "0123456789abcdefABCDEF", pattern: c)
 }
 
+fn json_hex_nibble(c: String) -> Int {
+  if c == "0" { 0 }
+  else if c == "1" { 1 }
+  else if c == "2" { 2 }
+  else if c == "3" { 3 }
+  else if c == "4" { 4 }
+  else if c == "5" { 5 }
+  else if c == "6" { 6 }
+  else if c == "7" { 7 }
+  else if c == "8" { 8 }
+  else if c == "9" { 9 }
+  else if c == "a" || c == "A" { 10 }
+  else if c == "b" || c == "B" { 11 }
+  else if c == "c" || c == "C" { 12 }
+  else if c == "d" || c == "D" { 13 }
+  else if c == "e" || c == "E" { 14 }
+  else if c == "f" || c == "F" { 15 }
+  else { 0 - 1 }
+}
+
+fn json_hex4_at(s: String, i: Int) -> Int {
+  if i + 4 > s.length() {
+    0 - 1
+  } else {
+    let h0 = json_hex_nibble(c: char_at(s: s, pos: i))
+    let h1 = json_hex_nibble(c: char_at(s: s, pos: i + 1))
+    let h2 = json_hex_nibble(c: char_at(s: s, pos: i + 2))
+    let h3 = json_hex_nibble(c: char_at(s: s, pos: i + 3))
+    if h0 < 0 || h1 < 0 || h2 < 0 || h3 < 0 {
+      0 - 1
+    } else {
+      h0 * 4096 + h1 * 256 + h2 * 16 + h3
+    }
+  }
+}
+
+// THE SHORT-ESCAPE SET, ONE SPELLING (RFC 8259 section 7: escape = %x22 / %x5C / %x2F / %x62 /
+// %x66 / %x6E / %x72 / %x74 / %x75 4HEXDIG). The position walker below and the split-based
+// piece validator in json_text_escape_piece_valid both consume this predicate, so the set cannot
+// drift between the two scans.
+fn json_text_short_escape_char(c: String) -> Bool {
+  c == "\"" || c == "\\" || c == "/" || c == "b" || c == "f" || c == "n" || c == "r" || c == "t"
+}
+
 fn json_text_escape_end(s: String, i: Int) -> Int {
   if i >= s.length() {
     0 - 1
   } else {
     let e = char_at(s: s, pos: i)
-    if e == "\"" || e == "\\" || e == "/" || e == "b" || e == "f"
-      || e == "n" || e == "r" || e == "t" {
+    if json_text_short_escape_char(c: e) {
       i + 1
     } else if e == "u" {
       if i + 5 <= s.length()
@@ -260,25 +303,106 @@ fn json_text_escape_end(s: String, i: Int) -> Int {
   }
 }
 
+// THE STRING BODY SCAN IS THE NATIVE scan_string_end PRIMITIVE — one Rust pass over the bytes,
+// escapes honored — in place of the per-character interpreted recursion, which was the read wall
+// at envelope scale (measured 2026-09-23: roughly fourteen interpreter-minutes per megabyte of
+// document, so the 104 MB project envelope's parse alone outran every other phase of the read
+// put together). The scan's return keeps this production's convention: the position one past the
+// closing quote. The two things the recursion used to decide on its walk are decided here
+// without it: whether the scan actually TERMINATED on a quote (a final quote that is itself
+// escaped is an unterminated string, refused — decided by pairing backslashes at the span
+// boundary, one native replace, not a body re-walk), and whether every escape is in the RFC set
+// (review 45642: the set is a grammar production and an unknown escape refuses before a value
+// is built — validated over one native split, one interpreted step per escape rather than one
+// per character).
 fn json_text_parse_string_inner(s: String, i: Int) -> JsonTextParseResult {
-  if i >= s.length() {
-    json_text_parse_fail(end: i)
+  let end = scan_string_end(s: s, start: i)
+  if end <= i || char_at(s: s, pos: end - 1) != "\"" {
+    json_text_parse_fail(end: end)
   } else {
-    let c = char_at(s: s, pos: i)
-    if c == "\"" {
-      json_text_parse_ok(end: i + 1)
-    } else if c == "\\" {
-      let after = json_text_escape_end(s: s, i: i + 1)
-      if after < 0 {
-        json_text_parse_fail(end: i)
-      } else {
-        json_text_parse_string_inner(s: s, i: after)
-      }
+    if json_text_string_scan_terminated(s: s, body_start: i, end: end)
+      && json_text_escape_set_valid(body: substring(s: s, start: i, end: end - 1)) {
+      json_text_parse_ok(end: end)
     } else {
-      json_text_parse_string_inner(s: s, i: i + 1)
+      json_text_parse_fail(end: end)
     }
   }
 }
+
+// TERMINATED MEANS THE QUOTE AT end-1 IS NOT ESCAPED. When the scan stopped before the end of
+// the document it can only have stopped on an unescaped quote, so the question arises only when
+// the scan ran to the document's end — where a terminated string and an escaped-final-quote both
+// leave end == length. There the body is ambiguous only if the character before the quote is a
+// backslash, and pairing backslashes from the left decides it: removing every non-overlapping
+// pair is one native replace pass, preserves the parity of every run, and leaves a trailing
+// backslash exactly when the run before the quote was odd.
+fn json_text_string_scan_terminated(s: String, body_start: Int, end: Int) -> Bool {
+  if end < s.length() {
+    true
+  } else {
+    let before_quote = substring(s: s, start: body_start, end: end - 1)
+    if !ends_with(s: before_quote, suffix: "\\") {
+      true
+    } else {
+      !ends_with(s: replace(before_quote, "\\\\", ""), suffix: "\\")
+    }
+  }
+}
+
+// ONE NATIVE SPLIT, ONE INTERPRETED STEP PER ESCAPE. Splitting the body on the backslash yields
+// a piece per escape: the first piece is literal text, an EMPTY piece is the escaped backslash
+// (the two-backslash run resolves to a boundary between nothing), and any other piece begins
+// with its escape letter — so the RFC set is exactly: empty, one of the eight short escapes, or
+// u followed by four hex digits (json_hex4_at's own rule, including the length guard).
+fn json_text_escape_piece_valid(piece: String) -> Bool {
+  if piece == "" {
+    true
+  } else {
+    let c = char_at(s: piece, pos: 0)
+    if c == "u" {
+      json_hex4_at(s: piece, i: 1) >= 0
+    } else {
+      json_text_short_escape_char(c: c)
+    }
+  }
+}
+
+// THE VALIDATOR WALKS THE SAME PARITY AS THE UNESCAPER: an empty piece is a \\ pair and the
+// piece after it is literal — checking its head as an escape letter would refuse valid
+// documents such as `\\q` (an escaped backslash followed by plain text), which the
+// envelope-scale corpora genuinely contain.
+fn json_text_escape_pieces_valid(pieces: List<String>, literal_next: Bool) -> Bool {
+  match pieces.first() {
+    Absent => true
+    Present { value: head } =>
+      if literal_next {
+        json_text_escape_pieces_valid(pieces: drop_string_one(xs: pieces), literal_next: false)
+      } else if head == "" {
+        json_text_escape_pieces_valid(pieces: drop_string_one(xs: pieces), literal_next: true)
+      } else {
+        json_text_escape_piece_valid(piece: head)
+          && json_text_escape_pieces_valid(pieces: drop_string_one(xs: pieces), literal_next: false)
+      }
+  }
+}
+
+fn json_text_escape_set_valid(body: String) -> Bool {
+  match split(s: body, delimiter: "\\").first() {
+    Absent => true
+    Present { value: _ } =>
+      json_text_escape_pieces_valid(pieces: drop_string_one(xs: split(s: body, delimiter: "\\")), literal_next: false)
+  }
+}
+
+// DROPPING THE FIRST PIECE WITHOUT RE-TRAVERSING IT AS AN ESCAPE: the split's head is the
+// literal text before the first backslash and is never an escape.
+fn drop_string_one(xs: List<String>) -> List<String> {
+  (fold(xs, init: PairAcc { skipped: false, kept: [] }, f: fn(acc, x) {
+    if acc.skipped { PairAcc { skipped: true, kept: concat(acc.kept, [x]) } } else { PairAcc { skipped: true, kept: [] } }
+  })).kept
+}
+
+type PairAcc { skipped: Bool, kept: List<String> }
 
 fn json_text_parse_string(s: String, i: Int) -> JsonTextParseResult {
   if char_at(s: s, pos: i) != "\"" {

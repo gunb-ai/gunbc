@@ -121,6 +121,7 @@ import gunbc.scm.object_store {
   UniqueManifestStored, UniqueManifestLocatorCollision,
   CorpusEntrySourceRefusal, CorpusSourcesComplete, CorpusSourceIncomplete,
   observe_corpus_source_completeness,
+  store_admission_store,
 }
 import gunbc.scm.commit_closure {
   ClosureCensus,
@@ -2689,7 +2690,7 @@ fn decode_repository_body_with_allocator(
     MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
     MemberArray { elements: object_values } =>
       match decode_object_table(object_values: object_values) {
-        DecodeAcc { store: store, positions: positions, next: _, refusal: table_refusal } =>
+        DecodeAcc { admission: admission, positions: positions, next: _, refusal: table_refusal } =>
           match table_refusal {
             Present { value: c } => RepositoryDecodeRefused { cause: RepositoryDecodeObjectTableRefused { cause: c } }
             Absent =>
@@ -2698,7 +2699,7 @@ fn decode_repository_body_with_allocator(
                 next_ordinal: next_ordinal,
                 policy: policy,
                 commit_policy: commit_policy,
-                store: store,
+                store: store_admission_store(admission: admission),
                 positions: positions,
               )
           }

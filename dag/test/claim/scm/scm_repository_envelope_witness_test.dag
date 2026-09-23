@@ -428,9 +428,9 @@ test fn scm_env_the_root_signature_distinguishes_order() -> Bool {
 //
 // It counted objects in the DECODED store and asserted 4. That observation cannot distinguish one
 // shared table of 4 entries from two complete per-commit closures of 6 entries, because
-// decode_object_table routes every entry through insert_from_structure and insert_derived answers
-// the idempotent arm for a record already held. Both encodings decode to 4. The claim measured the
-// deduplicator, not the encoding it names.
+// decode_object_table admits every entry through the store-admission accumulator, whose
+// present-and-equal arm answers idempotently for a record already held. Both encodings decode to
+// 4. The claim measured the deduplicator, not the encoding it names.
 //
 // This is the THIRD time this stack has shipped an observation structurally incapable of producing
 // its own negative, and the second time the identical defect was fixed one layer down and then

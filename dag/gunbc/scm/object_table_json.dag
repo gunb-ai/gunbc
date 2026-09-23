@@ -134,14 +134,19 @@ import gunbc.scm.object_store {
   StoreOutcome,
   Stored,
   LocatorCollision,
-  SourceStoreOutcome,
-  SourceStored,
-  SourceLocatorCollision,
-  empty_store,
   insert_from_structure,
-  store_authored_source,
   object_id_eq,
   scm_object_identity,
+  scm_object_ref,
+  authored_source_object,
+  derived_node_object,
+  CorpusManifestObjectBuilt,
+  CorpusManifestObjectDuplicatePath,
+  corpus_manifest_object,
+  StoreAdmission,
+  empty_store_admission,
+  store_admission_admit,
+  store_admission_store,
   store_records_in_dependency_order,
 }
 import gunbc.scm.target_reference {
@@ -1220,8 +1225,16 @@ fn resolve_edge_in_node_table(
   }
 }
 
+// THE TABLE FOLD ADMITS THROUGH THE MAP-BACKED ACCUMULATOR, NOT BY INSERTING INTO A GROWING
+// STORE. The per-object store verbs recompute an identity per already-held object and copy the
+// object spine per append, so an entry-by-entry decode of a 7,051-object table pays the square
+// of the population (measured 2026-09-23: the project envelope's monolith read never completed,
+// over 50M interpreted identity compares at 100% CPU). The admission accumulator carries the
+// digest-keyed map the fold needs and reverses once at extraction; the admission rule —
+// present-and-equal idempotent, present-and-different a collision — is insert_admission's own,
+// consumed through store_admission_admit rather than re-derived here.
 type DecodeAcc {
-  store: ObjectStore
+  admission: StoreAdmission
   positions: DecodePositions
   next: Int
   refusal: ObjectTableDecodeRefusal?
@@ -1229,7 +1242,7 @@ type DecodeAcc {
 
 fn decode_acc_refused(acc: DecodeAcc, cause: ObjectTableDecodeRefusal) -> DecodeAcc {
   DecodeAcc {
-    store: acc.store,
+    admission: acc.admission,
     positions: acc.positions,
     next: acc.next,
     refusal: Present { value: cause },
@@ -1497,7 +1510,7 @@ fn decode_manifest_entry(
 }
 
 // THE DECODER IS NOT A THIRD PRODUCER OF MANIFEST IDENTITIES EITHER, for the reason the authored-source
-// decode records below: it hands the entries to store_corpus_manifest, which derives the identity by
+// decode records below: the entries go to corpus_manifest_object, which derives the identity by
 // the one rule, so a document cannot assert a manifest identity it did not derive.
 fn decode_corpus_manifest(acc: DecodeAcc, entry_values: List<JsonValue>) -> DecodeAcc {
   match fold(
@@ -1511,53 +1524,52 @@ fn decode_corpus_manifest(acc: DecodeAcc, entry_values: List<JsonValue>) -> Deco
       match refusal {
         Present { value: c } => decode_acc_refused(acc: acc, cause: c)
         Absent =>
-          match store_corpus_manifest(store: acc.store, entries: reverse(reversed_entries)) {
-            CorpusManifestLocatorCollision { identity: i, existing: _, incoming: _ } =>
-              decode_acc_refused(
-                acc: acc,
-                cause: ObjectTableObjectCollision { identity: i },
-              )
-            CorpusManifestDuplicatePath { path: path } =>
+          match corpus_manifest_object(entries: reverse(reversed_entries)) {
+            CorpusManifestObjectDuplicatePath { path: path } =>
               decode_acc_refused(
                 acc: acc,
                 cause: ObjectTableManifestDuplicatePath { path: path as String },
               )
-            CorpusManifestStored { store: next_store, manifest: manifest } =>
-              DecodeAcc {
-                store: next_store,
-                positions: map_insert(
-                  m: acc.positions,
-                  key: position_reference(n: acc.next),
-                  value: CorpusManifestRef(manifest),
-                ),
-                next: acc.next + 1,
-                refusal: acc.refusal,
+            CorpusManifestObjectBuilt { object: object, reference: reference } =>
+              match store_admission_admit(admission: acc.admission, object: object) {
+                StoreAdmissionCollision { identity: i, existing: _, incoming: _ } =>
+                  decode_acc_refused(
+                    acc: acc,
+                    cause: ObjectTableObjectCollision { identity: i },
+                  )
+                StoreAdmissionAdmitted { admission: next_admission } =>
+                  DecodeAcc {
+                    admission: next_admission,
+                    positions: map_insert(
+                      m: acc.positions,
+                      key: position_reference(n: acc.next),
+                      value: CorpusManifestRef(reference),
+                    ),
+                    next: acc.next + 1,
+                    refusal: acc.refusal,
+                  }
               }
           }
       }
   }
 }
 
-// THE DECODER IS NOT A THIRD PRODUCER OF AUTHORED IDENTITIES. It hands the bytes to
-// store_authored_source, which derives the identity by the one rule -- so an image cannot assert an
-// identity for a file any more than it can for a node, and the position map records what the store
-// derived rather than what the document said.
+// THE DECODER IS NOT A THIRD PRODUCER OF AUTHORED IDENTITIES. The object's identity is derived
+// by the one authority (gunbc.scm.object_store authored_source_object), and the position map
+// records the brand that construction derived, via the one projection, rather than anything the
+// document said.
 fn decode_authored_source(acc: DecodeAcc, text: String) -> DecodeAcc {
-  match store_authored_source(store: acc.store, text: text) {
-    SourceLocatorCollision { identity: i, existing: _, incoming: _ } =>
+  let object = authored_source_object(text: text)
+  match store_admission_admit(admission: acc.admission, object: object) {
+    StoreAdmissionCollision { identity: i, existing: _, incoming: _ } =>
+      decode_acc_refused(acc: acc, cause: ObjectTableObjectCollision { identity: i })
+    StoreAdmissionAdmitted { admission: next_admission } =>
       DecodeAcc {
-        store: acc.store,
-        positions: acc.positions,
-        next: acc.next,
-        refusal: Present { value: ObjectTableObjectCollision { identity: i } },
-      }
-    SourceStored { store: next_store, source: source } =>
-      DecodeAcc {
-        store: next_store,
+        admission: next_admission,
         positions: map_insert(
           m: acc.positions,
           key: position_reference(n: acc.next),
-          value: AuthoredSourceRef(source),
+          value: scm_object_ref(object: object),
         ),
         next: acc.next + 1,
         refusal: acc.refusal,
@@ -1632,22 +1644,24 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
             ObjectTableEdgeAcc { edges: reversed_edges, refusal: edge_refusal } =>
               match edge_refusal {
                 Present { value: c } => decode_acc_refused(acc: acc, cause: c)
-                Absent =>
-                  match insert_from_structure(store: acc.store, kind: kind, children: reverse(reversed_edges)) {
-                    LocatorCollision { identity: i, existing: _, incoming: _ } =>
+                Absent => {
+                  let object = derived_node_object(kind: kind, children: reverse(reversed_edges))
+                  match store_admission_admit(admission: acc.admission, object: object) {
+                    StoreAdmissionCollision { identity: i, existing: _, incoming: _ } =>
                       decode_acc_refused(acc: acc, cause: ObjectTableObjectCollision { identity: i })
-                    Stored { store: next_store, node: node } =>
+                    StoreAdmissionAdmitted { admission: next_admission } =>
                       DecodeAcc {
-                        store: next_store,
+                        admission: next_admission,
                         positions: map_insert(
                           m: acc.positions,
                           key: position_reference(n: acc.next),
-                          value: SemanticNodeRef(node),
+                          value: scm_object_ref(object: object),
                         ),
                         next: acc.next + 1,
                         refusal: acc.refusal,
                       }
                   }
+                }
               }
           }
       }
@@ -1723,7 +1737,7 @@ fn decode_node_entry_into_node_table(acc: NodeDecodeAcc, object_value: JsonValue
 fn decode_object_table(object_values: List<JsonValue>) -> DecodeAcc {
   fold(
     object_values,
-    init: DecodeAcc { store: empty_store(), positions: empty_map(), next: 0, refusal: none },
+    init: DecodeAcc { admission: empty_store_admission(), positions: empty_map(), next: 0, refusal: none },
     f: fn(acc, object_value) { decode_object_step(acc: acc, object_value: object_value) }
   )
 }

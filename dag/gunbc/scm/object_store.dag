@@ -867,6 +867,58 @@ fn insert_admission(store: ObjectStore, object: ScmObject) -> InsertAdmission {
   }
 }
 
+// THE FOLD-SHAPED ADMISSION ACCUMULATOR — insert_admission's rule at map cost, for consumers that
+// admit a whole population in one fold. The per-object store verbs above ask presence of a
+// scan: find_object recomputes an identity per element and insert copies the object spine per
+// append, so a table decode that admits entry by entry pays the square of the population
+// (measured 2026-09-23: the 7,051-object project envelope's monolith read never completed; the
+// read died at ~50M interpreted identity compares, the same shape the 2026-09-21 intake
+// measurement pinned at the same object count). This accumulator carries the digest-keyed map the
+// fold would otherwise rebuild per question, prepends, and reverses once at extraction -- the
+// population it hands back is the same population, in the same order, under the same rule:
+// present-and-equal idempotent, present-and-different a collision, absent an admit. The single-
+// question callers keep insert_admission: their one walk is exactly what they need, and a shared
+// carrier would put the collision brand each caller wants inside one accumulator, which is the
+// upward borrowing the branded outcomes above exist to refuse.
+type StoreAdmission {
+  seen: Map<String, ScmObject>
+  admitted: List<ScmObject>
+}
+
+type StoreAdmissionStep
+  = StoreAdmissionAdmitted { admission: StoreAdmission }
+  | StoreAdmissionCollision { identity: ObjectId, existing: ScmObject, incoming: ScmObject }
+
+fn empty_store_admission() -> StoreAdmission {
+  StoreAdmission { seen: empty_map(), admitted: [] }
+}
+
+fn store_admission_admit(admission: StoreAdmission, object: ScmObject) -> StoreAdmissionStep {
+  let identity = scm_object_identity(object: object)
+  match map_lookup(m: admission.seen, key: identity.digest as String) {
+    Present { value: held } =>
+      if objects_equal(left: held, right: object) {
+        StoreAdmissionAdmitted { admission: admission }
+      } else {
+        StoreAdmissionCollision { identity: identity, existing: held, incoming: object }
+      }
+    Absent =>
+      StoreAdmissionAdmitted {
+        admission: StoreAdmission {
+          seen: map_insert(m: admission.seen, key: identity.digest as String, value: object),
+          admitted: concat([object], admission.admitted),
+        }
+      }
+  }
+}
+
+// THE POPULATION IS PREPENDED AND REVERSED ONCE: extraction is the single place the order is
+// restored, so the mid-fold representation cannot leak to a consumer that would read it as
+// document order.
+fn store_admission_store(admission: StoreAdmission) -> ObjectStore {
+  ObjectStore { objects: reverse(admission.admitted) }
+}
+
 // Record equality is the substrate's own structural equality over both fields. StoredEdge is a
 // label and a derived child identity, so comparing the child LISTS compares the whole subtree by
 // its already-derived identities -- no re-walk, no digest projection, no hand-written pairwise fold.
@@ -968,20 +1020,46 @@ fn insert_derived(store: ObjectStore, record: ObjectRecord) -> StoreOutcome {
 // there is no argument through which a caller could assert an identity it did not derive. This is
 // the same wall store_node and insert_from_structure stand behind, reached by a third producer
 // rather than by a second identity authority.
-fn store_authored_source(store: ObjectStore, text: String) -> SourceStoreOutcome {
+// THE OBJECT WITHOUT THE STORE, and the reason it exists. The table decoder admits a whole
+// population in one fold through the accumulator above, so it needs the constructed object
+// without an insert to route it through. Construction stays here, behind the sole_constructor
+// wall; the admission rule is not re-derived downstairs, only postponed to whichever admission
+// carrier the caller folds. store_authored_source below is the same construction followed by
+// insert_admission, kept as the single-insert authority for callers that admit one source at a
+// time.
+fn authored_source_object(text: String) -> ScmObject {
   let content = authored_source_content(text: text)
-  let reference = AuthoredSourceObjectRef {
-    locator: authored_source_identity(content: content),
-  }
-  let object = AuthoredSourceObject(
-    AuthoredSourceRecord { identity: reference, content: content },
+  AuthoredSourceObject(
+    AuthoredSourceRecord {
+      identity: AuthoredSourceObjectRef { locator: authored_source_identity(content: content) },
+      content: content,
+    },
   )
-  match insert_admission(store: store, object: object) {
-    AdmitStored(next) => SourceStored { store: next, source: reference }
-    AdmitCollision { existing: existing } =>
+}
+
+fn store_authored_source(store: ObjectStore, text: String) -> SourceStoreOutcome {
+  let object = authored_source_object(text: text)
+  match object {
+    AuthoredSourceObject(record) =>
+      match insert_admission(store: store, object: object) {
+        AdmitStored(next) => SourceStored { store: next, source: record.identity }
+        AdmitCollision { existing: existing } =>
+          SourceLocatorCollision {
+            identity: record.identity.locator,
+            existing: existing,
+            incoming: object,
+          }
+      }
+    SemanticNodeObject(record) =>
       SourceLocatorCollision {
-        identity: reference.locator,
-        existing: existing,
+        identity: record.identity.locator,
+        existing: object,
+        incoming: object,
+      }
+    CorpusManifestObject(record) =>
+      SourceLocatorCollision {
+        identity: record.identity.locator,
+        existing: object,
         incoming: object,
       }
   }
@@ -1109,58 +1187,31 @@ fn manifest_entries_with_path_removed(
   path_unique_with_path_removed(unique: path_unique_of_record(base: base), path: path)
 }
 
-// ASSEMBLING A STORE FROM DECODED OBJECTS IS ONE PASS, NOT AN INSERT PER OBJECT. The sharded
-// loader (gunbc.scm.object_shard_json, the 2026-09-23 persistence ruling) hands this verb the
-// objects it decoded; building the store through insert_admission would pay a full-list find plus
-// a full-list spine copy per object -- the quadratic shape the batch store verb was written to
-// remove (measured 2026-09-21: a 7,050-object seeding never completed a belt tick). The identity
-// law is unchanged: identity derives from content, duplicates dedupe, and two objects answering
-// one identity with different content is a collision, refused by identity.
+// ASSEMBLING A STORE FROM DECODED OBJECTS IS ONE PASS THROUGH THE ADMISSION, NOT AN INSERT PER
+// OBJECT -- the sharded loader's verb delegates to store_admission_admit (the digest-keyed
+// single-authority admission) and extracts once. The identity law is unchanged: identity derives
+// from content, duplicates dedupe, and two objects answering one identity with different content
+// is a collision, refused by identity.
 type StoreAssembly
   = StoreAssembled { store: ObjectStore }
   | StoreAssemblyCollision { identity: ObjectId }
 
-type StoreAssemblyAcc {
-  seen: Map<String, ScmObject>
-  objects: List<ScmObject>
-  collision: ObjectId?
-}
-
 fn store_assemble_decoded(objects: List<ScmObject>) -> StoreAssembly {
-  let acc = fold(
+  match fold(
     objects,
-    init: StoreAssemblyAcc { seen: empty_map(), objects: [], collision: none },
+    init: StoreAdmissionAdmitted { admission: empty_store_admission() },
     f: fn(acc, object) {
-      match acc.collision {
-        Present { value: _ } => acc
-        Absent => {
-          let identity = scm_object_identity(object: object)
-          let key = identity.digest as String
-          match map_lookup(m: acc.seen, key: key) {
-            Present { value: held } =>
-              if objects_equal(left: held, right: object) {
-                acc
-              } else {
-                StoreAssemblyAcc {
-                  seen: acc.seen,
-                  objects: acc.objects,
-                  collision: Present { value: identity },
-                }
-              }
-            Absent =>
-              StoreAssemblyAcc {
-                seen: map_insert(acc.seen, key, object),
-                objects: concat([object], acc.objects),
-                collision: none,
-              }
-          }
-        }
+      match acc {
+        StoreAdmissionCollision { identity: _, existing: _, incoming: _ } => acc
+        StoreAdmissionAdmitted { admission } =>
+          store_admission_admit(admission: admission, object: object)
       }
     },
-  )
-  match acc.collision {
-    Present { value: identity } => StoreAssemblyCollision { identity: identity }
-    Absent => StoreAssembled { store: ObjectStore { objects: reverse(acc.objects) } }
+  ) {
+    StoreAdmissionCollision { identity, existing: _, incoming: _ } =>
+      StoreAssemblyCollision { identity: identity }
+    StoreAdmissionAdmitted { admission } =>
+      StoreAssembled { store: store_admission_store(admission: admission) }
   }
 }
 
@@ -1471,18 +1522,47 @@ fn store_path_unique_manifest(
   insert_canonical_manifest(store: store, admitted: admit_path_unique_entries(unique: unique))
 }
 
+// THE OBJECT WITHOUT THE STORE, the manifest arm of the same split: entry admission (duplicate
+// path refusal) and identity derivation run here once, and the caller chooses the admission
+// carrier — one insert, or the fold-shaped accumulator the table decoder folds.
+type CorpusManifestObjectBuild
+  = CorpusManifestObjectBuilt { object: ScmObject, reference: CorpusManifestObjectRef }
+  | CorpusManifestObjectDuplicatePath { path: NonEmptyStr }
+
+fn corpus_manifest_object(entries: List<CorpusManifestEntry>) -> CorpusManifestObjectBuild {
+  match admit_manifest_entries(entries: entries) {
+    ManifestEntriesDuplicatePath { path: path } =>
+      CorpusManifestObjectDuplicatePath { path: path }
+    ManifestEntriesAdmitted(admitted) => {
+      let reference = CorpusManifestObjectRef {
+        locator: corpus_manifest_identity(entries: admitted.entries),
+      }
+      CorpusManifestObjectBuilt {
+        object: CorpusManifestObject(
+          CorpusManifestRecord { identity: reference, entries: admitted.entries },
+        ),
+        reference: reference,
+      }
+    }
+  }
+}
+
 fn store_corpus_manifest(
   store: ObjectStore,
   entries: List<CorpusManifestEntry>
 ) -> CorpusManifestStoreOutcome {
-  match admit_manifest_entries(entries: entries) {
-    ManifestEntriesDuplicatePath { path: path } => CorpusManifestDuplicatePath { path: path }
-    ManifestEntriesAdmitted(admitted) =>
-      match insert_canonical_manifest(store: store, admitted: admitted) {
-        UniqueManifestStored { store: next, manifest: reference } =>
-          CorpusManifestStored { store: next, manifest: reference }
-        UniqueManifestLocatorCollision { identity: i, existing: e, incoming: n } =>
-          CorpusManifestLocatorCollision { identity: i, existing: e, incoming: n }
+  match corpus_manifest_object(entries: entries) {
+    CorpusManifestObjectDuplicatePath { path: path } =>
+      CorpusManifestDuplicatePath { path: path }
+    CorpusManifestObjectBuilt { object: object, reference: reference } =>
+      match insert_admission(store: store, object: object) {
+        AdmitStored(next) => CorpusManifestStored { store: next, manifest: reference }
+        AdmitCollision { existing: existing } =>
+          CorpusManifestLocatorCollision {
+            identity: reference.locator,
+            existing: existing,
+            incoming: object,
+          }
       }
   }
 }
@@ -1653,19 +1733,19 @@ fn store_node(store: ObjectStore, n: Node) -> StoreOutcome {
 // The canonicalization reuses std's own canonicalize_labeled_for_content_hash rather than sorting
 // here: the ordering rule belongs to the identity authority, and a second sort in this module would
 // be the same rule written twice, free to drift from the one the hash actually uses.
-fn insert_from_structure(
-  store: ObjectStore,
-  kind: NodeKind,
-  children: List<StoredEdge>
-) -> StoreOutcome {
+// THE OBJECT WITHOUT THE STORE, for the same reason authored_source_object exists: the table
+// decoder admits populations through the fold-shaped accumulator, and canonicalization plus the
+// child-content hash stay one authority here rather than being re-derived beside it. This is the
+// canonicalize-and-hash half of insert_from_structure, split from the insert so both admission
+// carriers consume one construction.
+fn derived_node_object(kind: NodeKind, children: List<StoredEdge>) -> ScmObject {
   let canonical = canonicalize_labeled_for_content_hash(
     kind: kind,
     items: children,
     label_of: stored_edge_label_of,
   )
-  insert_derived(
-    store: store,
-    record: ObjectRecord {
+  SemanticNodeObject(
+    ObjectRecord {
       identity: SemanticNodeObjectRef {
         locator: content_hash_of_children(
           kind: kind,
@@ -1676,6 +1756,38 @@ fn insert_from_structure(
       children: canonical,
     },
   )
+}
+
+fn insert_from_structure(
+  store: ObjectStore,
+  kind: NodeKind,
+  children: List<StoredEdge>
+) -> StoreOutcome {
+  let object = derived_node_object(kind: kind, children: children)
+  match object {
+    SemanticNodeObject(record) =>
+      match insert_admission(store: store, object: object) {
+        AdmitStored(next) => Stored { store: next, node: record.identity }
+        AdmitCollision { existing: existing } =>
+          LocatorCollision {
+            identity: record.identity.locator,
+            existing: existing,
+            incoming: object,
+          }
+      }
+    AuthoredSourceObject(record) =>
+      LocatorCollision {
+        identity: record.identity.locator,
+        existing: object,
+        incoming: object,
+      }
+    CorpusManifestObject(record) =>
+      LocatorCollision {
+        identity: record.identity.locator,
+        existing: object,
+        incoming: object,
+      }
+  }
 }
 
 // ================================================================================================

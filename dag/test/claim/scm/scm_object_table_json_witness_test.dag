@@ -60,6 +60,8 @@ import gunbc.scm.object_store {
   CorpusManifestAbsent,
   CorpusManifestIsSemanticNode,
   CorpusManifestIsAuthoredSource,
+  StoreAdmission,
+  store_admission_store,
 }
 import gunbc.scm.object_table_json {
   ObjectTableDecodeRefusal,
@@ -130,6 +132,12 @@ fn ot_cause_tag(acc: DecodeAcc) -> String {
 
 fn ot_decoded(entries: List<JsonValue>) -> DecodeAcc {
   decode_object_table(object_values: entries)
+}
+
+// THE DECODE FOLD HANDS BACK AN ADMISSION ACCUMULATOR, not a store: the witness asserts over the
+// document-order population, which is the extraction of that accumulator.
+fn ot_admitted_store(admission: StoreAdmission) -> ObjectStore {
+  store_admission_store(admission: admission)
 }
 
 fn ot_tag_of(entries: List<JsonValue>) -> String {
@@ -459,14 +467,14 @@ test fn ot_the_two_authored_arms_stay_distinct() -> Bool {
   fx.ok
     && !object_id_eq(left: fx.empty_locator, right: fx.text_locator)
     && match ot_reencoded(store: fx.store) {
-      DecodeAcc { store: back, positions: _, next: _, refusal: refusal } =>
+      DecodeAcc { admission: back, positions: _, next: _, refusal: refusal } =>
         match refusal {
           Present { value: _ } => false
           Absent =>
-            match ot_content_at(store: back, locator: fx.empty_locator) {
+            match ot_content_at(store: ot_admitted_store(admission: back), locator: fx.empty_locator) {
               Absent => false
               Present { value: empty_content } =>
-                match ot_content_at(store: back, locator: fx.text_locator) {
+                match ot_content_at(store: ot_admitted_store(admission: back), locator: fx.text_locator) {
                   Absent => false
                   Present { value: text_content } =>
                     match empty_content {
@@ -484,19 +492,19 @@ test fn ot_the_two_authored_arms_stay_distinct() -> Bool {
 }
 
 // AND THE IDENTITIES ARE RE-DERIVED RATHER THAN CARRIED. Nothing on the wire asserts an authored
-// source's identity: the decoder hands the bytes to store_authored_source, which derives it by the
+// source's identity: the decoder hands the bytes to authored_source_object, which derives it by the
 // one rule. So finding the same locator after a round trip is evidence that the rule agreed, not
 // that a field survived.
 test fn ot_an_authored_source_keeps_its_derived_identity() -> Bool {
   let fx = ot_two_source_store()
   fx.ok
     && match ot_reencoded(store: fx.store) {
-      DecodeAcc { store: back, positions: _, next: _, refusal: refusal } =>
+      DecodeAcc { admission: back, positions: _, next: _, refusal: refusal } =>
         match refusal {
           Present { value: _ } => false
           Absent =>
-            (store_object_count(store: back) == store_object_count(store: fx.store))
-              && match ot_content_at(store: back, locator: fx.text_locator) {
+            (store_object_count(store: ot_admitted_store(admission: back)) == store_object_count(store: fx.store))
+              && match ot_content_at(store: ot_admitted_store(admission: back), locator: fx.text_locator) {
                 Absent => false
                 Present { value: c } =>
                   match c {
@@ -529,11 +537,11 @@ test fn ot_a_manifest_survives_the_table() -> Bool {
         CorpusManifestDuplicatePath { path: _ } => false
         CorpusManifestStored { store: with_manifest, manifest: manifest } =>
           match ot_reencoded(store: with_manifest) {
-            DecodeAcc { store: back, positions: _, next: _, refusal: refusal } =>
+            DecodeAcc { admission: back, positions: _, next: _, refusal: refusal } =>
               match refusal {
                 Present { value: _ } => false
                 Absent =>
-                  match find_corpus_manifest_record(store: back, identity: manifest.locator) {
+                  match find_corpus_manifest_record(store: ot_admitted_store(admission: back), identity: manifest.locator) {
                     CorpusManifestAbsent { identity: _ } => false
                     CorpusManifestIsSemanticNode { identity: _ } => false
                     CorpusManifestIsAuthoredSource { identity: _ } => false
