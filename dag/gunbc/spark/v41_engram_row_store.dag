@@ -933,10 +933,12 @@ data v41_published_span_readings: V41PublishedSpanReadings = V41PublishedSpansUn
   obligation: "the encoder's input is unread: the storage-backed spans of shards model-00047/00048 have not been transcribed from a spark_v41_checkpoint_materialize receipt into gunbc.spark.v41_engram_row_store v41_published_span_readings" as NonEmptyStr,
 }
 
-// THE STORE READINGS' INSTRUMENT: the spark_v41_row_store_encode fleet-converge mode
-// (gunbc.spark.v41_row_store_encode_run v41_row_store_encode_ci_wet), whose receipt
-// target/v41-row-store-encode-receipt.txt carries one `store layer.L.rank.K sha256=...` line per store. A Read
-// row is transcribed from that receipt and names the run (observed_at) and the host it read.
+// THE STORE READINGS' INSTRUMENT IS A DECLARED FRONTIER (DESIGN section 3c). Nothing on main produces
+// them yet. The producer is the dispatched encode mode in gunbc#12150 (stacked on the host encoder,
+// gunbc#12122): it encodes the eight stores on one materialized Group A Spark and writes one
+// `store layer.L.rank.K sha256=...` line per store to its receipt. A Read row is transcribed from that
+// receipt, naming the run (observed_at) and the host it read. TRIGGER: gunbc#12150 landing, at which
+// point this comment cites its module and entry point by symbol.
 data v41_published_store_readings: V41PublishedStoreReadings = V41PublishedStoresUnread {
   obligation: "no published-shard row-store content digest exists: the eight Engram row stores (layers 1 and 14 x four ranks) have not been encoded and read, so their sha256 are not in gunbc.spark.v41_engram_row_store v41_published_store_readings" as NonEmptyStr,
 }
