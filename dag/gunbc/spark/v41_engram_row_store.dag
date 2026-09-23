@@ -1,6 +1,6 @@
 module gunbc.spark.v41_engram_row_store
 
-import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.types { String, Bool, List, NonEmptyStr, Int, Map }
 import std.nat { Nat }
 import std.integer { UInt8 }
 import std.bytes { bytes_octets, utf8_encode_bytes }
@@ -18,7 +18,7 @@ import extdeps.safetensors.format {
   ShardBoundsResolved, ShardBoundsDuplicated, ShardBoundsAbsent, safetensors_shard_bounds_resolution,
 }
 import extdeps.toolchain.architecture_profile { Endianness, LittleEndian, endianness_token }
-import extdeps.vllm.engram_layout { VllmEngramRankRows, vllm_engram_head_sizes, vllm_engram_rank_rows, vllm_engram_sum, vllm_engram_every_rank_has_heads }
+import extdeps.vllm.engram_layout { VllmEngramRankRows, vllm_engram_head_sizes, vllm_engram_rank_rows, vllm_engram_sum, vllm_engram_every_rank_has_heads, vllm_engram_count_up }
 import extdeps.deepseek.deepseek_v4_1_flash { DeepseekV41EngramTables, deepseek_v4_1_flash_engram }
 import gunbc.spark.v41_identity_input { V41EngramResidencyPartition, v41_input }
 import gunbc.fabric.engram_materialization { engram_component_identity }
@@ -390,19 +390,28 @@ fn v41_rank_store_inputs(stores: List<V41RankStoreIdentity>) -> List<ArtifactRea
   map(v41_ordered_stores(stores: stores), s => v41_input(identity: join([v41_store_key(layer: s.layer, rank: s.rank), ".sha256"], ""), value: serialize_content_hash(hash: s.digest) as String))
 }
 
-fn nat_ranks(n: Nat) -> List<Nat> {
-  if n == 0 { [] as List<Nat> } else { concat(nat_ranks(n: n - 1), [n - 1]) }
-}
-
 // THE DECLARED STORE POPULATION: one (layer, rank) per spec layer per rank, as keys.
 fn v41_declared_store_keys(spec: V41RowStoreEncodingSpec) -> List<String> {
-  flat_map(spec.layers, t => map(nat_ranks(n: spec.rank_count), k => v41_store_key(layer: t.layer, rank: k)))
+  flat_map(spec.layers, t => map(vllm_engram_count_up(n: spec.rank_count), k => v41_store_key(layer: t.layer, rank: k)))
 }
 
 fn v41_is_sha256(h: ContentHash) -> Bool {
   match h {
     Sha256Hash(_) => true
     _ => false
+  }
+}
+
+// HOW MANY TIMES EACH KEY OCCURS, as one pass into a map, so every membership and multiplicity test
+// below is a lookup rather than a scan of the other list.
+fn v41_key_counts(keys: List<String>) -> Map<String, Int> {
+  fold(keys, init: empty_map(), f: (acc, k) => map_insert(acc, k, v41_key_count(index: acc, key: k) + 1))
+}
+
+fn v41_key_count(index: Map<String, Int>, key: String) -> Int {
+  match map_get(index, key) {
+    Present { value: n } => n
+    Absent => 0
   }
 }
 
@@ -413,9 +422,11 @@ fn v41_identify_row_store(spec: V41RowStoreEncodingSpec, rank_stores: List<V41Ra
   let scheme = v41_uninhabited_scheme_defects(spec: spec)
   let declared = v41_declared_store_keys(spec: spec)
   let supplied = map(rank_stores, s => v41_store_key(layer: s.layer, rank: s.rank))
-  let missing = map(filter(declared, k => !any(supplied, s => s == k)), k => join(["declared store ", k, " carries no digest; a missing store is not a store"], "") as NonEmptyStr)
-  let foreign = map(filter(supplied, s => !any(declared, k => k == s)), s => join(["store ", s, " is not declared by the encoding spec"], "") as NonEmptyStr)
-  let duplicated = map(filter(declared, k => length(filter(supplied, s => s == k)) > 1), k => join(["store ", k, " carries more than one digest"], "") as NonEmptyStr)
+  let declared_index = v41_key_counts(keys: declared)
+  let supplied_index = v41_key_counts(keys: supplied)
+  let missing = map(filter(declared, k => v41_key_count(index: supplied_index, key: k) == 0), k => join(["declared store ", k, " carries no digest; a missing store is not a store"], "") as NonEmptyStr)
+  let foreign = map(filter(supplied, s => v41_key_count(index: declared_index, key: s) == 0), s => join(["store ", s, " is not declared by the encoding spec"], "") as NonEmptyStr)
+  let duplicated = map(filter(declared, k => v41_key_count(index: supplied_index, key: k) > 1), k => join(["store ", k, " carries more than one digest"], "") as NonEmptyStr)
   let family = map(filter(rank_stores, s => !v41_is_sha256(h: s.digest)), s => join(["store ", v41_store_key(layer: s.layer, rank: s.rank), " digest is not a SHA-256; the consumer opens by SHA-256 of the file"], "") as NonEmptyStr)
   let defects = concat(concat(concat(concat(scheme, missing), foreign), duplicated), family)
   if length(defects) != 0 {
@@ -544,7 +555,7 @@ fn v41_store_bytes(placed: List<V41PlacedRow>, spec: V41RowStoreEncodingSpec, la
           if length(mine) != expected || !all(enumerate(mine), p => p.second.local_row == p.first) {
             V41StoreIncomplete { defect: join(["store ", v41_store_key(layer: layer, rank: rank), " holds ", to_string(length(mine)), " placed rows of its ", to_string(expected), "-row range, not each local row exactly once"], "") as NonEmptyStr }
           } else {
-            V41StoreComplete { layer: layer, rank: rank, bytes: fold(mine, init: v41_magic_octets(), f: (acc, p) => concat(acc, p.record)) }
+            V41StoreComplete { layer: layer, rank: rank, bytes: concat(v41_magic_octets(), flat_map(mine, p => p.record)) }
           }
         }
       }
@@ -586,11 +597,36 @@ fn v41_placement_defects(placements: List<V41Placement>) -> List<NonEmptyStr> {
   flat_map(placements, p => match p { V41Placed { row: _ } => [] as List<NonEmptyStr>  V41PlacementRefused { defect: d } => [d] })
 }
 
-// A SOURCE ROW'S IMAGE: the placed record at its address must be exactly weight || scale.
+// A SOURCE ROW'S IMAGE: the placed record at its address must be exactly weight || scale. Placed rows
+// are indexed once by (layer, global_row) with their multiplicity, so each source row is one lookup.
+type V41PlacedIndexEntry sole_constructor {
+  count: Int
+  record: List<UInt8>
+}
+
+fn v41_row_key(layer: Nat, global_row: Nat) -> String {
+  join([to_string(layer), "#", to_string(global_row)], "")
+}
+
+fn v41_placed_index(placed: List<V41PlacedRow>) -> Map<String, V41PlacedIndexEntry> {
+  fold(placed, init: empty_map(), f: (acc, p) => {
+    let k = v41_row_key(layer: p.layer, global_row: p.global_row)
+    let n = match map_get(acc, k) {
+      Present { value: e } => e.count
+      Absent => 0
+    }
+    map_insert(acc, k, V41PlacedIndexEntry { count: n + 1, record: p.record })
+  })
+}
+
 fn v41_lost_image_defects(source: List<V41SourceRow>, placed: List<V41PlacedRow>) -> List<NonEmptyStr> {
+  let index = v41_placed_index(placed: placed)
   flat_map(source, s => {
-    let images = filter(placed, p => p.layer == s.layer && p.global_row == s.global_row)
-    if length(images) == 1 && all(images, p => p.record == concat(s.weight, s.scale)) {
+    let exact = match map_get(index, v41_row_key(layer: s.layer, global_row: s.global_row)) {
+      Present { value: e } => e.count == 1 && e.record == concat(s.weight, s.scale)
+      Absent => false
+    }
+    if exact {
       [] as List<NonEmptyStr>
     } else {
       [join(["source row ", to_string(s.layer), "#", to_string(s.global_row), " has no exact placed image"], "") as NonEmptyStr]
@@ -606,7 +642,7 @@ fn v41_assess_placed(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec, 
   if length(early) != 0 {
     V41TransformUnfaithful { defects: early }
   } else {
-    let stores = flat_map(spec.layers, t => map(nat_ranks(n: spec.rank_count), k => v41_store_bytes(placed: placed, spec: spec, layer: t.layer, rank: k)))
+    let stores = flat_map(spec.layers, t => map(vllm_engram_count_up(n: spec.rank_count), k => v41_store_bytes(placed: placed, spec: spec, layer: t.layer, rank: k)))
     let incomplete = flat_map(stores, s => match s { V41StoreIncomplete { defect: d } => [d]  V41StoreComplete { layer: _, rank: _, bytes: _ } => [] as List<NonEmptyStr> })
     if length(incomplete) != 0 {
       V41TransformUnfaithful { defects: incomplete }

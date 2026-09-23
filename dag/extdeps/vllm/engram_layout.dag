@@ -1,6 +1,6 @@
 module extdeps.vllm.engram_layout
 
-import std.types { Bool, List, Int, String }
+import std.types { Bool, List, Int, String, Map }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority }
@@ -82,49 +82,64 @@ fn vllm_engram_is_prime(n: Int) -> Bool {
   }
 }
 
-// upstream find_next_prime: the smallest prime ABOVE `start` not already handed out.
-fn vllm_engram_next_prime(start: Int, seen: List<Int>) -> Int {
+// upstream find_next_prime: the smallest prime ABOVE `start` not already handed out. `seen` is keyed
+// so the membership test is one lookup, never a scan of every prime drawn so far.
+fn vllm_engram_next_prime(start: Int, seen: Map<String, Bool>) -> Int {
   let c = start + 1
-  if vllm_engram_is_prime(n: c) && !any(seen, s => s == c) { c } else { vllm_engram_next_prime(start: c, seen: seen) }
+  let taken = match map_get(seen, to_string(c)) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  if !taken && vllm_engram_is_prime(n: c) { c } else { vllm_engram_next_prime(start: c, seen: seen) }
 }
 
+// THE DRAW STATE. Drawn primes are kept NEWEST FIRST: the previous prime of the order in progress is
+// the head, and each draw prepends, so neither reading the last draw nor adding one copies the list.
+// The layout reverses once at the end.
 type VllmEngramPrimeDraw {
-  seen: List<Int>
-  drawn: List<Int>
+  seen: Map<String, Bool>
+  drawn_newest_first: List<Int>
 }
 
 // One n-gram order's n_heads primes: `current` restarts at vocab_size - 1 for every order and every
 // layer, and advances only within the order; `seen` carries across all of them.
 fn vllm_engram_draw_order(acc: VllmEngramPrimeDraw, vocab_size: Int, n_heads: Nat) -> VllmEngramPrimeDraw {
-  let order = fold(nat_range_count(n: n_heads), init: VllmEngramPrimeDraw { seen: acc.seen, drawn: [] as List<Int> }, f: (st, _) => {
-    let current = match first(reverse(st.drawn)) {
-      Present { value: p } => p
-      Absent => vocab_size - 1
-    }
-    let p = vllm_engram_next_prime(start: current, seen: st.seen)
-    VllmEngramPrimeDraw { seen: concat(st.seen, [p]), drawn: concat(st.drawn, [p]) }
+  let order = fold(vllm_engram_count_up(n: n_heads), init: VllmEngramOrderDraw { seen: acc.seen, current: vocab_size - 1, drawn_newest_first: acc.drawn_newest_first }, f: (st, _) => {
+    let p = vllm_engram_next_prime(start: st.current, seen: st.seen)
+    VllmEngramOrderDraw { seen: map_insert(st.seen, to_string(p), true), current: p, drawn_newest_first: concat([p], st.drawn_newest_first) }
   })
-  VllmEngramPrimeDraw { seen: order.seen, drawn: concat(acc.drawn, order.drawn) }
+  VllmEngramPrimeDraw { seen: order.seen, drawn_newest_first: order.drawn_newest_first }
 }
 
-fn nat_range_count(n: Nat) -> List<Nat> {
-  if n == 0 { [] as List<Nat> } else { concat(nat_range_count(n: n - 1), [n - 1]) }
+type VllmEngramOrderDraw {
+  seen: Map<String, Bool>
+  current: Int
+  drawn_newest_first: List<Int>
+}
+
+// 0, 1, ..., n - 1. Built newest-first by prepending and reversed once, so it is linear.
+fn vllm_engram_count_up(n: Nat) -> List<Nat> {
+  reverse(vllm_engram_count_down(n: n))
+}
+
+fn vllm_engram_count_down(n: Nat) -> List<Nat> {
+  if n == 0 { [] as List<Nat> } else { concat([n - 1], vllm_engram_count_down(n: n - 1)) }
 }
 
 // THE FLAT HEAD SIZES OF EVERY LAYER, in layer order: per layer, (max_ngram_size - 1) orders of
 // n_heads primes each, flattened order-major exactly as EngramLayout flattens them.
 fn vllm_engram_head_sizes(layer_count: Nat, max_ngram_size: Nat, n_heads: Nat, vocab_size: Nat) -> List<List<Int>> {
   let orders = if max_ngram_size == 0 { 0 } else { max_ngram_size - 1 }
-  let done = fold(nat_range_count(n: layer_count), init: VllmEngramLayoutDraw { seen: [] as List<Int>, layers: [] as List<List<Int>> }, f: (acc, _) => {
-    let layer = fold(nat_range_count(n: orders), init: VllmEngramPrimeDraw { seen: acc.seen, drawn: [] as List<Int> }, f: (st, _) => vllm_engram_draw_order(acc: st, vocab_size: vocab_size, n_heads: n_heads))
-    VllmEngramLayoutDraw { seen: layer.seen, layers: concat(acc.layers, [layer.drawn]) }
+  let done = fold(vllm_engram_count_up(n: layer_count), init: VllmEngramLayoutDraw { seen: empty_map(), layers_newest_first: [] as List<List<Int>> }, f: (acc, _) => {
+    let layer = fold(vllm_engram_count_up(n: orders), init: VllmEngramPrimeDraw { seen: acc.seen, drawn_newest_first: [] as List<Int> }, f: (st, _) => vllm_engram_draw_order(acc: st, vocab_size: vocab_size, n_heads: n_heads))
+    VllmEngramLayoutDraw { seen: layer.seen, layers_newest_first: concat([reverse(layer.drawn_newest_first)], acc.layers_newest_first) }
   })
-  done.layers
+  reverse(done.layers_newest_first)
 }
 
 type VllmEngramLayoutDraw {
-  seen: List<Int>
-  layers: List<List<Int>>
+  seen: Map<String, Bool>
+  layers_newest_first: List<List<Int>>
 }
 
 fn vllm_engram_sum(xs: List<Int>) -> Int {
@@ -143,13 +158,33 @@ type VllmEngramRankRows {
   end: Int
 }
 
+// ONE PASS: head i belongs to rank i / p, and a rank's end is the running sum after its last head. A
+// rank past the last head owns no rows; vllm_engram_every_rank_has_heads is what refuses that layout.
 fn vllm_engram_rank_rows(head_sizes: List<Int>, tp_size: Nat) -> List<VllmEngramRankRows> {
   let p = vllm_engram_part_hash_cols(n_hash_cols: length(head_sizes), tp_size: tp_size)
-  map(nat_range_count(n: tp_size), k => VllmEngramRankRows {
-    rank: k,
-    start: vllm_engram_sum(xs: head_sizes |> take(n: k * p)),
-    end: vllm_engram_sum(xs: head_sizes |> take(n: (k + 1) * p)),
+  let ends = fold(enumerate(head_sizes), init: VllmEngramRunningEnds { total: 0, ends_newest_first: [] as List<Int> }, f: (acc, h) => {
+    let total = acc.total + h.second
+    if p > 0 && ((h.first + 1) % p == 0 || h.first + 1 == length(head_sizes)) {
+      VllmEngramRunningEnds { total: total, ends_newest_first: concat([total], acc.ends_newest_first) }
+    } else {
+      VllmEngramRunningEnds { total: total, ends_newest_first: acc.ends_newest_first }
+    }
   })
+  let built = fold(reverse(ends.ends_newest_first), init: VllmEngramRankBuild { next_rank: 0, start: 0, rows_newest_first: [] as List<VllmEngramRankRows> }, f: (acc, end) =>
+    VllmEngramRankBuild { next_rank: acc.next_rank + 1, start: end, rows_newest_first: concat([VllmEngramRankRows { rank: acc.next_rank, start: acc.start, end: end }], acc.rows_newest_first) })
+  let empty = map(vllm_engram_count_up(n: if tp_size > built.next_rank { tp_size - built.next_rank } else { 0 }), i => VllmEngramRankRows { rank: built.next_rank + i, start: built.start, end: built.start })
+  concat(reverse(built.rows_newest_first), empty)
+}
+
+type VllmEngramRunningEnds {
+  total: Int
+  ends_newest_first: List<Int>
+}
+
+type VllmEngramRankBuild {
+  next_rank: Nat
+  start: Int
+  rows_newest_first: List<VllmEngramRankRows>
 }
 
 // upstream's own sharding assertion: no rank may be left without a hash head.
