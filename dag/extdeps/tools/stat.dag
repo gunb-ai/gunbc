@@ -114,6 +114,13 @@ fn stat_birth_epoch_command(path: String) -> ArgvCommand {
   argv_command(program: stat_binary_path, arguments: ["-c", "%W", "--", path])
 }
 
+// A FILE'S IDENTITY IN ONE READ: inode, status-change time, birth time (`%i %Z %W`). The inode names
+// the file a path resolves to now; ctime cannot be set by the file's owner (touch sets mtime and
+// atime only), so a change of either between two reads is a change of the file.
+fn stat_identity_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%i %Z %W", "--", path])
+}
+
 fn stat_size_bytes_command(path: String) -> ArgvCommand {
   argv_command(program: stat_binary_path, arguments: ["-c", "%s", "--", path])
 }
