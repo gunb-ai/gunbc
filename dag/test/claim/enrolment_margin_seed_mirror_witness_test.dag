@@ -44,8 +44,23 @@ fn every_arm() -> List<EnrolmentMarginStanding> {
   ]
 }
 
+// ONLY THE MIRROR'S OWN IMPL IS READ: the text between `impl EnrolmentMarginStanding {` and its
+// `fn detail(`, which holds blocks / unpaired_pairing_hole / cause / name. The seed's unit tests quote
+// the same words, so reading the whole file would let a renamed mirror arm stay green on a test's
+// spelling (measured: renaming the mirror's "dead_band_stale" left this claim green until it was
+// scoped). An impl that cannot be found is the empty string, and every expectation then reds.
+fn mirror_impl() -> String {
+  match filesystem_read(path: seed_path).content |> split(delimiter: "impl EnrolmentMarginStanding {") |> get(1) {
+    null => ""
+    tail => match tail |> split(delimiter: "fn detail(") |> get(0) {
+      null => ""
+      body => body
+    }
+  }
+}
+
 fn seed_quotes(word: String) -> Bool {
-  string_contains(s: filesystem_read(path: seed_path).content, pattern: "\"" + word + "\"")
+  string_contains(s: mirror_impl(), pattern: "\"" + word + "\"")
 }
 
 test fn every_enrolment_standing_name_is_mirrored_in_the_seed() -> Bool {
