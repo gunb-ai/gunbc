@@ -954,7 +954,17 @@ fn converge_vllm_runtime_image(target: SshTarget, context: FleetSshExecutionCont
 // parameters through the generic-fn split, so a `uses` row and a type parameter can coexist on one
 // declaration. That is the capability, not this file: until it lands, every effectful bracket in
 // the corpus is monomorphic or hands back an erased pair, and this one hands back the pair.
-type SparkBuildHostWork sole_constructor {
+// PLAIN DATA, DELIBERATELY NOT `sole_constructor`. Every caller of `with_spark_build_host` is in
+// another module by construction -- the bracket exists so a mode entry elsewhere can borrow this one
+// -- and each caller derives `converged` from its OWN typed outcome, which this module cannot see
+// (the parametric bracket that could see it is the substrate refusal above). A seal here could only
+// be honoured by a mint accepting any receipt and any verdict, which is a seal in name alone (DESIGN
+// section 4b: a brand is cosmetic until construction enforces the distinction). As merged on #12008
+// the type WAS sealed and the converge module constructed it anyway, which the compiler refuses by
+// name; the honest repair is to stop claiming a guarantee nobody here can hold. The restoring
+// trigger is the generic-effectful-declaration capability above: once the bracket can return the
+// body's own value, the verdict is derived inside this module and a seal becomes meaningful again.
+type SparkBuildHostWork {
   receipt: String
   converged: Bool
 }
