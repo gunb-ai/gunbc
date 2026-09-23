@@ -2,11 +2,11 @@ module gunbc.auth.approval_device_routes
 
 import std.types { NonEmptyStr, String, Int, List, Timestamp, HttpStatus }
 import std.logic { Bool }
-import std.integer { UInt8 }
+import std.integer { UInt8, QualifiedOctetsReady, QualifiedOctetsRefused }
 import std.measure { Second, second, second_count, ByteSize, byte_size, byte_size_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.encoding { base64_decode, Standard, UrlSafe }
+import std.encoding { base64_decode, base64_octets, Standard, UrlSafe }
 import std.algebra { trim }
 import extdeps.clock { Clock }
 import extdeps.entropy { Urandom }
@@ -611,7 +611,15 @@ data approval_enrolment_code_entropy: ByteSize = byte_size(count: 4)
 fn mint_enrolment_code() -> NonEmptyStr? {
   match base64_decode(s: trim(s: Urandom.ReadBytes(count: byte_size_count(b: approval_enrolment_code_entropy)).octets_b64), variant: Standard) {
     Absent => none
-    Present { value: octets } => if count(octets) != byte_size_count(b: approval_enrolment_code_entropy) { none } else { Present { value: base16_encode_lower(octets: octets) as NonEmptyStr } }
+    Present { value: octets } =>
+      if count(octets) != byte_size_count(b: approval_enrolment_code_entropy) {
+        none
+      } else {
+        match base64_octets(values: octets) {
+          QualifiedOctetsRefused { observed: _ } => none
+          QualifiedOctetsReady { value: qualified } => Present { value: base16_encode_lower(octets: qualified) as NonEmptyStr }
+        }
+      }
   }
 }
 
