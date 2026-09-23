@@ -20,7 +20,7 @@ use std::process::Command;
 
 use v1_compiler::cli_run::namespace_baseline::{
     blob_id_at, environment_load_refusal_text, evaluate_environment_in, kernel_set_serves_both,
-    load_parse_environment_at, materialize_revision_paths,
+    load_parse_environment_at, materialize_revision_paths, EnvironmentLoadRefusal,
 };
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment;
@@ -254,7 +254,7 @@ fn the_kernel_guard_compares_names_not_bytes() {
         ),
     }
 
-    // The set is not declared at all: refuse, never substitute.
+    // The set is not declared at all: refuse as an unreadable KERNEL SET, never substitute.
     let renamed = original.replacen("data kernel_type_set:", "data zz_kernel_type_set:", 1);
     assert_ne!(
         original, renamed,
@@ -264,10 +264,41 @@ fn the_kernel_guard_compares_names_not_bytes() {
         "kernel set undeclared",
         &renamed.replace("map_get(kernel_type_set,", "map_get(zz_kernel_type_set,"),
     );
-    assert!(
-        kernel_set_serves_both(&scratch, &unreadable_rev, &baseline).is_err(),
-        "a base revision with no kernel_type_set declaration was answered rather than refused"
-    );
+    match kernel_set_serves_both(&scratch, &unreadable_rev, &baseline) {
+        Err(EnvironmentLoadRefusal::KernelSetNotReadable { revision, cause }) => {
+            assert_eq!(
+                revision, unreadable_rev,
+                "the refusal named a different revision than the one whose set was unreadable"
+            );
+            assert!(
+                cause.contains("`kernel_type_set` is not declared by"),
+                "the refusal did not locate the missing declaration: {cause}"
+            );
+        }
+        other => panic!(
+            "a base revision with no kernel_type_set declaration was not refused as an unreadable \
+             kernel set: {other:?}"
+        ),
+    }
+
+    // The HEAD has no declaring file: the compiled-in set must not stand in for an absent authority.
+    git(&scratch, &["rm", "--quiet", KERNEL_TYPES_PATH]);
+    git(&scratch, &["commit", "--quiet", "-m", "types.dag removed"]);
+    let headless_rev = git(&scratch, &["rev-parse", "HEAD"]);
+    match kernel_set_serves_both(&scratch, &baseline, &headless_rev) {
+        Err(EnvironmentLoadRefusal::KernelSetNotReadable { revision, .. }) => assert_eq!(
+            revision, headless_rev,
+            "the absent-head refusal named the wrong revision"
+        ),
+        other => panic!(
+            "a head revision with no {KERNEL_TYPES_PATH} was answered from the compiled-in set: {other:?}"
+        ),
+    }
+    // ...and an absent file on BOTH sides is not equality.
+    match kernel_set_serves_both(&scratch, &headless_rev, &headless_rev) {
+        Err(EnvironmentLoadRefusal::KernelSetNotReadable { .. }) => {}
+        other => panic!("two absent declaring files were judged to agree: {other:?}"),
+    }
 
     let _ = std::fs::remove_dir_all(&scratch);
 }

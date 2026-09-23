@@ -853,19 +853,19 @@ pub fn environment_load_refusal_text(refusal: &EnvironmentLoadRefusal) -> String
             cause,
         } => format!("reading revision {revision} failed at {step}: {cause}"),
         EnvironmentLoadRefusal::EnvironmentModuleMissing { revision, path } => format!(
-            "{path} does not exist at revision {revision}, so that revision's parse \
-                 environment cannot be read"
+            "{path} does not exist at revision {revision}, so the value it declares cannot be \
+                 read"
         ),
-        EnvironmentLoadRefusal::ClosureNotEvaluable { revision, cause } => format!(
-            "the parse environment closure at revision {revision} did not evaluate: {cause}"
-        ),
+        EnvironmentLoadRefusal::ClosureNotEvaluable { revision, cause } => {
+            format!("the declaring closure at revision {revision} did not evaluate: {cause}")
+        }
         EnvironmentLoadRefusal::EnvironmentItemNotOwned {
             revision,
             item,
             module,
         } => format!(
             "`{item}` is not declared by `{module}` at revision {revision}, so the value a \
-                 bare-name lookup would return is not the grammar authority"
+                 bare-name lookup would return is not that declaration's"
         ),
         EnvironmentLoadRefusal::ValueNotDecodable { revision, cause } => format!(
             "the parse environment at revision {revision} evaluated but did not decode into \
@@ -1279,7 +1279,20 @@ pub fn kernel_set_serves_both(
     base: &str,
     head: &str,
 ) -> Result<bool, EnvironmentLoadRefusal> {
-    if blob_id_at(repo, base, KERNEL_TYPES_PATH)? == blob_id_at(repo, head, KERNEL_TYPES_PATH)? {
+    let base_blob =
+        blob_id_at(repo, base, KERNEL_TYPES_PATH).map_err(|e| as_kernel_set_refusal(base, e))?;
+    // THE HEAD'S DECLARATION MUST EXIST. This binary's set speaks for the head only because the
+    // head declares it; a head with no declaring file has no authority for the binary to stand in
+    // for, so it refuses rather than letting the compiled-in set substitute.
+    let head_blob = blob_id_at(repo, head, KERNEL_TYPES_PATH)
+        .map_err(|e| as_kernel_set_refusal(head, e))?
+        .ok_or_else(|| EnvironmentLoadRefusal::KernelSetNotReadable {
+            revision: head.to_string(),
+            cause: format!("{KERNEL_TYPES_PATH} does not exist at this revision"),
+        })?;
+    // Equal CONTENT is the free answer; an absent base is not equal to anything and goes on to the
+    // base read, which refuses it.
+    if base_blob.as_deref() == Some(head_blob.as_str()) {
         return Ok(true);
     }
     let head_names: BTreeSet<String> = crate::std_types::kernel_type_set()
@@ -1322,5 +1335,26 @@ pub fn kernel_names_at(
             })
     });
     let _ = std::fs::remove_dir_all(&dest);
-    outcome
+    // ONE SUBJECT, ONE REFUSAL ARM. The shared route reports its failures in the parse
+    // environment's vocabulary; left as-is, an unreadable kernel set would reach the operator
+    // labelled as an unreadable grammar. Every failure here is about the kernel set.
+    outcome.map_err(|e| as_kernel_set_refusal(revision, e))
+}
+
+/// Relabel a refusal from the shared acquisition route as the kernel-set refusal it is here.
+///
+/// ONE SUBJECT, ONE REFUSAL ARM. The shared route is subject-neutral; the kernel guard's caller must
+/// still be told that it was the kernel-name set that could not be read. The inner refusal's text is
+/// kept as the cause, so the specific failure stays located.
+fn as_kernel_set_refusal(
+    revision: &str,
+    refusal: EnvironmentLoadRefusal,
+) -> EnvironmentLoadRefusal {
+    match refusal {
+        EnvironmentLoadRefusal::KernelSetNotReadable { .. } => refusal,
+        other => EnvironmentLoadRefusal::KernelSetNotReadable {
+            revision: revision.to_string(),
+            cause: environment_load_refusal_text(&other),
+        },
+    }
 }
