@@ -1131,11 +1131,35 @@ fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: Stri
   (a_segs |> count) > 0 && segment_lcp_len(a: a_segs, b: d_segs) == (a_segs |> count)
 }
 
+// THE THIRD ARM: A UNIT VARIANT IS BOUND EXACTLY WHEN ITS PARENT COPRODUCT IS. A bare leaf that names a
+// zero-payload variant -- std.measure's Measure<Memory, One, Nat> passes its own Quantity and scale
+// variants as phantom type arguments -- carries no binding of its own; its binding is the coproduct
+// that declares it, the family-closure rule (owner plus all siblings) the resolver's selective-import
+// note records. Without this arm the measure charged every such use to a missing import, so a
+// census whose closure reached std.measure reported 147 blocking UnresolvedType rows for names the
+// module declares one screen up, while the unmeasured route resolved the same leaves.
+//
+// THE INDEX IS THE AUTHORITY AND IS NOT RE-CHECKED. unit_variant_index is built (build_unit_variant_index)
+// from exactly the bindings visible to this env -- its own str_bindings merged with its parents' -- so
+// a variant is keyed there only through a bound parent. A first cut re-read each parent through
+// lookup_binding_on_chain; deleting that re-read left every control green, which is the proof that it
+// restated the index's construction rather than adding a fact. An unobserved index answers false, so
+// the measure stays strict where the evidence is missing.
+fn type_ref_unit_variant_parent_is_bound(env: TypeEnv, name: String) -> Bool {
+  if !env.unit_variant_index_observed { false } else {
+    match map_get(env.unit_variant_index, name) {
+      Absent => false
+      Present { value: _ } => true
+    }
+  }
+}
+
 fn type_ref_measure_binding_authority(env: TypeEnv, name: String) -> Bool {
   match lookup_binding_on_chain(env: env, name: name) {
     Present { value: _ } => true
     Absent =>
-      if contains(name, ".") {
+      if type_ref_unit_variant_parent_is_bound(env: env, name: name) { true }
+      else if contains(name, ".") {
         let prefix = qualified_all_but_last(name: name)
         if type_ref_module_path_is_containment_prefix(ancestor: prefix, descendant: env.module_path) {
           match symbol_index_lookup(index: env.symbol_index, qualified_name: name) {

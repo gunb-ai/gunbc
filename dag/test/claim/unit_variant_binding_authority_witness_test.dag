@@ -1,0 +1,63 @@
+module test.claim.unit_variant_binding_authority_witness_test
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// A UNIT VARIANT USED AS A PHANTOM TYPE ARGUMENT IS BOUND EXACTLY WHEN ITS PARENT COPRODUCT IS, under
+// the measured compile compile_dag_diagnostic_census arms (gunbc.type_ref_hit_ne_bind_measure). The
+// measure's binding authority used to have no arm for a variant, so every such leaf was charged to a
+// missing import: a census whose closure reached std.measure -- which passes its own Quantity and
+// scale variants as type arguments -- reported 147 blocking UnresolvedType rows, while the unmeasured
+// resolve admitted the same leaves. The two routes of one compiler disagreed on one question.
+
+fn blocking_total(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } => {
+      let rs: List<CompileDiagnosticCensusRow> = rows
+      rs |> filter(r => r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+    }
+  }
+}
+
+fn blocking_for(c: CompileDiagnosticCensus, class: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } => {
+      let rs: List<CompileDiagnosticCensusRow> = rows
+      rs |> filter(r => r.blocking && (r.diagnostic_class as String) == class && r.subject_name == subject) |> fold(init: 0, f: (acc, r) => acc + r.count)
+    }
+  }
+}
+
+// THE SPECIMEN: a source that imports std.measure and nothing else is clean under the measure.
+test fn a_source_importing_only_std_measure_is_clean_under_the_measured_compile() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census("module probe_measure_only\nimport std.measure { bit_width }\nfn f() -> Int { 0 }\n")) == 0
+}
+
+// POSITIVE CONTROL: the parent coproduct is imported, so its variant is bound as a type argument.
+test fn a_variant_of_an_imported_coproduct_is_bound_as_a_type_argument() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census("module probe_parent_bound\nimport std.types { Int }\nimport test.fixture.unit_variant_binding.marker_provider { Marker, Holder }\nfn f(h: Holder<Alpha>) -> Int { 0 }\n")) == 0
+}
+
+// NEGATIVE CONTROL, WHICH KEEPS THE ARM FROM BEING AN EXEMPTION. The provider module reaches the closure
+// only transitively, through a relay the entry imports; the entry imports nothing from the provider.
+// The variant must still be charged by the measure. What this does NOT claim: that the first arm
+// charges the coproduct's own name in the same setup -- measured, it does not (the name reads bound
+// through the chain and draws only the advisory UnlistedImportUse), which is that arm's existing grain
+// and is not changed here. The variant arm is therefore no looser than the first arm on this case, and
+// is in fact stricter.
+data unbound_relay_source_prefix: String = "module probe_parent_unbound\nimport std.types { Int }\nimport test.fixture.unit_variant_binding.marker_relay { relay }\ntype Box<M> { n: Int }\n"
+
+test fn a_variant_whose_parent_is_not_bound_is_still_charged_by_the_measure() -> Bool {
+  blocking_for(
+    c: compile_dag_diagnostic_census(unbound_relay_source_prefix + "fn f(b: Box<Alpha>) -> Int { 0 }\n"),
+    class: "UnresolvedType",
+    subject: "Alpha",
+  ) >= 1
+}

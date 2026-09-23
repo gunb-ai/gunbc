@@ -1828,27 +1828,42 @@ pub fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: 
     }
 }
 
+pub fn type_ref_unit_variant_parent_is_bound(env: Rc<TypeEnv>, name: String) -> bool {
+    if !env.unit_variant_index_observed.clone() {
+        false
+    } else {
+        match v1_rt::map_get(&env.unit_variant_index.clone(), name.clone()) {
+            std::option::Option::None => false,
+            Some(_) => true,
+        }
+    }
+}
+
 pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> bool {
     match lookup_binding_on_chain(env.clone(), name.clone()) {
         Some(_) => true,
         std::option::Option::None => {
-            if v1_rt::contains(name.clone(), ".".to_string()) {
-                {
-                    let prefix = qualified_all_but_last(name.clone());
-                    if type_ref_module_path_is_containment_prefix(
-                        prefix.clone(),
-                        env.module_path.clone(),
-                    ) {
-                        match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
-                            Some(_) => true,
-                            std::option::Option::None => false,
-                        }
-                    } else {
-                        false
-                    }
-                }
+            if type_ref_unit_variant_parent_is_bound(env.clone(), name.clone()) {
+                true
             } else {
-                false
+                if v1_rt::contains(name.clone(), ".".to_string()) {
+                    {
+                        let prefix = qualified_all_but_last(name.clone());
+                        if type_ref_module_path_is_containment_prefix(
+                            prefix.clone(),
+                            env.module_path.clone(),
+                        ) {
+                            match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
+                                Some(_) => true,
+                                std::option::Option::None => false,
+                            }
+                        } else {
+                            false
+                        }
+                    }
+                } else {
+                    false
+                }
             }
         }
     }
