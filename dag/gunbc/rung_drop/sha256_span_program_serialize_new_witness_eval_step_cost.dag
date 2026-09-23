@@ -1,0 +1,60 @@
+module gunbc.rung_drop.sha256_span_program_serialize_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_span_program_rows }
+
+// DECLARED 4b(3) DROP (gunbc#12010, 2026-09-22). The DECLARATION lives here; the POPULATION's
+// authority is `v2.workflow.floor_eval_step_cost_drop`
+// `floor_eval_step_cost_drop_span_program_rows`. It is its own list because growing another drop's
+// list is a new drop.
+//
+// WHAT IS LOST IS ONE WALL, AND THE CLAIM ITSELF IS UNTOUCHED. The identity is still planned,
+// executed and measured on every pull request that edits it; a semantic red and a wall-clock
+// crossing still block. Only an eval-step overrun is reported as
+// `EvalStepsOverBudgetUnderDeclaredDrop` rather than refusing. The budget is not raised.
+//
+// WHY THE COST IS HERE AT ALL. Review 70042 established that a hand-spelled `dd | sha256sum`
+// pipeline was a second spelling of `gunbc.shell_command_text`, whose own header says a second
+// spelling IS the section 3 fork. The repair builds the pipeline as a bash grammar tree and
+// serializes it through that one authority. Serializing is what costs: one render of this
+// fourteen-word tree measured 204,569 eval steps against the 72,300 new-witness budget.
+//
+// WHY A DROP AND NOT A CHEAPER CLAIM. The claim's SUBJECT was split first, which is the repair that
+// does not need a drop: `the_span_read_puts_its_operands_in_their_declared_slots` supplies the
+// program as a value and establishes that path, offset and length reach their declared slots in 22
+// eval steps, with a red that any permutation of the seven fires. What remains here is the
+// INHABITANCE half -- that the real producer emits that shape with the really-serialized program in
+// the slot the other claim supplies. DESIGN section 3 lets every other claim supply that input only
+// while ONE claim still runs the real path; this claim is that one, so reducing it further would
+// remove the last execution of the real route. The value is lazy, so inspecting the argv at ANY
+// index forces the render: 22 steps becomes 204,569 and there is no cheaper inspection.
+//
+// WHAT IS NOT CLAIMED HERE. Whether 204,569 steps for fourteen words is itself a cost-shape defect
+// in `v2.workflow.bash_command_fold_serialize` is NOT established by this row and is not this lane's
+// to assert -- it is a hypothesis, and the restoration trigger below is written so that either
+// outcome retires the drop honestly. Re-derive the figure with the instrument, never from this
+// prose: `tools.floor_cost_distribution_instrument` over a live floor's
+// `required_floor_claim_cost.tsv`.
+data sha256_span_program_serialize_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_span_program_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_span_program_rows; measured by "), m.measured_by))
+
+data sha256_span_program_serialize_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "sha256_span_program_serialize_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over the one claim that inhabits the real byte-span argv with its really-serialized program: it still executes, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+
+  declared: "2026-09-22",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "the serialized byte-span program reaching a claim frame as a served value rather than being re-rendered inside it, or a serialization that fits the budget",
+    },
+    population: sha256_span_program_serialize_new_witness_eval_step_cost_population,
+    restoration_trigger: "THE CAPABILITY, EITHER CLAUSE SATISFIES IT, AND BOTH ARE STATED BECAUSE THE CAUSE IS NOT YET ESTABLISHED. (i) extdeps.tools.sha256sum sha256sum_byte_span_program is served across claim frames by v2.workflow.floor_pure_producer_share on the acceptance path; WHAT THAT MUST BE SUFFICIENT FOR: a required-floor claim asserting the real byte-span argv carries the really-serialized program does not re-render it inside its own frame. A share row not covering this identity's demand does not satisfy this clause. OR (ii) v2.workflow.bash_command_fold_serialize serializes a fourteen-word statement list inside the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives -- whether by repair of a cost-shape defect there or by any other means. IN EITHER CASE this identity must measure under that budget WHILE STILL EXECUTING the real serialization route. Deleting the identity, supplying the program as a fixture, asserting only length(argv), or relocating it to a home that does not execute it satisfies neither clause.",
+  }
+}

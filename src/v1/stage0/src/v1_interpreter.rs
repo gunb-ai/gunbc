@@ -8811,10 +8811,7 @@ fn is_structural_pure_fn(name: &str) -> bool {
 }
 
 fn eval_recompute_str_hash(s: &str) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    s.hash(&mut h);
-    h.finish()
+    v1_rt::str_content_hash(s)
 }
 
 fn eval_recompute_mix(seed: u64, x: u64) -> u64 {
@@ -8964,10 +8961,9 @@ fn eval_recompute_value_hash(
                 Value::Float(f) => {
                     EvalRecomputeStep::Have(eval_recompute_mix(0xA5A5_0030, f.to_bits()))
                 }
-                Value::Str(s) => EvalRecomputeStep::Have(eval_recompute_mix(
-                    0xA5A5_0040,
-                    eval_recompute_str_hash(s),
-                )),
+                Value::Str(s) => {
+                    EvalRecomputeStep::Have(eval_recompute_mix(0xA5A5_0040, s.content_hash()))
+                }
                 Value::Fn { node } => EvalRecomputeStep::Have(eval_recompute_mix(
                     0xA5A5_0050,
                     Rc::as_ptr(node) as u64,
@@ -9139,7 +9135,7 @@ fn eval_recompute_arg_key(
         Value::Bool(b) => Some(EvalRecomputeArgKey::Bool(*b)),
         Value::Int(i) => Some(EvalRecomputeArgKey::Int(*i)),
         Value::Float(f) => Some(EvalRecomputeArgKey::FloatBits(f.to_bits())),
-        Value::Str(s) => Some(EvalRecomputeArgKey::StrHash(eval_recompute_str_hash(s))),
+        Value::Str(s) => Some(EvalRecomputeArgKey::StrHash(s.content_hash())),
         Value::Variant {
             type_name,
             variant_name,

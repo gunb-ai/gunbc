@@ -399,16 +399,61 @@ pub fn clamp(val: i64, min_val: i64, max_val: i64) -> i64 {
 /// free functions' semantics: each method falls back to the function it shadows
 /// whenever the flag is false, and takes the byte path only under the same
 /// condition that path is already taken there (byte index == code-point index).
+///
+/// The content hash is the second carried fact, carried for the same reason as the
+/// flag: a pure function of immutable content that a hot consumer re-derived per
+/// access. The interpreter's eval-call memo keys every pure call by the content hash
+/// of its arguments and rehashed a `Value::Str` in full on EVERY call, so a recursion
+/// threading one large text through its steps paid O(|text|) per step and O(|text|^2)
+/// overall. It is filled lazily -- most strings are never a call argument -- and it is
+/// carried beside the Rc rather than behind it: a clone taken after the first hash
+/// inherits it, which is the route a threaded argument takes (the key is read off the
+/// argument before it becomes the callee's binding, and the next step's argument is a
+/// clone of that binding). An identity memo keyed on the allocation was rejected: a
+/// `Weak<str>` keeps the string's inline bytes allocated, so every hashed argument
+/// would be retained for the context's lifetime.
 #[derive(Debug, Clone)]
 pub struct RcStr {
     rc: Rc<str>,
     is_ascii: bool,
+    content_hash: Cell<Option<u64>>,
+}
+
+/// The one content hash of interpreted string text. `RcStr::content_hash` carries it and
+/// a consumer holding a bare `&str` calls it directly, so a carried hash and a computed
+/// one cannot disagree.
+pub fn str_content_hash(s: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    s.hash(&mut h);
+    h.finish()
+}
+
+#[cfg(test)]
+thread_local! {
+    static STR_CONTENT_HASH_COMPUTED: Cell<u64> = const { Cell::new(0) };
 }
 
 impl RcStr {
     pub fn new(rc: Rc<str>) -> Self {
         let is_ascii = rc.is_ascii();
-        RcStr { rc, is_ascii }
+        RcStr {
+            rc,
+            is_ascii,
+            content_hash: Cell::new(None),
+        }
+    }
+
+    /// `str_content_hash` of this text, computed at most once per carrier lineage.
+    pub fn content_hash(&self) -> u64 {
+        if let Some(h) = self.content_hash.get() {
+            return h;
+        }
+        #[cfg(test)]
+        STR_CONTENT_HASH_COMPUTED.with(|c| c.set(c.get() + 1));
+        let h = str_content_hash(&self.rc);
+        self.content_hash.set(Some(h));
+        h
     }
 
     #[inline]
@@ -493,6 +538,51 @@ impl std::borrow::Borrow<str> for RcStr {
 impl std::fmt::Display for RcStr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(&*self.rc, f)
+    }
+}
+
+#[cfg(test)]
+mod rc_str_content_hash_tests {
+    use super::*;
+
+    fn computed() -> u64 {
+        STR_CONTENT_HASH_COMPUTED.with(|c| c.get())
+    }
+
+    #[test]
+    fn carried_hash_equals_the_free_authority() {
+        for text in ["", "a", "{\"weight_map\": {}}", "caf\u{e9} \u{1f600}"] {
+            assert_eq!(
+                RcStr::new(Rc::from(text)).content_hash(),
+                str_content_hash(text)
+            );
+        }
+    }
+
+    #[test]
+    fn a_threaded_clone_inherits_the_hash_instead_of_rehashing() {
+        let first = RcStr::new(Rc::from("x".repeat(4096).as_str()));
+        let before = computed();
+        let h = first.content_hash();
+        let mut carried = first.clone();
+        for _ in 0..1000 {
+            assert_eq!(carried.content_hash(), h);
+            carried = carried.clone();
+        }
+        assert_eq!(
+            computed() - before,
+            1,
+            "one hash per lineage, not one per step"
+        );
+    }
+
+    #[test]
+    fn a_clone_taken_before_the_first_hash_is_an_independent_lineage() {
+        let a = RcStr::new(Rc::from("abc"));
+        let b = a.clone();
+        let before = computed();
+        assert_eq!(a.content_hash(), b.content_hash());
+        assert_eq!(computed() - before, 2);
     }
 }
 
