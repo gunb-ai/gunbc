@@ -417,7 +417,7 @@ test fn vf_wildcard_pattern_keeps_its_field() -> Bool {
 // carried on the arm's own pattern (field 0 -> Atom(x)) while the parameter stays the domain's
 // Named edge, so a match-arm scope frame has exactly what it needs to bind the body's x to the
 // arm. That the body's x then RESOLVES to the arm's binder and not the parameter is the
-// resolver's fact, asserted by v2.test.claim.match_arm_binder_frame over resolve_match_node.
+// resolver's fact, asserted by v2.test.claim.match_arm_binder_frame over resolve_match_node_walk.
 test fn vf_shadowing_binder_is_carried_on_the_arm() -> Bool {
   (match vf_first_arm_pattern_of(o: vfs_normalized_16(), fn_lexeme: "pick") {
     Absent => false
