@@ -115,14 +115,16 @@ fn interface_change_propagates(site: InterfaceReadSite, binding: InterfaceConsum
 // UNRESOLVED name occurrence is not evidence of a read and does not plan its module -- otherwise
 // every module with a local spelled like a changed function would be planned. A CALL is not a
 // binder or a label: an unresolved call is the compiler's global-bare lookup of a unique top-level
-// fn after local and import lookup miss, so it IS a read. So is a bare name occurrence spelling a
-// changed DATA declaration, which resolves through the same index. A call sits in a body, so it
+// fn after local and import lookup miss, so it IS a read. So is a VALUE occurrence -- an expression
+// variable the parser stamped as a value reference and no in-scope binder shadows: a function
+// passed as a value, a `data` read. One channel for both; a NameOccurrence (which also collects
+// declarations, binders and labels) stays unplanned. A call sits in a body, so it
 // plans its module and propagates nothing.
 type InterfaceReadChannel
   = ParserTypeOccurrence
   | MatchArmHead
   | CallOccurrence
-  | BareDataNameOccurrence
+  | ValueOccurrence
   | NameOccurrence
 
 // HOW A CONSUMER'S READ WAS BOUND TO THE CHANGED DECLARATION, decided from the read's
@@ -157,7 +159,7 @@ fn interface_read_disposition(
         ParserTypeOccurrence => ReadPlanned { binding: BoundThroughFlatBareChannel }
         MatchArmHead => ReadPlanned { binding: BoundThroughFlatBareChannel }
         CallOccurrence => ReadPlanned { binding: BoundThroughFlatBareChannel }
-        BareDataNameOccurrence => ReadPlanned { binding: BoundThroughFlatBareChannel }
+        ValueOccurrence => ReadPlanned { binding: BoundThroughFlatBareChannel }
         NameOccurrence => ReadUnresolvedNameOccurrence
       }
     } else {

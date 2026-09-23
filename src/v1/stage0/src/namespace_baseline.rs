@@ -395,7 +395,8 @@ fn change_universe(
 /// that is what keeps a body-only change from planning every reverse importer.
 ///
 /// THE CONSUMERS. A module is a consumer of a changed declaration when one of its reads
-/// (`referenced`, `authored_type_references`, `called_occurrences`, `matched_arms`) spells the declaration or one of
+/// (`referenced`, `authored_type_references`, `called_occurrences`, `value_occurrences`,
+/// `matched_arms`) spells the declaration or one of
 /// its arms and `declaring_candidates` for that spelling includes the declaring module on
 /// EITHER side (a read of a REMOVED name has no head-side candidate; its base-side one names
 /// the declarer exactly). No second consumer relation is minted: this is `declaring_candidates`
@@ -499,19 +500,13 @@ pub(crate) fn interface_changed_consumers(
             // spelling is a genuine read. Otherwise every module with a local named like a
             // changed function would be planned -- the widening this selector must not do.
             let matches_only = matches!(change.ground, InterfaceChangeGround::ArmSetGrown { .. });
-            // A bare read of a DATA declaration resolves through the global-bare index exactly as
-            // a call does, so for a changed data value an unresolved name occurrence is admitted;
-            // for anything else it stays a possible binder or label and plans nothing.
-            let changed_is_data = [base, head].iter().any(|index| {
-                index_get(index, &change.module_path)
-                    .is_some_and(|record| record.data_values.contains(&change.declaration))
-            });
             let reads = consumer
                 .referenced
                 .iter()
-                .map(|r| (r, changed_is_data))
+                .map(|r| (r, false))
                 .chain(consumer.authored_type_references.iter().map(|r| (r, true)))
                 .chain(consumer.called_occurrences.iter().map(|r| (r, true)))
+                .chain(consumer.value_occurrences.iter().map(|r| (r, true)))
                 .filter(|_| !matches_only)
                 .chain(consumer.matched_arms.iter().map(|r| (r, true)));
             for ((in_declaration, spelling), flat_admitted) in reads {

@@ -12586,6 +12586,85 @@ fn mint(tag: String) -> Sealed = Sealed { tag: tag }\n";
         assert!(planned.is_err(), "the bare data reader must refuse");
     }
 
+    /// A changed global-bare fn read as a VALUE, no import: neither a call, a type occurrence nor
+    /// a match head. Bound by `let` and applied positionally, because that is the value-read shape
+    /// v1's Strict checker types today; passing the value to a `fn(Int) -> Int` parameter is
+    /// planned the same way but NOT refused by the checker (a function-typed argument's
+    /// compatibility goes unchecked -- a compiler gap, reported, not this planner's).
+    const FLATVAL_B: &str =
+        "module flatval.b\n\nfn use_it() -> Int {\n  let g = convert\n  g(1)\n}\n";
+    /// Same-spelled NON-reads of the data name: a parameter, a `let` binder, a record label and a
+    /// field name.
+    const FLATDATA_BINDERS: &str = "module flatdata.p\n\ntype Box {\n  limit: Int\n}\n\n\
+fn by_param(limit: Int) -> Int {\n  limit\n}\n\nfn by_let() -> Int {\n  let limit = 2\n  limit\n}\n\n\
+fn by_label() -> Box {\n  Box { limit: 1 }\n}\n";
+    /// A local value SHADOWING the same-named global fn and data, read after the shadow.
+    const FLAT_SHADOWS: &str =
+        "module flatshadow.s\n\nfn fn_shadow() -> Int {\n  let convert = 1\n  convert\n}\n\n\
+fn data_shadow(limit: Int) -> Int {\n  limit\n}\n";
+
+    /// CONTROL (1): a fn passed as a value with no import is planned through the value channel,
+    /// and refuses under Strict.
+    #[test]
+    fn a_changed_bare_fn_read_as_a_value_plans_its_reader() {
+        let (selection, head_fx) = interface_selection(
+            "flatval",
+            &[("a.dag", FLATFN_A_BASE), ("b.dag", FLATVAL_B)],
+            &[("a.dag", FLATFN_A_HEAD), ("b.dag", FLATVAL_B)],
+        );
+        assert_eq!(
+            consumers_of(&selection),
+            vec!["flatval.b"],
+            "{:?}",
+            selection.consumers
+        );
+        let planned = prepare_seeds(&head_fx, &["flatfn.a", "flatval.b"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        let base_fx = interface_fixture(
+            "flatval_base",
+            "base",
+            &[("a.dag", FLATFN_A_BASE), ("b.dag", FLATVAL_B)],
+        );
+        let base = prepare_seeds(&base_fx, &["flatfn.a", "flatval.b"]);
+        let _ = std::fs::remove_dir_all(&base_fx);
+        assert!(
+            base.is_ok(),
+            "the reader is valid against the old interface: {base:?}"
+        );
+        assert!(planned.is_err(), "the value reader must refuse");
+    }
+
+    /// CONTROLS (3) AND (4): a parameter, `let` binder, label or field sharing the changed data's
+    /// name, and a local shadowing the changed global fn or data, plan NOTHING -- while the
+    /// genuine bare data read beside them is planned.
+    #[test]
+    fn same_named_binders_labels_and_shadows_plan_nothing() {
+        let (selection, fx) = interface_selection(
+            "flatbinders",
+            &[
+                ("a.dag", FLATDATA_A_BASE),
+                ("f.dag", FLATFN_A_BASE),
+                ("b.dag", FLATDATA_B),
+                ("p.dag", FLATDATA_BINDERS),
+                ("s.dag", FLAT_SHADOWS),
+            ],
+            &[
+                ("a.dag", FLATDATA_A_HEAD),
+                ("f.dag", FLATFN_A_HEAD),
+                ("b.dag", FLATDATA_B),
+                ("p.dag", FLATDATA_BINDERS),
+                ("s.dag", FLAT_SHADOWS),
+            ],
+        );
+        let _ = std::fs::remove_dir_all(&fx);
+        assert_eq!(
+            consumers_of(&selection),
+            vec!["flatdata.b"],
+            "{:?}",
+            selection.consumers
+        );
+    }
+
     /// A module seed matches itself and the modules it CONTAINS by name, never a sibling that
     /// merely shares a textual prefix: `armset.y` must not seed `armset.yz`.
     #[test]

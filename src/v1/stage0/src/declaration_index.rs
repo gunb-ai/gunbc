@@ -204,10 +204,14 @@ pub struct ModuleDeclarationRecord {
     /// global-bare channel the compiler resolves a unique top-level fn through after local and
     /// import lookup miss, and it plans its module.
     pub called_occurrences: BTreeSet<(String, String)>,
-    /// Module-scope `data` declarations. A bare read of one resolves through the same global-bare
-    /// index as a call, so an unresolved name occurrence that spells a changed DATA declaration
-    /// is admitted as a flat read (bounded: only spellings of a changed data value).
-    pub data_values: BTreeSet<String>,
+    /// VALUE OCCURRENCES at declaration grain: `(in_declaration, spelling)` for every expression
+    /// variable the parser stamped as a `LexicalValueOccurrence` REFERENCE, minus those a
+    /// same-spelled value DECLARATION in scope shadows (a parameter, `let`, pattern or lambda
+    /// binder whose containment path is a prefix of the reference's). Declarations, binders,
+    /// labels and field names are declarations or other categories in that transport, so they
+    /// never land here. This is the one channel for a bare VALUE read -- a function passed as a
+    /// value, a `data` read -- through the global-bare index, peer of `called_occurrences`.
+    pub value_occurrences: BTreeSet<(String, String)>,
     /// The authored NAME OCCURRENCES in this module's own tree that name something the module
     /// reaches, paired with the top-level declaration whose subtree carries it:
     /// `(in_declaration, spelling)`.
@@ -1117,6 +1121,65 @@ fn interface_type_references(
     out
 }
 
+/// The parser's genuine value references, shadowing applied -- see
+/// `ModuleDeclarationRecord::value_occurrences`. Scope is read from containment: a value
+/// declaration shadows every same-spelled reference whose ancestor path extends its own.
+fn value_occurrences_from_transport(
+    transport: &Rc<OccurrenceTransport>,
+    declared: &BTreeSet<String>,
+) -> BTreeSet<(String, String)> {
+    let mut by_id: HashMap<i64, String> = HashMap::new();
+    for entry in transport.index.entries.iter() {
+        by_id.insert(
+            entry.projection.occurrence.value,
+            entry.projection.authored_name.clone(),
+        );
+    }
+    let path = |ancestors: &im::Vector<crate::std_occurrence_identity::OccurrenceId>| -> Vec<i64> {
+        ancestors.iter().map(|a| a.value).collect()
+    };
+    let binders: Vec<(String, Vec<i64>)> = transport
+        .declarations
+        .iter()
+        .filter(|d| d.category == OccurrenceCategory::LexicalValueOccurrence)
+        .filter_map(|d| {
+            let name = by_id.get(&d.occurrence.value)?;
+            Some((name.clone(), path(&d.containment.ancestors)))
+        })
+        .collect();
+    let mut out = BTreeSet::new();
+    for reference in transport.references.iter() {
+        if reference.category != OccurrenceCategory::LexicalValueOccurrence {
+            continue;
+        }
+        let Some(spelling) = by_id
+            .get(&reference.occurrence.value)
+            .filter(|n| !n.is_empty())
+        else {
+            continue;
+        };
+        let Some(enclosing) = reference
+            .containment
+            .ancestors
+            .get(1)
+            .and_then(|ancestor| by_id.get(&ancestor.value))
+        else {
+            continue;
+        };
+        if !declared.contains(enclosing) {
+            continue;
+        }
+        let reference_path = path(&reference.containment.ancestors);
+        let shadowed = binders
+            .iter()
+            .any(|(name, scope)| name == spelling && reference_path.starts_with(scope));
+        if !shadowed {
+            out.insert((enclosing.clone(), spelling.clone()));
+        }
+    }
+    out
+}
+
 /// One module's record, from that one module's parse tree. No corpus, no resolution.
 pub fn record_from_module(
     module: &Rc<Node>,
@@ -1240,14 +1303,6 @@ pub fn record_from_module(
     let mut matched_arms = BTreeSet::new();
     let mut called = BTreeSet::new();
     let mut called_occurrences = BTreeSet::new();
-    let data_values: BTreeSet<String> = module_items(module.clone())
-        .iter()
-        .filter(|item| {
-            item.module_item_kind == crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
-        })
-        .map(|item| authored_name_at(source_indices.clone(), item.clone()))
-        .filter(|name| !name.is_empty())
-        .collect();
     for item in module_items(module.clone()).iter() {
         let in_declaration = authored_name_at(source_indices.clone(), item.clone());
         collect_reference_occurrences(
@@ -1274,7 +1329,7 @@ pub fn record_from_module(
         matched_arms,
         called,
         called_occurrences,
-        data_values,
+        value_occurrences: value_occurrences_from_transport(transport, &declared),
         authored_type_references: authored_type_references_from_transport(transport, &declared),
         interface_references: interface_type_references(transport, &interface_regions),
         declaration_interfaces,
