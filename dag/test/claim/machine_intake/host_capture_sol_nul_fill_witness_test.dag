@@ -90,11 +90,30 @@ test fn sol_nul_capture_refuses_on_nproc_and_names_the_unobserved() -> Bool {
 
 // THE FOLD, INDEPENDENT OF THE FRAMING: the same capture with nproc's EXIT line removed leaves nproc
 // pending on an open envelope that refuses on workload. It must still be named, so a framing
-// regression (or any future corruption) cannot make a qualification vanish from the verdict.
+// regression (or any future corruption) cannot make a qualification vanish from the verdict -- and
+// named as OBSERVED BUT UNTERMINATED (its ARGV and 80 are there), never as unobserved.
 test fn open_refusal_names_a_pending_nproc() -> Bool {
   let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
   let subject = mtcollins1_boot_subject_for(medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
   let capture = join(filter(sol_nul_capture_lines(), l => l != concat(nul(n: 16), "----EXIT nproc: 0\r\n")), "")
+  match mtcollins1_boot_terminal_verdict(capture: capture, subject: subject, medium: medium) {
+    TerminalRefused { causes: cs } =>
+      map(cs, c => mtcollins1_boot_terminal_cause_text(cause: c)) == [
+        "workload write rc=1",
+        "nproc section opened but had not printed its EXIT line when the open envelope refused; unqualified",
+        "edac-after not yet observed when the open envelope refused; unqualified",
+      ]
+    _ => false
+  }
+}
+
+// ABSENT, NOT UNTERMINATED: with nproc's whole section removed, the same refusal names it as never
+// observed -- the two standings stay distinct at terminalization.
+test fn open_refusal_names_an_absent_nproc_as_unobserved() -> Bool {
+  let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
+  let subject = mtcollins1_boot_subject_for(medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
+  let nproc_lines = ["----SECTION nproc----\r\n", "----ARGV nproc: nproc\r\n", concat(nul(n: 224), "80\r\n"), concat(nul(n: 16), "----EXIT nproc: 0\r\n")]
+  let capture = join(filter(sol_nul_capture_lines(), l => !any(nproc_lines, n => n == l)), "")
   match mtcollins1_boot_terminal_verdict(capture: capture, subject: subject, medium: medium) {
     TerminalRefused { causes: cs } =>
       map(cs, c => mtcollins1_boot_terminal_cause_text(cause: c)) == [

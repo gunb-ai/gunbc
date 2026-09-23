@@ -14,7 +14,7 @@ data a_pending_member_vanishes_from_a_terminal_refusal: RecurringFailureMode = R
 
     "WHY IT IS QUIET. A terminal refusal stops the poller and aborts the run, so no later observation ever re-reads the pending members; the one surviving cause is true, so nothing looks wrong; and on the next boot the dropped members are exactly the ones nobody knows to look at.",
 
-    "REPAIR. At the fold that turns the verdict terminal: `open_unobserved_causes` appends `TerminalSectionUnobservedAtRefusal { name }` for every qualification still pending, typed apart from the causes that refused but never absent. Independently, the NUL fill is removed once at the framing ingress (`gunbc.machine_intake_host_capture_envelope` `host_capture_framed_lines`, citing `extdeps.render.ansi` `ansi_null_fill`), so nproc now reads its 80 and refuses on the mismatch. The witness `test.claim.machine_intake.host_capture_sol_nul_fill_witness_test` carries both arms, and each mutation turns a different claim red.",
+    "REPAIR. At the fold that turns the verdict terminal: `open_unresolved_causes` appends, for every qualification still pending, `TerminalSectionUnobservedAtRefusal { name }` when its section never opened or `TerminalSectionUnterminatedAtRefusal { name }` when it opened without its EXIT line -- typed apart from the causes that refused, keeping the section standing, never absent. Independently, the NUL fill is removed once at the framing ingress (`gunbc.machine_intake_host_capture_envelope` `host_capture_framed_lines`, citing `extdeps.render.ansi` `ansi_null_fill`), so nproc now reads its 80 and refuses on the mismatch. The witness `test.claim.machine_intake.host_capture_sol_nul_fill_witness_test` carries both arms, and each mutation turns a different claim red.",
 
     "RECOGNITION RULE. Any accumulator whose refusing arm is a list and whose unresolved arm is a Bool, feeding a verdict that can become terminal while members are unresolved. Ask: when this verdict is terminal, is every member named -- held, refused, or unobserved?",
 
@@ -22,7 +22,7 @@ data a_pending_member_vanishes_from_a_terminal_refusal: RecurringFailureMode = R
   ],
 
   evidence: [
-    DeclarationRef { module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "open_unobserved_causes", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "open_unresolved_causes", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.machine_intake.host_capture_sol_nul_fill_witness_test", decl_name: "open_refusal_names_a_pending_nproc", field: WholeDeclaration },
   ],
 }

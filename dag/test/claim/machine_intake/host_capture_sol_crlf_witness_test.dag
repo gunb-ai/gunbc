@@ -61,7 +61,7 @@ test fn sol_crlf_sections_complete_with_exit_zero() -> Bool {
 // mtcollins1_nproc). That mismatch is the unit's own reading, not framing: the same capture's lscpu
 // reports CPU(s) 80 on one socket. At main this refuses with the three "exited 0" causes instead.
 // The trimmed capture never opens workload or edac-after, so the open refusal names both as
-// unobserved rather than dropping them (mtcollins1_boot_run open_unobserved_causes).
+// unobserved rather than dropping them (mtcollins1_boot_run open_unresolved_causes).
 test fn sol_crlf_capture_refuses_only_on_the_nproc_reading() -> Bool {
   let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
   let subject = mtcollins1_boot_subject_for(medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)

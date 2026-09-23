@@ -214,7 +214,7 @@ fn refused_with(v: MtCollins1BootTerminalVerdict, texts: List<String>) -> Bool {
 }
 
 // An open envelope that refuses names every qualification it had not yet read
-// (mtcollins1_boot_run open_unobserved_causes), after the causes that refused.
+// (mtcollins1_boot_run open_unresolved_causes), after the causes that refused.
 fn unobserved(name: String) -> String {
   concat(name, " not yet observed when the open envelope refused; unqualified")
 }
