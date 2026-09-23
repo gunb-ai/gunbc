@@ -11,8 +11,8 @@ import v2.std.logic { Bool }
 // declaration's INTERFACE changes in ANOTHER module -- the reader has an empty diff, no
 // diff-keyed selector can see it, and it is never Strict-prepared. Found twice, by accident both
 // times: a coproduct growing an arm under an exhaustive match (gunbc#11194, a person reading
-// arms), and a product field retyped and an alias re-branded under an untouched witness (#12002,
-// pulled in by the unrelated #12077 and repaired by #12120; `gunbc.recurring_failure_mode`
+// arms), and a product field retyped and an alias re-branded under an untouched witness (#11751,
+// passed over again by #12002's floor, pulled in by the unrelated #12077 and repaired by #12120; `gunbc.recurring_failure_mode`
 // `changed_declaration_signature_consumer_unplanned`). One class, so one ground: an arm set is
 // one part of a declaration's interface, not a second mechanism beside it. The class has two
 // halves and neither closes it alone: the DEPENDENCY direction (a touched file's own module is
@@ -50,12 +50,37 @@ type PreparedSubjectSeedGround
 // WHY A DECLARATION'S INTERFACE CHANGED -- the host's `namespace_baseline`
 // `InterfaceChangeGround`, of which this is the authority. Its interface is its authored text
 // with the body elided (a type's fields and arms, an alias target and brand, a function's
-// parameters and result); a body-only edit is no change and plans nobody.
+// parameters and result); a body-only edit is no change and plans nobody. Two grounds are
+// narrower than "every reader": pure arm GROWTH (no arm removed, no surviving payload changed)
+// can stale only an exhaustive match, so it plans match readers alone; and a caller roster
+// (`admit_callers:`) is not interface text at all -- growing it strands nobody, narrowing it
+// strands exactly the dropped callers, which are the only modules it plans.
 type InterfaceChangeGround
-  = ArmSetChanged { arms_added: List<String>, arms_removed: List<String> }
+  = ArmSetGrown { arms_added: List<String> }
+  | ArmSetChanged { arms_added: List<String>, arms_removed: List<String> }
   | SignatureChanged
   | DeclarationRemoved
+  | AdmittedCallersNarrowed { removed_callers: List<String> }
   | PropagatedThrough { module_path: String, declaration: String }
+
+// WHICH READERS A CHANGE CAN STRAND, per ground -- the host's consumer loop is a projection of
+// this. A pure growth reaches only the match heads that name the coproduct's arms; a narrowed
+// roster reaches only the callers it dropped; every other change reaches every resolved reader.
+type InterfaceReaderPopulation
+  = EveryReader
+  | MatchReadersOnly
+  | DroppedCallersOnly { removed_callers: List<String> }
+
+fn interface_reader_population(ground: InterfaceChangeGround) -> InterfaceReaderPopulation {
+  match ground {
+    ArmSetGrown { arms_added: _ } => MatchReadersOnly
+    ArmSetChanged { arms_added: _, arms_removed: _ } => EveryReader
+    SignatureChanged => EveryReader
+    DeclarationRemoved => EveryReader
+    AdmittedCallersNarrowed { removed_callers: removed } => DroppedCallersOnly { removed_callers: removed }
+    PropagatedThrough { module_path: _, declaration: _ } => EveryReader
+  }
+}
 
 // WHERE A READ OF A CHANGED DECLARATION SITS inside the reading declaration. Only an interface
 // read PROPAGATES: a product whose field is a re-branded alias has itself changed, so ITS readers

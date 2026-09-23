@@ -49,8 +49,11 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // kept beside it, and the planning enum and fixture helpers are renamed with them. The new items
 // are the per-module direct-change reader, the one read-binding rule the selector and its
 // propagation share, the change's spelling universe, and in `declaration_index` the interface
-// region (item span minus body span) with its text and the parser type occurrences inside it --
-// two fields on ModuleDeclarationRecord (ExistingSeedItemModified, as is record_from_module).
+// region (the item's subtree extent -- an item's own span is only its keyword -- minus its body
+// and any `admit_callers:` roster) with its text, the parser type occurrences inside it, the
+// admitted-caller rosters and the per-arm texts that tell pure arm growth from a breaking arm
+// change -- five fields on ModuleDeclarationRecord (ExistingSeedItemModified, as is
+// record_from_module).
 // Same purpose, same trigger, same boundary: still reachable only from the floor's planning row.
 //
 // HAND-ITEM DELTA is derived from the diff by gunbc.rust_item_host_observation and is not
@@ -75,6 +78,11 @@ data floor_arm_set_consumer_seed_growth_justification: SeedGrowthJustification =
     DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "region_contains", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "interface_text", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "interface_type_references", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "subtree_extent", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "widen_regions_by_type_occurrences", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "unpositioned_interface_parts", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "is_admit_callers_property", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "admitted_callers_of", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "module_name_is_or_is_contained_by", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "prepared_subject_exclusion_row_for", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "FloorDiffProjections", field: WholeDeclaration },
@@ -119,6 +127,13 @@ data floor_arm_set_consumer_seed_growth_justification: SeedGrowthJustification =
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_rebranded_alias_plans_the_consumer_of_the_product_that_carries_it", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_function_signature_change_plans_its_caller_and_not_an_idle_importer", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_body_only_change_plans_no_reverse_consumer", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "ADM_M_BASE", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "ADM_M_WIDENED", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "ADM_M_NARROWED", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "ADM_A", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "ADM_B", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_widened_caller_roster_plans_no_caller", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_narrowed_caller_roster_plans_only_the_dropped_caller", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "arm_growth_selects_the_untouched_match_consumer_and_strict_preparation_refuses_it", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "arm_growth_consumer_with_a_wildcard_is_planned_and_prepares_clean", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_record_field_growth_plans_its_untouched_reader", field: WholeDeclaration },

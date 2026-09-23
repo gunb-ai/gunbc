@@ -269,6 +269,17 @@ pub struct ModuleDeclarationRecord {
     /// an interface change PROPAGATE -- a product whose field is a re-branded alias has itself
     /// changed -- while a body reference does not.
     pub interface_references: BTreeSet<(String, String)>,
+    /// CALLER ADMISSIONS: function name -> the `(module_path, decl_name)` callers its
+    /// `admit_callers:` roster admits. Kept OUT of `declaration_interfaces` because the two move
+    /// different populations: growing a roster strands no caller, while narrowing one strands
+    /// exactly the callers it dropped -- so a narrowing plans those callers' modules and nobody
+    /// else, instead of every reader of the function.
+    pub admitted_callers: BTreeMap<String, BTreeSet<(String, String)>>,
+    /// ARM INTERFACES: `(coproduct, arm)` -> the arm's authored text, whitespace-collapsed. Lets
+    /// a reader of an arm-set change tell PURE GROWTH (every surviving arm's payload unchanged,
+    /// none removed -- only an exhaustive `match` can go stale) from a change that can break a
+    /// constructor too.
+    pub arm_interfaces: BTreeMap<(String, String), String>,
     pub declares_construction_justification: bool,
     /// Whether this module is a witness or fixture carrier. See `module_is_fixture_carrier`.
     pub is_fixture_carrier: bool,
@@ -798,7 +809,10 @@ struct InterfaceRegion {
     file: String,
     start: i64,
     end: i64,
-    body: Option<(i64, i64)>,
+    /// Ranges inside the region that are NOT interface, sorted and disjoint: the body, and an
+    /// `admit_callers:` roster (a caller admission is its own fact -- see
+    /// `ModuleDeclarationRecord::admitted_callers` -- and growing it strands no caller).
+    elided: Vec<(i64, i64)>,
     /// What the parser attached to the interface WITHOUT a source position -- a refinement
     /// predicate is minted with a synthetic span, so `where brand("G")` has no text in the
     /// region. Its names and string literals are carried here in tree order so a brand or a
@@ -885,6 +899,33 @@ fn widen_regions_by_type_occurrences(
     }
 }
 
+fn is_admit_callers_property(property: &Rc<Node>) -> bool {
+    property.name == "admit_callers"
+}
+
+/// The callers a function's `admit_callers:` roster admits, as `(module_path, decl_name)`. An
+/// entry the compiler cannot interpret is refused there (`AdmitCallersEntryNotDeclRef`) and
+/// contributes nothing here.
+fn admitted_callers_of(
+    item: &Rc<Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<BTreeSet<(String, String)>> {
+    let entries = crate::v1_std_core::fn_admit_callers(item.clone(), source_indices.clone())?;
+    Some(
+        entries
+            .iter()
+            .filter_map(|entry| match entry.as_ref() {
+                crate::v1_std_core::AdmitCallersEntry::AdmitCallersEntryCoords { coords } => {
+                    Some((coords.module_path.clone(), coords.decl_name.clone()))
+                }
+                crate::v1_std_core::AdmitCallersEntry::AdmitCallersEntryUninterpretable {
+                    ..
+                } => None,
+            })
+            .collect(),
+    )
+}
+
 /// The names and string literals of the unpositioned nodes below `node`, body excluded, in tree
 /// order. See `InterfaceRegion::unpositioned`.
 fn unpositioned_interface_parts(node: &Rc<Node>, file: &str, out: &mut Vec<String>) {
@@ -902,7 +943,11 @@ fn unpositioned_interface_parts(node: &Rc<Node>, file: &str, out: &mut Vec<Strin
         .iter()
         .chain(node.params.iter())
         .chain(node.uses.iter())
-        .chain(node.properties.iter())
+        .chain(
+            node.properties
+                .iter()
+                .filter(|p| !is_admit_callers_property(p)),
+        )
         .chain(node.type_annotation.iter())
     {
         unpositioned_interface_parts(child, file, out);
@@ -919,13 +964,33 @@ fn interface_region(item: &Rc<Node>, declaration: &str) -> InterfaceRegion {
     let mut whole: Option<(i64, i64)> = None;
     subtree_extent(item, &file, &mut whole);
     let (start, end) = whole.unwrap_or((item.span.start, item.span.end));
-    // The body's own extent, elided only where it lies inside the item's: anything else is not a
-    // body of THIS declaration and eliding it would hide interface text.
-    let body = item.body.as_ref().and_then(|b| {
-        let mut extent: Option<(i64, i64)> = None;
-        subtree_extent(b, &file, &mut extent);
-        extent.filter(|(b_start, b_end)| *b_start >= start && *b_end <= end)
-    });
+    // The body's own extent, and every `admit_callers:` roster's, elided only where it lies
+    // inside the item's: anything else is not part of THIS declaration and eliding it would hide
+    // interface text.
+    let mut elided: Vec<(i64, i64)> = item
+        .body
+        .iter()
+        .chain(
+            item.properties
+                .iter()
+                .filter(|p| is_admit_callers_property(p)),
+        )
+        .filter_map(|part| {
+            let mut extent: Option<(i64, i64)> = None;
+            subtree_extent(part, &file, &mut extent);
+            extent.filter(|(p_start, p_end)| *p_start >= start && *p_end <= end)
+        })
+        .collect();
+    elided.sort();
+    // Disjoint by construction of the parse (a roster precedes its body); merged anyway so a
+    // nested range cannot make the text reader step backwards.
+    let mut merged: Vec<(i64, i64)> = Vec::new();
+    for (e_start, e_end) in elided {
+        match merged.last_mut() {
+            Some(last) if e_start <= last.1 => last.1 = last.1.max(e_end),
+            _ => merged.push((e_start, e_end)),
+        }
+    }
     let mut unpositioned = Vec::new();
     unpositioned_interface_parts(item, &file, &mut unpositioned);
     InterfaceRegion {
@@ -933,7 +998,7 @@ fn interface_region(item: &Rc<Node>, declaration: &str) -> InterfaceRegion {
         file,
         start,
         end,
-        body,
+        elided: merged,
         unpositioned,
     }
 }
@@ -943,11 +1008,12 @@ fn region_contains(region: &InterfaceRegion, span: &SourceSpan) -> bool {
         && span.start >= region.start
         && span.end <= region.end
         && !region
-            .body
-            .is_some_and(|(start, end)| span.start >= start && span.end <= end)
+            .elided
+            .iter()
+            .any(|(start, end)| span.start >= *start && span.end <= *end)
 }
 
-/// The region's text with the body elided and every whitespace run collapsed to one space. A
+/// The region's text with its elided ranges (body, caller admission) elided and every whitespace run collapsed to one space. A
 /// region whose file has no newline index reads as empty on both sides and so never reports a
 /// change it cannot see -- the sweep indexes every file it records, so this arm is unreached.
 fn interface_text(
@@ -967,16 +1033,14 @@ fn interface_text(
             }),
         )
     };
-    let raw = match region.body {
-        Some((body_start, body_end)) => {
-            format!(
-                "{} {{}} {}",
-                read(region.start, body_start),
-                read(body_end, region.end)
-            )
-        }
-        None => read(region.start, region.end),
-    };
+    let mut raw = String::new();
+    let mut cursor = region.start;
+    for (e_start, e_end) in &region.elided {
+        raw.push_str(&read(cursor, *e_start));
+        raw.push_str(" {} ");
+        cursor = *e_end;
+    }
+    raw.push_str(&read(cursor, region.end));
     let text = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     if region.unpositioned.is_empty() {
         text
@@ -1033,18 +1097,29 @@ pub fn record_from_module(
     let mut coproduct_arms: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut decl_fields = BTreeMap::new();
     let mut interface_regions: Vec<InterfaceRegion> = Vec::new();
+    let mut admitted_callers: BTreeMap<String, BTreeSet<(String, String)>> = BTreeMap::new();
+    let mut arm_interfaces: BTreeMap<(String, String), String> = BTreeMap::new();
     for item in module_items(module.clone()).iter() {
         let name = authored_name_at(source_indices.clone(), item.clone());
         if name.is_empty() {
             continue;
         }
         interface_regions.push(interface_region(item, &name));
+        if let Some(admitted) = admitted_callers_of(item, source_indices) {
+            admitted_callers.insert(name.clone(), admitted);
+        }
         if item.connective == Connective::Disj {
             let arms = coproduct_arms.entry(name.clone()).or_default();
             for v in item.children.iter() {
                 let vname = authored_name_at(source_indices.clone(), v.clone());
                 if !vname.is_empty() {
                     variants.insert(vname.clone());
+                    let mut region = interface_region(v, &vname);
+                    region.elided.clear();
+                    arm_interfaces.insert(
+                        (name.clone(), vname.clone()),
+                        interface_text(&region, source_indices),
+                    );
                     arms.insert(vname);
                 }
             }
@@ -1144,6 +1219,8 @@ pub fn record_from_module(
         authored_type_references: authored_type_references_from_transport(transport, &declared),
         interface_references: interface_type_references(transport, &interface_regions),
         declaration_interfaces,
+        admitted_callers,
+        arm_interfaces,
         declares_construction_justification: declared.contains(CONSTRUCTION_JUSTIFICATION_DECL),
         is_fixture_carrier: module_is_fixture_carrier(&module_path, rel_path),
         module_path,

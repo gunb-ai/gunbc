@@ -162,11 +162,17 @@ fn declarer_of(index: &DeclarationIndex, module: &str, name: &str) -> String {
 /// with its grounds as arms, not one selector per kind of change: a coproduct growing an arm is
 /// one way a declaration's interface moves, a product field retyped or a function parameter
 /// retyped is another, and each strands the SAME population -- the untouched modules that
-/// reference the declaration (gunbc#11194 found the first; #12002 -> #12120 the second).
+/// reference the declaration (gunbc#11194 found the first; #11751 -> #12120 the second).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum InterfaceChangeGround {
-    /// A coproduct's arm set differs. Carried apart from `SignatureChanged` because the receipt
-    /// names the arms, and because a match that names an arm (and not the type) is a consumer.
+    /// A coproduct GREW arms and nothing else moved: no arm removed, every surviving arm's payload
+    /// unchanged. A constructor or a projection cannot be stranded by growth; only an exhaustive
+    /// `match` can, so this ground plans MATCH READERS alone (gunbc#11194's original population).
+    ArmSetGrown { arms_added: Vec<String> },
+    /// A coproduct's arm set differs AND growth alone does not describe it -- an arm removed, or
+    /// a surviving arm's payload changed beside the growth -- so every reader is planned. Carried
+    /// apart from `SignatureChanged` because the receipt names the arms, and because a read that
+    /// names an arm (and not the type) is a consumer.
     ArmSetChanged {
         arms_added: Vec<String>,
         arms_removed: Vec<String>,
@@ -175,6 +181,13 @@ pub(crate) enum InterfaceChangeGround {
     /// the declaration with its body elided) differs: a field type, a parameter, a result, a
     /// constructor payload, an alias target, a brand.
     SignatureChanged,
+    /// A function's `admit_callers:` roster lost entries while its interface text stayed put.
+    /// Growing a roster strands nobody; narrowing it strands exactly the callers it dropped, so
+    /// this ground plans THOSE modules and no other reader -- the difference between planning one
+    /// module and every caller of a widely called constructor.
+    AdmittedCallersNarrowed {
+        removed_callers: Vec<(String, String)>,
+    },
     /// The declaration exists at base in this module and not at head. A reader that still
     /// names it is exactly as stale as one reading a retyped field.
     DeclarationRemoved,
@@ -254,15 +267,49 @@ fn direct_interface_changes(
         let head_arms = head_record.coproduct_arms.get(declaration);
         if let (Some(base_arms), Some(head_arms)) = (base_arms, head_arms) {
             if base_arms != head_arms {
-                out.push(change(InterfaceChangeGround::ArmSetChanged {
-                    arms_added: head_arms.difference(base_arms).cloned().collect(),
-                    arms_removed: base_arms.difference(head_arms).cloned().collect(),
+                let arms_added: Vec<String> = head_arms.difference(base_arms).cloned().collect();
+                let arms_removed: Vec<String> = base_arms.difference(head_arms).cloned().collect();
+                let survivors_unchanged = base_arms.intersection(head_arms).all(|arm| {
+                    let key = (declaration.clone(), arm.clone());
+                    base_record.arm_interfaces.get(&key) == head_record.arm_interfaces.get(&key)
+                });
+                out.push(change(if arms_removed.is_empty() && survivors_unchanged {
+                    InterfaceChangeGround::ArmSetGrown { arms_added }
+                } else {
+                    InterfaceChangeGround::ArmSetChanged {
+                        arms_added,
+                        arms_removed,
+                    }
                 }));
                 continue;
             }
         }
         if base_text != head_text {
             out.push(change(InterfaceChangeGround::SignatureChanged));
+            continue;
+        }
+        let empty = BTreeSet::new();
+        let base_admitted = base_record
+            .admitted_callers
+            .get(declaration)
+            .unwrap_or(&empty);
+        let head_admitted = head_record
+            .admitted_callers
+            .get(declaration)
+            .unwrap_or(&empty);
+        let removed_callers: Vec<(String, String)> =
+            base_admitted.difference(head_admitted).cloned().collect();
+        // A roster that appears where there was none narrows admission from "anyone" to its
+        // entries; a roster that disappears widens it. Only the first strands a caller, and the
+        // callers it strands are every reader not on the new roster -- the whole population.
+        if base_record.admitted_callers.get(declaration).is_none()
+            && head_record.admitted_callers.get(declaration).is_some()
+        {
+            out.push(change(InterfaceChangeGround::SignatureChanged));
+        } else if !removed_callers.is_empty() {
+            out.push(change(InterfaceChangeGround::AdmittedCallersNarrowed {
+                removed_callers,
+            }));
         }
     }
     out
@@ -321,7 +368,7 @@ fn change_universe(
 ///
 /// THE CLASS. A declaration's interface changes in one module -- a coproduct grows an arm
 /// (gunbc#11194), a product field is retyped, an alias is re-branded, a parameter or result is
-/// retyped (#12002, whose stranded witness #12120 repaired) -- and a module that reads it has an
+/// retyped (#11751, whose stranded witness #12120 repaired) -- and a module that reads it has an
 /// empty diff, so no diff-keyed selector sees it and the required floor never Strict-prepares
 /// it. This is the DEPENDENTS direction; `touched_entry_files` seeding is the DEPENDENCY
 /// direction, and neither closes the class alone. `gunbc.recurring_failure_mode`
@@ -365,6 +412,17 @@ pub(crate) fn interface_changed_consumers(
     while !frontier.is_empty() {
         let mut next: Vec<DeclarationInterfaceChange> = Vec::new();
         for change in &frontier {
+            // A narrowed admission changes who may call, not what the declaration's type is:
+            // nothing whose interface spells it has changed.
+            // Pure growth reaches only matches, and a match names the grown coproduct's arms
+            // directly wherever it sits, so nothing propagates through a carrier of it either.
+            if matches!(
+                change.ground,
+                InterfaceChangeGround::AdmittedCallersNarrowed { .. }
+                    | InterfaceChangeGround::ArmSetGrown { .. }
+            ) {
+                continue;
+            }
             let universe = change_universe(base, head, change);
             for record in index_records(head) {
                 for (in_declaration, spelling) in &record.interface_references {
@@ -395,8 +453,23 @@ pub(crate) fn interface_changed_consumers(
     let mut consumers: Vec<InterfaceChangedConsumer> = Vec::new();
     for change in &changes {
         let universe = change_universe(base, head, change);
+        let admitted_only: Option<BTreeSet<&str>> = match &change.ground {
+            InterfaceChangeGround::AdmittedCallersNarrowed { removed_callers } => Some(
+                removed_callers
+                    .iter()
+                    .map(|(module, _)| module.as_str())
+                    .collect(),
+            ),
+            _ => None,
+        };
         for consumer in index_records(head) {
             if consumer.module_path == change.module_path {
+                continue;
+            }
+            if admitted_only
+                .as_ref()
+                .is_some_and(|modules| !modules.contains(consumer.module_path.as_str()))
+            {
                 continue;
             }
             let mut in_declarations: BTreeSet<String> = BTreeSet::new();
@@ -406,11 +479,13 @@ pub(crate) fn interface_changed_consumers(
             // admitted only from the parser's own type occurrences and match-arm heads, where a
             // spelling is a genuine read. Otherwise every module with a local named like a
             // changed function would be planned -- the widening this selector must not do.
+            let matches_only = matches!(change.ground, InterfaceChangeGround::ArmSetGrown { .. });
             let reads = consumer
                 .referenced
                 .iter()
                 .map(|r| (r, false))
                 .chain(consumer.authored_type_references.iter().map(|r| (r, true)))
+                .filter(|_| !matches_only)
                 .chain(consumer.matched_arms.iter().map(|r| (r, true)));
             for ((in_declaration, spelling), flat_admitted) in reads {
                 let Some(bound) = read_binding(

@@ -21,6 +21,16 @@ import v2.workflow.floor_subject_seed {
   ReadInInterface,
   ReadInBody,
   interface_change_propagates,
+  InterfaceChangeGround,
+  ArmSetGrown,
+  ArmSetChanged,
+  SignatureChanged,
+  AdmittedCallersNarrowed,
+  InterfaceReaderPopulation,
+  EveryReader,
+  MatchReadersOnly,
+  DroppedCallersOnly,
+  interface_reader_population,
   interface_read_disposition,
   interface_consumer_binding,
   ModuleInterfaceBinding,
@@ -37,7 +47,7 @@ import v2.workflow.floor_subject_seed {
 // THE THREE DISPOSITIONS OF ONE READ, separated by the candidate set alone. The Rust selector
 // (`interface_changed_consumers`) is a projection of this rule; its executed reds are the
 // #11194 fixture in `required_floor_runner` (`arm_growth_selects_the_untouched_match_consumer_
-// and_strict_preparation_refuses_it`) and the #12002 fixtures beside it (`a_product_field_retype_
+// and_strict_preparation_refuses_it`) and the #11751 fixtures beside it (`a_product_field_retype_
 // plans_the_untouched_constructor_and_without_it_the_floor_is_green`, `a_rebranded_alias_plans_the_
 // consumer_of_the_product_that_carries_it`). These rows hold the RULE still while the host realizes it.
 test fn a_read_whose_candidates_name_the_declarer_is_planned_as_resolved() -> Bool {
@@ -134,11 +144,40 @@ test fn an_unresolved_name_occurrence_plans_nothing_where_a_type_occurrence_does
     )
 }
 
-// ONLY AN INTERFACE READ PROPAGATES (#12002's `ConvergeGeneration` under `HelperStanding`), and
+// ONLY AN INTERFACE READ PROPAGATES (#11751's `ConvergeGeneration` under `HelperStanding`), and
 // only a resolved one; a body read plans its own module and stops there -- the control that a
 // body-only dependency does not seed every reverse importer.
 test fn only_a_resolved_interface_read_propagates_a_change() -> Bool {
   interface_change_propagates(site: ReadInInterface, binding: BoundToDeclaringModule)
     && !interface_change_propagates(site: ReadInInterface, binding: BoundThroughFlatBareChannel)
     && !interface_change_propagates(site: ReadInBody, binding: BoundToDeclaringModule)
+}
+
+// GROWTH IS NOT A SIGNATURE CHANGE. An arm added with nothing else moved strands only an
+// exhaustive match, and a caller admitted strands nobody -- measured on 99c2d33263 (#11751), where
+// treating a grown admission roster as an interface change planned every caller of
+// `extdeps.exec.command` `argv_command`. A removal or a changed payload beside the growth reaches
+// every reader.
+test fn only_growth_and_a_narrowed_roster_plan_less_than_every_reader() -> Bool {
+  let grown = match interface_reader_population(ground: ArmSetGrown { arms_added: ["Amber"] }) {
+    MatchReadersOnly => true
+    EveryReader => false
+    DroppedCallersOnly { removed_callers: _ } => false
+  }
+  let changed = match interface_reader_population(ground: ArmSetChanged { arms_added: ["Amber"], arms_removed: ["Red"] }) {
+    EveryReader => true
+    MatchReadersOnly => false
+    DroppedCallersOnly { removed_callers: _ } => false
+  }
+  let signature = match interface_reader_population(ground: SignatureChanged) {
+    EveryReader => true
+    MatchReadersOnly => false
+    DroppedCallersOnly { removed_callers: _ } => false
+  }
+  let narrowed = match interface_reader_population(ground: AdmittedCallersNarrowed { removed_callers: ["adm.b.use_b"] }) {
+    DroppedCallersOnly { removed_callers: removed } => removed == ["adm.b.use_b"]
+    EveryReader => false
+    MatchReadersOnly => false
+  }
+  grown && changed && signature && narrowed
 }

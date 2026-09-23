@@ -1338,7 +1338,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     // THE FOURTH PROJECTION IS THE DEPENDENTS DIRECTION OF THE SAME CLASS. The third seeds the
     // module whose declaration the diff touched; this one seeds the untouched modules that read
     // a declaration whose INTERFACE changed in the touched one -- a coproduct's arm set
-    // (gunbc#11194), a field or parameter type, an alias or brand (#12002 -> #12120), or a
+    // (gunbc#11194), a field or parameter type, an alias or brand (#11751 -> #12120), or a
     // removal -- closed through declarations whose own interface references a changed one. Same diff window as every projection above -- the base is the floor's own
     // resolved comparison, never a second baseline authority -- and the same Strict preparation
     // downstream, so a planned consumer is a prepared consumer and `check_match` runs on it.
@@ -5925,9 +5925,15 @@ pub fn run_required_floor(
                         } => format!(
                             "ArmSetChanged arms_added={arms_added:?} arms_removed={arms_removed:?}"
                         ),
+                        InterfaceChangeGround::ArmSetGrown { arms_added } => {
+                            format!("ArmSetGrown arms_added={arms_added:?}")
+                        }
                         InterfaceChangeGround::SignatureChanged => "SignatureChanged".to_string(),
                         InterfaceChangeGround::DeclarationRemoved => {
                             "DeclarationRemoved".to_string()
+                        }
+                        InterfaceChangeGround::AdmittedCallersNarrowed { removed_callers } => {
+                            format!("AdmittedCallersNarrowed removed_callers={removed_callers:?}")
                         }
                         InterfaceChangeGround::PropagatedThrough {
                             module_path,
@@ -12038,9 +12044,8 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         assert_eq!(change.declaration, "Signal");
         assert_eq!(
             change.ground,
-            InterfaceChangeGround::ArmSetChanged {
+            InterfaceChangeGround::ArmSetGrown {
                 arms_added: vec!["Amber".to_string()],
-                arms_removed: Vec::new(),
             }
         );
         // Y and W are consumers bound to the declarer; Z names `Red` but binds to its own
@@ -12177,14 +12182,14 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         assert_eq!(consumers_of(&selection), vec!["armset.y"]);
     }
 
-    /// The #12002 shape (gunbc.runner runner_microvm_network `HelperStanding`): a product field
+    /// The #11751 shape (gunbc.runner_microvm_network `HelperStanding`, 99c2d33263): a product field
     /// retyped from `Int` to a new product, read by an untouched constructor.
     const IFACE_H_BASE: &str = "module iface.h\n\ntype Standing {\n  surface: Int\n}\n";
     const IFACE_H_HEAD: &str = "module iface.h\n\ntype Reading {\n  value: Int\n}\n\n\
 type Standing {\n  surface: Reading\n}\n";
     const IFACE_H_USER: &str = "module iface.hc\n\nimport iface.h { Standing }\n\n\
 fn standing() -> Standing {\n  Standing { surface: 3 }\n}\n";
-    /// The #12002 brand shape (`ConvergeGeneration`): an alias re-branded under a product that
+    /// The #11751 brand shape (`ConvergeGeneration`): an alias re-branded under a product that
     /// is itself unchanged. The consumer names only the product, so it is reached ONLY through
     /// propagation.
     const IFACE_G_BASE: &str = "module iface.g\n\ntype Generation = Int\n\n\
@@ -12311,6 +12316,71 @@ fn twice() -> Int {\n  width_of(w: 2)\n}\n";
         let _ = std::fs::remove_dir_all(&fx);
         assert!(selection.changes.is_empty(), "{:?}", selection.changes);
         assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
+    }
+
+    /// A sealed constructor whose `admit_callers:` roster names two callers, the roster widened
+    /// by a third, and the roster narrowed by one.
+    const ADM_M_BASE: &str = "module adm.m\n\ntype Sealed sole_constructor { tag: String }\n\n\
+fn mint(tag: String) -> Sealed admit_callers: [decl_ref(module_path: \"adm.a\", decl_name: \"use_a\"), \
+decl_ref(module_path: \"adm.b\", decl_name: \"use_b\")] = Sealed { tag: tag }\n";
+    const ADM_M_WIDENED: &str = "module adm.m\n\ntype Sealed sole_constructor { tag: String }\n\n\
+fn mint(tag: String) -> Sealed admit_callers: [decl_ref(module_path: \"adm.a\", decl_name: \"use_a\"), \
+decl_ref(module_path: \"adm.b\", decl_name: \"use_b\"), decl_ref(module_path: \"adm.c\", decl_name: \"use_c\")] \
+= Sealed { tag: tag }\n";
+    const ADM_M_NARROWED: &str = "module adm.m\n\ntype Sealed sole_constructor { tag: String }\n\n\
+fn mint(tag: String) -> Sealed admit_callers: [decl_ref(module_path: \"adm.a\", decl_name: \"use_a\")] \
+= Sealed { tag: tag }\n";
+    const ADM_A: &str =
+        "module adm.a\n\nimport adm.m { mint, Sealed }\n\nfn use_a() -> Sealed {\n  mint(tag: \"a\")\n}\n";
+    const ADM_B: &str =
+        "module adm.b\n\nimport adm.m { mint, Sealed }\n\nfn use_b() -> Sealed {\n  mint(tag: \"b\")\n}\n";
+
+    /// GROWING A CALLER ROSTER IS NOT AN INTERFACE CHANGE: no existing caller can be stranded by
+    /// being admitted. Measured on 99c2d33263 (#11751), where appending three entries to
+    /// `extdeps.exec.command` `argv_command`'s roster planned every caller of it (72 modules)
+    /// while the declaration's type was unchanged.
+    #[test]
+    fn a_widened_caller_roster_plans_no_caller() {
+        let (selection, fx) = interface_selection(
+            "admit_widen",
+            &[("m.dag", ADM_M_BASE), ("a.dag", ADM_A), ("b.dag", ADM_B)],
+            &[("m.dag", ADM_M_WIDENED), ("a.dag", ADM_A), ("b.dag", ADM_B)],
+        );
+        let _ = std::fs::remove_dir_all(&fx);
+        assert!(selection.changes.is_empty(), "{:?}", selection.changes);
+        assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
+    }
+
+    /// NARROWING ONE PLANS EXACTLY THE CALLER IT DROPPED, and that caller refuses when prepared;
+    /// the caller still on the roster is not planned.
+    #[test]
+    fn a_narrowed_caller_roster_plans_only_the_dropped_caller() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let (selection, head_fx) = interface_selection(
+            "admit_narrow",
+            &[("m.dag", ADM_M_BASE), ("a.dag", ADM_A), ("b.dag", ADM_B)],
+            &[
+                ("m.dag", ADM_M_NARROWED),
+                ("a.dag", ADM_A),
+                ("b.dag", ADM_B),
+            ],
+        );
+        assert_eq!(
+            direct_changes_in(&selection, "adm.m")
+                .iter()
+                .map(|c| (c.declaration.as_str(), c.ground.clone()))
+                .collect::<Vec<_>>(),
+            vec![(
+                "mint",
+                InterfaceChangeGround::AdmittedCallersNarrowed {
+                    removed_callers: vec![("adm.b".to_string(), "use_b".to_string())],
+                }
+            )]
+        );
+        assert_eq!(consumers_of(&selection), vec!["adm.b"]);
+        let planned = prepare_seeds(&head_fx, &["adm.m", "adm.b"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(planned.is_err(), "the dropped caller must refuse");
     }
 
     /// A module seed matches itself and the modules it CONTAINS by name, never a sibling that
