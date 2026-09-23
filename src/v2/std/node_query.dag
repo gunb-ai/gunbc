@@ -12,9 +12,11 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { TailAbsent, TailFound, fold_list, is_empty, list_snoc_item, list_tail }
+import v2.std.algebra { TailAbsent, TailFound, fold_list, is_empty, list_append, list_snoc_item, list_tail }
 import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.node {
+  Cardinality,
   Ambiguous,
   Atom,
   ArmPayload,
@@ -37,8 +39,11 @@ import v2.std.node {
   Typed,
   arrow_body_target_lookup,
   coproduct_nullary_payload_type_name,
-  named_edge_sort_key
+  named_edge_sort_key,
+  node_with_occurrence_id
 }
+import std.constructors { Cardinality, Required, Optional }
+import v2.std.optional { Optional, optional_absent, optional_present }
 
 fn coproduct_arm_key_list_from_node(node: Node) -> List<Symbol> {
   fold(
@@ -120,6 +125,350 @@ fn coproduct_arm_payload_pair_from_arm(arm: CoproductArm) -> CoproductArmPayload
   CoproductArmPayloadPair {
     label: arm.label,
     payload_type_name: arm_payload_type_name(payload: arm.payload)
+  }
+}
+
+// THE DECLARED FIELD MODEL, AS THE SEED DECLARES IT. v1.compiler.core make_field_node gives a
+// field a name, a type, a cardinality and an optional default; v1.compiler.parse
+// parse_positional_variant_type_fields reads the positional payload `Name(T)` as exactly one
+// Required field named "0". In the core a declared field IS a Named edge on the payload Conj:
+// the label is the field identity, the target is the field's type. A Required field's target is
+// the type itself; an Optional field (`f: T?`) targets a Cardinality node over it. A default is
+// not admitted on a general field by the dag grammar (dag_grammar_field_decl_expr refuses it
+// loudly), so the reader carries no default slot. Positional and record spellings are one shape:
+// `A(T)` declares the field list [0: T] and `A { v: T }` declares [v: T]. Nullary is the empty
+// payload Conj (arm_payload_from_target Nullary), not an absent one.
+// CONSUMERS (DESIGN 3c): the producers (v2.compiler.body_lowering_fold) build the field edges
+// directly; these READERS are consumed today by v2.test.parse.variant_field_lowering over real
+// normalize output, and their production consumer is the declared frontier of the same lane:
+// field projection off a receiver -- `expr.field` names a DECLARED field of the receiver's type
+// or refuses, located -- and the construction/elimination typing that joins a positional operand
+// to field "0" (the seed's infer_variant_constructor_call), both dispatched as the follow-up PR to
+// gunbc#12033 in the native-route program. They are not a second lookup model: that PR reads
+// declared_field_named and refuses on Absent.
+// CARDINALITY IS CARRIED AS THE MODELLED COPRODUCT, NOT RE-SNIFFED AND NOT REDUCED TO A Bool. An
+// Optional field's edge targets a Cardinality node over its type, so exactly ONE reader decodes
+// that -- declared_field_cardinality_of_target, below -- and consumers read the decoded value. It
+// is declared HERE rather than beside the connective it reads, for the reason the paragraph below
+// gives; an earlier revision of this sentence named a v2.std.node symbol that the hoist it
+// described never created, and contradicted its own next paragraph. Two earlier
+// revisions were worse in two different ways: the first had every consumer re-derive it from the
+// target's connective, which is DESIGN section 5's validation standing where construction was
+// available; the second carried the decoded fact as a Bool, which gave Required-versus-Optional a
+// second spelling in the tree and so forked the authority std.constructors already holds
+// (DESIGN section 3: each fact lives in exactly one place).
+//
+// THE COLLISION THIS ANNOTATION ONCE CLAIMED IS REAL, BUT NOT WHERE IT SAID, AND IT IS NOT THIS
+// MODULE'S. The earlier text said std.constructors Cardinality could not be imported because
+// v2.std.node binds that name as the CONNECTIVE. That is wrong: both names are imported here, both
+// are used in declared_field_cardinality_of_target -- the connective in the match pattern, the type
+// in the return -- and this module resolves.
+//
+// WHAT IS TRUE IS A STANDING THREE-WAY FORK ON THE NAME `Optional`, and `.dag` resolves variant
+// names CORPUS-WIDE. Three authorities: the generic v2.std.optional Optional; the Cardinality arm
+// of std.constructors; and the GrammarExpr arm `Optional { element: GrammarExpr }` in
+// v2.std.grammar. The last two collide, so ANY module reachable to both refuses --
+// `variant 'Optional' appears in both 'Cardinality' and 'GrammarExpr'`. This is not a fact about
+// node_query's suitability: v2.std.grammar already carries TWO of the three by itself, importing
+// the generic at its head and declaring the arm at line 227, and did so before this PR existed.
+// Found by executing the move rather than by reading it: hoisting this decoder into v2.std.node --
+// the module that OWNS the connective and the obvious home for it -- refuses the whole corpus.
+//
+// SO THE DECODER'S PLACEMENT IS A CONFINEMENT, NOT A CHOICE, and a reader should not tidy it into
+// the owning module. It lives where nothing reaches GrammarExpr. That is reachability rather than
+// construction, which is weaker, and it is stated rather than hidden.
+//
+// AND THE REPAIR IS PROBABLY UNIFICATION RATHER THAN RENAMING, which is why no lane should "fix"
+// this by renaming an arm to dodge it. GrammarExpr's Optional is EBNF's `?` -- zero-or-one
+// OCCURRENCE. Cardinality's Optional is a field that may be absent -- zero-or-one OCCUPANCY. Those
+// may not be two concepts colliding but ONE concept at two scales, which is DESIGN section 2's
+// horizontal move in its textbook form, and the substrate has been saying so by refusing to let
+// them coexist. If that reading holds, the answer is that one of the two should not exist. Whoever
+// picks this up should start from unification and treat a rename as the thing to justify.
+type DeclaredField {
+  name: Symbol
+  type_node: Node
+  cardinality: Cardinality
+}
+
+fn positional_payload_field_name() -> Symbol {
+  symbol_intern_lexeme(lexeme: "0")
+}
+
+// The wildcard pattern `_` binds nothing and names nothing (v1.compiler.parse parse_pattern).
+fn pattern_wildcard_name() -> Symbol {
+  symbol_intern_lexeme(lexeme: "_")
+}
+
+
+fn declared_field_cardinality_of_target(target: Node) -> Cardinality {
+  match target.kind {
+    TypeNode { connective: Cardinality } => Optional
+    _ => Required
+  }
+}
+
+fn declared_field_from_edge(e: Edge) -> Optional<DeclaredField> {
+  match e.label {
+    Named { name: field_name } =>
+      Present {
+        value: DeclaredField {
+          name: field_name,
+          type_node: e.target,
+          cardinality: declared_field_cardinality_of_target(target: e.target)
+        }
+      }
+    Positional => Absent
+  }
+}
+
+// The field list a payload declares, in declaration order. Anything that is not a payload Conj
+// declares no fields, so an empty list alone does not distinguish "nullary" from "not a payload";
+// a caller that needs that also checks the payload is a Conj.
+fn declared_field_list(payload: Node) -> List<DeclaredField> {
+  match payload.kind {
+    TypeNode { connective: Conj } =>
+      fold(payload.children, init: Empty, f: fn(acc, e) {
+        match declared_field_from_edge(e: e) {
+          Present { value: f } => list_snoc_item(xs: acc, item: f)
+          Absent => acc
+        }
+      })
+    _ => Empty
+  }
+}
+
+fn declared_field_named(payload: Node, name: Symbol) -> Optional<DeclaredField> {
+  fold(declared_field_list(payload: payload), init: Absent, f: fn(acc, f) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match f.name == name {
+          true => Present { value: f }
+          false => Absent
+        }
+    }
+  })
+}
+
+// A CONSTRUCT is the value-side twin of a payload: the same field edges, each targeting the
+// value supplied for that field, behind one leading TAG edge whose label and target both name
+// the constructor (`Rec { n: 1 }` is Conj { Rec: Atom(Rec), n: 1 }). It is the shape
+// v2.std.node RecordConstructBody admits (arrow_body_record_construct_conforms: every edge Named,
+// the first one an Atom) and the shape the language authority's fixtures build
+// (v2.extdeps.languages.dag dag_rec_construct_body_node, dag_variant_holds_construct_node). A
+// match-arm PATTERN over a fielded variant is the same construct whose field targets are the
+// binders, so construction and elimination read one shape.
+fn construct_tag_edge(tag: Symbol, source: Node) -> Edge {
+  Edge {
+    label: Named { name: tag },
+    target: node_with_occurrence_id(
+      kind: TypeNode { connective: Atom { identity: tag } },
+      children: [],
+      occurrence_id: source.occurrence_id
+    )
+  }
+}
+
+fn construct_node(tag: Symbol, field_edges: List<Edge>, source: Node) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: list_append(
+      left: [construct_tag_edge(tag: tag, source: source)],
+      right: field_edges
+    ),
+    occurrence_id: source.occurrence_id
+  )
+}
+
+// The tag of a construct: its first edge, when that edge names the atom it targets. Anything
+// else -- a payload Conj, a domain Conj, a bare record with no tag -- has no constructor tag.
+fn construct_tag_optional(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Conj } =>
+      match first(n.children) {
+        Present { value: e } =>
+          match e.label {
+            Named { name: label } =>
+              match e.target.kind {
+                TypeNode { connective: Atom { identity: id } } =>
+                  match id == label {
+                    true => Present { value: label }
+                    false => Absent
+                  }
+                _ => Absent
+              }
+            Positional => Absent
+          }
+        Absent => Absent
+      }
+    _ => Absent
+  }
+}
+
+// The field edges of a construct: every edge after the tag. Empty for a nullary construct and
+// for a node that is not a construct.
+fn construct_field_edges(n: Node) -> List<Edge> {
+  match construct_tag_optional(n: n) {
+    Absent => Empty
+    Present { value: _ } =>
+      match list_tail(xs: n.children) {
+        TailFound { tail: rest } => rest
+        TailAbsent => Empty
+      }
+  }
+}
+
+// FIELD PROJECTION OFF A COMPUTED RECEIVER: THE ELIMINATOR OF THE DECLARED FIELD ABOVE.
+//
+// `expr.f` where `expr` is a computed value rather than a name. It is a SEPARATE construct from
+// the qualified-name spine, and the reason is structural rather than stylistic: v2.std.qualified_name
+// QualifiedName is `FreeMonoid<Symbol>`, so a spine cannot carry a computed root at all -- there is
+// no slot in it for a Node. `a.b.c` over bare segments stays the spine and the resolver decides
+// what its head denotes (v2.compiler.body_lowering_fold body_lower_dotted_chain_lowered_optional
+// states that contract); only a receiver the spine cannot represent reaches this shape.
+//
+// The relation is the seed's: v1.compiler.core ExprFieldAccess carries a base child and the
+// field's authored name, and the emission side already reads exactly that pair
+// (v2.std.compilers.target_model target_value_expr_field_access_base_from_wire /
+// _field_from_wire, rendered through TargetFieldAccessShape). So the core shape is the same two
+// facts and no third: a Conj with a BASE edge to the receiver's lowered node and a FIELD edge to
+// the field-name atom.
+//
+// WHY THIS CANNOT BE CONFUSED WITH A CONSTRUCT, which is the only neighbouring Conj-of-Named
+// shape: construct_tag_optional admits a Conj whose FIRST edge names the atom it targets, and
+// `field_projection_base` never targets an atom named `field_projection_base`. Read in the other
+// direction, field_projection_optional requires BOTH reserved labels, which construct_field_edges
+// never produces because its labels are the declared field identities.
+//
+// WHAT THIS DOES NOT DO, stated because 12033's header promised the other half here: it does not
+// check that `f` IS a declared field of the receiver's type. That check reads declared_field_named
+// against the receiver's payload and needs a TYPE, which normalize does not have -- it is the
+// typecheck stage's, over this node, and it is the declared frontier this shape exists to give a
+// subject. Until it lands, a misspelled field is a resolve/typecheck-stage question and NOT
+// silently answered here.
+fn field_projection_base_name() -> Symbol {
+  ^field_projection_base
+}
+
+fn field_projection_field_name() -> Symbol {
+  ^field_projection_field
+}
+
+fn field_projection_node(base: Node, field: Symbol, source: Node) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: field_projection_base_name() }, target: base },
+      Edge {
+        label: Named { name: field_projection_field_name() },
+        target: node_with_occurrence_id(
+          kind: TypeNode { connective: Atom { identity: field } },
+          children: [],
+          occurrence_id: source.occurrence_id
+        )
+      }
+    ],
+    occurrence_id: source.occurrence_id
+  )
+}
+
+type FieldProjection {
+  base: Node
+  field: Symbol
+}
+
+fn field_projection_edge_base_optional(e: Edge) -> Optional<Node> {
+  match e.label {
+    Named { name: n } =>
+      if n == field_projection_base_name() {
+        optional_present(value: e.target)
+      } else {
+        optional_absent()
+      }
+    Positional => optional_absent()
+  }
+}
+
+fn field_projection_edge_field_optional(e: Edge) -> Optional<Symbol> {
+  match e.label {
+    Named { name: n } =>
+      if n == field_projection_field_name() {
+        match e.target.kind {
+          TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+          _ => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+    Positional => optional_absent()
+  }
+}
+
+// The reader: a two-edge Conj carrying exactly the base edge then the field edge. Anything else
+// -- a construct, a payload, a spine, a one-edge variant declaration -- is not a projection, and
+// the reader says so rather than guessing at a partial match.
+fn field_projection_optional(n: Node) -> Optional<FieldProjection> {
+  match n.kind {
+    TypeNode { connective: Conj } =>
+      match list_at_optional(xs: n.children, index: 0) {
+        Absent => optional_absent()
+        Present { value: base_edge } =>
+          match list_at_optional(xs: n.children, index: 1) {
+            Absent => optional_absent()
+            Present { value: field_edge } =>
+              match list_at_optional(xs: n.children, index: 2) {
+                Present { value: _ } => optional_absent()
+                Absent =>
+                  match field_projection_edge_base_optional(e: base_edge) {
+                    Absent => optional_absent()
+                    Present { value: base } =>
+                      match field_projection_edge_field_optional(e: field_edge) {
+                        Absent => optional_absent()
+                        Present { value: field } =>
+                          optional_present(value: FieldProjection { base: base, field: field })
+                      }
+                  }
+              }
+          }
+      }
+    _ => optional_absent()
+  }
+}
+
+// A DECLARED VARIANT, before the coproduct fold joins it to its siblings: one Named edge from the
+// variant's label to its payload Conj, carried on a one-edge Conj so the sugar fold
+// (v2.std.compilers.sugar sugar_variant_to_disj_edge) can read label and payload off it without
+// re-walking the parse. A raw, unlowered variant is a parse sequence with two projection edges,
+// never a one-edge Conj, so the two cannot be confused.
+fn variant_declaration_node(label: Symbol, payload: Node, source: Node) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Named { name: label }, target: payload }],
+    occurrence_id: source.occurrence_id
+  )
+}
+
+fn variant_declaration_edge_optional(n: Node) -> Optional<Edge> {
+  match n.kind {
+    TypeNode { connective: Conj } =>
+      match count(n.children) == 1 {
+        false => optional_absent()
+        true =>
+          match first(n.children) {
+            Present { value: e } =>
+              match e.label {
+                Named { name: _ } =>
+                  match e.target.kind {
+                    TypeNode { connective: Conj } => optional_present(value: e)
+                    _ => optional_absent()
+                  }
+                Positional => optional_absent()
+              }
+            Absent => optional_absent()
+          }
+      }
+    _ => optional_absent()
   }
 }
 

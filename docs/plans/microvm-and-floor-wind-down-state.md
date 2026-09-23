@@ -169,9 +169,19 @@ before it can be removed, and no lane may narrow them silently.
 
 ### The floor's own job does not fit a cell
 
-`runner_microvm_floor_fit_stall` remains rostered: the floor's measured held-set peak exceeds
-`gunbc.runner_slot_allocation` `gunbc_runner_slot_memory_max_bytes` less the realization
-reserve. Both sides are derivable rather than transcribed — the cap is that declaration, and
+**Update 2026-09-23 — the stall retired.** `runner_microvm_floor_fit_stall` was deleted when its
+trigger held: `gunbc.floor_demand`'s standing moved to `gunbc_floor_memory_stat_receipt_2026_09_23`
+(a run carrying gunbc#12081 and gunbc#12088), and `gunbc_runner_microvm_shape` now resolves on
+production inputs at the unchanged 26 GiB cell row. The executed evidence is
+`test.claim.runner_microvm_witness_test`
+`the_production_shape_resolves_on_the_memory_remainder_since_the_2026_09_23_receipt` and the
+either-state witness beside it. The paragraphs below are the state as it stood before that and are
+kept as history; the demand is a single warm run's sampled maximum, so a later receipt can move it
+back over the line, and the either-state witness is what would say so.
+
+Before 2026-09-23: `runner_microvm_floor_fit_stall` remained rostered: the floor's measured held-set
+peak exceeded `gunbc.runner_slot_allocation` `gunbc_runner_slot_memory_max_bytes` less the
+realization reserve. Both sides are derivable rather than transcribed — the cap is that declaration, and
 the demand is produced by `gunbc.floor_memory_demand`, whose qualification against readable
 limits is what the stall cites. The stall row itself carries the figures it was written
 against; read them there, where they sit beside the reading that produced them.

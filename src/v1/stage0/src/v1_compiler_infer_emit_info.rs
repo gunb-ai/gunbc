@@ -151,21 +151,16 @@ pub fn collect_type_node_import_surface_occurrences(
             for ch in peeled.children.clone().iter().cloned() {
                 __result.extend(
                     (*{
-                        let resolved_names = collect_type_node_import_surface_occurrences(
-                            crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                        let walked = if children_are_applied_arguments.clone() {
+                            ch.clone()
+                        } else {
+                            crate::v1_compiler_infer_types::child_type_node(ch.clone())
+                        };
+                        collect_type_node_import_surface_occurrences(
+                            walked.clone(),
                             children_are_applied_arguments.clone(),
                             source_indices.clone(),
-                        );
-                        let authored_names = if (ch.inferred.clone() != std::option::Option::None) {
-                            collect_type_node_import_surface_occurrences(
-                                ch.clone(),
-                                children_are_applied_arguments.clone(),
-                                source_indices.clone(),
-                            )
-                        } else {
-                            Rc::new(vec![])
-                        };
-                        v1_rt::concat(resolved_names.clone(), authored_names.clone())
+                        )
                     })
                     .iter()
                     .cloned(),
@@ -183,34 +178,9 @@ pub fn collect_type_node_import_surface_occurrences(
             }
             _ => Rc::new(vec![]),
         };
-        let applied_names = match crate::v1_std_core::find_property(
-            peeled.properties.clone(),
-            "__applied_type_args".to_string(),
-            source_indices.clone(),
-        ) {
-            Some(applied) => Rc::new({
-                let mut __result = Vec::new();
-                for arg in applied.children.clone().iter().cloned() {
-                    __result.extend(
-                        (*collect_type_node_import_surface_occurrences(
-                            arg.clone(),
-                            true,
-                            source_indices.clone(),
-                        ))
-                        .iter()
-                        .cloned(),
-                    );
-                }
-                __result
-            }),
-            None => Rc::new(vec![]),
-        };
         v1_rt::concat(
             own.clone(),
-            v1_rt::concat(
-                child_names.clone(),
-                v1_rt::concat(applied_names.clone(), inferred_names.clone()),
-            ),
+            v1_rt::concat(child_names.clone(), inferred_names.clone()),
         )
     })
 }
