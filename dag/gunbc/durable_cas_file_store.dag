@@ -1,6 +1,7 @@
 module gunbc.durable_cas_file_store
 
-import std.types { NonEmptyStr, String, Int, Bool }
+import std.types { NonEmptyStr, String, Int, Bool, FilePath }
+import extdeps.shell
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_first, cas_generation_next, cas_generation_count }
 import extdeps.filesystem.filesystem_io {
@@ -240,6 +241,7 @@ fn cas_file_slot_path(root: NonEmptyStr, key: NonEmptyStr, generation: CasGenera
 // and a decision caller would try to occupy it.
 type CasSlotProbe
   = ProbedAbsent
+  | ProbedRootUnestablished { root: NonEmptyStr }
   | ProbedHead { generation: CasGeneration, value: NonEmptyStr }
   | ProbedBeyondBound { bound: Int }
   | ProbedUnreadable { generation: CasGeneration, kind: FilesystemFailureKind }
@@ -275,7 +277,7 @@ fn cas_probe_from_exact(
       cas_probe_from(root: root, key: key, generation: cas_generation_next(g: generation), previous: c as NonEmptyStr)
     FilesystemExactPathAbsent { path: _ } =>
       if cas_generation_count(g: generation) == 1 {
-        ProbedAbsent
+        cas_first_generation_absent(root: root)
       } else {
         ProbedHead { generation: cas_generation_count(g: generation) - 1, value: previous }
       }
@@ -283,6 +285,25 @@ fn cas_probe_from_exact(
       ProbedUnreadable { generation: generation, kind: k }
     FilesystemExactPathKindUnrecognized { path: _, observed: o, error: _ } =>
       ProbedReadKindUnrecognized { generation: generation, observed: o }
+  }
+}
+
+// AN ABSENT FIRST GENERATION IS AN EMPTY SLOT ONLY IN AN ESTABLISHED STORE. The host answers
+// NotFound for the generation path both when the file is missing and when the slot ROOT is
+// (extdeps.filesystem.filesystem_io FilesystemExactPathAbsent says so and disclaims the directory),
+// so reading that answer as ProbedAbsent turned an UNINITIALIZED store into an EMPTY one: every
+// reader saw "no holder" and a decision caller admitted against a store it had never observed.
+// That is the absorbing fallback DESIGN section 5 names -- a missing area widened to "free" --
+// and it hid fleet-converge run 35818578751's missing fabric store until the first write.
+// A false from the directory test can only refuse, never mint an absence, so its Bool channel
+// conflating "missing" with "unobservable" is safe in this direction.
+fn cas_first_generation_absent(root: NonEmptyStr) -> CasSlotProbe {
+  if shell.Test.IsDirectory(path: root as String as FilePath).is_directory { ProbedAbsent } else { ProbedRootUnestablished { root: root } }
+}
+
+fn cas_slot_root_unestablished(root: NonEmptyStr) -> CasUnreadableSlot {
+  CasUnreadableReadRefused {
+    detail: join(["the slot root ", root as String, " is not an established directory, so an absent slot cannot be told from an uninitialized store"], "") as NonEmptyStr
   }
 }
 
@@ -354,6 +375,7 @@ fn cas_probe_as_observation(probe: CasSlotProbe) -> CasSlotObservation<NonEmptyS
     ProbedReadKindUnrecognized { generation: g, observed: o } =>
       CasObservedUnreadable { cause: cas_generation_read_kind_unrecognized(generation: g, observed: o) }
     ProbedAbsent => CasObservedReadable { readable: CasReadableAbsent }
+    ProbedRootUnestablished { root: r } => CasObservedUnreadable { cause: cas_slot_root_unestablished(root: r) }
     ProbedHead { generation: h, value: v } =>
       CasObservedReadable { readable: cas_head_as_readable(generation: h, value: v) }
   }
@@ -589,6 +611,7 @@ fn cas_owner_only_failed_publication(
         cas_publication_refused(detail: detail)
       }
     ProbedAbsent => cas_publication_refused(detail: detail)
+    ProbedRootUnestablished { root: r } => CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_slot_root_unestablished(root: r) } }
     ProbedBeyondBound { bound: b } => cas_publication_beyond_bound(bound: b)
     ProbedUnreadable { generation: g, kind: k } =>
       CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_generation_unreadable(generation: g, kind: k) } }
@@ -660,6 +683,8 @@ fn file_compare_and_set(
       CasStoreRefused {
         cause: CasSlotObservationRefused { cause: cas_generation_read_kind_unrecognized(generation: g, observed: o) }
       }
+    ProbedRootUnestablished { root: r } =>
+      CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_slot_root_unestablished(root: r) } }
     ProbedAbsent =>
       match attempt.expected {
         ExpectSlotAbsent =>
