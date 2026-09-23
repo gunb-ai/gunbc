@@ -604,7 +604,16 @@ import v2.std.collection { List }
 // The verdict did NOT move: it returns true on origin/main and on that head, same interpreter,
 // sources the only variable. So this is not a regression to revert but a pre-existing recompute the
 // change surfaced, and the honest repair is the one this roster exists for rather than re-hiding it.
+// THE LOADED-CARRIER INGESTS ARE THE SAME GROUND. v2.test.claim.provenance.loaded_carrier_receipts
+// runs one front end over two inline modules and every claim in it reads that value: lcr_loaded_roots
+// (a FreeMonoid<NormalizedTree>) and lcr_located_roots (the located projection of the same ingest,
+// an Outcome<List<LocatedModuleRoot>>) -- roots, marker channels, binding and record rows, no
+// resolution context and no closure. adhoc-68dc5afb-a90 changed lcr_index, so the file's identities
+// read as changed and each claim was judged at ~210,000 eval steps against the 72,300 new-witness
+// budget, almost all of it the ingest the claims are not about.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "v2.test.claim.provenance.loaded_carrier_receipts.lcr_loaded_roots",
+  "v2.test.claim.provenance.loaded_carrier_receipts.lcr_located_roots",
   "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_module",
   "v2.test.claim.resolve.namespace_candidate_rule.ncr_outcomes",
   "v2.test.claim.namespace_xl0.call_argument_resolve_refusal.xl2_outcomes",
