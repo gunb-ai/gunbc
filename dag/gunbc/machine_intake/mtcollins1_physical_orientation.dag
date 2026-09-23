@@ -36,6 +36,10 @@ import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   MtCollins1PhysicalFactStanding, VendorFigureFact, OperatorByEyeReport, FirmwareTrainedFact,
   MtCollins1ChassisEnd, FrontEnd, RearEnd, MtCollins1Viewpoint, ViewpointReported, ViewpointNotYetReported,
   mtcollins1_operator_front_report,
+  MtCollins1DiagnosisHypothesis, MtCollins1HypothesisStanding, HypothesisLeading, HypothesisOpen, HypothesisRefuted,
+  MtCollins1SocketCpu, MtCollins1CpuRelease, EngineeringSample, ProductionPart, mtcollins1_socket_cpus,
+  MtCollins1EventOrder, EventOrderReported, EventOrderNotYetReported, mtcollins1_es_swap_vs_restore,
+  mtcollins1_spare_processors,
 }
 
 // THE PHYSICAL ORIENTATION OF MT. COLLINS UNIT 1'S DIMM ROW, AS THIS REPOSITORY OBSERVED IT.
@@ -699,7 +703,35 @@ fn history_block(history: List<MtCollins1Socket1InvestigationBoot>, orientation:
   if list_length(items: history) == 0 { [] } else {
     concat(concat(concat(["History (firmware rosters):"], map(history, b => boot_history_line(boot: b, orientation: orientation, banks: banks))),
       [socket1_standing_text(standing: socket1_standing(boots: history, orientation: orientation, banks: banks))]),
-      map(mtcollins1_socket1_open_hypotheses, h => concat(concat(concat("Open hypothesis (not established): ", h.hypothesis), " Test: "), h.discriminator)))
+      concat(cpu_block(cpus: mtcollins1_socket_cpus, order: mtcollins1_es_swap_vs_restore), map(mtcollins1_socket1_open_hypotheses, h => hypothesis_text(h: h, history: history))))
+  }
+}
+
+fn cpu_release_text(issue: MtCollins1CpuRelease) -> String {
+  match issue { EngineeringSample => "engineering sample"  ProductionPart => "production part" }
+}
+
+// The operator's CPU facts, then the one ordering question they leave open.
+fn cpu_block(cpus: List<MtCollins1SocketCpu>, order: MtCollins1EventOrder) -> List<String> {
+  let lines = map(cpus, c => concat(concat(concat(concat(concat("CPU", to_string(c.socket)), " (socket "), to_string(c.socket)), "): "), concat(concat(cpu_release_text(issue: c.issue), " - "), c.provenance)))
+  let open = match order {
+    EventOrderNotYetReported { question: q } => concat("Open question: ", q)
+    EventOrderReported { before_reference: b, report: _ } => if b { "The socket-0 swap preceded the 2026-09-13 restore (operator report)." } else { "The socket-0 swap followed the 2026-09-13 restore (operator report)." }
+  }
+  concat(lines, [open, concat(concat(concat("Spares on hand: about ", to_string(mtcollins1_spare_processors.approximate_count)), " "), concat(mtcollins1_spare_processors.family, " processors (operator report)."))])
+}
+
+// A refutation renders only when every run it cites is a receipt in the history; a citation
+// the history does not hold is printed as unverified, never as refuted.
+fn hypothesis_text(h: MtCollins1DiagnosisHypothesis, history: List<MtCollins1Socket1InvestigationBoot>) -> String {
+  let bet = concat(concat(h.hypothesis, " Test: "), h.discriminator)
+  match h.standing {
+    HypothesisLeading => concat("Leading hypothesis (not established): ", bet)
+    HypothesisOpen => concat("Open hypothesis (not established): ", bet)
+    HypothesisRefuted { runs: rs, basis: why } => {
+      let held = fold(rs, init: list_length(items: rs) > 0, f: (acc, r) => acc && list_length(items: filter(history, b => b.run_id == r)) > 0)
+      if held { concat(concat(concat(concat(concat("Refuted hypothesis: ", h.hypothesis), " Refuted by run "), join(map(rs, r => to_string(r)), ", run ")), ": "), why) } else { concat("Refutation cites runs outside the receipts (unverified): ", h.hypothesis) }
+    }
   }
 }
 

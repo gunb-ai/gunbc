@@ -79,6 +79,7 @@ type MtCollins1BootFinding
   | NprocSectionNulCorrupted { fail_open_repair: NonEmptyStr }
   | WorkloadShmNoSpace { lines: List<NonEmptyStr> }
   | QualificationRefused { verdict: NonEmptyStr, receipt_line: NonEmptyStr }
+  | DiagnosticsBundleAborted { cause: NonEmptyStr, evidence_source: NonEmptyStr }
 
 // mcu_enable_mask is kept as the printed value (Absent when the boot printed none). Its
 // relation to the trained controllers is computed, as an observed correlation, downstream.
@@ -223,26 +224,110 @@ data mtcollins1_socket1_boot_canonical_j1_j17: MtCollins1Socket1InvestigationBoo
   ],
 }
 
+// The J1 and J17 sticks exchanged, then the same J1 + J17 population booted again. The stick
+// that sat in J17 for run 35810323032 now sat in J1 and trained; J17 again trained nothing.
+data mtcollins1_socket1_boot_j1_j17_sticks_swapped: MtCollins1Socket1InvestigationBoot = MtCollins1Socket1InvestigationBoot {
+  run_id: 35871654468,
+  capture_sha256: "6bfd827b10ef0731cba430f8fc22a1fa8ecafdfbe14f00510e15fc38cf8b8006",
+  intended: IntendedAtPhysicalConnectors { connectors: [1, 17] },
+  operator_frame: mtcollins1_frame_not_asked,
+  roster_lines: [
+    "SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+  ],
+  trained: [MtCollins1TrainedSlot { socket: 0, controller: 0, slot: 0 }],
+  dram_total: gibibyte(count: 16),
+  mcu_enable_mask: Present { value: 1 },
+  mcu_enable_mask_line: Present { value: "mcu_enable_mask = 00000001 [default: 000000ff]" },
+  host: Present { value: MtCollins1HostCpuReading { sockets: 1, cpus: 80, numa_nodes: 1 } },
+  live_sockets: [0],
+  findings: [
+    DiagnosticsBundleAborted {
+      cause: "The run's diagnostics bundle and boot receipt are missing: the known SEL-read timeout aborted the job before they were written (fix tracked separately).",
+      evidence_source: "Every field of this row was read from the SOL capture alone.",
+    },
+  ],
+}
+
 data mtcollins1_socket1_investigation_boots: List<MtCollins1Socket1InvestigationBoot> = [
   mtcollins1_socket1_boot_eight_on_socket0,
   mtcollins1_socket1_boot_eight_plus_one,
   mtcollins1_socket1_boot_three_sticks,
   mtcollins1_socket1_boot_two_sticks,
   mtcollins1_socket1_boot_canonical_j1_j17,
+  mtcollins1_socket1_boot_j1_j17_sticks_swapped,
 ]
 
-// The next diagnoses are hypotheses, typed as such (§4d): nothing above establishes any of
-// them, and each names the observation that would confirm or refute it.
+// WHICH PROCESSOR SITS IN EACH SOCKET (operator, chat, 2026-09-23). Release is the part's
+// production standing, not a stepping: no stepping or microcode reading has been taken.
+type MtCollins1CpuRelease = EngineeringSample | ProductionPart
+
+type MtCollins1SocketCpu {
+  socket: Nat
+  issue: MtCollins1CpuRelease
+  provenance: NonEmptyStr
+  report: MtCollins1PhysicalFactStanding
+}
+
+data mtcollins1_cpu_report_2026_09_23: MtCollins1PhysicalFactStanding = OperatorByEyeReport {
+  observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 },
+  relay: "eager-owl-205 brief for work item adhoc-712174ff-d1e",
+  method: "Operator's statement of what they installed; not read from firmware.",
+}
+
+data mtcollins1_socket_cpus: List<MtCollins1SocketCpu> = [
+  MtCollins1SocketCpu { socket: 0, issue: EngineeringSample, provenance: "Ampere Altra engineering sample the operator installed as a replacement.", report: mtcollins1_cpu_report_2026_09_23 },
+  MtCollins1SocketCpu { socket: 1, issue: ProductionPart, provenance: "The machine's original production CPU.", report: mtcollins1_cpu_report_2026_09_23 },
+]
+
+// When the socket-0 swap happened relative to the 2026-09-13 two-socket restore is not known.
+// It is an open question, not a guess: before that restore, the pairing trained both sockets.
+type MtCollins1EventOrder
+  = EventOrderReported { before_reference: Bool, report: MtCollins1PhysicalFactStanding }
+  | EventOrderNotYetReported { question: NonEmptyStr }
+
+data mtcollins1_es_swap_vs_restore: MtCollins1EventOrder = EventOrderNotYetReported {
+  question: "Was the socket-0 engineering sample installed before or after the 2026-09-13 16-module two-socket restore?",
+}
+
+// Spares on hand of this processor family: approximate, as the operator said it.
+type MtCollins1SpareProcessors {
+  approximate_count: Nat
+  family: NonEmptyStr
+  report: MtCollins1PhysicalFactStanding
+}
+
+data mtcollins1_spare_processors: MtCollins1SpareProcessors = MtCollins1SpareProcessors {
+  approximate_count: 45,
+  family: "Ampere Altra",
+  report: mtcollins1_cpu_report_2026_09_23,
+}
+
+// The diagnoses are hypotheses, typed as such (§4d): bets, not facts. Each names the
+// observation that would confirm or refute it. A refutation cites the receipts that did it;
+// Leading is the operator's ranking of the open bets, not evidence for them.
+type MtCollins1HypothesisStanding
+  = HypothesisLeading
+  | HypothesisOpen
+  | HypothesisRefuted { runs: List<Nat>, basis: NonEmptyStr }
+
 type MtCollins1DiagnosisHypothesis {
   hypothesis: NonEmptyStr
   discriminator: NonEmptyStr
+  standing: MtCollins1HypothesisStanding
 }
 
-data mtcollins1_socket1_basis: NonEmptyStr = "Every boot since the 2026-09-13 restore reports one socket and 80 CPUs, and no population trains a DIMM on SK1: not the symmetric MC4 placement on J25, and not the canonical Table 11 row J1+J17 that trained both sockets on 2026-09-13."
-
 data mtcollins1_socket1_open_hypotheses: List<MtCollins1DiagnosisHypothesis> = [
-  MtCollins1DiagnosisHypothesis { hypothesis: "The J17 stick or the J17 slot is bad.", discriminator: "Swap the J1 and J17 sticks: SK0 MC0 still trained and SK1 silent clears the stick; SK0 MC0 lost implicates the stick." },
-  MtCollins1DiagnosisHypothesis { hypothesis: "CPU1 retention or heatsink torque is wrong, so the package does not seat.", discriminator: "Re-torque CPU1 to specification and boot J1+J17: SK1 MC0 trained and 2 sockets / 160 CPUs confirms it." },
-  MtCollins1DiagnosisHypothesis { hypothesis: "Socket 1 pins or the CPU1 package are damaged.", discriminator: "Remove CPU1 and inspect the socket for bent or missing pins and the package for damage." },
-  MtCollins1DiagnosisHypothesis { hypothesis: "CPU1 VRM or power delivery is not up.", discriminator: "Read the BMC's CPU1 presence, temperature and VR sensors and the SEL across a power-on: absent or faulted CPU1 rails confirm it." },
+  MtCollins1DiagnosisHypothesis {
+    hypothesis: "The engineering-sample CPU0 with the production CPU1 is an unsupported two-socket pairing (stepping or microcode), so the secondary socket's release or memory training fails.",
+    discriminator: "Replace CPU0 with a production CPU matching CPU1 and boot J1+J17: SK1 MC0 trained confirms it. Also settle whether the ES swap preceded the 2026-09-13 restore, which trained both sockets.",
+    standing: HypothesisLeading,
+  },
+  MtCollins1DiagnosisHypothesis { hypothesis: "CPU1 retention or heatsink torque is wrong, so the package does not seat.", discriminator: "Re-torque CPU1 to specification and boot J1+J17: SK1 MC0 trained and 2 sockets / 160 CPUs confirms it.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "Socket 1 pins are bent or fouled by debris, or the CPU1 package is damaged.", discriminator: "Remove CPU1 and inspect the socket for bent, missing or fouled pins and the package for damage.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "CPU1 VRM, power delivery or the socket-1 board circuitry is not up.", discriminator: "Read the BMC's CPU1 presence, temperature and VR sensors and the SEL across a power-on (the diagnostics bundle, once its SEL-timeout abort is fixed): absent or faulted CPU1 rails confirm it.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis {
+    hypothesis: "The DIMM is at fault: the stick in J17 is bad.",
+    discriminator: "Swap the J1 and J17 sticks: SK0 MC0 still trained and SK1 silent clears the stick; SK0 MC0 lost implicates the stick.",
+    standing: HypothesisRefuted { runs: [35810323032, 35871654468], basis: "Each stick trained as SK0 MC0 in J1, one per run, and J17 (SK1 MC0) trained neither. A bad J17 slot alone would not take socket 1's 80 CPUs out of lscpu." },
+  },
 ]
