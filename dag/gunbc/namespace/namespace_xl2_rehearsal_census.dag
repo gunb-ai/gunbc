@@ -134,8 +134,7 @@ data xl2_native_requalification_walls: List<Xl2NativeRequalificationWall> = [
 // because the census's resolved arm (v2.compiler.compile NativeCensusModuleResolved) keeps no
 // resolved tree to count from; counting it needs the census to carry ResolvedToKernelSymbol
 // occurrences, which is the trigger for adding a count here.
-type Xl2ExcludedPopulation
-  = Xl2KernelCanonicalReferencesUncounted
+type Xl2ExcludedPopulation = | Xl2KernelCanonicalReferencesUncounted
 
 data xl2_excluded_populations: List<Xl2ExcludedPopulation> = [Xl2KernelCanonicalReferencesUncounted]
 
