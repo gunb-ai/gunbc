@@ -241,8 +241,13 @@ fn v41_row_store_spec(population: List<SafetensorsEntry>, partition: V41EngramRe
     n => join(["storage-backed tensor ", n as String, " is not in the supplied population; a missing member is not an empty store"], "") as NonEmptyStr)
   let unnamed = map(filter(selected, e => match v41_layer_index_from_tensor_name(name: e.name) { Present { value: _ } => false  Absent => true }),
     e => join(["tensor ", e.name as String, " does not decompose as layers.<index>.*; an unrecognized name is not a default layer"], "") as NonEmptyStr)
-  if length(missing) != 0 || length(unnamed) != 0 {
-    V41RowStoreSpecRefused { defects: concat(missing, unnamed) }
+  let unconfigured = map(filter(selected, e => match v41_layer_index_from_tensor_name(name: e.name) {
+      Present { value: l } => !any(tables.layer_ids, x => x == l)
+      Absent => false
+    }),
+    e => join(["tensor ", e.name as String, " names a layer the Engram config does not declare; it has no bucket layout and is refused rather than dropped"], "") as NonEmptyStr)
+  if length(missing) != 0 || length(unnamed) != 0 || length(unconfigured) != 0 {
+    V41RowStoreSpecRefused { defects: concat(concat(missing, unnamed), unconfigured) }
   } else {
     let head_sizes = vllm_engram_head_sizes(layer_count: length(tables.layer_ids), max_ngram_size: tables.max_ngram_size, n_heads: tables.n_heads, vocab_size: tables.vocab_size)
     let per_layer = map(filter(enumerate(tables.layer_ids), p => any(selected, e => v41_entry_in_layer(e: e, layer: p.second))), p => v41_layer_from_entries(layer: p.second, entries: filter(selected, e => v41_entry_in_layer(e: e, layer: p.second)), head_sizes: get(xs: head_sizes, index: p.first)))
