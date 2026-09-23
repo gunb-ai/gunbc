@@ -125,6 +125,9 @@ type RepositoryLoad
 // only the success channel separates them. Deciding on content alone would fuse a legitimate empty
 // document with a missing one -- so consuming the raw projections here while the header above
 // argues against conflating channels would have been incoherent, not merely untidy.
+// v7's index document is not a whole repository: it names its shards by content identity
+// and the loader reads them. Every older format is a whole document and takes the
+// unchanged decode path.
 fn load_repository(path: String) -> RepositoryLoad {
   let read = Filesystem.Read(path: path)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
@@ -135,9 +138,6 @@ fn load_repository(path: String) -> RepositoryLoad {
         JsonDocumentUnreadable { gap: gap } =>
           RepositoryLoadRefused { cause: RepositoryDocumentUnparseable { path: path, gap: gap } }
         JsonDocumentParsed { value: v } =>
-          // v7's index document is not a whole repository: it names its shards by content identity
-          // and the loader reads them. Every older format is a whole document and takes the
-          // unchanged path.
           match read_string_member(v: v, key: "format") {
             MemberString { value: format } =>
               match repository_format_of(tag: format) {
@@ -243,14 +243,16 @@ fn load_object_shard(envelope_path: String, digest: String) -> ShardedObjectRead
       match decode_object_shard(text: content) {
         ObjectShardNotDecodable { reason } =>
           ShardObjectReadRefused { path: shard_path, reason: reason }
-        ObjectShardDecoded { object } =>
-          ShardObjectsRead { objects: [object] }
+        ObjectShardDecoded { objects } =>
+          ShardObjectsRead { objects: objects }
       }
   }
 }
 
+// The fold prepends and reverses once: concat-at-end would copy the accumulator per shard, which
+// is exactly the quadratic shape the sharded read exists to remove at envelope scale.
 fn load_sharded_objects(envelope_path: String, digests: List<String>) -> ShardedObjectRead {
-  fold(
+  let acc = fold(
     digests,
     init: ShardObjectsRead { objects: [] },
     f: fn(acc, digest) {
@@ -260,11 +262,15 @@ fn load_sharded_objects(envelope_path: String, digests: List<String>) -> Sharded
           match load_object_shard(envelope_path: envelope_path, digest: digest) {
             ShardObjectReadRefused { path: p, reason: r } => ShardObjectReadRefused { path: p, reason: r }
             ShardObjectsRead { objects: one } =>
-              ShardObjectsRead { objects: concat(objects, one) }
+              ShardObjectsRead { objects: concat(one, objects) }
           }
       }
     },
   )
+  match acc {
+    ShardObjectReadRefused { path: _, reason: _ } => acc
+    ShardObjectsRead { objects } => ShardObjectsRead { objects: reverse(objects) }
+  }
 }
 
 fn load_repository_sharded(path: String, v: JsonValue) -> RepositoryLoad {

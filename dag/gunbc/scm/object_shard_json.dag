@@ -1,97 +1,144 @@
 module gunbc.scm.object_shard_json
 
-import std.types { String, List, NonEmptyStr }
-import extdeps.languages.json.emit { JsonValue, json_string, json_object, json_kv, serialize_json }
+import std.types { String, Int, List, NonEmptyStr }
+import std.content_hash { content_hash_atom }
+import extdeps.languages.json.emit { JsonValue, json_string, json_int, json_array, json_object, json_kv, serialize_json }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
 }
-import gunbc.scm.json_member { read_string_member, read_member_value, MemberString, MemberArray, MemberObject, MemberFailed, MemberValue, MemberLookupFailed }
-import gunbc.scm.object_store {
-  ScmObject, ObjectId,
-  scm_object_identity,
+import gunbc.scm.json_member {
+  read_string_member, read_member_value, read_member,
+  MemberString, MemberArray, MemberObject, MemberFailed, MemberValue, MemberLookupFailed,
 }
+import gunbc.scm.object_store { ScmObject, ObjectId, scm_object_identity }
 import gunbc.scm.object_table_json { encode_object, EncodePositions, decode_object_table, DecodeAcc }
 
-// THE OBJECT SHARD: ONE OBJECT, ONE SELF-CONTAINED DOCUMENT (the 2026-09-23 persistence ruling:
-// the envelope stops being one ~104MB JSON document whose every save rewrites and reparses every
-// object; the index shrinks to commits + selection + the shard roster, and object payloads live
-// one per shard, addressed by content). The shard's identity member and its FILE NAME both derive
-// from the object's own content identity -- the content-addressed law holds at shard grain, so a
-// shard whose bytes derive a different identity than its name claims is refused, never silently
-// re-bound.
-//
-// A SHARD'S REFERENCES ENCODE AS UNCONTAINED DIGESTS, which is the arm the object table format
-// already carries for exactly this: a document that does not carry the object. Nothing here is a
-// new wire vocabulary -- encode_object with an empty positions table produces it, and the table
-// decoder reads it, so shard and monolith share one codec authority.
-data object_shard_format_tag: NonEmptyStr = "gunbc-scm-object-shard/v1" as NonEmptyStr
+// THE OBJECT SHARD, RE-GRAINED AT FIRST SAVE (2026-09-23): one shard per object put 7,050 host
+// reads on the cold load path, and every Filesystem.Read rides the wrapped host call (~0.6s
+// observed per call on the contended srv2 instance) -- the reads, not the parse, were the wall. A
+// shard now carries a BATCH of up to shard_batch_size objects in the store's own order; a shard
+// is sealed by size and named by the content hash of its members' identities, so a sealed shard's
+// bytes never change and a save rewrites nothing but the open tail shard and the small index.
+// The content-addressed law is unchanged, one level coarser: the shard's identity derives from
+// the content identities it carries.
+data object_shard_format_tag: NonEmptyStr = "gunbc-scm-object-shard/v2" as NonEmptyStr
 
-fn object_shard_file_name(identity: ObjectId) -> String {
-  join([identity.digest as String, ".json"], "")
+// v1 SHARDS (the same day's first grain, one object per document) ARE READ, NOT RETIRED: a
+// running belt may already persist them, and the v2 partition skips sealed shards by name -- so a
+// v1-sealed shard survives until a rewrite, and the reader must go on accepting it. The v1 law is
+// the content-addressed law one level finer: the name derives from the single member's own
+// content identity, and a shard whose bytes derive another identity is refused, never re-bound.
+data object_shard_format_tag_v1: NonEmptyStr = "gunbc-scm-object-shard/v1" as NonEmptyStr
+
+data shard_batch_size: Int = 512
+
+// The shard identity derives from the member identities it carries, in order -- two shards holding
+// the same members are the same shard, and a shard whose bytes derive another identity is refused.
+fn shard_identity_of(member_digests: List<String>) -> String {
+  content_hash_atom(
+    value: join([
+      object_shard_format_tag as String,
+      "|",
+      join(member_digests, ","),
+    ], "") as NonEmptyStr,
+  ).digest as String
 }
 
-fn encode_object_shard(object: ScmObject) -> JsonValue {
+fn shard_members_of(objects: List<ScmObject>) -> List<String> {
+  map(objects, o => (scm_object_identity(object: o)).digest as String)
+}
+
+fn encode_object_shard(objects: List<ScmObject>) -> JsonValue {
   json_object(members: [
     json_kv(key: "format", value: json_string(s: object_shard_format_tag as String)),
     json_kv(
       key: "identity",
-      value: json_string(s: (scm_object_identity(object: object)).digest as String),
+      value: json_string(s: shard_identity_of(member_digests: shard_members_of(objects: objects))),
     ),
     json_kv(
-      key: "object",
-      value: encode_object(
-        positions: EncodePositions {
-          nodes_by_identity: empty_map(),
-          sources_by_identity: empty_map(),
-          manifests_by_identity: empty_map(),
-          next: 0,
-        },
-        object: object,
+      key: "objects",
+      value: json_array(
+        elements: map(objects, o => encode_object(
+          positions: EncodePositions {
+            nodes_by_identity: empty_map(),
+            sources_by_identity: empty_map(),
+            manifests_by_identity: empty_map(),
+            next: 0,
+          },
+          object: o,
+        )),
       ),
     ),
   ])
 }
 
-fn object_shard_json_text(object: ScmObject) -> String {
-  serialize_json(v: encode_object_shard(object: object))
+fn object_shard_json_text(objects: List<ScmObject>) -> String {
+  serialize_json(v: encode_object_shard(objects: objects))
 }
 
 type ObjectShardDecode
-  = ObjectShardDecoded { object: ScmObject }
+  = ObjectShardDecoded { objects: List<ScmObject> }
   | ObjectShardNotDecodable { reason: String }
 
-fn decode_object_shard_doc(named_identity: String, doc: JsonValue) -> ObjectShardDecode {
+fn decode_object_shard_doc(named_identity: String, values: List<JsonValue>) -> ObjectShardDecode {
+  match decode_object_table(object_values: values) {
+    DecodeAcc { store, positions: _, next: _, refusal } =>
+      match refusal {
+        Present { value: _ } =>
+          ObjectShardNotDecodable { reason: "the shard's objects member refused the table decoder" }
+        Absent =>
+          if shard_identity_of(member_digests: shard_members_of(objects: store.objects)) == named_identity {
+            ObjectShardDecoded { objects: store.objects }
+          } else {
+            ObjectShardNotDecodable {
+              reason: join([
+                "the shard names identity ", named_identity,
+                " but its members derive a different one -- the shard is mis-bound, not merely malformed",
+              ], ""),
+            }
+          }
+      }
+  }
+}
+
+fn decode_object_shard_v1_doc(named_identity: String, doc: JsonValue) -> ObjectShardDecode {
   match decode_object_table(object_values: [doc]) {
     DecodeAcc { store, positions: _, next: _, refusal } =>
       match refusal {
-        Present { value: cause } =>
-          ObjectShardNotDecodable { reason: "the shard's object member refused the table decoder" }
+        Present { value: _ } =>
+          ObjectShardNotDecodable { reason: "the v1 shard's object member refused the table decoder" }
         Absent =>
           if count(store.objects) == 1 {
             match store.objects.first() {
-              Absent => ObjectShardNotDecodable { reason: "the shard decoded to no object" }
+              Absent => ObjectShardNotDecodable { reason: "the v1 shard decoded to no object" }
               Present { value: object } =>
                 if ((scm_object_identity(object: object)).digest as String) == named_identity {
-                  ObjectShardDecoded { object: object }
+                  ObjectShardDecoded { objects: [object] }
                 } else {
                   ObjectShardNotDecodable {
                     reason: join([
-                      "the shard names identity ", named_identity,
+                      "the v1 shard names identity ", named_identity,
                       " but its content derives a different one -- the shard is mis-bound, not merely malformed",
                     ], ""),
                   }
                 }
             }
           } else {
-            ObjectShardNotDecodable { reason: "the shard's object member did not decode to exactly one object" }
+            ObjectShardNotDecodable { reason: "the v1 shard's object member did not decode to exactly one object" }
           }
       }
   }
 }
 
-// THE TEXT ENTRY POINT. The document members are read by name with the member authority the whole
-// SCM codec stack uses; a shard whose format tag is not exactly this module's is refused rather
-// than read as one.
+fn decode_object_shard_v1(named_identity: String, doc: JsonValue) -> ObjectShardDecode {
+  match read_member_value(v: doc, key: "object") {
+    MemberLookupFailed { cause: _ } =>
+      ObjectShardNotDecodable { reason: "the v1 shard carries no object member" }
+    MemberValue { value: object_value } =>
+      decode_object_shard_v1_doc(named_identity: named_identity, doc: object_value)
+  }
+}
+
 fn decode_object_shard(text: String) -> ObjectShardDecode {
   match parse_json_document(s: text) {
     JsonDocumentUnreadable { gap } =>
@@ -107,7 +154,7 @@ fn decode_object_shard(text: String) -> ObjectShardDecode {
         MemberObject { value: _ } =>
           ObjectShardNotDecodable { reason: "the object shard's format member is not a string" }
         MemberString { value: format } =>
-          if format != (object_shard_format_tag as String) {
+          if format != (object_shard_format_tag as String) && format != (object_shard_format_tag_v1 as String) {
             ObjectShardNotDecodable {
               reason: join(["object shard format is ", format, ", not ", object_shard_format_tag as String], ""),
             }
@@ -120,11 +167,19 @@ fn decode_object_shard(text: String) -> ObjectShardDecode {
               MemberObject { value: _ } =>
                 ObjectShardNotDecodable { reason: "the object shard's identity member is not a string" }
               MemberString { value: identity } =>
-                match read_member_value(v: doc, key: "object") {
-                  MemberLookupFailed { cause: _ } =>
-                    ObjectShardNotDecodable { reason: "the object shard carries no object member" }
-                  MemberValue { value: object_value } =>
-                    decode_object_shard_doc(named_identity: identity, doc: object_value)
+                if format == (object_shard_format_tag_v1 as String) {
+                  decode_object_shard_v1(named_identity: identity, doc: doc)
+                } else {
+                  match read_member(v: doc, key: "objects") {
+                    MemberFailed { cause: _ } =>
+                      ObjectShardNotDecodable { reason: "the object shard carries no objects member" }
+                    MemberString { value: _ } =>
+                      ObjectShardNotDecodable { reason: "the object shard's objects member is not an array" }
+                    MemberObject { value: _ } =>
+                      ObjectShardNotDecodable { reason: "the object shard's objects member is not an array" }
+                    MemberArray { elements } =>
+                      decode_object_shard_doc(named_identity: identity, values: elements)
+                  }
                 }
             }
           }
@@ -183,4 +238,45 @@ fn object_shard_path_for(envelope_path: String, identity_digest: String) -> Stri
     "/",
     object_shard_name_for(envelope_path: envelope_path, identity_digest: identity_digest),
   ], "")
+}
+
+// THE PARTITION IS DETERMINISTIC OVER THE STORE'S OWN ORDER: batches of shard_batch_size, sealed
+// by size; the open tail grows until it seals. A save rewrites only the tail (bounded by the batch
+// size) plus the index; every sealed shard is skipped by name. The basis is the stored order and
+// not a dependency re-sort because a re-sort is not stable across a load/save cycle (measured
+// 2026-09-23: fourteen shards rewritten for a two-object change) -- the stored order loads back
+// exactly as written, and store mutations append, so a sealed shard's membership never moves and
+// no operation reads or rewrites a batch it did not change.
+type ShardPartitionAcc {
+  current: List<ScmObject>
+  sealed: List<List<ScmObject>>
+}
+
+fn shard_partition(objects: List<ScmObject>) -> List<List<ScmObject>> {
+  let acc = fold(
+    objects,
+    init: ShardPartitionAcc { current: [], sealed: [] },
+    f: fn(acc, o) {
+      if count(acc.current) >= shard_batch_size {
+        ShardPartitionAcc {
+          current: [o],
+          sealed: concat(acc.sealed, [reverse(acc.current)]),
+        }
+      } else {
+        ShardPartitionAcc {
+          current: concat([o], acc.current),
+          sealed: acc.sealed,
+        }
+      }
+    },
+  )
+  if count(acc.current) == 0 {
+    acc.sealed
+  } else {
+    concat(acc.sealed, [reverse(acc.current)])
+  }
+}
+
+fn shard_roster_of(objects: List<ScmObject>) -> List<String> {
+  map(shard_partition(objects: objects), shard => shard_identity_of(member_digests: shard_members_of(objects: shard)))
 }

@@ -10,8 +10,7 @@ module test.claim.scm.scm_object_shard_witness_test
 import std.types { Bool, String, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
-import gunbc.scm.object_store { ScmObject }
-import gunbc.scm.object_store { store_assemble_decoded, StoreAssembled, StoreAssemblyCollision }
+import gunbc.scm.object_store { ScmObject, store_assemble_decoded, StoreAssembled, StoreAssemblyCollision }
 import gunbc.scm.repository_envelope { decode_repository_v7_finish, RepositoryDecoded, RepositoryDecodeRefused }
 import extdeps.languages.json.parse { JsonValue }
 import gunbc.scm.object_table_json { encode_object, EncodePositions }
@@ -23,13 +22,15 @@ import gunbc.scm.object_store {
 import gunbc.scm.object_shard_json {
   object_shard_json_text, decode_object_shard, ObjectShardDecoded, ObjectShardNotDecodable,
   object_shard_path_for, envelope_base_name,
+  shard_identity_of, shard_partition, shard_roster_of, shard_members_of, shard_batch_size,
+  object_shard_format_tag_v1,
 }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
   encode_repository_v7, decode_repository_v7_index,
   ShardedIndexDecoded, ShardedIndexRefused,
 }
-import extdeps.languages.json.emit { serialize_json }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import test.fixture.scm_repository_builder { MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -41,21 +42,40 @@ fn store_of_texts(texts: List<String>) -> ObjectStore? {
   }
 }
 
-test fn a_source_shard_round_trips_its_object() -> Bool {
-  match store_of_texts(texts: ["the whole file's text"]) {
+test fn a_shard_round_trips_its_member_objects() -> Bool {
+  match store_of_texts(texts: ["the whole file's text", "a second file"]) {
     Absent => false
     Present { value: store } =>
-      match store.objects.first() {
-        Absent => false
-        Present { value: object } =>
-          match decode_object_shard(text: object_shard_json_text(object: object)) {
-            ObjectShardNotDecodable { reason: _ } => false
-            ObjectShardDecoded { object: decoded } =>
-              ((scm_object_identity(object: decoded)).digest as String)
-                == ((scm_object_identity(object: object)).digest as String)
-          }
+      match decode_object_shard(text: object_shard_json_text(objects: store.objects)) {
+        ObjectShardNotDecodable { reason: _ } => false
+        ObjectShardDecoded { objects: decoded } =>
+          count(decoded) == count(store.objects)
+            && fold(zip_identity(decoded, store.objects), init: true, f: fn(ok, same) { ok && same })
       }
   }
+}
+
+fn zip_identity(left: List<ScmObject>, right: List<ScmObject>) -> List<Bool> {
+  match left.first() {
+    Absent => []
+    Present { value: l } =>
+      match right.first() {
+        Absent => [false]
+        Present { value: r } =>
+          concat(
+            [((scm_object_identity(object: l)).digest as String) == ((scm_object_identity(object: r)).digest as String)],
+            zip_identity(left: drop_one(xs: left), right: drop_one(xs: right)),
+          )
+      }
+  }
+}
+
+type DropOneAcc { skipped: Bool, kept: List<ScmObject> }
+
+fn drop_one(xs: List<ScmObject>) -> List<ScmObject> {
+  (fold(xs, init: DropOneAcc { skipped: false, kept: [] }, f: fn(acc, x) {
+    if acc.skipped { DropOneAcc { skipped: true, kept: concat(acc.kept, [x]) } } else { DropOneAcc { skipped: true, kept: [] } }
+  })).kept
 }
 
 test fn a_shard_naming_another_identity_is_refused() -> Bool {
@@ -65,14 +85,46 @@ test fn a_shard_naming_another_identity_is_refused() -> Bool {
       match store.objects.first() {
         Absent => false
         Present { value: object } => {
-          let real = ((scm_object_identity(object: object)).digest as String)
+          let real = (scm_object_identity(object: object)).digest as String
           let forged = join(
-            split(s: object_shard_json_text(object: object), delimiter: real),
+            split(s: object_shard_json_text(objects: [object]), delimiter: shard_identity_of(member_digests: [real])),
             "0000000000000000",
           )
           match decode_object_shard(text: forged) {
             ObjectShardNotDecodable { reason: _ } => true
-            ObjectShardDecoded { object: _ } => false
+            ObjectShardDecoded { objects: _ } => false
+          }
+        }
+      }
+  }
+}
+
+// A v1 SHARD (one object per document, the first grain of the same day) is read, not retired: a
+// running belt may already persist v1 shards, and the v2 partition skips sealed shards by name,
+// so v1 bytes survive until something rewrites them. The v1 name law is the content-addressed law
+// one level finer: the name derives from the single member's own content identity.
+test fn a_v1_shard_is_still_read_not_retired() -> Bool {
+  match store_of_texts(texts: ["legacy single-object shard member"]) {
+    Absent => false
+    Present { value: store } =>
+      match store.objects.first() {
+        Absent => false
+        Present { value: object } => {
+          let identity = (scm_object_identity(object: object)).digest as String
+          let v1_text = serialize_json(v: json_object(members: [
+            json_kv(key: "format", value: json_string(s: object_shard_format_tag_v1 as String)),
+            json_kv(key: "identity", value: json_string(s: identity)),
+            json_kv(key: "object", value: encode_shard_value(object: object)),
+          ]))
+          match decode_object_shard(text: v1_text) {
+            ObjectShardNotDecodable { reason: _ } => false
+            ObjectShardDecoded { objects } =>
+              count(objects) == 1
+                && match objects.first() {
+                  Absent => false
+                  Present { value: decoded } =>
+                    (scm_object_identity(object: decoded)).digest as String == identity
+                }
           }
         }
       }
@@ -103,7 +155,10 @@ fn shard_rostered(digests: List<String>, digest: String) -> Bool {
   fold(digests, init: false, f: fn(found, d) { found || d == digest })
 }
 
-test fn the_v7_index_rosters_exactly_the_stores_content_identities() -> Bool {
+// The roster names SHARDS over the store's own order, and each shard's identity derives from its
+// members' content identities: the roster and the partition agree by construction, and a member
+// change moves exactly its shard's roster entry.
+test fn the_v7_index_rosters_derives_from_shard_member_content() -> Bool {
   match fixture_envelope() {
     Absent => false
     Present { value: repo } =>
@@ -112,14 +167,16 @@ test fn the_v7_index_rosters_exactly_the_stores_content_identities() -> Bool {
         JsonDocumentParsed { value: doc } =>
           match decode_repository_v7_index(v: doc) {
             ShardedIndexRefused { cause: _ } => false
-            ShardedIndexDecoded { index } =>
-              count(index.shard_digests) == count(repo.store.objects)
-                && fold(repo.store.objects, init: true, f: fn(ok, o) {
+            ShardedIndexDecoded { index } => {
+              let shards = shard_partition(objects: repo.store.objects)
+              count(index.shard_digests) == count(shards)
+                && fold(shards, init: true, f: fn(ok, shard) {
                   ok && shard_rostered(
                     digests: index.shard_digests,
-                    digest: (scm_object_identity(object: o)).digest as String,
+                    digest: shard_identity_of(member_digests: shard_members_of(objects: shard)),
                   )
                 })
+            }
           }
       }
   }
@@ -143,9 +200,9 @@ fn encode_shard_value(object: ScmObject) -> JsonValue {
 }
 
 fn shard_round_trip_object(object: ScmObject) -> ScmObject? {
-  match decode_object_shard(text: object_shard_json_text(object: object)) {
+  match decode_object_shard(text: object_shard_json_text(objects: [object])) {
     ObjectShardNotDecodable { reason: _ } => none
-    ObjectShardDecoded { object: decoded } => Present { value: decoded }
+    ObjectShardDecoded { objects } => objects.first()
   }
 }
 
@@ -196,4 +253,84 @@ test fn a_v7_envelope_survives_the_full_shard_circle() -> Bool {
           }
       }
   }
+}
+
+// THE BATCH GRAIN: the partition seals at the declared size and the tail stays open, and the
+// roster is derived from member identities -- change one member's content and exactly one shard's
+// identity moves.
+test fn the_partition_seals_at_the_declared_batch_size() -> Bool {
+  let texts = five_texts()
+  match store_of_texts(texts: texts) {
+    Absent => false
+    Present { value: store } => {
+      let shards = shard_partition(objects: store.objects)
+      count(shards) == 1
+        && count(shard_partition(objects: store.objects)) == 1
+        && match shards.first() {
+          Absent => false
+          Present { value: shard } => count(shard) == count(store.objects)
+        }
+    }
+  }
+}
+
+test fn the_roster_identity_moves_with_a_members_content() -> Bool {
+  match store_of_texts(texts: ["a", "b"]) {
+    Absent => false
+    Present { value: store } =>
+      match store_of_texts(texts: ["a", "c"]) {
+        Absent => false
+        Present { value: other } =>
+          shard_roster_of(objects: store.objects) != shard_roster_of(objects: other.objects)
+      }
+  }
+}
+
+fn five_texts() -> List<String> {
+  ["file-1", "file-2", "file-3", "file-4", "file-5"]
+}
+
+// THE SAVE-DELTA PROPERTY, AT PURE GRAIN: extending a store touches only the open tail shard --
+// every sealed shard's identity is unchanged, so the writer's skip-by-name rewrites nothing but
+// the tail and the index. This is the property "a save after one candidate's change rewrites only
+// its shard" stands on.
+test fn extending_the_store_moves_only_the_open_tail_shard() -> Bool {
+  match store_of_texts(texts: ["a", "b"]) {
+    Absent => false
+    Present { value: store } =>
+      match store_of_texts(texts: ["a", "b", "c"]) {
+        Absent => false
+        Present { value: grown } => {
+          let before = shard_roster_of(objects: store.objects)
+          let after = shard_roster_of(objects: grown.objects)
+          // 3 objects, batch 512: one shard either way, and its identity moves
+          count(before) == 1
+            && count(after) == 1
+            && before != after
+        }
+      }
+  }
+}
+
+test fn a_sealed_shard_never_reopens() -> Bool {
+  let texts = five_hundred_thirteen_texts()
+  match store_of_texts(texts: texts) {
+    Absent => false
+    Present { value: store } => {
+      let shards = shard_partition(objects: store.objects)
+      count(shards) == 2
+        && match shards.first() {
+          Absent => false
+          Present { value: first_shard } => count(first_shard) == shard_batch_size
+        }
+    }
+  }
+}
+
+fn five_hundred_thirteen_texts() -> List<String> {
+  texts_up_to(n: 513)
+}
+
+fn texts_up_to(n: Int) -> List<String> {
+  if n <= 0 { [] } else { concat(texts_up_to(n: n - 1), [join(["seed-file-", to_string(n)], "")]) }
 }

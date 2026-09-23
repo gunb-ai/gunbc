@@ -99,6 +99,7 @@ import gunbc.scm.manifest_merge {
   ManifestPathConflict,
   merge_manifests,
 }
+import gunbc.scm.object_shard_json { shard_roster_of }
 import gunbc.scm.object_store {
   NodeRecordAbsent,
   NodeRecordFound,
@@ -1474,9 +1475,14 @@ fn encode_repository_v6_over_table(repo: RepositoryEnvelope, acc: EncodeAcc) -> 
 }
 
 // THE v7 DOCUMENT IS THE INDEX: every member v6 carries except the object payloads, which become
-// `object_shards` -- the roster of content-derived identities, in the same dependency order the
-// monolith's table used. Commit roots and the staged reference spell the UNCONTAINED digest arm,
-// because this document carries no object to point at; the commit closure format's own vocabulary,
+// `object_shards` -- the roster of content-derived identities over the store's OWN order. The
+// partition basis is the stored order, not the dependency order the monolith's table used:
+// dependency order is a re-sort, and a re-sort is not stable across a load/save cycle (measured
+// 2026-09-23 on the 7,051-object rehearsal: re-sorting the loaded store moved its tail, so the
+// next save computed fourteen different shard identities for a two-object change). The stored
+// order loads back exactly as written and only ever grows by append, so a sealed shard's name
+// never moves. Commit roots and the staged reference spell the UNCONTAINED digest arm, because
+// this document carries no object to point at; the commit closure format's own vocabulary,
 // reused rather than paralleled.
 fn encode_repository_v7(repo: RepositoryEnvelope) -> JsonValue {
   let empty_positions = EncodeAcc {
@@ -1496,8 +1502,8 @@ fn encode_repository_v7(repo: RepositoryEnvelope) -> JsonValue {
         key: "object_shards",
         value: json_array(
           elements: map(
-            store_records_in_dependency_order(store: repo.store),
-            o => json_string(s: (scm_object_identity(object: o)).digest as String),
+            shard_roster_of(objects: repo.store.objects),
+            d => json_string(s: d),
           )
         ),
       ),

@@ -47,7 +47,7 @@ import extdeps.filesystem.filesystem_io { FilesystemEstablishedAbsence, filesyst
 import extdeps.languages.json.emit { serialize_json }
 import std.measure { ByteSize, byte_size }
 import std.checked_arithmetic { nat_magnitude }
-import gunbc.scm.object_shard_json { object_shard_json_text, object_shard_name_for, object_shard_path_for }
+import gunbc.scm.object_shard_json { object_shard_json_text, object_shard_name_for, object_shard_path_for, shard_partition, shard_members_of, shard_identity_of }
 import gunbc.scm.object_store { ScmObject, scm_object_identity }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
@@ -181,6 +181,13 @@ type ShardWriteAcc {
   refused: String?
 }
 
+// ONE ORDERING AUTHORITY FEEDS BOTH THE FILES AND THE ROSTER: the shard writer partitions the
+// store's OWN order -- the exact list the index encoder rosters -- so the files written and the
+// names named can never disagree (the first grain rostered a dependency re-sort while writing a
+// raw partition, and named fourteen files with only twelve in common; the fix is not to re-sort
+// harder but to stop re-sorting). The stored order loads back exactly as written and store
+// mutations append, so a save after one candidate's change rewrites the open tail shard and the
+// index, never a sealed shard's bytes.
 fn save_object_shards(envelope_path: String, objects: List<ScmObject>) -> ShardWriteAcc {
   let parent_dir = envelope_parent_dir(path: envelope_path)
   let listing = Filesystem.List(path: parent_dir)
@@ -198,13 +205,13 @@ fn save_object_shards(envelope_path: String, objects: List<ScmObject>) -> ShardW
       f: fn(acc, name) { map_insert(acc, trim(name), true) },
     )
     fold(
-      objects,
+      shard_partition(objects: objects),
       init: ShardWriteAcc { written: 0, refused: none },
-      f: fn(acc, object) {
+      f: fn(acc, shard) {
         match acc.refused {
           Present { value: _ } => acc
           Absent => {
-            let digest = (scm_object_identity(object: object)).digest as String
+            let digest = shard_identity_of(member_digests: shard_members_of(objects: shard))
             let shard_name = object_shard_name_for(envelope_path: envelope_path, identity_digest: digest)
             match map_lookup(m: present, key: shard_name) {
               Present { value: _ } => acc
@@ -212,7 +219,7 @@ fn save_object_shards(envelope_path: String, objects: List<ScmObject>) -> ShardW
                 let shard_path = object_shard_path_for(envelope_path: envelope_path, identity_digest: digest)
                 let write = Filesystem.Write(
                   path: shard_path,
-                  content: object_shard_json_text(object: object),
+                  content: object_shard_json_text(objects: shard),
                 )
                 if write.success {
                   ShardWriteAcc { written: acc.written + 1, refused: none }

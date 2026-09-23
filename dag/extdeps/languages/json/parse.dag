@@ -83,22 +83,40 @@ fn json_hex4_at(s: String, i: Int) -> Int {
   }
 }
 
+// THE UNESCAPER MOVES IN SPANS, NOT PER CHARACTER (measured 2026-09-23 on corpus-scale shards:
+// concat(acc, c) per char copied the whole accumulator at every step, so one 15KB source token
+// cost the square of its length and a sharded envelope load paid that per shard). Each iteration
+// appends the whole span since the last escape in ONE substring move; the copy work is one span
+// per escape sequence plus the tail, and the bytes out are identical to the per-char walk.
+fn json_next_escape(s: String, i: Int) -> Int {
+  if i >= s.length() {
+    i
+  } else if char_at(s: s, pos: i) == "\\" {
+    i
+  } else {
+    json_next_escape(s: s, i: i + 1)
+  }
+}
+
 fn json_unescape_from(s: String, i: Int, acc: String) -> String {
   if i >= s.length() {
     acc
   } else {
-    let c = char_at(s: s, pos: i)
-    if c == "\\" {
-      if i + 1 >= s.length() {
-        acc
+    let j = json_next_escape(s: s, i: i)
+    if j >= s.length() {
+      concat(acc, substring(s: s, start: i, end: s.length()))
+    } else {
+      let acc2 = if j > i { concat(acc, substring(s: s, start: i, end: j)) } else { acc }
+      let e = char_at(s: s, pos: j + 1)
+      if j + 1 >= s.length() {
+        acc2
       } else {
-        let e = char_at(s: s, pos: i + 1)
         if e == "u" {
-          let cp = json_hex4_at(s: s, i: i + 2)
+          let cp = json_hex4_at(s: s, i: j + 2)
           if cp < 0 {
-            json_unescape_from(s: s, i: i + 2, acc: concat(acc, e))
+            json_unescape_from(s: s, i: j + 2, acc: concat(acc2, e))
           } else {
-            json_unescape_from(s: s, i: i + 6, acc: concat(acc, from_code_point(cp: cp)))
+            json_unescape_from(s: s, i: j + 6, acc: concat(acc2, from_code_point(cp: cp)))
           }
         } else {
           let u = if e == "n" { from_code_point(cp: 10) }
@@ -107,11 +125,9 @@ fn json_unescape_from(s: String, i: Int, acc: String) -> String {
             else if e == "b" { from_code_point(cp: 8) }
             else if e == "f" { from_code_point(cp: 12) }
             else { e }
-          json_unescape_from(s: s, i: i + 2, acc: concat(acc, u))
+          json_unescape_from(s: s, i: j + 2, acc: concat(acc2, u))
         }
       }
-    } else {
-      json_unescape_from(s: s, i: i + 1, acc: concat(acc, c))
     }
   }
 }
