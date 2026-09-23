@@ -245,7 +245,6 @@ fn mtcollins1_sol_release(
   username: NonEmptyStr,
   password_file: NonEmptyStr,
 ) -> Bool
-  uses net: std.resources.Network
 {
   dropped = diagnostic.ipmi.Tool.SolDeactivate(
     bmc_host: mtcollins1_endpoint.host,
@@ -308,7 +307,6 @@ fn mtcollins1_sol_acquire_after_grant(
   pid_path: String,
   capture_path: String,
 ) -> ProcessExit
-  uses net: std.resources.Network
 {
   match mtcollins1_bmc_username {
     Absent =>
@@ -349,7 +347,6 @@ fn mtcollins1_sol_activate_held(
   pid_path: String,
   capture_path: String,
 ) -> ProcessExit
-  uses net: std.resources.Network
 {
   if pid_path == "" {
     return exit_failure(reason: "mtcollins1 boot: SOL pid path unset; refusing acquire")
@@ -724,7 +721,6 @@ fn mtcollins1_boot_await_capture_terminal(
 }
 
 fn mtcollins1_boot_release_sol(password_file: String, pid_path: String) -> HeldLeaseObservedState
-  uses net: std.resources.Network
 {
   match mtcollins1_bmc_username {
     Absent => LeaseInaccessible
@@ -741,7 +737,6 @@ fn mtcollins1_boot_settle_from_fresh_clock(
   attempt: AttemptIdentity,
   held_at: CasGeneration,
 ) -> ProcessExit
-  uses fs: std.resources.Filesystem
 {
   match approval_instant_now() {
     Absent =>
@@ -770,7 +765,6 @@ fn mtcollins1_boot_after_gate(
   sol_pid_path: String,
   sol_capture_path: String,
 ) -> ProcessExit
-  uses net: std.resources.Network
 {
   match gate {
     GateAdmitted { authorization: auth } =>
@@ -892,7 +886,6 @@ fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit, escalation_id: NonEmpt
 }
 
 fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: AttemptIdentityReading, capture_path: String) -> MtCollins1BootDiagnosticBundle
-  uses net: std.resources.Network
 {
   match attempt.bmc {
     BmcAccessNotReached { reason: why } =>
@@ -927,7 +920,6 @@ fn mtcollins1_boot_attempt_identity(read: ActionsVariableRead) -> AttemptIdentit
 }
 
 fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
-  uses net: std.resources.Network
 {
   let run = mtcollins1_boot_attempt_identity(read: actions_variable_read(name: github_run_id_variable_name))
   let bundle = mtcollins1_boot_bundle_of_attempt(attempt: attempt, run: run, capture_path: actions_variable_trimmed(name: mtcollins1_boot_sol_capture_path_env))
@@ -953,7 +945,6 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
 }
 
 fn mtcollins1_boot_wet() -> ProcessExit
-  uses net: std.resources.Network
 {
   let attempt = match actions_variable_read(name: fleet_converge_expected_host_env_name) {
     ActionsVariableAbsent { variable: v, detail: d } =>
@@ -972,7 +963,6 @@ fn mtcollins1_boot_wet() -> ProcessExit
 // taking it on a refused gate (approval expired or denied) still records what the BMC logged over
 // the approval window.
 fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
-  uses net: std.resources.Network
 {
   let cred = actions_variable_trimmed(name: host_reset_bmc_credential_path_env)
   if cred == "" {

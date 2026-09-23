@@ -9,17 +9,20 @@ import std.types { NonEmptyStr, List, String }
 // merge, and every merge of main brought more. The rows rostered below arrived that way, AFTER the
 // measured population was fixed.
 
-data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..4716b4c9954" as NonEmptyStr
+data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..834148a3177" as NonEmptyStr
 
-// THE FINAL-BASE CENSUS, and why no roster of unmeasured rows remains. This module used to carry the
-// modules whose rows main added while cut (c) was in flight. At main 4716b4c9954 (the landing of
-// #11993, the tip of the range above) every authored `uses` row in the tree was enumerated and every
-// ordinary fn carrying one was resolved and its ItemInfo.service_names read: 181 rows; 167 had
-// nonempty derived demand and were deleted under the unchanged criterion; none had EMPTY demand, so
-// no deletion flipped a function from effectful to pure; the other 14 are the retained rows below.
-// So the roster is deleted rather than left empty -- an empty list rendered into prose has no reader.
-// A later merge can bring new rows and nothing walls them out yet (the restatement refusal is
-// EFFECTS-1's open slice), so a row outside the retained set is a new arrival to measure.
+// THE FINAL-BASE CENSUS, COUNTED AT USES-0 ROW IDENTITY -- (module, declaration, alias, type) -- and
+// not by syntactic clause, since one clause can bind several aliases. At main 834148a3177 every
+// authored `uses` clause in the tree was enumerated (194 clauses carrying 220 identities) and every
+// ordinary fn carrying one was resolved and its ItemInfo.service_names read. 208 identities had
+// nonempty derived demand and were deleted under the unchanged criterion; none had EMPTY demand, so no
+// deletion flipped a function from effectful to pure; the other 12 are the retained rows below, and
+// that count is the length of the two lists, not a second figure. `gunbc.spark.v41_runtime_image_
+// converge`, which refused at the first census base, resolves at this one, so its rows were measured
+// and deleted. The roster of unmeasured modules is deleted rather than left empty -- an empty list
+// rendered into prose has no reader. A later merge can bring new rows and nothing walls them out yet
+// (the restatement refusal is EFFECTS-1's open slice), so a row outside the retained set is a new
+// arrival to measure.
 
 // THE ROWS CUT (c) RETAINED, at the row identity USES-0 defined: the module, the declaration,
 // the alias the row binds, and the authored type. The grain matters because the earlier partition
@@ -32,7 +35,7 @@ data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..4716
 type RetainedRowTrigger
   = ModuleResolutionBlocked
   | CriterionDoesNotRangeOverPatterns
-  | ModuleIsARefusalProbe
+  | ProbeLeavesCorpus
 
 type DemandRestatementRetainedRow {
   module_path: NonEmptyStr
@@ -44,22 +47,17 @@ type DemandRestatementRetainedRow {
 
 // THE ORDINARY FUNCTIONS THE CRITERION CANNOT TYPE, because their module refuses to resolve, so there
 // is no registry entry and no derived demand to compare against. Two causes, and they carry different
-// triggers. `gunbc.auth.patterns` (a pre-existing type error, expected String got Secret) and
-// `gunbc.spark.v41_runtime_image_converge` (a sole_constructor SparkBuildHostWork built outside its
-// defining module), both measured at 4716b4c9954, are DEFECTS this cut neither introduced nor
-// repairs: TRIGGER, per row, the module resolves and the criterion executes on it like any other fn
-// row. `test.probe.census_app_acquisition_forged_probe` refuses BY DESIGN -- forging the
+// triggers. `gunbc.auth.patterns` (a pre-existing type error, expected String got Secret, measured at
+// 834148a3177) is a DEFECT this cut neither introduced nor repairs: TRIGGER, per row, the module
+// resolves and the criterion executes on it like any other fn row. `test.probe.census_app_acquisition_forged_probe` refuses BY DESIGN -- forging the
 // sole_constructor receipt is the probe's whole point -- so resolution is not coming; its one row
 // (two resources) is carried at each alias, and it leaves with the probe.
 
 data demand_restatement_retained_fn_rows: List<DemandRestatementRetainedRow> = [
   DemandRestatementRetainedRow { module_path: "gunbc.auth.patterns" as NonEmptyStr, declaration: "github_oidc" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: ModuleResolutionBlocked },
   DemandRestatementRetainedRow { module_path: "gunbc.auth.patterns" as NonEmptyStr, declaration: "metadata_oidc" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: ModuleResolutionBlocked },
-  DemandRestatementRetainedRow { module_path: "gunbc.spark.v41_runtime_image_converge" as NonEmptyStr, declaration: "verify_v41_kernel_wheels" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: ModuleResolutionBlocked },
-  DemandRestatementRetainedRow { module_path: "gunbc.spark.v41_runtime_image_converge" as NonEmptyStr, declaration: "converge_v41_produced_runtime_image" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: ModuleResolutionBlocked },
-  DemandRestatementRetainedRow { module_path: "gunbc.spark.v41_runtime_image_converge" as NonEmptyStr, declaration: "v41_runtime_image_produce_ci_wet" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: ModuleResolutionBlocked },
-  DemandRestatementRetainedRow { module_path: "test.probe.census_app_acquisition_forged_probe" as NonEmptyStr, declaration: "mint_a_receipt_from_authored_standings" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: ModuleIsARefusalProbe },
-  DemandRestatementRetainedRow { module_path: "test.probe.census_app_acquisition_forged_probe" as NonEmptyStr, declaration: "mint_a_receipt_from_authored_standings" as NonEmptyStr, alias: "fs" as NonEmptyStr, authored_type: "std.resources.Filesystem" as NonEmptyStr, trigger: ModuleIsARefusalProbe },
+  DemandRestatementRetainedRow { module_path: "test.probe.census_app_acquisition_forged_probe" as NonEmptyStr, declaration: "mint_a_receipt_from_authored_standings" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: ProbeLeavesCorpus },
+  DemandRestatementRetainedRow { module_path: "test.probe.census_app_acquisition_forged_probe" as NonEmptyStr, declaration: "mint_a_receipt_from_authored_standings" as NonEmptyStr, alias: "fs" as NonEmptyStr, authored_type: "std.resources.Filesystem" as NonEmptyStr, trigger: ProbeLeavesCorpus },
 ]
 
 // THE EIGHT PATTERN DECLARATIONS. These are outside the criterion's range rather than unmeasured
@@ -85,7 +83,7 @@ fn retained_row_trigger_text(t: RetainedRowTrigger) -> String {
   match t {
     ModuleResolutionBlocked => "trigger: its module resolves, and the criterion executes on it"
     CriterionDoesNotRangeOverPatterns => "trigger: derived demand ranges over pattern declarations"
-    ModuleIsARefusalProbe => "trigger: none while the probe stands -- its module refuses by design, so the row leaves with the probe"
+    ProbeLeavesCorpus => "trigger: the probe declaration is deleted from the corpus -- its module refuses by design, so resolution will never type the row, and its identities leave with the probe"
   }
 }
 
