@@ -1293,7 +1293,9 @@ fn changed_and_enrolled_witness_identities_with_index(
         }
     }
     let dag_path_list: Vec<String> = dag_paths.into_iter().collect();
+    floor_seam("diff-base-decl-census");
     let base_test_decl_names = floor_base_test_decl_census(&dag_path_list)?;
+    floor_seam("diff-edits");
     let edits = floor_diff_edits_from_line_ranges(
         index,
         &line_ranges_by_file,
@@ -1303,6 +1305,7 @@ fn changed_and_enrolled_witness_identities_with_index(
         Some(&base_test_decl_names),
         &rename_from,
     )?;
+    floor_seam("diff-changed-witness-identities");
     let quarantined = quarantine_probe_admitted_pairs();
     let root = process_workspace_root();
     let changed = changed_witness_identities_from_edited_test_fns(
@@ -1322,6 +1325,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     // exhaustiveness is real at `gunbc compile` and silent on a required floor that never
     // resolved the file. Seeding the authored module pulls its both-closure into
     // `prepare_repository_closure` (`ResolveTypecheckGate::Strict`), which is the same pass.
+    floor_seam("diff-touched-module-seeds");
     let (touched_modules, touched_outside_floor_roots, seeded_pairs) =
         module_seeds_from_touched_entry_files(&root, &edits.touched_entry_files, source_roots)?;
     // THE ASSEMBLY'S OWN PREDICATE (`prepared_subject_exclusion_row_for`), asked here over the
@@ -1341,6 +1345,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     // (gunbc#11194). Same diff window as every projection above -- the base is the floor's own
     // resolved comparison, never a second baseline authority -- and the same Strict preparation
     // downstream, so a planned consumer is a prepared consumer and `check_match` runs on it.
+    floor_seam("arm-set-planning");
     let arm_set = arm_set_consumer_planning(planning_index)?;
     Ok(FloorDiffProjections {
         changed_witnesses: changed,
@@ -4345,6 +4350,43 @@ pub fn floor_seam(name: &str) {
         g.clear();
         g.push_str(name);
     }
+    // EVERY SEAM IS A PHASE BOUNDARY, SO EVERY SEAM CARRIES A BEAT. The sixty-second watchdog
+    // names the minute a phase was in, never where it began or ended, so a phase shorter than a
+    // beat is invisible and a longer one is bounded only to the minute. A reading taken AT the
+    // boundary is what lets gunbc.floor_demand attribute a held-set delta to the phase between two
+    // seams rather than to whichever phase the next tick happened to land in.
+    floor_cgroup_stat_beat(&format!("seam-{name}"), None);
+    floor_heap_beat(name);
+}
+
+/// THE ALLOCATOR'S OWN SPLIT AT A SEAM: bytes live in allocations, and bytes the allocator holds
+/// free. A resident set that stays high across a phase boundary has two causes with opposite
+/// remedies -- state still owned by the program (shorten its ownership) or memory freed and kept
+/// by glibc (an allocator behaviour, not retention) -- and RSS cannot tell them apart.
+/// `malloc_trim` can, but it ACTS: it returns the free half, so the next phase would run on a
+/// different heap than the one being measured. `mallinfo2` only reads. Seams only, never the
+/// watchdog: it walks every arena, and a boundary is where the attribution is decided.
+///
+/// `in_use` is `uordblks` (allocated main-arena and thread-arena bytes) plus `hblkhd` (mmapped
+/// chunks, which are always live); `free` is `fordblks`. glibc-only, and `na` elsewhere rather
+/// than a zero, since zero free is a real reading.
+fn floor_heap_beat(seam: &str) {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        // SAFETY: mallinfo2 takes no arguments and returns a struct by value; it reads allocator
+        // bookkeeping under the arena locks and changes nothing.
+        let mi = unsafe { libc::mallinfo2() };
+        eprintln!(
+            "[floor-heap] seam={seam} in_use={} free={} mmapped={} arena={} {}",
+            mi.uordblks + mi.hblkhd,
+            mi.fordblks,
+            mi.hblkhd,
+            mi.arena,
+            crate::cli_run::entry_resolve::process_resolve_census(),
+        );
+    }
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+    eprintln!("[floor-heap] seam={seam} in_use=na free=na mmapped=na arena=na");
 }
 
 /// THE SEAM AS IT STANDS RIGHT NOW, so a reading can say WHERE IN THE RUN it was taken.
@@ -4400,6 +4442,156 @@ pub(crate) fn floor_value_shape(v: Option<&v1_interpreter::Value>) -> String {
         }
         Some(other) => floor_value_constructor(other).to_string(),
     }
+}
+
+/// One rostered corpus-census claim's eval-step allowance, as `v2.workflow.required_floor`
+/// `corpus_census_eval_step_allowance` derived it. The host holds the numbers it READ; it never
+/// computes `base + per_entry x entry_count` itself.
+#[derive(Debug, Clone)]
+pub(crate) struct CorpusCensusAllowanceReading {
+    pub subject_path: String,
+    pub entry_count: u64,
+    pub budget_steps: u64,
+}
+
+/// THE CORPUS-CENSUS ALLOWANCES, EVALUATED THROUGH THE POLICY FRAME (ruling stern-carp-604
+/// msg_8be78362, 2026-09-23 -- an operator DEFAULT-approval on a 15-minute timeout, not a
+/// deliberated ruling; host shape msg_4ba38011).
+///
+/// For each row of `corpus_census_roster` the host reads the subject's bytes (transport) and
+/// evaluates `corpus_census_eval_step_allowance` in `hermetic`; membership, the YAML parse, the entry
+/// count and the line are the `.dag`'s. Every failure REFUSES the run, typed and naming the identity
+/// and subject -- a rostered identity NEVER falls back to the flat tier budget, because that would
+/// answer with the population's budget exactly when the subject could not be read (DESIGN §5).
+///
+/// THE DERIVATION IS UNCHARGED: it runs here, while the floor plans, before any claim's measured
+/// window opens, so a census claim is charged its own work (its own parse included) and not the
+/// judge's.
+pub(crate) fn floor_corpus_census_allowances(
+    hermetic: &v1_interpreter::InterpContext,
+    workspace_root: &Path,
+) -> Result<std::collections::HashMap<String, CorpusCensusAllowanceReading>, String> {
+    use v1_interpreter::Value;
+    const ROSTER: &str = "v2.workflow.required_floor.corpus_census_roster";
+    const AUTHORITY: &str = "v2.workflow.required_floor.corpus_census_eval_step_allowance";
+    let value = v1_interpreter::run_in_context(hermetic, ROSTER, false)
+        .map_err(|e| format!("{ROSTER}: {e}"))?;
+    let items = floor_decode_list(hermetic, Some(&value)).map_err(|e| format!("{ROSTER}: {e}"))?;
+    let mut out = std::collections::HashMap::new();
+    for item in items {
+        let Value::Record { type_name, fields } = item else {
+            return Err(format!(
+                "{ROSTER}: expected CorpusCensusMember, got {}",
+                floor_value_shape(Some(&item))
+            ));
+        };
+        if !hermetic.sym_eq(*type_name, "CorpusCensusMember") {
+            return Err(format!(
+                "{ROSTER}: expected CorpusCensusMember, got record {}",
+                hermetic.resolve(*type_name)
+            ));
+        }
+        let str_field = |name: &str| -> Result<String, String> {
+            match hermetic.field(fields, name) {
+                Some(Value::Str(s)) => Ok(s.to_string()),
+                other => Err(format!(
+                    "{ROSTER}: {name} must be String, got {}",
+                    floor_value_shape(other)
+                )),
+            }
+        };
+        let identity = str_field("identity")?;
+        let subject_path = str_field("subject_path")?;
+        let refuse = |why: String| -> String {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=CorpusCensusAllowanceUnderived identity={identity} \
+                 subject={subject_path} — {why}. A rostered corpus-census claim is judged only \
+                 against the allowance v2.workflow.required_floor corpus_census_eval_step_allowance \
+                 derives; it never falls back to the flat tier budget."
+            )
+        };
+        if out.contains_key(&identity) {
+            return Err(refuse(
+                "corpus_census_roster names this identity twice".to_string(),
+            ));
+        }
+        let started = std::time::Instant::now();
+        let content = std::fs::read_to_string(workspace_root.join(&subject_path))
+            .map_err(|e| refuse(format!("the subject could not be read: {e}")))?;
+        let args = [
+            (Some("identity".to_string()), str_value(&identity)),
+            (Some("subject_content".to_string()), str_value(&content)),
+        ];
+        let result = v1_interpreter::run_in_context_with_args(hermetic, AUTHORITY, &args, false)
+            .map_err(|e| refuse(format!("{AUTHORITY} did not evaluate: {e}")))?;
+        let Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } = &result
+        else {
+            return Err(refuse(format!(
+                "{AUTHORITY} returned {}, expected CorpusCensusAllowance",
+                floor_value_shape(Some(&result))
+            )));
+        };
+        let reading = match hermetic.resolve(*variant_name).as_str() {
+            "CensusAllowanceDerived" => {
+                let entry_count = match hermetic.field(fields, "entry_count") {
+                    Some(Value::Int(n)) if *n > 0 => *n as u64,
+                    other => {
+                        return Err(refuse(format!(
+                            "CensusAllowanceDerived.entry_count is not a positive Int: {}",
+                            floor_value_shape(other)
+                        )))
+                    }
+                };
+                let budget_steps = match hermetic.field(fields, "budget_steps") {
+                    Some(Value::Record { fields: m, .. }) => match hermetic.field(m, "count") {
+                        Some(Value::Int(n)) if *n > 0 => *n as u64,
+                        other => {
+                            return Err(refuse(format!(
+                                "CensusAllowanceDerived.budget_steps has no positive count: {}",
+                                floor_value_shape(other)
+                            )))
+                        }
+                    },
+                    other => {
+                        return Err(refuse(format!(
+                            "CensusAllowanceDerived.budget_steps is not a Measure: {}",
+                            floor_value_shape(other)
+                        )))
+                    }
+                };
+                CorpusCensusAllowanceReading {
+                    subject_path: subject_path.clone(),
+                    entry_count,
+                    budget_steps,
+                }
+            }
+            "CensusAllowanceRefused" => {
+                let reason = match hermetic.field(fields, "reason") {
+                    Some(Value::Str(s)) => s.to_string(),
+                    other => floor_value_shape(other),
+                };
+                return Err(refuse(reason));
+            }
+            other => {
+                return Err(refuse(format!(
+                    "{AUTHORITY} returned an arm this host has no reading for: {other}"
+                )))
+            }
+        };
+        eprintln!(
+            "[floor-corpus-census] identity={identity} subject={subject_path} entry_count={} \
+             budget_steps={} derive_wall_ms={} charged=false",
+            reading.entry_count,
+            reading.budget_steps,
+            started.elapsed().as_millis()
+        );
+        out.insert(identity, reading);
+    }
+    Ok(out)
 }
 
 // ONE CARRIER, TWO REALIZATIONS -- decoded here rather than assumed to be one of them.
@@ -5639,8 +5831,17 @@ pub(crate) fn floor_cgroup_stat_beat(
             })
             .unwrap_or_else(|| "na".to_string())
     };
-    let current = std::fs::read_to_string(format!("{leaf}/memory.current"))
-        .map(|v| v.trim().to_string())
+    let raw = |name: &str| -> String {
+        std::fs::read_to_string(format!("{leaf}/{name}"))
+            .map(|v| v.split_whitespace().collect::<Vec<_>>().join(","))
+            .unwrap_or_else(|_| "na".to_string())
+    };
+    let current = raw("memory.current");
+    // THE WALL CLOCK, so a beat is placed in time by its own line rather than by the log
+    // prefix the job runner happens to add, and a seam beat and a watchdog beat order by value.
+    let unix_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis().to_string())
         .unwrap_or_else(|_| "na".to_string());
     let seam_after = floor_seam_current();
     // The beat line's own spelling, one token each and no spaces, because this line is parsed
@@ -5674,6 +5875,50 @@ pub(crate) fn floor_cgroup_stat_beat(
         Some(o) => crate::memory_governor::memory_stall_major_faults_per_minute(o).to_string(),
         None => "na".to_string(),
     };
+    // SWAP, PSI AND THE LEAF'S OWN EVENTS BESIDE THE COUNTERS, on every beat. The 2026-09-19
+    // receipt is censored on the held-set axis because anonymous pages were going to swap one beat
+    // after its peak, and the swap figure that showed it was the HOST's swap-in, read beside the
+    // leaf -- a different subject. `memory.swap.current` is this leaf's own; `memory.pressure` is
+    // the stall time that says whether reclaim cost the run anything; `memory.events.local`
+    // carries `oom` and `oom_kill` for this leaf alone. Printed raw, as the counters are.
+    //
+    // AND THE PROCESSES CHARGED TO THE LEAF, because a leaf charge is a sum over every process in
+    // it: a floor that shares its slot with a build daemon or a previous step's straggler reads
+    // their pages as its own, and that overlap is a different cause with a different remedy than
+    // retained application state. `pid:comm:rss_kb` per member, read from procfs, nothing summed.
+    let procs = std::fs::read_to_string(format!("{leaf}/cgroup.procs"))
+        .map(|body| {
+            body.lines()
+                .filter_map(|pid| {
+                    let pid = pid.trim();
+                    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+                    let field = |k: &str| {
+                        status.lines().find_map(|l| {
+                            l.strip_prefix(k).map(|r| {
+                                r.trim_start_matches(':')
+                                    .trim()
+                                    .trim_end_matches(" kB")
+                                    .to_string()
+                            })
+                        })
+                    };
+                    Some(format!(
+                        "{pid}:{}:{}",
+                        field("Name").unwrap_or_else(|| "na".to_string()),
+                        field("VmRSS").unwrap_or_else(|| "na".to_string())
+                    ))
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .unwrap_or_else(|_| "na".to_string());
+    eprintln!(
+        "[floor-cgroup] when={when} seam={seam} unix_ms={unix_ms} swap_current={} \
+         events_local=[{}] pressure=[{}] procs=[{procs}]",
+        raw("memory.swap.current"),
+        raw("memory.events.local"),
+        raw("memory.pressure"),
+    );
     eprintln!(
         "[floor-cgroup] when={when} stat_level={leaf} seam={seam} stall_per_min={stall_text} current={current} \
          memory_stat=[anon,{},file,{},shmem,{},unevictable,{},slab_unreclaimable,{},\
@@ -5743,6 +5988,7 @@ pub fn run_required_floor(
     // 4,260-module corpus, measured 2026-08-29), so it is built once here and lent to the
     // policy-closure prepare and the gate-closure prepare alike.
     let gate_entry_index = build_multi_entry_index(source_roots);
+    floor_seam("changed-witness-planning");
     // ONE CORPUS READ FOR BOTH PREPARES, CARRIED FROM THE ANCESTOR THAT OWNS BOTH DEMANDS.
     //
     // This function prepares TWO subjects -- the policy closure through
@@ -5806,6 +6052,7 @@ pub fn run_required_floor(
                 .to_string()
         })
         .collect();
+    floor_seam("nominal-subject-seeds");
     // THE NOMINAL SEEDS -- gate prefixes, gate authored modules, the wet schedule -- come from
     // the one producer the resolution census also reads, so what the floor prepares on a run
     // that touches nothing and what the census reports as reached are the same fact.
@@ -5963,6 +6210,7 @@ pub fn run_required_floor(
     )
     .chain(arm_set_consumer_seeds.iter().cloned())
     .collect();
+    floor_seam("prepare-closure-resolve");
     let (mut prepared, prepared_sources) = crate::cli_run::prepare_repository_from_corpus(
         &floor_corpus,
         &floor_prepared_subject_exclusions(),
@@ -5973,6 +6221,7 @@ pub fn run_required_floor(
         )),
     )?;
     drop(gate_entry_index);
+    floor_seam("prepared-subject-warm");
     // THE FULL INDEX THE DISCOVERY AUTHORITY WILL JUDGE, captured here because the prepared
     // graph is intentionally only the required gate closure. Declaration discovery is a
     // corpus-wide question: fold the one modeled producer over every indexed source, finalize
@@ -6902,6 +7151,13 @@ pub fn run_required_floor(
         grandfathered_eval_step_budget,
         new_witness_eval_step_budget
     );
+    // THE CORPUS-CENSUS ARM, EVALUATED AND NOT MIRRORED. A rostered whole-file census claim's budget
+    // is `v2.workflow.required_floor` `corpus_census_eval_step_allowance` over its subject, read here
+    // through the policy frame; the formula has no Rust spelling. It is consulted BEFORE the tiers at
+    // both budget sites below, so a rostered identity is judged only by its allowance, and a
+    // derivation that fails has already refused the run inside the call -- there is no path on which
+    // a rostered identity reaches the flat tier budget.
+    let corpus_census = floor_corpus_census_allowances(&hermetic, &workspace_root())?;
 
     // EXACTLY ONE DECLARED MECHANISM HOLDS A ROW, and when cost debt withholds one it is the
     // holder. `gunbc.quarantine_probe_disposition` states the rule this implements: the question
@@ -7164,7 +7420,9 @@ pub fn run_required_floor(
                 // other edit takes the new-witness one. The decision and the budget are the .dag's;
                 // the host supplies the head bytes and the comparison base it already resolved.
                 // Computed before the claim is built because the identity moves into it.
-                let eval_step_budget = if grandfathered_roster.contains(&identity) {
+                let eval_step_budget = if let Some(census) = corpus_census.get(&identity) {
+                    census.budget_steps
+                } else if grandfathered_roster.contains(&identity) {
                     grandfathered_eval_step_budget
                 } else if cost_debt_roster.contains(&identity) {
                     let base = floor_diff_comparison_readout()?.base().to_string();
@@ -7270,8 +7528,11 @@ pub fn run_required_floor(
                 identity: identity.clone(),
                 disposition: RequiredFloorDisposition::Planned,
             });
-            // THE TIER, DERIVED FROM ROSTER MEMBERSHIP AND FROM NOTHING ELSE.
-            let eval_step_budget = if grandfathered_roster.contains(&identity) {
+            // THE TIER, DERIVED FROM ROSTER MEMBERSHIP AND FROM NOTHING ELSE -- after the corpus-census
+            // arm, whose members are judged by their evaluated allowance alone.
+            let eval_step_budget = if let Some(census) = corpus_census.get(&identity) {
+                census.budget_steps
+            } else if grandfathered_roster.contains(&identity) {
                 grandfathered_eval_step_budget
             } else {
                 new_witness_eval_step_budget
@@ -7286,6 +7547,20 @@ pub fn run_required_floor(
                 cost_line_ms: claim_cost_line_ms,
                 cost_policy: ChangedWitnessCostPolicy::Ordinary,
             });
+        }
+    }
+    // A CORPUS-CENSUS ROW THAT PLANNED NO CLAIM IS STALE, AND STALENESS REFUSES. The allowance was
+    // derived for an identity the floor then never judged -- a renamed or deleted census claim, or
+    // one outside the gate -- and a roster row nothing consumes would keep asserting a line for a
+    // claim that no longer exists (DESIGN §3c).
+    for (identity, census) in &corpus_census {
+        if !claims.iter().any(|c| &c.qualified == identity) {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CorpusCensusRowPlannedNoClaim identity={identity} \
+                 subject={} — v2.workflow.required_floor corpus_census_roster names an identity \
+                 this floor run did not plan; delete the row or restore the claim.",
+                census.subject_path
+            ));
         }
     }
     // Taken BEFORE the declared population is folded in, so it is what the site loop offered and
@@ -8474,16 +8749,29 @@ pub fn run_required_floor(
             // ceiling it lived under, while a NEW row over 100ms-equivalent has never been inside
             // one, and telling an author "reduce it" without saying which line it crossed makes
             // them guess at the target.
-            let (tier_name, tier_remedy) = if grandfathered_roster.contains(&claim.qualified) {
+            let (tier_name, tier_remedy) = if let Some(census) = corpus_census.get(&claim.qualified)
+            {
+                (
+                    format!(
+                        "corpus-census (base + per_entry x {} entries of {}, derived by \
+                         v2.workflow.required_floor corpus_census_eval_step_allowance; over it is a \
+                         per-entry rate excess, since only per_entry grows with the subject)",
+                        census.entry_count, census.subject_path
+                    ),
+                    String::new(),
+                )
+            } else if grandfathered_roster.contains(&claim.qualified) {
                 (
                     "grandfathered (enrolled when the roster was cut; judged against the \
-                     500ms-equivalent budget)",
+                     500ms-equivalent budget)"
+                        .to_string(),
                     String::new(),
                 )
             } else {
                 (
                     "new-witness (not in the grandfathered roster; judged against the \
-                     100ms-equivalent budget for work arriving after the cut)",
+                     100ms-equivalent budget for work arriving after the cut)"
+                        .to_string(),
                     format!(" {new_witness_first_remedy}"),
                 )
             };
@@ -8491,7 +8779,8 @@ pub fn run_required_floor(
                 "{} reached its verdict and performed {} eval steps against a {} budget of {} \
                  (observed cpu_ms={}, wall_ms={}, recorded and NOT gated on). The budget is \
                  declared policy — v2.workflow.required_floor \
-                 claim_eval_step_budget_for_identity, grounded through the pinned calibration \
+                 claim_eval_step_budget_for_identity (for a rostered corpus census, \
+                 corpus_census_eval_step_allowance), grounded through the pinned calibration \
                  fixture in v2.workflow.floor_eval_step_calibration — so this is a statement about \
                  the claim's own work and not about the runner it landed on. Reduce what the \
                  witness reaches for, or enrol it in a lane that declares its own ceiling AND \
@@ -9816,6 +10105,7 @@ pub fn run_required_floor(
     // candidate-bound rather than carrying a commit-shaped lie. The roster identity is derived
     // inside the module from the identities being published, so no value here can disagree with
     // the population it names.
+    floor_seam("publication");
     {
         let snapshot_wire = if commit == "local" || commit.is_empty() {
             "unpublished"

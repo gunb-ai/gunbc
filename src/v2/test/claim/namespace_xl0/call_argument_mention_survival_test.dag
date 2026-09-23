@@ -17,7 +17,7 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
 import v2.std.integer { Int }
@@ -64,7 +64,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the collector is blind to this tree generally and the probe is uninformative.
 data xl0_provider_source: String = "module v2.test.xl0_provider\n\nimport v2.std.logic { Bool }\n\ndata xl0_provided_value: Bool = true\n"
 
-data call_argument_fixture_source: String = "module v2.test.xl0_call_fixture\n\nimport v2.std.logic { Bool }\n\nimport v2.std.optional { Absent }\n\ndata xl0_call_only: Bool = true\n\ndata xl0_no_call: Bool = true\n\nfn xl0_callee(probe: Bool) -> Bool { probe }\n\nfn xl0_outside() -> Bool { xl0_no_call }\n\ntype Xl0UserType {}\n\ntype Xl0FieldOnly {}\n\ntype Xl0Wrapper { fld: Xl0FieldOnly }\n\nfn xl0_typed(u: Xl0UserType) -> Bool { true }\n\nfn xl0_inside() -> Bool { xl0_callee(probe: xl0_call_only) }\n\nfn xl0_qualified_outside() -> Bool { v2.test.xl0_provider.xl0_provided_value }\n\nfn xl0_qualified_typed(p: v2.test.xl0_provider.Xl0ProvidedType) -> Bool { true }\n"
+data call_argument_fixture_source: String = "module v2.test.xl0_call_fixture\n\nimport v2.std.logic { Bool }\n\nimport v2.std.optional { Absent }\n\ndata xl0_call_only: Bool = true\n\ndata xl0_no_call: Bool = true\n\nfn xl0_callee(probe: Bool) -> Bool { probe }\n\nfn xl0_outside() -> Bool { xl0_no_call }\n\ntype Xl0UserType {}\n\ntype Xl0FieldOnly {}\n\ntype Xl0Wrapper { fld: Xl0FieldOnly }\n\nfn xl0_typed(u: Xl0UserType) -> Bool { true }\n\nfn xl0_inside() -> Bool { xl0_callee(probe: xl0_call_only) }\n\ndata xl0_positional_only: Bool = true\n\nfn xl0_positional_inside() -> Bool { xl0_callee(xl0_positional_only) }\n\nfn xl0_qualified_outside() -> Bool { v2.test.xl0_provider.xl0_provided_value }\n\nfn xl0_qualified_typed(p: v2.test.xl0_provider.Xl0ProvidedType) -> Bool { true }\n"
 
 fn xl0_provider_read() -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -181,8 +181,10 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 //                  a bare type name in PARAMETER position;
 //                  a QUALIFIED CROSS-MODULE reference in a BODY, outside any call;
 //                  a QUALIFIED CROSS-MODULE type name in PARAMETER position
-//   DOES NOT:      a call argument; a callee name; a qualified reference whose LAST segment
-//                  carries a call or brace suffix (the call class, XL-2)
+//                  a callee name; a call ARGUMENT, named or positional (re-measured below
+//                  after the argument-reader repair)
+//   DOES NOT:      a qualified reference whose LAST segment carries a call or brace suffix
+//                  (the call class, XL-2)
 //                  a bare type name in FIELD position (a tree loss, see below)
 //
 // THE QUALIFIED ROWS MOVED FROM THE SECOND GROUP TO THE FIRST, AND WHAT MOVED THEM WAS NOT A
@@ -218,8 +220,11 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 //
 // THE LOSSES BELOW ARE THREE CAPABILITIES, NOT ONE, AND NOTHING THAT RESTORES ONE RESTORES ANOTHER:
 //
-//   call argument, callee name          -> the v2 body-lowering repair that stops normalize erasing
-//                                          call expressions (XL-2, gunbc#11207)
+//   call argument, callee name          -> LANDED for both halves on plain calls: the callee by
+//                                          gunbc#11683, the argument by the comma-list reader in
+//                                          v2.compiler.body_lowering_fold
+//                                          body_lower_call_args_from_capture. The rows below flipped
+//                                          and stay enrolled as the regression control.
 //   qualified / dotted reference        -> LANDED: body_lower_dotted_reference_optional and its
 //     (any position, body or type)         type-position twin in v2.compiler.body_lowering_fold. The
 //                                          rows for it below flipped from "is absent today" to
@@ -255,10 +260,50 @@ test fn a_parameter_reference_reaches_the_collector_holds() -> Bool {
   sites_mention(sites: fixture_sites(), spelling: "probe")
 }
 
-// MEASURED DEFICIENCY 1: a reference occurring only as a call ARGUMENT does not reach the
-// collector. Asserted as absent so this reds when the lowering repair lands.
-test fn a_call_argument_mention_is_absent_from_the_denominator_today() -> Bool {
-  !sites_mention(sites: fixture_sites(), spelling: "xl0_call_only")
+// A REFERENCE OCCURRING ONLY AS A CALL ARGUMENT REACHES THE COLLECTOR. This row was enrolled as
+// `a_call_argument_mention_is_absent_from_the_denominator_today` and flipped when the argument
+// reader in v2.compiler.body_lowering_fold was rebuilt over the grammar's comma-list shape.
+//
+// THE ATTRIBUTION WAS NOT THE ONE THE EARLIER NOTE BELOW GAVE, AND THE DIFFERENCE IS RECORDED HERE.
+// The loss was believed to sit between lowering and the collector; measured at b8e0cc4eb9, the
+// argument atom was absent from the NORMALIZED TREE itself (zero atoms spelled `xl0_call_only`
+// over both roots, one call node, callee and out-of-call controls present), so the collector had
+// nothing to find. body_lower_call_args_from_capture first asked a PARAMETER-list reader for a
+// comma spine; an argument capture arrives with its parentheses already consumed, so that reader
+// answered on the first argument's own inner sequence and the collector beneath it returned Empty
+// -- for positional arguments as well as named ones. The tree-grain row below is the control that
+// keeps the two grains apart: if it holds and this row reds, the collector is the defect, not
+// lowering.
+test fn a_call_argument_mention_reaches_the_denominator_holds() -> Bool {
+  sites_mention(sites: fixture_sites(), spelling: "xl0_call_only")
+}
+
+// THE POSITIONAL TWIN. `xl0_positional_only` is referenced once, as the sole POSITIONAL argument of
+// a call; the reader it replaced dropped this spelling too, so the repair is not specific to the
+// named form.
+test fn a_positional_call_argument_mention_reaches_the_denominator_holds() -> Bool {
+  sites_mention(sites: fixture_sites(), spelling: "xl0_positional_only")
+}
+
+fn atom_count_in(n: Node, spelling: Symbol) -> Int {
+  let here = match n.kind {
+    TypeNode { connective: Atom { identity: sym } } => if sym == spelling { 1 } else { 0 }
+    _ => 0
+  }
+  fold(n.children, init: here, f: fn(acc, e) { acc + atom_count_in(n: e.target, spelling: spelling) })
+}
+
+fn fixture_atom_count(spelling: Symbol) -> Int {
+  fold_list(xs: fixture_roots(), empty: 0, cons: fn(acc, root) { acc + atom_count_in(n: root, spelling: spelling) })
+}
+
+// THE TREE-GRAIN READING OF THE SAME FACT, independent of the collector: exactly one atom spells the
+// argument in the normalized roots. It was 0 at b8e0cc4eb9, beside 1 for the callee and 1 for the
+// out-of-call mention, which is what located the loss at lowering rather than at the collector.
+test fn a_call_argument_atom_is_in_the_normalized_tree_holds() -> Bool {
+  fixture_atom_count(spelling: ^xl0_call_only) == 1
+    && fixture_atom_count(spelling: ^xl0_positional_only) == 1
+    && fixture_atom_count(spelling: ^xl0_no_call) == 1
 }
 
 // The brace-body call lowering repair keeps the callee in the normalized tree, so the collector

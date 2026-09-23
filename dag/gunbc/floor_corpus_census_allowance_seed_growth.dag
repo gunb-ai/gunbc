@@ -1,0 +1,23 @@
+module gunbc.floor_corpus_census_allowance_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust that lets the required floor judge a whole-file census
+// claim against v2.workflow.required_floor corpus_census_eval_step_allowance (ruling stern-carp-604
+// msg_8be78362, 2026-09-23 -- an operator DEFAULT-approval on a 15-minute timeout, not a deliberated
+// human ruling; host shape msg_4ba38011). The formula has no Rust spelling: the host reads the roster,
+// reads each subject's bytes, evaluates the .dag authority through the policy frame it already holds,
+// and decodes the result. The budget-site edits in run_required_floor modify existing items and are
+// not enumerated.
+data floor_corpus_census_allowance_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "CorpusCensusAllowanceReading", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "floor_corpus_census_allowances", field: WholeDeclaration }
+  ],
+  reason: "A flat eval-step budget is the wrong shape for a claim whose subject is one whole, growing corpus file (gunbc#11730's realized-workflow census over .github/workflows/fleet-converge.yml): the model is a line, base + per_entry x entry_count, with entry_count derived by the census's own YAML parse. The host must supply the subject's bytes -- reading a file is transport the hermetic policy frame does not perform -- and must refuse, typed and located, when the allowance cannot be derived, never falling back to the flat tier. These two items are that transport and that decode, and nothing else: membership, the parse, the count, the line and every refusal reason are the .dag's.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "v2.workflow.required_floor claim_ceiling_tier_host_mirror_dissolve_on's capability -- the runner selecting every claim's budget by evaluating the .dag through the frame per claim -- deletes the roster decode in floor_corpus_census_allowances; the byte read and the result decode dissolve with the rest of run_required_floor when the floor's planning is a .dag fold over a typed repository-read transport, at which point the subject is read by that transport and the allowance is an ordinary call inside the fold.",
+  current_boundary: "Reachable only from run_required_floor (the required floor's planning, witnesses lane). With corpus_census_roster empty it evaluates one nullary roster read and nothing else. For each rostered row it reads one file under the workspace root and performs one uncharged YAML parse before any claim's measured window opens, announced on a [floor-corpus-census] line; any failure refuses the run with cause=CorpusCensusAllowanceUnderived naming the identity and subject. Decides nothing for gunbc compile, claim_batch or any per-entry path."
+}

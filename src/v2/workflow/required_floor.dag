@@ -3,7 +3,7 @@ module v2.workflow.required_floor
 import v2.std.algebra { Cons, Empty, contains }
 import v2.std.collection { List }
 import v2.std.logic { Bool, True, False }
-import v2.std.integer { Int, int_gt }
+import v2.std.integer { Int, int_gt, int_add, int_mul }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
 // THE SAFETY VOCABULARY IS IMPORTED, NOT DECLARED HERE. `ClaimSafetyOutcome` and
@@ -40,9 +40,12 @@ import std.measure {
   millisecond_count,
   byte_size,
   byte_size_count,
+  eval_step_count,
   eval_step_count_value,
 }
 import std.types { NonEmptyStr }
+import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
+import extdeps.languages.yaml.types { yaml_entry_count }
 
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
 //
@@ -715,10 +718,18 @@ fn required_gate_prefixes() -> List<String> {
 // its own suffix neighbours today, and re-homing them is a per-row decision about whether such a
 // neighbour exists or is wanted, owed by a change that reads each one; this change adds no new
 // row to the wrong roster and states the rule the right one carries.
+//
+// THE THIRD ROW IS THE CORPUS-CENSUS ALLOWANCE'S WITNESSES (`corpus_census_eval_step_allowance`
+// below). The allowance decides whether a rostered claim blocks, so its discriminating red and its
+// positive control must run where that decision is made; outside the gate they would disposition
+// DeclinedOutsideRequiredGate and a broken line would stay green. ADMITTED BY OPERATOR DEFAULT-APPROVAL on a 15-minute timeout, 2026-09-23 (escalation msg_731e354b, relayed by stern-carp-604), NOT a deliberated ruling -- the same standing as the allowance ruling itself, and to be weighed as a default. The module declares
+// SubstrateInputsOnly, and its only preparation growth is extdeps.languages.yaml, which the
+// policy module itself now imports.
 fn required_gate_authored_modules() -> List<String> {
   [
     "test.claim.runner_capacity_plan_witness",
     "test.claim.runner_capacity_realize_witness",
+    "test.claim.corpus_census_allowance_witness_test",
   ]
 }
 
@@ -1371,13 +1382,183 @@ fn claim_ceiling_eval_step_budget(tier: ClaimCeilingTier) -> EvalStepCount {
 // naming a faster HashSet, a cache inside the runner, or a comparison test does not discharge
 // this: each keeps two derivations of one fact, which is the condition being retired.
 data claim_ceiling_tier_host_mirror_dissolve_on: DissolutionCondition = unbound_dissolution(
-  description: "dissolve-on: v1_compiler.cli_run.required_floor_runner selects a claim's budget by evaluating v2.workflow.required_floor claim_eval_step_budget_for_identity through the hermetic frame it already holds, instead of decoding floor_grandfathered_roster into a HashSet and reproducing claim_ceiling_tier's membership test in Rust. IT COVERS BOTH HOST MIRRORS OF A FLOOR POLICY ROSTER, NOT ONLY THE GRANDFATHERED ONE: the same runner also decodes v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_members into a HashSet, replaced on the climb by evaluating claim_eval_step_standing_for_identity through the same frame. Both are the one capability below, so one condition retires both; naming only one would delete that mirror and leave its sibling standing untracked, which is the state this sentence exists to prevent. BLOCKED ON COST, NOT ON PLUMBING: the frame call is available today and the mirror exists because evaluating it per claim re-folds the whole roster per claim, measured at roughly 38,000 eval steps per absent-name probe by this lane's own witnesses. The capability that retires it is the roster fold being SERVED once across claim frames rather than re-derived, the shape v2.workflow.floor_pure_producer_share already provides for nullary producers. Owner: the required-floor ceiling lane, currently smart-heron-867 and after it whoever holds the floor cost-ceiling work item. On the climb BOTH mirrored branches are deleted, not kept beside the calls." as NonEmptyStr,
+  description: "dissolve-on: v1_compiler.cli_run.required_floor_runner selects a claim's budget by evaluating v2.workflow.required_floor claim_eval_step_budget_for_identity through the hermetic frame it already holds, instead of decoding floor_grandfathered_roster into a HashSet and reproducing claim_ceiling_tier's membership test in Rust. IT COVERS BOTH HOST MIRRORS OF A FLOOR POLICY ROSTER, NOT ONLY THE GRANDFATHERED ONE: the same runner also decodes v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_members into a HashSet, replaced on the climb by evaluating claim_eval_step_standing_for_identity through the same frame. AND, SINCE THE 2026-09-23 CORPUS-CENSUS ARM, A THIRD: the runner decodes corpus_census_roster into a map keyed by identity and consults it before the tiers (v1_compiler.cli_run.required_floor_runner floor_corpus_census_allowances); the allowance itself is EVALUATED through the frame and never mirrored, but the question 'is this identity rostered' is answered by that map rather than by the frame, so it is a membership mirror of the same kind and is replaced on the climb by the runner asking corpus_census_eval_step_allowance per claim through the frame. All three are the one capability below, so one condition retires all three; naming fewer would delete one mirror and leave a sibling standing untracked, which is the state this sentence exists to prevent. BLOCKED ON COST, NOT ON PLUMBING: the frame call is available today and the mirror exists because evaluating it per claim re-folds the whole roster per claim, measured at roughly 38,000 eval steps per absent-name probe by this lane's own witnesses. The capability that retires it is the roster fold being SERVED once across claim frames rather than re-derived, the shape v2.workflow.floor_pure_producer_share already provides for nullary producers. Owner: the required-floor ceiling lane, currently smart-heron-867 and after it whoever holds the floor cost-ceiling work item. On the climb BOTH mirrored branches are deleted, not kept beside the calls." as NonEmptyStr,
 )
 
 // THE CEILING FOR ONE IDENTITY, WHICH IS THE ONLY ENTRY POINT A CALLER SHOULD REACH FOR. It joins
 // the two steps above so no caller can select a tier for one identity and a budget for another.
 fn claim_eval_step_budget_for_identity(identity: String) -> EvalStepCount {
   claim_ceiling_eval_step_budget(tier: claim_ceiling_tier(identity: identity))
+}
+
+// ── THE CORPUS-CENSUS ALLOWANCE: A BUDGET THAT SCALES WITH A WHOLE-FILE SUBJECT ──────────────────
+//
+// WHY A FLAT BUDGET IS THE WRONG SHAPE FOR THIS POPULATION. A census claim whose subject is one whole
+// corpus file -- test.claim.action_use_admission_witness's per-file workflow census reading a
+// .github/workflows file through extdeps.languages.yaml.ingest -- performs work proportional to the
+// file, and the file grows by ordinary product work nobody routes past the claim. Under a flat budget
+// such a claim is green until an unrelated edit lengthens its subject, then red with no cost-shape
+// change at all; and the only moves the flat budget admits are the refused ones (raising it, a second
+// reader, a debt row, splitting the file). So the budget for THIS population is a line, not a point:
+//
+//   allowance = base + per_entry x entry_count
+//
+// RULING, WITH ITS STANDING STATED: stern-carp-604 msg_8be78362, 2026-09-23 -- an operator
+// DEFAULT-APPROVAL on a 15-minute timeout, NOT a deliberated human ruling. The host shape (the runner
+// evaluates this authority through the frame it already holds, msg_4ba38011) is under the same
+// standing. A reader weighing this allowance should weigh it as a default, and a deliberated ruling
+// that disagrees supersedes it without ceremony.
+//
+// ENTRY_COUNT IS DERIVED, NEVER AUTHORED. It is extdeps.languages.yaml.types yaml_entry_count over
+// extdeps.languages.yaml.ingest ingest_yaml_source of the subject's bytes -- the census's OWN parse,
+// so the unit the budget scales by is the unit the claim's work scales by. It is never a literal and
+// never a count copied from the tree (DESIGN section 5's oracle rule): the roster names a PATH, and
+// the count is re-derived from whatever that path holds on the run that judges it.
+//
+// THE SLOPE GATE IS THE FLOOR'S ORDINARY STEP COMPARISON, AND WHY THERE IS NO SECOND ONE. The allowance
+// only supplies a budget: the verdict is the same claim_eval_step_standing every claim is judged by (and
+// that the runner applies to the budget this arm hands it), so no census-specific standing exists for
+// production to bypass. The allowance grows ONLY through per_entry, so a claim over it is by construction
+// a claim whose steps above the fixed base exceed per_entry per entry, and the runner's refusal names it
+// as a per-entry rate excess for that reason. Growth therefore cannot hide a cost-shape regression: a per-entry cost above per_entry by any
+// margin d exceeds the allowance once d x entry_count passes the base's slack, and a LARGER subject
+// reveals it sooner, never later. A separate "steps / entry_count > per_entry" test was considered and
+// refused: dividing the base into the rate either refuses every small subject (whose fixed work
+// dominates) or, with the base subtracted, is this comparison written twice. What keeps the gate sharp
+// is that `base` is small -- the census's fixed work, not the flat new-witness budget -- because a base
+// the size of the flat budget would absorb a doubled per-entry cost on a 1,000-entry subject.
+//
+// MEMBERSHIP IS A DECLARED ROSTER, NOT A LABEL. An identity reaches this arm only by a row in
+// corpus_census_roster naming it AND its subject path; nothing a claim writes selects it. A rostered
+// identity is judged ONLY by this arm: it does not also consult claim_ceiling_tier, and when the
+// allowance cannot be derived the claim REFUSES (CensusAllowanceRefused) and never falls back to the
+// flat tier budget -- a fallback would be the absorbing arm DESIGN section 5 forbids, answering with
+// the population's budget exactly when the subject could not be read.
+//
+// WHERE THE DERIVATION'S COST LANDS: OUTSIDE THE CLAIM'S CHARGED WINDOW, deliberately. The host
+// evaluates corpus_census_eval_step_allowance while it PLANS the claim, before the claim's measured
+// window opens, so the claim is charged exactly its own work -- including its own parse of the same
+// file -- and not the judge's parse. The floor pays one extra parse per rostered row per run, which is
+// planning work of the same kind as reading the grandfathered roster, and it is announced on the run's
+// [floor-corpus-census] line rather than hidden in a claim's figure.
+//
+// WHAT THE ALLOWANCE DOES NOT RETIRE. The wall safety limit still bounds a blocked claim, and
+// gunbc.action_use_admission's cost standing still refuses "raising the claim's eval-step budget": this
+// arm does not move a flat line, it replaces a point with a line whose slope is a declared policy
+// constant, and a claim above that line is red exactly as before.
+type CorpusCensusMember {
+  identity: String
+  subject_path: String
+}
+
+// THE ROSTER. Its one production row is the realized-workflow census over the largest committed
+// workflow (gunbc.action_use_admission, gunb-ai/gunbc#11730), whose subject is a generated file other
+// lanes grow; the arm is also exercised by the witnesses in test.claim.corpus_census_allowance_witness
+// over synthetic subjects. An empty roster is a legitimate state -- no whole-file census needs a line
+// -- unlike the grandfathered roster, whose emptiness would reclassify the corpus.
+data corpus_census_roster: List<CorpusCensusMember> = [
+  CorpusCensusMember {
+    identity: "test.claim.action_use_admission_witness.census_fleet_converge_uses_are_modeled_and_executed_exactly",
+    subject_path: ".github/workflows/fleet-converge.yml",
+  },
+]
+
+// THE POLICY, WITH ITS REASON IN THE CARRIER RATHER THAN BESIDE IT.
+type CorpusCensusAllowancePolicy {
+  base_steps: EvalStepCount
+  per_entry_steps: EvalStepCount
+  reason: NonEmptyStr
+  ruling: NonEmptyStr
+}
+
+// IN EVAL STEPS AND NOT MILLISECONDS, unlike the tier envelopes: a per-entry figure is a fraction of one
+// millisecond-equivalent at the pinned rate, which the Millisecond carrier cannot hold, and expressing
+// base and per_entry in two different units would let one move without the other.
+data corpus_census_allowance_policy: CorpusCensusAllowancePolicy = CorpusCensusAllowancePolicy {
+  base_steps: eval_step_count(count: 10000),
+  per_entry_steps: eval_step_count(count: 80),
+  reason: "per_entry: the realized-workflow census's MARGINAL cost per YAML entry is read as the slope between two of its own per-file claims over subjects of different size (claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/action_use_admission_witness_test.dag --functions census_witnesses_uses_are_modeled_and_executed_exactly,census_fleet_converge_uses_are_modeled_and_executed_exactly, eval_steps from each [witness] line, entry counts from yaml_entry_count over the same files). 80 was set on 2026-09-23, at gunbc#11730's head, at about 1.3x the slope that instrument read, as headroom for shape variance between workflow files -- enough that the largest file passes with real margin, and tight enough that a reader or traversal regression of about a third per entry turns the claim red on the largest subject. base: the census's fixed work that does not scale with entries (the population join, admission of each distinct use, the claim frame) -- set at 10,000, above the intercept the same two readings imply, and deliberately far below the flat new-witness budget so that the base cannot absorb a per-entry regression." as NonEmptyStr,
+  ruling: "stern-carp-604 msg_8be78362, 2026-09-23: operator DEFAULT-approval on a 15-minute timeout, not a deliberated human ruling; host shape per msg_4ba38011 (evaluate through the frame the runner already holds)." as NonEmptyStr,
+}
+
+// THE LINE, AS ONE FUNCTION. The host never computes it; it reads the budget this returns.
+fn corpus_census_allowance_steps(policy: CorpusCensusAllowancePolicy, entry_count: Int) -> EvalStepCount {
+  eval_step_count(
+    count: int_add(
+      a: eval_step_count_value(s: policy.base_steps),
+      b: int_mul(a: eval_step_count_value(s: policy.per_entry_steps), b: entry_count),
+    ),
+  )
+}
+
+type CorpusCensusAllowance =
+    CensusAllowanceDerived {
+      identity: String
+      subject_path: String
+      entry_count: Int
+      budget_steps: EvalStepCount
+    }
+  | CensusAllowanceRefused { identity: String, reason: String }
+
+fn corpus_census_member_for(identity: String, roster: List<CorpusCensusMember>) -> List<CorpusCensusMember> {
+  filter(roster, m => m.identity == identity)
+}
+
+// THE ALLOWANCE FOR ONE IDENTITY, GIVEN THE BYTES OF THE SUBJECT ITS ROW NAMES. The host supplies the
+// bytes (reading a file is transport); membership, the parse, the count and the line are all here.
+// Every arm that cannot derive a count REFUSES, typed, and names the identity -- none returns a budget.
+fn corpus_census_eval_step_allowance_in(
+  roster: List<CorpusCensusMember>,
+  policy: CorpusCensusAllowancePolicy,
+  identity: String,
+  subject_content: String,
+) -> CorpusCensusAllowance {
+  match corpus_census_member_for(identity: identity, roster: roster) {
+    Empty => CensusAllowanceRefused {
+      identity: identity,
+      reason: "not a corpus-census identity: v2.workflow.required_floor corpus_census_roster has no row naming it, so no subject defines its allowance",
+    }
+    Cons { head: m, tail: rest } =>
+      match rest {
+        Cons { head: _, tail: _ } => CensusAllowanceRefused {
+          identity: identity,
+          reason: "corpus_census_roster names this identity more than once; which subject scales its budget is ambiguous",
+        }
+        Empty =>
+          match ingest_yaml_source(src: subject_content) {
+            YamlIngestRejected { reason: r } => CensusAllowanceRefused {
+              identity: identity,
+              reason: concat(concat(m.subject_path, ": extdeps.languages.yaml.ingest refused the subject, so its entry count cannot be derived: "), r),
+            }
+            IngestedYaml { value: v } => {
+              let n = yaml_entry_count(v: v)
+              if n == 0 {
+                CensusAllowanceRefused {
+                  identity: identity,
+                  reason: concat(m.subject_path, ": the subject parsed to zero entries; a census over nothing has no line to scale by"),
+                }
+              } else {
+                CensusAllowanceDerived {
+                  identity: identity,
+                  subject_path: m.subject_path,
+                  entry_count: n,
+                  budget_steps: corpus_census_allowance_steps(policy: policy, entry_count: n),
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+// THE ENTRY POINT THE HOST EVALUATES, over the declared roster and policy.
+fn corpus_census_eval_step_allowance(identity: String, subject_content: String) -> CorpusCensusAllowance {
+  corpus_census_eval_step_allowance_in(
+    roster: corpus_census_roster,
+    policy: corpus_census_allowance_policy,
+    identity: identity,
+    subject_content: subject_content,
+  )
 }
 
 // THE GROUNDING, AS AN EXECUTING FOLD RATHER THAN AS THE PROSE ABOVE. Its consumer is

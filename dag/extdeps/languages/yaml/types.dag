@@ -60,6 +60,20 @@ fn yaml_value_kind_token(k: YamlValueKind) -> String {
 
 data empty_yaml_values: List<YamlValue> = []
 
+// THE SIZE OF A DOCUMENT IN THE UNIT ITS OWN STRUCTURE NAMES: every mapping entry and every sequence
+// element, at every depth. The root is not an entry -- it is the document -- and a scalar has none.
+// Its consumer is v2.workflow.required_floor corpus_census_eval_step_allowance, which scales a
+// whole-file census claim's eval-step budget by this count taken over the SAME parse the census
+// reads its subject through, so the budget grows with the subject and never with a number copied
+// from the tree.
+fn yaml_entry_count(v: YamlValue) -> Int {
+  match v {
+    YamlSequence { elements: es } => fold(es, init: 0, f: fn(acc, e) { acc + 1 + yaml_entry_count(v: e) })
+    YamlMapping { entries: kvs } => fold(kvs, init: 0, f: fn(acc, kv) { acc + 1 + yaml_entry_count(v: kv.value) })
+    _ => 0
+  }
+}
+
 fn yaml_string(s: String) -> YamlValue {
   YamlString { value: s }
 }

@@ -405,45 +405,38 @@ fn realized_job_reads(path: String, job_id: String, job: YamlValue) -> List<Real
   }
 }
 
-// THE CENSUS CLAIM'S HEADROOM IS SMALL AND ITS SUBJECT GROWS OUTSIDE THIS LANE. The per-file claims
-// read committed workflow files, and those files are projections of authorities other lanes edit:
-// main grew .github/workflows/fleet-converge.yml from 912 to 973 lines while this reader was being
-// written, which spent most of the margin that existed before. The claim over that file now sits a
-// low single-digit percentage under v2.workflow.required_floor's new-witness budget, so the next
-// growth of its authority reds a REQUIRED claim.
+// THE CENSUS OVER THE LARGEST WORKFLOW IS JUDGED AGAINST A LINE, NOT A POINT. Its subject,
+// .github/workflows/fleet-converge.yml, is a projection of authorities other lanes edit, and it grows
+// without anyone touching this module; a flat eval-step budget therefore turns this REQUIRED claim red
+// on someone else's change. Since 2026-09-23 the claim is rostered in v2.workflow.required_floor
+// corpus_census_roster and judged against corpus_census_eval_step_allowance: a declared base plus a
+// declared per-entry rate times the entry count the census's own parse reads from that file. That
+// model was admitted by a ruling (stern-carp-604, 2026-09-23, an operator DEFAULT-approval on a
+// fifteen-minute timeout, not a deliberated ruling). It is not a raised budget: the rate is the line,
+// and a claim whose steps per entry exceed it is red exactly as before, so growth cannot hide a
+// cost-shape regression.
 //
-// THE MARGIN IS THIN AND THE SUBJECT IS NOT THIS LANE'S (operator ruling, stern-carp-604,
-// 2026-09-20). The claim over the largest workflow sits close under the budget, and that workflow is
-// a projection of authorities other lanes edit, so the next growth of one reds a REQUIRED claim
-// without anyone touching this module. THE REMEDY IS THE STRUCTURAL READER CUT, AND IT IS ITS OWN
-// CHANGE: each sequence item re-enters the whole block setup -- the indent string, the containment
-// scans, the marking and merge analysis -- for what is often a two-line compact mapping, and
-// removing that is a restructuring of extdeps.languages.yaml.ingest with its own review.
+// WHAT WAS CUT BEFORE THAT MODEL WAS ADMITTED, AND WHY BOTH ARE NEEDED. The work removed is real: the
+// reader's accepted-path block walk decides each shape once from the text that decides it, and the
+// census traversal reads each use site once with no copied accumulator. Measured that way the claim
+// reached a floor over the flat budget, where what remains is per distinct line and per block and
+// near its node floor; the allowance exists because the subject outgrows any constant, not because
+// the cutting stopped early.
 //
-// THE REMEDY IS NAMED HERE SO IT IS NOT RE-DECIDED UNDER PRESSURE: cut the reader's per-entry cost.
-// WHICH per-entry path to cut IS NOT STATED HERE, because it is a measurement and this row is not
-// where a measurement lives (DESIGN section 6). MEASURE IT BEFORE CUTTING, with the instrument this
-// row already names above: add one claim over a document of ONE repeated shape -- a one-line
-// `key: value` entry, a two-line step mapping under a sequence, a literal block -- read eval_steps
-// from its [witness] line, and the difference between two such readings says which path a corpus of
-// that shape spends in. That is minutes of work and it is not ceremony: the first two cuts made
-// against an unmeasured guess about which path carried the cost returned almost nothing, and only a
-// per-shape reading redirected them.
+// HOW THE NEXT CUT IS CHOSEN, if the rate is ever approached: by measurement, not by reading (DESIGN
+// section 6). Add a claim over a document of ONE repeated shape with DISTINCT content per
+// repetition -- identical repetitions are memoized by the evaluator and read as nearly free, which
+// makes a naive repeated-shape probe say nothing -- read eval_steps from its [witness] line at two
+// sizes, and the slope names the path that shape spends in. No standing probe is committed: this is a
+// method, not an instrument (review 69135).
 //
-// NO STANDING PROBE IS COMMITTED FOR THIS, deliberately. One was, and it was wrong twice over: it
-// sat in dag/test/probe/, whose modules must NOT resolve (each is a designed refusal consumed as
-// source text by gunbc.compile_diagnostic_census), and it carried no `test` markers, so the tool
-// named to run it reported nothing at all while exiting 0. A measurement worth re-deriving is worth
-// an entry point; this one is re-derived in minutes from the claim vocabulary that already exists,
-// so it is a method, not an instrument (review 69135).
-// A RAISED BUDGET, A SECOND READER BESIDE THE MODELED ONE,
-// AND A DECLARED COST DROP ARE NOT REMEDIES: the first moves the line rather than the work, and the
-// other two are the scaffold this change deleted and the debt row DESIGN section 4b(3) keeps for
-// capability losses, not for a claim whose cost is ordinary work nobody cut yet.
+// A RAISED BUDGET, A SECOND READER BESIDE THE MODELED ONE, AND A DECLARED COST DROP ARE STILL NOT
+// REMEDIES: the first moves the line rather than the work -- and the per-entry allowance is not one,
+// because its rate is a declared policy constant with its own reason, never a number fitted to this
+// claim -- and the other two are the scaffold this change deleted and the debt row DESIGN section
+// 4b(3) keeps for capability losses.
 //
-// The numbers are not transcribed here (DESIGN section 6: name the instrument): they are re-derived by
-// claim_batch over test.claim.action_use_admission_witness's per-file claims, judged against
-// v2.workflow.required_floor claim_eval_step_budget_for_identity.
+// The numbers are not transcribed here (DESIGN section 6: name the instrument).
 type RealizedCensusCostStanding {
   subject: NonEmptyStr
   instrument: NonEmptyStr
@@ -453,10 +446,10 @@ type RealizedCensusCostStanding {
 
 data realized_census_cost_standing: RealizedCensusCostStanding = RealizedCensusCostStanding {
   subject: "fleet-converge.yml" as NonEmptyStr,
-  instrument: "claim_batch --entry dag/test/claim/action_use_admission_witness_test.dag --functions census_fleet_converge_uses_are_modeled_and_executed_exactly, against v2.workflow.required_floor claim_eval_step_budget_for_identity" as NonEmptyStr,
+  instrument: "claim_batch --entry dag/test/claim/action_use_admission_witness_test.dag --functions census_fleet_converge_uses_are_modeled_and_executed_exactly, against v2.workflow.required_floor corpus_census_eval_step_allowance (the claim is rostered in corpus_census_roster; the floor run prints its derived budget on a [floor-corpus-census] line)" as NonEmptyStr,
   remedy: "cut real work, never the population: the per-entry cost of extdeps.languages.yaml.ingest's accepted-path walk, and the census traversal's own cost shape (realized_jobs_reading, realized_distinct_uses), each chosen by measurement rather than by reading -- a claim over a document of one repeated shape with DISTINCT content per repetition (identical repetitions are memoized and read as nearly free), eval_steps from its [witness] line, and the path that shape spends in" as NonEmptyStr,
   refused_remedies: [
-    "raising the claim's eval-step budget" as NonEmptyStr,
+    "raising the claim's eval-step budget, including its per-entry rate: v2.workflow.required_floor corpus_census_allowance_policy is floor policy with its own reason, admitted by the 2026-09-23 ruling, and is never refitted to this claim" as NonEmptyStr,
     "a second, cheaper reader beside extdeps.languages.yaml.ingest" as NonEmptyStr,
     "a declared cost drop or debt row for the claim" as NonEmptyStr,
     "dropping a workflow file from the census, or splitting one file's parse across claims" as NonEmptyStr,
