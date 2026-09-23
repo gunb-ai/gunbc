@@ -56,15 +56,21 @@ test fn sol_crlf_sections_complete_with_exit_zero() -> Bool {
   }
 }
 
-// THE VERDICT: boot-media and edac-before hold, and the only cause left is nproc's JUDGED value --
+// THE VERDICT: boot-media and edac-before hold, and the only REFUSING cause is nproc's JUDGED value --
 // "80" read exactly (no CR), against the census row's 160 (gunbc.machine_intake_mtcollins1_memory_census_observation
 // mtcollins1_nproc). That mismatch is the unit's own reading, not framing: the same capture's lscpu
 // reports CPU(s) 80 on one socket. At main this refuses with the three "exited 0" causes instead.
+// The trimmed capture never opens workload or edac-after, so the open refusal names both as
+// unobserved rather than dropping them (mtcollins1_boot_run open_unobserved_causes).
 test fn sol_crlf_capture_refuses_only_on_the_nproc_reading() -> Bool {
   let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
   let subject = mtcollins1_boot_subject_for(medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
   match mtcollins1_boot_terminal_verdict(capture: sol_crlf_capture(), subject: subject, medium: medium) {
-    TerminalRefused { causes: cs } => map(cs, c => mtcollins1_boot_terminal_cause_text(cause: c)) == ["nproc observed 80, qualification expects 160"]
+    TerminalRefused { causes: cs } => map(cs, c => mtcollins1_boot_terminal_cause_text(cause: c)) == [
+      "nproc observed 80, qualification expects 160",
+      "workload not yet observed when the open envelope refused; unqualified",
+      "edac-after not yet observed when the open envelope refused; unqualified",
+    ]
     _ => false
   }
 }

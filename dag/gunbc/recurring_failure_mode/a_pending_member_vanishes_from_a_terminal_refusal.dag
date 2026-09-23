@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.a_pending_member_vanishes_from_a_terminal_refusal
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_pending_member_vanishes_from_a_terminal_refusal: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_pending_member_vanishes_from_a_terminal_refusal" as NonEmptyStr,
+
+  receipts: [
+    "**a fold over N obligations collects refusing causes and keeps only a Bool for the pending ones, so once any obligation refuses and the verdict becomes TERMINAL, every obligation still pending is simply absent** -- the report reads as complete and names one cause where the run owed several.",
+
+    "SPECIMEN, mtcollins1_boot run 35808203121 (main at b8e0cc4eb). The verdict was 'host qualification REFUSED (workload write rc=1)' only, on a unit that booted 80 CPUs against an expected 160. The envelope never closed -- the workload filled /dev/shm and the BMC closed SOL -- so the verdict came from `gunbc.machine_intake_mtcollins1_boot_run` `terminal_over_open`, whose `TerminalFold` carries `pending: Bool` beside `causes`; a non-empty causes list returned `TerminalRefused { causes }` and the flag was dropped. nproc and boot-media were pending because ECMA-48 NUL fill preceded their '80' and '----EXIT' lines (no line-start reader recognised them), and edac-after had never run. The brief that filed this assumed a CLOSED envelope; `closed_qualification` already refused a pending section there as unterminated, so the vanishing route was the open fold, not the section parser.",
+
+    "WHY IT IS QUIET. A terminal refusal stops the poller and aborts the run, so no later observation ever re-reads the pending members; the one surviving cause is true, so nothing looks wrong; and on the next boot the dropped members are exactly the ones nobody knows to look at.",
+
+    "REPAIR. At the fold that turns the verdict terminal: `open_unobserved_causes` appends `TerminalSectionUnobservedAtRefusal { name }` for every qualification still pending, typed apart from the causes that refused but never absent. Independently, the NUL fill is removed once at the framing ingress (`gunbc.machine_intake_host_capture_envelope` `host_capture_framed_lines`, citing `extdeps.render.ansi` `ansi_null_fill`), so nproc now reads its 80 and refuses on the mismatch. The witness `test.claim.machine_intake.host_capture_sol_nul_fill_witness_test` carries both arms, and each mutation turns a different claim red.",
+
+    "RECOGNITION RULE. Any accumulator whose refusing arm is a list and whose unresolved arm is a Bool, feeding a verdict that can become terminal while members are unresolved. Ask: when this verdict is terminal, is every member named -- held, refused, or unobserved?",
+
+    "RUNG FOUND AT: SILENT WRONGNESS. RUNG NOW: MECHANICALLY PREVENTABLE for this verdict (the witness above). ATTAINABLE CEILING: STRUCTURALLY IMPOSSIBLE -- a terminal verdict whose carrier is a total map from the qualification roster to a per-member outcome has no constructor that omits a member. NEXT-RUNG TRIGGER: a roster-indexed verdict carrier in std (one outcome per declared member, derived from the roster), sufficient for every terminal verdict over a member roster to be unable to omit a member, not only this one.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "open_unobserved_causes", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.machine_intake.host_capture_sol_nul_fill_witness_test", decl_name: "open_refusal_names_a_pending_nproc", field: WholeDeclaration },
+  ],
+}
