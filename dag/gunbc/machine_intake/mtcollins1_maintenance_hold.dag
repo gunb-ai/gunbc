@@ -16,6 +16,8 @@ import gunbc.durable_exclusive_hold_file_store {
   file_hold_acquire, file_hold_release_assess, file_hold_release_commit, observe_file_hold,
 }
 import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.machine_intake_mtcollins1_standing_ruling { StandingRulingConfirmation }
+import std.decl_ref { decl_ref }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_mtcollins1 }
 
 // ── THE INTERLOCK THE PER-RUN APPROVAL WAS PROVIDING WITHOUT SAYING SO ────────────────────────
@@ -108,7 +110,12 @@ fn unit_hold_refusal(outcome: FileHoldAcquireOutcome) -> NonEmptyStr? {
 
 // THE ONE MINT. The live acquire and the proof are one boundary: the proof exists only when the
 // compare-and-set this call performed committed a hold for this owner.
-fn unit_hold_acquire(root: NonEmptyStr, key: NonEmptyStr, owner: DurableHoldOwnerRef) -> UnitHoldAcquisition {
+fn unit_hold_acquire(ruling: StandingRulingConfirmation, root: NonEmptyStr, key: NonEmptyStr, owner: DurableHoldOwnerRef) -> UnitHoldAcquisition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_boot_acquire_unit_hold"),
+    decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+  ]
+{
   let outcome = file_hold_acquire(root: root, slot_key: key, requested_owner: owner)
   match outcome {
     FileHoldAcquired { slot_key: _, owner: o, generation: g } =>
@@ -125,8 +132,12 @@ fn unit_hold_proof_key(proof: UnitHoldProof) -> NonEmptyStr {
   proof.key
 }
 
-fn mtcollins1_boot_acquire_unit_hold(run_id: NonEmptyStr) -> UnitHoldAcquisition {
-  unit_hold_acquire(root: unit_hold_store_root, key: mtcollins1_unit_hold_key, owner: boot_run_owner(run_id: run_id))
+fn mtcollins1_boot_acquire_unit_hold(ruling: StandingRulingConfirmation, run_id: NonEmptyStr) -> UnitHoldAcquisition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
+  ]
+{
+  unit_hold_acquire(ruling: ruling, root: unit_hold_store_root, key: mtcollins1_unit_hold_key, owner: boot_run_owner(run_id: run_id))
 }
 
 // THE RELEASE CONSUMES THE PROOF AND KEEPS THE STEP'S OWN OUTCOME, saying when the hold was left: a

@@ -274,6 +274,9 @@ fn mtcollins1_sol_acquire_under_unit_hold(
   capture_path: String,
 ) -> ProcessExit
   uses net: std.resources.Network
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+  ]
 {
   match mtcollins1_bmc_username {
     Absent =>
@@ -698,6 +701,9 @@ fn mtcollins1_boot_await_capture_terminal(
 
 fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_path: String) -> HeldLeaseObservedState
   uses net: std.resources.Network
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+  ]
 {
   match mtcollins1_bmc_username {
     Absent => LeaseInaccessible
@@ -721,6 +727,9 @@ fn mtcollins1_boot_actuate(
   sol_capture_path: String,
 ) -> ProcessExit
   uses net: std.resources.Network
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
+  ]
 {
   match mtcollins1_sol_acquire_under_unit_hold(proof: proof, password_file: password_file as NonEmptyStr, pid_path: sol_pid_path, capture_path: sol_capture_path) {
     ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
@@ -782,7 +791,7 @@ fn mtcollins1_boot_under_live_unit_hold(
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet_on_srv1"),
   ]
 {
-  match mtcollins1_boot_acquire_unit_hold(run_id: run_id) {
+  match mtcollins1_boot_acquire_unit_hold(ruling: ruling, run_id: run_id) {
     UnitHoldRefused { reason: r } => exit_failure(reason: concat("mtcollins1 boot: ", r as String))
     UnitHeld { proof: p } =>
       unit_hold_release(

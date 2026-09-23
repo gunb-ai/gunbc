@@ -3,31 +3,47 @@ module test.claim.machine_intake.mtcollins1_standing_ruling_witness_test
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
 import v2.std.optional { Present, Absent }
+import std.content_hash { Sha256Digest, Sha256Family, content_hash_family }
+import std.effect_grant { NamespacePosition, ServiceOpTree, Write }
+import std.scoped_authorization { AuthorizationRequest, AuthorizationScope, AuthorizedAction }
 import gunbc.auth.approval_request_client { ApprovalPollStanding, PollApproved, PollDenied, PollNotFiled, PollStillPending }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.machine_intake_mtcollins1_standing_ruling {
-  standing_ruling_request, standing_ruling_refusal, mtcollins1_boot_standing_ruling_request, mtcollins1_boot_standing_ruling_text,
+  StandingRuling, StandingRulingSubject, mtcollins1_boot_standing_ruling, mtcollins1_boot_standing_ruling_text,
+  StandingRulingDigested, StandingRulingDigestRefused, standing_ruling_digest,
+  standing_ruling_request_for, standing_ruling_escalation_id, standing_ruling_refusal,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE STANDING RULING IS CONFIRMED ONLY BY THE OPERATOR'S STORED APPROVAL OF ITS EXACT WORDS (review
-// 70369; decision A). Poll standings are supplied here to the PURE refusal fold, which returns a
-// reason or nothing and never a confirmation; the confirmation's only mint is the live read, and the
-// skip-the-read route is refused at compile time by test.probe.unit_hold_proof_forged_probe.
+// THE STANDING RULING IS CONFIRMED ONLY BY THE OPERATOR'S STORED APPROVAL OF THIS EXACT RULING (review
+// 70369, decision A; side-chat review 5287596716). Poll standings are supplied to the PURE refusal
+// fold, which returns a reason or nothing and never a confirmation; the confirmation's only mint is
+// the live read, and the skip-the-read route is refused at compile time by
+// test.probe.unit_hold_proof_forged_probe. Each claim digests the rulings it compares once.
 
-fn approved_for(text: NonEmptyStr) -> ApprovalPollStanding {
-  PollApproved {
-    revision: request_revision_of(request: standing_ruling_request(text: text)),
-    decided_by: "operator" as NonEmptyStr,
-    decided_at: "2026-09-23T12:00:00Z",
-    execute_by: "2026-09-23T12:30:00Z",
+fn digest_of(r: StandingRuling) -> Sha256Digest? {
+  match standing_ruling_digest(r: r) {
+    StandingRulingDigested { digest: d } => Present { value: d }
+    StandingRulingDigestRefused { reason: _ } => none
   }
 }
 
-fn refused_with(r: NonEmptyStr?, pattern: String) -> Bool {
+fn with_text(r: StandingRuling, text: NonEmptyStr) -> StandingRuling {
+  StandingRuling { text: text, effect_subject: r.effect_subject, scope: r.scope, interlock: r.interlock }
+}
+
+fn approved(q: AuthorizationRequest<StandingRulingSubject>) -> ApprovalPollStanding {
+  PollApproved { revision: request_revision_of(request: q), decided_by: "operator" as NonEmptyStr, decided_at: "2026-09-23T12:00:00Z", execute_by: "2026-09-23T12:30:00Z" }
+}
+
+fn denied(q: AuthorizationRequest<StandingRulingSubject>) -> ApprovalPollStanding {
+  PollDenied { revision: request_revision_of(request: q), decided_by: "operator" as NonEmptyStr, decided_at: "2026-09-23T12:00:00Z", reason: "not yet" as NonEmptyStr }
+}
+
+fn refused(r: NonEmptyStr?) -> Bool {
   match r {
-    Present { value: why } => string_contains(s: why as String, pattern: pattern) && string_contains(s: why as String, pattern: "controller untouched")
+    Present { value: why } => string_contains(s: why as String, pattern: "not confirmed") && string_contains(s: why as String, pattern: "controller untouched")
     Absent => false
   }
 }
@@ -39,36 +55,93 @@ fn confirmed(r: NonEmptyStr?) -> Bool {
   }
 }
 
-// THE CONTROL: an approval over these words confirms (and stays confirmed after its execute-by, since
-// a standing ruling is a recorded decision, not a one-shot grant).
-test fn an_approval_of_the_exact_words_confirms_the_ruling() -> Bool {
-  confirmed(r: standing_ruling_refusal(poll: approved_for(text: mtcollins1_boot_standing_ruling_text), request: mtcollins1_boot_standing_ruling_request()))
+// THE CONTROL, AND THE FAMILY: the ruling digests under SHA-256 (never the structural FNV family), the
+// request's intent is that digest, the escalation id is versioned by it, and an approval of this
+// request confirms it.
+test fn the_ruling_is_sha256_bound_and_an_approval_of_it_confirms() -> Bool {
+  match digest_of(r: mtcollins1_boot_standing_ruling) {
+    Absent => false
+    Present { value: d } => {
+      let q = standing_ruling_request_for(r: mtcollins1_boot_standing_ruling, d: d)
+      content_hash_family(hash: q.intent_hash) == Sha256Family
+        && (q.escalation_id as String) == concat("mtcollins1-standing-ruling-", d.hex as String)
+        && (q.purpose as String) == (mtcollins1_boot_standing_ruling_text as String)
+        && confirmed(r: standing_ruling_refusal(poll: approved(q: q), request: q))
+    }
+  }
 }
 
-// RED: never filed -> every boot refuses.
-test fn an_absent_decision_refuses() -> Bool {
-  refused_with(r: standing_ruling_refusal(poll: PollNotFiled, request: mtcollins1_boot_standing_ruling_request()), pattern: "not confirmed")
-    && refused_with(r: standing_ruling_refusal(poll: PollStillPending, request: mtcollins1_boot_standing_ruling_request()), pattern: "not confirmed")
+// RED: never filed, or filed and still pending -> every boot refuses.
+test fn an_absent_or_pending_decision_refuses() -> Bool {
+  match digest_of(r: mtcollins1_boot_standing_ruling) {
+    Absent => false
+    Present { value: d } => {
+      let q = standing_ruling_request_for(r: mtcollins1_boot_standing_ruling, d: d)
+      refused(r: standing_ruling_refusal(poll: PollNotFiled, request: q))
+        && refused(r: standing_ruling_refusal(poll: PollStillPending, request: q))
+    }
+  }
 }
 
-// RED: the operator said no.
-test fn a_denied_decision_refuses() -> Bool {
-  let req = mtcollins1_boot_standing_ruling_request()
-  refused_with(r: standing_ruling_refusal(poll: PollDenied { revision: request_revision_of(request: req), decided_by: "operator" as NonEmptyStr, decided_at: "2026-09-23T12:00:00Z", reason: "not yet" as NonEmptyStr }, request: req), pattern: "not confirmed")
+// RED: approval for A, source at B (a one-character edit). A's approval cannot confirm B, and B has a
+// different digest and so a different escalation id -- a fresh slot it can be filed into.
+test fn an_approval_of_ruling_a_cannot_confirm_ruling_b_and_b_is_fileable_fresh() -> Bool {
+  let b = with_text(r: mtcollins1_boot_standing_ruling, text: concat(mtcollins1_boot_standing_ruling_text as String, "!") as NonEmptyStr)
+  match digest_of(r: mtcollins1_boot_standing_ruling) {
+    Absent => false
+    Present { value: da } =>
+      match digest_of(r: b) {
+        Absent => false
+        Present { value: db } => {
+          let qa = standing_ruling_request_for(r: mtcollins1_boot_standing_ruling, d: da)
+          let qb = standing_ruling_request_for(r: b, d: db)
+          refused(r: standing_ruling_refusal(poll: approved(q: qa), request: qb))
+            && (da.hex as String) != (db.hex as String)
+            && (qa.escalation_id as String) != (qb.escalation_id as String)
+        }
+      }
+  }
 }
 
-// RED: the operator approved these words; the ruling is then edited by ONE character. The stored
-// approval is for the old hash, so the edited ruling refuses until the operator taps again.
-test fn a_one_character_edit_voids_the_stored_approval() -> Bool {
-  let edited = concat(mtcollins1_boot_standing_ruling_text as String, "!") as NonEmptyStr
-  refused_with(r: standing_ruling_refusal(poll: approved_for(text: mtcollins1_boot_standing_ruling_text), request: standing_ruling_request(text: edited)), pattern: "not confirmed")
-    && request_revision_of(request: standing_ruling_request(text: edited)) != request_revision_of(request: mtcollins1_boot_standing_ruling_request())
+// RED: A denied, then revised to B. The denial does not bind B, and B has its own escalation id, so
+// the revision is independently fileable rather than blocked behind A's decided slot.
+test fn a_denied_ruling_leaves_its_revision_independently_fileable() -> Bool {
+  let b = with_text(r: mtcollins1_boot_standing_ruling, text: concat(mtcollins1_boot_standing_ruling_text as String, " Revised.") as NonEmptyStr)
+  match digest_of(r: mtcollins1_boot_standing_ruling) {
+    Absent => false
+    Present { value: da } =>
+      match digest_of(r: b) {
+        Absent => false
+        Present { value: db } => {
+          let qa = standing_ruling_request_for(r: mtcollins1_boot_standing_ruling, d: da)
+          let qb = standing_ruling_request_for(r: b, d: db)
+          refused(r: standing_ruling_refusal(poll: denied(q: qa), request: qa))
+            && (qa.escalation_id as String) != (qb.escalation_id as String)
+            && confirmed(r: standing_ruling_refusal(poll: approved(q: qb), request: qb))
+        }
+      }
+  }
 }
 
-// THE OPERATOR APPROVES THE WORDS THE SELECTOR CONSUMES: the request's purpose (what the ntfy request
-// shows) is the ruling text itself.
-test fn the_request_shows_and_hashes_the_ruling_text() -> Bool {
-  (mtcollins1_boot_standing_ruling_request().purpose as String) == (mtcollins1_boot_standing_ruling_text as String)
-    && string_contains(s: mtcollins1_boot_standing_ruling_text as String, pattern: "cannot be undone")
-    && string_contains(s: mtcollins1_boot_standing_ruling_text as String, pattern: "maintenance hold")
+// THE PREIMAGE COVERS THE SCOPE AND THE INTERLOCK, not just the words: changing either is a different
+// ruling.
+test fn a_scope_or_interlock_change_changes_the_digest() -> Bool {
+  let r = mtcollins1_boot_standing_ruling
+  let other_scope = StandingRuling {
+    text: r.text, effect_subject: r.effect_subject, interlock: r.interlock,
+    scope: AuthorizationScope { verb: Write, resource: NamespacePosition { tree: ServiceOpTree { service: "gunbc-standing-ruling" }, path: ["mtcollins1", "boot"] }, action: "gunbc.standing-ruling.other" as AuthorizedAction },
+  }
+  let other_interlock = StandingRuling { text: r.text, effect_subject: r.effect_subject, scope: r.scope, interlock: "gunbc.some_other_hold::key" as NonEmptyStr }
+  match digest_of(r: r) {
+    Absent => false
+    Present { value: d } =>
+      match digest_of(r: other_scope) {
+        Absent => false
+        Present { value: ds } =>
+          match digest_of(r: other_interlock) {
+            Absent => false
+            Present { value: di } => (d.hex as String) != (ds.hex as String) && (d.hex as String) != (di.hex as String)
+          }
+      }
+  }
 }

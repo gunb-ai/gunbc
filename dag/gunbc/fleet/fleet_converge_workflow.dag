@@ -637,7 +637,7 @@ data fleet_converge_host_reset_return_step_if: String = fleet_converge_mode_step
 // cost on every dispatch of every other mode.
 fn fleet_converge_host_reset_return_job() -> Job {
   Job {
-    id: "host-reset-return",
+    id: fleet_converge_job_id(kind: FcHostResetReturnJob),
     name: none,
     runner: fleet_converge_reset_observer_runner_spec(),
     environment: none,
@@ -648,7 +648,7 @@ fn fleet_converge_host_reset_return_job() -> Job {
       ),
       [fleet_converge_host_reset_return_step(), fleet_converge_host_reset_return_receipt_upload_step()]
     ),
-    needs: ["build"],
+    needs: fleet_converge_job_needs(kind: FcHostResetReturnJob),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_host_reset_return_step_if },
@@ -827,12 +827,12 @@ fn fleet_converge_reset_observer_dispatch_admission_step() -> Step {
 
 fn fleet_converge_build_job() -> Job {
   Job {
-    id: "build",
+    id: fleet_converge_job_id(kind: FcBuildJob),
     name: none,
     runner: gunbc_ci_runner_spec(),
     environment: none,
     steps: fleet_converge_build_job_steps(),
-    needs: [],
+    needs: fleet_converge_job_needs(kind: FcBuildJob),
     env: none,
     outputs: none,
     if_condition: none,
@@ -2327,7 +2327,7 @@ fn fleet_converge_dashboard_deploy_step() -> Step {
 // half-applied cutover.
 fn fleet_converge_dashboard_deploy_job() -> Job {
   Job {
-    id: "dashboard-deploy",
+    id: fleet_converge_job_id(kind: FcDashboardDeployJob),
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
     environment: none,
@@ -2360,7 +2360,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
         ),
       ]
     ),
-    needs: ["build"],
+    needs: fleet_converge_job_needs(kind: FcDashboardDeployJob),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_dashboard_deploy_step_if },
@@ -2422,7 +2422,7 @@ fn fleet_converge_approval_broker_dark_install_step() -> Step {
 // -- a queued install must never interrupt the one holding the host mutation window.
 fn fleet_converge_approval_broker_dark_install_job() -> Job {
   Job {
-    id: "approval-broker-dark-install",
+    id: fleet_converge_job_id(kind: FcApprovalBrokerDarkInstallJob),
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
     environment: none,
@@ -2434,7 +2434,7 @@ fn fleet_converge_approval_broker_dark_install_job() -> Job {
         fleet_converge_approval_broker_dark_install_step(),
       ]
     ),
-    needs: ["build"],
+    needs: fleet_converge_job_needs(kind: FcApprovalBrokerDarkInstallJob),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_approval_broker_dark_install_step_if },
@@ -2718,7 +2718,7 @@ data fleet_converge_mtcollins1_boot_concurrency_group: String = join([fleet_host
 
 fn fleet_converge_mtcollins1_boot_job() -> Job {
   Job {
-    id: "mtcollins1-boot",
+    id: fleet_converge_job_id(kind: FcMtCollins1BootJob),
     name: none,
     runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", mtcollins1_unit_hold_store_host as String] },
     environment: Present { value: mtcollins1_boot_environment as String },
@@ -2738,7 +2738,7 @@ fn fleet_converge_mtcollins1_boot_job() -> Job {
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
-    needs: ["build"],
+    needs: fleet_converge_job_needs(kind: FcMtCollins1BootJob),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_mtcollins1_boot_job_if },
@@ -2779,7 +2779,7 @@ fn fleet_converge_credential_prelude_steps() -> List<Step> {
 
 fn fleet_converge_job() -> Job {
   Job {
-    id: "fleet-converge",
+    id: fleet_converge_job_id(kind: FcConvergeJob),
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
     environment: none,
@@ -2852,7 +2852,7 @@ fn fleet_converge_job() -> Job {
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
-    needs: ["build"],
+    needs: fleet_converge_job_needs(kind: FcConvergeJob),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_shared_job_if },
@@ -2906,7 +2906,7 @@ fn fleet_converge_rlm_receipt_step() -> Step {
 
 fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
   Job {
-    id: "rlm-launch-deployment-receipt",
+    id: fleet_converge_job_id(kind: FcRlmLaunchDeploymentReceiptJob),
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
     environment: none,
@@ -2953,7 +2953,7 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
-    needs: ["build"],
+    needs: fleet_converge_job_needs(kind: FcRlmLaunchDeploymentReceiptJob),
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_rlm_receipt_step_if },
@@ -3088,6 +3088,61 @@ data fleet_converge_dispatch_inputs: List<DispatchInput> = [
   },
 ]
 
+// THE JOB ROSTER IS ONE AUTHORITY: which jobs exist, in what order, and each job's id and needs. The
+// workflow's jobs list maps over it, and every job literal draws its id and needs from it, so a claim
+// about the roster reads this -- a few strings -- rather than constructing every job's steps
+// (DESIGN §3: a witness discriminates at one interface). The rendered workflow is still checked whole
+// by gunbc.generated_artifact's drift gate, which is the inhabitance claim for the real path.
+type FleetConvergeJobKind
+  = FcBuildJob
+  | FcConvergeJob
+  | FcMtCollins1BootJob
+  | FcHostResetReturnJob
+  | FcDashboardDeployJob
+  | FcApprovalBrokerDarkInstallJob
+  | FcRlmLaunchDeploymentReceiptJob
+
+data fleet_converge_job_kinds: List<FleetConvergeJobKind> = [
+  FcBuildJob, FcConvergeJob, FcMtCollins1BootJob, FcHostResetReturnJob, FcDashboardDeployJob,
+  FcApprovalBrokerDarkInstallJob, FcRlmLaunchDeploymentReceiptJob,
+]
+
+fn fleet_converge_job_id(kind: FleetConvergeJobKind) -> String {
+  match kind {
+    FcBuildJob => "build"
+    FcConvergeJob => "fleet-converge"
+    FcMtCollins1BootJob => "mtcollins1-boot"
+    FcHostResetReturnJob => "host-reset-return"
+    FcDashboardDeployJob => "dashboard-deploy"
+    FcApprovalBrokerDarkInstallJob => "approval-broker-dark-install"
+    FcRlmLaunchDeploymentReceiptJob => "rlm-launch-deployment-receipt"
+  }
+}
+
+fn fleet_converge_job_needs(kind: FleetConvergeJobKind) -> List<String> {
+  match kind {
+    FcBuildJob => []
+    FcConvergeJob => [fleet_converge_job_id(kind: FcBuildJob)]
+    FcMtCollins1BootJob => [fleet_converge_job_id(kind: FcBuildJob)]
+    FcHostResetReturnJob => [fleet_converge_job_id(kind: FcBuildJob)]
+    FcDashboardDeployJob => [fleet_converge_job_id(kind: FcBuildJob)]
+    FcApprovalBrokerDarkInstallJob => [fleet_converge_job_id(kind: FcBuildJob)]
+    FcRlmLaunchDeploymentReceiptJob => [fleet_converge_job_id(kind: FcBuildJob)]
+  }
+}
+
+fn fleet_converge_job_of(kind: FleetConvergeJobKind) -> Job {
+  match kind {
+    FcBuildJob => fleet_converge_build_job()
+    FcConvergeJob => fleet_converge_job()
+    FcMtCollins1BootJob => fleet_converge_mtcollins1_boot_job()
+    FcHostResetReturnJob => fleet_converge_host_reset_return_job()
+    FcDashboardDeployJob => fleet_converge_dashboard_deploy_job()
+    FcApprovalBrokerDarkInstallJob => fleet_converge_approval_broker_dark_install_job()
+    FcRlmLaunchDeploymentReceiptJob => fleet_converge_rlm_launch_deployment_receipt_job()
+  }
+}
+
 data fleet_converge_workflow: Workflow = Workflow {
   name: "fleet-converge",
   run_name: Present { value: "fleet-converge ${{ inputs.mode }} ${{ inputs.host }} nonce=${{ inputs.transaction_nonce }}" },
@@ -3099,7 +3154,7 @@ data fleet_converge_workflow: Workflow = Workflow {
   concurrency: none,
   env: none,
   permissions: none,
-  jobs: [fleet_converge_build_job(), fleet_converge_job(), fleet_converge_mtcollins1_boot_job(), fleet_converge_host_reset_return_job(), fleet_converge_dashboard_deploy_job(), fleet_converge_approval_broker_dark_install_job(), fleet_converge_rlm_launch_deployment_receipt_job()],
+  jobs: map(fleet_converge_job_kinds, k => fleet_converge_job_of(kind: k)),
 }
 
 type FleetConvergeYamlGenerationOutcome

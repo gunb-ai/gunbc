@@ -23,6 +23,7 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
   fleet_converge_workflow, expected_fleet_converge_yml,
+  fleet_converge_job_kinds, fleet_converge_job_id, fleet_converge_job_needs, FcBuildJob,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
   fleet_converge_credential_prelude_steps, fleet_converge_mutation_concurrency_group_expression, fleet_converge_spark_v41_checkpoint_materialize_step,
   fleet_converge_dispatch_inputs,
@@ -168,13 +169,14 @@ fn mode_input_has_choice_options(v: YamlValue) -> Bool {
 // and surfaced only from a local claim_batch run -- see
 // gunbc.recurring_failure_mode.witness_that_fails_to_compile_is_absent_rather_than_red (fourth
 // specimen: the falsifier is the compiler wall, not another file).
+//
+// THE TRIGGER IS BUILT FROM THE DISPATCH INPUTS THE WORKFLOW DECLARES, not read out of the built
+// workflow, whose construction is every job's steps (DESIGN §3). fleet_converge_workflow's `on` is
+// exactly this one WorkflowDispatch over fleet_converge_dispatch_inputs, and the emitted file is
+// checked whole by the generated-artifact drift gate.
 test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
-  match fleet_converge_workflow.on.first() {
-    Present { value: trigger } =>
-      let entry = workflow_trigger_entry(trigger: trigger)
-      entry.key == "workflow_dispatch" && mode_input_has_choice_options(v: entry.value)
-    Absent => false
-  }
+  let entry = workflow_trigger_entry(trigger: WorkflowDispatch { inputs: fleet_converge_dispatch_inputs })
+  entry.key == "workflow_dispatch" && mode_input_has_choice_options(v: entry.value)
 }
 
 // THE COUNT IS KEPT BESIDE THE NAMES DELIBERATELY, and it moved from 2 to 3 because a
@@ -190,21 +192,15 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // subject, so a stale binary there would drive a real machine from a model nobody reviewed.
 // `mtcollins1-boot` power-cycles its subject too, as its own job since it federates as its own
 // identity (gunbc.auth.mtcollins1_boot_federation).
+// READ FROM THE JOB ROSTER, NOT FROM THE BUILT WORKFLOW: gunbc.fleet_converge_workflow
+// fleet_converge_job_kinds is what the workflow's jobs list maps over and what each job's id and
+// needs are drawn from, so this reads the fact the claim is about without constructing every job's
+// steps (DESIGN §3; the whole-workflow construction measured 519k eval steps on the floor).
 test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
-  fleet_converge_workflow.jobs.length() == 7
-    && fleet_converge_workflow.jobs[0].id == "build"
-    && fleet_converge_workflow.jobs[1].id == "fleet-converge"
-    && fleet_converge_workflow.jobs[1].needs == ["build"]
-    && fleet_converge_workflow.jobs[2].id == "mtcollins1-boot"
-    && fleet_converge_workflow.jobs[2].needs == ["build"]
-    && fleet_converge_workflow.jobs[3].id == "host-reset-return"
-    && fleet_converge_workflow.jobs[3].needs == ["build"]
-    && fleet_converge_workflow.jobs[4].id == "dashboard-deploy"
-    && fleet_converge_workflow.jobs[4].needs == ["build"]
-    && fleet_converge_workflow.jobs[5].id == "approval-broker-dark-install"
-    && fleet_converge_workflow.jobs[5].needs == ["build"]
-    && fleet_converge_workflow.jobs[6].id == "rlm-launch-deployment-receipt"
-    && fleet_converge_workflow.jobs[6].needs == ["build"]
+  let ids = map(fleet_converge_job_kinds, k => fleet_converge_job_id(kind: k))
+  ids == ["build", "fleet-converge", "mtcollins1-boot", "host-reset-return", "dashboard-deploy", "approval-broker-dark-install", "rlm-launch-deployment-receipt"]
+    && fleet_converge_job_needs(kind: FcBuildJob) == []
+    && all(filter(fleet_converge_job_kinds, k => fleet_converge_job_id(kind: k) != "build"), k => fleet_converge_job_needs(kind: k) == ["build"])
 }
 
 fn expected_fleet_converge_yml_content() -> String {

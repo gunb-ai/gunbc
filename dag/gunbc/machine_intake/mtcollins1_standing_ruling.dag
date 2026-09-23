@@ -3,7 +3,10 @@ module gunbc.machine_intake_mtcollins1_standing_ruling
 import std.types { Int, NonEmptyStr, String }
 import std.measure { Second, second }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.content_hash { content_hash_of_value }
+import std.content_hash { Sha256Digest, sha256_hex_digest, as_content_hash_cryptographic }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.decl_ref { decl_ref }
+import extdeps.crypto.sha2 { sha256_hex }
 import std.effect_grant { NamespacePosition, ServiceOpTree, Write }
 import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction, AuthorizationRequest }
 import v2.std.optional { Present, Absent }
@@ -35,12 +38,17 @@ import gunbc.auth.approval_decision_store { request_revision_of }
 // need my approval - would you mind getting rid of that step or making WIF just trust this
 // workflow", relayed by eager-owl-205.
 
-data mtcollins1_boot_standing_ruling_text: NonEmptyStr = "STANDING AUTHORIZATION (recurring destructive effect). I authorize the fleet-converge mtcollins1_boot mode, dispatched from gunb-ai/gunbc main and running as its dedicated workload identity, to attach the census image to Mt. Collins unit 1 over BMC virtual media, set a one-shot CD boot, power-cycle the unit and capture its SOL console, on every dispatch, without a per-run approval. A power cycle destroys the unit's RAM and running session and cannot be undone. This consent holds only while each run first takes the unit's maintenance hold (gunbc.machine_intake_mtcollins1_maintenance_hold) and refuses when it is held. Provenance: operator chat ruling 2026-09-23." as NonEmptyStr
+data mtcollins1_boot_standing_ruling_text: NonEmptyStr = "STANDING AUTHORIZATION (recurring destructive effect). I authorize the fleet-converge mtcollins1_boot mode, dispatched from gunb-ai/gunbc main and running as its dedicated workload identity, to attach the census image to Mt. Collins unit 1 over BMC virtual media, set a one-shot CD boot, power-cycle the unit and capture its SOL console, on every dispatch, and the fleet-converge host_reset_return mode to power-cycle the same unit, without a per-run approval. A power cycle destroys the unit's RAM and running session and cannot be undone. This consent holds only while each run first takes the unit's maintenance hold (gunbc.machine_intake_mtcollins1_maintenance_hold) and refuses when it is held. Provenance: operator chat ruling 2026-09-23." as NonEmptyStr
 
-data mtcollins1_boot_standing_ruling_escalation_id: NonEmptyStr = "mtcollins1-boot-standing-ruling" as NonEmptyStr
-
-type StandingRulingSubject {
-  ruling_text: NonEmptyStr
+// THE RULING IS FOUR FACTS, AND THE DIGEST IS OVER ALL OF THEM (side-chat review 5287596716). The
+// words the operator reads, the effect they authorize, the scope action the request carries and the
+// interlock the consent is conditional on. Changing any one is a different ruling: a different
+// digest, hence a different intent and a different escalation id.
+type StandingRuling {
+  text: NonEmptyStr
+  effect_subject: NonEmptyStr
+  scope: AuthorizationScope
+  interlock: NonEmptyStr
 }
 
 data mtcollins1_boot_standing_ruling_scope: AuthorizationScope = AuthorizationScope {
@@ -49,22 +57,79 @@ data mtcollins1_boot_standing_ruling_scope: AuthorizationScope = AuthorizationSc
   action: "gunbc.standing-ruling.mtcollins1-boot" as AuthorizedAction,
 }
 
-// THE REQUEST IS A FUNCTION OF THE TEXT, so a witness can hash a one-character edit and show the
-// stored decision refused for it.
-fn standing_ruling_request(text: NonEmptyStr) -> AuthorizationRequest<StandingRulingSubject> {
+data mtcollins1_boot_standing_ruling: StandingRuling = StandingRuling {
+  text: mtcollins1_boot_standing_ruling_text,
+  effect_subject: "mtcollins1: BMC virtual-media attach, one-shot boot-device set, power cycle and SOL capture, by the fleet-converge mtcollins1_boot mode and by host_reset_return" as NonEmptyStr,
+  scope: mtcollins1_boot_standing_ruling_scope,
+  interlock: "gunbc.machine_intake_mtcollins1_maintenance_hold::mtcollins1_unit_hold_key" as NonEmptyStr,
+}
+
+// ONE CANONICAL PREIMAGE, labelled field by field so no two rulings serialize alike.
+fn standing_ruling_preimage(r: StandingRuling) -> String {
+  join([
+    "gunbc-standing-ruling/1",
+    "\ntext=", r.text as String,
+    "\neffect=", r.effect_subject as String,
+    "\nscope-action=", r.scope.action as String,
+    "\ninterlock=", r.interlock as String,
+    "\n",
+  ], "")
+}
+
+// SHA-256 (FIPS 180-4, extdeps.crypto.sha2), not the structural FNV family: this digest is a
+// security binding between a stored consent and the ruling a run enforces.
+fn standing_ruling_digest_hex(r: StandingRuling) -> String {
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: standing_ruling_preimage(r: r))))
+}
+
+type StandingRulingDigest
+  = StandingRulingDigested { digest: Sha256Digest }
+  | StandingRulingDigestRefused { reason: NonEmptyStr }
+
+fn standing_ruling_digest(r: StandingRuling) -> StandingRulingDigest {
+  match sha256_hex_digest(hex: standing_ruling_digest_hex(r: r)) {
+    Present { value: d } => StandingRulingDigested { digest: d }
+    Absent => StandingRulingDigestRefused { reason: "the standing ruling's SHA-256 did not admit as a lowercase 64-hex digest" as NonEmptyStr }
+  }
+}
+
+// THE ESCALATION ID IS VERSIONED BY THE DIGEST. The approval store admits one request per id (the
+// slot is created once), so a fixed id would make a revised or once-denied ruling unfileable and
+// every boot refuse forever. Each ruling revision has its own id; the old request and its decision
+// stay immutable under theirs.
+fn standing_ruling_escalation_id(d: Sha256Digest) -> NonEmptyStr {
+  concat("mtcollins1-standing-ruling-", d.hex as String) as NonEmptyStr
+}
+
+type StandingRulingSubject {
+  ruling_text: NonEmptyStr
+  effect_subject: NonEmptyStr
+  interlock: NonEmptyStr
+}
+
+// THE REQUEST IS A FUNCTION OF THE RULING AND ITS DIGEST: the digest is the intent hash and the id
+// suffix, and the ruling's words are the purpose the operator reads.
+fn standing_ruling_request_for(r: StandingRuling, d: Sha256Digest) -> AuthorizationRequest<StandingRulingSubject> {
   AuthorizationRequest {
-    escalation_id: mtcollins1_boot_standing_ruling_escalation_id,
-    scopes: [mtcollins1_boot_standing_ruling_scope],
-    subject: StandingRulingSubject { ruling_text: text },
-    purpose: text,
-    attempt: "mtcollins1-boot-standing-ruling" as AttemptIdentity,
-    intent_hash: content_hash_of_value(value: text),
+    escalation_id: standing_ruling_escalation_id(d: d),
+    scopes: [r.scope],
+    subject: StandingRulingSubject { ruling_text: r.text, effect_subject: r.effect_subject, interlock: r.interlock },
+    purpose: r.text,
+    attempt: "mtcollins1-standing-ruling" as AttemptIdentity,
+    intent_hash: as_content_hash_cryptographic(digest: d),
     destructive: true,
   }
 }
 
-fn mtcollins1_boot_standing_ruling_request() -> AuthorizationRequest<StandingRulingSubject> {
-  standing_ruling_request(text: mtcollins1_boot_standing_ruling_text)
+type StandingRulingRequest
+  = StandingRulingRequested { request: AuthorizationRequest<StandingRulingSubject> }
+  | StandingRulingUnrequestable { reason: NonEmptyStr }
+
+fn standing_ruling_request(r: StandingRuling) -> StandingRulingRequest {
+  match standing_ruling_digest(r: r) {
+    StandingRulingDigestRefused { reason: why } => StandingRulingUnrequestable { reason: why }
+    StandingRulingDigested { digest: d } => StandingRulingRequested { request: standing_ruling_request_for(r: r, d: d) }
+  }
 }
 
 // ── THE CONFIRMATION: MINTED ONLY BY THE LIVE READ ─────────────────────────────────────────────
@@ -90,8 +155,16 @@ fn standing_ruling_refusal(poll: ApprovalPollStanding, request: AuthorizationReq
 }
 
 // THE LIVE READ, on srv1 (the approvals store is loopback there). One GET of the stored decision.
-fn mtcollins1_boot_standing_ruling_read() -> StandingRulingStanding {
-  let request = mtcollins1_boot_standing_ruling_request()
+fn mtcollins1_boot_standing_ruling_read() -> StandingRulingStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet_on_srv1"),
+    decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+  ]
+{
+  let request = match standing_ruling_request(r: mtcollins1_boot_standing_ruling) {
+    StandingRulingUnrequestable { reason: why } => return StandingRulingRefused { reason: why }
+    StandingRulingRequested { request: q } => q
+  }
   match approval_instant_now() {
     Absent => StandingRulingRefused { reason: "mtcollins1 boot: clock unreadable; cannot read the standing ruling's decision; controller untouched" as NonEmptyStr }
     Present { value: now } =>
@@ -117,7 +190,10 @@ data standing_ruling_poll_cadence: Second = second(count: 15)
 data standing_ruling_poll_ticks: Int = 120
 
 fn mtcollins1_boot_standing_ruling_file() -> ProcessExit {
-  let request = mtcollins1_boot_standing_ruling_request()
+  let request = match standing_ruling_request(r: mtcollins1_boot_standing_ruling) {
+    StandingRulingUnrequestable { reason: why } => return exit_failure(reason: why as String)
+    StandingRulingRequested { request: q } => q
+  }
   match approval_instant_now() {
     Absent => exit_failure(reason: "standing ruling filing: clock unreadable")
     Present { value: issued } => {

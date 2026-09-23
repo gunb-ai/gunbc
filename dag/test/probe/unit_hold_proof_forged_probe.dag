@@ -15,7 +15,9 @@ import std.durable_compare_and_set { cas_generation_first }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import gunbc.machine_intake_mtcollins1_maintenance_hold { UnitHoldProof }
 import gunbc.machine_intake_mtcollins1_standing_ruling { StandingRulingConfirmation }
-import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_under_live_unit_hold }
+import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_under_live_unit_hold, mtcollins1_boot_actuate }
+import gunbc.machine_intake_mtcollins1_maintenance_hold { unit_hold_acquire }
+import gunbc.machine_intake_mtcollins1_standing_ruling { mtcollins1_boot_standing_ruling_read }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_drive_handoff, mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
@@ -58,5 +60,20 @@ fn forged_ruling_confirmation() -> StandingRulingConfirmation {
 
 fn boot_without_reading_the_standing_ruling() -> String {
   let _x = mtcollins1_boot_under_live_unit_hold(ruling: forged_ruling_confirmation(), run_id: "forged", subject: mtcollins1_boot_subject(execution_revision: "0000000000000000000000000000000000000000"), password_file: "/tmp/pw", sol_pid_path: "/tmp/pid", sol_capture_path: "/tmp/cap")
+  ""
+}
+
+fn actuate_with_a_proof_but_no_ruling_read() -> String {
+  let _x = mtcollins1_boot_actuate(proof: forged_proof(), subject: mtcollins1_boot_subject(execution_revision: "0000000000000000000000000000000000000000"), password_file: "/tmp/pw", attempt: "forged", sol_pid_path: "/tmp/pid", sol_capture_path: "/tmp/cap")
+  ""
+}
+
+fn acquire_the_unit_hold_from_outside_its_roots() -> String {
+  let _x = unit_hold_acquire(ruling: forged_ruling_confirmation(), root: "/tmp/holds", key: "mtcollins1", owner: "forger" as DurableHoldOwnerRef)
+  ""
+}
+
+fn read_the_ruling_from_outside_its_roots() -> String {
+  let _x = mtcollins1_boot_standing_ruling_read()
   ""
 }
