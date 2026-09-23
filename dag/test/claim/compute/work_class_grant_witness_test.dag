@@ -1,0 +1,439 @@
+module test.claim.compute.work_class_grant_witness_test
+
+import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
+import std.measure { Kibibyte, kibibyte, kibibyte_count, byte_size_count }
+import extdeps.systemd.systemd_run {
+  SystemdRunWaitSummary, systemd_run_wait_summary, systemd_run_user_wait_arguments, systemd_run_transient_wait_unit_argv,
+  SystemdServiceResultReading, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
+  SystemdServiceResult, ServiceResultOomKill, ServiceResultSuccess, ServiceResultExitCode,
+  SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported,
+  SummaryFormatStanding, SummaryFormatGrounded, SummaryFormatUngroundedMajor, SummaryFormatVersionUnreadable,
+  summary_format_standing, MemoryPeakFormatNotGrounded, ServiceResultFormatNotGrounded,
+  summary_format_grounding_remedy,
+  SummaryAbsence, SummaryNoInvocation, SummarySuppressedByQuietLauncher, SummaryCaptureEmpty, SummaryLineAbsent,
+  SystemdFormattedBytes, FormattedBytesExact, FormattedBytesBounded, systemd_formatted_bytes_upper,
+  SystemdSummaryPrintingWait,
+}
+import gunbc.compute.work_request { WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug, WorkSucceeded, WorkFailed, WorkOutcome, WorkRefusedByInfrastructure, UnitMemoryGrantExceeded, UnitEndingUnclassifiable }
+import gunbc.compute.work_class_grant {
+  WorkClass, WorkClassBuild, WorkClassCompile, WorkClassClaims, work_class_of, work_class_wire,
+  WorkClassPeakSample, WorkClassGrantRow, work_class_grant_rows,
+  WorkClassGrant, GrantAtCeiling, GrantSized,
+  WorkClassCeilingReason, ClassUnmeasured, ClassTooFewSamples, ClassRowsAmbiguous, ClassSizedAtOrAboveCeiling, ClassRetryAfterGrantExceeded,
+  work_class_grant, work_class_grant_amount,
+  WorkClassPeakSampleReading, PeakSampleTaken, PeakSampleNotTaken, work_class_peak_sample,
+}
+import gunbc.compute.work_provider_local {
+  ComputeAttempt, AttemptGateRefused, compute_attempt_retries_at_ceiling, compute_summary_is_oom_kill,
+  UnitEnding, EndingOomKill, EndingNotOomKill, EndingUnclassifiable, compute_unit_ending,
+  compute_ceiling_retry_reference, compute_failed_unit_outcome,
+  ComputeListing, GrantExceededCount, GrantExceededCounted, GrantExceededNeverRecorded, GrantExceededUnreadable, grant_exceeded_count_decide,
+}
+
+// ── THE PRODUCER: what systemd-run --wait said about the unit ─────────────────────────────────
+
+// EVERY FIXTURE BELOW NAMES THE INVOCATION IT IS PRETENDING CAME FROM. systemd_run_wait_summary
+// takes a SystemdSummaryPrintingWait, so a claim must say which launcher its stderr came from
+// rather than reading a peak out of a bare String. IT DOES NOT FOLLOW -- AND THIS ANNOTATION USED
+// TO SAY IT DID -- that a claim cannot read a peak no launcher in this corpus could have printed:
+// the record formal ACCEPTS a List<String> carrying --quiet on the evaluation path, so the mint is
+// not the wall. The argv fold is, at rung 2, and a_quiet_launcher_reports_no_peak... below is its
+// regression control. Supplying the launcher here is DESIGN 3's supplied input at one interface;
+// the real builder is exercised by the provider's own route (gunbc.compute.work_provider_local
+// compute_run_unit).
+data fixture_launcher: SystemdSummaryPrintingWait = systemd_run_user_wait_arguments(unit: "gunbc-fixture", properties: [], setenv_bindings: [], command_argv: ["true"])
+
+// THE FIXTURES ALSO NAME THE MANAGER THEY ARE PRETENDING CAME FROM, because the summary format is
+// version-keyed and the reader refuses a major it has not read. Grounded here so the claims below
+// are about PARSING; the refusal itself is claimed separately at the bottom of this module.
+data grounded_standing: SummaryFormatStanding = summary_format_standing(version_line: "systemd 255 (255.4-1ubuntu8)")
+
+// The unit's own stderr precedes the launcher's summary under --pipe, so a command that prints a
+// "Memory peak:" line of its own must not be read as the unit's peak. The summary text is the v255
+// run.c ordering: result, main process status, runtime, CPU, memory peak.
+data summary_oom_after_spoof: String = "compiling...\nMemory peak: 1K\nFinished with result: success\nerror: killed\nFinished with result: oom-kill\nMain processes terminated with: code=killed/status=KILL\nService runtime: 10min 31.402s\nCPU time consumed: 1h 2min 3.100s\nMemory peak: 9.7G\nMemory swap peak: 0B\n"
+
+// 9.7G: whole 9, tenth 7, factor 1024^3 -- the sound upper bound is (97 + 2) * 1024^3 / 10 rounded
+// up, because the printed tenth is truncated and computed through a second truncation.
+data nine_point_seven_gib_upper_bytes: Int = 10630044058
+data nine_point_seven_gib_lower_bytes: Int = 10415295692
+
+test fn the_units_peak_and_result_are_the_summarys_last_lines_not_the_commands() -> Bool {
+  let s = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: summary_oom_after_spoof)
+  compute_summary_is_oom_kill(summary: s)
+    && match s.memory_peak {
+      MemoryPeakRead { peak: b } =>
+        match b {
+          FormattedBytesBounded { printed, lower, upper } =>
+            printed == "9.7G"
+              && byte_size_count(b: lower) == nine_point_seven_gib_lower_bytes
+              && byte_size_count(b: upper) == nine_point_seven_gib_upper_bytes
+          FormattedBytesExact { bytes: _ } => false
+        }
+      MemoryPeakUnparseable { text: _ } => false
+      MemoryPeakNotReported { absence: _ } => false
+      MemoryPeakFormatNotGrounded { standing: _ } => false
+    }
+}
+
+// A MISSING PEAK IS NEVER A ZERO PEAK. A manager below v254 omits the line; so does a launcher run
+// with --quiet. Either must read NotReported, because a recorded zero would size a class at its
+// headroom alone. An exact small figure keeps its exact reading.
+test fn an_absent_peak_is_not_reported_and_a_byte_figure_is_exact() -> Bool {
+  let absent = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: exit-code\nMain processes terminated with: code=exited/status=1\n")
+  let small = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: success\nMemory peak: 512B\n")
+  let garbled = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: frobnicated\nMemory peak: lots\n")
+  !compute_summary_is_oom_kill(summary: absent)
+    && match small.memory_peak {
+      MemoryPeakRead { peak: b } => match b { FormattedBytesExact { bytes } => byte_size_count(b: bytes) == 512  _ => false }
+      _ => false
+    }
+    && match garbled.result { ServiceResultUnrecognized { wire } => wire == "frobnicated"  _ => false }
+    && match garbled.memory_peak { MemoryPeakUnparseable { text } => text == "lots"  _ => false }
+}
+
+// ── THE RESOLUTION: rows to a grant ──────────────────────────────────────────────────────────
+
+data gib: Int = 1048576
+
+fn ceiling() -> Kibibyte { kibibyte(count: 26 * gib) }
+
+fn sample(peak_gib: Int) -> WorkClassPeakSample {
+  WorkClassPeakSample {
+    work_identity: "0000000000000001" as NonEmptyStr,
+    operation: "compile:src/v2/compiler/compile.dag" as NonEmptyStr,
+    host: "fixture-host" as NonEmptyStr,
+    observed_at: 1790000000,
+    peak_upper: kibibyte(count: peak_gib * gib),
+  }
+}
+
+fn row(class: WorkClass, samples: List<WorkClassPeakSample>) -> WorkClassGrantRow {
+  WorkClassGrantRow { class: class, samples: samples, headroom: kibibyte(count: 2 * gib), headroom_authority: "fixture policy budget" as NonEmptyStr }
+}
+
+// EVERY ARM, from supplied rows. The sized arm is peak (the LARGEST sample, not the last or first)
+// plus headroom; one sample is not a peak; a sized figure at or above the ceiling is the ceiling;
+// two rows for one class decide nothing; a class with no row is the ceiling.
+test fn a_grant_is_the_largest_sample_plus_headroom_and_every_shortfall_is_the_ceiling() -> Bool {
+  let sized = work_class_grant(class: WorkClassCompile, rows: [row(class: WorkClassCompile, samples: [sample(peak_gib: 4), sample(peak_gib: 9), sample(peak_gib: 6)])], ceiling: ceiling())
+  let one = work_class_grant(class: WorkClassCompile, rows: [row(class: WorkClassCompile, samples: [sample(peak_gib: 4)])], ceiling: ceiling())
+  let over = work_class_grant(class: WorkClassCompile, rows: [row(class: WorkClassCompile, samples: [sample(peak_gib: 24), sample(peak_gib: 20)])], ceiling: ceiling())
+  let twice = work_class_grant(class: WorkClassCompile, rows: [row(class: WorkClassCompile, samples: [sample(peak_gib: 4), sample(peak_gib: 5)]), row(class: WorkClassCompile, samples: [sample(peak_gib: 4), sample(peak_gib: 5)])], ceiling: ceiling())
+  let other = work_class_grant(class: WorkClassClaims, rows: [row(class: WorkClassCompile, samples: [sample(peak_gib: 4), sample(peak_gib: 5)])], ceiling: ceiling())
+  match sized { GrantSized { class: _, amount, samples, peak_upper: _, headroom: _, headroom_authority: _ } => kibibyte_count(k: amount) == 11 * gib && samples == 3  _ => false }
+    && match one { GrantAtCeiling { class: _, amount, reason } => kibibyte_count(k: amount) == 26 * gib && match reason { ClassTooFewSamples { samples } => samples == 1  _ => false }  _ => false }
+    && match over { GrantAtCeiling { class: _, amount, reason } => kibibyte_count(k: amount) == 26 * gib && match reason { ClassSizedAtOrAboveCeiling { samples: _, sized: s } => kibibyte_count(k: s) == 26 * gib  _ => false }  _ => false }
+    && match twice { GrantAtCeiling { class: _, amount: _, reason } => match reason { ClassRowsAmbiguous { rows } => rows == 2  _ => false }  _ => false }
+    && match other { GrantAtCeiling { class: _, amount: _, reason } => match reason { ClassUnmeasured => true  _ => false }  _ => false }
+}
+
+// THE INHABITANCE CLAIM OVER THE REAL ROWS, and it is expected to FLIP (DESIGN 4b(4)). This change
+// ships no rows, so every class the provider can be asked for resolves to the ceiling and no
+// reserved amount moves. When the first row lands from provider-route samples this claim reds for
+// that class and becomes the regression control that production rows reach the sized arm.
+test fn with_the_shipped_rows_every_class_reserves_the_ceiling() -> Bool {
+  let ops = [
+    BuildGunbcBinaries { profile: CargoRelease, bins: ["gunbc" as NonEmptyStr] },
+    BuildGunbcBinaries { profile: CargoDebug, bins: ["gunbc" as NonEmptyStr] },
+    CompileEntry { entry: "src/v2/compiler/compile.dag" },
+    RunClaims { entry: "dag/test/claim/x_test.dag", functions: "f" as NonEmptyStr, hermetic: true },
+  ]
+  all(ops, op => match work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: ceiling()) {
+    GrantAtCeiling { class: _, amount, reason } => kibibyte_count(k: amount) == 26 * gib && match reason { ClassUnmeasured => true  _ => false }
+    GrantSized { class: _, amount: _, samples: _, peak_upper: _, headroom: _, headroom_authority: _ } => false
+  })
+}
+
+// ── WHICH ATTEMPT IS RETRIED ─────────────────────────────────────────────────────────────────
+
+// Only an oom-kill under a grant BELOW the ceiling retries; the same kill at the ceiling ends as the
+// typed refusal, and a grant below the ceiling that ended any other way does not retry.
+test fn only_an_oom_kill_below_the_ceiling_retries_at_the_ceiling() -> Bool {
+  let below = GrantSized { class: WorkClassCompile, amount: kibibyte(count: 11 * gib), samples: 3, peak_upper: kibibyte(count: 9 * gib), headroom: kibibyte(count: 2 * gib), headroom_authority: "fixture" as NonEmptyStr }
+  let at = GrantAtCeiling { class: WorkClassCompile, amount: ceiling(), reason: ClassUnmeasured }
+  let oom = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: summary_oom_after_spoof), gate: AttemptGateRefused { detail: "fixture: no attempt slot" } }
+  let clean = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: exit-code\nMemory peak: 3.1G\n"), gate: AttemptGateRefused { detail: "fixture: no attempt slot" } }
+  compute_attempt_retries_at_ceiling(grant: below, attempt: oom)
+    && !compute_attempt_retries_at_ceiling(grant: at, attempt: oom)
+    && !compute_attempt_retries_at_ceiling(grant: below, attempt: clean)
+}
+
+// ── THE TYPED SAMPLE ─────────────────────────────────────────────────────────────────────────
+
+// The summary becomes a WorkClassPeakSample carrying the UPPER bound in KiB, rounded up -- not the
+// printed figure, and not prose. 9.7G's byte upper bound 10630044058 is 10380902.4 KiB, so 10380903.
+// No peak line, or no clock, takes no sample.
+test fn a_summary_becomes_a_typed_sample_at_its_upper_bound_or_no_sample() -> Bool {
+  let op = CompileEntry { entry: "src/v2/compiler/compile.dag" }
+  let s = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: summary_oom_after_spoof)
+  let taken = work_class_peak_sample(summary: s, work_identity: "abc", op: op, host: "srv1", observed_at: Present { value: 1790000000 })
+  let no_peak = work_class_peak_sample(summary: systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: success\n"), work_identity: "abc", op: op, host: "srv1", observed_at: Present { value: 1790000000 })
+  let no_clock = work_class_peak_sample(summary: s, work_identity: "abc", op: op, host: "srv1", observed_at: none)
+  match taken {
+    PeakSampleTaken { class, sample } =>
+      work_class_wire(c: class) == "compile" && kibibyte_count(k: sample.peak_upper) == 10380903
+        && (sample.operation as String) == "compile:src/v2/compiler/compile.dag" && (sample.host as String) == "srv1"
+    PeakSampleNotTaken { reason: _ } => false
+  }
+    && match no_peak { PeakSampleNotTaken { reason: _ } => true  _ => false }
+    && match no_clock { PeakSampleNotTaken { reason: _ } => true  _ => false }
+}
+
+// ── THE COUNTER ──────────────────────────────────────────────────────────────────────────────
+
+fn listed(entries: String) -> ComputeListing { ComputeListing { listed: true, entries: entries, error: "" } }
+fn unlisted(error: String) -> ComputeListing { ComputeListing { listed: false, entries: "", error: error } }
+
+// Zero is established by the level above, at class grain: a class absent from a listed parent is a
+// counted zero even when another class has exceedances; a class present in the parent but unlistable
+// is unreadable; a root listing without the parent is a host that never recorded; an unlistable root
+// is unreadable. None of the failure arms reads as zero.
+test fn the_exceedance_count_is_zero_only_when_absence_is_positively_read() -> Bool {
+  let counted = grant_exceeded_count_decide(root: listed(entries: "grant-exceeded\nwork"), parent: listed(entries: "claims"), class_dir: listed(entries: "r1\nr2\n"), class: WorkClassClaims)
+  let healthy = grant_exceeded_count_decide(root: listed(entries: "grant-exceeded\nwork"), parent: listed(entries: "claims"), class_dir: unlisted(error: "ENOENT"), class: WorkClassCompile)
+  let broken = grant_exceeded_count_decide(root: listed(entries: "grant-exceeded\nwork"), parent: listed(entries: "compile"), class_dir: unlisted(error: "EACCES"), class: WorkClassCompile)
+  let never = grant_exceeded_count_decide(root: listed(entries: "work\nleases"), parent: unlisted(error: "ENOENT"), class_dir: unlisted(error: "ENOENT"), class: WorkClassCompile)
+  let blind = grant_exceeded_count_decide(root: unlisted(error: "EIO"), parent: unlisted(error: "EIO"), class_dir: unlisted(error: "EIO"), class: WorkClassCompile)
+  match counted { GrantExceededCounted { count } => count == 2  _ => false }
+    && match healthy { GrantExceededCounted { count } => count == 0  _ => false }
+    && match broken { GrantExceededUnreadable { detail } => detail == "EACCES"  _ => false }
+    && match never { GrantExceededNeverRecorded => true  _ => false }
+    && match blind { GrantExceededUnreadable { detail: _ } => true  _ => false }
+}
+
+// ── HOW ELSE THE PEAK GOES UNREPORTED, AND THE GUARD THAT MUST NOT BE ADDED ───────────────────
+//
+// EACH CLAIM ASSERTS ITS OWN CAUSE, NOT THE SHARED OUTCOME (loyal-swift-608, 2026-09-22: assert the
+// mechanism, not the outcome). Written against a bare NotReported these three claims would all have
+// passed on ONE defect -- a parser that answers "nothing" for every input satisfies every absence
+// assertion at once, which is exactly the dead producer this lane is at risk of. SummaryAbsence is
+// what makes them discriminate: empty capture, absent line and suppressed-by-quiet are three
+// different answers now, so a collapse to any single cause reds two of the three.
+//
+// NotReported is reachable by three ABSENCE shapes, not only by a manager below v254 omitting the
+// line, and absence is the one thing this parser can be interrogated about without ever having seen
+// a real summary: these claims are about the ABSENCE of the format rather than its content
+// (loyal-swift-608, 2026-09-22). Empty stderr; a unit that failed and whose stderr carries only its
+// own output; and neither may read as a peak of zero, because a zero would size the class at its
+// headroom alone.
+//
+// THE THIRD CASE IS THE INVERSE, AND IT IS WHY NO TERMINATION GUARD BELONGS HERE. A truncated read
+// would under-report a peak silently -- "Memory peak: 11G" cut to "Memory peak: 1G" parses cleanly
+// as a tenth of the real figure -- so a trailing-newline requirement suggests itself. It is REFUSED,
+// on the authority that already settled this question: gunbc.machine_intake_host_capture_envelope
+// HostCaptureText rules that whether a capture's last line is whole is the CALLER's fact and is
+// never inferred from the bytes, which cannot tell a truncation from a transport that trimmed. This
+// stderr is a COMPLETED TRANSCRIPT -- systemd-run has exited before the provider reads it -- and the
+// seed's shell observation trims, so a termination guard would drop the summary of every real run
+// while still not detecting a mid-line cut. The claim below pins that an unterminated summary READS.
+// 4.0G against the same factor and rounding as the 9.7G rows above: lower 40 * 1024^3 / 10, upper
+// (40 + 2) * 1024^3 / 10 rounded up.
+data four_gib_lower_bytes: Int = 4294967296
+data four_gib_upper_bytes: Int = 4509715661
+
+test fn the_peak_is_unreported_by_absence_and_an_untrimmed_summary_still_reads() -> Bool {
+  let no_peak_line = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: exit-code\nMain processes terminated with: code=exited/status=1\n")
+  let unit_output_only = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "error: linking with `cc` failed\nrustc exited 1\n")
+  let trimmed = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: success\nMemory peak: 4.0G")
+  match no_peak_line.memory_peak { MemoryPeakNotReported { absence } => match absence { SummaryLineAbsent => true  _ => false }  _ => false }
+    && match unit_output_only.memory_peak { MemoryPeakNotReported { absence } => match absence { SummaryLineAbsent => true  _ => false }  _ => false }
+    && match unit_output_only.result { ServiceResultNotReported { absence } => match absence { SummaryLineAbsent => true  _ => false }  _ => false }
+    && match trimmed.result { ServiceResultRead { result: r } => match r { ServiceResultSuccess => true  _ => false }  _ => false }
+    && match trimmed.memory_peak {
+      MemoryPeakRead { peak: b } =>
+        match b {
+          FormattedBytesBounded { printed, lower, upper } =>
+            printed == "4.0G" && byte_size_count(b: lower) == four_gib_lower_bytes && byte_size_count(b: upper) == four_gib_upper_bytes
+          FormattedBytesExact { bytes: _ } => false
+        }
+      _ => false
+    }
+}
+
+
+// ── A LAUNCHER THAT CANNOT PRINT A PEAK REPORTS NOTHING, NOT A PEAK ───────────────────────────
+//
+// THIS IS THE DEMOTED WALL'S REGRESSION CONTROL, AND IT IS HERE BECAUSE THE TYPE WAS NOT ENOUGH.
+// The intent was that SystemdSummaryPrintingWait, minted only by the builder that omits --quiet,
+// makes a quiet launcher unexpressible as the reader's argument. Measured: passing the List<String>
+// from systemd_run_transient_wait_unit_argv (which carries --quiet) as that parameter COMPILED and
+// read 9.7G out of stderr no quiet launcher could have printed. A declared record parameter does not
+// refuse a list on the evaluation path, so the mint is not the wall -- DESIGN 4b(1), reported as
+// rung 2 rather than rung 4.
+//
+// TWO THINGS HOLD NOW AND THIS CLAIM PINS THE SECOND. A wrongly typed argument refuses at the field
+// access with a located TypeError naming the accessor and the call chain -- fail-closed, but not a
+// fact a Bool claim can carry. What a claim CAN carry is the fold: a token whose argv does contain
+// --quiet, constructed here directly because no builder will mint one, reports NotReported rather
+// than the peak sitting in the fixture. Deleting the check in systemd_run_wait_summary reds this.
+data quiet_launcher: SystemdSummaryPrintingWait = SystemdSummaryPrintingWait { argv: systemd_run_transient_wait_unit_argv(unit: "gunbc-quiet", properties: [], command_argv: ["true"]) }
+
+test fn a_quiet_launcher_reports_no_peak_rather_than_the_one_in_the_text() -> Bool {
+  let s = systemd_run_wait_summary(launcher: quiet_launcher, standing: grounded_standing, stderr: summary_oom_after_spoof)
+  match s.memory_peak { MemoryPeakNotReported { absence } => match absence { SummarySuppressedByQuietLauncher => true  _ => false }  _ => false }
+    && match s.result { ServiceResultNotReported { absence } => match absence { SummarySuppressedByQuietLauncher => true  _ => false }  _ => false }
+    && !compute_summary_is_oom_kill(summary: s)
+    && match work_class_peak_sample(summary: s, work_identity: "abc", op: CompileEntry { entry: "e" }, host: "srv1", observed_at: Present { value: 1790000000 }) {
+      PeakSampleNotTaken { reason: _ } => true
+      PeakSampleTaken { class: _, sample: _ } => false
+    }
+}
+
+
+// ── ONE CLAIM PER ABSENCE CAUSE, BECAUSE MIXING THEM MADE TWO CLAIMS INSEPARABLE ──────────────
+//
+// MEASURED, AND IT FALSIFIED WHAT I EXPECTED (loyal-swift-608, 2026-09-22: run the other collapse
+// arm). Typing the absence made three claims stop passing on ONE defect, but it did not make each
+// claim pinned to ONE cause: the two absence claims each asserted BOTH CaptureEmpty and LineAbsent,
+// so collapsing every absence to either cause reds THE SAME TWO CLAIMS. Pairwise discrimination
+// held; per-claim separability did not, and the second is the property worth having -- a red that
+// names which cause collapsed, rather than a red that says some cause did.
+//
+// So each cause is now asserted in exactly one place: LineAbsent above, CaptureEmpty here,
+// SuppressedByQuietLauncher below. A collapse to any one cause now reds exactly the claims for the
+// OTHER causes, which is what makes the red legible.
+test fn an_empty_capture_is_reported_as_capture_empty_not_as_a_missing_line() -> Bool {
+  let empty = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "")
+  match empty.memory_peak { MemoryPeakNotReported { absence } => match absence { SummaryCaptureEmpty => true  _ => false }  _ => false }
+    && match empty.result { ServiceResultNotReported { absence } => match absence { SummaryCaptureEmpty => true  _ => false }  _ => false }
+    && !compute_summary_is_oom_kill(summary: empty)
+}
+
+
+// ── A MANAGER WHOSE FORMAT WAS NEVER READ REFUSES, RATHER THAN BEING PARSED OPTIMISTICALLY ────
+//
+// WHY THIS IS A REFUSAL AND NOT A BEST-EFFORT PARSE. Everything this corpus knows about the summary
+// was read from systemd's source at ONE major, and the load-bearing part is invisible in the output:
+// FORMAT_BYTES passes USE_IEC, so "4.0G" is 1024-based, while format_bytes_full DEFAULTS to
+// 1000-based factors. A major that dropped the flag would print a well-formed line this module reads
+// about 7% high, sizing every grant BELOW the peak that produced it -- silent, unsafe, and not
+// detectable from the line. So an unread major is an unmodeled external fact (DESIGN 4b) and the
+// answer is a typed, located refusal (DESIGN 5).
+//
+// THE THREE STANDINGS ARE ASSERTED SEPARATELY, one cause per claim, because a claim that asserted
+// several of them could not name which collapsed -- the class this lane filed as
+// a_claim_asserting_several_causes_cannot_name_which_one_went.
+// The other end of the grounding relation: only a major this module has read proceeds to the
+// parser. Its base case is the_grounding_recursion_terminates_because_an_unreadable_version_refuses
+// below -- without that, the version read this check depends on could fail open.
+test fn a_grounded_major_is_the_only_one_that_parses() -> Bool {
+  match summary_format_standing(version_line: "systemd 255 (255.4-1ubuntu8)") {
+    SummaryFormatGrounded { major } => major == 255
+    _ => false
+  }
+}
+
+// ITS LAST CONJUNCT ASSERTS THAT THE REFUSAL REACHES THE CONSUMER CARRYING ITS REMEDY, because a
+// remedy nothing carries is prose nobody reads at the moment they hit the wall. That conjunct is
+// keyed to the DECLARATION summary_format_grounding_remedy rather than to a literal: rewording the
+// remedy stays green, because the wording is not the claim, while dropping it from the path a
+// consumer actually reads goes red, because the join is.
+test fn an_unread_major_refuses_instead_of_reading_its_figures() -> Bool {
+  let newer = summary_format_standing(version_line: "systemd 257 (257.1-1)")
+  let s = systemd_run_wait_summary(launcher: fixture_launcher, standing: newer, stderr: summary_oom_after_spoof)
+  match newer { SummaryFormatUngroundedMajor { major } => major == 257  _ => false }
+    && match s.memory_peak { MemoryPeakFormatNotGrounded { standing: _ } => true  _ => false }
+    && match s.result { ServiceResultFormatNotGrounded { standing: _ } => true  _ => false }
+    && !compute_summary_is_oom_kill(summary: s)
+    && match work_class_peak_sample(summary: s, work_identity: "abc", op: CompileEntry { entry: "e" }, host: "srv1", observed_at: Present { value: 1790000000 }) {
+      PeakSampleNotTaken { reason } => reason.contains(summary_format_grounding_remedy)
+      PeakSampleTaken { class: _, sample: _ } => false
+    }
+}
+
+// THIS IS THE BASE CASE OF THE GROUNDING RECURSION, WHICH IS WHY IT IS NOT NAMED FOR AN EDGE CASE
+// (loyal-swift-608, 2026-09-22). Deciding whether the format may be parsed requires READING A
+// VERSION LINE, so "parse the version to decide whether you may parse" is circular unless the
+// version read can ITSELF refuse. That is this claim, and the recursion terminates here and
+// nowhere else. Its counterpart is a_grounded_major_is_the_only_one_that_parses, which is the
+// other end of the same relation: that one says only a read major proceeds, this one says an
+// unread VERSION LINE does not silently become a read major.
+//
+// The earlier name, an_unreadable_version_line_refuses_rather_than_assuming_the_grounded_major,
+// read as edge-case tidying, so ordinary edge-case cleanup would have deleted the base case and
+// left the recursion open. A name that understates what depends on a claim is a decay an
+// annotation cannot fully repair, because the annotation is read AFTER the decision to touch it.
+test fn the_grounding_recursion_terminates_because_an_unreadable_version_refuses() -> Bool {
+  let unknown = summary_format_standing(version_line: "")
+  let s = systemd_run_wait_summary(launcher: fixture_launcher, standing: unknown, stderr: summary_oom_after_spoof)
+  match unknown { SummaryFormatVersionUnreadable { line } => line == ""  _ => false }
+    && match s.memory_peak { MemoryPeakFormatNotGrounded { standing: _ } => true  _ => false }
+    && !compute_summary_is_oom_kill(summary: s)
+}
+
+
+// ── THE ENDING IS DECIDED IN THREE ARMS, AND AN UNKNOWN IS NOT A FAILURE ──────────────────────
+//
+// THESE ASSERT THE OUTCOME THE CONSUMER PRODUCES, NOT THE PREDICATE IT CONSULTS, AND THE DIFFERENCE
+// IS MEASURED. The first draft of these controls asserted compute_unit_ending directly; reverting
+// the CALL SITE to the old Bool left all twenty green, so they established the decision function
+// was right while saying nothing about the decision being MADE. compute_failed_unit_outcome is the
+// fold the effectful body now calls, so a revert inside it reds these.
+//
+// One arm per cause: a claim asserting several could not name which collapsed
+// (a_claim_asserting_several_causes_cannot_name_which_one_went).
+data ending_op: WorkOperation = CompileEntry { entry: "e" }
+
+fn outcome_for(stderr: String, standing: SummaryFormatStanding) -> WorkOutcome {
+  compute_failed_unit_outcome(
+    summary: systemd_run_wait_summary(launcher: fixture_launcher, standing: standing, stderr: stderr),
+    identity: "abc", exit_code: 1, op: ending_op, granted: kibibyte(count: 1024), grant_was_ceiling: false, log_path: "/l",
+  )
+}
+
+fn outcome_is_unclassifiable(o: WorkOutcome) -> Bool {
+  match o {
+    WorkRefusedByInfrastructure { identity: _, cause } =>
+      match cause { UnitEndingUnclassifiable { exit_code, cause: c } => exit_code == 1 && c != ""  _ => false }
+    _ => false
+  }
+}
+
+test fn a_recognized_oom_kill_becomes_a_grant_exceeded_refusal() -> Bool {
+  match outcome_for(stderr: summary_oom_after_spoof, standing: grounded_standing) {
+    WorkRefusedByInfrastructure { identity: _, cause } =>
+      match cause { UnitMemoryGrantExceeded { class: _, granted: _, peak_upper: _, grant_was_ceiling: _ } => true  _ => false }
+    _ => false
+  }
+}
+
+test fn a_recognized_non_oom_result_becomes_a_plain_work_failure() -> Bool {
+  match outcome_for(stderr: "Finished with result: exit-code\nMemory peak: 3.1G\n", standing: grounded_standing) {
+    WorkFailed { identity: _, exit_code, log_path: _ } => exit_code == 1
+    _ => false
+  }
+}
+
+test fn an_unrecognized_result_refuses_rather_than_reporting_a_failure() -> Bool {
+  outcome_is_unclassifiable(o: outcome_for(stderr: "Finished with result: frobnicated\n", standing: grounded_standing))
+}
+
+test fn an_absent_summary_refuses_rather_than_reporting_a_failure() -> Bool {
+  outcome_is_unclassifiable(o: outcome_for(stderr: "error: linking with `cc` failed\n", standing: grounded_standing))
+}
+
+test fn an_ungrounded_manager_refuses_rather_than_reporting_a_failure() -> Bool {
+  outcome_is_unclassifiable(o: outcome_for(stderr: summary_oom_after_spoof, standing: summary_format_standing(version_line: "systemd 257 (257.1-1)")))
+}
+
+
+// ── THE CEILING RETRY RESERVES UNDER A REFERENCE THE RELEASED HOLD CANNOT COLLIDE WITH ────────
+//
+// THE DEFECT THIS PINS IS A CLOCK COLLISION, SO THE CONTROL FREEZES THE CLOCK RATHER THAN RACING
+// IT. compute_reservation_reference is identity + "@" + a SECOND-granularity reading; the retry
+// reserves immediately after releasing the first hold, so a fast oom-kill re-mints the SAME
+// reference and the ledger answers DuplicateReference -- rendered to an operator as a full pool.
+// Supplying one timestamp to both derivations is the discriminating input: under the old re-mint
+// these are equal, and the repair makes them unequal BY CONSTRUCTION rather than by precision.
+data frozen_reference: NonEmptyStr = "abc@1790000000" as NonEmptyStr
+
+test fn the_ceiling_retry_reference_differs_from_the_hold_it_replaces() -> Bool {
+  compute_ceiling_retry_reference(reference: frozen_reference) as String != frozen_reference as String
+}
+
+test fn the_retry_reference_is_derived_from_the_original_not_reminted() -> Bool {
+  let a = compute_ceiling_retry_reference(reference: frozen_reference) as String
+  let b = compute_ceiling_retry_reference(reference: "def@1790000000" as NonEmptyStr) as String
+  a != b && a != (frozen_reference as String)
+}
