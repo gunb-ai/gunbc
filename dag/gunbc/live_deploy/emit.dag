@@ -183,6 +183,8 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_cmdsubst,
   bash_build_word_lit,
   bash_build_word_var,
+  bash_build_command_with_words,
+  bash_build_word_concat_from_nodes,
 }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.std.node { Node }
@@ -2027,44 +2029,101 @@ fn path_ancestors_inclusive(path: String) -> List<String> {
 // failed. A find nested inside `test -z "$(...)"` would lose its status to test's, and a failed
 // observation prints nothing, so it would read as clean (side-chat HOLD on f8beaa6f63). A negated
 // pipeline is no better: -e ignores a command whose status is inverted with `!`. Only after both
-// observations succeed does test decide between violation and clean.
+// observations succeed does test decide between violation and clean. That is the same fail-fast
+// assignment shape systemctl_load_state_assignment_intent uses, built from the same grammar rows, so
+// none of it is shell assembled as a string.
 //
 // The ancestors are checked for being a symlink explicitly (-type l), not only through their
 // permission bits. find's default -P does not follow a starting point, so a symlinked ancestor is
-// seen as a link. The finds run as the deploy principal and need no grant, because every directory
-// they read is root-owned 0755. An entry they cannot read is an observation failure, which stops the
-// stage.
+// seen as a link. The finds run BARE, as the deploy principal: every directory they read is
+// root-owned 0755, and an entry they cannot read is an observation failure, which stops the stage.
 //
-// The owner is a parameter so the emitted text can be EXECUTED against a scratch tree owned by
-// whoever runs the check; production passes root.
-// 🟡 dissolve-on: shell assembled as a string, the same medium-as-string debt
-// approval_broker_tree_digest_expr carries; it dissolves with that one.
-fn helper_snapshot_readback_command_at(ancestors: List<String>, dir: String, owner: String) -> String {
-  let violation = join([" \\( ! -user ", owner, " -o -perm /022 -o -type l \\) -print"], "")
-  join([
-    "_gunbc_helper_ancestors=\"$(", find_program as String, " ", join(ancestors, " "), " -maxdepth 0", violation, ")\"\n",
-    "_gunbc_helper_snapshot=\"$(", find_program as String, " ", dir, violation, ")\"\n",
-    "test -z \"$\{_gunbc_helper_ancestors}$\{_gunbc_helper_snapshot}\"",
-  ], "")
+// The owner is a WORD, so the same statements can be executed against a scratch tree owned by
+// whoever runs the check (test.claim.live_deploy.approval_broker_helper_readback_real_execution
+// passes `$(id -un)`). Production passes the literal root.
+fn helper_snapshot_find_intent(roots: List<String>, top_only: Bool, owner: Node) -> Node {
+  bash_build_command_with_words(words: concat(
+    concat(
+      [bash_build_word_lit(text: find_program as String)],
+      map(roots, r => bash_build_word_lit(text: r)),
+    ),
+    concat(
+      if top_only { [bash_build_word_lit(text: "-maxdepth"), bash_build_word_lit(text: "0")] } else { [] },
+      [
+        bash_build_word_lit(text: "("), bash_build_word_lit(text: "!"), bash_build_word_lit(text: "-user"), owner,
+        bash_build_word_lit(text: "-o"), bash_build_word_lit(text: "-perm"), bash_build_word_lit(text: "/022"),
+        bash_build_word_lit(text: "-o"), bash_build_word_lit(text: "-type"), bash_build_word_lit(text: "l"),
+        bash_build_word_lit(text: ")"), bash_build_word_lit(text: "-print"),
+      ],
+    ),
+  ))
+}
+
+data helper_snapshot_ancestors_var: String = "_gunbc_helper_ancestors"
+data helper_snapshot_entries_var: String = "_gunbc_helper_snapshot"
+
+fn helper_snapshot_readback_intents(ancestors: List<String>, dir: String, owner: Node) -> List<Node> {
+  [
+    bash_build_assign(
+      name: helper_snapshot_ancestors_var,
+      value: bash_build_word_cmdsubst(body: helper_snapshot_find_intent(roots: ancestors, top_only: true, owner: owner)),
+    ),
+    bash_build_assign(
+      name: helper_snapshot_entries_var,
+      value: bash_build_word_cmdsubst(body: helper_snapshot_find_intent(roots: [dir], top_only: false, owner: owner)),
+    ),
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "test"),
+      bash_build_word_lit(text: "-z"),
+      bash_build_word_concat_from_nodes(parts: [
+        bash_build_word_var(name: helper_snapshot_ancestors_var),
+        bash_build_word_var(name: helper_snapshot_entries_var),
+      ]),
+    ]),
+  ]
+}
+
+data helper_snapshot_readback_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ approval-broker helper snapshot readback: the bash grammar refused a statement; this marker is not valid shell, so the stage fails before any grant is written (DESIGN section 5: refuse, never widen)"
+
+fn helper_snapshot_intent_text(intent: Node) -> String {
+  match bash_fold_serialize_node(stmt: intent) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source
+        Some { diagnostics: _ } => helper_snapshot_readback_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => helper_snapshot_readback_emit_refused_poison
+  }
+}
+
+// ONE STATEMENT PER LINE, each serialized by the grammar. A statement the grammar refuses renders as
+// the poison, which fails the stage.
+fn helper_snapshot_readback_command_at(ancestors: List<String>, dir: String, owner: Node) -> String {
+  join(map(helper_snapshot_readback_intents(ancestors: ancestors, dir: dir, owner: owner), n => helper_snapshot_intent_text(intent: n)), "\n")
 }
 
 fn approval_broker_helper_snapshot_readback_command(dir: String) -> String {
   helper_snapshot_readback_command_at(
     ancestors: path_ancestors_inclusive(path: approval_broker_helper_snapshot_base),
     dir: dir,
-    owner: approval_broker_helper_root_principal as String,
+    owner: bash_build_word_lit(text: approval_broker_helper_root_principal as String),
   )
 }
 
 // RETIREMENT: the previous release's snapshot is removed in the same converge, after the rename has
 // taken its grant away. The sweep is confined to the root-owned snapshot base and keeps exactly this
-// release's directory.
+// release's directory. It is one argv, rendered by the same argv authority as every other deploy
+// command. find receives `!`, `{}` and `+` as words; the renderer quotes them and the shell strips
+// the quotes.
 fn approval_broker_helper_snapshot_retire_command(revision: ReleaseRevisionBinding) -> String {
-  join([
-    find_program as String, " ", approval_broker_helper_snapshot_base,
-    " -mindepth 1 -maxdepth 1 ! -name ", release_revision_execstart_text(binding: revision),
-    " -exec ", join(sudo_elevate_argv(command: [fleet_rm_binary_path as String, "-rf", "--"]), " "), " {} +",
-  ], "")
+  shell_command_text_of_argv(argv: concat(
+    [
+      find_program as String, approval_broker_helper_snapshot_base,
+      "-mindepth", "1", "-maxdepth", "1", "!", "-name", release_revision_execstart_text(binding: revision),
+      "-exec",
+    ],
+    concat(sudo_elevate_argv(command: [fleet_rm_binary_path as String, "-rf", "--"]), ["{}", "+"]),
+  ))
 }
 
 fn approval_broker_helper_snapshot_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {

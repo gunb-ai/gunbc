@@ -111,6 +111,7 @@ import gunbc.live_deploy.emit {
   approval_broker_release_dir,
   approval_broker_release_binary_path,
   approval_broker_dark_install_script,
+  approval_broker_helper_sudoers_path,
   apply_approval_broker_unit_write_steps, approval_broker_lifecycle_steps,
   live_deploy_approval_broker_unit_file,
   live_deploy_fabric_storage_unit_file,
@@ -1400,6 +1401,10 @@ test fn the_writer_reverts_only_the_authorized_target_units() -> Bool {
 // already serving. A daemon-reload does not restart running units, so the roadmap keeps its PID and
 // its incarnation -- but only while nothing in this script names its unit.
 //
+// THE HELPER GRANT RIDES THE SAME INSTALL: the last three conjuncts are the one real-route inhabitance claim for
+// gunbc.live_deploy.emit approval_broker_helper_grant_steps (#12124). They read this already-rendered script
+// rather than rendering it a second time.
+//
 // THE RED IS THE EDIT THAT WOULD BREAK THE FREEZE: route the dark install through the ordinary
 // apply member effects, which enable and restart gunbc-roadmap.service, and the first conjunct
 // fails. The positive conjuncts keep the claim from being satisfiable by an empty script.
@@ -1408,6 +1413,9 @@ test fn the_dark_install_never_names_the_roadmap_unit() -> Bool {
   !string_contains(s: script, pattern: deployment_spec_srv1().service.unit_name as String)
     && string_contains(s: script, pattern: gunbc_approval_broker_unit_name as String)
     && string_contains(s: script, pattern: gunbc_approval_broker_slice_unit_name as String)
+    && string_contains(s: script, pattern: approval_broker_helper_sudoers_path as String)
+    && string_contains(s: script, pattern: "/opt/gunbc/approval-broker-helpers/0123456789abcdef0123456789abcdef01234567/dag/gunbc/auth/approval_ntfy_runtime_observe.dag")
+    && string_contains(s: script, pattern: "'/usr/bin/mv' '-T'")
 }
 
 // IT CARRIES THE ADMITTED REVISION. The next cutover stage reads the release identity back off the

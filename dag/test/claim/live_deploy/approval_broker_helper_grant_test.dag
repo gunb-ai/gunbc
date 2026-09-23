@@ -26,7 +26,6 @@ import gunbc.live_deploy.emit {
   HelperGrantAdmitted,
   HelperGrantWordRefused,
   HelperGrantLocusWritableByGrantee,
-  approval_broker_dark_install_script,
   approval_broker_release_revision_argument,
 }
 import gunbc.cli_invoke { NamedArgumentAdmission, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator }
@@ -178,9 +177,9 @@ test fn nothing_the_grant_executes_is_in_the_grantee_owned_release() -> Bool {
 
 test fn the_snapshot_readback_covers_every_ancestor_and_refuses_links() -> Bool {
   path_ancestors_inclusive(path: "/opt/gunbc/approval-broker-helpers") == ["/", "/opt", "/opt/gunbc", "/opt/gunbc/approval-broker-helpers"]
-    && string_contains(s: step_text_at(i: 7), pattern: "_gunbc_helper_ancestors=\"$(find / /opt /opt/gunbc /opt/gunbc/approval-broker-helpers -maxdepth 0 \\( ! -user root -o -perm /022 -o -type l \\) -print)\"\n")
-    && string_contains(s: step_text_at(i: 7), pattern: "_gunbc_helper_snapshot=\"$(find ")
-    && ends_with(s: step_text_at(i: 7), suffix: "test -z \"$\{_gunbc_helper_ancestors}$\{_gunbc_helper_snapshot}\"")
+    && string_contains(s: step_text_at(i: 7), pattern: "_gunbc_helper_ancestors=$('find' '/' '/opt' '/opt/gunbc' '/opt/gunbc/approval-broker-helpers' '-maxdepth' '0' '(' '!' '-user' 'root' '-o' '-perm' '/022' '-o' '-type' 'l' ')' '-print')\n")
+    && string_contains(s: step_text_at(i: 7), pattern: "_gunbc_helper_snapshot=$('find' ")
+    && ends_with(s: step_text_at(i: 7), suffix: "'test' '-z' \"$_gunbc_helper_ancestors\"\"$_gunbc_helper_snapshot\"")
 }
 
 // ── WALL 2: THE DROP-IN'S IDENTITY AND AN ATOMIC REPLACE ──────────────────────────────────
@@ -212,7 +211,7 @@ test fn the_grant_replaces_atomically_and_reads_back_identity_and_bytes() -> Boo
     && ends_with(s: step_text_at(i: 13), suffix: concat(final_path, "'"))
     && string_contains(s: step_text_at(i: 14), pattern: final_path)
     && starts_with(s: step_text_at(i: 15), prefix: "'cmp' '-s'")
-    && string_contains(s: step_text_at(i: 16), pattern: "! -name 0123456789abcdef0123456789abcdef01234567")
+    && string_contains(s: step_text_at(i: 16), pattern: "'!' '-name' '0123456789abcdef0123456789abcdef01234567' '-exec' '/usr/bin/sudo' '-n' '/usr/bin/rm' '-rf' '--' '{}' '+'")
 }
 
 // INTERRUPTION BEFORE THE RENAME LEAVES THE PREVIOUS POLICY: sudoers(5) skips an #includedir file
@@ -231,14 +230,9 @@ test fn only_the_renamed_file_is_ever_included_by_sudo() -> Bool {
     && !string_contains(s: basename(p: approval_broker_helper_sudoers_path as String), pattern: "~")
 }
 
-// THE ONE INHABITANCE CLAIM OF THE REAL ROUTE: the dark install the operator dispatches carries the
-// snapshot and the grant, for the same release its unit runs.
-test fn the_dark_install_installs_this_releases_grant() -> Bool {
-  let script = approval_broker_dark_install_script(spec: deployment_spec_srv1(), revision: rev_a())
-  string_contains(s: script, pattern: approval_broker_helper_sudoers_path as String)
-    && string_contains(s: script, pattern: concat(snapshot_a_dir, "/dag/gunbc/auth/approval_ntfy_runtime_observe.dag"))
-    && string_contains(s: script, pattern: "'/usr/bin/mv' '-T'")
-}
+// THE REAL-ROUTE INHABITANCE CLAIM lives in test.claim.live_deploy.emit
+// the_dark_install_never_names_the_roadmap_unit, which already renders the dark install. Rendering it
+// again here cost 100982 eval steps against the new-witness budget of 72300.
 
 // ── THE RUN-AS GENERALISATION MOVES NO EXISTING GRANT ──────────────────────────────────────
 test fn a_root_operation_still_renders_root_and_plain_sudo() -> Bool {
