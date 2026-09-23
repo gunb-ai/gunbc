@@ -26,6 +26,7 @@ jobs:
           persist-credentials: false
       - name: Assert the runner user's systemd manager is reachable (the memory bound needs it)
         run: |
+          # dissolve-on: native_frontier_preflight_step -- orch-emitted foreign-executor step probing the runner user's systemd manager (systemctl --user show-environment) and refusing with UserManagerUnreachable; the if/echo/exit strings remain until a typed host-manager-reachability probe lands on host_effect_apply (#5828 / shell-to-intent Phase 2), whose refusal arm this step's cause becomes
           if ! 'systemctl' '--user' 'show-environment' > /dev/null; then
             echo "::error title=environment::UserManagerUnreachable -- systemd-run --user cannot bound this job's memory on $(hostname) for $(id -un) (uid $(id -u)). The host needs a lingering user manager (loginctl enable-linger), an operator host change. This is not a frontier verdict."
             exit 1
@@ -98,6 +99,7 @@ jobs:
           'exit' "$GUNBC_FLOOR_EXIT"
       - name: Publish the frontier lines and the proposed roster
         run: |
+          # dissolve-on: native_frontier_publish_step -- orch-emitted foreign-executor step copying the [native-frontier] and [native-frontier-roster] lines the emitted binary already rendered (gunbc.native_frontier_ratchet native_frontier_report_lines, native_frontier_proposal_file_lines) into the job summary and the proposal file; the sed/echo/redirect strings remain until the emitted driver writes those two files itself, which is the capability gunbc.source_root_eval_driver_seed_growth names for its whole rendered main (a .dag driver receiving host effects as values, v2.cli.compile_cli NativeCliDriver). Adding the writes to the rendered main now instead would grow hand-written seed Rust to retire hand-written shell, which the 2026-09-23 seed policy refuses
           sed -n 's/^\[native-frontier-roster\] //p' gunbc-floor-cmd.log > native-frontier-roster-proposal.dag
           { echo '## native frontier'; echo; echo '```';
             sed -n 's/^\[native-frontier\] //p' gunbc-floor-cmd.log;

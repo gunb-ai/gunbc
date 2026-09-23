@@ -33,6 +33,7 @@ import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, floor_a
 import gunbc.repo_self_build { repo_self_build_command }
 import gunbc.gunbc_cli_command { gunbc_test_command }
 import gunbc.heal_workflow { job_permissions_carry_write }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 
 // THE NIGHTLY NATIVE FRONTIER RUN (operator-approved 2026-09-23 as one additional job, on a nightly
 // cadence only). It runs `//gunbc/instruments:v2-native-frontier` once a night on the srv
@@ -123,11 +124,18 @@ fn native_frontier_instrument_command() -> String {
 // operator enables linger there. This step runs before the build, so an unfit host refuses in
 // seconds, naming `UserManagerUnreachable`, instead of hours into the census. There is no
 // unbounded fallback.
+// MARKED ON REQUEST (review 70711): both hand-shell steps in this job carry an on-carrier marker,
+// as their siblings in the prelude do, and each names the capability that ends it.
+data native_frontier_preflight_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: native_frontier_preflight_step -- orch-emitted foreign-executor step probing the runner user's systemd manager (systemctl --user show-environment) and refusing with UserManagerUnreachable; the if/echo/exit strings remain until a typed host-manager-reachability probe lands on host_effect_apply (#5828 / shell-to-intent Phase 2), whose refusal arm this step's cause becomes")
+
+data native_frontier_publish_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: native_frontier_publish_step -- orch-emitted foreign-executor step copying the [native-frontier] and [native-frontier-roster] lines the emitted binary already rendered (gunbc.native_frontier_ratchet native_frontier_report_lines, native_frontier_proposal_file_lines) into the job summary and the proposal file; the sed/echo/redirect strings remain until the emitted driver writes those two files itself, which is the capability gunbc.source_root_eval_driver_seed_growth names for its whole rendered main (a .dag driver receiving host effects as values, v2.cli.compile_cli NativeCliDriver). Adding the writes to the rendered main now instead would grow hand-written seed Rust to retire hand-written shell, which the 2026-09-23 seed policy refuses")
+
 fn native_frontier_preflight_step() -> Step {
   RunStep {
     name: Present { value: "Assert the runner user's systemd manager is reachable (the memory bound needs it)" },
     id: none,
     run: join([
+      concat("# ", dissolution_description(condition: native_frontier_preflight_shell_emit_dissolution_trigger)),
       join(["if ! ", shell_command_render(command: systemctl_user_manager_probe_command()), " > /dev/null; then"], ""),
       "  echo \"::error title=environment::UserManagerUnreachable -- systemd-run --user cannot bound this job's memory on $(hostname) for $(id -un) (uid $(id -u)). The host needs a lingering user manager (loginctl enable-linger), an operator host change. This is not a frontier verdict.\"",
       "  exit 1",
@@ -188,6 +196,7 @@ fn native_frontier_publish_step() -> Step {
     name: Present { value: "Publish the frontier lines and the proposed roster" },
     id: none,
     run: join([
+      concat("# ", dissolution_description(condition: native_frontier_publish_shell_emit_dissolution_trigger)),
       join(["sed -n 's/^\\[native-frontier-roster\\] //p' ", floor_attempt_command_log_filename, " > ", native_frontier_proposal_path], ""),
       "{ echo '## native frontier'; echo; echo '```';",
       join(["  sed -n 's/^\\[native-frontier\\] //p' ", floor_attempt_command_log_filename, ";"], ""),
