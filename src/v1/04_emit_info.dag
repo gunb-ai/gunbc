@@ -71,6 +71,11 @@ type TypeSurfaceOccurrence {
   applied_argument: Bool
 }
 
+// AN APPLIED ARGUMENT'S AUTHORED NAME IS ITSELF A SURFACE OCCURRENCE. child_type_node replaces the
+// argument by its resolution, and a unit variant written as a type argument resolves to its parent
+// coproduct: MachineWidth<PointerWidth> was recorded as WidthResolution and PointerWidth vanished, so
+// the importer never learned PointerWidth stood in type position and imported the enum variant where
+// the provider had minted a marker struct (std.integer, E0573).
 fn collect_type_node_import_surface_occurrences(n: Node, applied_argument: Bool, source_indices: Map<String, NewlineIndex>) -> List<TypeSurfaceOccurrence> {
   let peeled = normalize_access_type_node(n: n)
   let name = authored_name_at(source_indices: source_indices, node: peeled)
@@ -78,7 +83,12 @@ fn collect_type_node_import_surface_occurrences(n: Node, applied_argument: Bool,
   let own = if name != "" && name != "Dynamic" && !is_tv { [TypeSurfaceOccurrence { name: name, applied_argument: applied_argument }] } else { [] }
   let children_are_applied_arguments = name != "" && peeled.connective == NoConnective && peeled.children |> count > 0
   let child_names = peeled.children |> flat_map(ch =>
-    collect_type_node_import_surface_occurrences(n: child_type_node(ch: ch), applied_argument: children_are_applied_arguments, source_indices: source_indices)
+    let authored = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: ch))
+    let resolved = child_type_node(ch: ch)
+    let authored_occurrence = if children_are_applied_arguments && authored != "" && authored != authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: resolved)) {
+      [TypeSurfaceOccurrence { name: authored, applied_argument: true }]
+    } else { [] }
+    concat(authored_occurrence, collect_type_node_import_surface_occurrences(n: resolved, applied_argument: children_are_applied_arguments, source_indices: source_indices))
   )
   let inferred_names = match peeled.inferred {
     Present { value: Resolved { node: rt } } => collect_type_node_import_surface_occurrences(n: rt, applied_argument: applied_argument, source_indices: source_indices)
