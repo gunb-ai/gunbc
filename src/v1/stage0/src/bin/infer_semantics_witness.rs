@@ -355,6 +355,7 @@ fn empty_type_env() -> Rc<TypeEnv> {
 
 fn empty_infer_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
+        enclosing_declared_type_param_names: Rc::new(vec![]),
         type_env: empty_type_env(),
         func_env: Rc::new(ResolvedFuncEnv {
             name: "test".to_string(),

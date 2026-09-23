@@ -122,16 +122,21 @@ import v2.std.compilers.compilation_unit {
   ModuleDag,
   ModuleId,
   ModuleTypeDefinitionRow,
+  MembersResolve,
+  MembersResolveOk,
+  MembersResolveRefused,
   PartitionFoldOk,
   PartitionFoldOutcome,
   PartitionFoldRefused,
+  PartitionInputRejected,
   PartitionR4Refused,
   PartitionR4Valid,
   PartitionR4ValidityVerdict,
-  module_type_definition_rows,
+  ResolvedModuleInterface,
   module_unit_id,
   partition_fold_outcome,
   partition_unit_by_id,
+  resolve_member_interfaces,
   type_definition_row_identity
 }
 import v2.std.logic { Bool }
@@ -148,8 +153,9 @@ import v2.std.node {
 }
 
 // C R3: CompilationUnit.interface renders to the unit .h (declarations only);
-// CompilationUnit.members renders to the unit .c (implementation). partition_fold is the sole
-// producer of interface/deps; this module only spells linkage paths and cross-unit #include lines.
+// CompilationUnit.members renders to the unit .c (implementation). partition_fold_outcome is the
+// sole producer of interface/deps; this module only spells linkage paths and cross-unit #include
+// lines.
 
 // C R4: permissive on module-SCC split across TUs, UnitGraphCycle, and LinkageCycle —
 // mutually-recursive modules may live in different units; each .c #includes peer headers and links
@@ -161,10 +167,10 @@ data c_by_value_type_cycle_detail: String = "incomplete by-value type containmen
 
 data c_by_value_type_ambiguous_identity_detail: String = "ambiguous type identity across modules for by-value R4 lookup"
 
-// C callers requiring receipt-bearing partition results MUST use c_partition_fold_outcome (routes
-// partition_fold_outcome from home). Never treat partition_fold() -> [] as a refusal signal — that
-// compat wrapper collapses PartitionFoldRefused to [] (§5 absorbing-fallback). Returns
-// PartitionFoldOutcome directly — no parallel C-local coproduct.
+// C partition results route through c_partition_fold_outcome (partition_fold_outcome from home),
+// which returns PartitionFoldOutcome directly — no parallel C-local coproduct. The List-returning
+// compat wrapper that collapsed PartitionFoldRefused to [] no longer exists at the home, so there
+// is no non-receipt route left to reach for.
 
 fn c_partition_fold_outcome(
   module_dag: ModuleDag,
@@ -452,15 +458,25 @@ fn c_type_definition_body(row: ModuleTypeDefinitionRow) -> Node {
   row.definition
 }
 
-fn c_all_type_owners(module_dag: ModuleDag) -> List<CTypeOwner> {
-  module_dag.modules
-    |> fold(init: [], f: fn(acc, member_module) {
-      module_type_definition_rows(module_dag: module_dag, module: member_module)
+// The owner roster and the by-value definition lookup both used to re-ask
+// module_dag.type_definitions through the home's module_type_definition_rows, whose Rejected arm
+// answered [] -- a rejected lookup became "this module owns no types", so c_validate_partition_r4
+// answered PartitionR4Valid over a map it had failed to read (DESIGN section 5). Both now read one
+// resolved member list, which the home refuses to produce on a rejected lookup; the R4 refusal
+// carries that cause rather than a C-local restatement of it.
+fn c_resolved_modules(module_dag: ModuleDag) -> MembersResolve {
+  resolve_member_interfaces(module_dag: module_dag, members: module_dag.modules)
+}
+
+fn c_all_type_owners(resolved: List<ResolvedModuleInterface>) -> List<CTypeOwner> {
+  resolved
+    |> fold(init: [], f: fn(acc, member) {
+      member.type_definitions
         |> fold(init: acc, f: fn(inner, row) {
           inner
             |> list_push(
               CTypeOwner {
-                module: member_module,
+                module: member.module,
                 identity: type_definition_row_identity(row: row),
               }
             )
@@ -526,19 +542,33 @@ fn c_type_owner_for_symbol(
 }
 
 fn c_type_definition_for_owner(
-  module_dag: ModuleDag,
+  resolved: List<ResolvedModuleInterface>,
   owner: CTypeOwner
 ) -> Optional<Node> {
   fold_list(
-    xs: module_type_definition_rows(module_dag: module_dag, module: owner.module),
+    xs: resolved,
     empty: Absent,
-    cons: fn(acc, row) {
+    cons: fn(acc, member) {
       match acc {
         Present { value: _ } => acc
         Absent =>
-          match type_definition_row_identity(row: row) == owner.identity {
-            true => Present { value: c_type_definition_body(row: row) }
+          match member.module == owner.module {
             false => Absent
+            true =>
+              fold_list(
+                xs: member.type_definitions,
+                empty: Absent,
+                cons: fn(inner, row) {
+                  match inner {
+                    Present { value: _ } => inner
+                    Absent =>
+                      match type_definition_row_identity(row: row) == owner.identity {
+                        true => Present { value: c_type_definition_body(row: row) }
+                        false => Absent
+                      }
+                  }
+                }
+              )
           }
       }
     }
@@ -546,12 +576,12 @@ fn c_type_definition_for_owner(
 }
 
 fn c_by_value_type_edges(
-  module_dag: ModuleDag,
+  resolved: List<ResolvedModuleInterface>,
   owners: List<CTypeOwner>
 ) -> List<CByValueTypeEdge> {
   owners
     |> fold(init: [], f: fn(acc, owner) {
-      match c_type_definition_for_owner(module_dag: module_dag, owner: owner) {
+      match c_type_definition_for_owner(resolved: resolved, owner: owner) {
         Present { value: defn } =>
           c_type_atoms_by_value_in_node(node: defn)
             |> fold(init: acc, f: fn(inner, sym) {
@@ -578,7 +608,7 @@ fn c_by_value_type_edges(
 }
 
 fn c_by_value_type_identity_resolution_refusal(
-  module_dag: ModuleDag,
+  resolved: List<ResolvedModuleInterface>,
   owners: List<CTypeOwner>
 ) -> Optional<String> {
   owners
@@ -586,7 +616,7 @@ fn c_by_value_type_identity_resolution_refusal(
       match acc {
         Present { value: _ } => acc
         Absent =>
-          match c_type_definition_for_owner(module_dag: module_dag, owner: owner) {
+          match c_type_definition_for_owner(resolved: resolved, owner: owner) {
             Present { value: defn } =>
               c_type_atoms_by_value_in_node(node: defn)
                 |> fold(init: Absent, f: fn(inner_acc, sym) {
@@ -707,11 +737,11 @@ fn c_find_by_value_type_cycle_detail(
 }
 
 fn c_by_value_type_cycle_detail_after_resolution(
-  module_dag: ModuleDag,
+  resolved: List<ResolvedModuleInterface>,
   assignment: Map<ModuleId, CompilationUnitId>,
   owners: List<CTypeOwner>
 ) -> Optional<String> {
-  let edges = c_by_value_type_edges(module_dag: module_dag, owners: owners)
+  let edges = c_by_value_type_edges(resolved: resolved, owners: owners)
   c_find_by_value_type_cycle_detail(
     edges: edges,
     assignment: assignment,
@@ -720,20 +750,20 @@ fn c_by_value_type_cycle_detail_after_resolution(
 }
 
 fn c_partition_by_value_type_cycle_cause(
-  module_dag: ModuleDag,
+  resolved: List<ResolvedModuleInterface>,
   assignment: Map<ModuleId, CompilationUnitId>,
   units: List<CompilationUnit>
 ) -> Optional<String> {
   let _ = units
-  let owners = c_all_type_owners(module_dag: module_dag)
+  let owners = c_all_type_owners(resolved: resolved)
   match c_by_value_type_identity_resolution_refusal(
-    module_dag: module_dag,
+    resolved: resolved,
     owners: owners
   ) {
     Present { value: detail } => Present { value: detail }
     Absent =>
       c_by_value_type_cycle_detail_after_resolution(
-        module_dag: module_dag,
+        resolved: resolved,
         assignment: assignment,
         owners: owners
       )
@@ -745,15 +775,20 @@ fn c_validate_partition_r4(
   assignment: Map<ModuleId, CompilationUnitId>,
   units: List<CompilationUnit>
 ) -> PartitionR4ValidityVerdict {
-  match c_partition_by_value_type_cycle_cause(
-    module_dag: module_dag,
-    assignment: assignment,
-    units: units
-  ) {
-    Absent => PartitionR4Valid
-    Present { value: detail } =>
-      PartitionR4Refused {
-        cause: ByValueTypeCycle { detail: detail },
+  match c_resolved_modules(module_dag: module_dag) {
+    MembersResolveRefused { cause: cause } =>
+      PartitionR4Refused { cause: PartitionInputRejected { cause: cause } }
+    MembersResolveOk { members: resolved } =>
+      match c_partition_by_value_type_cycle_cause(
+        resolved: resolved,
+        assignment: assignment,
+        units: units
+      ) {
+        Absent => PartitionR4Valid
+        Present { value: detail } =>
+          PartitionR4Refused {
+            cause: ByValueTypeCycle { detail: detail },
+          }
       }
   }
 }
