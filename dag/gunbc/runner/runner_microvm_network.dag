@@ -13,7 +13,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.runner_microvm { RunnerMicroVmNetworking, GuestNetworkTap }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit, SystemdRestartUnit,
-  SystemdDaemonReload, SystemdEnableUnit, ReadNftTable,
+  SystemdDaemonReload, SystemdEnableUnit, ReadNftTable, EnsureOwnedDirectory,
 }
 import gunbc.fleet_posix_accounts { fleet_nft_binary_path }
 import extdeps.systemd.unit_file {
@@ -739,7 +739,24 @@ fn runner_slot_network_install_operations(
 // re-running it is safe -- and a RemainAfterExit oneshot that is already active ignores `start`, so
 // a converge that installed new bytes and then started the unit would report success over the OLD
 // live ruleset.
-data runner_microvm_nft_ruleset_path: NonEmptyStr = "/etc/gunbc/microvm.nft" as NonEmptyStr
+// THE DIRECTORY IS THE AUTHORITY AND THE FILE PATH IS DERIVED FROM IT, so the place the ruleset is
+// installed and the place the install ensures exists cannot become two facts. Spelling the leaf as
+// one literal is what let them diverge: the first apply on srv1 installed every slot file and then
+// refused with `cannot create regular file /etc/gunbc/microvm.nft: No such file or directory`
+// (fleet-converge run 35776260724). Every OTHER destination this converge writes -- /etc/systemd/
+// network, /etc/sysctl.d, /etc/systemd/system -- exists on a stock host, so nothing here had ever
+// needed to create a parent, and this one is OURS.
+data runner_microvm_nft_ruleset_dir: NonEmptyStr = "/etc/gunbc" as NonEmptyStr
+
+data runner_microvm_nft_ruleset_dir_mode: NonEmptyStr = "0755" as NonEmptyStr
+
+data runner_microvm_nft_ruleset_file: NonEmptyStr = "microvm.nft" as NonEmptyStr
+
+fn runner_microvm_nft_ruleset_path_of() -> NonEmptyStr {
+  join([runner_microvm_nft_ruleset_dir as String, "/", runner_microvm_nft_ruleset_file as String], "") as NonEmptyStr
+}
+
+data runner_microvm_nft_ruleset_path: NonEmptyStr = runner_microvm_nft_ruleset_path_of()
 
 data runner_microvm_nft_unit: NonEmptyStr = "gunbc-microvm-nft.service" as NonEmptyStr
 
@@ -792,7 +809,14 @@ fn runner_microvm_forward_sysctl_text() -> String {
 
 data runner_microvm_sysctl_unit: NonEmptyStr = "systemd-sysctl.service" as NonEmptyStr
 
-// THE HOST'S OPERATIONS, IN THE ORDER THEY DEPEND ON EACH OTHER: the files first, then the daemon
+// THE PARENT BEFORE THE FILE. install(1) does not create intermediate directories, so the ruleset
+// install refuses on a host that has never carried the ruleset directory -- which is every host
+// until this operation runs. It is EnsureOwnedDirectory rather than a mkdir because that is the one
+// constructor this converge's authorization vocabulary already has for the effect
+// (gunbc.executor_privileged_operation), so the argv and the grant stay one fact.
+//
+// THE HOST'S OPERATIONS, IN THE ORDER THEY DEPEND ON EACH OTHER: that directory first, then the
+// files, then the daemon
 // reload that makes systemd see a new unit, then the sysctl re-read, then enable (so it survives a
 // reboot) and restart (so the bytes just installed are the live ones).
 fn runner_microvm_host_network_install_operations(
@@ -801,6 +825,12 @@ fn runner_microvm_host_network_install_operations(
   staged_forward_sysctl: NonEmptyStr,
 ) -> List<ExecutorPrivilegedOperation> {
   [
+    EnsureOwnedDirectory {
+      path: runner_microvm_nft_ruleset_dir,
+      owner: runner_microvm_networkd_file_owner,
+      group: runner_microvm_networkd_file_owner,
+      mode: runner_microvm_nft_ruleset_dir_mode,
+    },
     InstallFile {
       source: staged_ruleset,
       destination: runner_microvm_nft_ruleset_path,

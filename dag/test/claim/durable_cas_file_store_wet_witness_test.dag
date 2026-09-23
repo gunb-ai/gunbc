@@ -169,3 +169,32 @@ test fn the_gallop_probes_the_int_maximum_instead_of_overflowing_by_real_executi
   let removed = shell.Remove.RecursiveForce(path: root)
   w1.success && w2.success && below_max && at_max && removed.success
 }
+
+// AN UNINITIALIZED STORE IS NOT AN EMPTY ONE. The slot root is missing, so the host answers
+// NotFound for generation 1 exactly as it would for an empty slot; the observation must refuse
+// rather than read "absent", and a writer expecting absence must be refused before it publishes.
+// Before gunbc.durable_cas_file_store cas_first_generation_absent this read CasReadableAbsent.
+test fn a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let missing = concat(root_path, "/never-created")
+  let observed = observe_cas_slot_state(root: missing as NonEmptyStr, key: "cell")
+  let outcome = run_cas(root: missing as NonEmptyStr, attempt: honest(key: "cell", payload: "held-A", expected: ExpectSlotAbsent))
+  let unread = match observed {
+    CasObservedUnreadable { cause: _ } => true
+    CasObservedReadable { readable: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  unread && is_store_refused(o: outcome) && removed.success
+}
+
+// THE POSITIVE CONTROL: an established, empty root still reads as an absent slot.
+test fn an_established_empty_root_reads_the_slot_absent_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let observed = observe_cas_slot_state(root: root_path as NonEmptyStr, key: "cell")
+  let absent = match observed {
+    CasObservedReadable { readable: r } => match r { CasReadableAbsent => true  CasReadablePresent { version: _ } => false }
+    CasObservedUnreadable { cause: _ } => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  absent && removed.success
+}

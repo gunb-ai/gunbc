@@ -365,7 +365,7 @@ fn ncr_verdict_of(outcome: Optional<NativeCensusModuleOutcome>) -> NcrVerdict {
       match o {
         NativeCensusModuleResolved => NcrResolved
         NativeCensusModuleFileRefused => NcrFileRefused
-        NativeCensusModuleResolveRefused { diagnostics: d } =>
+        NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
           NcrRefused {
             reason: diagnostics_fatal_reason(d: d),
             competing: ncr_competing_declarations(d: d),

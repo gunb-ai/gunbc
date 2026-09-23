@@ -58,3 +58,29 @@ test fn the_three_suppliers_resolve_under_their_seals() -> Bool {
     && keyed_refusals(source: suppliers_source, callee: "attestation_verification_from_implementation") == 0
     && keyed_refusals(source: suppliers_source, callee: "assertion_verification_from_implementation") == 0
 }
+
+// LAUNDERING THROUGH A FIXTURE IS REFUSED TOO (review 5291201877). The mints admit named fixtures of
+// test.claim.approval_device_redemption_witness_test; each fixture that RETURNS trusted evidence is
+// itself caller-sealed to that module's terminal claims, so an outside module importing one is
+// refused at the FIXTURE boundary, keyed by the fixture's name.
+data laundered_evidence_source: String = "module probe_laundered_evidence\nimport std.types { NonEmptyStr }\nimport extdeps.crypto.signature { SignatureVerification }\nimport extdeps.apple.app_attest { AttestationVerification, AssertionVerification }\nimport test.claim.approval_device_redemption_witness_test { fx_attestation, verdict, assertion_over, key_a }\nfn laundered_attestation() -> AttestationVerification {\n  fx_attestation(client_data: \"x\")\n}\nfn laundered_signature() -> SignatureVerification {\n  verdict(key: key_a, message: \"x\")\n}\nfn laundered_assertion() -> AssertionVerification {\n  assertion_over(key_id: \"k\", client_data: \"x\")\n}\n"
+
+test fn laundering_an_attestation_through_its_fixture_is_refused() -> Bool {
+  keyed_refusals(source: laundered_evidence_source, callee: "fx_attestation") >= 1
+}
+
+test fn laundering_a_signature_through_its_fixture_is_refused() -> Bool {
+  keyed_refusals(source: laundered_evidence_source, callee: "verdict") >= 1
+}
+
+test fn laundering_an_assertion_through_its_fixture_is_refused() -> Bool {
+  keyed_refusals(source: laundered_evidence_source, callee: "assertion_over") >= 1
+}
+
+// A STRUCTURAL STEP IS NOT CALLABLE OUTSIDE THE ORDER: the CA-authority step's check, called directly
+// from an outside module, is refused; it answers only to the fold's dispatcher.
+data direct_step_source: String = "module probe_direct_step\nimport extdeps.standards.rfc_5280 { X509Certificate }\nimport extdeps.apple.app_attest { AttestationRefusal, ca_authority_refusal }\nfn direct(ca: X509Certificate) -> AttestationRefusal? {\n  ca_authority_refusal(ca: ca)\n}\n"
+
+test fn a_structural_step_called_outside_the_order_is_refused() -> Bool {
+  keyed_refusals(source: direct_step_source, callee: "ca_authority_refusal") >= 1
+}
