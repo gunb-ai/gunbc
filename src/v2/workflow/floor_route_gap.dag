@@ -1579,6 +1579,10 @@ fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
 // author what the current subset is, which is the only authority for it -- the subset is a property
 // of evaluation order, and the five-at-one-head against six-at-the-next measured on gunbc#12040 is
 // what rules out predicting it.
+//
+// THE EIGHTH ROW, the ceiling retry's gate control, WAS OBSERVED rather than predicted: the floor at
+// gunbc#12040 bf63e3cb reported it as an unenrolled ROUTE-GAP at DirWithTemplate. Its first
+// statement is fresh_root(), so like the seventh it cannot reach its subject hermetically.
 fn floor_route_gap_expectation_chunk_22() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_lifecycle_wet_witness.a_launch_that_won_refuses_a_recovery_arriving_behind_it", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -1594,8 +1598,10 @@ fn floor_route_gap_expectation_chunk_22() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_lifecycle_wet_witness.the_unit_binding_is_read_back_from_the_record_the_attempt_wrote", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_lifecycle_wet_witness.the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_lifecycle_wet_witness.the_ceiling_retry_opens_its_own_attempt_and_a_held_slot_refuses_it_before_spawn", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
-  }  }  }  }  }  }  }
+  }  }  }  }  }  }  }  }
 }
 
 // test.claim.compute.manager_unaskable_wet_witness: its first shell operation on the hermetic route
