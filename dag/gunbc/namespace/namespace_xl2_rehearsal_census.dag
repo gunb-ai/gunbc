@@ -96,12 +96,12 @@ type Xl2UnobservedScope
 // refused on call-argument visibility is gone. What P1's own sibling audit left open is one lowering
 // that still NARROWS an operand: body_lower_operand_ref_optional answers the left atom of a sequence
 // operand (`a + b` lowers as `a`), so a reference on the right of such an operand never reaches
-// resolve and no refusal roster can report it. It is rostered as gunbc.recurring_failure_mode
-// lowering_accessor_collapses_a_sequence_operand, whose own trigger retires this arm; until then it
-// heads every roster, because no observation in this run can tell whether the tree contains one.
-// TODO(rebind): once the parent's prerequisite-truth change lands its typed Xl2Prerequisite list in
-// gunbc.compiler_frontend_program_status, this arm is read through that type's delivered-capability
-// standing; no parallel prerequisite enum is minted here.
+// resolve and no refusal roster can report it. It heads every roster, because no observation in
+// this run can tell whether the tree contains one. RETIRED BY exactly one capability: the trigger
+// of gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand (a sequence operand
+// lowers to every reference it carries). It is kept a REFUSAL rather than an excluded population by
+// the namespace-cut manager's ruling of 2026-09-23: those references depend on imports and XL-5
+// must rewrite them, so omitting them undercounts the cut's own population.
 type Xl2CompletenessRefusal
   = Xl2SequenceOperandReferencesUnobservable
   | Xl2ScopeUnobserved { scope: Xl2UnobservedScope }
@@ -363,9 +363,11 @@ fn xl2_rehearse_stripped(source_commit: GitObjectId, source_tree: GitObjectId, s
 // receipt is the RehearsalInstrumentDelivered StageDeliveryReceipt read by
 // gunbc.compiler_frontend_program_status xl2_stage_standing; the trigger is P1 (call-argument
 // references reach resolve) and P4 (occurrence-complete refusal observation) both delivered, per
-// the parent's serialized prerequisite PR. Until then only the stages below the collector execute
-// (test.claim.namespace_xl2_rehearsal_census), and the collector's own live half carries the route
-// deficit its module states: the hermetic floor cannot reach the object store.
+// the parent's serialized prerequisite PR. BOTH HAVE LANDED (gunbc#12108, gunbc#12116), so this is
+// no longer a frontier awaiting inputs: what it lacks is an EXECUTING ROUTE. The hermetic floor
+// cannot reach the object store (the collector's own module states that route deficit), and the
+// whole-tree interpreter census is beyond a claim's budget; the route that executes it is the open
+// item on gunbc#12097, and until it runs this entry is unexercised and says so.
 fn run_xl2_rehearsal_at(ref: String) -> Xl2RehearsalRun {
   match collect_step0_subject_vector_at(ref: ref) {
     Step0SubjectCollectionRefused { cause: cause } => Xl2RehearsalBaseUnobserved { cause: cause }
