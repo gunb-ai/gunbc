@@ -313,8 +313,8 @@ fn json_text_escape_end(s: String, i: Int) -> Int {
 // escaped is an unterminated string, refused — decided by pairing backslashes at the span
 // boundary, one native replace, not a body re-walk), and whether every escape is in the RFC set
 // (review 45642: the set is a grammar production and an unknown escape refuses before a value
-// is built — validated over one native split, one interpreted step per escape rather than one
-// per character).
+// is built — now the native json_unescape_checked validation, one Rust pass, not an interpreted
+// piece fold).
 fn json_text_parse_string_inner(s: String, i: Int) -> JsonTextParseResult {
   let end = scan_string_end(s: s, start: i)
   if end <= i || char_at(s: s, pos: end - 1) != "\"" {
@@ -394,11 +394,16 @@ fn json_text_escape_pieces_valid(pieces: List<String>, literal_next: Bool) -> Bo
   acc.ok
 }
 
+// THE ESCAPE SET IS THE NATIVE json_unescape_checked VALIDATION, ONE RUST PASS: the kernel
+// decodes exactly the RFC 8259 set — the eight short escapes and \u with precisely four hex
+// digits, the malformed-\u and unknown-escape arms refusing — so its Some/None IS review
+// 45642's refusal before a value is built. This replaces the interpreted piece fold (~3.45M
+// pieces on the project envelope, the read's measured wall) with the same verdict at native
+// speed; the fold below stays as the exported-caller semantics' authority.
 fn json_text_escape_set_valid(body: String) -> Bool {
-  match split(s: body, delimiter: "\\").first() {
-    Absent => true
-    Present { value: _ } =>
-      json_text_escape_pieces_valid(pieces: drop_string_one(xs: split(s: body, delimiter: "\\")), literal_next: false)
+  match json_unescape_checked(s: body) {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 

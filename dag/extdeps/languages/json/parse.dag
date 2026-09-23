@@ -147,13 +147,23 @@ fn json_unescape(s: String) -> String {
   }
 }
 
+// THE VALUE IS THE NATIVE json_unescape_checked DECODE: the span was validated by the grammar
+// production one call ago, so the kernel's refusal arm is unreachable here — it is matched
+// anyway, because a total path outlives the argument for why it is dead. This replaces the
+// interpreted piece decode (one interpreted step per escape over the project envelope's ~3.45M
+// escapes, the read's measured wall) with the same bytes at native speed; json_unescape below
+// stays as the exported-caller authority, malformed-\u fallback included.
 fn parse_json_string_at(s: String, i: Int) -> JsonParse {
   match json_text_parse_string(s: s, i: i) {
     JsonTextParseFail { end: e } => JsonParseFail { at: e }
     JsonTextParseOk { end: e } =>
-      JsonParsed {
-        value: JsonString { value: json_unescape(s: substring(s: s, start: i + 1, end: e - 1)) },
-        next: e,
+      match json_unescape_checked(s: substring(s: s, start: i + 1, end: e - 1)) {
+        Present { value: decoded } =>
+          JsonParsed {
+            value: JsonString { value: decoded },
+            next: e,
+          }
+        Absent => JsonParseFail { at: i }
       }
   }
 }
