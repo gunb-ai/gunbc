@@ -7,6 +7,7 @@ import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
 import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name }
 import gunbc.runner_microvm_slot_start {
   MicrovmSlotStartRun, SlotStartWrongHost, SlotStartRefused, SlotStartInvocationUnread,
+  SlotStartAlreadyActive, SlotStartInvocationUnchanged, UnitPropertyRead, UnitPropertyUnread,
   SlotStartStillActiveAtBound, SlotStartCompleted,
   ControllerReceiptRead, ControllerReceiptUnreadable,
   microvm_slot_start_admitted, microvm_slot_start_unit,
@@ -18,15 +19,19 @@ data u: NonEmptyStr = "gunbc-microvm-slot@srv1-13.service" as NonEmptyStr
 data inv: NonEmptyStr = "0123abcd" as NonEmptyStr
 
 // THE START SUCCEEDS ONLY WHEN THIS INVOCATION'S CONTROLLER RECEIPT WAS READ, whatever it says. The
-// red set is every other arm: a wrong host, a refused start, an unread invocation, a unit still running
+// red set is every other arm: a wrong host, a refused start, an unread invocation, a unit ALREADY ACTIVE
+// before the start or one whose InvocationID did not change across it (either would mean reading an
+// EARLIER start's receipt as this one's, review 70683), a unit still running
 // at its own bound, and -- the subtle one -- a unit that completed but whose receipt could not be read,
 // which is a start with no evidence of what the attempt did.
 test fn a_start_is_admitted_only_with_this_invocations_controller_receipt() -> Bool {
-  microvm_slot_start_admitted(r: SlotStartCompleted { unit: u, invocation_id: inv, exec_main_status: "1", controller_receipt: ControllerReceiptRead { path: "/p", text: "refused: CellNotBound x" } })
-    && !microvm_slot_start_admitted(r: SlotStartCompleted { unit: u, invocation_id: inv, exec_main_status: "0", controller_receipt: ControllerReceiptUnreadable { path: "/p", detail: "EACCES" } })
+  microvm_slot_start_admitted(r: SlotStartCompleted { unit: u, invocation_id: inv, exec_main_status: UnitPropertyRead { value: "1" }, controller_receipt: ControllerReceiptRead { path: "/p", text: "refused: CellNotBound x" } })
+    && !microvm_slot_start_admitted(r: SlotStartCompleted { unit: u, invocation_id: inv, exec_main_status: UnitPropertyUnread { property: "ExecMainStatus" as NonEmptyStr, detail: "x" }, controller_receipt: ControllerReceiptUnreadable { path: "/p", detail: "EACCES" } })
     && !microvm_slot_start_admitted(r: SlotStartWrongHost { detail: "srv2" })
     && !microvm_slot_start_admitted(r: SlotStartRefused { unit: u, detail: "x" })
-    && !microvm_slot_start_admitted(r: SlotStartInvocationUnread { unit: u })
+    && !microvm_slot_start_admitted(r: SlotStartInvocationUnread { unit: u, detail: "x" })
+    && !microvm_slot_start_admitted(r: SlotStartAlreadyActive { unit: u, invocation: UnitPropertyRead { value: "earlier" } })
+    && !microvm_slot_start_admitted(r: SlotStartInvocationUnchanged { unit: u, invocation_id: inv })
     && !microvm_slot_start_admitted(r: SlotStartStillActiveAtBound { unit: u, invocation_id: inv, bound_seconds: 10 })
 }
 

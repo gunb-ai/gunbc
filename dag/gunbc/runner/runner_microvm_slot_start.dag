@@ -49,12 +49,14 @@ data microvm_slot_start_receipt_path: String = "target/microvm-slot-start-receip
 type MicrovmSlotStartRun
   = SlotStartWrongHost { detail: String }
   | SlotStartRefused { unit: NonEmptyStr, detail: String }
-  | SlotStartInvocationUnread { unit: NonEmptyStr }
+  | SlotStartAlreadyActive { unit: NonEmptyStr, invocation: UnitPropertyReading }
+  | SlotStartInvocationUnread { unit: NonEmptyStr, detail: String }
+  | SlotStartInvocationUnchanged { unit: NonEmptyStr, invocation_id: NonEmptyStr }
   | SlotStartStillActiveAtBound { unit: NonEmptyStr, invocation_id: NonEmptyStr, bound_seconds: Int }
   | SlotStartCompleted {
       unit: NonEmptyStr
       invocation_id: NonEmptyStr
-      exec_main_status: String
+      exec_main_status: UnitPropertyReading
       controller_receipt: MicrovmControllerReceiptReading
     }
 
@@ -62,9 +64,31 @@ type MicrovmControllerReceiptReading
   = ControllerReceiptRead { path: String, text: String }
   | ControllerReceiptUnreadable { path: String, detail: String }
 
-fn show_property(unit: NonEmptyStr, property: NonEmptyStr) -> String {
+// A PROPERTY THAT COULD NOT BE READ IS ITS OWN ARM, NOT AN EMPTY STRING (review 70683). A failed
+// ShowProperty and a genuinely empty value are different facts, and collapsing them put a blank
+// exec_main_status inside a success and dropped the reason an invocation could not be read.
+type UnitPropertyReading
+  = UnitPropertyRead { value: String }
+  | UnitPropertyUnread { property: NonEmptyStr, detail: String }
+
+fn show_property(unit: NonEmptyStr, property: NonEmptyStr) -> UnitPropertyReading {
   let r = systemd.Systemctl.ShowProperty(unit: unit, property: property)
-  if !r.success { "" } else { trim(s: r.value) }
+  if !r.success {
+    UnitPropertyUnread { property: property, detail: join(["systemctl show -p ", property as String, " ", unit as String, " failed"], "") }
+  } else {
+    UnitPropertyRead { value: trim(s: r.value) }
+  }
+}
+
+fn unit_property_text(r: UnitPropertyReading) -> String {
+  match r {
+    UnitPropertyRead { value: v } => v
+    UnitPropertyUnread { property: p, detail: d } => join(["UNREAD(", p as String, ": ", d, ")"], "")
+  }
+}
+
+fn invocation_property(unit: NonEmptyStr) -> UnitPropertyReading {
+  show_property(unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty))
 }
 
 fn wait_inactive(unit: NonEmptyStr, polls_remaining: Int) -> Bool {
@@ -111,29 +135,53 @@ fn microvm_slot_start_run() -> MicrovmSlotStartRun {
   }
 }
 
+// ONE START IS ONE ATTEMPT ONLY IF THIS STEP'S START IS THE ONE THAT RAN (review 70683). `systemctl
+// start` on a unit that is already active does nothing and exits zero, so a step that trusted it would
+// wait for, and read the receipt of, an EARLIER start and report it as this dispatch's attempt. So the
+// unit must be inactive before the start -- an active one refuses, naming the running invocation --
+// and the InvocationID after the start must be a new one, different from the id read before it (empty
+// if the unit never ran). Only then is the receipt at that id's path this start's.
 fn microvm_slot_start_on_its_host() -> MicrovmSlotStartRun {
   let unit = microvm_slot_start_unit()
-  match run_shell_command_capture(command: executor_privileged_operation_command(op: SystemdStartUnit { unit: unit }), transport: LocalExec) {
-    ProcessRefused { exit_code: c, stderr: e } =>
-      SlotStartRefused { unit: unit, detail: join(["systemctl start exited ", to_string(c), ": ", trim(s: e)], "") }
-    _ => {
-      let invocation = show_property(unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty))
-      if invocation == "" {
-        SlotStartInvocationUnread { unit: unit }
-      } else if !wait_inactive(unit: unit, polls_remaining: microvm_slot_start_polls()) {
-        SlotStartStillActiveAtBound {
-          unit: unit,
-          invocation_id: invocation as NonEmptyStr,
-          bound_seconds: second_count(s: microvm_slot_unit_timeout_stop()),
+  if systemd.Systemctl.IsActive(unit: unit).active {
+    SlotStartAlreadyActive { unit: unit, invocation: invocation_property(unit: unit) }
+  } else {
+    match invocation_property(unit: unit) {
+      UnitPropertyUnread { property: _, detail: d } => SlotStartInvocationUnread { unit: unit, detail: join(["before the start: ", d], "") }
+      UnitPropertyRead { value: before } =>
+        match run_shell_command_capture(command: executor_privileged_operation_command(op: SystemdStartUnit { unit: unit }), transport: LocalExec) {
+          ProcessRefused { exit_code: c, stderr: e } =>
+            SlotStartRefused { unit: unit, detail: join(["systemctl start exited ", to_string(c), ": ", trim(s: e)], "") }
+          _ =>
+            match invocation_property(unit: unit) {
+              UnitPropertyUnread { property: _, detail: d } => SlotStartInvocationUnread { unit: unit, detail: join(["after the start: ", d], "") }
+              UnitPropertyRead { value: after } =>
+                if after == "" {
+                  SlotStartInvocationUnread { unit: unit, detail: "after the start systemd reported an empty InvocationID" }
+                } else if after == before {
+                  SlotStartInvocationUnchanged { unit: unit, invocation_id: after as NonEmptyStr }
+                } else {
+                  microvm_slot_start_observed(unit: unit, invocation: after as NonEmptyStr)
+                }
+            }
         }
-      } else {
-        SlotStartCompleted {
-          unit: unit,
-          invocation_id: invocation as NonEmptyStr,
-          exec_main_status: show_property(unit: unit, property: systemd_unit_property_wire(property: ExecMainStatus)),
-          controller_receipt: read_controller_receipt(invocation_id: invocation as NonEmptyStr),
-        }
-      }
+    }
+  }
+}
+
+fn microvm_slot_start_observed(unit: NonEmptyStr, invocation: NonEmptyStr) -> MicrovmSlotStartRun {
+  if !wait_inactive(unit: unit, polls_remaining: microvm_slot_start_polls()) {
+    SlotStartStillActiveAtBound {
+      unit: unit,
+      invocation_id: invocation,
+      bound_seconds: second_count(s: microvm_slot_unit_timeout_stop()),
+    }
+  } else {
+    SlotStartCompleted {
+      unit: unit,
+      invocation_id: invocation,
+      exec_main_status: show_property(unit: unit, property: systemd_unit_property_wire(property: ExecMainStatus)),
+      controller_receipt: read_controller_receipt(invocation_id: invocation),
     }
   }
 }
@@ -142,11 +190,13 @@ fn microvm_slot_start_text(r: MicrovmSlotStartRun) -> String {
   match r {
     SlotStartWrongHost { detail: d } => join(["slot-start=wrong-host (", d, ")"], "")
     SlotStartRefused { unit: u, detail: d } => join(["slot-start=refused unit=", u as String, " (", d, ")"], "")
-    SlotStartInvocationUnread { unit: u } => join(["slot-start=invocation-unread unit=", u as String], "")
+    SlotStartAlreadyActive { unit: u, invocation: i } => join(["slot-start=already-active unit=", u as String, " running_invocation=", unit_property_text(r: i), " -- another start owns this unit; nothing was started"], "")
+    SlotStartInvocationUnread { unit: u, detail: d } => join(["slot-start=invocation-unread unit=", u as String, " (", d, ")"], "")
+    SlotStartInvocationUnchanged { unit: u, invocation_id: i } => join(["slot-start=invocation-unchanged unit=", u as String, " invocation=", i as String, " -- the start ran no new invocation, so no receipt belongs to it"], "")
     SlotStartStillActiveAtBound { unit: u, invocation_id: i, bound_seconds: b } =>
       join(["slot-start=still-active-at-bound unit=", u as String, " invocation=", i as String, " bound_seconds=", to_string(b)], "")
     SlotStartCompleted { unit: u, invocation_id: i, exec_main_status: s, controller_receipt: c } =>
-      join(["slot-start=completed unit=", u as String, " invocation=", i as String, " exec_main_status=", s, "\n", controller_receipt_text(c: c)], "")
+      join(["slot-start=completed unit=", u as String, " invocation=", i as String, " exec_main_status=", unit_property_text(r: s), "\n", controller_receipt_text(c: c)], "")
   }
 }
 
