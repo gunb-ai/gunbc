@@ -24,7 +24,7 @@ import gunbc.runner_slot_allocation {
   memory_admitted_width_of_envelope, fabric_execution_slot_identities, gunbc_microvm_shakedown_slot_charge,
 }
 import gunbc.fabric_witness_run { gunbc_internal_fleet_trust_domain }
-import gunbc.runner_microvm { gunbc_runner_microvm_shape_for_slot, MicroVmShapeResolved, MicroVmShapeRefused, gunbc_runner_microvm_shape }
+import gunbc.runner_microvm { gunbc_runner_microvm_shape_for_slot, MicroVmShapeResolved, MicroVmShapeRefused }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused,
   runner_microvm_attempt_slice_property, runner_microvm_attempt_part_of_property,
@@ -179,20 +179,15 @@ test fn the_shakedown_slot_is_charged_its_cell_plus_its_controller_before_the_fl
     && memory_admitted_width_of_envelope(envelope: byte_size(charge - 1), carries_shakedown_slot: true) == 0
 }
 
-// THE SHAKEDOWN SLOT'S GUEST SHAPE RESOLVES WHERE THE FLEET ROW'S REFUSES: the same demand
-// receipt, the same allowance and reserve, one more row. The expecting-red production witness
-// (test.claim.runner.runner_microvm_witness_test) keeps reading the fleet row and keeps refusing,
-// which is the floor-fit stall's trigger left where it was.
-test fn the_shakedown_slots_shape_resolves_while_the_fleet_rows_still_refuses() -> Bool {
-  let shakedown = match gunbc_runner_microvm_shape_for_slot(slot: srv1_microvm_shakedown_slot()) {
+// THE SHAKEDOWN SLOT'S GUEST SHAPE RESOLVES. This claim first said it resolved WHILE the fleet row's
+// refused; gunbc#12117 (the 2026-09-23 floor sizing receipt) moved the demand so the fleet row's shape
+// resolves too and retired the floor-fit stall, so the fleet half no longer describes the tree and is
+// dropped rather than inverted -- the fleet row's standing is #12117's claim, not this module's.
+test fn the_shakedown_slots_shape_resolves() -> Bool {
+  match gunbc_runner_microvm_shape_for_slot(slot: srv1_microvm_shakedown_slot()) {
     MicroVmShapeResolved { shape: _ } => true
     MicroVmShapeRefused { refusal: _ } => false
   }
-  let fleet = match gunbc_runner_microvm_shape() {
-    MicroVmShapeResolved { shape: _ } => false
-    MicroVmShapeRefused { refusal: _ } => true
-  }
-  shakedown && fleet
 }
 
 // --- the reservation-authorized planner arm ---

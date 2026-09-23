@@ -1142,11 +1142,9 @@ data guest_bring_up_channel_frontier: DissolutionCondition = unbound_dissolution
 // subject into ONE call of run_controller below. A launcher that exits does not satisfy the
 // topology; the unit execs the controller directly, so it is MainPID for the attempt's whole life.
 //
-// WHAT STILL STANDS BETWEEN THAT ENTRY AND A LAUNCHED VMM IS DECLARED WHERE IT IS OWNED: the App
-// control-plane observation the mint needs has no production producer
-// (gunbc.runner_microvm_slot_controller app_control_plane_producer_frontier), and the planner's
-// grant arm has none either (gunbc.runner_attempt_launch
-// reservation_authorization_grant_producer_frontier). Neither is this module's, and neither makes
+// WHAT STILL STANDS BETWEEN THAT ENTRY AND A LAUNCHED VMM IS DECLARED WHERE IT IS OWNED: the
+// planner's grant arm has no production producer (gunbc.runner_attempt_launch
+// reservation_authorization_grant_producer_frontier). It is not this module's, and it does not make
 // the consumer of this entry anything other than the unit.
 
 // THE ORDER IS THE SAFETY PROPERTY AND IT IS NOT NEGOTIABLE.
