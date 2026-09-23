@@ -591,6 +591,11 @@ import v2.std.collection { List }
 // ENROLMENT-MARGIN-REFUSED at ~1.4s CPU. The stored value is verdict arms carrying a reason symbol
 // and an optional atom symbol -- no resolution context, no Node, no closure -- portable for the same
 // reason ncr_outcomes is.
+// THE OPERATOR-SET ROWS ARE A PRODUCTION PRODUCER, THE SAME GROUND AS dag_prepared_grammar:
+// v2.compiler.body_lowering_fold body_lower_binary_operator_tokens / body_lower_prefix_operator_tokens
+// fold the grammar's binary and unary expressions to their terminal symbols. Every claim that lowers
+// an operator expression reads them, and building them per frame cost ~11.4k eval steps. The value
+// is a list of symbols.
 // THE XL-2 SEQUENCE-OPERAND RESOLVE ROW IS THE SAME GROUND AT FIVE SPECIMENS:
 // v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal sqo_outcomes drives one front end
 // over five inline modules and stores one verdict arm per module, portable for the same reason.
@@ -619,6 +624,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
   "v2.compiler.program_assembly.dag_prepared_grammar",
+  "v2.compiler.body_lowering_fold.body_lower_binary_operator_tokens",
+  "v2.compiler.body_lowering_fold.body_lower_prefix_operator_tokens",
   "v2.test.long.emit_host_produced_module_equals_eval.produced_add_module_source",
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_arrow_with_body",
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_swapped_arrow_with_body",

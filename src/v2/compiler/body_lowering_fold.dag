@@ -1142,20 +1142,33 @@ fn body_lower_grammar_terminals(expr: GrammarExpr) -> List<Symbol> {
   )
 }
 
-data body_lower_binary_operator_tokens: List<Symbol> = body_lower_grammar_terminals(expr: dag_grammar_binary_expr_expr())
+// Nullary, pure and reifying to symbols, so both sets are enrolled WARM in
+// v2.workflow.floor_pure_producer_share: building the grammar expressions per claim frame cost
+// ~11.4k eval steps and pushed v2.test.manual.body_lowering_normalize_add over the new-witness
+// budget on this PR's first floor run.
+fn body_lower_binary_operator_tokens() -> List<Symbol> {
+  body_lower_grammar_terminals(expr: dag_grammar_binary_expr_expr())
+}
 
-data body_lower_prefix_operator_tokens: List<Symbol> = body_lower_grammar_terminals(expr: dag_grammar_unary_expr_expr())
+fn body_lower_prefix_operator_tokens() -> List<Symbol> {
+  body_lower_grammar_terminals(expr: dag_grammar_unary_expr_expr())
+}
+
+// Read once per frame through these rows; the floor serves the producers above from its warm tier.
+data body_lower_binary_operators: List<Symbol> = body_lower_binary_operator_tokens()
+
+data body_lower_prefix_operators: List<Symbol> = body_lower_prefix_operator_tokens()
 
 fn body_lower_symbol_listed(id: Symbol, xs: List<Symbol>) -> Bool {
   fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == id) })
 }
 
 fn body_lower_is_binary_operator_token(id: Symbol) -> Bool {
-  body_lower_symbol_listed(id: id, xs: body_lower_binary_operator_tokens)
+  body_lower_symbol_listed(id: id, xs: body_lower_binary_operators)
 }
 
 fn body_lower_is_prefix_operator_token(id: Symbol) -> Bool {
-  body_lower_symbol_listed(id: id, xs: body_lower_prefix_operator_tokens)
+  body_lower_symbol_listed(id: id, xs: body_lower_prefix_operators)
 }
 
 fn body_lower_operator_token_optional(node: Node, binary: Bool) -> Optional<Node> {
