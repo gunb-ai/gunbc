@@ -2043,6 +2043,59 @@ fn issue_work_history_rounds(ledger: HarnessRoundLedger) -> List<RoundSegment> {
   fold(round_segments(ledger: ledger), init: [], f: (acc, seg) => concat([seg], acc))
 }
 
+// THE FOUR-FACT PRESENT-TENSE EXPLANATION (owner ruling 2026-09-22, "The frontend as an issue
+// tracker"): planning status (lifecycle × scheduling), the current workflow obligation (the first
+// unsettled roster position), the attempt outcome (the ActivityView arm), and the delivery
+// evidence (the view's evidence rows) stay FOUR SEPARATE FACTS on the row — the status field
+// derives ONE concise present-tense sentence from them at render, exactly in the ruling's worked
+// shapes ("verifying candidate 2ccf4dc72f", "blocked: turn 2's artifact undecidable; turn 3
+// re-declared"). Nothing is stored: the derivation runs from the decided view, so the facts can
+// never silently collapse into the sentence, and the sentence never flattens into one label like
+// "Submission failed" plus a row of misleading pending stages.
+fn issue_explanation(view: WorkRowView) -> String {
+  match view.activity {
+    NoActiveWork =>
+      match view.scheduling {
+        SchedulingReady => "open — ready to dispatch"
+        SchedulingUpcoming { blockers } =>
+          if count(blockers) == 0 { "upcoming — its dependencies are not yet met" }
+          else { join(["blocked on ", join(blockers, ", ")], "") }
+        SchedulingDone => "delivered — its evidence is under review"
+        SchedulingSuperseded =>
+          if view.superseded_by == "" { "superseded" }
+          else { join(["superseded by ", view.superseded_by], "") }
+        SchedulingUnplanned => "not on the frontier — no dispatchable position"
+      }
+    ActivityUnobservable { reason } => join(["attempt unobservable: ", reason], "")
+    CompletedWork { outcome, evidence: _, obligations: _ } => outcome
+    ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => summary
+    ActiveWorkRefused { summary, located_reason: _, evidence: _, obligations: _ } => summary
+    LegacySupersedableAttempt { summary, located_reason, attempt_key, evidence: _ } =>
+      join([summary, " — ", located_reason, "; a fresh attempt must re-declare (superseded ", attempt_key, ")"], "")
+  }
+}
+
+// WHAT THE TAIL WAITS ON: the first unsettled roster position. Every pending stage behind it waits
+// on that position, and the row label SAYS so — a pending stage never renders as a bare "pending"
+// (the owner ruling's named defect: a row of pending stages that name nothing).
+fn issue_first_open_kind(segments: List<WorkflowSegment>) -> String {
+  match first_non_complete(segments: segments) {
+    Absent => ""
+    Present { value: s } => workflow_segment_kind_label(kind: s.kind)
+  }
+}
+
+// The state word for a roster row: settled states keep their own key; a pending state names its
+// wait target when one is derivable, else stays honest as "pending" (no wait target exists only
+// when every position is settled — in which case no pending row renders at all).
+fn issue_wait_state_label(state_key: String, wait_target: String) -> String {
+  if state_key == "pending" && wait_target != "" {
+    join(["waiting on ", wait_target], "")
+  } else {
+    state_key
+  }
+}
+
 fn row_is_active_work(row: WorkRowView) -> Bool {
   match row.activity {
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => true

@@ -75,6 +75,7 @@ import gunbc.roadmap_presentation {
   AttemptRevisionObservation, stale_attempt_nodes,
   activity_uniform_lane_summary,
   IssueLinkView, IssueLinkPanel, issue_link_panel, issue_work_history_rounds,
+  issue_explanation, issue_first_open_kind, issue_wait_state_label,
 }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapNodeStanding, NodeOpen, NodeInProgress,
@@ -1698,4 +1699,62 @@ test fn witness_issue_work_history_is_newest_first() -> Bool {
   let segs = issue_work_history_rounds(ledger: ledger)
   map(segs, s => s.step) == [4, 3, 2]
     && count(issue_work_history_rounds(ledger: RoundsUnobserved { reason: "refused" as NonEmptyStr })) == 0
+}
+
+// THE FOUR-FACT PRESENT-TENSE EXPLANATION (owner ruling 2026-09-22): one concise present-tense
+// sentence per state, derived from the four facts that stay separate on the row — planning
+// status (lifecycle × scheduling), the current obligation, the attempt outcome, the delivery
+// evidence. The discriminating reds: an upcoming row NAMES its blockers ("blocked on a, b",
+// never "pending"); a done row says its evidence is under review (never a bare "done"); an
+// unobservable attempt says so in the sentence, not by absence.
+fn fx_explanation_view(scheduling: WorkScheduling, activity: ActivityView) -> WorkRowView {
+  WorkRowView {
+    node_id: "fx-explain",
+    headline: "explanation fixture",
+    summary: none,
+    lifecycle: OpenLifecycle,
+    scheduling: scheduling,
+    superseded_by: "",
+    activity: activity,
+    action: ActionView { primary_action: none, secondary_actions: [] },
+    supporting_facts: [],
+    disclosure: NoDisclosure,
+    rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    worker_alive: false,
+    standing: none,
+    attempt_stale: false,
+  }
+}
+
+test fn witness_issue_explanation_present_tense_cases() -> Bool {
+  issue_explanation(view: fx_explanation_view(scheduling: SchedulingReady, activity: NoActiveWork)) == "open — ready to dispatch"
+    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingUpcoming { blockers: ["a", "b"] }, activity: NoActiveWork)) == "blocked on a, b"
+    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingUpcoming { blockers: [] }, activity: NoActiveWork)) == "upcoming — its dependencies are not yet met"
+    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingDone, activity: NoActiveWork)) == "delivered — its evidence is under review"
+    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingUnplanned, activity: NoActiveWork)) == "not on the frontier — no dispatchable position"
+    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingReady, activity: ActivityUnobservable { reason: "attempts ledger refused" })) == "attempt unobservable: attempts ledger refused"
+    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingReady, activity: CompletedWork { outcome: "All obligations complete", evidence: [], obligations: [] })) == "All obligations complete"
+    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingReady, activity: ActiveWork {
+         summary: "Agent working",
+         obligations: [],
+         remaining_obligation_count: 0,
+         current_activity: "",
+         attention: ActivityRoutine,
+         evidence: [],
+       })) == "Agent working"
+}
+
+// A pending stage NAMES what it waits on (never a bare "pending"), and settled states keep their
+// own key; with no unsettled position ahead, the pending label stays honest as "pending".
+test fn witness_pending_stage_names_what_it_waits_on() -> Bool {
+  let roster = [
+    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentActive, detail: "" },
+    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+  ]
+  issue_first_open_kind(segments: roster) == "Workspace"
+    && issue_wait_state_label(state_key: "pending", wait_target: "Workspace") == "waiting on Workspace"
+    && issue_wait_state_label(state_key: "pending", wait_target: "") == "pending"
+    && issue_wait_state_label(state_key: "complete", wait_target: "workspace") == "complete"
+    && issue_wait_state_label(state_key: "refused", wait_target: "workspace") == "refused"
 }

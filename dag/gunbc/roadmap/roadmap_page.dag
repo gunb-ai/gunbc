@@ -84,6 +84,7 @@ import gunbc.roadmap_presentation {
   project_tree_statuses,
   worker_alive_from_process,
   IssueLinkView, IssueLinkPanel, issue_work_history_rounds,
+  issue_explanation, issue_first_open_kind, issue_wait_state_label,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap_workflow_stage {
@@ -1332,10 +1333,11 @@ fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactV
 // THE ISSUE DETAIL PAGE (owner ruling 2026-09-22: each issue has a detail page and a separate
 // Work tab; the visual contract's detail anatomy — header id + title, a field panel, tabs —
 // docs/plans/buganizer-visual-contract.md). ONE page function over the decided row view and link
-// panel: serialize-only, the same contract render_task_row keeps. The Status field and the head
-// line read the decided bar view; the four-fact present-tense explanation lands as their
-// upgrade in its own slice. The page ships the same external client asset the workspace ships;
-// its tab chips are inert on surfaces that carry none.
+// panel: serialize-only, the same contract render_task_row keeps. The Status field renders the
+// four-fact present-tense explanation decided by gunbc.roadmap_presentation (the four facts stay
+// separate on the row; the sentence is derived, never stored); the head line reads the decided
+// bar view beside it. The page ships the same external client asset the workspace ships; its tab
+// chips are inert on surfaces that carry none.
 fn issue_field_row(label: String, value: List<Fragment>) -> Fragment {
   el_class("div", "issue-field", concat(
     [ el_class("span", "issue-field-label", [ txt(label) ]) ],
@@ -1398,10 +1400,24 @@ fn issue_work_tab_nodes(view: WorkRowView) -> List<Fragment> {
     })
 }
 
+fn issue_work_ledger_row_node(s: WorkflowSegment, wait_target: String) -> Fragment {
+  let state = workflow_segment_state_key(state: s.state)
+  let detail = workflow_segment_detail_bounded(detail: s.detail)
+  el_attrs("div", [
+    attr(name: "class", value: activity_obligation_class ),
+    attr(name: "data-state", value: state ),
+  ], [ txt(join([
+    workflow_segment_kind_label(kind: s.kind), activity_state_sep,
+    issue_wait_state_label(state_key: state, wait_target: wait_target),
+    if detail == "" { "" } else { join([activity_detail_sep, detail], "") },
+  ], "")) ])
+}
+
 fn issue_work_ledger_nodes(view: WorkRowView, obligations: List<WorkflowSegment>, evidence: List<ActivityEvidenceRow>, located_reason: String) -> List<Fragment> {
+  let wait_target = issue_first_open_kind(segments: obligations)
   concat(
     if count(obligations) == 0 { [] } else {
-      [ el_class("div", activity_ledger_class, map(obligations, activity_obligation_node)) ]
+      [ el_class("div", activity_ledger_class, map(obligations, s => issue_work_ledger_row_node(s: s, wait_target: wait_target))) ]
     },
     [ el_class("div", activity_evidence_class, concat(
         map(evidence, row => activity_evidence_row_node(row: row)),
@@ -1444,7 +1460,7 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
     el_class("div", "issue-panels", [
       el_class("section", "panel-issue", concat(
         [ el_class("div", "issue-fields", concat(
-            [ issue_field_text_row(label: "status", value: bar.signal) ],
+            [ issue_field_text_row(label: "status", value: issue_explanation(view: view)) ],
             concat(
               [ issue_field_text_row(label: "assignee", value: issue_assignee_value(view: view)) ],
               concat(

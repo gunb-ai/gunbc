@@ -1539,6 +1539,7 @@ test fn witness_issue_detail_page_renders_header_fields_and_tabs() -> Bool {
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">assignee</span>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-value\">agent-35</span>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">status</span>")
+        && string_contains(s: h, pattern: "<span class=\"issue-field-value\">Agent working</span>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">component</span>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">blocked by</span>")
         && string_contains(s: h, pattern: "href=\"/issue/issue-detail-parent\"")
@@ -1578,6 +1579,7 @@ test fn witness_issue_work_tab_renders_history_newest_first() -> Bool {
         && string_contains(s: string_at(parts: work_parts, index: 1), pattern: "taskbar-title\">write</span>")
         && occurrence_count(s: h, pattern: "work-history-step\">round ") == 3
         && string_contains(s: string_at(parts: work_parts, index: 1), pattern: "activity-obligation")
+        && string_contains(s: string_at(parts: work_parts, index: 1), pattern: "waiting on Workspace")
   }
 }
 
