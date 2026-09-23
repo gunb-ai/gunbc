@@ -223,8 +223,8 @@ fn declared_field_from_edge(e: Edge) -> Optional<DeclaredField> {
 }
 
 // The field list a payload declares, in declaration order. Anything that is not a payload Conj
-// declares no fields; a caller that needs to distinguish "nullary" from "not a payload" asks
-// payload_is_nullary first.
+// declares no fields, so an empty list alone does not distinguish "nullary" from "not a payload";
+// a caller that needs that also checks the payload is a Conj.
 fn declared_field_list(payload: Node) -> List<DeclaredField> {
   match payload.kind {
     TypeNode { connective: Conj } =>
@@ -235,13 +235,6 @@ fn declared_field_list(payload: Node) -> List<DeclaredField> {
         }
       })
     _ => Empty
-  }
-}
-
-fn payload_is_nullary(payload: Node) -> Bool {
-  match payload.kind {
-    TypeNode { connective: Conj } => count(payload.children) == 0
-    _ => false
   }
 }
 
