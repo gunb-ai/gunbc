@@ -5005,8 +5005,21 @@ fn callable_value_params(arrow: Node, source_indices: Map<String, NewlineIndex>)
   arrow.params |> filter(p => !param_is_generic_decl(p: p, source_indices: source_indices))
 }
 
+// A PARAMETER'S TYPE, READ WITHOUT child_type_node, for two measured reasons. An arrow's `inferred`
+// is its RETURN type, so child_type_node collapses a function-typed parameter `fn(String) -> Int` to
+// `Int` -- a nested arrow mismatch then compares two Ints and is accepted. And a type-variable leaf
+// carries TypeVariable rather than Resolved, so resolved_type turns `T` into error_type and the
+// polymorphic substitution never binds. An arrow and an unresolved leaf are therefore their own type
+// expression; only a Resolved non-arrow leaf is read through.
 fn callable_param_type(p: Node) -> Node {
-  child_type_node(ch: param_node_type_expr(n: p))
+  let te = param_node_type_expr(n: p)
+  if (te.connective == Arrow) { te }
+  else {
+    match te.inferred {
+      Present { value: Resolved { node: resolved } } => resolved
+      _ => te
+    }
+  }
 }
 
 fn callable_signature_view(n: Node) -> Node {
@@ -5130,9 +5143,31 @@ fn type_node_positively_not_callable(n: Node, type_env: TypeEnv) -> Bool {
 // fold_list callers). The lambda's value is the arrow over its own parameters and body type, minted
 // by the same constructor a named function value's arrow is. Every other expression's value type is
 // its resolved type.
+//
+// A LAMBDA'S PARAMETERS ARE ITS CHILDREN AFTER THE BODY (lambda_body, lambda_param_names_at), each
+// carrying its type in `inferred`, and its `params` is empty -- so the arrow is minted over those
+// children, each wrapped in the param shape an arrow carries (its type as the type-expression child,
+// read back by param_node_type_expr). An unannotated parameter whose type inference did not
+// establish carries error_type there, which is not ground, so it is unjudged rather than refused.
 fn expression_value_type(e: Node) -> Node {
-  if is_lambda_expr(e: e) { resolved_callable_type(func_params: e.params, ret: resolved_type(n: e)) }
+  if is_lambda_expr(e: e) {
+    resolved_callable_type(
+      func_params: e.children |> skip(1) |> map(lp => lambda_arrow_param(lambda_param: lp)),
+      ret: resolved_type(n: e))
+  }
   else { resolved_type(n: e) }
+}
+
+fn lambda_arrow_param(lambda_param: Node) -> Node {
+  let param_type = resolved_type(n: lambda_param)
+  Node {
+    occurrence_identity: OccurrenceSynthetic, name: "", span: lambda_param.span, ident_span: none, children: [param_type],
+    connective: NoConnective, params: [],
+    inferred: Present { value: Resolved { node: param_type } },
+    return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData
+  }
 }
 
 // The one-sided judgment at a position whose produced value is an expression in hand (an annotated
