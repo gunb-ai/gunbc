@@ -1499,6 +1499,13 @@ fn floor_route_gap_expectation_chunk_20() -> List<FloorRouteGapExpectation> {
 // hermetically in the same run (standing=planned-and-passed), so a row for either would be a stale
 // enrolment -- an expectation of a gap that does not occur -- which the floor counts as
 // stale_route_gap and which is its own red.
+//
+// A SIXTH ROW, releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing, joined when
+// gunbc#12040 added it with its WetScheduledClaim row but not this one -- the incomplete triple
+// again. Its floor run (job 106999407163) refused it with the same DirWithTemplate/no
+// mock_response gap, route_gap_unenrolled=1, while the local-repo wet lane recorded it
+// expected=passed observed=passed. It reaches fresh_root like the five above, so it is held the
+// same way and discharged the same way.
 fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.a_request_the_machine_cannot_back_refuses_below_the_live_floor", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -1510,7 +1517,10 @@ fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.competing_reservations_cannot_over_reserve_and_a_release_returns_the_capacity", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.two_requests_summing_past_the_observed_headroom_cannot_both_admit", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
+  }
   }
   }
   }
