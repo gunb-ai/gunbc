@@ -1,6 +1,7 @@
 module test.claim.runner.runner_microvm_slot_start_witness_test
 
 import std.types { String, NonEmptyStr, Bool }
+import std.measure { second }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { runner_slot_instance_name }
 import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
@@ -32,7 +33,7 @@ test fn a_start_is_admitted_only_with_this_invocations_controller_receipt() -> B
     && !microvm_slot_start_admitted(r: SlotStartInvocationUnread { unit: u, detail: "x" })
     && !microvm_slot_start_admitted(r: SlotStartAlreadyActive { unit: u, invocation: UnitPropertyRead { value: "earlier" } })
     && !microvm_slot_start_admitted(r: SlotStartInvocationUnchanged { unit: u, invocation_id: inv })
-    && !microvm_slot_start_admitted(r: SlotStartStillActiveAtBound { unit: u, invocation_id: inv, bound_seconds: 10 })
+    && !microvm_slot_start_admitted(r: SlotStartStillActiveAtBound { unit: u, invocation_id: inv, bound: second(count: 10) })
 }
 
 // THE UNIT IS THE SHAKEDOWN SLOT'S, DERIVED FROM THE SLOT ROW -- the same derivation the unit emitter

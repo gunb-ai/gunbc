@@ -52,7 +52,7 @@ type MicrovmSlotStartRun
   | SlotStartAlreadyActive { unit: NonEmptyStr, invocation: UnitPropertyReading }
   | SlotStartInvocationUnread { unit: NonEmptyStr, detail: String }
   | SlotStartInvocationUnchanged { unit: NonEmptyStr, invocation_id: NonEmptyStr }
-  | SlotStartStillActiveAtBound { unit: NonEmptyStr, invocation_id: NonEmptyStr, bound_seconds: Int }
+  | SlotStartStillActiveAtBound { unit: NonEmptyStr, invocation_id: NonEmptyStr, bound: Second }
   | SlotStartCompleted {
       unit: NonEmptyStr
       invocation_id: NonEmptyStr
@@ -174,7 +174,7 @@ fn microvm_slot_start_observed(unit: NonEmptyStr, invocation: NonEmptyStr) -> Mi
     SlotStartStillActiveAtBound {
       unit: unit,
       invocation_id: invocation,
-      bound_seconds: second_count(s: microvm_slot_unit_timeout_stop()),
+      bound: microvm_slot_unit_timeout_stop(),
     }
   } else {
     SlotStartCompleted {
@@ -193,8 +193,8 @@ fn microvm_slot_start_text(r: MicrovmSlotStartRun) -> String {
     SlotStartAlreadyActive { unit: u, invocation: i } => join(["slot-start=already-active unit=", u as String, " running_invocation=", unit_property_text(r: i), " -- another start owns this unit; nothing was started"], "")
     SlotStartInvocationUnread { unit: u, detail: d } => join(["slot-start=invocation-unread unit=", u as String, " (", d, ")"], "")
     SlotStartInvocationUnchanged { unit: u, invocation_id: i } => join(["slot-start=invocation-unchanged unit=", u as String, " invocation=", i as String, " -- the start ran no new invocation, so no receipt belongs to it"], "")
-    SlotStartStillActiveAtBound { unit: u, invocation_id: i, bound_seconds: b } =>
-      join(["slot-start=still-active-at-bound unit=", u as String, " invocation=", i as String, " bound_seconds=", to_string(b)], "")
+    SlotStartStillActiveAtBound { unit: u, invocation_id: i, bound: b } =>
+      join(["slot-start=still-active-at-bound unit=", u as String, " invocation=", i as String, " bound_seconds=", to_string(second_count(s: b))], "")
     SlotStartCompleted { unit: u, invocation_id: i, exec_main_status: s, controller_receipt: c } =>
       join(["slot-start=completed unit=", u as String, " invocation=", i as String, " exec_main_status=", unit_property_text(r: s), "\n", controller_receipt_text(c: c)], "")
   }
