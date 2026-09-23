@@ -51,14 +51,19 @@ fn device_route_refused_with(r: DeviceRouteResponse, status: Int, fragment: Stri
   r.status == status && string_contains(s: r.body, pattern: "\"refused\":") && string_contains(s: r.body, pattern: fragment)
 }
 
-// A body that is not the wire's shape refuses 400 naming where, on every one of the six routes.
+// A body that is not the wire's shape refuses 400 naming where, on every one of the six routes; the
+// three mutating routes are asked by the writer, since the writer gate precedes decoding.
+fn writer_process() -> ApprovalServingProcess {
+  if non_writer() { RoadmapProcess } else { BrokerProcess }
+}
+
 test fn malformed_bodies_refuse_400_on_every_route() -> Bool {
-  device_route_refused_with(r: device_enrol_response_at(realization: fx_unbound, body: "{", process: BrokerProcess, observed_at: fx_now), status: 400, fragment: "enrolment request refused at")
-    && device_route_refused_with(r: device_redeem_response_at(realization: fx_unbound, body: "[]", process: BrokerProcess, observed_at: fx_now), status: 400, fragment: "redemption refused at")
+  device_route_refused_with(r: device_enrol_response_at(realization: fx_unbound, body: "{", process: writer_process(), observed_at: fx_now), status: 400, fragment: "enrolment request refused at")
+    && device_route_refused_with(r: device_redeem_response_at(realization: fx_unbound, body: "[]", process: writer_process(), observed_at: fx_now), status: 400, fragment: "redemption refused at")
     && device_route_refused_with(r: device_pending_response_at(realization: fx_unbound, body: "{\"enrollment_id\":\"e\"}", observed_at: fx_now), status: 400, fragment: "read refused at")
     && device_route_refused_with(r: device_request_response_at(realization: fx_unbound, body: "{}", segment: path_segment(s: "esc-1") as String, observed_at: fx_now), status: 400, fragment: "read refused at")
     && device_route_refused_with(r: device_enrollment_readback_response_at(realization: fx_unbound, body: "{}", segment: path_segment(s: "enr-1") as String, observed_at: fx_now), status: 400, fragment: "read refused at")
-    && device_route_refused_with(r: device_push_update_response_at(realization: fx_unbound, body: "{\"auth\":{}}", process: BrokerProcess, observed_at: fx_now), status: 400, fragment: "push update refused at")
+    && device_route_refused_with(r: device_push_update_response_at(realization: fx_unbound, body: "{\"auth\":{}}", process: writer_process(), observed_at: fx_now), status: 400, fragment: "push update refused at")
 }
 
 // A malformed or non-canonical path segment refuses 400 before the body is read.
@@ -73,25 +78,15 @@ test fn a_readback_for_another_enrolment_refuses_403() -> Bool {
   device_route_refused_with(r: device_enrollment_readback_response_at(realization: fx_unbound, body: read_authentication_json(a: fx_auth), segment: path_segment(s: "enr-other") as String, observed_at: fx_now), status: 403, fragment: "another enrolment")
 }
 
-// THE WRITER GATE IS ON THE PATH of the three mutating routes: from the process that does not
-// hold writer authority, a well-formed enrol / redeem / push-update body is refused 503 with the
-// writer reason and nothing is read or verified. (Which process holds it is the cutover posture's
-// fact; the claim names the non-holder by asking the gate.)
+// THE WRITER GATE IS THE FIRST THING THE THREE MUTATING ROUTES ASK: from the process that does not
+// hold writer authority, the route refuses 503 with the writer reason before the body is decoded, so
+// the body is irrelevant to this subject and is supplied as a bare object. (Which process holds it is
+// the cutover posture's fact; the claim names the non-holder by asking the gate.)
 test fn the_non_writer_process_is_refused_on_the_mutating_routes() -> Bool {
   let asker = if non_writer() { BrokerProcess } else { RoadmapProcess }
-  let push = push_update_request_json(r: PushUpdateRequest { auth: fx_auth, push: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "a1b2" } })
-  device_route_refused_with(r: device_push_update_response_at(realization: fx_unbound, body: push, process: asker, observed_at: fx_now), status: 503, fragment: "writer authority")
-    && gated_route_refused(name: "enrolment_request", asker: asker, route: fn(body) { device_enrol_response_at(realization: fx_unbound, body: body, process: asker, observed_at: fx_now) })
-    && gated_route_refused(name: "signed_redemption", asker: asker, route: fn(body) { device_redeem_response_at(realization: fx_unbound, body: body, process: asker, observed_at: fx_now) })
-}
-
-// The named envelope vector's body driven through one mutating route from the non-holder: a missing
-// vector is a false claim, not a skipped one.
-fn gated_route_refused(name: String, asker: ApprovalServingProcess, route: fn(String) -> DeviceRouteResponse) -> Bool {
-  match envelope_vector_body(name: name) {
-    Absent => false
-    Present { value: body } => device_route_refused_with(r: route(body), status: 503, fragment: "writer authority")
-  }
+  device_route_refused_with(r: device_push_update_response_at(realization: fx_unbound, body: "{}", process: asker, observed_at: fx_now), status: 503, fragment: "writer authority")
+    && device_route_refused_with(r: device_enrol_response_at(realization: fx_unbound, body: "{}", process: asker, observed_at: fx_now), status: 503, fragment: "writer authority")
+    && device_route_refused_with(r: device_redeem_response_at(realization: fx_unbound, body: "{}", process: asker, observed_at: fx_now), status: 503, fragment: "writer authority")
 }
 
 // THE VERIFIER ROW DECIDES WHETHER READS PROCEED, and this claim reads the row's own arm so it

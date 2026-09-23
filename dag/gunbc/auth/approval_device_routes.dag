@@ -306,12 +306,12 @@ fn device_enrol_response(body: String, process: ApprovalServingProcess) -> Devic
 }
 
 fn device_enrol_response_at(realization: DeviceCryptoRealization, body: String, process: ApprovalServingProcess, observed_at: Timestamp) -> DeviceRouteResponse {
-  match decode_enrolment_request(text: body) {
-    WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "enrolment request refused at " + (a as String) + ": " + (c as String))
-    WireDecoded { value: r } =>
-      match approval_write_admission(asker: process) {
-        ApprovalWriteRefused { holder: h, asker: a } => device_refused(status: 503, reason: approval_write_refusal_reason(holder: h, asker: a) as String)
-        ApprovalWriteAdmitted { writer: _ } =>
+  match approval_write_admission(asker: process) {
+    ApprovalWriteRefused { holder: h, asker: a } => device_refused(status: 503, reason: approval_write_refusal_reason(holder: h, asker: a) as String)
+    ApprovalWriteAdmitted { writer: _ } =>
+      match decode_enrolment_request(text: body) {
+        WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "enrolment request refused at " + (a as String) + ": " + (c as String))
+        WireDecoded { value: r } =>
           match device_crypto_admission(r: realization) {
             DeviceCryptoRefused { status: st, reason: why } => device_refused(status: st, reason: why)
             DeviceCryptoAdmitted { handler_identity: _, exact_revision: _ } =>
@@ -399,12 +399,12 @@ fn device_redeem_response(body: String, process: ApprovalServingProcess) -> Devi
 }
 
 fn device_redeem_response_at(realization: DeviceCryptoRealization, body: String, process: ApprovalServingProcess, observed_at: Timestamp) -> DeviceRouteResponse {
-  match decode_signed_redemption(text: body) {
-    WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "redemption refused at " + (a as String) + ": " + (c as String))
-    WireDecoded { value: r } =>
-      match approval_write_admission(asker: process) {
-        ApprovalWriteRefused { holder: h, asker: a } => device_refused(status: 503, reason: approval_write_refusal_reason(holder: h, asker: a) as String)
-        ApprovalWriteAdmitted { writer: _ } =>
+  match approval_write_admission(asker: process) {
+    ApprovalWriteRefused { holder: h, asker: a } => device_refused(status: 503, reason: approval_write_refusal_reason(holder: h, asker: a) as String)
+    ApprovalWriteAdmitted { writer: _ } =>
+      match decode_signed_redemption(text: body) {
+        WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "redemption refused at " + (a as String) + ": " + (c as String))
+        WireDecoded { value: r } =>
           match device_crypto_admission(r: realization) {
             DeviceCryptoRefused { status: st, reason: why } => device_refused(status: st, reason: why)
             DeviceCryptoAdmitted { handler_identity: _, exact_revision: _ } =>
@@ -571,12 +571,12 @@ fn device_push_update_response(body: String, process: ApprovalServingProcess) ->
 }
 
 fn device_push_update_response_at(realization: DeviceCryptoRealization, body: String, process: ApprovalServingProcess, observed_at: Timestamp) -> DeviceRouteResponse {
-  match decode_push_update_request(text: body) {
-    WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "push update refused at " + (a as String) + ": " + (c as String))
-    WireDecoded { value: r } =>
-      match approval_write_admission(asker: process) {
-        ApprovalWriteRefused { holder: h, asker: a } => device_refused(status: 503, reason: approval_write_refusal_reason(holder: h, asker: a) as String)
-        ApprovalWriteAdmitted { writer: _ } =>
+  match approval_write_admission(asker: process) {
+    ApprovalWriteRefused { holder: h, asker: a } => device_refused(status: 503, reason: approval_write_refusal_reason(holder: h, asker: a) as String)
+    ApprovalWriteAdmitted { writer: _ } =>
+      match decode_push_update_request(text: body) {
+        WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "push update refused at " + (a as String) + ": " + (c as String))
+        WireDecoded { value: r } =>
           match admit_device_read(realization: realization, auth: r.auth, client_data: device_push_update_client_data(enrollment_id: r.auth.enrollment_id, requested_at: r.auth.requested_at, push: r.push), observed_at: observed_at) {
             DeviceReadRefused { status: s, reason: rr } => device_refused(status: s, reason: rr)
             DeviceReadAdmitted { enrollment: e } =>
