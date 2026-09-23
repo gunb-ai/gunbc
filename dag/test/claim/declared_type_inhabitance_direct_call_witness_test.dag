@@ -474,3 +474,136 @@ test fn w_a_branded_refinement_at_an_unrelated_product_formal_still_refuses() ->
   violation_count(source: disjoint_refinement_at_product_source, wanted: "DeclaredTypeNotInhabited")
     > violation_count(source: disjoint_partner_source, wanted: "DeclaredTypeNotInhabited")
 }
+
+// THE COLLECTION-VERSUS-NOMINAL-PRODUCT CELL, IN BOTH DIRECTIONS. Measured on main ff2110b7e24,
+// both arms below ADMITTED: the callee body ran and returned. Every arm of
+// declared_type_inhabitance keyed on the kind of ONE side -- `collection_at_scalar_declared_type`
+// asked whether the PRODUCED value was a collection and the DECLARED type peeled to a kernel
+// scalar, `record_at_scalar_needs_identity` asked for a kernel DECLARED and a product PRODUCED,
+// `nominal_product_head_name` answers "" for a collection by design -- so the pair
+// collection/nominal-product was judged by no arm and reached the terminal `Inhabits` by
+// fallthrough. The four REFUSED controls already in this file (Int<-String, Int<-List<Int>,
+// Rec<-Other, Rec<-Optional) establish that the direct-call seam RUNS on these fixtures, so the
+// admission was a hole in the relation and not an unreached position.
+//
+// This is a specimen of gunbc.recurring_failure_mode
+// declared_type_wall_keyed_on_the_value_being_a_kernel, not a new class: the wall was keyed on
+// the kind of the offending value rather than on the relation between the value and its declared
+// type. The repair generalizes the collection judgment into
+// `collection_versus_established_identity`, which is why these two arms and the positives below
+// are read together -- an arm that refused every collection would pass both reds and destroy the
+// corpus.
+data list_value_at_record_formal_source: String = "module probe_inhabit_list_at_record\nimport std.types { Int, String, List }\ntype Rec { a: String }\nfn takes_rec(r: Rec) -> Int { 1 }\nfn a_list() -> List<String> { [\"--quiet\"] }\nfn probe() -> Int { takes_rec(r: a_list()) }\n"
+
+test fn w_a_collection_at_a_nominal_product_formal_is_refused() -> Bool {
+  violation_count(source: list_value_at_record_formal_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE DUAL, and it is not the arm above with the words swapped: it exercises the other branch of
+// the relation, where the DECLARED side is the collection and the PRODUCED side carries the
+// established product identity. A relation that only looked at the produced side would leave this
+// one admitted.
+data record_value_at_list_formal_source: String = "module probe_inhabit_record_at_list\nimport std.types { Int, String, List }\ntype Rec { a: String }\nfn takes_list(xs: List<Int>) -> Int { 1 }\nfn a_rec() -> Rec { Rec { a: \"x\" } }\nfn probe() -> Int { takes_list(xs: a_rec()) }\n"
+
+test fn w_a_nominal_product_at_a_collection_formal_is_refused() -> Bool {
+  violation_count(source: record_value_at_list_formal_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE ANTI-REFUSE-EVERYTHING CONTROLS FOR THAT RELATION. Same two shapes, each at its OWN formal.
+// The census records that an earlier structural reading of this seam refused 33 of 50 correct
+// sites, so a positive control here is load-bearing rather than a formality.
+data matching_collection_and_record_source: String = "module probe_inhabit_coll_match\nimport std.types { Int, String, List }\ntype Rec { a: String }\nfn takes_rec(r: Rec) -> Int { 1 }\nfn takes_list(xs: List<String>) -> Int { 1 }\nfn a_list() -> List<String> { [\"--quiet\"] }\nfn a_rec() -> Rec { Rec { a: \"x\" } }\nfn probe() -> Int { takes_rec(r: a_rec()) + takes_list(xs: a_list()) }\n"
+
+test fn w_a_collection_and_a_product_each_at_their_own_formal_are_admitted() -> Bool {
+  violation_count(source: matching_collection_and_record_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// THE PEEL, AND WHY BOTH SIDES ARE PEELED. `type Words = List<String>` is a declared alias whose
+// outer node is not List, so a relation that asked the collection question before peeling would
+// read the formal as a non-collection nominal identity and refuse a correct site. The same gap
+// carries FreeMonoid<T> arriving as List<T>. This arm is the discriminating control over
+// side_is_collection_after_peel: drop the peel and it goes red while the two arms above stay
+// green, which is exactly the false-refusal shape the census exists to catch.
+data alias_collection_formal_source: String = "module probe_inhabit_alias_coll\nimport std.types { Int, String, List }\ntype Words = List<String>\nfn takes_words(w: Words) -> Int { 1 }\nfn a_list() -> List<String> { [\"--quiet\"] }\nfn probe() -> Int { takes_words(w: a_list()) }\n"
+
+test fn w_a_collection_at_an_alias_of_that_collection_is_admitted() -> Bool {
+  violation_count(source: alias_collection_formal_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// THE loyal-swift-608 DISCOVERY SHAPE, ENROLLED AS A CLAIM ON THE DECLARED TYPE. A
+// construction-level wall over a record mintable only by a quiet builder was defeated by handing
+// the interpreter a List<String> carrying "--quiet" at the record's declared position: the
+// construction wall was real and the DECLARED-TYPE wall beneath it was open, so the value never
+// had to be minted. The claim here is the type one -- the declared record REFUSES the smuggled
+// argv list -- which is the fact a next-rung trigger over that construction wall needs to be
+// able to fire on.
+data smuggled_argv_at_builder_record_source: String = "module probe_inhabit_smuggled_argv\nimport std.types { Int, String, List }\ntype QuietInvocation { argv: List<String> }\nfn run_quiet(inv: QuietInvocation) -> Int { 1 }\nfn smuggled_argv() -> List<String> { [\"--quiet\"] }\nfn probe() -> Int { run_quiet(inv: smuggled_argv()) }\n"
+
+test fn w_a_smuggled_argv_list_at_a_builder_minted_record_is_refused() -> Bool {
+  violation_count(source: smuggled_argv_at_builder_record_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE LIVE SPECIMEN, PRESERVED AS AN AUTHORED FIXTURE -- and the reason it is authored is itself
+// the point. This relation's whole-tree census found exactly ONE new refusal in the corpus:
+// extdeps.auth.jws handed a raw List<UInt8> to std.encoding base64_encode, whose formal is the
+// sealed carrier QualifiedOctets. std/integer.dag had documented that exact hole as OPEN --
+// "handing a raw List where the carrier is declared still type-checks ... dies at RUNTIME with
+// TypeError: cannot access field 'members' on List ... a loud untyped abort is rung 1, not rung 3"
+// -- so this relation is what climbs it, and that live site is the receipt.
+//
+// THAT RECEIPT IS BEING REPAIRED, which is why it may not be this wall's only evidence. Once the
+// production site is fixed the corpus supplies NO natural red for this pair, and a wall whose
+// discriminating red has been repaired out of existence is reported at a rung nothing executes --
+// the DESIGN 4b(1) inflation, arriving from the direction where the corpus got healthier rather
+// than where the check got weaker. 4b's top-rung question settles it: ask whether the RED is
+// AUTHORABLE, and a state unrepresentable in the ACCEPTED corpus is still perfectly representable
+// as SOURCE HANDED TO THE COMPILER BY A FIXTURE -- a compiler is precisely a thing whose
+// regression probes are invalid programs. So the specimen moves here and stays here, per 4b(4):
+// a climb deletes the redundant production handling, never the evidence.
+//
+// This fixture uses the REAL std.integer / std.encoding declarations rather than a local imitation
+// of them, so it discriminates over the actual carrier whose seam was open, not over a re-coined
+// shape that could drift away from it.
+data raw_octets_at_qualified_octets_source: String = "module probe_inhabit_raw_octets\nimport std.types { Int, String, List }\nimport std.integer { UInt8 }\nimport std.encoding { base64_encode, UrlSafe }\nfn some_octets() -> List<UInt8> { [] }\nfn probe() -> Int {\n  let encoded: String = base64_encode(octets: some_octets(), variant: UrlSafe)\n  1\n}\n"
+
+test fn w_a_raw_octet_list_at_the_qualified_octets_carrier_is_refused() -> Bool {
+  violation_count(source: raw_octets_at_qualified_octets_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE POSITIVE CONTROL THE ARM ABOVE NEEDS, over the SAME carrier and the SAME callee. A relation
+// that refused every argument to base64_encode would pass the red above while making the encoder
+// uncallable. The admitted route is the one the other nine callers in the corpus already take:
+// mint through the uint8_octets_of_ints fold and pass the sealed value.
+data qualified_octets_at_qualified_octets_source: String = "module probe_inhabit_sealed_octets\nimport std.types { Int, String, List }\nimport std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctetsRefused }\nimport std.encoding { base64_encode, UrlSafe }\nfn probe() -> Int {\n  match uint8_octets_of_ints(values: [1, 2, 3]) {\n    QualifiedOctetsRefused { observed: _ } => 0\n    QualifiedOctetsReady { value: sealed } => {\n      let encoded: String = base64_encode(octets: sealed, variant: UrlSafe)\n      1\n    }\n  }\n}\n"
+
+test fn w_the_sealed_carrier_at_its_own_formal_is_admitted() -> Bool {
+  violation_count(source: qualified_octets_at_qualified_octets_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// THE RECORD-UPDATE FORM AT ITS BASE'S OWN FORMAL, which is the observable consequence of typing
+// `with` from its receiver rather than from the builtin registry. The registry declares `with` as
+// the MAP operation returning a Map, so before v1.compiler.infer's receiver-keyed arm this
+// expression was typed Map, and the relation above then refused a Map at a product formal --
+// correctly, on a premise it had been handed wrongly. The refusal was real and blocking: it stopped
+// the regen round's v2 self-compile on v1.compiler.emit_rust's own
+// `with(emit_info, { movable: ... })`, where EmitGraphInfo genuinely declares `movable`.
+//
+// This arm is the FALSE-REFUSAL control for that repair. It must be admitted, and it goes red if
+// the receiver-keyed arm is removed or narrowed back to the registry's answer.
+data record_update_at_its_own_formal_source: String = "module probe_with_record_update\nimport std.types { Int, String }\ntype Holder { a: String  b: Int }\nfn takes_holder(h: Holder) -> Int { 1 }\nfn probe() -> Int {\n  let base: Holder = Holder { a: \"x\", b: 1 }\n  takes_holder(h: with(base, { b: 2 }))\n}\n"
+
+test fn w_a_record_update_inhabits_its_bases_declared_type() -> Bool {
+  violation_count(source: record_update_at_its_own_formal_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// AND THE CONTROL THAT KEEPS THAT ADMISSION FROM BEING A HOLE, because the cheap way to green the
+// arm above is to stop refusing Map-at-product altogether -- which is the symptom-link patch the
+// repair deliberately did not take (gunbc.recurring_failure_mode
+// symptom_link_patched_without_the_earliest_unjustified_boundary). A genuine keyed collection at a
+// product formal must still refuse. If this greens, the false-positive repair has been bought with
+// the wall's discriminating power and the relation is no longer doing its job.
+data genuine_map_at_product_source: String = "module probe_with_genuine_map\nimport std.types { Int, String, Map }\ntype Holder { a: String  b: Int }\nfn takes_holder(h: Holder) -> Int { 1 }\nfn a_map() -> Map<String, Int> { { \"b\": 2 } }\nfn probe() -> Int { takes_holder(h: a_map()) }\n"
+
+test fn w_a_genuine_map_at_a_product_formal_still_refuses() -> Bool {
+  violation_count(source: genuine_map_at_product_source, wanted: "DeclaredTypeNotInhabited") > 0
+}

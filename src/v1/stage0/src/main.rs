@@ -1162,6 +1162,31 @@ fn run_verb(
         };
     }
 
+    // THE WORKSPACE ROOT IS BOUND HERE, AND IT IS BOUND FIRST.
+    //
+    // Everything downstream keys module-graph facts and content indices against it, so it must be
+    // decided before the first read rather than discovered on first use -- and it is decided HERE
+    // because this is the only place that holds the request's source roots. Discovery is the
+    // incumbent authority and is asked first, so a run inside a checkout resolves exactly as it
+    // always did; the request names the base only where there is no checkout to discover one from,
+    // and a run that can name no base at all refuses with a located cause instead of aborting
+    // inside a helper thirty frames down.
+    // THE CHOICE IS REPORTED, NOT INFERRED. Two rules can name the base and they key the module
+    // graph differently, so which one answered is a fact the operator of a run is entitled to see
+    // without reconstructing it from their own cwd. A selection nobody can observe is how a
+    // fall-through becomes indistinguishable from a silent widen.
+    match cli_run::bind_process_workspace_root(source_roots) {
+        Ok((root, basis)) => {
+            eprintln!("[workspace-root] {} {}", basis.wire(), root.display());
+        }
+        Err(cause) => {
+            return Verdict {
+                status: 2,
+                message: Some(format!("error: {cause}")),
+            };
+        }
+    }
+
     // Refuse a malformed --arg BEFORE the compile, so the diagnostic is the first thing
     // printed rather than the last thing after a minute of resolution.
     let run_args = match decode_run_args(args) {
