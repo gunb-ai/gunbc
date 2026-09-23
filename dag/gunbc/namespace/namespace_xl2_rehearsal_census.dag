@@ -127,6 +127,18 @@ data xl2_native_requalification_walls: List<Xl2NativeRequalificationWall> = [
   Xl2DiagnosticFieldReadWall
 ]
 
+// A POPULATION THE CUT CANNOT REACH, NAMED SO ITS SILENCE IS NOT READ AS COVERAGE. A reference whose
+// leaf is a kernel canonical symbol binds with no import at all (v2.compiler.resolve
+// resolved_reference_identity, ResolvedToKernelSymbol), so stripping its import leaves nothing
+// unresolved: no residual row for Bool is NOT evidence the cut covers Bool. It is carried UNCOUNTED,
+// because the census's resolved arm (v2.compiler.compile NativeCensusModuleResolved) keeps no
+// resolved tree to count from; counting it needs the census to carry ResolvedToKernelSymbol
+// occurrences, which is the trigger for adding a count here.
+type Xl2ExcludedPopulation
+  = Xl2KernelCanonicalReferencesUncounted
+
+data xl2_excluded_populations: List<Xl2ExcludedPopulation> = [Xl2KernelCanonicalReferencesUncounted]
+
 type Xl2RehearsalRun
   = Xl2RehearsalBaseUnobserved { cause: Step0SubjectPinRefusal }
   | Xl2RehearsalContextRefused { source_commit: GitObjectId, diagnostics: NonEmptyDiagnostics }
@@ -137,6 +149,7 @@ type Xl2RehearsalRun
       resolved_module_count: Int
       completeness: Xl2CensusCompleteness
       native_requalification: List<Xl2NativeRequalificationWall>
+      excluded: List<Xl2ExcludedPopulation>
     }
 
 // ---------------------------------------------------------------------------------------------
@@ -331,7 +344,8 @@ fn xl2_rehearse_stripped(source_commit: GitObjectId, source_tree: GitObjectId, s
         residual: observed.residual,
         resolved_module_count: observed.resolved,
         completeness: xl2_completeness(unobserved: concat(strip.unobserved, observed.unobserved)),
-        native_requalification: xl2_native_requalification_walls
+        native_requalification: xl2_native_requalification_walls,
+        excluded: xl2_excluded_populations
       }
     }
   }

@@ -136,11 +136,12 @@ test fn xl2_control_completeness_is_refused_holds() -> Bool {
   }
 }
 
-// THE WALLS RIDE ON THEIR OWN AXIS: an observed run names both native requalification walls, and
-// they are not among its completeness refusals (the refusal type cannot carry them).
+// THE WALLS AND THE EXCLUDED KERNEL POPULATION RIDE ON THEIR OWN AXES: an observed run names both
+// native requalification walls and the uncounted kernel-canonical class, and neither is among its
+// completeness refusals (the refusal type cannot carry them).
 test fn xl2_control_names_the_native_requalification_walls_holds() -> Bool {
   match xl2_control_runs().cut {
-    Xl2RehearsalObserved { native_requalification: walls } => count(walls) == 2
+    Xl2RehearsalObserved { native_requalification: walls, excluded: excluded } => count(walls) == 2 && count(excluded) == 1
     _ => false
   }
 }
