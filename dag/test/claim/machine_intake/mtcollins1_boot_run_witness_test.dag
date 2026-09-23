@@ -19,6 +19,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_medium_refusal,
   mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1,
 }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_diagnostics_allowance }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 import gunbc.fleet_converge_workflow { fleet_converge_mtcollins1_boot_job, fleet_converge_checkout_ref_expr, fleet_converge_mtcollins1_boot_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group }
 import extdeps.github.actions { Step, RunStep, UsesStep, RunnerSpec, SelfHosted, RunsOnExpression, HostedRunner }
@@ -42,6 +43,7 @@ test fn the_step_timeout_covers_the_boot_phases() -> Bool {
     + (second_count(s: mtcollins1_boot_issue_allowance) as Int)
     + (second_count(s: mtcollins1_boot_actuation_allowance) as Int)
     + (second_count(s: mtcollins1_boot_cleanup_allowance) as Int)
+    + (second_count(s: mtcollins1_boot_diagnostics_allowance()) as Int)
   (minute_count(m: mtcollins1_boot_step_timeout_minutes()) as Int) * 60 >= covered
 }
 

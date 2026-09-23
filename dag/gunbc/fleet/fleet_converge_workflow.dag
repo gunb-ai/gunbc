@@ -423,6 +423,11 @@ fn fleet_converge_any_mode_step_if(modes: List<FleetConvergeWorkflowMode>) -> St
 //     BMC, authorized by that same credential file via -f. THE SOL SESSION IS CARRIED BY IPMI TO THE
 //     BMC, not by an ssh channel to the host, so it presents the BMC credential and never an
 //     identity from the agent;
+//   - extdeps.bmc.ipmi Tool.SelListAuthenticated and extdeps.bmc.http redfish.Http
+//     GetSystemsCollection/GetMemoryCollection/GetMemory/GetProcessorCollection/GetProcessor, the
+//     readonly reads of gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle -- the same BMC
+//     credential, by -f for ipmitool and through a per-attempt gunbc.auth.netrc_binding netrc,
+//     shredded on every path, for curl;
 //   - extdeps.tools.env shell.Env.Get, extdeps.tools.sleep Delay.Seconds, extdeps.clock Clock.Now --
 //     no credential.
 //   - AND, SINCE CENSUS STAGE 0D, gunbc.machine_intake_mtcollins1_census_medium_readback
