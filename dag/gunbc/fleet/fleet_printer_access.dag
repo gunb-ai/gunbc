@@ -18,7 +18,6 @@ import extdeps.cloud.gcp.secret_manager
 import extdeps.transports.rest {
   RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
-import std.resources { Network }
 import gunbc.auth.access_token_source {
   AccessTokenSource, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
   access_token_upsert_required_reason, ensure_access_token,
@@ -353,7 +352,7 @@ fn observe_printer_secret_container(
   printer: PhysicalAssetIdentity,
   token_source: AccessTokenSource,
   materializations: List<VerifiedVersionForAttempt>,
-) -> PrinterCredentialResolution uses net: Network {
+) -> PrinterCredentialResolution {
   match printer_access_code_locus(printer: printer) {
     PrinterAccessCodeLocusUnknown { printer: p } =>
       PrinterCredentialLocusUndeclared { printer: p }

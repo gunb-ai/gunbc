@@ -108,7 +108,6 @@ import gunbc.machine_intake_oob_boot_handoff {
 data host_reset_return_probe_label: NonEmptyStr = "ssh.Session.Reachability, BatchMode, ConnectTimeout=5"
 
 fn host_is_reachable(host: NonEmptyStr) -> Bool
-  uses net: std.resources.Network
 {
   return ssh.Session.Reachability(host: host).reachable
 }
@@ -137,7 +136,6 @@ type WatchFold {
 // back watch, so one fold serves both and the two waits cannot drift apart in their pacing, their
 // bound or their clock discipline.
 fn watch_step(acc: WatchFold, want_reachable: Bool, host: NonEmptyStr) -> WatchFold
-  uses net: std.resources.Network
 {
   return match acc.outcome {
     Present { value: _ } => acc
@@ -165,7 +163,6 @@ fn watch_step(acc: WatchFold, want_reachable: Bool, host: NonEmptyStr) -> WatchF
 }
 
 fn watch_for(host: NonEmptyStr, want_reachable: Bool, max_samples: Nat) -> LivenessWatch
-  uses net: std.resources.Network
 {
   let done = fold(
     nat_range_inclusive(lo: 1, hi: max_samples),
@@ -185,7 +182,6 @@ fn watch_for(host: NonEmptyStr, want_reachable: Bool, max_samples: Nat) -> Liven
 // observed without a departure having been observed first, so "down then up" cannot degenerate into
 // "up", which is what a host that never rebooted would answer.
 fn observe_reset_return(host: NonEmptyStr, down_samples_max: Nat, back_samples_max: Nat) -> HostReturnObservation
-  uses net: std.resources.Network
 {
   return match watch_for(host: host, want_reachable: false, max_samples: down_samples_max) {
     WatchClockRefused { detail: d } =>
@@ -237,7 +233,6 @@ fn observe_reset_return(host: NonEmptyStr, down_samples_max: Nat, back_samples_m
 // not happen" class this branch had already been caught by once, which is the argument for reading
 // every sentence that names a state as a claim to be re-measured rather than as description.
 fn observer_self_corroboration(observer: HostIdentity, subject: HostIdentity) -> ObserverSelfIdentity
-  uses net: std.resources.Network
 {
   let observed = os.Hostname.ReadShort()
   if observed.success == false {
@@ -285,7 +280,6 @@ fn observer_self_corroboration(observer: HostIdentity, subject: HostIdentity) ->
 // moved nothing. So reachability is established first, and a subject that was not up refuses on its
 // own arm rather than proceeding into a watch whose answer is already decided.
 fn subject_baseline(host: NonEmptyStr) -> HostReturnObservation?
-  uses net: std.resources.Network
 {
   if host_is_reachable(host: host) {
     return none
@@ -384,7 +378,6 @@ fn host_reset_return_attempt(
   route: ResetIssuanceRoute,
   password_file: NonEmptyStr,
 ) -> ResetAttemptMint
-  uses net: std.resources.Network
 {
   let subject = candidate.host as NonEmptyStr
   let selection = select_reset_observer(
@@ -455,7 +448,6 @@ fn host_reset_return_issue_and_watch(
   password_file: NonEmptyStr,
   issued_at: EpochMs,
 ) -> ResetAttemptMint
-  uses net: std.resources.Network
 {
   let outcome = oob_boot_handoff(
     observation: candidate.observation,
@@ -516,7 +508,6 @@ data host_reset_bmc_credential_path_env: NonEmptyStr = "GUNBC_HOST_RESET_BMC_CRE
 // would be the fabricated-plausible-output shape, and a reader sorting receipts by subject would find
 // a row claiming one. The line says which vocabulary answered it so the two are never confused.
 fn host_reset_return_preflight_exit(refusal: ResetPreflightRefusal, remedy: String) -> ProcessExit
-  uses net: std.resources.Network
 {
   let wire = reset_preflight_refusal_wire(refusal: refusal)
   let _w = Filesystem.Write(
@@ -546,7 +537,6 @@ fn host_reset_return_preflight_exit(refusal: ResetPreflightRefusal, remedy: Stri
 // module refuses -- so the not-this-mode arm exits SUCCESSFULLY and says so, and the unnamed-observer
 // arm exits non-zero with the located diagnostic.
 fn host_reset_return_dispatch_admission_wet() -> ProcessExit
-  uses net: std.resources.Network
 {
   let mode_raw = match shell.Env.Get(name: host_reset_dispatch_mode_env).value {
     Absent => ""
@@ -567,7 +557,6 @@ fn host_reset_return_dispatch_admission_wet() -> ProcessExit
 data host_reset_dispatch_mode_env: NonEmptyStr = "GUNBC_HOST_RESET_DISPATCH_MODE" as NonEmptyStr
 
 fn host_reset_return_wet() -> ProcessExit
-  uses net: std.resources.Network
 {
   let credential = shell.Env.Get(name: host_reset_bmc_credential_path_env).value
   let password_file_raw = match credential {
@@ -656,7 +645,6 @@ fn host_reset_return_wet() -> ProcessExit
 // trace back to its run does not establish it, so the honest arm is to refuse before the controller
 // write rather than to record the gap afterwards.
 fn host_reset_return_converge_route_read() -> ResetIssuanceRouteRead
-  uses net: std.resources.Network
 {
   match actions_variable_read(name: github_run_id_variable_name) {
     ActionsVariableAbsent { variable: v, detail: d } =>
@@ -697,7 +685,6 @@ fn host_reset_return_receipt_line(verdict: ResetReturnVerdict, subject: NonEmpty
 }
 
 fn host_reset_return_exit(verdict: ResetReturnVerdict, subject: NonEmptyStr, attempt: NonEmptyStr) -> ProcessExit
-  uses net: std.resources.Network
 {
   let _w = Filesystem.Write(
     path: host_reset_return_receipt_path as String,

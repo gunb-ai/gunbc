@@ -42,7 +42,7 @@ import gunbc.spark.serving_deployment_selection { TopologyShape, topology_shape 
 import gunbc.spark.v41_identity_input { V41EngramResidencyPartition, v41_input }
 import gunbc.spark.v41_engram_row_store {
   V41PublishedRowStoreKey, V41PublishedRowStoreKeyed, V41PublishedRowStoreUnestablished, V41PublishedRowStoreRefused,
-  v41_published_row_store_key, v41_published_span_readings,
+  v41_published_row_store_key, v41_published_span_readings, v41_live_head_sizes,
 }
 import gunbc.spark.v41_index_engram_selection { v41_engram_population_observed }
 import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity }
@@ -786,6 +786,7 @@ fn v41_row_store_encoding_standing() -> V41ManifestStanding {
     sharded: deepseek_v4_1_flash_engram_sharded_entries,
     shards: deepseek_v4_1_flash_engram_shard_files,
     readings: v41_published_span_readings,
+    head_sizes: fn() { v41_live_head_sizes(tables: deepseek_v4_1_flash_engram) },
   ) {
     V41PublishedRowStoreKeyed { digest: d } => V41ManifestObserved { digest: d }
     V41PublishedRowStoreUnestablished { obligation: o } => V41ManifestUnestablished { obligation: o }
