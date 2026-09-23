@@ -831,16 +831,16 @@ type ReferenceConservationSubject {
   normalized: Outcome<NormalizedTree>
 }
 
+// ONE MODULE, ONE ALLOCATOR SCOPE. The check parses each module on its own, which is the
+// standalone-parse case std.occurrence_identity occurrence_identity_scope_law names: an isolated
+// allocator scope, so the seed is the initial allocator. Occurrence ids are compared only within
+// this one subject, never across modules.
 fn reference_conservation_subject_of_read(
   read: DagSourceReadWitness,
   lm: LanguageModel,
   prepared: PreparedGrammar,
   residue: Diagnostics
 ) -> ReferenceConservationSubject {
-  // ONE MODULE, ONE ALLOCATOR SCOPE. The check parses each module on its own, which is the
-  // standalone-parse case std.occurrence_identity occurrence_identity_scope_law names: an isolated
-  // allocator scope, so the seed is the initial allocator. Occurrence ids are compared only within
-  // this one subject, never across modules.
   let parsed = program_assembly_phase_parse_measured_seeded(
     tokens: program_assembly_phase_tokenize(read: read, lm: lm),
     prepared: prepared,
