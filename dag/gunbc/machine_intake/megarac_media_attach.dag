@@ -268,7 +268,6 @@ fn megarac_close_and_reobserve(
   csrf_token: NonEmptyStr,
   csrf: SessionCsrfStanding,
 ) -> SessionRelease
-  uses net: std.resources.Network
 {
   let before_get = megarac.Media.ProbeSessionOnMediaRoute(
     bmc_host: bmc_host,
