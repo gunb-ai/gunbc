@@ -11,7 +11,7 @@ import std.durable_compare_and_set {
   CasUnreadableSlot, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded,
   CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasSlotObservationRefused, CasGenerationPublicationRefused,
-  cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted, CasGenerationSpaceExhausted, cas_generation_first,
+  cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted, cas_generation_exhausted, cas_generation_first,
 }
 import gunbc.durable_cas_file_store { VerifiedCasAttempt }
 import extdeps.languages.json.emit { JsonValue, json_kv, json_string, json_int, json_object, serialize_json }
@@ -161,7 +161,7 @@ fn fabric_storage_compare_and_set(store: FabricStorageBinding, verified: Verifie
         ExpectSlotGeneration { generation: g } =>
           if cas_generation_count(g: g) == cas_generation_count(g: v.generation) {
             match cas_generation_successor(g: v.generation) {
-              CasSuccessorExhausted { head: h } => CasStoreRefused { cause: CasGenerationSpaceExhausted { head: h } }
+              CasSuccessorExhausted { head: h } => cas_generation_exhausted(head: h)
               CasSuccessorGeneration { generation: next } =>
                 cas_slot_advance(store: store, verified: verified, expected: ExpectHeadAt { object: o }, target: next)
             }

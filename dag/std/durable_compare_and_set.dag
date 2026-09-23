@@ -274,6 +274,12 @@ fn cas_generation_successor(g: CasGeneration) -> CasGenerationSuccessor {
   else { CasSuccessorGeneration { generation: cas_generation_count(g: g) + 1 } }
 }
 
+// ONE AUTHORITY FOR THE EXHAUSTED OUTCOME, so every realization that finds a head with no successor
+// answers with the same refusal rather than re-spelling it.
+fn cas_generation_exhausted<T>(head: CasGeneration) -> CasOutcome<T> {
+  CasStoreRefused { cause: CasGenerationSpaceExhausted { head: head } }
+}
+
 fn cas_generation_first() -> CasGeneration {
   1
 }
@@ -354,7 +360,7 @@ fn cas_decide_readable<T>(
 ) -> CasOutcome<T> {
   if cas_expectation_admits(expected: attempt.expected, readable: readable) {
     match cas_committed_generation(readable: readable) {
-      CasSuccessorExhausted { head: h } => CasStoreRefused { cause: CasGenerationSpaceExhausted { head: h } }
+      CasSuccessorExhausted { head: h } => cas_generation_exhausted(head: h)
       CasSuccessorGeneration { generation: g } =>
         CasCommitted {
           committed: CasSlotVersion {
