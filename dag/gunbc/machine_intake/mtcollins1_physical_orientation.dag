@@ -627,6 +627,9 @@ fn history_block(history: List<MtCollins1Socket1InvestigationBoot>, orientation:
   }
 }
 
+// The plan's expected readback is what a correct install on this board reads back: every
+// socket the board has (board_sockets), never filtered by what this unit currently trains. A
+// socket that stays silent is then the finding, not an absence from the success criterion.
 fn render_slot_map(orientation: MtCollins1OrientationOutcome, viewpoint: MtCollins1Viewpoint, tech_end: MtCollins1ChassisEnd, history: List<MtCollins1Socket1InvestigationBoot>, population: MtCollinsDimmPopulationRow, installed: List<Nat>, report: MtCollins1DamagedConnectorReport, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> MtCollins1SlotMap {
   match orientation {
     OrientationAmbiguous { surviving: _ } => SlotMapRefused { refusal: SlotMapOrientationUnresolved { orientation: orientation } }
@@ -660,9 +663,6 @@ fn render_slot_map(orientation: MtCollins1OrientationOutcome, viewpoint: MtColli
               SlotMapRefused { refusal: SlotMapConnectorUnresolved { connector: list_length(items: lines) } }
             } else {
               let damage = population_damage_standing(population: population, candidates: candidates)
-              // The plan's readback is what a correct install on this board reads back: every socket
-              // the board has, never filtered by what this unit currently trains. A socket that stays
-              // silent is then the finding, not an absence from the success criterion.
               let readback = expected_firmware_readback(connectors: population.connectors, live_sockets: board_sockets(banks: banks), banks: banks, pairs: pairs)
               let place_line = concat("Install at (position from the LEFT edge, J number): ", join(map(filter(lines, l => nat_member(xs: population.connectors, x: l.connector)), l => concat(concat(concat(to_string(l.from_left + 1), " (J"), to_string(l.connector)), ")")), ", "))
               let header = concat(concat(concat(concat(
