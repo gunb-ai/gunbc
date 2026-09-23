@@ -1346,8 +1346,9 @@ fn changed_and_enrolled_witness_identities_with_index(
     // removal -- closed through declarations whose own interface references a changed one. Same diff window as every projection above -- the base is the floor's own
     // resolved comparison, never a second baseline authority -- and the same Strict preparation
     // downstream, so a planned consumer is a prepared consumer and `check_match` runs on it.
-    // Renamed from `arm-set-planning` with the ground it measures; runs recorded before the
-    // rename (gunbc.floor.floor_demand's beat mapping) print the old token.
+    // A NEW token for a wider phase, not the old one renamed: `arm-set-planning` stays its own
+    // arm (gunbc.floor_demand `SeamArmSetPlanning`) for every beat recorded before gunbc#12130,
+    // and this one reads as `SeamInterfaceConsumerPlanning` (`floor_seam_tokens`).
     floor_seam("interface-consumer-planning");
     let interface_consumers = interface_consumer_planning(planning_index)?;
     Ok(FloorDiffProjections {
@@ -12816,6 +12817,44 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             vec!["flatfn.b"],
             "{:?}",
             selection.consumers
+        );
+    }
+
+    /// EVERY `floor_seam` LITERAL THE INSTRUMENT CAN PRINT HAS A TYPED ARM: each token passed to
+    /// `floor_seam` in the floor's two hand-Rust sources is a row of gunbc.floor_demand
+    /// `floor_seam_tokens`, so a new or renamed seam cannot print a token the vocabulary cannot
+    /// ingest. A join by spelling across the language boundary, because the producer is Rust.
+    #[test]
+    fn every_floor_seam_literal_has_a_typed_arm() {
+        let sources = [
+            include_str!("required_floor_runner.rs"),
+            include_str!("../bin/claim_executor.rs"),
+        ];
+        let vocabulary = include_str!("../../../../../dag/gunbc/floor/floor_demand.dag");
+        let needle = concat!("floor_seam", "(\"");
+        let mut literals: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+        for source in sources {
+            for (at, _) in source.match_indices(needle) {
+                let rest = &source[at + needle.len()..];
+                if let Some(end) = rest.find('"') {
+                    literals.insert(&rest[..end]);
+                }
+            }
+        }
+        assert!(literals.len() >= 20, "PLANT MALFORMED: found {literals:?}");
+        let missing: Vec<&&str> = literals
+            .iter()
+            .filter(|token| {
+                !vocabulary.contains(&format!("FloorSeamToken {{ token: \"{token}\", seam: "))
+            })
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "floor_seam tokens with no typed arm: {missing:?}"
+        );
+        assert!(
+            !literals.contains("arm-set-planning"),
+            "the old token is no longer emitted"
         );
     }
 

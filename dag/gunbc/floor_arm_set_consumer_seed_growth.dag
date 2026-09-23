@@ -169,6 +169,7 @@ data floor_arm_set_consumer_seed_growth_justification: SeedGrowthJustification =
     DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "lexical_reads_from_transport", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "FLAT_CALL_SHADOWS", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_call_of_a_lexical_callable_plans_nothing", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "every_floor_seam_literal_has_a_typed_arm", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "arm_growth_selects_the_untouched_match_consumer_and_strict_preparation_refuses_it", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "arm_growth_consumer_with_a_wildcard_is_planned_and_prepares_clean", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_record_field_growth_plans_its_untouched_reader", field: WholeDeclaration },
