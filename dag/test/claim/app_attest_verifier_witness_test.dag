@@ -11,7 +11,11 @@ import extdeps.apple.app_attest {
   AssertionExpectation, verify_assertion, AssertionAuthentic, AssertionRefused, AssertionAppIdMismatch, AssertionValidationCategoryAbsent,
   assertion_signature_verifies_for, chain_link_verifies, base64_of,
   assertion_parts, AssertionPartsOk, AssertionPartsRefused,
-  AttestationDecoded, attestation_structural_refusal,
+  AttestationDecoded, attestation_structural_refusal, attestation_step_order,
+  AttestationStep, KeyIdLengthStep, NonceStep, KeyIdStep, AppIdStep, CounterStep, EnvironmentStep, CredentialIdStep,
+  LeafIssuerStep, IntermediateIssuerStep, LeafValidityStep, IntermediateValidityStep, IntermediateCaAuthorityStep,
+  ValidationCategoryStep, BundleVersionStep,
+  nonce_step, key_id_step, app_id_step, environment_step, leaf_validity_step,
   attestation_parts, AttestationPartsOk, AttestationPartsRefused, AttestationRefusal, app_attest_certificate,
 }
 import extdeps.standards.rfc_5280 { X509Certificate, X509TbsFields }
@@ -69,19 +73,6 @@ fn sample_attestation_refusal_of(e: AttestationExpectation) -> String {
   }
 }
 
-// THE STEP FOLD ALONE, over the sample decoded ONCE in the calling claim. The subject is
-// attestation_structural_refusal; decoding is not, so it is paid once rather than once per
-// expectation. The carrier is decoded from the sample's bytes rather than transcribed as a literal:
-// the sample module is the one authority for Apple's object, and a hand-written AttestationDecoded
-// would be a second one. Cross-claim sharing is not available -- a data value is cached per claim
-// context -- so once per claim is the floor this subject can reach.
-fn structural_refusal_name(d: AttestationDecoded, e: AttestationExpectation) -> String {
-  match attestation_structural_refusal(parts: d.parts, leaf: d.leaf, ca: d.ca, root: d.root, auth: d.auth, e: e) {
-    Absent => "none"
-    Present { value: c } => attestation_refusal_name(c: c)
-  }
-}
-
 // INHABITANCE, THE ATTESTATION'S REAL PATH: Apple's bytes through decode_attestation and the whole
 // verify fold. It asserts the ROUTE by the refusal it names -- steps 2-8 and the chain's names and
 // validity pass on the real object, so the first refusal is step 9's absence, which the 2021 sample
@@ -122,41 +113,78 @@ fn sample_fold_inputs() -> AttestationDecoded? {
   }
 }
 
-// SUBJECT: the structural step fold (attestation_structural_refusal), ONE STEP PER CLAIM. Each claim
-// supplies the fold's inputs (sample_fold_inputs) and one mutated expectation, and asserts that the
-// step it mutates is the one that refuses, by name. They were one conjunction; split, each claim's
-// cost is its own step's (DESIGN section 3). The real path's inhabitance is
+// SUBJECT: ONE NAMED STEP PER CLAIM. Each claim calls only its step (extdeps.apple.app_attest
+// nonce_step, key_id_step, ...) over supplied inputs (sample_fold_inputs), asserting that the step
+// REFUSES by name on the mutated expectation -- so its cost is its own step's and nothing before it.
+// The positive control for every step is the real-path claim: a step that refused everything would
+// make it name that step instead of category-absent. That the steps are the ones production runs, in production's
+// order, is attestation_step_order_is_the_declared_order below; the real path's inhabitance is
 // the_sample_passes_every_step_before_the_extension_steps.
-fn step_refusal_under(mutate: fn(AttestationExpectation) -> AttestationExpectation) -> String {
-  match sample_fold_inputs() {
-    Absent => "inputs-absent"
-    Present { value: d } => structural_refusal_name(d: d, e: mutate(sample_expectation()))
+fn step_name(r: AttestationRefusal?) -> String {
+  match r {
+    Absent => "none"
+    Present { value: c } => attestation_refusal_name(c: c)
   }
 }
 
-// The client data step reds by name.
+// The nonce step reds by name when its expectation is wrong.
 test fn the_nonce_step_reds_on_other_client_data() -> Bool {
-  step_refusal_under(mutate: fn(e) { AttestationExpectation { key_id: e.key_id, client_data: "wurzelpfropg" as NonEmptyStr, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version } }) == "nonce"
+  let e = sample_expectation()
+  match sample_fold_inputs() {
+    Absent => false
+    Present { value: d } =>
+      step_name(r: nonce_step(d: d, e: AttestationExpectation { key_id: e.key_id, client_data: "wurzelpfropg" as NonEmptyStr, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version })) == "nonce"
+  }
 }
 
-// The key id step reds by name.
+// The key id step reds by name when its expectation is wrong.
 test fn the_key_id_step_reds_on_another_key_id() -> Bool {
-  step_refusal_under(mutate: fn(e) { AttestationExpectation { key_id: "YmbJO4x5nEHUvncp9zdWuVZjNBEMgJn3cdSToAXQe3Q=" as AttestKeyId, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version } }) == "key-id"
+  let e = sample_expectation()
+  match sample_fold_inputs() {
+    Absent => false
+    Present { value: d } =>
+      step_name(r: key_id_step(d: d, e: AttestationExpectation { key_id: "YmbJO4x5nEHUvncp9zdWuVZjNBEMgJn3cdSToAXQe3Q=" as AttestKeyId, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version })) == "key-id"
+  }
 }
 
-// The App ID step reds by name.
+// The App ID step reds by name when its expectation is wrong.
 test fn the_app_id_step_reds_on_another_app_id() -> Bool {
-  step_refusal_under(mutate: fn(e) { AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: "6MURL8TA57.de.vincent-haupert.other" as NonEmptyStr, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version } }) == "app-id"
+  let e = sample_expectation()
+  match sample_fold_inputs() {
+    Absent => false
+    Present { value: d } =>
+      step_name(r: app_id_step(d: d, e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: "6MURL8TA57.de.vincent-haupert.other" as NonEmptyStr, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version })) == "app-id"
+  }
 }
 
-// The environment step reds by name.
+// The environment step reds by name when its expectation is wrong.
 test fn the_environment_step_reds_on_production() -> Bool {
-  step_refusal_under(mutate: fn(e) { AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: AppAttestProduction, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version } }) == "environment"
+  let e = sample_expectation()
+  match sample_fold_inputs() {
+    Absent => false
+    Present { value: d } =>
+      step_name(r: environment_step(d: d, e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: AppAttestProduction, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version })) == "environment"
+  }
 }
 
-// The credential validity step reds by name.
+// The credential validity step reds by name when its expectation is wrong.
 test fn the_validity_step_reds_when_observed_in_2026() -> Bool {
-  step_refusal_under(mutate: fn(e) { AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: "2026-09-21T00:00:00Z", admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version } }) == "chain:credential certificate expired at 2021-01-25T12:13:35Z"
+  let e = sample_expectation()
+  match sample_fold_inputs() {
+    Absent => false
+    Present { value: d } =>
+      step_name(r: leaf_validity_step(d: d, e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: "2026-09-21T00:00:00Z", admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version })) == "chain:credential certificate expired at 2021-01-25T12:13:35Z"
+  }
+}
+
+// THE ROSTER IS PINNED: a step dropped from, or reordered in, production's fold reds here even while
+// its own unit claim above stays green. The order is Apple's steps as this module sequences them.
+test fn attestation_step_order_is_the_declared_order() -> Bool {
+  attestation_step_order() == [
+    KeyIdLengthStep, NonceStep, KeyIdStep, AppIdStep, CounterStep, EnvironmentStep, CredentialIdStep,
+    LeafIssuerStep, IntermediateIssuerStep, LeafValidityStep, IntermediateValidityStep,
+    IntermediateCaAuthorityStep, ValidationCategoryStep, BundleVersionStep,
+  ]
 }
 
 // The object with one octet of "apple-appattest" changed refuses as a format it does not know;

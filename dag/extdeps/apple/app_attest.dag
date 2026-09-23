@@ -558,16 +558,6 @@ fn bundle_version_refusal(extensions: CborValue?, expected: NonEmptyStr) -> Atte
   }
 }
 
-// THE CHECKS ARE THUNKS, SO THE FIRST REFUSAL ENDS THE FOLD: a list of values evaluates every
-// check -- several of them SHA-256s -- even after an earlier step has already refused, which is
-// work no consumer reads (the same shape review 69668 of gunbc#11989 removed from the chain links).
-fn first_attestation_refusal(rs: List<fn() -> AttestationRefusal?>) -> AttestationRefusal? {
-  fold(rs, init: none, f: (acc, r) => match acc {
-    Present { value: a } => Present { value: a }
-    Absent => r()
-  })
-}
-
 fn base64_of(octets: List<UInt8>, url_safe: Bool) -> String? {
   match base64_octets(values: octets) {
     QualifiedOctetsRefused { observed: _ } => none
@@ -575,39 +565,123 @@ fn base64_of(octets: List<UInt8>, url_safe: Bool) -> String? {
   }
 }
 
-// The structural steps (2..10 and the chain's names and validity) over decoded parts; the chain
-// signatures are step 1 and run last in verify_attestation.
-fn attestation_structural_refusal(parts: AttestationParts, leaf: X509Certificate, ca: X509Certificate, root: X509Certificate, auth: AuthenticatorData, e: AttestationExpectation) -> AttestationRefusal? {
-  let key_id_octets = match base64_decode(s: e.key_id as String, variant: Standard) {
+// THE STRUCTURAL STEPS, EACH A NAMED CHECK over the decoded object (steps 2..10 and the chain's names,
+// validity and CA authority; the chain signatures are step 1 and run last in verify_attestation).
+// Named so a claim can discriminate ONE step at its own interface (DESIGN section 3) instead of
+// paying every earlier step's hashes to reach it; the ORDER is its own declared fact,
+// attestation_step_order, which the fold below consumes and a witness pins.
+type AttestationStep
+  = KeyIdLengthStep
+  | NonceStep
+  | KeyIdStep
+  | AppIdStep
+  | CounterStep
+  | EnvironmentStep
+  | CredentialIdStep
+  | LeafIssuerStep
+  | IntermediateIssuerStep
+  | LeafValidityStep
+  | IntermediateValidityStep
+  | IntermediateCaAuthorityStep
+  | ValidationCategoryStep
+  | BundleVersionStep
+
+fn attestation_step_order() -> List<AttestationStep> {
+  [
+    KeyIdLengthStep, NonceStep, KeyIdStep, AppIdStep, CounterStep, EnvironmentStep, CredentialIdStep,
+    LeafIssuerStep, IntermediateIssuerStep, LeafValidityStep, IntermediateValidityStep,
+    IntermediateCaAuthorityStep, ValidationCategoryStep, BundleVersionStep,
+  ]
+}
+
+fn expected_key_id_octets(e: AttestationExpectation) -> List<UInt8> {
+  match base64_decode(s: e.key_id as String, variant: Standard) {
     Present { value: o } => o
     Absent => []
   }
-  let credential = auth.attested_credential
-  first_attestation_refusal(rs: [
-    fn() { if count(key_id_octets) != 32 { Present { value: AttestationKeyIdMismatch { declared: e.key_id } } } else { none } },
-    fn() { match credential_certificate_nonce(leaf: leaf) {
-      Absent => Present { value: AttestationNonceMismatch }
-      Present { value: n } => if n == sha256(message: concat(parts.auth_data, sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.client_data as String))))) { none } else { Present { value: AttestationNonceMismatch } }
-    } },
-    fn() { if sha256(message: leaf.tbs.spki_public_key) == key_id_octets { none } else { Present { value: AttestationKeyIdMismatch { declared: e.key_id } } } },
-    fn() { if auth.rp_id_hash == sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.app_id as String))) { none } else { Present { value: AttestationAppIdMismatch { expected_app_id: e.app_id } } } },
-    fn() { if auth.sign_count == 0 { none } else { Present { value: AttestationCounterNonZero { counter: auth.sign_count } } } },
-    fn() { match credential {
-      Absent => Present { value: AttestationCredentialIdMismatch { declared: e.key_id } }
-      Present { value: c } => if c.aaguid == app_attest_aaguid_octets(environment: e.environment) { none } else { Present { value: AttestationEnvironmentUnexpected { expected: e.environment } } }
-    } },
-    fn() { match credential {
-      Absent => Present { value: AttestationCredentialIdMismatch { declared: e.key_id } }
-      Present { value: c } => if c.credential_id == key_id_octets { none } else { Present { value: AttestationCredentialIdMismatch { declared: e.key_id } } }
-    } },
-    fn() { if leaf.tbs.issuer_octets == ca.tbs.subject_octets { none } else { Present { value: AttestationChainUntrusted { detail: "the credential certificate's issuer is not the intermediate" } } } },
-    fn() { if ca.tbs.issuer_octets == root.tbs.subject_octets { none } else { Present { value: AttestationChainUntrusted { detail: "the intermediate's issuer is not the Apple App Attestation Root CA" } } } },
-    fn() { validity_refusal(cert: leaf, observed_at: e.observed_at, which: "credential") },
-    fn() { validity_refusal(cert: ca, observed_at: e.observed_at, which: "intermediate") },
-    fn() { ca_authority_refusal(ca: ca) },
-    fn() { validation_category_refusal(extensions: auth.extensions, admitted: e.admitted_validation_categories) },
-    fn() { bundle_version_refusal(extensions: auth.extensions, expected: e.expected_bundle_version) },
-  ])
+}
+
+fn key_id_length_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
+  if count(expected_key_id_octets(e: e)) != 32 { Present { value: AttestationKeyIdMismatch { declared: e.key_id } } } else { none }
+}
+
+// Step 2-3: the leaf's nonce extension is SHA-256(authData || SHA-256(clientData)).
+fn nonce_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
+  match credential_certificate_nonce(leaf: d.leaf) {
+    Absent => Present { value: AttestationNonceMismatch }
+    Present { value: n } =>
+      if n == sha256(message: concat(d.parts.auth_data, sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.client_data as String))))) { none }
+      else { Present { value: AttestationNonceMismatch } }
+  }
+}
+
+fn key_id_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
+  if sha256(message: d.leaf.tbs.spki_public_key) == expected_key_id_octets(e: e) { none } else { Present { value: AttestationKeyIdMismatch { declared: e.key_id } } }
+}
+
+fn app_id_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
+  if d.auth.rp_id_hash == sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.app_id as String))) { none } else { Present { value: AttestationAppIdMismatch { expected_app_id: e.app_id } } }
+}
+
+fn counter_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
+  if d.auth.sign_count == 0 { none } else { Present { value: AttestationCounterNonZero { counter: d.auth.sign_count } } }
+}
+
+fn environment_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
+  match d.auth.attested_credential {
+    Absent => Present { value: AttestationCredentialIdMismatch { declared: e.key_id } }
+    Present { value: c } => if c.aaguid == app_attest_aaguid_octets(environment: e.environment) { none } else { Present { value: AttestationEnvironmentUnexpected { expected: e.environment } } }
+  }
+}
+
+fn credential_id_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
+  match d.auth.attested_credential {
+    Absent => Present { value: AttestationCredentialIdMismatch { declared: e.key_id } }
+    Present { value: c } => if c.credential_id == expected_key_id_octets(e: e) { none } else { Present { value: AttestationCredentialIdMismatch { declared: e.key_id } } }
+  }
+}
+
+fn leaf_issuer_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
+  if d.leaf.tbs.issuer_octets == d.ca.tbs.subject_octets { none } else { Present { value: AttestationChainUntrusted { detail: "the credential certificate's issuer is not the intermediate" } } }
+}
+
+fn intermediate_issuer_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
+  if d.ca.tbs.issuer_octets == d.root.tbs.subject_octets { none } else { Present { value: AttestationChainUntrusted { detail: "the intermediate's issuer is not the Apple App Attestation Root CA" } } }
+}
+
+fn leaf_validity_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
+  validity_refusal(cert: d.leaf, observed_at: e.observed_at, which: "credential")
+}
+
+fn intermediate_validity_step(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
+  validity_refusal(cert: d.ca, observed_at: e.observed_at, which: "intermediate")
+}
+
+fn attestation_step_refusal(step: AttestationStep, d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
+  match step {
+    KeyIdLengthStep => key_id_length_step(d: d, e: e)
+    NonceStep => nonce_step(d: d, e: e)
+    KeyIdStep => key_id_step(d: d, e: e)
+    AppIdStep => app_id_step(d: d, e: e)
+    CounterStep => counter_step(d: d, e: e)
+    EnvironmentStep => environment_step(d: d, e: e)
+    CredentialIdStep => credential_id_step(d: d, e: e)
+    LeafIssuerStep => leaf_issuer_step(d: d, e: e)
+    IntermediateIssuerStep => intermediate_issuer_step(d: d, e: e)
+    LeafValidityStep => leaf_validity_step(d: d, e: e)
+    IntermediateValidityStep => intermediate_validity_step(d: d, e: e)
+    IntermediateCaAuthorityStep => ca_authority_refusal(ca: d.ca)
+    ValidationCategoryStep => validation_category_refusal(extensions: d.auth.extensions, admitted: e.admitted_validation_categories)
+    BundleVersionStep => bundle_version_refusal(extensions: d.auth.extensions, expected: e.expected_bundle_version)
+  }
+}
+
+// The fold over the declared order; a step is evaluated only while nothing has refused.
+fn attestation_structural_refusal(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
+  fold(attestation_step_order(), init: none, f: (acc, step) => match acc {
+    Present { value: a } => Present { value: a }
+    Absent => attestation_step_refusal(step: step, d: d, e: e)
+  })
 }
 
 // EVERYTHING DECODED ONCE, then carried: the parts, both certificates, the pinned root and the
@@ -653,7 +727,7 @@ fn decode_attestation(object: List<UInt8>) -> AttestationDecode {
 // most expensive computation in the corpus, so a refused first link must not buy the second
 // (review 69668 of gunbc#11989).
 fn attestation_refusal(d: AttestationDecoded, e: AttestationExpectation) -> AttestationRefusal? {
-  match attestation_structural_refusal(parts: d.parts, leaf: d.leaf, ca: d.ca, root: d.root, auth: d.auth, e: e) {
+  match attestation_structural_refusal(d: d, e: e) {
     Present { value: r } => Present { value: r }
     Absent =>
       match chain_link_refusal(subject: d.leaf, issuer: d.ca, which: "credential certificate") {
