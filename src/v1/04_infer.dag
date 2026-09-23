@@ -1102,8 +1102,27 @@ fn constructor_call_admission_diags(
 // Services are deliberately NOT covered here: a service requirement propagates transitively by
 // inference (v1.compiler.infer_service expand_transitive_services) and the caller's own row grows
 // to carry it, so there is no authored establishment to compare against.
+// A RESOURCE THE KERNEL OWNS HAS THE KERNEL'S IDENTITY, WHATEVER SPELLING REACHED IT. The kernel
+// scope sits above imports (direct_import_export_precedence_note: kernel names are never
+// overridden), so a bare `Filesystem` resolves to the kernel-minted node while the qualified
+// `std.resources.Filesystem` bypasses that layer and resolves to the corpus declaration. The two
+// are one resource, but they are two nodes, and comparing them refused every caller of a callee
+// that spelled its requirement differently from the caller -- a correct `uses` clause reported as
+// missing (gunbc#12047, measured by a two-module fixture: a qualified callee refused every caller,
+// the bare callee admitted both). The repair applies the existing kernel-wins ruling, through its
+// own predicate overlay_skips_kernel_name, to the declaration the lookup already found; it does
+// not decide by the written spelling. It dissolves with that ruling, when namespace Rule-1 makes
+// the containment tree the naming authority and the kernel/std duplication is gone.
 fn resource_declaration_identity(scope: InferScope, resource: Node) -> Node? {
-  lookup_type_by_name(env: scope.type_env, name: type_node_label(n: resource, source_indices: scope.type_env.source_indices))
+  match lookup_type_by_name(env: scope.type_env, name: type_node_label(n: resource, source_indices: scope.type_env.source_indices)) {
+    Absent => none
+    Present { value: declaration } =>
+      if overlay_skips_kernel_name(name: declaration.name) {
+        lookup_type_by_name(env: scope.type_env, name: declaration.name)
+      } else {
+        Present { value: declaration }
+      }
+  }
 }
 
 // THE ONE MATCHING AUTHORITY, read by the typecheck (a Bool) and by the Rust emitter (the caller's
