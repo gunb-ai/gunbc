@@ -35,6 +35,7 @@ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
+import v2.compiler.resolve { ObservationComplete, ObservationCompleteness, ObservationIncomplete }
 import v2.std.node { Symbol }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.optional { Absent, Present }
@@ -77,35 +78,37 @@ type Xl2BaseJoin
 // residual, so any one of them refuses completeness.
 //   - a member the strip refused never entered the tree;
 //   - a file the front end refused never reached resolve;
-//   - a module whose resolve refused was abandoned at its first failure: v2.compiler.resolve
-//     returns a Rejected accumulator without visiting the remaining children, so a second
-//     independent failure in the same module is unobserved (occurrence completeness, the
-//     obligation missing_instrument_label ExactOccurrenceResidualCensus names);
+//   - a module whose resolve observation P4 reports INCOMPLETE (v2.compiler.resolve
+//     ObservationIncomplete, carried on v2.compiler.compile NativeCensusModuleResolveRefused since
+//     gunbc#12116): its failure chains are a lower bound, and the reason is the resolver's own. A
+//     module P4 reports ObservationComplete raises nothing here, however many chains it refused with;
 //   - two members at one path cannot be told apart by any locus, so EVERY member at that path is
 //     kept out of the ingest and the index -- neither is picked;
 //   - a residual whose file has no coordinate map cannot be joined to the base.
 type Xl2UnobservedScope
   = Xl2MemberNotStripped { cause: Step0StripProductionRefusalCause }
   | Xl2FileRefusedBeforeResolve { refusal: NativeTestFileRefusal }
-  | Xl2ModuleResolveAbandonedAtFirstFailure { module: String, path: Symbol }
+  | Xl2ModuleObservationIncomplete { module: String, path: Symbol, reason: Symbol }
   | Xl2MemberPathDuplicated { path: Symbol }
   | Xl2BaseJoinMissingFor { module: String, path: Symbol }
 
-// WHY COMPLETENESS IS REFUSED. The call-argument arm is unconditional today: resolve fails OPEN for
-// every dependent reached through a call argument (gunbc.recurring_failure_mode
-// call_expression_erased_at_v2_body_lowering), and no observation in this run can see those
-// references, so the instrument states that it cannot see them rather than reporting silence.
-// TODO(rebind): once the P4 carrier correction lands its typed Xl2Prerequisite list in
-// gunbc.compiler_frontend_program_status, this arm is replaced by a reference to that type's
-// CallArgumentReferenceVisibility member read through its delivered-capability standing; no
-// parallel prerequisite enum is minted here.
+// WHY COMPLETENESS IS REFUSED. P1 (gunbc#12108) made call arguments reach resolve, so the arm that
+// refused on call-argument visibility is gone. What P1's own sibling audit left open is one lowering
+// that still NARROWS an operand: body_lower_operand_ref_optional answers the left atom of a sequence
+// operand (`a + b` lowers as `a`), so a reference on the right of such an operand never reaches
+// resolve and no refusal roster can report it. It is rostered as gunbc.recurring_failure_mode
+// lowering_accessor_collapses_a_sequence_operand, whose own trigger retires this arm; until then it
+// heads every roster, because no observation in this run can tell whether the tree contains one.
+// TODO(rebind): once the parent's prerequisite-truth change lands its typed Xl2Prerequisite list in
+// gunbc.compiler_frontend_program_status, this arm is read through that type's delivered-capability
+// standing; no parallel prerequisite enum is minted here.
 type Xl2CompletenessRefusal
-  = Xl2CallArgumentReferencesUnobservable
+  = Xl2SequenceOperandReferencesUnobservable
   | Xl2ScopeUnobserved { scope: Xl2UnobservedScope }
 
 // COMPLETENESS IS A COPRODUCT, NOT A FLAG BESIDE THE ROWS. The complete arm is built only from an
-// empty refusal roster (xl2_completeness below), and the roster always carries the call-argument
-// arm today, so a complete census has no reachable constructor until that capability is delivered.
+// empty refusal roster (xl2_completeness below), and the roster always carries the sequence-operand
+// arm today, so a complete census has no reachable constructor until that lowering is repaired.
 type Xl2CensusCompleteness
   = Xl2CensusComplete
   | Xl2CensusCompletenessRefused { first: Xl2CompletenessRefusal, rest: List<Xl2CompletenessRefusal> }
@@ -274,24 +277,28 @@ fn xl2_observe_module(
     NativeCensusModuleFileRefused => acc
     NativeCensusModuleResolved =>
       Xl2Observation { residual: acc.residual, resolved: acc.resolved + 1, unobserved: acc.unobserved }
-    NativeCensusModuleResolveRefused { diagnostics: d } =>
-        match map_lookup(coordinates, entry.path) {
-          Present { value: c } =>
-            Xl2Observation {
-              residual: acc.residual |> list_push(Xl2ResidualChain { module: entry.module, path: entry.path, chain: d, base_join: Xl2BaseCoordinates { segments: c } }),
-              resolved: acc.resolved,
-              unobserved: acc.unobserved |> list_push(Xl2ModuleResolveAbandonedAtFirstFailure { module: entry.module, path: entry.path })
-            }
-          Absent =>
-            Xl2Observation {
-              residual: acc.residual |> list_push(Xl2ResidualChain { module: entry.module, path: entry.path, chain: d, base_join: Xl2BaseJoinMissing }),
-              resolved: acc.resolved,
-              unobserved: concat(acc.unobserved, [
-                Xl2ModuleResolveAbandonedAtFirstFailure { module: entry.module, path: entry.path },
-                Xl2BaseJoinMissingFor { module: entry.module, path: entry.path }
-              ])
-            }
-        }
+    NativeCensusModuleResolveRefused { first: first_chain, rest: rest_chains, observation: o } => {
+      let join = match map_lookup(coordinates, entry.path) {
+        Present { value: c } => Xl2BaseCoordinates { segments: c }
+        Absent => Xl2BaseJoinMissing
+      }
+      let rows = fold(rest_chains, init: [Xl2ResidualChain { module: entry.module, path: entry.path, chain: first_chain, base_join: join }], f: fn(rows_acc, chain) {
+        rows_acc |> list_push(Xl2ResidualChain { module: entry.module, path: entry.path, chain: chain, base_join: join })
+      })
+      let observation_scopes = match o {
+        ObservationComplete => []
+        ObservationIncomplete { reason: reason } => [Xl2ModuleObservationIncomplete { module: entry.module, path: entry.path, reason: reason }]
+      }
+      let join_scopes = match join {
+        Xl2BaseCoordinates { segments: _ } => []
+        Xl2BaseJoinMissing => [Xl2BaseJoinMissingFor { module: entry.module, path: entry.path }]
+      }
+      Xl2Observation {
+        residual: concat(acc.residual, rows),
+        resolved: acc.resolved,
+        unobserved: concat(acc.unobserved, concat(observation_scopes, join_scopes))
+      }
+    }
   }
 }
 
@@ -310,11 +317,12 @@ fn xl2_observe(context: NativeTestContext, ingest: SourceRootIngest, members: Li
   )
 }
 
-// THE ONLY CONSTRUCTOR OF THE COMPLETE ARM. The call-argument refusal heads the roster
-// unconditionally (see Xl2CompletenessRefusal), so this answers refused on every input today.
+// THE ONLY CONSTRUCTOR OF THE COMPLETE ARM. The sequence-operand refusal heads the roster
+// unconditionally (see Xl2CompletenessRefusal), so this answers refused on every input today; the
+// rest of the roster is exactly the scopes the run could not observe.
 fn xl2_completeness(unobserved: List<Xl2UnobservedScope>) -> Xl2CensusCompleteness {
   Xl2CensusCompletenessRefused {
-    first: Xl2CallArgumentReferencesUnobservable,
+    first: Xl2SequenceOperandReferencesUnobservable,
     rest: fold(unobserved, init: [], f: fn(acc, scope) { acc |> list_push(Xl2ScopeUnobserved { scope: scope }) })
   }
 }
