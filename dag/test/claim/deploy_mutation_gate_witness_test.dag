@@ -1,6 +1,40 @@
 module test.claim.deploy_mutation_gate_witness
 
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.spec { deployment_plan_listen_port }
+import gunbc.live_deploy.apply { live_deploy_fold, live_deploy_pre_mutation_access }
+import gunbc.ci_deploy_access {
+  DeployAccess,
+  DeployAccessActor,
+  ci_deploy_srv1_access,
+  deploy_access_decision_reason,
+  deploy_access_privileged_fixture_actor,
+  deploy_access_unprivileged_fixture_actor,
+  deploy_access_refusal_prefix,
+  gunbc_deploy_sudoers_dropin,
+}
+import gunbc.ci_deploy_access_observe { deploy_mutation_gate }
+import gunbc.ci_deploy_sudoers { deploy_sudoers_install_shell, deploy_sudoers_post_install_refusal_prefix }
+import gunbc.ci_deploy_target_host {
+  DeployTargetHostObservation,
+  deploy_target_host_fixture_observation,
+  deploy_target_host_refusal_prefix,
+}
+import gunbc.fleet_posix_accounts {
+  fleet_cp_binary_path,
+  fleet_tailscale_binary_path,
+  fleet_install_binary_path,
+  fleet_visudo_binary_path,
+  grounded_posix_principal_name,
+}
+import gunbc.host_effect { LiveDeployRetract, LiveDeployDigestReadback, Srv3ReceiptEmit, LocalShell }
+import std.access { Permit, Deny, decision_meet }
+import std.realization_reconcile { reconciliation_converged, Converged, NotConverged }
+import std.types { String, Bool, List }
+import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdGrantListProbeShape }
+import extdeps.sudo.nopasswd_execute_probe_check_op { sudo_nopasswd_grant_list_shell_condition }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.algebra { any, length }
 
 // Denial subjects are real deployment mutations. The permit pole uses receipt
 // data so exercising authorization never tears down a live deployment.
@@ -204,10 +238,11 @@ test fn witness_full_roster_probed_after_the_dropin_install_and_refuses_on_miss(
   let before = halves.first()
   let after = halves.skip(n: 1).first()
   length(xs: halves) == 2
-    && all(ci_deploy_srv1_access.privileged_commands, c =>
-      string_contains(s: after, pattern: concat(deploy_sudoers_post_install_refusal_prefix, concat(" ", c.grant.command_path as String)))
-        && !string_contains(s: before, pattern: concat(deploy_sudoers_post_install_refusal_prefix, concat(" ", c.grant.command_path as String))))
-    && string_contains(s: after, pattern: "sudo -n '/usr/bin/cp' '--version' >/dev/null 2>&1; then echo")
+    && !any(ci_deploy_srv1_access.privileged_commands, c =>
+      !string_contains(s: after, pattern: concat(deploy_sudoers_post_install_refusal_prefix, concat(" ", c.grant.command_path as String)))
+        || string_contains(s: before, pattern: concat(deploy_sudoers_post_install_refusal_prefix, concat(" ", c.grant.command_path as String))))
+    && string_contains(s: after, pattern: "if ! 'sudo' '-n' '/usr/bin/cp' '--version' >/dev/null 2>&1; then echo")
+    && string_contains(s: after, pattern: concat("if ! ", sudo_nopasswd_grant_list_shell_condition(probe: fleet_tailscale_binary_path as SudoNopasswdGrantListProbeShape)))
     && string_contains(s: after, pattern: "exit 1; fi")
 }
 

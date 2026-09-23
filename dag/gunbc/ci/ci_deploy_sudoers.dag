@@ -8,7 +8,16 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.algebra { fold_list, any }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import extdeps.sudo.nopasswd_execute_probe { NopasswdExecuteCheck, NopasswdGrantListCheck }
+import extdeps.sudo.nopasswd_execute_probe {
+  NopasswdExecuteCheck,
+  NopasswdGrantListCheck,
+  SudoNopasswdExecuteProbeShape,
+  SudoNopasswdGrantListProbeShape,
+}
+import extdeps.sudo.nopasswd_execute_probe_check_op {
+  sudo_nopasswd_execute_probe_shell_condition,
+  sudo_nopasswd_grant_list_shell_condition,
+}
 import gunbc.ci_deploy_access {
   DeployAccess,
   PrivilegedCommand,
@@ -30,7 +39,7 @@ import gunbc.fleet_posix_accounts {
 // -o/-g. Sudo-grant lint allow-list is DERIVED from fleet_posix_ci_runner_sudo_grants()
 // command_path rows — never a parallel path list.
 
-data deploy_sudoers_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.ci_deploy_sudoers — concat-built bash for sudoers dropin install and visudo gates; DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger retires (bash-emit #5828 / shell-intent Phase 2 realizes deploy shell through orchestration emit without medium-as-string here-docs).")
+data deploy_sudoers_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.ci_deploy_sudoers — concat-built bash for sudoers dropin install, visudo gates and the post-install roster probe (deploy_sudoers_post_install_roster_probe_shell; its probe conditions are rendered by extdeps.sudo.nopasswd_execute_probe_check_op); DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger retires (bash-emit #5828 / shell-intent Phase 2 realizes deploy shell through orchestration emit without medium-as-string here-docs).")
 
 data deploy_sudoers_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -138,12 +147,14 @@ fn deploy_sudoers_post_install_refusal(cmd: PrivilegedCommand) -> String {
 }
 
 fn deploy_sudoers_post_install_probe_line(cmd: PrivilegedCommand) -> String {
-  let path = posix_single_quote(spelling: cmd.grant.command_path as String)
   let probe = match cmd.grant.probe {
     NopasswdExecuteCheck { check_argv: a } =>
-      join([deploy_sudo_prefix(), path, " ", posix_single_quote(spelling: a as String), " >/dev/null 2>&1"], "")
+      sudo_nopasswd_execute_probe_shell_condition(probe: SudoNopasswdExecuteProbeShape {
+        command_path: cmd.grant.command_path,
+        check_argv: a,
+      })
     NopasswdGrantListCheck =>
-      join([deploy_sudo_prefix(), "-l 2>/dev/null | sed -n 's/^.*NOPASSWD:[[:space:]]*//p' | sed 's/[[:space:]]*$//' | grep -Fqx -- ", path], "")
+      sudo_nopasswd_grant_list_shell_condition(probe: cmd.grant.command_path as SudoNopasswdGrantListProbeShape)
   }
   join(["if ! ", probe, deploy_sudoers_post_install_refusal(cmd: cmd)], "")
 }
