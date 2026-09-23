@@ -50,7 +50,7 @@ fn rust_crate_package_ident(package_name: String) -> PackageIdentOutcome {
   if package_name == "" {
     PackageIdentRefused { cause: PackageNameNotIdentSafe { package_name: package_name } }
   } else {
-    if chars(package_name) |> all(c => contains(package_ident_alphabet, c)) {
+    if chars(package_name) |> all(c => chars(package_ident_alphabet) |> any(a => a == c)) {
       PackageIdentOk { ident: replace(package_name, "-", "_") }
     } else {
       PackageIdentRefused { cause: PackageNameNotIdentSafe { package_name: package_name } }

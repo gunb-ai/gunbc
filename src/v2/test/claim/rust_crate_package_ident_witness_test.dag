@@ -2,6 +2,7 @@ module test.claim.rust_crate_package_ident_witness
 
 import std.types { Bool, List, String }
 import gunbc.rust_crate_package_ident {
+  PackageIdentBinding,
   PackageIdentCollision,
   PackageIdentOk,
   PackageIdentRefused,
@@ -10,7 +11,8 @@ import gunbc.rust_crate_package_ident {
   PackageNameNotIdentSafe,
   package_ident_refusal_message,
   rust_crate_package_ident,
-  rust_crate_package_idents
+  rust_crate_package_idents,
+  package_ident_bound
 }
 import gunbc.stage0_crate_partition_generated { generated_partition_crate_rows }
 
@@ -58,7 +60,7 @@ test fn two_names_projecting_to_one_identifier_refuse_and_name_both() -> Bool {
           (ident == "a_b") && (first == "a-b") && (second == "a_b")
         PackageNameNotIdentSafe { package_name: _ } => false
       }
-    PackageIdentSetOk { idents: _ } => false
+    PackageIdentSetOk { bindings: _ } => false
   }
 }
 
@@ -66,9 +68,9 @@ test fn two_names_projecting_to_one_identifier_refuse_and_name_both() -> Bool {
 // names must be ADMITTED. A fold that refused every multi-name set would red nothing above.
 test fn distinct_names_are_admitted_as_a_set() -> Bool {
   match rust_crate_package_idents(package_names: ["v1-stage0-runtime", "v1-stage0-std-core"]) {
-    PackageIdentSetOk { idents: idents } =>
-      (idents |> any(i => i == "v1_stage0_runtime"))
-        && (idents |> any(i => i == "v1_stage0_std_core"))
+    PackageIdentSetOk { bindings: bindings } =>
+      bound_ident_is(bindings: bindings, package_name: "v1-stage0-runtime", expected: "v1_stage0_runtime")
+        && bound_ident_is(bindings: bindings, package_name: "v1-stage0-std-core", expected: "v1_stage0_std_core")
     PackageIdentSetRefused { cause: _ } => false
   }
 }
@@ -81,7 +83,7 @@ test fn the_collision_message_names_both_packages() -> Bool {
       let message = package_ident_refusal_message(cause: cause)
       message.contains("a-b") && message.contains("a_b")
     }
-    PackageIdentSetOk { idents: _ } => false
+    PackageIdentSetOk { bindings: _ } => false
   }
 }
 
@@ -102,7 +104,32 @@ test fn the_live_stage0_package_names_are_admitted() -> Bool {
     package_names: generated_partition_crate_rows |> map(row => row.package_name)
   ) {
     PackageIdentSetRefused { cause: _ } => false
-    PackageIdentSetOk { idents: idents } =>
-      (idents |> count) == (generated_partition_crate_rows |> count)
+    PackageIdentSetOk { bindings: bindings } =>
+      generated_partition_crate_rows |> fold(init: true, f: fn(ok, row) {
+        ok && match package_ident_bound(bindings: bindings, package_name: row.package_name) {
+          Present { value: _ } => true
+          Absent => false
+        }
+      })
+  }
+}
+
+fn bound_ident_is(bindings: List<PackageIdentBinding>, package_name: String, expected: String) -> Bool {
+  match package_ident_bound(bindings: bindings, package_name: package_name) {
+    Present { value: ident } => ident == expected
+    Absent => false
+  }
+}
+
+// THE RENDERER'S REFUSAL, at its interface. A package outside the admitted set is Absent, never a
+// fresh projection of its name -- that re-projection is the second source review 70359 found.
+test fn a_package_outside_the_admitted_set_is_not_bound() -> Bool {
+  match rust_crate_package_idents(package_names: ["v1-stage0-runtime"]) {
+    PackageIdentSetRefused { cause: _ } => false
+    PackageIdentSetOk { bindings: bindings } =>
+      match package_ident_bound(bindings: bindings, package_name: "v1-stage0-std-core") {
+        Present { value: _ } => false
+        Absent => true
+      }
   }
 }
