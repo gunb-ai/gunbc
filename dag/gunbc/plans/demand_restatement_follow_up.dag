@@ -6,10 +6,11 @@ import std.types { NonEmptyStr, List, String }
 // demand is nonempty, measured by resolving the module and reading `ItemInfo.service_names`. The range
 // runs from cut (c)'s first measurement to the FINAL CENSUS BASE, its tip: the main at which every
 // authored row in the tree was last measured, with that main's own resolver. The lists below are not
-// rows that arrived over the range; they are the RETAINED EXCEPTIONS, the identities the criterion
-// cannot type at that base, each with its own trigger.
+// rows that arrived over the range; they are the RETAINED EXCEPTIONS at that base, each with its own
+// trigger, and each is EITHER an identity the criterion cannot type OR an identity measured deletable
+// whose deletion is blocked by a named landing constraint.
 
-data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..be3a2f28d42" as NonEmptyStr
+data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..4446f2e990f" as NonEmptyStr
 
 // THE FINAL-BASE CENSUS, AT USES-0 ROW IDENTITY -- (module, declaration, alias, type) -- not by
 // syntactic clause, since one clause can bind several aliases. At the range tip every authored `uses`
@@ -51,7 +52,7 @@ type DemandRestatementRetainedRow {
 // THE ORDINARY FUNCTIONS THE CRITERION CANNOT TYPE, because their module refuses to resolve, so there
 // is no registry entry and no derived demand to compare against. Two causes, and they carry different
 // triggers. `gunbc.auth.patterns` (a pre-existing type error, expected String got Secret, measured at
-// be3a2f28d42) is a DEFECT this cut neither introduced nor repairs: TRIGGER, per row, the module
+// 4446f2e990f) is a DEFECT this cut neither introduced nor repairs: TRIGGER, per row, the module
 // resolves and the criterion executes on it like any other fn row. `test.probe.census_app_acquisition_forged_probe` refuses BY DESIGN -- forging the
 // sole_constructor receipt is the probe's whole point -- so resolution is not coming; its one row
 // (two resources) is carried at each alias, and it leaves with the probe.
