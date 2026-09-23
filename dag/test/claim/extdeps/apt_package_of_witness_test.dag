@@ -3,11 +3,13 @@ module test.claim.apt_package_of_witness
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Present, Absent }
 import std.types { Bool, String }
-import extdeps.tools { apt_package_of }
+import extdeps.tools { CliTool, SourceApt, apt_package_of, apt_binary_path_of }
 import extdeps.tools.sshpass { sshpass_cli_tool }
 import extdeps.tools.websocat { websocat_cli_tool }
 import extdeps.tools.mosquitto_pub { mosquitto_pub_cli_tool }
-import extdeps.apt { package_sshpass, apt_installed_bin_path, apt_bin_dir }
+import extdeps.apt { package_sshpass, package_nfct, apt_installed_bin_path, apt_bin_dir }
+import extdeps.netfilter.nfct { nfct_cli_tool }
+import gunbc.fleet_posix_accounts { fleet_nfct_binary_path }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -51,6 +53,43 @@ test fn the_resolved_package_is_not_the_binary_name() -> Bool {
 }
 
 test fn apt_installed_bin_path_is_apt_bin_dir_plus_the_binary_name() -> Bool {
-  (apt_installed_bin_path(binary: sshpass_cli_tool.name) as String)
+  (apt_installed_bin_path(bin_dir: apt_bin_dir, binary: sshpass_cli_tool.name) as String)
     == concat(apt_bin_dir as String, concat("/", sshpass_cli_tool.name as String))
+}
+
+// THE DECLARED INSTALL PATH IS THE ONE THE HOST ACTUALLY RUNS. apt_binary_path_of is what the
+// FleetSsh presence readback tests, and the nfct row is the one whose binary is not in /usr/bin.
+// The oracle is independent of the row: gunbc.fleet_posix_accounts fleet_nfct_binary_path is the
+// path the observe mode's privileged helper read executes, so a row and a probe disagreeing about
+// where nfct lives goes red here rather than on a host.
+test fn nfct_declares_the_path_the_helper_read_executes() -> Bool {
+  match apt_binary_path_of(tool: nfct_cli_tool) {
+    Present { value: p } => (p as String) == (fleet_nfct_binary_path as String)
+    Absent => false
+  }
+}
+
+// THE DISCRIMINATING RED. The same tool declared with the /usr/bin directory every row assumed
+// before bin_dir existed derives a path that is not where nfct is installed -- the readback would
+// test /usr/bin/nfct and refuse after a successful install. If apt_binary_path_of ignored bin_dir
+// (a single constant again) this and the control above could not both hold.
+data nfct_declared_in_the_wrong_dir: CliTool = CliTool {
+  name: nfct_cli_tool.name,
+  min_version: none,
+  installable_via: [SourceApt { package: package_nfct, bin_dir: apt_bin_dir }],
+}
+
+test fn a_row_declaring_the_wrong_dir_derives_a_path_the_readback_refuses() -> Bool {
+  match apt_binary_path_of(tool: nfct_declared_in_the_wrong_dir) {
+    Present { value: p } => (p as String) != (fleet_nfct_binary_path as String)
+    Absent => false
+  }
+}
+
+// NO APT SOURCE, NO PATH: the FleetSsh readback refuses by name rather than guessing /usr/bin.
+test fn a_tool_with_no_apt_source_has_no_declared_path() -> Bool {
+  match apt_binary_path_of(tool: websocat_cli_tool) {
+    Present { value: _ } => false
+    Absent => true
+  }
 }

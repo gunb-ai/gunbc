@@ -4,6 +4,8 @@ import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { apt_sbin_dir, package_nfct }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -41,3 +43,13 @@ data nfct_program: NonEmptyStr = "nfct"
 // nf_conntrack_helper sysctl: a host can have automatic assignment gone from the kernel and still
 // carry userspace helpers, so neither reading substitutes for the other.
 data nfct_helper_list_arguments: List<NonEmptyStr> = ["helper", "list"]
+
+// THE BINARY IS IN /usr/sbin, AND THE ROW SAYS SO. Ubuntu noble ships nfct in its own package,
+// `nfct` (packages.ubuntu.com/noble/amd64/nfct/filelist: /usr/sbin/nfct) -- not the conntrack
+// package and not a package named conntrack-tools. A FleetSsh presence readback tests exactly
+// bin_dir + name, so a row naming /usr/bin here would refuse after a successful install.
+data nfct_cli_tool: CliTool = CliTool {
+  name: nfct_program,
+  min_version: none,
+  installable_via: [SourceApt { package: package_nfct, bin_dir: apt_sbin_dir }],
+}
