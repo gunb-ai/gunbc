@@ -1,0 +1,60 @@
+module test.claim.app_attest_mint_seal_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_count_at_key
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE DISCRIMINATING RED FOR THE THREE SEALED SUCCESS MINTS (review 5289941544).
+// extdeps.apple.app_attest attestation_verification_from_implementation and
+// assertion_verification_from_implementation, and extdeps.crypto.signature
+// signature_verification_from_implementation, each mint a success value from caller-supplied
+// facts. Each is admit_callers-sealed to its one real supplier plus named test.* fixtures. A seal
+// is established by a refusal that EXECUTES on the real acceptance path, so each probe below hands
+// the compiler a module OUTSIDE every roster that tries to forge a success -- the signature probe
+// with malformed carriers, authored 65/64 sizes and implementation_verified: true, the exact forgery
+// the unsealed seam admitted -- and asserts the refusal keyed by the CALLEE's name
+// (gunbc.compile_diagnostic_census: a class-only count is a property of the whole closure).
+
+fn keyed_refusals(source: String, callee: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: "ConstructorCallAdmissionRefused", subject_name: callee, blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data forged_signature_source: String = "module probe_forged_signature\nimport std.types { NonEmptyStr }\nimport std.measure { byte_size }\nimport extdeps.crypto.signature { VerifyingKey, SignatureBytes, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth, SignatureVerification, signature_verification_from_implementation }\nfn forged() -> SignatureVerification {\n  signature_verification_from_implementation(key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: \"not*a*key\" }, key_size: byte_size(count: 65), signature: SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: \"not*a*sig\" }, signature_size: byte_size(count: 64), message: \"forged\", implementation_verified: true)\n}\n"
+
+data forged_attestation_source: String = "module probe_forged_attestation\nimport extdeps.apple.app_attest { AppAttestProduction, AttestationVerification, attestation_verification_from_implementation }\nfn forged() -> AttestationVerification {\n  attestation_verification_from_implementation(key_id: \"forged\", public_key_point_b64url: \"BFORGED\", receipt_b64: \"RECEIPT\", environment: AppAttestProduction, client_data: \"forged\", refusal: none)\n}\n"
+
+data forged_assertion_source: String = "module probe_forged_assertion\nimport extdeps.apple.app_attest { AssertionVerification, assertion_verification_from_implementation }\nfn forged() -> AssertionVerification {\n  assertion_verification_from_implementation(key_id: \"forged\", public_key_point_b64url: \"BFORGED\", counter: 1, client_data: \"forged\", refusal: none)\n}\n"
+
+// THE GREEN CONTROL: a module calling the three SUPPLIERS compiles with no admission refusal on any
+// mint, so the seals admit their real suppliers and the REDs above are the seals and not a broken
+// closure. The suppliers' own calls to the mints are inside the imported closure this census covers.
+data suppliers_source: String = "module probe_mint_suppliers\nimport std.types { NonEmptyStr }\nimport extdeps.crypto.signature { VerifyingKey, SignatureBytes, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth, SignatureVerification, verify_signature }\nimport extdeps.apple.app_attest { AttestationExpectation, AttestationVerification, AssertionExpectation, AssertionVerification, verify_attestation, verify_assertion }\nfn via_signature() -> SignatureVerification {\n  verify_signature(key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: \"AA\" }, signature: SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: \"AA\" }, message: \"m\")\n}\nfn via_attestation(e: AttestationExpectation) -> AttestationVerification {\n  verify_attestation(object: [], e: e)\n}\nfn via_assertion(e: AssertionExpectation) -> AssertionVerification {\n  verify_assertion(object: [], e: e)\n}\n"
+
+test fn a_forged_signature_success_is_refused_at_compile_time() -> Bool {
+  keyed_refusals(source: forged_signature_source, callee: "signature_verification_from_implementation") >= 1
+}
+
+test fn a_forged_attestation_success_is_refused_at_compile_time() -> Bool {
+  keyed_refusals(source: forged_attestation_source, callee: "attestation_verification_from_implementation") >= 1
+}
+
+test fn a_forged_assertion_success_is_refused_at_compile_time() -> Bool {
+  keyed_refusals(source: forged_assertion_source, callee: "assertion_verification_from_implementation") >= 1
+}
+
+test fn the_three_suppliers_resolve_under_their_seals() -> Bool {
+  keyed_refusals(source: suppliers_source, callee: "signature_verification_from_implementation") == 0
+    && keyed_refusals(source: suppliers_source, callee: "attestation_verification_from_implementation") == 0
+    && keyed_refusals(source: suppliers_source, callee: "assertion_verification_from_implementation") == 0
+}
