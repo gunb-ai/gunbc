@@ -29,12 +29,16 @@ import std.durable_compare_and_set {
 // across every assertion of the key, so a redemption that does not advance the standing leaves the
 // reads' comparison sound.
 //
-// THE SLOT GROWS ONE GENERATION PER ADMITTED ASSERTION, and gunbc.durable_cas_file_store probes at
-// most cas_max_generation_probe generations: past that bound every read of this enrolment refuses
-// with the store's typed bound cause (fail-closed, a 503 here) rather than admitting unchecked.
-// That is a liveness bound on an enrolment, not a safety hole; it lifts when the CAS file store
-// gains a compacting head (a slot whose superseded generations are retired), and re-enrolment is
-// the operator's remedy until then.
+// THE SLOT GROWS ONE GENERATION PER ADMITTED ASSERTION, AND THAT IS NO LONGER A LIVENESS BOUND.
+// It was: gunbc.durable_cas_file_store walked a slot linearly from generation 1 and refused past 4096
+// generations, so an enrolment stopped being readable (a 503 here) after ~4096 admitted requests and
+// only re-enrolment recovered it. The fact kept here is ONE value -- last_admitted_counter -- and no
+// consumer reads a superseded generation, so the store now finds the head by galloping and bisecting
+// over the contiguous chain, O(log n) reads, with its typed bound at the generation carrier's Int
+// range rather than at a count a phone reaches. The chain itself stays because it is the store's
+// O_EXCL exclusion mechanism, which is what makes the commit below atomic across racing requests.
+// Storage still grows one small file per admitted assertion; that is disk, not a refusal.
+// test.claim.approval_assertion_counter_wet_witness_test admits past the old bound to keep it so.
 
 data approval_assertion_counter_root: NonEmptyStr = "/var/lib/gunbc/approval-assertion-counters"
 
