@@ -1,5 +1,6 @@
 module test.claim.spark.v41_published_row_store_witness
 
+import test.claim.vllm.vllm_engram_layout_witness { w_published_head_sizes }
 import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { byte_size, byte_size_count }
@@ -39,7 +40,7 @@ fn w_read(spans: List<V41PublishedSpan>, c: String) -> V41PublishedSpanReadings 
 }
 
 fn w_key(p: V41EngramResidencyPartition, r: V41PublishedSpanReadings) -> V41PublishedRowStoreKey {
-  v41_published_row_store_key(partition: p, sharded: deepseek_v4_1_flash_engram_sharded_entries, shards: deepseek_v4_1_flash_engram_shard_files, readings: r)
+  v41_published_row_store_key(partition: p, sharded: deepseek_v4_1_flash_engram_sharded_entries, shards: deepseek_v4_1_flash_engram_shard_files, readings: r, head_sizes: fn() { w_published_head_sizes() })
 }
 
 fn w_hex(k: V41PublishedRowStoreKey) -> String {

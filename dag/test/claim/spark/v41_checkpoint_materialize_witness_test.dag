@@ -6,7 +6,12 @@ import std.measure { byte_size, byte_size_count }
 import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity }
 import extdeps.deepseek.deepseek_v4_1_flash { DeepseekV41PublishedFile, deepseek_v4_1_flash_safetensors_tree_file_bytes }
-import gunbc.artifact_acquisition { ContentDigestSha256, UpstreamRevision, SourceArgv, SourceUrl }
+import gunbc.artifact_acquisition {
+  ContentDigestSha256, UpstreamRevision, SourceArgv, SourceUrl, AcquisitionSource, AcquisitionFoldState, AttemptRejected,
+  acquisition_fold_step, acquisition_exhausted, AcquisitionRefused, AcquisitionAlreadyPresent, AcquisitionFetched, acquisition_refusal_text,
+  acquisition_key_wire,
+}
+import gunbc.spark.model_snapshot_materialize { spark_transfer_unit_for }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { spark_serving_admissible_hosts, admit_host_held_by_subject_among }
@@ -160,4 +165,71 @@ test fn a_refused_span_plan_reaches_the_receipt() -> Bool {
 // THE DIRECTORY IS THE REPO'S CACHE NAME AND THE PIN, derived rather than spelled.
 test fn the_checkpoint_directory_is_derived_from_the_repo_and_the_pin() -> Bool {
   (v41_checkpoint_directory as String) == "/home/briansrls/models/models--deepseek-ai--DeepSeek-V4.1-Flash/dba1be0a40aa45a94ad051997016db3960a90277"
+}
+
+// ── THE TRANSFER UNIT'S NAME IS A VALID SYSTEMD UNIT NAME FOR EVERY FILE IN THE POPULATION ──────
+//
+// systemd refuses a unit name longer than 255 characters including its `.service` suffix. The first
+// dispatched run (fleet-converge 35806250877, srv5) had systemd-run refuse all 48 shards and accept
+// the index and tokenizer files, because the name carried the whole destination and a shard's came to
+// 260. The subject here is the REAL shard subject the mode builds, not a designed one.
+fn w_shard_subject_name() -> String {
+  match first(w_file(path: "model-00001-of-00048.safetensors")) {
+    Absent => ""
+    Present { value: f } => spark_transfer_unit_for(subject: v41_checkpoint_subject(file: f)) as String
+  }
+}
+
+test fn a_shard_transfer_unit_name_fits_systemd_with_its_suffix() -> Bool {
+  let n = w_shard_subject_name()
+  length(n) != 0 && length(join([n, ".service"], "")) <= 255
+}
+
+fn w_old_segment(x: String) -> String {
+  join(["-", join(split(x, "/"), "-")], "")
+}
+
+// THE RED INPUT, KEPT ENROLLED: the construction that failed on srv5 -- identity, key and destination
+// carried whole -- really is over the bound for this subject. If the published paths ever shortened
+// enough to pass it, this claim would say so rather than the fix above silently looking unnecessary.
+test fn the_whole_tuple_name_this_replaced_is_over_the_bound_for_a_shard() -> Bool {
+  match first(w_file(path: "model-00001-of-00048.safetensors")) {
+    Absent => false
+    Present { value: f } => {
+      let s = v41_checkpoint_subject(file: f)
+      let old = join(["gunbc-materialize", w_old_segment(x: s.identity as String), w_old_segment(x: acquisition_key_wire(key: s.key) as String), w_old_segment(x: s.install_path as String), ".service"], "")
+      length(old) > 255
+    }
+  }
+}
+
+// DIFFERENT FILES GET DIFFERENT UNITS: the digest keeps the tuple's discrimination, which is what lets
+// a rerun reattach to THIS file's transfer and never another's.
+test fn two_files_get_two_transfer_units() -> Bool {
+  match first(w_file(path: "model-00002-of-00048.safetensors")) {
+    Absent => false
+    Present { value: f } => (spark_transfer_unit_for(subject: v41_checkpoint_subject(file: f)) as String) != w_shard_subject_name()
+  }
+}
+
+// ── A REJECTED TRANSFER'S DETAIL REACHES THE REFUSAL ────────────────────────────────────────────
+//
+// The same srv5 run's receipt read "each REJECTED the transfer command itself" and nothing else: the
+// fold matched `AttemptRejected { detail: _ }`, so systemd-run's own stderr, which named the cause,
+// was dropped one step before it would have been printed.
+test fn a_rejected_transfer_names_its_source_and_detail_in_the_refusal() -> Bool {
+  match first(w_file(path: "tokenizer.json")) {
+    Absent => false
+    Present { value: f } => {
+      let subject = v41_checkpoint_subject(file: f)
+      let origin = AcquisitionSource { identity: "huggingface-resolve" as NonEmptyStr, locator: SourceArgv { argv: ["curl"] } }
+      let init = AcquisitionFoldState { terminal: none, reached_count: 0, saw_failed_key: false, rejections: [] as List<NonEmptyStr> }
+      let folded = acquisition_fold_step(acc: init, origin: origin, attempt: AttemptRejected { detail: "systemd-run exited 1: Invalid unit name" as NonEmptyStr })
+      match acquisition_exhausted(subject: subject, state: folded) {
+        AcquisitionRefused { cause: c } => string_contains(s: acquisition_refusal_text(cause: c), pattern: "huggingface-resolve: systemd-run exited 1: Invalid unit name")
+        AcquisitionAlreadyPresent { identity: _, install_path: _ } => false
+        AcquisitionFetched { identity: _, install_path: _, source: _ } => false
+      }
+    }
+  }
 }

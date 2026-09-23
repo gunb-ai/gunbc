@@ -139,7 +139,7 @@ type AcquisitionRefusal
   | NoSourceDeclared { identity: NonEmptyStr }
   | EverySourceUnreachable { identity: NonEmptyStr, attempted: Nat }
   | EverySourceFailedItsKey { identity: NonEmptyStr, attempted: Nat }
-  | EverySourceRejectedTheTransfer { identity: NonEmptyStr, attempted: Nat }
+  | EverySourceRejectedTheTransfer { identity: NonEmptyStr, attempted: Nat, rejections: List<NonEmptyStr> }
   | PublishFailed { identity: NonEmptyStr, source: NonEmptyStr, install_path: NonEmptyStr }
   | VerifyMechanismFailed { identity: NonEmptyStr, source: NonEmptyStr, reason: NonEmptyStr }
 
@@ -162,8 +162,8 @@ fn acquisition_refusal_text(cause: AcquisitionRefusal) -> String {
       join(["every one of the ", to_string(n), " declared sources for ", i as String, " was unreachable"], "")
     EverySourceFailedItsKey { identity: i, attempted: n } =>
       join([to_string(n), " sources for ", i as String, " were reached and none produced bytes matching its declared identity"], "")
-    EverySourceRejectedTheTransfer { identity: i, attempted: n } =>
-      join([to_string(n), " sources for ", i as String, " were reached and each REJECTED the transfer command itself; the host answered, so this is a defect in the plan rather than a network fault"], "")
+    EverySourceRejectedTheTransfer { identity: i, attempted: n, rejections: r } =>
+      join([to_string(n), " sources for ", i as String, " were reached and each REJECTED the transfer command itself; the host answered, so this is a defect in the plan rather than a network fault: ", join(map(r, d => d as String), "; ")], "")
     PublishFailed { identity: i, source: s, install_path: p } =>
       join([i as String, " was fetched from ", s as String, " and verified, but could not be published to ", p as String], "")
     VerifyMechanismFailed { identity: i, source: s, reason: r } =>
@@ -198,20 +198,20 @@ type AcquisitionFoldState {
   terminal: AcquisitionOutcome?
   reached_count: Nat
   saw_failed_key: Bool
-  saw_rejected: Bool
+  rejections: List<NonEmptyStr>
 }
 
-fn acquisition_fold_step(acc: AcquisitionFoldState, attempt: AcquisitionAttempt) -> AcquisitionFoldState {
+fn acquisition_fold_step(acc: AcquisitionFoldState, origin: AcquisitionSource, attempt: AcquisitionAttempt) -> AcquisitionFoldState {
   match acc.terminal {
     Present { value: _ } => acc
     Absent =>
       match attempt {
         AttemptTerminal { outcome: o } =>
-          AcquisitionFoldState { terminal: Present { value: o }, reached_count: acc.reached_count + 1, saw_failed_key: acc.saw_failed_key, saw_rejected: acc.saw_rejected }
+          AcquisitionFoldState { terminal: Present { value: o }, reached_count: acc.reached_count + 1, saw_failed_key: acc.saw_failed_key, rejections: acc.rejections }
         AttemptFailedKey =>
-          AcquisitionFoldState { terminal: none, reached_count: acc.reached_count + 1, saw_failed_key: true, saw_rejected: acc.saw_rejected }
-        AttemptRejected { detail: _ } =>
-          AcquisitionFoldState { terminal: none, reached_count: acc.reached_count + 1, saw_failed_key: acc.saw_failed_key, saw_rejected: true }
+          AcquisitionFoldState { terminal: none, reached_count: acc.reached_count + 1, saw_failed_key: true, rejections: acc.rejections }
+        AttemptRejected { detail: d } =>
+          AcquisitionFoldState { terminal: none, reached_count: acc.reached_count + 1, saw_failed_key: acc.saw_failed_key, rejections: concat(acc.rejections, [join([origin.identity as String, ": ", d as String], "") as NonEmptyStr]) }
         AttemptUnreachable => acc
       }
   }
@@ -226,8 +226,8 @@ fn acquisition_fold_step(acc: AcquisitionFoldState, attempt: AcquisitionAttempt)
 fn acquisition_exhausted(subject: AcquisitionSubject, state: AcquisitionFoldState) -> AcquisitionOutcome {
   if state.saw_failed_key {
     AcquisitionRefused { cause: EverySourceFailedItsKey { identity: subject.identity, attempted: state.reached_count } }
-  } else if state.saw_rejected {
-    AcquisitionRefused { cause: EverySourceRejectedTheTransfer { identity: subject.identity, attempted: state.reached_count } }
+  } else if length(state.rejections) != 0 {
+    AcquisitionRefused { cause: EverySourceRejectedTheTransfer { identity: subject.identity, attempted: state.reached_count, rejections: state.rejections } }
   } else {
     AcquisitionRefused { cause: EverySourceUnreachable { identity: subject.identity, attempted: list_length(items: subject.sources) } }
   }
@@ -248,10 +248,10 @@ fn acquire_from_declared_sources(subject: AcquisitionSubject, handler: Acquisiti
   let attempt_one = handler.attempt
   let folded = fold(
     subject.sources,
-    init: AcquisitionFoldState { terminal: none, reached_count: 0, saw_failed_key: false, saw_rejected: false },
+    init: AcquisitionFoldState { terminal: none, reached_count: 0, saw_failed_key: false, rejections: [] as List<NonEmptyStr> },
     f: (acc, origin) => match acc.terminal {
       Present { value: _ } => acc
-      Absent => acquisition_fold_step(acc: acc, attempt: attempt_one(subject, origin))
+      Absent => acquisition_fold_step(acc: acc, origin: origin, attempt: attempt_one(subject, origin))
     },
   )
   match folded.terminal {

@@ -817,25 +817,17 @@ fn assignment_has_scc_split(
 
 // The unit graph is the module edges projected through the assignment -- the same fact
 // partition_fold_outcome derives as CompilationUnit.deps, read here without asking for interfaces.
+// The projection itself is assignment_unit_dep_edges and is NOT repeated here: this function used
+// to carry its own copy, and two independent producers of one fact can drift on exactly the
+// details that matter (the self-loop filter, the dedup rule), which is the fork DESIGN section 3
+// forbids and section 2 prices. This maps that one producer's output into the CallGraph shape the
+// SCC check reads.
 fn assignment_unit_graph_has_cycle(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>
 ) -> Bool {
-  let unit_edges = module_dag.edges |> fold(init: [], f: fn(acc, edge) {
-    match assignment_owner(assignment: assignment, module_id: edge.from) {
-      Present { value: from_unit } =>
-        match assignment_owner(assignment: assignment, module_id: edge.to) {
-          Present { value: to_unit } =>
-            if from_unit == to_unit {
-              acc
-            } else {
-              acc |> list_push(GraphEdge { caller: from_unit as String, callee: to_unit as String })
-            }
-          Absent => acc
-        }
-      Absent => acc
-    }
-  })
+  let unit_edges = assignment_unit_dep_edges(module_dag: module_dag, assignment: assignment)
+    |> map(e => GraphEdge { caller: e.from as String, callee: e.to as String })
   graph_has_multi_node_scc(
     names: map_values(assignment) |> fold(init: [], f: fn(acc, unit) {
       if acc |> any(seen => seen == (unit as String)) { acc } else { acc |> list_push(unit as String) }
@@ -1049,7 +1041,243 @@ fn stage0_partition_fold_ok() -> Bool {
   }
 }
 
-data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — the balanced policy has landed (resolve_partition_outcome PolicyPartitionParam, policy_partition_assignment), so it is no longer what holds stage0 on the explicit arm. What does: stage0_module_dag's edges and module lists are authored (stage0_cross_unit_import_edges, the stage0_*_modules lists) over v1 mirror basenames, not derived, so a policy over them would balance an incomplete graph. Stage0 flips to PolicyPartition \{ target_crate_count: declared_core_target } with provenance PolicyDerived when its ModuleDag is derived from the mirrors' resolved dependency facts the way v2.workflow.emitted_closure_crate_partition module_dag_from_dependency_facts derives the emitted closure's.")
+// UNIT DEPENDENCY EDGES WITHOUT ASKING FOR INTERFACES. This is the same projection
+// assignment_unit_graph_has_cycle already performs and its note already names: the unit graph is
+// the module edges projected through the assignment, which is the fact partition_fold_outcome
+// derives as CompilationUnit.deps.
+//
+// WHY THIS ROUTE AND NOT THE FOLD. Asking stage0_partition_receipt_outcome for units dominated
+// the claim's cost, and what it bought was a CompilationUnit interface saturation the claim never
+// inspects -- it reads deps only. That is the shape DESIGN section 3 names exactly: a claim
+// dominated by one call whose RESULT SHAPE is all it looks at, whose cost does not move when its
+// assertions change. The earliest unjustified boundary was demanding a whole CompilationUnit for a
+// dependency question, so the derivation is re-taken here rather than the symptom optimized.
+// The figures are NOT copied here: claim_batch reports eval_steps per witness and re-derives them
+// on demand, and DESIGN section 6 asks for the producer to be named rather than its output
+// transcribed -- a number copied into prose rots without anyone touching either end.
+type UnitDepEdge {
+  from: CompilationUnitId
+  to: CompilationUnitId
+}
+
+fn assignment_unit_dep_edges(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> List<UnitDepEdge> {
+  module_dag.edges |> fold(init: [], f: fn(acc, edge) {
+    match assignment_owner(assignment: assignment, module_id: edge.from) {
+      Absent => acc
+      Present { value: from_unit } =>
+        match assignment_owner(assignment: assignment, module_id: edge.to) {
+          Absent => acc
+          Present { value: to_unit } =>
+            if from_unit == to_unit {
+              acc
+            } else {
+              if acc |> any(e => (e.from == from_unit) && (e.to == to_unit)) {
+                acc
+              } else {
+                acc |> list_push(UnitDepEdge { from: from_unit, to: to_unit })
+              }
+            }
+        }
+    }
+  })
+}
+
+fn unit_direct_deps(edges: List<UnitDepEdge>, unit_id: CompilationUnitId) -> List<CompilationUnitId> {
+  edges |> fold(init: [], f: fn(acc, e) {
+    if (e.from == unit_id) && !(acc |> any(seen => seen == e.to)) { acc |> list_push(e.to) } else { acc }
+  })
+}
+
+fn unit_dep_closure_step(
+  edges: List<UnitDepEdge>,
+  acc: List<CompilationUnitId>
+) -> List<CompilationUnitId> {
+  acc |> fold(init: acc, f: fn(outer, uid) {
+    unit_direct_deps(edges: edges, unit_id: uid) |> fold(init: outer, f: fn(inner, dep) {
+      if inner |> any(seen => seen == dep) { inner } else { inner |> list_push(dep) }
+    })
+  })
+}
+
+// Fuel bounds the rounds: each round adds at least one unit or the closure is complete, so the
+// edge count is an upper bound rather than a guess (DESIGN section 4: bounded and forward).
+fn unit_dep_closure(
+  edges: List<UnitDepEdge>,
+  acc: List<CompilationUnitId>,
+  fuel: Int
+) -> List<CompilationUnitId> {
+  if fuel <= 0 {
+    acc
+  } else {
+    let grown = unit_dep_closure_step(edges: edges, acc: acc)
+    if (grown |> count) == (acc |> count) { acc } else {
+      unit_dep_closure(edges: edges, acc: grown, fuel: fuel - 1)
+    }
+  }
+}
+
+fn unit_package_name(rows: List<Stage0PartitionCrateRow>, unit_id: CompilationUnitId) -> Optional<String> {
+  rows
+    |> fold(init: Absent, f: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if row.unit_id == unit_id { optional_present(value: row.package_name) } else { Absent }
+      }
+    })
+}
+
+// A DEP EDGE WHOSE DESTINATION HAS NO PACKAGE ROW IS NOT A DEP THAT CONTRIBUTES NOTHING. This
+// fold used to answer Absent => acc, dropping the edge, and the consequence is the false green
+// this whole declaration exists to make impossible: for a FOUNDATION row whose authored
+// reexport_packages is itself [], a dropped edge leaves derived [] against authored [], and the
+// detector CERTIFIES AGREEMENT FROM AN INCOMPLETE PROJECTION.
+//
+// That the current stage0 rows pair every unit id with a row -- so the arm is unreachable on the
+// production route today -- is not the test that applies here. This detector is DELIBERATELY
+// EXPOSED over supplied inputs and is meant to SURVIVE as the permanent debt control once the
+// edge list is derived, so what matters is what its signature PERMITS, not what it currently
+// reports. A permanent control that can be handed an input for which it lies is a different
+// object from a production path that happens not to reach the case.
+type DerivedDepPackages
+  = DerivedDepPackagesOk { packages: List<String> }
+  | DerivedDepPackagesUnitHasNoRow { unit_id: CompilationUnitId }
+
+fn derived_dep_packages(
+  edges: List<UnitDepEdge>,
+  rows: List<Stage0PartitionCrateRow>,
+  row: Stage0PartitionCrateRow
+) -> DerivedDepPackages {
+  unit_dep_closure(
+    edges: edges,
+    acc: unit_direct_deps(edges: edges, unit_id: row.unit_id),
+    fuel: (edges |> count) + 1
+  )
+    |> fold(init: DerivedDepPackagesOk { packages: [] }, f: fn(acc, dep) {
+      match acc {
+        DerivedDepPackagesUnitHasNoRow { unit_id: unit_id } =>
+          DerivedDepPackagesUnitHasNoRow { unit_id: unit_id }
+        DerivedDepPackagesOk { packages: packages } =>
+          match unit_package_name(rows: rows, unit_id: dep) {
+            Present { value: pkg } => DerivedDepPackagesOk { packages: packages |> list_push(pkg) }
+            Absent => DerivedDepPackagesUnitHasNoRow { unit_id: dep }
+          }
+      }
+    })
+}
+
+fn stage0_package_sets_agree(left: List<String>, right: List<String>) -> Bool {
+  (left |> fold(init: true, f: fn(ok, pkg) { ok && (right |> any(p => p == pkg)) }))
+    && (right |> fold(init: true, f: fn(ok, pkg) { ok && (left |> any(p => p == pkg)) }))
+}
+
+// DRIVABLE FROM SUPPLIED INPUTS, so the detector can be exercised over a fixture carrying a
+// PLANTED disagreement, and the reason that control is needed is worth stating exactly rather than
+// generally, because the equality contract changed it.
+//
+// WHILE THE LEDGER IS NON-EMPTY the contract already catches a broken detector: a detector that
+// finds nothing yields a derived set that is missing the ledger's entries, and the
+// no_stale_ledger_entry arm reds. Measured, not assumed -- forcing the comparison to agree reds
+// BOTH the contract and this fixture guard today.
+//
+// THE HOLE IS THE FUTURE STATE, and it is why the guard is not redundant. Once the divergence is
+// repaired the ledger empties, and then a detector that finds nothing yields [] against a ledger of
+// [] -- equality holds, the contract goes green, and nothing else would be looking. That is the
+// inert lens DESIGN section 5 warns about, arriving exactly when the debt this file tracks is
+// finally paid. The guard is built now because that is when it stops being buildable from a live
+// example.
+type ReexportDisagreementScan
+  = ReexportDisagreementScanOk { packages: List<String> }
+  | ReexportDisagreementScanUnitHasNoRow { unit_id: CompilationUnitId }
+
+fn reexport_derivation_disagreements_over(
+  edges: List<UnitDepEdge>,
+  rows: List<Stage0PartitionCrateRow>
+) -> ReexportDisagreementScan {
+  rows |> fold(init: ReexportDisagreementScanOk { packages: [] }, f: fn(acc, row) {
+    match acc {
+      ReexportDisagreementScanUnitHasNoRow { unit_id: unit_id } =>
+        ReexportDisagreementScanUnitHasNoRow { unit_id: unit_id }
+      ReexportDisagreementScanOk { packages: found } =>
+        match derived_dep_packages(edges: edges, rows: rows, row: row) {
+          DerivedDepPackagesUnitHasNoRow { unit_id: unit_id } =>
+            ReexportDisagreementScanUnitHasNoRow { unit_id: unit_id }
+          DerivedDepPackagesOk { packages: derived } =>
+            if stage0_package_sets_agree(left: row.reexport_packages, right: derived) {
+              ReexportDisagreementScanOk { packages: found }
+            } else {
+              ReexportDisagreementScanOk { packages: found |> list_push(row.package_name) }
+            }
+        }
+    }
+  })
+}
+
+// THE DEBT POPULATION IS A NAMED ROW, AND THE CONTRACT IS EQUALITY AGAINST IT, NOT A SUBSET OF IT.
+// A one-way subset notices a NEW divergence and nothing else: when v1-stage0-v1-artifact is finally
+// repaired the derived set empties, the subset still holds, and the row keeps naming a unit that no
+// longer diverges. A stale entry then quietly re-admits that unit to diverge again with the claim
+// still green, which is the silent regression DESIGN 4b(3) forbids -- and it would falsify this
+// row's own promise that removing a package is an edit someone must make and justify.
+//
+// Equality in BOTH directions is what makes that edit forced, and the objection to equality does
+// not apply here: it is equality against this LEDGER, not against the derived set, so it does not
+// stop any lane over debt the ledger already declares. It reds in exactly one situation -- the
+// ledger disagreeing with reality -- which is the situation nobody would otherwise notice.
+//
+// A REMOVAL CARRIES A TYPED DISPOSITION (DESIGN section 5), so a repaired divergence does not just
+// vanish from the ledger: it moves to the repaired roster below, which records what repaired it and
+// is itself asserted against -- a package recorded as repaired that starts diverging again reds.
+type Stage0ReexportDivergenceRepaired {
+  package_name: String
+  repaired_by: String
+}
+
+data stage0_reexport_derivation_known_divergent_packages: List<String> = ["v1-stage0-v1-artifact"]
+
+// Empty today: no divergence has been repaired yet. It is not decoration -- the claim asserts no
+// entry here has returned to the derived set, so the roster is a regression control the moment it
+// has a row, and the edge-list derivation is what will put the first one in it.
+data stage0_reexport_derivation_repaired_divergences: List<Stage0ReexportDivergenceRepaired> = []
+
+// THE REFUSAL ARM MAY NOT ANSWER []. An empty list reads as "no unit disagrees", the strongest
+// possible answer, and a partition that refused to resolve has established nothing about any unit.
+// Collapsing a refusal into the clean answer is the absorbing fallback DESIGN section 5 forbids,
+// and it is the same class this lane deleted from compilation_unit, so reintroducing it here by a
+// new road would be the symptom arriving in its own repair.
+type Stage0ReexportDisagreementsUnavailableCause
+  = Stage0ReexportPartitionResolveRefused { cause: ResolvePartitionRefusalCause }
+  | Stage0ReexportDepUnitHasNoPackageRow { unit_id: CompilationUnitId }
+
+type Stage0ReexportDerivationDisagreements
+  = Stage0ReexportDisagreementsDerived { packages: List<String> }
+  | Stage0ReexportDisagreementsUnavailable { cause: Stage0ReexportDisagreementsUnavailableCause }
+
+fn stage0_reexport_derivation_disagreements() -> Stage0ReexportDerivationDisagreements {
+  match stage0_resolve_partition_outcome {
+    ResolvePartitionRefused { cause: cause } =>
+      Stage0ReexportDisagreementsUnavailable {
+        cause: Stage0ReexportPartitionResolveRefused { cause: cause }
+      }
+    ResolvePartitionOk { assignment: assignment, provenance: _ } =>
+      match reexport_derivation_disagreements_over(
+        edges: assignment_unit_dep_edges(module_dag: stage0_module_dag, assignment: assignment),
+        rows: stage0_module_bearing_crate_rows()
+      ) {
+        ReexportDisagreementScanUnitHasNoRow { unit_id: unit_id } =>
+          Stage0ReexportDisagreementsUnavailable {
+            cause: Stage0ReexportDepUnitHasNoPackageRow { unit_id: unit_id }
+          }
+        ReexportDisagreementScanOk { packages: packages } =>
+          Stage0ReexportDisagreementsDerived { packages: packages }
+      }
+  }
+}
+
+data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — the balanced policy has landed (resolve_partition_outcome PolicyPartitionParam, policy_partition_assignment), so it is no longer what holds stage0 on the explicit arm. What does: stage0_module_dag's edges and module lists are authored (stage0_cross_unit_import_edges, the stage0_*_modules lists) over v1 mirror basenames, not derived, so a policy over them would balance an incomplete graph. THE SIZE OF 'incomplete' IS DERIVED, NOT TRANSCRIBED (DESIGN 6: name the instrument, never copy its output). stage0_reexport_derivation_disagreements is the producer: it folds the authored edges through the assignment into CompilationUnit.deps, closes them transitively, maps them back to package names and returns the package names whose DERIVED dependency set differs from their AUTHORED reexport_packages. An earlier revision of this row carried the counts in prose; they were removed because they go stale the moment an edge row is appended and nothing would notice. The population is pinned at IDENTITY grain against the ledger stage0_reexport_derivation_known_divergent_packages by test.claim.rust_crate_partition_witness stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit, and the contract that claim enforces is NOT restated here: it is the claim's to state, and an earlier revision of this row described a subset check the claim had already stopped performing, which is the one-fact-two-statements fork DESIGN 3 forbids inside a single change. WHICH SIDE IS WRONG is not symmetric: the reexports are correct and the authored edge list is what is missing them, established off this graph by the unit's real Cargo.toml and its real lib.rs. Crate dependency is therefore answered by TWO authorities, and deriving the edges dissolves the second rather than reconciling them -- which is why the trigger below is the derivation and not a hand completion, since completing the list by hand re-authors the fork.")
 
 data stage0_compilation_units_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (§5 List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only.")
 
