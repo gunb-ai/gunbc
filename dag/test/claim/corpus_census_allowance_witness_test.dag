@@ -8,9 +8,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.workflow.required_floor {
   CorpusCensusMember, CorpusCensusAllowancePolicy, corpus_census_allowance_policy,
   CorpusCensusAllowance, CensusAllowanceDerived, CensusAllowanceRefused,
-  CorpusCensusStanding, CensusWithinAllowance, CensusPerEntryRateExceeded, CensusAllowanceUnderived,
   corpus_census_eval_step_allowance_in, corpus_census_eval_step_allowance,
-  corpus_census_standing, corpus_census_standing_blocks,
+  claim_eval_step_standing, claim_eval_step_standing_blocks,
 }
 
 // Every subject below is authored in this module; nothing is read from the checkout.
@@ -56,10 +55,22 @@ fn policy_per_entry() -> Int {
   eval_step_count_value(s: corpus_census_allowance_policy.per_entry_steps)
 }
 
-fn synthetic_standing(subject: String, entries: Int, rate: Int) -> CorpusCensusStanding {
-  corpus_census_standing(
+// THE ROUTE THE RUNNER TAKES, and no other: a derived allowance supplies the BUDGET, and the verdict
+// is the floor's ordinary claim_eval_step_standing over that budget -- the comparison the runner
+// applies to every claim. A refused allowance never reaches a verdict: the runner refuses the run, so
+// here it blocks.
+fn allowance_blocks(allowance: CorpusCensusAllowance, observed: EvalStepCount) -> Bool {
+  match allowance {
+    CensusAllowanceRefused { identity: _, reason: _ } => true
+    CensusAllowanceDerived { identity: _, subject_path: _, entry_count: _, budget_steps: b } =>
+      claim_eval_step_standing_blocks(standing: claim_eval_step_standing(observed_eval_steps: observed, budget_steps: b))
+  }
+}
+
+fn synthetic_blocks(subject: String, entries: Int, rate: Int) -> Bool {
+  allowance_blocks(
     allowance: synthetic_allowance(subject: subject),
-    observed_steps: synthetic_observed_steps(entries: entries, rate: rate),
+    observed: synthetic_observed_steps(entries: entries, rate: rate),
   )
 }
 
@@ -80,13 +91,8 @@ test fn census_allowance_derives_the_entry_count_from_the_census_parse() -> Bool
 // POSITIVE CONTROL: a census whose per-entry cost is exactly the policy's per_entry sits ON the line
 // and is admitted, at both subject sizes -- growth raises the budget with the subject.
 test fn census_at_the_policy_rate_is_within_its_allowance_as_the_subject_grows() -> Bool {
-  !corpus_census_standing_blocks(standing: synthetic_standing(subject: synthetic_census_subject, entries: 5, rate: policy_per_entry()))
-    && !corpus_census_standing_blocks(standing: synthetic_standing(subject: synthetic_census_subject_grown, entries: 9, rate: policy_per_entry()))
-    && match synthetic_standing(subject: synthetic_census_subject_grown, entries: 9, rate: policy_per_entry()) {
-      CensusWithinAllowance { observed_steps: _, budget_steps: _, entry_count: n } => n == 9
-      CensusPerEntryRateExceeded { observed_steps: _, budget_steps: _, entry_count: _ } => false
-      CensusAllowanceUnderived { reason: _ } => false
-    }
+  !synthetic_blocks(subject: synthetic_census_subject, entries: 5, rate: policy_per_entry())
+    && !synthetic_blocks(subject: synthetic_census_subject_grown, entries: 9, rate: policy_per_entry())
 }
 
 // DISCRIMINATING RED, THE SLOPE GATE: the same synthetic census with its per-entry cost inflated by
@@ -94,15 +100,8 @@ test fn census_at_the_policy_rate_is_within_its_allowance_as_the_subject_grows()
 // one, so a larger subject does not buy an inflated rate its way under the line.
 test fn census_with_an_inflated_per_entry_cost_is_refused_at_every_subject_size() -> Bool {
   let inflated = int_add(a: policy_per_entry(), b: 1)
-  let small = synthetic_standing(subject: synthetic_census_subject, entries: 5, rate: inflated)
-  let grown = synthetic_standing(subject: synthetic_census_subject_grown, entries: 9, rate: inflated)
-  corpus_census_standing_blocks(standing: small)
-    && corpus_census_standing_blocks(standing: grown)
-    && match grown {
-      CensusPerEntryRateExceeded { observed_steps: _, budget_steps: _, entry_count: n } => n == 9
-      CensusWithinAllowance { observed_steps: _, budget_steps: _, entry_count: _ } => false
-      CensusAllowanceUnderived { reason: _ } => false
-    }
+  synthetic_blocks(subject: synthetic_census_subject, entries: 5, rate: inflated)
+    && synthetic_blocks(subject: synthetic_census_subject_grown, entries: 9, rate: inflated)
 }
 
 // NO FALLBACK TO A FLAT BUDGET: every arm that cannot derive a count refuses, and the standing over a
@@ -118,7 +117,7 @@ test fn census_allowance_refuses_rather_than_falling_back_when_it_cannot_derive_
   let unparsed = synthetic_allowance(subject: "a: 1\n- b\n")
   let empty = synthetic_allowance(subject: "")
   refused(a: unrostered) && refused(a: unparsed) && refused(a: empty)
-    && corpus_census_standing_blocks(standing: corpus_census_standing(allowance: unparsed, observed_steps: eval_step_count(count: 1)))
+    && allowance_blocks(allowance: unparsed, observed: eval_step_count(count: 1))
 }
 
 fn refused(a: CorpusCensusAllowance) -> Bool {

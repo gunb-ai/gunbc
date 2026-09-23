@@ -1414,10 +1414,12 @@ fn claim_eval_step_budget_for_identity(identity: String) -> EvalStepCount {
 // never a count copied from the tree (DESIGN section 5's oracle rule): the roster names a PATH, and
 // the count is re-derived from whatever that path holds on the run that judges it.
 //
-// THE SLOPE GATE IS THIS COMPARISON, AND WHY THERE IS NO SECOND ONE. The allowance grows ONLY through
-// per_entry, so a claim over its allowance is by construction a claim whose steps above the fixed base
-// exceed per_entry per entry -- the over-allowance arm is named CensusPerEntryRateExceeded for that
-// reason. Growth therefore cannot hide a cost-shape regression: a per-entry cost above per_entry by any
+// THE SLOPE GATE IS THE FLOOR'S ORDINARY STEP COMPARISON, AND WHY THERE IS NO SECOND ONE. The allowance
+// only supplies a budget: the verdict is the same claim_eval_step_standing every claim is judged by (and
+// that the runner applies to the budget this arm hands it), so no census-specific standing exists for
+// production to bypass. The allowance grows ONLY through per_entry, so a claim over it is by construction
+// a claim whose steps above the fixed base exceed per_entry per entry, and the runner's refusal names it
+// as a per-entry rate excess for that reason. Growth therefore cannot hide a cost-shape regression: a per-entry cost above per_entry by any
 // margin d exceeds the allowance once d x entry_count passes the base's slack, and a LARGER subject
 // reveals it sooner, never later. A separate "steps / entry_count > per_entry" test was considered and
 // refused: dividing the base into the rate either refuses every small subject (whose fixed work
@@ -1549,32 +1551,6 @@ fn corpus_census_eval_step_allowance(identity: String, subject_content: String) 
     identity: identity,
     subject_content: subject_content,
   )
-}
-
-type CorpusCensusStanding =
-    CensusWithinAllowance { observed_steps: EvalStepCount, budget_steps: EvalStepCount, entry_count: Int }
-  | CensusPerEntryRateExceeded { observed_steps: EvalStepCount, budget_steps: EvalStepCount, entry_count: Int }
-  | CensusAllowanceUnderived { reason: String }
-
-// THE STANDING A RUN DECIDES WITH. An underived allowance BLOCKS -- it is a refusal, not a pass.
-fn corpus_census_standing(allowance: CorpusCensusAllowance, observed_steps: EvalStepCount) -> CorpusCensusStanding {
-  match allowance {
-    CensusAllowanceRefused { identity: _, reason: r } => CensusAllowanceUnderived { reason: r }
-    CensusAllowanceDerived { identity: _, subject_path: _, entry_count: n, budget_steps: b } =>
-      if int_gt(a: eval_step_count_value(s: observed_steps), b: eval_step_count_value(s: b)) {
-        CensusPerEntryRateExceeded { observed_steps: observed_steps, budget_steps: b, entry_count: n }
-      } else {
-        CensusWithinAllowance { observed_steps: observed_steps, budget_steps: b, entry_count: n }
-      }
-  }
-}
-
-fn corpus_census_standing_blocks(standing: CorpusCensusStanding) -> Bool {
-  match standing {
-    CensusWithinAllowance { observed_steps: _, budget_steps: _, entry_count: _ } => false
-    CensusPerEntryRateExceeded { observed_steps: _, budget_steps: _, entry_count: _ } => true
-    CensusAllowanceUnderived { reason: _ } => true
-  }
 }
 
 // THE GROUNDING, AS AN EXECUTING FOLD RATHER THAN AS THE PROSE ABOVE. Its consumer is
