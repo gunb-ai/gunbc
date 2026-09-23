@@ -4,7 +4,6 @@ import std.types { Int, List, NonEmptyStr, String }
 import std.measure { second }
 import extdeps.tools.curl { curl_bounded_get_argv }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.docker.cli { docker_exec_command }
 import extdeps.exec.command { argv_words }
@@ -95,7 +94,6 @@ fn scrape_refusal_text(s: MetricsScrape) -> String {
 }
 
 fn inspect_incarnation(ctx: SparkMaterializeContext) -> ObservedRankIncarnation?
-  uses net: Network
 {
   let subject = observed_rank_subject(host: operator_host_srv9, container: glm_native_container_name)
   match observe_rank_container(ctx: ctx, subject: subject) {
@@ -105,13 +103,11 @@ fn inspect_incarnation(ctx: SparkMaterializeContext) -> ObservedRankIncarnation?
 }
 
 fn glm_native_serving_load_wet() -> ProcessExit
-  uses net: Network
 {
   glm_native_serving_load_run()
 }
 
 fn glm_native_serving_load_run() -> ProcessExit
-  uses net: Network
 {
   with_group_b_access(use: fn(trust, path, administrator, file) {
     let ctx = rank_context(host: operator_host_srv9, trust: trust, path: path, administrator: administrator, credential_file: file)

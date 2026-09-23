@@ -3975,9 +3975,20 @@ pub fn required_floor_nominal_subject_seeds(
     source_roots: &[String],
     gate_entry_index: &MultiEntryIndex,
 ) -> Result<RequiredFloorNominalSubjectSeeds, String> {
+    let corpus = crate::cli_run::read_source_corpus_once(source_roots);
+    required_floor_nominal_subject_seeds_from_corpus(&corpus, gate_entry_index)
+}
+
+/// The seed fold over a corpus the CALLER read. `run_required_floor` is the least common ancestor
+/// of this prepare and the gate prepare below it, so it reads once and lends to both; the wrapper
+/// above stays for callers with only one demand (the lane resolution census).
+pub fn required_floor_nominal_subject_seeds_from_corpus(
+    corpus: &crate::cli_run::SourceCorpusRead,
+    gate_entry_index: &MultiEntryIndex,
+) -> Result<RequiredFloorNominalSubjectSeeds, String> {
     let policy_seed = [REQUIRED_FLOOR_POLICY_MODULE.to_string()];
-    let (policy_prepared, _) = prepare_repository_closure(
-        source_roots,
+    let (policy_prepared, _) = crate::cli_run::prepare_repository_from_corpus(
+        corpus,
         &floor_prepared_subject_exclusions(),
         Some((gate_entry_index, &[], &policy_seed)),
     )?;
@@ -5828,6 +5839,21 @@ pub fn run_required_floor(
     // policy-closure prepare and the gate-closure prepare alike.
     let gate_entry_index = build_multi_entry_index(source_roots);
     floor_seam("changed-witness-planning");
+    // ONE CORPUS READ FOR BOTH PREPARES, CARRIED FROM THE ANCESTOR THAT OWNS BOTH DEMANDS.
+    //
+    // This function prepares TWO subjects -- the policy closure through
+    // `required_floor_nominal_subject_seeds_from_corpus`, then the gate closure below -- and both
+    // call sites pass identical source roots, identical exclusions and this same
+    // `gate_entry_index`, differing ONLY in their closure seeds. Each prepare used to begin with
+    // its own `build_module_index(source_roots)`, which is not memoised: it walked every root and
+    // `read_to_string`d every `.dag` file in the corpus. So the floor read and indexed the whole
+    // corpus twice, on every run, for two questions that differ in their seeds and in nothing else.
+    //
+    // That is DESIGN §2's authored duplication rather than a cache obligation, and §2 names the
+    // repair: when several demands share a least common ancestor, CARRY the first value. This is
+    // that ancestor. The entry index one line above was already shared for exactly this reason --
+    // the corpus read simply never was.
+    let floor_corpus = crate::cli_run::read_source_corpus_once(source_roots);
     // ONE DERIVATION, CONSUMED FOUR WAYS. The same diff observation supplies changed-witness
     // identities, newly enrolled identities, the compile-subject modules of
     // `touched_entry_files`, and the match-bearing consumers of every coproduct whose arm set
@@ -5884,7 +5910,7 @@ pub fn run_required_floor(
         required_gate_prefixes,
         required_gate_authored_modules,
         local_repo_wet_schedule_rows,
-    } = required_floor_nominal_subject_seeds(source_roots, &gate_entry_index)?;
+    } = required_floor_nominal_subject_seeds_from_corpus(&floor_corpus, &gate_entry_index)?;
     // THE FLOOR'S OWN AUTHORITIES ARE ALWAYS IN THE SUBJECT: the floor evaluates its rosters
     // (expected red, route gap, cost debt, the gate itself) in a frame over the prepared graph,
     // and a gate roster that happened not to reach `v2.workflow.required_floor` refused with
@@ -6035,8 +6061,8 @@ pub fn run_required_floor(
     .chain(arm_set_consumer_seeds.iter().cloned())
     .collect();
     floor_seam("prepare-closure-resolve");
-    let (mut prepared, prepared_sources) = prepare_repository_closure(
-        source_roots,
+    let (mut prepared, prepared_sources) = crate::cli_run::prepare_repository_from_corpus(
+        &floor_corpus,
         &floor_prepared_subject_exclusions(),
         Some((
             &gate_entry_index,
