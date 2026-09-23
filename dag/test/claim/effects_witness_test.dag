@@ -1,6 +1,6 @@
 module test.claim.effects_witness_test
 
-import std.types { HttpMethod, GET, POST, PUT, DELETE, String, List, Bool }
+import std.types { String, List, Bool }
 import extdeps.uri_path { PathTemplate, has_path_params, last_path_param }
 import extdeps.uri_path {
   parse_path_template,
@@ -11,7 +11,7 @@ import std.effects {
   EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
   CreateCause, PostAlways, CreateIfAbsent, KeylessFallback,
   KeySource, PathParam, InputField,
-  DerivedOpEffect, DeriveOpEffectResult, DerivedEffect, MalformedPathInput,
+  DerivedOpEffect, DeriveOpEffectResult, DerivedEffect, MalformedPathInput, MethodHasNoOperationEffect,
   derive_op_effect, check_modifier_vs_derivation,
   compose_effects, OperationEffect, CompositionVerdict,
   IdempotentComposition, BrokenBy,
@@ -20,6 +20,7 @@ import std.effects {
   is_idempotent_effect, create_effect_is_dedupable, create_double_init_collapsible,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT, DELETE }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -32,6 +33,12 @@ fn derived_op(name: String, method: HttpMethod, path: PathTemplate) -> DerivedOp
   match derive_op_effect(operation_name: name, method: method, path: path) {
     DerivedEffect { effect: e } => e
     MalformedPathInput => DerivedOpEffect {
+      operation_name: name,
+      method: method,
+      path_template: path,
+      shape: AppendEffect
+    }
+    MethodHasNoOperationEffect => DerivedOpEffect {
       operation_name: name,
       method: method,
       path_template: path,
@@ -150,6 +157,7 @@ fn derived_raw_cause_is_keyless_with_method(name: String, method: HttpMethod, ra
       match derive_op_effect(operation_name: name, method: method, path: path) {
         DerivedEffect { effect: effect } => derived_cause_is_keyless_with_method(shape: effect.shape, expected: expected)
         MalformedPathInput => false
+        MethodHasNoOperationEffect => false
       }
     MalformedPathTemplate => false
   }
@@ -161,6 +169,7 @@ fn derived_raw_cause_is_post_always(name: String, method: HttpMethod, raw: Strin
       match derive_op_effect(operation_name: name, method: method, path: path) {
         DerivedEffect { effect: effect } => derived_cause_is_post_always(shape: effect.shape)
         MalformedPathInput => false
+        MethodHasNoOperationEffect => false
       }
     MalformedPathTemplate => false
   }
@@ -274,6 +283,8 @@ test fn effects_derivation_witnesses() -> Bool {
         match derive_op_effect(operation_name: "TypedBoundary", method: PUT, path: path) {
           DerivedEffect { effect: effect } => true
           MalformedPathInput => false
+          MethodHasNoOperationEffect => false
+        MethodHasNoOperationEffect => false
         }
       MalformedPathTemplate => false
     }
