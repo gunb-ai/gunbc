@@ -1347,6 +1347,9 @@ pub struct V2NativeCliHeld {
     /// spoke of "the one argument the positive control supplies" -- both wrong since that arm became
     /// an expecting-red probe, and corrected rather than left standing (review 69621).
     pub door_refusal_exit_status: i64,
+    /// Where the generation-one executable was kept (`keep_generation_one_executable`), named by
+    /// its own sha256, carried so the instrument's receipt names the file generation two invokes.
+    pub generation_one_executable: String,
 }
 
 /// THE V2-EXCLUSIVE CLI, EMITTED AND BUILT. This is the door the self-host step stops in front of.
@@ -1829,7 +1832,7 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
     // green — a door that accepts everything is a broken instrument, not a broken build.
     let (door_exit_status, door_emitted_bytes, door_refusal_exit_status) =
         walk_cli_door(&prepared.binary_path, &super::process_workspace_root())?;
-    keep_generation_one_executable(&prepared)?;
+    let generation_one_executable = keep_generation_one_executable(&prepared)?;
     // The counters are carried and not adjudicated here, on the same rule `run_self_host` follows:
     // a non-clean build is an observation that did not hold, a refusal above is the subject never
     // having been reached, and the instrument seam is the one place that knows the difference.
@@ -1842,6 +1845,7 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
         door_exit_status,
         door_emitted_bytes: door_emitted_bytes as i64,
         door_refusal_exit_status,
+        generation_one_executable: generation_one_executable.display().to_string(),
     })
 }
 
