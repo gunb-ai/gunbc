@@ -263,7 +263,6 @@ fn xl2_observe_module(
     NativeCensusModuleResolved =>
       Xl2Observation { residual: acc.residual, resolved: acc.resolved + 1, unobserved: acc.unobserved }
     NativeCensusModuleResolveRefused { diagnostics: d } =>
-      Xl2Observation {
         match map_lookup(coordinates, entry.path) {
           Present { value: c } =>
             Xl2Observation {
