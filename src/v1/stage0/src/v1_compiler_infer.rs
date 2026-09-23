@@ -1515,13 +1515,25 @@ pub fn resource_declaration_identity(
     scope: Rc<InferScope>,
     resource: Rc<Node>,
 ) -> Option<Rc<Node>> {
-    crate::v1_compiler_infer_env::lookup_type_by_name(
+    match crate::v1_compiler_infer_env::lookup_type_by_name(
         scope.type_env.clone(),
         type_node_label(
             resource.clone(),
             scope.type_env.clone().source_indices.clone(),
         ),
-    )
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(declaration) => {
+            if overlay_skips_kernel_name(declaration.name.clone()) {
+                crate::v1_compiler_infer_env::lookup_type_by_name(
+                    scope.type_env.clone(),
+                    declaration.name.clone(),
+                )
+            } else {
+                Some(declaration.clone())
+            }
+        }
+    }
 }
 
 pub fn established_resource_binding(
@@ -1933,6 +1945,105 @@ pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierR
     occurrences: 1,
     cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
+}), Rc::new(ResourceRequirementFrontierRow {
+    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
+    caller_decl_name: "census_app_acquire_with_code".to_string(),
+    callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
+    callee_decl_name: "persist_then_read_back".to_string(),
+    resource: "Network".to_string(),
+    occurrences: 1,
+    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
+    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
+}), Rc::new(ResourceRequirementFrontierRow {
+    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
+    caller_decl_name: "census_app_acquisition_receipt".to_string(),
+    callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
+    callee_decl_name: "census_app_acquisition_receipt_for".to_string(),
+    resource: "Filesystem".to_string(),
+    occurrences: 1,
+    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
+    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
+}), Rc::new(ResourceRequirementFrontierRow {
+    caller_module_path: "gunbc.machine_intake_mtcollins1_media_attach".to_string(),
+    caller_decl_name: "mtcollins1_attach_absent_image_control".to_string(),
+    callee_module_path: "gunbc.machine_intake_megarac_media_attach".to_string(),
+    callee_decl_name: "megarac_attach_remote_image".to_string(),
+    resource: "Network".to_string(),
+    occurrences: 1,
+    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
+    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
+}), Rc::new(ResourceRequirementFrontierRow {
+    caller_module_path: "gunbc.machine_intake_mtcollins1_media_attach".to_string(),
+    caller_decl_name: "mtcollins1_attach_diskless_image".to_string(),
+    callee_module_path: "gunbc.machine_intake_megarac_media_attach".to_string(),
+    callee_decl_name: "megarac_attach_remote_image".to_string(),
+    resource: "Network".to_string(),
+    occurrences: 1,
+    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
+    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
+}), Rc::new(ResourceRequirementFrontierRow {
+    caller_module_path: "gunbc.review_sheet_converge_cli".to_string(),
+    caller_decl_name: "converge_drive_half_cli".to_string(),
+    callee_module_path: "gunbc.review_sheet_converge_cli".to_string(),
+    callee_decl_name: "converge_drive_half".to_string(),
+    resource: "Network".to_string(),
+    occurrences: 1,
+    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
+    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
+}), Rc::new(ResourceRequirementFrontierRow {
+    caller_module_path: "gunbc.review_sheet_converge_cli".to_string(),
+    caller_decl_name: "format_converged_spreadsheet".to_string(),
+    callee_module_path: "gunbc.review_sheet_converge_cli".to_string(),
+    callee_decl_name: "format_with_validated_schema".to_string(),
+    resource: "Network".to_string(),
+    occurrences: 3,
+    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
+    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
+}), Rc::new(ResourceRequirementFrontierRow {
+    caller_module_path: "gunbc.runner_host_file_converge".to_string(),
+    caller_decl_name: "run_runner_host_files".to_string(),
+    callee_module_path: "gunbc.runner_host_file_converge".to_string(),
+    callee_decl_name: "plan_runner_host_file".to_string(),
+    resource: "Network".to_string(),
+    occurrences: 1,
+    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
+    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
+}), Rc::new(ResourceRequirementFrontierRow {
+    caller_module_path: "gunbc.srv3_boot_once_cd".to_string(),
+    caller_decl_name: "srv3_boot_once_cd_gated".to_string(),
+    callee_module_path: "gunbc.srv3_bmc_credential_resolve".to_string(),
+    callee_decl_name: "observe_and_resolve_srv3_bmc_credential".to_string(),
+    resource: "Network".to_string(),
+    occurrences: 1,
+    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
+    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
+}), Rc::new(ResourceRequirementFrontierRow {
+    caller_module_path: "gunbc.srv3_os_install_actuate".to_string(),
+    caller_decl_name: "srv3_bmcweb_session_login".to_string(),
+    callee_module_path: "gunbc.srv3_bmc_credential_resolve".to_string(),
+    callee_decl_name: "observe_and_resolve_srv3_bmc_credential".to_string(),
+    resource: "Network".to_string(),
+    occurrences: 1,
+    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
+    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
+}), Rc::new(ResourceRequirementFrontierRow {
+    caller_module_path: "gunbc.tools.bmc_onboard".to_string(),
+    caller_decl_name: "srv1_converge_credential".to_string(),
+    callee_module_path: "gunbc.tools.bmc_onboard".to_string(),
+    callee_decl_name: "bmc_converge_credential_selected".to_string(),
+    resource: "Network".to_string(),
+    occurrences: 1,
+    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
+    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
+}), Rc::new(ResourceRequirementFrontierRow {
+    caller_module_path: "gunbc.tools.bmc_onboard".to_string(),
+    caller_decl_name: "srv2_converge_credential".to_string(),
+    callee_module_path: "gunbc.tools.bmc_onboard".to_string(),
+    callee_decl_name: "bmc_converge_credential_selected".to_string(),
+    resource: "Network".to_string(),
+    occurrences: 1,
+    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
+    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
 })])
 }
 
