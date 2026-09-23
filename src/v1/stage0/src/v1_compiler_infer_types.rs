@@ -1468,7 +1468,7 @@ pub fn unify_template(
                 ..
             } => unify_template(
                 ret_template.clone(),
-                callable_argument_return_type(concrete.clone()),
+                concrete.clone(),
                 receiver.clone(),
                 subst.clone(),
                 source_indices.clone(),
@@ -1561,14 +1561,6 @@ pub fn is_receiver_self(t: Rc<AlgebraTypeTemplate>) -> bool {
     match (*t.clone()).clone() {
         AlgebraTypeTemplate::ReceiverSelf => true,
         _ => false,
-    }
-}
-
-pub fn callable_argument_return_type(concrete: Rc<Node>) -> Rc<Node> {
-    if (concrete.connective.clone() == Connective::Arrow) {
-        resolved_type(concrete.clone())
-    } else {
-        concrete.clone()
     }
 }
 
