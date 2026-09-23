@@ -2,14 +2,13 @@ module gunbc.spark.v41_index_engram_selection
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize }
 import std.content_hash { Sha256DigestHex }
-import v2.std.optional { Present, Absent }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
-import extdeps.shell
-import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+}
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 import extdeps.safetensors.format {
   SafetensorsIndexMember, safetensors_index_member,
   SafetensorsPopulationStanding, safetensors_population_standing,
@@ -30,22 +29,14 @@ import extdeps.deepseek.deepseek_v4_1_flash {
 // and the fold that decides whether a selection closes membership; this module owns the reading and
 // the instrument that produces it.
 //
-// THE INSTRUMENT IS A TOKEN SCAN, AND THAT IS A STATED DIVERGENCE FROM extdeps.languages.json. The JSON
-// authority's parse_json_document does not read a document of this size in the interpreter today. THAT
-// CLAIM IS NOT TRANSCRIBED HERE AND MUST NOT BE (DESIGN section 6: name the instrument, never transcribe
-// its output) -- it is re-derived by v41_index_parse_json_probe_wet below, over the same file, whoever
-// asks. A figure copied into this comment would be unreachable from the thing that owns it, and it would
-// be the ONLY way to tell whether the dissolution trigger had fired, which would make the trigger
-// unobservable and this fork permanent in practice. The scan below
-// reads ONE shape and refuses everything else: no backslash anywhere (so no quoted string can hide a
-// quote), the quoted tokens opening exactly `metadata`, `total_size`, `weight_map`, and after them only
-// name/shard pairs whose shard ends `.safetensors`. Within that shape the quoted tokens ARE the keys and
-// values, so the selection is exact rather than heuristic.
-//
-// IT DISSOLVES INTO A FOLD OVER parse_json_document ONCE THAT PARSER READS A weight_map OF THIS SIZE,
-// and that condition is OBSERVABLE rather than asserted: v41_index_parse_json_probe_wet runs
-// parse_json_document over the same index and reports which arm it reached, so the trigger is a run
-// anyone can make rather than a sentence anyone must believe.
+// THE READER IS extdeps.languages.json parse_json_document, THE JSON AUTHORITY, AND NOTHING BESIDE IT. An
+// earlier revision read the index with a token scan, a stated divergence taken because the parser did not
+// read a document of this size in the interpreter; that scan and the probe that watched for its
+// dissolution are deleted, not kept as a fallback. The selection is a fold over the parsed value: the
+// document's one `weight_map` member must be an object, every value in it a `.safetensors` shard name, and
+// the members whose name carries the selector are kept. The parse's working set is not small, so the one
+// production caller (gunbc.spark.v41_checkpoint_materialize v41_index_selection_ci_wet) runs it in its own
+// process, so a parse stopped for memory stops that read and not the fetch before it.
 //
 // WHERE THE READING COMES FROM. The index is not in this repository, so a data row cannot read it at
 // evaluation; the reading is the receipt of the enrolled route that reads it on a Spark (below). Its
@@ -54,162 +45,69 @@ import extdeps.deepseek.deepseek_v4_1_flash {
 
 data v41_index_engram_selector: NonEmptyStr = ".engram." as NonEmptyStr
 
-type V41IndexScan
-  = V41IndexScanned { name_count: Nat, members: List<SafetensorsIndexMember> }
-  | V41IndexScanRefused { cause: NonEmptyStr }
+type V41IndexParse
+  = V41IndexParsed { name_count: Nat, members: List<SafetensorsIndexMember> }
+  | V41IndexParseRefused { cause: NonEmptyStr }
 
 
-// ONE TRAVERSAL WITH CONSTANT STATE: each token either opens a pair (it is a name) or closes the open one
-// (it is that name's shard). The fold keeps only the open name, two counts and the SELECTED members, so
-// it never copies an accumulator proportional to the index. A name left open at the end has no shard,
-// which the scan refuses.
-type V41PairScan {
-  pending: String?
+// THE FOLD OVER THE PARSED weight_map. One pass with constant state beyond the SELECTED members: a name
+// count, a count of values that are not a `.safetensors` shard string, and the members kept.
+type V41WeightMapFold {
   names: Nat
   not_shards: Nat
   members: List<SafetensorsIndexMember>
 }
 
-fn v41_pair_step(acc: V41PairScan, t: String, selector: NonEmptyStr) -> V41PairScan {
-  match acc.pending {
-    Absent => V41PairScan { pending: Present { value: t }, names: acc.names, not_shards: acc.not_shards, members: acc.members }
-    Present { value: k } => V41PairScan {
-      pending: none,
-      names: acc.names + 1,
-      not_shards: if t.ends_with(".safetensors") { acc.not_shards } else { acc.not_shards + 1 },
-      members: if k.contains(selector as String) { acc.members |> list_push(safetensors_index_member(name: k as NonEmptyStr, shard: t as NonEmptyStr)) } else { acc.members },
-    }
-  }
-}
-
-
-// ONE TRAVERSAL FOR THE WHOLE READING, AND THE PARITY IS FOLD STATE RATHER THAN AN INDEX. The previous
-// spelling materialised the ~192k-element token list SIX times -- split, enumerate, filter, map inside a
-// token helper, then enumerate/filter/map again ONLY to read three elements, and a third time ONLY to
-// drop those same three. On a 7.4MB index that is six full copies on the converge mode's success gate,
-// inside a routine whose reason for existing is that the general parser cannot chew a document of this
-// size (review 70086). DESIGN section 6, bare minimum cost: fixed at any n, no percentage required.
-//
-// `split` is the one materialisation that remains; everything after it is this single fold. A segment is
-// inside quotes exactly when it follows an odd number of quote characters, which is a Bool the fold
-// carries -- so `enumerate` is not needed to know it. The first three quoted tokens are the head and the
-// rest feed v41_pair_step in order, which is what the two discarded traversals were computing.
-//
-// WHAT IT ACCEPTS IS UNCHANGED, AND THAT IS THE POINT: the head must still be exactly
-// metadata/total_size/weight_map, an unpaired trailing name still refuses, a value that is not a
-// .safetensors shard still refuses, and a zero-name map still refuses -- byte-identical causes. A faster
-// scan that accepts more would be a worse scan.
-type V41IndexTokenFold {
-  quoted: Bool
-  seen: Nat
-  head: List<String>
-  scan: V41PairScan
-}
-
-fn v41_index_token_step(acc: V41IndexTokenFold, seg: String, selector: NonEmptyStr) -> V41IndexTokenFold {
-  if !acc.quoted {
-    V41IndexTokenFold { quoted: true, seen: acc.seen, head: acc.head, scan: acc.scan }
-  } else if acc.seen < 3 {
-    V41IndexTokenFold { quoted: false, seen: acc.seen + 1, head: acc.head |> list_push(seg), scan: acc.scan }
-  } else {
-    V41IndexTokenFold { quoted: false, seen: acc.seen + 1, head: acc.head, scan: v41_pair_step(acc: acc.scan, t: seg, selector: selector) }
-  }
-}
-
-fn v41_index_token_fold(text: String, selector: NonEmptyStr) -> V41IndexTokenFold {
-  fold(split(s: text, delimiter: "\""),
-    init: V41IndexTokenFold {
-      quoted: false,
-      seen: 0,
-      head: [] as List<String>,
-      scan: V41PairScan { pending: none, names: 0, not_shards: 0, members: [] as List<SafetensorsIndexMember> },
-    },
-    f: (acc, seg) => v41_index_token_step(acc: acc, seg: seg, selector: selector))
-}
-
-fn v41_scan_index_text(text: String, selector: NonEmptyStr) -> V41IndexScan {
-  if text.contains("\\") {
-    V41IndexScanRefused { cause: "the index text carries a backslash, so a quoted token may contain an escaped quote and the token scan cannot read it exactly" as NonEmptyStr }
-  } else {
-    let f = v41_index_token_fold(text: text, selector: selector)
-    let head = f.head
-    if head != ["metadata", "total_size", "weight_map"] {
-      V41IndexScanRefused { cause: join(["the index does not open with metadata, total_size, weight_map; it opens with ", join(head, ", ")], "") as NonEmptyStr }
-    } else {
-      let scan = f.scan
-      let unpaired = match scan.pending { Present { value: _ } => 1  Absent => 0 }
-      if unpaired != 0 {
-        V41IndexScanRefused { cause: "the weight_map ends on a name with no shard, so it is not the shape this scan reads" as NonEmptyStr }
-      } else if scan.not_shards != 0 || scan.names == 0 {
-        V41IndexScanRefused { cause: join(["the weight_map carries ", to_string(scan.not_shards), " entries whose value is not a .safetensors shard (or none at all), so it is not the shape this scan reads"], "") as NonEmptyStr }
+fn v41_weight_map_step(acc: V41WeightMapFold, kv: JsonKeyValue, selector: NonEmptyStr) -> V41WeightMapFold {
+  match kv.value {
+    JsonString { value: shard } =>
+      if !shard.ends_with(".safetensors") || shard == "" || kv.key == "" {
+        V41WeightMapFold { names: acc.names + 1, not_shards: acc.not_shards + 1, members: acc.members }
       } else {
-        V41IndexScanned { name_count: scan.names, members: scan.members }
-      }
-    }
-  }
-}
-
-// ── A LOCAL DIAGNOSTIC OF THE SAME SCAN ────────────────────────────────────────────────────────
-//
-// Not a producer of the reading (see below). Run over a local copy of the index (fetched from hub_resolve_url at the pinned revision):
-//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/spark/v41_index_engram_selection.dag
-//     --function v41_index_engram_selection_read_wet   (path in GUNBC_V41_INDEX_PATH)
-// It writes target/v41-index-engram-selection-receipt.txt: the file's sha256 and size, the scan's name count and every selected member: the fields
-// v41_index_engram_selection_reading carries.
-data v41_index_path_env: String = "GUNBC_V41_INDEX_PATH"
-data v41_index_selection_receipt_path: String = "target/v41-index-engram-selection-receipt.txt"
-
-fn v41_index_engram_selection_read_wet() -> ProcessExit {
-  let path = match shell.Env.Get(name: v41_index_path_env as NonEmptyStr).value { Present { value: v } => v  Absent => "" }
-  if path == "" { exit_failure(reason: join([v41_index_path_env, " is unset: name the local copy of the index to read"], "")) } else {
-    match sha256sum_file_digest_via_shell(path: path as NonEmptyStr) {
-      Sha256FileDigestUnavailable { path: _, reason: r } => exit_failure(reason: join(["the index could not be digested: ", r], ""))
-      Sha256FileDigest { digest: d } => {
-        let read = Filesystem.Read(path: path)
-        if !read.success { exit_failure(reason: join(["the index could not be read: ", read.error], "")) } else {
-          match v41_scan_index_text(text: read.content, selector: v41_index_engram_selector) {
-            V41IndexScanRefused { cause: c } => exit_failure(reason: c as String)
-            V41IndexScanned { name_count: n, members: ms } => {
-              let body = join(concat(
-                [join(["index sha256=", d.hex as String, " bytes=", to_string(read.content.length()), " names=", to_string(n), " selector=", v41_index_engram_selector as String], "")],
-                map(ms, m => join(["member ", m.name as String, " ", m.shard as String], ""))), "\n")
-              let w = Filesystem.Write(path: v41_index_selection_receipt_path, content: join([body, "\n"], ""))
-              if w.success { ExitSuccess } else { exit_failure(reason: join(["the receipt could not be written: ", w.error], "")) }
-            }
-          }
+        V41WeightMapFold {
+          names: acc.names + 1,
+          not_shards: acc.not_shards,
+          members: if kv.key.contains(selector as String) { acc.members |> list_push(safetensors_index_member(name: kv.key as NonEmptyStr, shard: shard as NonEmptyStr)) } else { acc.members },
         }
       }
-    }
+    JsonNull => V41WeightMapFold { names: acc.names + 1, not_shards: acc.not_shards + 1, members: acc.members }
+    JsonBool { value: _ } => V41WeightMapFold { names: acc.names + 1, not_shards: acc.not_shards + 1, members: acc.members }
+    JsonNumber { lexeme: _ } => V41WeightMapFold { names: acc.names + 1, not_shards: acc.not_shards + 1, members: acc.members }
+    JsonArray { elements: _ } => V41WeightMapFold { names: acc.names + 1, not_shards: acc.not_shards + 1, members: acc.members }
+    JsonObject { members: _ } => V41WeightMapFold { names: acc.names + 1, not_shards: acc.not_shards + 1, members: acc.members }
   }
 }
 
-// ── THE PARSER PROBE: THE INSTRUMENT BEHIND THE DIVERGENCE ─────────────────────────────────────
-//
-// This is the producer that re-derives the claim the divergence above rests on, and the observation
-// that retires it. Run it over the same local copy of the index:
-//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/spark/v41_index_engram_selection.dag
-//     --function v41_index_parse_json_probe_wet   (path in GUNBC_V41_INDEX_PATH)
-//
-// It reports which arm extdeps.languages.json parse_json_document reaches over this document, and it
-// is deliberately UNBOUNDED IN TIME: a run that does not return is itself the reading, which is the
-// state the divergence rests on and the one a transcribed duration could only assert. When this exits
-// zero with JsonDocumentParsed, the dissolution condition above has FIRED -- the scan is replaced by a
-// fold over the parsed value, and this probe and the scan go together.
-data v41_index_parse_probe_receipt_path: String = "target/v41-index-parse-json-probe-receipt.txt"
-
-fn v41_index_parse_json_probe_wet() -> ProcessExit {
-  let path = match shell.Env.Get(name: v41_index_path_env as NonEmptyStr).value { Present { value: v } => v  Absent => "" }
-  if path == "" { exit_failure(reason: join([v41_index_path_env, " is unset: name the local copy of the index to parse"], "")) } else {
-    let read = Filesystem.Read(path: path)
-    if !read.success { exit_failure(reason: join(["the index could not be read: ", read.error], "")) } else {
-      let verdict = match parse_json_document(s: read.content) {
-        JsonDocumentParsed { value: _ } => "parsed: parse_json_document READ this document -- the dissolution condition on the token scan has fired"
-        JsonDocumentUnreadable { gap: _ } => "unreadable: parse_json_document returned a gap over this document"
+fn v41_select_weight_map(weight_map: JsonValue, selector: NonEmptyStr) -> V41IndexParse {
+  match weight_map {
+    JsonObject { members: kvs } => {
+      let f = fold(kvs, init: V41WeightMapFold { names: 0, not_shards: 0, members: [] as List<SafetensorsIndexMember> }, f: (acc, kv) => v41_weight_map_step(acc: acc, kv: kv, selector: selector))
+      if f.names == 0 {
+        V41IndexParseRefused { cause: "the index's weight_map is empty" as NonEmptyStr }
+      } else if f.not_shards != 0 {
+        V41IndexParseRefused { cause: join(["the index's weight_map carries ", to_string(f.not_shards), " entries whose value is not a .safetensors shard name"], "") as NonEmptyStr }
+      } else {
+        V41IndexParsed { name_count: f.names, members: f.members }
       }
-      let body = join(["index bytes=", to_string(read.content.length()), " parse=", verdict], "")
-      let w = Filesystem.Write(path: v41_index_parse_probe_receipt_path, content: join([body, "\n"], ""))
-      if w.success { ExitSuccess } else { exit_failure(reason: join(["the receipt could not be written: ", w.error], "")) }
     }
+    JsonNull => V41IndexParseRefused { cause: "the index's weight_map is not an object" as NonEmptyStr }
+    JsonBool { value: _ } => V41IndexParseRefused { cause: "the index's weight_map is not an object" as NonEmptyStr }
+    JsonNumber { lexeme: _ } => V41IndexParseRefused { cause: "the index's weight_map is not an object" as NonEmptyStr }
+    JsonString { value: _ } => V41IndexParseRefused { cause: "the index's weight_map is not an object" as NonEmptyStr }
+    JsonArray { elements: _ } => V41IndexParseRefused { cause: "the index's weight_map is not an object" as NonEmptyStr }
+  }
+}
+
+fn v41_select_index_document(text: String, selector: NonEmptyStr) -> V41IndexParse {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } => V41IndexParseRefused { cause: join(["the index is not a JSON document: ", json_document_gap_text(gap: g)], "") as NonEmptyStr }
+    JsonDocumentParsed { value: v } =>
+      match json_object_unique_member(v: v, key: "weight_map") {
+        JsonMemberFound { value: wm } => v41_select_weight_map(weight_map: wm, selector: selector)
+        JsonMemberAbsent => V41IndexParseRefused { cause: "the index has no weight_map member" as NonEmptyStr }
+        JsonMemberDuplicated { count: n } => V41IndexParseRefused { cause: join(["the index has ", to_string(n), " weight_map members"], "") as NonEmptyStr }
+        JsonMemberNotAnObject => V41IndexParseRefused { cause: "the index is not a JSON object" as NonEmptyStr }
+      }
   }
 }
 
@@ -217,7 +115,7 @@ fn v41_index_parse_json_probe_wet() -> ProcessExit {
 //
 // A READING IS A RECEIPT OF AN ENROLLED ROUTE, AND ONLY THAT. The route is the fleet-converge mode
 // spark_v41_checkpoint_materialize: after the index verifies against its manifest row on the Spark, the
-// mode reads the file back, digests it and runs v41_scan_index_text over its bytes, and its receipt
+// mode reads the file back, digests it and runs v41_select_index_document over its bytes, and its receipt
 // carries the `index-selection` lines this row is transcribed from, with the host and run it names --
 // the same standing as gunbc.spark.v41_engram_row_store v41_published_span_readings. A run of the scan
 // anywhere else is a diagnostic and does not land here. Until a dispatched run's receipt is transcribed
