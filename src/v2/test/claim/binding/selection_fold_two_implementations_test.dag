@@ -267,7 +267,8 @@ data binding_inhabitance_module_root: Node = Node {
 
 data binding_inhabitance_index: SymbolIndex = symbol_index_fill_module_root(
   index: empty_symbol_index(),
-  root: binding_inhabitance_module_root
+  root: binding_inhabitance_module_root,
+  record_declarations: no_record_declarations()
 )
 
 // TWO CANDIDATES BY CONSTRUCTION, AND THE SHAPE IS THE ORDINARY SHADOWING ONE: the module exports

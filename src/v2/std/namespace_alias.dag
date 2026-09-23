@@ -53,17 +53,20 @@ fn module_binding_source_roots(sources: FreeMonoid<ModuleBindingSource>) -> Free
   )
 }
 
-// A ROOT WITH NOTHING IMPORTED, for a caller that genuinely has none -- a hand-built Node, not a
-// parsed module. The name says that rather than letting `Empty` at a call site read as a caller
-// who forgot, which is the same reason v2.compiler.normalized_tree spells no_import_bindings().
-fn module_binding_source_without_imports(root: Node) -> ModuleBindingSource {
+// A ROOT WITH NOTHING IMPORTED AND NO RECORD DECLARED, for a caller that genuinely has neither -- a
+// hand-built Node, not a parsed module. The name says both rather than letting `Empty` at a call
+// site read as a caller who forgot, which is the same reason v2.compiler.normalized_tree spells
+// no_import_bindings() and no_record_declarations(). Records are named because an index filled from
+// this source answers Absent from v2.std.symbol_index symbol_index_declared_payload_at for every
+// path in it.
+fn module_binding_source_without_imports_or_records(root: Node) -> ModuleBindingSource {
   ModuleBindingSource { root: root, import_bindings: Empty, record_declarations: Empty }
 }
 
-fn module_binding_sources_without_imports(roots: FreeMonoid<Node>) -> FreeMonoid<ModuleBindingSource> {
+fn module_binding_sources_without_imports_or_records(roots: FreeMonoid<Node>) -> FreeMonoid<ModuleBindingSource> {
   fold_list(
     xs: roots,
     empty: Empty,
-    cons: fn(acc, root) { list_snoc_item(xs: acc, item: module_binding_source_without_imports(root: root)) }
+    cons: fn(acc, root) { list_snoc_item(xs: acc, item: module_binding_source_without_imports_or_records(root: root)) }
   )
 }
