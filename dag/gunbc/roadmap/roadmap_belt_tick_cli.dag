@@ -3,7 +3,7 @@ module gunbc.roadmap_belt_tick_cli
 import std.types { String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell
-import extdeps.languages.json.emit { serialize_json }
+import extdeps.languages.json.emit { serialize_json, JsonValue, json_object, json_kv, json_string }
 import gunbc.host_layout { belt_spawn_workdir_env_var }
 import gunbc.roadmap_belt { roadmap_belt_production_spawn_mode }
 import gunbc.roadmap_dashboard_instance {
@@ -21,6 +21,13 @@ import gunbc.roadmap_belt_actuate {
   belt_tick_receipt_write_for_instance,
   belt_tick_result_json_value,
   belt_review_head_for_instance, belt_review_report_for_instance, belt_review_outcome_json,
+  belt_verify_one_for_instance, BeltVerifyOneResult,
+  VerifyOneVerdictRecorded, VerifyOneAlreadyRecorded, VerifyOneRefused,
+  belt_verify_outcome_json,
+  belt_escalate_one_for_instance, BeltEscalateOneResult,
+  EscalateOneConvened, EscalateOneGateNoOp, EscalateOneNotDue, EscalateOneRefused,
+  belt_integrate_candidate_core_for_instance, BeltIntegrationCoreStep,
+  IntegrationCoreDeferred, IntegrationCoreUnreadable, IntegrationCoreBlocked, IntegrationCoreIntegrated,
 }
 import gunbc.roadmap_served_observation { served_observation_observe_and_write_for_instance }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -140,6 +147,137 @@ fn belt_review_report_cli(repo_root: String, node_id: String, attempt_key: Strin
       let document = serialize_json(v: review_report_json(report: belt_review_report_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)))
       let w = Filesystem.Write(path: receipt_path, content: document)
       if !w.success { exit_failure(reason: join(["belt_review_report_cli: receipt could not be written: ", w.error, "; report was ", document], "")) } else { ExitSuccess }
+    }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// PER-ITEM OBLIGATION ENTRIES (owner ruling 2026-09-22, "The belt demoted": wake-ups and
+// anti-entropy only). Verify one candidate, convene one lineage's supervisor, integrate one
+// verified candidate -- each on the item's own durable authorities, never the attempts ledger.
+// Each is conditional and idempotent by construction: a repeat over unchanged state is a typed
+// no-op, so a duplicate, lost, or out-of-order wake-up is harmless. The tick's passes run the
+// same cores; these are their independent invocations.
+// ------------------------------------------------------------------------------------------------
+
+fn belt_verify_one_result_json(r: BeltVerifyOneResult) -> JsonValue {
+  match r {
+    VerifyOneVerdictRecorded { outcome } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-verify-one/v1")),
+        json_kv(key: "status", value: json_string(s: "ran")),
+        json_kv(key: "outcome", value: belt_verify_outcome_json(o: outcome)),
+      ])
+    VerifyOneAlreadyRecorded { verdict_key, detail } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-verify-one/v1")),
+        json_kv(key: "status", value: json_string(s: "already-recorded")),
+        json_kv(key: "verdict", value: json_string(s: verdict_key)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+    VerifyOneRefused { reason } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-verify-one/v1")),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "reason", value: json_string(s: reason)),
+      ])
+  }
+}
+
+fn belt_verify_one_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join(["belt_verify_one_cli: no dashboard instance is rooted at ", w], ""))
+    DashboardInstanceResolved { instance } => {
+      let document = serialize_json(v: belt_verify_one_result_json(
+        r: belt_verify_one_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      ))
+      let w = Filesystem.Write(path: receipt_path, content: document)
+      if !w.success { exit_failure(reason: join(["belt_verify_one_cli: receipt could not be written: ", w.error, "; result was ", document], "")) } else { ExitSuccess }
+    }
+  }
+}
+
+fn belt_escalate_one_result_json(r: BeltEscalateOneResult) -> JsonValue {
+  match r {
+    EscalateOneConvened { unit } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-escalate-one/v1")),
+        json_kv(key: "status", value: json_string(s: "convened")),
+        json_kv(key: "unit", value: json_string(s: unit)),
+      ])
+    EscalateOneGateNoOp { step, detail } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-escalate-one/v1")),
+        json_kv(key: "status", value: json_string(s: "gate-no-op")),
+        json_kv(key: "step", value: json_string(s: step)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+    EscalateOneNotDue { detail } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-escalate-one/v1")),
+        json_kv(key: "status", value: json_string(s: "not-due")),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+    EscalateOneRefused { reason } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-escalate-one/v1")),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "reason", value: json_string(s: reason)),
+      ])
+  }
+}
+
+fn belt_escalate_one_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join(["belt_escalate_one_cli: no dashboard instance is rooted at ", w], ""))
+    DashboardInstanceResolved { instance } => {
+      let document = serialize_json(v: belt_escalate_one_result_json(
+        r: belt_escalate_one_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      ))
+      let w = Filesystem.Write(path: receipt_path, content: document)
+      if !w.success { exit_failure(reason: join(["belt_escalate_one_cli: receipt could not be written: ", w.error, "; result was ", document], "")) } else { ExitSuccess }
+    }
+  }
+}
+
+fn belt_integrate_one_result_json(r: BeltIntegrationCoreStep) -> JsonValue {
+  match r {
+    IntegrationCoreIntegrated { project_key } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-integrate-one/v1")),
+        json_kv(key: "status", value: json_string(s: "integrated")),
+        json_kv(key: "project", value: json_string(s: project_key)),
+      ])
+    IntegrationCoreBlocked { detail } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-integrate-one/v1")),
+        json_kv(key: "status", value: json_string(s: "blocked")),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+    IntegrationCoreDeferred { reason } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-integrate-one/v1")),
+        json_kv(key: "status", value: json_string(s: "deferred")),
+        json_kv(key: "reason", value: json_string(s: reason)),
+      ])
+    IntegrationCoreUnreadable { detail } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "roadmap-integrate-one/v1")),
+        json_kv(key: "status", value: json_string(s: "unreadable")),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+  }
+}
+
+fn belt_integrate_one_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join(["belt_integrate_one_cli: no dashboard instance is rooted at ", w], ""))
+    DashboardInstanceResolved { instance } => {
+      let document = serialize_json(v: belt_integrate_one_result_json(
+        r: belt_integrate_candidate_core_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      ))
+      let w = Filesystem.Write(path: receipt_path, content: document)
+      if !w.success { exit_failure(reason: join(["belt_integrate_one_cli: receipt could not be written: ", w.error, "; result was ", document], "")) } else { ExitSuccess }
     }
   }
 }

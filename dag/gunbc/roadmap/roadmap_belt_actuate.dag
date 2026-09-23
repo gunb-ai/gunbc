@@ -275,6 +275,7 @@ import gunbc.roadmap_publish_observe {
   observe_worktree_repository_binding,
 }
 import gunbc.roadmap_verification_receipt { verification_file_evidence_for, VerificationFileDecoded, VerificationFileUnreadable, VerificationFileAbsent,
+  VerificationEvidence, VerificationEvidenceForSubject,
   VerificationSubject,
   VerificationSubjectObservation,
   VerificationSubjectObserved,
@@ -1979,35 +1980,62 @@ fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node
       let mine = attempts |> filter(p => p.node_id == node.node as String)
       match mine.first() {
         Absent => continuation_decision(prior: none, prior_turn: ContinuationTurnAbsent)
-        Present { value: p } =>
-          continuation_decision(
-            prior: Present { value: PriorAttemptFacts {
-              node_id: node.node as String,
-              edges: declared_roadmap_edges(),
-              attempt_key: p.attempt_key,
-              branch: p.branch,
-              worker_terminal: belt_provider_is_terminal(provider: p.provider),
-              capture: belt_prior_attempt_capture(instance: instance, node_id: node.node, attempt_key: p.attempt_key),
-              supervisor_verdict: belt_supervisor_verdict_observe(instance: instance, node_id: node.node, attempt_key: p.attempt_key),
-              verification: belt_verification_segment(progress: p),
-              review: belt_review_segment(progress: p),
-              goal_audit: belt_goal_audit_segment(progress: p),
-            } },
-            prior_turn: belt_continuation_turn_read_for_instance(instance: instance, node_id: node.node, attempt_key: p.attempt_key),
-          )
+        Present { value: p } => belt_continuation_decision_for_progress(instance: instance, node: node, progress: p)
       }
     }
   }
+}
+
+// THE DECISION OVER ONE ATTEMPT'S OWN FACTS. The tick's per-node decision and the per-item
+// escalate entry build the same PriorAttemptFacts from one progress row, so the two routes can
+// never disagree about a lineage.
+fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node: RoadmapNode, progress: WorkflowAttemptProgress) -> ContinuationDecision {
+  continuation_decision(
+    prior: Present { value: PriorAttemptFacts {
+      node_id: node.node as String,
+      edges: declared_roadmap_edges(),
+      attempt_key: progress.attempt_key,
+      branch: progress.branch,
+      worker_terminal: belt_provider_is_terminal(provider: progress.provider),
+      capture: belt_prior_attempt_capture(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
+      supervisor_verdict: belt_supervisor_verdict_observe(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
+      verification: belt_verification_segment(progress: progress),
+      review: belt_review_segment(progress: progress),
+      goal_audit: belt_goal_audit_segment(progress: progress),
+    } },
+    prior_turn: belt_continuation_turn_read_for_instance(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
+  )
 }
 
 // THE SUPERVISOR VERDICT AT THE ATTEMPT'S OWN PATH, read the way the continuation-turn file is
 // read: absence established by a successful listing, content decoded through the verdict's own
 // codec, and a receipt that names a DIFFERENT attempt read as unexplained state rather than this
 // attempt's adjudication. The decision consumes the observation; it never touches the filesystem
-// itself.
+// itself. The directory is ENSURED first, the same rule the submission capture directory carries:
+// attempts dispatched before this lane existed have no supervisor/ subdirectory, install -d is
+// idempotent, and ensuring it keeps the old population legible (absence established by a
+// successful listing) instead of refused (an unlistable directory that is simply absent) -- the
+// first live escalate run (2026-09-22, the cron-entry lineage) refused on exactly that.
 fn belt_supervisor_verdict_observe(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> SupervisorVerdictObservation {
   let dir = dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
   let path = join([dir, "/", supervisor_verdict_basename as String], "")
+  match belt_attempt_submission_dir_ensure(
+    instance: instance,
+    worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    dir: dir,
+  ) {
+    ExecFailed { program, exit_code, stderr } =>
+      SupervisorVerdictUnreadable {
+        reason: belt_commit_exec_detail(
+          step: "supervisor-directory",
+          outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
+        ),
+      }
+    ExecRefused { program, reason } =>
+      SupervisorVerdictUnreadable {
+        reason: belt_commit_exec_detail(step: "supervisor-directory", outcome: ExecRefused { program: program, reason: reason }),
+      }
+    ExecOk { stdout: _ } => {
   let listing = Filesystem.List(path: dir)
   let read = Filesystem.Read(path: path)
   match filesystem_file_observation(
@@ -2035,6 +2063,8 @@ fn belt_supervisor_verdict_observe(instance: HostDashboardInstance, node_id: Roa
     FilesystemFileIndeterminate { cause } => SupervisorVerdictUnreadable { reason: cause }
     FilesystemFileObservationsDisagree { path: _, cause } => SupervisorVerdictUnreadable { reason: cause }
     FilesystemFileSubjectRefused { directory: _, name: _, cause } => SupervisorVerdictUnreadable { reason: cause }
+  }
+  }
   }
 }
 
@@ -7142,6 +7172,235 @@ fn belt_verify_attempts() -> List<BeltVerifyOutcome> {
   )
 }
 
+// ------------------------------------------------------------------------------------------------
+// PER-ITEM OBLIGATIONS (owner ruling 2026-09-22, "The belt demoted"): the three expensive
+// obligations -- verify one candidate, convene one lineage's supervisor, integrate one verified
+// candidate -- are invocable on ONE item without the attempts ledger, each conditional and
+// idempotent by construction. A wake-up is a hint, never a fact: the entry recomputes only the
+// item's own projection, and a second run over unchanged state is a typed no-op.
+// ------------------------------------------------------------------------------------------------
+
+// ONE ATTEMPT'S PROGRESS, never the ledger. The per-item entries take the attempt by name and read
+// its own evidence (belt_workflow_progress_for_attempt_ref); the one honesty check is that the
+// named attempt IS the node's current modeled attempt -- verifying or escalating a superseded
+// attempt would act on a lineage the pointer has already left.
+type BeltOneAttemptProgress
+  = OneAttemptProgress { progress: WorkflowAttemptProgress }
+  | OneAttemptNotCurrent { named: String, current: String }
+
+fn belt_progress_for_one_attempt(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltOneAttemptProgress {
+  let progress = belt_workflow_progress_for_attempt_ref(
+    instance: instance,
+    panes: belt_attempt_panes_observe_for_instance(instance: instance),
+    attempt: DispatchAttemptRef {
+      node_id: node_id as NonEmptyStr,
+      branch: dispatch_branch_name(node_id: node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: attempt_key) as NonEmptyStr,
+      attempt_key: attempt_key,
+    },
+  )
+  if progress.attempt_key == attempt_key {
+    OneAttemptProgress { progress: progress }
+  } else {
+    OneAttemptNotCurrent { named: attempt_key, current: progress.attempt_key }
+  }
+}
+
+// THE VERIFY-ONE RECEIPT OBSERVATION, lean enough for a witness to author. Recorded means a
+// verdict receipt binds this exact head and oracle -- a durable fact the same wake-up can never
+// change, so the entry neither re-runs nor rewrites (conditional publish: nothing moves when the
+// version did not move).
+type VerifyOneReceiptObservation
+  = VerifyOneReceiptAbsent
+  | VerifyOneReceiptRecorded { verdict_key: String, detail: String }
+  | VerifyOneReceiptUnreadable { reason: String }
+
+type VerifyOneGate
+  = VerifyOneRun
+  | VerifyOneNoOp { verdict_key: String, detail: String }
+  | VerifyOneRefuse { reason: String }
+
+fn belt_verify_one_gate(observation: VerifyOneReceiptObservation) -> VerifyOneGate {
+  match observation {
+    VerifyOneReceiptAbsent => VerifyOneRun
+    VerifyOneReceiptRecorded { verdict_key, detail } => VerifyOneNoOp { verdict_key: verdict_key, detail: detail }
+    VerifyOneReceiptUnreadable { reason } => VerifyOneRefuse { reason: reason }
+  }
+}
+
+// The adapter from the receipt module's own evidence type: only an exact-subject v2 receipt counts as recorded;
+// a receipt for another subject, a legacy attempt-level receipt, and a legacy v1 head receipt all re-run --
+// the verify machinery then writes the v2 receipt at the exact address.
+fn belt_verify_one_receipt_observation_of(evidence: VerificationFileEvidence) -> VerifyOneReceiptObservation {
+  match evidence {
+    VerificationFileAbsent => VerifyOneReceiptAbsent
+    VerificationFileUnreadable { reason } => VerifyOneReceiptUnreadable { reason: reason }
+    VerificationFileDecoded { evidence } =>
+      match evidence {
+        VerificationEvidenceForSubject { receipt } =>
+          VerifyOneReceiptRecorded {
+            verdict_key: validation_verdict_key(verdict: receipt.verdict),
+            detail: validation_verdict_detail(verdict: receipt.verdict),
+          }
+        _ => VerifyOneReceiptUnreadable { reason: "the receipt at this head's address is not an exact-subject v2 receipt, so it does not settle this head" }
+      }
+  }
+}
+
+type BeltVerifyOneResult
+  = VerifyOneVerdictRecorded { outcome: BeltVerifyOutcome }
+  | VerifyOneAlreadyRecorded { verdict_key: String, detail: String }
+  | VerifyOneRefused { reason: String }
+
+// VERIFY ONE ATTEMPT'S CAPTURED HEAD. The gate reads the item's own verification address first;
+// only an absent receipt runs the shared verify machinery (belt_verify_attempt_for_instance,
+// unchanged). The operation touches no sibling attempt and no envelope.
+fn belt_verify_one_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltVerifyOneResult {
+  let nid = node_id as gunbc.roadmap_model.RoadmapNodeId
+  let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key)
+  match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+    WorktreeHeadUnobserved { reason } =>
+      VerifyOneRefused { reason: join(["the attempt's worktree head cannot be observed: ", reason], "") }
+    WorktreeHeadObserved { revision } =>
+      match belt_lookup_node(node_id: node_id) {
+        AuthorityProjectionRefused { detail } => VerifyOneRefused { reason: detail }
+        NodeMissing => VerifyOneRefused { reason: "the roadmap authority declares no node with this id, so there is no contract to verify against" }
+        NodeFound { node } => {
+          let selection = belt_verification_selection_observe(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: revision as String)
+          match belt_verification_subject_from_selection(
+            node: node,
+            attempt_key: attempt_key,
+            branch: dispatch_branch_name(node_id: nid, attempt_key: attempt_key),
+            head: revision as CommitSha,
+            selection: selection,
+          ) {
+            VerificationSubjectUnobserved { reason: _ } => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key)
+            VerificationSubjectObserved { subject } =>
+              match belt_verify_one_gate(observation: belt_verify_one_receipt_observation_of(
+                evidence: verification_file_evidence_for(
+                  expected: subject,
+                  source: belt_verification_receipt_source(instance: instance, node_id: nid, attempt_key: attempt_key, selection: selection),
+                )
+              )) {
+                VerifyOneNoOp { verdict_key, detail } =>
+                  VerifyOneAlreadyRecorded { verdict_key: verdict_key, detail: detail }
+                VerifyOneRefuse { reason } => VerifyOneRefused { reason: reason }
+                VerifyOneRun => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key)
+              }
+          }
+        }
+      }
+  }
+}
+
+fn belt_verify_one_run(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltVerifyOneResult {
+  match belt_progress_for_one_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    OneAttemptNotCurrent { named, current } =>
+      VerifyOneRefused {
+        reason: join([
+          "the named attempt ", named, " is not the node's current modeled attempt (current is ",
+          current, "); the per-item operation does not act on a lineage the pointer has left",
+        ], ""),
+      }
+    OneAttemptProgress { progress } =>
+      VerifyOneVerdictRecorded { outcome: belt_verify_attempt_for_instance(instance: instance, progress: progress) }
+  }
+}
+
+// THE ESCALATE-ONE ROUTE, pure so a witness reaches every arm. Only an escalation record convenes;
+// every other decision is the typed no-op the wake-up deserves -- consumed verdict, terminal typed
+// state, nothing due, hold -- except a refusal, which stays a refusal.
+type EscalateOneRoute
+  = EscalateRouteConvene { escalation: SupervisorEscalation }
+  | EscalateRouteNotDue { detail: String }
+  | EscalateRouteRefuse { reason: String }
+
+fn belt_escalate_one_route(decision: ContinuationDecision) -> EscalateOneRoute {
+  match decision {
+    ContinuationEscalate { escalation } => EscalateRouteConvene { escalation: escalation }
+    ContinuationContinue { origin: _ } =>
+      EscalateRouteNotDue { detail: "the lineage's supervisor verdict was already consumed and the renewed continuation is the spawn lane's to issue" }
+    ContinuationPlanDefect { defect } =>
+      EscalateRouteNotDue { detail: join(["the supervisor adjudicated this lineage a plan defect: ", defect], "") }
+    ContinuationStuck { cause } =>
+      EscalateRouteNotDue { detail: join(["the supervisor adjudicated this lineage stuck: ", cause], "") }
+    ContinuationFresh { reason } => EscalateRouteNotDue { detail: join(["no escalation is due: ", reason], "") }
+    ContinuationHold { reason } => EscalateRouteNotDue { detail: join(["the lineage holds: ", reason], "") }
+    ContinuationRefused { reason } => EscalateRouteRefuse { reason: reason }
+  }
+}
+
+type BeltEscalateOneResult
+  = EscalateOneConvened { unit: String }
+  | EscalateOneGateNoOp { step: String, detail: String }
+  | EscalateOneNotDue { detail: String }
+  | EscalateOneRefused { reason: String }
+
+type EscalateOneLaunch
+  = EscalateOneLaunchBound { launch: LaunchIdentity }
+  | EscalateOneLaunchRefused { reason: String }
+
+// The identity the convene outcome carries, minted from the same two facts the launch gate binds
+// -- the instance and the deployed tree's own revision -- with cause Operator, because a per-item
+// entry is invoked by a wake-up or an operator rather than admitted by the tick.
+fn belt_escalate_one_launch(instance: HostDashboardInstance, node: RoadmapNode) -> EscalateOneLaunch {
+  match local_tree_revision(repo: instance.repo_root) {
+    LocalTreeRevisionUnobserved { cause } =>
+      EscalateOneLaunchRefused { reason: join(["the deployed tree's revision is unobserved: ", cause], "") }
+    LocalTreeRevisionObserved { revision } =>
+      EscalateOneLaunchBound {
+        launch: LaunchIdentity {
+          node_id: node.node,
+          cause: Operator,
+          mode: roadmap_belt_production_spawn_mode,
+          instance_id: instance.instance_id,
+          revision: revision,
+        },
+      }
+  }
+}
+
+// CONVENE ONE LINEAGE'S SUPERVISOR. The decision over the named attempt's own facts (the same
+// PriorAttemptFacts the tick's decision builds) routes through belt_escalate_one_route; only an
+// escalation record convenes, through belt_supervisor_convene unchanged. The convene gate inside
+// keeps the operation idempotent: a live session, an exited unit, or a consumed verdict is a
+// typed no-op, never a second session.
+fn belt_escalate_one_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltEscalateOneResult {
+  match belt_lookup_node(node_id: node_id) {
+    AuthorityProjectionRefused { detail } => EscalateOneRefused { reason: detail }
+    NodeMissing => EscalateOneRefused { reason: "the roadmap authority declares no node with this id" }
+    NodeFound { node } =>
+      match belt_progress_for_one_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+        OneAttemptNotCurrent { named, current } =>
+          EscalateOneRefused { reason: join(["the named attempt ", named, " is not the node's current modeled attempt (current is ", current, ")"], "") }
+        OneAttemptProgress { progress } =>
+          match belt_escalate_one_route(decision: belt_continuation_decision_for_progress(instance: instance, node: node, progress: progress)) {
+            EscalateRouteNotDue { detail } => EscalateOneNotDue { detail: detail }
+            EscalateRouteRefuse { reason } => EscalateOneRefused { reason: reason }
+            EscalateRouteConvene { escalation } =>
+              match belt_escalate_one_launch(instance: instance, node: node) {
+                EscalateOneLaunchRefused { reason } => EscalateOneRefused { reason: reason }
+                EscalateOneLaunchBound { launch } =>
+                  match belt_supervisor_convene(
+                    instance: instance,
+                    node: node,
+                    escalation: escalation,
+                    provider_wire_label: belt_dispatch_spawn_unselected_provider_wire_label(),
+                    launch: launch,
+                  ) {
+                    SupervisorConvened { node_id: _, unit, provider: _, launch: _ } => EscalateOneConvened { unit: unit }
+                    SpawnFailed { node_id: _, step, detail, provider: _, launch: _ } =>
+                      EscalateOneGateNoOp { step: step, detail: detail }
+                    Spawned { node_id: _, session_name: _, provider: _, launch: _ } =>
+                      EscalateOneRefused { reason: "the convene answered a worker spawn, which is outside its vocabulary" }
+                    SpawnNotAdmitted { node_id: _, refusal: _ } =>
+                      EscalateOneRefused { reason: "the convene answered a launch refusal, which is outside its vocabulary" }
+                  }
+              }
+          }
+      }
+  }
+}
+
 fn belt_verify_pass_outcome_from(outcomes: List<BeltVerifyOutcome>) -> BeltPassOutcome {
   let ledger_refusals = outcomes |> filter(o => match o {
     VerifyDeferred { node_id: nid, reason: _ } => nid == ""
@@ -9214,19 +9473,47 @@ type BeltIntegrationStep
   | IntegrationStepBlocked { detail: String }
   | IntegrationStepReady { project_key: String, integrated: Int, members: Int }
 
-fn belt_integrate_candidate_for_instance(
+type BeltIntegrationCoreStep
+  = IntegrationCoreDeferred { reason: String }
+  | IntegrationCoreUnreadable { detail: String }
+  | IntegrationCoreBlocked { detail: String }
+  | IntegrationCoreIntegrated { project_key: String }
+
+// THE PER-ITEM INTEGRATE, census-free. The integration receipt at the attempt's own head answers
+// first: a recorded verdict there is durable (the same head merges to the same answer), so a
+// repeat wake-up is a typed no-op that never touches the project envelope. Only an un-integrated
+// candidate pays the envelope load, and only its own project's.
+fn belt_integrate_candidate_core_for_instance(
   instance: HostDashboardInstance,
   node_id: String,
   attempt_key: String,
-) -> BeltIntegrationStep {
+) -> BeltIntegrationCoreStep {
   let worktree = dispatch_worktree_path_for_instance(
     instance: instance,
     node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
     attempt_key: attempt_key,
   )
   match belt_worktree_head_observe(instance: instance, worktree: worktree) {
-    WorktreeHeadUnobserved { reason } => IntegrationStepDeferred { reason: reason }
+    WorktreeHeadUnobserved { reason } => IntegrationCoreDeferred { reason: reason }
     WorktreeHeadObserved { revision } =>
+      match belt_integration_receipt_observe(
+        instance: instance,
+        worktree: worktree,
+        dir: belt_attempt_integration_dir_for_instance(
+          instance: instance,
+          node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+          attempt_key: attempt_key,
+        ),
+        head_sha: revision as String,
+      ) {
+        IntegrationReceiptUnreadable { reason } => IntegrationCoreUnreadable { detail: reason }
+        IntegrationReceiptForHead { receipt } =>
+          match receipt.state {
+            IntegrationIntegrated =>
+              IntegrationCoreIntegrated { project_key: receipt.project }
+            IntegrationBlocked { detail } => IntegrationCoreBlocked { detail: detail }
+          }
+        IntegrationReceiptAbsent =>
       match belt_submission_capture_for_head(
         instance: instance,
         worktree: worktree,
@@ -9238,8 +9525,8 @@ fn belt_integrate_candidate_for_instance(
         head_sha: revision as String,
       ) {
         CaptureAbsent =>
-          IntegrationStepDeferred { reason: "no submission capture binds this head, so there is no candidate to integrate" }
-        CaptureUnreadable { reason } => IntegrationStepUnreadable { detail: reason }
+          IntegrationCoreDeferred { reason: "no submission capture binds this head, so there is no candidate to integrate" }
+        CaptureUnreadable { reason } => IntegrationCoreUnreadable { detail: reason }
         CaptureForHead { capture } =>
           match belt_candidate_verification_passed(
             instance: instance,
@@ -9247,13 +9534,13 @@ fn belt_integrate_candidate_for_instance(
             attempt_key: attempt_key,
             head_sha: revision as String,
           ) {
-            VerificationNotPassed { reason } => IntegrationStepDeferred { reason: reason }
-            VerificationUnreadable { reason } => IntegrationStepUnreadable { detail: reason }
+            VerificationNotPassed { reason } => IntegrationCoreDeferred { reason: reason }
+            VerificationUnreadable { reason } => IntegrationCoreUnreadable { detail: reason }
             VerificationPassedConfirmed => {
               let edges = declared_roadmap_edges()
               match node_project_membership(node_id: node_id, edges: edges) {
                 MembershipAmbiguous { arcs: _ } =>
-                  IntegrationStepUnreadable {
+                  IntegrationCoreUnreadable {
                     detail: "two or more arcs depend on this node, so its project cannot be derived from the dependency edges",
                   }
                 membership => {
@@ -9261,11 +9548,6 @@ fn belt_integrate_candidate_for_instance(
                     MembershipStandalone => node_id
                     MembershipMember { arc } => arc
                     MembershipAmbiguous { arcs: _ } => node_id
-                  }
-                  let members = match membership {
-                    MembershipStandalone => [node_id]
-                    MembershipMember { arc } => project_member_ids(arc: arc, edges: edges)
-                    MembershipAmbiguous { arcs: _ } => [node_id]
                   }
                   match belt_integrate_into_envelope(
                     instance: instance,
@@ -9278,24 +9560,45 @@ fn belt_integrate_candidate_for_instance(
                       attempt_key: attempt_key,
                     ),
                   ) {
-                    EnvelopeIntegrationUnreadable { detail } => IntegrationStepUnreadable { detail: detail }
-                    EnvelopeIntegrationBlocked { detail } => IntegrationStepBlocked { detail: detail }
-                    EnvelopeIntegrated =>
-                      match belt_integration_census(instance: instance, member_ids: members) {
-                        CensusUnreadable { detail } => IntegrationStepUnreadable { detail: detail }
-                        CensusCounted { integrated, blocked: _ } =>
-                          IntegrationStepReady {
-                            project_key: project_key,
-                            integrated: integrated,
-                            members: count(members),
-                          }
-                      }
+                    EnvelopeIntegrationUnreadable { detail } => IntegrationCoreUnreadable { detail: detail }
+                    EnvelopeIntegrationBlocked { detail } => IntegrationCoreBlocked { detail: detail }
+                    EnvelopeIntegrated => IntegrationCoreIntegrated { project_key: project_key }
                   }
                 }
               }
             }
           }
+        }
       }
+  }
+}
+
+fn belt_integrate_candidate_for_instance(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+) -> BeltIntegrationStep {
+  match belt_integrate_candidate_core_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    IntegrationCoreDeferred { reason } => IntegrationStepDeferred { reason: reason }
+    IntegrationCoreUnreadable { detail } => IntegrationStepUnreadable { detail: detail }
+    IntegrationCoreBlocked { detail } => IntegrationStepBlocked { detail: detail }
+    IntegrationCoreIntegrated { project_key } => {
+      let edges = declared_roadmap_edges()
+      let members = match node_project_membership(node_id: node_id, edges: edges) {
+        MembershipStandalone => [node_id]
+        MembershipMember { arc } => project_member_ids(arc: arc, edges: edges)
+        MembershipAmbiguous { arcs: _ } => [node_id]
+      }
+      match belt_integration_census(instance: instance, member_ids: members) {
+        CensusUnreadable { detail } => IntegrationStepUnreadable { detail: detail }
+        CensusCounted { integrated, blocked: _ } =>
+          IntegrationStepReady {
+            project_key: project_key,
+            integrated: integrated,
+            members: count(members),
+          }
+      }
+    }
   }
 }
 

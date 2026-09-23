@@ -169,6 +169,22 @@ import gunbc.roadmap_belt_actuate {
   SupervisorConveneGate, ConveneClear, ConveneAlreadyLive, ConveneExitedNoVerdict, ConveneLivenessUnobserved,
   belt_supervisor_convene_gate, belt_supervisor_checkpoint_lines, belt_supervisor_convene_brief,
   SupervisorConvened,
+  VerifyOneReceiptObservation, VerifyOneReceiptAbsent, VerifyOneReceiptRecorded, VerifyOneReceiptUnreadable,
+  VerifyOneGate, VerifyOneRun, VerifyOneNoOp, VerifyOneRefuse,
+  belt_verify_one_gate,
+  EscalateOneRoute, EscalateRouteConvene, EscalateRouteNotDue, EscalateRouteRefuse,
+  belt_escalate_one_route,
+  VerifyOneAlreadyRecorded, VerifyOneRefused,
+  EscalateOneConvened, EscalateOneGateNoOp, EscalateOneNotDue,
+  IntegrationCoreIntegrated, IntegrationCoreDeferred, IntegrationCoreBlocked, IntegrationCoreUnreadable,
+}
+import gunbc.roadmap.roadmap_attempt_continuation {
+  ContinuationFresh, ContinuationHold, ContinuationRefused, ContinuationPlanDefect, ContinuationStuck,
+  ContinuationContinue,
+  ContinueFromAttempt,
+}
+import gunbc.roadmap_belt_tick_cli {
+  belt_verify_one_result_json, belt_escalate_one_result_json, belt_integrate_one_result_json,
 }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
@@ -2628,4 +2644,100 @@ test fn the_convened_outcome_is_an_ok_label_of_its_own() -> Bool {
     && count(belt_dispatch_ok_status_labels() |> filter(l => l == "supervisor_convened")) == 1
     && serialize_json(v: belt_spawn_outcome_json(o: o)).contains("\"status\": \"supervisor_convened\"")
     && serialize_json(v: belt_spawn_outcome_json(o: o)).contains("gunbc-supervisor-n-k-t3.service")
+}
+
+// ------------------------------------------------------------------------------------------------
+// The per-item obligations: the gates and routes that make a wake-up a hint, never a fact.
+// ------------------------------------------------------------------------------------------------
+
+// THE VERIFY-ONE GATE RUNS ONLY WHEN NO RECEIPT BINDS THE HEAD. A recorded verdict is durable --
+// the same head and oracle can never answer differently -- so a repeat wake-up is a typed no-op
+// that re-runs nothing and rewrites nothing (conditional publish); only an absent receipt runs,
+// and an unreadable one refuses rather than guessing over it.
+test fn the_verify_one_gate_runs_only_when_no_receipt_binds_the_head() -> Bool {
+  match belt_verify_one_gate(observation: VerifyOneReceiptAbsent) {
+    VerifyOneRun => true
+    _ => false
+  }
+    && (match belt_verify_one_gate(observation: VerifyOneReceiptRecorded { verdict_key: "pass", detail: "4 validations" }) {
+      VerifyOneNoOp { verdict_key, detail } => verdict_key == "pass" && detail == "4 validations"
+      _ => false
+    })
+    && (match belt_verify_one_gate(observation: VerifyOneReceiptUnreadable { reason: "the receipt does not decode" }) {
+      VerifyOneRefuse { reason } => reason == "the receipt does not decode"
+      _ => false
+    })
+}
+
+// THE NO-OP IS ON THE WIRE AS ITSELF: the CLI receipt of an already-recorded verify says
+// already-recorded with the durable verdict, so a wake-up storm never re-runs the oracle and the
+// receipt says why nothing ran.
+test fn the_verify_one_no_op_receipt_names_the_durable_verdict() -> Bool {
+  let doc = serialize_json(v: belt_verify_one_result_json(r: VerifyOneAlreadyRecorded { verdict_key: "pass", detail: "4 validations" }))
+  doc.contains("\"status\": \"already-recorded\"")
+    && doc.contains("\"verdict\": \"pass\"")
+    && doc.contains("roadmap-verify-one/v1")
+}
+
+// THE ESCALATE-ONE ROUTE CONVENES ONLY AN ESCALATION RECORD. A consumed verdict (Continue), a
+// terminal typed state (PlanDefect/Stuck), nothing due (Fresh), and a hold are each the typed
+// no-op their decision already is; a refusal stays a refusal.
+test fn the_escalate_one_route_convenes_only_an_escalation_record() -> Bool {
+  let escalation = SupervisorEscalation {
+    node_id: "n1",
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    turn: 3,
+    target: SupervisorForNode { node_id: "arc-1" },
+    reason: "its verification still fails",
+  }
+  match belt_escalate_one_route(decision: ContinuationEscalate { escalation: escalation }) {
+    EscalateRouteConvene { escalation: e } => e.attempt_key == "a1"
+    _ => false
+  }
+    && (match belt_escalate_one_route(decision: ContinuationPlanDefect { defect: "the brief scopes four files as one edit" }) {
+      EscalateRouteNotDue { detail } => detail.contains("plan defect") && detail.contains("four files")
+      _ => false
+    })
+    && (match belt_escalate_one_route(decision: ContinuationStuck { cause: "the emitter lacks the lowering" }) {
+      EscalateRouteNotDue { detail } => detail.contains("stuck")
+      _ => false
+    })
+    && (match belt_escalate_one_route(decision: ContinuationFresh { reason: "no prior attempt of this node" }) {
+      EscalateRouteNotDue { detail } => detail.contains("no escalation is due")
+      _ => false
+    })
+    && (match belt_escalate_one_route(decision: ContinuationHold { reason: "awaits review" }) {
+      EscalateRouteNotDue { detail } => detail.contains("holds")
+      _ => false
+    })
+    && (match belt_escalate_one_route(decision: ContinuationRefused { reason: "the verdict does not decode" }) {
+      EscalateRouteRefuse { reason } => reason == "the verdict does not decode"
+      _ => false
+    })
+    && (match belt_escalate_one_route(decision: ContinuationContinue { origin: ContinueFromAttempt { parent_attempt_key: "a1", branch: "roadmap/n1/a1", turn: 4, verdict_detail: "nominal" } }) {
+      EscalateRouteNotDue { detail } => detail.contains("already consumed")
+      _ => false
+    })
+}
+
+// THE ESCALATE AND INTEGRATE RECEIPTS RENDER THEIR OWN STATUSES, so a wake-up reader distinguishes
+// convened, gate-no-op, not-due, integrated, blocked, deferred and unreadable without re-deriving.
+test fn the_per_item_receipts_render_their_own_statuses() -> Bool {
+  serialize_json(v: belt_escalate_one_result_json(r: EscalateOneConvened { unit: "gunbc-supervisor-n1-a1-t3.service" }))
+    .contains("\"status\": \"convened\"")
+    && serialize_json(v: belt_escalate_one_result_json(r: EscalateOneGateNoOp { step: "supervisor-convening", detail: "already convening" }))
+      .contains("\"status\": \"gate-no-op\"")
+    && serialize_json(v: belt_escalate_one_result_json(r: EscalateOneNotDue { detail: "nothing due" }))
+      .contains("\"status\": \"not-due\"")
+    && serialize_json(v: belt_integrate_one_result_json(r: IntegrationCoreIntegrated { project_key: "shell-typed-invocation" }))
+      .contains("\"status\": \"integrated\"")
+    && serialize_json(v: belt_integrate_one_result_json(r: IntegrationCoreIntegrated { project_key: "shell-typed-invocation" }))
+      .contains("\"project\": \"shell-typed-invocation\"")
+    && serialize_json(v: belt_integrate_one_result_json(r: IntegrationCoreBlocked { detail: "2 conflicting path(s)" }))
+      .contains("\"status\": \"blocked\"")
+    && serialize_json(v: belt_integrate_one_result_json(r: IntegrationCoreDeferred { reason: "no capture" }))
+      .contains("\"status\": \"deferred\"")
+    && serialize_json(v: belt_integrate_one_result_json(r: IntegrationCoreUnreadable { detail: "the envelope does not decode" }))
+      .contains("\"status\": \"unreadable\"")
 }
