@@ -458,12 +458,12 @@ fn c_type_definition_body(row: ModuleTypeDefinitionRow) -> Node {
   row.definition
 }
 
-// The owner roster and the by-value definition lookup both used to re-ask
-// module_dag.type_definitions through the home's module_type_definition_rows, whose Rejected arm
-// answered [] -- a rejected lookup became "this module owns no types", so c_validate_partition_r4
-// answered PartitionR4Valid over a map it had failed to read (DESIGN section 5). Both now read one
-// resolved member list, which the home refuses to produce on a rejected lookup; the R4 refusal
-// carries that cause rather than a C-local restatement of it.
+// The owner roster and the by-value definition lookup both read ONE resolved member list, which the
+// home (v2.std.compilers.compilation_unit resolve_member_interfaces) refuses to produce when a
+// module_dag.type_definitions lookup is rejected. A rejected lookup therefore never reads as "this
+// module owns no types", so c_validate_partition_r4 cannot answer PartitionR4Valid over a map it
+// failed to read (DESIGN section 5); the R4 refusal carries the home's cause rather than a C-local
+// restatement of it.
 fn c_resolved_modules(module_dag: ModuleDag) -> MembersResolve {
   resolve_member_interfaces(module_dag: module_dag, members: module_dag.modules)
 }
