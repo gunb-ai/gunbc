@@ -1,16 +1,17 @@
-module v2.workflow.rust_crate_package_ident
+module gunbc.rust_crate_package_ident
 
 import std.types { List, String, Bool }
-import v2.std.algebra { any }
-import v2.std.optional { Absent, Optional, Present }
-import v2.std.text { string_all_chars_in, string_is_empty }
 
 // THE PACKAGE-NAME-TO-RUST-IDENTIFIER PROJECTION, WITH THE TWO REFUSALS IT OWES.
 //
 // A partition crate's lib.rs re-exports every crate below it as `pub use <ident>::*;`, and the
 // ident is the package name with hyphens turned into underscores -- the form cargo gives the
-// extern crate. That projection was previously a bare replace() in v1.compiler.stage0_crates,
-// total and silent, and it is NOT INJECTIVE: "a-b" and "a_b" both carry to "a_b". Two packages
+// extern crate. The stage0 partition renderers read the admitted bindings through
+// package_ident_bound and never re-project; this replaced a bare replace() in
+// v1.compiler.stage0_crates that was total and silent. ONE COPY REMAINS AND IS NAMED, NOT HIDDEN:
+// v1.compiler.emit_rust stage0_package_name_to_crate_ident still projects the linked-package
+// names for the emitted main.rs on its own, and folding it onto these bindings is the next change.
+// The projection is NOT INJECTIVE: "a-b" and "a_b" both carry to "a_b". Two packages
 // sharing an image means one crate's facade re-exports the wrong crate, or emits the same
 // `pub use` twice -- a crate wrong at the reference level while every row that produced it is
 // individually well formed. That is DESIGN section 5's silent wrong answer, and the reason it is
@@ -37,7 +38,7 @@ type PackageIdentOutcome
   | PackageIdentRefused { cause: PackageIdentRefusalCause }
 
 type PackageIdentSetOutcome
-  = PackageIdentSetOk { idents: List<String> }
+  = PackageIdentSetOk { bindings: List<PackageIdentBinding> }
   | PackageIdentSetRefused { cause: PackageIdentRefusalCause }
 
 // The characters this projection carries to a rust ident. Narrower than cargo's own package-name
@@ -46,10 +47,10 @@ type PackageIdentSetOutcome
 data package_ident_alphabet: String = "abcdefghijklmnopqrstuvwxyz0123456789-_"
 
 fn rust_crate_package_ident(package_name: String) -> PackageIdentOutcome {
-  if string_is_empty(s: package_name) {
+  if package_name == "" {
     PackageIdentRefused { cause: PackageNameNotIdentSafe { package_name: package_name } }
   } else {
-    if string_all_chars_in(s: package_name, alphabet: package_ident_alphabet) {
+    if chars(package_name) |> all(c => contains(package_ident_alphabet, c)) {
       PackageIdentOk { ident: replace(package_name, "-", "_") }
     } else {
       PackageIdentRefused { cause: PackageNameNotIdentSafe { package_name: package_name } }
@@ -111,8 +112,21 @@ fn rust_crate_package_idents(package_names: List<String>) -> PackageIdentSetOutc
     })
   match folded.refusal {
     Present { value: cause } => PackageIdentSetRefused { cause: cause }
-    Absent => PackageIdentSetOk { idents: folded.bindings |> map(binding => binding.ident) }
+    Absent => PackageIdentSetOk { bindings: folded.bindings }
   }
+}
+
+// THE ONE READ A RENDERER MAY MAKE: the ident an admitted set bound to a package. Absent means the
+// package was not in the admitted set, and a caller must refuse there -- never re-project the name,
+// which would be a second source for the fact this module owns.
+fn package_ident_bound(bindings: List<PackageIdentBinding>, package_name: String) -> Optional<String> {
+  bindings
+    |> fold(init: Absent, f: fn(found, binding) {
+      match binding.package_name == package_name {
+        true => Present { value: binding.ident }
+        false => found
+      }
+    })
 }
 
 // The refusal reaches a human as a located sentence rather than a variant name, and it names BOTH

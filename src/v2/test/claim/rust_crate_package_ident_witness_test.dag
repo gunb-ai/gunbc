@@ -1,7 +1,7 @@
 module test.claim.rust_crate_package_ident_witness
 
 import std.types { Bool, List, String }
-import v2.workflow.rust_crate_package_ident {
+import gunbc.rust_crate_package_ident {
   PackageIdentCollision,
   PackageIdentOk,
   PackageIdentRefused,
