@@ -3,7 +3,6 @@ module gunbc.host_compile_pool_provision
 import std.disposition { Disposition, SingleAuthority, Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit }
-import std.resources { Network }
 import std.types { Bool, String }
 import gunbc.host_effect { HostEffect, EnsureCompilePoolSlice }
 import gunbc.host_toolchain_ensure { host_toolchain_ensure, CompilePool }
@@ -51,7 +50,6 @@ fn provision_compile_pool_routes_through_host_effect_apply() -> Bool {
 }
 
 fn provision_compile_pool(host: HostIdentity) -> ProcessExit
-  uses net: Network
 {
   host_toolchain_ensure(host: host, kind: CompilePool)
 }

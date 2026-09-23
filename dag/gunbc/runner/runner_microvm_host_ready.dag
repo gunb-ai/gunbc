@@ -3,7 +3,6 @@ module gunbc.runner_microvm_host_ready
 import std.types { String, NonEmptyStr, Bool, List, FilePath }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
 import extdeps.posix.test_utility { test_exists_command, test_writable_command, test_executable_command }
@@ -497,7 +496,6 @@ fn executor_home_wet() -> String? {
 // receipt and decides what can measure the reserve.
 
 fn observe_firecracker_host_standing_wet(root: String, login: NonEmptyStr) -> FirecrackerHostStanding
-  uses net: Network
 {
   let rel = firecracker_release_aarch64
   let kvm_path = firecracker_requires_kvm_device as String
@@ -571,7 +569,6 @@ fn host_standing_verdict(entry: String, standing: FirecrackerHostStanding, host:
 }
 
 fn runner_microvm_host_observe_wet() -> ProcessExit
-  uses net: Network
 {
   match microvm_host_binding_wet() {
     MicrovmHostBindingRefused { cause: c } =>
@@ -603,7 +600,6 @@ fn runner_microvm_host_observe_wet() -> ProcessExit
 // carries the executor's group enrolment as its own typed fact, so a host whose grant never landed
 // refuses here with a cause that names the login and the group.
 fn runner_microvm_host_converge_wet() -> ProcessExit
-  uses net: Network
 {
   match microvm_host_binding_wet() {
     MicrovmHostBindingRefused { cause: c } =>

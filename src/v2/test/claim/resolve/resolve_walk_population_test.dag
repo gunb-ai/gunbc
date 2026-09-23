@@ -1,0 +1,244 @@
+module v2.test.claim.resolve.resolve_walk_population
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.algebra { Cons, Empty }
+import v2.std.declaration_marker { test_code_index_empty }
+import v2.compiler.resolve {
+  Namespace,
+  ObservationComplete,
+  ObservationIncomplete,
+  ResolveContext,
+  ResolveNodeWalk,
+  ResolveWalkAccepted,
+  ResolveWalkRefused,
+  empty_canonical_symbol_set,
+  resolve_node,
+  resolve_node_walk,
+  scope_from_namespace
+}
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { empty_map }
+import v2.std.diagnostic {
+  Accepted,
+  DeclarationLocus,
+  InvariantPortLocus,
+  NodeLocus,
+  NonEmptyDiagnostics,
+  Rejected,
+  SourcePortLocus,
+  Textual,
+  diagnostics_fatal
+}
+import v2.std.language_model { LanguageModel }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Bind,
+  ComputationNode,
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode
+}
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.resolution_policy { NamespaceOnlyY }
+import v2.std.symbol_index { empty_symbol_index }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE BOUNDARY IS resolve_node_walk AND ITS INPUTS ARE SUPPLIED: a hand-built Bind over an empty
+// namespace, so every name is unbound unless the Bind's own binder binds it. That is the one walk
+// whose inner scope is PRODUCED by a sibling (DESIGN section 3's supplied-input rule; the real
+// route through tokenize/parse/normalize is exercised by
+// v2.test.claim.native_census.whole_tree_census_resolve, which is this boundary's inhabitance claim).
+
+data walk_probe_lm: LanguageModel = dag_language_model()
+
+fn walk_probe_ctx() -> ResolveContext {
+  let namespace = Namespace {
+    bindings: empty_map(),
+    canonical_symbols: empty_canonical_symbol_set(),
+    symbol_index: empty_symbol_index(),
+    module_qn: qualified_name_from_dotted_string(dotted: "m"),
+    test_code: test_code_index_empty(),
+    declared_in: qualified_name_from_dotted_string(dotted: "m"),
+    imported_origins: empty_map()
+  }
+  ResolveContext {
+    scope: scope_from_namespace(namespace: namespace),
+    namespace: namespace,
+    policy: NamespaceOnlyY,
+    position: qualified_name_from_dotted_string(dotted: "m"),
+    lm: walk_probe_lm,
+    under_module_root: false
+  }
+}
+
+fn walk_atom(name: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+// A BINDER THAT IS NOT AN ATOM: resolve_bind_binder_target refuses it as a malformed tree, and it
+// is the prerequisite the Bind's inner scope is built from.
+data walk_malformed_binder: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+// AN INT LITERAL RESOLVES IN ANY SCOPE, so it is the value a probe uses where it needs a site
+// that is NOT a failure.
+data walk_int_literal: Node = walk_atom(name: ^dag_token_int_literal)
+
+fn walk_bind(binder: Node, value: Node, body: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Bind },
+    children: [
+      Edge { label: Positional, target: binder },
+      Edge { label: Positional, target: value },
+      Edge { label: Positional, target: body }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// THE IDENTITY A CHAIN NAMES: its fatal's locus node, when that node is an atom. An absent name is
+// the identity a residual row reports, so membership is compared on it and never on position.
+fn walk_chain_identity(c: NonEmptyDiagnostics) -> Symbol {
+  match diagnostics_fatal(d: c).at {
+    NodeLocus { anchor: a } =>
+      match a.at.kind {
+        TypeNode { connective: Atom { identity: id } } => id
+        _ => ^walk_chain_not_an_atom
+      }
+    DeclarationLocus { declaration: _ } => ^walk_chain_not_an_atom
+    Textual { file: _, extent: _ } => ^walk_chain_not_an_atom
+    SourcePortLocus { anchor: _, file: _, extent: _ } => ^walk_chain_not_an_atom
+    InvariantPortLocus { anchor: _, invariant: _ } => ^walk_chain_not_an_atom
+  }
+}
+
+fn walk_identities(w: ResolveNodeWalk) -> List<Symbol> {
+  match w {
+    ResolveWalkAccepted { value: _, diagnostics: _ } => []
+    ResolveWalkRefused { first: f, rest: r, observation: _ } =>
+      Cons {
+        head: walk_chain_identity(c: f),
+        tail: fold_list(xs: r, empty: Empty, cons: fn(acc, c) { Cons { head: walk_chain_identity(c: c), tail: acc } })
+      }
+  }
+}
+
+fn walk_chain_count(w: ResolveNodeWalk) -> Int {
+  match w {
+    ResolveWalkAccepted { value: _, diagnostics: _ } => 0
+    ResolveWalkRefused { first: _, rest: r, observation: _ } => length(xs: r) + 1
+  }
+}
+
+fn walk_complete(w: ResolveNodeWalk) -> Bool {
+  match w {
+    ResolveWalkAccepted { value: _, diagnostics: _ } => true
+    ResolveWalkRefused { first: _, rest: _, observation: o } =>
+      match o {
+        ObservationComplete => true
+        ObservationIncomplete { reason: _ } => false
+      }
+  }
+}
+
+// TWO INDEPENDENT FAILING REFERENCES UNDER ONE NODE YIELD TWO CHAINS, in walk order, and the
+// observation is complete: the binder was accepted, so the body's scope is real.
+test fn walk_two_independent_refs_yield_two_chains_holds() -> Bool {
+  let w = resolve_node_walk(
+    ctx: walk_probe_ctx(),
+    n: walk_bind(binder: walk_atom(name: ^x), value: walk_atom(name: ^absent_a), body: walk_atom(name: ^absent_b))
+  )
+  walk_chain_count(w: w) == 2
+    && walk_identities(w: w) == [^absent_a, ^absent_b]
+    && walk_complete(w: w)
+}
+
+// EACH IS REACHABLE ALONE: with the other reference made good, each still refuses, as one chain.
+test fn walk_each_ref_refuses_alone_holds() -> Bool {
+  let only_a = resolve_node_walk(
+    ctx: walk_probe_ctx(),
+    n: walk_bind(binder: walk_atom(name: ^x), value: walk_atom(name: ^absent_a), body: walk_atom(name: ^x))
+  )
+  let only_b = resolve_node_walk(
+    ctx: walk_probe_ctx(),
+    n: walk_bind(binder: walk_atom(name: ^x), value: walk_int_literal, body: walk_atom(name: ^absent_b))
+  )
+  walk_identities(w: only_a) == [^absent_a]
+    && walk_identities(w: only_b) == [^absent_b]
+}
+
+// THE LEGACY PROJECTION IS THE FIRST CHAIN: resolve_node answers the fatal the short-circuiting
+// walk stopped at, and nothing about the second chain leaks into it.
+test fn walk_legacy_outcome_is_the_first_chain_holds() -> Bool {
+  match resolve_node(
+    ctx: walk_probe_ctx(),
+    n: walk_bind(binder: walk_atom(name: ^x), value: walk_atom(name: ^absent_a), body: walk_atom(name: ^absent_b))
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => walk_chain_identity(c: d) == ^absent_a
+  }
+}
+
+// REVERSING SIBLING ORDER KEEPS MEMBERSHIP AND REVERSES ONLY POSITION.
+test fn walk_sibling_order_changes_only_order_holds() -> Bool {
+  let forward = resolve_node_walk(
+    ctx: walk_probe_ctx(),
+    n: walk_bind(binder: walk_atom(name: ^x), value: walk_atom(name: ^absent_a), body: walk_atom(name: ^absent_b))
+  )
+  let reversed = resolve_node_walk(
+    ctx: walk_probe_ctx(),
+    n: walk_bind(binder: walk_atom(name: ^x), value: walk_atom(name: ^absent_b), body: walk_atom(name: ^absent_a))
+  )
+  walk_identities(w: forward) == [^absent_a, ^absent_b]
+    && walk_identities(w: reversed) == [^absent_b, ^absent_a]
+}
+
+// A REFUSED SCOPE-PRODUCING PREREQUISITE LEAVES THE SITE IT GOVERNS UNOBSERVED, NOT GUESSED.
+// The binder refuses; the value resolves under the OUTER scope, which the binder does not touch,
+// so its refusal is still observed; the body would resolve under a scope built from the refused
+// binder, so it is not resolved at all and the walk says so. RED if the body were resolved under
+// the invented scope: ^absent_b would appear as a third chain and the observation would read
+// complete.
+test fn walk_refused_prerequisite_marks_incomplete_holds() -> Bool {
+  let w = resolve_node_walk(
+    ctx: walk_probe_ctx(),
+    n: walk_bind(binder: walk_malformed_binder, value: walk_atom(name: ^absent_a), body: walk_atom(name: ^absent_b))
+  )
+  walk_chain_count(w: w) == 2
+    && !walk_complete(w: w)
+    && fold_list(xs: walk_identities(w: w), empty: true, cons: fn(acc, id) { acc && id != ^absent_b })
+}
+
+// THE POSITIVE CONTROL: with no failing site the Bind resolves whole, its body bound by its own
+// binder. Without it every claim above is satisfied by a walk that refuses everything.
+test fn walk_clean_bind_is_accepted_holds() -> Bool {
+  match resolve_node_walk(
+    ctx: walk_probe_ctx(),
+    n: walk_bind(binder: walk_atom(name: ^x), value: walk_int_literal, body: walk_atom(name: ^x))
+  ) {
+    ResolveWalkAccepted { value: _, diagnostics: _ } => true
+    ResolveWalkRefused { first: _, rest: _, observation: _ } => false
+  }
+}
+
+// NO PARTIALLY ACCEPTED TREE: one refused site anywhere refuses the whole node, even when every
+// other site resolved.
+test fn walk_one_refusal_refuses_the_node_holds() -> Bool {
+  match resolve_node_walk(
+    ctx: walk_probe_ctx(),
+    n: walk_bind(binder: walk_atom(name: ^x), value: walk_int_literal, body: walk_atom(name: ^absent_b))
+  ) {
+    ResolveWalkAccepted { value: _, diagnostics: _ } => false
+    ResolveWalkRefused { first: _, rest: _, observation: _ } => true
+  }
+}

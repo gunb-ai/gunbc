@@ -3,7 +3,6 @@ module gunbc.auth.approval_keyring_converge
 import std.types { Bool, NonEmptyStr, String, List, FilePath }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import gunbc.auth.approval_decision_store { approval_mac_key_path, approval_decision_store_root }
 import gunbc.durable_cas_file_store { authorization_claim_store_root }
 import gunbc.auth.approval_request_submission {
@@ -176,7 +175,6 @@ fn keyring_elevated_exec(
   command: List<String>,
   step: String,
 ) -> ProcessExit
-  uses net: Network
 {
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: keyring_elevated_argv(command: command)) {
     TypedArgvExecRefused { reason: why } =>
@@ -194,7 +192,6 @@ fn keyring_ensure_dirs(
   target: SshTarget,
   context: FleetSshExecutionContext,
 ) -> ProcessExit
-  uses net: Network
 {
   match keyring_elevated_exec(target: target, context: context, command: keyring_mkdir_argv(), step: "mkdir") {
     ExitSuccess =>
@@ -214,7 +211,6 @@ fn keyring_install_file(
   content: String,
   step: String,
 ) -> ProcessExit
-  uses net: Network
 {
   match converge_typed_remote_file(
     target: target,
@@ -231,7 +227,6 @@ fn keyring_install_file(
 }
 
 fn approval_keyring_converge_on_host() -> ProcessExit
-  uses net: Network
 {
   let cap_path = actions_variable_trimmed(name: approval_capability_mac_key_path_env)
   let sub_path = actions_variable_trimmed(name: approval_submission_mac_key_path_env)
@@ -290,7 +285,6 @@ fn approval_keyring_converge_on_host() -> ProcessExit
 }
 
 fn approval_keyring_converge_wet() -> ProcessExit
-  uses net: Network
 {
   match actions_variable_read(name: fleet_converge_expected_host_env_name) {
     ActionsVariableAbsent { variable: v, detail: d } =>

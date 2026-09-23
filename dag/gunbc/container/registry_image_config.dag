@@ -39,7 +39,6 @@ import extdeps.languages.json.parse {
 import extdeps.tools.sha256sum
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
-import std.resources { Network }
 
 type RegistryBytesSha256
   = RegistryBytesSha256 { hex: NonEmptyStr }
@@ -336,7 +335,6 @@ fn read_docker_hub_image_config_at_digest(
   digest_sha256_hex: NonEmptyStr,
   pin: NonEmptyStr,
 ) -> PinnedRegistryImageConfigRead
-  uses net: Network
 {
   let digest_wire = join(["sha256:", digest_sha256_hex as String], "") as NonEmptyStr
   match docker_hub_bearer_token(repository: repository) {

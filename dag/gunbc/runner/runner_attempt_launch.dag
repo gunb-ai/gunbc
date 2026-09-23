@@ -69,7 +69,7 @@ import extdeps.systemd.systemd_run { SystemdRunProperty }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.posix.test_utility { PathExistenceReading, PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable }
 import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_size_bytes_command, StatFieldReading, StatFieldRead, StatFieldUnread, stat_field_reading }
-import std.resources { Network, Filesystem }
+import std.resources { Filesystem }
 import gunbc.command_runner { run_shell_command_capture }
 
 data runner_attempt_launch_disposition: Disposition = SingleAuthority
@@ -723,7 +723,6 @@ fn jit_device_readback(
 }
 
 fn stage_jit_device(device: JitDeviceStaging) -> JitDeviceStagingOutcome
-  uses net: Network, fs: Filesystem
 {
   match run_shell_command_capture(command: device.create, transport: LocalExec) {
     ProcessRefused { exit_code: _, stderr: e } =>

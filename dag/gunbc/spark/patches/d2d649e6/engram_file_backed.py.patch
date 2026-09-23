@@ -1,6 +1,6 @@
 diff --git a/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
 new file mode 100644
-index 0000000..c573ccf
+index 0000000..b5c332c
 --- /dev/null
 +++ b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
 @@ -0,0 +1,115 @@
@@ -20,9 +20,9 @@ index 0000000..c573ccf
 +# with CUDA. Token-time gathers copy requested rows into the existing bounded
 +# pinned staging buffer. A missing local path refuses; there is no NFS arm.
 +#
-+# Prefix and offsets are gunbc.spark.v41_engram_row_store: v41_rank_payload emits
-+# v41_row_store_magic then rows; v41_place_row offsets start after that prefix;
-+# v41_rank_digest hashes that prefixed payload. Open checks expected.magic
++# Prefix and offsets are gunbc.spark.v41_engram_row_store: v41_store_bytes emits
++# v41_row_store_magic then weight||scale records; v41_row_address offsets follow;
++# the store's SHA-256 is over those prefixed bytes. Open checks expected.magic
 +# (supplied from that symbol, not minted here) and whole-file digest against
 +# rank_digest_hex. encoding_digest / rank / format_revision are not on this
 +# type until a modeled header carries them.

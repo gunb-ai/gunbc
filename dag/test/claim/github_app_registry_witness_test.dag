@@ -48,6 +48,7 @@ import gunbc.runner.runner_jit_perform {
 }
 
 import extdeps.uri { Uri, uri_https }
+import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -164,12 +165,6 @@ fn installation_holding(perms: List<GitHubAppPermission>) -> GitHubAppInstallati
   installation_of(app: gunbai_bot_declared, installation_id: bot_installation_id, perms: perms)
 }
 
-data bot_key_fingerprint: GitHubAppPublicKeyFingerprint = gunbai_bot_declared_key.fingerprint
-
-data ci_key_fingerprint: GitHubAppPublicKeyFingerprint = sha256_base64_key_fingerprint(
-  digest: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC="
-)
-
 data hypothetical_bot_pem: SecretRef = SecretRef {
   project: fleet_secrets_gcp_project,
   secret: "gunbai-bot-private-key-not-yet-provisioned",
@@ -177,43 +172,25 @@ data hypothetical_bot_pem: SecretRef = SecretRef {
   hash_state: HashPending,
 }
 
-fn signer_for(
-  app: DeclaredGitHubApp,
-  pem: SecretRef,
-  derived: GitHubAppPublicKeyFingerprint,
-  registered: GitHubAppPublicKeyFingerprint
-) -> SignerCustody {
+data witness_signing_key: JwsSigningKeyRef = HostKeyFile { path: "/nonexistent/witness-app.pem" }
+
+fn signer_accepted_as(app: DeclaredGitHubApp) -> SignerCustody {
   SignerCustodyObserved {
     signer: ObservedGitHubAppSigner {
-      app_id: app.app_id,
-      secret_version: pem,
-      secret_content_hash: content_hash_of_value(value: pem.secret),
-      derived_public_fingerprint: derived,
-      github_registered_fingerprint: registered,
+      key: witness_signing_key,
+      accepted_as: app.app_id,
+      observed_at: 1790000000,
     }
   }
 }
 
-data sealed_bot_signer: SignerCustody = signer_for(
-  app: gunbai_bot_declared,
-  pem: hypothetical_bot_pem,
-  derived: bot_key_fingerprint,
-  registered: bot_key_fingerprint
-)
+data sealed_bot_signer: SignerCustody = signer_accepted_as(app: gunbai_bot_declared)
 
-data cross_app_signer: SignerCustody = signer_for(
-  app: gunbai_ci_declared,
-  pem: gunbai_ci_app_pem_secret,
-  derived: ci_key_fingerprint,
-  registered: ci_key_fingerprint
-)
+data cross_app_signer: SignerCustody = signer_accepted_as(app: gunbai_ci_declared)
 
-data unregistered_key_signer: SignerCustody = signer_for(
-  app: gunbai_bot_declared,
-  pem: hypothetical_bot_pem,
-  derived: ci_key_fingerprint,
-  registered: bot_key_fingerprint
-)
+data unregistered_key_signer: SignerCustody = SignerReadbackFailed {
+  cause: SignerKeyRejected { status: 401, body: "{\"message\":\"A JSON web token could not be decoded\"}" },
+}
 
 data app_credential: GitHubCredentialAuthority = ManagedAppInstallationCredential {
   app: gunbai_bot_declared,
@@ -391,7 +368,8 @@ test fn witness_seal_failure_names_which_of_the_two_causes_fired() -> Bool {
       SignerReadbackFailed { cause } => match cause {
         SignerNamesDifferentApp { observed_app_id, declared_app_id } =>
           observed_app_id.value != declared_app_id.value
-        SignerFingerprintNotRegistered { derived: _, registered: _ } => false
+        SignerKeyRejected { status: _, body: _ } => false
+        SignerReadbackNotReached { detail: _ } => false
       }
       _ => false
     }
@@ -399,9 +377,9 @@ test fn witness_seal_failure_names_which_of_the_two_causes_fired() -> Bool {
   } && match observed_grant_with(custody: unregistered_key_signer, perms: full_workflow_grant) {
     SignerCustodyUnresolved { app: _, custody } => match custody {
       SignerReadbackFailed { cause } => match cause {
-        SignerFingerprintNotRegistered { derived, registered } =>
-          !key_fingerprint_eq(a: derived, b: registered)
+        SignerKeyRejected { status, body: _ } => status == 401
         SignerNamesDifferentApp { observed_app_id: _, declared_app_id: _ } => false
+        SignerReadbackNotReached { detail: _ } => false
       }
       _ => false
     }

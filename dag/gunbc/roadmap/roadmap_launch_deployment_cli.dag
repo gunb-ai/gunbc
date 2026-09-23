@@ -3,7 +3,6 @@ module gunbc.roadmap_launch_deployment_cli
 import std.types { String, Bool, NonEmptyStr, Int, List, FilePath, CommitSha }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
@@ -242,7 +241,6 @@ fn active_instance_text_routed(base: String?) -> String {
 }
 
 fn window_snapshot(context: FleetSshExecutionContext, instance: HostDashboardInstance, routed_base: String?) -> WindowSnapshot
-  uses net: Network
 {
   let tree = observe_deployed_tree(locus: deployed_tree_locus(
     context: context,
@@ -274,7 +272,6 @@ fn receipt_digest_at(path: String) -> String? {
 }
 
 fn persist_receipt(instance: HostDashboardInstance, document: String) -> ReceiptPersistence
-  uses net: Network
 {
   match run_shell_commands(commands: [mkdir_parents_command(path: rlm_receipt_staging_dir)], transport: LocalExec) {
     ExitFailure { code: _, reason: why } => ReceiptPersistenceRefused { detail: join(["staging mkdir refused: ", why], "") }
@@ -362,7 +359,6 @@ fn tick_fact(instance: HostDashboardInstance, dashboard: DashboardReceiptFact, n
 }
 
 fn unit_standing_fact(revision: String) -> LaunchUnitStanding
-  uses net: Network
 {
   let spec = deployment_spec_srv1()
   LaunchUnitStanding {
@@ -383,7 +379,6 @@ fn unit_standing_fact(revision: String) -> LaunchUnitStanding
 
 // ---------------------------------------------------------------- the entry
 fn rlm_launch_deployment_receipt_wet() -> ProcessExit
-  uses net: Network
 {
   match observe_actions_run_binding() {
     ActionsRunUnbound { variable: v, detail: d } =>
@@ -451,7 +446,6 @@ fn rlm_routed_base_url() -> String? {
 // One predecessor run record, read back from the workflow-runs API by run id (review 5061891290
 // P1-4). A missing conclusion (run not completed) or missing path refuses as its own wire text.
 fn rlm_predecessor_run(run_id: String) -> PredecessorRunProvenance
-  uses net: Network
 {
   let got = github.WorkflowRuns.GetRun(
     auth_token: "",
@@ -471,7 +465,6 @@ fn rlm_predecessor_run(run_id: String) -> PredecessorRunProvenance
 }
 
 fn rlm_run_provenance_fact(run: ActionsRunBinding, plan_run_id: String, apply_run_id: String, dashboard_run_id: String) -> RunProvenanceFact
-  uses net: Network
 {
   RunProvenanceObserved {
     receipt_repository: run.repository,
@@ -491,7 +484,6 @@ fn rlm_launch_deployment_receipt_bound(
   dashboard_run_id: String,
   context: FleetSshExecutionContext,
 ) -> ProcessExit
-  uses net: Network
 {
   let instance = srv1_live_dashboard_instance()
   let spec = deployment_spec_srv1()
