@@ -52,6 +52,7 @@ import v2.extdeps.languages.rust {
   rust_whitespace_trivia_rule,
   rust_semantic_decl_emission_bundle_node
 }
+import v2.std.logic { bool_boolean_algebra }
 
 // Class B un-strip (2026-08-04, #7772): this module previously carried zero import statements and
 // resolved v2.extdeps.languages.rust symbols only by pool-membership coincidence — an unrelated
