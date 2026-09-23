@@ -1609,6 +1609,116 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "census_app_acquire_with_code",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "persist_then_read_back",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.instruments.github_app_acquire",
+      caller_decl_name: "census_app_acquisition_receipt",
+      callee_module_path: "gunbc.instruments.github_app_acquire",
+      callee_decl_name: "census_app_acquisition_receipt_for",
+      resource: "Filesystem",
+      occurrences: 1,
+      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.machine_intake_mtcollins1_media_attach",
+      caller_decl_name: "mtcollins1_attach_absent_image_control",
+      callee_module_path: "gunbc.machine_intake_megarac_media_attach",
+      callee_decl_name: "megarac_attach_remote_image",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.machine_intake_mtcollins1_media_attach",
+      caller_decl_name: "mtcollins1_attach_diskless_image",
+      callee_module_path: "gunbc.machine_intake_megarac_media_attach",
+      callee_decl_name: "megarac_attach_remote_image",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.review_sheet_converge_cli",
+      caller_decl_name: "converge_drive_half_cli",
+      callee_module_path: "gunbc.review_sheet_converge_cli",
+      callee_decl_name: "converge_drive_half",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.review_sheet_converge_cli",
+      caller_decl_name: "format_converged_spreadsheet",
+      callee_module_path: "gunbc.review_sheet_converge_cli",
+      callee_decl_name: "format_with_validated_schema",
+      resource: "Network",
+      occurrences: 3,
+      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.runner_host_file_converge",
+      caller_decl_name: "run_runner_host_files",
+      callee_module_path: "gunbc.runner_host_file_converge",
+      callee_decl_name: "plan_runner_host_file",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.srv3_boot_once_cd",
+      caller_decl_name: "srv3_boot_once_cd_gated",
+      callee_module_path: "gunbc.srv3_bmc_credential_resolve",
+      callee_decl_name: "observe_and_resolve_srv3_bmc_credential",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.srv3_os_install_actuate",
+      caller_decl_name: "srv3_bmcweb_session_login",
+      callee_module_path: "gunbc.srv3_bmc_credential_resolve",
+      callee_decl_name: "observe_and_resolve_srv3_bmc_credential",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.tools.bmc_onboard",
+      caller_decl_name: "srv1_converge_credential",
+      callee_module_path: "gunbc.tools.bmc_onboard",
+      callee_decl_name: "bmc_converge_credential_selected",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
+    },
+    {
+      caller_module_path: "gunbc.tools.bmc_onboard",
+      caller_decl_name: "srv2_converge_credential",
+      callee_module_path: "gunbc.tools.bmc_onboard",
+      callee_decl_name: "bmc_converge_credential_selected",
+      resource: "Network",
+      occurrences: 1,
+      cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.",
+      dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
     }
   ]
 }
