@@ -11,7 +11,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { spark_serving_admissible_hosts, admit_host_held_by_subject_among }
 import gunbc.spark.v41_engram_row_store { V41PublishedSpan }
-import extdeps.tools.sha256sum { sha256sum_byte_span_program }
+import extdeps.tools.sha256sum { sha256sum_byte_span_program, sha256sum_byte_span_argv_of }
 import gunbc.spark.v41_checkpoint_materialize {
   V41CheckpointPopulation, V41CheckpointPopulationAdmitted, V41CheckpointPopulationRefused,
   v41_checkpoint_population, v41_checkpoint_bytes, v41_checkpoint_subject, v41_required_bytes,
@@ -124,11 +124,29 @@ test fn only_a_group_a_host_is_admitted() -> Bool {
     && (match admit_host_held_by_subject_among(subject: PairServingUnitOn { group: FabricGroupA }, raw: "srv1" as HostIdentity, held: held) { Absent => false  Present { value: _ } => true })
 }
 
-// THE SPAN READ IS EXACTLY THE PLANNED REGION: the fixed program owned by extdeps.tools.sha256sum,
-// with the shard path, offset and length as its positional operands -- nothing spliced into the text.
+// THE SPAN READ PUTS ITS OPERANDS IN THEIR DECLARED SLOTS. The subject is how
+// sha256sum_byte_span_argv_of ASSEMBLES the list, which is not a fact about the serializer -- so the
+// program is a SUPPLIED value here. Forcing the real one to read index 4 would pay a 204k-eval-step
+// render this claim never inspects, which is DESIGN section 3's tell verbatim: a claim dominated by
+// one call whose result shape is all it looks at. The RED is authorable and it is the real defect --
+// any permutation of the seven slots fails this, where length(argv)==7 would stay green through all
+// of them.
+test fn the_span_read_puts_its_operands_in_their_declared_slots() -> Bool {
+  sha256sum_byte_span_argv_of(program: "P", path: "/m/s.safetensors", offset: "664", length: "98305579008")
+    == ["bash", "-c", "P", "bash", "/m/s.safetensors", "664", "98305579008"]
+}
+
+// INHABITANCE: the REAL producer emits that shape, with the REAL serialized program in the slot the
+// claim above supplies. This is the claim that pays the serialization, once, and it asserts the ROUTE
+// and not only the shape -- deleting the integration makes it fail (DESIGN section 3, the pairing
+// obligation: supplying inputs may never remove the last execution of the real path).
 test fn the_span_read_reads_exactly_its_region() -> Bool {
-  let argv = v41_span_read_argv(sp: V41PublishedSpan { tensor: "layers.1.engram.embed.weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr, file_offset: byte_size(count: 664), length: byte_size(count: 98305579008) })
-  argv == ["bash", "-c", sha256sum_byte_span_program as String, "bash", join([v41_checkpoint_directory as String, "/model-00047-of-00048.safetensors"], ""), "664", "98305579008"]
+  v41_span_read_argv(sp: V41PublishedSpan { tensor: "layers.1.engram.embed.weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr, file_offset: byte_size(count: 664), length: byte_size(count: 98305579008) })
+    == sha256sum_byte_span_argv_of(
+         program: sha256sum_byte_span_program,
+         path: join([v41_checkpoint_directory as String, "/model-00047-of-00048.safetensors"], ""),
+         offset: "664",
+         length: "98305579008")
 }
 
 // AN UNPLANNABLE SPAN PLAN IS CARRIED INTO THE RECEIPT, NOT DROPPED: its defects are the line, and the
