@@ -1,6 +1,7 @@
 module gunbc.runner_microvm_lifecycle
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
+import v2.std.optional { Present, Absent }
 import std.disposition { Disposition, SingleAuthority }
 import product.fabric.sanitation {
   CellId, SandboxId, CellReadiness, SanitationFact, SanitationReadback, SanitationObservation,
@@ -10,6 +11,7 @@ import product.fabric.sanitation {
 }
 import gunbc.fabric_cell_converge { fabric_cell_slice_name }
 import gunbc.runner_microvm { RunnerGuestImage }
+import gunbc.runner_guest_image { guest_console_observation_labels, guest_booted_observation_label, runner_listening_observation_label }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, runner_microvm_attempt_unit_name, runner_microvm_attempt_dir,
   runner_microvm_attempt_jail_base,
@@ -189,6 +191,16 @@ fn bring_up_rank(phase: BringUpPhase) -> Int {
     GuestBooted => 2
     RunnerListening => 3
     SlotServing => 4
+  }
+}
+
+fn bring_up_phase_label(phase: BringUpPhase) -> String {
+  match phase {
+    AttemptPrepared => "attempt-prepared"
+    VmmStarted => "vmm-started"
+    GuestBooted => "guest-booted"
+    RunnerListening => "runner-listening"
+    SlotServing => "slot-serving"
   }
 }
 
@@ -579,5 +591,57 @@ fn settle_teardown(readback: AttemptTeardownReadback, trigger: TerminalTrigger) 
     trigger: trigger,
     readiness: readiness,
     record: WriteReadbackSettled { bound: readback.bound, readiness: readiness },
+  }
+}
+
+// ── the guest's reports, read by the host ──────────────────────────────────────────────────────
+
+type GuestBringUpReading
+  = GuestConsoleRead { reached: BringUpPhase, refused: List<BringUpTransition> }
+  | GuestConsoleUnreadable { unit: NonEmptyStr, detail: String }
+  | GuestConsoleNotStarted
+
+fn bring_up_phase_of_observation_label(label: String) -> BringUpPhase? {
+  if label == guest_booted_observation_label() {
+    Present { value: GuestBooted }
+  } else if label == runner_listening_observation_label() {
+    Present { value: RunnerListening }
+  } else {
+    none
+  }
+}
+
+type GuestBringUpFold { at: BringUpPhase, refused: List<BringUpTransition> }
+
+// A REPEATED REPORT OF THE PHASE ALREADY REACHED IS NOT A TRANSITION AND NOT A REFUSAL: the console is
+// a stream, and a listener that prints its readiness line twice has not skipped or reversed anything.
+// Every other report goes through advance_bring_up, and its refusals are kept rather than dropped, so
+// a listening line with no boot line before it is recorded as the out-of-order report it is.
+fn guest_bring_up_from_console(identity: AttemptIdentity, console: String) -> GuestBringUpReading {
+  let folded = fold(
+    guest_console_observation_labels(console: console),
+    init: GuestBringUpFold { at: VmmStarted, refused: [] },
+    f: (acc, label) => match bring_up_phase_of_observation_label(label: label) {
+      Absent => acc
+      Present { value: phase } =>
+        if bring_up_rank(phase: phase) == bring_up_rank(phase: acc.at) {
+          acc
+        } else {
+          match advance_bring_up(live: identity, at: acc.at, event: BringUpEvent { identity: identity, reached: phase }) {
+            BringUpAdvanced { phase: p } => GuestBringUpFold { at: p, refused: acc.refused }
+            refusal => GuestBringUpFold { at: acc.at, refused: list_push(acc.refused, refusal) }
+          }
+        }
+    },
+  )
+  GuestConsoleRead { reached: folded.at, refused: folded.refused }
+}
+
+fn guest_bring_up_text(r: GuestBringUpReading) -> String {
+  match r {
+    GuestConsoleRead { reached: p, refused: rs } =>
+      join(["bring-up=", bring_up_phase_label(phase: p), " refused_reports=", to_string(length(rs))], "")
+    GuestConsoleUnreadable { unit: u, detail: d } => join(["bring-up=unreadable unit=", u as String, " (", d, ")"], "")
+    GuestConsoleNotStarted => "bring-up=not-started"
   }
 }

@@ -92,7 +92,7 @@ not from here.
 |---|---|---|---|
 | 1 | `controller_main_pid_consumer_frontier` | **dispatchable, start here** | **nothing calls `run_controller`.** Until a slot unit execs it as MainPID the module is a library, not a controller. Every other frontier is worth less until this clears. |
 | 2 | `attempt_cleanup_realization_frontier` | dispatchable | no unmount, no delete of credential device / workspace / attempt root, no flush. The **only** host mutation in teardown is the `cgroup.kill` write. |
-| 3 | `guest_bring_up_channel_frontier` | dispatchable, spans host+guest | no guest→host readiness channel above `VmmStarted`. Decides only whether a slot is SERVING, never whether a cell is CLEAN. |
+| 3 | ~~`guest_bring_up_channel_frontier`~~ | dissolved | the controller reads the attempt unit's journal once after the terminal trigger and advances GuestBooted / RunnerListening through `advance_bring_up` under its own identity (`gunbc.runner_microvm_lifecycle guest_bring_up_from_console`); the receipt carries the phase reached. Still decides only whether a slot was SERVING, never whether a cell is CLEAN. |
 | 4 | `slot_network_readings_producer_frontier` | **BLOCKED — security** | no converged slot network on any host; every reading is `Unreadable`, which quarantines. |
 | 5 | `workflow_effect_sequencing_frontier` | **not a lane — a design question** | `std` carries **no** effect-sequencing authority. Bigger than microVM: every effect sequence in the corpus rests on the answer. |
 

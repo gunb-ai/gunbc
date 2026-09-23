@@ -72,6 +72,7 @@ import gunbc.runner_microvm_lifecycle {
   ControllerStart, StartAttempt, StartRecovery, StartQuarantineUnattributedResidue,
   StartRefused, StartBindingRefused, controller_start,
   TerminalTrigger, VmmExited, DeadlineReached, StopRequested,
+  GuestBringUpReading, GuestConsoleUnreadable, GuestConsoleNotStarted, guest_bring_up_from_console,
   UnitExitStatusReading, ExitStatusRead, ExitStatusUnread,
   ObservedStop, ObservedCgroup, ObservedPath, ObservedTeardown,
   AttemptTeardownReadback,
@@ -1106,26 +1107,6 @@ fn await_terminal(unit: NonEmptyStr, polls_remaining: Int) -> TerminalTrigger
 
 // --- the controller ---
 
-// DECLARED FRONTIER (DESIGN 3c). The bring-up progression above VmmStarted -- GuestBooted,
-// RunnerListening, SlotServing -- is decided by gunbc.runner_microvm_lifecycle advance_bring_up from
-// BringUpEvents the GUEST reports, and this controller emits none of them: there is no channel from
-// the guest to the host in this tree yet. What the controller establishes on its own is
-// AttemptPrepared (staging read back) and VmmStarted (the host saw systemd start the unit in the
-// cell's slice), and it then waits for a terminal condition. NAMED CONSUMER of the missing half: this
-// module's run_controller, which will call advance_bring_up once a guest channel delivers a
-// BringUpEvent. TRIGGER: a modeled guest-to-host readiness channel -- the capability, not an
-// artifact -- carrying the runner's own listening report bound to this attempt's invocation id.
-// SUFFICIENT FOR deleting this row. NOT satisfied by the controller polling the host for something
-// the guest alone can know.
-//
-// WHY THAT IS SAFE TO DECLARE RATHER THAN FAKE. The progression decides only whether the slot is
-// SERVING. It never decides whether the cell is CLEAN, so a controller that never advances past
-// VmmStarted runs the job and settles the cell correctly; what it cannot do is tell a guest that
-// failed to boot from one that booted and is idle, and it will reach the deadline in both cases.
-data guest_bring_up_channel_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize run_controller, calling gunbc.runner_microvm_lifecycle advance_bring_up. TRIGGER: a modeled guest-to-host readiness channel carrying the runner's own listening report bound to this attempt's invocation id, so GuestBooted and RunnerListening are guest events the host receives rather than host guesses. SUFFICIENT FOR deleting this row. NOT satisfied by the controller polling host-side facts, which cannot distinguish a guest that failed to boot from one that booted and is idle." as NonEmptyStr,
-)
-
 // THE CONSUMER OF run_controller IS THE microVM SLOT UNIT, THROUGH gunbc.runner_microvm_slot_controller.
 //
 // This module used to carry controller_main_pid_consumer_frontier: nothing called run_controller,
@@ -1166,7 +1147,7 @@ type ControllerOutcome
   | ControllerQuarantinedUnattributedResidue { persisted: CellReadinessStorePersist }
   | ControllerStartNotRecorded { persisted: CellReadinessStorePersist }
   | ControllerRecovered { teardown: TeardownRun }
-  | ControllerRanAttempt { launch: AttemptLaunch, trigger: TerminalTrigger, teardown: TeardownRun }
+  | ControllerRanAttempt { launch: AttemptLaunch, trigger: TerminalTrigger, bring_up: GuestBringUpReading, teardown: TeardownRun }
 
 fn run_controller(
   identity: AttemptIdentity,
@@ -1188,11 +1169,12 @@ fn run_controller(
     StartQuarantineUnattributedResidue { trigger: _, record: r } =>
       ControllerQuarantinedUnattributedResidue { persisted: persist_cell_readiness_write(write: r) }
     StartRecovery { bound: b, trigger: t } => ControllerRecovered { teardown: run_teardown(bound: b, subject: subject, trigger: t) }
-    StartAttempt { bound: b, record: r } => run_started_attempt(bound: b, record: r, plan: plan, subject: subject)
+    StartAttempt { bound: b, record: r } => run_started_attempt(identity: identity, bound: b, record: r, plan: plan, subject: subject)
   }
 }
 
 fn run_started_attempt(
+  identity: AttemptIdentity,
   bound: CellBoundIdentity,
   record: CellReadinessWrite,
   plan: AttemptLaunchPlan,
@@ -1202,12 +1184,13 @@ fn run_started_attempt(
 {
   let persisted = persist_cell_readiness_write(write: record)
   match persisted {
-    StorePersisted { record: _ } => run_launched_attempt(bound: bound, plan: plan, subject: subject)
+    StorePersisted { record: _ } => run_launched_attempt(identity: identity, bound: bound, plan: plan, subject: subject)
     refused => ControllerStartNotRecorded { persisted: refused }
   }
 }
 
 fn run_launched_attempt(
+  identity: AttemptIdentity,
   bound: CellBoundIdentity,
   plan: AttemptLaunchPlan,
   subject: SlotNetworkSanitationSubject,
@@ -1220,12 +1203,51 @@ fn run_launched_attempt(
     plan: plan,
   )
   let trigger = terminal_trigger_of_launch(launch: launch)
+  let bring_up = observe_guest_bring_up(identity: identity, launch: launch)
   ControllerRanAttempt {
     launch: launch,
     trigger: trigger,
+    bring_up: bring_up,
     teardown: run_teardown(bound: bound.attempt, subject: subject, trigger: trigger),
   }
 }
+
+// ── the guest-to-host readiness channel ────────────────────────────────────────────────────────
+//
+// THE CHANNEL IS THE ATTEMPT UNIT'S OWN CONSOLE, AND THE BINDING IS THE HOST'S. gunbc.runner_guest_image
+// puts the guest agent's observation lines (GuestBooted, RunnerStarted, RunnerExited) and the
+// listener's own readiness line on ttyS0, which Firecracker delivers on the VMM's stdout, which
+// systemd records in the journal of the attempt's transient unit. The guest never names its attempt
+// -- a line that did would be the workload forging a key the host must hold -- so the join to THIS
+// attempt is that the line is in THIS unit's journal, and the unit's name is the attempt's
+// (gunbc.runner_microvm_attempt runner_microvm_attempt_unit_name carries the attempt segment), so no
+// other attempt's lines can be read here. Each event is then advanced under the controller's own
+// AttemptIdentity through gunbc.runner_microvm_lifecycle advance_bring_up, so the phase this reading
+// reports is the lifecycle's transition, not a second progression decided beside it.
+//
+// IT IS READ ONCE, AFTER THE TERMINAL TRIGGER. What it decides is attribution, not the teardown: the
+// progression never establishes that a cell is clean (the lifecycle module's rule), so reading it
+// after the VMM is gone loses nothing the teardown needs, and it is what lets the receipt tell a
+// guest that never booted from one that booted and idled to the deadline -- the two cases the
+// deadline alone cannot separate.
+fn observe_guest_bring_up(identity: AttemptIdentity, launch: AttemptLaunch) -> GuestBringUpReading
+  uses net: Network
+{
+  match launch {
+    VmmStarted { unit: u, receipt: _ } => {
+      let log = systemd.Journalctl.UnitLog(unit: u)
+      if !log.success {
+        GuestConsoleUnreadable { unit: u, detail: "journalctl could not read the attempt unit's journal" }
+      } else {
+        guest_bring_up_from_console(identity: identity, console: log.stdout)
+      }
+    }
+    VmmRefusedStaging { verdict: _ } => GuestConsoleNotStarted
+    VmmNotPlanned { plan: _ } => GuestConsoleNotStarted
+    VmmStartFailed { unit: _, detail: _ } => GuestConsoleNotStarted
+  }
+}
+
 
 // A LAUNCH THAT NEVER STARTED STILL HAS A TERMINAL TRIGGER, and it is StopRequested rather than an
 // invented exit: nothing ran, so there is no exit code to report, and the teardown that follows is a
