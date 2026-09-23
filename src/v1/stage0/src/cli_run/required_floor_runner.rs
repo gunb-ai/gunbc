@@ -4444,6 +4444,156 @@ pub(crate) fn floor_value_shape(v: Option<&v1_interpreter::Value>) -> String {
     }
 }
 
+/// One rostered corpus-census claim's eval-step allowance, as `v2.workflow.required_floor`
+/// `corpus_census_eval_step_allowance` derived it. The host holds the numbers it READ; it never
+/// computes `base + per_entry x entry_count` itself.
+#[derive(Debug, Clone)]
+pub(crate) struct CorpusCensusAllowanceReading {
+    pub subject_path: String,
+    pub entry_count: u64,
+    pub budget_steps: u64,
+}
+
+/// THE CORPUS-CENSUS ALLOWANCES, EVALUATED THROUGH THE POLICY FRAME (ruling stern-carp-604
+/// msg_8be78362, 2026-09-23 -- an operator DEFAULT-approval on a 15-minute timeout, not a
+/// deliberated ruling; host shape msg_4ba38011).
+///
+/// For each row of `corpus_census_roster` the host reads the subject's bytes (transport) and
+/// evaluates `corpus_census_eval_step_allowance` in `hermetic`; membership, the YAML parse, the entry
+/// count and the line are the `.dag`'s. Every failure REFUSES the run, typed and naming the identity
+/// and subject -- a rostered identity NEVER falls back to the flat tier budget, because that would
+/// answer with the population's budget exactly when the subject could not be read (DESIGN §5).
+///
+/// THE DERIVATION IS UNCHARGED: it runs here, while the floor plans, before any claim's measured
+/// window opens, so a census claim is charged its own work (its own parse included) and not the
+/// judge's.
+pub(crate) fn floor_corpus_census_allowances(
+    hermetic: &v1_interpreter::InterpContext,
+    workspace_root: &Path,
+) -> Result<std::collections::HashMap<String, CorpusCensusAllowanceReading>, String> {
+    use v1_interpreter::Value;
+    const ROSTER: &str = "v2.workflow.required_floor.corpus_census_roster";
+    const AUTHORITY: &str = "v2.workflow.required_floor.corpus_census_eval_step_allowance";
+    let value = v1_interpreter::run_in_context(hermetic, ROSTER, false)
+        .map_err(|e| format!("{ROSTER}: {e}"))?;
+    let items = floor_decode_list(hermetic, Some(&value)).map_err(|e| format!("{ROSTER}: {e}"))?;
+    let mut out = std::collections::HashMap::new();
+    for item in items {
+        let Value::Record { type_name, fields } = item else {
+            return Err(format!(
+                "{ROSTER}: expected CorpusCensusMember, got {}",
+                floor_value_shape(Some(&item))
+            ));
+        };
+        if !hermetic.sym_eq(*type_name, "CorpusCensusMember") {
+            return Err(format!(
+                "{ROSTER}: expected CorpusCensusMember, got record {}",
+                hermetic.resolve(*type_name)
+            ));
+        }
+        let str_field = |name: &str| -> Result<String, String> {
+            match hermetic.field(fields, name) {
+                Some(Value::Str(s)) => Ok(s.to_string()),
+                other => Err(format!(
+                    "{ROSTER}: {name} must be String, got {}",
+                    floor_value_shape(other)
+                )),
+            }
+        };
+        let identity = str_field("identity")?;
+        let subject_path = str_field("subject_path")?;
+        let refuse = |why: String| -> String {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=CorpusCensusAllowanceUnderived identity={identity} \
+                 subject={subject_path} — {why}. A rostered corpus-census claim is judged only \
+                 against the allowance v2.workflow.required_floor corpus_census_eval_step_allowance \
+                 derives; it never falls back to the flat tier budget."
+            )
+        };
+        if out.contains_key(&identity) {
+            return Err(refuse(
+                "corpus_census_roster names this identity twice".to_string(),
+            ));
+        }
+        let started = std::time::Instant::now();
+        let content = std::fs::read_to_string(workspace_root.join(&subject_path))
+            .map_err(|e| refuse(format!("the subject could not be read: {e}")))?;
+        let args = [
+            (Some("identity".to_string()), str_value(&identity)),
+            (Some("subject_content".to_string()), str_value(&content)),
+        ];
+        let result = v1_interpreter::run_in_context_with_args(hermetic, AUTHORITY, &args, false)
+            .map_err(|e| refuse(format!("{AUTHORITY} did not evaluate: {e}")))?;
+        let Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } = &result
+        else {
+            return Err(refuse(format!(
+                "{AUTHORITY} returned {}, expected CorpusCensusAllowance",
+                floor_value_shape(Some(&result))
+            )));
+        };
+        let reading = match hermetic.resolve(*variant_name).as_str() {
+            "CensusAllowanceDerived" => {
+                let entry_count = match hermetic.field(fields, "entry_count") {
+                    Some(Value::Int(n)) if *n > 0 => *n as u64,
+                    other => {
+                        return Err(refuse(format!(
+                            "CensusAllowanceDerived.entry_count is not a positive Int: {}",
+                            floor_value_shape(other)
+                        )))
+                    }
+                };
+                let budget_steps = match hermetic.field(fields, "budget_steps") {
+                    Some(Value::Record { fields: m, .. }) => match hermetic.field(m, "count") {
+                        Some(Value::Int(n)) if *n > 0 => *n as u64,
+                        other => {
+                            return Err(refuse(format!(
+                                "CensusAllowanceDerived.budget_steps has no positive count: {}",
+                                floor_value_shape(other)
+                            )))
+                        }
+                    },
+                    other => {
+                        return Err(refuse(format!(
+                            "CensusAllowanceDerived.budget_steps is not a Measure: {}",
+                            floor_value_shape(other)
+                        )))
+                    }
+                };
+                CorpusCensusAllowanceReading {
+                    subject_path: subject_path.clone(),
+                    entry_count,
+                    budget_steps,
+                }
+            }
+            "CensusAllowanceRefused" => {
+                let reason = match hermetic.field(fields, "reason") {
+                    Some(Value::Str(s)) => s.to_string(),
+                    other => floor_value_shape(other),
+                };
+                return Err(refuse(reason));
+            }
+            other => {
+                return Err(refuse(format!(
+                    "{AUTHORITY} returned an arm this host has no reading for: {other}"
+                )))
+            }
+        };
+        eprintln!(
+            "[floor-corpus-census] identity={identity} subject={subject_path} entry_count={} \
+             budget_steps={} derive_wall_ms={} charged=false",
+            reading.entry_count,
+            reading.budget_steps,
+            started.elapsed().as_millis()
+        );
+        out.insert(identity, reading);
+    }
+    Ok(out)
+}
+
 // ONE CARRIER, TWO REALIZATIONS -- decoded here rather than assumed to be one of them.
 //
 // `v2.std.collection` declares `List<T> = std.algebra.FreeMonoid<T>`, an `Empty | Cons` chain.
@@ -7001,6 +7151,13 @@ pub fn run_required_floor(
         grandfathered_eval_step_budget,
         new_witness_eval_step_budget
     );
+    // THE CORPUS-CENSUS ARM, EVALUATED AND NOT MIRRORED. A rostered whole-file census claim's budget
+    // is `v2.workflow.required_floor` `corpus_census_eval_step_allowance` over its subject, read here
+    // through the policy frame; the formula has no Rust spelling. It is consulted BEFORE the tiers at
+    // both budget sites below, so a rostered identity is judged only by its allowance, and a
+    // derivation that fails has already refused the run inside the call -- there is no path on which
+    // a rostered identity reaches the flat tier budget.
+    let corpus_census = floor_corpus_census_allowances(&hermetic, &workspace_root())?;
 
     // EXACTLY ONE DECLARED MECHANISM HOLDS A ROW, and when cost debt withholds one it is the
     // holder. `gunbc.quarantine_probe_disposition` states the rule this implements: the question
@@ -7263,7 +7420,9 @@ pub fn run_required_floor(
                 // other edit takes the new-witness one. The decision and the budget are the .dag's;
                 // the host supplies the head bytes and the comparison base it already resolved.
                 // Computed before the claim is built because the identity moves into it.
-                let eval_step_budget = if grandfathered_roster.contains(&identity) {
+                let eval_step_budget = if let Some(census) = corpus_census.get(&identity) {
+                    census.budget_steps
+                } else if grandfathered_roster.contains(&identity) {
                     grandfathered_eval_step_budget
                 } else if cost_debt_roster.contains(&identity) {
                     let base = floor_diff_comparison_readout()?.base().to_string();
@@ -7369,8 +7528,11 @@ pub fn run_required_floor(
                 identity: identity.clone(),
                 disposition: RequiredFloorDisposition::Planned,
             });
-            // THE TIER, DERIVED FROM ROSTER MEMBERSHIP AND FROM NOTHING ELSE.
-            let eval_step_budget = if grandfathered_roster.contains(&identity) {
+            // THE TIER, DERIVED FROM ROSTER MEMBERSHIP AND FROM NOTHING ELSE -- after the corpus-census
+            // arm, whose members are judged by their evaluated allowance alone.
+            let eval_step_budget = if let Some(census) = corpus_census.get(&identity) {
+                census.budget_steps
+            } else if grandfathered_roster.contains(&identity) {
                 grandfathered_eval_step_budget
             } else {
                 new_witness_eval_step_budget
@@ -7385,6 +7547,20 @@ pub fn run_required_floor(
                 cost_line_ms: claim_cost_line_ms,
                 cost_policy: ChangedWitnessCostPolicy::Ordinary,
             });
+        }
+    }
+    // A CORPUS-CENSUS ROW THAT PLANNED NO CLAIM IS STALE, AND STALENESS REFUSES. The allowance was
+    // derived for an identity the floor then never judged -- a renamed or deleted census claim, or
+    // one outside the gate -- and a roster row nothing consumes would keep asserting a line for a
+    // claim that no longer exists (DESIGN §3c).
+    for (identity, census) in &corpus_census {
+        if !claims.iter().any(|c| &c.qualified == identity) {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CorpusCensusRowPlannedNoClaim identity={identity} \
+                 subject={} — v2.workflow.required_floor corpus_census_roster names an identity \
+                 this floor run did not plan; delete the row or restore the claim.",
+                census.subject_path
+            ));
         }
     }
     // Taken BEFORE the declared population is folded in, so it is what the site loop offered and
@@ -8573,16 +8749,29 @@ pub fn run_required_floor(
             // ceiling it lived under, while a NEW row over 100ms-equivalent has never been inside
             // one, and telling an author "reduce it" without saying which line it crossed makes
             // them guess at the target.
-            let (tier_name, tier_remedy) = if grandfathered_roster.contains(&claim.qualified) {
+            let (tier_name, tier_remedy) = if let Some(census) = corpus_census.get(&claim.qualified)
+            {
+                (
+                    format!(
+                        "corpus-census (base + per_entry x {} entries of {}, derived by \
+                         v2.workflow.required_floor corpus_census_eval_step_allowance; over it is a \
+                         per-entry rate excess, since only per_entry grows with the subject)",
+                        census.entry_count, census.subject_path
+                    ),
+                    String::new(),
+                )
+            } else if grandfathered_roster.contains(&claim.qualified) {
                 (
                     "grandfathered (enrolled when the roster was cut; judged against the \
-                     500ms-equivalent budget)",
+                     500ms-equivalent budget)"
+                        .to_string(),
                     String::new(),
                 )
             } else {
                 (
                     "new-witness (not in the grandfathered roster; judged against the \
-                     100ms-equivalent budget for work arriving after the cut)",
+                     100ms-equivalent budget for work arriving after the cut)"
+                        .to_string(),
                     format!(" {new_witness_first_remedy}"),
                 )
             };
@@ -8590,7 +8779,8 @@ pub fn run_required_floor(
                 "{} reached its verdict and performed {} eval steps against a {} budget of {} \
                  (observed cpu_ms={}, wall_ms={}, recorded and NOT gated on). The budget is \
                  declared policy — v2.workflow.required_floor \
-                 claim_eval_step_budget_for_identity, grounded through the pinned calibration \
+                 claim_eval_step_budget_for_identity (for a rostered corpus census, \
+                 corpus_census_eval_step_allowance), grounded through the pinned calibration \
                  fixture in v2.workflow.floor_eval_step_calibration — so this is a statement about \
                  the claim's own work and not about the runner it landed on. Reduce what the \
                  witness reaches for, or enrol it in a lane that declares its own ceiling AND \
