@@ -2717,6 +2717,54 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
   }
 }
 
+// CENSUS GRADE: THE SIGNATURE, NEVER THE BODY. A module outside the compiled closure is read only for
+// what resolution asks of it -- declaration paths and payload kinds -- and the symbol-index fill
+// descends into an Arrow's domain alone. So the census arm builds the same Arrow the admitted arm
+// builds from the same domain, return type and name readers, and omits the ^arrow_body_edge: the
+// body subtree is never lowered, so a body the lowering cannot yet read cannot refuse a module
+// nobody compiles. What it does NOT relax: a signature this arm cannot read still retains, which the
+// census door (v2.compiler.normalized_tree admit_census_tree) refuses exactly as the full door does.
+// Omitting the edge rather than lowering the body tolerantly also removes the three incidental body
+// reads a census root would otherwise feed: the subtree-wide Disj count, the alias scan, and the
+// Arrow the index stores at the fn's path.
+fn body_lower_fn_decl_to_census_arrow(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent => body_lower_wrapper_retained_shell(shell: shell)
+    Present { value: captured } =>
+      match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
+        ParseSubtreeAbsent => body_lower_wrapper_retained_shell(shell: shell)
+        ParseSubtreeFound { captured: param_list } =>
+          match body_lower_domain_from_param_list(param_list: param_list) {
+            Absent => body_lower_wrapper_retained_shell(shell: shell)
+            Present { value: domain } =>
+              match body_lower_return_type_from_fn_captured(captured: captured) {
+                Absent => body_lower_wrapper_retained_shell(shell: shell)
+                Present { value: return_type } =>
+                  match dag_surface_kw_then_ident_from_captured(captured: captured) {
+                    Absent => body_lower_wrapper_retained_shell(shell: shell)
+                    Present { value: fn_name } =>
+                      outcome_accepted(
+                        value: body_lower_fn_decl_named_member_wrap(
+                          arrow: node_lowered_from(
+                            source: shell,
+                            kind: TypeNode { connective: Arrow },
+                            children: [
+                              Edge { label: Positional, target: domain },
+                              Edge { label: Positional, target: return_type },
+                              Edge { label: Positional, target: return_type }
+                            ]
+                          ),
+                          fn_name: fn_name,
+                          source: shell
+                        )
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
 fn body_lower_fn_decl_to_arrow_admitted(shell: Node, captured: Node) -> Outcome<Node> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
     ParseSubtreeAbsent => body_lower_wrapper_retained_shell(shell: shell)

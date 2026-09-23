@@ -1,0 +1,252 @@
+module v2.test.claim.normalize.census_mode
+
+import v2.compiler.normalize { normalize, normalize_census }
+import v2.compiler.normalized_tree {
+  CensusTree,
+  NormalizedTree,
+  census_tree_binding_source,
+  normalized_tree_roots_to_binding_sources
+}
+import v2.compiler.resolution_provenance {
+  ProvenanceAmbiguous,
+  ProvenanceOwnerless,
+  ProvenanceResolved,
+  ProvenanceUnbound,
+  ReferenceSite,
+  module_roster_from_roots,
+  resolve_reference_provenance
+}
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.test.compiler.pipeline.stage_bridge { pipeline_parse_source }
+import v2.std.namespace_alias { ModuleBindingSource }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
+import v2.std.node_query { find_arrow_body_child }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid }
+
+// CENSUS MODE'S CONTROLS (gen-two door, PR-b). A module outside the compiled closure is normalized to
+// census grade -- every declaration, no fn body -- so a body the lowering cannot yet read cannot
+// refuse a module nobody compiles, while a closure member's reference into it still answers with the
+// identity whole-root ingest gives. The provider below carries the refusing body: an else-less `if`,
+// which the full fold refuses with body_lowering_reason_else_less_if_unlowered. Its TWIN differs
+// only in that body, so whole-root ingest can run over the twin and census mode over the refusing
+// original, and the two answers are compared at identity grain.
+
+data census_provider_refusing: String = "module v2.test.census.provider\n\ntype Point {\n  x: Int\n}\n\ntype Shape = Circle | Square\n\nfn guard(x: Bool) -> Int {\n  if x {\n    return 1\n  }\n  2\n}\n"
+
+data census_provider_twin: String = "module v2.test.census.provider\n\ntype Point {\n  x: Int\n}\n\ntype Shape = Circle | Square\n\nfn guard(x: Bool) -> Int {\n  2\n}\n"
+
+data census_consumer: String = "module v2.test.census.consumer\n\nfn use_it(p: Point) -> Shape {\n  Circle\n}\n"
+
+// The declaration census never admits what did not parse: an unterminated type block.
+data census_provider_unparseable: String = "module v2.test.census.provider\n\ntype Point {\n  x: Int\n"
+
+data census_consumer_qn: QualifiedName = qualified_name_from_dotted_string(dotted: "v2.test.census.consumer")
+
+fn census_of(source: String) -> Outcome<CensusTree> {
+  bind_outcome(
+    o: pipeline_parse_source(source: source, file: ^census_mode_probe),
+    f: fn(tree) { normalize_census(parse_tree: tree) }
+  )
+}
+
+fn full_of(source: String) -> Outcome<NormalizedTree> {
+  bind_outcome(
+    o: pipeline_parse_source(source: source, file: ^census_mode_probe),
+    f: fn(tree) { normalize(parse_tree: tree) }
+  )
+}
+
+fn census_index(consumer: NormalizedTree, provider: CensusTree) -> SymbolIndex {
+  symbol_index_fill_module_roots(
+    index: empty_symbol_index(),
+    roots: Cons {
+      head: census_tree_binding_source(t: provider),
+      tail: normalized_tree_roots_to_binding_sources(roots: Cons { head: consumer, tail: Empty })
+    }
+  )
+}
+
+fn whole_root_index(consumer: NormalizedTree, provider: NormalizedTree) -> SymbolIndex {
+  symbol_index_fill_module_roots(
+    index: empty_symbol_index(),
+    roots: normalized_tree_roots_to_binding_sources(
+      roots: Cons { head: provider, tail: Cons { head: consumer, tail: Empty } }
+    )
+  )
+}
+
+fn census_answer(index: SymbolIndex, roster_roots: FreeMonoid<Node>, spelling: String) -> Optional<QualifiedName> {
+  match resolve_reference_provenance(
+    index: index,
+    roster: module_roster_from_roots(roots: roster_roots),
+    site: ReferenceSite {
+      position: census_consumer_qn,
+      spelling: qualified_name_from_dotted_string(dotted: spelling)
+    }
+  ) {
+    ProvenanceResolved { site: _, target: target, owner: _ } => Present { value: target }
+    ProvenanceOwnerless { site: _, target: _ } => Absent
+    ProvenanceAmbiguous { site: _ } => Absent
+    ProvenanceUnbound { site: _ } => Absent
+  }
+}
+
+fn same_present_answer(a: Optional<QualifiedName>, b: Optional<QualifiedName>, expected: String) -> Bool {
+  match a {
+    Absent => false
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => (x == y) && (x == qualified_name_from_dotted_string(dotted: expected))
+      }
+  }
+}
+
+// ROUTE PRECONDITION: the full fold really refuses the provider, and for the cause the census arm
+// exists to avoid -- otherwise the census claims below would pass for a provider nothing refuses.
+test fn full_fold_refuses_the_provider_body_holds() -> Bool {
+  match full_of(source: census_provider_refusing) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal_reason(d: d) == ^body_lowering_reason_else_less_if_unlowered
+  }
+}
+
+test fn census_admits_the_module_whose_body_refuses_holds() -> Bool {
+  match census_of(source: census_provider_refusing) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// CONTROL 2: a module whose declarations failed to parse is never admitted at census grade.
+test fn census_refuses_a_module_that_did_not_parse_holds() -> Bool {
+  match census_of(source: census_provider_unparseable) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// A variant arm is indexed twice -- at its Disj path and, when unique in the module, at its alias
+// path -- so its identity is compared at index grain; a bare arm spelling hits both entries and
+// answers without a single target in EITHER mode, so for it the claim is that the two modes agree.
+fn both_declare(census: SymbolIndex, whole: SymbolIndex, path: String) -> Bool {
+  let qn = qualified_name_from_dotted_string(dotted: path)
+  match symbol_index_lookup(index: census, qualified_path: qn) {
+    Absent => false
+    Present { value: _ } =>
+      match symbol_index_lookup(index: whole, qualified_path: qn) {
+        Absent => false
+        Present { value: _ } => true
+      }
+  }
+}
+
+fn same_answer(a: Optional<QualifiedName>, b: Optional<QualifiedName>) -> Bool {
+  match a {
+    Absent =>
+      match b {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => x == y
+      }
+  }
+}
+
+// CONTROL 1, COMPLETENESS: a bare record, variant-type and fn reference, and a variant arm, from the closure
+// member resolves to the SAME declaring path under census mode (refusing provider) as under
+// whole-root ingest (its lowerable twin). The RED arm below it removes the provider from the census
+// index and must lose the answer, so the agreement is the census root's doing.
+test fn bare_references_resolve_to_the_whole_root_identity_under_census_holds() -> Bool {
+  match full_of(source: census_consumer) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: consumer, diagnostics: _ } =>
+      match census_of(source: census_provider_refusing) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: census_provider, diagnostics: _ } =>
+          match full_of(source: census_provider_twin) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: twin, diagnostics: _ } =>
+              let roster = Cons { head: twin.root, tail: Cons { head: consumer.root, tail: Empty } }
+              let census = census_index(consumer: consumer, provider: census_provider)
+              let whole = whole_root_index(consumer: consumer, provider: twin)
+              same_present_answer(
+                a: census_answer(index: census, roster_roots: roster, spelling: "Point"),
+                b: census_answer(index: whole, roster_roots: roster, spelling: "Point"),
+                expected: "v2.test.census.provider.Point"
+              )
+                && same_present_answer(
+                     a: census_answer(index: census, roster_roots: roster, spelling: "Shape"),
+                     b: census_answer(index: whole, roster_roots: roster, spelling: "Shape"),
+                     expected: "v2.test.census.provider.Shape"
+                   )
+                && both_declare(census: census, whole: whole, path: "v2.test.census.provider.Shape.Circle")
+                && both_declare(census: census, whole: whole, path: "v2.test.census.provider.Circle")
+                && same_answer(
+                     a: census_answer(index: census, roster_roots: roster, spelling: "Circle"),
+                     b: census_answer(index: whole, roster_roots: roster, spelling: "Circle")
+                   )
+                && same_present_answer(
+                     a: census_answer(index: census, roster_roots: roster, spelling: "guard"),
+                     b: census_answer(index: whole, roster_roots: roster, spelling: "guard"),
+                     expected: "v2.test.census.provider.guard"
+                   )
+          }
+      }
+  }
+}
+
+test fn without_the_census_root_the_reference_is_unbound_RED() -> Bool {
+  match full_of(source: census_consumer) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: consumer, diagnostics: _ } =>
+      let alone = symbol_index_fill_module_roots(
+        index: empty_symbol_index(),
+        roots: normalized_tree_roots_to_binding_sources(roots: Cons { head: consumer, tail: Empty })
+      )
+      match census_answer(
+        index: alone,
+        roster_roots: Cons { head: consumer.root, tail: Empty },
+        spelling: "Point"
+      ) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+}
+
+// CENSUS GRADE CARRIES THE SIGNATURE AND NOT THE BODY: the Arrow the index stores at the fn's path
+// has no body edge, which is what keeps a non-member's body out of the Disj and alias scans and out
+// of the stored index entry.
+test fn census_fn_entry_carries_no_body_holds() -> Bool {
+  match census_of(source: census_provider_refusing) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: provider, diagnostics: _ } =>
+      let index = symbol_index_fill_module_roots(
+        index: empty_symbol_index(),
+        roots: Cons { head: census_tree_binding_source(t: provider), tail: Empty }
+      )
+      match symbol_index_lookup(
+        index: index,
+        qualified_path: qualified_name_from_dotted_string(dotted: "v2.test.census.provider.guard")
+      ) {
+        Absent => false
+        Present { value: entry } =>
+          match find_arrow_body_child(root: entry) {
+            Accepted { value: _, diagnostics: _ } => false
+            Rejected { diagnostics: _ } => true
+          }
+      }
+  }
+}
+
