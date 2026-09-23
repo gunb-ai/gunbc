@@ -484,9 +484,9 @@ fn yaml_flow_sequence(v: String) -> YamlScalarResult {
 
 // NO QUOTE, FLOW INDICATOR, `:` OR `#` ANYWHERE INSIDE THE BRACKETS: then no entry can hold a flow
 // indicator, a mapping indicator or a comment, and that is decided once for the sequence rather than
-// again for every entry. Each entry is then read by its first character alone; one that cannot open
-// a plain scalar here (an empty entry, an anchor, an alias, a tag) comes back as the join sentinel
-// and the sequence is read again entry by entry, which is where the refusal and its reason are made.
+// again for every entry. Each entry is then read by its first character alone, and its reading is
+// typed: an entry that cannot open a plain scalar here (an empty entry, an anchor, an alias, a tag)
+// is a refusal with its reason, never a value standing in for one.
 fn yaml_flow_inner_is_plain(inner: String) -> Bool {
   if string_contains(s: inner, pattern: "[") { false }
   else if string_contains(s: inner, pattern: "]") { false }
@@ -497,28 +497,42 @@ fn yaml_flow_inner_is_plain(inner: String) -> Bool {
 }
 
 fn yaml_flow_plain_sequence(inner: String) -> YamlScalarResult {
-  let entries = split(s: inner, delimiter: ",")
-  let elements = map(entries, e => yaml_flow_plain_entry(e: trim(e)))
-  if any(elements, x => match x { YamlString { value: t } => t == yaml_line_join_sentinel  _ => false }) {
-    yaml_flow_entries(entries: entries, index: 0, acc: [])
+  let reads = map(split(s: inner, delimiter: ","), e => yaml_flow_plain_entry(e: trim(e)))
+  let elements = flat_map(reads, r => match r { ReadYamlScalar { value: v } => [v]  YamlScalarRefused { reason: _ } => [] })
+  if (elements |> count) != (reads |> count) {
+    yaml_first_scalar_refusal(reads: reads, index: 0)
   } else {
     ReadYamlScalar { value: YamlSequence { elements: elements } }
   }
 }
 
-fn yaml_flow_plain_entry(e: String) -> YamlValue {
+fn yaml_first_scalar_refusal(reads: List<YamlScalarResult>, index: Int) -> YamlScalarResult {
+  match get(xs: reads, index: index) {
+    Absent => YamlScalarRefused { reason: "a flow sequence counted fewer accepted entries than entries but no entry reading refused; the sequence's reading is inconsistent and is refused rather than passed" }
+    Present { value: r } =>
+      match r {
+        YamlScalarRefused { reason: why } => YamlScalarRefused { reason: why }
+        ReadYamlScalar { value: _ } => yaml_first_scalar_refusal(reads: reads, index: index + 1)
+      }
+  }
+}
+
+// One entry of a sequence already known to hold no quote, flow indicator, `:` or `#`: its first
+// character decides it. An entry that cannot open a plain scalar here is read by yaml_flow_entry,
+// which is the reading that makes that refusal and says why.
+fn yaml_flow_plain_entry(e: String) -> YamlScalarResult {
   if e == "" {
-    YamlString { value: yaml_line_join_sentinel }
+    yaml_flow_entry(e: e)
   } else {
     match map_get(yaml_value_start_class, substring(s: e, start: 0, end: 1)) {
-      Absent => YamlString { value: e }
+      Absent => ReadYamlScalar { value: YamlString { value: e } }
       Present { value: cls } =>
         if cls != 1 {
-          yaml_resolve_plain(s: e)
+          ReadYamlScalar { value: yaml_resolve_plain(s: e) }
         } else if yaml_indicator_opens_plain(v: e) {
-          yaml_resolve_plain(s: e)
+          ReadYamlScalar { value: yaml_resolve_plain(s: e) }
         } else {
-          YamlString { value: yaml_line_join_sentinel }
+          yaml_flow_entry(e: e)
         }
     }
   }
@@ -659,8 +673,8 @@ fn yaml_literal_general(chomping: String, cont: String, col: Int, lines: List<St
 //
 // A BLOCK IS SPLIT INTO ITS ENTRIES WITH ONE SPLIT, NOT READ LINE BY LINE. `text` is a block whose
 // first line starts at column `n` (with that indentation already removed) and whose later lines
-// keep theirs. Every line break followed by `n` spaces and a non-space is first marked with a
-// sentinel that cannot occur in an accepted document (a refused control character), so splitting at
+// keep theirs. Every line break followed by `n` spaces and a non-space is first marked with
+// yaml_line_join_mark, a character that cannot occur in the document's source text, so splitting at
 // the marks yields one chunk per line at column `n`, with the deeper lines left inside their chunk
 // exactly as written. A chunk that is an
 // empty line, a full-line comment, or (in a mapping) a sequence item at the mapping's own column is
@@ -674,13 +688,19 @@ type YamlBlockResult
   = YamlBlockParsed { value: YamlValue }
   | YamlBlockRefused { line: Int, reason: String }
 
-type YamlEntryRead {
-  entry: YamlKeyValue
-  refusal: String
-  line: Int
-}
+// ONE ENTRY'S READING: the pair a mapping holds, or the refusal with its line (an offset from the
+// entry's first line) and reason. A refusal is an arm of its own and never a value: no key, string or
+// sentinel stands for "refused", so no accepted document can be mistaken for a refusing one or the
+// reverse.
+type YamlEntryRead
+  = YamlEntryAccepted { entry: YamlKeyValue }
+  | YamlEntryRefused { line: Int, reason: String }
 
-data yaml_line_join_sentinel: String = from_code_point(cp: 1)
+// THE MARK IS SOURCE-TEXT PUNCTUATION AND NOTHING ELSE. It is inserted into, and split out of, the
+// text of one block, and the document it came from cannot already hold it (ingest_yaml_source refuses
+// U+0001 anywhere). It never appears in a value, a key or a refusal: a decoded scalar may hold U+0001
+// (a double-quoted `\x01`), and that is ordinary content.
+data yaml_line_join_mark: String = from_code_point(cp: 1)
 
 fn yaml_is_ignorable_line(l: String) -> Bool {
   let t = trim(l)
@@ -748,7 +768,7 @@ fn yaml_root_needs_merge(text: String, seq: Bool) -> Bool {
 
 // THE MARKS OF A BLOCK AT INDENTATION `n` ARE A FUNCTION OF `n` ALONE, so they are built once per
 // indentation a document uses rather than once per block. `nl` is a line break followed by `n`
-// spaces; `marked` is the same break behind the join sentinel; `deeper`, `comment` and `item` are
+// spaces; `marked` is the same break behind the line-join mark; `deeper`, `comment` and `item` are
 // the three things that can follow `nl` and still belong to the chunk above.
 type YamlIndentMarks {
   nl: String
@@ -761,7 +781,7 @@ type YamlIndentMarks {
 
 fn yaml_indent_marks(n: Int) -> YamlIndentMarks {
   let nl = substring(s: yaml_newline_spaces, start: 0, end: n + 1)
-  let marked = concat(yaml_line_join_sentinel, nl)
+  let marked = concat(yaml_line_join_mark, nl)
   YamlIndentMarks { nl: nl, marked: marked, deeper: concat(nl, " "), marked_deeper: concat(marked, " "), comment: concat(nl, "#"), item: concat(nl, "-") }
 }
 
@@ -800,12 +820,9 @@ fn yaml_one_chunk_block(text: String, n: Int, seq: Bool, base: Int) -> YamlBlock
 }
 
 fn yaml_single_entry_block(c: String, n: Int, base: Int) -> YamlBlockResult {
-  let e = yaml_entry(c: c, n: n)
-  if e.key != yaml_line_join_sentinel {
-    YamlBlockParsed { value: YamlMapping { entries: [e] } }
-  } else {
-    let r = yaml_entry_read(c: c, n: n)
-    if r.refusal != "" { YamlBlockRefused { line: base + r.line, reason: r.refusal } } else { YamlBlockParsed { value: YamlMapping { entries: [r.entry] } } }
+  match yaml_entry(c: c, n: n) {
+    YamlEntryAccepted { entry: e } => YamlBlockParsed { value: YamlMapping { entries: [e] } }
+    YamlEntryRefused { line: l, reason: why } => YamlBlockRefused { line: base + l, reason: why }
   }
 }
 
@@ -813,70 +830,66 @@ fn yaml_line_count(c: String) -> Int {
   split(s: c, delimiter: "\n") |> count
 }
 
-// WHETHER A BLOCK'S KEYS ARE ADMISSIBLE IS A QUESTION ABOUT ITS KEY SEQUENCE AND NOTHING ELSE, so it
-// is asked of that sequence, spelled as one string, and the sequences a document repeats -- every
-// step with the same fields, every `with:` of the same action -- are one question. A refused entry's
-// key is the join sentinel, which no accepted key can contain, so the same verdict answers whether
-// an entry was refused and whether a key repeats.
+// A BLOCK'S READINGS ARE TYPED, AND A REFUSAL IS FOUND BY COUNTING THE ACCEPTED ONES. Each chunk's
+// reading is either accepted or refused; the accepted pairs are the mapping, and a block with fewer
+// pairs than chunks refused somewhere, which the walk below locates in the readings already made.
+//
+// WHETHER THE KEYS ARE ADMISSIBLE IS A QUESTION ABOUT THE KEY SEQUENCE AND NOTHING ELSE, so it is
+// asked of that sequence spelled as one string, and the sequences a document repeats -- every step
+// with the same fields, every `with:` of the same action -- are one question.
 fn yaml_map_block(chunks: List<String>, n: Int, base: Int) -> YamlBlockResult {
-  let entries = map(chunks, c => yaml_entry(c: c, n: n))
-  if yaml_key_sequence_is_clean(keys: join(map(entries, e => e.key), yaml_key_separator), count: entries |> count) {
+  let reads = map(chunks, c => yaml_entry(c: c, n: n))
+  let entries = flat_map(reads, r => match r { YamlEntryAccepted { entry: e } => [e]  YamlEntryRefused { line: _, reason: _ } => [] })
+  if (entries |> count) != (chunks |> count) {
+    yaml_first_entry_refusal(chunks: chunks, reads: reads, index: 0, line: base)
+  } else if yaml_key_sequence_is_clean(keys: join(map(entries, e => e.key), yaml_key_separator), count: entries |> count) {
     YamlBlockParsed { value: YamlMapping { entries: entries } }
   } else {
-    yaml_map_block_keys(chunks: chunks, entries: entries, n: n, base: base)
+    yaml_map_block_keys(chunks: chunks, entries: entries, base: base)
   }
 }
 
-// U+0003 separates the keys, and U+0001 is the refused entry's key. A decoded key may itself hold
-// either (a double-quoted `\x03` or `\x01`); the spelled sequence then either splits into more keys
-// than the block has or holds the sentinel, and the block's keys are read one by one below instead of
-// being trusted to the spelling.
+// U+0003 separates the keys. A decoded key may itself hold it (a double-quoted `\x03`), and the
+// spelled sequence then splits into more keys than the block has; that block's keys are then read one
+// by one by yaml_map_block_keys rather than trusted to the spelling.
 data yaml_key_separator: String = from_code_point(cp: 3)
 
-// True exactly when the spelled keys hold neither control character, split back into `count` keys,
-// and no key repeats. Every other sequence is decided key by key by yaml_map_block_keys.
+// True exactly when the spelled keys split back into `count` keys and no key repeats.
 fn yaml_key_sequence_is_clean(keys: String, count: Int) -> Bool {
-  if string_contains(s: keys, pattern: yaml_line_join_sentinel) {
+  let ks = split(s: keys, delimiter: yaml_key_separator)
+  if (ks |> count) != count {
     false
   } else {
-    let ks = split(s: keys, delimiter: yaml_key_separator)
-    if (ks |> count) != count {
-      false
-    } else {
-      (map_keys(fold(ks, init: empty_map(), f: (m, k) => map_insert(m, k, true))) |> count) == count
-    }
+    (map_keys(fold(ks, init: empty_map(), f: (m, k) => map_insert(m, k, true))) |> count) == count
   }
 }
 
-fn yaml_map_block_keys(chunks: List<String>, entries: List<YamlKeyValue>, n: Int, base: Int) -> YamlBlockResult {
+fn yaml_map_block_keys(chunks: List<String>, entries: List<YamlKeyValue>, base: Int) -> YamlBlockResult {
   let keys = fold(entries, init: empty_map(), f: (m, e) => map_insert(m, e.key, true))
-  if map_contains_key(keys, yaml_line_join_sentinel) {
-    yaml_first_entry_refusal(chunks: chunks, index: 0, line: base, n: n)
-  } else if (map_keys(keys) |> count) != (entries |> count) {
+  if (map_keys(keys) |> count) != (entries |> count) {
     yaml_duplicate_key_refusal(chunks: chunks, entries: entries, index: 0, line: base, seen: empty_map())
   } else {
     YamlBlockParsed { value: YamlMapping { entries: entries } }
   }
 }
 
-// THE REFUSAL WALK RE-READS THE CHUNKS RATHER THAN BEING HANDED THE READS. The accepted path --
-// every chunk in every committed workflow -- would otherwise carry a whole list of `YamlEntryRead`
-// it never inspects, built one per entry, so that this walk could exist for the documents that
-// refuse. Re-reading costs one parse of each chunk up to the first refusal, on a path that is about
-// to refuse anyway (DESIGN section 2: the cost belongs where the work is demanded).
-fn yaml_first_entry_refusal(chunks: List<String>, index: Int, line: Int, n: Int) -> YamlBlockResult {
-  match get(xs: chunks, index: index) {
-    Absent => YamlBlockRefused { line: line, reason: "a mapping key decoded to U+0001, which this reader reserves as its line-join sentinel; such a key is outside the supported subset" }
-    Present { value: c } => yaml_first_entry_refusal_at(chunks: chunks, index: index, line: line, n: n, c: c, r: yaml_entry_read(c: c, n: n))
+// THE FIRST REFUSED READING, LOCATED. `line` accumulates the lines of the chunks before it, so the
+// refusal's own offset becomes an offset from the block's first line. The readings are the ones the
+// block already made -- nothing is read twice -- and a count that promised a refusal the walk does not
+// find refuses too, by name, rather than passing the block.
+fn yaml_first_entry_refusal(chunks: List<String>, reads: List<YamlEntryRead>, index: Int, line: Int) -> YamlBlockResult {
+  match get(xs: reads, index: index) {
+    Absent => YamlBlockRefused { line: line, reason: "a mapping counted fewer accepted entries than chunks but no entry reading refused; the block's reading is inconsistent and is refused rather than passed" }
+    Present { value: r } =>
+      match r {
+        YamlEntryRefused { line: l, reason: why } => YamlBlockRefused { line: line + l, reason: why }
+        YamlEntryAccepted { entry: _ } => yaml_first_entry_refusal(chunks: chunks, reads: reads, index: index + 1, line: line + yaml_line_count(c: yaml_chunk_at(chunks: chunks, index: index)))
+      }
   }
 }
 
-fn yaml_first_entry_refusal_at(chunks: List<String>, index: Int, line: Int, n: Int, c: String, r: YamlEntryRead) -> YamlBlockResult {
-  if r.refusal != "" {
-    YamlBlockRefused { line: line + r.line, reason: r.refusal }
-  } else {
-    yaml_first_entry_refusal(chunks: chunks, index: index + 1, line: line + yaml_line_count(c: c), n: n)
-  }
+fn yaml_chunk_at(chunks: List<String>, index: Int) -> String {
+  match get(xs: chunks, index: index) { Present { value: c } => c  Absent => "" }
 }
 
 fn yaml_duplicate_key_refusal(chunks: List<String>, entries: List<YamlKeyValue>, index: Int, line: Int, seen: Map<String, Bool>) -> YamlBlockResult {
@@ -886,21 +899,31 @@ fn yaml_duplicate_key_refusal(chunks: List<String>, entries: List<YamlKeyValue>,
       if map_contains_key(seen, e.key) {
         YamlBlockRefused { line: line, reason: join(["duplicate mapping key `", e.key, "` (YAML requires the keys of a mapping to be unique)"], "") }
       } else {
-        yaml_duplicate_key_refusal(chunks: chunks, entries: entries, index: index + 1, line: line + yaml_line_count(c: match get(xs: chunks, index: index) { Present { value: c } => c  Absent => "" }), seen: map_insert(seen, e.key, true))
+        yaml_duplicate_key_refusal(chunks: chunks, entries: entries, index: index + 1, line: line + yaml_line_count(c: yaml_chunk_at(chunks: chunks, index: index)), seen: map_insert(seen, e.key, true))
       }
   }
 }
 
-// ONE PASS TO THE ELEMENTS, AND THE REFUSAL WALK RE-READS. A refused item yields the join sentinel
-// as a string, which no accepted scalar can hold -- the reader refuses U+0001 anywhere in a document
-// -- so the accepted path never builds a second list of results to inspect, exactly as
-// `yaml_map_block` detects a refused entry from the key it produced.
+// A SEQUENCE THE SAME WAY: typed readings, the accepted values are the elements, and a shortfall is
+// located in the readings already made.
 fn yaml_seq_block(chunks: List<String>, n: Int, base: Int) -> YamlBlockResult {
-  let elements = map(chunks, c => yaml_item_value(c: c, n: n))
-  if any(elements, e => match e { YamlString { value: v } => v == yaml_line_join_sentinel  _ => false }) {
-    yaml_first_item_refusal(chunks: chunks, index: 0, line: base, n: n)
+  let reads = map(chunks, c => yaml_item_read(c: c, n: n))
+  let elements = flat_map(reads, r => match r { YamlBlockParsed { value: v } => [v]  YamlBlockRefused { line: _, reason: _ } => [] })
+  if (elements |> count) != (chunks |> count) {
+    yaml_first_item_refusal(chunks: chunks, reads: reads, index: 0, line: base)
   } else {
     YamlBlockParsed { value: YamlSequence { elements: elements } }
+  }
+}
+
+fn yaml_first_item_refusal(chunks: List<String>, reads: List<YamlBlockResult>, index: Int, line: Int) -> YamlBlockResult {
+  match get(xs: reads, index: index) {
+    Absent => YamlBlockRefused { line: line, reason: "a sequence counted fewer accepted items than chunks but no item reading refused; the block's reading is inconsistent and is refused rather than passed" }
+    Present { value: r } =>
+      match r {
+        YamlBlockRefused { line: l, reason: why } => YamlBlockRefused { line: line + l, reason: why }
+        YamlBlockParsed { value: _ } => yaml_first_item_refusal(chunks: chunks, reads: reads, index: index + 1, line: line + yaml_line_count(c: yaml_chunk_at(chunks: chunks, index: index)))
+      }
   }
 }
 
@@ -908,17 +931,13 @@ fn yaml_seq_block(chunks: List<String>, n: Int, base: Int) -> YamlBlockResult {
 // line up to the first `: ` -- `- name`, `- uses` -- and by whether a `: ` follows, and nothing
 // else, so that is the whole identity of the decision and the heads a sequence repeats are one
 // question. Every other item is read by yaml_item, which is the reading that also makes the refusals.
-fn yaml_item_value(c: String, n: Int) -> YamlValue {
+fn yaml_item_read(c: String, n: Int) -> YamlBlockResult {
   let f = join(split(s: c, delimiter: "\n").take(n: 1), "")
   let head = join(split(s: f, delimiter: ": ").take(n: 1), "")
-  let r = if yaml_item_head_opens_mapping(head: head, has_sep: head != f) {
+  if yaml_item_head_opens_mapping(head: head, has_sep: head != f) {
     yaml_block(text: substring(s: c, start: 2, end: c.length()), n: n + 2, seq: false, base: 0)
   } else {
     yaml_item(c: c, n: n)
-  }
-  match r {
-    YamlBlockParsed { value: v } => v
-    YamlBlockRefused { line: _, reason: _ } => YamlString { value: yaml_line_join_sentinel }
   }
 }
 
@@ -939,18 +958,6 @@ fn yaml_item_head_opens_mapping(head: String, has_sep: Bool) -> Bool {
 }
 
 data yaml_item_body_nonplain_starts: String = concat(yaml_value_special_starts, " \t")
-
-fn yaml_first_item_refusal(chunks: List<String>, index: Int, line: Int, n: Int) -> YamlBlockResult {
-  match get(xs: chunks, index: index) {
-    Absent => YamlBlockRefused { line: line, reason: "a sequence item was refused" }
-    Present { value: c } =>
-      match yaml_item(c: c, n: n) {
-        YamlBlockRefused { line: l, reason: why } => YamlBlockRefused { line: line + l, reason: why }
-        YamlBlockParsed { value: _ } =>
-          yaml_first_item_refusal(chunks: chunks, index: index + 1, line: line + yaml_line_count(c: c), n: n)
-      }
-  }
-}
 
 // First characters that do not open an ordinary plain scalar in block context: quotes, flow and
 // block-scalar indicators, anchors, aliases, tags, reserved indicators, a comment, and `-`, `?`,
@@ -1005,42 +1012,40 @@ fn yaml_key_leaves_fast_path(k: String) -> Bool {
 }
 
 // TWO READINGS OF AN ENTRY CHUNK, ONE OF THEM AN ACCELERATOR. yaml_entry_general is THE reading: it
-// decides every entry, refusal and line included. yaml_entry is the accepted-path walk every
-// mapping pays: it returns the pair a mapping holds and no record around it, reads the three
-// shapes a workflow is made of -- `key: plain` on one line, `key:` over a nested block, and
-// `key: |` over a literal -- and hands every other chunk to the general reading. It never decides a
-// refusal: a chunk it cannot accept comes back under the join-sentinel key, and the refusal walk
-// then reads that block again through the general reading, which is why the two never disagree
-// about WHERE a document refuses or WHY (DESIGN section 2: the cost belongs where the work is
-// demanded, and only a refusing block demands the reason).
+// decides every entry, refusal and line included. yaml_entry is the walk every mapping pays: it reads
+// the three shapes a workflow is made of -- `key: plain` on one line, `key:` over a nested block, and
+// `key: |` over a literal -- and hands every other chunk to the general reading. It decides no
+// refusal of its own: the one-line tests only route, and its nested and literal arms call the same
+// readers the general reading would call with the same arguments, so a refusal it returns is the one
+// the general reading makes, typed, with its line and reason.
 //
 // The one-line tests only route. Exactly one `: `, no continuation, no `#` anywhere (so no comment),
 // no final `:`, a key that starts ordinarily and is not a core-schema word, and a value that does
 // not start with an indicator.
-fn yaml_entry(c: String, n: Int) -> YamlKeyValue {
+fn yaml_entry(c: String, n: Int) -> YamlEntryRead {
   if string_contains(s: c, pattern: "\n") {
     yaml_entry_lines(c: c, n: n, f: join(split(s: c, delimiter: "\n").take(n: 1), ""))
   } else {
     let parts = split(s: c, delimiter: ": ")
     if (parts |> count) != 2 {
-      yaml_entry_general(c: c, n: n).entry
+      yaml_entry_general(c: c, n: n)
     } else if string_contains(s: c, pattern: "#") {
-      yaml_entry_general(c: c, n: n).entry
+      yaml_entry_general(c: c, n: n)
     } else {
       let v = join(parts.skip(n: 1), "")
       let k = join(parts.take(n: 1), "")
       if ends_with(s: v, suffix: ":") || yaml_key_leaves_fast_path(k: k) {
-        yaml_entry_general(c: c, n: n).entry
+        yaml_entry_general(c: c, n: n)
       } else {
         match map_get(yaml_value_start_class, substring(s: v, start: 0, end: 1)) {
-          Absent => YamlKeyValue { key: k, value: YamlString { value: v } }
+          Absent => YamlEntryAccepted { entry: YamlKeyValue { key: k, value: YamlString { value: v } } }
           Present { value: cls } =>
             if cls == 1 {
               yaml_entry_indicator_value(c: c, n: n, k: k, v: v)
             } else if cls == 2 {
-              YamlKeyValue { key: k, value: yaml_resolve_numeric(s: v) }
+              YamlEntryAccepted { entry: YamlKeyValue { key: k, value: yaml_resolve_numeric(s: v) } }
             } else {
-              YamlKeyValue { key: k, value: yaml_resolve_plain(s: v) }
+              YamlEntryAccepted { entry: YamlKeyValue { key: k, value: yaml_resolve_plain(s: v) } }
             }
         }
       }
@@ -1053,33 +1058,26 @@ fn yaml_entry(c: String, n: Int) -> YamlKeyValue {
 // entries -- `env:`, `with:`, `steps:`, `run: |-` -- repeat across a document. What the rest of the
 // chunk holds is read here, once, from the lines after `f`, which are passed down rather than found
 // again.
-fn yaml_entry_lines(c: String, n: Int, f: String) -> YamlKeyValue {
+fn yaml_entry_lines(c: String, n: Int, f: String) -> YamlEntryRead {
   let route = yaml_first_line_route(f: f)
   if route == 1 {
-    yaml_block_pair(k: substring(s: f, start: 0, end: f.length() - 1), r: yaml_nested(cont: substring(s: c, start: f.length() + 1, end: c.length()), col: n, same_col_seq: true))
+    yaml_entry_value(k: substring(s: f, start: 0, end: f.length() - 1), r: yaml_nested(cont: substring(s: c, start: f.length() + 1, end: c.length()), col: n, same_col_seq: true))
   } else if route == 2 {
     let k = join(split(s: f, delimiter: ": ").take(n: 1), "")
-    yaml_block_pair(k: k, r: yaml_block_scalar(header: substring(s: f, start: k.length() + 2, end: f.length()), cont: substring(s: c, start: f.length() + 1, end: c.length()), col: n))
+    yaml_entry_value(k: k, r: yaml_block_scalar(header: substring(s: f, start: k.length() + 2, end: f.length()), cont: substring(s: c, start: f.length() + 1, end: c.length()), col: n))
   } else {
-    yaml_entry_general(c: c, n: n).entry
+    yaml_entry_general(c: c, n: n)
   }
 }
 
 // A one-line value that opens with an indicator -- a quoted scalar, a flow sequence, `{}` -- under a
 // key the tests above already admitted: the general reading would split the line again only to
 // reach the same value reader with the same key.
-fn yaml_entry_indicator_value(c: String, n: Int, k: String, v: String) -> YamlKeyValue {
+fn yaml_entry_indicator_value(c: String, n: Int, k: String, v: String) -> YamlEntryRead {
   if starts_with(s: v, prefix: "|") {
-    yaml_entry_general(c: c, n: n).entry
+    yaml_entry_general(c: c, n: n)
   } else {
-    yaml_block_pair(k: k, r: yaml_value(v: v, cont: "", col: n, same_col_seq: true))
-  }
-}
-
-fn yaml_block_pair(k: String, r: YamlBlockResult) -> YamlKeyValue {
-  match r {
-    YamlBlockParsed { value: x } => YamlKeyValue { key: k, value: x }
-    YamlBlockRefused { line: _, reason: _ } => YamlKeyValue { key: yaml_line_join_sentinel, value: YamlNull }
+    yaml_entry_value(k: k, r: yaml_value(v: v, cont: "", col: n, same_col_seq: true))
   }
 }
 
@@ -1125,13 +1123,8 @@ fn yaml_first_line_literal_route(f: String) -> Int {
   }
 }
 
-// The whole reading of one entry chunk, refusal and line included.
-fn yaml_entry_read(c: String, n: Int) -> YamlEntryRead {
-  yaml_entry_general(c: c, n: n)
-}
-
 fn yaml_entry_refused(line: Int, reason: String) -> YamlEntryRead {
-  YamlEntryRead { entry: YamlKeyValue { key: yaml_line_join_sentinel, value: YamlNull }, refusal: reason, line: line }
+  YamlEntryRefused { line: line, reason: reason }
 }
 
 // THE FIRST ELEMENT OF A LIST IS READ AS `join(xs.take(n: 1), "")` THROUGHOUT: `first` returns an
@@ -1181,7 +1174,7 @@ fn yaml_keyed_entry(k: String, v: String, cont: String, n: Int) -> YamlEntryRead
 
 fn yaml_entry_value(k: String, r: YamlBlockResult) -> YamlEntryRead {
   match r {
-    YamlBlockParsed { value: x } => YamlEntryRead { entry: YamlKeyValue { key: k, value: x }, refusal: "", line: 0 }
+    YamlBlockParsed { value: x } => YamlEntryAccepted { entry: YamlKeyValue { key: k, value: x } }
     YamlBlockRefused { line: l, reason: why } => yaml_entry_refused(line: l, reason: why)
   }
 }
