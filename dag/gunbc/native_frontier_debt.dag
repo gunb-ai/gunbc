@@ -1,0 +1,69 @@
+module gunbc.native_frontier_debt
+
+import v2.std.collection { List }
+import v2.compiler.native_test_vocabulary { NativeTestStage }
+import gunbc.witness_v2_native_route {
+  NativeRouteTestIdentity, NativeRouteExclusionCause, NativeRouteDivergenceCause
+}
+import gunbc.native_route_progress_guard { NativeProgressDispositionRow, NativeCauseTransitionRow }
+
+// THE NATIVE V2 FRONTIER ROSTER, ITS VOCABULARY. The standing itself is gunbc.native_frontier_roster
+// native_frontier_roster. The roster is the debt the emitted-native compiler owes over the v2.test.*
+// universe, one row per identity it does not yet agree on, and nothing else.
+//
+// WHAT KIND OF LITERAL THIS IS (DESIGN section 5). A monotone debt contract over a closed,
+// independently discovered subject universe. The universe is not this file: it is the set of
+// identities `gunbc.witness_v2_native_route` `native_route_default_pattern` plans, discovered from
+// the tree's own `v2.test.*` declarations by the emitted binary on every run. Membership is joined
+// at identity grain (`NativeRouteTestIdentity`, the same identity type the route, its admission
+// and gunbc#12049's progress guard key on), never by count, and every way a row can leave carries
+// a typed disposition: the run's own observation of the identity at a better attainment (the row
+// is re-minted without it), or a `NativeProgressDispositionRow` beside it when the subject left
+// the universe.
+//
+// WHY A ROW NEVER NAMES AN AGREEMENT. `NativeFrontierDebt` has no agreed arm, so a roster that
+// claims a subject passes is not writable. An identity absent from `rows` is one the roster
+// asserts the route agrees on; `gunbc.native_frontier_ratchet` refuses any run in which it does
+// not, and that refusal is the "zero additions" half of the contract.
+//
+// WHO WRITES IT. Nobody by hand. A row is produced only by `native_frontier_proposal_lines`,
+// rendered by the emitted binary from its own run, and it lands through a reviewed pull request
+// that carries the run receipt (host, tested tree, executable, command). The nightly
+// `native-frontier` workflow opens that pull request. It is never merged automatically.
+//
+// THE STANDING TODAY IS UNMINTED, AND THAT IS A RED, NOT A PASS. No run has yet produced a roster:
+// the route's measured wall (gunbc.rung_drop v2_native_route_off_the_merge_path, re-derived by the
+// run rather than restated here) does not fit a session, and a roster typed out before a run can
+// produce one would be a number copied from nothing. `gunbc.native_frontier_ratchet` answers
+// `FrontierUnminted` over this standing: the run is complete and its proposal is printed for
+// minting, and the instrument still exits non-zero, because an empty roster read as "no debt"
+// would be the vacuous pass section 5 forbids.
+
+type NativeFrontierDebt
+  = DebtRefused { stage: NativeTestStage, cause: NativeRouteExclusionCause }
+  | DebtDiverged { cause: NativeRouteDivergenceCause }
+
+type NativeFrontierDebtRow {
+  identity: NativeRouteTestIdentity
+  debt: NativeFrontierDebt
+}
+
+// THE RUN A ROSTER WAS MINTED FROM, AS THE BINARY SAW ITSELF. The host that ran it and the command
+// are in the minting pull request's body. The binary cannot observe either, and inventing them
+// here would be a fabricated field.
+type NativeFrontierMintReceipt {
+  tested_tree: String
+  preparation_seed_identity: String
+  emitted_closure_identity: String
+  executable_identity: String
+}
+
+type NativeFrontierRosterStanding
+  = RosterUnminted
+  | RosterMinted {
+      receipt: NativeFrontierMintReceipt
+      rows: List<NativeFrontierDebtRow>
+      dispositions: List<NativeProgressDispositionRow>
+      cause_transitions: List<NativeCauseTransitionRow>
+    }
+

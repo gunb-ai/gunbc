@@ -9,6 +9,7 @@ import gunbc.generated_artifact {
   FleetDesiredAdmissionYamlArtifact,
   HealWorkflowYamlArtifact,
   HealPublisherWorkflowYamlArtifact,
+  NativeFrontierWorkflowYamlArtifact,
 }
 import v2.std.optional { Present, Absent }
 
@@ -86,6 +87,10 @@ fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProve
     HealPublisherWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.heal_publisher_workflow expected_heal_publisher_workflow_yml",
       authority: "gunbc.heal_publisher_workflow heal_publisher_workflow",
+    } }
+    NativeFrontierWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
+      generator: "gunbc.native_frontier_workflow expected_native_frontier_workflow_yml",
+      authority: "gunbc.native_frontier_workflow native_frontier_workflow",
     } }
     _ => none
   }

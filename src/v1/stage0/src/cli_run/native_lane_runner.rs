@@ -598,6 +598,9 @@ struct NativeTerminalMarker {
     file_refusals: u64,
     admitted: bool,
     summary: String,
+    /// `gunbc.native_frontier_ratchet` `native_frontier_verdict_word`, read verbatim. Empty on a
+    /// census marker, which carries no population to judge; nothing reads it there.
+    frontier: String,
 }
 
 /// `v2.compiler.native_test_vocabulary` `NativeTestVerdict`, mirrored at the discriminant only.
@@ -748,8 +751,10 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
                     file_refusals,
                     admitted: false,
                     summary: String::new(),
+                    frontier: String::new(),
                 },
                 "adjudicate" => NativeTerminalMarker {
+                    frontier: need_str("frontier")?,
                     rows: need_u64("rows")?,
                     universe: need_u64("universe")?,
                     admitted: value
@@ -1855,11 +1860,34 @@ pub fn run_required_v2_native(source_roots: &[String], pattern: &str) -> NativeR
     }
 }
 
+/// THE FRONTIER RATCHET'S ANSWER FOR ONE WHOLE-UNIVERSE RUN, as `gunbc.native_frontier_ratchet`
+/// `native_frontier_verdict_word` rendered it inside the emitted binary. The host decides nothing
+/// here: it carries the word, and the lane's own qualification summary beside it for the reader.
+/// Which words pass is the instrument's single match, `target_invocation_host`
+/// `run_v2_native_frontier`.
+pub struct NativeFrontierRun {
+    pub frontier: String,
+    pub admission_summary: String,
+}
+
+/// The same adjudicating run the lane and `gunbc test` spawn. The caller passes the default pattern
+/// (the whole planned universe); over a narrower one the ratchet answers `not-a-measurement`.
+pub fn run_v2_native_frontier(
+    source_roots: &[String],
+    pattern: &str,
+) -> Result<NativeFrontierRun, String> {
+    run_required_v2_native_inner(source_roots, pattern).map(|admission| NativeFrontierRun {
+        frontier: admission.frontier,
+        admission_summary: admission.summary,
+    })
+}
+
 /// What the adjudicating run decided, carried out of the body as a value.
 struct NativeRunAdmission {
     admitted: bool,
     summary: String,
     members: NativeMemberTermination,
+    frontier: String,
 }
 
 fn run_required_v2_native_inner(
@@ -2014,6 +2042,7 @@ fn run_required_v2_native_inner(
     // THE MEMBER FOLD IS APPLIED HERE, ON THE POPULATION THIS RUN ACTUALLY EMITTED, so the value
     // that leaves this function already answers both questions and no consumer re-derives either.
     Ok(NativeRunAdmission {
+        frontier: run.terminal.frontier.clone(),
         admitted: run.terminal.admitted,
         summary: run.terminal.summary,
         members: native_member_termination(

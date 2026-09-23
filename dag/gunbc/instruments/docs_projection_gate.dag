@@ -19,6 +19,7 @@ import gunbc.generated_artifact {
   FleetDesiredAdmissionYamlArtifact,
   HealWorkflowYamlArtifact,
   HealPublisherWorkflowYamlArtifact,
+  NativeFrontierWorkflowYamlArtifact,
   GitignoreArtifact,
   GitattributesArtifact, CargoConfigArtifact,
   RoadmapArtifact,
@@ -85,6 +86,7 @@ fn docs_projection_producer(a: GeneratedArtifact) -> Optional<String> {
     FleetDesiredAdmissionYamlArtifact => Absent
     HealWorkflowYamlArtifact => Absent
     HealPublisherWorkflowYamlArtifact => Absent
+    NativeFrontierWorkflowYamlArtifact => Absent
     GitignoreArtifact => Absent
     GitattributesArtifact => Absent
     CargoConfigArtifact => Absent
