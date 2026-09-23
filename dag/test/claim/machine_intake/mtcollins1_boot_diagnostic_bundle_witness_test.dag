@@ -20,7 +20,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   mtcollins1_boot_console_reading, ConsoleRetained, ConsoleNotRetained, ConsoleExceedsBound, mtcollins1_boot_console_bound,
   AttemptRunId, AttemptIdentityUnavailable, BmcDeadlineReached, BmcCollectionIncomplete,
   CollectionComplete, CollectionRefused, redfish_collection_assembly, redfish_budget_refusal, member_not_reached,
-  MemberBody, assemble_memory_members, BmcResponseMalformed,
+  MemberBody, assemble_memory_members, BmcResponseMalformed, mtcollins1_system_inventory_links,
   mtcollins1_boot_diagnostics_allowance, mtcollins1_boot_redfish_read_budget, mtcollins1_boot_collection_member_bound,
 }
 import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_ended_before_bmc, BmcAccessNotReached, mtcollins1_boot_attempt_identity }
@@ -502,5 +502,27 @@ test fn distinct_links_stable_total_and_matching_ids_are_complete() -> Bool {
   ]) {
     MembersRead { members: ms } => count(ms) == 2
     _ => false
+  }
+}
+
+// ── THE SELECTED SYSTEM IS IDENTITY-JOINED ───────────────────────────────────────────────────
+
+data system_link_a: NonEmptyStr = "/redfish/v1/Systems/Self"
+
+fn system_body(odata_id: String) -> String {
+  concat("{\"@odata.id\": \"", odata_id, "\", \"Id\": \"Self\", \"Memory\": {\"@odata.id\": \"/redfish/v1/Systems/Self/Memory\"}, \"Processors\": {\"@odata.id\": \"/redfish/v1/Systems/Self/Processors\"}}")
+}
+
+test fn a_system_answering_as_another_resource_is_refused() -> Bool {
+  match mtcollins1_system_inventory_links(requested: system_link_a, body: system_body(odata_id: "/redfish/v1/Systems/Other")) {
+    ObservationRefused { cause: c } => contains(c as String, "system link /redfish/v1/Systems/Self returned the resource /redfish/v1/Systems/Other")
+    ObservationEstablished { observed: _ } => false
+  }
+}
+
+test fn a_system_answering_at_its_own_link_yields_its_inventory_links() -> Bool {
+  match mtcollins1_system_inventory_links(requested: system_link_a, body: system_body(odata_id: "/redfish/v1/Systems/Self")) {
+    ObservationEstablished { observed: l } => l.memory == Present { value: "/redfish/v1/Systems/Self/Memory" } && l.processors == Present { value: "/redfish/v1/Systems/Self/Processors" }
+    ObservationRefused { cause: _ } => false
   }
 }

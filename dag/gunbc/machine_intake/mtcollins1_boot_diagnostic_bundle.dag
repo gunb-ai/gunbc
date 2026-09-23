@@ -960,6 +960,22 @@ fn read_memory(netrc: NonEmptyStr, system: NonEmptyStr, link: String?, left: Int
   }
 }
 
+// THE SELECTED SYSTEM IS IDENTITY-JOINED BEFORE ITS LINKS ARE FOLLOWED: the ComputerSystem that
+// answered must return, as its own @odata.id, the link the Systems collection named. A system that
+// answers as another resource would otherwise hand this attempt some other system's Memory and
+// Processors, and every count finding after it would be about the wrong machine.
+fn mtcollins1_system_inventory_links(requested: NonEmptyStr, body: String) -> ObservationAttempt<RedfishSystemInventoryLinks, NonEmptyStr> {
+  match redfish_resource_odata_id(body: body) {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: returned } =>
+      if (returned as String) != (requested as String) {
+        ObservationRefused { cause: concat("system link ", requested as String, " returned the resource ", returned as String) as NonEmptyStr }
+      } else {
+        redfish_system_inventory_links_of(body: body)
+      }
+  }
+}
+
 fn inventory_unread(cause: BmcReadCause) -> InventoryReading {
   InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: true }
 }
@@ -985,7 +1001,7 @@ fn read_inventory_with_netrc(netrc: NonEmptyStr) -> InventoryReading
             match redfish_get(netrc: netrc, path: system, left: left, not_reached: "the system resource and every inventory read after it") {
               RedfishGetFailed { cause: c, left: _ } => inventory_unread(cause: c)
               RedfishGot { body: body, left: l } =>
-                match redfish_system_inventory_links_of(body: body) {
+                match mtcollins1_system_inventory_links(requested: system, body: body) {
                   ObservationRefused { cause: c } => inventory_unread(cause: BmcResponseMalformed { endpoint: mtcollins1_redfish_url(path: system as String), at: at, detail: c as String })
                   ObservationEstablished { observed: links } => {
                     let processors = read_processors(netrc: netrc, system: system, link: links.processors, left: l)
