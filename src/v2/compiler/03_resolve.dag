@@ -1029,6 +1029,10 @@ fn child_walk_init() -> ChildWalk {
   }
 }
 
+// ONE CONCATENATION PER REFUSED CHILD, NOT ONE PUSH PER CHAIN (review 70392): a child's `rest`
+// arrives already built, so it is joined whole rather than re-walked at every level it crosses on
+// its way to the module root. list_snoc_item and list_append are the persistent carrier's push and
+// concat (v2.std.algebra), neither of which copies its left operand.
 fn child_walk_refused(
   w: ChildWalk,
   first: NonEmptyDiagnostics,
@@ -1039,10 +1043,6 @@ fn child_walk_refused(
     ordinal: w.ordinal + 1,
     edges: w.edges,
     pending: None,
-    // ONE CONCATENATION PER REFUSED CHILD, NOT ONE PUSH PER CHAIN (review 70392): a child's `rest`
-    // arrives already built, so it is joined whole rather than re-walked at every level it crosses
-    // on its way to the module root. list_snoc_item and list_append are the persistent carrier's
-    // push and concat (v2.std.algebra), neither of which copies its left operand.
     failures: list_append(
       left: list_snoc_item(xs: w.failures, item: rejected_with_pending(pending: w.pending, rejected: first)),
       right: rest
