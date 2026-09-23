@@ -1128,9 +1128,17 @@ fn established_resource_binding(scope: InferScope, required: ResourceRequirement
 // THE RESOURCE IS NAMED BY ITS RESOLVED DECLARATION, NEVER BY THE CALLER'S IMPORT SPELLING.
 // type_node_label renders the reference as the caller WROTE it, so one resource reached this
 // boundary under two labels -- `Network` where the caller imported the bare name and
-// `std.resources.Network` where it wrote the qualified one. The COMPARATOR never had that defect:
-// established_resource_binding matches through resource_declaration_identity, so both spellings
-// resolve to one declaration and establishment was always decided on identity. The RENDERER did,
+// `std.resources.Network` where it wrote the qualified one. The COMPARATOR does not share the
+// RENDERER's defect, but it is NOT spelling-independent either, and an earlier revision of this
+// note said it was (review 70620). established_resource_binding compares the nodes
+// resource_declaration_identity resolves each side to, and a bare resource name resolves to a
+// kernel-spanned node while the qualified `std.resources.X` resolves to the corpus declaration --
+// so a callee that spells its requirement qualified refuses every caller, however the caller
+// spells it (measured by a two-module fixture; recorded in gunbc.recurring_failure_mode
+// a_sibling_refusal_masks_a_ratchet_rows_observation, owned as its own lane, and the one corpus
+// site it refuses is a frontier row below). What IS identity-decided is the case the witness
+// covers: a bare callee with a caller that binds under another name and spells it qualified. The
+// RENDERER's defect was separate,
 // and the renderer is what the frontier roster keys on -- so one resource would have held TWO
 // ROSTER KEYS, DESIGN section 3's fork arriving in the consumer rather than in the comparator.
 // The consequence is worse than a duplicate row: an unrelated edit to a caller's import spelling
