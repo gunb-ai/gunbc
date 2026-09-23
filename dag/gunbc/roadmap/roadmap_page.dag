@@ -70,7 +70,7 @@ import gunbc.roadmap_presentation {
   DisclosureField, DisclosureNote,
   work_scheduling_key, row_is_active_work,
   activity_view_from_progress,
-  activity_line_class_key, activity_line_class_of_round,
+  activity_line_class_key, activity_line_class_of_round, activity_summary_line, task_bar_idle_view,
   activity_state_sep, activity_detail_sep, activity_evidence_kv_sep, inspect_disclosure_label,
   ProgramProgressView,
   DailyWorkspaceView, daily_workspace_view,
@@ -87,6 +87,7 @@ import gunbc.roadmap_presentation {
   issue_explanation, issue_first_open_kind, issue_wait_state_label,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap_workflow_command { attempt_key_short_form }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, workflow_segment_kind_label, workflow_segment_state_key,
   workflow_segment_detail_bounded,
@@ -1026,6 +1027,24 @@ fn workspace_row_li(view: WorkRowView, observation: ObservationImpactView) -> Fr
   }
 }
 
+// MEMBER ROWS ARE SUMMARY-ONLY (owner defect fix 2026-09-23: fifteen stacked 'inspect'
+// disclosures in/after one row on the old dashboard lanes). Inside a project disclosure or a
+// family group, every member task rendered a FULL taskbar row including its own taskbar-inspect
+// disclosure — the per-attempt stage ledger and evidence — so one project or family row stacked
+// one 'inspect' per member. The member row now renders ONLY the latest attempt's summary (the
+// decided bar); the full execution history lives exclusively on the member's Work tab. The
+// member keeps its data-node identity so its detail route (arriving with its slice) links here.
+fn member_row_li(view: WorkRowView, observation: ObservationImpactView) -> Fragment {
+  let bar = task_bar_view_of(view: view, observation: observation)
+  Element {
+    tag: "li",
+    attributes: concat(
+      node_li_attributes(view: view),
+      [ attr(name: "data-summary-only", value: "" ) ]),
+    children: [ taskbar_nodes(view: view, bar: bar, project: none) ],
+  }
+}
+
 fn workspace_rows_ul(rows: List<WorkRowView>, observation: ObservationImpactView) -> Fragment {
   el("ul", map(rows, v => workspace_row_li(view: v, observation: observation)))
 }
@@ -1036,7 +1055,7 @@ fn family_group_li(family: WorkFamilyView, observation: ObservationImpactView) -
       el_class("span", "family-claim", [ txt(family.claim) ]),
       el_class("span", "family-count", [ txt(concat(to_string(count(family.rows)), " nodes")) ]),
     ]),
-    el_class("ul", "family-rows", map(family.rows, v => workspace_row_li(view: v, observation: observation))),
+    el_class("ul", "family-rows", map(family.rows, v => member_row_li(view: v, observation: observation))),
   ])
 }
 
@@ -1059,7 +1078,7 @@ fn project_render_depth_cap() -> Int { 3 }
 
 fn project_entry_li(entry: ProjectTreeEntry, observation: ObservationImpactView) -> Fragment {
   match entry {
-    ProjectLeaf { row } => workspace_row_li(view: row, observation: observation)
+    ProjectLeaf { row } => member_row_li(view: row, observation: observation)
     ProjectNested { project } => project_tree_li(view: project, observation: observation)
   }
 }
@@ -1289,9 +1308,15 @@ fn issue_controls_markup() -> Fragment {
 // table reads the SAME decided bar view (one authority) onto the contract's dense line. No id
 // anchor on these rows: the forest's rows own the #node-* ids, and the detail-page link arrives
 // with its route. The row's li keeps li.node so selection and the band chips apply uniformly.
+// THE TABLE ROW SHOWS ONLY THE LATEST ATTEMPT'S SUMMARY, AND ONLY WHEN IT IS RECENT OR LIVE
+// (owner defect fix 2026-09-23): a stale attempt — launched against a revision that is no longer
+// the deployed head — is evidence for a superseded question, and its summary does not belong on
+// the dense table line; the row falls back to its scheduling voice (ready / blocked on / done),
+// and the attempt's full record stays reachable on the row's Work tab. The taskbar grammar in the
+// forest keeps the stale dim law — that is the bar's own voice, not the table's.
 fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView) -> Fragment {
   let view = row.view
-  let bar = task_bar_view_of(view: view, observation: observation)
+  let bar = if view.attempt_stale { task_bar_idle_view(view: view) } else { task_bar_view_of(view: view, observation: observation) }
   let owner = issue_owner_value(view: view)
   Element {
     tag: "li",
@@ -1300,7 +1325,8 @@ fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView) -> Frag
         Absent => ""
         Present { value: _ } => " node-project"
       }) |> filter(a => !(a.name == "id")),
-      [ attr(name: "data-search", value: issue_search_value(view: view) ) ]),
+      [ attr(name: "data-search", value: issue_search_value(view: view) ),
+        attr(name: "data-summary-only", value: "" ) ]),
     children: [ el_class("div", "issue-line", concat(
       [ el_class("span", "issue-id", [ txt(view.node_id) ]) ],
       concat(
@@ -1336,8 +1362,10 @@ fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactV
 // panel: serialize-only, the same contract render_task_row keeps. The Status field renders the
 // four-fact present-tense explanation decided by gunbc.roadmap_presentation (the four facts stay
 // separate on the row; the sentence is derived, never stored); the head line reads the decided
-// bar view beside it. The page ships the same external client asset the workspace ships; its tab
-// chips are inert on surfaces that carry none.
+// bar view beside it. The Work tab also receives the node's attempt history (the caller's order,
+// newest first) and lists every attempt — execution history lives here exclusively, never stacked
+// in the workspace rows (owner defect fix 2026-09-23). The page ships the same external client
+// asset the workspace ships; its tab chips are inert on surfaces that carry none.
 fn issue_field_row(label: String, value: List<Fragment>) -> Fragment {
   el_class("div", "issue-field", concat(
     [ el_class("span", "issue-field-label", [ txt(label) ]) ],
@@ -1378,26 +1406,45 @@ fn issue_work_history_row_node(seg: RoundSegment) -> Fragment {
   ])
 }
 
-fn issue_work_tab_nodes(view: WorkRowView) -> List<Fragment> {
+// THE ATTEMPT HISTORY (owner defect fix 2026-09-23: the full execution history lives exclusively
+// on the Work tab). One compact row per attempt, the caller's order (newest first), each carrying
+// the attempt's short key and its decided outcome sentence — the latest attempt's summary is the
+// table row's whole claim about execution; the tab is where a node's N attempts are enumerated.
+fn issue_attempt_history_row_node(progress: WorkflowAttemptProgress) -> Fragment {
+  el_attrs("div", [
+    attr(name: "class", value: "taskbar work-attempt-row" ),
+    attr(name: "data-attempt", value: attempt_key_short_form(key: progress.attempt_key) ),
+  ], [
+    el_class("div", "taskbar-face", concat(
+      [ el_class("span", "work-history-step", [ txt(attempt_key_short_form(key: progress.attempt_key)) ]) ],
+      [ el_class("span", "taskbar-title", [ txt(activity_summary_line(a: activity_view_from_progress(progress: progress))) ]) ]))
+  ])
+}
+
+fn issue_work_tab_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgress>) -> List<Fragment> {
   let rounds = issue_work_history_rounds(ledger: view.rounds)
   concat(
-    if count(rounds) == 0 { [] } else {
-      [ el_class("div", "issue-work-history", map(rounds, issue_work_history_row_node)) ]
+    if count(attempts) == 0 { [] } else {
+      [ el_class("div", "issue-attempt-history", map(attempts, issue_attempt_history_row_node)) ]
     },
-    match view.activity {
-      NoActiveWork => []
-      ActivityUnobservable { reason: _ } => []
-      ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention: _, evidence } =>
-        issue_work_ledger_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: "")
-      ActiveWorkRefused { summary: _, located_reason, evidence, obligations } =>
-        issue_work_ledger_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: located_reason)
-      LegacySupersedableAttempt { summary: _, located_reason, attempt_key, evidence } =>
-        issue_work_ledger_nodes(view: view, obligations: [],
-          evidence: concat(evidence, [ ActivityEvidenceRow { label: "attempt key", value: attempt_key } ]),
-          located_reason: located_reason)
-      CompletedWork { outcome: _, evidence, obligations } =>
-        issue_work_ledger_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: "")
-    })
+    concat(
+      if count(rounds) == 0 { [] } else {
+        [ el_class("div", "issue-work-history", map(rounds, issue_work_history_row_node)) ]
+      },
+      match view.activity {
+        NoActiveWork => []
+        ActivityUnobservable { reason: _ } => []
+        ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention: _, evidence } =>
+          issue_work_ledger_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: "")
+        ActiveWorkRefused { summary: _, located_reason, evidence, obligations } =>
+          issue_work_ledger_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: located_reason)
+        LegacySupersedableAttempt { summary: _, located_reason, attempt_key, evidence } =>
+          issue_work_ledger_nodes(view: view, obligations: [],
+            evidence: concat(evidence, [ ActivityEvidenceRow { label: "attempt key", value: attempt_key } ]),
+            located_reason: located_reason)
+        CompletedWork { outcome: _, evidence, obligations } =>
+          issue_work_ledger_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: "")
+      }))
 }
 
 fn issue_work_ledger_row_node(s: WorkflowSegment, wait_target: String) -> Fragment {
@@ -1434,7 +1481,7 @@ fn issue_tab_chip(label: String, tab: String) -> Fragment {
   ], [ txt(label) ])
 }
 
-fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView) -> Fragment {
+fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>) -> Fragment {
   let bar = task_bar_view_of(view: view, observation: observation)
   el_attrs("main", [
     attr(name: "class", value: "issue-detail" ),
@@ -1478,12 +1525,12 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
                         Absent => ""
                       }) ])))))) ],
         disclosure_body_nodes(d: view.disclosure))),
-      el_class("section", "panel-work", issue_work_tab_nodes(view: view)),
+      el_class("section", "panel-work", issue_work_tab_nodes(view: view, attempts: attempts)),
     ]),
   ])
 }
 
-fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView) -> Fragment {
+fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>) -> Fragment {
   Element {
     tag: "html",
     attributes: [ attr(name: "lang", value: "en" ) ],
@@ -1496,7 +1543,7 @@ fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observatio
       ]),
       el("body", [
         roadmap_header(page: "issue"),
-        issue_detail_page(view: view, panel: panel, observation: observation),
+        issue_detail_page(view: view, panel: panel, observation: observation, attempts: attempts),
         dispatch_client_script(),
       ]),
     ],

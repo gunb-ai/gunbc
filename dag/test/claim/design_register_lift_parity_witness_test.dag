@@ -346,7 +346,16 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // test.claim.roadmap_presentation_witness, the recomposed test.claim.roadmap_row_witness, the
 // register width-contract pin, and the register censuses. Derived by execution from this tree
 // (roadmap_css_derived_digest run 2026-09-22); this digest only pins bytes, never chosen.
-data roadmap_css_lift_parity_digest: String = "f18b768cb7404858"
+data roadmap_css_lift_parity_digest: String = "6e9627b70dd3c731"
+// Re-pinned 2026-09-23 for the issue-surface production-defect fixes: the dark-scheme token
+// mapping lands (the issue vars now resolve under [data-theme="night"] and the
+// prefers-color-scheme fallback in the theme machinery's three-block grammar, from
+// extdeps.google.issue_tracker's dark row — owner defect: dark mode painted the light-only
+// tokens on dark ground). Same token structure, two scheme value sets. Behavioral receipts:
+// witness_issue_tokens_resolve_in_both_themes (every --issue-* var resolves in all three
+// blocks), the register censuses unchanged (the token blocks are :root custom properties, not
+// instance color rules). Derived by execution (roadmap_css_derived_digest on this tree); this
+// digest only pins bytes.
 // Re-pinned 2026-09-23 for the issue detail page slice (owner ruling 2026-09-22: each issue has
 // a detail page and a separate Work tab): the detail surface lands — .issue-detail and its
 // data-tab panel-switching law, the head (id/title/status line), the field panel, the tab

@@ -405,3 +405,27 @@ data issue_tracker_visual_tokens: IssueTrackerVisualTokens = IssueTrackerVisualT
   font_body: "Roboto, Arial, sans-serif",
   font_heading: "Google Sans, Roboto, Arial, sans-serif",
 }
+
+// THE DARK-SCHEME ROW, owner-directed 2026-09-23 (production defect: dark mode painted the
+// light-only tokens on dark ground). The 2026-09-22 capture is a LIGHT capture; these are the
+// product's dark-scheme equivalents for the SAME token set, per the owner's ruling — text
+// #e8eaed / #9aa0a6 on surfaces #202124 / #292a2d, borders #3c4043 / #5f6368, action blue
+// #8ab4f8 (hover #aecbfa), error #f28b82, highlight the dark selection blue. Same type, same
+// slots, same hue roles — one token structure, two scheme values; the style layer emits one per
+// scheme under the theme machinery's selector grammar. Re-capture against a saved dark session
+// supersedes these rows under the interface version rule.
+data issue_tracker_visual_tokens_dark: IssueTrackerVisualTokens = IssueTrackerVisualTokens {
+  text_primary: Srgb8 { r: 232, g: 234, b: 237 },
+  text_secondary: Srgb8 { r: 154, g: 160, b: 166 },
+  text_tertiary: Srgb8 { r: 154, g: 160, b: 166 },
+  border_default: Srgb8 { r: 60, g: 64, b: 67 },
+  border_strong: Srgb8 { r: 95, g: 99, b: 104 },
+  background_subtle: Srgb8 { r: 32, g: 33, b: 36 },
+  background_hover: Srgb8 { r: 41, g: 42, b: 45 },
+  highlight: Srgb8 { r: 26, g: 58, b: 92 },
+  action: Srgb8 { r: 138, g: 180, b: 248 },
+  action_hover: Srgb8 { r: 174, g: 203, b: 250 },
+  error: Srgb8 { r: 242, g: 139, b: 130 },
+  font_body: "Roboto, Arial, sans-serif",
+  font_heading: "Google Sans, Roboto, Arial, sans-serif",
+}

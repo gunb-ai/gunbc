@@ -36,6 +36,7 @@ import gunbc.roadmap_model {
 import gunbc.roadmap_component { dispatch_client_js_source }
 import gunbc.roadmap_style { roadmap_css }
 import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
+import test.claim.roadmap_belt_actuate_witness { completed_attempt_progress }
 import extdeps.languages.json.emit { serialize_json }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -1522,7 +1523,8 @@ fn issue_detail_fixture_html() -> HtmlEmitResult {
   try_serialize_html_source(node: issue_detail_page_launch(
     view: issue_detail_fixture_view(),
     panel: issue_detail_fixture_panel(),
-    observation: gunbc.roadmap_presentation.ObservationsNominal))
+    observation: gunbc.roadmap_presentation.ObservationsNominal,
+    attempts: []))
 }
 
 test fn witness_issue_detail_page_renders_header_fields_and_tabs() -> Bool {
@@ -1593,4 +1595,101 @@ test fn witness_issue_tab_switch_contracts() -> Bool {
     && string_contains(s: js, pattern: "dataset")
     && string_contains(s: js, pattern: "tab")
     && string_contains(s: css, pattern: ".issue-detail[data-tab=\"issue\"] .panel-work, .issue-detail[data-tab=\"work\"] .panel-issue { display: none }")
+}
+
+
+// DEFECT 1 (owner 2026-09-23): attempt history spilled into the issue table — the client paint
+// minted one taskbar-inspect disclosure after EVERY row the wire carried an attempt for, inline
+// in the dense table and stacked one-per-member inside project and family rows on the old
+// dashboard lanes (fifteen deep). The fix is decided at serve: the dense issue line and the
+// member rows carry data-summary-only — the row's whole claim about execution is the latest
+// attempt's summary, painted by no one but the server. The client paint must skip these rows,
+// and the table region must render zero taskbar-inspect disclosures.
+fn fx_summary_only_page_html(stale: Bool) -> HtmlEmitResult {
+  try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page_impl_for_accepted(
+    doc: fx_page_project_doc(),
+    merged: [],
+    accepted_ids: [],
+    withheld: [],
+    main_prefix: [],
+    attempts: [ completed_attempt_progress(node_id: "page-task-one") ],
+    attempts_refused: none,
+    standings: StandingsObserved { rows: [
+      NodeStandingRow { node_id: "page-task-one", standing: NodeInProgress { by: "op" as NonEmptyStr, last_note: "working" as NonEmptyStr } },
+    ] },
+    launch: dispatch_doc_standing(),
+    stale_nodes: if stale { ["page-task-one"] } else { [] }))
+}
+
+fn table_region(html: String) -> String {
+  let parts = split(s: html, delimiter: "<div class=\"view-table\">")
+  match (split(s: string_at(parts: parts, index: 1), delimiter: "<div class=\"view-forest\">")).first() {
+    Present { value: t } => t
+    Absent => ""
+  }
+}
+
+test fn witness_issue_table_is_summary_only_and_stale_rows_fall_back_to_scheduling_voice() -> Bool {
+  match fx_summary_only_page_html(stale: false) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: live_h } =>
+      match fx_summary_only_page_html(stale: true) {
+        EmitRejected { reason: _ } => false
+        EmitOk { html: stale_h } =>
+          let live_table = table_region(html: live_h)
+          let stale_table = table_region(html: stale_h)
+          occurrence_count(s: live_table, pattern: "taskbar-inspect") == 0
+            && occurrence_count(s: stale_table, pattern: "taskbar-inspect") == 0
+            && string_contains(s: live_table, pattern: "data-node=\"page-task-one\" tabindex=\"0\" data-search=\"page task one page-task-one \" data-summary-only=\"\"")
+            && string_contains(s: live_table, pattern: "<span class=\"taskbar-signal issue-status activity-line-error-refusal\">Submission · failed</span>")
+            && !string_contains(s: live_table, pattern: "earlier attempt")
+            && !string_contains(s: stale_table, pattern: "earlier attempt")
+            && string_contains(s: stale_table, pattern: "<span class=\"taskbar-signal issue-status activity-line-neutral\">ready to dispatch</span>")
+            && count(split(s: dispatch_client_js_source(), delimiter: "data-summary-only")) == 2
+      }
+  }
+}
+
+// The Work tab is where execution history lives: a node with N supplied attempts lists all N,
+// one compact row per attempt, above the current attempt's round history. The row carries the
+// attempt's short key so the reader can tell the attempts apart.
+test fn witness_issue_work_tab_lists_every_attempt() -> Bool {
+  let attempts = [
+    completed_attempt_progress(node_id: "issue-detail-specimen"),
+    completed_attempt_progress(node_id: "issue-detail-specimen"),
+    completed_attempt_progress(node_id: "issue-detail-specimen"),
+  ]
+  match try_serialize_html_source(node: issue_detail_page_launch(
+    view: issue_detail_fixture_view(),
+    panel: issue_detail_fixture_panel(),
+    observation: gunbc.roadmap_presentation.ObservationsNominal,
+    attempts: attempts)) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      let work_parts = split(s: h, delimiter: "<section class=\"panel-work\">")
+      count(work_parts) == 2
+        && occurrence_count(s: string_at(parts: work_parts, index: 1), pattern: "class=\"taskbar work-attempt-row\"") == 3
+        && occurrence_count(s: string_at(parts: work_parts, index: 1), pattern: "data-attempt=") == 3
+        && string_contains(s: string_at(parts: work_parts, index: 1), pattern: "class=\"issue-attempt-history\"")
+  }
+}
+
+// DEFECT 2 (owner 2026-09-23): the Buganizer token capture is light-only and dark mode painted
+// the light tokens on dark ground. Both schemes now resolve the SAME token set: the day values
+// on :root, the Google dark equivalents under [data-theme="night"] and the prefers-color-scheme
+// fallback, in the theme machinery's own three-block grammar — one token structure, two value
+// sets. Every --issue-* var resolves in all three blocks (a token present in one scheme but
+// absent in the other fails the surface when the toggle flips).
+test fn witness_issue_tokens_resolve_in_both_themes() -> Bool {
+  let css = roadmap_css()
+  let names = ["text", "text-dim", "border", "bg-hover", "bg-subtle", "highlight", "action", "action-hover", "error", "font", "font-heading"]
+  string_contains(s: css, pattern: ":root[data-theme=\"night\"]")
+    && string_contains(s: css, pattern: "@media (prefers-color-scheme: dark)")
+    && string_contains(s: css, pattern: "--issue-text: #202124")
+    && string_contains(s: css, pattern: "--issue-text: #e8eaed")
+    && string_contains(s: css, pattern: "--issue-action: #1a73e8")
+    && string_contains(s: css, pattern: "--issue-action: #8ab4f8")
+    && string_contains(s: css, pattern: "--issue-error: #c5221f")
+    && string_contains(s: css, pattern: "--issue-error: #f28b82")
+    && all(names, n => occurrence_count(s: css, pattern: join(["--issue-", n, ":"], "")) == 3)
 }

@@ -2996,6 +2996,14 @@ fn activity_paint_stmts() -> List<TsStmt> {
   ]
 }
 
+// SUMMARY-ONLY ROWS ARE THE SERVER'S DECIDED SURFACE (owner defect fix 2026-09-23): the dense
+// issue-table line and the member rows inside a project disclosure or family group carry
+// data-summary-only — the row's whole claim about execution is the latest attempt's summary,
+// decided at serve (and gated there to recent-or-live). The client paint SKIPS these rows
+// entirely: no stage-strip fill, and NO minted taskbar-inspect disclosure. Before this guard the
+// paint minted one 'inspect' after every row the wire carried an attempt for — inline in the
+// issue table, and stacked one-per-member inside project and family rows on the old dashboard
+// lanes (fifteen deep). Execution history lives exclusively on the Work tab.
 fn workflow_mark_attempt_stmts() -> List<TsStmt> {
   [
     ts_const(name: "wr", value: ts_call(
@@ -3018,14 +3026,22 @@ fn workflow_mark_attempt_stmts() -> List<TsStmt> {
     ts_if(
       cond: ts_binop(
         left: ts_binop(
-          left: ts_prefix(op: "!", expr: ts_ident(name: "av")),
+          left: ts_binop(
+            left: ts_prefix(op: "!", expr: ts_ident(name: "av")),
+            op: "||",
+            right: ts_binop(
+              left: ts_member(object: ts_ident(name: "av"), property: "arm"),
+              op: "===",
+              right: ts_lit_str(value: "none"))),
           op: "||",
-          right: ts_binop(
-            left: ts_member(object: ts_ident(name: "av"), property: "arm"),
-            op: "===",
-            right: ts_lit_str(value: "none"))),
+          right: ts_prefix(op: "!", expr: ts_ident(name: "tb"))),
         op: "||",
-        right: ts_prefix(op: "!", expr: ts_ident(name: "tb"))),
+        right: ts_binop(
+          left: ts_ident(name: "wr"),
+          op: "&&",
+          right: ts_call(
+            callee: ts_member(object: ts_ident(name: "wr"), property: "hasAttribute"),
+            args: [ts_lit_str(value: "data-summary-only")]))),
       then: ts_block(stmts: []),
       else_stmt: Present { value: ts_block(stmts: activity_paint_stmts()) }),
   ]

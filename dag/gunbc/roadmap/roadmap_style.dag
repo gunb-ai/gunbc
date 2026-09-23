@@ -55,7 +55,7 @@ import gunbc.roadmap_component {
   node_attempt_stale_class,
 }
 import extdeps.color.srgb { Srgb8 }
-import extdeps.google.issue_tracker { issue_tracker_visual_tokens }
+import extdeps.google.issue_tracker { issue_tracker_visual_tokens, issue_tracker_visual_tokens_dark, IssueTrackerVisualTokens }
 import std.integer { uint8_channel_inclusive_max_value_derived }
 import extdeps.accessibility.wcag_contrast { srgb8_contrast_ratio_x100_for_max }
 import gunbc.design.palette { Swatch, SwatchSet, SwatchSetForUse, swatch_filed, swatch_paint, swatches_of, for_use_combined_set }
@@ -568,8 +568,13 @@ fn roadmap_instance_rules() -> List<BuildRule> {
 // properties — the rules below reference the vars, so a re-capture retunes the surface in ONE
 // place. This is deliberately a SURFACE-scoped mapping, not a theme fork: the rest of the
 // dashboard keeps its theme roles.
-fn issue_token_decls() -> List<CssDecl> {
-  let t = issue_tracker_visual_tokens
+// BOTH SCHEMES (owner defect fix 2026-09-23): the capture is light-only, and dark mode painted
+// the light tokens on dark ground. The same token set now resolves under BOTH schemes, emitted
+// with the theme machinery's own three-block grammar (:root base, [data-theme] override,
+// prefers-color-scheme for the un-set case) — one token structure, two scheme values, never a
+// second palette structure. A token declared in one scheme but not the other would strand the
+// surface when the toggle flips; the witness holds the two decl sets identical in NAME.
+fn issue_token_decls(t: IssueTrackerVisualTokens) -> List<CssDecl> {
   [
     decl(prop: CustomProperty { name: "issue-text" }, value: swatch_paint(sw: Swatch { name: "issue-text", color: t.text_primary })),
     decl(prop: CustomProperty { name: "issue-text-dim" }, value: swatch_paint(sw: Swatch { name: "issue-text-dim", color: t.text_secondary })),
@@ -586,7 +591,17 @@ fn issue_token_decls() -> List<CssDecl> {
 }
 
 fn issue_tracker_root_css() -> String {
-  css_block(selector: ":root", decls: issue_token_decls())
+  join([
+    css_block(selector: ":root", decls: issue_token_decls(t: issue_tracker_visual_tokens)),
+    css_block(
+      selector: join([":root[data-theme=\"", night_theme.name, "\"]"], ""),
+      decls: issue_token_decls(t: issue_tracker_visual_tokens_dark)),
+    join([
+      "@media (prefers-color-scheme: ", night_theme.scheme, ") { ",
+      css_block(selector: ":root:not([data-theme])", decls: issue_token_decls(t: issue_tracker_visual_tokens_dark)),
+      " }",
+    ], ""),
+  ], "\n")
 }
 
 fn roadmap_instance_rules_head() -> List<BuildRule> {
