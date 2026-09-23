@@ -162,7 +162,6 @@ fn rank_leg(
   step: NonEmptyStr,
   command: ArgvCommand,
 ) -> RankLegOutcome
-  uses net: Network
 {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: command)) {
     RemoteUnreachable { cause: why } =>
@@ -204,7 +203,6 @@ type ContainerPresence
   | ContainerPresenceUnread { refusal: RankObservationRefusal }
 
 fn observe_container_presence(ctx: SparkMaterializeContext, subject: ObservedRankSubject) -> ContainerPresence
-  uses net: Network
 {
   match rank_leg(ctx: ctx, subject: subject, step: rank_inspect_step, command: docker_container_inspect_command(name: subject.container)) {
     RankLegFailed { refusal: r, stderr: err } =>
@@ -225,7 +223,6 @@ fn observe_container_presence(ctx: SparkMaterializeContext, subject: ObservedRan
 // THE RANK'S OWN CONTAINER MUST EXIST, so absence is a refusal on this route rather than an answer --
 // a rank whose container the daemon does not name is a rank this observation has nothing to say about.
 fn observe_rank_container(ctx: SparkMaterializeContext, subject: ObservedRankSubject) -> RankInspectReading
-  uses net: Network
 {
   match observe_container_presence(ctx: ctx, subject: subject) {
     ContainerPresenceUnread { refusal: r } => RankInspectRefused { refusal: r }
@@ -321,7 +318,6 @@ type RankLogCapture
   | RankLogRefused { refusal: RankObservationRefusal }
 
 fn capture_rank_log(ctx: SparkMaterializeContext, subject: ObservedRankSubject, step: NonEmptyStr) -> RankLogCapture
-  uses net: Network
 {
   match rank_leg(ctx: ctx, subject: subject, step: step, command: docker_logs_command(name: subject.container)) {
     RankLegFailed { refusal: r, stderr: _ } => RankLogRefused { refusal: r }
@@ -363,7 +359,6 @@ fn observe_rank_transport(
   subject: ObservedRankSubject,
   container: ContainerInspect,
 ) -> RankTransportObservation
-  uses net: Network
 {
   match capture_rank_log(ctx: ctx, subject: subject, step: rank_transport_step) {
     RankLogRefused { refusal: r } => RankTransportRefused { refusal: r }
@@ -481,7 +476,6 @@ fn observe_rank_cuda_attribute(
   subject: ObservedRankSubject,
   a: CudaDeviceAttribute,
 ) -> RankProbeReply
-  uses net: Network
 {
   match rank_leg(
     ctx: ctx,
@@ -510,7 +504,6 @@ fn rank_gpu_direct_capability(platform: NonEmptyStr, r: RankGpuDirectCapabilityR
 }
 
 fn observe_rank_gpu_direct_capability(ctx: SparkMaterializeContext, incarnation: ObservedRankIncarnation) -> RankGpuDirectCapabilityReceipt
-  uses net: Network
 {
   let subject = incarnation_leg_subject(i: incarnation)
   RankGpuDirectCapabilityReceipt {
@@ -579,7 +572,6 @@ type RankRevisionReading
   | RankRevisionRefused { refusal: RankObservationRefusal }
 
 fn observe_rank_vllm_revision(ctx: SparkMaterializeContext, subject: ObservedRankSubject) -> RankRevisionReading
-  uses net: Network
 {
   match rank_leg(
     ctx: ctx,

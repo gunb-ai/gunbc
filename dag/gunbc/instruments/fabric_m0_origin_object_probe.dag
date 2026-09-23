@@ -1,7 +1,6 @@
 module tools.fabric_m0_origin_object_probe
 
 import std.types { Bool, NonEmptyStr, String, FilePath }
-import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_eq_cryptographic }
 import gunbc.auth.access_token_source {
@@ -113,7 +112,7 @@ fn probe_token_source() -> ProbeCredential {
   }
 }
 
-fn fetch_absent() -> ProcessExit uses net: Network {
+fn fetch_absent() -> ProcessExit {
   match probe_token_source() {
     ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
     ProbeCredentialReady { source: source } =>
@@ -153,7 +152,7 @@ fn put_cause(put: OriginPut) -> String {
   }
 }
 
-fn roundtrip() -> ProcessExit uses net: Network {
+fn roundtrip() -> ProcessExit {
   match probe_token_source() {
     ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
     ProbeCredentialReady { source: source } => {
@@ -293,11 +292,11 @@ fn write_refusal_reason(standing: OriginWritePermitStanding) -> String {
   }
 }
 
-fn canary_ending() -> ProcessExit uses net: Network {
+fn canary_ending() -> ProcessExit {
   canary_ending_under(handling_map: public_fabric_map(), posture: public_fabric_posture())
 }
 
-fn canary_ending_under(handling_map: DataHandlingMap, posture: CompliancePostureRevision) -> ProcessExit uses net: Network {
+fn canary_ending_under(handling_map: DataHandlingMap, posture: CompliancePostureRevision) -> ProcessExit {
   match probe_token_source() {
     ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
     ProbeCredentialReady { source: source } => {

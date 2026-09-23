@@ -918,17 +918,78 @@ fn admit_unplaced_host_over(raw: String, purpose: NonEmptyStr, term: Second, res
   }
 }
 
-fn admit_unplaced_host_live(raw: String, purpose: NonEmptyStr, term: Second, residue: HostEffectResidueSpec) -> SparkHostAdmission {
+// ── THE LANDING, THE UNPLACED ADMISSION, AND THE CLAIM: THREE FACTS, NOT ONE ROW ──────────────
+//
+// WHAT WAS FUSED, AND WHY IT HAD TO COME APART. `admit_unplaced_host_live` used to resolve the
+// landing (which executor is running, which store that executor writes, what time it is), decide
+// the UNPLACED admission, and land the HOST-EFFECT CLAIM, in one body. Those are three facts and
+// the fusion made one of them unreachable on its own: a caller that admits its host by a DIFFERENT
+// relation -- the Group A pair subject holding it, `admit_host_held_by_subject` above -- had no
+// route to a claim at all, because the only code that lands one also insists on the unplaced
+// relation, which refuses on a committed host BY DESIGN. The first such caller
+// (gunbc.spark.v41_checkpoint_materialize) simply did not claim, and recorded that as a gap.
+//
+// So the landing is its own fold and the claim is its own seam. `admit_unplaced_host_live` is
+// unchanged in behaviour -- it is the same decision over the same landing, composed of the two --
+// and `claim_host_effect_live` serves a caller that has ALREADY admitted its host by whatever
+// relation its own program protects. Neither seam admits for the other: a claim is not an
+// admission, and this file will not let one stand in for the other.
+type HostEffectLanding
+  = HostEffectLandingResolved { store: FabricStorageBinding, executor: NonEmptyStr, at: EpochSecs }
+  | HostEffectLandingUnavailable { cause: String }
+
+// The cause is a PHRASE, not a sentence: every caller prefixes it with the subject it is refusing
+// about, so the landing never guesses whose refusal it is.
+fn host_effect_landing_live() -> HostEffectLanding {
   match observe_executor_reach() {
-    ExecutorReachUnknown { cause: c } => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": the executor could not be identified: ", c], "") as NonEmptyStr }
+    ExecutorReachUnknown { cause: c } => HostEffectLandingUnavailable { cause: join(["the executor could not be identified: ", c], "") }
     ExecutorReachKnown { short_hostname: executor, path: _ } =>
       match event_log_store_for_host(short_hostname: executor) {
-        HostStoreRefused { detail: d } => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": ", d], "") as NonEmptyStr }
+        HostStoreRefused { detail: d } => HostEffectLandingUnavailable { cause: d }
         HostStoreResolved { store: store, executor: _ } =>
           match now_epoch_seconds() {
-            Absent => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": the clock could not be read as epoch seconds"], "") as NonEmptyStr }
-            Present { value: at } => admit_unplaced_host_over(raw: raw, purpose: purpose, term: term, residue: residue, store: store, executor: executor as NonEmptyStr, at: at)
+            Absent => HostEffectLandingUnavailable { cause: "the clock could not be read as epoch seconds" }
+            Present { value: at } => HostEffectLandingResolved { store: store, executor: executor as NonEmptyStr, at: at }
           }
+      }
+  }
+}
+
+fn admit_unplaced_host_live(raw: String, purpose: NonEmptyStr, term: Second, residue: HostEffectResidueSpec) -> SparkHostAdmission {
+  match host_effect_landing_live() {
+    HostEffectLandingUnavailable { cause: c } => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": ", c], "") as NonEmptyStr }
+    HostEffectLandingResolved { store: store, executor: executor, at: at } =>
+      admit_unplaced_host_over(raw: raw, purpose: purpose, term: term, residue: residue, store: store, executor: executor, at: at)
+  }
+}
+
+// THE CLAIM FOR A HOST THAT IS ALREADY ADMITTED. This lands the same host-effect claim
+// `admit_unplaced_host_over` lands, against the same partition, with the same term and residue
+// discipline -- and it decides NOTHING about whether the host may be used. The caller establishes
+// that first, by the relation its own program protects, and hands the admitted identity here.
+// A refused claim is a refusal, never a quiet unclaimed run: the host is held by somebody else or
+// the partition moved, and either way this effect does not start.
+//
+// AND IT RETURNS ITS OWN TYPE RATHER THAN `SparkHostAdmission`, which is the whole point of
+// splitting the seam and not a tidiness preference. `SparkHostAdmitted` MEANS "this host was
+// admitted, here is the relation that admitted it"; this fold establishes no such thing, so handing
+// back that constructor would give one name two materially different meanings (DESIGN section 3's
+// meaning fork) and let a reader who matched `SparkHostAdmitted` conclude an admission that nothing
+// performed. The handle is what a caller needs -- `release_host_effect_live` takes it unchanged --
+// so the carrier carries exactly the handle and the refusal, and says nothing about admissibility.
+type HostEffectClaimOutcome
+  = HostEffectClaimLanded { handle: HostEffectHandle }
+  | HostEffectClaimNotLanded { cause: NonEmptyStr }
+
+fn claim_host_effect_live(host: HostIdentity, purpose: NonEmptyStr, term: Second, residue: HostEffectResidueSpec) -> HostEffectClaimOutcome {
+  match host_effect_landing_live() {
+    HostEffectLandingUnavailable { cause: c } => HostEffectClaimNotLanded { cause: join([host as String, " cannot be claimed for ", purpose as String, ": ", c], "") as NonEmptyStr }
+    HostEffectLandingResolved { store: store, executor: executor, at: at } =>
+      match host_effect_admit(store: store, host: host, purpose: purpose, executor: executor, term: term, residue: residue, at: at) {
+        HostEffectClaimed { id: id } =>
+          HostEffectClaimLanded { handle: HostEffectHandle { host: host, residue: residue, claim: id } }
+        HostEffectClaimRefused { partition: pt, step: st, reason: why } =>
+          HostEffectClaimNotLanded { cause: join([host as String, " cannot be claimed for ", purpose as String, ": the host-effect claim did not land on ", pt as String, " at ", st, ": ", why], "") as NonEmptyStr }
       }
   }
 }
@@ -1023,7 +1084,6 @@ fn release_host_effect_live(handle: HostEffectHandle?, exit: ProcessExit) -> Pro
 //     --function host_effect_recover_wet --arg host=<identity> --arg claim=<event id>
 //     --arg claimant=terminated|abandoned --arg receipt=<how that was established>
 fn host_effect_recover_wet(host: String, claim: String, claimant: String, receipt: String) -> ProcessExit
-  uses net: Network
 {
   if host == "" || claim == "" {
     exit_failure(reason: "a host and the exact claim (event id) are required; this entry does not pick a claim by host")

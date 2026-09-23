@@ -21,7 +21,8 @@ module gunbc.executor_privileged_operation
 import std.types { String, NonEmptyStr, List }
 import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.sudo.elevation { sudo_elevate_argv }
+import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate, sudo_elevate_as, sudo_elevate_argv }
+import gunbc.cli_invoke { gunbc_run_invocation_words_with_functions, invocation_words_bare }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import v2.std.algebra { fold_list }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
@@ -80,6 +81,50 @@ type ExecutorPrivilegedOperation
   | ReadConntrackExpectations
   | ReadLegacyXtablesRules
   | ReadUserspaceConntrackHelpers
+  | RunGunbcEntryAs {
+      run_as: NonEmptyStr
+      binary: NonEmptyStr
+      source_roots: List<NonEmptyStr>
+      entry: NonEmptyStr
+      function: NonEmptyStr
+    }
+
+// THE PRINCIPAL AN OPERATION RUNS AS IS A FACT OF THE OPERATION, not of the renderer. Every
+// operation above needs root. RunGunbcEntryAs is the one that must NOT run as root: it runs a released
+// gunbc entry as the service account whose process it reads (the approval broker's ntfy runtime
+// observation reads /proc/<MainPID> of gunbc-ntfy's own process, which that uid can read and the
+// operator's cannot). Before this, executor_sudoers_run_as was a constant, and the elevation always
+// had -n and no -u. Both the sudoers `(run_as)` field and the `sudo -u` word are now read from this
+// one match. So a grant cannot name one principal while the command elevates to another.
+type OperationPrincipal
+  = RunsAsRoot
+  | RunsAsAccount { login: NonEmptyStr }
+
+// A gunbc ENTRY RUN IS ALSO AN OPERATION, and its argv is gunbc.cli_invoke's one `gunbc run` shape.
+// It is not re-spelled here. The words are exact and argument-free: no --arg, so the sudoers
+// match (which is this argv) leaves no value open for the grantee to choose. The binary and every
+// path are absolute and name one release directory, so the grant authorizes one build over one
+// tree, and a sudoers wildcard is never needed to name it.
+fn gunbc_entry_run_argv(
+  binary: NonEmptyStr,
+  source_roots: List<NonEmptyStr>,
+  entry: NonEmptyStr,
+  function: NonEmptyStr,
+) -> List<NonEmptyStr> {
+  concat(
+    [binary],
+    map(
+      invocation_words_bare(words: gunbc_run_invocation_words_with_functions(
+        source_roots: map(source_roots, r => r as String),
+        entry: entry as String,
+        functions: [function as String],
+        claim_run: false,
+        arguments: [],
+      )),
+      w => w as NonEmptyStr,
+    ),
+  )
+}
 
 // THE ONE PROJECTION. Everything else in this module derives from this function, so there is
 // exactly one place where an operation becomes words.
@@ -161,7 +206,54 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       u,
       a
     ]
+    RunGunbcEntryAs { run_as: _, binary: b, source_roots: rs, entry: e, function: f } =>
+      gunbc_entry_run_argv(binary: b, source_roots: rs, entry: e, function: f)
   }
+}
+
+// EXHAUSTIVE, NO WILDCARD: a new operation must say whom it runs as instead of inheriting root.
+fn executor_privileged_operation_principal(op: ExecutorPrivilegedOperation) -> OperationPrincipal {
+  match op {
+    RunGunbcEntryAs { run_as: u, binary: _, source_roots: _, entry: _, function: _ } => RunsAsAccount { login: u }
+    EnsureOwnedDirectory { path: _, owner: _, group: _, mode: _ } => RunsAsRoot
+    RemoveDirectoryTree { path: _ } => RunsAsRoot
+    SystemdDaemonReload => RunsAsRoot
+    SystemdEnableUnit { unit: _ } => RunsAsRoot
+    SystemdStartUnit { unit: _ } => RunsAsRoot
+    SystemdSetUnitProperty { unit: _, assignment: _ } => RunsAsRoot
+    EnsureSystemAccount { login: _, shell: _ } => RunsAsRoot
+    EnsureSupplementaryGroupMembership { login: _, group: _ } => RunsAsRoot
+    InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => RunsAsRoot
+    SystemdReloadUnit { unit: _ } => RunsAsRoot
+    SystemdRestartUnit { unit: _ } => RunsAsRoot
+    ReadNftTable { family: _, table: _ } => RunsAsRoot
+    ReadNftRuleset => RunsAsRoot
+    ReadConntrackExpectations => RunsAsRoot
+    ReadLegacyXtablesRules => RunsAsRoot
+    ReadUserspaceConntrackHelpers => RunsAsRoot
+  }
+}
+
+fn operation_principal_sudoers_run_as(p: OperationPrincipal) -> NonEmptyStr {
+  match p {
+    RunsAsRoot => executor_sudoers_run_as
+    RunsAsAccount { login: l } => l
+  }
+}
+
+// THE ELEVATED INVOCATION, from the same principal the sudoers line reads. The root arm is
+// sudo_elevate unchanged (-n, no -u), so no emitted byte for an existing operation moves.
+fn executor_privileged_operation_elevated(op: ExecutorPrivilegedOperation) -> ElevatedInvocation {
+  let argv = map(executor_privileged_operation_argv(op: op), w => w as String)
+  match executor_privileged_operation_principal(op: op) {
+    RunsAsRoot => sudo_elevate(command: argv)
+    RunsAsAccount { login: l } => sudo_elevate_as(user: l, command: argv)
+  }
+}
+
+fn executor_privileged_operation_elevated_argv(op: ExecutorPrivilegedOperation) -> List<String> {
+  let e = executor_privileged_operation_elevated(op: op)
+  concat([e.bin_path], e.args)
 }
 
 // WHY SystemdSetUnitProperty IS ADMISSIBLE WHERE A PRIVILEGED FILE-INSTALL WAS VETOED (parent
@@ -195,7 +287,8 @@ fn executor_privileged_operation_sudoers_command(op: ExecutorPrivilegedOperation
 // RUN-AS IS root, NOT ALL. The executor previously rendered ALL=(ALL), which authorizes the
 // grantee to run the command as ANY user including other service accounts; Spark already rendered
 // ALL=(root). These were two different grants wearing one vocabulary. root is the narrower of the
-// two and is what every operation here actually needs.
+// two, and it is what every root operation here needs. An operation that runs as another account
+// names that account through executor_privileged_operation_principal. It is never ALL.
 data executor_sudoers_run_as: NonEmptyStr = "root" as NonEmptyStr
 
 fn executor_privileged_operation_sudoers_line(
@@ -205,7 +298,7 @@ fn executor_privileged_operation_sudoers_line(
   join([
     grantee as String,
     " ALL=(",
-    executor_sudoers_run_as as String,
+    operation_principal_sudoers_run_as(p: executor_privileged_operation_principal(op: op)) as String,
     ") NOPASSWD: ",
     executor_privileged_operation_sudoers_command(op: op) as String
   ], "") as NonEmptyStr
@@ -342,6 +435,7 @@ fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -
     ReadConntrackExpectations => NoPrecondition
     ReadLegacyXtablesRules => NoPrecondition
     ReadUserspaceConntrackHelpers => NoPrecondition
+    RunGunbcEntryAs { run_as: _, binary: _, source_roots: _, entry: _, function: _ } => NoPrecondition
   }
 }
 
@@ -392,10 +486,7 @@ fn executor_privileged_operation_converge_command(op: ExecutorPrivilegedOperatio
 fn executor_privileged_operation_shell_command(op: ExecutorPrivilegedOperation) -> String {
   join(
     map(
-      sudo_elevate_argv(command: map(
-        executor_privileged_operation_argv(op: op),
-        w => w as String,
-      )),
+      executor_privileged_operation_elevated_argv(op: op),
       w => posix_single_quote(spelling: w),
     ),
     " ",

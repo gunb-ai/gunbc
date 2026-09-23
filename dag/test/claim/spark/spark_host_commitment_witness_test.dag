@@ -9,7 +9,7 @@ import gunbc.spark.pair_serving_authority_log { HostEffectRecord }
 import gunbc.fleet_intent_network {
   operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
   operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
-  operator_host_srv2,
+  operator_host_srv1, operator_host_srv2,
 }
 import gunbc.spark.cell_role {
   SparkCellRoleAssignment, SparkServingCell, SparkTrainingCell, spark_cell_role_assignments,
@@ -65,6 +65,7 @@ import gunbc.spark.host_commitment {
   spark_admissible_hosts_to,
   spark_serving_admissibility,
   spark_serving_admissible_hosts,
+  admit_host_held_by_subject_among,
 }
 
 // ── FIXTURE ROSTERS ───────────────────────────────────────────────────────────────────────────
@@ -484,6 +485,14 @@ test fn an_arm_claim_commits_only_the_host_it_names() -> Bool {
 // what the deleted hand-maintained producer list could never do.
 //
 // srv10 IS NOW A REFUSAL, AND THAT IS THE HARM THIS SEAM EXISTS TO STOP. This claim used to admit
+// THE HOST IS BOUND INTO THE RENDERED PHRASE, NOT ASSERTED BESIDE THE CAUSE. This read "srv9" and
+// "serving arm" as two free-standing contains over one message, which a refusal naming srv9 in some
+// other clause -- an unplaced list, a neighbouring host -- satisfies without ever saying that srv9 is
+// the host being refused. The phrase admit_unplaced_host_among actually joins is the pair, so the
+// pair is what is asked for. (sleek-bee-348 found this shape on
+// the_microvm_network_step_binds_the_dispatched_host_into_its_environment, where a step carrying the
+// name and the expression in DIFFERENT pairs passed a claim named for the binding.)
+//
 // srv10 for a build, on the ground that a ruling-derived reservation is not a placement -- true, but
 // srv10 was also running the native GLM arm, which had no placement claim, so the seam would have
 // sent a source build or an image pull onto a serving host. Group B's assigned arm now claims it and
@@ -493,7 +502,7 @@ test fn an_arm_claim_commits_only_the_host_it_names() -> Bool {
 test fn the_admission_seam_refuses_a_claimed_host_naming_its_cause() -> Bool {
   (match admit_unplaced_host(raw: "srv9", purpose: "a fixture effect" as NonEmptyStr) {
      SparkHostRefused { cause: why } =>
-       string_contains(s: why as String, pattern: "srv9")
+       string_contains(s: why as String, pattern: "srv9 is not admissible for a fixture effect, because ")
          && string_contains(s: why as String, pattern: "serving arm")
          && string_contains(s: why as String, pattern: "not a held claim")
      SparkHostAdmitted { host: _ } => false
@@ -644,6 +653,46 @@ test fn group_b_s_assigned_subject_is_admitted_group_b_and_none_of_group_a() -> 
     && !contains_host(hosts: admissible, host: operator_host_srv6)
     && !contains_host(hosts: admissible, host: operator_host_srv7)
     && !contains_host(hosts: admissible, host: operator_host_srv8)
+}
+
+// ── ADMISSION BY THE SUBJECT THAT HOLDS THE HOST ──────────────────────────────────────────────
+//
+// THE SECOND ADMISSION RELATION THIS FILE OWNS, and it exists because the first one refuses exactly
+// where this one must admit. `admit_unplaced_host` asks whether a host is spoken for by nobody;
+// `spark_unplaced_hosts` is EMPTY in production and srv5-srv8 are committed to the pair subject, so
+// an effect that stages bytes at rest on a Group A host on its owner's behalf can never be admitted
+// that way -- and routing around that refusal would have asserted that a committed host is
+// unclaimed, which is the authority relation docs/plans/dsv41-cut-d-redesign.md protects. So the
+// weaker, true relation gets its own seam, and these rows are its discriminating evidence. Its
+// consumers are the two DS4.1 Group A modes (gunbc.spark.v41_checkpoint_materialize and
+// gunbc.spark.v41_runtime_image_converge).
+
+// EVERY GROUP B HOST REFUSES AGAINST THE GROUP A SUBJECT, AND THE REFUSAL RENDERS THE HELD LIST. Group
+// B is precisely the population a "just pick a Spark" reading would have admitted, so it is the
+// discriminating red; naming the held hosts is what makes the refusal actionable rather than a no.
+test fn no_group_b_host_is_held_by_the_group_a_pair_subject() -> Bool {
+  let held = spark_serving_admissible_hosts(subject: pair_unit_a)
+  all([operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_srv1, operator_host_srv2], h =>
+    match admit_host_held_by_subject_among(subject: pair_unit_a, raw: h, held: held) {
+      Absent => false
+      Present { value: why } => why.contains(join([h as String, " is not held by"], "")) && why.contains("srv5") && why.contains("srv8")
+    })
+    && all([operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8], h =>
+      match admit_host_held_by_subject_among(subject: pair_unit_a, raw: h, held: held) {
+        Absent => true
+        Present { value: _ } => false
+      })
+}
+
+// AN EMPTY HELD POPULATION ADMITS NOTHING. The fold's answer IS its population, so the degenerate
+// population must refuse every host rather than fall through -- the absorbing arm DESIGN section 5
+// forbids, and the one a `if any(...) { .. } else { .. }` inverted by one edit would produce.
+test fn an_empty_held_population_admits_no_host() -> Bool {
+  all([operator_host_srv5, operator_host_srv8, operator_host_srv1], h =>
+    match admit_host_held_by_subject_among(subject: pair_unit_a, raw: h, held: [] as List<HostIdentity>) {
+      Absent => false
+      Present { value: _ } => true
+    })
 }
 
 // THE REFUSAL NAMES THE CAUSE THAT WAS NOT HELD, so a host held against a subject is explained rather

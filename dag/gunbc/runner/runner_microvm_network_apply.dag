@@ -2,7 +2,6 @@ module gunbc.runner_microvm_network_apply
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import std.algebra { trim }
-import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -98,7 +97,7 @@ import gunbc.runner_microvm_network_converge {
 // AND IT INSTALLS; IT DOES NOT CONVERGE. This module reads back what it installed -- every staged
 // path root-only, every operation's exit, and the ruleset as the kernel lists it -- and records
 // that digest. It does NOT mint a ConvergedSlotNetwork: that value says what the host IS at a
-// generation and is produced only by runner_microvm_network_observe_wet from live readings, which
+// generation and is produced only by gunbc.runner_microvm_network_observe runner_microvm_network_observe_wet from live readings, which
 // is why the two are separate modes and separate receipts.
 
 // THE STAGING ROOT IS THE CONVERGE'S OWN, NOT A SECOND ONE. gunbc.runner_microvm_network_converge
@@ -146,6 +145,16 @@ type MicrovmNetworkApplyAdmission
   = MicrovmNetworkApplyAdmitted { subject: MicrovmNetworkApplySubject }
   | MicrovmNetworkApplyRefused { cause: String }
 
+// ONE ADMINISTRATOR TARGET FOR BOTH MODES. The apply installs as this principal and
+// gunbc.runner_microvm_network_observe reads the root-only surfaces back as it, so the account that
+// wrote the ruleset and the account that lists it are one fact, not two constructions free to drift.
+fn runner_microvm_administrator_target(host: HostIdentity) -> SshTarget {
+  SshTarget {
+    endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
+    principal: executor_bootstrap_principal.login,
+  }
+}
+
 // THE ADMINISTRATOR MAY NOT BE THE JOB USER, AND THAT IS THE WHOLE POINT OF THE MODE. If the two
 // accounts coincide on this host, reaching root "as the administrator" is reaching root as the
 // principal every CI step runs as, and the mode has moved nothing. gunbc.runner_host_file_converge
@@ -183,10 +192,7 @@ fn microvm_network_apply_admission_for_deploy(host: HostIdentity, revision: Stri
         MicrovmNetworkApplyAdmitted {
           subject: MicrovmNetworkApplySubject {
             host: host,
-            target: SshTarget {
-              endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-              principal: executor_bootstrap_principal.login,
-            },
+            target: runner_microvm_administrator_target(host: host),
             revision: revision,
             slots: map(runner_index_seq(n: d.runner_count), i => RunnerSlotIdentity { host: host, slot_index: i }),
             tap_owner: d.job_user,
@@ -207,7 +213,6 @@ fn run_admin_leg(
   context: FleetSshExecutionContext,
   argv: List<String>,
 ) -> ApplyLeg
-  uses net: Network
 {
   match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: argv) {
     TypedArgvExecRefused { reason: why } => ApplyLegRefused { reason: why }
@@ -223,7 +228,6 @@ fn observe_administrator_privilege(
   subject: MicrovmNetworkApplySubject,
   context: FleetSshExecutionContext,
 ) -> AdministratorPrivilege
-  uses net: Network
 {
   match run_admin_leg(subject: subject, context: context, argv: elevated_argv(command: ["true"])) {
     ApplyLegRefused { reason: why } => AdministratorPrivilegeMissing { reason: why }
@@ -259,7 +263,6 @@ fn observe_paths_root_only(
   paths: List<String>,
   kind: String,
 ) -> RunnerHostPathMetadata
-  uses net: Network
 {
   match run_admin_leg(subject: subject, context: context, argv: runner_microvm_root_only_probe_argv(paths: paths, kind: kind)) {
     ApplyLegRefused { reason: why } => PathsUnobservable { reason: why }
@@ -283,7 +286,6 @@ fn run_operation(
   context: FleetSshExecutionContext,
   op: ExecutorPrivilegedOperation,
 ) -> ApplyLeg
-  uses net: Network
 {
   run_admin_leg(
     subject: subject,
@@ -337,7 +339,6 @@ fn run_operations_until_failure(
   context: FleetSshExecutionContext,
   ops: List<ExecutorPrivilegedOperation>,
 ) -> List<OperationResult>
-  uses net: Network
 {
   let sequence = fold(
     ops,
@@ -393,7 +394,6 @@ fn write_staged_file(
   context: FleetSshExecutionContext,
   file: StagedFile,
 ) -> StagedWriteResult
-  uses net: Network
 {
   StagedWriteResult {
     path: file.path,
@@ -446,7 +446,6 @@ fn read_back_ruleset(
   subject: MicrovmNetworkApplySubject,
   context: FleetSshExecutionContext,
 ) -> RulesetReadback
-  uses net: Network
 {
   match run_operation(subject: subject, context: context, op: runner_microvm_nft_read_operation()) {
     ApplyLegRefused { reason: why } => RulesetNotListed { reason: why }
@@ -526,7 +525,6 @@ fn run_microvm_network_apply(
   subject: MicrovmNetworkApplySubject,
   context: FleetSshExecutionContext,
 ) -> MicrovmNetworkApplyRun
-  uses net: Network
 {
   let privilege = observe_administrator_privilege(subject: subject, context: context)
   match privilege {
@@ -549,7 +547,6 @@ fn run_privileged_microvm_network_apply(
   context: FleetSshExecutionContext,
   privilege: AdministratorPrivilege,
 ) -> MicrovmNetworkApplyRun
-  uses net: Network
 {
   let ensured = run_operation(subject: subject, context: context, op: staging_dir_ensure_operation())
   let dir = match ensured {
@@ -583,7 +580,6 @@ fn run_staged_microvm_network_apply(
   privilege: AdministratorPrivilege,
   dir: RunnerHostPathMetadata,
 ) -> MicrovmNetworkApplyRun
-  uses net: Network
 {
   let files = converge_staged_files(
     slots: subject.slots,
@@ -654,7 +650,6 @@ fn apply_checked_out_revision() -> String {
 }
 
 fn runner_microvm_network_apply_ci_wet() -> ProcessExit
-  uses net: Network
 {
   match microvm_network_apply_admission(
     host: apply_expected_host(),

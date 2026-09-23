@@ -110,6 +110,9 @@ test fn an_answered_200_hands_back_the_body_without_the_status_line() -> Bool {
   }
 }
 
+// THE GRAMMAR IS EXACT: a trailing word on `absent`, and a second word after a login, are
+// undecodable -- a malformed reply can never read as the store saying the proxy supplied no login.
+// THE REPLY IS ONE LINE: a continuation after either arm, or a trailing newline, is undecodable.
 // The presented identity crosses the wire as the same arm: a login as that login, absent as absent.
 // A reply of another shape under the identity word is undecodable, not an absent identity -- the
 // absent arm is written by the store side only, never inferred by the caller from a reply it could

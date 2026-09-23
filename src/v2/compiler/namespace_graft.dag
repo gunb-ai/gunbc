@@ -28,7 +28,7 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.qualified_name { QualifiedName }
-import v2.std.compilers.lexing { symbol_lexeme }
+import v2.compiler.parse { parse_tree_projection_edge }
 import v2.std.grammar {
   GrammarExpr,
   GrammarExprFold,
@@ -99,12 +99,6 @@ fn namespace_graft_is_module_shell(root: Node) -> Bool {
   }
 }
 
-fn namespace_graft_parse_projection_edge(name: Symbol) -> Bool {
-  (name == ^grammar_production_identity_node_projection)
-    || (name == ^grammar_production_captured_node_projection)
-    || ends_with(s: symbol_lexeme(sym: name), suffix: "_node_projection")
-}
-
 fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
@@ -116,7 +110,7 @@ fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {
             false
           } else {
             match e.label {
-              Named { name: sym } => namespace_graft_parse_projection_edge(name: sym)
+              Named { name: sym } => parse_tree_projection_edge(name: sym)
               Positional => true
             }
           }
@@ -138,7 +132,7 @@ fn namespace_graft_collect_body_edge(
     Named { name: sym } =>
       if namespace_graft_is_metadata_edge(name: sym) {
         acc
-      } else if namespace_graft_parse_projection_edge(name: sym) {
+      } else if parse_tree_projection_edge(name: sym) {
         concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target, unit_ids: unit_ids))
       } else if dag_resolve_preserve_module_metadata_subtree(node: edge.target) {
         acc
@@ -318,25 +312,24 @@ fn namespace_graft_type_decl_target(root: Node) -> Node {
   }
 }
 
-// Any type_decl that still locates dag_surface_field_decl_block is residual,
-// not Named: records and fielded variants (optional field_decl_block on
-// dag_grammar_type_variant_expr; sugar leaves those blocks in the tree).
-// Narrowing by type_alias_rhs / `=` rehomes records. Class
-// gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft.
+// EVERY type_decl unit is Named. Records and fielded variants used to take a residual arm here
+// because no stage lowered their field_decl_block; body lowering now declares those fields
+// (v2.compiler.body_lowering_fold body_lower_type_variant / body_lower_record_type_decl), a
+// record reaches this flatten as `Conj { R: payload }` the way a where-alias does, and a
+// coproduct's unit carries its Disj with every arm's payload declared. The skip and the class
+// it mitigated, gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft,
+// close together: a field block that cannot lower is body lowering's typed refusal, so no
+// unlowered block can reach this partition.
 fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {
-  match parse_subtree_locate_production(root: unit, emitted: ^dag_surface_field_decl_block) {
-    Present { value: _ } => optional_absent()
-    Absent =>
-      match namespace_graft_type_decl_name(unit: unit) {
-        Absent => optional_absent()
-        Present { value: type_name } =>
-          optional_present(
-            value: Edge {
-              label: Named { name: type_name },
-              target: namespace_graft_type_decl_target(root: unit)
-            }
-          )
-      }
+  match namespace_graft_type_decl_name(unit: unit) {
+    Absent => optional_absent()
+    Present { value: type_name } =>
+      optional_present(
+        value: Edge {
+          label: Named { name: type_name },
+          target: namespace_graft_type_decl_target(root: unit)
+        }
+      )
   }
 }
 
@@ -467,31 +460,20 @@ fn namespace_graft_partition_decl_units(units: List<Node>) -> NamespaceGraftDecl
   )
 }
 
-// Flatten keeps Named members that are not parse machinery. A Conj that still
-// carries field_decl_block is the same skip as type_decl_named_edge (record or
-// fielded variant), not a flatten member. Atom targets stay: the graft-shape
-// fixture is two Named atoms.
+// Flatten keeps Named members that are not parse machinery: a lowered record
+// (`Conj { R: payload }`), a where-alias, an Atom -- the graft-shape fixture is
+// two Named atoms.
 fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
   match edge.label {
     Named { name: sym } =>
-      if namespace_graft_parse_projection_edge(name: sym) {
+      if parse_tree_projection_edge(name: sym) {
         false
       } else if namespace_graft_is_metadata_edge(name: sym) {
         false
       } else if namespace_graft_target_is_production_shell(edge: edge) {
         false
       } else {
-        match edge.target.kind {
-          TypeNode { connective: Conj } =>
-            match parse_subtree_locate_production(
-              root: edge.target,
-              emitted: ^dag_surface_field_decl_block
-            ) {
-              Present { value: _ } => false
-              Absent => true
-            }
-          _ => true
-        }
+        true
       }
     Positional => false
   }

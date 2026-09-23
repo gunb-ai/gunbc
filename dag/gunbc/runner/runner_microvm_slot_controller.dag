@@ -50,11 +50,14 @@ import gunbc.runner_microvm_attempt {
   MicroVmAttempt, MicroVmCellBinding, VmBoundToOwnedCell, VmUnboundCellNotOwned, bind_microvm_to_cell,
 }
 import gunbc.auth.github_apps { GitHubAppControlPlaneState, gunbai_ci_declared, gunbai_ci_declared_installation_id }
+import gunbc.auth.github_app_control_plane_observe { observe_github_app_control_plane }
+import gunbc.fleet.app_control_plane_inspection { gunbai_ci_registration_goal }
 import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
 import gunbc.fleet_runner_connectivity { github_organization_ref }
 import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
 import gunbc.github_effect_perform {
   JitMintPerformance, perform_organization_jit_mint, JitMintReceived, JitMintAppKeyNotCustodied,
+  lifecycle_controller_app, lifecycle_controller_app_key,
   JitMintClockUnread, JitMintAppJwtUnsigned, JitMintStepNotSucceeded,
 }
 import gunbc.runner_attempt_launch {
@@ -111,7 +114,6 @@ type SlotControllerRefusal
   | GuestImageIncomplete { path: String }
   | ReservationNotObserved { observation: RequiredBuildCellObservation }
   | CellNotBound { cause: String }
-  | AppControlPlaneUnproduced { detail: String }
   | ShapeRefused { detail: String }
   | NetworkReceiptUnreadable { path: String, detail: String }
   | NetworkReceiptMalformed { path: String, cause: NonEmptyStr }
@@ -225,31 +227,24 @@ fn observe_reservation(slot: RunnerSlotIdentity) -> RequiredBuildCellObservation
 
 // ── stage 4: the credential ─────────────────────────────────────────────────────────────────────
 
-// DECLARED FRONTIER (DESIGN 3c): NO PRODUCTION ROUTE OBSERVES THE gunbai-ci APP CONTROL PLANE.
+// THE CONTROL PLANE IS OBSERVED FROM THIS PROCESS, UNDER THE CONTROLLER'S OWN KEY, EVERY ATTEMPT.
 // gunbc.runner_jit_mint plan_jit_mint admits a mint only under a GitHubAppControlPlaneState that
-// reports InstallationGrantObserved, and that state is sealed by gunbc.auth.github_apps
-// sealed_control_plane_state from three observations -- signer custody (the key's fingerprint
-// against GitHub's registered one), the App registration's permissions, and the installation's
-// grant -- of which no production process performs the first, and the second and third exist only
-// as fleet-converge observe modes and instruments. NAMED CONSUMER: mint_attempt_credential below,
-// which hands the state to dispatch_jit_mint. TRIGGER, at capability grain: a producer that a
-// process holding the controller's App key can call to observe custody, registration and
-// installation and seal the state -- the App control-plane lane's, not this one's. SUFFICIENT FOR
-// deleting this row and the AppControlPlaneUnproduced arm. NOT satisfied by a witness supplying an
-// InstallationGrantObserved state, nor by performing the mint without the plan's credential join
-// (the workaround DESIGN section 5 names).
-data app_control_plane_producer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_microvm_slot_controller mint_attempt_credential, which needs a GitHubAppControlPlaneState for gunbc.runner.runner_jit_perform dispatch_jit_mint. TRIGGER: a production producer that observes signer custody, App registration and installation grant with the controller's App key and seals the state through gunbc.auth.github_apps sealed_control_plane_state. SUFFICIENT FOR deleting this row and SlotControllerRefusal AppControlPlaneUnproduced. NOT satisfied by a witness supplying the state or by minting around the plan's credential join." as NonEmptyStr,
-)
-
-type AppControlPlaneObservation
-  = AppControlPlaneObserved { state: GitHubAppControlPlaneState }
-  | AppControlPlaneNotObservable { detail: String }
-
-fn observe_app_control_plane() -> AppControlPlaneObservation {
-  AppControlPlaneNotObservable {
-    detail: "no production producer observes the gunbai-ci App control plane (signer custody, registration, installation grant) from a process holding the controller's key; see app_control_plane_producer_frontier",
-  }
+// reports the installation grant, and gunbc.auth.github_app_control_plane_observe
+// observe_github_app_control_plane is the producer that seals it: signer custody (the key's
+// signature accepted by GitHub), the App registration's permissions against the goal, and the
+// installation's grant. An unreachable or refusing control plane is carried INSIDE the state rather
+// than as a separate arm here, and the mint's credential join refuses on it -- so there is no
+// "not observable" path for this module to invent.
+fn observe_app_control_plane() -> GitHubAppControlPlaneState
+  uses net: Network
+{
+  observe_github_app_control_plane(
+    app: lifecycle_controller_app,
+    key: lifecycle_controller_app_key,
+    installation: gunbai_ci_declared_installation_id,
+    required: gunbai_ci_registration_goal.required_permissions,
+    reason: "the microVM slot controller observes the gunbai-ci App control plane before minting an attempt's JIT registration" as NonEmptyStr,
+  )
 }
 
 fn controller_credential_authority() -> GitHubCredentialAuthority {
@@ -364,9 +359,8 @@ fn slot_controller_on_reservation(
           match resolve_network_subject(slot: slot) {
             NetworkSubjectRefused { refusal: r } => SlotControllerRefused { refusal: r }
             NetworkSubjectResolved { subject: subject } =>
-              match observe_app_control_plane() {
-                AppControlPlaneNotObservable { detail: d } => SlotControllerRefused { refusal: AppControlPlaneUnproduced { detail: d } }
-                AppControlPlaneObserved { state: state } =>
+              {
+                let state = observe_app_control_plane()
                   slot_controller_launch(
                     snapshot: snapshot, attempt: attempt, shape: shape, subject: subject, bins: bins, image: image,
                     invocation_id: invocation_id,
@@ -481,7 +475,6 @@ fn refusal_text(r: SlotControllerRefusal) -> String {
     GuestImageIncomplete { path: p } => join(["GuestImageIncomplete ", p, " is absent"], "")
     ReservationNotObserved { observation: o } => join(["ReservationNotObserved ", reservation_observation_text(o: o)], "")
     CellNotBound { cause: c } => join(["CellNotBound ", c], "")
-    AppControlPlaneUnproduced { detail: d } => join(["AppControlPlaneUnproduced ", d], "")
     ShapeRefused { detail: d } => join(["ShapeRefused ", d], "")
     NetworkReceiptUnreadable { path: p, detail: d } => join(["NetworkReceiptUnreadable ", p, ": ", d], "")
     NetworkReceiptMalformed { path: p, cause: c } => join(["NetworkReceiptMalformed ", p, ": ", c as String], "")
