@@ -20,6 +20,7 @@ import gunbc.live_deploy.emit {
   approval_broker_helper_grant_admission_at,
   approval_broker_release_locus,
   path_ancestors_inclusive,
+  helper_snapshot_readback_command_at,
   HelperLocus,
   HelperGrantAdmission,
   HelperGrantAdmitted,
@@ -177,9 +178,9 @@ test fn nothing_the_grant_executes_is_in_the_grantee_owned_release() -> Bool {
 
 test fn the_snapshot_readback_covers_every_ancestor_and_refuses_links() -> Bool {
   path_ancestors_inclusive(path: "/opt/gunbc/approval-broker-helpers") == ["/", "/opt", "/opt/gunbc", "/opt/gunbc/approval-broker-helpers"]
-    && string_contains(s: step_text_at(i: 7), pattern: "test -z")
-    && string_contains(s: step_text_at(i: 7), pattern: "/ /opt /opt/gunbc /opt/gunbc/approval-broker-helpers -maxdepth 0")
-    && string_contains(s: step_text_at(i: 7), pattern: "-type l")
+    && string_contains(s: step_text_at(i: 7), pattern: "_gunbc_helper_ancestors=\"$(find / /opt /opt/gunbc /opt/gunbc/approval-broker-helpers -maxdepth 0 \\( ! -user root -o -perm /022 -o -type l \\) -print)\"\n")
+    && string_contains(s: step_text_at(i: 7), pattern: "_gunbc_helper_snapshot=\"$(find ")
+    && ends_with(s: step_text_at(i: 7), suffix: "test -z \"$\{_gunbc_helper_ancestors}$\{_gunbc_helper_snapshot}\"")
 }
 
 // ── WALL 2: THE DROP-IN'S IDENTITY AND AN ATOMIC REPLACE ──────────────────────────────────

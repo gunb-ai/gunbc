@@ -145,30 +145,45 @@ fn ntfy_runtime_wire_keys(arm: NtfyRuntimeWireArm) -> List<String> {
   }
 }
 
+// THE ENCODER'S MEMBERS ARE THE KEY TABLE MAPPED THROUGH ONE VALUE FUNCTION, so the population the
+// encoder writes and the population the decoder admits are the same list, not two lists kept in
+// step. A key a value function does not recognise encodes as null. The decoder refuses null for
+// every member, so a table row with no encoding cannot round-trip silently.
+fn ntfy_open_fd_value(fd: NtfyOpenFd, key: String) -> JsonValue {
+  if key == ntfy_runtime_wire_fd_target { json_string(s: fd.target) }
+  else if key == ntfy_runtime_wire_fd_target_inode { json_int(n: fd.target_inode) }
+  else { JsonNull }
+}
+
 fn ntfy_open_fd_json(fd: NtfyOpenFd) -> JsonValue {
-  json_object(members: [
-    json_kv(key: ntfy_runtime_wire_fd_target, value: json_string(s: fd.target)),
-    json_kv(key: ntfy_runtime_wire_fd_target_inode, value: json_int(n: fd.target_inode)),
-  ])
+  json_object(members: map(ntfy_runtime_wire_keys(arm: WireArmOpenFd), k => json_kv(key: k, value: ntfy_open_fd_value(fd: fd, key: k))))
+}
+
+fn ntfy_runtime_observed_value(o: NtfyRuntimeProcessObservation, key: String) -> JsonValue {
+  if key == ntfy_runtime_wire_outcome { json_string(s: ntfy_runtime_wire_observed) }
+  else if key == ntfy_runtime_wire_main_pid { json_int(n: o.main_pid) }
+  else if key == ntfy_runtime_wire_start_before { json_int(n: o.start_ticks_before) }
+  else if key == ntfy_runtime_wire_start_after { json_int(n: o.start_ticks_after) }
+  else if key == ntfy_runtime_wire_environment_names { json_array(elements: map(o.environment_names, n => json_string(s: n))) }
+  else if key == ntfy_runtime_wire_exe_target { json_string(s: o.exe_target) }
+  else if key == ntfy_runtime_wire_exe_inode { json_int(n: o.exe_inode) }
+  else if key == ntfy_runtime_wire_open_fds { json_array(elements: map(o.open_fds, f => ntfy_open_fd_json(fd: f))) }
+  else { JsonNull }
+}
+
+fn ntfy_runtime_refused_value(read: String, cause: String, key: String) -> JsonValue {
+  if key == ntfy_runtime_wire_outcome { json_string(s: ntfy_runtime_wire_refused) }
+  else if key == ntfy_runtime_wire_read { json_string(s: read) }
+  else if key == ntfy_runtime_wire_cause { json_string(s: cause) }
+  else { JsonNull }
 }
 
 fn ntfy_runtime_observe_json(outcome: NtfyRuntimeObserveOutcome) -> JsonValue {
   match outcome {
-    NtfyRuntimeObserveRefused { read: r, cause: c } => json_object(members: [
-      json_kv(key: ntfy_runtime_wire_outcome, value: json_string(s: ntfy_runtime_wire_refused)),
-      json_kv(key: ntfy_runtime_wire_read, value: json_string(s: r)),
-      json_kv(key: ntfy_runtime_wire_cause, value: json_string(s: c)),
-    ])
-    NtfyRuntimeObserved { observation: o } => json_object(members: [
-      json_kv(key: ntfy_runtime_wire_outcome, value: json_string(s: ntfy_runtime_wire_observed)),
-      json_kv(key: ntfy_runtime_wire_main_pid, value: json_int(n: o.main_pid)),
-      json_kv(key: ntfy_runtime_wire_start_before, value: json_int(n: o.start_ticks_before)),
-      json_kv(key: ntfy_runtime_wire_start_after, value: json_int(n: o.start_ticks_after)),
-      json_kv(key: ntfy_runtime_wire_environment_names, value: json_array(elements: map(o.environment_names, n => json_string(s: n)))),
-      json_kv(key: ntfy_runtime_wire_exe_target, value: json_string(s: o.exe_target)),
-      json_kv(key: ntfy_runtime_wire_exe_inode, value: json_int(n: o.exe_inode)),
-      json_kv(key: ntfy_runtime_wire_open_fds, value: json_array(elements: map(o.open_fds, f => ntfy_open_fd_json(fd: f)))),
-    ])
+    NtfyRuntimeObserveRefused { read: r, cause: c } =>
+      json_object(members: map(ntfy_runtime_wire_keys(arm: WireArmRefused), k => json_kv(key: k, value: ntfy_runtime_refused_value(read: r, cause: c, key: k))))
+    NtfyRuntimeObserved { observation: o } =>
+      json_object(members: map(ntfy_runtime_wire_keys(arm: WireArmObserved), k => json_kv(key: k, value: ntfy_runtime_observed_value(o: o, key: k))))
   }
 }
 

@@ -2020,18 +2020,40 @@ fn path_ancestors_inclusive(path: String) -> List<String> {
 // It fails the stage if any entry in the snapshot, or any ancestor of it, is not root-owned, is
 // group- or world-writable, or is a symlink. Owned by root and writable only by root means the
 // grantee cannot change a byte the grant executes.
-// 🟡 dissolve-on: shell syntax assembled as a string (a pipeline and a negation), the same
-// medium-as-string debt approval_broker_tree_digest_expr carries. It dissolves with that one, when
-// v2.workflow.bash_emit renders a piped command from modeled parts.
-// IT IS `test -z "$(...)"`, NOT A NEGATED PIPELINE: bash's -e does not stop on a failing command
-// whose status is inverted with `!`, so `! find ... | grep -q .` would let the stage continue past a
-// writable entry. test's own nonzero status is what -e acts on.
-fn approval_broker_helper_snapshot_readback_command(dir: String) -> String {
+//
+// THREE OUTCOMES, AND ONLY ONE OF THEM PASSES: the observation failed (a path missing, unreadable,
+// or an I/O error), it found a violation, or it is clean. Each find is captured into its OWN
+// assignment. The status of `v="$(cmd)"` is cmd's status, so bash's -e stops the stage on a find that
+// failed. A find nested inside `test -z "$(...)"` would lose its status to test's, and a failed
+// observation prints nothing, so it would read as clean (side-chat HOLD on f8beaa6f63). A negated
+// pipeline is no better: -e ignores a command whose status is inverted with `!`. Only after both
+// observations succeed does test decide between violation and clean.
+//
+// The ancestors are checked for being a symlink explicitly (-type l), not only through their
+// permission bits. find's default -P does not follow a starting point, so a symlinked ancestor is
+// seen as a link. The finds run as the deploy principal and need no grant, because every directory
+// they read is root-owned 0755. An entry they cannot read is an observation failure, which stops the
+// stage.
+//
+// The owner is a parameter so the emitted text can be EXECUTED against a scratch tree owned by
+// whoever runs the check; production passes root.
+// 🟡 dissolve-on: shell assembled as a string, the same medium-as-string debt
+// approval_broker_tree_digest_expr carries; it dissolves with that one.
+fn helper_snapshot_readback_command_at(ancestors: List<String>, dir: String, owner: String) -> String {
+  let violation = join([" \\( ! -user ", owner, " -o -perm /022 -o -type l \\) -print"], "")
   join([
-    "test -z \"$(", find_program as String, " ", join(path_ancestors_inclusive(path: approval_broker_helper_snapshot_base), " "),
-    " -maxdepth 0 \\( ! -user root -o -perm /022 \\) -print)$(",
-    find_program as String, " ", dir, " \\( ! -user root -o -perm /022 -o -type l \\) -print)\"",
+    "_gunbc_helper_ancestors=\"$(", find_program as String, " ", join(ancestors, " "), " -maxdepth 0", violation, ")\"\n",
+    "_gunbc_helper_snapshot=\"$(", find_program as String, " ", dir, violation, ")\"\n",
+    "test -z \"$\{_gunbc_helper_ancestors}$\{_gunbc_helper_snapshot}\"",
   ], "")
+}
+
+fn approval_broker_helper_snapshot_readback_command(dir: String) -> String {
+  helper_snapshot_readback_command_at(
+    ancestors: path_ancestors_inclusive(path: approval_broker_helper_snapshot_base),
+    dir: dir,
+    owner: approval_broker_helper_root_principal as String,
+  )
 }
 
 // RETIREMENT: the previous release's snapshot is removed in the same converge, after the rename has
