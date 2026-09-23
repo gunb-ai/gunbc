@@ -2,6 +2,7 @@ module extdeps.github.code_search
 
 import std.types { Bool, Int, List, NonEmptyStr, String, Secret }
 import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -86,7 +87,11 @@ data retrievable_result_ceiling: Int = 1000
 // sole_constructor, so it can be built only by the admission below -- an unadmitted Int cannot reach
 // the division at all, which is the difference between refusing a bad bound and being unable to
 // compute one.
-type CodeSearchPageSize sole_constructor { size: Int }
+// The deepest retrievable page is derived HERE, at admission, and carried: Nat has no division, so
+// the Int quotient crosses into Nat through std.checked_arithmetic checked_int_to_nat once, on the
+// one path that can build this carrier, and a negative quotient refuses with the admission's own
+// typed arm rather than entering a Nat position unproven.
+type CodeSearchPageSize sole_constructor { size: Int, deepest_page: Nat }
 
 type CodeSearchPageSizeAdmission
   = CodeSearchPageSizeAdmitted { page_size: CodeSearchPageSize }
@@ -104,16 +109,21 @@ fn admit_code_search_page_size(observed: Int) -> CodeSearchPageSizeAdmission {
       cause: join(["code search serves at most ", to_string(max_per_page), " results per page, so a larger size is silently truncated upstream and the walk bound derived from it understates the pages that exist"], "") as NonEmptyStr,
     }
   } else {
-    CodeSearchPageSizeAdmitted { page_size: CodeSearchPageSize { size: observed } }
+    match checked_int_to_nat(n: retrievable_result_ceiling / observed) {
+      Absent => CodeSearchPageSizeRefused {
+        observed: observed,
+        cause: "the retrievable ceiling divided by this page size is negative, so no walk bound exists" as NonEmptyStr,
+      }
+      Present { value: deepest } => CodeSearchPageSizeAdmitted { page_size: CodeSearchPageSize { size: observed, deepest_page: deepest } }
+    }
   }
 }
 
 // The deepest page a caller may request without passing the ceiling, derived rather than authored
-// so that changing the ceiling or the page size cannot leave a stale bound behind. It is a Nat BY
-// CONSTRUCTION -- a positive ceiling over an admitted page size of at least one -- so the walk
-// consumes it as a Nat directly rather than asserting `as Nat` at the call site.
+// so that changing the ceiling or the page size cannot leave a stale bound behind. The Nat was
+// established by admit_code_search_page_size; this reads it rather than re-deriving an Int.
 fn deepest_retrievable_page(page_size: CodeSearchPageSize) -> Nat {
-  retrievable_result_ceiling / page_size.size
+  page_size.deepest_page
 }
 
 type CodeSearchHit {
