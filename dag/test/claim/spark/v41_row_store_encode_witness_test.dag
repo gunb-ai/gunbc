@@ -1,0 +1,115 @@
+module test.claim.spark.v41_row_store_encode_witness
+
+import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.nat { Nat }
+import std.integer { UInt8, qualified_octet_members }
+import v2.std.optional { Present, Absent }
+import extdeps.numeric.base16 { base16_decode_lower }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import extdeps.safetensors.format { SafeF8E4M3, SafeF8E8M0 }
+import extdeps.vllm.engram_layout { VllmEngramRankRows }
+import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_engram, deepseek_v4_1_flash_engram_sharded_entries, deepseek_v4_1_flash_engram_shard_files,
+}
+import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
+import gunbc.spark.v41_engram_row_store {
+  V41RowStoreEncodingSpec, V41SourceRow, V41StoreComplete, V41StoreIncomplete,
+  V41RowStoreSpecAdmitted, V41RowStoreSpecRefused, V41PublishedSpansPlanned, V41PublishedSpansUnplannable,
+  v41_encoding_spec_of_layers, v41_layer_table, v41_row_geometry_of, v41_source_row,
+  v41_place_all, v41_placed_rows, v41_store_bytes, v41_row_store_spec, v41_published_span_plan,
+}
+import gunbc.spark.v41_row_store_encode {
+  V41StoreEncodePlanned, V41StoreEncodeUnplannable, v41_store_encode_plan, v41_row_store_encoder_path,
+}
+import test.claim.vllm.vllm_engram_layout_witness { w_published_head_sizes }
+
+// ── THE DIFFERENTIAL: THE HOST PROGRAM'S BYTES AGAINST THE .dag FOLD'S, OVER REAL PUBLISHED ROWS ──
+//
+// THE RECEIPT, and how it was produced (2026-09-23, bold-newt-50). Rows 96000562 and 96000563 of
+// layers.1.engram.embed.{weight,scale} were read by HTTP range from model-00047-of-00048.safetensors at
+// dba1be0a and written at their TRUE file offsets into a sparse copy of that shard. The encoder
+// dag/gunbc/spark/encoders/v41_row_store_encode.py (sha256 w_encoder_sha256 below) then ran with
+//   --weight-offset 664 --scale-offset 98305579672 --start 96000562 --rows 2
+//   --weight-bytes 256 --scale-bytes 8 --magic-hex 454e4752310a
+// (the offsets and widths are the live plan's for layer 1, asserted by
+// the_live_plan_hands_the_encoder_what_the_sample_run_used), and w_host_store is its output file. The
+// perturbed receipt is the same run with --scale-offset one row further (98305579680): row 0 then
+// carries row 1's scale and row 1 carries row 2's.
+data w_encoder_sha256: String = "1f1affd6f660b2f01ae78a49caf1e42dffb62170fb5681fc1beaf4a5a73ec0f1"
+
+data w_weight_96000562: String = "73cbf4f370e0e7696f6ab56a6d5cec58e8e7e86e77f2ebc563eaee4b60f2e655c1ec657a76f7f5dad977f1fccef5d7ea5d74f1e57366f17174f1f3fb6ef6fe70f1faf3ebf1f36ff1f5db7b63e97779eb75f6ece87bf17af9717b79f777de78f8f36c6af272e4407375f179e4e55769faf7ecf068ea5e73e468776d6d6ff6f1f275d56eefc3d564e8ee6573686959e5ee71606a586b77e4e8e1f568ee5c595768df7377ef72f77bf763727b73fbf77b71767168f1e57a756c70fb6dea6dfbf57365f8f2f2e3e8fb775e6cfaf6f25cda707172e4e6f2eaea78f473fdecf2657252e979f24ff775fbf6707c71ef727ef7ecf767f6f377de6f706f706bfc7c6feaf9"
+data w_scale_96000562: String = "7877777778777777"
+data w_weight_96000563: String = "5b71726d69725c6567cfea6ae069776871e87873eaf254f26a7458ebf2f7736c75f2eef17048f1ec63c356eef2646e51ecf5de6072ececf2737361e56ee349f979d8e2f96edd6c61f063dfefe96c6ff3f0f572d17afa5eec6b66dce47767f0fadcf7eb57cb7074696ae36dd46761f16e666072e0e46b69dbf362ec6ef4e17cf576ebe3dde9f0f17775e84ae3ccdad0f16b746c4d735ee75076ede2e96df1f7f4f0f67af2ddea67d7edda6ee9e871755cf6ebf660ede966f36eecf064636a66645b71f6637366dc60f0e6f27af7726c706ef971ae72de6bc8f473ecdbe2e75de0737566ec6b6be9d9f4da6f5376696f6ce761c4eeeb5d61eff8f44a766b7a6a60"
+data w_scale_96000563: String = "7878787878787878"
+
+data w_host_store: String = "454e4752310a73cbf4f370e0e7696f6ab56a6d5cec58e8e7e86e77f2ebc563eaee4b60f2e655c1ec657a76f7f5dad977f1fccef5d7ea5d74f1e57366f17174f1f3fb6ef6fe70f1faf3ebf1f36ff1f5db7b63e97779eb75f6ece87bf17af9717b79f777de78f8f36c6af272e4407375f179e4e55769faf7ecf068ea5e73e468776d6d6ff6f1f275d56eefc3d564e8ee6573686959e5ee71606a586b77e4e8e1f568ee5c595768df7377ef72f77bf763727b73fbf77b71767168f1e57a756c70fb6dea6dfbf57365f8f2f2e3e8fb775e6cfaf6f25cda707172e4e6f2eaea78f473fdecf2657252e979f24ff775fbf6707c71ef727ef7ecf767f6f377de6f706f706bfc7c6feaf978777777787777775b71726d69725c6567cfea6ae069776871e87873eaf254f26a7458ebf2f7736c75f2eef17048f1ec63c356eef2646e51ecf5de6072ececf2737361e56ee349f979d8e2f96edd6c61f063dfefe96c6ff3f0f572d17afa5eec6b66dce47767f0fadcf7eb57cb7074696ae36dd46761f16e666072e0e46b69dbf362ec6ef4e17cf576ebe3dde9f0f17775e84ae3ccdad0f16b746c4d735ee75076ede2e96df1f7f4f0f67af2ddea67d7edda6ee9e871755cf6ebf660ede966f36eecf064636a66645b71f6637366dc60f0e6f27af7726c706ef971ae72de6bc8f473ecdbe2e75de0737566ec6b6be9d9f4da6f5376696f6ce761c4eeeb5d61eff8f44a766b7a6a607878787878787878"
+
+data w_host_store_perturbed: String = "454e4752310a73cbf4f370e0e7696f6ab56a6d5cec58e8e7e86e77f2ebc563eaee4b60f2e655c1ec657a76f7f5dad977f1fccef5d7ea5d74f1e57366f17174f1f3fb6ef6fe70f1faf3ebf1f36ff1f5db7b63e97779eb75f6ece87bf17af9717b79f777de78f8f36c6af272e4407375f179e4e55769faf7ecf068ea5e73e468776d6d6ff6f1f275d56eefc3d564e8ee6573686959e5ee71606a586b77e4e8e1f568ee5c595768df7377ef72f77bf763727b73fbf77b71767168f1e57a756c70fb6dea6dfbf57365f8f2f2e3e8fb775e6cfaf6f25cda707172e4e6f2eaea78f473fdecf2657252e979f24ff775fbf6707c71ef727ef7ecf767f6f377de6f706f706bfc7c6feaf978787878787878785b71726d69725c6567cfea6ae069776871e87873eaf254f26a7458ebf2f7736c75f2eef17048f1ec63c356eef2646e51ecf5de6072ececf2737361e56ee349f979d8e2f96edd6c61f063dfefe96c6ff3f0f572d17afa5eec6b66dce47767f0fadcf7eb57cb7074696ae36dd46761f16e666072e0e46b69dbf362ec6ef4e17cf576ebe3dde9f0f17775e84ae3ccdad0f16b746c4d735ee75076ede2e96df1f7f4f0f67af2ddea67d7edda6ee9e871755cf6ebf660ede966f36eecf064636a66645b71f6637366dc60f0e6f27af7726c706ef971ae72de6bc8f473ecdbe2e75de0737566ec6b6be9d9f4da6f5376696f6ce761c4eeeb5d61eff8f44a766b7a6a607778777878777878"
+
+fn w_octets(hex: String) -> List<UInt8> {
+  match base16_decode_lower(hex: hex) {
+    Present { value: q } => qualified_octet_members(q: q)
+    Absent => [] as List<UInt8>
+  }
+}
+
+// THE SAMPLE AS ONE STORE: the live geometry (256 x F8_E4M3 + 8 x F8_E8M0), layer 1, and a rank-0 range
+// that is exactly the two sampled rows -- the same range the host program was run over.
+fn w_sample_spec() -> V41RowStoreEncodingSpec {
+  v41_encoding_spec_of_layers(
+    partition: v41_candidate_partition,
+    layers: [v41_layer_table(layer: 1, weight: "layers.1.engram.embed.weight" as NonEmptyStr, scale: "layers.1.engram.embed.scale" as NonEmptyStr, rows: 384006168, ranks: [VllmEngramRankRows { rank: 0, start: 96000562, end: 96000564 }])],
+    geometry: v41_row_geometry_of(weight_dtype: SafeF8E4M3, scale_dtype: SafeF8E8M0, weight_width: 256, scale_width: 8),
+  )
+}
+
+fn w_dag_store() -> List<UInt8> {
+  let rows = [
+    v41_source_row(layer: 1, global_row: 96000562, weight: w_octets(hex: w_weight_96000562), scale: w_octets(hex: w_scale_96000562)),
+    v41_source_row(layer: 1, global_row: 96000563, weight: w_octets(hex: w_weight_96000563), scale: w_octets(hex: w_scale_96000563)),
+  ]
+  match v41_store_bytes(placed: v41_placed_rows(placements: v41_place_all(rows: rows, spec: w_sample_spec())), spec: w_sample_spec(), layer: 1, rank: 0) {
+    V41StoreComplete { store: c } => c.bytes
+    V41StoreIncomplete { defect: _ } => [] as List<UInt8>
+  }
+}
+
+test fn the_host_program_writes_exactly_the_folds_store_over_real_published_rows() -> Bool {
+  let dag = w_dag_store()
+  length(dag) == 6 + 2 * 264 && dag == w_octets(hex: w_host_store)
+}
+
+// RED: the same program with its scale table one row off writes a store the fold does not.
+test fn a_perturbed_placement_by_the_host_program_is_not_the_folds_store() -> Bool {
+  let dag = w_dag_store()
+  length(dag) == 6 + 2 * 264 && dag != w_octets(hex: w_host_store_perturbed)
+}
+
+// THE RECEIPT DESCRIBES THIS PROGRAM: an edit to the encoder invalidates it until it is re-run.
+test fn the_receipt_was_produced_by_the_committed_encoder() -> Bool {
+  match sha256sum_file_digest_via_shell(path: v41_row_store_encoder_path) {
+    Sha256FileDigest { digest: d } => (d.hex as String) == w_encoder_sha256
+    Sha256FileDigestUnavailable { path: _, reason: _ } => false
+  }
+}
+
+// THE LIVE PLAN HANDS THE ENCODER WHAT THE SAMPLE RUN USED for layer 1: the weight and scale tables at
+// their header-derived offsets, the 256 + 8 byte widths and the magic -- and eight stores in all.
+test fn the_live_plan_hands_the_encoder_what_the_sample_run_used() -> Bool {
+  match v41_row_store_spec(population: map(deepseek_v4_1_flash_engram_sharded_entries, e => e.entry), partition: v41_candidate_partition, tables: deepseek_v4_1_flash_engram, head_sizes: w_published_head_sizes()) {
+    V41RowStoreSpecRefused { defects: _ } => false
+    V41RowStoreSpecAdmitted { spec: spec } => match v41_published_span_plan(partition: v41_candidate_partition, sharded: deepseek_v4_1_flash_engram_sharded_entries, shards: deepseek_v4_1_flash_engram_shard_files) {
+      V41PublishedSpansUnplannable { defects: _ } => false
+      V41PublishedSpansPlanned { spans: spans } => match v41_store_encode_plan(spec: spec, spans: spans) {
+        V41StoreEncodeUnplannable { defects: _ } => false
+        V41StoreEncodePlanned { stores: st } =>
+          length(st) == 8
+            && any(st, a => a.layer == 1 && a.rank == 0
+              && a.weight_offset == 664 && a.scale_offset == 98305579672
+              && a.start == 0 && a.rows == 96000564
+              && a.weight_bytes == 256 && a.scale_bytes == 8 && a.magic_hex == "454e4752310a"
+              && (a.shard as String) == "model-00047-of-00048.safetensors")
+      }
+    }
+  }
+}

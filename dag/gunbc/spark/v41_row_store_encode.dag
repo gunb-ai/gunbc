@@ -1,0 +1,166 @@
+module gunbc.spark.v41_row_store_encode
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.nat { Nat }
+import std.content_hash { Sha256Digest }
+import std.measure { ByteSize, byte_size_count }
+import v2.std.optional { Present, Absent }
+import extdeps.numeric.base16 { byte_hex_lower }
+import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_engram, deepseek_v4_1_flash_engram_sharded_entries, deepseek_v4_1_flash_engram_shard_files,
+}
+import gunbc.spark.v41_identity_input { V41EngramResidencyPartition }
+import gunbc.spark.v41_engram_row_store {
+  V41RowStoreEncodingSpec, V41LayerTable, V41RankStoreIdentity,
+  V41RowStoreEncoding, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
+  V41RowStoreSpecAdmitted, V41RowStoreSpecRefused,
+  V41PublishedSpan, V41PublishedSpansPlanned, V41PublishedSpansUnplannable,
+  v41_row_store_spec, v41_published_span_plan, v41_identify_row_store, v41_live_head_sizes,
+  v41_magic_octets, weight_bytes, scale_bytes, v41_store_key,
+}
+
+// ── THE HOST REALIZATION OF v41_place_row: WHAT THE ENCODER IS TOLD, DERIVED ───────────────────
+//
+// The published stores are hundreds of millions of rows, so they are not built by the .dag fold; they
+// are built on the host that holds the materialized shards by dag/gunbc/spark/encoders/
+// v41_row_store_encode.py, and this module is the whole of what that program knows. For one
+// (layer, rank) store it derives, from the row-store spec and the published span plan:
+//   - the shard and the file offsets of the layer's weight and scale tables (the span plan, which is
+//     the publisher's header arithmetic -- the same plan the span-key read uses);
+//   - the rank's contiguous row range (the spec's layer table, vLLM's bucket layout);
+//   - the record widths (the spec's geometry, read off the published shapes);
+//   - the magic (v41_row_store_magic, as hex).
+// The program adds only the interleave. It is therefore a realization of v41_place_row /
+// v41_store_bytes and not a second encoder, and what licenses reading its output as the model's bytes
+// is test.claim.spark.v41_row_store_encode_witness: its output over real published rows is
+// byte-identical to v41_store_bytes, and a perturbed placement is not. That is differential evidence
+// over a sample, not a derivation -- gunbc.rung_drop v41_row_store_host_realized_by_sample says so and
+// names what restores the structural rung.
+
+data v41_row_store_encoder_path: NonEmptyStr = "dag/gunbc/spark/encoders/v41_row_store_encode.py" as NonEmptyStr
+
+// THE DIRECTORY ON THE HOST, next to the materialized checkpoint (gunbc.spark.v41_checkpoint_materialize
+// v41_checkpoint_directory) and keyed by nothing yet: which path the runtime opens a store at is the
+// wiring patch's decision (gunbc.spark.v41_engram_row_store states that frontier), so this names where
+// the encoder writes and a later cut moves or links them.
+data v41_row_store_output_directory: NonEmptyStr = "/home/briansrls/models/deepseek-ai/DeepSeek-V4.1-Flash/engram-row-stores" as NonEmptyStr
+
+type V41StoreEncodeArgs sole_constructor {
+  layer: Nat
+  rank: Nat
+  shard: NonEmptyStr
+  weight_offset: Int
+  scale_offset: Int
+  start: Int
+  rows: Int
+  weight_bytes: Nat
+  scale_bytes: Nat
+  magic_hex: String
+  out: NonEmptyStr
+}
+
+type V41StoreEncodePlan
+  = V41StoreEncodePlanned { stores: List<V41StoreEncodeArgs> }
+  | V41StoreEncodeUnplannable { defects: List<NonEmptyStr> }
+
+fn v41_magic_hex() -> String {
+  join(map(v41_magic_octets(), o => byte_hex_lower(v: o)), "")
+}
+
+fn v41_span_named(spans: List<V41PublishedSpan>, name: NonEmptyStr) -> V41PublishedSpan? {
+  first(filter(spans, s => (s.tensor as String) == (name as String)))
+}
+
+fn v41_store_out_path(layer: Nat, rank: Nat) -> NonEmptyStr {
+  join([v41_row_store_output_directory as String, "/", v41_store_key(layer: layer, rank: rank), ".engram"], "") as NonEmptyStr
+}
+
+fn v41_layer_store_args(t: V41LayerTable, spec: V41RowStoreEncodingSpec, spans: List<V41PublishedSpan>) -> List<V41StoreEncodeArgs> {
+  match v41_span_named(spans: spans, name: t.weight) {
+    Absent => [] as List<V41StoreEncodeArgs>
+    Present { value: w } => match v41_span_named(spans: spans, name: t.scale) {
+      Absent => [] as List<V41StoreEncodeArgs>
+      Present { value: s } => map(t.ranks, r => V41StoreEncodeArgs {
+        layer: t.layer,
+        rank: r.rank,
+        shard: w.shard,
+        weight_offset: byte_size_count(b: w.file_offset),
+        scale_offset: byte_size_count(b: s.file_offset),
+        start: r.start,
+        rows: r.end - r.start,
+        weight_bytes: byte_size_count(b: weight_bytes(g: spec.geometry)),
+        scale_bytes: byte_size_count(b: scale_bytes(g: spec.geometry)),
+        magic_hex: v41_magic_hex(),
+        out: v41_store_out_path(layer: t.layer, rank: r.rank),
+      })
+    }
+  }
+}
+
+// EVERY STORE THE SPEC DECLARES, OR WHY NOT. A layer whose weight or scale has no span, or whose weight
+// and scale live in different shards, refuses by name: the encoder reads one shard per store.
+fn v41_store_encode_plan(spec: V41RowStoreEncodingSpec, spans: List<V41PublishedSpan>) -> V41StoreEncodePlan {
+  let unspanned = flat_map(spec.layers, t => concat(
+    match v41_span_named(spans: spans, name: t.weight) { Present { value: _ } => [] as List<NonEmptyStr>  Absent => [join(["layer ", to_string(t.layer), " weight ", t.weight as String, " has no published span"], "") as NonEmptyStr] },
+    match v41_span_named(spans: spans, name: t.scale) { Present { value: _ } => [] as List<NonEmptyStr>  Absent => [join(["layer ", to_string(t.layer), " scale ", t.scale as String, " has no published span"], "") as NonEmptyStr] }))
+  let split = flat_map(spec.layers, t => match v41_span_named(spans: spans, name: t.weight) {
+    Absent => [] as List<NonEmptyStr>
+    Present { value: w } => match v41_span_named(spans: spans, name: t.scale) {
+      Absent => [] as List<NonEmptyStr>
+      Present { value: s } => if (w.shard as String) == (s.shard as String) { [] as List<NonEmptyStr> } else { [join(["layer ", to_string(t.layer), " weight and scale live in different shards; one store reads one shard"], "") as NonEmptyStr] }
+    }
+  })
+  let defects = concat(unspanned, split)
+  if length(defects) != 0 {
+    V41StoreEncodeUnplannable { defects: defects }
+  } else {
+    V41StoreEncodePlanned { stores: flat_map(spec.layers, t => v41_layer_store_args(t: t, spec: spec, spans: spans)) }
+  }
+}
+
+// THE ARGV, rendered for a shard directory on the host. The program path is where the mode stages the
+// declared file; nothing here is a layout literal. DECLARED FRONTIER: its executing consumer is the
+// dispatched spark_v41_row_store_encode mode (the next change in this lane), which runs it per rank on
+// the host that holds that rank's shards and transcribes sha256sum of each output into
+// v41_published_store_readings; it lands once Group A's shards are materialized (#12109).
+fn v41_store_encode_argv(program: NonEmptyStr, shard_directory: NonEmptyStr, a: V41StoreEncodeArgs) -> List<String> {
+  [
+    "python3", program as String,
+    "--shard", join([shard_directory as String, "/", a.shard as String], ""),
+    "--weight-offset", to_string(a.weight_offset),
+    "--scale-offset", to_string(a.scale_offset),
+    "--start", to_string(a.start),
+    "--rows", to_string(a.rows),
+    "--weight-bytes", to_string(a.weight_bytes),
+    "--scale-bytes", to_string(a.scale_bytes),
+    "--magic-hex", a.magic_hex,
+    "--out", a.out as String,
+  ]
+}
+
+// ── THE PUBLISHED STORES' IDENTITIES ──────────────────────────────────────────────────────────
+//
+// Read on the host: sha256sum over each store the encoder wrote, one per (layer, rank). A run's receipt
+// is transcribed here; v41_identify_row_store then admits exactly the declared eight or refuses.
+type V41PublishedStoreReadings
+  = V41PublishedStoresUnread { obligation: NonEmptyStr }
+  | V41PublishedStoresRead { observed_at: NonEmptyStr, stores: List<V41RankStoreIdentity> }
+
+data v41_published_store_readings: V41PublishedStoreReadings = V41PublishedStoresUnread {
+  obligation: "the eight published Engram row stores (layers 1 and 14 x four ranks) have not been encoded: the host realization needs the materialized shards on Group A (gunbc.spark.v41_checkpoint_materialize), and its per-store sha256sum receipt is transcribed into gunbc.spark.v41_row_store_encode v41_published_store_readings" as NonEmptyStr,
+}
+
+// THE LIVE ENCODING: the live spec over the published population, identified from the readings. The
+// bucket layout is drawn only once a reading exists. DECLARED FRONTIER: its consumers are
+// gunbc.spark.v41_engram_staging v41_stage_rank_stores and gunbc.spark.v41_runtime_realized
+// v41_realized_candidate, whose live wiring lands with the encode mode above.
+fn v41_published_row_store_encoding(partition: V41EngramResidencyPartition, readings: V41PublishedStoreReadings) -> V41RowStoreEncoding {
+  match readings {
+    V41PublishedStoresUnread { obligation: o } => V41RowStoreEncodingUnestablished { obligation: o }
+    V41PublishedStoresRead { observed_at: _, stores: st } =>
+      match v41_row_store_spec(population: map(deepseek_v4_1_flash_engram_sharded_entries, e => e.entry), partition: partition, tables: deepseek_v4_1_flash_engram, head_sizes: v41_live_head_sizes(tables: deepseek_v4_1_flash_engram)) {
+        V41RowStoreSpecRefused { defects: d } => V41RowStoreEncodingRefused { defects: d }
+        V41RowStoreSpecAdmitted { spec: spec } => v41_identify_row_store(spec: spec, rank_stores: st)
+      }
+  }
+}

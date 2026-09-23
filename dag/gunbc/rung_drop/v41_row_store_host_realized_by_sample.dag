@@ -1,0 +1,37 @@
+module gunbc.rung_drop.v41_row_store_host_realized_by_sample
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
+
+// DECLARED 4b(3) DROP (2026-09-23, ruling A from proud-deer-538). Until this row the published Engram
+// row stores had NO constructor: gunbc.spark.v41_engram_row_store v41_published_transform_standing was
+// Unestablished, and the only route to a store's bytes was the .dag fold (v41_place_row /
+// v41_store_bytes), which a fixture exercises in full. The published stores are ~96M rows per rank and
+// the interpreter cannot fold them, so they are now built on the host by
+// dag/gunbc/spark/encoders/v41_row_store_encode.py, driven only by arguments
+// gunbc.spark.v41_row_store_encode derives from the spec. What licenses reading its output as the
+// model's bytes is DIFFERENTIAL evidence over a real published sample
+// (test.claim.spark.v41_row_store_encode_witness), not a derivation: a placement defect confined to
+// rows outside the sample, or a chunk-boundary defect the sample does not cross, is not excluded.
+data v41_row_store_host_realized_by_sample: RungDrop = RungDrop {
+  identity: "v41_row_store_host_realized_by_sample" as NonEmptyStr,
+
+  subject: "the published DeepSeek V4.1 Engram row stores' bytes: produced on the host by a program realizing gunbc.spark.v41_engram_row_store v41_place_row, admitted by differential agreement with the .dag fold over a real published sample rather than by the fold itself",
+
+  declared: "2026-09-23",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: MechanicallyPreventable,
+    reason: ReplacementStaged {
+      replacement: "the .dag encoder (v41_place_row / v41_store_bytes) emitted and built, encoding every published store itself",
+    },
+    population: [
+      "the eight stores gunbc.spark.v41_row_store_encode v41_store_encode_plan derives (layers 1 and 14 x ranks 0..3), identified from v41_published_store_readings",
+    ],
+    restoration_trigger: "THE CAPABILITY: the emitted .dag row-store encoder builds and encodes all eight published stores from the materialized shards, and their sha256 are the identities v41_identify_row_store admits. An emitted encoder that encodes only a sample, or only one rank, or whose output is compared to the Python program's rather than replacing it, does not satisfy this; the host program and this row delete together when it does.",
+  }
+}
