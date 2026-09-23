@@ -1,0 +1,265 @@
+module v2.test.claim.namespace_xl0.arm_and_statement_resolve_refusal
+
+import v2.compiler.compile {
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleOutcome,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN UNDECLARED NAME REACHABLE ONLY THROUGH AN IF-ARM CALL ARGUMENT, OR ONLY THROUGH A BODY'S SECOND
+// STATEMENT, IS REFUSED -- AT RESOLVE AT ITS ATOM, OR AT NORMALIZE WITH ITS OWN CAUSE.
+//
+// THE SUBJECT IS THE NATIVE LANE'S FRONT END AND RESOLVE, on the route the lane runs:
+// native_test_context_from_ingest tokenizes, parses, normalizes and indexes the supplied sources, and
+// native_census_module_resolution resolves one module against it. Two links of
+// v2.compiler.body_lowering_fold lowered a proper part of what the source wrote, with no diagnostic:
+//
+//   an if-arm was read by the operand readers alone (body_lower_if_arm_operand_optional), so a call
+//   argument inside `if c { g(p: x) } else { .. }` never reached the tree and x resolved vacuously;
+//   the arms now go through body_lower_if_part_lowered, the walker-first reader the condition used.
+//
+//   a statement spine reached body_lower_stmt_spine only when a let headed it, so `{ c \n x }` fell
+//   to a first-match expression reader that lowered `c` and dropped `x`; every spine with a following
+//   statement is now the statement lowering's, which refuses a non-binding statement that precedes
+//   another (body_lowering_reason_statement_precedes_without_binding) -- the refusal
+//   v2.test.claim.body_lowering.statement_let_bind unbound_statement_prefix_refuses_holds asks for.
+//
+// THE MODULES VARY ONE THING EACH. The then- and else-arm candidates put an undeclared name in a call
+// argument inside one arm; the declared-arm module is the same call with a bound name, so an argument
+// reaching resolve is not by itself a refusal; the outside-call module puts the undeclared argument in
+// a call that is the whole body, which main already lowered, so it refuses on both sides and shows the
+// refusal is resolve's. The second-statement candidate is the dropped statement; the let-headed
+// module is its neighbour whose spine main already lowered, and the let-reference module is that
+// spine with a bound continuation.
+data asr_then_arm_source: String = "module v2.test.asr_then_arm\n\nimport v2.std.logic { Bool }\n\nfn asr_callee(probe: Bool) -> Bool { probe }\n\nfn asr_probe(c: Bool) -> Bool { if c { asr_callee(probe: asr_undeclared_then) } else { false } }\n"
+
+data asr_else_arm_source: String = "module v2.test.asr_else_arm\n\nimport v2.std.logic { Bool }\n\nfn asr_callee(probe: Bool) -> Bool { probe }\n\nfn asr_probe(c: Bool) -> Bool { if c { false } else { asr_callee(probe: asr_undeclared_else) } }\n"
+
+data asr_declared_arm_source: String = "module v2.test.asr_declared_arm\n\nimport v2.std.logic { Bool }\n\ndata asr_declared_value: Bool = true\n\nfn asr_callee(probe: Bool) -> Bool { probe }\n\nfn asr_probe(c: Bool) -> Bool { if c { asr_callee(probe: asr_declared_value) } else { false } }\n"
+
+data asr_outside_call_source: String = "module v2.test.asr_outside_call\n\nimport v2.std.logic { Bool }\n\nfn asr_callee(probe: Bool) -> Bool { probe }\n\nfn asr_probe(c: Bool) -> Bool { asr_callee(probe: asr_undeclared_outside) }\n"
+
+data asr_second_statement_source: String = "module v2.test.asr_second_statement\n\nimport v2.std.logic { Bool }\n\nfn asr_probe(c: Bool) -> Bool {\n  c\n  asr_undeclared_statement\n}\n"
+
+data asr_let_headed_source: String = "module v2.test.asr_let_headed\n\nimport v2.std.logic { Bool }\n\nfn asr_probe(c: Bool) -> Bool {\n  let asr_bound = c\n  asr_undeclared_after_let\n}\n"
+
+data asr_let_reference_source: String = "module v2.test.asr_let_reference\n\nimport v2.std.logic { Bool }\n\nfn asr_probe(c: Bool) -> Bool {\n  let asr_bound = c\n  asr_bound\n}\n"
+
+fn asr_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data asr_ingest: SourceRootIngest = Cons {
+    head: asr_read(source: asr_then_arm_source, id: ^asr_then_arm_artifact, unit: ^asr_then_arm_cu, path: "src/v2/test/fixture/namespace_xl0/asr_then_arm.dag"),
+    tail: Cons {
+      head: asr_read(source: asr_else_arm_source, id: ^asr_else_arm_artifact, unit: ^asr_else_arm_cu, path: "src/v2/test/fixture/namespace_xl0/asr_else_arm.dag"),
+      tail: Cons {
+        head: asr_read(source: asr_declared_arm_source, id: ^asr_declared_arm_artifact, unit: ^asr_declared_arm_cu, path: "src/v2/test/fixture/namespace_xl0/asr_declared_arm.dag"),
+        tail: Cons {
+          head: asr_read(source: asr_outside_call_source, id: ^asr_outside_call_artifact, unit: ^asr_outside_call_cu, path: "src/v2/test/fixture/namespace_xl0/asr_outside_call.dag"),
+          tail: Cons {
+            head: asr_read(source: asr_second_statement_source, id: ^asr_second_statement_artifact, unit: ^asr_second_statement_cu, path: "src/v2/test/fixture/namespace_xl0/asr_second_statement.dag"),
+            tail: Cons {
+              head: asr_read(source: asr_let_headed_source, id: ^asr_let_headed_artifact, unit: ^asr_let_headed_cu, path: "src/v2/test/fixture/namespace_xl0/asr_let_headed.dag"),
+              tail: Cons {
+                head: asr_read(source: asr_let_reference_source, id: ^asr_let_reference_artifact, unit: ^asr_let_reference_cu, path: "src/v2/test/fixture/namespace_xl0/asr_let_reference.dag"),
+                tail: Empty
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+// ONE FRONT END FOR EVERY CLAIM, enrolled WARM in v2.workflow.floor_pure_producer_share for the
+// reason v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal sqo_outcomes is: the stored
+// value is a verdict per module -- reason symbols and the atom a resolve refusal names -- with no
+// resolution context, Node or closure in it. A module the front end refused carries the fatal reason
+// its compilation unit was refused with.
+type AsrVerdict
+  = AsrResolved
+  | AsrRefused { reason: Symbol, at_atom: Optional<Symbol> }
+  | AsrFileRefused { fatal_reason: Optional<Symbol> }
+  | AsrAbsent
+
+type AsrOutcomes
+  = AsrContextRefused
+  | AsrOutcomesDecided {
+      then_arm: AsrVerdict
+      else_arm: AsrVerdict
+      declared_arm: AsrVerdict
+      outside_call: AsrVerdict
+      second_statement: AsrVerdict
+      let_headed: AsrVerdict
+      let_reference: AsrVerdict
+    }
+
+fn asr_file_refusal_reason(context: NativeTestContext, unit: Symbol) -> Optional<Symbol> {
+  fold_list(
+    xs: context.file_refusals,
+    empty: optional_absent(),
+    cons: fn(acc, refusal) {
+      if refusal.path == unit { optional_present(value: refusal.fatal_reason) } else { acc }
+    }
+  )
+}
+
+fn asr_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCensusModuleOutcome) -> AsrVerdict {
+  match outcome {
+    NativeCensusModuleResolved => AsrResolved
+    NativeCensusModuleFileRefused =>
+      AsrFileRefused { fatal_reason: asr_file_refusal_reason(context: context, unit: unit) }
+    NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+      AsrRefused {
+        reason: d.head.reason,
+        at_atom: match d.head.at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          _ => optional_absent()
+        }
+      }
+  }
+}
+
+fn asr_verdict_in(context: NativeTestContext, module_name: String, unit: Symbol) -> AsrVerdict {
+  fold_list(
+    xs: native_census_modules(ingest: asr_ingest),
+    empty: AsrAbsent,
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        asr_verdict_of(
+          context: context,
+          unit: unit,
+          outcome: native_census_module_resolution(
+            context: context,
+            refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+            entry: entry
+          )
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn asr_outcomes() -> AsrOutcomes {
+  match native_test_context_from_ingest(ingest: asr_ingest) {
+    Rejected { diagnostics: _ } => AsrContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      AsrOutcomesDecided {
+        then_arm: asr_verdict_in(context: context, module_name: "v2.test.asr_then_arm", unit: ^asr_then_arm_cu),
+        else_arm: asr_verdict_in(context: context, module_name: "v2.test.asr_else_arm", unit: ^asr_else_arm_cu),
+        declared_arm: asr_verdict_in(context: context, module_name: "v2.test.asr_declared_arm", unit: ^asr_declared_arm_cu),
+        outside_call: asr_verdict_in(context: context, module_name: "v2.test.asr_outside_call", unit: ^asr_outside_call_cu),
+        second_statement: asr_verdict_in(context: context, module_name: "v2.test.asr_second_statement", unit: ^asr_second_statement_cu),
+        let_headed: asr_verdict_in(context: context, module_name: "v2.test.asr_let_headed", unit: ^asr_let_headed_cu),
+        let_reference: asr_verdict_in(context: context, module_name: "v2.test.asr_let_reference", unit: ^asr_let_reference_cu)
+      }
+  }
+}
+
+fn asr_is_resolved(v: AsrVerdict) -> Bool {
+  match v {
+    AsrResolved => true
+    _ => false
+  }
+}
+
+// Refused at resolve, the first refusal is unbound, and its locus is the argument's own atom.
+fn asr_is_unbound_at(v: AsrVerdict, spelling: Symbol) -> Bool {
+  match v {
+    AsrRefused { reason: r, at_atom: Present { value: id } } =>
+      (r == ^resolve_reason_unbound_symbol) && (id == spelling)
+    _ => false
+  }
+}
+
+fn asr_is_file_refused_for(v: AsrVerdict, reason: Symbol) -> Bool {
+  match v {
+    AsrFileRefused { fatal_reason: Present { value: r } } => r == reason
+    _ => false
+  }
+}
+
+test fn an_undeclared_call_argument_in_a_then_arm_refuses_at_resolve_at_its_atom() -> Bool {
+  match asr_outcomes() {
+    AsrOutcomesDecided { then_arm: v, else_arm: _, declared_arm: _, outside_call: _, second_statement: _, let_headed: _, let_reference: _ } =>
+      asr_is_unbound_at(v: v, spelling: ^asr_undeclared_then)
+    AsrContextRefused => false
+  }
+}
+
+test fn an_undeclared_call_argument_in_an_else_arm_refuses_at_resolve_at_its_atom() -> Bool {
+  match asr_outcomes() {
+    AsrOutcomesDecided { then_arm: _, else_arm: v, declared_arm: _, outside_call: _, second_statement: _, let_headed: _, let_reference: _ } =>
+      asr_is_unbound_at(v: v, spelling: ^asr_undeclared_else)
+    AsrContextRefused => false
+  }
+}
+
+test fn a_declared_call_argument_in_an_arm_resolves() -> Bool {
+  match asr_outcomes() {
+    AsrOutcomesDecided { then_arm: _, else_arm: _, declared_arm: v, outside_call: _, second_statement: _, let_headed: _, let_reference: _ } =>
+      asr_is_resolved(v: v)
+    AsrContextRefused => false
+  }
+}
+
+test fn an_undeclared_call_argument_outside_an_if_refuses_at_resolve_at_its_atom() -> Bool {
+  match asr_outcomes() {
+    AsrOutcomesDecided { then_arm: _, else_arm: _, declared_arm: _, outside_call: v, second_statement: _, let_headed: _, let_reference: _ } =>
+      asr_is_unbound_at(v: v, spelling: ^asr_undeclared_outside)
+    AsrContextRefused => false
+  }
+}
+
+test fn a_second_statement_after_a_non_binding_one_refuses_at_normalize() -> Bool {
+  match asr_outcomes() {
+    AsrOutcomesDecided { then_arm: _, else_arm: _, declared_arm: _, outside_call: _, second_statement: v, let_headed: _, let_reference: _ } =>
+      asr_is_file_refused_for(v: v, reason: ^body_lowering_reason_statement_precedes_without_binding)
+    AsrContextRefused => false
+  }
+}
+
+test fn an_undeclared_statement_after_a_let_refuses_at_resolve_at_its_atom() -> Bool {
+  match asr_outcomes() {
+    AsrOutcomesDecided { then_arm: _, else_arm: _, declared_arm: _, outside_call: _, second_statement: _, let_headed: v, let_reference: _ } =>
+      asr_is_unbound_at(v: v, spelling: ^asr_undeclared_after_let)
+    AsrContextRefused => false
+  }
+}
+
+test fn a_let_bound_continuation_resolves() -> Bool {
+  match asr_outcomes() {
+    AsrOutcomesDecided { then_arm: _, else_arm: _, declared_arm: _, outside_call: _, second_statement: _, let_headed: _, let_reference: v } =>
+      asr_is_resolved(v: v)
+    AsrContextRefused => false
+  }
+}

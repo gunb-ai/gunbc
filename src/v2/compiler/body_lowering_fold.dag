@@ -5475,25 +5475,25 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
   }
 }
 
-// THE GUARD IS THE WHOLE OVERLAP STORY. A statement spine is taken over by
-// the Bind lowering ONLY when it is headed by a statement-form let AND has a
-// following statement -- exactly the case that has no lowering today. Every
-// other spine keeps the path it already had, so this cannot re-route a body
-// that already lowers.
-fn body_lower_stmt_spine_is_let_headed(spine: Node) -> Bool {
+// EVERY SPINE WITH A FOLLOWING STATEMENT IS THE STATEMENT LOWERING'S, NOT ONLY A LET-HEADED ONE.
+// The guard this replaces handed body_lower_stmt_spine a spine only when its head was a
+// statement-form let, so `{ 1 \n 2 }` fell through to the expression readers, whose first-match
+// search (body_lower_body_subtree_lower_from_binary) lowered the `1` and DROPPED the `2` with no
+// diagnostic -- the body accepted as a proper part of itself (DESIGN section 5). The spine is the
+// only node from which every statement is reachable, and body_lower_stmt_spine already owns the
+// refusal for a non-binding statement that precedes another
+// (body_lowering_reason_statement_precedes_without_binding); the guard kept it from being asked.
+// A one-statement spine keeps the expression path.
+fn body_lower_stmt_spine_has_following_statement(spine: Node) -> Bool {
   match body_lower_stmt_spine_head_optional(spine: spine) {
     Absent => false
-    Present { value: head } =>
+    Present { value: _ } =>
       match body_lower_stmt_spine_rest_optional(spine: spine) {
         Absent => false
         Present { value: rest } =>
           match body_lower_stmt_spine_head_optional(spine: rest) {
             Absent => false
-            Present { value: _ } =>
-              match body_lower_statement_let_captured_optional(stmt: head) {
-                Absent => false
-                Present { value: _ } => true
-              }
+            Present { value: _ } => true
           }
       }
   }
@@ -5507,7 +5507,7 @@ fn body_lower_try_statement_spine(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_stmt_seq) {
     ParseSubtreeAbsent => outcome_accepted(value: optional_absent())
     ParseSubtreeFound { captured: spine } =>
-      if body_lower_stmt_spine_is_let_headed(spine: spine) {
+      if body_lower_stmt_spine_has_following_statement(spine: spine) {
         bind_outcome(
           o: body_lower_stmt_spine(spine: spine),
           f: fn(lowered) { outcome_accepted(value: optional_present(value: lowered)) }
@@ -5671,20 +5671,23 @@ fn body_lower_try_loop_keyword_from_node(node: Node) -> Outcome<Optional<Node>> 
   }
 }
 
-// The condition is lowered by the body walker first (a call condition
-// `if content_hash_eq_structural(left: a, right: b) {..}` read by the operand readers below is
-// its first argument atom); the operand readers remain the fallback for what the walker declines.
-fn body_lower_if_condition_lowered(condition_capture: Node) -> Outcome<Optional<Node>> {
-  match body_lower_value_lowered(node: condition_capture) {
+// EACH PART OF AN `if` -- CONDITION, THEN-ARM, ELSE-ARM -- IS LOWERED BY THE BODY WALKER FIRST, THROUGH
+// THIS ONE READER. A call read by the operand readers below is its callee or its first argument atom
+// (`if content_hash_eq_structural(left: a, right: b) {..}`), so the walker owns every part and the
+// operand readers remain the fallback for what it declines. The arms were read by the operand readers
+// ALONE, so a call argument inside an arm (`if c { g(p: x) } else { .. }`) reached no reference site
+// -- the arm lowered to a proper part of itself, with no diagnostic (DESIGN section 5).
+fn body_lower_if_part_lowered(part_capture: Node) -> Outcome<Optional<Node>> {
+  match body_lower_value_lowered(node: part_capture) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: found, diagnostics: d } =>
       match found {
         Present { value: condition } => outcome_with_diagnostics(value: optional_present(value: condition), diagnostics: d)
         Absent =>
-          match body_lower_if_arm_operand_optional(arm_capture: condition_capture) {
-            Present { value: condition_raw } =>
+          match body_lower_if_arm_operand_optional(arm_capture: part_capture) {
+            Present { value: part_raw } =>
               outcome_with_diagnostics(
-                value: body_lower_arm_operand_resolved_optional(arm: condition_raw),
+                value: body_lower_arm_operand_resolved_optional(arm: part_raw),
                 diagnostics: d
               )
             Absent => outcome_with_diagnostics(value: optional_absent(), diagnostics: d)
@@ -5700,18 +5703,20 @@ fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
         Present { value: then_capture } =>
           match body_lower_if_else_capture_optional(captured: captured) {
             Present { value: else_capture } =>
-              match body_lower_if_condition_lowered(condition_capture: condition_capture) {
+              match body_lower_if_part_lowered(part_capture: condition_capture) {
                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
                 Accepted { value: condition_opt, diagnostics: _ } =>
                   match condition_opt {
                     Present { value: condition } =>
-                      match body_lower_if_arm_operand_optional(arm_capture: then_capture) {
-                        Present { value: then_raw } =>
-                          match body_lower_arm_operand_resolved_optional(arm: then_raw) {
+                      match body_lower_if_part_lowered(part_capture: then_capture) {
+                        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                        Accepted { value: then_opt, diagnostics: _ } =>
+                          match then_opt {
                             Present { value: then_arm } =>
-                              match body_lower_if_arm_operand_optional(arm_capture: else_capture) {
-                                Present { value: else_raw } =>
-                                  match body_lower_arm_operand_resolved_optional(arm: else_raw) {
+                              match body_lower_if_part_lowered(part_capture: else_capture) {
+                                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                                Accepted { value: else_opt, diagnostics: _ } =>
+                                  match else_opt {
                                     Present { value: else_arm } =>
                                       outcome_accepted(
                                         value: optional_present(
@@ -5724,11 +5729,9 @@ fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
                                       )
                                     Absent => body_lower_if_navigation_reject(captured: else_capture)
                                   }
-                                Absent => body_lower_if_navigation_reject(captured: else_capture)
                               }
                             Absent => body_lower_if_navigation_reject(captured: then_capture)
                           }
-                        Absent => body_lower_if_navigation_reject(captured: then_capture)
                       }
                     Absent => body_lower_if_navigation_reject(captured: condition_capture)
                   }
