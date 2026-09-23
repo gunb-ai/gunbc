@@ -1,0 +1,90 @@
+module test.claim.machine_intake.ampere_dram_console_observation_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, String }
+import gunbc.machine_intake_ampere_dram_console_observation {
+  AmpereDramBlockNotPrinted, AmpereDramBlockObserved,
+  ampere_dram_console_observation, ampere_dram_findings, ampere_dram_console_text, ampere_dram_dimms_on_socket,
+}
+import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED FIXTURE: the four line shapes of the mtcollins1 SOL capture of fleet-converge run
+// 35801475989, as relayed by eager-owl-205 on 2026-09-23. The first DIMM line is the relayed
+// specimen verbatim. The second SK0 line is the same shape at MC1 so that the roster is plural,
+// and the capture's SK1 printed nothing.
+data dram_block_params: String = "MEMC param: mcu_enable_mask = 00000011 [default: 000000ff]\nMCU param: ecc_en = 00000002 [default: 00000001]"
+
+data dram_block_sk0: String = "DRAM populated DIMMs: SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK\nDRAM populated DIMMs: SK0 MC1 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK"
+
+// A LIVE capture ends each line with a newline; the reader drops an unterminated tail as a line
+// still being written, so the fixture terminates its last line.
+fn capture(parts: List<String>) -> List<String> {
+  host_capture_lines(capture: HostCaptureLiveStream { text: concat(join(parts, "\n"), "\n") })
+}
+
+fn full_block() -> List<String> {
+  capture(parts: ["TianoCore banner", "NOTICE: DRAM FW version 210525", dram_block_params, dram_block_sk0, "Booting"])
+}
+
+fn any_contains(xs: List<String>, pattern: String) -> Bool {
+  any(xs, x => contains(x, pattern))
+}
+
+test fn the_version_and_the_sk0_roster_are_read() -> Bool {
+  match ampere_dram_console_observation(lines: full_block()) {
+    AmpereDramBlockObserved { block: b, blocks_printed: n } =>
+      (b.firmware_version as String) == "210525" && n == 1
+        && ampere_dram_dimms_on_socket(block: b, socket: 0) == 2
+        && ampere_dram_dimms_on_socket(block: b, socket: 1) == 0
+        && count(b.malformed) == 0
+    AmpereDramBlockNotPrinted => false
+  }
+}
+
+test fn a_socket_with_no_trained_dimm_line_is_named() -> Bool {
+  let f = ampere_dram_findings(observation: ampere_dram_console_observation(lines: full_block()), expected_sockets: [0, 1])
+  any_contains(xs: f, pattern: "DRAM firmware 210525 printed no trained DIMM for socket 1")
+    && !any_contains(xs: f, pattern: "for socket 0")
+}
+
+test fn each_non_default_param_is_named_with_both_values_and_no_meaning() -> Bool {
+  let f = ampere_dram_findings(observation: ampere_dram_console_observation(lines: full_block()), expected_sockets: [0, 1])
+  any_contains(xs: f, pattern: "DRAM firmware param MEMC mcu_enable_mask = 00000011 (default 000000ff)")
+    && any_contains(xs: f, pattern: "DRAM firmware param MCU ecc_en = 00000002 (default 00000001)")
+}
+
+// MUTATION CONTROLS: the same claims over the capture with a section dropped.
+test fn dropping_the_sk0_lines_makes_socket_0_empty_too() -> Bool {
+  let f = ampere_dram_findings(observation: ampere_dram_console_observation(lines: capture(parts: ["NOTICE: DRAM FW version 210525", dram_block_params])), expected_sockets: [0, 1])
+  any_contains(xs: f, pattern: "no trained DIMM for socket 0")
+}
+
+test fn dropping_the_param_lines_leaves_no_param_finding() -> Bool {
+  let f = ampere_dram_findings(observation: ampere_dram_console_observation(lines: capture(parts: ["NOTICE: DRAM FW version 210525", dram_block_sk0])), expected_sockets: [0, 1])
+  !any_contains(xs: f, pattern: "param")
+}
+
+test fn a_capture_without_the_block_asserts_no_roster() -> Bool {
+  let o = ampere_dram_console_observation(lines: capture(parts: [dram_block_sk0]))
+  (match o { AmpereDramBlockNotPrinted => true _ => false })
+    && count(ampere_dram_findings(observation: o, expected_sockets: [0, 1])) == 0
+}
+
+test fn a_changed_line_format_is_kept_as_malformed_not_dropped() -> Bool {
+  let f = ampere_dram_findings(observation: ampere_dram_console_observation(lines: capture(parts: ["NOTICE: DRAM FW version 210525", "DRAM populated DIMMs: socket0/mc0/slot0 RDIMM"])), expected_sockets: [0])
+  any_contains(xs: f, pattern: "not in the transcribed grammar: DRAM populated DIMMs: socket0/mc0/slot0 RDIMM")
+}
+
+test fn a_reset_loop_reads_the_last_block() -> Bool {
+  let lines = capture(parts: ["NOTICE: DRAM FW version 210525", dram_block_sk0, "reset", "NOTICE: DRAM FW version 210525", dram_block_params])
+  match ampere_dram_console_observation(lines: lines) {
+    AmpereDramBlockObserved { block: b, blocks_printed: n } => n == 2 && ampere_dram_dimms_on_socket(block: b, socket: 0) == 0 && count(b.params) == 2
+    AmpereDramBlockNotPrinted => false
+  }
+}
+
+test fn the_render_carries_the_roster_by_socket() -> Bool {
+  contains(ampere_dram_console_text(observation: ampere_dram_console_observation(lines: full_block()), expected_sockets: [0, 1]), "trained dimms by socket: SK0=2 SK1=0")
+}

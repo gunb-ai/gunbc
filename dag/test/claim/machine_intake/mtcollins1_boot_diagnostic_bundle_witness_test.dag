@@ -1,0 +1,298 @@
+module test.claim.machine_intake.mtcollins1_boot_diagnostic_bundle_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.goal_assessment { ObservationEstablished, ObservationRefused }
+import std.process { ExitSuccess, ExitFailure, exit_failure }
+import v2.std.optional { Present }
+import extdeps.bmc.redfish_memory_inventory {
+  RedfishMemoryMember, RedfishProcessorMember, StateAbsent, StateEnabled, StateUnrecognized, HealthOk, HealthCritical,
+  redfish_collection_member_ids, redfish_memory_member_of, redfish_processor_member_of,
+}
+import gunbc.machine_intake_sel_stimulus_listener { sel_read }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
+  MtCollins1BootDiagnosticBundle, InventoryReading, MembersRead, MembersUnread, MembersNotTaken,
+  SelSnapshotRead, SelSnapshotUnread, SelSnapshotNotTaken, ConsoleNotConfigured,
+  BmcUnreachable, BmcTimeout, BmcAuthRefused, BmcHttpRefused, BmcSessionUnestablished,
+  bmc_curl_read_cause, bmc_ipmitool_read_cause, inventory_not_taken,
+  mtcollins1_boot_bundle_findings, mtcollins1_boot_bundle_text, mtcollins1_boot_outcome_with_findings,
+  mtcollins1_boot_console_reading, ConsoleRetained, ConsoleNotRetained, ConsoleExceedsBound, mtcollins1_boot_console_bound_bytes,
+}
+import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_ended_before_bmc, BmcAccessNotReached }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── SUPPLIED FIXTURES ────────────────────────────────────────────────────────────────────────
+//
+// THE SEL ROWS ARE mtcollins1's OWN. gunbc.machine_intake_mtcollins1_32dimm_bringup_observation
+// transcribes records 1004 (OEM, manufacturer 00cd3a) and 1084/1085 (threshold events with the
+// seventh "Reading" field) from this controller; they are re-rendered here in `ipmitool sel elist`
+// form with hexadecimal ids (1004 = 3ec, 1084 = 43c, 1085 = 43d). The boot-restart row follows
+// the shape pre_os_observer_witness_test already reads. The Memory-sensor row is SPEC-SHAPED, not
+// observed: IPMI v2.0 section 42.2 sensor type 0Ch rendered the way ipmitool renders a sensor-type
+// name. No memory-sensor record from this BMC is in the corpus.
+data sel_before_fixture: String = "3ec | 09/10/2026 | 09:25:55 PM UTC | OEM record c0 | 00cd3a | 12c805000000\n43c | 09/11/2026 | 06:24:35 PM UTC | Voltage CPU0_0V75_PCP | Lower Non-critical going low | Asserted | Reading 0 < Threshold 0.68 Volts"
+
+data sel_after_fixture: String = "3ec | 09/10/2026 | 09:25:55 PM UTC | OEM record c0 | 00cd3a | 12c805000000\n43c | 09/11/2026 | 06:24:35 PM UTC | Voltage CPU0_0V75_PCP | Lower Non-critical going low | Asserted | Reading 0 < Threshold 0.68 Volts\n43d | 09/23/2026 | 01:00:00 AM UTC | Voltage CPU1_0V75_PCP | Lower Critical going low | Asserted | Reading 0 < Threshold 0.63 Volts\n43e | 09/23/2026 | 01:00:05 AM UTC | Memory DIMM_S1_A1 | Memory training failure | Asserted\n43f | 09/23/2026 | 01:00:06 AM UTC | OEM record c0 | 00cd3a | 0fde70330102"
+
+// THE REDFISH BODIES ARE SPEC-SHAPED (DMTF Memory, Processor and Resource schemas), NOT OBSERVED:
+// no response from mtcollins1's Memory or Processors collection exists in the corpus. They carry
+// the property names the schemas define, and they are the shape a socket-1-absent boot would
+// produce if the controller lists unpopulated slots as members with State Absent.
+data memory_collection_fixture: String = "{\"@odata.id\": \"/redfish/v1/Systems/Self/Memory\", \"Members\": [{\"@odata.id\": \"/redfish/v1/Systems/Self/Memory/DIMM_S0_A1\"}, {\"@odata.id\": \"/redfish/v1/Systems/Self/Memory/DIMM_S1_A1\"}], \"Members@odata.count\": 2}"
+
+data memory_member_present_fixture: String = "{\"Id\": \"DIMM_S0_A1\", \"DeviceLocator\": \"DIMM 1\", \"MemoryLocation\": {\"Socket\": 0, \"MemoryController\": 0, \"Channel\": 0, \"Slot\": 1}, \"CapacityMiB\": 16384, \"Status\": {\"State\": \"Enabled\", \"Health\": \"OK\"}}"
+
+data memory_member_absent_fixture: String = "{\"Id\": \"DIMM_S1_A1\", \"DeviceLocator\": \"Socket 1 DIMM 1\", \"MemoryLocation\": {\"Socket\": 1, \"MemoryController\": 0, \"Channel\": 0, \"Slot\": 1}, \"Status\": {\"State\": \"Absent\"}}"
+
+data processor_member_fixture: String = "{\"Id\": \"CPU0\", \"Socket\": \"CPU 0\", \"TotalCores\": 80, \"Status\": {\"State\": \"Enabled\", \"Health\": \"OK\"}}"
+
+fn parsed_memory(body: String) -> List<RedfishMemoryMember> {
+  match redfish_memory_member_of(body: body) {
+    ObservationEstablished { observed: m } => [m]
+    ObservationRefused { cause: _ } => []
+  }
+}
+
+fn socket1_absent_members() -> List<RedfishMemoryMember> {
+  parsed_memory(body: memory_member_absent_fixture)
+}
+
+fn processors_socket0_only() -> List<RedfishProcessorMember> {
+  match redfish_processor_member_of(body: processor_member_fixture) {
+    ObservationEstablished { observed: p } => [p]
+    ObservationRefused { cause: _ } => []
+  }
+}
+
+fn bundle_socket1_absent() -> MtCollins1BootDiagnosticBundle {
+  MtCollins1BootDiagnosticBundle {
+    attempt: "35793279839",
+    outcome: "refused: mtcollins1 boot: host qualification REFUSED (nproc observed 80, qualification expects 160)",
+    sel_before: SelSnapshotRead { raw: sel_before_fixture, at: "2026-09-23T00:59:00Z" },
+    sel_after: SelSnapshotRead { raw: sel_after_fixture, at: "2026-09-23T01:10:00Z" },
+    inventory: InventoryReading {
+      system_id: "Self",
+      memory: MembersRead { members: concat(parsed_memory(body: memory_member_present_fixture), socket1_absent_members()) },
+      processors: MembersRead { members: processors_socket0_only() },
+      credential_removed: true,
+    },
+    console: ConsoleNotConfigured,
+  }
+}
+
+fn bundle_bmc_silent() -> MtCollins1BootDiagnosticBundle {
+  let cause = bmc_curl_read_cause(endpoint: "https://192.168.1.228/redfish/v1/Systems", at: "2026-09-23T01:10:00Z", exit_code: 7, stderr: "curl: (7) Failed to connect to 192.168.1.228 port 443: Couldn't connect to server")
+  let ipmi = bmc_ipmitool_read_cause(endpoint: "ipmi lanplus 192.168.1.228", at: "2026-09-23T00:59:00Z", exit_code: 1, stderr: "Error: Unable to establish IPMI v2 / RMCP+ session")
+  MtCollins1BootDiagnosticBundle {
+    attempt: "35800000000",
+    outcome: "refused: mtcollins1 boot: approval window expired; controller untouched",
+    sel_before: SelSnapshotUnread { cause: ipmi },
+    sel_after: SelSnapshotUnread { cause: ipmi },
+    inventory: InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: true },
+    console: ConsoleNotConfigured,
+  }
+}
+
+fn any_contains(xs: List<String>, pattern: String) -> Bool {
+  any(xs, x => contains(x, pattern))
+}
+
+// ── THE REDFISH MODEL ────────────────────────────────────────────────────────────────────────
+
+test fn an_absent_slot_parses_to_state_absent_on_its_socket() -> Bool {
+  match redfish_memory_member_of(body: memory_member_absent_fixture) {
+    ObservationEstablished { observed: m } =>
+      m.status.state == StateAbsent && (m.id as String) == "DIMM_S1_A1" && match m.memory_location {
+        Present { value: l } => l.socket == Present { value: 1 } && l.slot == Present { value: 1 }
+        Absent => false
+      } && m.capacity_mib == none
+    ObservationRefused { cause: _ } => false
+  }
+}
+
+test fn an_unlisted_state_is_carried_not_defaulted() -> Bool {
+  match redfish_memory_member_of(body: "{\"Id\": \"X\", \"Status\": {\"State\": \"Frobbed\", \"Health\": \"Critical\"}}") {
+    ObservationEstablished { observed: m } =>
+      (match m.status.state { StateUnrecognized { rendering: r } => (r as String) == "Frobbed" _ => false }) && m.status.health == HealthCritical
+    ObservationRefused { cause: _ } => false
+  }
+}
+
+test fn a_member_without_id_refuses() -> Bool {
+  match redfish_memory_member_of(body: "{\"Status\": {\"State\": \"Enabled\"}}") {
+    ObservationRefused { cause: c } => contains(c as String, "Id")
+    ObservationEstablished { observed: _ } => false
+  }
+}
+
+test fn the_collection_yields_member_ids_from_odata_links() -> Bool {
+  match redfish_collection_member_ids(body: memory_collection_fixture) {
+    ObservationEstablished { observed: ids } => count(ids) == 2 && match ids.first() { Present { value: i } => (i as String) == "DIMM_S0_A1" Absent => false }
+    ObservationRefused { cause: _ } => false
+  }
+}
+
+test fn a_collection_without_members_is_not_an_empty_collection() -> Bool {
+  match redfish_collection_member_ids(body: "{\"@odata.id\": \"/redfish/v1/Systems/Self/Processors\"}") {
+    ObservationRefused { cause: c } => contains(c as String, "Members")
+    ObservationEstablished { observed: _ } => false
+  }
+}
+
+// ── READ CAUSES ──────────────────────────────────────────────────────────────────────────────
+
+test fn curl_exit_codes_type_the_bmc_failure() -> Bool {
+  let e: NonEmptyStr = "https://192.168.1.228/redfish/v1/Systems"
+  let t: NonEmptyStr = "2026-09-23T01:00:00Z"
+  (match bmc_curl_read_cause(endpoint: e, at: t, exit_code: 7, stderr: "") { BmcUnreachable { endpoint: ep, at: at, detail: _ } => (ep as String) == (e as String) && (at as String) == (t as String) _ => false })
+    && (match bmc_curl_read_cause(endpoint: e, at: t, exit_code: 28, stderr: "curl: (28) Operation timed out") { BmcTimeout { endpoint: _, at: _, detail: _ } => true _ => false })
+    && (match bmc_curl_read_cause(endpoint: e, at: t, exit_code: 22, stderr: "curl: (22) The requested URL returned error: 401") { BmcAuthRefused { endpoint: _, at: _, detail: _ } => true _ => false })
+    && (match bmc_curl_read_cause(endpoint: e, at: t, exit_code: 22, stderr: "curl: (22) The requested URL returned error: 404") { BmcHttpRefused { endpoint: _, at: _, detail: _ } => true _ => false })
+}
+
+test fn an_ipmi_session_failure_is_not_split_into_a_guess() -> Bool {
+  match bmc_ipmitool_read_cause(endpoint: "ipmi lanplus 192.168.1.228", at: "2026-09-23T01:00:00Z", exit_code: 1, stderr: "Error: Unable to establish IPMI v2 / RMCP+ session") {
+    BmcSessionUnestablished { endpoint: _, at: _, detail: _ } => true
+    _ => false
+  }
+}
+
+// ── THE SEL DELTA OVER THIS BMC'S OWN ROWS ───────────────────────────────────────────────────
+
+test fn the_real_threshold_rows_of_this_bmc_are_read_not_refused() -> Bool {
+  match sel_read(text: sel_before_fixture) {
+    ObservationEstablished { observed: w } => count(w.events) == 2
+    ObservationRefused { cause: _ } => false
+  }
+}
+
+test fn the_delta_names_the_memory_event_and_not_the_cpu_voltage_sensor() -> Bool {
+  let findings = mtcollins1_boot_bundle_findings(bundle: bundle_socket1_absent())
+  any_contains(xs: findings, pattern: "Memory DIMM_S1_A1 | Memory training failure")
+    && !any_contains(xs: findings, pattern: "Voltage CPU1_0V75_PCP")
+}
+
+test fn the_render_keeps_raw_records_beside_the_decode_and_counts_oem_opaque() -> Bool {
+  let text = mtcollins1_boot_bundle_text(bundle: bundle_socket1_absent())
+  contains(text, "delta: 3 new record(s) (1 OEM, kept opaque)")
+    && contains(text, "OEM record, manufacturer 00cd3a, bytes 0fde70330102 (OEM-defined; not decoded)")
+    && contains(text, "-- raw after (ipmitool sel elist, verbatim) --\n3ec | 09/10/2026")
+}
+
+// ── DECISIVE INVENTORY FINDINGS ──────────────────────────────────────────────────────────────
+
+test fn a_missing_processor_member_is_a_finding_against_the_census() -> Bool {
+  any_contains(xs: mtcollins1_boot_bundle_findings(bundle: bundle_socket1_absent()), pattern: "BMC lists 1 Processor member(s); the 2026-09-10 census observed 2 sockets")
+}
+
+test fn socket1_absent_slots_are_named_by_socket() -> Bool {
+  any_contains(xs: mtcollins1_boot_bundle_findings(bundle: bundle_socket1_absent()), pattern: "BMC reports 1 of 1 socket-1 Memory member(s) State=Absent")
+}
+
+test fn the_findings_reach_the_one_line_refusal() -> Bool {
+  let findings = mtcollins1_boot_bundle_findings(bundle: bundle_socket1_absent())
+  match mtcollins1_boot_outcome_with_findings(outcome: exit_failure(reason: "mtcollins1 boot: host qualification REFUSED"), findings: findings) {
+    ExitFailure { code: _, reason: r } => contains(r, "mtcollins1 boot: host qualification REFUSED | bmc diagnostics: ") && contains(r, "census observed 2 sockets")
+    ExitSuccess => false
+  }
+}
+
+// ── THE BUNDLE NEVER FLIPS THE VERDICT ───────────────────────────────────────────────────────
+
+test fn findings_never_turn_a_success_into_a_failure() -> Bool {
+  let findings = mtcollins1_boot_bundle_findings(bundle: bundle_socket1_absent())
+  count(findings) > 0 && match mtcollins1_boot_outcome_with_findings(outcome: ExitSuccess, findings: findings) { ExitSuccess => true _ => false }
+}
+
+test fn no_findings_leave_a_refusal_reason_unchanged() -> Bool {
+  match mtcollins1_boot_outcome_with_findings(outcome: exit_failure(reason: "r"), findings: []) {
+    ExitFailure { code: _, reason: r } => r == "r"
+    ExitSuccess => false
+  }
+}
+
+// ── A BMC THAT DOES NOT ANSWER ───────────────────────────────────────────────────────────────
+
+test fn a_silent_bmc_is_named_in_the_receipt() -> Bool {
+  let findings = mtcollins1_boot_bundle_findings(bundle: bundle_bmc_silent())
+  any_contains(xs: findings, pattern: "every BMC read failed and the BMC did not answer; first: no IPMI session at ipmi lanplus 192.168.1.228 (2026-09-23T00:59:00Z")
+}
+
+test fn a_silent_bmc_still_renders_every_section_with_its_cause() -> Bool {
+  let text = mtcollins1_boot_bundle_text(bundle: bundle_bmc_silent())
+  contains(text, "before: UNREAD: no IPMI session")
+    && contains(text, "processors: UNREAD: BMC unreachable at https://192.168.1.228/redfish/v1/Systems (2026-09-23T01:10:00Z)")
+    && contains(text, "memory: UNREAD: BMC unreachable")
+}
+
+// ── EVERY SECTION, ON EVERY ARM ──────────────────────────────────────────────────────────────
+//
+// THE MUTATION CONTROL. Deleting any one section's line from mtcollins1_boot_bundle_text turns
+// this claim red, because it asserts each section by its header AND by the reading it carries on
+// an arm where nothing was read.
+test fn a_bundle_from_an_attempt_that_never_reached_the_bmc_names_why_in_every_section() -> Bool {
+  let why: NonEmptyStr = "the attempt ended before the BMC credential was read (refused: mtcollins1 boot: approval window expired; controller untouched)"
+  let bundle = MtCollins1BootDiagnosticBundle {
+    attempt: "1",
+    outcome: "refused: mtcollins1 boot: approval window expired; controller untouched",
+    sel_before: SelSnapshotNotTaken { reason: why },
+    sel_after: SelSnapshotNotTaken { reason: why },
+    inventory: inventory_not_taken(reason: why),
+    console: ConsoleNotConfigured,
+  }
+  let text = mtcollins1_boot_bundle_text(bundle: bundle)
+  contains(text, "== bmc system event log ==")
+    && contains(text, concat("before: NOT TAKEN: ", why as String))
+    && contains(text, concat("after: NOT TAKEN: ", why as String))
+    && contains(text, "== bmc inventory (redfish) ==")
+    && contains(text, concat("processors: NOT TAKEN: ", why as String))
+    && contains(text, concat("memory: NOT TAKEN: ", why as String))
+    && contains(text, "== pre-os console ==")
+    && contains(text, "NOT CONFIGURED: the SOL capture path was unset")
+}
+
+// THE REAL PRODUCER OF AN EARLY TERMINAL: mtcollins1_boot_ended_before_bmc is what every
+// pre-credential return in mtcollins1_boot_wet_on_srv1 goes through, and its reason is what the
+// bundle's NOT TAKEN sections carry.
+test fn an_early_refusal_carries_its_own_reason_into_the_bmc_sections() -> Bool {
+  match mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: GITHUB_SHA is unset"), escalation_id: "").bmc {
+    BmcAccessNotReached { reason: r } => contains(r as String, "GITHUB_SHA is unset")
+    _ => false
+  }
+}
+
+// ── THE PRE-OS CONSOLE ───────────────────────────────────────────────────────────────────────
+
+test fn a_capture_outside_the_uploaded_glob_is_reported_not_retained() -> Bool {
+  match mtcollins1_boot_console_reading(capture: "x", path: "/tmp/sol.capture", read_ok: true, read_error: "") {
+    ConsoleNotRetained { path: _ } => true
+    _ => false
+  }
+}
+
+test fn a_retained_capture_reports_its_firmware_statement() -> Bool {
+  let capture = "ERROR: Non-identical DIMM mixture NOT supported!\n"
+  match mtcollins1_boot_console_reading(capture: capture, path: "/w/artifacts/mtcollins1-boot-sol.capture", read_ok: true, read_error: "") {
+    ConsoleRetained { path: _, bytes: b, lines: _, firmware: _, dram: _ } => b == capture.length() && b <= mtcollins1_boot_console_bound_bytes
+    _ => false
+  }
+}
+
+// THE DRAM FIRMWARE'S EMPTY SOCKET REACHES THE ONE-LINE REFUSAL through the real console route
+// (mtcollins1_boot_console_reading -> ampere_dram_console_observation -> bundle findings).
+test fn an_empty_dram_socket_in_the_console_reaches_the_refusal() -> Bool {
+  let capture = "NOTICE: DRAM FW version 210525\nMEMC param: mcu_enable_mask = 00000011 [default: 000000ff]\nDRAM populated DIMMs: SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK\n"
+  let bundle = MtCollins1BootDiagnosticBundle {
+    attempt: "35801475989",
+    outcome: "refused: x",
+    sel_before: SelSnapshotNotTaken { reason: "t" },
+    sel_after: SelSnapshotNotTaken { reason: "t" },
+    inventory: inventory_not_taken(reason: "t"),
+    console: mtcollins1_boot_console_reading(capture: capture, path: "artifacts/mtcollins1-boot-sol.capture", read_ok: true, read_error: ""),
+  }
+  match mtcollins1_boot_outcome_with_findings(outcome: exit_failure(reason: "mtcollins1 boot: host qualification REFUSED"), findings: mtcollins1_boot_bundle_findings(bundle: bundle)) {
+    ExitFailure { code: _, reason: r } => contains(r, "printed no trained DIMM for socket 1") && contains(r, "mcu_enable_mask = 00000011 (default 000000ff)")
+    ExitSuccess => false
+  }
+}

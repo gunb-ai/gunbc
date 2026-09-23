@@ -1,0 +1,741 @@
+module gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle
+
+import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import v2.std.optional { Present }
+import extdeps.bmc.ipmi
+import extdeps.bmc.http
+import extdeps.bmc.ipmi_sel { FirmwareError, FirmwareHang, FirmwareProgress }
+import extdeps.bmc.redfish_memory_inventory {
+  RedfishMemoryMember, RedfishProcessorMember, RedfishResourceStatus, RedfishMemoryLocation,
+  RedfishResourceState, StateAbsent, StateDisabled, StateUnavailableOffline, StateStandbyOffline,
+  RedfishHealth, HealthWarning, HealthCritical,
+  redfish_resource_state_wire, redfish_health_wire,
+  redfish_collection_member_ids, redfish_memory_member_of, redfish_processor_member_of,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.auth.netrc_binding {
+  NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains,
+  place_netrc_binding_privately, shred_netrc_binding,
+}
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.machine_intake_sel_stimulus_listener { SelDelta, sel_read, sel_after, sel_field }
+import gunbc.machine_intake_pre_os_bringup_verdict {
+  SelWindowEvent, BootRestart, FirmwareProgressRecord, OemTimestamped, OtherStandardEvent,
+  FirmwareConsoleReport, NoTerminalStated, UndecodedErrorCodesOnly, FirmwareErrorStatementUnrecognized, TrainingRefusedByFirmware,
+  firmware_console_report,
+}
+import gunbc.machine_intake_ampere_dram_console_observation {
+  AmpereDramConsoleObservation, ampere_dram_console_observation, ampere_dram_findings, ampere_dram_console_text,
+}
+import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
+import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_slots }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+
+// THE DIAGNOSTIC BUNDLE OF ONE mtcollins1 BOOT ATTEMPT: what the BMC and the pre-OS console
+// said about the machine around the attempt, recorded on every terminal arm so that a remote
+// operator can diagnose a failed or degraded boot from the run's artifact alone (operator,
+// 2026-09-23: run 35793279839 came up with socket 1 absent and nothing in its receipts said why).
+//
+// DESIGN section 3b, observability row, and the four responsibilities it names. The owning
+// domains establish the facts: the SEL record formats are extdeps.bmc.ipmi_sel and their
+// before/after reading is gunbc.machine_intake_sel_stimulus_listener; the per-slot and
+// per-socket inventory is extdeps.bmc.redfish_memory_inventory; the firmware's pre-OS statement
+// is gunbc.machine_intake_pre_os_bringup_verdict firmware_console_report. This module is the
+// observation model of ONE attempt (MtCollins1BootDiagnosticBundle), and mtcollins1_boot_bundle_text
+// renders it. It does not decode anything those authorities do not.
+//
+// THE BUNDLE NEVER DECIDES THE VERDICT (brief, and DESIGN section 5's separation of observation
+// from judgment). mtcollins1_boot_outcome_with_findings only appends findings to a refusal
+// reason. It never turns a success into a failure or a failure into a success, and the witness
+// asserts both directions.
+//
+// A READ THAT FAILS IS A TYPED, LOCATED READING IN THE BUNDLE, NEVER A MISSING SECTION (DESIGN
+// section 5). Every section has an arm for "read", one for "the read failed, and why, at which
+// endpoint, at what instant", and one for "the attempt ended before this could be read, and
+// why". A BMC that does not answer (operator, 2026-09-23: 192.168.1.228 unreachable after a DIMM
+// reseat) is itself a diagnosis, so it has its own arm.
+
+// WHY A BMC READ FAILED. Every arm carries the endpoint it addressed and the instant of the
+// attempt. The transport's own exit code and stderr are the evidence: curl 6/7 (name not
+// resolved, connection refused or host unreachable), curl 28 (timeout), curl 22 with an HTTP
+// 401/403 on stderr (authentication refused). ipmitool's lanplus session setup CANNOT tell an
+// unreachable controller from one that refused the credential: both render "Unable to establish
+// IPMI v2 / RMCP+ session". So that reading is BmcSessionUnestablished and is not split into
+// either, which would be a guess (DESIGN section 4d).
+type BmcReadCause
+  = BmcUnreachable { endpoint: NonEmptyStr, at: NonEmptyStr, detail: String }
+  | BmcTimeout { endpoint: NonEmptyStr, at: NonEmptyStr, detail: String }
+  | BmcAuthRefused { endpoint: NonEmptyStr, at: NonEmptyStr, detail: String }
+  | BmcSessionUnestablished { endpoint: NonEmptyStr, at: NonEmptyStr, detail: String }
+  | BmcHttpRefused { endpoint: NonEmptyStr, at: NonEmptyStr, detail: String }
+  | BmcReadFailed { endpoint: NonEmptyStr, at: NonEmptyStr, exit_code: Int, detail: String }
+  | BmcResponseMalformed { endpoint: NonEmptyStr, at: NonEmptyStr, detail: String }
+  | BmcCredentialUnavailable { endpoint: NonEmptyStr, at: NonEmptyStr, detail: String }
+
+fn bmc_read_cause_text(cause: BmcReadCause) -> String {
+  match cause {
+    BmcUnreachable { endpoint: e, at: a, detail: d } => concat("BMC unreachable at ", e as String, " (", a as String, "): ", d)
+    BmcTimeout { endpoint: e, at: a, detail: d } => concat("BMC timed out at ", e as String, " (", a as String, "): ", d)
+    BmcAuthRefused { endpoint: e, at: a, detail: d } => concat("BMC refused the credential at ", e as String, " (", a as String, "): ", d)
+    BmcSessionUnestablished { endpoint: e, at: a, detail: d } => concat("no IPMI session at ", e as String, " (", a as String, "; unreachable and credential-refused are indistinguishable on this transport): ", d)
+    BmcHttpRefused { endpoint: e, at: a, detail: d } => concat("BMC answered with an HTTP error at ", e as String, " (", a as String, "): ", d)
+    BmcReadFailed { endpoint: e, at: a, exit_code: c, detail: d } => concat("BMC read failed at ", e as String, " (", a as String, ", exit ", to_string(c), "): ", d)
+    BmcResponseMalformed { endpoint: e, at: a, detail: d } => concat("BMC response unreadable at ", e as String, " (", a as String, "): ", d)
+    BmcCredentialUnavailable { endpoint: e, at: a, detail: d } => concat("no credential could be presented to ", e as String, " (", a as String, "): ", d)
+  }
+}
+
+// A CAUSE THAT SAYS THE BMC ITSELF DID NOT ANSWER, as opposed to answering badly.
+fn bmc_read_cause_is_no_answer(cause: BmcReadCause) -> Bool {
+  match cause {
+    BmcUnreachable { endpoint: _, at: _, detail: _ } => true
+    BmcTimeout { endpoint: _, at: _, detail: _ } => true
+    BmcSessionUnestablished { endpoint: _, at: _, detail: _ } => true
+    _ => false
+  }
+}
+
+fn first_line(s: String) -> String {
+  match filter(map(split(s: s, delimiter: "\n"), l => trim(l)), l => l != "").first() {
+    Absent => ""
+    Present { value: l } => l
+  }
+}
+
+fn bmc_curl_read_cause(endpoint: NonEmptyStr, at: NonEmptyStr, exit_code: Int, stderr: String) -> BmcReadCause {
+  let detail = first_line(s: stderr)
+  if exit_code == 6 || exit_code == 7 {
+    BmcUnreachable { endpoint: endpoint, at: at, detail: detail }
+  } else if exit_code == 28 {
+    BmcTimeout { endpoint: endpoint, at: at, detail: detail }
+  } else if exit_code == 22 && (string_contains(s: stderr, pattern: "error: 401") || string_contains(s: stderr, pattern: "error: 403")) {
+    BmcAuthRefused { endpoint: endpoint, at: at, detail: detail }
+  } else if exit_code == 22 {
+    BmcHttpRefused { endpoint: endpoint, at: at, detail: detail }
+  } else {
+    BmcReadFailed { endpoint: endpoint, at: at, exit_code: exit_code, detail: detail }
+  }
+}
+
+// ipmitool's lanplus renderings, as its source prints them: "RAKP 2 HMAC is invalid" and
+// "Unauthorized name" come from the RAKP exchange rejecting the credential, and "Insufficient
+// privilege level" is completion code D4h. Anything that failed to set up a session without one
+// of those is BmcSessionUnestablished.
+fn bmc_ipmitool_read_cause(endpoint: NonEmptyStr, at: NonEmptyStr, exit_code: Int, stderr: String) -> BmcReadCause {
+  let detail = first_line(s: stderr)
+  if string_contains(s: stderr, pattern: "RAKP 2 HMAC is invalid") || string_contains(s: stderr, pattern: "Unauthorized name") || string_contains(s: stderr, pattern: "Insufficient privilege level") {
+    BmcAuthRefused { endpoint: endpoint, at: at, detail: detail }
+  } else if string_contains(s: stderr, pattern: "Unable to establish IPMI v2") {
+    BmcSessionUnestablished { endpoint: endpoint, at: at, detail: detail }
+  } else {
+    BmcReadFailed { endpoint: endpoint, at: at, exit_code: exit_code, detail: detail }
+  }
+}
+
+// ONE SEL SNAPSHOT: the raw `sel elist` rows as the controller rendered them, or why there are none.
+type SelSnapshotReading
+  = SelSnapshotRead { raw: String, at: NonEmptyStr }
+  | SelSnapshotUnread { cause: BmcReadCause }
+  | SelSnapshotNotTaken { reason: NonEmptyStr }
+
+type MembersReading<T>
+  = MembersRead { members: List<T> }
+  | MembersUnread { cause: BmcReadCause }
+  | MembersNotTaken { reason: NonEmptyStr }
+
+// THE BMC'S OWN INVENTORY. `credential_removed` is carried because the per-attempt netrc that
+// authenticated the reads must be shredded, and a shred that failed is a standing exposure this
+// attempt created, which the bundle states rather than hides.
+type InventoryReading {
+  system_id: String
+  memory: MembersReading<RedfishMemoryMember>
+  processors: MembersReading<RedfishProcessorMember>
+  credential_removed: Bool
+}
+
+// THE PRE-OS CONSOLE. The SOL capture is the firmware's training and POST output before any
+// kernel, and it is retained by the workflow's upload of mtcollins1_boot_artifact_glob, which
+// covers it only if it lives there. The bound is a policy row on artifact size, OBSERVED here:
+// the collector itself does not truncate, so a capture over the bound is reported, not clipped.
+type ConsoleReading
+  = ConsoleRetained { path: NonEmptyStr, bytes: Int, lines: Int, firmware: FirmwareConsoleReport, dram: AmpereDramConsoleObservation }
+  | ConsoleExceedsBound { path: NonEmptyStr, bytes: Int, bound: Int }
+  | ConsoleNotRetained { path: NonEmptyStr }
+  | ConsoleUnread { path: NonEmptyStr, detail: String }
+  | ConsoleNotConfigured
+
+data mtcollins1_boot_console_bound_bytes: Int = 16777216
+
+data mtcollins1_boot_diagnostics_path: String = "artifacts/mtcollins1-boot-diagnostics.txt"
+
+data mtcollins1_boot_retained_artifact_prefix: String = "artifacts/mtcollins1-boot-"
+
+type MtCollins1BootDiagnosticBundle {
+  attempt: String
+  outcome: String
+  sel_before: SelSnapshotReading
+  sel_after: SelSnapshotReading
+  inventory: InventoryReading
+  console: ConsoleReading
+}
+
+fn inventory_not_taken(reason: NonEmptyStr) -> InventoryReading {
+  InventoryReading { system_id: "", memory: MembersNotTaken { reason: reason }, processors: MembersNotTaken { reason: reason }, credential_removed: true }
+}
+
+// ── THE SEL DELTA ────────────────────────────────────────────────────────────────────────────
+
+type SelDeltaReading
+  = SelDeltaDecoded { delta: SelDelta }
+  | SelDeltaRefused { cause: NonEmptyStr }
+  | SelDeltaUnavailable { reason: String }
+
+fn sel_delta_reading(before: SelSnapshotReading, after: SelSnapshotReading) -> SelDeltaReading {
+  match before {
+    SelSnapshotRead { raw: b, at: _ } =>
+      match after {
+        SelSnapshotRead { raw: a, at: _ } =>
+          match sel_read(text: b) {
+            ObservationRefused { cause: c } => SelDeltaRefused { cause: concat("before snapshot: ", c as String) as NonEmptyStr }
+            ObservationEstablished { observed: watermark } =>
+              match sel_after(watermark: watermark, text: a) {
+                ObservationRefused { cause: c } => SelDeltaRefused { cause: c }
+                ObservationEstablished { observed: delta } => SelDeltaDecoded { delta: delta }
+              }
+          }
+        _ => SelDeltaUnavailable { reason: "no after snapshot" }
+      }
+    _ => SelDeltaUnavailable { reason: "no before snapshot" }
+  }
+}
+
+fn sel_event_kind_text(event: SelWindowEvent) -> String {
+  match event.kind {
+    BootRestart { offset: _ } => "system boot initiated (section 42.2 sensor type 1Dh)"
+    FirmwareProgressRecord { offset: o } => match o {
+      FirmwareError => "system firmware error (section 42.2 sensor type 0Fh offset 00h, POST error)"
+      FirmwareHang => "system firmware hang (section 42.2 sensor type 0Fh offset 01h)"
+      FirmwareProgress { progress_rendering: r } => concat("system firmware progress: ", r as String)
+    }
+    OemTimestamped { payload: p } => concat("OEM record, manufacturer ", p.manufacturer_id_rendering as String, ", bytes ", p.oem_bytes_rendering as String, " (OEM-defined; not decoded)")
+    OtherStandardEvent { rendering: r } => r as String
+  }
+}
+
+fn sel_event_is_oem(event: SelWindowEvent) -> Bool {
+  match event.kind { OemTimestamped { payload: _ } => true _ => false }
+}
+
+fn sel_event_text(event: SelWindowEvent) -> String {
+  concat("record ", to_string(event.record_id), " at ", event.bmc_clock_rendering as String, ": ", sel_event_kind_text(event: event))
+}
+
+// A STANDARD EVENT WHOSE SENSOR TYPE IS Memory (0Ch) OR Processor (07h). ipmitool renders the
+// section 42.2 sensor-type name as the leading word of the sensor column, so the type is read
+// from that column. A sensor NAME that merely mentions a CPU ("Voltage CPU0_0V75_PCP") is a
+// voltage sensor and is not selected.
+fn sel_event_is_memory_or_processor(event: SelWindowEvent) -> Bool {
+  match event.kind {
+    OtherStandardEvent { rendering: r } => {
+      let sensor = sel_field(fields: map(split(s: r as String, delimiter: "|"), f => trim(f)), index: 3)
+      starts_with(s: sensor, prefix: "Memory") || starts_with(s: sensor, prefix: "Processor")
+    }
+    FirmwareProgressRecord { offset: o } => match o { FirmwareProgress { progress_rendering: _ } => false _ => true }
+    _ => false
+  }
+}
+
+// ── DECISIVE FINDINGS ────────────────────────────────────────────────────────────────────────
+
+// THE SOCKETS THE CENSUS OBSERVED, derived from its slot rows rather than restated.
+fn distinct_ints(xs: List<Int>) -> List<Int> {
+  let empty: List<Int> = []
+  fold(xs, init: empty, f: (acc, k) => if any(acc, j => j == k) { acc } else { concat(acc, [k]) })
+}
+
+fn mtcollins1_census_sockets() -> List<Int> {
+  distinct_ints(xs: map(mtcollins1_slots, s => s.processor_socket as Int))
+}
+
+fn mtcollins1_census_socket_count() -> Int {
+  count(mtcollins1_census_sockets())
+}
+
+fn console_findings(c: ConsoleReading) -> List<String> {
+  match c {
+    ConsoleRetained { path: _, bytes: _, lines: _, firmware: _, dram: d } => ampere_dram_findings(observation: d, expected_sockets: mtcollins1_census_sockets())
+    _ => []
+  }
+}
+
+fn state_is_down(state: RedfishResourceState) -> Bool {
+  match state {
+    StateAbsent => true
+    StateDisabled => true
+    StateUnavailableOffline => true
+    StateStandbyOffline => true
+    _ => false
+  }
+}
+
+fn health_is_bad(health: RedfishHealth) -> Bool {
+  match health {
+    HealthWarning => true
+    HealthCritical => true
+    _ => false
+  }
+}
+
+fn status_text(status: RedfishResourceStatus) -> String {
+  concat("State=", redfish_resource_state_wire(state: status.state), " Health=", redfish_health_wire(health: status.health))
+}
+
+fn memory_socket(m: RedfishMemoryMember) -> Int? {
+  match m.memory_location {
+    Absent => none
+    Present { value: loc } => loc.socket
+  }
+}
+
+// -1 is never a socket index, so it stands for "the member reports no socket" in the grouping.
+fn memory_socket_key(m: RedfishMemoryMember) -> Int {
+  match memory_socket(m: m) { Absent => -1 Present { value: s } => s }
+}
+
+fn state_is_absent(state: RedfishResourceState) -> Bool {
+  match state { StateAbsent => true _ => false }
+}
+
+fn socket_absent_finding(ms: List<RedfishMemoryMember>, socket: Int) -> String {
+  let on = filter(ms, m => memory_socket_key(m: m) == socket)
+  let absent = count(filter(on, m => state_is_absent(state: m.status.state)))
+  if absent == 0 || socket < 0 { "" } else { concat("BMC reports ", to_string(absent), " of ", to_string(count(on)), " socket-", to_string(socket), " Memory member(s) State=Absent") }
+}
+
+fn memory_label(m: RedfishMemoryMember) -> String {
+  match m.device_locator {
+    Present { value: l } => concat(m.id as String, " (", l, ")")
+    Absent => m.id as String
+  }
+}
+
+fn processor_socket_suffix(p: RedfishProcessorMember) -> String {
+  match p.socket { Present { value: s } => concat(" (Socket ", s, ")") Absent => "" }
+}
+
+fn processor_findings(processors: MembersReading<RedfishProcessorMember>) -> List<String> {
+  match processors {
+    MembersRead { members: ps } => {
+      let expected = mtcollins1_census_socket_count()
+      let none_short: List<String> = []
+      let short = if count(ps) < expected {
+        [concat("BMC lists ", to_string(count(ps)), " Processor member(s); the 2026-09-10 census observed ", to_string(expected), " sockets")]
+      } else { none_short }
+      concat(short, map(filter(ps, p => state_is_down(state: p.status.state) || health_is_bad(health: p.status.health)),
+        p => concat("BMC Processor ", p.id as String, processor_socket_suffix(p: p), ": ", status_text(status: p.status))))
+    }
+    _ => []
+  }
+}
+
+fn memory_findings(memory: MembersReading<RedfishMemoryMember>) -> List<String> {
+  match memory {
+    MembersRead { members: ms } => {
+      let slots = count(mtcollins1_slots)
+      let none_short: List<String> = []
+      let short = if count(ms) < slots {
+        [concat("BMC lists ", to_string(count(ms)), " Memory member(s); the census board has ", to_string(slots), " slots")]
+      } else { none_short }
+      let sockets = distinct_ints(xs: map(ms, m => memory_socket_key(m: m)))
+      let absent_by_socket = filter(map(sockets, k => socket_absent_finding(ms: ms, socket: k)), line => line != "")
+      let bad = map(filter(ms, m => (state_is_down(state: m.status.state) && !state_is_absent(state: m.status.state)) || health_is_bad(health: m.status.health)),
+        m => concat("BMC Memory ", memory_label(m: m), ": ", status_text(status: m.status)))
+      concat(short, concat(absent_by_socket, bad))
+    }
+    _ => []
+  }
+}
+
+fn sel_findings(delta: SelDeltaReading) -> List<String> {
+  match delta {
+    SelDeltaDecoded { delta: d } =>
+      map(filter(d.events, e => sel_event_is_memory_or_processor(event: e)), e => concat("SEL ", sel_event_text(event: e)))
+    _ => []
+  }
+}
+
+fn sel_snapshot_cause(s: SelSnapshotReading) -> BmcReadCause? {
+  match s {
+    SelSnapshotUnread { cause: c } => Present { value: c }
+    _ => none
+  }
+}
+
+fn members_cause(m: MembersReading<T>) -> BmcReadCause? {
+  match m {
+    MembersUnread { cause: c } => Present { value: c }
+    _ => none
+  }
+}
+
+// EVERY BMC READ WAS ATTEMPTED AND EVERY ONE FAILED. A section that was never attempted does not
+// count toward this: an attempt that refused before reading the credential says so separately.
+fn bmc_all_reads_failed(bundle: MtCollins1BootDiagnosticBundle) -> BmcReadCause? {
+  let causes = [
+    sel_snapshot_cause(s: bundle.sel_before),
+    sel_snapshot_cause(s: bundle.sel_after),
+    members_cause(m: bundle.inventory.memory),
+    members_cause(m: bundle.inventory.processors),
+  ]
+  if all(causes, c => match c { Absent => false Present { value: _ } => true }) {
+    match causes.first() { Absent => none Present { value: c } => c }
+  } else { none }
+}
+
+fn mtcollins1_boot_bundle_findings(bundle: MtCollins1BootDiagnosticBundle) -> List<String> {
+  let nothing: List<String> = []
+  let unreachable = match bmc_all_reads_failed(bundle: bundle) {
+    Absent => nothing
+    Present { value: c } => [concat(if bmc_read_cause_is_no_answer(cause: c) { "every BMC read failed and the BMC did not answer; first: " } else { "every BMC read failed; first: " }, bmc_read_cause_text(cause: c))]
+  }
+  let shred = if bundle.inventory.credential_removed { nothing } else { ["the per-attempt Redfish netrc could not be removed; credential material may remain on the runner"] }
+  concat(unreachable, concat(processor_findings(processors: bundle.inventory.processors),
+    concat(memory_findings(memory: bundle.inventory.memory),
+    concat(sel_findings(delta: sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)), concat(console_findings(c: bundle.console), shred)))))
+}
+
+// THE ONE-LINE CONSEQUENCE ON THE RUN'S OUTCOME: findings are appended to a refusal reason, and a
+// success stays a success. This is the whole of the bundle's reach into the verdict.
+fn mtcollins1_boot_outcome_with_findings(outcome: ProcessExit, findings: List<String>) -> ProcessExit {
+  match outcome {
+    ExitSuccess => ExitSuccess
+    ExitFailure { code: c, reason: r } =>
+      if count(findings) == 0 { ExitFailure { code: c, reason: r } }
+      else { ExitFailure { code: c, reason: concat(r, " | bmc diagnostics: ", join(findings, "; ")) } }
+  }
+}
+
+// ── RENDER ───────────────────────────────────────────────────────────────────────────────────
+
+fn sel_snapshot_text(label: String, s: SelSnapshotReading) -> String {
+  match s {
+    SelSnapshotRead { raw: r, at: a } => concat(label, ": read at ", a as String, ", ", to_string(count(filter(split(s: r, delimiter: "\n"), l => trim(l) != ""))), " record(s)")
+    SelSnapshotUnread { cause: c } => concat(label, ": UNREAD: ", bmc_read_cause_text(cause: c))
+    SelSnapshotNotTaken { reason: why } => concat(label, ": NOT TAKEN: ", why as String)
+  }
+}
+
+fn sel_raw_text(label: String, s: SelSnapshotReading) -> String {
+  match s {
+    SelSnapshotRead { raw: r, at: _ } => concat("-- raw ", label, " (ipmitool sel elist, verbatim) --\n", r)
+    _ => concat("-- raw ", label, ": none --")
+  }
+}
+
+fn sel_delta_text(delta: SelDeltaReading) -> String {
+  match delta {
+    SelDeltaDecoded { delta: d } =>
+      concat("delta: ", to_string(count(d.events)), " new record(s) (", to_string(count(filter(d.events, e => sel_event_is_oem(event: e)))), " OEM, kept opaque)\n",
+        join(map(d.events, e => concat("  ", sel_event_text(event: e))), "\n"))
+    SelDeltaRefused { cause: c } => concat("delta: REFUSED: ", c as String, " (both raw snapshots below)")
+    SelDeltaUnavailable { reason: r } => concat("delta: UNAVAILABLE: ", r)
+  }
+}
+
+fn optional_int_text(n: Int?) -> String {
+  match n { Present { value: v } => to_string(v) Absent => "not-reported" }
+}
+
+fn memory_location_text(location: RedfishMemoryLocation?) -> String {
+  match location {
+    Absent => " location=not-reported"
+    Present { value: l } => concat(" socket=", optional_int_text(n: l.socket), " controller=", optional_int_text(n: l.memory_controller), " channel=", optional_int_text(n: l.channel), " slot=", optional_int_text(n: l.slot))
+  }
+}
+
+fn memory_member_text(m: RedfishMemoryMember) -> String {
+  concat("  ", memory_label(m: m), memory_location_text(location: m.memory_location),
+    " capacity_mib=", optional_int_text(n: m.capacity_mib), " ", status_text(status: m.status))
+}
+
+fn optional_text_or_not_reported(s: String?) -> String {
+  match s { Present { value: v } => v Absent => "not-reported" }
+}
+
+fn processor_member_text(p: RedfishProcessorMember) -> String {
+  concat("  ", p.id as String, " socket=", optional_text_or_not_reported(s: p.socket),
+    " total_cores=", optional_int_text(n: p.total_cores), " ", status_text(status: p.status))
+}
+
+fn memory_members_text(m: MembersReading<RedfishMemoryMember>) -> String {
+  match m {
+    MembersRead { members: ms } => concat("memory: ", to_string(count(ms)), " member(s)\n", join(map(ms, x => memory_member_text(m: x)), "\n"))
+    MembersUnread { cause: c } => concat("memory: UNREAD: ", bmc_read_cause_text(cause: c))
+    MembersNotTaken { reason: why } => concat("memory: NOT TAKEN: ", why as String)
+  }
+}
+
+fn processor_members_text(m: MembersReading<RedfishProcessorMember>) -> String {
+  match m {
+    MembersRead { members: ps } => concat("processors: ", to_string(count(ps)), " member(s)\n", join(map(ps, x => processor_member_text(p: x)), "\n"))
+    MembersUnread { cause: c } => concat("processors: UNREAD: ", bmc_read_cause_text(cause: c))
+    MembersNotTaken { reason: why } => concat("processors: NOT TAKEN: ", why as String)
+  }
+}
+
+fn bracketed_int(label: String, n: Int?) -> String {
+  match n { Present { value: k } => concat(" [", label, " ", to_string(k), "]") Absent => "" }
+}
+
+fn firmware_report_text(report: FirmwareConsoleReport) -> String {
+  match report {
+    NoTerminalStated => "firmware stated no terminal"
+    UndecodedErrorCodesOnly { err_lines: n } => concat("firmware printed ", to_string(n), " undecoded ERR code line(s)")
+    FirmwareErrorStatementUnrecognized { statement: s } => concat("firmware printed an unrecognised statement: ", s as String)
+    TrainingRefusedByFirmware { statement: s, locus: l } =>
+      concat("firmware refused memory training: ", s as String, bracketed_int(label: "socket", n: l.socket), bracketed_int(label: "memory controller", n: l.memory_controller))
+  }
+}
+
+fn console_text(c: ConsoleReading) -> String {
+  match c {
+    ConsoleRetained { path: p, bytes: b, lines: n, firmware: f, dram: d } =>
+      concat("capture ", p as String, " retained in this artifact: ", to_string(b), " bytes, ", to_string(n), " line(s), within the ", to_string(mtcollins1_boot_console_bound_bytes), "-byte bound; ", firmware_report_text(report: f), "\n", ampere_dram_console_text(observation: d, expected_sockets: mtcollins1_census_sockets()))
+    ConsoleExceedsBound { path: p, bytes: b, bound: bound } =>
+      concat("capture ", p as String, " is ", to_string(b), " bytes, OVER the ", to_string(bound), "-byte bound; the collector does not truncate, so the artifact carries it whole")
+    ConsoleNotRetained { path: p } =>
+      concat("capture ", p as String, " is NOT under ", mtcollins1_boot_retained_artifact_prefix, " and is not uploaded with this artifact")
+    ConsoleUnread { path: p, detail: d } => concat("capture ", p as String, " UNREAD: ", d)
+    ConsoleNotConfigured => "NOT CONFIGURED: the SOL capture path was unset for this attempt"
+  }
+}
+
+fn mtcollins1_boot_bundle_text(bundle: MtCollins1BootDiagnosticBundle) -> String {
+  let findings = mtcollins1_boot_bundle_findings(bundle: bundle)
+  join([
+    "mtcollins1 boot diagnostics",
+    concat("attempt=", bundle.attempt),
+    concat("outcome=", bundle.outcome),
+    "== decisive findings ==",
+    if count(findings) == 0 { "none" } else { join(findings, "\n") },
+    "== bmc system event log ==",
+    sel_snapshot_text(label: "before", s: bundle.sel_before),
+    sel_snapshot_text(label: "after", s: bundle.sel_after),
+    sel_delta_text(delta: sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)),
+    sel_raw_text(label: "before", s: bundle.sel_before),
+    sel_raw_text(label: "after", s: bundle.sel_after),
+    "== bmc inventory (redfish) ==",
+    concat("system=", if bundle.inventory.system_id == "" { "not-read" } else { bundle.inventory.system_id }),
+    processor_members_text(m: bundle.inventory.processors),
+    memory_members_text(m: bundle.inventory.memory),
+    "== pre-os console ==",
+    console_text(c: bundle.console),
+    "",
+  ], "\n")
+}
+
+// ── READS (effects) ──────────────────────────────────────────────────────────────────────────
+
+fn mtcollins1_ipmi_endpoint() -> NonEmptyStr {
+  concat("ipmi lanplus ", mtcollins1_endpoint.host as String) as NonEmptyStr
+}
+
+fn mtcollins1_redfish_endpoint(path: String) -> NonEmptyStr {
+  concat("https://", mtcollins1_endpoint.host as String, "/redfish/v1/", path) as NonEmptyStr
+}
+
+fn mtcollins1_boot_sel_snapshot(username: NonEmptyStr, password_file: NonEmptyStr) -> SelSnapshotReading
+  uses net: std.resources.Network
+{
+  let at = clock_now_probed_at_or_unknown()
+  let r = diagnostic.ipmi.Tool.SelListAuthenticated(bmc_host: mtcollins1_endpoint.host, username: username, password_file: password_file)
+  if r.success {
+    SelSnapshotRead { raw: r.stdout, at: at }
+  } else {
+    SelSnapshotUnread { cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: at, exit_code: r.exit_code, stderr: r.transport_stderr) }
+  }
+}
+
+fn redfish_malformed(path: String, at: NonEmptyStr, cause: NonEmptyStr) -> BmcReadCause {
+  BmcResponseMalformed { endpoint: mtcollins1_redfish_endpoint(path: path), at: at, detail: cause as String }
+}
+
+fn read_memory_members(netrc: NonEmptyStr, system_id: NonEmptyStr) -> MembersReading<RedfishMemoryMember>
+  uses net: std.resources.Network
+{
+  let at = clock_now_probed_at_or_unknown()
+  let path = concat("Systems/", system_id as String, "/Memory")
+  let coll = redfish.Http.GetMemoryCollection(bmc_host: mtcollins1_endpoint.host, netrc_file: netrc, system_id: system_id)
+  if !coll.success {
+    return MembersUnread { cause: bmc_curl_read_cause(endpoint: mtcollins1_redfish_endpoint(path: path), at: at, exit_code: coll.exit_code, stderr: coll.transport_stderr) }
+  }
+  match redfish_collection_member_ids(body: coll.body) {
+    ObservationRefused { cause: c } => MembersUnread { cause: redfish_malformed(path: path, at: at, cause: c) }
+    ObservationEstablished { observed: ids } => {
+      let empty: List<RedfishMemoryMember> = []
+      let initial: MembersReading<RedfishMemoryMember> = MembersRead { members: empty }
+      fold(ids, init: initial, f: (acc, id) => match acc {
+        MembersRead { members: ms } => {
+          let member_path = concat(path, "/", id as String)
+          let got = redfish.Http.GetMemory(bmc_host: mtcollins1_endpoint.host, netrc_file: netrc, system_id: system_id, memory_id: id)
+          if !got.success {
+            MembersUnread { cause: bmc_curl_read_cause(endpoint: mtcollins1_redfish_endpoint(path: member_path), at: clock_now_probed_at_or_unknown(), exit_code: got.exit_code, stderr: got.transport_stderr) }
+          } else {
+            match redfish_memory_member_of(body: got.body) {
+              ObservationRefused { cause: c } => MembersUnread { cause: redfish_malformed(path: member_path, at: at, cause: c) }
+              ObservationEstablished { observed: m } => MembersRead { members: concat(ms, [m]) }
+            }
+          }
+        }
+        other => other
+      })
+    }
+  }
+}
+
+fn read_processor_members(netrc: NonEmptyStr, system_id: NonEmptyStr) -> MembersReading<RedfishProcessorMember>
+  uses net: std.resources.Network
+{
+  let at = clock_now_probed_at_or_unknown()
+  let path = concat("Systems/", system_id as String, "/Processors")
+  let coll = redfish.Http.GetProcessorCollection(bmc_host: mtcollins1_endpoint.host, netrc_file: netrc, system_id: system_id)
+  if !coll.success {
+    return MembersUnread { cause: bmc_curl_read_cause(endpoint: mtcollins1_redfish_endpoint(path: path), at: at, exit_code: coll.exit_code, stderr: coll.transport_stderr) }
+  }
+  match redfish_collection_member_ids(body: coll.body) {
+    ObservationRefused { cause: c } => MembersUnread { cause: redfish_malformed(path: path, at: at, cause: c) }
+    ObservationEstablished { observed: ids } => {
+      let empty: List<RedfishProcessorMember> = []
+      let initial: MembersReading<RedfishProcessorMember> = MembersRead { members: empty }
+      fold(ids, init: initial, f: (acc, id) => match acc {
+        MembersRead { members: ps } => {
+          let member_path = concat(path, "/", id as String)
+          let got = redfish.Http.GetProcessor(bmc_host: mtcollins1_endpoint.host, netrc_file: netrc, system_id: system_id, processor_id: id)
+          if !got.success {
+            MembersUnread { cause: bmc_curl_read_cause(endpoint: mtcollins1_redfish_endpoint(path: member_path), at: clock_now_probed_at_or_unknown(), exit_code: got.exit_code, stderr: got.transport_stderr) }
+          } else {
+            match redfish_processor_member_of(body: got.body) {
+              ObservationRefused { cause: c } => MembersUnread { cause: redfish_malformed(path: member_path, at: at, cause: c) }
+              ObservationEstablished { observed: p } => MembersRead { members: concat(ps, [p]) }
+            }
+          }
+        }
+        other => other
+      })
+    }
+  }
+}
+
+// THE SYSTEM ID IS READ, NOT ASSUMED. A Systems collection with exactly one member names the
+// system this inventory belongs to. Zero or several members is a typed reading, since picking one
+// would be a guess about which system the attempt booted.
+fn read_inventory_with_netrc(netrc: NonEmptyStr) -> InventoryReading
+  uses net: std.resources.Network
+{
+  let at = clock_now_probed_at_or_unknown()
+  let systems = redfish.Http.GetSystemsCollection(bmc_host: mtcollins1_endpoint.host, netrc_file: netrc)
+  if !systems.success {
+    let cause = bmc_curl_read_cause(endpoint: mtcollins1_redfish_endpoint(path: "Systems"), at: at, exit_code: systems.exit_code, stderr: systems.transport_stderr)
+    return InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: true }
+  }
+  match redfish_collection_member_ids(body: systems.body) {
+    ObservationRefused { cause: c } => {
+      let cause = redfish_malformed(path: "Systems", at: at, cause: c)
+      InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: true }
+    }
+    ObservationEstablished { observed: ids } =>
+      if count(ids) != 1 {
+        let cause = redfish_malformed(path: "Systems", at: at, cause: concat("Systems collection has ", to_string(count(ids)), " members; exactly one names the booted system") as NonEmptyStr)
+        InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: true }
+      } else {
+        match ids.first() {
+          Absent => inventory_not_taken(reason: "Systems collection member vanished between count and read")
+          Present { value: id } =>
+            InventoryReading {
+              system_id: id as String,
+              processors: read_processor_members(netrc: netrc, system_id: id),
+              memory: read_memory_members(netrc: netrc, system_id: id),
+              credential_removed: true,
+            }
+        }
+      }
+  }
+}
+
+fn mtcollins1_boot_inventory(username: NonEmptyStr, password: String) -> InventoryReading
+  uses net: std.resources.Network
+{
+  let at = clock_now_probed_at_or_unknown()
+  let endpoint = mtcollins1_redfish_endpoint(path: "Systems")
+  match place_netrc_binding_privately(machine: mtcollins1_endpoint.host, login: username, password: trim(s: password) as Secret) {
+    NetrcBindingRefused { cause: c } => {
+      let cause = BmcCredentialUnavailable { endpoint: endpoint, at: at, detail: c as String }
+      InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: true }
+    }
+    NetrcBindingRefusedResidueRemains { cause: c } => {
+      let cause = BmcCredentialUnavailable { endpoint: endpoint, at: at, detail: c as String }
+      InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: false }
+    }
+    NetrcBindingPlaced { binding: binding } => {
+      let read = read_inventory_with_netrc(netrc: binding.path as NonEmptyStr)
+      let removed = shred_netrc_binding(binding: binding)
+      InventoryReading { system_id: read.system_id, memory: read.memory, processors: read.processors, credential_removed: removed }
+    }
+  }
+}
+
+fn mtcollins1_boot_console_reading(capture: String, path: String, read_ok: Bool, read_error: String) -> ConsoleReading {
+  if path == "" {
+    ConsoleNotConfigured
+  } else if !(starts_with(s: path, prefix: mtcollins1_boot_retained_artifact_prefix) || string_contains(s: path, pattern: concat("/", mtcollins1_boot_retained_artifact_prefix))) {
+    ConsoleNotRetained { path: path as NonEmptyStr }
+  } else if !read_ok {
+    ConsoleUnread { path: path as NonEmptyStr, detail: read_error }
+  } else if capture.length() > mtcollins1_boot_console_bound_bytes {
+    ConsoleExceedsBound { path: path as NonEmptyStr, bytes: capture.length(), bound: mtcollins1_boot_console_bound_bytes }
+  } else {
+    let lines = host_capture_lines(capture: HostCaptureLiveStream { text: capture })
+    ConsoleRetained { path: path as NonEmptyStr, bytes: capture.length(), lines: count(lines), firmware: firmware_console_report(lines: lines), dram: ampere_dram_console_observation(lines: lines) }
+  }
+}
+
+fn mtcollins1_boot_console(path: String) -> ConsoleReading {
+  if path == "" {
+    ConsoleNotConfigured
+  } else {
+    let r = Filesystem.Read(path: path)
+    mtcollins1_boot_console_reading(capture: r.content, path: path, read_ok: r.success, read_error: r.error)
+  }
+}
+
+// THE BUNDLE IS WRITTEN, AND WHETHER IT WAS IS ITSELF A LINE IN THE RECEIPT. A failed write on a
+// refused attempt is also appended to the refusal reason. On an accepted attempt the receipt line
+// is the only place it can go, because the bundle may not flip the verdict.
+type BundleWrite = BundleWritten | BundleWriteFailed { error: String }
+
+fn bundle_write_receipt_line(w: BundleWrite) -> String {
+  match w {
+    BundleWritten => concat("diagnostics=", mtcollins1_boot_diagnostics_path)
+    BundleWriteFailed { error: e } => concat("diagnostics=write-failed: ", e)
+  }
+}
+
+fn mtcollins1_boot_write_bundle(bundle: MtCollins1BootDiagnosticBundle) -> BundleWrite {
+  let written = Filesystem.Write(path: mtcollins1_boot_diagnostics_path, content: mtcollins1_boot_bundle_text(bundle: bundle))
+  if written.success { BundleWritten } else { BundleWriteFailed { error: written.error } }
+}
+
+fn mtcollins1_boot_outcome_after_bundle(outcome: ProcessExit, bundle: MtCollins1BootDiagnosticBundle, write: BundleWrite) -> ProcessExit {
+  let with_findings = mtcollins1_boot_outcome_with_findings(outcome: outcome, findings: mtcollins1_boot_bundle_findings(bundle: bundle))
+  match write {
+    BundleWritten => with_findings
+    BundleWriteFailed { error: e } =>
+      match with_findings {
+        ExitSuccess => ExitSuccess
+        ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: concat(r, " | diagnostics bundle could not be written: ", e) }
+      }
+  }
+}
