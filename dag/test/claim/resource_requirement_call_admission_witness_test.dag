@@ -77,3 +77,41 @@ test fn a_callee_without_a_requirement_emits_an_ordinary_call() -> Bool {
     ["compile_error!("]
   )
 }
+
+// THE SPELLING-FORK PAIR (review 70670; the repair ported from neat-lynx-128's parked #12174). The
+// callee spells its requirement QUALIFIED and the caller spells it BARE, under the same binding name.
+// On main the emitter passed the callee's name and this compiled; with the join comparing resolved
+// NODES it rendered compile_error!, because a bare name resolved to a kernel-spanned stand-in and the
+// qualified one to the declaration. Identity is now the DeclarationRef recovered from the resolved
+// node. The bare/bare row must stay admitted, and a qualified callee whose caller establishes a
+// DIFFERENT resource must still refuse -- identity, not spelling-blindness, is what admits the pair.
+data green_qualified_callee_bare_caller_source: String = "module probe_resource_spelling_fork\nimport std.types { String }\nimport std.resources { Filesystem }\nfn reads(path: String) -> String uses fs: std.resources.Filesystem {\n  filesystem_read(path)\n}\nfn forwards(path: String) -> String uses fs: Filesystem {\n  reads(path: path)\n}\n"
+data green_bare_callee_bare_caller_source: String = "module probe_resource_bare_bare\nimport std.types { String }\nimport std.resources { Filesystem }\nfn reads(path: String) -> String uses fs: Filesystem {\n  filesystem_read(path)\n}\nfn forwards(path: String) -> String uses fs: Filesystem {\n  reads(path: path)\n}\n"
+data red_qualified_callee_other_bare_resource_source: String = "module probe_resource_spelling_fork_wrong\nimport std.types { String }\nimport std.resources { Network }\nfn reads(path: String) -> String uses fs: std.resources.Filesystem {\n  filesystem_read(path)\n}\nfn networked(path: String) -> String uses net: Network {\n  reads(path: path)\n}\n"
+
+test fn a_bare_caller_passes_its_binding_to_a_qualified_callee() -> Bool {
+  compile_dag_rust_emit_check(
+    green_qualified_callee_bare_caller_source,
+    "src/probe_resource_spelling_fork.rs",
+    ["reads(path.clone(), &fs).await?"],
+    ["compile_error!("]
+  )
+}
+
+test fn a_bare_caller_passes_its_binding_to_a_bare_callee() -> Bool {
+  compile_dag_rust_emit_check(
+    green_bare_callee_bare_caller_source,
+    "src/probe_resource_bare_bare.rs",
+    ["reads(path.clone(), &fs).await?"],
+    ["compile_error!("]
+  )
+}
+
+test fn a_caller_of_a_different_resource_still_refuses_a_qualified_callee() -> Bool {
+  compile_dag_rust_emit_check(
+    red_qualified_callee_other_bare_resource_source,
+    "src/probe_resource_spelling_fork_wrong.rs",
+    ["compile_error!(", "requires resource fs that the calling declaration does not establish"],
+    ["&fs)"]
+  )
+}

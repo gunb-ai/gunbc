@@ -128,7 +128,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, type_reference_declaration, declaration_provenance_of_ref,
+  lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, type_reference_declaration, declaration_provenance_of_ref,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -533,11 +533,27 @@ fn build_item_inductive_fields(items: List<Node>, recursive_type_set: Set<String
   )
 }
 
+// THE RESOLVED LEAF NAMES THE DECLARATION IT STANDS FOR. A nominal declaration (a resource such as
+// std.resources Filesystem) is bound by this reference, and resolving a bare spelling of it yields
+// the leaf below. That leaf used to be nominal_leaf_type(name), spanned kernel_span(name): a
+// synthetic `<kernel:Filesystem>` node carrying nothing but the spelling, while the qualified
+// spelling `std.resources.Filesystem` resolved to the declaration itself. So ONE declaration had two
+// resolved identities chosen by how a use site spelled it, and the uses-requirement join refused a
+// correct caller whose spelling differed from its callee's (gunbc#12047). The leaf now carries the
+// declaration's own span and ident_span, so the census join (v1.compiler.infer_env
+// declaration_ref_of_type_node) recovers the same DeclarationRef from either spelling, and nothing
+// kernel-minted stands where a corpus declaration exists.
 fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> Node {
+  let declared_leaf = Node {
+    occurrence_identity: OccurrenceSynthetic, name: name, span: span, ident_span: ident_span, children: [],
+    connective: NoConnective, params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData
+  }
   Node {
     occurrence_identity: OccurrenceSynthetic, name: name, span: span, ident_span: ident_span, children: [],
     connective: NoConnective, params: [],
-    inferred: Present { value: Resolved { node: nominal_leaf_type(name: name) } },
+    inferred: Present { value: Resolved { node: declared_leaf } },
     return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData
@@ -1095,12 +1111,24 @@ fn constructor_call_admission_diags(
 // requirement is derived gets the compile_error! arm, so the target compiler refuses the artifact
 // rather than accepting a call that names an unbound identifier.
 //
-// KNOWN IDENTITY FORK: a bare resource name resolves to a kernel-spanned node and the qualified
-// `std.resources.X` to the corpus declaration, so the two spellings never compare equal
-// (gunbc.recurring_failure_mode a_sibling_refusal_masks_a_ratchet_rows_observation). Its repair is
-// its own lane.
-fn resource_declaration_identity(scope: InferScope, resource: Node) -> Node? {
-  lookup_type_by_name(env: scope.type_env, name: type_node_label(n: resource, source_indices: scope.type_env.source_indices))
+// IDENTITY IS THE RESOLVED DECLARATION, NOT A SPELLING: see resource_declaration_identity below. A
+// comparison of resolved NODES forked by spelling (a bare name resolved to a kernel-spanned stand-in,
+// the qualified one to the declaration), which broke calls that compiled on main (review 70670;
+// gunbc.recurring_failure_mode a_sibling_refusal_masks_a_ratchet_rows_observation).
+// IDENTITY IS READ OFF THE RESOLVED NODE, NEVER RE-LOOKED-UP BY SPELLING. The previous body rendered
+// the resource's spelling and looked it up again in the CALLER's environment, so a callee's
+// requirement was re-resolved under the caller's imports, and the answer was a node compared
+// structurally -- which forked by spelling, because a bare `Filesystem` resolved to a kernel-spanned
+// stand-in while `std.resources.Filesystem` resolved to the declaration (gunbc#12047). The stand-in
+// now carries its declaration's spans (nominal_ref_node), and this join asks the census which
+// declaration the resolved node names: by the declaration span it carries, or by an authored
+// qualified name whose module prefix the census row must equal. There is no bare-spelling hop.
+fn resource_declaration_identity(scope: InferScope, resource: Node) -> DeclarationRef? {
+  let resolved = match resource.inferred {
+    Present { value: Resolved { node: r } } => r
+    _ => resource
+  }
+  declaration_ref_of_type_node(rt: resolved, source_indices: scope.type_env.source_indices, env: scope.type_env)
 }
 
 fn established_resource_binding(scope: InferScope, required: ResourceRequirement, established: List<ResourceRequirement>) -> String? {
