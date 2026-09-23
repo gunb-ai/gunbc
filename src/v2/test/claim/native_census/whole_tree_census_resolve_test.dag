@@ -26,7 +26,7 @@ import std.algebra { Cons, Empty }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, diagnostics_fatal }
 import v2.compiler.resolve { ObservationComplete, ObservationIncomplete }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -428,9 +428,8 @@ test fn census_advisory_stays_with_its_own_fatal_holds() -> Bool {
           f.head.reason == ^resolve_unbound_name_is_declared_elsewhere
             && length(xs: f.tail) == 1
             && diagnostics_fatal(d: f).reason == ^resolve_reason_unbound_symbol
-            && fold_list(xs: r, empty: length(xs: r) == 1, cons: fn(acc, c) {
-              acc && length(xs: c.tail) == 0 && c.head.reason == ^resolve_reason_unbound_symbol
-            })
+            && length(xs: r) == 1
+            && fold_list(xs: r, empty: true, cons: fn(acc, c) { acc && census_probe_bare_unbound_chain(c: c) })
         NativeCensusModuleFileRefused => false
         NativeCensusModuleResolved => false
       }
@@ -450,6 +449,11 @@ test fn census_completeness_is_unavailable_for_a_file_that_never_resolved_holds(
         NativeCensusCompletenessObserved { observation: _ } => false
       }
   }
+}
+
+// A CHAIN THAT IS ITS FATAL ALONE, AND THAT FATAL IS AN UNBOUND REFERENCE: no advisory rides on it.
+fn census_probe_bare_unbound_chain(c: NonEmptyDiagnostics) -> Bool {
+  length(xs: c.tail) == 0 && c.head.reason == ^resolve_reason_unbound_symbol
 }
 
 fn census_probe_observed_complete(outcome: NativeCensusModuleOutcome) -> Bool {
