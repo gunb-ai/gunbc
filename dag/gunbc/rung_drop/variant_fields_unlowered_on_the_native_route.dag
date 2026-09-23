@@ -1,50 +1,62 @@
 module gunbc.rung_drop.variant_fields_unlowered_on_the_native_route
 
 import std.types { List, NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { Standing, RungDrop, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
-// DECLARED 2026-09-21, AMENDED 2026-09-22 (gunbc#11998; rulings via neat-boar-16 after reviews
-// 69768 and 69815). ONE frontier for record and positional variant fields together, because they
-// are one fact spelled two ways: the seed lowers `A { v: T }` to a Required field `v` and `A(T)` to
-// a Required field "0" (v1.compiler.parse parse_positional_variant_type_fields), and binds pattern
-// binders from those fields. On the native route no v2 stage lowers variant fields into declared
-// field identities for either spelling: namespace_graft_type_decl_is_fielded sends every fielded
-// declaration to the residual forest and body_lower_is_structure_preserved_emitted keeps
-// field_decl_block and positional_variant_payload as preserved structure. gunbc#11998 added the
-// positional parse row, so `A(T)` now reaches that same preserved state records already had --
-// parity, not a new gap.
-//
-// THE BINDER LOSS, AND WHERE IT IS SILENT. The match-arm lowering keeps a pattern's constructor atom
-// and nothing else (body_lower_pattern_atom_optional), so every binder a pattern introduces is
-// dropped: `A(x) => x` and `A { v: x } => x` both lower to an arm on `A` whose body names an `x`
-// the arm never bound. In the normal case that is LOUD -- resolve refuses the unbound `x`. It is
-// SILENT in exactly one case: A MATCH BINDER DROPPED ON THE NATIVE ROUTE THAT SHADOWS AN OUTER NAME
-// SILENTLY USES THE OUTER VALUE, because the body's reference then resolves to the enclosing
-// binding. Refusing that case needs the dropped binders carried to resolve, a tree shape the real
-// binder lowering replaces, so it is declared here rather than built (ruling: declare and defer).
-// UNTIL THE TRIGGER FIRES, NOTHING REPORTS A NATIVE TEST PASS THROUGH A DROPPED-BINDER ARM AS
-// EVIDENCE: a native verdict whose evaluation crossed such an arm may have read the outer value.
+// DECLARED 2026-09-21 (gunbc#11998, side-chat ruling via neat-boar-16). ONE frontier for record
+// and positional variant fields together, because they are one fact spelled two ways: the seed
+// lowers `A { v: T }` to a Required field `v` and `A(T)` to a Required field "0"
+// (v1.compiler.parse parse_positional_variant_type_fields), and binds pattern binders from those
+// fields. On the native route no v2 stage lowers variant fields into declared field identities
+// for either spelling: namespace_graft_type_decl_is_fielded sends every fielded declaration to
+// the residual forest and body_lower_is_structure_preserved_emitted keeps field_decl_block and
+// positional_variant_payload as preserved structure. gunbc#11998 added the positional parse row,
+// so `A(T)` now reaches that same preserved state records already had -- parity, not a new gap.
+// The match-arm lowering kept only a pattern's constructor atom, so a positional binder was
+// silently lost; that loss is now the typed refusal
+// body_lowering_reason_positional_pattern_binder_unlowered.
 
+// NOT RETIRED BY gunbc#12033. The lowering half of the replacement IS executed:
+// v2.compiler.body_lowering_fold declares the fields, the graft skip is deleted, and
+// body_lower_pattern_lowered lowers `A(x) =>`, `A { v: x } =>` and `A { v } =>` to the construct over
+// their binders, so the #11998 positional-binder refusal is retired. The resolver frame is executed
+// too: v2.compiler.resolve resolve_match_node_walk scopes those binders as the arm's lexical frame, and
+// v2.test.claim.match_arm_binder_frame holds that a binder binds. What is NOT established is the
+// capability this row's subject names: that the NATIVE ROUTE, the emitted compiler, lowers fields and
+// binds binders. Nothing has observed it there yet. When this row was declared the emitted
+// compiler did not build; it has built on main since gunbc#12089 (emit-build is green on this PR's
+// head), so what remains is the native-route RUN over the specimen and the workload, deferred until
+// gunbc#12100 lands, which repairs the compile.emit cost regression #12089 introduced.
+//
+// A HARM SENTENCE THIS ROW USED TO CARRY IS RETRACTED, AND THE RETRACTION IS RECORDED HERE. An
+// earlier revision said the binder `node` in v2.std.symbol_index symbol_index_candidates_at
+// resolved silently to the MODULE v2.std.node because resolve_pattern_node_is_constructor
+// classifies by shape. That came from review 70101's reading and was never executed. Execution
+// falsified it (nimble-boar-636, 2026-09-22, on #12033's head bbc77204a49):
+// v2.test.claim.match_arm_binder_frame mab_binder_spelling_a_sibling_module_binds_the_arm (authored on gunbc#12082), with
+// v2.std.node supplied beside that arm, holds and the binder binds. v2.compiler.symbol_index_fill
+// inserts no path for a module spine, so lexical ascent cannot reach a module, and the global-bare
+// Unbound arm refuses rather than falling back to one. The shape classifier remains a construction
+// deficit (a declared payload, a module container and a declaration parse-rest node are all Conj
+// with Named edges), and gunbc#12082 replaces it with the declaration kind the symbol index records.
+// That is construction with no behavioural delta on this corpus, so it does not retire this row.
 data variant_fields_unlowered_on_the_native_route_population: List<String> = [
-  "the native lane (std.compiler_entry SourceRootEvalDriver, gunbc.witness_v2_native_route) -- the only route that lowers bodies through v2.compiler.body_lowering_fold; it is off the merge path as its own declared drop",
-  "v2.compiler.body_lowering_fold body_lower_pattern_atom_optional -- every match binder, braced or positional, dropped; silent where the binder name shadows an enclosing or module-level name",
-  "v2.compiler.namespace_graft namespace_graft_type_decl_is_fielded -- record and positional variants go to residual_units, no field identities",
-  "v2.compiler.body_lowering_fold body_lower_is_structure_preserved_emitted -- dag_surface_field_decl_block and dag_surface_positional_variant_payload preserved unlowered",
+  "the emitted (native-route) compiler: variant-field lowering and match-arm binder binding are executed by the interpreted v2 stages but not yet observed on the native route (the emitted compiler builds since gunbc#12089; the native run over the specimen is deferred until gunbc#12100 fixes the compile.emit cost); specimen: the binder `node` of the `Present { value: node }` arms of v2.std.symbol_index symbol_index_candidates_at",
 ]
 
 data variant_fields_unlowered_on_the_native_route: RungDrop = RungDrop {
   identity: "variant_fields_unlowered_on_the_native_route" as NonEmptyStr,
-  subject: "native route lowers variant fields, named and positional, into declared field identities and binds match binders from them, the way the seed does",
+  subject: "native route lowers variant fields, named and positional, into declared field identities and binds pattern binders from them, the way the seed does",
   declared: "2026-09-21",
   standing: Standing,
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
-      replacement: "Pkg11c lowers match binders: a v2 stage lowers variant fields into declared field identities (named and positional \"0\") and binds match binders from them"
+      replacement: "a v2 stage lowers variant fields into declared field identities (named and positional \"0\")"
     },
     population: variant_fields_unlowered_on_the_native_route_population,
-    restoration_trigger: "Pkg11c lowers match binders: a v2 stage lowers variant fields into declared field identities (named and positional \"0\"), sufficient for the match-arm path to bind every pattern binder, braced or positional, from the field it names, so that no binder is dropped and a shadowing binder shadows. Parsing either spelling without that lowering does not retire this row, and neither does lowering one spelling alone. Until it fires, no native test PASS through a dropped-binder arm is evidence."
+    restoration_trigger: "the emitted compiler builds, and on that native route the specimen is observed: the binder `node` in v2.std.symbol_index symbol_index_candidates_at binds its arm and a positional `A(x)` construction and match round-trip field \"0\". A declaration-kind classifier alone (gunbc#12082) does NOT satisfy this: it changes how the interpreted stages decide, not whether the native route is observed."
   }
 }

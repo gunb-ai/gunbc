@@ -13,7 +13,9 @@ import std.types { NonEmptyStr }
 // live-deploy apply-render readers (`gunbc.rung_drop`
 // `live_deploy_apply_render_new_witness_eval_step_cost`), and the one live forecast control
 // (`gunbc.rung_drop` `roadmap_live_forecast_new_witness_eval_step_cost`), and the one page
-// stylesheet inhabitance claim (`gunbc.rung_drop` `roadmap_page_style_new_witness_eval_step_cost`). The loss is a WORKFLOW fact -- which
+// stylesheet inhabitance claim (`gunbc.rung_drop` `roadmap_page_style_new_witness_eval_step_cost`), and the one
+// byte-span program inhabitance claim (`gunbc.rung_drop`
+// `sha256_span_program_serialize_new_witness_eval_step_cost`). The loss is a WORKFLOW fact -- which
 // identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
 // ceiling consults (`v2.workflow.floor_grandfathered_roster`, `v2.workflow.floor_cost_debt`) and
 // `v2.workflow.required_floor` decides with it. Each rung-drop row DERIVES its population from
@@ -112,8 +114,72 @@ data floor_eval_step_cost_drop_page_style_rows: List<EvalStepCostDropMeasurement
   },
 ]
 
+
+// FIFTH DROP, SAME MEMBERSHIP TEST: the interpreted-crypto claims of the App Attest path
+// (`gunbc.rung_drop` `app_attest_interpreted_crypto_new_witness_eval_step_cost`). Ten identities:
+// four P-384 point checks over real Apple keys, one P-256 base-point check, two group-law closure checks, and the three published SHA-384 FIPS
+// vectors, each paired with the mutation that discriminates it (review 69978 and the design ruling
+// that followed): every one measured decisively above the per-subject line on its OWN subject,
+// rather than being folded into one identity whose bill depended on its neighbours. Each is ONE
+// curve or hash evaluation with no repeated demand to remove -- the cost is 16-limb bignat arithmetic
+// and a 64-bit hash pipeline executed on an interpreter that reifies no machine width, so the
+// budget is exceeded by the primitive's realization and not by the claim's shape. They stay on
+// the floor because they are the only executing evidence that the P-384 parameters and SHA-384
+// are right on the acceptance path; the three P-384 signature VERIFICATIONS of the same witness
+// are not on this list and not on the floor -- they exceed the wall deadline and run on the
+// native row the frontier names.
+data floor_eval_step_cost_drop_interpreted_crypto_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.the_p384_base_point_is_on_the_curve" as NonEmptyStr,
+    measured_by: "merge-queue required floor run 35678328407 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, wall under 2000ms, over the new-witness eval-step budget: the billed work is interpreted 384-bit field arithmetic (16 limbs) or a SHA-384 block over Word64 pairs" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.a_point_beside_the_base_point_is_off_the_curve" as NonEmptyStr,
+    measured_by: "merge-queue required floor run 35678328407 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, wall under 2000ms, over the new-witness eval-step budget: the billed work is interpreted 384-bit field arithmetic (16 limbs) or a SHA-384 block over Word64 pairs" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.a_point_with_a_coordinate_at_p_is_not_admitted" as NonEmptyStr,
+    measured_by: "merge-queue required floor run 35678328407 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, wall under 2000ms, over the new-witness eval-step budget: the billed work is interpreted 384-bit field arithmetic (16 limbs) or a SHA-384 block over Word64 pairs" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.apples_ca_and_root_keys_are_on_p384" as NonEmptyStr,
+    measured_by: "merge-queue required floor run 35678328407 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, wall under 2000ms, over the new-witness eval-step budget: the billed work is interpreted 384-bit field arithmetic (16 limbs) or a SHA-384 block over Word64 pairs" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.sha384_fips_witness_test.sha384_of_the_empty_message_is_the_published_value_and_one_octet_discriminates" as NonEmptyStr,
+    measured_by: "required floor run 35703555837 (gunbc#11981, head 0b0a2dffe), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, over the new-witness eval-step budget and above the per-subject line. The standing figure is whatever this identity's row reads in the artifact named above, never a number copied into this field. The billed work is two single-block SHA-384 compressions, the published empty message and a one-octet message on an interpreter that reifies no machine width; the published positive and its discriminating mutation are one subject, so the cost is caused by the claim's own boundary and not by neighbouring vectors" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.sha384_fips_witness_test.sha384_of_abc_is_the_published_value_and_one_octet_discriminates" as NonEmptyStr,
+    measured_by: "required floor run 35703555837 (gunbc#11981, head 0b0a2dffe), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, over the new-witness eval-step budget and above the per-subject line. The standing figure is whatever this identity's row reads in the artifact named above, never a number copied into this field. The billed work is two single-block SHA-384 compressions, the published abc vector and abd on an interpreter that reifies no machine width; the published positive and its discriminating mutation are one subject, so the cost is caused by the claim's own boundary and not by neighbouring vectors" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.sha384_fips_witness_test.sha384_of_the_896_bit_message_is_the_published_two_block_value_and_one_octet_discriminates" as NonEmptyStr,
+    measured_by: "required floor run 35703555837 (gunbc#11981, head 0b0a2dffe), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, over the new-witness eval-step budget and above the per-subject line. The standing figure is whatever this identity's row reads in the artifact named above, never a number copied into this field. The billed work is four SHA-384 block compressions, the published 896-bit two-block vector and a last-block mutation on an interpreter that reifies no machine width; the published positive and its discriminating mutation are one subject, so the cost is caused by the claim's own boundary and not by neighbouring vectors" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.p256_dag_ecdsa_witness_test.the_base_point_is_on_the_curve" as NonEmptyStr,
+    measured_by: "required floor run 35708011844 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, well inside the wall deadline and over the new-witness eval-step budget. The billed work is one P-256 curve equation over the published base point as 11-limb bignat folds on an interpreter that reifies no machine width. It is a MEMBER BECAUSE IT WAS SPLIT OUT of a claim that also asserted n*G = infinity: that conjunction crossed the 8000ms wall deadline and was INTERRUPTED BEFORE ANY VERDICT, so both facts were being lost; the scalar multiplication left the floor for the native row the frontier names, and this cheap half now reaches a verdict. The standing figure is whatever this identity's row reads in the artifact named above, never a number copied into this field" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.doubling_and_adding_the_base_point_stay_on_the_curve" as NonEmptyStr,
+    measured_by: "claim_batch --hermetic [witness] receipt on session/nimble-eagle-216-step3 (added for review 69917 after run 35678328407): verdict pass, wall under the 8 s deadline, over the new-witness eval-step budget; the billed work is one Jacobian doubling, one addition and two projective curve-equation checks at 16 limbs" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.p384_dag_ecdsa_witness_test.doubling_an_off_curve_point_stays_off_the_curve" as NonEmptyStr,
+    measured_by: "claim_batch --hermetic [witness] receipt on session/nimble-eagle-216-step3 (added for review 69917 after run 35678328407): verdict pass, wall under the 8 s deadline, over the new-witness eval-step budget; the billed work is one Jacobian doubling and one projective curve-equation check at 16 limbs" as NonEmptyStr,
+  },
+]
+
+data floor_eval_step_cost_drop_span_program_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.spark.v41_checkpoint_materialize_witness.the_span_read_reads_exactly_its_region" as NonEmptyStr,
+    measured_by: "gunbc#12010, claim_batch over dag/test/claim/spark/v41_checkpoint_materialize_witness_test.dag; planned_as_changed_witness, verdict pass, over the new-witness budget. The billed work is the one real serialization of extdeps.tools.sha256sum sha256sum_byte_span_program through gunbc.shell_command_text, which this claim is the argv's only inhabitance route for" as NonEmptyStr,
+  },
+]
+
 fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
-  concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows)
+  concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_span_program_rows)
 }
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or

@@ -168,42 +168,6 @@ struct CliDoorRun {
     stderr: String,
 }
 
-/// THE PROBE-ROOT EXCLUSION, HELD FOR THE WHOLE TRANSACTION AND RELEASED ON EVERY EXIT PATH.
-///
-/// `gunbc.recurring_failure_mode` `a_shared_probe_root_lets_one_run_compile_anothers_source` names
-/// THIS CALLER by name: the exclusion exists in `emitted_closure_compile_host`
-/// `acquire_probe_root_lock`, `run_required_emit_compile` takes it, and the v2-native route
-/// "selects the same root through `lane_emit_compile_probe_root` and passes it to emission without
-/// acquiring anything". That row's specimen (gunbc#10940) is a run that refused `E0063` against an
-/// innocent tree because a concurrent run had overwritten the emitted source.
-///
-/// ADDING THE MUTATION MADE THAT WINDOW WORSE, WHICH IS WHY THE LOCK LANDS IN THE SAME CHANGE. The
-/// fault-and-restore deliberately writes a BROKEN tree and then repairs it. Unlocked, a peer's
-/// baseline can read the faulted bytes -- its `Discriminated` verdict then quotes our injected
-/// symbol -- or a peer's restore can erase our red before we read it. The lock's own annotation
-/// already measured that exact shape. So the transaction this guard spans is: materialize the
-/// crate, build the baseline, inject the fault, build the faulted arm, restore, and re-read the
-/// binary identity.
-///
-/// A GUARD RATHER THAN A CALL PAIR, because the function it protects returns early on nine refusal
-/// paths and each one would otherwise leak the lock, turning a transient failure into a permanent
-/// one for every later run on that host.
-///
-/// IT IS CARRIED OUT OF THAT FUNCTION IN `EmittedPreparation`, AND AN EARLIER CUT WAS NOT. Bound
-/// locally, it dropped at the preparation's return -- before the entrypoint walks spawned the
-/// artifact. The span stated above stopped at the identity re-read, one step short of the readers
-/// this same change introduces (review 69715). It now ends when the CALLER drops the preparation,
-/// after every spawn.
-struct ProbeRootLockGuard {
-    lock: PathBuf,
-}
-
-impl Drop for ProbeRootLockGuard {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.lock);
-    }
-}
-
 /// The emitted compiler, prepared: where the binary is, what its bytes are, and the identity of
 /// the closure it was emitted from.
 struct EmittedPreparation {
@@ -212,23 +176,12 @@ struct EmittedPreparation {
     closure_identity: String,
     seed_identity: String,
     build: EmittedBuildObserved,
-    /// THE PROBE-ROOT EXCLUSION TRAVELS WITH THE PREPARATION, so it outlives the function that
-    /// took it (review 69715).
-    ///
-    /// It was bound inside `prepare_emitted_compiler_for_entry` and therefore DROPPED AT ITS
-    /// RETURN -- before either entrypoint walk spawned `binary_path`. The probe build uses a shared
-    /// `CARGO_TARGET_DIR` (`<workspace>/target`) and the executable's name is derived from the
-    /// ENTRY (`probe_package_name`), so two runs of one entry write the SAME path: a peer taking
-    /// the freed lock could rebuild and replace the executable between the drop and our spawn, and
-    /// the two steps this change exists for would then report about an artifact whose identity was
-    /// checked before it was swapped. That is the invalid state
-    /// `a_shared_probe_root_lets_one_run_compile_anothers_source` files -- a verdict computed
-    /// against somebody else's tree.
-    ///
-    /// Holding it here extends the transaction to emission, build, fault, restore, the identity
-    /// re-read AND every spawn of the artifact, and it is released when the caller drops the
-    /// preparation. Underscore-prefixed because nothing reads it; its lifetime IS its behaviour.
-    _probe_lock: ProbeRootLockGuard,
+    /// THE RUN'S OWN PROBE ROOT TRAVELS WITH THE PREPARATION, so the directory the artifact was
+    /// emitted into is named by the value that owns it for as long as the preparation is read.
+    /// It is private by construction (`emitted_closure_compile_host` `PrivateProbeRoot`): no other
+    /// run can create it, so no peer can overwrite the crate, or the executable built into its target dir, between
+    /// emission and every spawn.
+    _probe_root: super::emitted_closure_compile_host::PrivateProbeRoot,
 }
 
 /// The emitted compiler's build as the receipt records it — mirror of
@@ -295,19 +248,13 @@ fn prepare_emitted_compiler_for_entry(
     entry: &str,
 ) -> Result<EmittedPreparation, String> {
     let workspace = super::process_workspace_root();
-    // The probe root follows the declared execution environment (per-job runner temp in CI,
-    // host temp locally) — the selection's authority and its receipt live beside the required
-    // phase's own root policy in `emitted_closure_compile_host`.
-    let probe_root = super::lane_emit_compile_probe_root();
-    // TAKEN BEFORE THE EMISSION, because the emission is what WRITES the shared root. Acquiring it
-    // after would leave the write this lock exists to serialize outside the transaction.
-    let probe_lock = ProbeRootLockGuard {
-        lock: super::emitted_closure_compile_host::acquire_probe_root_lock(&probe_root).map_err(
-            |cause| format!("V2-NATIVE REFUSAL cause=ProbeRootHeldByAnotherRun — {cause}"),
-        )?,
-    };
+    // A root PRIVATE TO THIS RUN, created under the declared execution environment's base
+    // (per-job runner temp in CI, system temp locally): `emitted_closure_compile_host`
+    // `PrivateProbeRoot`. No other run can name it, so nothing here needs excluding a peer.
+    let probe_root = super::lane_emit_compile_probe_root()
+        .map_err(|cause| format!("V2-NATIVE REFUSAL cause=ProbeRootNotCreated — {cause}"))?;
     eprintln!(
-        "v2-native-route: probe root {} held for emit+build+fault+restore+spawn",
+        "v2-native-route: private probe root {} for emit+build+fault+restore+spawn",
         probe_root.display()
     );
     eprintln!("v2-native-route: emitting {entry} (seed, in-process)");
@@ -357,9 +304,11 @@ fn prepare_emitted_compiler_for_entry(
     // The invocation resolves and binds the one compiler the build runs under and takes its
     // identity from the crate's own directory; a compiler that cannot be resolved or named is
     // a refusal before the build is paid for.
-    let invocation =
-        super::emitted_closure_compile_host::probe_cargo_invocation(&crate_dir, &workspace)
-            .map_err(|cause| format!("V2-NATIVE REFUSAL cause={cause}"))?;
+    let invocation = super::emitted_closure_compile_host::probe_cargo_invocation(
+        &crate_dir,
+        &probe_root.target_dir(),
+    )
+    .map_err(|cause| format!("V2-NATIVE REFUSAL cause={cause}"))?;
     let rustc = invocation.rustc_identity.clone();
     // THE BASELINE IS ATTRIBUTED TO THE SAME PROBE SYMBOL THE FAULTED ARM WILL CARRY. This
     // argument used to be the literal `"v2_native_lane_carries_no_mutation_probe"`, which was a
@@ -369,7 +318,7 @@ fn prepare_emitted_compiler_for_entry(
     // search for a symbol the red arm never injects.
     let verdict = super::emitted_closure_compile_host::run_cargo(
         &crate_dir,
-        &workspace,
+        &probe_root.target_dir(),
         super::emitted_closure_compile_host::MUTATION_PROBE_SYMBOL,
     );
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
@@ -409,7 +358,9 @@ fn prepare_emitted_compiler_for_entry(
          exit_status={exit_status} warning_count={warning_count} rustc={}",
         build.cargo_argv, build.rustflags, build.compiler_path, build.rustc_identity
     );
-    let binary_path = workspace.join("target").join("release").join(
+    // Under the run's own target dir (`PrivateProbeRoot` `target_dir`), so the executable hashed
+    // below and spawned by every entrypoint walk is one no other run can rebuild (review 70338).
+    let binary_path = probe_root.target_dir().join("release").join(
         super::emitted_closure_compile_host::probe_package_name(entry),
     );
     if !binary_path.is_file() {
@@ -456,7 +407,7 @@ fn prepare_emitted_compiler_for_entry(
     eprintln!("v2-native-route: establishing the discriminating red on {entry_module}");
     let mutation = super::emitted_closure_compile_host::establish_discriminating_red(
         &crate_dir,
-        &workspace,
+        &probe_root.target_dir(),
         &entry_module,
     );
     if !super::emitted_closure_compile_host::mutation_verdict_discriminated(&mutation) {
@@ -485,7 +436,7 @@ fn prepare_emitted_compiler_for_entry(
         closure_identity,
         seed_identity,
         build,
-        _probe_lock: probe_lock,
+        _probe_root: probe_root,
     })
 }
 
@@ -649,8 +600,88 @@ struct NativeTerminalMarker {
     summary: String,
 }
 
+/// `v2.compiler.native_test_vocabulary` `NativeTestVerdict`, mirrored at the discriminant only.
+///
+/// The fold this feeds reads ONLY which arm a row carries, so the stage and diagnostics the real
+/// row also holds are deliberately not decoded here: decoding a payload nothing reads would be a
+/// second representation of the row, free to drift from the one the driver serialized.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NativeMemberVerdict {
+    Passed,
+    ReturnedFalse,
+    ReturnedOther,
+    Refused,
+}
+
+/// `gunbc.instrument_targets` `native_route_member_termination`'s result, mirrored.
+///
+/// Three arms rather than four: `InvocationRefused` is not reachable from a population fold, so an
+/// arm for it here would be a constructor nothing can build -- the decoration DESIGN section 4b
+/// warns reads as coverage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeMemberTermination {
+    ObservationHeld,
+    ObservationDidNotHold,
+    SubjectUnreached,
+}
+
+/// `gunbc.instrument_targets` `native_route_member_termination`, mirrored arm for arm INCLUDING the
+/// precedence, which is the one decision in that fold that could have gone the other way.
+///
+/// A definite failure outranks an unobserved sibling; an unobserved member outranks the passes
+/// around it; and an EMPTY population is `SubjectUnreached`, never `ObservationHeld`, because
+/// "every row passed" is vacuously true of no rows and reporting that as a pass is the
+/// absence-is-not-success defect. The `.dag` witness carries a discriminating red for each of those
+/// three, so this mirror drifting from it is detectable there rather than only by reading.
+///
+/// COMPLETENESS IS PASSED IN, NOT ASSUMED. The rows are what the run PRINTED; the run also reports
+/// how many identities the selection held and how many sources it could not read at all. Folding
+/// the printed rows alone answered `ObservationHeld` for a selection where two tests passed and a
+/// third emitted no row because its file refused -- exit 0 beside a lane refusing
+/// `population_omissions_present` (review 70091). Both counts come off the same terminal marker
+/// this function's caller already logs, so nothing new is observed to close it.
+fn native_member_termination(
+    rows: &[NativeMemberVerdict],
+    universe: u64,
+    file_refusals: u64,
+) -> NativeMemberTermination {
+    let observed_failure = rows.iter().any(|v| {
+        matches!(
+            v,
+            NativeMemberVerdict::ReturnedFalse | NativeMemberVerdict::ReturnedOther
+        )
+    });
+    let unobserved = rows
+        .iter()
+        .any(|v| matches!(v, NativeMemberVerdict::Refused));
+    // THE FOUR WAYS A SELECTION GOES UNOBSERVED ARE NAMED SEPARATELY AND THEN JOINED, rather than
+    // written as four `else if` arms returning the same value. They are four distinct facts and the
+    // `.dag` fold keeps them as four arms; here they collapse because Rust arms returning identical
+    // blocks are a clippy refusal (`if_same_then_else`) and this repository treats a warning as an
+    // error. Naming each condition keeps the reasons legible at the site -- which is what the arms
+    // were carrying -- without an `#[allow]`, and an escape hatch for a lint is the shape DESIGN
+    // section 5 refuses. The behaviour is identical and the witnesses that discriminate each reason
+    // are unchanged.
+    let a_member_was_not_observed = unobserved;
+    let the_population_is_short = rows.len() as u64 != universe;
+    let a_source_could_not_be_read = file_refusals != 0;
+    let nothing_was_selected = rows.is_empty();
+    if observed_failure {
+        NativeMemberTermination::ObservationDidNotHold
+    } else if a_member_was_not_observed
+        || the_population_is_short
+        || a_source_could_not_be_read
+        || nothing_was_selected
+    {
+        NativeMemberTermination::SubjectUnreached
+    } else {
+        NativeMemberTermination::ObservationHeld
+    }
+}
+
 struct NativeRunOutput {
     file_refusals: Vec<NativeFileRefusalObserved>,
+    members: Vec<NativeMemberVerdict>,
     terminal: NativeTerminalMarker,
 }
 
@@ -660,6 +691,7 @@ struct NativeRunOutput {
 /// harness re-forming a receipt the authority has already judged.
 fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
     let mut file_refusals = Vec::new();
+    let mut members: Vec<NativeMemberVerdict> = Vec::new();
     let mut terminal: Option<NativeTerminalMarker> = None;
     for line in stdout.lines() {
         if line.trim().is_empty() {
@@ -756,12 +788,35 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
         // undeclared drop of the rule the base states in as many words: the binary's stdout is a
         // receipt surface, and an unrecognized line on it is a harness defect, not noise.
         //
-        // A POPULATION ROW IS RECOGNIZED, NOT DECODED. The adjudication moved into the emitted
-        // binary, so the host no longer needs each verdict — it counts them through the marker.
-        // But the rows are still on this surface, so they are recognized by the shape the
-        // authority gives them (NativeRouteMemberRow: an `identity` and a `verdict`) rather than
-        // waved past by a catch-all, which would re-open exactly the hole this arm closes.
-        if value.get("identity").is_some() && value.get("verdict").is_some() {
+        // A POPULATION ROW IS NOW DECODED AT ITS DISCRIMINANT, because a SECOND consumer wants a
+        // different fact from this surface than the marker carries. The marker answers the LANE'S
+        // whole-route qualification; `gunbc test <operand>` asks what the operator's own selection
+        // did, and only the per-identity verdicts answer that. Recognizing the row and dropping it
+        // was right while nothing asked; it would now be the absent member-scoped standing that
+        // made the verb consume the lane's bit instead.
+        //
+        // AN UNKNOWN VARIANT REFUSES RATHER THAN DEFAULTING. Mapping an unrecognized arm onto one
+        // of the four would be the absorbing fallback DESIGN section 5 forbids, and it would fail
+        // in the worst direction: a new verdict arm silently counted as a pass.
+        if value.get("identity").is_some() {
+            let variant = value
+                .get("verdict")
+                .and_then(|v| v.get("_variant"))
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| format!("population row carries no verdict._variant: {line}"))?;
+            members.push(match variant {
+                "NativeTestPassed" => NativeMemberVerdict::Passed,
+                "NativeTestReturnedFalse" => NativeMemberVerdict::ReturnedFalse,
+                "NativeTestReturnedOther" => NativeMemberVerdict::ReturnedOther,
+                "NativeTestRefused" => NativeMemberVerdict::Refused,
+                other => {
+                    return Err(format!(
+                        "population row carries an unrecognized verdict variant {other:?} — the \
+                         host mirrors v2.compiler.native_test_vocabulary NativeTestVerdict and a \
+                         new arm must be mirrored rather than defaulted: {line}"
+                    ))
+                }
+            });
             continue;
         }
         return Err(format!(
@@ -773,6 +828,7 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
         terminal.ok_or_else(|| "the native run printed no terminal marker".to_string())?;
     Ok(NativeRunOutput {
         file_refusals,
+        members,
         terminal,
     })
 }
@@ -1756,13 +1812,25 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
 /// `AdmissionHeld`/`AdmissionRefused`, which invited exactly the misreading that a consumer could
 /// take them for a per-operand verdict -- and one did.
 #[derive(Debug)]
+/// TWO QUESTIONS, CARRIED SEPARATELY, BECAUSE TWO CONSUMERS ASK DIFFERENT ONES. The lane asks
+/// whether the ROUTE qualified; `gunbc test <operand>` asks what the operator's OWN SELECTION did.
+/// Both arms therefore carry `members`, the per-identity fold's answer, beside the lane summary --
+/// and neither consumer has to recover the other's fact from a value that does not hold it.
 pub enum NativeRouteOutcome {
-    /// The emitted binary adjudicated and the LANE'S QUALIFICATION held. Says nothing per target.
-    LaneQualificationHeld { summary: String },
+    /// The emitted binary adjudicated and the LANE'S QUALIFICATION held. Says nothing per target;
+    /// `members` is what does.
+    LaneQualificationHeld {
+        summary: String,
+        members: NativeMemberTermination,
+    },
     /// The emitted binary adjudicated and the LANE'S QUALIFICATION refused. The cause may be any
-    /// of the route-integrity clauses and need not involve any selected test at all.
-    LaneQualificationRefused { summary: String },
-    /// No adjudication was produced.
+    /// of the route-integrity clauses and need not involve any selected test at all, which is
+    /// exactly why `members` is carried beside it rather than inferred from it.
+    LaneQualificationRefused {
+        summary: String,
+        members: NativeMemberTermination,
+    },
+    /// No adjudication was produced, so there is no population to fold and no member standing.
     Unreached { cause: String },
 }
 
@@ -1774,10 +1842,12 @@ pub fn run_required_v2_native(source_roots: &[String], pattern: &str) -> NativeR
             if admission.admitted {
                 NativeRouteOutcome::LaneQualificationHeld {
                     summary: admission.summary,
+                    members: admission.members,
                 }
             } else {
                 NativeRouteOutcome::LaneQualificationRefused {
                     summary: admission.summary,
+                    members: admission.members,
                 }
             }
         }
@@ -1789,6 +1859,7 @@ pub fn run_required_v2_native(source_roots: &[String], pattern: &str) -> NativeR
 struct NativeRunAdmission {
     admitted: bool,
     summary: String,
+    members: NativeMemberTermination,
 }
 
 fn run_required_v2_native_inner(
@@ -1940,15 +2011,127 @@ fn run_required_v2_native_inner(
     // value inside the binary (`native_lane_run` derives the summary from the admission it
     // returns), so the terminal line and the admission cannot disagree about what was decided.
     eprintln!("v2-native-route: admission {}", run.terminal.summary);
+    // THE MEMBER FOLD IS APPLIED HERE, ON THE POPULATION THIS RUN ACTUALLY EMITTED, so the value
+    // that leaves this function already answers both questions and no consumer re-derives either.
     Ok(NativeRunAdmission {
         admitted: run.terminal.admitted,
         summary: run.terminal.summary,
+        members: native_member_termination(
+            &run.members,
+            run.terminal.universe,
+            run.terminal.file_refusals,
+        ),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// THE MEMBER FOLD, HANDED REAL PRODUCER BYTES.
+    ///
+    /// This row is VERBATIM from an executed native run -- `session/sharp-bear-756` at
+    /// `6032d50be7d`, where the emitted compiler built clean under `-D warnings`, adjudicated
+    /// `universe=3992 population=3992`, and persisted 3,483,310 bytes of per-identity rows
+    /// byte-for-byte verified. All 3992 carried `NativeTestRefused`. So this is a reading of the
+    /// shape the real producer emits, not a hypothesis about it, and it needs no closure to run --
+    /// which is the point: a decoder over rows must be reddable by handing it rows.
+    const REAL_REFUSED_ROW: &str = r#"{"identity":{"module":"v2.test.v2_native_route","declaration":"a_divergence_is_refused"},"verdict":{"_variant":"NativeTestRefused","stage":{"_variant":"NativeTestStageContext"},"diagnostics":{"head":{"reason":"parse_g0_tokens_remain","at":{"_variant":"Textual","file":"src/v2/test/v2_native_route_test.dag","extent":{"_variant":"WholeFile"}},"correction":{"_variant":"Unavailable","reason":{"_variant":"UserInputBoundary"}}},"tail":[]}}}"#;
+
+    #[test]
+    fn a_real_refused_row_decodes_and_folds_to_subject_unreached() {
+        let stdout = format!(
+            "{REAL_REFUSED_ROW}\n{}\n",
+            "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":1,\"universe\":1,\
+             \"file_refusals\":0,\"admitted\":false,\"summary\":\"s\"}"
+        );
+        let out = parse_native_run_output(&stdout).expect("the real row must decode");
+        assert_eq!(out.members, vec![NativeMemberVerdict::Refused]);
+        assert_eq!(
+            native_member_termination(&out.members, 1, 0),
+            NativeMemberTermination::SubjectUnreached
+        );
+    }
+
+    /// THE EMPTY POPULATION IS NOT THE ALL-PASSED POPULATION. Vacuous truth reported as a pass is
+    /// the absence-is-not-success defect; this is the arm a reviewer will suggest collapsing.
+    #[test]
+    fn an_empty_population_is_unreached_not_held() {
+        assert_eq!(
+            native_member_termination(&[], 0, 0),
+            NativeMemberTermination::SubjectUnreached
+        );
+        assert_eq!(
+            native_member_termination(&[NativeMemberVerdict::Passed], 1, 0),
+            NativeMemberTermination::ObservationHeld
+        );
+    }
+
+    /// THE REVIEWER'S CASE (review 70091), WHICH FAILED GREEN. Two tests pass and a third identity
+    /// of the selection emits NO ROW because its file refused. Folding the printed rows alone saw
+    /// two passes and answered held -- exit 0 -- beside a lane refusing population_omissions_present.
+    #[test]
+    fn an_incompletely_observed_selection_cannot_hold() {
+        let two_passes = [NativeMemberVerdict::Passed, NativeMemberVerdict::Passed];
+        // universe of three, only two rows printed: one identity was never observed.
+        assert_eq!(
+            native_member_termination(&two_passes, 3, 0),
+            NativeMemberTermination::SubjectUnreached
+        );
+        // counts agree but a source could not be read at all -- the real run's shape
+        // (universe=3992 population=3992 file_refusals=259).
+        assert_eq!(
+            native_member_termination(&two_passes, 2, 259),
+            NativeMemberTermination::SubjectUnreached
+        );
+        // complete and clean is the only way to hold.
+        assert_eq!(
+            native_member_termination(&two_passes, 2, 0),
+            NativeMemberTermination::ObservationHeld
+        );
+    }
+
+    /// THE PRECEDENCE, MIRRORED FROM THE `.dag` FOLD. A definite failure outranks an unobserved
+    /// sibling, and an unobserved member outranks the passes around it.
+    #[test]
+    fn the_precedence_matches_the_modeled_fold() {
+        assert_eq!(
+            native_member_termination(
+                &[
+                    NativeMemberVerdict::Refused,
+                    NativeMemberVerdict::ReturnedFalse
+                ],
+                2,
+                0
+            ),
+            NativeMemberTermination::ObservationDidNotHold
+        );
+        assert_eq!(
+            native_member_termination(
+                &[NativeMemberVerdict::Passed, NativeMemberVerdict::Refused],
+                2,
+                0
+            ),
+            NativeMemberTermination::SubjectUnreached
+        );
+        assert_eq!(
+            native_member_termination(&[NativeMemberVerdict::ReturnedOther], 1, 0),
+            NativeMemberTermination::ObservationDidNotHold
+        );
+    }
+
+    /// AN UNKNOWN VERDICT ARM REFUSES RATHER THAN DEFAULTING. A new arm upstream counted as a pass
+    /// is the failure direction that costs the most.
+    #[test]
+    fn an_unrecognized_verdict_variant_refuses() {
+        let stdout = "{\"identity\":{\"module\":\"m\",\"declaration\":\"d\"},\
+                      \"verdict\":{\"_variant\":\"NativeTestSomethingNew\"}}\n";
+        let err = match parse_native_run_output(stdout) {
+            Ok(_) => panic!("an unknown verdict arm must refuse, not decode"),
+            Err(e) => e,
+        };
+        assert!(err.contains("unrecognized verdict variant"), "{err}");
+    }
 
     /// STORAGE INTEGRITY, BOTH ARMS. The mutation is a SAME-COUNT substitution -- one verdict
     /// flipped, the row count untouched -- which is exactly the case the count check cannot see.
@@ -2310,59 +2493,5 @@ mod cli_emit_probe_tests {
             )),
             CliEmitProbeVerdict::StdoutNotEmpty { .. }
         ));
-    }
-}
-
-/// THE PROBE-ROOT EXCLUSION, EXERCISED.
-///
-/// WHAT THIS ESTABLISHES AND WHAT IT DOES NOT, stated first because the gap matters. The operator's
-/// control was two overlapping PREPARATIONS with one paused mid-fault. That is not staged here: a
-/// preparation is a whole-corpus emit plus two cargo builds, so pausing one at a chosen instant is
-/// not something this suite can do honestly. What IS established is the property the interleaving
-/// control would rest on -- that a second holder is REFUSED rather than admitted -- plus the release
-/// on drop that decides whether a refusal is transient or permanent.
-///
-/// The real path is `prepare_emitted_compiler_for_entry`, which takes this lock before the emission
-/// writes the shared root and holds it through fault and restore; deleting that acquisition returns
-/// the v2-native route to the exact state
-/// `gunbc.recurring_failure_mode` `a_shared_probe_root_lets_one_run_compile_anothers_source`
-/// files against it by name.
-#[cfg(test)]
-mod probe_root_exclusion_tests {
-    use super::*;
-
-    #[test]
-    fn a_second_holder_is_refused_and_the_first_release_readmits() {
-        let root = std::env::temp_dir().join(format!(
-            "gunbc-probe-lock-control-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or_default()
-        ));
-
-        // FIRST HOLDER TAKES IT.
-        let first = super::super::emitted_closure_compile_host::acquire_probe_root_lock(&root)
-            .expect("the first acquisition on a fresh root holds");
-        let guard = ProbeRootLockGuard { lock: first };
-
-        // SECOND HOLDER IS REFUSED WHILE THE FIRST IS LIVE. This is the arm that decides whether two
-        // runs can interleave their faulted and restored trees at all.
-        let second = super::super::emitted_closure_compile_host::acquire_probe_root_lock(&root);
-        let cause = second.expect_err("a second concurrent holder must be refused, not admitted");
-        assert!(
-            cause.contains("another emitted-closure compile run holds"),
-            "the refusal must name a concurrent run so the operator investigates one, got: {cause}"
-        );
-
-        // THE RELEASE IS PART OF THE CLAIM. A lock that refuses correctly but never releases turns a
-        // transient overlap into a permanent refusal for every later run on the host, which is worse
-        // than the defect it prevents.
-        drop(guard);
-        let readmitted = super::super::emitted_closure_compile_host::acquire_probe_root_lock(&root)
-            .expect("the root is re-admissible once the holder drops");
-        let _ = std::fs::remove_file(&readmitted);
-        let _ = std::fs::remove_dir_all(&root);
     }
 }

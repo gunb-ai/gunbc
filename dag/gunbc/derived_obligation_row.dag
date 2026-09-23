@@ -135,9 +135,17 @@ fn witness_subject_is_inside_gate_closure(w: WitnessSubject) -> Bool {
 // widen below wearing a bigger coat: the derivation reduced per-PR standing to two questions and
 // then reported discovery-reach as execution, while v2.workflow.required_floor
 // required_gate_prefixes declines every witness whose MODULE is outside the prepared closure. It
-// changes no row's value today — every witness below is under v2.test., which the roster admits —
-// and that is precisely why it had to be asked rather than assumed: a subtraction that happens to
-// be satisfied is not a subtraction that was checked.
+// had to be asked rather than assumed because a subtraction that happens to be satisfied is not a
+// subtraction that was checked -- and it stopped being satisfied. When this cut landed (#10942,
+// 2026-09-11) `v2.test.` was a roster row and every witness below sat inside the gate; the
+// nominal-roster ruling (2026-09-19, landed by #11791) WITHDREW `v2.test.`, so every witness this
+// census names is now OUTSIDE the gate and derives DeclinedOutsideGateClosure, which the census
+// reports because it asks. This paragraph went on saying, in the present tense, that the roster
+// admits them. That is stale_present_tense_coverage_claim_in_the_authority_consulted_first,
+// committed a second time inside the module that files it; and it was not harmless prose, because
+// three arms of test.claim.v2_compile_obligation_census_witness_test were built on the same
+// sentence and went red off-gate with nothing required looking. Membership is the gate's answer,
+// read through required_gate_admits, never this comment.
 //
 // THE GATE TEST IS THE GATE'S OWN. Two cuts of this module used string_contains here and declared
 // the imprecision as debt — first discharged onto the wrong trigger, then given its own; a third

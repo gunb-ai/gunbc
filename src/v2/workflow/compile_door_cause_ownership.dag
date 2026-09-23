@@ -130,6 +130,28 @@ data known_frontier_causes: List<CauseOwnership> = [
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "flips when a v2 stage lowers early exit (an else-less `if` statement) to control flow, a model-first package staffed once the workload shows it on its critical path; until then the statement refuses here rather than being dropped or rewritten (gunbc#11998 batch 2, ruling via neat-boar-16)"
+    cause: ^body_lowering_reason_field_decl_unlowered,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "body-lowering stage frontier on the self-host critical path: a variant or record field declaration the field lowering cannot read (a where clause beside a payload, a field whose type expression the type reader does not lower). Replaces the positional_pattern_binder_unlowered row, whose refusal is retired now that gunbc.rung_drop variant_fields_unlowered_on_the_native_route's lowering half is executed (the row is retired by both halves of its trigger, lowering and the resolver frame). Measured 2026-09-22 at fatal grain by the workload adjudicate over dag + src/v2 (count on the PR)"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_pattern_unlowered,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "body-lowering stage frontier on the self-host critical path: a match pattern the pattern lowering cannot read (two positional binders, a suffix that is neither braced nor parenthesised). Measured 2026-09-22 at fatal grain by the workload adjudicate over dag + src/v2 (count on the PR)"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_field_init_unlowered,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "body-lowering stage frontier on the self-host critical path: a record-literal field initializer whose shape is not `name: value`. Measured 2026-09-22 at fatal grain by the workload adjudicate over dag + src/v2 (count on the PR)"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_value_carried_unlowered,
+    grain: HeadGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a record-literal field value, match-arm body or if condition the value reader cannot lower (a function value, chiefly) is carried as its shell under this advisory instead of being dropped or truncated. (call arguments are read by gunbc#12108's reader and refuse under its own causes instead). Flips when every value shape lowers. Measured 2026-09-22 at head grain by the workload adjudicate over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_statement_precedes_without_binding,

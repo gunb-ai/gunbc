@@ -9,6 +9,7 @@ import gunbc.runner_microvm_network_apply {
   microvm_network_apply_admission, staging_ancestor_paths,
   path_metadata_ok,
   OperationResult, ApplyLeg, ApplyLegRan, ApplyLegRefused, operation_result_ok,
+  runner_microvm_root_only_probe_argv,
   RulesetReadback, RulesetListed, RulesetNotListed,
 }
 import gunbc.runner_host_file_converge { PathsRootOnly, PathsNotRootOnly, PathsUnobservable, PathsNotApplicable, runner_host_path_ancestors }
@@ -127,4 +128,23 @@ test fn the_etc_caller_keeps_its_scope_filter_after_the_fold_moved() -> Bool {
   runner_host_path_ancestors(path: "/etc/systemd/system/unit.service")
     == ["/etc", "/etc/systemd", "/etc/systemd/system"]
     && runner_host_path_ancestors(path: "/var/lib/elsewhere/file") == []
+}
+
+
+// THE ROOT-ONLY PROBE IS ELEVATED, AND THIS IS THE CLAIM THAT WOULD HAVE CAUGHT THE FIRST SRV1 RUN.
+// The staged files live 0600 root:root inside a 0700 root-owned directory, so a find issued by the
+// unelevated login principal cannot stat them at all -- it returns Permission denied for every leaf
+// and classify_root_only_paths reports the staged bytes unsafe, which is exactly how fleet-converge
+// run 35680600837 refused. The RED is the bare `find ...` this fold used to send: drop the
+// elevation and the first two words are no longer sudo and its non-interactive flag. The claim
+// pins BOTH halves on purpose -- that the probe is elevated, and that elevating it did not disturb
+// the predicate the classification reads -- because an elevation that lost `-user root` would pass
+// the first half while checking nothing.
+test fn the_root_only_probe_is_elevated_and_keeps_its_predicate() -> Bool {
+  let argv = runner_microvm_root_only_probe_argv(paths: ["/var/lib/gunbc-microvm-network-stage/microvm.nft"], kind: "f")
+  argv == [
+    "/usr/bin/sudo", "-n",
+    "find", "/var/lib/gunbc-microvm-network-stage/microvm.nft",
+    "-maxdepth", "0", "-type", "f", "-user", "root", "-group", "root", "-not", "-perm", "/022",
+  ]
 }
