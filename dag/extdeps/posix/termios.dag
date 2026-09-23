@@ -1,0 +1,35 @@
+module extdeps.posix.termios
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE GENERAL TERMINAL INTERFACE's output line discipline. A byte stream read off a terminal
+// device -- a serial console, an IPMI Serial-over-LAN session -- is what the tty's output
+// processing wrote, not what the program printed: with OPOST and ONLCR set (the default
+// discipline a Linux getty/console establishes), each NL the program writes leaves the device as
+// CR NL. So a transcript captured from such a channel carries a CR before every line end that no
+// program authored, and a reader that frames lines on NL alone reads that CR as content.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/basedefs/termios.h.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.posix.termios",
+      decl_name: "termios_onlcr_mapped_carriage_return",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// termios.h, c_oflag: "ONLCR  Map NL to CR-NL on output." The CR this row names is the one the
+// mapping inserts immediately before each NL; it is part of the line terminator, never of the line.
+data termios_onlcr_mapped_carriage_return: String = "\r"
