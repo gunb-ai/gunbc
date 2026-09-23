@@ -516,6 +516,7 @@ fn body_lower_is_structure_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_type_alias_rhs_lead)
     || (emitted == ^dag_surface_field_decl_block)
     || (emitted == ^dag_surface_positional_variant_payload)
+    || (emitted == ^dag_surface_admit_callers_clause)
     || (emitted == ^dag_surface_fn_type)
     || (emitted == ^dag_surface_field_init)
     || (emitted == ^dag_surface_where_refinement_clause)
@@ -2668,51 +2669,64 @@ fn body_lower_test_fn_decl_to_member(shell: Node) -> Outcome<Node> {
   }
 }
 
+// THE WALL SITS AT THE FN, NOT ONLY AT THE STATEMENT. A fn body is lowered DEFERRED, from the raw
+// parse subtree by this function's own navigation, so its statements never pass through
+// body_lower_after_children one by one; body_lower_body_subtree_lower_from_primary would instead
+// find the first primary expression inside an else-less `if` -- its condition -- and return THAT as
+// the body, silently discarding the guard and every statement after it. So the fn refuses the whole
+// declaration when its subtree holds one, with the same typed cause the statement arm raises.
 fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
-      match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
-        ParseSubtreeAbsent => body_lower_wrapper_retained_shell(shell: shell)
-        ParseSubtreeFound { captured: param_list } =>
-          match body_lower_domain_from_param_list(param_list: param_list) {
-            Absent => body_lower_wrapper_retained_shell(shell: shell)
-            Present { value: domain } =>
-              match body_lower_body_from_fn_captured(captured: captured) {
-                Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                Accepted { value: body_opt, diagnostics: bd0 } =>
-                  match body_opt {
-                    Absent => body_lower_wrapper_retained_shell(shell: shell)
-                    Present { value: body } =>
-                      match body_lower_reify_arrow_body(body: body) {
-                        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                        Accepted { value: reified_body, diagnostics: bd } =>
-                          match body_lower_return_type_from_fn_captured(captured: captured) {
+      match body_lower_find_captured(root: captured, emitted: ^dag_surface_else_less_if_stmt) {
+        ParseSubtreeFound { captured: guard } => body_lower_else_less_if_reject(shell: guard)
+        ParseSubtreeAbsent => body_lower_fn_decl_to_arrow_admitted(shell: shell, captured: captured)
+      }
+  }
+}
+
+fn body_lower_fn_decl_to_arrow_admitted(shell: Node, captured: Node) -> Outcome<Node> {
+  match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
+    ParseSubtreeAbsent => body_lower_wrapper_retained_shell(shell: shell)
+    ParseSubtreeFound { captured: param_list } =>
+      match body_lower_domain_from_param_list(param_list: param_list) {
+        Absent => body_lower_wrapper_retained_shell(shell: shell)
+        Present { value: domain } =>
+          match body_lower_body_from_fn_captured(captured: captured) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: body_opt, diagnostics: bd0 } =>
+              match body_opt {
+                Absent => body_lower_wrapper_retained_shell(shell: shell)
+                Present { value: body } =>
+                  match body_lower_reify_arrow_body(body: body) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: reified_body, diagnostics: bd } =>
+                      match body_lower_return_type_from_fn_captured(captured: captured) {
+                        Absent => body_lower_wrapper_retained_shell(shell: shell)
+                        Present { value: return_type } =>
+                          match dag_surface_kw_then_ident_from_captured(captured: captured) {
                             Absent => body_lower_wrapper_retained_shell(shell: shell)
-                            Present { value: return_type } =>
-                              match dag_surface_kw_then_ident_from_captured(captured: captured) {
-                                Absent => body_lower_wrapper_retained_shell(shell: shell)
-                                Present { value: fn_name } =>
-                                  let arrow = node_synthetic(
-                                    kind: TypeNode { connective: Arrow },
-                                    children: [
-                                      Edge { label: Positional, target: domain },
-                                      Edge { label: Positional, target: return_type },
-                                      Edge { label: Positional, target: return_type },
-                                      Edge {
-                                        label: Named { name: ^arrow_body_edge },
-                                        target: reified_body
-                                      }
-                                    ]
-                                  )
-                                  outcome_with_diagnostics(
-                                    value: body_lower_fn_decl_named_member_wrap(
-                                      arrow: arrow,
-                                      fn_name: fn_name
-                                    ),
-                                    diagnostics: diagnostics_merge(outer: bd0, inner: bd)
-                                  )
-                              }
+                            Present { value: fn_name } =>
+                              let arrow = node_synthetic(
+                                kind: TypeNode { connective: Arrow },
+                                children: [
+                                  Edge { label: Positional, target: domain },
+                                  Edge { label: Positional, target: return_type },
+                                  Edge { label: Positional, target: return_type },
+                                  Edge {
+                                    label: Named { name: ^arrow_body_edge },
+                                    target: reified_body
+                                  }
+                                ]
+                              )
+                              outcome_with_diagnostics(
+                                value: body_lower_fn_decl_named_member_wrap(
+                                  arrow: arrow,
+                                  fn_name: fn_name
+                                ),
+                                diagnostics: diagnostics_merge(outer: bd0, inner: bd)
+                              )
                           }
                       }
                   }
@@ -6508,6 +6522,16 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_thro
   }
 }
 
+// AN ELSE-LESS `if` IS REFUSED, NEVER DROPPED OR REWRITTEN. It is an early exit
+// (v2.extdeps.languages.dag dag_grammar_else_less_if_stmt_expr), and the v2 core has no lowering for
+// early exit yet; lowering it to Branch(cond, then, rest-of-block) is a separate control-flow model.
+// Until that lands the statement is a typed, located, counted refusal.
+fn body_lower_else_less_if_reject(shell: Node) -> Outcome<Node> {
+  outcome_rejected(
+    d: body_lower_diagnostic(reason: ^body_lowering_reason_else_less_if_unlowered, n: shell)
+  )
+}
+
 fn body_lower_after_children(folded: Node, fn_body_pass_through: Bool) -> Outcome<Node> {
   if body_lower_is_core_substrate(node: folded) {
     outcome_accepted(value: folded)
@@ -6517,11 +6541,15 @@ fn body_lower_after_children(folded: Node, fn_body_pass_through: Bool) -> Outcom
     match parse_production_emitted_identity_optional(node: folded) {
       Absent => outcome_accepted(value: folded)
       Present { value: emitted } =>
-        body_lower_production_emitted(
-          shell: folded,
-          emitted: emitted,
-          fn_body_pass_through: fn_body_pass_through
-        )
+        if emitted == ^dag_surface_else_less_if_stmt {
+          body_lower_else_less_if_reject(shell: folded)
+        } else {
+          body_lower_production_emitted(
+            shell: folded,
+            emitted: emitted,
+            fn_body_pass_through: fn_body_pass_through
+          )
+        }
     }
   }
 }
