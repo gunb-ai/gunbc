@@ -392,15 +392,16 @@ type WetActuatorGeneratedRegistration {
   declaration_route: WetActuatorDeclarationRoute
 }
 
+// release_locus_seed_constants_generated: #12011 committed this registry-generated seed file
+// (authority gunbc.release_locus_seed_constants_emit, reached through main_wet) and hand-added its
+// `pub mod` line to lib.rs without a row here, so the stage0 regen refused
+// CommittedMirrorNoLongerEmitted on it and the emitted lib.rs omitted the line.
 data wet_actuator_generated_registrations: List<WetActuatorGeneratedRegistration> = [
   WetActuatorGeneratedRegistration { basename: "bootstrap_stage0_crate_layout_generated", declaration_route: PathIncluded },
   WetActuatorGeneratedRegistration { basename: "bootstrap_seed_retention_frontier_generated", declaration_route: PathIncluded },
   WetActuatorGeneratedRegistration { basename: "v1_interpreter_dispatch_generated", declaration_route: MacroUsePubModSpliced },
   WetActuatorGeneratedRegistration { basename: "evaluation_budget_consequence_generated", declaration_route: PlainPubMod },
   WetActuatorGeneratedRegistration { basename: "gunbc_file_transport_generated", declaration_route: PlainPubMod },
-  // #12011 committed this registry-generated seed file (authority gunbc.release_locus_seed_constants_emit,
-  // reached through main_wet) and hand-added its `pub mod` line to lib.rs without this row, so the
-  // stage0 regen refused CommittedMirrorNoLongerEmitted on it and the emitted lib.rs omitted the line.
   WetActuatorGeneratedRegistration { basename: "release_locus_seed_constants_generated", declaration_route: PlainPubMod }
 ]
 
