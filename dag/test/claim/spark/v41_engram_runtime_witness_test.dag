@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.decl_ref { DeclarationRef }
 import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.content_hash { ContentHash, Sha256Digest, Sha256DigestHex, serialize_content_hash, content_hash_of_value }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, serialize_content_hash, content_hash_of_value }
 import std.measure { byte_size, byte_size_count }
 import std.realization { LocalFilesystem, RemoteNetwork }
 import extdeps.vllm.source_build { vllm_d2d649e6_revision, vllm_recipe_targeting }
@@ -35,7 +35,7 @@ import extdeps.deepseek.deepseek_v4_1_flash {
 import gunbc.spark.v41_engram_row_store {
   V41RowStoreEncoding, V41RowStoreEncodingSpec, V41SourceRow,
   v41_source_row, v41_encoding_spec_of_layers, v41_layer_table, v41_row_geometry_of,
-  v41_rank_digest_of, v41_fixture_encoding,
+  v41_rank_digest_of, v41_identify_row_store, v41_rank_store_identity,
   V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
 }
 import extdeps.vllm.engram_layout { vllm_engram_rank_rows }
@@ -156,8 +156,19 @@ fn w_source() -> List<V41SourceRow> {
   [w_row(i: 0), w_row(i: 1), w_row(i: 2), w_row(i: 3), w_row(i: 4), w_row(i: 5), w_row(i: 6), w_row(i: 7)]
 }
 
+// THE FIXTURE ENCODING, IDENTIFIED FROM SUPPLIED STORE DIGESTS -- the host's sha256sum readings in
+// production; four distinct SHA-256 values here, one per (layer 1, rank).
 fn w_identified() -> V41RowStoreEncoding? {
-  v41_fixture_encoding(source: w_source(), spec: w_tiny_spec())
+  match v41_identify_row_store(spec: w_tiny_spec(), rank_stores: [
+    v41_rank_store_identity(layer: 1, rank: 0, digest: Sha256Hash(w_sha(c: "0"))),
+    v41_rank_store_identity(layer: 1, rank: 1, digest: Sha256Hash(w_sha(c: "1"))),
+    v41_rank_store_identity(layer: 1, rank: 2, digest: Sha256Hash(w_sha(c: "2"))),
+    v41_rank_store_identity(layer: 1, rank: 3, digest: Sha256Hash(w_sha(c: "3"))),
+  ]) {
+    V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d } => Present { value: V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d } }
+    V41RowStoreEncodingUnestablished { obligation: _ } => none
+    V41RowStoreEncodingRefused { defects: _ } => none
+  }
 }
 
 fn w_image() -> V41OciImageDigest {

@@ -1,6 +1,6 @@
 module extdeps.vllm.engram_layout
 
-import std.types { Bool, List, Int, String, Map }
+import std.types { Bool, List, Int, String }
 import std.nat { Nat, nat_max }
 import v2.std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority }
@@ -15,7 +15,8 @@ import extdeps.uri { Uri, Https }
 //     _is_prime / find_next_prime   -- deterministic Miller-Rabin (witnesses 2, 7, 61) for n < 2^32
 //     EngramLayout.__init__         -- per layer, per n-gram order 2..max_ngram_size, n_heads primes:
 //                                      each the smallest prime above vocab_size - 1 not yet handed out,
-//                                      the `seen` set spanning ALL layers, so no bucket size repeats
+//                                      the `seen` set spanning ALL layers (vllm_engram_primes_above
+//                                      states why that is consecutive primes)
 //     BaseParallelEngramEmbedding   -- num_shards = tp_size; part_n_hash_cols = cdiv(n_hash_cols,
 //                                      num_shards); rank k owns the CONTIGUOUS bucket rows
 //                                      [sum(head_sizes[:k*p]), sum(head_sizes[:(k+1)*p])), and the
@@ -67,12 +68,12 @@ fn vllm_engram_witness_passes(a: Int, n: Int, odd: VllmEngramOddPart) -> Bool {
   x == 1 || x == n - 1 || vllm_engram_reaches_minus_one(x: x, n: n, left: odd.r - 1)
 }
 
-// upstream _is_prime, arm for arm.
+// upstream _is_prime, arm for arm. The small-prime screen stops at the first divisor.
 fn vllm_engram_is_prime(n: Int) -> Bool {
   if n < 2 {
     false
   } else {
-    match first(filter(vllm_engram_small_prime_divisors, p => n % p == 0)) {
+    match vllm_engram_first_small_divisor(n: n, ps: vllm_engram_small_prime_divisors) {
       Present { value: p } => n == p
       Absent => {
         let odd = vllm_engram_odd_part(d: n - 1, r: 0)
@@ -82,39 +83,36 @@ fn vllm_engram_is_prime(n: Int) -> Bool {
   }
 }
 
-// upstream find_next_prime: the smallest prime ABOVE `start` not already handed out. `seen` is keyed
-// so the membership test is one lookup, never a scan of every prime drawn so far.
-fn vllm_engram_next_prime(start: Int, seen: Map<String, Bool>) -> Int {
-  let c = start + 1
-  let taken = match map_get(seen, to_string(c)) {
-    Present { value: _ } => true
-    Absent => false
+fn vllm_engram_first_small_divisor(n: Int, ps: List<Int>) -> Int? {
+  match first(ps) {
+    Absent => none
+    Present { value: p } => if n % p == 0 { Present { value: p } } else { vllm_engram_first_small_divisor(n: n, ps: ps |> skip(n: 1)) }
   }
-  if !taken && vllm_engram_is_prime(n: c) { c } else { vllm_engram_next_prime(start: c, seen: seen) }
 }
 
-// THE DRAW STATE. Drawn primes are kept NEWEST FIRST: the previous prime of the order in progress is
-// the head, and each draw prepends, so neither reading the last draw nor adding one copies the list.
-// The layout reverses once at the end.
-type VllmEngramPrimeDraw {
-  seen: Map<String, Bool>
-  drawn_newest_first: List<Int>
+// THE DRAW IS CONSECUTIVE PRIMES, and that is a consequence of upstream's loop rather than a second
+// reading of it. EngramLayout restarts `current` at vocab_size - 1 for every (layer, order) and asks
+// find_next_prime for the smallest prime above it NOT YET SEEN, with `seen` spanning all of them. The
+// first order therefore takes the n_heads smallest primes above vocab_size - 1; every later order
+// restarts at the same floor and skips exactly the primes already handed out, so it takes the NEXT
+// n_heads. The flat draw over all layers and orders is the first layers x orders x n_heads primes
+// above vocab_size - 1, in order, cut into n_heads-sized orders and orders-sized layers.
+fn vllm_engram_primes_above(start: Int, count: Nat) -> List<Int> {
+  reverse(vllm_engram_primes_above_newest_first(start: start, count: count, acc: [] as List<Int>))
 }
 
-// One n-gram order's n_heads primes: `current` restarts at vocab_size - 1 for every order and every
-// layer, and advances only within the order; `seen` carries across all of them.
-fn vllm_engram_draw_order(acc: VllmEngramPrimeDraw, vocab_size: Int, n_heads: Nat) -> VllmEngramPrimeDraw {
-  let order = fold(vllm_engram_count_up(n: n_heads), init: VllmEngramOrderDraw { seen: acc.seen, current: vocab_size - 1, drawn_newest_first: acc.drawn_newest_first }, f: (st, _) => {
-    let p = vllm_engram_next_prime(start: st.current, seen: st.seen)
-    VllmEngramOrderDraw { seen: map_insert(st.seen, to_string(p), true), current: p, drawn_newest_first: concat([p], st.drawn_newest_first) }
-  })
-  VllmEngramPrimeDraw { seen: order.seen, drawn_newest_first: order.drawn_newest_first }
+fn vllm_engram_primes_above_newest_first(start: Int, count: Nat, acc: List<Int>) -> List<Int> {
+  if count == 0 {
+    acc
+  } else {
+    let p = vllm_engram_next_prime(start: start)
+    vllm_engram_primes_above_newest_first(start: p, count: count - 1, acc: concat([p], acc))
+  }
 }
 
-type VllmEngramOrderDraw {
-  seen: Map<String, Bool>
-  current: Int
-  drawn_newest_first: List<Int>
+fn vllm_engram_next_prime(start: Int) -> Int {
+  let c = start + 1
+  if vllm_engram_is_prime(n: c) { c } else { vllm_engram_next_prime(start: c) }
 }
 
 // 0, 1, ..., n - 1. Built newest-first by prepending and reversed once, so it is linear.
@@ -126,20 +124,42 @@ fn vllm_engram_count_down(n: Nat) -> List<Nat> {
   if n == 0 { [] as List<Nat> } else { concat([n - 1], vllm_engram_count_down(n: n - 1)) }
 }
 
-// THE FLAT HEAD SIZES OF EVERY LAYER, in layer order: per layer, (max_ngram_size - 1) orders of
-// n_heads primes each, flattened order-major exactly as EngramLayout flattens them.
-fn vllm_engram_head_sizes(layer_count: Nat, max_ngram_size: Nat, n_heads: Nat, vocab_size: Nat) -> List<List<Int>> {
-  let orders = nat_max(a: max_ngram_size, b: 1) - 1
-  let done = fold(vllm_engram_count_up(n: layer_count), init: VllmEngramLayoutDraw { seen: empty_map(), layers_newest_first: [] as List<List<Int>> }, f: (acc, _) => {
-    let layer = fold(vllm_engram_count_up(n: orders), init: VllmEngramPrimeDraw { seen: acc.seen, drawn_newest_first: [] as List<Int> }, f: (st, _) => vllm_engram_draw_order(acc: st, vocab_size: vocab_size, n_heads: n_heads))
-    VllmEngramLayoutDraw { seen: layer.seen, layers_newest_first: concat([reverse(layer.drawn_newest_first)], acc.layers_newest_first) }
-  })
-  reverse(done.layers_newest_first)
+fn vllm_engram_orders(max_ngram_size: Nat) -> Nat {
+  nat_max(a: max_ngram_size, b: 1) - 1
 }
 
-type VllmEngramLayoutDraw {
-  seen: Map<String, Bool>
+// HOW MANY HEADS ONE LAYER HAS, and how many primes the whole layout draws.
+fn vllm_engram_heads_per_layer(max_ngram_size: Nat, n_heads: Nat) -> Nat {
+  vllm_engram_orders(max_ngram_size: max_ngram_size) * n_heads
+}
+
+// THE FLAT DRAW CUT INTO LAYERS: layer i takes primes [i * per_layer, (i + 1) * per_layer). Split out
+// so a consumer can supply the drawn primes and the cut is exercised without re-drawing them.
+fn vllm_engram_layers_of_primes(primes: List<Int>, layer_count: Nat, per_layer: Nat) -> List<List<Int>> {
+  let cut = fold(primes |> take(n: layer_count * per_layer), init: VllmEngramLayerCut { current_newest_first: [] as List<Int>, in_current: 0, layers_newest_first: [] as List<List<Int>> }, f: (acc, p) =>
+    if acc.in_current + 1 == per_layer {
+      VllmEngramLayerCut { current_newest_first: [] as List<Int>, in_current: 0, layers_newest_first: concat([reverse(concat([p], acc.current_newest_first))], acc.layers_newest_first) }
+    } else {
+      VllmEngramLayerCut { current_newest_first: concat([p], acc.current_newest_first), in_current: acc.in_current + 1, layers_newest_first: acc.layers_newest_first }
+    })
+  reverse(cut.layers_newest_first)
+}
+
+type VllmEngramLayerCut {
+  current_newest_first: List<Int>
+  in_current: Nat
   layers_newest_first: List<List<Int>>
+}
+
+// THE FLAT HEAD SIZES OF EVERY LAYER, in layer order, each layer order-major exactly as EngramLayout
+// flattens them.
+fn vllm_engram_head_sizes(layer_count: Nat, max_ngram_size: Nat, n_heads: Nat, vocab_size: Nat) -> List<List<Int>> {
+  let per_layer = vllm_engram_heads_per_layer(max_ngram_size: max_ngram_size, n_heads: n_heads)
+  vllm_engram_layers_of_primes(
+    primes: vllm_engram_primes_above(start: vocab_size - 1, count: layer_count * per_layer),
+    layer_count: layer_count,
+    per_layer: per_layer,
+  )
 }
 
 fn vllm_engram_sum(xs: List<Int>) -> Int {

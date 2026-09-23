@@ -10,7 +10,6 @@ import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, 
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_add }
 import v2.std.optional { Present, Absent }
-import extdeps.crypto.sha2 { sha256_hex }
 import extdeps.safetensors.format {
   SafetensorsEntry, SafetensorsDtype,
   safetensors_dtype_byte_width, safetensors_dtype_token,
@@ -234,8 +233,11 @@ type V41RowStoreSpecStanding
 // record geometry is read off their dtypes and second dimensions; the rank ranges are vLLM's layout
 // recomputed from the config facts. The derived bucket rows must equal each layer's published row
 // count -- the two come from different authorities, so a disagreement refuses rather than choosing one.
-fn v41_row_store_spec(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition, tables: DeepseekV41EngramTables) -> V41RowStoreSpecStanding {
-  let selected = filter(population, e => any(partition.storage_backed, n => (n as String) == (e.name as String)))
+// THE SELECTION DEFECTS, which need no bucket layout: a storage-backed name the population lacks, a
+// name that is not layers.<index>.*, or a layer the Engram config does not declare. Split out so a
+// consumer can refuse on them before it pays for the layout.
+fn v41_row_store_selection_defects(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition, tables: DeepseekV41EngramTables) -> List<NonEmptyStr> {
+  let selected = v41_selected_entries(population: population, partition: partition)
   let missing = map(
     filter(partition.storage_backed, n => !any(population, e => (e.name as String) == (n as String))),
     n => join(["storage-backed tensor ", n as String, " is not in the supplied population; a missing member is not an empty store"], "") as NonEmptyStr)
@@ -246,10 +248,27 @@ fn v41_row_store_spec(population: List<SafetensorsEntry>, partition: V41EngramRe
       Absent => false
     }),
     e => join(["tensor ", e.name as String, " names a layer the Engram config does not declare; it has no bucket layout and is refused rather than dropped"], "") as NonEmptyStr)
-  if length(missing) != 0 || length(unnamed) != 0 || length(unconfigured) != 0 {
-    V41RowStoreSpecRefused { defects: concat(concat(missing, unnamed), unconfigured) }
+  concat(concat(missing, unnamed), unconfigured)
+}
+
+fn v41_selected_entries(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition) -> List<SafetensorsEntry> {
+  filter(population, e => any(partition.storage_backed, n => (n as String) == (e.name as String)))
+}
+
+// THE LIVE BUCKET LAYOUT: vLLM's draw over the Engram config's own facts. It is the expensive half of
+// the spec (a Miller-Rabin search), so the spec takes the head sizes as an input and the live callers
+// pass this; a witness about the spec supplies them and test.claim.vllm.vllm_engram_layout_witness
+// runs the draw itself.
+fn v41_live_head_sizes(tables: DeepseekV41EngramTables) -> List<List<Int>> {
+  vllm_engram_head_sizes(layer_count: length(tables.layer_ids), max_ngram_size: tables.max_ngram_size, n_heads: tables.n_heads, vocab_size: tables.vocab_size)
+}
+
+fn v41_row_store_spec(population: List<SafetensorsEntry>, partition: V41EngramResidencyPartition, tables: DeepseekV41EngramTables, head_sizes: List<List<Int>>) -> V41RowStoreSpecStanding {
+  let selection = v41_row_store_selection_defects(population: population, partition: partition, tables: tables)
+  if length(selection) != 0 {
+    V41RowStoreSpecRefused { defects: selection }
   } else {
-    let head_sizes = vllm_engram_head_sizes(layer_count: length(tables.layer_ids), max_ngram_size: tables.max_ngram_size, n_heads: tables.n_heads, vocab_size: tables.vocab_size)
+    let selected = v41_selected_entries(population: population, partition: partition)
     let per_layer = map(filter(enumerate(tables.layer_ids), p => any(selected, e => v41_entry_in_layer(e: e, layer: p.second))), p => v41_layer_from_entries(layer: p.second, entries: filter(selected, e => v41_entry_in_layer(e: e, layer: p.second)), head_sizes: get(xs: head_sizes, index: p.first)))
     let defects = flat_map(per_layer, r => r.defects)
     if length(defects) != 0 {
@@ -532,14 +551,25 @@ fn v41_place_row(row: V41SourceRow, spec: V41RowStoreEncodingSpec) -> V41Placeme
   }
 }
 
-// ── A COMPLETE STORE'S BYTES AND DIGEST ────────────────────────────────────────────────────────
+// ── A COMPLETE STORE'S BYTES ────────────────────────────────────────────────────────────────────
+//
+// THE DIGEST IS NOT TAKEN HERE. A store's identity is the SHA-256 of these bytes, the check open()
+// performs, and it is read where the bytes exist: sha256sum on the host that holds the store, supplied
+// to v41_identify_row_store as a Sha256Hash. This module owns the bytes exactly; the hash function is
+// extdeps.crypto.sha2's and sha256sum's, and is witnessed there.
 //
 // Defined only over a COMPLETE store: every local row of the rank's range placed exactly once. The
 // published stores are hundreds of millions of rows and are never built here; this is the definition
 // a host realization is differentially checked against, exercised in full over small spec fixtures.
 
+type V41CompleteStore sole_constructor {
+  layer: Nat
+  rank: Nat
+  bytes: List<UInt8>
+}
+
 type V41StoreBytes
-  = V41StoreComplete { layer: Nat, rank: Nat, bytes: List<UInt8> }
+  = V41StoreComplete { store: V41CompleteStore }
   | V41StoreIncomplete { defect: NonEmptyStr }
 
 fn v41_store_bytes(placed: List<V41PlacedRow>, spec: V41RowStoreEncodingSpec, layer: Nat, rank: Nat) -> V41StoreBytes {
@@ -555,18 +585,11 @@ fn v41_store_bytes(placed: List<V41PlacedRow>, spec: V41RowStoreEncodingSpec, la
           if length(mine) != expected || !all(enumerate(mine), p => p.second.local_row == p.first) {
             V41StoreIncomplete { defect: join(["store ", v41_store_key(layer: layer, rank: rank), " holds ", to_string(length(mine)), " placed rows of its ", to_string(expected), "-row range, not each local row exactly once"], "") as NonEmptyStr }
           } else {
-            V41StoreComplete { layer: layer, rank: rank, bytes: concat(v41_magic_octets(), flat_map(mine, p => p.record)) }
+            V41StoreComplete { store: V41CompleteStore { layer: layer, rank: rank, bytes: concat(v41_magic_octets(), flat_map(mine, p => p.record)) } }
           }
         }
       }
     }
-  }
-}
-
-fn v41_sha256_content_hash(bytes: List<UInt8>) -> ContentHash? {
-  match sha256_hex_digest(hex: sha256_hex(message: bytes)) {
-    Present { value: d } => Present { value: Sha256Hash(d) }
-    Absent => none
   }
 }
 
@@ -580,7 +603,7 @@ type V41TransformResult
   = V41FixtureCorrespondenceHolds {
       subject: V41FixtureRows
       placed: List<V41PlacedRow>
-      encoding: V41RowStoreEncoding
+      stores: List<V41CompleteStore>
     }
   | V41PublishedTransformUnestablished { obligation: NonEmptyStr }
   | V41TransformUnfaithful { defects: List<NonEmptyStr> }
@@ -646,26 +669,14 @@ fn v41_assess_placed(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec, 
     V41TransformUnfaithful { defects: early }
   } else {
     let stores = flat_map(spec.layers, t => map(vllm_engram_count_up(n: spec.rank_count), k => v41_store_bytes(placed: placed, spec: spec, layer: t.layer, rank: k)))
-    let incomplete = flat_map(stores, s => match s { V41StoreIncomplete { defect: d } => [d]  V41StoreComplete { layer: _, rank: _, bytes: _ } => [] as List<NonEmptyStr> })
+    let incomplete = flat_map(stores, s => match s { V41StoreIncomplete { defect: d } => [d]  V41StoreComplete { store: _ } => [] as List<NonEmptyStr> })
     if length(incomplete) != 0 {
       V41TransformUnfaithful { defects: incomplete }
     } else {
-      let identities = flat_map(stores, s => match s {
-        V41StoreComplete { layer: l, rank: k, bytes: b } => match v41_sha256_content_hash(bytes: b) {
-          Present { value: h } => [v41_rank_store_identity(layer: l, rank: k, digest: h)]
-          Absent => [] as List<V41RankStoreIdentity>
-        }
-        V41StoreIncomplete { defect: _ } => [] as List<V41RankStoreIdentity>
-      })
-      match v41_identify_row_store(spec: spec, rank_stores: identities) {
-        V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d } =>
-          V41FixtureCorrespondenceHolds {
-            subject: V41FixtureRows { row_count: length(source), how: "supplied fixture rows over a fixture spec; not the published Engram tables" as NonEmptyStr },
-            placed: placed,
-            encoding: V41RowStoreEncodingIdentified { spec: s, spec_key: k, rank_stores: rs, content_digest: d },
-          }
-        V41RowStoreEncodingRefused { defects: ds } => V41TransformUnfaithful { defects: ds }
-        V41RowStoreEncodingUnestablished { obligation: o } => V41TransformUnfaithful { defects: [o] }
+      V41FixtureCorrespondenceHolds {
+        subject: V41FixtureRows { row_count: length(source), how: "supplied fixture rows over a fixture spec; not the published Engram tables" as NonEmptyStr },
+        placed: placed,
+        stores: flat_map(stores, s => match s { V41StoreComplete { store: c } => [c]  V41StoreIncomplete { defect: _ } => [] as List<V41CompleteStore> }),
       }
     }
   }
@@ -685,7 +696,7 @@ fn v41_tampered_record_is_unfaithful(source: List<V41SourceRow>, spec: V41RowSto
   let placed = v41_placed_rows(placements: v41_place_all(rows: source, spec: spec))
   match v41_assess_placed(source: source, spec: spec, placed: map(placed, p => if p.global_row == 0 { v41_placed_row_with_record(p: p, record: tamper) } else { p })) {
     V41TransformUnfaithful { defects: d } => any(d, x => (x as String).contains("no exact placed image"))
-    V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: _ } => false
+    V41FixtureCorrespondenceHolds { subject: _, placed: _, stores: _ } => false
     V41PublishedTransformUnestablished { obligation: _ } => false
   }
 }
@@ -693,7 +704,7 @@ fn v41_tampered_record_is_unfaithful(source: List<V41SourceRow>, spec: V41RowSto
 fn v41_dropped_source_row_is_unfaithful(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> Bool {
   match v41_assess_placed(source: source, spec: spec, placed: filter(v41_placed_rows(placements: v41_place_all(rows: source, spec: spec)), p => p.global_row != 0)) {
     V41TransformUnfaithful { defects: d } => any(d, x => (x as String).contains("no exact placed image"))
-    V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: _ } => false
+    V41FixtureCorrespondenceHolds { subject: _, placed: _, stores: _ } => false
     V41PublishedTransformUnestablished { obligation: _ } => false
   }
 }
@@ -739,14 +750,6 @@ fn v41_rank_stores_of(e: V41RowStoreEncoding) -> List<V41RankStoreIdentity> {
     V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: rs, content_digest: _ } => rs
     V41RowStoreEncodingUnestablished { obligation: _ } => [] as List<V41RankStoreIdentity>
     V41RowStoreEncodingRefused { defects: _ } => [] as List<V41RankStoreIdentity>
-  }
-}
-
-fn v41_fixture_encoding(source: List<V41SourceRow>, spec: V41RowStoreEncodingSpec) -> V41RowStoreEncoding? {
-  match v41_transform_fixture(source: source, spec: spec) {
-    V41FixtureCorrespondenceHolds { subject: _, placed: _, encoding: e } => Present { value: e }
-    V41PublishedTransformUnestablished { obligation: _ } => none
-    V41TransformUnfaithful { defects: _ } => none
   }
 }
 
@@ -887,10 +890,11 @@ fn v41_published_row_store_text(spec_key: ContentHash, read: List<V41PublishedSp
     ], ""))), "")
 }
 
-fn v41_published_row_store_key(partition: V41EngramResidencyPartition, sharded: List<SafetensorsShardedEntry>, shards: List<SafetensorsShardFile>, readings: V41PublishedSpanReadings) -> V41PublishedRowStoreKey {
-  match v41_row_store_spec(population: map(sharded, e => e.entry), partition: partition, tables: deepseek_v4_1_flash_engram) {
-    V41RowStoreSpecRefused { defects: slice_defects } => V41PublishedRowStoreRefused { defects: slice_defects }
-    V41RowStoreSpecAdmitted { spec: spec } =>
+// THE HEAD SIZES ARRIVE AS A DEFERRED VALUE, computed only once a reading exists: an unread axis costs
+// no bucket-layout search, and the selection defects are still refused before any obligation.
+fn v41_published_row_store_key(partition: V41EngramResidencyPartition, sharded: List<SafetensorsShardedEntry>, shards: List<SafetensorsShardFile>, readings: V41PublishedSpanReadings, head_sizes: fn() -> List<List<Int>>) -> V41PublishedRowStoreKey {
+  let selection = v41_row_store_selection_defects(population: map(sharded, e => e.entry), partition: partition, tables: deepseek_v4_1_flash_engram)
+  if length(selection) != 0 { V41PublishedRowStoreRefused { defects: selection } } else {
     match v41_published_span_plan(partition: partition, sharded: sharded, shards: shards) {
       V41PublishedSpansUnplannable { defects: d } => V41PublishedRowStoreRefused { defects: d }
       V41PublishedSpansPlanned { spans: plan } =>
@@ -899,12 +903,16 @@ fn v41_published_row_store_key(partition: V41EngramResidencyPartition, sharded: 
           V41PublishedSpansRead { host: _, observed_at: _, spans: read } => {
             let defects = v41_span_reading_defects(plan: plan, read: read)
             if length(defects) != 0 { V41PublishedRowStoreRefused { defects: defects } } else {
+              match v41_row_store_spec(population: map(sharded, e => e.entry), partition: partition, tables: deepseek_v4_1_flash_engram, head_sizes: head_sizes()) {
+                V41RowStoreSpecRefused { defects: sd } => V41PublishedRowStoreRefused { defects: sd }
+                V41RowStoreSpecAdmitted { spec: spec } =>
               match sha256sum_stdin_digest_via_shell(content: v41_published_row_store_text(spec_key: v41_encoding_spec_key(spec: spec), read: read)) {
                 Sha256FileDigestUnavailable { path: _, reason: r } => V41PublishedRowStoreUnestablished { obligation: join(["the published row-store key text could not be digested: ", r], "") as NonEmptyStr }
                 Sha256FileDigest { digest: d } => match sha256_hex_digest(hex: d.hex as String) {
                   Absent => V41PublishedRowStoreUnestablished { obligation: "sha256sum did not answer a sha256 digest over the published row-store key text" as NonEmptyStr }
                   Present { value: h } => V41PublishedRowStoreKeyed { digest: h }
                 }
+              }
               }
             }
           }
