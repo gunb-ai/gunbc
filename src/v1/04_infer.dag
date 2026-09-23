@@ -1342,6 +1342,15 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
       module_name: scope.module_name
     )]
   }
+  else if type_node_is_callable(n: declared) && type_node_is_callable(n: produced)
+      && callable_signature_mismatch(formal: declared, actual: produced, source_indices: si, depth: 0) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
   else if !both_ground { [] }
   else if node_type_compatible(left: declared, right: produced, source_indices: si) { [] }
   else {
@@ -4940,6 +4949,55 @@ fn direct_call_formal_has_unbound_type_variable_at(n: Node, depth: Int) -> Bool 
   }
 }
 
+// A FUNCTION VALUE STANDING WHERE A FUNCTION TYPE IS DECLARED is judged, not waved through.
+// direct_call_arg_type_mismatch used to answer `false` for ANY callable on either side, so
+// `apply(f: convert)` against `fn apply(f: fn(Int) -> Int)` with `fn convert(s: String) -> String`
+// compiled clean: the one relation that judges a direct-call argument never compared the arrow at
+// all (gunbc.recurring_failure_mode function_value_argument_arrow_never_compared). The exclusion
+// was right for the relations it guards -- brand, element and kernel judgments read `params` as
+// generic parameters -- and wrong as an answer for the pair, so the pair gets its own arm here.
+//
+// The judgment is POSITIVE ESTABLISHMENT, the discipline declared_type_conformance_diags states:
+// arity must agree, and each aligned parameter and the return are refused only where BOTH sides are
+// ground (conformance_ground_type) and node_type_compatible denies them, or where both are arrows
+// that refuse recursively. Anything else -- a type variable, a brand, a nominal record -- is not
+// judged here, so a polymorphic function value is never refused by this arm. Parameter positions
+// are compared for equality of ground names rather than contravariantly, because ground kernel
+// scalars have no subtyping between them; that is exact, not an approximation.
+fn callable_signature_view(n: Node) -> Node {
+  if (n.connective == Arrow) { n } else { callable_inferred(n: n) }
+}
+
+fn callable_component_ground_mismatch(formal_part: Node, actual_part: Node, source_indices: Map<String, NewlineIndex>, depth: Int) -> Bool {
+  if (formal_part.connective == Arrow) && (actual_part.connective == Arrow) {
+    callable_signature_mismatch(formal: formal_part, actual: actual_part, source_indices: source_indices, depth: depth + 1)
+  } else if conformance_ground_type(n: formal_part, source_indices: source_indices)
+      && conformance_ground_type(n: actual_part, source_indices: source_indices) {
+    !node_type_compatible(left: formal_part, right: actual_part, source_indices: source_indices)
+  } else { false }
+}
+
+fn callable_signature_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>, depth: Int) -> Bool {
+  if depth >= 8 { false } else {
+    let f = callable_signature_view(n: formal)
+    let a = callable_signature_view(n: actual)
+    if (f.connective != Arrow) || (a.connective != Arrow) { false }
+    else if (f.params |> count) != (a.params |> count) { true }
+    else {
+      let params_mismatch = f.params |> enumerate |> any(pair =>
+        match a.params |> skip(pair.first) |> first {
+          Present { value: ap } => callable_component_ground_mismatch(
+            formal_part: child_type_node(ch: param_node_type_expr(n: pair.second)),
+            actual_part: child_type_node(ch: param_node_type_expr(n: ap)),
+            source_indices: source_indices, depth: depth)
+          Absent => true
+        })
+      params_mismatch || callable_component_ground_mismatch(
+        formal_part: resolved_type(n: f), actual_part: resolved_type(n: a), source_indices: source_indices, depth: depth)
+    }
+  }
+}
+
 fn direct_call_arg_type_mismatch(
   formal: Node,
   substitution_basis: Node,
@@ -4950,7 +5008,11 @@ fn direct_call_arg_type_mismatch(
 ) -> Bool {
   let substitution_is_optional = substitution_basis.return_cardinality == CardOptional
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: substitution_basis)) == "Optional"
-  if substitution_is_optional || direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) || type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
+  if substitution_is_optional || direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) { false }
+  else if type_node_is_callable(n: formal) && type_node_is_callable(n: actual) {
+    callable_signature_mismatch(formal: formal, actual: actual, source_indices: source_indices, depth: 0)
+  }
+  else if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
   else {
     nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(

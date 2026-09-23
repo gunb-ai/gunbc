@@ -1,0 +1,61 @@
+module test.claim.infer_function_value_argument_arrow_witness_test
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { total_blocking_count_for, any_class_count_for }
+
+// THE EXECUTING EVIDENCE FOR gunbc.recurring_failure_mode
+// function_value_argument_arrow_never_compared.
+//
+// Every cell is a source string compiled by the seed through gunbc.compile_census_probe. The RED
+// cells pass a NAMED FUNCTION VALUE whose arrow disagrees with the declared function-typed formal
+// -- in a parameter, in arity, in the return -- and one binds the same mismatch to an annotated
+// `let`, the declared-type position that shares the relation. Before the repair every RED cell
+// compiled with zero blocking rows. The controls hold what the repair must not refuse: a matching
+// function value, a polymorphic one whose type variable the ground-only judgment leaves unjudged,
+// and a lambda.
+
+data mismatched_parameter_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn convert(s: String) -> String { s }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: convert) }\n"
+
+data mismatched_arity_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int }\nfn add(x: Int, y: Int) -> Int { x + y }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: add) }\n"
+
+data mismatched_return_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn show(x: Int) -> String { \"n\" }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: show) }\n"
+
+data mismatched_let_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn convert(s: String) -> String { s }\nfn host() -> Int {\n  let g: fn(Int) -> Int = convert\n  g(1)\n}\n"
+
+data matching_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int }\nfn inc(x: Int) -> Int { x + 1 }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: inc) }\n"
+
+data polymorphic_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int }\nfn ident<T>(x: T) -> T { x }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: ident) }\n"
+
+data lambda_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int }\nfn apply(f: fn(Int) -> Int) -> Int { f(1) }\nfn host() -> Int { apply(f: x => x + 1) }\n"
+
+fn refuses_as_type_mismatch(source: String) -> Bool {
+  any_class_count_for(source: source, wanted_class: "TypeMismatch") > 0
+}
+
+test fn mismatched_parameter_function_argument_refuses() -> Bool {
+  refuses_as_type_mismatch(source: mismatched_parameter_source)
+}
+
+test fn mismatched_arity_function_argument_refuses() -> Bool {
+  refuses_as_type_mismatch(source: mismatched_arity_source)
+}
+
+test fn mismatched_return_function_argument_refuses() -> Bool {
+  refuses_as_type_mismatch(source: mismatched_return_source)
+}
+
+test fn mismatched_function_value_let_refuses() -> Bool {
+  refuses_as_type_mismatch(source: mismatched_let_source)
+}
+
+test fn matching_function_argument_accepted() -> Bool {
+  total_blocking_count_for(source: matching_source) == 0
+}
+
+test fn polymorphic_function_argument_accepted() -> Bool {
+  total_blocking_count_for(source: polymorphic_source) == 0
+}
+
+test fn lambda_function_argument_accepted() -> Bool {
+  total_blocking_count_for(source: lambda_source) == 0
+}

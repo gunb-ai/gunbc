@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.function_value_argument_arrow_never_compared
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data function_value_argument_arrow_never_compared: RecurringFailureMode = RecurringFailureMode {
+  identity: "function_value_argument_arrow_never_compared" as NonEmptyStr,
+
+  receipts: [
+    "**a function value standing where a function type is declared, never compared against that type** (the v1 seed's direct-call argument relation `v1.compiler.infer` `direct_call_arg_type_mismatch` answered `false` whenever EITHER side was callable, and the shared declared-type relation `declared_type_conformance_diags` judged only ground kernel scalars and element collections, so no position compared one arrow with another.)",
+
+    "INVALID STATE: an Accepted program that binds a function value to a function-typed formal, an annotated `let`, a declared return or a `data` annotation whose arrow disagrees with the value's -- in a parameter type, in arity, or in the return type. Specimen: `fn apply(f: fn(Int) -> Int) -> Int { f(1) }` applied as `apply(f: convert)` with `fn convert(s: String) -> String`.",
+
+    "HARM: the ordinary compiler floor DESIGN section 4b names -- values inhabit declared types; applications bind in exact bijection -- fails silently. The mismatch compiles with zero blocking rows and surfaces, if at all, at the host compiler of an emitted target or as wrong behavior on the interpretation path, far from the call that caused it. It is below the baseline every ordinary typed language holds.",
+
+    "DISCOVERED BY eager-pike-297 while repairing gunbc#12130 (the floor planner), which had to spell a control in the let form because the argument form was not refused. That report said the let form WAS refused; executed against the seed at the repair's base, it was not -- `let g: fn(Int) -> Int = convert` compiled clean too, so the class is one relation missing at two positions, not an argument-only hole.",
+
+    "DISTINGUISHING FACTS. (1) The callable exclusion in direct_call_arg_type_mismatch was correct for the three relations it guards -- brand, element and kernel judgments read a callable's `params` as generic parameters and would produce false reasons -- and wrong as the answer for a callable PAIR: excluding a pair from relations that cannot judge it is not the same fact as the pair conforming. (2) The judgment the pair needed already had its discipline in the corpus: positive establishment over ground types (conformance_ground_type, node_type_compatible), so the repair adds an arrow arm that recurses through parameters and return and judges only ground leaves, leaving type variables, brands and nominal records unjudged rather than refused. (3) A polymorphic function value (`fn ident<T>(x: T) -> T`) and a lambda must stay accepted; they are the controls that tell a judgment from a blanket refusal.",
+
+    "RUNG FOUND AT: silent wrongness (below the ladder) -- no position refused, no diagnostic, no advisory.",
+
+    "EXECUTED EVIDENCE, named rather than transcribed: `test.claim.infer_function_value_argument_arrow_witness_test`, admitted to the required floor by the `test.claim.infer_` prefix. Its parameter, arity, return and annotated-let cells are the discriminating REDs; its matching, polymorphic and lambda cells are the accepted positive controls.",
+
+    "RUNG NOW: 3, structurally guaranteed for arrow pairs whose disagreement is an arity difference or a ground-leaf difference (kernel scalars and element collections of them, at any arrow nesting depth up to the relation's bound), at the direct-call argument position and every position declared_type_conformance_diags serves.",
+
+    "CEILING: 3. Arrow inhabitance is decidable from the modeled types; it cannot reach 4 while an arrow is a Node that can be built with any params. BELOW CEILING TODAY, stated rather than implied: an arrow whose disagreeing leaf is a brand, a nominal record or coproduct, or a keyed collection is not judged, and a method or pipe argument does not pass through direct_call_arg_type_mismatch.",
+
+    "NEXT-RUNG TRIGGER: a peeling conformance relation that grounds brand aliases and nominal identities (the dissolve-on named at declared_type_conformance_note) -- the arrow arm's leaf judgment widens with it, since it asks conformance_ground_type rather than keeping its own gate. Method/pipe argument positions climb with the method wall.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "callable_signature_mismatch", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "direct_call_arg_type_mismatch", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.infer_function_value_argument_arrow_witness_test", decl_name: "mismatched_parameter_function_argument_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.infer_function_value_argument_arrow_witness_test", decl_name: "polymorphic_function_argument_accepted", field: WholeDeclaration },
+  ],
+}
