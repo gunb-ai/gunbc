@@ -611,6 +611,10 @@ fn gap_text(gap: MtCollinsPhysicalIdentificationGap) -> String {
   }
 }
 
+fn board_sockets(banks: List<MtCollinsDimmFigureBank>) -> List<Nat> {
+  fold(banks, init: [], f: (acc, b) => if nat_member(xs: acc, x: b.processor_socket) { acc } else { concat(acc, [b.processor_socket]) })
+}
+
 fn readback_unresolved(population: MtCollinsDimmPopulationRow, live_sockets: List<Nat>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> List<Nat> {
   expected_firmware_readback(connectors: population.connectors, live_sockets: live_sockets, banks: banks, pairs: pairs).unresolved
 }
@@ -623,7 +627,7 @@ fn history_block(history: List<MtCollins1Socket1InvestigationBoot>, orientation:
   }
 }
 
-fn render_slot_map(orientation: MtCollins1OrientationOutcome, viewpoint: MtCollins1Viewpoint, tech_end: MtCollins1ChassisEnd, live_sockets: List<Nat>, history: List<MtCollins1Socket1InvestigationBoot>, population: MtCollinsDimmPopulationRow, installed: List<Nat>, report: MtCollins1DamagedConnectorReport, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> MtCollins1SlotMap {
+fn render_slot_map(orientation: MtCollins1OrientationOutcome, viewpoint: MtCollins1Viewpoint, tech_end: MtCollins1ChassisEnd, history: List<MtCollins1Socket1InvestigationBoot>, population: MtCollinsDimmPopulationRow, installed: List<Nat>, report: MtCollins1DamagedConnectorReport, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> MtCollins1SlotMap {
   match orientation {
     OrientationAmbiguous { surviving: _ } => SlotMapRefused { refusal: SlotMapOrientationUnresolved { orientation: orientation } }
     OrientationContradicted => SlotMapRefused { refusal: SlotMapOrientationUnresolved { orientation: orientation } }
@@ -652,11 +656,15 @@ fn render_slot_map(orientation: MtCollins1OrientationOutcome, viewpoint: MtColli
               } }
             })
             let lines = fold(resolved, init: [], f: (acc, r) => match r { Present { value: l } => concat(acc, [l])  Absent => acc })
-            if list_length(items: lines) != list_length(items: order) || list_length(items: readback_unresolved(population: population, live_sockets: live_sockets, banks: banks, pairs: pairs)) > 0 {
+            if list_length(items: lines) != list_length(items: order) || list_length(items: readback_unresolved(population: population, live_sockets: board_sockets(banks: banks), banks: banks, pairs: pairs)) > 0 {
               SlotMapRefused { refusal: SlotMapConnectorUnresolved { connector: list_length(items: lines) } }
             } else {
               let damage = population_damage_standing(population: population, candidates: candidates)
-              let readback = expected_firmware_readback(connectors: population.connectors, live_sockets: live_sockets, banks: banks, pairs: pairs)
+              // The plan's readback is what a correct install on this board reads back: every socket
+              // the board has, never filtered by what this unit currently trains. A socket that stays
+              // silent is then the finding, not an absence from the success criterion.
+              let readback = expected_firmware_readback(connectors: population.connectors, live_sockets: board_sockets(banks: banks), banks: banks, pairs: pairs)
+              let place_line = concat("Install at (position from the LEFT edge, J number): ", join(map(filter(lines, l => nat_member(xs: population.connectors, x: l.connector)), l => concat(concat(concat(to_string(l.from_left + 1), " (J"), to_string(l.connector)), ")")), ", "))
               let header = concat(concat(concat(concat(
                 "mtcollins1 DIMM slots. Standing at the ", chassis_end_text(end: tech_end)), " ("), chassis_end_landmark(end: tech_end)),
                 "), from LEFT edge to RIGHT edge:")
@@ -667,7 +675,7 @@ fn render_slot_map(orientation: MtCollins1OrientationOutcome, viewpoint: MtColli
                 lines: lines,
                 damage: damage,
                 agreement: viewpoint_agreement(viewpoint: viewpoint, hypothesis: h),
-                text: join(concat(concat(concat(concat([header], map(lines, l => slot_map_line_text(line: l))), [damage_standing_text(standing: damage), readback_line]), map(gaps, g => gap_text(gap: g))), history_block(history: history, orientation: orientation, banks: banks)), "\n"),
+                text: join(concat(concat(concat(concat([header], map(lines, l => slot_map_line_text(line: l))), [damage_standing_text(standing: damage), place_line, readback_line]), map(gaps, g => gap_text(gap: g))), history_block(history: history, orientation: orientation, banks: banks)), "\n"),
               }
             }
           }
@@ -689,5 +697,5 @@ fn mtcollins1_installed_connectors() -> List<Nat> {
 }
 
 fn mtcollins1_slot_map(population: MtCollinsDimmPopulationRow, tech_end: MtCollins1ChassisEnd) -> MtCollins1SlotMap {
-  render_slot_map(orientation: mtcollins1_orientation(), viewpoint: mtcollins1_operator_viewpoint, tech_end: tech_end, live_sockets: mtcollins1_two_stick_anchor.live_sockets, history: mtcollins1_socket1_investigation_boots, population: population, installed: mtcollins1_installed_connectors(), report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
+  render_slot_map(orientation: mtcollins1_orientation(), viewpoint: mtcollins1_operator_viewpoint, tech_end: tech_end, history: mtcollins1_socket1_investigation_boots, population: population, installed: mtcollins1_installed_connectors(), report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
 }

@@ -99,7 +99,7 @@ test fn w_three_stick_anchor_alone_leaves_the_orientation_ambiguous() -> Bool {
     PopulationAvoidsDamage { population: _ } => false
     PopulationDamageUndetermined { candidates: _ } => false
   }
-  let refused = match render_slot_map(orientation: o, viewpoint: rear_fixture, tech_end: RearEnd, live_sockets: [0], history: [], population: mt_collins_population_8_dimms, installed: [25, 9], report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
+  let refused = match render_slot_map(orientation: o, viewpoint: rear_fixture, tech_end: RearEnd, history: [], population: mt_collins_population_8_dimms, installed: [25, 9], report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
     SlotMapRefused { refusal: r } => match r {
       SlotMapOrientationUnresolved { orientation: _ } => true
       SlotMapViewpointNotReported { asked: _ } => false
@@ -136,7 +136,7 @@ test fn w_production_anchors_resolve_the_full_mirror_and_j5() -> Bool {
     PopulationUsesDamaged { population: _, connectors: _ } => false
     PopulationDamageUndetermined { candidates: _ } => false
   }
-  let gated = match render_slot_map(orientation: mtcollins1_orientation(), viewpoint: ViewpointNotYetReported { asked: "controlled fixture" }, tech_end: FrontEnd, live_sockets: [0], history: [], population: mt_collins_population_8_dimms, installed: [25, 9], report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
+  let gated = match render_slot_map(orientation: mtcollins1_orientation(), viewpoint: ViewpointNotYetReported { asked: "controlled fixture" }, tech_end: FrontEnd, history: [], population: mt_collins_population_8_dimms, installed: [25, 9], report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
     SlotMapRefused { refusal: r } => match r {
       SlotMapViewpointNotReported { asked: _ } => true
       SlotMapOrientationUnresolved { orientation: _ } => false
@@ -210,12 +210,27 @@ test fn w_slot_map_renders_left_to_right_for_a_tech() -> Bool {
       && string_contains(s: t, pattern: "\n28. blue  J5  SK0 MC2  DAMAGED - do not use\n")
       && string_contains(s: t, pattern: "\n32. blue  J1  SK0 MC0  populated\n")
       && string_contains(s: t, pattern: "Population of 8 DIMMs avoids the damaged connector.")
-      && list_length(items: rb) == 4 && string_contains(s: t, pattern: "Expected firmware roster for this population: SK0 MC0 S0, SK0 MC1 S0, SK0 MC4 S0, SK0 MC5 S0")
+      && list_length(items: rb) == 8
+      && string_contains(s: t, pattern: "\nInstall at (position from the LEFT edge, J number): 1 (J25), 3 (J27), 14 (J19), 16 (J17), 17 (J9), 19 (J11), 30 (J3), 32 (J1)\n")
+      && string_contains(s: t, pattern: "Expected firmware roster for this population: SK0 MC0 S0, SK0 MC1 S0, SK0 MC4 S0, SK0 MC5 S0, SK1 MC0 S0, SK1 MC1 S0, SK1 MC4 S0, SK1 MC5 S0\n")
       && string_contains(s: t, pattern: "\nrun 35808203121: drawing 'J1','J17' = physical J25, J9 -> trained SK0 MC4 S0; DRAM 16 GiB; mcu_enable_mask = 00000010 [default: 000000ff]\n")
       && string_contains(s: t, pattern: "\nrun 35805796492: drawing 'J1','J17','J25' = physical J25, J9, J1 -> trained SK0 MC0 S0, SK0 MC4 S0; DRAM 32 GiB;")
       && string_contains(s: t, pattern: "Socket 1 trained no DIMM in 5 boots, including the J9+J25 placement (run 35805796492, run 35808203121).\n")
     SlotMapRefused { refusal: _ } => false
   }
+}
+
+// THE PLAN'S SUCCESS CRITERION SPANS THE BOARD. An 8-DIMM plan expects 8 roster lines across
+// both sockets although this unit's socket 1 trains nothing: the expected readback is what a
+// correct install reads back. Mutation: filtering by today's live sockets drops SK1's four.
+test fn w_eight_dimm_plan_expects_both_sockets() -> Bool {
+  let plan = match rendered_today() {
+    SlotMapRendered { end: _, readback: rb, lines: _, damage: _, agreement: _, text: _ } =>
+      list_length(items: rb) == 8 && list_length(items: filter(rb, t => t.socket == 1)) == 4
+    SlotMapRefused { refusal: _ } => false
+  }
+  let live_filtered = expected_firmware_readback(connectors: mt_collins_population_8_dimms.connectors, live_sockets: mtcollins1_two_stick_anchor.live_sockets, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
+  plan && list_length(items: live_filtered.predicted) == 4
 }
 
 // The same physical row seen from the other end: left and right reverse, and every
@@ -225,8 +240,8 @@ test fn w_other_end_reverses_left_right_but_not_identity() -> Bool {
     observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 }, relay: "controlled fixture", method: "controlled fixture",
   } }
   let o = resolve_orientation(anchors: [mtcollins1_three_stick_anchor, two_stick_fixture(controller: 4)], banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
-  let rear = render_slot_map(orientation: o, viewpoint: v, tech_end: RearEnd, live_sockets: [0], history: [], population: mt_collins_population_8_dimms, installed: [25, 9], report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
-  let front = render_slot_map(orientation: o, viewpoint: v, tech_end: FrontEnd, live_sockets: [0], history: [], population: mt_collins_population_8_dimms, installed: [25, 9], report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
+  let rear = render_slot_map(orientation: o, viewpoint: v, tech_end: RearEnd, history: [], population: mt_collins_population_8_dimms, installed: [25, 9], report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
+  let front = render_slot_map(orientation: o, viewpoint: v, tech_end: FrontEnd, history: [], population: mt_collins_population_8_dimms, installed: [25, 9], report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
   match rear {
     SlotMapRendered { end: _, readback: _, lines: r, damage: _, agreement: _, text: _ } => match front {
       SlotMapRendered { end: _, readback: _, lines: f, damage: _, agreement: _, text: _ } =>
