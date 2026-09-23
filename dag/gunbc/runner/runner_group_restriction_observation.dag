@@ -38,103 +38,87 @@ fn microvm_shakedown_selected_workflow() -> NonEmptyStr {
   ], "") as NonEmptyStr
 }
 
+// THE GROUP IS NAMED, AND ITS ID IS READ. The microVM mint's group is one this repository creates
+// (gunbc.runner_group_restriction_ensure), and GitHub assigns its id at creation -- so the name is
+// the only identity the repository can author, and the id reaches the mint only through a reading
+// that found exactly one group holding that name. A name held by two groups is refused, never
+// resolved to either.
+data microvm_shakedown_runner_group_name: NonEmptyStr = "microvm-shakedown"
+
 type ShakedownRunnerGroupRestriction sole_constructor {
   group: JitRunnerGroupId
+  name: NonEmptyStr
   selected_workflow: NonEmptyStr
 }
 
 // EVERY READING BUT ONE REFUSES, EACH BY ITS OWN NAME, so an operator reading the controller's
-// refusal learns which fact of the group is wrong rather than that "the group" is.
+// refusal learns which fact of the group is wrong rather than that "the group" is. The id is
+// carried by the causes that found a group; the causes that found none have no id to carry.
 type RunnerGroupRestrictionRefusal
   = RunnerGroupRestrictionNotYetObserved
   | RunnerGroupListUnreadable { reason: NonEmptyStr }
   | RunnerGroupAbsent
   | RunnerGroupDuplicated { count: Int }
-  | RunnerGroupNotRestrictedToWorkflows
-  | RunnerGroupSelectsOtherWorkflows { selected: List<NonEmptyStr> }
+  | RunnerGroupNotRestrictedToWorkflows { group: JitRunnerGroupId }
+  | RunnerGroupSelectsOtherWorkflows { group: JitRunnerGroupId, selected: List<NonEmptyStr> }
 
 fn runner_group_restriction_refusal_text(cause: RunnerGroupRestrictionRefusal) -> String {
   match cause {
     RunnerGroupRestrictionNotYetObserved => "RunnerGroupRestrictionNotYetObserved: no read of the org's runner groups reached this decision"
     RunnerGroupListUnreadable { reason } => concat("RunnerGroupListUnreadable: ", reason as String)
-    RunnerGroupAbsent => "RunnerGroupAbsent: the org's runner groups contain no group with this id"
-    RunnerGroupDuplicated { count } => concat("RunnerGroupDuplicated: groups with this id: ", to_string(count))
-    RunnerGroupNotRestrictedToWorkflows => "RunnerGroupNotRestrictedToWorkflows: restricted_to_workflows is false, so every workflow may use the group"
-    RunnerGroupSelectsOtherWorkflows { selected } =>
-      join(["RunnerGroupSelectsOtherWorkflows: selected_workflows=[", join(map(selected, s => s as String), ","), "] expected=[", microvm_shakedown_selected_workflow() as String, "]"], "")
+    RunnerGroupAbsent => "RunnerGroupAbsent: the org's runner groups contain no group with this name"
+    RunnerGroupDuplicated { count } => concat("RunnerGroupDuplicated: groups with this name: ", to_string(count))
+    RunnerGroupNotRestrictedToWorkflows { group } =>
+      join(["RunnerGroupNotRestrictedToWorkflows: group ", to_string(group.value), " has restricted_to_workflows=false, so every workflow may use it"], "")
+    RunnerGroupSelectsOtherWorkflows { group, selected } =>
+      join(["RunnerGroupSelectsOtherWorkflows: group ", to_string(group.value), " selected_workflows=[", join(map(selected, s => s as String), ","), "] expected=[", microvm_shakedown_selected_workflow() as String, "]"], "")
   }
 }
 
 type MicrovmRunnerGroupStanding
   = RunnerGroupRestrictedToShakedownWorkflow { restriction: ShakedownRunnerGroupRestriction }
-  | RunnerGroupRestrictionRefused { group: JitRunnerGroupId, cause: RunnerGroupRestrictionRefusal }
+  | RunnerGroupRestrictionRefused { name: NonEmptyStr, cause: RunnerGroupRestrictionRefusal }
 
 // A group that selects the shakedown workflow AND another one is refused, not admitted: exactly one
 // entry is the whole restriction, and a second entry is a second workflow whose jobs the guest takes.
-fn restriction_of(group: JitRunnerGroupId, row: RunnerGroupIdentity) -> MicrovmRunnerGroupStanding {
+fn restriction_of(name: NonEmptyStr, row: RunnerGroupIdentity) -> MicrovmRunnerGroupStanding {
+  let group = JitRunnerGroupId { value: row.id }
   if !row.restricted_to_workflows {
-    RunnerGroupRestrictionRefused { group: group, cause: RunnerGroupNotRestrictedToWorkflows }
+    RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupNotRestrictedToWorkflows { group: group } }
   } else {
     let expected = microvm_shakedown_selected_workflow() as String
     if count(row.selected_workflows) == 1 && count(filter(row.selected_workflows, w => (w as String) == expected)) == 1 {
       RunnerGroupRestrictedToShakedownWorkflow { restriction: ShakedownRunnerGroupRestriction {
         group: group,
+        name: name,
         selected_workflow: microvm_shakedown_selected_workflow(),
       } }
     } else {
-      RunnerGroupRestrictionRefused { group: group, cause: RunnerGroupSelectsOtherWorkflows { selected: row.selected_workflows } }
+      RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupSelectsOtherWorkflows { group: group, selected: row.selected_workflows } }
     }
   }
 }
 
-fn observe_shakedown_runner_group_restriction(group: JitRunnerGroupId, listed: RunnerGroupListDecode) -> MicrovmRunnerGroupStanding {
+fn observe_shakedown_runner_group_restriction(name: NonEmptyStr, listed: RunnerGroupListDecode) -> MicrovmRunnerGroupStanding {
   match listed {
     RunnerGroupListDecodeRefused { reason } =>
-      RunnerGroupRestrictionRefused { group: group, cause: RunnerGroupListUnreadable { reason: reason } }
-    RunnerGroupListDecoded { groups } => {
-      let rows = filter(groups, g => g.id == group.value)
-      if count(rows) > 1 {
-        RunnerGroupRestrictionRefused { group: group, cause: RunnerGroupDuplicated { count: count(rows) } }
-      } else {
-        match rows.first() {
-          Absent => RunnerGroupRestrictionRefused { group: group, cause: RunnerGroupAbsent }
-          Present { value: row } => restriction_of(group: group, row: row)
-        }
-      }
-    }
-  }
-}
-
-// THE SAME READING, WITH THE GROUP NAMED BY ITS NAME. A group this repository creates has an id
-// GitHub assigns at creation, so a caller that knows only the name it asked for finds the group by
-// name -- and a name held by two groups is refused, not resolved to either.
-fn observe_shakedown_runner_group_named(name: NonEmptyStr, listed: RunnerGroupListDecode) -> RunnerGroupNameReading {
-  match listed {
-    RunnerGroupListDecodeRefused { reason } => RunnerGroupNameUnreadable { reason: reason }
+      RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupListUnreadable { reason: reason } }
     RunnerGroupListDecoded { groups } => {
       let rows = filter(groups, g => (g.name as String) == (name as String))
       if count(rows) > 1 {
-        RunnerGroupNameAmbiguous { count: count(rows) }
+        RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupDuplicated { count: count(rows) } }
       } else {
         match rows.first() {
-          Absent => RunnerGroupNameAbsent
-          Present { value: row } => RunnerGroupNamed {
-            standing: observe_shakedown_runner_group_restriction(group: JitRunnerGroupId { value: row.id }, listed: listed),
-          }
+          Absent => RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupAbsent }
+          Present { value: row } => restriction_of(name: name, row: row)
         }
       }
     }
   }
 }
 
-type RunnerGroupNameReading
-  = RunnerGroupNamed { standing: MicrovmRunnerGroupStanding }
-  | RunnerGroupNameAbsent
-  | RunnerGroupNameAmbiguous { count: Int }
-  | RunnerGroupNameUnreadable { reason: NonEmptyStr }
-
-// THE STANDING A CALLER HOLDS BEFORE ANY READ. It is a refusal, named, so a controller that has not
-// read the groups yet still carries a cause through to its operator rather than a bare "no".
-fn runner_group_restriction_not_yet_observed(group: JitRunnerGroupId) -> MicrovmRunnerGroupStanding {
-  RunnerGroupRestrictionRefused { group: group, cause: RunnerGroupRestrictionNotYetObserved }
+// THE STANDING A CALLER HOLDS BEFORE ANY READ. It is a refusal, named, so a caller that has not
+// read the groups still carries a cause through to its operator rather than a bare "no".
+fn runner_group_restriction_not_yet_observed(name: NonEmptyStr) -> MicrovmRunnerGroupStanding {
+  RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupRestrictionNotYetObserved }
 }

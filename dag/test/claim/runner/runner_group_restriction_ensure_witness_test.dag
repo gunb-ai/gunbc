@@ -2,12 +2,12 @@ module test.claim.runner.runner_group_restriction_ensure_witness_test
 
 import std.types { Bool, String, List, Int, NonEmptyStr }
 import gunbc.fleet.org_actions_inspection { decode_runner_groups_json }
-import gunbc.runner_group_restriction_observation { microvm_shakedown_selected_workflow }
+import gunbc.runner_group_restriction_observation { microvm_shakedown_selected_workflow, microvm_shakedown_runner_group_name }
 import gunbc.runner_group_restriction_ensure {
   RunnerGroupEnsurePlan, GroupAlreadyRestricted, GroupCreateRequired, GroupEnsureRefused,
   CreatedGroupRestricted, CreatedGroupNotRestricted,
   plan_runner_group_ensure, readback_after_create, microvm_runner_group_create_subject,
-  runner_group_create_subject_text, microvm_shakedown_runner_group_name,
+  runner_group_create_subject_text,
 }
 
 // THE PLAN'S SUBJECT IS ONE INTERFACE: the organization's runner-groups body, decoded by the
@@ -60,14 +60,14 @@ test fn witness_ensure_is_a_noop_when_the_group_is_already_restricted() -> Bool 
 // A group holding our name with any other restriction is refused, not edited.
 test fn witness_ensure_refuses_our_name_held_by_an_unrestricted_group() -> Bool {
   match planned(body: body_of(groups: [ours(id: 9, restricted: false, selected: [])])) {
-    GroupEnsureRefused { cause: c } => string_contains(s: c as String, pattern: "RunnerGroupExistsWithAnotherRestriction")
+    GroupEnsureRefused { cause: c } => string_contains(s: c as String, pattern: "RunnerGroupNotEnsurable") && string_contains(s: c as String, pattern: "RunnerGroupNotRestrictedToWorkflows")
     _ => false
   }
 }
 
 test fn witness_ensure_refuses_two_groups_with_our_name() -> Bool {
   match planned(body: body_of(groups: [ours(id: 9, restricted: true, selected: [shakedown()]), ours(id: 10, restricted: true, selected: [shakedown()])])) {
-    GroupEnsureRefused { cause: c } => string_contains(s: c as String, pattern: "RunnerGroupNameAmbiguous")
+    GroupEnsureRefused { cause: c } => string_contains(s: c as String, pattern: "RunnerGroupDuplicated")
     _ => false
   }
 }

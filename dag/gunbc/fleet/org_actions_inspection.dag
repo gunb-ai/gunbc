@@ -23,6 +23,7 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject
 }
 import extdeps.shell.credentials { env_credential }
+import extdeps.github.org_actions { OrgRunnerGroupListWire }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.host_cli_dependency { first_absent_gh_cli_operation_host_cli_dependency, host_dependency_absent_wire }
@@ -188,6 +189,31 @@ fn decode_runner_groups_json(body: String) -> RunnerGroupListDecode {
       JsonMemberAbsent => RunnerGroupListDecodeRefused { reason: "runner_groups is absent" }
       JsonMemberDuplicated { count: _ } => RunnerGroupListDecodeRefused { reason: "runner_groups is duplicated" }
       JsonMemberNotAnObject => RunnerGroupListDecodeRefused { reason: "runner-groups response is not a JSON object" }
+    }
+  }
+}
+
+// THE REST READ'S WIRE BODY, PROJECTED INTO THE SAME ROWS THE JSON DECODE PRODUCES, so the observer
+// has one input shape whichever transport read the groups. Refuses where decode_runner_group
+// refuses -- an empty name or an empty workflow entry -- and refuses a read that returned fewer
+// groups than total_count, because a group on an unread page would otherwise read as absent.
+fn runner_groups_from_wire(body: OrgRunnerGroupListWire) -> RunnerGroupListDecode {
+  if count(body.runner_groups) != body.total_count {
+    RunnerGroupListDecodeRefused { reason: join([
+      "runner-groups read returned ", to_string(count(body.runner_groups)), " of total_count ", to_string(body.total_count),
+      "; a group on an unread page would read as absent",
+    ], "") as NonEmptyStr }
+  } else {
+    if any(body.runner_groups, g => g.name == "" || any(g.selected_workflows, w => w == "")) {
+      RunnerGroupListDecodeRefused { reason: "runner_groups contains an element with an empty name or an empty selected_workflows entry" }
+    } else {
+      RunnerGroupListDecoded { groups: map(body.runner_groups, g => RunnerGroupIdentity {
+        id: g.id,
+        name: g.name as NonEmptyStr,
+        allows_public_repositories: g.allows_public_repositories,
+        restricted_to_workflows: g.restricted_to_workflows,
+        selected_workflows: map(g.selected_workflows, w => w as NonEmptyStr),
+      }) }
     }
   }
 }
