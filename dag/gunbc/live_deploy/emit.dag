@@ -42,8 +42,22 @@ import std.layout {
   doc_text,
   render
 }
-import gunbc.executor_privileged_operation { EnsureSystemAccount, executor_privileged_operation_shell_command, executor_privileged_operation_converge_command }
-import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation,
+  EnsureSystemAccount,
+  RunGunbcEntryAs,
+  executor_privileged_operation_shell_command,
+  executor_privileged_operation_converge_command,
+  executor_privileged_operation_elevated_argv,
+  executor_privileged_operation_sudoers_line,
+}
+import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_posix_operator_user, fleet_posix_ci_runner_user }
+import gunbc.cli_invoke { NamedArgumentAdmission, admit_named_argument }
+import gunbc.auth.approval_ntfy_runtime_observe {
+  approval_ntfy_runtime_observe_entry_rel,
+  approval_ntfy_runtime_observe_function,
+  approval_ntfy_runtime_observe_run_as,
+}
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile,
   ServiceSlice, slice_memory_max, slice_memory_high, slice_memory_swap_max,
@@ -120,7 +134,7 @@ import gunbc.host_axis_caps {
   host_axis_caps_author_before_revert_enforced,
 }
 import gunbc.ownership { Ownership }
-import v2.std.algebra { list_tail, TailFound, TailAbsent }
+import v2.std.algebra { list_tail, TailFound, TailAbsent, any }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberEffect, EffectAdd, EffectReplace, EffectRemove,
@@ -136,6 +150,10 @@ import gunbc.live_deploy.operations {
   deploy_stage_write_command,
   deploy_stage_write_expansion_command,
   deploy_stage_install_command,
+  deploy_stage_install_owned_command,
+  deploy_stage_visudo_check_command,
+  installed_visudo_check_command,
+  deploy_stage_cmp_installed_command,
   install_directory_command,
   rm_force_command,
   rm_empty_directory_command,
@@ -1813,6 +1831,153 @@ fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisi
   )
 }
 
+// ── THE RELEASE'S HELPER GRANT: ONE EXACT SUDOERS LINE PER INSTALLED RELEASE ─────────────────
+// The enrolment-code verb must read the live ntfy process as gunbc-ntfy
+// (gunbc.auth.approval_ntfy_runtime_observe). It does that by running ONE entry of the broker's own
+// released binary through sudo. There is deliberately no `current` symlink (see
+// approval_broker_release_retention_note), so a fixed grant has to name releases/<sha>. The grant
+// is therefore a FUNCTION OF THE RELEASE, derived here from the same release-locus folds the unit's
+// ExecStart reads. It is installed by the same converge that installs the release.
+//
+// ONE OPERATION, TWO RENDERINGS. The grant line and the argv the verb runs are both projections of
+// approval_broker_ntfy_runtime_observe_operation, through gunbc.executor_privileged_operation (the
+// same seam that renders every runner-host grant). So there is no spelling in which the grant
+// authorizes a different command from the one the verb runs. The run-as account comes from that
+// module's principal match, not from a literal here.
+//
+// THE PREVIOUS RELEASE'S LINE IS REMOVED BY CONSTRUCTION, NOT BY A SWEEP. The drop-in holds exactly
+// one grant line, the one for THIS release. Installing it replaces the whole file, so the previous
+// release's line cannot survive a converge that completes. The readback (cmp against the staged
+// bytes) is what shows the replacement happened. A sweep that deleted "other" lines would need to
+// recognize them, which is a pattern -- the wildcard this construction exists to avoid.
+//
+// ORDER: visudo -cf on the STAGED file before install. A malformed line stops the stage there, and
+// never reaches sudoers.d, where it would break sudo for every user on the host. Then install
+// (0440, root-owned), visudo -cf on the INSTALLED path, and cmp. The file's group is the deploying
+// principal's (fleet_posix_ci_runner_user, the srv1 deploy runner, per gunbc.ci_deploy_access
+// ci_deploy_srv1_local_access) so that cmp can read it without a new sudo grant. sudo requires only
+// that a sudoers file is root-owned and not group- or world-WRITABLE, and 0440 is neither.
+data approval_broker_helper_sudoers_path: NonEmptyStr = "/etc/sudoers.d/gunbc-approval-broker-helpers"
+data approval_broker_helper_sudoers_stage_name: String = "gunbc-approval-broker-helpers.sudoers"
+data approval_broker_helper_sudoers_mode: NonEmptyStr = "0440"
+
+fn approval_broker_ntfy_runtime_observe_operation(root: String, revision: ReleaseRevisionBinding) -> ExecutorPrivilegedOperation {
+  let release_dir = approval_broker_release_dir(root: root, revision: revision)
+  RunGunbcEntryAs {
+    run_as: approval_ntfy_runtime_observe_run_as(),
+    binary: approval_broker_release_binary_path(root: root, revision: revision) as NonEmptyStr,
+    source_roots: map(approval_broker_tree_subdirs, sub => join([release_dir, "/", sub], "") as NonEmptyStr),
+    entry: join([release_dir, "/", approval_ntfy_runtime_observe_entry_rel as String], "") as NonEmptyStr,
+    function: approval_ntfy_runtime_observe_function,
+  }
+}
+
+// THE ARGV THE VERB RUNS: `sudo -n -u gunbc-ntfy <release>/gunbc run ...`. It is pure and exported
+// so the verb (#12077) builds its invocation from this value, and a claim can pin it.
+fn approval_ntfy_runtime_observe_helper_argv(root: String, revision: ReleaseRevisionBinding) -> List<String> {
+  executor_privileged_operation_elevated_argv(op: approval_broker_ntfy_runtime_observe_operation(root: root, revision: revision))
+}
+
+// THE GRANTEE IS THE ACCOUNT THE VERB RUNS AS: the operator's (gunbc.auth.approval_device_routes
+// runs as fleet_posix_operator_user, which owns the device store and reads the publisher token).
+fn approval_broker_helper_grantee() -> NonEmptyStr {
+  fleet_posix_operator_user.name
+}
+
+fn approval_broker_helper_sudoers_line(root: String, revision: ReleaseRevisionBinding) -> NonEmptyStr {
+  executor_privileged_operation_sudoers_line(
+    grantee: approval_broker_helper_grantee(),
+    op: approval_broker_ntfy_runtime_observe_operation(root: root, revision: revision),
+  )
+}
+
+fn approval_broker_helper_sudoers_content(root: String, revision: ReleaseRevisionBinding) -> String {
+  join([
+    "# GENERATED by gunbc.live_deploy.emit approval_broker_helper_sudoers_content for release ",
+    release_revision_execstart_text(binding: revision),
+    ". Replaced whole by each broker release install; do not hand-edit.\n",
+    approval_broker_helper_sudoers_line(root: root, revision: revision) as String,
+    "\n",
+  ], "")
+}
+
+// THE GRANT'S WORDS MUST BE PLAIN, OR THE GRANT IS NOT EMITTED. A sudoers Cmnd_Spec treats these
+// characters specially: `,` and `:` separate list items, `=`, `!`, `(` and `)` are grammar, `\` escapes,
+// whitespace splits arguments, `#` starts a comment, and `*` `?` `[` `]` are glob metacharacters that
+// would turn an exact match into a pattern. Any of them in a release path would make the line mean
+// something other than this argv, or be refused by visudo. The poisoned RevisionNotInstalled path
+// contains spaces, so an unbound revision is refused here too. The remaining characters are shell
+// quoting and expansion, which could never reach a path this module names verbatim.
+data sudoers_command_word_refused_characters: List<String> = [
+  ",", ":", "=", "!", "(", ")", "\\", " ", "\t", "\n", "#", "*", "?", "[", "]", "\"", "'", "$", "`",
+]
+
+type HelperGrantAdmission
+  = HelperGrantAdmitted
+  | HelperGrantWordRefused { word: String }
+
+fn approval_broker_helper_grant_admission(root: String, revision: ReleaseRevisionBinding) -> HelperGrantAdmission {
+  fold(approval_ntfy_runtime_observe_helper_argv(root: root, revision: revision), init: HelperGrantAdmitted, f: (acc, w) =>
+    match acc {
+      HelperGrantWordRefused { word: x } => HelperGrantWordRefused { word: x }
+      HelperGrantAdmitted =>
+        if any(sudoers_command_word_refused_characters, c => string_contains(s: w, pattern: c)) {
+          HelperGrantWordRefused { word: w }
+        } else {
+          HelperGrantAdmitted
+        }
+    }
+  )
+}
+
+data approval_broker_helper_grant_refused_poison: String = "__GUNBC_DEPLOY_REFUSED__ approval-broker helper grant NOT EMITTED: a word of the helper argv carries a sudoers-special character, so its sudoers line would not mean that argv. This marker is not valid shell, so the stage fails before any sudoers file is written. word="
+
+fn approval_broker_helper_grant_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let root = spec.approval_broker.repo_root as String
+  match approval_broker_helper_grant_admission(root: root, revision: revision) {
+    HelperGrantWordRefused { word: w } => [deploy_raw(command: concat(approval_broker_helper_grant_refused_poison, w))]
+    HelperGrantAdmitted => approval_broker_helper_grant_admitted_steps(root: root, revision: revision)
+  }
+}
+
+fn approval_broker_helper_grant_admitted_steps(root: String, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let dest = approval_broker_helper_sudoers_path as String
+  [
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: approval_broker_helper_sudoers_stage_name,
+      content: approval_broker_helper_sudoers_content(root: root, revision: revision),
+    )),
+    deploy_raw(command: deploy_stage_visudo_check_command(stage_name: approval_broker_helper_sudoers_stage_name)),
+    deploy_raw(command: deploy_stage_install_owned_command(
+      stage_name: approval_broker_helper_sudoers_stage_name,
+      mode: approval_broker_helper_sudoers_mode,
+      owner: "root" as NonEmptyStr,
+      group: fleet_posix_ci_runner_user.name,
+      dest: dest,
+    )),
+    deploy_raw(command: installed_visudo_check_command(dest: dest)),
+    deploy_raw(command: deploy_stage_cmp_installed_command(stage_name: approval_broker_helper_sudoers_stage_name, dest: dest)),
+  ]
+}
+
+// THE ISSUING VERB LEARNS ITS OWN RELEASE FROM THE STEP THAT RUNS IT. The verb is invoked with
+// `gunbc run` from the release directory, and nothing in a run tells the function which release
+// that is. It cannot name its helper without that. The deployment step already binds the revision
+// (it selects the release directory by it), so it passes the same binding as `--arg
+// release_revision=<sha>`. The verb rebuilds the helper argv from it with
+// approval_ntfy_runtime_observe_helper_argv. A wrong or stale revision names a binary that is not
+// installed, or a command no grant matches. Both fail as a read failure (refuse), never as a
+// widened answer. Consumed by #12077's enrolment_code_issue_remote_argv, a declared frontier with
+// that PR as its trigger.
+data approval_broker_release_revision_argument_name: String = "release_revision"
+
+fn approval_broker_release_revision_argument(revision: ReleaseRevisionBinding) -> NamedArgumentAdmission {
+  admit_named_argument(
+    name: approval_broker_release_revision_argument_name,
+    value: release_revision_execstart_text(binding: revision),
+  )
+}
+
 fn approval_broker_unit_write_steps_on(
   spec: DeploymentSpec,
   revision: ReleaseRevisionBinding,
@@ -2475,7 +2640,10 @@ fn approval_broker_dark_install_intent(
       concat(
         [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
         concat(
-          approval_broker_tree_copy_steps(spec: spec, revision: revision),
+          concat(
+            approval_broker_tree_copy_steps(spec: spec, revision: revision),
+            approval_broker_helper_grant_steps(spec: spec, revision: revision),
+          ),
           apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
         ),
       ),

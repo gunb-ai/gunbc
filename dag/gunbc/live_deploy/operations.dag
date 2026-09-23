@@ -19,7 +19,11 @@ import extdeps.tools.gnu_coreutils {
   coreutils_install_mode_flag,
   coreutils_install_file_owned_argv,
   coreutils_install_directory_owned_argv,
+  coreutils_install_owner_flag,
+  coreutils_install_group_flag,
 }
+import extdeps.tools.diffutils { diffutils_cmp_program, diffutils_cmp_silent_flag }
+import gunbc.fleet_posix_accounts { fleet_visudo_binary_path }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.shell_command_text {
   shell_command_intent,
@@ -155,6 +159,63 @@ fn deploy_stage_install_command(stage_name: String, mode: NonEmptyStr, dest: Str
         bash_build_word_lit(text: dest),
       ],
     )),
+  )
+}
+
+// A STAGED FILE INSTALLED WITH ITS OWNERSHIP AT CREATION. Same shape as
+// deploy_stage_install_command, plus -o/-g, so no window exists where the destination has the
+// wrong owner.
+fn deploy_stage_install_owned_command(
+  stage_name: String,
+  mode: NonEmptyStr,
+  owner: NonEmptyStr,
+  group: NonEmptyStr,
+  dest: String,
+) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_command_with_words(words: concat(
+      shell_literal_words(words: sudo_elevate_argv(command: [
+        coreutils_install_binary_name as String,
+        coreutils_install_mode_flag as String,
+        mode as String,
+        coreutils_install_owner_flag as String,
+        owner as String,
+        coreutils_install_group_flag as String,
+        group as String,
+      ])),
+      [
+        deploy_stage_path_word(stage_name: stage_name),
+        bash_build_word_lit(text: dest),
+      ],
+    )),
+  )
+}
+
+// visudo -c -f <staged>: sudoers syntax is checked BEFORE the file can reach sudoers.d, so a
+// malformed line stops the stage before it can lock every sudo user out of the host.
+fn deploy_stage_visudo_check_command(stage_name: String) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_command_with_words(words: concat(
+      shell_literal_words(words: sudo_elevate_argv(command: [fleet_visudo_binary_path as String, "-cf"])),
+      [deploy_stage_path_word(stage_name: stage_name)],
+    )),
+  )
+}
+
+fn installed_visudo_check_command(dest: String) -> String {
+  shell_privileged_command_text_of_argv(argv: [fleet_visudo_binary_path as String, "-cf", dest])
+}
+
+// THE CONTENT READBACK: the installed bytes equal the staged bytes, compared unprivileged. The
+// installing caller must give the reading principal read access through the file's group.
+fn deploy_stage_cmp_installed_command(stage_name: String, dest: String) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_command_with_words(words: [
+      bash_build_word_lit(text: diffutils_cmp_program as String),
+      bash_build_word_lit(text: diffutils_cmp_silent_flag as String),
+      deploy_stage_path_word(stage_name: stage_name),
+      bash_build_word_lit(text: dest),
+    ]),
   )
 }
 

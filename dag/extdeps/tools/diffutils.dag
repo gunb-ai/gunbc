@@ -1,6 +1,6 @@
 module extdeps.tools.diffutils
 
-import std.types { FilePath }
+import std.types { FilePath, NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -29,3 +29,9 @@ service shell.Diff {
     }
   }
 }
+
+// cmp(1), also shipped in diffutils. -s prints nothing and answers by exit status: 0 identical,
+// 1 different, 2 trouble. A readback consumes the status as the readback's own status, so any
+// nonzero result fails the step.
+data diffutils_cmp_program: NonEmptyStr = "cmp"
+data diffutils_cmp_silent_flag: NonEmptyStr = "-s"

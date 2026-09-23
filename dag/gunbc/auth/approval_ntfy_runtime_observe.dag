@@ -1,0 +1,363 @@
+module gunbc.auth.approval_ntfy_runtime_observe
+
+import std.types { NonEmptyStr, String, Int, List }
+import v2.std.algebra { any }
+import gunbc.auth.approval_ntfy_deployment { approval_ntfy_principal_name }
+
+// THE CONTRACT OF THE NTFY RUNTIME-OBSERVATION HELPER, and only the contract. The enrolment-code
+// verb (gunbc.auth.approval_device_routes issue_device_enrolment_code, #12077) must join its ACL
+// readback to the LIVE ntfy process: its actual environment, its exe, and its open fds (the auth
+// file and the 127.0.0.1:2586 listening socket). Those are /proc/<MainPID> reads that only the
+// process's own uid (gunbc-ntfy) or root can make. The verb runs as the operator's account, so it
+// crosses to gunbc-ntfy through ONE exact sudoers grant for ONE released invocation of this entry.
+//
+// WHY AN ENTRY OF THE RELEASED BINARY AND NOT A SCRIPT OR A PER-PID ARGV. A per-PID `sudo -u
+// gunbc-ntfy cat /proc/<pid>/environ` needs a wildcard in sudoers to cover a PID that changes on
+// every restart, and a wildcard is refused. An authored `sh -c` helper was refused by review 70354.
+// This entry is modeled .dag run by the broker's own released gunbc
+// (gunbc.live_deploy.emit approval_broker_ntfy_runtime_observe_operation), with no arguments. So
+// the sudoers line is that exact argv and leaves the grantee nothing to choose.
+//
+// WHAT LIVES WHERE. This module owns: the entry's identity (file and function), the principal it
+// runs as, the typed observation, and its wire codec. That codec is the only way the observation
+// crosses the process boundary, and both directions of it are defined here. The release-scoped argv
+// and the grant are owned by gunbc.live_deploy.emit, because they are functions of the release
+// locus. This module cannot import emit: emit imports this module, and the import graph is acyclic.
+// The entry FUNCTION BODY -- the reads themselves -- and the four joins over its result land in
+// #12077, in this module. Until then the grant names a function that does not resolve on main. That
+// is a declared frontier, not a dangling one: its trigger is #12077 adding
+// `fn approval_ntfy_runtime_observe() -> CliWireResponse` here. A helper run before that refuses at
+// resolve (no function), which is a loud failure of the verb's read, never a widened answer.
+
+data approval_ntfy_runtime_observe_entry_rel: NonEmptyStr = "dag/gunbc/auth/approval_ntfy_runtime_observe.dag"
+data approval_ntfy_runtime_observe_function: NonEmptyStr = "approval_ntfy_runtime_observe"
+
+// THE PRINCIPAL IS THE NTFY SERVER'S OWN ACCOUNT, read from the deployment that creates it, so the
+// grant's run-as and the account the unit runs under are one value.
+fn approval_ntfy_runtime_observe_run_as() -> NonEmptyStr {
+  approval_ntfy_principal_name
+}
+
+// ONE OPEN FD OF THE MAINPID, as ONE record. Not two parallel lists: an index alignment between
+// targets and inodes would be an invariant every producer had to keep and every consumer had to
+// trust. A record makes the pairing structural.
+//
+//   target        `readlink /proc/<MainPID>/fd/<n>`, VERBATIM. That includes `socket:[N]`,
+//                 `pipe:[N]`, `anon_inode:[eventfd]`, and a trailing ` (deleted)` on an unlinked
+//                 file. None of them is normalized. A deleted auth file must stay visible so the
+//                 join refuses it.
+//   target_inode  `stat -L -c %i /proc/<MainPID>/fd/<n>`: the inode of the object the fd refers to.
+//                 For a regular file, it is that file's inode (still reported when the file is
+//                 deleted). For `socket:[N]` and `pipe:[N]` it is N, the same number the link text
+//                 carries, because sockfs and pipefs report their own inode. For an
+//                 `anon_inode:[...]` target it is the anon_inode filesystem's ONE shared inode, so
+//                 it identifies nothing and must not be joined on. Every fd yields an inode. An
+//                 unreadable stat refuses the whole observation instead of dropping the fd.
+type NtfyOpenFd {
+  target: String
+  target_inode: Int
+}
+
+// THE RAW READINGS OF ONE PROCESS. The helper reads MainPID itself and brackets its reads with the
+// process's starttime, before and after. So every field describes one process incarnation, or the
+// helper refuses. It returns readings, not verdicts. The joins (no NTFY_* names; exe == the declared
+// binary; auth-file inode in the fd set; the 2586 socket inode in the fd set) are the verb's.
+//
+//   main_pid            systemd's MainPID for gunbc-ntfy.service. The helper REFUSES if the unit is
+//                       not active or MainPID is 0. It never reports pid 0.
+//   start_ticks_*       field 22 of /proc/<MainPID>/stat, read first and last. The verb joins both
+//                       against its own bracket. Unequal values here are still reported, not refused,
+//                       because the verb owns that comparison.
+//   environment_names   the NAMES in /proc/<MainPID>/environ, in file order. Values are not carried:
+//                       they may hold secrets, and the join needs only the names.
+//   exe_target          `readlink /proc/<MainPID>/exe`, VERBATIM, ` (deleted)` included.
+//   exe_inode           `stat -L -c %i /proc/<MainPID>/exe`.
+type NtfyRuntimeProcessObservation {
+  main_pid: Int
+  start_ticks_before: Int
+  start_ticks_after: Int
+  environment_names: List<String>
+  exe_target: String
+  exe_inode: Int
+  open_fds: List<NtfyOpenFd>
+}
+
+// `read` names the read that failed (for example `unit`, `environ`, `fd`), and `cause` is its
+// diagnostic. A refusal is an outcome of the helper, not a transport failure. A helper that could
+// not run at all (no grant, no binary, resolve failure) reaches the verb as a nonzero exit.
+type NtfyRuntimeObserveOutcome
+  = NtfyRuntimeObserved { observation: NtfyRuntimeProcessObservation }
+  | NtfyRuntimeObserveRefused { read: String, cause: String }
+
+// ── THE WIRE: ONE GRAMMAR, BOTH DIRECTIONS ────────────────────────────────────────────────────
+// One `key=value` line per scalar, one line per list member (repeated key), in list order. The key
+// is split off at the FIRST "=", so a value may contain "=". A value may NOT contain a newline: a
+// line codec cannot carry one without changing it. The encoder REFUSES such a value; it does not
+// flatten it. A readlink target with a newline is a legal Linux path, and rewriting it would be the
+// silent wrongness §5 forbids.
+
+data ntfy_runtime_wire_outcome: String = "outcome"
+data ntfy_runtime_wire_observed: String = "observed"
+data ntfy_runtime_wire_refused: String = "refused"
+data ntfy_runtime_wire_main_pid: String = "main_pid"
+data ntfy_runtime_wire_start_before: String = "start_ticks_before"
+data ntfy_runtime_wire_start_after: String = "start_ticks_after"
+data ntfy_runtime_wire_environment_name: String = "environment_name"
+data ntfy_runtime_wire_exe_target: String = "exe_target"
+data ntfy_runtime_wire_exe_inode: String = "exe_inode"
+// `open_fd=<target_inode> <target>`: the inode is decimal digits, so the FIRST space separates it
+// from a target that may itself contain spaces.
+data ntfy_runtime_wire_open_fd: String = "open_fd"
+data ntfy_runtime_wire_refused_read: String = "refused_read"
+data ntfy_runtime_wire_refused_cause: String = "refused_cause"
+
+type NtfyRuntimeWireEncoding
+  = NtfyRuntimeWireEncoded { text: String }
+  | NtfyRuntimeWireValueUnencodable { key: String, value: String }
+
+type NtfyRuntimeWireLine {
+  key: String
+  value: String
+}
+
+fn ntfy_runtime_wire_lines(outcome: NtfyRuntimeObserveOutcome) -> List<NtfyRuntimeWireLine> {
+  match outcome {
+    NtfyRuntimeObserveRefused { read: r, cause: c } => [
+      NtfyRuntimeWireLine { key: ntfy_runtime_wire_outcome, value: ntfy_runtime_wire_refused },
+      NtfyRuntimeWireLine { key: ntfy_runtime_wire_refused_read, value: r },
+      NtfyRuntimeWireLine { key: ntfy_runtime_wire_refused_cause, value: c },
+    ]
+    NtfyRuntimeObserved { observation: o } =>
+      concat(
+        concat(
+          [
+            NtfyRuntimeWireLine { key: ntfy_runtime_wire_outcome, value: ntfy_runtime_wire_observed },
+            NtfyRuntimeWireLine { key: ntfy_runtime_wire_main_pid, value: to_string(o.main_pid) },
+            NtfyRuntimeWireLine { key: ntfy_runtime_wire_start_before, value: to_string(o.start_ticks_before) },
+            NtfyRuntimeWireLine { key: ntfy_runtime_wire_start_after, value: to_string(o.start_ticks_after) },
+            NtfyRuntimeWireLine { key: ntfy_runtime_wire_exe_target, value: o.exe_target },
+            NtfyRuntimeWireLine { key: ntfy_runtime_wire_exe_inode, value: to_string(o.exe_inode) },
+          ],
+          map(o.environment_names, n => NtfyRuntimeWireLine { key: ntfy_runtime_wire_environment_name, value: n }),
+        ),
+        map(o.open_fds, f => NtfyRuntimeWireLine {
+          key: ntfy_runtime_wire_open_fd,
+          value: concat(to_string(f.target_inode), concat(" ", f.target)),
+        }),
+      )
+  }
+}
+
+fn ntfy_runtime_observe_encode(outcome: NtfyRuntimeObserveOutcome) -> NtfyRuntimeWireEncoding {
+  fold(ntfy_runtime_wire_lines(outcome: outcome), init: NtfyRuntimeWireEncoded { text: "" }, f: (acc, l) =>
+    match acc {
+      NtfyRuntimeWireValueUnencodable { key: k, value: v } => NtfyRuntimeWireValueUnencodable { key: k, value: v }
+      NtfyRuntimeWireEncoded { text: t } =>
+        if string_contains(s: l.value, pattern: "\n") {
+          NtfyRuntimeWireValueUnencodable { key: l.key, value: l.value }
+        } else {
+          NtfyRuntimeWireEncoded { text: concat(t, concat(l.key, concat("=", concat(l.value, "\n")))) }
+        }
+    }
+  )
+}
+
+// ── DECODE: TOTAL, AND EVERY MISMATCH IS A TYPED REFUSAL ──────────────────────────────────────
+type NtfyRuntimeObserveReading
+  = NtfyRuntimeReadingDecoded { outcome: NtfyRuntimeObserveOutcome }
+  | NtfyRuntimeReadingUndecodable { cause: String }
+
+// A line with no "=" is unknown grammar. So is a key this codec does not define. Both refuse; neither
+// is skipped.
+fn ntfy_runtime_wire_parse_lines(text: String) -> List<NtfyRuntimeWireLine>? {
+  fold(split(s: text, delimiter: "\n"), init: Present { value: [] }, f: (acc, line) =>
+    match acc {
+      Absent => none
+      Present { value: ls } =>
+        if line == "" {
+          Present { value: ls }
+        } else {
+          let parts = split(s: line, delimiter: "=")
+          if count(parts) < 2 {
+            none
+          } else {
+            let key = parts |> first
+            match key {
+              Absent => none
+              Present { value: k } => Present { value: concat(ls, [NtfyRuntimeWireLine {
+                key: k,
+                value: substring(s: line, start: k.length() + 1, end: line.length()),
+              }]) }
+            }
+          }
+        }
+    }
+  )
+}
+
+fn ntfy_runtime_wire_values(lines: List<NtfyRuntimeWireLine>, key: String) -> List<String> {
+  fold(lines, init: [], f: (acc, l) => if l.key == key { concat(acc, [l.value]) } else { acc })
+}
+
+type NtfyRuntimeWireField
+  = WireFieldOne { value: String }
+  | WireFieldMissing { key: String }
+  | WireFieldRepeated { key: String }
+
+fn ntfy_runtime_wire_one(lines: List<NtfyRuntimeWireLine>, key: String) -> NtfyRuntimeWireField {
+  let vs = ntfy_runtime_wire_values(lines: lines, key: key)
+  if count(vs) == 0 {
+    WireFieldMissing { key: key }
+  } else if count(vs) > 1 {
+    WireFieldRepeated { key: key }
+  } else {
+    match vs |> first {
+      Present { value: v } => WireFieldOne { value: v }
+      Absent => WireFieldMissing { key: key }
+    }
+  }
+}
+
+fn ntfy_runtime_wire_one_int(lines: List<NtfyRuntimeWireLine>, key: String) -> Int? {
+  match ntfy_runtime_wire_one(lines: lines, key: key) {
+    WireFieldOne { value: v } => parse_int(s: v)
+    WireFieldMissing { key: _ } => none
+    WireFieldRepeated { key: _ } => none
+  }
+}
+
+fn ntfy_runtime_wire_one_text(lines: List<NtfyRuntimeWireLine>, key: String) -> String? {
+  match ntfy_runtime_wire_one(lines: lines, key: key) {
+    WireFieldOne { value: v } => Present { value: v }
+    WireFieldMissing { key: _ } => none
+    WireFieldRepeated { key: _ } => none
+  }
+}
+
+fn ntfy_runtime_wire_parse_open_fd(value: String) -> NtfyOpenFd? {
+  let parts = split(s: value, delimiter: " ")
+  if count(parts) < 2 {
+    none
+  } else {
+    match parts |> first {
+      Absent => none
+      Present { value: inode_text } =>
+        match parse_int(s: inode_text) {
+          Absent => none
+          Present { value: inode } => Present { value: NtfyOpenFd {
+            target: substring(s: value, start: inode_text.length() + 1, end: value.length()),
+            target_inode: inode,
+          } }
+        }
+    }
+  }
+}
+
+fn ntfy_runtime_wire_open_fds(values: List<String>) -> List<NtfyOpenFd>? {
+  fold(values, init: Present { value: [] }, f: (acc, v) =>
+    match acc {
+      Absent => none
+      Present { value: fds } =>
+        match ntfy_runtime_wire_parse_open_fd(value: v) {
+          Absent => none
+          Present { value: fd } => Present { value: concat(fds, [fd]) }
+        }
+    }
+  )
+}
+
+data ntfy_runtime_wire_known_keys: List<String> = [
+  ntfy_runtime_wire_outcome,
+  ntfy_runtime_wire_main_pid,
+  ntfy_runtime_wire_start_before,
+  ntfy_runtime_wire_start_after,
+  ntfy_runtime_wire_environment_name,
+  ntfy_runtime_wire_exe_target,
+  ntfy_runtime_wire_exe_inode,
+  ntfy_runtime_wire_open_fd,
+  ntfy_runtime_wire_refused_read,
+  ntfy_runtime_wire_refused_cause,
+]
+
+fn ntfy_runtime_wire_unknown_key(lines: List<NtfyRuntimeWireLine>) -> String? {
+  fold(lines, init: none, f: (acc, l) =>
+    match acc {
+      Present { value: k } => Present { value: k }
+      Absent => if any(ntfy_runtime_wire_known_keys, k => k == l.key) { none } else { Present { value: l.key } }
+    }
+  )
+}
+
+fn ntfy_runtime_decode_observed(lines: List<NtfyRuntimeWireLine>) -> NtfyRuntimeObserveReading {
+  match ntfy_runtime_wire_one_int(lines: lines, key: ntfy_runtime_wire_main_pid) {
+    Absent => NtfyRuntimeReadingUndecodable { cause: "main_pid is not exactly one integer" }
+    Present { value: pid } =>
+      match ntfy_runtime_wire_one_int(lines: lines, key: ntfy_runtime_wire_start_before) {
+        Absent => NtfyRuntimeReadingUndecodable { cause: "start_ticks_before is not exactly one integer" }
+        Present { value: before } =>
+          match ntfy_runtime_wire_one_int(lines: lines, key: ntfy_runtime_wire_start_after) {
+            Absent => NtfyRuntimeReadingUndecodable { cause: "start_ticks_after is not exactly one integer" }
+            Present { value: after } =>
+              match ntfy_runtime_wire_one_text(lines: lines, key: ntfy_runtime_wire_exe_target) {
+                Absent => NtfyRuntimeReadingUndecodable { cause: "exe_target is not exactly one line" }
+                Present { value: exe } =>
+                  match ntfy_runtime_wire_one_int(lines: lines, key: ntfy_runtime_wire_exe_inode) {
+                    Absent => NtfyRuntimeReadingUndecodable { cause: "exe_inode is not exactly one integer" }
+                    Present { value: exe_inode } =>
+                      match ntfy_runtime_wire_open_fds(values: ntfy_runtime_wire_values(lines: lines, key: ntfy_runtime_wire_open_fd)) {
+                        Absent => NtfyRuntimeReadingUndecodable { cause: "an open_fd line is not `<inode> <target>`" }
+                        Present { value: fds } =>
+                          if pid <= 0 {
+                            NtfyRuntimeReadingUndecodable { cause: "main_pid is not positive: an observed outcome never carries pid 0" }
+                          } else {
+                            NtfyRuntimeReadingDecoded { outcome: NtfyRuntimeObserved { observation: NtfyRuntimeProcessObservation {
+                              main_pid: pid,
+                              start_ticks_before: before,
+                              start_ticks_after: after,
+                              environment_names: ntfy_runtime_wire_values(lines: lines, key: ntfy_runtime_wire_environment_name),
+                              exe_target: exe,
+                              exe_inode: exe_inode,
+                              open_fds: fds,
+                            } } }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn ntfy_runtime_decode_refused(lines: List<NtfyRuntimeWireLine>) -> NtfyRuntimeObserveReading {
+  match ntfy_runtime_wire_one_text(lines: lines, key: ntfy_runtime_wire_refused_read) {
+    Absent => NtfyRuntimeReadingUndecodable { cause: "refused_read is not exactly one line" }
+    Present { value: r } =>
+      match ntfy_runtime_wire_one_text(lines: lines, key: ntfy_runtime_wire_refused_cause) {
+        Absent => NtfyRuntimeReadingUndecodable { cause: "refused_cause is not exactly one line" }
+        Present { value: c } => NtfyRuntimeReadingDecoded { outcome: NtfyRuntimeObserveRefused { read: r, cause: c } }
+      }
+  }
+}
+
+fn ntfy_runtime_observe_decode(text: String) -> NtfyRuntimeObserveReading {
+  match ntfy_runtime_wire_parse_lines(text: text) {
+    Absent => NtfyRuntimeReadingUndecodable { cause: "a line carries no `=`" }
+    Present { value: lines } =>
+      match ntfy_runtime_wire_unknown_key(lines: lines) {
+        Present { value: k } => NtfyRuntimeReadingUndecodable { cause: concat("unknown key ", k) }
+        Absent =>
+          match ntfy_runtime_wire_one(lines: lines, key: ntfy_runtime_wire_outcome) {
+            WireFieldOne { value: v } =>
+              if v == ntfy_runtime_wire_observed {
+                ntfy_runtime_decode_observed(lines: lines)
+              } else if v == ntfy_runtime_wire_refused {
+                ntfy_runtime_decode_refused(lines: lines)
+              } else {
+                NtfyRuntimeReadingUndecodable { cause: concat("unknown outcome ", v) }
+              }
+            WireFieldMissing { key: k } => NtfyRuntimeReadingUndecodable { cause: concat("missing ", k) }
+            WireFieldRepeated { key: k } => NtfyRuntimeReadingUndecodable { cause: concat("repeated ", k) }
+          }
+      }
+  }
+}
