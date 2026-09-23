@@ -1336,12 +1336,13 @@ fn changed_and_enrolled_witness_identities_with_index(
     }
     touched_excluded_from_preparation.sort();
     // THE FOURTH PROJECTION IS THE DEPENDENTS DIRECTION OF THE SAME CLASS. The third seeds the
-    // module whose declaration the diff touched; this one seeds the untouched modules whose
-    // `match` over a coproduct went stale because its arm set changed in the touched one
-    // (gunbc#11194). Same diff window as every projection above -- the base is the floor's own
+    // module whose declaration the diff touched; this one seeds the untouched modules that read
+    // a declaration whose INTERFACE changed in the touched one -- a coproduct's arm set
+    // (gunbc#11194), a field or parameter type, an alias or brand (#12002 -> #12120), or a
+    // removal -- closed through declarations whose own interface references a changed one. Same diff window as every projection above -- the base is the floor's own
     // resolved comparison, never a second baseline authority -- and the same Strict preparation
     // downstream, so a planned consumer is a prepared consumer and `check_match` runs on it.
-    let arm_set = arm_set_consumer_planning(planning_index)?;
+    let interface_consumers = interface_consumer_planning(planning_index)?;
     Ok(FloorDiffProjections {
         changed_witnesses: changed,
         newly_enrolled_witnesses: enrolled,
@@ -1349,7 +1350,7 @@ fn changed_and_enrolled_witness_identities_with_index(
             touched_modules,
             touched_outside_floor_roots,
             touched_excluded_from_preparation,
-            arm_set,
+            interface_consumers,
         },
     })
 }
@@ -1363,7 +1364,7 @@ pub(crate) struct FloorDiffProjections {
 }
 
 /// The modules the diff obliges Strict preparation to reach beyond the gate closure, in both
-/// directions of the stale-match class -- and, typed rather than counted, the touched files that
+/// directions of the changed-interface class -- and, typed rather than counted, the touched files that
 /// could NOT seed anything because they live outside the floor's source roots.
 pub(crate) struct CompileSubjectSeeds {
     /// `v2.workflow.floor_subject_seed` `SeedTouchedEntryModule`.
@@ -1377,12 +1378,12 @@ pub(crate) struct CompileSubjectSeeds {
     /// -- a designed-refusal probe, for instance. Said at the seed, so the planned-then-not-prepared
     /// state is a typed row and not a count of excluded modules.
     pub touched_excluded_from_preparation: Vec<(String, String, String)>,
-    pub arm_set: ArmSetConsumerPlanning,
+    pub interface_consumers: InterfaceConsumerPlanning,
 }
 
-/// `v2.workflow.floor_subject_seed` `SeedArmSetChangedMatchConsumer`, at the grain the seed list
+/// `v2.workflow.floor_subject_seed` `SeedDeclarationInterfaceChangedConsumer`, at the grain the seed list
 /// consumes: the selection, plus the window it was measured over so the receipt can name it.
-pub(crate) enum ArmSetConsumerPlanning {
+pub(crate) enum InterfaceConsumerPlanning {
     /// No parse-phase index was lent to this process (the standalone `--required-floor`
     /// entry), so this projection could not look. "Could not look" and "looked and found
     /// nothing" are different states; on a CI commit the runner refuses this arm rather than
@@ -1395,7 +1396,7 @@ pub(crate) enum ArmSetConsumerPlanning {
     Selected {
         base: String,
         head: String,
-        selection: crate::cli_run::namespace_baseline::ArmSetConsumerSelection,
+        selection: crate::cli_run::namespace_baseline::InterfaceConsumerSelection,
     },
 }
 
@@ -1410,22 +1411,22 @@ pub(crate) enum ArmSetConsumerPlanning {
 /// `::Floor` are both `Witnesses`), so it exists at planning time and is lent in rather than
 /// rebuilt. A floor invoked without it on a CI commit is refused below rather than planned
 /// blind; a local run without a diff baseline never reaches here.
-fn arm_set_consumer_planning(
+fn interface_consumer_planning(
     planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
-) -> Result<ArmSetConsumerPlanning, String> {
+) -> Result<InterfaceConsumerPlanning, String> {
     use crate::cli_run::namespace_baseline::{
-        arm_set_changed_match_consumers, git_stdout, reconstruct_base_index, BaselineReconstruction,
+        git_stdout, interface_changed_consumers, reconstruct_base_index, BaselineReconstruction,
     };
     let Some(head_index) = planning_index else {
-        return Ok(ArmSetConsumerPlanning::NotEvaluated {
+        return Ok(InterfaceConsumerPlanning::NotEvaluated {
             reason: "no parse-phase declaration index was lent to the floor, so the dependents \
-                     direction of the stale-match class cannot be planned"
+                     direction of the changed-interface class cannot be planned"
                 .to_string(),
         });
     };
     // THE FLOOR'S OWN WINDOW. A merge-base comparison reads the base tree at the merge base, a
     // direct comparison at the base ref itself -- the same relation the affected-set diff was
-    // taken under, so the arm-set delta and the line-range attribution describe one change.
+    // taken under, so the interface delta and the line-range attribution describe one change.
     let workspace = process_workspace_root();
     let (base_commit, head_commit) = match floor_diff_comparison_readout()? {
         FreezeBaselineComparison::Direct { base, head, .. } => (base, head),
@@ -1438,10 +1439,10 @@ fn arm_set_consumer_planning(
     let head_commit = git_stdout(&workspace, &["rev-parse", &head_commit])?;
     match reconstruct_base_index(&workspace, &base_commit, &head_commit, head_index)? {
         BaselineReconstruction::NoSubject { head } => {
-            Ok(ArmSetConsumerPlanning::NoSubject { head })
+            Ok(InterfaceConsumerPlanning::NoSubject { head })
         }
         BaselineReconstruction::NotEvaluated { reason } => Err(format!(
-            "arm-set-changed consumer planning: the base side could not be reconstructed \
+            "interface-changed consumer planning: the base side could not be reconstructed \
              ({reason}); the planned set is NOT widened and NOT narrowed on an unobservable base"
         )),
         BaselineReconstruction::Reconstructed {
@@ -1449,10 +1450,10 @@ fn arm_set_consumer_planning(
             head,
             base_index,
             ..
-        } => Ok(ArmSetConsumerPlanning::Selected {
+        } => Ok(InterfaceConsumerPlanning::Selected {
             base,
             head,
-            selection: arm_set_changed_match_consumers(&base_index, head_index),
+            selection: interface_changed_consumers(&base_index, head_index),
         }),
     }
 }
@@ -3943,7 +3944,7 @@ pub(crate) fn run_discovery_rows(
 /// run touches nothing: the gate's prefix roster and authored-module roster, both decoded from
 /// `v2.workflow.required_floor` in a frame over that module's own closure, and the local-repo wet
 /// schedule rows whose entry modules join the module seeds. The diff-derived seeds (changed
-/// witnesses, touched entries, arm-set consumers) are NOT here: they are a fact about one run's
+/// witnesses, touched entries, changed-interface consumers) are NOT here: they are a fact about one run's
 /// diff, and this is the part of the subject that holds for every run.
 ///
 /// ONE PRODUCER, TWO CONSUMERS, and that is the reason it is a function rather than a block in
@@ -4047,7 +4048,7 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // that edits a probe (gunbc#11343 at 76923b733, run 34874099243:
         // `[floor-phase] phase=touched-entry-compile-subject seeds=6 modules=[...,
         // "test.probe.bare_string_from_boundary_probe"]` while
-        // `phase=arm-set-changed-consumers ... consumers_added=0`) pulled its designed refusal
+        // `phase=interface-changed-consumers ... consumers_added=0`) pulled its designed refusal
         // into Strict preparation as a blocker. This row is applied AFTER the seed walk, so the
         // seed still prints (as `TouchedEntryExcludedFromPreparation`, a typed row rather than a
         // vanished seed), and `ExclusionOrphansImporter` refuses the day anything imports one.
@@ -5695,7 +5696,7 @@ pub(crate) fn floor_cgroup_stat_beat(
 ///
 /// `planning_index` is the parse phase's `DeclarationIndex`, LENT rather than rebuilt: the
 /// floor's planning row derives the match-bearing consumers of a changed coproduct from it
-/// (`arm_set_consumer_planning`). `None` is "no such index in this process" -- the standalone
+/// (`interface_consumer_planning`). `None` is "no such index in this process" -- the standalone
 /// `--required-floor` entry -- and on a CI commit that is a refusal, not a blind plan.
 pub fn run_required_floor(
     source_roots: &[String],
@@ -5834,8 +5835,8 @@ pub fn run_required_floor(
     // else here is an AUTHORED MODULE NAME and is matched at segment boundaries, so `a.b` seeds
     // `a.b` and `a.b.c` and never `a.bc`.
     let closure_prefix_seeds: Vec<String> = required_gate_prefixes.clone();
-    let mut arm_set_consumer_seeds: Vec<String> = Vec::new();
-    let mut arm_set_consumers_outside_floor_roots: Vec<(String, String)> = Vec::new();
+    let mut interface_consumer_seeds: Vec<String> = Vec::new();
+    let mut interface_consumers_outside_floor_roots: Vec<(String, String)> = Vec::new();
     if let Some(subject) = &compile_subject {
         // THE RECEIPT NAMES EACH SEED BY ITS GROUND, so the planned-set delta is attributable
         // per merge: which consumers were added, by which changed declaration, and which
@@ -5862,33 +5863,35 @@ pub fn run_required_floor(
                  -- not a seed: the floor's source roots do not index it"
             );
         }
-        match &subject.arm_set {
-            ArmSetConsumerPlanning::NotEvaluated { reason } => {
+        match &subject.interface_consumers {
+            InterfaceConsumerPlanning::NotEvaluated { reason } => {
                 if commit != "local" && !commit.is_empty() {
                     return Err(format!(
-                        "REQUIRED-FLOOR REFUSAL cause=ArmSetConsumerPlanningUnavailable {reason} \
+                        "REQUIRED-FLOOR REFUSAL cause=InterfaceConsumerPlanningUnavailable {reason} \
                          — a CI floor may not plan the prepared subject without the dependents \
-                         direction of the stale-match class"
+                         direction of the changed-interface class"
                     ));
                 }
                 eprintln!(
-                    "[floor-phase] phase=arm-set-changed-consumers state=not-evaluated \
+                    "[floor-phase] phase=interface-changed-consumers state=not-evaluated \
                      reason={reason:?}"
                 );
             }
-            ArmSetConsumerPlanning::NoSubject { head } => {
+            InterfaceConsumerPlanning::NoSubject { head } => {
                 eprintln!(
-                    "[floor-phase] phase=arm-set-changed-consumers state=completed \
+                    "[floor-phase] phase=interface-changed-consumers state=completed \
                      changed_declarations=0 consumers_added=0 base={head} head={head} \
                      (no subject: the window's base is its head)"
                 );
             }
-            ArmSetConsumerPlanning::Selected {
+            InterfaceConsumerPlanning::Selected {
                 base,
                 head,
                 selection,
             } => {
-                use crate::cli_run::namespace_baseline::ArmConsumerBinding;
+                use crate::cli_run::namespace_baseline::{
+                    InterfaceChangeGround, InterfaceConsumerBinding,
+                };
                 let floor_roots = floor_source_roots_workspace_relative(source_roots);
                 let mut flat_channel = 0usize;
                 for change in &selection.changes {
@@ -5900,52 +5903,62 @@ pub fn run_required_floor(
                     }) {
                         let name = &consumer.consumer_module_path;
                         if !path_under_floor_roots(&consumer.consumer_rel_path, &floor_roots) {
-                            arm_set_consumers_outside_floor_roots
+                            interface_consumers_outside_floor_roots
                                 .push((consumer.consumer_rel_path.clone(), name.clone()));
                             continue;
                         }
                         match consumer.binding {
-                            ArmConsumerBinding::BoundToDeclaringModule => {
+                            InterfaceConsumerBinding::BoundToDeclaringModule => {
                                 resolved.push(name.clone())
                             }
-                            ArmConsumerBinding::BoundThroughFlatBareChannel => {
+                            InterfaceConsumerBinding::BoundThroughFlatBareChannel => {
                                 flat_channel += 1;
                                 flat.push(name.clone())
                             }
                         }
-                        arm_set_consumer_seeds.push(name.clone());
+                        interface_consumer_seeds.push(name.clone());
                     }
+                    let ground = match &change.ground {
+                        InterfaceChangeGround::ArmSetChanged {
+                            arms_added,
+                            arms_removed,
+                        } => format!(
+                            "ArmSetChanged arms_added={arms_added:?} arms_removed={arms_removed:?}"
+                        ),
+                        InterfaceChangeGround::SignatureChanged => "SignatureChanged".to_string(),
+                        InterfaceChangeGround::DeclarationRemoved => {
+                            "DeclarationRemoved".to_string()
+                        }
+                        InterfaceChangeGround::PropagatedThrough {
+                            module_path,
+                            declaration,
+                        } => format!("PropagatedThrough through={module_path}.{declaration}"),
+                    };
                     eprintln!(
-                        "[floor-plan] SeedArmSetChangedMatchConsumer declaration={}.{} \
-                         arms_added={:?} arms_removed={:?} consumers_added={:?} \
-                         flat_channel_consumers={:?}",
-                        change.module_path,
-                        change.declaration,
-                        change.arms_added,
-                        change.arms_removed,
-                        resolved,
-                        flat
+                        "[floor-plan] SeedDeclarationInterfaceChangedConsumer declaration={}.{} \
+                         ground={ground} consumers_added={:?} flat_channel_consumers={:?}",
+                        change.module_path, change.declaration, resolved, flat
                     );
                 }
-                arm_set_consumer_seeds.sort();
-                arm_set_consumer_seeds.dedup();
-                arm_set_consumers_outside_floor_roots.sort();
-                arm_set_consumers_outside_floor_roots.dedup();
-                for (path, module) in &arm_set_consumers_outside_floor_roots {
+                interface_consumer_seeds.sort();
+                interface_consumer_seeds.dedup();
+                interface_consumers_outside_floor_roots.sort();
+                interface_consumers_outside_floor_roots.dedup();
+                for (path, module) in &interface_consumers_outside_floor_roots {
                     eprintln!(
-                        "[floor-plan] ArmSetConsumerOutsideFloorRoots path={path} \
+                        "[floor-plan] InterfaceConsumerOutsideFloorRoots path={path} \
                          module_path={module} -- planned but not a seed: the floor's source \
                          roots do not index it, so its stale match is NOT checked here"
                     );
                 }
                 eprintln!(
-                    "[floor-phase] phase=arm-set-changed-consumers state=completed \
+                    "[floor-phase] phase=interface-changed-consumers state=completed \
                      changed_declarations={} consumers_added={} flat_channel_consumers={} \
                      outside_floor_roots={} base={base} head={head}",
                     selection.changes.len(),
-                    arm_set_consumer_seeds.len(),
+                    interface_consumer_seeds.len(),
                     flat_channel,
-                    arm_set_consumers_outside_floor_roots.len()
+                    interface_consumers_outside_floor_roots.len()
                 );
             }
         }
@@ -5961,7 +5974,7 @@ pub fn run_required_floor(
             .iter()
             .flat_map(|subject| subject.touched_modules.iter().cloned()),
     )
-    .chain(arm_set_consumer_seeds.iter().cloned())
+    .chain(interface_consumer_seeds.iter().cloned())
     .collect();
     let (mut prepared, prepared_sources) = crate::cli_run::prepare_repository_from_corpus(
         &floor_corpus,
@@ -11795,7 +11808,7 @@ mod changed_witness_projection_tests {
     fn an_edited_must_not_resolve_probe_is_seeded_then_excluded_and_preparation_stays_green() {
         let probe = "module armset.probe\n\nimport armset.x { Signal }\n\n\
 fn broken(s: Signal) -> Int {\n  s.no_such_field\n}\n";
-        let fx = arm_set_fixture("probe", "head", &[("x.dag", ARM_X_HEAD), ("w.dag", ARM_W)]);
+        let fx = interface_fixture("probe", "head", &[("x.dag", ARM_X_HEAD), ("w.dag", ARM_W)]);
         std::fs::create_dir_all(fx.join("test/probe")).expect("probe dir");
         std::fs::write(fx.join("test/probe/probe.dag"), probe).expect("probe source");
         let rel = fx
@@ -11916,9 +11929,9 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
 
     /// The fixture root, under the workspace's gitignored `target/`. Removed by the test that
     /// made it; a panicking test leaves it for the next run of the same name to replace.
-    fn arm_set_fixture(name: &str, side: &str, files: &[(&str, &str)]) -> PathBuf {
+    fn interface_fixture(name: &str, side: &str, files: &[(&str, &str)]) -> PathBuf {
         let root = process_workspace_root().join(format!(
-            "target/arm_set_red_{name}_{}/{side}",
+            "target/interface_red_{name}_{}/{side}",
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&root);
@@ -11929,7 +11942,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         root
     }
 
-    fn arm_set_index(fixture: &Path) -> crate::cli_run::declaration_index::DeclarationIndex {
+    fn interface_index(fixture: &Path) -> crate::cli_run::declaration_index::DeclarationIndex {
         let rel = fixture
             .strip_prefix(process_workspace_root())
             .expect("fixture is under the workspace")
@@ -11941,18 +11954,18 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         }
     }
 
-    fn arm_set_selection(
+    fn interface_selection(
         name: &str,
         base: &[(&str, &str)],
         head: &[(&str, &str)],
     ) -> (
-        crate::cli_run::namespace_baseline::ArmSetConsumerSelection,
+        crate::cli_run::namespace_baseline::InterfaceConsumerSelection,
         PathBuf,
     ) {
-        let base_fx = arm_set_fixture(name, "base", base);
-        let head_fx = arm_set_fixture(name, "head", head);
-        let base_index = arm_set_index(&base_fx);
-        let head_index = arm_set_index(&head_fx);
+        let base_fx = interface_fixture(name, "base", base);
+        let head_fx = interface_fixture(name, "head", head);
+        let base_index = interface_index(&base_fx);
+        let head_index = interface_index(&head_fx);
         let _ = std::fs::remove_dir_all(&base_fx);
         assert!(
             crate::cli_run::declaration_index::index_population(&base_index).modules > 0
@@ -11960,7 +11973,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
             "PLANT MALFORMED: a side indexed no modules"
         );
         (
-            crate::cli_run::namespace_baseline::arm_set_changed_match_consumers(
+            crate::cli_run::namespace_baseline::interface_changed_consumers(
                 &base_index,
                 &head_index,
             ),
@@ -11969,7 +11982,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     }
 
     fn consumers_of(
-        selection: &crate::cli_run::namespace_baseline::ArmSetConsumerSelection,
+        selection: &crate::cli_run::namespace_baseline::InterfaceConsumerSelection,
     ) -> Vec<&str> {
         let mut out: Vec<&str> = selection
             .consumers
@@ -11977,7 +11990,25 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
             .map(|c| c.consumer_module_path.as_str())
             .collect();
         out.sort();
+        out.dedup();
         out
+    }
+
+    /// The DIRECT changes a selection read in one module -- propagated changes excluded, so a
+    /// fixture asserts what the diff changed rather than what its readers' signatures inherit.
+    fn direct_changes_in<'a>(
+        selection: &'a crate::cli_run::namespace_baseline::InterfaceConsumerSelection,
+        module_path: &str,
+    ) -> Vec<&'a crate::cli_run::namespace_baseline::DeclarationInterfaceChange> {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        selection
+            .changes
+            .iter()
+            .filter(|c| {
+                c.module_path == module_path
+                    && !matches!(c.ground, InterfaceChangeGround::PropagatedThrough { .. })
+            })
+            .collect()
     }
 
     /// THE RED. Arm added in X; Y untouched; Y is selected; Y prepared under the floor's own
@@ -11985,8 +12016,8 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     /// -- see the positive control below, which prepares W without Y.
     #[test]
     fn arm_growth_selects_the_untouched_match_consumer_and_strict_preparation_refuses_it() {
-        use crate::cli_run::namespace_baseline::ArmConsumerBinding;
-        let (selection, head_fx) = arm_set_selection(
+        use crate::cli_run::namespace_baseline::{InterfaceChangeGround, InterfaceConsumerBinding};
+        let (selection, head_fx) = interface_selection(
             "red",
             &[
                 ("x.dag", ARM_X_BASE),
@@ -12001,14 +12032,17 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
                 ("z.dag", ARM_Z),
             ],
         );
-        assert_eq!(selection.changes.len(), 1, "{:?}", selection.changes);
-        let change = &selection.changes[0];
+        let direct = direct_changes_in(&selection, "armset.x");
+        assert_eq!(direct.len(), 1, "{:?}", selection.changes);
+        let change = direct[0];
+        assert_eq!(change.declaration, "Signal");
         assert_eq!(
-            (change.module_path.as_str(), change.declaration.as_str()),
-            ("armset.x", "Signal")
+            change.ground,
+            InterfaceChangeGround::ArmSetChanged {
+                arms_added: vec!["Amber".to_string()],
+                arms_removed: Vec::new(),
+            }
         );
-        assert_eq!(change.arms_added, vec!["Amber".to_string()]);
-        assert!(change.arms_removed.is_empty());
         // Y and W are consumers bound to the declarer; Z names `Red` but binds to its own
         // coproduct and is NOT selected; X itself is never selected here (the dependency
         // direction seeds it from the diff).
@@ -12016,11 +12050,11 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         assert!(selection
             .consumers
             .iter()
-            .all(|c| c.binding == ArmConsumerBinding::BoundToDeclaringModule));
+            .all(|c| c.binding == InterfaceConsumerBinding::BoundToDeclaringModule));
         let y = selection
             .consumers
             .iter()
-            .find(|c| c.consumer_module_path == "armset.y")
+            .find(|c| c.consumer_module_path == "armset.y" && c.changed_declaration == "Signal")
             .expect("y selected");
         assert_eq!(y.in_declarations, vec!["stop_of".to_string()]);
 
@@ -12048,7 +12082,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     /// refuses whatever is seeded.
     #[test]
     fn arm_growth_consumer_with_a_wildcard_is_planned_and_prepares_clean() {
-        let (selection, head_fx) = arm_set_selection(
+        let (selection, head_fx) = interface_selection(
             "wildcard",
             &[("x.dag", ARM_X_BASE), ("w.dag", ARM_W)],
             &[("x.dag", ARM_X_HEAD), ("w.dag", ARM_W)],
@@ -12066,18 +12100,23 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         assert!(prepared.modules_resolved >= 2, "x and w prepared");
     }
 
-    /// CONTROL: a type change with no match consumers plans nothing extra. The record type grows
-    /// a field; its user projects a field and matches nothing.
+    /// A RECORD THAT GROWS A FIELD IS AN INTERFACE CHANGE: its untouched reader is planned even
+    /// though it carries no match. Before the arm-set ground was generalized this fixture was the
+    /// control that planned NOTHING -- the latent failure itself, asserted as correct.
     #[test]
-    fn a_type_change_with_no_match_consumers_plans_nothing_extra() {
-        let (selection, fx) = arm_set_selection(
+    fn a_record_field_growth_plans_its_untouched_reader() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let (selection, fx) = interface_selection(
             "record",
             &[("rec.dag", REC_BASE), ("rec_user.dag", REC_USER)],
             &[("rec.dag", REC_HEAD), ("rec_user.dag", REC_USER)],
         );
         let _ = std::fs::remove_dir_all(&fx);
-        assert!(selection.changes.is_empty(), "{:?}", selection.changes);
-        assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
+        let direct = direct_changes_in(&selection, "armset.rec");
+        assert_eq!(direct.len(), 1, "{:?}", selection.changes);
+        assert_eq!(direct[0].declaration, "Box");
+        assert_eq!(direct[0].ground, InterfaceChangeGround::SignatureChanged);
+        assert_eq!(consumers_of(&selection), vec!["armset.rec_user"]);
     }
 
     /// SECOND CONTROL: a diff with no type change selects exactly nothing -- the planned set is
@@ -12085,31 +12124,39 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
     #[test]
     fn a_diff_with_no_arm_set_change_plans_nothing_extra() {
         let y_edited = ARM_Y.replace("stop_of", "halts");
-        let (selection, fx) = arm_set_selection(
+        let (selection, fx) = interface_selection(
             "notype",
             &[("x.dag", ARM_X_BASE), ("y.dag", ARM_Y)],
             &[("x.dag", ARM_X_BASE), ("y.dag", y_edited.as_str())],
         );
         let _ = std::fs::remove_dir_all(&fx);
-        assert!(selection.changes.is_empty());
-        assert!(selection.consumers.is_empty());
+        // X is unchanged; Y's own rename is a removal nobody else reads.
+        assert!(direct_changes_in(&selection, "armset.x").is_empty());
+        assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
     }
 
     /// An arm REMOVED elsewhere is the same class in the other direction: Y's match names an
     /// arm that no longer exists, and only the base side can bind that spelling to X.
     #[test]
     fn arm_removal_selects_the_consumer_that_still_names_the_arm() {
-        let (selection, fx) = arm_set_selection(
+        let (selection, fx) = interface_selection(
             "removal",
             &[("x.dag", ARM_X_HEAD), ("y.dag", ARM_Y)],
             &[("x.dag", ARM_X_BASE), ("y.dag", ARM_Y)],
         );
-        assert_eq!(selection.changes.len(), 1);
-        assert_eq!(selection.changes[0].arms_removed, vec!["Amber".to_string()]);
+        let direct = direct_changes_in(&selection, "armset.x");
+        assert_eq!(direct.len(), 1);
+        assert_eq!(
+            direct[0].ground,
+            crate::cli_run::namespace_baseline::InterfaceChangeGround::ArmSetChanged {
+                arms_added: Vec::new(),
+                arms_removed: vec!["Amber".to_string()],
+            }
+        );
         // Y names Red and Green, both still present: it is a consumer of the changed coproduct.
         assert_eq!(consumers_of(&selection), vec!["armset.y"]);
         let _ = std::fs::remove_dir_all(&fx);
-        let (selection, fx) = arm_set_selection(
+        let (selection, fx) = interface_selection(
             "removal_named",
             &[
                 ("x.dag", ARM_X_HEAD),
@@ -12130,12 +12177,148 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         assert_eq!(consumers_of(&selection), vec!["armset.y"]);
     }
 
+    /// The #12002 shape (gunbc.runner runner_microvm_network `HelperStanding`): a product field
+    /// retyped from `Int` to a new product, read by an untouched constructor.
+    const IFACE_H_BASE: &str = "module iface.h\n\ntype Standing {\n  surface: Int\n}\n";
+    const IFACE_H_HEAD: &str = "module iface.h\n\ntype Reading {\n  value: Int\n}\n\n\
+type Standing {\n  surface: Reading\n}\n";
+    const IFACE_H_USER: &str = "module iface.hc\n\nimport iface.h { Standing }\n\n\
+fn standing() -> Standing {\n  Standing { surface: 3 }\n}\n";
+    /// The #12002 brand shape (`ConvergeGeneration`): an alias re-branded under a product that
+    /// is itself unchanged. The consumer names only the product, so it is reached ONLY through
+    /// propagation.
+    const IFACE_G_BASE: &str = "module iface.g\n\ntype Generation = Int\n\n\
+type Converged {\n  generation: Generation\n}\n";
+    const IFACE_G_HEAD: &str =
+        "module iface.g\n\ntype Generation = String where brand(\"Generation\")\n\n\
+type Converged {\n  generation: Generation\n}\n";
+    const IFACE_G_USER: &str = "module iface.gc\n\nimport iface.g { Converged }\n\n\
+fn converged() -> Converged {\n  Converged { generation: 3 }\n}\n";
+    /// A function whose parameter and result are retyped, its caller, and an importer that never
+    /// reads it.
+    const IFACE_F_BASE: &str = "module iface.f\n\nfn width_of(w: Int) -> Int {\n  w\n}\n";
+    const IFACE_F_HEAD: &str = "module iface.f\n\nfn width_of(w: String) -> String {\n  w\n}\n";
+    const IFACE_F_BODY_ONLY: &str = "module iface.f\n\nfn width_of(w: Int) -> Int {\n  w + 1\n}\n";
+    const IFACE_F_CALLER: &str = "module iface.fc\n\nimport iface.f { width_of }\n\n\
+fn twice() -> Int {\n  width_of(w: 2)\n}\n";
+    const IFACE_F_IDLE: &str = "module iface.fi\n\nimport iface.f\n\nfn idle() -> Int {\n  1\n}\n";
+
+    /// Prepare `seeds` over one fixture root under the floor's own Strict path.
+    fn prepare_seeds(root: &Path, seeds: &[&str]) -> Result<(), String> {
+        let roots = [root.to_string_lossy().into_owned()];
+        let (_lock, previous) = enter_workspace_cwd();
+        let index = build_multi_entry_index(&roots);
+        let seeds: Vec<String> = seeds.iter().map(|s| s.to_string()).collect();
+        let prepared = prepare_repository_closure(&roots, &[], Some((&index, &[], &seeds)));
+        leave_workspace_cwd(&previous);
+        prepared.map(|_| ())
+    }
+
+    /// CONTROL (a) AND (e). A product field `Int -> Reading` plans the untouched constructor --
+    /// and the pair of preparations is the latent failure itself: the touched module alone (the
+    /// seed set before this ground existed) prepares GREEN over a non-typechecking importer, and
+    /// adding the planned consumer turns it RED. Removing the ground recreates the first arm.
+    #[test]
+    fn a_product_field_retype_plans_the_untouched_constructor_and_without_it_the_floor_is_green() {
+        let (selection, head_fx) = interface_selection(
+            "field",
+            &[("h.dag", IFACE_H_BASE), ("hc.dag", IFACE_H_USER)],
+            &[("h.dag", IFACE_H_HEAD), ("hc.dag", IFACE_H_USER)],
+        );
+        assert_eq!(consumers_of(&selection), vec!["iface.hc"]);
+        let touched_only = prepare_seeds(&head_fx, &["iface.h"]);
+        let planned = prepare_seeds(&head_fx, &["iface.h", "iface.hc"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(
+            touched_only.is_ok(),
+            "(e) the touched module alone must prepare green -- the latent failure: {touched_only:?}"
+        );
+        assert!(
+            planned.is_err(),
+            "(a) the planned consumer must refuse under Strict preparation"
+        );
+    }
+
+    /// CONTROL (b). `Int -> branded Generation` under an unchanged product: the consumer names
+    /// only `Converged`, so it is planned through `PropagatedThrough`, and refuses when prepared.
+    #[test]
+    fn a_rebranded_alias_plans_the_consumer_of_the_product_that_carries_it() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let (selection, head_fx) = interface_selection(
+            "brand",
+            &[("g.dag", IFACE_G_BASE), ("gc.dag", IFACE_G_USER)],
+            &[("g.dag", IFACE_G_HEAD), ("gc.dag", IFACE_G_USER)],
+        );
+        assert!(
+            selection
+                .changes
+                .iter()
+                .any(|c| c.declaration == "Converged"
+                    && c.ground
+                        == InterfaceChangeGround::PropagatedThrough {
+                            module_path: "iface.g".to_string(),
+                            declaration: "Generation".to_string(),
+                        }),
+            "{:?}",
+            selection.changes
+        );
+        assert_eq!(consumers_of(&selection), vec!["iface.gc"]);
+        let planned = prepare_seeds(&head_fx, &["iface.g", "iface.gc"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(planned.is_err(), "the planned consumer must refuse");
+    }
+
+    /// CONTROL (c). A function's parameter and result retyped plans its untouched caller -- and
+    /// NOT an importer that never reads it: the population is readers, not importers.
+    #[test]
+    fn a_function_signature_change_plans_its_caller_and_not_an_idle_importer() {
+        let (selection, head_fx) = interface_selection(
+            "signature",
+            &[
+                ("f.dag", IFACE_F_BASE),
+                ("fc.dag", IFACE_F_CALLER),
+                ("fi.dag", IFACE_F_IDLE),
+            ],
+            &[
+                ("f.dag", IFACE_F_HEAD),
+                ("fc.dag", IFACE_F_CALLER),
+                ("fi.dag", IFACE_F_IDLE),
+            ],
+        );
+        assert_eq!(consumers_of(&selection), vec!["iface.fc"]);
+        let planned = prepare_seeds(&head_fx, &["iface.f", "iface.fc"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(planned.is_err(), "the planned caller must refuse");
+    }
+
+    /// CONTROL (d). A body-only edit leaves the interface unchanged: nothing is planned, not the
+    /// caller and not the importer.
+    #[test]
+    fn a_body_only_change_plans_no_reverse_consumer() {
+        let (selection, fx) = interface_selection(
+            "body",
+            &[
+                ("f.dag", IFACE_F_BASE),
+                ("fc.dag", IFACE_F_CALLER),
+                ("fi.dag", IFACE_F_IDLE),
+            ],
+            &[
+                ("f.dag", IFACE_F_BODY_ONLY),
+                ("fc.dag", IFACE_F_CALLER),
+                ("fi.dag", IFACE_F_IDLE),
+            ],
+        );
+        let _ = std::fs::remove_dir_all(&fx);
+        assert!(selection.changes.is_empty(), "{:?}", selection.changes);
+        assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
+    }
+
     /// A module seed matches itself and the modules it CONTAINS by name, never a sibling that
     /// merely shares a textual prefix: `armset.y` must not seed `armset.yz`.
     #[test]
     fn a_module_seed_is_segment_bounded() {
         let yz = "module armset.yz\n\nfn nothing() -> Bool {\n  true\n}\n";
-        let fx = arm_set_fixture(
+        let fx = interface_fixture(
             "segment",
             "head",
             &[("x.dag", ARM_X_HEAD), ("y.dag", ARM_Y), ("yz.dag", yz)],

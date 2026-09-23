@@ -6,51 +6,67 @@ import v2.workflow.floor_subject_seed {
   SeedRequiredGatePrefix,
   SeedRequiredGateAuthoredModule,
   SeedTouchedEntryModule,
-  SeedArmSetChangedMatchConsumer,
-  ArmSetMatchConsumerBinding,
+  SeedDeclarationInterfaceChangedConsumer,
+  InterfaceConsumerBinding,
   BoundToDeclaringModule,
   BoundThroughFlatBareChannel,
-  ArmSetMatchReadDisposition,
-  ArmReadPlanned,
-  ArmReadBoundToAnotherDeclarer,
-  arm_set_match_read_disposition,
-  arm_set_match_consumer_binding,
-  ModuleArmSetBinding,
+  InterfaceReadDisposition,
+  ReadPlanned,
+  ReadBoundToAnotherDeclarer,
+  InterfaceReadChannel,
+  ParserTypeOccurrence,
+  MatchArmHead,
+  NameOccurrence,
+  InterfaceReadSite,
+  ReadInInterface,
+  ReadInBody,
+  interface_change_propagates,
+  interface_read_disposition,
+  interface_consumer_binding,
+  ModuleInterfaceBinding,
   ModulePlanned,
   ModuleNotPlanned,
   module_is_planned,
   module_is_resolved_consumer,
-  arm_read_is_planned,
-  arm_read_is_bound_to_declarer,
+  read_is_planned,
+  read_is_bound_to_declarer,
   seed_ground_wire_name,
   seed_ground_is_textual_prefix,
 }
 
 // THE THREE DISPOSITIONS OF ONE READ, separated by the candidate set alone. The Rust selector
-// (`arm_set_changed_match_consumers`) is a projection of this rule; its executed red is the
+// (`interface_changed_consumers`) is a projection of this rule; its executed reds are the
 // #11194 fixture in `required_floor_runner` (`arm_growth_selects_the_untouched_match_consumer_
-// and_strict_preparation_refuses_it`). These rows hold the RULE still while the host realizes it.
+// and_strict_preparation_refuses_it`) and the #12002 fixtures beside it (`a_product_field_retype_
+// plans_the_untouched_constructor_and_without_it_the_floor_is_green`, `a_rebranded_alias_plans_the_
+// consumer_of_the_product_that_carries_it`). These rows hold the RULE still while the host realizes it.
 test fn a_read_whose_candidates_name_the_declarer_is_planned_as_resolved() -> Bool {
-  arm_read_is_bound_to_declarer(
-    read: arm_set_match_read_disposition(
+  read_is_bound_to_declarer(
+    read: interface_read_disposition(
       declaring_candidates: ["armset.x"],
       changed_module_path: "armset.x",
+      channel: MatchArmHead,
     )
   )
 }
 
 test fn a_read_with_no_candidate_is_planned_through_the_flat_channel_and_counted_apart() -> Bool {
-  let read = arm_set_match_read_disposition(declaring_candidates: [], changed_module_path: "armset.x")
-  arm_read_is_planned(read: read) && !arm_read_is_bound_to_declarer(read: read)
+  let read = interface_read_disposition(
+    declaring_candidates: [],
+    changed_module_path: "armset.x",
+    channel: ParserTypeOccurrence,
+  )
+  read_is_planned(read: read) && !read_is_bound_to_declarer(read: read)
 }
 
 // THE ARM THAT STOPS THE SELECTOR FROM WIDENING: a same-spelled arm of ANOTHER coproduct is
 // not this coproduct's consumer. Same spelling, different declarer, not planned.
 test fn a_read_bound_to_another_declarer_is_not_planned() -> Bool {
-  !arm_read_is_planned(
-    read: arm_set_match_read_disposition(
+  !read_is_planned(
+    read: interface_read_disposition(
       declaring_candidates: ["armset.z"],
       changed_module_path: "armset.x",
+      channel: MatchArmHead,
     )
   )
 }
@@ -58,13 +74,13 @@ test fn a_read_bound_to_another_declarer_is_not_planned() -> Bool {
 // ONE RESOLVED READ MAKES THE MODULE A RESOLVED CONSUMER, whatever the other reads did; a
 // module whose only reads are flat is counted flat; a module with no planned read is not planned.
 test fn a_module_binding_is_the_strongest_of_its_reads() -> Bool {
-  let flat = ArmReadPlanned { binding: BoundThroughFlatBareChannel }
-  let resolved = ArmReadPlanned { binding: BoundToDeclaringModule }
-  let other = ArmReadBoundToAnotherDeclarer
-  module_is_resolved_consumer(binding: arm_set_match_consumer_binding(reads: [flat, resolved, other]))
-    && module_is_planned(binding: arm_set_match_consumer_binding(reads: [flat, other]))
-    && !module_is_resolved_consumer(binding: arm_set_match_consumer_binding(reads: [flat, other]))
-    && !module_is_planned(binding: arm_set_match_consumer_binding(reads: [other]))
+  let flat = ReadPlanned { binding: BoundThroughFlatBareChannel }
+  let resolved = ReadPlanned { binding: BoundToDeclaringModule }
+  let other = ReadBoundToAnotherDeclarer
+  module_is_resolved_consumer(binding: interface_consumer_binding(reads: [flat, resolved, other]))
+    && module_is_planned(binding: interface_consumer_binding(reads: [flat, other]))
+    && !module_is_resolved_consumer(binding: interface_consumer_binding(reads: [flat, other]))
+    && !module_is_planned(binding: interface_consumer_binding(reads: [other]))
 }
 
 // THE TWO MATCHING RULES ARE A FACT OF THE GROUND, not of the list the host happened to put a
@@ -78,7 +94,7 @@ test fn only_the_gate_prefix_ground_is_matched_textually() -> Bool {
       ground: SeedTouchedEntryModule { path: "src/v2/workflow/x.dag", module_path: "v2.workflow.x" }
     )
     && !seed_ground_is_textual_prefix(
-      ground: SeedArmSetChangedMatchConsumer {
+      ground: SeedDeclarationInterfaceChangedConsumer {
         changed_module_path: "armset.x",
         changed_declaration: "Signal",
         consumer_module_path: "armset.y",
@@ -89,11 +105,40 @@ test fn only_the_gate_prefix_ground_is_matched_textually() -> Bool {
 
 test fn the_consumer_ground_prints_under_its_own_name() -> Bool {
   seed_ground_wire_name(
-    ground: SeedArmSetChangedMatchConsumer {
+    ground: SeedDeclarationInterfaceChangedConsumer {
       changed_module_path: "armset.x",
       changed_declaration: "Signal",
       consumer_module_path: "armset.y",
       binding: BoundThroughFlatBareChannel,
     }
-  ) == "SeedArmSetChangedMatchConsumer"
+  ) == "SeedDeclarationInterfaceChangedConsumer"
+}
+
+// AN UNRESOLVED NAME OCCURRENCE IS NOT A READ: the tree walk collects binders and labels, so a
+// local spelled like a changed function would otherwise plan its module. The same empty
+// candidate set from the parser's own type occurrence IS a read, planned through the flat channel.
+test fn an_unresolved_name_occurrence_plans_nothing_where_a_type_occurrence_does() -> Bool {
+  !read_is_planned(
+    read: interface_read_disposition(
+      declaring_candidates: [],
+      changed_module_path: "iface.f",
+      channel: NameOccurrence,
+    )
+  )
+    && read_is_planned(
+      read: interface_read_disposition(
+        declaring_candidates: [],
+        changed_module_path: "iface.f",
+        channel: ParserTypeOccurrence,
+      )
+    )
+}
+
+// ONLY AN INTERFACE READ PROPAGATES (#12002's `ConvergeGeneration` under `HelperStanding`), and
+// only a resolved one; a body read plans its own module and stops there -- the control that a
+// body-only dependency does not seed every reverse importer.
+test fn only_a_resolved_interface_read_propagates_a_change() -> Bool {
+  interface_change_propagates(site: ReadInInterface, binding: BoundToDeclaringModule)
+    && !interface_change_propagates(site: ReadInInterface, binding: BoundThroughFlatBareChannel)
+    && !interface_change_propagates(site: ReadInBody, binding: BoundToDeclaringModule)
 }

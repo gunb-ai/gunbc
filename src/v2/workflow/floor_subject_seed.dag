@@ -6,14 +6,18 @@ import v2.std.logic { Bool }
 
 // WHY A MODULE IS IN THE REQUIRED FLOOR'S PREPARED SUBJECT, one ground per seed.
 //
-// THE CLASS THIS EXISTS FOR (gunbc#11194, found by a person reading arms): `check_match` refuses
-// a non-exhaustive match under `gunbc compile`, but the required floor prepares only the gate
-// closure plus what the diff names, so a match that was exhaustive when it landed goes stale when
-// its coproduct grows an arm in ANOTHER module -- the match site has an empty diff, no diff-keyed
-// selector can see it, and the module is never Strict-prepared. The class has two halves and
-// neither closes it alone: the DEPENDENCY direction (a touched file's own module is seeded, so an
-// edit beside a stale match reaches the checker) and the DEPENDENTS direction (the untouched
-// consumers of a coproduct whose arm set changed are seeded, so the arm growth reaches them).
+// THE CLASS THIS EXISTS FOR: the required floor prepares only the gate closure plus what the
+// diff names, so a module that read a declaration correctly when it landed goes invalid when that
+// declaration's INTERFACE changes in ANOTHER module -- the reader has an empty diff, no
+// diff-keyed selector can see it, and it is never Strict-prepared. Found twice, by accident both
+// times: a coproduct growing an arm under an exhaustive match (gunbc#11194, a person reading
+// arms), and a product field retyped and an alias re-branded under an untouched witness (#12002,
+// pulled in by the unrelated #12077 and repaired by #12120; `gunbc.recurring_failure_mode`
+// `changed_declaration_signature_consumer_unplanned`). One class, so one ground: an arm set is
+// one part of a declaration's interface, not a second mechanism beside it. The class has two
+// halves and neither closes it alone: the DEPENDENCY direction (a touched file's own module is
+// seeded, so an edit beside a stale read reaches the checker) and the DEPENDENTS direction (the
+// untouched readers of a declaration whose interface changed are seeded).
 // Both are grounds below, and both are consumed by ONE preparation path: a planned module that
 // nobody prepares is a planning change with no executed check behind it, the inert-lens tell.
 //
@@ -36,65 +40,109 @@ type PreparedSubjectSeedGround
   | SeedChangedWitnessModule { module_path: String }
   | SeedLocalRepoWetSchedule { module_path: String }
   | SeedTouchedEntryModule { path: String, module_path: String }
-  | SeedArmSetChangedMatchConsumer {
+  | SeedDeclarationInterfaceChangedConsumer {
       changed_module_path: String
       changed_declaration: String
       consumer_module_path: String
-      binding: ArmSetMatchConsumerBinding
+      binding: InterfaceConsumerBinding
     }
 
-// HOW A CONSUMER'S MATCH ARM WAS BOUND TO THE CHANGED COPRODUCT, decided from the arm's
+// WHY A DECLARATION'S INTERFACE CHANGED -- the host's `namespace_baseline`
+// `InterfaceChangeGround`, of which this is the authority. Its interface is its authored text
+// with the body elided (a type's fields and arms, an alias target and brand, a function's
+// parameters and result); a body-only edit is no change and plans nobody.
+type InterfaceChangeGround
+  = ArmSetChanged { arms_added: List<String>, arms_removed: List<String> }
+  | SignatureChanged
+  | DeclarationRemoved
+  | PropagatedThrough { module_path: String, declaration: String }
+
+// WHERE A READ OF A CHANGED DECLARATION SITS inside the reading declaration. Only an interface
+// read PROPAGATES: a product whose field is a re-branded alias has itself changed, so ITS readers
+// are planned; a function whose body alone reads the changed type is planned and its callers are
+// not. That is the rule that keeps the dependents walk from becoming "every reverse importer".
+type InterfaceReadSite
+  = ReadInInterface
+  | ReadInBody
+
+fn interface_change_propagates(site: InterfaceReadSite, binding: InterfaceConsumerBinding) -> Bool {
+  match site {
+    ReadInInterface =>
+      match binding {
+        BoundToDeclaringModule => true
+        BoundThroughFlatBareChannel => false
+      }
+    ReadInBody => false
+  }
+}
+
+// WHICH CHANNEL SUPPLIED A READ. The parser's own type occurrences and match-arm heads are
+// genuine reads; a name occurrence from the tree walk also collects binders and labels, so an
+// UNRESOLVED name occurrence is not evidence of a read and does not plan its module -- otherwise
+// every module with a local spelled like a changed function would be planned.
+type InterfaceReadChannel
+  = ParserTypeOccurrence
+  | MatchArmHead
+  | NameOccurrence
+
+// HOW A CONSUMER'S READ WAS BOUND TO THE CHANGED DECLARATION, decided from the read's
 // declaring-candidate set (the consumption relation `namespace_baseline` already computes
 // from `ModuleDeclarationRecord`; no second relation is minted). Kept apart because the two are
 // planned alike and COUNTED apart: a bare read whose candidate set is empty at this grain is the
 // flat last-writer-wins channel the namespace cut is retiring, and absorbing it into the
 // resolved population would hide the deficit that ranks it for fixing (DESIGN 5).
-type ArmSetMatchConsumerBinding
+type InterfaceConsumerBinding
   = BoundToDeclaringModule
   | BoundThroughFlatBareChannel
 
-// THE DISPOSITION OF ONE MATCH-ARM READ AGAINST ONE CHANGED COPRODUCT. The third arm is the
-// one that keeps the selector from planning every module that spells the arm: a same-spelled
-// arm of ANOTHER coproduct (its candidate set names a different declarer) is a consumer of that
-// one and not of this one. It is not stale and it is not planned.
-type ArmSetMatchReadDisposition
-  = ArmReadPlanned { binding: ArmSetMatchConsumerBinding }
-  | ArmReadBoundToAnotherDeclarer
+// THE DISPOSITION OF ONE READ AGAINST ONE CHANGED DECLARATION (the declaration's own name, or
+// for a coproduct one of its arms). The two unplanned arms are what keep the selector from
+// planning every module that spells the name: a same-spelled name of ANOTHER declarer is a
+// consumer of that one and not of this one; and an unresolved name occurrence is not a read.
+type InterfaceReadDisposition
+  = ReadPlanned { binding: InterfaceConsumerBinding }
+  | ReadBoundToAnotherDeclarer
+  | ReadUnresolvedNameOccurrence
 
-fn arm_set_match_read_disposition(
+fn interface_read_disposition(
   declaring_candidates: List<String>,
   changed_module_path: String,
-) -> ArmSetMatchReadDisposition {
+  channel: InterfaceReadChannel,
+) -> InterfaceReadDisposition {
   if any(xs: declaring_candidates, predicate: fn(candidate) { candidate == changed_module_path }) {
-    ArmReadPlanned { binding: BoundToDeclaringModule }
+    ReadPlanned { binding: BoundToDeclaringModule }
   } else {
     if length(xs: declaring_candidates) == 0 {
-      ArmReadPlanned { binding: BoundThroughFlatBareChannel }
+      match channel {
+        ParserTypeOccurrence => ReadPlanned { binding: BoundThroughFlatBareChannel }
+        MatchArmHead => ReadPlanned { binding: BoundThroughFlatBareChannel }
+        NameOccurrence => ReadUnresolvedNameOccurrence
+      }
     } else {
-      ArmReadBoundToAnotherDeclarer
+      ReadBoundToAnotherDeclarer
     }
   }
 }
 
-// A MODULE IS PLANNED IF ANY of its reads of the coproduct's arms is planned, and it is a
+// A MODULE IS PLANNED IF ANY of its reads of the changed declaration is planned, and it is a
 // RESOLVED consumer if any read resolves to the declarer -- the flat count is for modules that
-// reach the coproduct by no other route. Stated as a fold over the reads so the host's join
+// reach the declaration by no other route. Stated as a fold over the reads so the host's join
 // is a projection of this rule rather than a second one. THE MODULE-GRAIN ANSWER HAS ITS OWN
-// TYPE: reusing the one-read disposition here would make `ArmReadBoundToAnotherDeclarer` mean
+// TYPE: reusing the one-read disposition here would make `ReadBoundToAnotherDeclarer` mean
 // "this module is not planned" -- one name, two contracts, the meaning fork DESIGN 3 refuses --
-// and the host already keeps the grains apart (`ArmSetMatchConsumer.binding` vs an absent
+// and the host already keeps the grains apart (`InterfaceChangedConsumer.binding` vs an absent
 // consumer), so the model must not be the one place they share a name (review 65426).
-type ModuleArmSetBinding
-  = ModulePlanned { binding: ArmSetMatchConsumerBinding }
+type ModuleInterfaceBinding
+  = ModulePlanned { binding: InterfaceConsumerBinding }
   | ModuleNotPlanned
 
-fn arm_set_match_consumer_binding(
-  reads: List<ArmSetMatchReadDisposition>,
-) -> ModuleArmSetBinding {
-  if any(xs: reads, predicate: fn(read) { arm_read_is_bound_to_declarer(read: read) }) {
+fn interface_consumer_binding(
+  reads: List<InterfaceReadDisposition>,
+) -> ModuleInterfaceBinding {
+  if any(xs: reads, predicate: fn(read) { read_is_bound_to_declarer(read: read) }) {
     ModulePlanned { binding: BoundToDeclaringModule }
   } else {
-    if any(xs: reads, predicate: fn(read) { arm_read_is_planned(read: read) }) {
+    if any(xs: reads, predicate: fn(read) { read_is_planned(read: read) }) {
       ModulePlanned { binding: BoundThroughFlatBareChannel }
     } else {
       ModuleNotPlanned
@@ -102,14 +150,14 @@ fn arm_set_match_consumer_binding(
   }
 }
 
-fn module_is_planned(binding: ModuleArmSetBinding) -> Bool {
+fn module_is_planned(binding: ModuleInterfaceBinding) -> Bool {
   match binding {
     ModulePlanned { binding: _ } => true
     ModuleNotPlanned => false
   }
 }
 
-fn module_is_resolved_consumer(binding: ModuleArmSetBinding) -> Bool {
+fn module_is_resolved_consumer(binding: ModuleInterfaceBinding) -> Bool {
   match binding {
     ModulePlanned { binding: b } =>
       match b {
@@ -120,21 +168,23 @@ fn module_is_resolved_consumer(binding: ModuleArmSetBinding) -> Bool {
   }
 }
 
-fn arm_read_is_planned(read: ArmSetMatchReadDisposition) -> Bool {
+fn read_is_planned(read: InterfaceReadDisposition) -> Bool {
   match read {
-    ArmReadPlanned { binding: _ } => true
-    ArmReadBoundToAnotherDeclarer => false
+    ReadPlanned { binding: _ } => true
+    ReadBoundToAnotherDeclarer => false
+    ReadUnresolvedNameOccurrence => false
   }
 }
 
-fn arm_read_is_bound_to_declarer(read: ArmSetMatchReadDisposition) -> Bool {
+fn read_is_bound_to_declarer(read: InterfaceReadDisposition) -> Bool {
   match read {
-    ArmReadPlanned { binding: b } =>
+    ReadPlanned { binding: b } =>
       match b {
         BoundToDeclaringModule => true
         BoundThroughFlatBareChannel => false
       }
-    ArmReadBoundToAnotherDeclarer => false
+    ReadBoundToAnotherDeclarer => false
+    ReadUnresolvedNameOccurrence => false
   }
 }
 
@@ -146,7 +196,7 @@ fn arm_read_is_bound_to_declarer(read: ArmSetMatchReadDisposition) -> Bool {
 type TouchedEntrySeedDisposition
   = TouchedEntrySeeded { path: String, module_path: String }
   | TouchedEntryOutsideFloorRoots { path: String, module_path: String }
-  | ArmSetConsumerOutsideFloorRoots { path: String, module_path: String }
+  | InterfaceConsumerOutsideFloorRoots { path: String, module_path: String }
 
 // THE WIRE NAME each receipt line carries, total over the coproduct so a new ground cannot be
 // added without naming how it prints.
@@ -158,12 +208,12 @@ fn seed_ground_wire_name(ground: PreparedSubjectSeedGround) -> String {
     SeedChangedWitnessModule { module_path: _ } => "SeedChangedWitnessModule"
     SeedLocalRepoWetSchedule { module_path: _ } => "SeedLocalRepoWetSchedule"
     SeedTouchedEntryModule { path: _, module_path: _ } => "SeedTouchedEntryModule"
-    SeedArmSetChangedMatchConsumer {
+    SeedDeclarationInterfaceChangedConsumer {
       changed_module_path: _,
       changed_declaration: _,
       consumer_module_path: _,
       binding: _,
-    } => "SeedArmSetChangedMatchConsumer"
+    } => "SeedDeclarationInterfaceChangedConsumer"
   }
 }
 
@@ -180,7 +230,7 @@ fn seed_ground_is_textual_prefix(ground: PreparedSubjectSeedGround) -> Bool {
     SeedChangedWitnessModule { module_path: _ } => false
     SeedLocalRepoWetSchedule { module_path: _ } => false
     SeedTouchedEntryModule { path: _, module_path: _ } => false
-    SeedArmSetChangedMatchConsumer {
+    SeedDeclarationInterfaceChangedConsumer {
       changed_module_path: _,
       changed_declaration: _,
       consumer_module_path: _,

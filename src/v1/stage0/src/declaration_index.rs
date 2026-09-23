@@ -250,6 +250,25 @@ pub struct ModuleDeclarationRecord {
     /// `(enclosing declaration, constructor spelling)` like its peers; a wildcard or binder
     /// pattern contributes nothing, because a match with one stays exhaustive under growth.
     pub matched_arms: BTreeSet<(String, String)>,
+    /// DECLARATION INTERFACES: declaration name -> its authored text with the BODY elided and
+    /// whitespace runs collapsed. What a consumer can depend on -- a type's fields and arms with
+    /// their payload types, an alias target, a function's parameters and result -- and nothing
+    /// a consumer cannot: a function body, a data value. Two sides of a diff compare it to decide
+    /// whether a declaration's INTERFACE changed (`namespace_baseline`
+    /// `interface_changed_consumers`), so a body-only edit plans no reverse consumer.
+    ///
+    /// TEXT OVER THE PARSED SPANS, NOT A RE-SCAN: the region is the parser's item span minus
+    /// its body span, so it is exactly as wide as the parse says the declaration is. A
+    /// formatting-only edit inside a signature over-reports a change and plans the consumers
+    /// anyway -- the safe direction, and bounded by the consumer relation, never widened to
+    /// every importer.
+    pub declaration_interfaces: BTreeMap<String, String>,
+    /// AUTHORED TYPE REFERENCES INSIDE AN INTERFACE: the subset of the parser's type
+    /// occurrences (`authored_type_references`' source) whose span lies inside a declaration's
+    /// interface region and outside its body. Keyed `(declaration, spelling)`. This is what lets
+    /// an interface change PROPAGATE -- a product whose field is a re-branded alias has itself
+    /// changed -- while a body reference does not.
+    pub interface_references: BTreeSet<(String, String)>,
     pub declares_construction_justification: bool,
     /// Whether this module is a witness or fixture carrier. See `module_is_fixture_carrier`.
     pub is_fixture_carrier: bool,
@@ -772,6 +791,235 @@ fn authored_type_references_from_transport(
     out
 }
 
+/// One module-scope declaration's INTERFACE REGION: its item span, minus its body span when it
+/// has one. Positions only; the text is read from the newline index by `interface_text`.
+struct InterfaceRegion {
+    declaration: String,
+    file: String,
+    start: i64,
+    end: i64,
+    body: Option<(i64, i64)>,
+    /// What the parser attached to the interface WITHOUT a source position -- a refinement
+    /// predicate is minted with a synthetic span, so `where brand("G")` has no text in the
+    /// region. Its names and string literals are carried here in tree order so a brand or a
+    /// refinement change is still an interface change.
+    unpositioned: Vec<String>,
+}
+
+/// The EXTENT of a subtree in its own file: the least start and greatest end over every span
+/// the parser stamped on it -- the node's own, its name's, and every child, parameter, type
+/// annotation, `uses` entry, property and body below it. An item's own `span` is only its
+/// keyword, so the declaration's text is the extent of its tree, not its span.
+fn subtree_extent(node: &Rc<Node>, file: &str, extent: &mut Option<(i64, i64)>) {
+    let mut widen = |span: &SourceSpan| {
+        if span.file != file || span.end <= span.start {
+            return;
+        }
+        *extent = Some(match *extent {
+            Some((start, end)) => (start.min(span.start), end.max(span.end)),
+            None => (span.start, span.end),
+        });
+    };
+    widen(&node.span);
+    if let Some(ident) = node.ident_span.as_ref() {
+        widen(ident);
+    }
+    for child in node
+        .children
+        .iter()
+        .chain(node.params.iter())
+        .chain(node.uses.iter())
+        .chain(node.properties.iter())
+        .chain(node.type_annotation.iter())
+        .chain(node.body.iter())
+    {
+        subtree_extent(child, file, extent);
+    }
+    // A declared type the parser parked in the `inferred` slot is authored text too.
+    if let Some(inferred) = node.inferred.as_ref() {
+        if let crate::v1_std_core::InferredNode::Resolved { node: parked } = inferred.as_ref() {
+            subtree_extent(parked, file, extent);
+        }
+    }
+}
+
+/// Widen each region to cover the parser's type occurrences it encloses by containment -- the
+/// transport sees authored type positions the `Node` walk can miss, and a region that stops short
+/// of its last field type would compare equal across a retype of that field.
+fn widen_regions_by_type_occurrences(
+    transport: &Rc<OccurrenceTransport>,
+    regions: &mut [InterfaceRegion],
+) {
+    let mut by_id: HashMap<i64, (String, Rc<SourceSpan>)> = HashMap::new();
+    for entry in transport.index.entries.iter() {
+        by_id.insert(
+            entry.projection.occurrence.value,
+            (
+                entry.projection.authored_name.clone(),
+                entry.projection.diagnostic_span.clone(),
+            ),
+        );
+    }
+    for reference in transport.references.iter() {
+        if reference.category != OccurrenceCategory::TypeOccurrence {
+            continue;
+        }
+        let Some((_, span)) = by_id.get(&reference.occurrence.value) else {
+            continue;
+        };
+        let Some((enclosing, _)) = reference
+            .containment
+            .ancestors
+            .get(1)
+            .and_then(|ancestor| by_id.get(&ancestor.value))
+        else {
+            continue;
+        };
+        for region in regions
+            .iter_mut()
+            .filter(|r| &r.declaration == enclosing && r.file == span.file)
+        {
+            region.start = region.start.min(span.start);
+            region.end = region.end.max(span.end);
+        }
+    }
+}
+
+/// The names and string literals of the unpositioned nodes below `node`, body excluded, in tree
+/// order. See `InterfaceRegion::unpositioned`.
+fn unpositioned_interface_parts(node: &Rc<Node>, file: &str, out: &mut Vec<String>) {
+    let positioned = node.span.file == file && node.span.end > node.span.start;
+    if !positioned {
+        if !node.name.is_empty() {
+            out.push(node.name.clone());
+        }
+        if let Some(literal) = expr_literal_string_optional(node.clone()) {
+            out.push(format!("{literal:?}"));
+        }
+    }
+    for child in node
+        .children
+        .iter()
+        .chain(node.params.iter())
+        .chain(node.uses.iter())
+        .chain(node.properties.iter())
+        .chain(node.type_annotation.iter())
+    {
+        unpositioned_interface_parts(child, file, out);
+    }
+    if let Some(inferred) = node.inferred.as_ref() {
+        if let crate::v1_std_core::InferredNode::Resolved { node: parked } = inferred.as_ref() {
+            unpositioned_interface_parts(parked, file, out);
+        }
+    }
+}
+
+fn interface_region(item: &Rc<Node>, declaration: &str) -> InterfaceRegion {
+    let file = item.span.file.clone();
+    let mut whole: Option<(i64, i64)> = None;
+    subtree_extent(item, &file, &mut whole);
+    let (start, end) = whole.unwrap_or((item.span.start, item.span.end));
+    // The body's own extent, elided only where it lies inside the item's: anything else is not a
+    // body of THIS declaration and eliding it would hide interface text.
+    let body = item.body.as_ref().and_then(|b| {
+        let mut extent: Option<(i64, i64)> = None;
+        subtree_extent(b, &file, &mut extent);
+        extent.filter(|(b_start, b_end)| *b_start >= start && *b_end <= end)
+    });
+    let mut unpositioned = Vec::new();
+    unpositioned_interface_parts(item, &file, &mut unpositioned);
+    InterfaceRegion {
+        declaration: declaration.to_string(),
+        file,
+        start,
+        end,
+        body,
+        unpositioned,
+    }
+}
+
+fn region_contains(region: &InterfaceRegion, span: &SourceSpan) -> bool {
+    span.file == region.file
+        && span.start >= region.start
+        && span.end <= region.end
+        && !region
+            .body
+            .is_some_and(|(start, end)| span.start >= start && span.end <= end)
+}
+
+/// The region's text with the body elided and every whitespace run collapsed to one space. A
+/// region whose file has no newline index reads as empty on both sides and so never reports a
+/// change it cannot see -- the sweep indexes every file it records, so this arm is unreached.
+fn interface_text(
+    region: &InterfaceRegion,
+    source_indices: &Rc<im::HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    let Some(index) = source_indices.get(&region.file) else {
+        return String::new();
+    };
+    let read = |start: i64, end: i64| {
+        crate::v1_std_core::source_text_at(
+            index.clone(),
+            Rc::new(SourceSpan {
+                file: region.file.clone(),
+                start,
+                end,
+            }),
+        )
+    };
+    let raw = match region.body {
+        Some((body_start, body_end)) => {
+            format!(
+                "{} {{}} {}",
+                read(region.start, body_start),
+                read(body_end, region.end)
+            )
+        }
+        None => read(region.start, region.end),
+    };
+    let text = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if region.unpositioned.is_empty() {
+        text
+    } else {
+        format!("{text} [unpositioned: {}]", region.unpositioned.join(" "))
+    }
+}
+
+/// The parser's type occurrences that lie in a declaration's interface region, keyed
+/// `(declaration, spelling)`. Attribution is by span containment in the regions this module's
+/// own items declare, so an import member (enclosed by no item) is never attributed.
+fn interface_type_references(
+    transport: &Rc<OccurrenceTransport>,
+    regions: &[InterfaceRegion],
+) -> BTreeSet<(String, String)> {
+    let mut by_id: HashMap<i64, (String, Rc<SourceSpan>)> = HashMap::new();
+    for entry in transport.index.entries.iter() {
+        by_id.insert(
+            entry.projection.occurrence.value,
+            (
+                entry.projection.authored_name.clone(),
+                entry.projection.diagnostic_span.clone(),
+            ),
+        );
+    }
+    let mut out = BTreeSet::new();
+    for reference in transport.references.iter() {
+        if reference.category != OccurrenceCategory::TypeOccurrence {
+            continue;
+        }
+        let Some((spelling, span)) = by_id.get(&reference.occurrence.value) else {
+            continue;
+        };
+        if spelling.is_empty() {
+            continue;
+        }
+        for region in regions.iter().filter(|r| region_contains(r, span)) {
+            out.insert((region.declaration.clone(), spelling.clone()));
+        }
+    }
+    out
+}
+
 /// One module's record, from that one module's parse tree. No corpus, no resolution.
 pub fn record_from_module(
     module: &Rc<Node>,
@@ -784,11 +1032,13 @@ pub fn record_from_module(
     let mut variants = BTreeSet::new();
     let mut coproduct_arms: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut decl_fields = BTreeMap::new();
+    let mut interface_regions: Vec<InterfaceRegion> = Vec::new();
     for item in module_items(module.clone()).iter() {
         let name = authored_name_at(source_indices.clone(), item.clone());
         if name.is_empty() {
             continue;
         }
+        interface_regions.push(interface_region(item, &name));
         if item.connective == Connective::Disj {
             let arms = coproduct_arms.entry(name.clone()).or_default();
             for v in item.children.iter() {
@@ -802,6 +1052,17 @@ pub fn record_from_module(
         decl_fields.insert(name.clone(), declaration_field_names(item, source_indices));
         declared.insert(name);
     }
+
+    widen_regions_by_type_occurrences(transport, &mut interface_regions);
+    let declaration_interfaces: BTreeMap<String, String> = interface_regions
+        .iter()
+        .map(|region| {
+            (
+                region.declaration.clone(),
+                interface_text(region, source_indices),
+            )
+        })
+        .collect();
 
     let mut reexported = BTreeSet::new();
     let mut imports = Vec::new();
@@ -881,6 +1142,8 @@ pub fn record_from_module(
         matched_arms,
         called,
         authored_type_references: authored_type_references_from_transport(transport, &declared),
+        interface_references: interface_type_references(transport, &interface_regions),
+        declaration_interfaces,
         declares_construction_justification: declared.contains(CONSTRUCTION_JUSTIFICATION_DECL),
         is_fixture_carrier: module_is_fixture_carrier(&module_path, rel_path),
         module_path,

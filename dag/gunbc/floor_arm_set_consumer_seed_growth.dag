@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // FORWARD-FREEZE RECEIPT for the hand Rust that makes the required floor honest on the
 // stale-match class (gunbc#11194; gunbc#11256, restoring gunbc#11252's invocation half and adding
-// the dependents half on top of it). gunbc.seed_growth_admission
+// the dependents half on top of it; generalized to declaration interfaces by the gunbc#12120 ruling). gunbc.seed_growth_admission
 // seed_growth_forward_freeze_policy_note makes unenumerated hand growth in src/v1 a stop-line,
 // so every added declaration is enumerated below; modified items keep their names and are not
 // netted (ExistingSeedItemModified: ModuleDeclarationRecord, collect_reference_occurrences and
@@ -41,6 +41,18 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // module_seeds_from_touched_entry_files and floor_prepared_subject_exclusions are
 // ExistingSeedItemModified there (the helper returns its seeded pairs; the roster gains one row).
 //
+// gunbc#12120's side-chat ruling (2026-09-23; `gunbc.recurring_failure_mode`
+// `changed_declaration_signature_consumer_unplanned`) GENERALIZES the dependents half from a
+// coproduct's arm set to a declaration's whole INTERFACE, consolidating rather than forking
+// (DESIGN 3): the arm-set selector and its types are RENAMED into the interface selector
+// (`interface_changed_consumers`, `InterfaceChangeGround` with `ArmSetChanged` as one arm), not
+// kept beside it, and the planning enum and fixture helpers are renamed with them. The new items
+// are the per-module direct-change reader, the one read-binding rule the selector and its
+// propagation share, the change's spelling universe, and in `declaration_index` the interface
+// region (item span minus body span) with its text and the parser type occurrences inside it --
+// two fields on ModuleDeclarationRecord (ExistingSeedItemModified, as is record_from_module).
+// Same purpose, same trigger, same boundary: still reachable only from the floor's planning row.
+//
 // HAND-ITEM DELTA is derived from the diff by gunbc.rust_item_host_observation and is not
 // restated here. The test items are enumerated because they are hand declarations in the seed;
 // the executed red among them is arm_growth_selects_the_untouched_match_consumer_and_strict_
@@ -49,17 +61,26 @@ data floor_arm_set_consumer_seed_growth_justification: SeedGrowthJustification =
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "BaselineReconstruction", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "reconstruct_base_index", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "ArmSetChange", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "ArmConsumerBinding", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "ArmSetMatchConsumer", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "ArmSetConsumerSelection", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "arm_set_changed_match_consumers", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "InterfaceChangeGround", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "DeclarationInterfaceChange", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "InterfaceConsumerBinding", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "InterfaceChangedConsumer", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "InterfaceConsumerSelection", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "direct_interface_changes", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "read_binding", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "change_universe", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.namespace_baseline", decl_name: "interface_changed_consumers", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "InterfaceRegion", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "interface_region", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "region_contains", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "interface_text", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.declaration_index", decl_name: "interface_type_references", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "module_name_is_or_is_contained_by", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "prepared_subject_exclusion_row_for", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "FloorDiffProjections", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "CompileSubjectSeeds", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "ArmSetConsumerPlanning", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "arm_set_consumer_planning", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "InterfaceConsumerPlanning", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "interface_consumer_planning", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "module_seeds_from_touched_entry_files", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "floor_source_roots_workspace_relative", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "path_under_floor_roots", field: WholeDeclaration },
@@ -77,13 +98,30 @@ data floor_arm_set_consumer_seed_growth_justification: SeedGrowthJustification =
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "WORKSPACE_CWD", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "enter_workspace_cwd", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "leave_workspace_cwd", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "arm_set_fixture", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "arm_set_index", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "arm_set_selection", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "interface_fixture", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "interface_index", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "interface_selection", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "consumers_of", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "direct_changes_in", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "IFACE_H_BASE", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "IFACE_H_HEAD", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "IFACE_H_USER", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "IFACE_G_BASE", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "IFACE_G_HEAD", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "IFACE_G_USER", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "IFACE_F_BASE", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "IFACE_F_HEAD", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "IFACE_F_BODY_ONLY", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "IFACE_F_CALLER", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "IFACE_F_IDLE", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "prepare_seeds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_product_field_retype_plans_the_untouched_constructor_and_without_it_the_floor_is_green", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_rebranded_alias_plans_the_consumer_of_the_product_that_carries_it", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_function_signature_change_plans_its_caller_and_not_an_idle_importer", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_body_only_change_plans_no_reverse_consumer", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "arm_growth_selects_the_untouched_match_consumer_and_strict_preparation_refuses_it", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "arm_growth_consumer_with_a_wildcard_is_planned_and_prepares_clean", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_type_change_with_no_match_consumers_plans_nothing_extra", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_record_field_growth_plans_its_untouched_reader", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_diff_with_no_arm_set_change_plans_nothing_extra", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "arm_removal_selects_the_consumer_that_still_names_the_arm", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_module_seed_is_segment_bounded", field: WholeDeclaration },
@@ -91,6 +129,6 @@ data floor_arm_set_consumer_seed_growth_justification: SeedGrowthJustification =
   ],
   reason: "A required floor that never Strict-prepares an untouched module cannot run check_match on it, so a coproduct growing an arm elsewhere makes an exhaustive match silently stale (gunbc#11194). Two halves: seed the touched module (dependency direction, gunbc#11252) and seed the match-bearing consumers of a coproduct whose arm set changed between the floor's own resolved diff base and head (dependents direction), derived from the consumption relation declaring_candidates over the parse phase's DeclarationIndex, lifted by two record fields (per-coproduct arm sets, match-arm constructor occurrences) and never a second relation -- and prepared through the SAME closure path. reconstruct_base_index is the base-side reconstruction the deleted wave-admission wall shared, lifted so both callers shared it; the wall is gone (operator ruling 2026-09-19, gunbc.rung_drop namespace_wave_admission_wall_removed) and the floor's planning row is the remaining caller, with the items now homed in v1_compiler.namespace_baseline and parameterized on the window because the floor compares against v2.workflow.floor_diff_observe's baseline. module_name_is_or_is_contained_by is the segment-bounded rule for module-name seeds (a.b seeds a.b and a.b.c, never a.bc); gate PREFIXES stay textual as site disposition reads them. Out-of-root touched files and consumers are typed rows, not counts.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
-  trigger: "The selector, its records and the planning enum follow gunbc.declaration_index_seed_growth's first step: the moment the per-module declaration record is a .dag carrier, arm_set_changed_match_consumers is an ordinary fold over it beside declaring_candidates and moves with them, and v2.workflow.floor_subject_seed consumes it directly instead of being mirrored. reconstruct_base_index follows the scm lane with git_stdout and base_records: when a typed repository-read transport can supply a file's text at a ref. The seed-list plumbing in run_required_floor and module_name_is_or_is_contained_by dissolve when preparation is a modeled operation over PreparedSubjectSeedGround rather than two string lists. The tests are the evidence and retire only as regression controls when the wall climbs; a fixture that greens when the invocation lands flips to a permanent control, it does not retire.",
+  trigger: "The selector, its records and the planning enum follow gunbc.declaration_index_seed_growth's first step: the moment the per-module declaration record is a .dag carrier, interface_changed_consumers is an ordinary fold over it beside declaring_candidates and moves with them, and v2.workflow.floor_subject_seed consumes it directly instead of being mirrored. reconstruct_base_index follows the scm lane with git_stdout and base_records: when a typed repository-read transport can supply a file's text at a ref. The seed-list plumbing in run_required_floor and module_name_is_or_is_contained_by dissolve when preparation is a modeled operation over PreparedSubjectSeedGround rather than two string lists. The tests are the evidence and retire only as regression controls when the wall climbs; a fixture that greens when the invocation lands flips to a permanent control, it does not retire.",
   current_boundary: "Reachable only from the required floor's planning row (run_required_floor, witnesses lane); the wall's own runner is deleted with the wall (operator ruling 2026-09-19). Decides nothing for gunbc compile, claim_batch or any per-entry path. Widens the prepared subject by exactly the touched modules and the match-bearing consumers of changed coproducts, each announced with its ground on the run's own receipt line, and narrows nothing: a base that cannot be reconstructed on a CI commit REFUSES the floor rather than planning blind, and a local run without a diff baseline reports the projection unevaluated exactly as the changed-witness projection already does."
 }
