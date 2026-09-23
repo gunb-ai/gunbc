@@ -169,6 +169,10 @@ data floor_eval_step_cost_drop_interpreted_crypto_rows: List<EvalStepCostDropMea
     identity: "test.claim.p384_dag_ecdsa_witness_test.doubling_an_off_curve_point_stays_off_the_curve" as NonEmptyStr,
     measured_by: "claim_batch --hermetic [witness] receipt on session/nimble-eagle-216-step3 (added for review 69917 after run 35678328407): verdict pass, wall under the 8 s deadline, over the new-witness eval-step budget; the billed work is one Jacobian doubling and one projective curve-equation check at 16 limbs" as NonEmptyStr,
   },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_standing_ruling_witness_test.the_production_ruling_digest_is_the_sha256_of_its_encoding_and_the_request_carries_it" as NonEmptyStr,
+    measured_by: "required floor run 35844351667 (gunbc#12101, head 37ea4c8), artifact required-ci-measurement-receipt: the ruling claims that each took one real SHA-256 of the standing ruling's encoding measured over the new-witness eval-step budget and under the wall limit. The billed work is one SHA-256 over about twenty-two 64-byte blocks on an interpreter that reifies no machine width; supplying the digest would remove the only execution of the real ruling-digest composition (DESIGN section 3), so this one identity keeps it" as NonEmptyStr,
+  }
 ]
 
 data floor_eval_step_cost_drop_span_program_rows: List<EvalStepCostDropMeasurement> = [

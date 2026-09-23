@@ -54,6 +54,10 @@ type FloorCostDebtTypedAdmission {
 fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
   [
   FloorCostDebtTypedAdmission {
+    identity: "test.claim.machine_intake.mtcollins1_standing_ruling_witness_test.the_production_ruling_digest_is_the_sha256_of_its_encoding_and_the_request_carries_it",
+    reason: "the seed interpreter evaluates one SHA-256 over the production standing ruling's canonical encoding (about twenty-two blocks) as UInt32 word folds; it is the single inhabitance claim of the ruling-digest route, so the digest cannot be supplied; owner: the Mt. Collins boot lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
     identity: "test.claim.p384_dag_ecdsa_witness_test.the_p384_base_point_is_on_the_curve",
     reason: "the seed interpreter evaluates one P-384 curve equation over the standard base point as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
   },
