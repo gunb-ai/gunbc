@@ -179,7 +179,8 @@ struct EmittedPreparation {
     /// THE RUN'S OWN PROBE ROOT TRAVELS WITH THE PREPARATION, so the directory the artifact was
     /// emitted into is named by the value that owns it for as long as the preparation is read.
     /// It is private by construction (`emitted_closure_compile_host` `PrivateProbeRoot`): no other
-    /// run can create it, so no peer can overwrite the crate between emission and every spawn.
+    /// run can create it, so no peer can overwrite the crate, or the executable built into its target dir, between
+    /// emission and every spawn.
     _probe_root: super::emitted_closure_compile_host::PrivateProbeRoot,
 }
 
@@ -303,9 +304,11 @@ fn prepare_emitted_compiler_for_entry(
     // The invocation resolves and binds the one compiler the build runs under and takes its
     // identity from the crate's own directory; a compiler that cannot be resolved or named is
     // a refusal before the build is paid for.
-    let invocation =
-        super::emitted_closure_compile_host::probe_cargo_invocation(&crate_dir, &workspace)
-            .map_err(|cause| format!("V2-NATIVE REFUSAL cause={cause}"))?;
+    let invocation = super::emitted_closure_compile_host::probe_cargo_invocation(
+        &crate_dir,
+        &probe_root.target_dir(),
+    )
+    .map_err(|cause| format!("V2-NATIVE REFUSAL cause={cause}"))?;
     let rustc = invocation.rustc_identity.clone();
     // THE BASELINE IS ATTRIBUTED TO THE SAME PROBE SYMBOL THE FAULTED ARM WILL CARRY. This
     // argument used to be the literal `"v2_native_lane_carries_no_mutation_probe"`, which was a
@@ -315,7 +318,7 @@ fn prepare_emitted_compiler_for_entry(
     // search for a symbol the red arm never injects.
     let verdict = super::emitted_closure_compile_host::run_cargo(
         &crate_dir,
-        &workspace,
+        &probe_root.target_dir(),
         super::emitted_closure_compile_host::MUTATION_PROBE_SYMBOL,
     );
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
@@ -355,7 +358,9 @@ fn prepare_emitted_compiler_for_entry(
          exit_status={exit_status} warning_count={warning_count} rustc={}",
         build.cargo_argv, build.rustflags, build.compiler_path, build.rustc_identity
     );
-    let binary_path = workspace.join("target").join("release").join(
+    // Under the run's own target dir (`PrivateProbeRoot` `target_dir`), so the executable hashed
+    // below and spawned by every entrypoint walk is one no other run can rebuild (review 70338).
+    let binary_path = probe_root.target_dir().join("release").join(
         super::emitted_closure_compile_host::probe_package_name(entry),
     );
     if !binary_path.is_file() {
@@ -402,7 +407,7 @@ fn prepare_emitted_compiler_for_entry(
     eprintln!("v2-native-route: establishing the discriminating red on {entry_module}");
     let mutation = super::emitted_closure_compile_host::establish_discriminating_red(
         &crate_dir,
-        &workspace,
+        &probe_root.target_dir(),
         &entry_module,
     );
     if !super::emitted_closure_compile_host::mutation_verdict_discriminated(&mutation) {

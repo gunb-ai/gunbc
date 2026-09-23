@@ -700,6 +700,12 @@ impl PrivateProbeRoot {
         &self.path
     }
 
+    /// The cargo target directory for every probe build of this run: inside the root, so the
+    /// executable a run builds, hashes and spawns is at a path no other run can write.
+    pub fn target_dir(&self) -> PathBuf {
+        self.path.join("target")
+    }
+
     /// Keep the directory past the run, for a reader who opens what the run printed. The returned
     /// path is no longer owned by any value; its lifetime is the declared base's (`RUNNER_TEMP`,
     /// torn down per job in CI; the system temp locally).
@@ -1025,7 +1031,7 @@ fn probe_compiler_identity(compiler: &Path, crate_dir: &Path) -> Result<String, 
 /// make the verdict a fact about the runner rather than the crate.
 fn probe_cargo_command_bound(
     crate_dir: &Path,
-    workspace: &Path,
+    target_dir: &Path,
     compiler: &Path,
     identity: &str,
 ) -> (std::process::Command, ProbeCargoInvocation) {
@@ -1043,7 +1049,7 @@ fn probe_cargo_command_bound(
         .args(&argv[1..])
         .env(
             cargo_environment_variable_name(CargoEnvironmentVariable::CargoTargetDirEnv),
-            workspace.join("target"),
+            target_dir,
         )
         .env(
             cargo_environment_variable_name(CargoEnvironmentVariable::RustflagsEnv),
@@ -1072,12 +1078,12 @@ fn probe_cargo_command_bound(
 /// spawn. The receipt's compiler is the executable cargo is bound to, by construction.
 fn probe_cargo_command(
     crate_dir: &Path,
-    workspace: &Path,
+    target_dir: &Path,
 ) -> Result<(std::process::Command, ProbeCargoInvocation), String> {
     let compiler = resolve_probe_compiler()?;
     let identity = probe_compiler_identity(&compiler, crate_dir)?;
     Ok(probe_cargo_command_bound(
-        crate_dir, workspace, &compiler, &identity,
+        crate_dir, target_dir, &compiler, &identity,
     ))
 }
 
@@ -1085,32 +1091,30 @@ fn probe_cargo_command(
 /// construction, without spawning cargo (the compiler identity probe does run).
 pub(crate) fn probe_cargo_invocation(
     crate_dir: &Path,
-    workspace: &Path,
+    target_dir: &Path,
 ) -> Result<ProbeCargoInvocation, String> {
-    probe_cargo_command(crate_dir, workspace).map(|(_, invocation)| invocation)
+    probe_cargo_command(crate_dir, target_dir).map(|(_, invocation)| invocation)
 }
 
-/// `build --release` INTO THE WORKSPACE TARGET DIRECTORY, both halves one cost decision: a
-/// `check` or a private target dir would share no fingerprint with anything and rebuild the
-/// whole dependency graph inside a required phase. RUSTFLAGS is part of cargo's fingerprint,
-/// so what the seed build already compiled is reusable here exactly when it was built under
-/// the same denial: on CI it was (the toolchain step exports the same `-D warnings`), so the
-/// baseline arm compiles only the emitted crate; on a workstation whose seed build inherited
-/// no RUSTFLAGS the FIRST probe build recompiles the dependency graph under the denial once,
-/// and the further arms — and every later probe in that target dir — are incremental against
-/// that. The one-time local cost is the price of the verdict being about the crate rather than
-/// about which machine built it.
+/// `build --release` INTO THE RUN'S OWN TARGET DIRECTORY, `PrivateProbeRoot` `target_dir`.
 ///
-/// Phases within one required run are sequential in one process, so nothing else holds cargo's
-/// lock on that directory.
+/// It used to be `<workspace>/target`, shared by every run in one worktree, on the argument that a
+/// private target dir rebuilds the dependency graph. But the executable cargo uplifts is named by
+/// the package alone (`<target>/release/<probe_package_name>`), so two runs of one entry wrote ONE
+/// path: a peer could replace the binary between our build, our identity read and our spawns
+/// (review 70338; review 69715 measured the window when a lock still guarded it). Under the run's
+/// root no peer can name that path. The price is the probe dependency graph --
+/// `stage0_foundation_runtime_dependencies`, three small crates -- compiled once per run; every arm
+/// within the run (baseline, fault, restore) is incremental against it, and the whole directory
+/// goes when the root drops.
 /// `pub(crate)` for the same consumer as `write_probe_crate`: the v2-native lane builds the
 /// emitted compiler crate through this same cargo invocation.
 pub(crate) fn run_cargo(
     crate_dir: &Path,
-    workspace: &Path,
+    target_dir: &Path,
     attribution_symbol: &str,
 ) -> CargoVerdict {
-    let (mut command, invocation) = match probe_cargo_command(crate_dir, workspace) {
+    let (mut command, invocation) = match probe_cargo_command(crate_dir, target_dir) {
         Ok(bound) => bound,
         Err(reason) => return CargoVerdict::NotAttempted { reason },
     };
@@ -1166,7 +1170,7 @@ pub(crate) fn closure_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
 /// that this instrument reads this closure.
 pub(crate) fn establish_discriminating_red(
     crate_dir: &Path,
-    workspace: &Path,
+    target_dir: &Path,
     entry_module: &str,
 ) -> MutationVerdict {
     // NO FALLBACK ARM. A closure missing its own entry module is the finding -- substituting
@@ -1191,7 +1195,7 @@ pub(crate) fn establish_discriminating_red(
         };
     }
 
-    let red = run_cargo(crate_dir, workspace, MUTATION_PROBE_SYMBOL);
+    let red = run_cargo(crate_dir, target_dir, MUTATION_PROBE_SYMBOL);
 
     // THE RESTORE RUNS WHATEVER THE FAULTED ARM ANSWERED, or the next run's baseline goes red for
     // a reason unrelated to the corpus.
@@ -1285,7 +1289,7 @@ pub(crate) fn establish_discriminating_red(
     };
     let attributed = attributed.to_string();
 
-    let restored = run_cargo(crate_dir, workspace, MUTATION_PROBE_SYMBOL);
+    let restored = run_cargo(crate_dir, target_dir, MUTATION_PROBE_SYMBOL);
     if !cargo_verdict_compiled(&restored) {
         return MutationVerdict::RestoreFailed {
             detail: format!(
@@ -1381,7 +1385,7 @@ pub fn run_emit_compile_entry(
         "emit-compile: {entry} emitted {emitted_files} file(s) into {} — cargo baseline",
         crate_dir.display()
     );
-    let baseline = run_cargo(&crate_dir, &workspace, MUTATION_PROBE_SYMBOL);
+    let baseline = run_cargo(&crate_dir, &probe_root.target_dir(), MUTATION_PROBE_SYMBOL);
     eprintln!(
         "emit-compile: {entry} baseline {} — mutation",
         cargo_verdict_summary(&baseline)
@@ -1390,7 +1394,7 @@ pub fn run_emit_compile_entry(
     // tree goes red under the fault for a reason the fault did not cause -- a green control
     // wearing a red one's clothes.
     let mutation = if cargo_verdict_compiled(&baseline) {
-        establish_discriminating_red(&crate_dir, &workspace, &entry_module)
+        establish_discriminating_red(&crate_dir, &probe_root.target_dir(), &entry_module)
     } else {
         MutationVerdict::NotAttempted {
             reason: format!(
@@ -1611,7 +1615,7 @@ pub(crate) fn fixture_closure_rustc_verdict(
     );
     let cargo = run_cargo(
         &crate_dir,
-        &process_workspace_root(),
+        &probe_root.target_dir(),
         &format!("{rust_module}.rs"),
     );
     eprintln!(
@@ -2840,6 +2844,11 @@ mod tests {
             first.path(),
             second.path(),
             "two runs from one base must not name one probe root"
+        );
+        assert_ne!(
+            first.target_dir(),
+            second.target_dir(),
+            "two runs must not build, hash or spawn one executable path"
         );
 
         let (first_crate, _) = write_probe_crate_files(&tree("A"), &first, "v2.compiler.compile")
