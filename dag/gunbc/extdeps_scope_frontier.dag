@@ -522,6 +522,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/posix/path_ownership.dag",
   "dag/extdeps/posix/sh_invocation.dag",
   "dag/extdeps/posix/signal.dag",
+  "dag/extdeps/posix/termios.dag",
   "dag/extdeps/posix/test_utility.dag",
   "dag/extdeps/realestate/nj_industrial.dag",
   "dag/extdeps/rust/cargo_diagnostic.dag",

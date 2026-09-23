@@ -622,6 +622,20 @@ data get_an_app_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data get_authenticated_app_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/apps/apps#get-the-authenticated-app"
+  }
+}
+
+data get_app_installation_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/apps/apps#get-an-installation-for-the-authenticated-app"
+  }
+}
+
 data list_app_installations_citation: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -1640,6 +1654,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     extdeps.github.app.app_install_citation,
     extdeps.github.app.app_manifest_conversion_citation,
     extdeps.github.app.get_an_app_citation,
+    extdeps.github.app.get_authenticated_app_citation,
+    extdeps.github.app.get_app_installation_citation,
     extdeps.github.app.list_app_installations_citation,
     extdeps.github.app.webhook_events_citation
   ]
@@ -1674,6 +1690,65 @@ service github.AppInstallationAccessTokens {
     }
     response {
       201 => GitHubInstallationAccessTokenBody
+    }
+  }
+}
+
+// GET /app and GET /app/installations/{installation_id}, the two App-level READS a process holding
+// the App key performs with the JWT it signed (get_authenticated_app_citation,
+// get_app_installation_citation). The JWT is an INPUT, as on github.AppInstallationAccessTokens and
+// unlike github.AppInstallations: the caller signs it in-process with a custodied key
+// (extdeps.auth.jws), so no environment variable stands between the signer and the request. GET /app
+// answers the same App object GET /apps/{app_slug} does, hence GitHubAppPublicRecord; what differs
+// is the principal, and that difference is the point -- a 200 here is GitHub accepting a JWT signed
+// by the caller's key as the App whose id it returns, and a 401 is GitHub refusing that key.
+service github.AuthenticatedApp {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: app_jwt
+  }
+
+  operation GetAuthenticatedApp {
+    input {
+      app_jwt: Secret
+    }
+    output {
+      result: GitHubAppPublicRecord
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/app"
+    }
+    response {
+      200 => GitHubAppPublicRecord
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation GetAppInstallation {
+    input {
+      app_jwt: Secret
+      installation_id: Int
+    }
+    output {
+      result: GitHubAppInstallationRecord
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/app/installations/\{installation_id\}"
+    }
+    response {
+      200 => GitHubAppInstallationRecord
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
     }
   }
 }

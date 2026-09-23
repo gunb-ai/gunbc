@@ -195,6 +195,12 @@ fn posix_command_v_check_argv(command: NonEmptyStr) -> List<String> {
   ["sh", "-c", "command -v \"$1\"", "sh", command as String]
 }
 
+// IsSticky IS POSIX `test -k`, AND ITS RATIONALE SITS HERE because only module-item grain is
+// modeled (DESIGN section 4c) -- an operation lives inside this service's body, so the reason for
+// one attaches to the declaration that contains it. On a directory the sticky bit is the rule that
+// stops a principal renaming or removing an entry it does not own, which is the whole reason a
+// shared temporary directory is safe to allocate in at all. It is a different question from the
+// mode digits and gets its own operation rather than being parsed out of them.
 service shell.Test {
   operation IsExecutable {
     input { path: FilePath }
@@ -240,6 +246,17 @@ service shell.Test {
     }
   }
 
+  operation IsSticky {
+    input { path: FilePath }
+    output { is_sticky: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-k", "{path}"] }
+    exit {
+      0 => Unit "The sticky bit is set on the path"
+      1 => Unit "The path is missing or its sticky bit is not set"
+    }
+  }
+
   operation IsWritable {
     input { path: FilePath }
     output { writable: Bool from "exit_success" }
@@ -254,6 +271,62 @@ service shell.Test {
 
 fn shell_test_is_executable_argv(path: FilePath) -> List<String> {
   ["test", "-x", path as String]
+}
+
+// `id -un` names the principal this process runs as. It is a separate service from Stat because it
+// is a fact about the PROCESS rather than about a path, and the two are joined by the consumer
+// deciding whether a path's owner is trusted; folding the process identity into a path observation
+// would make one operation answer two questions.
+// Canonical resolves every symlink and `..` ONCE, so a consumer that then uses only the canonical
+// spelling never re-traverses an alias somebody else owns -- which is what lets a caller establish
+// that the location it named is the location it got.
+service shell.Path {
+  operation Canonical {
+    input { path: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["realpath", "-e", "--", "{path}"] }
+    exit {
+      0 => Unit "the path exists and its canonical spelling is on stdout"
+      nonzero => String "realpath could not resolve the path"
+    }
+  }
+}
+
+service shell.Id {
+  operation UserId {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["id", "-u"] }
+    exit {
+      0 => Unit "the effective numeric user id is on stdout"
+      nonzero => String "id could not name the effective user id"
+    }
+  }
+
+  operation UserName {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["id", "-un"] }
+    exit {
+      0 => Unit "the effective user name is on stdout"
+      nonzero => String "id could not name the effective user"
+    }
+  }
 }
 
 service shell.Uname {
@@ -310,7 +383,23 @@ service shell.Mktemp {
   }
 }
 
+// NewOwnerOnly FAILS WHEN THE NAME ALREADY EXISTS -- including when it exists as a symlink -- and
+// its rationale sits here for the module-item-grain reason the Test service records. That failure
+// is the point rather than an inconvenience: a caller that must know whether it CREATED a directory
+// cannot learn it from `mkdir -p`, which succeeds either way, and adopting an existing directory at
+// a predictable name is how a squatted path gets reused. The mode is applied AT CREATION, so the
+// name never exists at a wider one and no second pathname operation is needed to narrow it.
 service shell.Mkdir {
+  operation NewOwnerOnly {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["mkdir", "-m", "0700", "--", "{path}"] }
+    exit {
+      0 => Unit "Directory created AT 0700; fails if the name exists at all, so success is proof this process created it"
+      nonzero => String "mkdir -m 0700 failed"
+    }
+  }
+
   operation Parents {
     input { path: FilePath }
     output { success: Bool from "exit_success" }
@@ -375,7 +464,27 @@ service shell.Remove {
 // WHY IT IS `readonly` AND WHY THAT IS TRUE. It opens nothing for write and creates nothing; unlike
 // git.Inspect.ReadTreeIntoIndex, which was declared readonly while writing the file GIT_INDEX_FILE
 // names, this one genuinely only reads inode metadata.
+// ModeOf RETURNS THE OCTAL PERMISSION DIGITS AS `stat` RENDERS THEM -- "700", "1777" -- and its
+// rationale sits above the service for the module-item-grain reason the Test service records. The
+// consumer compares the WHOLE STRING against declared spellings; nothing extracts a digit, because
+// the substrate has no string indexing and a hand-rolled scan would be a parser standing where a
+// comparison was available.
 service shell.Stat {
+  operation ModeOf {
+    input { path: FilePath }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["stat", "-c", "%a", "--", "{path}"] }
+    exit {
+      0 => Unit "the path exists and its octal mode is on stdout"
+      nonzero => String "stat could not read the path"
+    }
+  }
+
   operation OwnerOf {
     input { path: FilePath }
     output {
@@ -422,6 +531,16 @@ service shell.Chmod {
     exit {
       0 => Unit
       nonzero => String "chmod 0700 failed"
+    }
+  }
+
+  operation WorldWritableDirectory {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "0777", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod 0777 failed"
     }
   }
 

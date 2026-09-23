@@ -44,6 +44,7 @@ import v2.compiler.name_resolve {
   ResolutionSubject,
   ResolutionContext,
   resolution_context,
+  resolve_walk_with_admission_context_policy,
   resolve_with_admission_context_policy,
   resolve_with_admission
 }
@@ -80,7 +81,15 @@ import v2.compiler.native_test_vocabulary {
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { parse, prepare_grammar, PreparedGrammar }
-import v2.compiler.resolve { resolve, ResolvedTree }
+import v2.compiler.resolve {
+  ObservationComplete,
+  ObservationCompleteness,
+  ResolveNodeWalk,
+  ResolveWalkAccepted,
+  ResolveWalkRefused,
+  resolve,
+  ResolvedTree
+}
 import v2.compiler.tokenize { tokenize }
 import v2.std.staging { then_outcome, CacheProbe, Miss }
 import v2.compiler.materialization_carriers {
@@ -1457,6 +1466,24 @@ fn native_test_resolve_module(
   module: QualifiedName
 ) -> Outcome<ResolvedTree> {
   resolve_with_admission_context_policy(
+    context: context.resolution,
+    admission: Admission {
+      subject: ResolutionSubject { name: module },
+      imports: Empty
+    },
+    index: context.index,
+    active_roots: context.active_roots,
+    policy: v2.std.resolution_policy.default_name_resolution_policy()
+  )
+}
+
+// THE SAME RESOLUTION AS native_test_resolve_module, OBSERVED WHOLE: every independent failure
+// chain, not only the first. native_test_resolve_module is its projection.
+fn native_test_resolve_module_walk(
+  context: NativeTestContext,
+  module: QualifiedName
+) -> ResolveNodeWalk {
+  resolve_walk_with_admission_context_policy(
     context: context.resolution,
     admission: Admission {
       subject: ResolutionSubject { name: module },
@@ -3082,7 +3109,11 @@ type NativeLaneModuleResolution
 // resolver said.
 type NativeModuleResolveVerdict
   = NativeModuleResolveFileRefused { refusal: NativeTestFileRefusal }
-  | NativeModuleResolveRefused { diagnostics: NonEmptyDiagnostics }
+  | NativeModuleResolveRefused {
+      first: NonEmptyDiagnostics
+      rest: List<NonEmptyDiagnostics>
+      observation: ObservationCompleteness
+    }
   | NativeModuleResolveAccepted { resolved: ResolvedTree }
 
 fn native_module_resolve_verdict(
@@ -3094,12 +3125,13 @@ fn native_module_resolve_verdict(
   match native_lane_file_refusal_for_path(index: refusal_index, path: path) {
     Present { value: fr } => NativeModuleResolveFileRefused { refusal: fr }
     Absent =>
-      match native_test_resolve_module(
+      match native_test_resolve_module_walk(
         context: context,
         module: qualified_name_from_dotted_string(dotted: module)
       ) {
-        Rejected { diagnostics: d } => NativeModuleResolveRefused { diagnostics: d }
-        Accepted { value: resolved, diagnostics: _ } =>
+        ResolveWalkRefused { first: f, rest: r, observation: o } =>
+          NativeModuleResolveRefused { first: f, rest: r, observation: o }
+        ResolveWalkAccepted { value: resolved, diagnostics: _ } =>
           NativeModuleResolveAccepted { resolved: resolved }
       }
   }
@@ -3127,7 +3159,7 @@ fn native_lane_module_resolution(
           )
         )
       }
-    NativeModuleResolveRefused { diagnostics: d } =>
+    NativeModuleResolveRefused { first: d, rest: _, observation: _ } =>
       NativeLaneModuleResolveRowsDecided {
         rows: native_lane_module_refusal_rows(
           entry: entry,
@@ -3229,9 +3261,16 @@ fn native_census_modules(ingest: SourceRootIngest) -> List<NativeCensusModule> {
 // NEEDS. The lane's resolution keeps the ResolvedTree because it goes on to infer from it; a census
 // never infers, so the tree dies with the call that made it and the census holds one tree at a time
 // rather than accumulating a tree per module across the corpus.
+// THE REFUSED ARM CARRIES THE WHOLE POPULATION: every independent failure chain the walk observed,
+// in walk order, plus whether the walk observed every site. A module is refused whenever any chain
+// exists, so no partially accepted module can be reported beside its refusals.
 type NativeCensusModuleOutcome
   = NativeCensusModuleFileRefused
-  | NativeCensusModuleResolveRefused { diagnostics: NonEmptyDiagnostics }
+  | NativeCensusModuleResolveRefused {
+      first: NonEmptyDiagnostics
+      rest: List<NonEmptyDiagnostics>
+      observation: ObservationCompleteness
+    }
   | NativeCensusModuleResolved
 
 fn native_census_module_resolution(
@@ -3246,47 +3285,60 @@ fn native_census_module_resolution(
     path: entry.path
   ) {
     NativeModuleResolveFileRefused { refusal: _ } => NativeCensusModuleFileRefused
-    NativeModuleResolveRefused { diagnostics: d } =>
-      NativeCensusModuleResolveRefused { diagnostics: d }
+    NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
+      NativeCensusModuleResolveRefused { first: f, rest: r, observation: o }
     NativeModuleResolveAccepted { resolved: _ } => NativeCensusModuleResolved
   }
 }
 
-// ONE ROW PER DIAGNOSTIC, WHICH IS ONE ROW PER REFUSED OCCURRENCE. The row carries the resolver's
-// own Diagnostic rather than a reason/locus pair copied out of it: the pair would be a second
-// spelling of a std.diagnostic shape, and the locus is the join key a downstream occurrence rewrite
-// reads, so re-coining it here is where it would silently lose a field.
-// THE LIST IS NOT SUMMARIZED. A module that refuses at forty sites yields forty rows; folding them
-// to a count, or to the last reason, is what makes a residual census an undercount, and this census
-// exists because a roster of front-end refusals was already an undercount by construction.
+// WHETHER THE CENSUS OBSERVED EVERY OCCURRENCE OF A MODULE, AS A TYPED ANSWER. A file the context
+// refused never reached resolve, so its occurrence completeness is UNAVAILABLE -- not complete with
+// zero residual, which is what a missing row would otherwise read as. A resolved module was walked
+// in full. A refused one answers what its walk recorded.
+type NativeCensusOccurrenceCompleteness
+  = NativeCensusCompletenessUnavailable { reason: Symbol }
+  | NativeCensusCompletenessObserved { observation: ObservationCompleteness }
+
+fn native_census_module_completeness(outcome: NativeCensusModuleOutcome) -> NativeCensusOccurrenceCompleteness {
+  match outcome {
+    NativeCensusModuleFileRefused =>
+      NativeCensusCompletenessUnavailable { reason: ^native_census_file_never_reached_resolve }
+    NativeCensusModuleResolved =>
+      NativeCensusCompletenessObserved { observation: ObservationComplete }
+    NativeCensusModuleResolveRefused { first: _, rest: _, observation: o } =>
+      NativeCensusCompletenessObserved { observation: o }
+  }
+}
+
+// ONE ROW PER FAILURE CHAIN, WHICH IS ONE ROW PER INDEPENDENTLY REFUSED OCCURRENCE. A chain is
+// pending advisories followed by exactly one fatal, and the fatal's locus is the occurrence the row
+// names -- v2.std.diagnostic diagnostics_fatal is the one authority for which element that is. The
+// row carries the chain whole rather than a reason/locus pair copied out of it, so the advisories
+// that preceded this fatal stay attached to it and to no other row.
+// THE POPULATION IS NOT SUMMARIZED. A module that refuses at forty independent sites yields forty
+// rows; folding them to a count, or to the first, is what makes a residual census an undercount.
+// An advisory is not an occurrence refusal, so it is never a row of its own.
 type NativeCensusResidualRow {
   module: String
   path: Symbol
-  diagnostic: Diagnostic
+  chain: NonEmptyDiagnostics
 }
 
 fn native_census_residual_rows(
   entry: NativeCensusModule,
-  diagnostics: NonEmptyDiagnostics
+  first: NonEmptyDiagnostics,
+  rest: List<NonEmptyDiagnostics>
 ) -> List<NativeCensusResidualRow> {
   list_reverse(
     xs: fold_list(
-      xs: diagnostics.tail,
+      xs: rest,
       empty: Cons {
-        head: NativeCensusResidualRow {
-          module: entry.module,
-          path: entry.path,
-          diagnostic: diagnostics.head
-        },
+        head: NativeCensusResidualRow { module: entry.module, path: entry.path, chain: first },
         tail: Empty
       },
-      cons: fn(acc, d) {
+      cons: fn(acc, c) {
         Cons {
-          head: NativeCensusResidualRow {
-            module: entry.module,
-            path: entry.path,
-            diagnostic: d
-          },
+          head: NativeCensusResidualRow { module: entry.module, path: entry.path, chain: c },
           tail: acc
         }
       }

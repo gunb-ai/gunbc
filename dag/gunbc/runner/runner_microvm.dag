@@ -695,13 +695,21 @@ fn runner_microvm_shape_after_allowance(
 // THE GUEST'S CACHE ALLOWANCE IS DERIVED FROM THE DEMAND RECEIPT, NOT DECLARED BESIDE IT. A guest
 // whose RAM equals the Work's held-set demand runs the floor with no file cache at all, re-reading
 // every source and object from the workspace image on each touch. The receipt carries the last
-// beat at which the host slot was NOT thrashing (gunbc.floor_demand receipt_last_unstalled_beat:
-// the stall clause at zero, 1895120896 bytes of file beside the anonymous demand on 2026-09-19),
+// beat at which the host slot was NOT thrashing (gunbc.floor_demand receipt_last_unstalled_beat),
 // and the allowance is that beat's RECLAIMABLE cache -- file less shmem, the part reclaim can give
 // back -- rounded up to the corpus's whole-gibibyte grain: the smallest grain above a cache the
 // run held while it worked. It is a floor on a working operating point rather than a measured
 // optimum, which is the only honest reading of one beat; its revision is the in-guest cold receipt
 // (gunbc.floor_cold_build_receipt), which reads the same counters inside a guest.
+//
+// THE BEAT IS NAMED BY THE DERIVATION, NOT TRANSCRIBED HERE, and that is a correction rather than
+// a style preference. This note used to carry the 2026-09-19 receipt's beat-13 figure -- "the
+// stall clause at zero, 1895120896 bytes of file" -- beside a fold that reads whatever the
+// STANDING receipt says. When gunbc_floor_held_set_standing moved to the 2026-09-21 receipt, the
+// derivation moved with it to beat 17 and the allowance HALVED, while the sentence went on
+// describing a beat nothing reads (DESIGN 6: a transcribed number is unreachable from the thing
+// that owns it, so it rots without anyone touching either end). The figure now has exactly one
+// home, which is the standing receipt's own rows, and this note names the producer instead.
 //
 // THE ALLOWANCE IS A COPRODUCT BECAUSE ITS DERIVATION CAN REFUSE: the subtraction file - shmem is
 // typed (std.measure measure_sub), and a torn line with shmem > file, or a receipt with no beat to

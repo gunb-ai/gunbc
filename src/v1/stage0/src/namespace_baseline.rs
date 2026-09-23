@@ -532,15 +532,15 @@ pub(crate) fn reconstruct_base_index(
         }
     };
 
-    // THE KERNEL HALF, GUARDED NARROWLY. `declaring_candidates` consults this binary's own
-    // `kernel_type_set`, a head fact. Equal declaring blobs mean both revisions name the same kernel
-    // and one map serves; different blobs leave the question open, and an open question refuses.
+    // THE KERNEL HALF. `declaring_candidates` consults this binary's own `kernel_type_set`, a head
+    // fact, so one map serves exactly when the base declares the same kernel NAMES. That is decided
+    // at the grain of the name set, not the declaring file's bytes; distinct sets refuse.
     match kernel_set_serves_both(&workspace, &base, &head) {
         Ok(true) => {}
         Ok(false) => {
             return Ok(BaselineReconstruction::NotEvaluated {
                 reason: format!(
-                    "{KERNEL_TYPES_PATH} differs between {base} and {head}, so the kernel-name set this binary carries cannot speak for the base side"
+                    "the kernel-name set {KERNEL_TYPES_PATH} declares at {base} differs from the one this binary carries for {head}, so one kernel map cannot speak for the base side"
                 ),
             })
         }
@@ -830,6 +830,12 @@ pub enum EnvironmentLoadRefusal {
     /// struct requires. Separate from `ClosureNotEvaluable` because the owners differ: that one is a
     /// defect in the revision being read, this one is THIS binary disagreeing with its own emitter.
     ValueNotDecodable { revision: String, cause: String },
+    /// The kernel-name set declared at this revision could not be read as a set of names.
+    ///
+    /// Separate from the environment arms because the subject differs: this is `std.types`
+    /// `kernel_type_set`, not the grammar, and an operator reading the refusal must be told which
+    /// fact was unreadable.
+    KernelSetNotReadable { revision: String, cause: String },
 }
 
 /// The operator-facing text of a refusal.
@@ -847,23 +853,26 @@ pub fn environment_load_refusal_text(refusal: &EnvironmentLoadRefusal) -> String
             cause,
         } => format!("reading revision {revision} failed at {step}: {cause}"),
         EnvironmentLoadRefusal::EnvironmentModuleMissing { revision, path } => format!(
-            "{path} does not exist at revision {revision}, so that revision's parse \
-                 environment cannot be read"
+            "{path} does not exist at revision {revision}, so the value it declares cannot be \
+                 read"
         ),
-        EnvironmentLoadRefusal::ClosureNotEvaluable { revision, cause } => format!(
-            "the parse environment closure at revision {revision} did not evaluate: {cause}"
-        ),
+        EnvironmentLoadRefusal::ClosureNotEvaluable { revision, cause } => {
+            format!("the declaring closure at revision {revision} did not evaluate: {cause}")
+        }
         EnvironmentLoadRefusal::EnvironmentItemNotOwned {
             revision,
             item,
             module,
         } => format!(
             "`{item}` is not declared by `{module}` at revision {revision}, so the value a \
-                 bare-name lookup would return is not the grammar authority"
+                 bare-name lookup would return is not that declaration's"
         ),
         EnvironmentLoadRefusal::ValueNotDecodable { revision, cause } => format!(
             "the parse environment at revision {revision} evaluated but did not decode into \
                  this binary's `ParseEnvironment`: {cause}"
+        ),
+        EnvironmentLoadRefusal::KernelSetNotReadable { revision, cause } => format!(
+            "the kernel-name set declared at revision {revision} could not be read: {cause}"
         ),
     }
 }
@@ -1042,7 +1051,28 @@ pub fn evaluate_environment_in(
     root: &std::path::Path,
     revision: &str,
 ) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
-    let entry = root.join(ENVIRONMENT_MODULE_PATH);
+    let (value, ctx) =
+        evaluate_owned_item_in(root, ENVIRONMENT_MODULE_PATH, ENVIRONMENT_ITEM, revision)?;
+    decode_environment_value(&value, &ctx, revision)
+}
+
+/// Evaluate the data item `item`, as declared BY the file `entry_rel`, out of a materialized corpus.
+///
+/// The one evaluation route for a revision's declared value: the parse environment and the kernel
+/// name set both come through here, so ownership and hermeticity are checked once.
+fn evaluate_owned_item_in(
+    root: &std::path::Path,
+    entry_rel: &str,
+    item: &str,
+    revision: &str,
+) -> Result<
+    (
+        crate::v1_interpreter::Value,
+        crate::v1_interpreter::InterpContext,
+    ),
+    EnvironmentLoadRefusal,
+> {
+    let entry = root.join(entry_rel);
     if !entry.exists() {
         return Err(EnvironmentLoadRefusal::EnvironmentModuleMissing {
             revision: revision.to_string(),
@@ -1059,36 +1089,36 @@ pub fn evaluate_environment_in(
                 cause: e,
             },
         )?;
-    // HERMETIC, NOT WET. A static grammar declaration has no business acquiring permission to
-    // perform host effects while it is being decoded; `Wet` here would let a corpus under
-    // examination act during examination.
+    // HERMETIC, NOT WET. A static declaration has no business acquiring permission to perform host
+    // effects while it is being decoded; `Wet` here would let a corpus under examination act during
+    // examination.
     let ctx = super::make_eval_context(
         &graph,
         indices,
         crate::v1_interpreter::ExecutionMode::Hermetic,
     );
     // EXACT OWNERSHIP, NOT A BARE NAME. `eval_data_item_value` resolves by bare name across the
-    // closure, so a homonymous `dag_parse_environment` elsewhere in the corpus would silently
-    // supply the grammar. The environment must come from the declaration that owns it.
-    if !super::data_item_declared_in_file(&ctx, ENVIRONMENT_ITEM, &entry_display) {
+    // closure, so a homonymous item elsewhere in the corpus would silently supply the value. It must
+    // come from the declaration that owns it.
+    if !super::data_item_declared_in_file(&ctx, item, &entry_display) {
         return Err(EnvironmentLoadRefusal::EnvironmentItemNotOwned {
             revision: revision.to_string(),
-            item: ENVIRONMENT_ITEM.to_string(),
-            module: ENVIRONMENT_MODULE.to_string(),
+            item: item.to_string(),
+            module: entry_rel.to_string(),
         });
     }
     let value = crate::v1_interpreter::with_active_context(&ctx, || {
-        crate::v1_interpreter::eval_data_item_value(&ctx, ENVIRONMENT_ITEM)
+        crate::v1_interpreter::eval_data_item_value(&ctx, item)
     })
     .map_err(|e| EnvironmentLoadRefusal::ClosureNotEvaluable {
         revision: revision.to_string(),
-        cause: format!("eval {ENVIRONMENT_ITEM}: {e}"),
+        cause: format!("eval {item}: {e}"),
     })?
     .ok_or_else(|| EnvironmentLoadRefusal::ClosureNotEvaluable {
         revision: revision.to_string(),
-        cause: format!("{ENVIRONMENT_ITEM} is not a data item in `{ENVIRONMENT_MODULE}`"),
+        cause: format!("{item} is not a data item in `{entry_rel}`"),
     })?;
-    decode_environment_value(&value, &ctx, revision)
+    Ok((value, ctx))
 }
 
 /// THE LOADER: the parse environment git holds at `revision`.
@@ -1115,25 +1145,31 @@ pub fn load_parse_environment_with_closure(
     revision: &str,
     closure: &BTreeSet<String>,
 ) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dest =
-        // UNDER THE WORKSPACE, NOT /tmp. The module index and entry resolver refuse any path outside
-        // the workspace root (`repo_relative_path_normalized`), so a corpus materialized into the
-        // system temp directory cannot be read by the repository's own machinery -- the loader would
-        // refuse every call, in production as much as in test. `target/` is where generated and
-        // scratch trees already live (`target/stage0-regen-candidate` is the precedent).
-        super::workspace_root()
-            .join("target")
-            .join(format!("gunbc-parse-env-{}-{}", std::process::id(), stamp));
+    let dest = revision_scratch_root("parse-env");
     // If the base's closure has a member the head's does not, the materialized set is incomplete
     // and resolution refuses as ClosureNotEvaluable -- a located refusal, not a fabricated read.
     let outcome = materialize_environment_closure_at(repo, revision, &dest, closure)
         .and_then(|()| evaluate_environment_in(&dest, revision));
     let _ = std::fs::remove_dir_all(&dest);
     outcome
+}
+
+/// A fresh directory for one revision's materialized tree, owned and removed by the caller.
+///
+/// UNDER THE WORKSPACE, NOT /tmp. The module index and entry resolver refuse any path outside the
+/// workspace root (`repo_relative_path_normalized`), so a corpus materialized into the system temp
+/// directory cannot be read by the repository's own machinery. `target/` is where generated and
+/// scratch trees already live (`target/stage0-regen-candidate` is the precedent).
+fn revision_scratch_root(purpose: &str) -> std::path::PathBuf {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    super::workspace_root().join("target").join(format!(
+        "gunbc-{purpose}-{}-{}",
+        std::process::id(),
+        stamp
+    ))
 }
 
 /// The repo-relative files that declare the parse environment's closure, per the real resolver.
@@ -1143,8 +1179,13 @@ pub fn load_parse_environment_with_closure(
 /// go stale, silently, the first time `std.syntax` gained an import -- a stale roster still resolves.
 /// The resolved graph's own span files ARE the closure.
 pub fn environment_closure_paths() -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
+    closure_paths_of(ENVIRONMENT_MODULE_PATH)
+}
+
+/// The repository-relative files of the live tree's resolved closure rooted at `entry_rel`.
+fn closure_paths_of(entry_rel: &str) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
     let root = super::workspace_root();
-    let entry = root.join(ENVIRONMENT_MODULE_PATH);
+    let entry = root.join(entry_rel);
     let dag_root = root.join(DAG_SOURCE_ROOT);
     let index = super::build_multi_entry_index(&[dag_root.display().to_string()]);
     let (graph, _indices) =
@@ -1165,9 +1206,7 @@ pub fn environment_closure_paths() -> Result<BTreeSet<String>, EnvironmentLoadRe
     if paths.is_empty() {
         return Err(EnvironmentLoadRefusal::ClosureNotEvaluable {
             revision: "live-tree".to_string(),
-            cause: "the resolved environment closure named no files, so no agreement check is \
-                    possible"
-                .to_string(),
+            cause: format!("the resolved closure of {entry_rel} named no files"),
         });
     }
     Ok(paths)
@@ -1219,18 +1258,103 @@ pub fn environment_agreement(
 /// The path whose declarations the kernel-name set is derived from.
 const KERNEL_TYPES_PATH: &str = "dag/std/types.dag";
 
+/// The data item in `KERNEL_TYPES_PATH` that declares the kernel-name set.
+const KERNEL_TYPES_ITEM: &str = "kernel_type_set";
+
 /// Whether the kernel type set this binary carries can speak for both revisions.
 ///
-/// NARROW ON PURPOSE. `declaring_candidates` consults the RUNNING compiler's `kernel_type_set`,
-/// which is a fact about the head. Threading distinct base and head kernel maps is the general
-/// repair and is not this change's subject; what is needed here is honesty about when the single map
-/// is adequate. Equal blobs for the declaring file means both revisions name the same kernel, so one
-/// map serves. Different blobs means the question is open, and an open question is `NotEvaluated` --
-/// not a guess that the head's map is close enough.
+/// THE FACT IS THE NAME SET, NOT THE FILE. `declaring_candidates` consults the RUNNING compiler's
+/// `kernel_type_set` -- a head fact -- so the question is whether the base revision declares the same
+/// set of kernel names. An earlier shape answered it by comparing the whole declaring file's blob,
+/// a byte-level proxy for a name-set fact: every edit to `dag/std/types.dag`, a function body or a
+/// comment included, refused the reconstruction although no such edit can change the set.
+///
+/// Equal blobs still settle it for free, since equal content declares equal sets. Only when the file
+/// differs is the base's `kernel_type_set` evaluated out of that revision's own tree and its names
+/// compared to this binary's. Distinct sets remain `false` -- threading separate base and head kernel
+/// maps is the general repair and not this change's subject -- and an unreadable base set is a
+/// refusal, never a substitution of the head's.
 pub fn kernel_set_serves_both(
     repo: &std::path::Path,
     base: &str,
     head: &str,
 ) -> Result<bool, EnvironmentLoadRefusal> {
-    Ok(blob_id_at(repo, base, KERNEL_TYPES_PATH)? == blob_id_at(repo, head, KERNEL_TYPES_PATH)?)
+    let base_blob =
+        blob_id_at(repo, base, KERNEL_TYPES_PATH).map_err(|e| as_kernel_set_refusal(base, e))?;
+    // THE HEAD'S DECLARATION MUST EXIST. This binary's set speaks for the head only because the
+    // head declares it; a head with no declaring file has no authority for the binary to stand in
+    // for, so it refuses rather than letting the compiled-in set substitute.
+    let head_blob = blob_id_at(repo, head, KERNEL_TYPES_PATH)
+        .map_err(|e| as_kernel_set_refusal(head, e))?
+        .ok_or_else(|| EnvironmentLoadRefusal::KernelSetNotReadable {
+            revision: head.to_string(),
+            cause: format!("{KERNEL_TYPES_PATH} does not exist at this revision"),
+        })?;
+    // Equal CONTENT is the free answer; an absent base is not equal to anything and goes on to the
+    // base read, which refuses it.
+    if base_blob.as_deref() == Some(head_blob.as_str()) {
+        return Ok(true);
+    }
+    let head_names: BTreeSet<String> = crate::std_types::kernel_type_set()
+        .keys()
+        .cloned()
+        .collect();
+    Ok(kernel_names_at(repo, base)? == head_names)
+}
+
+/// The kernel names `std.types` declares at `revision`, read from that revision's own tree.
+///
+/// Same acquisition and evaluation route as the parse environment: materialize the declaring file's
+/// closure at the revision, evaluate the item it OWNS (not a bare-name homonym), and remove the tree.
+pub fn kernel_names_at(
+    repo: &std::path::Path,
+    revision: &str,
+) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
+    let closure = closure_paths_of(KERNEL_TYPES_PATH)?;
+    let dest = revision_scratch_root("kernel-set");
+    let outcome = materialize_revision_paths(
+        repo,
+        revision,
+        &dest,
+        &closure.iter().map(String::as_str).collect::<Vec<_>>(),
+    )
+    .and_then(|()| {
+        let (value, ctx) =
+            evaluate_owned_item_in(&dest, KERNEL_TYPES_PATH, KERNEL_TYPES_ITEM, revision)?;
+        let wire = super::value_to_wire_json(&value, &ctx).map_err(|e| {
+            EnvironmentLoadRefusal::KernelSetNotReadable {
+                revision: revision.to_string(),
+                cause: format!("wire-encode {KERNEL_TYPES_ITEM}: {e}"),
+            }
+        })?;
+        serde_json::from_value::<std::collections::BTreeMap<String, bool>>(wire)
+            .map(|m| m.into_keys().collect())
+            .map_err(|e| EnvironmentLoadRefusal::KernelSetNotReadable {
+                revision: revision.to_string(),
+                cause: format!("{KERNEL_TYPES_ITEM} is not a Map<String, Bool>: {e}"),
+            })
+    });
+    let _ = std::fs::remove_dir_all(&dest);
+    // ONE SUBJECT, ONE REFUSAL ARM. The shared route reports its failures in the parse
+    // environment's vocabulary; left as-is, an unreadable kernel set would reach the operator
+    // labelled as an unreadable grammar. Every failure here is about the kernel set.
+    outcome.map_err(|e| as_kernel_set_refusal(revision, e))
+}
+
+/// Relabel a refusal from the shared acquisition route as the kernel-set refusal it is here.
+///
+/// ONE SUBJECT, ONE REFUSAL ARM. The shared route is subject-neutral; the kernel guard's caller must
+/// still be told that it was the kernel-name set that could not be read. The inner refusal's text is
+/// kept as the cause, so the specific failure stays located.
+fn as_kernel_set_refusal(
+    revision: &str,
+    refusal: EnvironmentLoadRefusal,
+) -> EnvironmentLoadRefusal {
+    match refusal {
+        EnvironmentLoadRefusal::KernelSetNotReadable { .. } => refusal,
+        other => EnvironmentLoadRefusal::KernelSetNotReadable {
+            revision: revision.to_string(),
+            cause: environment_load_refusal_text(&other),
+        },
+    }
 }

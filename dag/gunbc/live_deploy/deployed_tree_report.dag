@@ -120,7 +120,6 @@ fn deployed_tree_report_for_context(
   context: FleetSshExecutionContext,
   context_receipt: String,
 ) -> ProcessExit
-  uses net: Network
 {
   match converge_target_revision(
     observed: observe_fleet_desired_revision(repo: deployed_tree_report_vantage),
@@ -147,7 +146,6 @@ fn deployed_tree_report_for_context(
 }
 
 fn deployed_tree_report_ci_wet() -> ProcessExit
-  uses net: Network
 {
   match prepare_fleet_ssh_agent_context(attempt_raw: deployed_tree_report_attempt_raw) {
     FleetSshContextRefused { cause: c } =>

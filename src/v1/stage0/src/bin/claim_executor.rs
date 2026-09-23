@@ -528,6 +528,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         // (leaving the native job selecting zero phases), or a selected lane owning zero
         // phases in the authority, stops the line here rather than greening over an
         // unmeasured population.
+        v1_compiler::cli_run::floor_seam("lane-roster");
         let authority_lane_rows =
             match v1_compiler::cli_run::authority_lane_phase_rows(&source_roots) {
                 Ok(rows) => Some(rows),
@@ -552,6 +553,10 @@ fn run() -> Result<ExitCode, ExitCode> {
         // `cli_run::DAG_PARSE_SWEEP_ROOTS`, shared with the standalone bin so the cheapest
         // local check and this phase cover the same files.
         if required_ci_phase_selected(RequiredCiPhase::Parse, required_ci_lane) {
+            // THE PHASES BEFORE THE FLOOR ARE SEAMS TOO: the floor enters holding whatever the
+            // parse and its riders left resident, so a beat at their boundaries is what separates
+            // that inheritance from the floor's own growth (gunbc.floor_demand).
+            v1_compiler::cli_run::floor_seam("parse");
             eprintln!(
                 "required-ci: phase parse (.dag: {})",
                 v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS.join(", ")
@@ -566,6 +571,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                         sweep.parse_clean
                     );
                     head_index = Some(sweep.index.clone());
+                    v1_compiler::cli_run::floor_seam("declarations");
                     // THE DECLARATION INTEGRITY CHECKS RIDE THE PARSE THAT JUST RAN.
                     //
                     // They are reported inside this phase rather than as a phase of their own
@@ -985,6 +991,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         // a green here and an emitting board are one fact rather than two.
         // PHASE 4 — the witness floor. Independent; runs whatever happened above.
         if required_ci_phase_selected(RequiredCiPhase::Floor, required_ci_lane) {
+            v1_compiler::cli_run::floor_seam("floor-entry");
             eprintln!("required-ci: phase floor (one prepared subject, one fold)");
             let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
             // THE PARSE PHASE'S INDEX IS LENT TO THE FLOOR'S PLANNING ROW: the match-bearing
@@ -1132,7 +1139,13 @@ fn run() -> Result<ExitCode, ExitCode> {
         } else {
             source_roots.clone()
         };
-        let probe_root = v1_compiler::cli_run::local_emit_compile_probe_root();
+        let probe_root = match v1_compiler::cli_run::local_emit_compile_probe_root() {
+            Ok(root) => root,
+            Err(e) => {
+                eprintln!("required-emit-compile: probe root not created: {e}");
+                return Err(ExitCode::from(1));
+            }
+        };
         match v1_compiler::cli_run::run_required_emit_compile(&roots, &probe_root) {
             Ok(outcomes) => {
                 let mut not_passed = 0usize;
@@ -1164,6 +1177,9 @@ fn run() -> Result<ExitCode, ExitCode> {
                 for line in report {
                     eprintln!("{line}");
                 }
+                // The report printed this root and the retention file inside it, so it is kept
+                // for the reader rather than removed with the value.
+                let _ = probe_root.retain();
                 return if not_passed == 0 && retention_error.is_none() {
                     Ok(ExitCode::SUCCESS)
                 } else {
@@ -1196,7 +1212,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             v1_compiler::cli_run::NativeRouteOutcome::LaneQualificationHeld { .. } => {
                 Ok(ExitCode::SUCCESS)
             }
-            v1_compiler::cli_run::NativeRouteOutcome::LaneQualificationRefused { summary } => {
+            v1_compiler::cli_run::NativeRouteOutcome::LaneQualificationRefused {
+                summary, ..
+            } => {
                 eprintln!("v2-native-route: refused: LaneQualificationRefused — {summary}");
                 Err(ExitCode::from(1))
             }
