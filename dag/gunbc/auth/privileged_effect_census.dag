@@ -15,7 +15,7 @@ import gunbc.spark.bootstrap_provision {
 import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
 import gunbc.github_app_acquisition { census_app_registration_submit_step }
 import gunbc.auth.mtcollins1_boot_federation { mtcollins1_boot_service_account_member }
-import gunbc.machine_intake_mtcollins1_standing_ruling { mtcollins1_boot_standing_ruling_text }
+import gunbc.machine_intake_mtcollins1_standing_ruling { StandingRuling, mtcollins1_boot_standing_ruling }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
   WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
@@ -231,24 +231,47 @@ fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
 // is not rostered against its site is red (rulings_without_a_rostered_interlock).
 // MINTS NO CREDENTIAL: it reads the pinned BMC credential and the pinned fleet key.
 // WORKLOAD IDENTITY: the dedicated account of gunbc.auth.mtcollins1_boot_federation.
-data mtcollins1_boot_standing_authorization: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
-  ruling_text: mtcollins1_boot_standing_ruling_text,
-  effect_subject: "mtcollins1 boot: BMC virtual-media attach, one-shot CD boot device, power cycle and SOL capture" as NonEmptyStr,
-  interlock: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_unit_hold_key"),
-  confirmation_read: site(module_path: "gunbc.machine_intake_mtcollins1_standing_ruling", decl_name: "mtcollins1_boot_standing_ruling_read"),
+// DERIVED FROM THE ONE RULING VALUE (side-chat review 5288466573): the census does not re-author the
+// words, the effect or the interlock -- it reads them off gunbc.machine_intake_mtcollins1_standing_ruling
+// mtcollins1_boot_standing_ruling, the same value the runtime digests and files.
+fn standing_authorization_of(r: StandingRuling) -> StandingDestructiveAuthorization {
+  StandingDestructiveAuthorization {
+    ruling_text: r.text,
+    effect_subject: r.effect_subject,
+    interlock: r.interlock,
+    confirmation_read: site(module_path: "gunbc.machine_intake_mtcollins1_standing_ruling", decl_name: "mtcollins1_boot_standing_ruling_read"),
+  }
 }
 
-fn mtcollins1_boot_effect() -> PrivilegedEffect {
+// ONE EFFECT SHAPE PER ROOT OF THE RULING, differing only in the root's own identity: both are the
+// recurring, irreversible, standing-ruled Mt. Collins destructive controller effect.
+fn mtcollins1_destructive_controller_effect(root_subject: NonEmptyStr, identity: WorkloadIdentityStanding) -> PrivilegedEffect {
   PrivilegedEffect {
-    subject: "mtcollins1 boot: BMC virtual-media attach, one-shot CD boot device, power cycle and SOL capture under the pinned BMC credential, plus the census medium readback over the pinned fleet key" as NonEmptyStr,
+    subject: join([mtcollins1_boot_standing_ruling.effect_subject as String, " -- by ", root_subject as String], "") as NonEmptyStr,
     frequency: EveryProvision,
     reversibility: IrreversibleEffect { what_is_lost: "a power cycle destroys the unit's RAM and the session it was running; no reapply restores it" as NonEmptyStr },
     surface: ApiSurface,
-    workload_identity: WorkloadIdentityBindable { member: mtcollins1_boot_service_account_member() as NonEmptyStr },
+    workload_identity: identity,
     minted_reach: MintsNoCredential,
     billing: NoBillingConsequence,
-    witness_discharge: StandingRulingUnderInterlock { ruling: mtcollins1_boot_standing_authorization },
+    witness_discharge: StandingRulingUnderInterlock { ruling: standing_authorization_of(r: mtcollins1_boot_standing_ruling) },
   }
+}
+
+fn mtcollins1_boot_effect() -> PrivilegedEffect {
+  mtcollins1_destructive_controller_effect(
+    root_subject: "the mtcollins1_boot mode (attach, boot device, power, SOL; census medium readback over the pinned fleet key)" as NonEmptyStr,
+    identity: WorkloadIdentityBindable { member: mtcollins1_boot_service_account_member() as NonEmptyStr },
+  )
+}
+
+// HOST RESET-RETURN reads the BMC credential through the repository federation (the convergence
+// principal), not the boot's dedicated identity; that residue is stated in the PR and unchanged here.
+fn mtcollins1_host_reset_effect() -> PrivilegedEffect {
+  mtcollins1_destructive_controller_effect(
+    root_subject: "the host_reset_return mode (boot device, power)" as NonEmptyStr,
+    identity: convergence_principal(),
+  )
 }
 
 // ── INTERLOCKS: the state an effect's parameters are honest only under ─────────────────────────
@@ -280,36 +303,45 @@ type InterlockRoot {
   sealed_by: List<DeclarationRef>
 }
 
+data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
+  InterlockRoot {
+    root: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
+    acquires_at: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
+    operations: ["SOL deactivate/activate" as NonEmptyStr, "virtual-media attach" as NonEmptyStr, "boot-device set" as NonEmptyStr, "power cycle" as NonEmptyStr],
+    sealed_by: [
+      site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_release"),
+      site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_activate_held"),
+      site(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_attach_diskless_image"),
+      site(module_path: "gunbc.machine_intake_megarac_media_attach", decl_name: "megarac_attach_remote_image"),
+      site(module_path: "gunbc.machine_intake_mtcollins1_actuate", decl_name: "mtcollins1_drive_handoff"),
+      site(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_boot_handoff"),
+    ],
+  },
+  InterlockRoot {
+    root: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+    acquires_at: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+    operations: ["boot-device set" as NonEmptyStr, "power cycle" as NonEmptyStr],
+    sealed_by: [
+      site(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_boot_handoff"),
+      site(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_power_cycle_after_confirmed_selection"),
+    ],
+  },
+]
+
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
-    hold: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_unit_hold_key"),
+    hold: mtcollins1_boot_standing_ruling.interlock,
     refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
     premise: "the boot takes the unit's one durable exclusive hold before any BMC write and refuses FileHoldOccupied naming the holder" as NonEmptyStr,
-    hold_owning_roots: [
-      InterlockRoot {
-        root: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
-        acquires_at: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
-        operations: ["SOL deactivate/activate" as NonEmptyStr, "virtual-media attach" as NonEmptyStr, "boot-device set" as NonEmptyStr, "power cycle" as NonEmptyStr],
-        sealed_by: [
-          site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_release"),
-          site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_activate_held"),
-          site(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_attach_diskless_image"),
-          site(module_path: "gunbc.machine_intake_megarac_media_attach", decl_name: "megarac_attach_remote_image"),
-          site(module_path: "gunbc.machine_intake_mtcollins1_actuate", decl_name: "mtcollins1_drive_handoff"),
-          site(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_boot_handoff"),
-        ],
-      },
-      InterlockRoot {
-        root: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
-        acquires_at: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
-        operations: ["boot-device set" as NonEmptyStr, "power cycle" as NonEmptyStr],
-        sealed_by: [
-          site(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_boot_handoff"),
-          site(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_power_cycle_after_confirmed_selection"),
-        ],
-      },
-    ],
+    hold_owning_roots: mtcollins1_hold_owning_roots,
+  },
+  PrivilegedEffectInterlock {
+    site: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+    hold: mtcollins1_boot_standing_ruling.interlock,
+    refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
+    premise: "host reset-return reads the same standing ruling and takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
+    hold_owning_roots: mtcollins1_hold_owning_roots,
   },
 ]
 
@@ -326,6 +358,24 @@ fn rulings_without_a_rostered_interlock() -> List<DeclarationRef> {
       StandingRulingUnderInterlock { ruling: r } =>
         if ruling_interlock_is_rostered(site_ref: row.site, interlock: r.interlock) { [] } else { [row.site] }
     })
+}
+
+// RUNTIME AND CENSUS CANNOT DISAGREE ON THE ROOT POPULATION: the census sites that carry this ruling's
+// discharge, and the ruling's own roots, are the same set (identity join, both directions).
+fn discharged_by_ruling(v: PrivilegedEffectSite) -> Bool {
+  match v.effect.witness_discharge {
+    NoWitnessDischarge => false
+    StandingRulingUnderInterlock { ruling: r } => (r.ruling_text as String) == (mtcollins1_boot_standing_ruling.text as String)
+  }
+}
+
+fn ruling_roots_missing_from_census() -> List<DeclarationRef> {
+  let sites = map(filter(privileged_effect_census, row => discharged_by_ruling(v: row)), row => row.site)
+  filter(mtcollins1_boot_standing_ruling.roots, r => !declaration_ref_in_list(target: r, refs: sites))
+}
+
+fn census_sites_outside_ruling_roots() -> List<DeclarationRef> {
+  filter(map(filter(privileged_effect_census, row => discharged_by_ruling(v: row)), row => row.site), s => !declaration_ref_in_list(target: s, refs: mtcollins1_boot_standing_ruling.roots))
 }
 
 fn interlocked_sites_missing_from_census() -> List<DeclarationRef> {
@@ -440,6 +490,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
     effect: mtcollins1_boot_effect(),
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+    effect: mtcollins1_host_reset_effect(),
     realized: RealizedFederatedGrant,
     divergence_reason: none,
   },

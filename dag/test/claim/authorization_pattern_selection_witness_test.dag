@@ -23,6 +23,7 @@ import gunbc.auth.privileged_effect_census {
   reasoned_divergences, reasoned_divergences_with_fired_triggers,
   site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
   mtcollins1_boot_effect, privileged_effect_interlocks, interlocked_sites_missing_from_census, rulings_without_a_rostered_interlock,
+  ruling_roots_missing_from_census, census_sites_outside_ruling_roots,
 }
 import std.human_intervention {
   HumanIntervention, HumanInterventionIdentity, FleetOnce, DeviceOnce, EveryProvision, BreakGlassOnly,
@@ -311,4 +312,17 @@ test fn the_mtcollins1_boot_interlock_is_rostered_against_a_census_row() -> Bool
         && declaration_ref_display_key(ref: i.refusal) == "gunbc.machine_intake_mtcollins1_maintenance_hold::unit_hold_acquire"
         && any(i.hold_owning_roots, r => declaration_ref_display_key(ref: r.root) == "gunbc.machine_intake_mtcollins1_boot_run::mtcollins1_boot_wet")
         && any(i.hold_owning_roots, r => declaration_ref_display_key(ref: r.root) == "gunbc.host_reset_return_run::host_reset_return_wet"))
+}
+
+// ONE RULING, EVERY ROOT A CENSUS ROW AT THE SAME GRAIN (side-chat review 5288466573): the ruling's
+// roots and the census sites carrying its discharge are the same set, both roots select the federated
+// pattern and conform, and both carry an interlock row.
+test fn every_root_of_the_standing_ruling_is_a_conforming_census_row() -> Bool {
+  (ruling_roots_missing_from_census() |> count) == 0
+    && (census_sites_outside_ruling_roots() |> count) == 0
+    && any(census_verdicts(), v =>
+      declaration_ref_display_key(ref: v.site) == "gunbc.host_reset_return_run::host_reset_return_wet"
+        && selected_federated(s: v.selection)
+        && match v.conformance { Conforms => true  _ => false })
+    && any(privileged_effect_interlocks, i => declaration_ref_display_key(ref: i.site) == "gunbc.host_reset_return_run::host_reset_return_wet")
 }

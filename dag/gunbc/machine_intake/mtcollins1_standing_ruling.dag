@@ -1,13 +1,13 @@
 module gunbc.machine_intake_mtcollins1_standing_ruling
 
-import std.types { Int, NonEmptyStr, String }
+import std.types { Int, List, NonEmptyStr, String }
 import std.measure { Second, second }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { Sha256Digest, sha256_hex_digest, as_content_hash_cryptographic }
 import std.bytes { bytes_octets, utf8_encode_bytes }
-import std.decl_ref { decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import extdeps.crypto.sha2 { sha256_hex }
-import std.effect_grant { NamespacePosition, ServiceOpTree, Write }
+import std.effect_grant { Verb, Read, Write, Execute, NamespaceTree, NamespacePosition, ServiceOpTree, FilesystemPathTree, UriTree, ProcTree, CodeNameTree }
 import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction, AuthorizationRequest }
 import v2.std.optional { Present, Absent }
 import gunbc.auth.approval_gate {
@@ -40,39 +40,81 @@ import gunbc.auth.approval_decision_store { request_revision_of }
 
 data mtcollins1_boot_standing_ruling_text: NonEmptyStr = "STANDING AUTHORIZATION (recurring destructive effect). I authorize the fleet-converge mtcollins1_boot mode, dispatched from gunb-ai/gunbc main and running as its dedicated workload identity, to attach the census image to Mt. Collins unit 1 over BMC virtual media, set a one-shot CD boot, power-cycle the unit and capture its SOL console, on every dispatch, and the fleet-converge host_reset_return mode to power-cycle the same unit, without a per-run approval. A power cycle destroys the unit's RAM and running session and cannot be undone. This consent holds only while each run first takes the unit's maintenance hold (gunbc.machine_intake_mtcollins1_maintenance_hold) and refuses when it is held. Provenance: operator chat ruling 2026-09-23." as NonEmptyStr
 
-// THE RULING IS FOUR FACTS, AND THE DIGEST IS OVER ALL OF THEM (side-chat review 5287596716). The
-// words the operator reads, the effect they authorize, the scope action the request carries and the
-// interlock the consent is conditional on. Changing any one is a different ruling: a different
-// digest, hence a different intent and a different escalation id.
+// ONE TYPED VALUE: THE MT. COLLINS DESTRUCTIVE CONTROLLER EFFECT (side-chat review 5288466573). The
+// operator's consent covers the unit's destructive BMC effects by BOTH production roots that perform
+// them -- the boot and host reset-return -- so it is one ruling, not one per root: the consent does
+// not differ between them, and two rulings would be two authorities for one decision (DESIGN §3).
+// Everything else is DERIVED from this value: the approval request, the SHA-256 digest, the
+// escalation id, the census's StandingDestructiveAuthorization and both census rows
+// (gunbc.auth.privileged_effect_census). Changing the words, the effect, the root population, any
+// part of the scope, or the interlock is a different ruling -- a different digest and id.
 type StandingRuling {
   text: NonEmptyStr
   effect_subject: NonEmptyStr
+  roots: List<DeclarationRef>
   scope: AuthorizationScope
-  interlock: NonEmptyStr
+  interlock: DeclarationRef
 }
 
-data mtcollins1_boot_standing_ruling_scope: AuthorizationScope = AuthorizationScope {
+data mtcollins1_destructive_controller_scope: AuthorizationScope = AuthorizationScope {
   verb: Write,
-  resource: NamespacePosition { tree: ServiceOpTree { service: "gunbc-standing-ruling" }, path: ["mtcollins1", "boot"] },
-  action: "gunbc.standing-ruling.mtcollins1-boot" as AuthorizedAction,
+  resource: NamespacePosition { tree: ServiceOpTree { service: "gunbc-standing-ruling" }, path: ["mtcollins1", "bmc", "destructive-controller-effect"] },
+  action: "gunbc.standing-ruling.mtcollins1-destructive-controller-effect" as AuthorizedAction,
 }
 
 data mtcollins1_boot_standing_ruling: StandingRuling = StandingRuling {
   text: mtcollins1_boot_standing_ruling_text,
-  effect_subject: "mtcollins1: BMC virtual-media attach, one-shot boot-device set, power cycle and SOL capture, by the fleet-converge mtcollins1_boot mode and by host_reset_return" as NonEmptyStr,
-  scope: mtcollins1_boot_standing_ruling_scope,
-  interlock: "gunbc.machine_intake_mtcollins1_maintenance_hold::mtcollins1_unit_hold_key" as NonEmptyStr,
+  effect_subject: "mtcollins1 destructive controller effect: BMC virtual-media attach, one-shot boot-device set, power cycle and SOL capture" as NonEmptyStr,
+  roots: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
+    decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+  ],
+  scope: mtcollins1_destructive_controller_scope,
+  interlock: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_unit_hold_key"),
 }
 
-// ONE CANONICAL PREIMAGE, labelled field by field so no two rulings serialize alike.
+// ── ONE INJECTIVE ENCODING OF THE COMPLETE RULING ─────────────────────────────────────────────
+// Every field is tag:length:value; so no separator redistribution between fields can reproduce an
+// encoding (the length fixes where each value ends), and the tags fix which field each value is. A
+// list carries its element count first. Every component is encoded: text, effect subject, every
+// root, the scope's verb, resource tree (and its service), every path segment, action, interlock.
+fn ruling_field(tag: String, value: String) -> String {
+  join([tag, ":", to_string(string_length(value)), ":", value, ";"], "")
+}
+
+fn ruling_list_field(tag: String, values: List<String>) -> String {
+  concat(ruling_field(tag: concat(tag, "#"), value: to_string(values.length())), join(map(values, v => ruling_field(tag: tag, value: v)), ""))
+}
+
+fn verb_wire(v: Verb) -> String {
+  match v {
+    Read => "Read"
+    Write => "Write"
+    Execute => "Execute"
+  }
+}
+
+fn tree_wire(t: NamespaceTree) -> String {
+  match t {
+    FilesystemPathTree => ruling_field(tag: "tree", value: "FilesystemPathTree")
+    UriTree => ruling_field(tag: "tree", value: "UriTree")
+    ProcTree => ruling_field(tag: "tree", value: "ProcTree")
+    CodeNameTree => ruling_field(tag: "tree", value: "CodeNameTree")
+    ServiceOpTree { service: sv } => concat(ruling_field(tag: "tree", value: "ServiceOpTree"), ruling_field(tag: "service", value: sv))
+  }
+}
+
 fn standing_ruling_preimage(r: StandingRuling) -> String {
   join([
-    "gunbc-standing-ruling/1",
-    "\ntext=", r.text as String,
-    "\neffect=", r.effect_subject as String,
-    "\nscope-action=", r.scope.action as String,
-    "\ninterlock=", r.interlock as String,
-    "\n",
+    ruling_field(tag: "encoding", value: "gunbc-standing-ruling/2"),
+    ruling_field(tag: "text", value: r.text as String),
+    ruling_field(tag: "effect", value: r.effect_subject as String),
+    ruling_list_field(tag: "root", values: map(r.roots, d => declaration_ref_display_key(ref: d))),
+    ruling_field(tag: "verb", value: verb_wire(v: r.scope.verb)),
+    tree_wire(t: r.scope.resource.tree),
+    ruling_list_field(tag: "path", values: r.scope.resource.path),
+    ruling_field(tag: "action", value: r.scope.action as String),
+    ruling_field(tag: "interlock", value: declaration_ref_display_key(ref: r.interlock)),
   ], "")
 }
 
@@ -104,7 +146,7 @@ fn standing_ruling_escalation_id(d: Sha256Digest) -> NonEmptyStr {
 type StandingRulingSubject {
   ruling_text: NonEmptyStr
   effect_subject: NonEmptyStr
-  interlock: NonEmptyStr
+  interlock: DeclarationRef
 }
 
 // THE REQUEST IS A FUNCTION OF THE RULING AND ITS DIGEST: the digest is the intent hash and the id
