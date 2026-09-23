@@ -1960,7 +1960,7 @@ fn compute_recover_attempt(instance: HostDashboardInstance, reference: NonEmptyS
                   compute_recovery_after_settlement(
                     reference: rec.reference,
                     verdict: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], ""),
-                    returned: compute_recover_release(instance: instance, reference: reference, reason: why))
+                    returned: compute_recover_release(instance: instance, reference: reference, granted: rec.granted, reason: why))
               }
           }
       }
@@ -1979,9 +1979,11 @@ fn compute_recovery_after_settlement(reference: String, verdict: String, returne
 // THE SEAT COMES BACK THROUGH PR 1'S OWN RELEASE PATH, never a second one. compute_release_on
 // reads, folds and PROPOSES against the folded pool, so a reference the ledger is not holding is
 // refused at the proposal rather than appended -- which is what keeps a recovery from poisoning the
-// whole partition with an UnknownEncumbrance every later read would refuse on.
-fn compute_recover_release(instance: HostDashboardInstance, reference: NonEmptyStr, reason: String) -> ComputeRelease {
-  match compute_capacity_subject(instance: instance) {
+// whole partition with an UnknownEncumbrance every later read would refuse on. The subject's
+// request is the seat the attempt record says it was granted -- the release fold consults no
+// request, but the subject names the hold it is about rather than a figure invented for it.
+fn compute_recover_release(instance: HostDashboardInstance, reference: NonEmptyStr, granted: Kibibyte, reason: String) -> ComputeRelease {
+  match compute_capacity_subject(instance: instance, request: granted) {
     ComputeSubjectHostUnresolved { host: h } => ComputeReleaseRefused { detail: join(["no capacity subject resolves for host ", h as String], "") }
     ComputeSubjectResolved { subject: subj } =>
       compute_release_on(
