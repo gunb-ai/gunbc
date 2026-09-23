@@ -492,6 +492,13 @@ fn floor_isolation_requirement() -> IsolationProfile {
 // builds what it runs, and the aarch64 the fleet provides is a fact about the
 // fleet's labels rather than about this Work. Stating it would refuse an x86
 // offer for a reason the Work does not have (DESIGN 4d, over-prohibition).
+// THE FLEET'S OWN TRUST DOMAIN, AS A ROW RATHER THAN A LITERAL, because a second consumer now
+// decides on it: gunbc.runner_attempt_launch admits the reservation-authorized planner arm only for
+// a Work whose trust_domain IS this row -- the untrusted-CI route carries another domain and cannot
+// reach that arm by construction. Two spellings of the domain would let the two drift apart and
+// the selection silently widen or narrow.
+data gunbc_internal_fleet_trust_domain: TrustDomainRef = "gunbc.trust.internal-fleet" as TrustDomainRef
+
 fn floor_execution_requirements() -> ExecutionRequirements {
   ExecutionRequirements {
     capacity_class: ControlPlaneCapacity,
@@ -506,7 +513,7 @@ fn floor_execution_requirements() -> ExecutionRequirements {
       },
     },
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
-    trust_domain: "gunbc.trust.internal-fleet",
+    trust_domain: gunbc_internal_fleet_trust_domain,
     isolation: floor_isolation_requirement(),
   }
 }

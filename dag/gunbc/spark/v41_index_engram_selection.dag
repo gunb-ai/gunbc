@@ -2,7 +2,7 @@ module gunbc.spark.v41_index_engram_selection
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { ByteSize }
+import std.measure { ByteSize, byte_size }
 import std.content_hash { Sha256DigestHex }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
@@ -131,8 +131,31 @@ type V41IndexEngramSelectionReading
     }
   | V41IndexEngramSelectionUnread { obligation: NonEmptyStr }
 
-data v41_index_engram_selection_reading: V41IndexEngramSelectionReading = V41IndexEngramSelectionUnread {
-  obligation: "the .engram. selection over the full index has not been read by an enrolled route: spark_v41_checkpoint_materialize scans the verified index on the Spark, and its index-selection receipt lines are transcribed into gunbc.spark.v41_index_engram_selection v41_index_engram_selection_reading" as NonEmptyStr,
+// THE LIVE READING, TRANSCRIBED FROM AN ENROLLED ROUTE'S RECEIPT. Its `index-selection` lines are the
+// spark_v41_index_selection step of fleet-converge run 35877813088 (mode spark_v41_checkpoint_materialize,
+// target srv8, main a0a4819), which verified the index against its manifest row on the host, read it back,
+// and parsed it with parse_json_document under a hard memory.max of 27917287424 bytes (the runner slot's,
+// its receipt's memory-fence lines). The values are the receipt's; the pin they are compared against is
+// extdeps.deepseek.deepseek_v4_1_flash's, so this row cannot close membership by restating it.
+data v41_index_engram_selection_reading: V41IndexEngramSelectionReading = V41IndexEngramSelectionRead {
+  index_sha256_hex: "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8" as Sha256DigestHex,
+  index_bytes: byte_size(count: 7470294),
+  name_count: 96085,
+  members: [
+    safetensors_index_member(name: "layers.14.engram.embed.weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.14.engram.embed.scale" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.14.engram.q_weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.14.engram.k_weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.14.engram.wkv.weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.14.engram.wkv.scale" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.embed.weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.embed.scale" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.q_weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.k_weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.wkv.weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+    safetensors_index_member(name: "layers.1.engram.wkv.scale" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr),
+  ],
+  observed: "fleet-converge run 35877813088, spark_v41_index_selection on srv8 at main a0a4819, 2026-09-23" as NonEmptyStr,
 }
 
 // THE ENGRAM POPULATION THIS REPOSITORY HAS OBSERVED. With no reading it is the extdeps population,

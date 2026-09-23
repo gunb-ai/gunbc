@@ -11,8 +11,7 @@ import extdeps.systemd {
   ActiveEnterTimestampMonotonic, ActiveState, MainPID,
   EnvironmentProperty, AfterProperty, WantsProperty,
   InvocationIDProperty, FragmentPathProperty,
-  systemd_unit_property_wire,
-}
+  systemd_unit_property_wire, PartOf }
 
 data systemd_property_directive_overlap_scope: Disposition = SingleAuthority
 
@@ -102,6 +101,10 @@ type SystemdPropertyWritability
 // the show surface. The other additions are manager-derived state, including AccuracyUSec: its
 // writable timer directive is AccuracySec=, not the reported microsecond property.
 // Slice is the unit-file directive systemd.resource-control(5) specifies for placing a unit in a slice.
+// PartOf is the [Unit] directive of systemd.unit(5): a one-way dependency under which stopping the
+// named unit stops this one, while this one stopping does not stop the named unit. It is settable
+// and is set -- gunbc.runner_microvm_attempt runner_microvm_attempt_part_of_property binds a
+// transient attempt unit to the slot unit supervising it -- so it is a directive, not manager state.
 // It was absent from this classifier on main, which left the match non-exhaustive and the module
 // unresolvable; it is added here because this change is the first to touch the classifier since.
 // KillMode and ExitType are the [Service] directives of the same spelling (systemd.kill(5),
@@ -121,6 +124,7 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     TasksCurrent => ObservationOnly
     ControlGroup => ObservationOnly
     SliceProperty => SettableDirective
+    PartOf => SettableDirective
     ActiveEnterTimestampMonotonic => ObservationOnly
     ActiveState => ObservationOnly
     MainPID => ObservationOnly

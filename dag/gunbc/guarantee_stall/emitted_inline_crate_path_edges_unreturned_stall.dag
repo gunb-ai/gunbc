@@ -1,0 +1,37 @@
+module gunbc.guarantee_stall.emitted_inline_crate_path_edges_unreturned_stall
+
+import v2.std.algebra { Cons, Empty }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// ROSTERED AS A STALL, NOT A RUNG DROP: nothing fell. No partition has ever seen an inline
+// crate::<module>:: path the expression emitter writes, so previous/temporary/reason would
+// fabricate an event (gunbc.rung_drop states the distinction). The use-line population reaches the
+// partition through gunbc.rust_emitted_edge; these four deciders write their paths inside
+// emit_typed_expr / render_rust_type, which return String, so the edge they decide is not returned.
+// A missed inline edge is not silent: the multi-crate build of the partition (Pkg7e) fails loudly
+// with an unresolved crate path, which is the current rung.
+data emitted_inline_crate_path_edges_unreturned_stall: GuaranteeStall = GuaranteeStall {
+  subject: "cross-module crate::<module>:: paths written inline by the Rust expression and type emitter, absent from the edge set the crate partition decides over",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding {
+    grounding: "the expression emitter (v1.compiler.emit_rust emit_typed_expr / render_rust_type) returns the module edges it writes alongside the text it writes"
+  },
+  population: BoundedPopulation {
+    members: Cons {
+      head: "v1.compiler.emit_rust emit_typed_expr call arm (SourceDeclarationCall.owner_module_path, RuntimePrimitiveCall.projected_from)",
+      tail: Cons {
+        head: "v1.compiler.emit_rust qualified type rendering via alias_rhs_rust_qualify_module_filename",
+        tail: Cons {
+          head: "v1.compiler.emit_rust emit_qualified_value_ref_crate_ident",
+          tail: Cons {
+            head: "v1.compiler.emit_rust rust_declaration_path and emit_rust_structural_comparison",
+            tail: Empty {}
+          }
+        }
+      }
+    }
+  },
+  next_rung_trigger: climbs_when(capability: "the expression emitter returns the edges it writes: emit_typed_expr and render_rust_type yield each cross-module path's owner module with the text, sufficient for every inline crate::<module>:: path in an emitted module to reach gunbc.rust_emitted_edge rows and so the crate partition, with no second traversal of the typed tree")
+}

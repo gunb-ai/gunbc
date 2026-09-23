@@ -22,7 +22,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list, length, list_append, list_snoc_item }
+import v2.std.algebra { any, fold_list, length, list_append, list_snoc_item }
 import v2.std.collection {
   Map,
   PointwisePower,
@@ -80,6 +80,9 @@ import v2.std.symbol_index {
   GlobalBareLookupAmbiguous,
   GlobalBareLookupUnbound,
   symbol_index_absolute_candidates,
+  RecordTypePayload,
+  VariantArmPayload,
+  symbol_index_declared_payload_at,
   symbol_index_global_unique_lookup,
   symbol_index_lexical_lookup
 }
@@ -108,7 +111,6 @@ import v2.std.node {
 import v2.std.node_query {
   construct_field_edges,
   construct_tag_optional,
-  declared_field_list,
   find_named_child,
   pattern_wildcard_name
 }
@@ -444,7 +446,7 @@ fn unbound_symbol_diagnostics(ctx: ResolveContext, n: Node, name: Symbol) -> Non
         },
         tail: [fatal]
       }
-    GlobalBareLookupAmbiguous =>
+    GlobalBareLookupAmbiguous { paths: _ } =>
       NonEmptyDiagnostics {
         head: Diagnostic {
           reason: ^resolve_unbound_name_is_declared_in_several_modules,
@@ -1190,69 +1192,31 @@ fn resolve_transform_children(
 // an ordinary reference, so a misspelled variant in a pat refuses instead of quietly becoming
 // a binder that matches everything. A pat that is not a construct (a bare atom, a literal)
 // binds nothing and resolves as before.
-// A DECLARED PAYLOAD IS A CONSTRUCTOR; A VALUE CONSTRUCT IS NOT. Both are Conj, so the connective
-// alone cannot decide it, and the difference is load-bearing here: this stage now lowers
-// `data d: R = R { .. }` to the construct shape (body_lowering_fold body_lower_try_record_literal),
-// so a plain `TypeNode { connective: Conj }` test classifies that data row as a constructor and a
-// pattern binder spelling its name -- `match c { A(d) => d }` beside `data d: Rec = Rec { .. }` --
-// gets no frame local, leaving the arm body's `d` bound to the data row. That is Accepted with the
-// wrong value and no diagnostic, which DESIGN section 5 forbids outright, and it contradicts the
-// rule stated below that a fn or data of the same name does not make an atom a constructor.
-// construct_tag_optional is the existing authority for the distinction: Present exactly for a
-// construct (first child is the tag self-edge, label == target atom identity), Absent for a
-// declared payload, whose first edge labels a FIELD and targets that field's TYPE.
-// A DECLARED PAYLOAD IS IDENTIFIED POSITIVELY, NOT BY NOT BEING SOMETHING ELSE. The first repair
-// of this predicate (gunbc#12033, review 69994) excluded the construct shape and left `Absent =>
-// true`, so every Conj that is not a construct was still answered "constructor". That default is
-// the widening arm DESIGN section 5 forbids, arriving inside the remedy: parse mints Conj for
-// ordinary sequence nodes (v2.std.grammar grammar_expr_node, the 02_parse sequence snoc), the
-// namespace graft binds a data or alias NAME to its declaration parse node, and symbol_index_fill
-// puts that Conj in the index under the name -- so a match-arm binder spelling a module-level
-// data or alias name was classified a constructor, skipped by resolve_pattern_binders, and
-// resolved as a reference to that declaration. Silently, because the name resolves.
+// WHAT THE NAME DENOTES IS ASKED OF THE INDEX, NOT OF THE NODE (Pkg16). Three shape predicates stood
+// here in turn -- the bare Conj connective, the construct tag with an `Absent => true` default, and
+// declared-field coverage -- and each classified a MODULE container as a constructor, because a
+// declared payload, a module container and a declaration parse-rest node are all Conj with Named
+// edges: the shape does not carry the fact.
 //
-// So the test asks what a declared payload IS: a Conj that is nullary (a bare variant arm) or
-// whose every child is a declared field (v2.std.node_query declared_field_list, Named edges to
-// type expressions). A construct is excluded on top of that, because its tag self-edge reads as a
-// field of the same name and would otherwise satisfy the field test.
+// WHAT THE FILED SPECIMEN CLAIMED, AND WHAT MEASUREMENT SAYS, because this package was filed on a
+// route that does not execute and the correction belongs beside the code rather than in a PR body.
+// The claim was that `Present { value: node } =>` in v2.std.symbol_index reaches the MODULE
+// v2.std.node by lexical ascent and reads it -- Accepted, wrong, silent. Ascent cannot reach a
+// module: v2.compiler.symbol_index_fill symbol_index_fill_containment_node DESCENDS module spine
+// segments (namespace_graft_spine_segment_edge_optional) without inserting a path, so a module name
+// is never an index entry and never a LexicalHit. Measured at fixture scale beside a live control
+// (v2.test.claim.match_arm_binder_frame): the reachable route for that spelling is the global-bare
+// lookup, which answers Ambiguous and REFUSES, located, rather than accepting a wrong value. The
+// specimen itself has not been observed on the native route -- that needs the emitted compiler,
+// which does not build on main -- so this states what the corpus shows and not more.
 //
-// WHAT THIS DOES NOT CLOSE, NAMED PRECISELY. This test is strictly narrower than the fail-open
-// default it replaces, but the shape still cannot tell a declared payload from a module container:
-// v2.std.node_query declared_field_from_edge accepts ANY Named edge, so a module container would
-// be answered "constructor" IF a binder's lookup ever reached one. No route is known to. The
-// review-sourced specimen (binder `node` beside module v2.std.node in v2.std.symbol_index
-// symbol_index_candidates_at) was executed by gunbc#12082's v2.test.claim.match_arm_binder_frame
-// mab_binder_spelling_a_sibling_module_binds_the_arm and binds, because symbol_index_fill inserts
-// no module path. An earlier revision of this note asserted that specimen resolved silently to the
-// module without running it; that is retracted.
-//
-// AND WHY A FOURTH SHAPE DISCRIMINATOR IS REFUSED RATHER THAN ATTEMPTED. Three have been tried
-// here -- the bare connective, the construct tag, and declared-field coverage -- and each admitted
-// a wider set than its author intended, because a declared payload, a module container and a
-// declaration parse-rest node are ALL Conj with Named edges. The fact this predicate needs is what
-// the NAME DENOTES, which is a declaration-kind fact v2.compiler.symbol_index_fill holds at insert
-// time and the node does not carry. Sniffing the node is asking the wrong carrier (DESIGN section
-// 6b: the earliest unjustified boundary is the link, not the predicate), and the repair is filed
-// as its own subject rather than guessed at again here.
-fn resolve_pattern_node_is_declared_payload(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      if count(node.children) == 0 {
-        true
-      } else {
-        count(declared_field_list(payload: node)) == count(node.children)
-      }
-    _ => false
-  }
-}
-
-fn resolve_pattern_node_is_constructor(node: Node) -> Bool {
-  resolve_pattern_node_is_declared_payload(node: node)
-    && (match construct_tag_optional(n: node) {
-      Absent => true
-      Present { value: _ } => false
-    })
-}
+// The fact is held by the writers that know what they inserted: v2.compiler.symbol_index_fill marks
+// a variant arm and its unique alias as it inserts them, and marks a record from the carrier
+// normalize captured before the record rehome erased the distinction (v2.compiler.normalized_tree
+// NormalizedTree record_declarations). Both are keyed by DECLARING path, which is the path a lexical
+// or global-unique hit returns (for an import binding, the declaration's own path). So a module, a
+// data row, a fn and an alias are never constructors here -- not because a predicate excludes them,
+// but because nothing marks them.
 
 // The seed's rule, at this resolver's grain: a field-target atom is a constructor when the symbol
 // index binds it to a declared payload (a variant arm, module.Type.Variant or its unique alias,
@@ -1286,18 +1250,36 @@ fn resolve_pattern_node_is_constructor(node: Node) -> Bool {
 // spelling is a variant declared somewhere in the corpus refuses, loudly, and the author renames
 // it. The branch retires when an unbound pattern atom that spells a declared constructor has its
 // own typed refusal that does not consult the corpus-wide census.
+// ONE QUESTION PER DECLARING PATH, AND AMBIGUITY ASKS IT OF EVERY CLAIMANT. An ambiguous spelling is
+// a constructor when ANY of its candidates is a declared payload -- the fail-closed direction for a
+// real payload ambiguity (`None` as a variant and as its unique alias, the mab_* claims), where
+// binding would be the silent wrong answer -- and a binder when NONE is. Reading every ambiguity as
+// a constructor, as this did before, refused an ordinary binder `d` in
+// `Rejected { diagnostics: d }` because several unrelated modules declare non-payloads named `d`:
+// an over-prohibition the paragraph above did not price, since it priced only a binder spelled like
+// a VARIANT.
+fn resolve_path_is_declared_payload(ctx: ResolveContext, path: QualifiedName) -> Bool {
+  match symbol_index_declared_payload_at(index: ctx.namespace.symbol_index, qualified_path: path) {
+    Present { value: VariantArmPayload } => true
+    Present { value: RecordTypePayload } => true
+    Absent => false
+  }
+}
+
 fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bool {
   match symbol_index_lexical_lookup(
     index: ctx.namespace.symbol_index,
     position: symbol_index_lookup_position(ctx: ctx),
     name: id
   ) {
-    LexicalHit { node: node, path: _ } => resolve_pattern_node_is_constructor(node: node)
-    LexicalAmbiguous { candidates: _ } => true
+    LexicalHit { node: _, path: path } => resolve_path_is_declared_payload(ctx: ctx, path: path)
+    LexicalAmbiguous { candidates: candidates } =>
+      any(xs: candidates, predicate: fn(c) { resolve_path_is_declared_payload(ctx: ctx, path: c.path) })
     LexicalUnbound =>
       match symbol_index_global_unique_lookup(index: ctx.namespace.symbol_index, name: id) {
-        GlobalBareHit { node: node, path: _ } => resolve_pattern_node_is_constructor(node: node)
-        GlobalBareLookupAmbiguous => true
+        GlobalBareHit { node: _, path: path } => resolve_path_is_declared_payload(ctx: ctx, path: path)
+        GlobalBareLookupAmbiguous { paths: paths } =>
+          any(xs: paths, predicate: fn(p) { resolve_path_is_declared_payload(ctx: ctx, path: p) })
         GlobalBareLookupUnbound => namespace_has_canonical_symbol(namespace: ctx.namespace, name: id)
       }
   }
