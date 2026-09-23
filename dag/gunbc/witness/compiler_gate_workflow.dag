@@ -77,6 +77,7 @@ import gunbc.witness_floor_workflow {
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.claim_executor_cli { claim_executor_command }
+import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 import gunbc.ci_spec {
   gunbc_ci_generated_artifact_verify_invoke,
@@ -446,7 +447,14 @@ fn compiler_gate_drift_step() -> Step {
 // is that an author learns of drift at queue time. `!cancelled()` rather than the default
 // success(): a floor red must not disarm this check (see witness_floor_workflow's measured
 // correction).
-data compiler_gate_stage0_regen_command: ArgvCommand = claim_executor_command(mode_flag: "--required-regen", operands: [])
+// THE SOURCE ROOTS ARE REQUIRED EVEN THOUGH THE WHOLE-POPULATION ROUND DOES NOT READ THEM:
+// claim_executor refuses any invocation without one ("provide at least one --source-root", exit
+// 2). The first control run of this step (run 35890764226) went red on exactly that, so they are
+// taken from gunbc.ci_layer_roots witness_layer_roots, the one authority every lane command folds.
+data compiler_gate_stage0_regen_command: ArgvCommand = claim_executor_command(
+  mode_flag: "--required-regen",
+  operands: fold(witness_layer_roots, init: [], f: fn(acc, root) { append(acc, items: ["--source-root", root]) }),
+)
 
 data compiler_gate_stage0_regen_step_name: String = "Stage0 mirrors match what this seed emits, first generation (merge_group only)"
 

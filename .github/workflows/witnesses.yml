@@ -411,7 +411,7 @@ jobs:
           'set' '-o' 'pipefail'
           ('sh' '-e' '-c' 'ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           cd "$ROOT"
-          '\''target/release/claim_executor'\'' '\''--required-regen'\''
+          '\''target/release/claim_executor'\'' '\''--required-regen'\'' '\''--source-root'\'' '\''dag'\'' '\''--source-root'\'' '\''src/v2'\''
           ') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
           GUNBC_FLOOR_EXIT="$?"
           GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
