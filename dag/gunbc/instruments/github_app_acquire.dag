@@ -1,5 +1,6 @@
 module gunbc.instruments.github_app_acquire
 
+import std.resources { Network }
 import std.types { NonEmptyStr, String, Secret, List }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
@@ -312,6 +313,7 @@ fn census_app_observe_receipt() -> ProcessExit {
 }
 
 fn census_app_observe_classified(record: GitHubAppAcquisitionRecord) -> ProcessExit
+  uses net: Network
 {
   let observation = observe_census_app_live(
     address: census_app_read_address(record: record),
@@ -344,7 +346,9 @@ fn issued_slug(issuance: GitHubAppCredentialIssuance) -> NonEmptyStr {
   }
 }
 
-fn acquisition_readback_live(issuance: GitHubAppCredentialIssuance) -> CensusAppReadback {
+fn acquisition_readback_live(issuance: GitHubAppCredentialIssuance) -> CensusAppReadback
+  uses net: Network
+{
   census_app_readback(
     issuance: issuance,
     observation: observe_census_app_live(
@@ -561,6 +565,7 @@ fn census_app_acquire_receipt() -> ProcessExit {
 }
 
 fn census_app_acquire_for(record: GitHubAppAcquisitionRecord) -> ProcessExit
+  uses net: Network
 {
   let observation = observe_census_app_live(
     address: census_app_read_address(record: record),
@@ -664,7 +669,9 @@ data inhabitance_probe_app_slug: NonEmptyStr = "dependabot"
 
 data inhabitance_probe_absent_app_slug: NonEmptyStr = "gunbc-slug-that-no-app-holds"
 
-fn public_app_record_wire_receipt() -> ProcessExit {
+fn public_app_record_wire_receipt() -> ProcessExit
+  uses net: Network
+{
   match observe_census_app_live(address: ReadAddressedAt { slug: inhabitance_probe_app_slug }) {
     AppNotYetAddressable =>
       exit_failure(reason: "the probe slug is addressable by construction; this arm is unreachable")
@@ -683,7 +690,9 @@ fn public_app_record_wire_receipt() -> ProcessExit {
 // THE ABSENT ARM IS READ FOR REAL TOO. A 404 reaching AppRecordAbsent rather than an exception is the
 // arm the duplicate-mint guard is built on, so it is established by a live read of a slug no App
 // holds, not by supplying a RestStatusRefused value to the fold.
-fn public_app_absence_receipt() -> ProcessExit {
+fn public_app_absence_receipt() -> ProcessExit
+  uses net: Network
+{
   match observe_census_app_live(address: ReadAddressedAt { slug: inhabitance_probe_absent_app_slug }) {
     AppRecordAbsent => ExitSuccess
     AppRecordObserved { record: r } =>
@@ -735,7 +744,9 @@ fn installation_token_plan_line(installation: GitHubAppInstallation) -> String {
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/github_app_acquire.dag \
 //     --function census_app_installations_receipt
-fn census_app_installations_receipt() -> ProcessExit {
+fn census_app_installations_receipt() -> ProcessExit
+  uses net: Network
+{
   match read_census_app_installations() {
     InstallationsUnreadable { reason: r } => exit_failure(reason: r as String)
     InstallationsUndecodable { decode: _ } =>
@@ -815,6 +826,7 @@ fn census_app_acquisition_receipt() -> ProcessExit {
 }
 
 fn census_app_acquisition_receipt_for(record: GitHubAppAcquisitionRecord) -> ProcessExit
+  uses net: Network
 {
   let standing = census_app_acquisition_standing(record: record)
   match standing {

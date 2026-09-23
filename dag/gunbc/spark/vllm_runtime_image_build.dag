@@ -1,5 +1,6 @@
 module gunbc.spark.vllm_runtime_image_build
 
+import std.resources { Network }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
@@ -1124,6 +1125,7 @@ fn vllm_runtime_image_build_entry(r: VllmContainerBuildRecipe) -> ProcessExit
 }
 
 fn vllm_runtime_image_build_ci_wet() -> ProcessExit
+  uses net: Network
 {
   vllm_runtime_image_build_entry(r: v41_gb10_recipe())
 }
@@ -1132,6 +1134,7 @@ fn vllm_runtime_image_build_ci_wet() -> ProcessExit
 // vllm_8d09804_sm121_recipe) and the derived stage follows it; the product is the image the GLM
 // native arm's declared reference is repointed to once a build through this lane has served.
 fn glm53_runtime_image_build_wet() -> ProcessExit
+  uses net: Network
 {
   vllm_runtime_image_build_entry(r: vllm_8d09804_sm121_recipe)
 }

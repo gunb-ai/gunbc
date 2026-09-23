@@ -1,5 +1,6 @@
 module gunbc.machine_intake_megarac_media_attach
 
+import std.resources { Network }
 import std.types { Bool, Int, NonEmptyStr, String }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.bmc.megarac
@@ -370,6 +371,7 @@ fn megarac_attach_then_release(
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
 ) -> MegaRacAttachResult
+  uses net: Network
 {
   let outcome = megarac_attach_with_token(
     bmc_host: bmc_host,

@@ -1,5 +1,6 @@
 module gunbc.review_sheet_converge_cli
 
+import std.resources { Network }
 import std.types { NonEmptyStr, String, Bool, Secret, List }
 import gunbc.review_sheet_format_actuator {
   FormatConvergeOutcome,
@@ -411,7 +412,9 @@ fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposit
   }
 }
 
-fn format_located_tab(file_id: NonEmptyStr, validated: ValidatedHeaderSchema) -> FormatDisposition {
+fn format_located_tab(file_id: NonEmptyStr, validated: ValidatedHeaderSchema) -> FormatDisposition
+  uses net: Network
+{
   let standing = locate_review_tab(spreadsheet_id: file_id)
   match standing {
     TabLocated { tab: t } =>

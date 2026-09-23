@@ -1,5 +1,6 @@
 module gunbc.runner_host_file_converge
 
+import std.resources { Network }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -905,6 +906,7 @@ fn observe_runner_host_file(
   context: FleetSshExecutionContext,
   file: RunnerHostFileDesired,
 ) -> RunnerHostFileObservation
+  uses net: Network
 {
   let content = observe_runner_host_file_content(subject: subject, context: context, file: file)
   RunnerHostFileObservation {

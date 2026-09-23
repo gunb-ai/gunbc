@@ -1,5 +1,6 @@
 module gunbc.tools.bmc_onboard
 
+import std.resources { Network }
 import extdeps.bmc.http
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -467,6 +468,7 @@ fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessToken
 }
 
 fn bmc_converge_credential(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> ProcessExit
+  uses net: Network
 {
   root_resp = redfish.Http.GetServiceRoot(bmc_host: plan.bmc.host)
   if root_resp.success == false {
@@ -489,6 +491,7 @@ fn bmc_converge_credential(plan: BmcOnboardingPlan, token_source: AccessTokenSou
 }
 
 fn srv3_probe_credential_phase() -> BmcCredentialProbeResult
+  uses net: Network
 {
   bmc_probe_credential_phase(plan: srv3_onboarding_plan, token_source: GcloudPrintToken)
 }

@@ -1,5 +1,6 @@
 module gunbc.tools.bmc_health_reader_converge
 
+import std.resources { Network }
 import extdeps.bmc.http
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -128,6 +129,7 @@ fn observe_reader_account(host: NonEmptyStr) -> ReaderAccountObservation
 }
 
 fn bmc_health_reader_converge(plan: BmcOnboardingPlan) -> ProcessExit
+  uses net: Network
 {
   match select_access_token_source() {
     AccessTokenSourceUnavailable { cause: c } => return exit_failure(reason: c as String)
@@ -146,6 +148,7 @@ fn bmc_health_reader_converge(plan: BmcOnboardingPlan) -> ProcessExit
 }
 
 fn bmc_health_reader_converge_as_admin(plan: BmcOnboardingPlan, token: Secret, admin_password: String) -> ProcessExit
+  uses net: Network
 {
   let host = plan.bmc.host
   let reader_secret = bmc_health_reader_secret_id(host: plan.host)
