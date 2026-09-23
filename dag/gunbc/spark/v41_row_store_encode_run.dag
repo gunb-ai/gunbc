@@ -69,6 +69,7 @@ type V41StoreRun
   | V41StoreEncoded { store: V41StoreEncodeArgs, digest: Sha256Digest }
   | V41StoreDigestUnread { store: V41StoreEncodeArgs, encoded: Bool, cause: NonEmptyStr }
   | V41StoreEncodeFailed { store: V41StoreEncodeArgs, cause: NonEmptyStr }
+  | V41StorePresenceFailed { store: V41StoreEncodeArgs, cause: NonEmptyStr }
 
 fn v41_store_of(r: V41StoreRun) -> V41StoreEncodeArgs {
   match r {
@@ -76,6 +77,7 @@ fn v41_store_of(r: V41StoreRun) -> V41StoreEncodeArgs {
     V41StoreEncoded { store: a, digest: _ } => a
     V41StoreDigestUnread { store: a, encoded: _, cause: _ } => a
     V41StoreEncodeFailed { store: a, cause: _ } => a
+    V41StorePresenceFailed { store: a, cause: _ } => a
   }
 }
 
@@ -85,6 +87,7 @@ fn v41_store_run_digest(r: V41StoreRun) -> Sha256Digest? {
     V41StoreEncoded { store: _, digest: d } => Present { value: d }
     V41StoreDigestUnread { store: _, encoded: _, cause: _ } => none
     V41StoreEncodeFailed { store: _, cause: _ } => none
+    V41StorePresenceFailed { store: _, cause: _ } => none
   }
 }
 
@@ -108,10 +111,24 @@ fn v41_store_digest(ctx: SparkMaterializeContext, out: NonEmptyStr) -> V41Digest
   }
 }
 
-fn v41_store_present(ctx: SparkMaterializeContext, out: NonEmptyStr) -> Bool {
+// PRESENCE IS THREE-VALUED (review 70586): `test -f` exits 0 for a regular file and 1 for none; any other
+// exit, or a leg that did not run, is a check that FAILED -- never read as absent, because absent sends
+// the store to be encoded and a failed check would then re-encode a complete store and misreport it.
+type V41StorePresence
+  = V41StoreFound
+  | V41StoreAbsent
+  | V41StorePresenceUnread { cause: NonEmptyStr }
+
+fn v41_store_presence_of(exit_code: Int, stderr: String) -> V41StorePresence {
+  if exit_code == 0 { V41StoreFound } else if exit_code == 1 { V41StoreAbsent } else {
+    V41StorePresenceUnread { cause: join(["test -f exited ", to_string(exit_code), ": ", trim(s: stderr)], "") as NonEmptyStr }
+  }
+}
+
+fn v41_store_present(ctx: SparkMaterializeContext, out: NonEmptyStr) -> V41StorePresence {
   match spark_remote_run(ctx: ctx, argv: ["test", "-f", out as String]) {
-    RemoteUnreachable { cause: _ } => false
-    RemoteRan { exit_code: code, stdout: _, stderr: _ } => code == 0
+    RemoteUnreachable { cause: c } => V41StorePresenceUnread { cause: join(["the presence check did not run: ", c], "") as NonEmptyStr }
+    RemoteRan { exit_code: code, stdout: _, stderr: err } => v41_store_presence_of(exit_code: code, stderr: err)
   }
 }
 
@@ -124,18 +141,19 @@ fn v41_digested(a: V41StoreEncodeArgs, encoded: Bool, read: V41DigestRead) -> V4
 }
 
 fn v41_run_store(ctx: SparkMaterializeContext, a: V41StoreEncodeArgs) -> V41StoreRun {
-  if v41_store_present(ctx: ctx, out: a.out) {
-    v41_digested(a: a, encoded: false, read: v41_store_digest(ctx: ctx, out: a.out))
-  } else {
-    match spark_remote_run(ctx: ctx, argv: v41_store_encode_argv(shard_directory: v41_checkpoint_directory, a: a)) {
-      RemoteUnreachable { cause: c } => V41StoreEncodeFailed { store: a, cause: join(["the encode leg did not run: ", c], "") as NonEmptyStr }
-      RemoteRan { exit_code: code, stdout: _, stderr: err } =>
-        if code != 0 {
-          V41StoreEncodeFailed { store: a, cause: join(["the host program exited ", to_string(code), ": ", trim(s: err)], "") as NonEmptyStr }
-        } else {
-          v41_digested(a: a, encoded: true, read: v41_store_digest(ctx: ctx, out: a.out))
-        }
-    }
+  match v41_store_present(ctx: ctx, out: a.out) {
+    V41StorePresenceUnread { cause: c } => V41StorePresenceFailed { store: a, cause: c }
+    V41StoreFound => v41_digested(a: a, encoded: false, read: v41_store_digest(ctx: ctx, out: a.out))
+    V41StoreAbsent =>
+      match spark_remote_run(ctx: ctx, argv: v41_store_encode_argv(shard_directory: v41_checkpoint_directory, a: a)) {
+        RemoteUnreachable { cause: c } => V41StoreEncodeFailed { store: a, cause: join(["the encode leg did not run: ", c], "") as NonEmptyStr }
+        RemoteRan { exit_code: code, stdout: _, stderr: err } =>
+          if code != 0 {
+            V41StoreEncodeFailed { store: a, cause: join(["the host program exited ", to_string(code), ": ", trim(s: err)], "") as NonEmptyStr }
+          } else {
+            v41_digested(a: a, encoded: true, read: v41_store_digest(ctx: ctx, out: a.out))
+          }
+      }
   }
 }
 
@@ -148,6 +166,7 @@ fn v41_store_line(r: V41StoreRun) -> String {
     V41StoreEncoded { store: _, digest: d } => join([head, " sha256=", d.hex as String, " encoded", tail], "")
     V41StoreDigestUnread { store: _, encoded: e, cause: c } => join([head, " UNREAD ", if e { "encoded" } else { "present" }, " but the digest read failed: ", c as String, tail], "")
     V41StoreEncodeFailed { store: _, cause: c } => join([head, " UNREAD encode failed: ", c as String, tail], "")
+    V41StorePresenceFailed { store: _, cause: c } => join([head, " UNREAD presence check failed, nothing encoded: ", c as String, tail], "")
   }
 }
 

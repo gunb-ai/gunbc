@@ -7,7 +7,8 @@ import std.content_hash { Sha256Digest, Sha256DigestHex }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.v41_row_store_encode { V41StoreEncodeArgs }
 import gunbc.spark.v41_row_store_encode_run {
-  V41StoreRun, V41StorePresent, V41StoreEncoded, V41StoreDigestUnread, V41StoreEncodeFailed,
+  V41StoreRun, V41StorePresent, V41StoreEncoded, V41StoreDigestUnread, V41StoreEncodeFailed, V41StorePresenceFailed,
+  V41StoreFound, V41StoreAbsent, V41StorePresenceUnread, v41_store_presence_of,
   V41EncodeRan, V41EncodeRefusedBeforeRun, v41_encode_succeeded, v41_store_line,
 }
 
@@ -55,6 +56,7 @@ test fn anything_short_of_the_planned_join_is_not_success() -> Bool {
     && !v41_encode_succeeded(run: V41EncodeRan { planned: w_planned(), stores: seven })
     && !v41_encode_succeeded(run: V41EncodeRan { planned: w_planned(), stores: concat(seven, [w_read(layer: 1, rank: 0)]) })
     && !v41_encode_succeeded(run: V41EncodeRan { planned: w_planned(), stores: concat(w_eight(), [w_read(layer: 7, rank: 0)]) })
+    && !v41_encode_succeeded(run: V41EncodeRan { planned: w_planned(), stores: concat(seven, [V41StorePresenceFailed { store: w_args(layer: 14, rank: 3), cause: "the presence check did not run: timeout" as NonEmptyStr }]) })
     && !v41_encode_succeeded(run: V41EncodeRefusedBeforeRun { cause: "the span plan refused" as NonEmptyStr })
 }
 
@@ -67,4 +69,16 @@ test fn a_store_line_names_its_key_and_digest_or_says_unread() -> Bool {
   read.contains("store layer.14.rank.2 sha256=") && read.contains(w_hex)
     && unread.contains("store layer.1.rank.0 UNREAD") && unread.contains("did not run")
     && digest_lost.contains("store layer.1.rank.1 UNREAD encoded but the digest read failed")
+}
+
+// PRESENCE IS THREE-VALUED: exit 0 found, exit 1 absent, anything else a failed check -- never absent,
+// which would re-encode a complete store (review 70586). Its receipt line says nothing was encoded.
+test fn a_failed_presence_check_is_not_absent_and_encodes_nothing() -> Bool {
+  (match v41_store_presence_of(exit_code: 0, stderr: "") { V41StoreFound => true  _ => false })
+    && (match v41_store_presence_of(exit_code: 1, stderr: "") { V41StoreAbsent => true  _ => false })
+    && (match v41_store_presence_of(exit_code: 2, stderr: "Permission denied") {
+      V41StorePresenceUnread { cause: c } => (c as String).contains("Permission denied")
+      _ => false
+    })
+    && v41_store_line(r: V41StorePresenceFailed { store: w_args(layer: 1, rank: 2), cause: "the presence check did not run: timeout" as NonEmptyStr }).contains("presence check failed, nothing encoded")
 }
