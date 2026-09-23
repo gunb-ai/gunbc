@@ -136,3 +136,13 @@ test fn transcript_framing_composes_nul_fill_before_onlcr() -> Bool {
     && terminal_transcript_lines(text: "a\x00b\r\n") == ["ab", ""]
     && terminal_transcript_lines(text: "----EXIT nproc: 0\r\x00\n") == ["----EXIT nproc: 0", ""]
 }
+
+// THE COMPOSITION CHANGES EXACTLY TWO THINGS. LF-only text frames unchanged; CR LF loses only the
+// ONLCR CR (a CR elsewhere in the line stays); NUL is removed at ANY position, not only at line
+// start; and every OTHER C0 control -- ESC, BEL -- is content and reaches the reader unchanged.
+test fn transcript_framing_removes_only_nul_and_the_mapped_cr() -> Bool {
+  terminal_transcript_lines(text: "a\nb\n") == ["a", "b", ""]
+    && terminal_transcript_lines(text: "a\rb\r\n") == ["a\rb", ""]
+    && terminal_transcript_lines(text: "\x00a\x00b\x00\r\n\x00") == ["ab", ""]
+    && terminal_transcript_lines(text: "\x1b[2Ka\x07\r\n") == ["\x1b[2Ka\x07", ""]
+}

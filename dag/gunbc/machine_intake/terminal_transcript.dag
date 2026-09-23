@@ -10,8 +10,9 @@ import extdeps.render.ansi { ansi_without_null_fill }
 // without changing content (extdeps.render.ansi ansi_without_null_fill), and the tty's ONLCR
 // terminator (extdeps.posix.termios termios_onlcr_output_lines). NUL goes FIRST, so a line whose
 // bytes read CR NUL NL still ends in the mapped CR when ONLCR framing looks for it. mtcollins1_boot
-// run 35808203121 carried 550,330 NULs at line starts, ahead of "80" and "----EXIT nproc: 0", and
-// no line-start reader recognised either; which hop inserts them is not observed.
+// run 35808203121 (artifact mtcollins1-boot-receipts) carried runs of NUL at line starts, ahead of
+// "80" and "----EXIT nproc: 0", and no line-start reader recognised either; which hop inserts them
+// is not observed.
 fn terminal_transcript_lines(text: String) -> List<String> {
   termios_onlcr_output_lines(text: ansi_without_null_fill(text: text))
 }
