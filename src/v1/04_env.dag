@@ -1131,34 +1131,70 @@ fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: Stri
   (a_segs |> count) > 0 && segment_lcp_len(a: a_segs, b: d_segs) == (a_segs |> count)
 }
 
-// THE THIRD ARM: A UNIT VARIANT IS BOUND EXACTLY WHEN ITS PARENT COPRODUCT IS. A bare leaf that names a
-// zero-payload variant -- std.measure's Measure<Memory, One, Nat> passes its own Quantity and scale
-// variants as phantom type arguments -- carries no binding of its own; its binding is the coproduct
-// that declares it, the family-closure rule (owner plus all siblings) the resolver's selective-import
-// note records. Without this arm the measure charged every such use to a missing import, so a
-// census whose closure reached std.measure reported 147 blocking UnresolvedType rows for names the
-// module declares one screen up, while the unmeasured route resolved the same leaves.
-//
-// THE INDEX IS THE AUTHORITY AND IS NOT RE-CHECKED. unit_variant_index is built (build_unit_variant_index)
-// from exactly the bindings visible to this env -- its own str_bindings merged with its parents' -- so
-// a variant is keyed there only through a bound parent. A first cut re-read each parent through
-// lookup_binding_on_chain; deleting that re-read left every control green, which is the proof that it
-// restated the index's construction rather than adding a fact. An unobserved index answers false, so
-// the measure stays strict where the evidence is missing.
-fn type_ref_unit_variant_parent_is_bound(env: TypeEnv, name: String) -> Bool {
-  if !env.unit_variant_index_observed { false } else {
-    match map_get(env.unit_variant_index, name) {
-      Absent => false
-      Present { value: _ } => true
+// Phantom unit-variant resolution reads the env's precomputed unit_variant_index (built and
+// maintained beside visible_str_bindings in v1.compiler.infer_env). The former shape re-merged
+// every parent's str_bindings and re-scanned every visible binding PER LOOKUP — one call per
+// bare-variant reference over an environment of thousands — measured 2026-08-28 at ~66% of the
+// whole-corpus compile.reconcile wall (92 of 148 gdb stack samples over strict preparation).
+// The contract is unchanged: exactly one visible unit variant with this name resolves; zero or
+// several refuse. Duplicate variant names within one coproduct keep count > 1 and refuse, as
+// the scan's multiple appended matches did.
+type UnitVariantPhantomLookup
+  = UnitVariantPhantomPresent { variant: Node }
+  | UnitVariantPhantomAbsent
+  | UnitVariantPhantomEvidenceUnavailable
+
+fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> UnitVariantPhantomLookup {
+  if !env.unit_variant_index_observed {
+    UnitVariantPhantomEvidenceUnavailable
+  } else {
+    match map_get(env.unit_variant_index, variant_name) {
+      Present { value: contribs } =>
+        let total = fold(contribs |> map_values, init: 0, f: (acc, c) => acc + c.count)
+        if total == 1 {
+          match filter(contribs |> map_values, c => c.count == 1) |> first {
+            Present { value: single } => UnitVariantPhantomPresent { variant: single.variant }
+            Absent => UnitVariantPhantomAbsent
+          }
+        } else { UnitVariantPhantomAbsent }
+      Absent => UnitVariantPhantomAbsent
     }
   }
 }
 
+// THE THIRD ARM: A UNIT VARIANT IS BOUND EXACTLY WHEN THE RESOLVER WOULD RESOLVE IT. A bare leaf that
+// names a zero-payload variant -- std.measure's Measure<Memory, One, Nat> passes its own Quantity and
+// scale variants as phantom type arguments -- carries no binding of its own; its binding is the
+// coproduct that declares it. Without this arm the measure charged every such use to a missing import,
+// so a census of a source importing std.measure alone reported 147 blocking UnresolvedType rows for
+// leaves the unmeasured resolve admitted. The arm consumes lookup_unit_variant_phantom_type -- the ONE
+// exact-one judgment over the visible contributions, which the resolver and the Rust emitter already
+// consume -- so the measure binds exactly the population resolve resolves: zero contributions, many
+// (two visible coproducts declaring the leaf, or one declaring it twice), and a shadow that empties
+// the key all answer unbound, and an unobserved index answers unbound. The judgment lives here because
+// this module owns unit_variant_index; it moved down from v1.compiler.infer_resolve so the measure could
+// consume it without an import cycle.
+//
+// v1 PURPOSE-TEST ADMISSION (gunbc.v1_maintenance_standing v1_seed_standing; instance
+// DefectRepairDiagnosticsMayMove), recorded beside the change it admits (gunbc#12132). It serves the v2
+// self-host program because two routes of this compiler answered one question oppositely -- the
+// measured compile refused leaves the unmeasured resolve admitted -- and the census that arms the
+// measure is a gate consumer, so every census whose closure reached std.measure read red for a reason
+// that was not its subject (this is how the App Attest stack's file_hold_plan census went red). The
+// repair adds no exemption, no admission row and no seed feature. PUBLIC SURFACE, stated rather than
+// denied: no new declaration is emitted -- the arm is inlined here -- and lookup_unit_variant_phantom_type
+// and UnitVariantPhantomLookup are RELOCATED from v1.compiler.infer_resolve, so the emitted pub set moves
+// and does not grow.
 fn type_ref_measure_binding_authority(env: TypeEnv, name: String) -> Bool {
   match lookup_binding_on_chain(env: env, name: name) {
     Present { value: _ } => true
-    Absent =>
-      if type_ref_unit_variant_parent_is_bound(env: env, name: name) { true }
+    Absent => {
+      let variant_resolves = match lookup_unit_variant_phantom_type(env: env, variant_name: name) {
+        UnitVariantPhantomPresent { variant: _ } => true
+        UnitVariantPhantomAbsent => false
+        UnitVariantPhantomEvidenceUnavailable => false
+      }
+      if variant_resolves { true }
       else if contains(name, ".") {
         let prefix = qualified_all_but_last(name: name)
         if type_ref_module_path_is_containment_prefix(ancestor: prefix, descendant: env.module_path) {
@@ -1172,6 +1208,7 @@ fn type_ref_measure_binding_authority(env: TypeEnv, name: String) -> Bool {
       } else {
         false
       }
+    }
   }
 }
 

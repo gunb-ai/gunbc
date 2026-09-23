@@ -8,7 +8,7 @@ import gunbc.compile_diagnostic_census {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// A UNIT VARIANT USED AS A PHANTOM TYPE ARGUMENT IS BOUND EXACTLY WHEN ITS PARENT COPRODUCT IS, under
+// A UNIT VARIANT USED AS A PHANTOM TYPE ARGUMENT IS BOUND EXACTLY WHEN THE RESOLVER WOULD RESOLVE IT, under
 // the measured compile compile_dag_diagnostic_census arms (gunbc.type_ref_hit_ne_bind_measure). The
 // measure's binding authority used to have no arm for a variant, so every such leaf was charged to a
 // missing import: a census whose closure reached std.measure -- which passes its own Quantity and
@@ -61,3 +61,43 @@ test fn a_variant_whose_parent_is_not_bound_is_still_charged_by_the_measure() ->
     subject: "Alpha",
   ) >= 1
 }
+
+// THE MEASURE BINDS EXACTLY THE POPULATION RESOLVE RESOLVES, so each way the exact-one judgment refuses
+// must leave the leaf charged. THESE ARE ANSWER CONTROLS, NOT ROUTE CONTROLS, and the difference was
+// measured rather than assumed: with the arm mutated back to bare key presence all three stay green and
+// every row count is unchanged, because in these shapes the leaf is refused by the resolver and emitter
+// route (the ambiguous parent also draws VariantCollision) before the measure is consulted. No census
+// fixture was found in which the measure is reached with a non-exact-one index -- a pool-reachable
+// record of the same name is bound by the first arm first -- so a discriminating RED for exact-one
+// versus key presence is not authorable here today. The exact-one form is kept because the measure then
+// consumes the resolver's own judgment instead of a second rule about the same index (single authority),
+// not because a divergence was observed.
+
+// Two visible coproducts both declare Alpha: many contributions, ambiguous, refused.
+test fn a_variant_declared_by_two_visible_coproducts_is_refused_as_ambiguous() -> Bool {
+  blocking_for(
+    c: compile_dag_diagnostic_census("module probe_two_parents\nimport std.types { Int }\nimport test.fixture.unit_variant_binding.marker_provider { Marker, Holder }\nimport test.fixture.unit_variant_binding.second_provider { Other }\nfn f(h: Holder<Alpha>) -> Int { 0 }\n"),
+    class: "UnresolvedType",
+    subject: "Alpha",
+  ) >= 1
+}
+
+// One coproduct declares the same unit arm twice: two contributions from one parent, refused.
+test fn a_variant_declared_twice_by_one_coproduct_is_refused() -> Bool {
+  blocking_for(
+    c: compile_dag_diagnostic_census("module probe_duplicate_arm\nimport std.types { Int }\nimport test.fixture.unit_variant_binding.marker_provider { Holder }\nimport test.fixture.unit_variant_binding.duplicate_arm_provider { Twice }\nfn f(h: Holder<Delta>) -> Int { 0 }\n"),
+    class: "UnresolvedType",
+    subject: "Delta",
+  ) >= 1
+}
+
+// A local declaration shadows the imported coproduct, so its contribution is removed and Alpha's outer
+// key is left with no contributions: zero, refused.
+test fn a_variant_whose_only_parent_is_shadowed_is_refused() -> Bool {
+  blocking_for(
+    c: compile_dag_diagnostic_census("module probe_shadowed\nimport std.types { Int }\nimport test.fixture.unit_variant_binding.marker_provider { Marker, Holder }\ntype Marker { n: Int }\nfn f(h: Holder<Alpha>) -> Int { 0 }\n"),
+    class: "UnresolvedType",
+    subject: "Alpha",
+  ) >= 1
+}
+
