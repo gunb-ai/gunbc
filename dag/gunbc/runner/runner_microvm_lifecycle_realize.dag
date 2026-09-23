@@ -21,7 +21,7 @@ import extdeps.linux.cgroup_v2 {
   cgroup_v2_kill_path, cgroup_v2_kill_trigger_value, cgroup_v2_procs_interface_file, decode_cgroup_procs,
   decode_cgroup_events_populated, CgroupEventsDecoded, CgroupEventsUnparseable,
 }
-import extdeps.systemd { systemd_unit_property_wire,
+import extdeps.systemd { systemd_unit_property_wire, InvocationIDProperty,
   SystemdUnitProperty, EnvironmentProperty, ExecMainStatus,
   SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path,
 }
@@ -72,7 +72,7 @@ import gunbc.runner_microvm_lifecycle {
   ControllerStart, StartAttempt, StartRecovery, StartQuarantineUnattributedResidue,
   StartRefused, StartBindingRefused, controller_start,
   TerminalTrigger, VmmExited, DeadlineReached, StopRequested,
-  GuestBringUpReading, GuestConsoleUnreadable, GuestConsoleNotStarted, guest_bring_up_from_console,
+  GuestBringUpReading, GuestConsoleUnreadable, GuestConsoleUnbound, GuestConsoleNotStarted, guest_bring_up_from_console,
   UnitExitStatusReading, ExitStatusRead, ExitStatusUnread,
   ObservedStop, ObservedCgroup, ObservedPath, ObservedTeardown,
   AttemptTeardownReadback,
@@ -1170,8 +1170,9 @@ fn run_launched_attempt(
     invocation_id: bound.attempt.attempt.invocation_id,
     plan: plan,
   )
+  let console = bind_attempt_console(identity: identity, launch: launch)
   let trigger = terminal_trigger_of_launch(launch: launch)
-  let bring_up = observe_guest_bring_up(identity: identity, launch: launch)
+  let bring_up = observe_guest_bring_up(identity: identity, console: console)
   ControllerRanAttempt {
     launch: launch,
     trigger: trigger,
@@ -1198,20 +1199,82 @@ fn run_launched_attempt(
 // after the VMM is gone loses nothing the teardown needs, and it is what lets the receipt tell a
 // guest that never booted from one that booted and idled to the deadline -- the two cases the
 // deadline alone cannot separate.
-fn observe_guest_bring_up(identity: AttemptIdentity, launch: AttemptLaunch) -> GuestBringUpReading
-{
+// THE CONSOLE IS BOUND TO THIS ATTEMPT'S INVOCATION, NOT ONLY TO ITS UNIT NAME. The attempt's
+// invocation_id is the controller's own, written into the transient unit's Environment at launch
+// (launch_attempt); the journal keys its entries by systemd's _SYSTEMD_INVOCATION_ID, a trusted field
+// the guest cannot set. So the join is made while the unit is alive, right after the VMM starts: the
+// unit's Environment must name THIS attempt's invocation_id (observe_unit_attempt_invocation, the
+// reading the teardown already uses), and in the same moment the unit's systemd InvocationID is
+// captured. The console read after the terminal trigger is then restricted to entries carrying that
+// systemd invocation (extdeps.systemd.journalctl UnitInvocationLog), so a line from any other runtime
+// cycle of a unit with the same name -- or from no attempt at all -- cannot advance this attempt's
+// phase. A unit gone before the binding could be read, or one naming another attempt, is
+// GuestConsoleUnbound: the channel exists but carries nothing attributable, and no phase is read.
+type AttemptConsoleBinding
+  = AttemptConsoleBound { unit: NonEmptyStr, systemd_invocation: NonEmptyStr }
+  | AttemptConsoleUnbound { reason: String }
+  | AttemptConsoleNotStarted
+
+fn bind_attempt_console(identity: AttemptIdentity, launch: AttemptLaunch) -> AttemptConsoleBinding {
   match launch {
     VmmStarted { unit: u, receipt: _ } => {
-      let log = systemd.Journalctl.UnitLog(unit: u)
+      let shown = systemd.Systemctl.ShowProperty(unit: u, property: systemd_unit_property_wire(property: InvocationIDProperty))
+      attempt_console_binding_of(
+        identity: identity,
+        unit: u,
+        environment: observe_unit_attempt_invocation(unit: u),
+        systemd_invocation: if shown.success { trim(s: shown.value) } else { "" },
+      )
+    }
+    VmmRefusedStaging { verdict: _ } => AttemptConsoleNotStarted
+    VmmNotPlanned { plan: _ } => AttemptConsoleNotStarted
+    VmmStartFailed { unit: _, detail: _ } => AttemptConsoleNotStarted
+  }
+}
+
+// THE BINDING DECISION OVER ITS TWO READINGS, separated from the reads so each arm is reachable from
+// a supplied value (DESIGN section 3).
+fn attempt_console_binding_of(
+  identity: AttemptIdentity,
+  unit: NonEmptyStr,
+  environment: UnitInvocationReading,
+  systemd_invocation: String,
+) -> AttemptConsoleBinding {
+  match environment {
+    UnitInvocationUnread { reason: r } => AttemptConsoleUnbound { reason: r as String }
+    UnitInvocationRead { invocation_id: i } =>
+      if (i as String) != (identity.invocation_id as String) {
+        AttemptConsoleUnbound { reason: join(["the unit's environment names attempt invocation ", i as String, ", not this attempt's ", identity.invocation_id as String], "") }
+      } else if systemd_invocation == "" {
+        AttemptConsoleUnbound { reason: join(["the unit's systemd InvocationID could not be read while it ran: ", unit as String], "") }
+      } else {
+        AttemptConsoleBound { unit: unit, systemd_invocation: systemd_invocation as NonEmptyStr }
+      }
+  }
+}
+
+// DECLARED FRONTIER: THE PHASE IS READ AFTER THE ATTEMPT, NOT WHILE IT RUNS. The channel above is bound
+// to the attempt's invocation and it reaches GuestBooted and RunnerListening, but it is read once,
+// after the terminal trigger, so it attributes the attempt rather than deciding that a slot is SERVING
+// while the attempt is live, and nothing advances to SlotServing. No consumer needs a live SERVING
+// decision today: the shakedown admits one attempt per start and the brief defers warm pools and
+// multi-slot scheduling, which are the only consumers of a live serving slot.
+data slot_serving_live_readiness_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: a slot scheduler that hands a live, SERVING slot to queued work (the warm pool this lane defers). TRIGGER: that consumer exists and reads the attempt's invocation-bound console WHILE the attempt runs, advancing through SlotServing on the listener's readiness under the controller's own identity. SUFFICIENT FOR deleting this row. NOT satisfied by the post-terminal attribution reading, which is what exists." as NonEmptyStr,
+)
+
+fn observe_guest_bring_up(identity: AttemptIdentity, console: AttemptConsoleBinding) -> GuestBringUpReading {
+  match console {
+    AttemptConsoleNotStarted => GuestConsoleNotStarted
+    AttemptConsoleUnbound { reason: r } => GuestConsoleUnbound { reason: r }
+    AttemptConsoleBound { unit: u, systemd_invocation: inv } => {
+      let log = systemd.Journalctl.UnitInvocationLog(unit: u, invocation_id: inv)
       if !log.success {
-        GuestConsoleUnreadable { unit: u, detail: "journalctl could not read the attempt unit's journal" }
+        GuestConsoleUnreadable { unit: u, detail: "journalctl could not read the attempt invocation's journal" }
       } else {
         guest_bring_up_from_console(identity: identity, console: log.stdout)
       }
     }
-    VmmRefusedStaging { verdict: _ } => GuestConsoleNotStarted
-    VmmNotPlanned { plan: _ } => GuestConsoleNotStarted
-    VmmStartFailed { unit: _, detail: _ } => GuestConsoleNotStarted
   }
 }
 

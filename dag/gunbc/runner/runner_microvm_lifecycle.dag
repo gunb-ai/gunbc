@@ -599,6 +599,7 @@ fn settle_teardown(readback: AttemptTeardownReadback, trigger: TerminalTrigger) 
 type GuestBringUpReading
   = GuestConsoleRead { reached: BringUpPhase, refused: List<BringUpTransition> }
   | GuestConsoleUnreadable { unit: NonEmptyStr, detail: String }
+  | GuestConsoleUnbound { reason: String }
   | GuestConsoleNotStarted
 
 fn bring_up_phase_of_observation_label(label: String) -> BringUpPhase? {
@@ -642,6 +643,7 @@ fn guest_bring_up_text(r: GuestBringUpReading) -> String {
     GuestConsoleRead { reached: p, refused: rs } =>
       join(["bring-up=", bring_up_phase_label(phase: p), " refused_reports=", to_string(length(rs))], "")
     GuestConsoleUnreadable { unit: u, detail: d } => join(["bring-up=unreadable unit=", u as String, " (", d, ")"], "")
+    GuestConsoleUnbound { reason: r } => join(["bring-up=unbound (", r, ")"], "")
     GuestConsoleNotStarted => "bring-up=not-started"
   }
 }

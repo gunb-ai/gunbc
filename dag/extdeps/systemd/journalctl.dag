@@ -12,6 +12,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data journal_fields_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man7/systemd.journal-fields.7.html"
+  }
+}
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -21,7 +28,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [journal_fields_authority]
 }
 
 // UnitLog reads the raw journal, unfiltered. Filtering for a specific marker line
@@ -48,6 +55,31 @@ service systemd.Journalctl {
         stdout: "1734000000.000000 srv1 actions-runner[1234]: Listening for Jobs\n",
         success: true,
       } "hermetic systemd.Journalctl.UnitLog"
+    }
+  }
+
+  // ONE INVOCATION OF A UNIT, NOT EVERY INVOCATION THAT EVER CARRIED ITS NAME. journalctl(1): a
+  // FIELD=VALUE match restricts output to entries carrying that field, and matches on DIFFERENT
+  // fields are ANDed with -u. systemd.journal-fields(7): _SYSTEMD_INVOCATION_ID is "the invocation
+  // ID for the runtime cycle of the unit the message was generated in", a trusted field the journal
+  // daemon adds, not one the logging process can set. (man7.org, read 2026-09-23.)
+  operation UnitInvocationLog {
+    input { unit: NonEmptyStr, invocation_id: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["journalctl", "-u", "{unit}", "_SYSTEMD_INVOCATION_ID={invocation_id}", "--no-pager", "-o", "short-unix"] }
+    exit {
+      0 => Unit
+      nonzero => String "journalctl failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "1734000000.000000 srv1 firecracker[1234]: gunbc-guest-observation guest-booted image=x\n",
+        success: true,
+      } "hermetic systemd.Journalctl.UnitInvocationLog"
     }
   }
 }
