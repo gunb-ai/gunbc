@@ -1,0 +1,281 @@
+module gunbc.namespace_xl2_rehearsal_census
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.import { ImportStripCoordinateSegment }
+import extdeps.git.object_store { GitObjectId }
+import extdeps.communication.medium { Lossless, Medium }
+import tools.multi_module_compile_fixture { FixtureSource }
+import gunbc.namespace_step0_subject_collector {
+  Step0SubjectCollected,
+  Step0SubjectCollectionRefused,
+  Step0SubjectMember,
+  Step0SubjectPinRefusal,
+  Step0SubjectVector,
+  collect_step0_subject_vector_at
+}
+import gunbc.namespace_step0_strip_producer {
+  Step0SourceStripped,
+  Step0SourceStripRefused,
+  Step0StripProductionRefusalCause,
+  namespace_step0_strip_source
+}
+import v2.compiler.compile {
+  NativeCensusModule,
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.native_test_vocabulary { NativeTestFileRefusal }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Diagnostic, NonEmptyDiagnostics, Rejected, diagnostics_fatal }
+import v2.std.node { Symbol }
+import v2.std.algebra { fold_list }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import std.algebra { Cons, Empty }
+
+// XL-2'S REHEARSAL INSTRUMENT: THE CUT EXECUTED IN A THROWAWAY TREE, ITS RESIDUAL OBSERVED ON THE
+// PRODUCTION ROUTE. Every stage is an existing authority composed, not restated: the exact base is
+// gunbc.namespace_step0_subject_collector (every byte read out of the git object store at one pinned
+// revision, a failed read refusing the collection), the cut is the typed import strip through
+// gunbc.namespace_step0_strip_producer, and the observation is v2.compiler.compile's whole-tree
+// census-resolve (gunbc#11738) over the stripped sources. THE THROWAWAY TREE IS AN INGEST, NOT A
+// DIRECTORY: each stripped member keeps its base path as its artifact path and compilation unit, so
+// the tree is path-faithful without a single write, and the live source tree cannot be touched
+// because nothing here holds a handle to it.
+
+// ONE RESIDUAL ROW IS ONE INDEPENDENT FAILURE CHAIN, NOT ONE DIAGNOSTIC. A resolve refusal is an
+// ordered chain whose advisories precede the refusal that fired; fanning it out per diagnostic
+// counts the advisories as residual sites. The row carries the resolver's chain whole and its fatal
+// from std.diagnostic diagnostics_fatal, the one home of that ordering. Loci are carried as the
+// resolver produced them -- minted and synthetic alike, never re-keyed -- and beside them the
+// file's strip coordinate map, which is what joins a stripped-source extent back to the base.
+type Xl2ResidualChain {
+  module: String
+  path: Symbol
+  chain: NonEmptyDiagnostics
+  fatal: Diagnostic
+  base_coordinates: List<ImportStripCoordinateSegment>
+}
+
+// WHAT THE RUN COULD NOT OBSERVE. Each arm is a scope whose occurrences may be missing from the
+// residual, so any one of them refuses completeness.
+//   - a member the strip refused never entered the tree;
+//   - a file the front end refused never reached resolve;
+//   - a module whose resolve refused was abandoned at its first failure: v2.compiler.resolve
+//     returns a Rejected accumulator without visiting the remaining children, so a second
+//     independent failure in the same module is unobserved (occurrence completeness, the
+//     obligation missing_instrument_label ExactOccurrenceResidualCensus names).
+type Xl2UnobservedScope
+  = Xl2MemberNotStripped { cause: Step0StripProductionRefusalCause }
+  | Xl2FileRefusedBeforeResolve { refusal: NativeTestFileRefusal }
+  | Xl2ModuleResolveAbandonedAtFirstFailure { module: String, path: Symbol }
+
+// WHY COMPLETENESS IS REFUSED. The call-argument arm is unconditional today: resolve fails OPEN for
+// every dependent reached through a call argument (gunbc.recurring_failure_mode
+// call_expression_erased_at_v2_body_lowering), and no observation in this run can see those
+// references, so the instrument states that it cannot see them rather than reporting silence.
+// TODO(rebind): once the P4 carrier correction lands its typed Xl2Prerequisite list in
+// gunbc.compiler_frontend_program_status, this arm is replaced by a reference to that type's
+// CallArgumentReferenceVisibility member read through its delivered-capability standing; no
+// parallel prerequisite enum is minted here.
+type Xl2CompletenessRefusal
+  = Xl2CallArgumentReferencesUnobservable
+  | Xl2ScopeUnobserved { scope: Xl2UnobservedScope }
+
+// COMPLETENESS IS A COPRODUCT, NOT A FLAG BESIDE THE ROWS. The complete arm is built only from an
+// empty refusal roster (xl2_completeness below), and the roster always carries the call-argument
+// arm today, so a complete census has no reachable constructor until that capability is delivered.
+type Xl2CensusCompleteness
+  = Xl2CensusComplete
+  | Xl2CensusCompletenessRefused { first: Xl2CompletenessRefusal, rest: List<Xl2CompletenessRefusal> }
+
+// A SEPARATE AXIS: WHICH ROUTE CAN EXECUTE THIS INSTRUMENT. These walls stand between the
+// interpreter route this composition runs on and a native (emitted) requalification of it. They are
+// not reasons the census is incomplete -- a census observed completely on the interpreter is
+// complete -- so they are never folded into Xl2CompletenessRefusal.
+type Xl2NativeRequalificationWall
+  = Xl2ImportHygieneWall
+  | Xl2DiagnosticFieldReadWall
+
+fn xl2_native_requalification_wall_label(w: Xl2NativeRequalificationWall) -> NonEmptyStr {
+  match w {
+    Xl2ImportHygieneWall => "import hygiene of the emitted closure (sleek-cat-104's lane): the composed closure does not yet emit clean natively" as NonEmptyStr
+    Xl2DiagnosticFieldReadWall => "v2.std.diagnostic field reads on the native route (gunbc#12033 step 2): the chain and its fatal are read by field, which the native route does not yet requalify" as NonEmptyStr
+  }
+}
+
+data xl2_native_requalification_walls: List<Xl2NativeRequalificationWall> = [
+  Xl2ImportHygieneWall,
+  Xl2DiagnosticFieldReadWall
+]
+
+type Xl2RehearsalRun
+  = Xl2RehearsalBaseUnobserved { cause: Step0SubjectPinRefusal }
+  | Xl2RehearsalContextRefused { source_commit: GitObjectId, diagnostics: NonEmptyDiagnostics }
+  | Xl2RehearsalObserved {
+      source_commit: GitObjectId
+      source_tree: GitObjectId
+      residual: List<Xl2ResidualChain>
+      resolved_module_count: Int
+      completeness: Xl2CensusCompleteness
+      native_requalification: List<Xl2NativeRequalificationWall>
+    }
+
+// ---------------------------------------------------------------------------------------------
+// The cut, per member.
+
+type Xl2StrippedMember {
+  source: FixtureSource
+  base_coordinates: List<ImportStripCoordinateSegment>
+}
+
+type Xl2Strip {
+  members: List<Xl2StrippedMember>
+  unobserved: List<Xl2UnobservedScope>
+}
+
+fn xl2_strip_members(sources: List<FixtureSource>) -> Xl2Strip {
+  fold(sources, init: Xl2Strip { members: [], unobserved: [] }, f: fn(acc, source) {
+    match namespace_step0_strip_source(source: source) {
+      Step0SourceStripRefused { cause: cause } =>
+        Xl2Strip { members: acc.members, unobserved: acc.unobserved |> list_push(Xl2MemberNotStripped { cause: cause }) }
+      Step0SourceStripped { source: stripped, removed_statements: _, coordinate_map: coordinates } =>
+        Xl2Strip {
+          members: acc.members |> list_push(Xl2StrippedMember { source: stripped, base_coordinates: coordinates }),
+          unobserved: acc.unobserved
+        }
+    }
+  })
+}
+
+// PATH-FAITHFUL: the base path is the artifact path and the compilation unit, so every locus the
+// front end mints names the file it names at the base revision.
+fn xl2_member_read(member: Xl2StrippedMember) -> DagSourceReadWitness {
+  let path = member.source.path as String
+  DagSourceReadWitness {
+    source: Medium { carried: member.source.content, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
+    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    source_root: DagTree
+  }
+}
+
+fn xl2_stripped_ingest(members: List<Xl2StrippedMember>) -> SourceRootIngest {
+  fold(members, init: Empty, f: fn(acc, member) { Cons { head: xl2_member_read(member: member), tail: acc } })
+}
+
+fn xl2_base_coordinates_of(members: List<Xl2StrippedMember>, path: Symbol) -> List<ImportStripCoordinateSegment> {
+  fold(members, init: [], f: fn(acc, member) {
+    if symbol_intern_lexeme(lexeme: member.source.path as String) == path { member.base_coordinates } else { acc }
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// The observation, per module, on the production census route.
+
+type Xl2Observation {
+  residual: List<Xl2ResidualChain>
+  resolved: Int
+  unobserved: List<Xl2UnobservedScope>
+}
+
+fn xl2_observe_module(
+  context: NativeTestContext,
+  members: List<Xl2StrippedMember>,
+  acc: Xl2Observation,
+  entry: NativeCensusModule
+) -> Xl2Observation {
+  match native_census_module_resolution(
+    context: context,
+    refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+    entry: entry
+  ) {
+    // Reported once, from the context's own refusal roster in xl2_observe.
+    NativeCensusModuleFileRefused => acc
+    NativeCensusModuleResolved =>
+      Xl2Observation { residual: acc.residual, resolved: acc.resolved + 1, unobserved: acc.unobserved }
+    NativeCensusModuleResolveRefused { diagnostics: d } =>
+      Xl2Observation {
+        residual: acc.residual |> list_push(Xl2ResidualChain {
+          module: entry.module,
+          path: entry.path,
+          chain: d,
+          fatal: diagnostics_fatal(d: d),
+          base_coordinates: xl2_base_coordinates_of(members: members, path: entry.path)
+        }),
+        resolved: acc.resolved,
+        unobserved: acc.unobserved |> list_push(Xl2ModuleResolveAbandonedAtFirstFailure { module: entry.module, path: entry.path })
+      }
+  }
+}
+
+fn xl2_observe(context: NativeTestContext, ingest: SourceRootIngest, members: List<Xl2StrippedMember>) -> Xl2Observation {
+  let file_refused = fold_list(xs: context.file_refusals, empty: [], cons: fn(acc, r) {
+    acc |> list_push(Xl2FileRefusedBeforeResolve { refusal: r })
+  })
+  fold_list(
+    xs: native_census_modules(ingest: ingest),
+    empty: Xl2Observation { residual: [], resolved: 0, unobserved: file_refused },
+    cons: fn(acc, entry) { xl2_observe_module(context: context, members: members, acc: acc, entry: entry) }
+  )
+}
+
+// THE ONLY CONSTRUCTOR OF THE COMPLETE ARM. The call-argument refusal heads the roster
+// unconditionally (see Xl2CompletenessRefusal), so this answers refused on every input today.
+fn xl2_completeness(unobserved: List<Xl2UnobservedScope>) -> Xl2CensusCompleteness {
+  Xl2CensusCompletenessRefused {
+    first: Xl2CallArgumentReferencesUnobservable,
+    rest: fold(unobserved, init: [], f: fn(acc, scope) { acc |> list_push(Xl2ScopeUnobserved { scope: scope }) })
+  }
+}
+
+fn xl2_member_source(member: Step0SubjectMember) -> FixtureSource {
+  FixtureSource { path: member.path, content: member.content }
+}
+
+// THE COMPOSITION OVER A SUPPLIED EXACT-BASE VECTOR. The vector's sole constructor is the
+// object-store collector, so what arrives here is a pinned tree, never an authored population.
+fn xl2_rehearse_vector(vector: Step0SubjectVector) -> Xl2RehearsalRun {
+  let strip = xl2_strip_members(sources: fold(vector.members, init: [], f: fn(acc, m) { acc |> list_push(xl2_member_source(member: m)) }))
+  xl2_rehearse_stripped(source_commit: vector.source_commit, source_tree: vector.source_tree, strip: strip)
+}
+
+fn xl2_rehearse_stripped(source_commit: GitObjectId, source_tree: GitObjectId, strip: Xl2Strip) -> Xl2RehearsalRun {
+  let ingest = xl2_stripped_ingest(members: strip.members)
+  match native_test_context_from_ingest(ingest: ingest) {
+    Rejected { diagnostics: d } => Xl2RehearsalContextRefused { source_commit: source_commit, diagnostics: d }
+    Accepted { value: context, diagnostics: _ } => {
+      let observed = xl2_observe(context: context, ingest: ingest, members: strip.members)
+      Xl2RehearsalObserved {
+        source_commit: source_commit,
+        source_tree: source_tree,
+        residual: observed.residual,
+        resolved_module_count: observed.resolved,
+        completeness: xl2_completeness(unobserved: concat(strip.unobserved, observed.unobserved)),
+        native_requalification: xl2_native_requalification_walls
+      }
+    }
+  }
+}
+
+// THE ENTRY: the exact base is pinned by the ref the collector resolves, in the same dispatch.
+fn run_xl2_rehearsal_at(ref: String) -> Xl2RehearsalRun {
+  match collect_step0_subject_vector_at(ref: ref) {
+    Step0SubjectCollectionRefused { cause: cause } => Xl2RehearsalBaseUnobserved { cause: cause }
+    Step0SubjectCollected { vector: vector } => xl2_rehearse_vector(vector: vector)
+  }
+}
+
+fn xl2_census_is_complete(run: Xl2RehearsalRun) -> Bool {
+  match run {
+    Xl2RehearsalObserved { completeness: Xl2CensusComplete } => true
+    _ => false
+  }
+}

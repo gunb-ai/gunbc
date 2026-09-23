@@ -1,0 +1,109 @@
+module test.claim.namespace_xl2_rehearsal_census
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.git.object_store { git_sha1_object_id }
+import gunbc.namespace_step0_subject_collector { Step0CommitIdentityUnreadable }
+import tools.multi_module_compile_fixture { FixtureSource }
+import gunbc.namespace_xl2_rehearsal_census {
+  Xl2CallArgumentReferencesUnobservable,
+  Xl2CensusCompletenessRefused,
+  Xl2ModuleResolveAbandonedAtFirstFailure,
+  Xl2RehearsalBaseUnobserved,
+  Xl2RehearsalObserved,
+  Xl2RehearsalRun,
+  Xl2ScopeUnobserved,
+  Xl2Strip,
+  Xl2StrippedMember,
+  xl2_rehearse_stripped,
+  xl2_strip_members
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE TWO CONTROLS THE BRIEF OWES, RUN THROUGH THE REHEARSAL'S OWN COMPOSITION: the typed strip
+// (gunbc.namespace_step0_strip_producer), the path-faithful ingest, and v2.compiler.compile's
+// census-resolve. Only the exact-base collector is replaced by supplied sources, because it reads
+// the repository's object store and the hermetic floor cannot reach that (the collector's own note
+// states the route deficit); every stage downstream of the vector is the production one.
+//
+// THE RESIDUAL CONTROL IS THE CUT'S OWN SHAPE: a module whose signature names a type it IMPORTS.
+// Unstripped it resolves; stripped, the import is gone and the reference dangles at NAME
+// RESOLUTION. The reference is a signature type rather than a call argument on purpose -- call
+// arguments do not reach resolve yet (the reason completeness is refused), so a control built on
+// one would be green for a reason the instrument cannot see.
+//
+// THE CLEAN CONTROL IMPORTS NOTHING: its only reference is to its own module's type, so the strip is
+// the identity on it and it must resolve. Both controls in one ingest share one front end.
+data xl2_residual_control_source: String = "module v2.xl2_control_residual\n\nimport v2.std.logic { Bool }\n\nfn xl2_control_residual_value(p: Bool) -> Bool { p }\n"
+
+data xl2_clean_control_source: String = "module v2.xl2_control_clean\n\ntype Xl2ControlShade = Xl2ControlLight | Xl2ControlDark\n\nfn xl2_control_clean_value(p: Xl2ControlShade) -> Xl2ControlShade { p }\n"
+
+data xl2_control_sources: List<FixtureSource> = [
+  FixtureSource { path: "dag/xl2_control_residual.dag" as NonEmptyStr, content: xl2_residual_control_source },
+  FixtureSource { path: "dag/xl2_control_clean.dag" as NonEmptyStr, content: xl2_clean_control_source }
+]
+
+// A placeholder revision: the controls exercise the composition, not the pin. An unreadable literal
+// is reported as the collector would report it, never replaced by a default.
+data xl2_control_revision_hex: String = "0000000000000000000000000000000000000000"
+
+fn xl2_control_rehearse(strip: Xl2Strip) -> Xl2RehearsalRun {
+  match git_sha1_object_id(hex: xl2_control_revision_hex) {
+    Absent => Xl2RehearsalBaseUnobserved { cause: Step0CommitIdentityUnreadable { hex: xl2_control_revision_hex } }
+    Present { value: oid } => xl2_rehearse_stripped(source_commit: oid, source_tree: oid, strip: strip)
+  }
+}
+
+// ONE NULLARY PRODUCER, WARM: one front end plus two resolves, read by every claim below
+// (v2.workflow.floor_pure_producer_share carries its row).
+fn xl2_control_run() -> Xl2RehearsalRun {
+  xl2_control_rehearse(strip: xl2_strip_members(sources: xl2_control_sources))
+}
+
+// RED CONTROL: the residual module yields exactly one failure chain, and it is that module's.
+test fn xl2_residual_control_is_reported_holds() -> Bool {
+  match xl2_control_run() {
+    Xl2RehearsalObserved { residual: residual } =>
+      count(residual) == 1 && all(residual, r => r.module == "v2.xl2_control_residual")
+    _ => false
+  }
+}
+
+// GREEN CONTROL: the clean module resolved and contributed no row (the residual one did not).
+test fn xl2_clean_control_resolves_holds() -> Bool {
+  match xl2_control_run() {
+    Xl2RehearsalObserved { residual: residual, resolved_module_count: n } =>
+      n == 1 && !any(residual, r => r.module == "v2.xl2_control_clean")
+    _ => false
+  }
+}
+
+// THE CUT IS WHAT MADE THE RED: the same residual module unstripped resolves on the same route, so
+// the row above is the strip's residual and not a defect in the specimen.
+test fn xl2_residual_control_resolves_before_the_cut_holds() -> Bool {
+  match xl2_control_rehearse(strip: Xl2Strip {
+      members: [Xl2StrippedMember {
+        source: FixtureSource { path: "dag/xl2_control_residual.dag" as NonEmptyStr, content: xl2_residual_control_source },
+        base_coordinates: []
+      }],
+      unobserved: []
+    }) {
+    Xl2RehearsalObserved { residual: residual, resolved_module_count: n } => count(residual) == 0 && n == 1
+    _ => false
+  }
+}
+
+// COMPLETENESS IS REFUSED, AND FOR THE NAMED REASONS: call arguments are unobservable, and the
+// residual module was abandoned at its first failure. A run that answered Xl2CensusComplete here
+// would be presenting an undercount as the census.
+test fn xl2_control_completeness_is_refused_holds() -> Bool {
+  match xl2_control_run() {
+    Xl2RehearsalObserved { completeness: Xl2CensusCompletenessRefused { first: Xl2CallArgumentReferencesUnobservable, rest: rest } } =>
+      any(rest, c => match c {
+        Xl2ScopeUnobserved { scope: Xl2ModuleResolveAbandonedAtFirstFailure { module: m, path: _ } } => m == "v2.xl2_control_residual"
+        _ => false
+      })
+    _ => false
+  }
+}
