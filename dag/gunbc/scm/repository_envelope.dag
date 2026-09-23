@@ -109,6 +109,8 @@ import gunbc.scm.object_store {
   SemanticNodeObjectRef,
   node_target_locator,
   scm_object_ref_locator,
+  scm_object_identity,
+  store_records_in_dependency_order,
   empty_store,
   find_node_record,
   CorpusManifestEntry,
@@ -136,6 +138,7 @@ import gunbc.scm.object_table_json {
   DecodeAcc,
   DecodePositions,
   EncodeAcc,
+  EncodePositions,
   encode_object_table,
   object_id_key,
   source_position_of,
@@ -222,6 +225,15 @@ import gunbc.scm.load_standing {
 // nothing" and "this writer forgot to say" the same bytes, which is the conflation the arm was
 // spelled as a state to avoid, arriving through the wire instead of through the type.
 data repository_envelope_format_tag: String = "gunbc-scm-repository-v6"
+
+// v7: THE SHARDED ENVELOPE (the 2026-09-23 persistence ruling). The index document carries every
+// repository fact EXCEPT object payloads -- commits, allocator, selection, stage, and
+// `object_shards`, the roster of content-derived shard identities. Each object lives in its own
+// shard document (gunbc.scm.object_shard_json) named by that identity, so a save after one
+// candidate's change writes only the new shards plus the small index, and no operation ever
+// rewrites another object's bytes. v4-v6 keep their frozen readers; the one v6 envelope in
+// production reads through its reader and is rewritten as v7 on its next save.
+data repository_envelope_format_tag_v7: String = "gunbc-scm-repository-v7"
 
 data repository_envelope_format_tag_v5: String = "gunbc-scm-repository-v5"
 
@@ -470,6 +482,8 @@ type RepositoryDecodeRefusal
   | RepositoryMemberReadRefused { cause: MemberReadRefusal }
   | RepositoryFormatUnrecognized { found: String }
   | RepositoryFormatRetired { found: String }
+  | RepositoryShardedIndexIsNotWhole { found: String }
+  | RepositoryShardNotDecodable { detail: String }
   | RepositoryIdentityRuleUnrecognized { found: String }
   | RepositoryCommitRootReferenceUnresolved { reference: String }
   | RepositoryCommitRootNotInObjectTable { root: ObjectId }
@@ -1459,6 +1473,61 @@ fn encode_repository_v6_over_table(repo: RepositoryEnvelope, acc: EncodeAcc) -> 
   )
 }
 
+// THE v7 DOCUMENT IS THE INDEX: every member v6 carries except the object payloads, which become
+// `object_shards` -- the roster of content-derived identities, in the same dependency order the
+// monolith's table used. Commit roots and the staged reference spell the UNCONTAINED digest arm,
+// because this document carries no object to point at; the commit closure format's own vocabulary,
+// reused rather than paralleled.
+fn encode_repository_v7(repo: RepositoryEnvelope) -> JsonValue {
+  let empty_positions = EncodeAcc {
+    positions: EncodePositions {
+      nodes_by_identity: empty_map(),
+      sources_by_identity: empty_map(),
+      manifests_by_identity: empty_map(),
+      next: 0,
+    },
+    objects: [],
+  }
+  json_object(
+    members: [
+      json_kv(key: "format", value: json_string(s: repository_envelope_format_tag_v7)),
+      json_kv(key: "identity_rule", value: json_string(s: repository_object_identity_rule_tag)),
+      json_kv(
+        key: "object_shards",
+        value: json_array(
+          elements: map(
+            store_records_in_dependency_order(store: repo.store),
+            o => json_string(s: (scm_object_identity(object: o)).digest as String),
+          )
+        ),
+      ),
+      json_kv(
+        key: "next_commit_ordinal",
+        value: json_int(n: repo.commit_allocator.next_ordinal),
+      ),
+      json_kv(
+        key: "commits",
+        value: json_array(elements: encode_commit_records(acc: empty_positions, commits: repo.commits))
+      ),
+      json_kv(key: "checked_out", value: encode_optional_reference(selected: repo.checked_out)),
+      json_kv(
+        key: "staged",
+        value: encode_optional_manifest_reference(acc: empty_positions, staged: repo.staged),
+      ),
+    ]
+  )
+}
+
+// THE SHARDED WRITER'S ADMISSION IS THE MONOLITH'S, UNCHANGED: the same checked encoder adjudicates
+// (its document is built and discarded -- the admission is the census, not the bytes), and only
+// then does the v7 index encode. A store that cannot be written whole cannot be written sharded.
+fn encode_repository_sharded_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
+  match encode_repository_checked(repo: repo) {
+    RepositoryEncodeRefused { cause } => RepositoryEncodeRefused { cause: cause }
+    RepositoryEncoded { value: _ } => RepositoryEncoded { value: encode_repository_v7(repo: repo) }
+  }
+}
+
 type RepositoryEncodeOutcome
   = RepositoryEncoded { value: JsonValue }
   | RepositoryEncodeRefused { cause: RepositoryEncodeRefusal }
@@ -2316,7 +2385,8 @@ fn decode_commit_members_after_reference(
 // single tolerant reader admitting both would accept each of those, and each is a document nobody
 // could have written.
 type RepositoryFormat
-  = RepositoryFormatV6
+  = RepositoryFormatV7
+  | RepositoryFormatV6
   | RepositoryFormatV5
   | RepositoryFormatV4
   | RepositoryFormatRetiredV3
@@ -2325,6 +2395,8 @@ type RepositoryFormat
 fn repository_format_of(tag: String) -> RepositoryFormat {
   if tag == repository_envelope_format_tag {
     RepositoryFormatV6
+  } else if tag == repository_envelope_format_tag_v7 {
+    RepositoryFormatV7
   } else if tag == repository_envelope_format_tag_v5 {
     RepositoryFormatV5
   } else {
@@ -2351,6 +2423,8 @@ fn decode_repository(v: JsonValue) -> RepositoryDecodeOutcome {
           RepositoryDecodeRefused {
             cause: RepositoryFormatRetired { found: repository_envelope_format_tag_v3 }
           }
+        RepositoryFormatV7 =>
+          RepositoryDecodeRefused { cause: RepositoryShardedIndexIsNotWhole { found: repository_envelope_format_tag_v7 } }
         RepositoryFormatV6 => decode_repository_v6(v: v)
         RepositoryFormatV5 => decode_repository_v5(v: v)
         RepositoryFormatV4 => decode_repository_v4(v: v)
@@ -2420,6 +2494,102 @@ fn decode_repository_v4(v: JsonValue) -> RepositoryDecodeOutcome {
     policy: StageMemberAbsentByFormat,
     commit_policy: IntegrationMemberAbsentByFormat,
   )
+}
+
+// THE v7 INDEX DOCUMENT IS NOT A WHOLE REPOSITORY -- it names its objects by content identity and
+// leaves their payloads to the shards, so decode_repository refuses it by name: reading it as one
+// would fabricate an empty store. The loader (gunbc.scm.repository_load) decodes the index here,
+// reads exactly the rostered shards, assembles the store through gunbc.scm.object_store
+// store_assemble_decoded, and only then runs the shared body -- the same censuses, commit table and
+// selection adjudications every version runs.
+type RepositoryShardedIndex {
+  document: JsonValue
+  shard_digests: List<String>
+}
+
+type RepositoryShardedIndexDecode
+  = ShardedIndexDecoded { index: RepositoryShardedIndex }
+  | ShardedIndexRefused { cause: RepositoryDecodeRefusal }
+
+type ShardDigestRead
+  = ShardDigestsRead { digests: List<String> }
+  | ShardDigestsRefused { reason: String }
+
+fn shard_digest_step(acc: ShardDigestRead, value: JsonValue) -> ShardDigestRead {
+  match acc {
+    ShardDigestsRefused { reason: _ } => acc
+    ShardDigestsRead { digests } =>
+      match value {
+        JsonString { value: digest } =>
+          ShardDigestsRead { digests: concat(digests, [digest]) }
+        _ =>
+          ShardDigestsRefused { reason: "object_shards carries a non-string member" }
+      }
+  }
+}
+
+fn decode_repository_v7_index(v: JsonValue) -> RepositoryShardedIndexDecode {
+  match read_string_member(v: v, key: "identity_rule") {
+    MemberFailed { cause: c } => ShardedIndexRefused { cause: RepositoryMemberReadRefused { cause: c } }
+    MemberString { value: rule } =>
+      if rule != repository_object_identity_rule_tag {
+        ShardedIndexRefused { cause: RepositoryIdentityRuleUnrecognized { found: rule } }
+      } else {
+        match repository_member_set_refusal(
+          v: v,
+          allowed: ["format", "identity_rule", "object_shards", "commits", "next_commit_ordinal", "checked_out", "staged"],
+          context: RepositoryEnvelopeMembers
+        ) {
+          Present { value: c } => ShardedIndexRefused { cause: c }
+          Absent =>
+            match read_member(v: v, key: "object_shards") {
+              MemberFailed { cause: c } =>
+                ShardedIndexRefused { cause: RepositoryMemberReadRefused { cause: c } }
+              MemberArray { elements: shard_values } =>
+                match fold(
+                  shard_values,
+                  init: ShardDigestsRead { digests: [] },
+                  f: fn(acc, sv) { shard_digest_step(acc: acc, value: sv) },
+                ) {
+                  ShardDigestsRefused { reason } =>
+                    ShardedIndexRefused {
+                      cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "object_shards" } },
+                    }
+                  ShardDigestsRead { digests } =>
+                    ShardedIndexDecoded {
+                      index: RepositoryShardedIndex { document: v, shard_digests: digests },
+                    }
+                }
+              _ =>
+                ShardedIndexRefused {
+                  cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "object_shards" } },
+                }
+            }
+        }
+      }
+    _ => ShardedIndexRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "identity_rule" } } }
+  }
+}
+
+fn decode_repository_v7_finish(v: JsonValue, store: ObjectStore) -> RepositoryDecodeOutcome {
+  match read_member_value(v: v, key: "next_commit_ordinal") {
+    MemberLookupFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
+    MemberValue { value: found } =>
+      match repository_natural_from_json(value: found) {
+        Absent => RepositoryDecodeRefused {
+          cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "next_commit_ordinal" } }
+        }
+        Present { value: next_ordinal } =>
+          decode_repository_body_with_store(
+            v: v,
+            next_ordinal: next_ordinal,
+            policy: StageMemberDeclared,
+            commit_policy: IntegrationMemberDeclared,
+            store: store,
+            positions: empty_map(),
+          )
+      }
+  }
 }
 
 fn decode_repository_versioned(
@@ -2517,83 +2687,23 @@ fn decode_repository_body_with_allocator(
           match table_refusal {
             Present { value: c } => RepositoryDecodeRefused { cause: RepositoryDecodeObjectTableRefused { cause: c } }
             Absent =>
-              let semantic = store_census(store: store)
-              let sources = manifest_source_census(store: store)
-              match a_manifest_source_at_a_node(census: sources) {
-                Present { value: source } =>
-                  RepositoryDecodeRefused {
-                    cause: RepositoryDecodedManifestSourceIsSemanticNode { source: source }
-                  }
-                Absent =>
-              match a_manifest_source_at_a_manifest(census: sources) {
-                Present { value: source } =>
-                  RepositoryDecodeRefused {
-                    cause: RepositoryDecodedManifestSourceIsCorpusManifest { source: source }
-                  }
-                Absent =>
-              match a_source_occupied_target(census: semantic) {
-                Present { value: target } =>
-                  RepositoryDecodeRefused {
-                    cause: RepositoryDecodedTargetIsAuthoredSource { target: target }
-                  }
-                Absent =>
-              match a_manifest_occupied_target(census: semantic) {
-                Present { value: target } =>
-                  RepositoryDecodeRefused {
-                    cause: RepositoryDecodedTargetIsCorpusManifest { target: target }
-                  }
-                Absent =>
-              match read_member(v: v, key: "commits") {
-                MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
-                MemberArray { elements: commit_values } =>
-                  match fold(
-                    commit_values,
-                    init: CommitDecodeAcc { commits: [], refusal: none },
-                    f: fn(acc, cv) {
-                      decode_commit_step(
-                        positions: positions,
-                        acc: acc,
-                        value: cv,
-                        commit_policy: commit_policy,
-                      )
-                    }
-                  ) {
-                    CommitDecodeAcc { commits: reversed_commits, refusal: commit_refusal } =>
-                      match commit_refusal {
-                        Present { value: c } => RepositoryDecodeRefused { cause: c }
-                        Absent =>
-                          match resolve_pending_commits(
-                            store: store,
-                            pending: reverse(reversed_commits),
-                            next_ordinal: next_ordinal,
-                          ) {
-                            ResolvedCommitAcc { commits: commits, seen: _, refusal: resolve_refusal } =>
-                              match resolve_refusal {
-                                Present { value: c } => RepositoryDecodeRefused { cause: c }
-                                Absent =>
-                                  decode_repository_selections(
-                                    v: v,
-                                    store: store,
-                                    positions: positions,
-                                    commits: commits,
-                                    next_ordinal: next_ordinal,
-                                    policy: policy,
-                                  )
-                              }
-                          }
-                      }
-                  }
-                _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "commits" } } }
-              }
-              }
-              }
-              }
-              }
+              decode_repository_body_with_store(
+                v: v,
+                next_ordinal: next_ordinal,
+                policy: policy,
+                commit_policy: commit_policy,
+                store: store,
+                positions: positions,
+              )
           }
       }
     _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "objects" } } }
   }
 }
+
+
+
+
 
 // A DANGLING CHECKOUT REFERENCE REFUSES RATHER THAN DEGRADING TO "nothing checked out". Those are
 // different states: one is an ordinary empty repository, the other is a document whose workspace
@@ -2723,6 +2833,89 @@ fn decode_repository_selections(
   }
 }
 
+fn decode_repository_body_with_store(
+  v: JsonValue,
+  next_ordinal: Int,
+  policy: StageMemberPolicy,
+  commit_policy: IntegrationMemberPolicy,
+  store: ObjectStore,
+  positions: DecodePositions,
+) -> RepositoryDecodeOutcome {
+              let semantic = store_census(store: store)
+              let sources = manifest_source_census(store: store)
+              match a_manifest_source_at_a_node(census: sources) {
+                Present { value: source } =>
+                  RepositoryDecodeRefused {
+                    cause: RepositoryDecodedManifestSourceIsSemanticNode { source: source }
+                  }
+                Absent =>
+              match a_manifest_source_at_a_manifest(census: sources) {
+                Present { value: source } =>
+                  RepositoryDecodeRefused {
+                    cause: RepositoryDecodedManifestSourceIsCorpusManifest { source: source }
+                  }
+                Absent =>
+              match a_source_occupied_target(census: semantic) {
+                Present { value: target } =>
+                  RepositoryDecodeRefused {
+                    cause: RepositoryDecodedTargetIsAuthoredSource { target: target }
+                  }
+                Absent =>
+              match a_manifest_occupied_target(census: semantic) {
+                Present { value: target } =>
+                  RepositoryDecodeRefused {
+                    cause: RepositoryDecodedTargetIsCorpusManifest { target: target }
+                  }
+                Absent =>
+              match read_member(v: v, key: "commits") {
+                MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
+                MemberArray { elements: commit_values } =>
+                  match fold(
+                    commit_values,
+                    init: CommitDecodeAcc { commits: [], refusal: none },
+                    f: fn(acc, cv) {
+                      decode_commit_step(
+                        positions: positions,
+                        acc: acc,
+                        value: cv,
+                        commit_policy: commit_policy,
+                      )
+                    }
+                  ) {
+                    CommitDecodeAcc { commits: reversed_commits, refusal: commit_refusal } =>
+                      match commit_refusal {
+                        Present { value: c } => RepositoryDecodeRefused { cause: c }
+                        Absent =>
+                          match resolve_pending_commits(
+                            store: store,
+                            pending: reverse(reversed_commits),
+                            next_ordinal: next_ordinal,
+                          ) {
+                            ResolvedCommitAcc { commits: commits, seen: _, refusal: resolve_refusal } =>
+                              match resolve_refusal {
+                                Present { value: c } => RepositoryDecodeRefused { cause: c }
+                                Absent =>
+                                  decode_repository_selections(
+                                    v: v,
+                                    store: store,
+                                    positions: positions,
+                                    commits: commits,
+                                    next_ordinal: next_ordinal,
+                                    policy: policy,
+                                  )
+                              }
+                          }
+                      }
+                  }
+                _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "commits" } } }
+              }
+              }
+              }
+              }
+          }
+}
+
+
 // ------------------------------------------------------------------------------------------------
 // Publication standing
 // ------------------------------------------------------------------------------------------------
@@ -2820,6 +3013,8 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
   match cause {
     RepositoryFormatUnrecognized { found: _ } => LoadUnsupportedProtocol
     RepositoryFormatRetired { found: _ } => LoadUnsupportedProtocol
+    RepositoryShardedIndexIsNotWhole { found: _ } => LoadUnsupportedProtocol
+    RepositoryShardNotDecodable { detail: _ } => LoadDocumentMalformed
     RepositoryIdentityRuleUnrecognized { found: _ } => LoadUnsupportedProtocol
     RepositoryDecodeObjectTableRefused { cause: c } => object_table_load_standing(cause: c)
     RepositoryMemberReadRefused { cause: c } =>

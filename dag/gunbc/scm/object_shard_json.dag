@@ -1,0 +1,186 @@
+module gunbc.scm.object_shard_json
+
+import std.types { String, List, NonEmptyStr }
+import extdeps.languages.json.emit { JsonValue, json_string, json_object, json_kv, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+}
+import gunbc.scm.json_member { read_string_member, read_member_value, MemberString, MemberArray, MemberObject, MemberFailed, MemberValue, MemberLookupFailed }
+import gunbc.scm.object_store {
+  ScmObject, ObjectId,
+  scm_object_identity,
+}
+import gunbc.scm.object_table_json { encode_object, EncodePositions, decode_object_table, DecodeAcc }
+
+// THE OBJECT SHARD: ONE OBJECT, ONE SELF-CONTAINED DOCUMENT (the 2026-09-23 persistence ruling:
+// the envelope stops being one ~104MB JSON document whose every save rewrites and reparses every
+// object; the index shrinks to commits + selection + the shard roster, and object payloads live
+// one per shard, addressed by content). The shard's identity member and its FILE NAME both derive
+// from the object's own content identity -- the content-addressed law holds at shard grain, so a
+// shard whose bytes derive a different identity than its name claims is refused, never silently
+// re-bound.
+//
+// A SHARD'S REFERENCES ENCODE AS UNCONTAINED DIGESTS, which is the arm the object table format
+// already carries for exactly this: a document that does not carry the object. Nothing here is a
+// new wire vocabulary -- encode_object with an empty positions table produces it, and the table
+// decoder reads it, so shard and monolith share one codec authority.
+data object_shard_format_tag: NonEmptyStr = "gunbc-scm-object-shard/v1" as NonEmptyStr
+
+fn object_shard_file_name(identity: ObjectId) -> String {
+  join([identity.digest as String, ".json"], "")
+}
+
+fn encode_object_shard(object: ScmObject) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "format", value: json_string(s: object_shard_format_tag as String)),
+    json_kv(
+      key: "identity",
+      value: json_string(s: (scm_object_identity(object: object)).digest as String),
+    ),
+    json_kv(
+      key: "object",
+      value: encode_object(
+        positions: EncodePositions {
+          nodes_by_identity: empty_map(),
+          sources_by_identity: empty_map(),
+          manifests_by_identity: empty_map(),
+          next: 0,
+        },
+        object: object,
+      ),
+    ),
+  ])
+}
+
+fn object_shard_json_text(object: ScmObject) -> String {
+  serialize_json(v: encode_object_shard(object: object))
+}
+
+type ObjectShardDecode
+  = ObjectShardDecoded { object: ScmObject }
+  | ObjectShardNotDecodable { reason: String }
+
+fn decode_object_shard_doc(named_identity: String, doc: JsonValue) -> ObjectShardDecode {
+  match decode_object_table(object_values: [doc]) {
+    DecodeAcc { store, positions: _, next: _, refusal } =>
+      match refusal {
+        Present { value: cause } =>
+          ObjectShardNotDecodable { reason: "the shard's object member refused the table decoder" }
+        Absent =>
+          if count(store.objects) == 1 {
+            match store.objects.first() {
+              Absent => ObjectShardNotDecodable { reason: "the shard decoded to no object" }
+              Present { value: object } =>
+                if ((scm_object_identity(object: object)).digest as String) == named_identity {
+                  ObjectShardDecoded { object: object }
+                } else {
+                  ObjectShardNotDecodable {
+                    reason: join([
+                      "the shard names identity ", named_identity,
+                      " but its content derives a different one -- the shard is mis-bound, not merely malformed",
+                    ], ""),
+                  }
+                }
+            }
+          } else {
+            ObjectShardNotDecodable { reason: "the shard's object member did not decode to exactly one object" }
+          }
+      }
+  }
+}
+
+// THE TEXT ENTRY POINT. The document members are read by name with the member authority the whole
+// SCM codec stack uses; a shard whose format tag is not exactly this module's is refused rather
+// than read as one.
+fn decode_object_shard(text: String) -> ObjectShardDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } =>
+      ObjectShardNotDecodable {
+        reason: concat("the object shard is ", json_document_gap_text(gap: gap)),
+      }
+    JsonDocumentParsed { value: doc } =>
+      match read_string_member(v: doc, key: "format") {
+        MemberFailed { cause: _ } =>
+          ObjectShardNotDecodable { reason: "the object shard carries no readable format member" }
+        MemberArray { elements: _ } =>
+          ObjectShardNotDecodable { reason: "the object shard's format member is not a string" }
+        MemberObject { value: _ } =>
+          ObjectShardNotDecodable { reason: "the object shard's format member is not a string" }
+        MemberString { value: format } =>
+          if format != (object_shard_format_tag as String) {
+            ObjectShardNotDecodable {
+              reason: join(["object shard format is ", format, ", not ", object_shard_format_tag as String], ""),
+            }
+          } else {
+            match read_string_member(v: doc, key: "identity") {
+              MemberFailed { cause: _ } =>
+                ObjectShardNotDecodable { reason: "the object shard carries no readable identity member" }
+              MemberArray { elements: _ } =>
+                ObjectShardNotDecodable { reason: "the object shard's identity member is not a string" }
+              MemberObject { value: _ } =>
+                ObjectShardNotDecodable { reason: "the object shard's identity member is not a string" }
+              MemberString { value: identity } =>
+                match read_member_value(v: doc, key: "object") {
+                  MemberLookupFailed { cause: _ } =>
+                    ObjectShardNotDecodable { reason: "the object shard carries no object member" }
+                  MemberValue { value: object_value } =>
+                    decode_object_shard_doc(named_identity: identity, doc: object_value)
+                }
+            }
+          }
+      }
+  }
+}
+
+// THE SHARD LAYOUT IS THE CODEC'S OWN VOCABULARY: an envelope at <dir>/<name>.gunbc-repository.json
+// shards into flat siblings <dir>/<name>.object.<digest>.json (no new directory -- the Filesystem
+// interface has no mkdir, and the directories a repository lives in already exist). Both the writer
+// and the reader derive addresses here, so they cannot disagree about one.
+type ShardPathAcc {
+  skipped: Bool
+  kept: List<String>
+}
+
+fn envelope_parent_dir(path: String) -> String {
+  shard_path_finish(acc: fold(
+    reverse(split(s: path, delimiter: "/")),
+    init: ShardPathAcc { skipped: false, kept: [] },
+    f: fn(acc, seg) {
+      if acc.skipped {
+        ShardPathAcc { skipped: true, kept: concat([seg], acc.kept) }
+      } else {
+        ShardPathAcc { skipped: true, kept: [] }
+      }
+    },
+  ))
+}
+
+fn shard_path_finish(acc: ShardPathAcc) -> String {
+  join(acc.kept, "/")
+}
+
+fn envelope_base_name(path: String) -> String {
+  match (split(s: path, delimiter: "/")).last() {
+    Present { value: name } =>
+      if ends_with(s: name, suffix: ".gunbc-repository.json") {
+        substring(s: name, start: 0, end: string_length(s: name) - 22)
+      } else if ends_with(s: name, suffix: ".json") {
+        substring(s: name, start: 0, end: string_length(s: name) - 5)
+      } else {
+        name
+      }
+    Absent => path
+  }
+}
+
+fn object_shard_name_for(envelope_path: String, identity_digest: String) -> String {
+  join([envelope_base_name(path: envelope_path), ".object.", identity_digest, ".json"], "")
+}
+
+fn object_shard_path_for(envelope_path: String, identity_digest: String) -> String {
+  join([
+    envelope_parent_dir(path: envelope_path),
+    "/",
+    object_shard_name_for(envelope_path: envelope_path, identity_digest: identity_digest),
+  ], "")
+}

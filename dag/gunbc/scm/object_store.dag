@@ -1109,6 +1109,61 @@ fn manifest_entries_with_path_removed(
   path_unique_with_path_removed(unique: path_unique_of_record(base: base), path: path)
 }
 
+// ASSEMBLING A STORE FROM DECODED OBJECTS IS ONE PASS, NOT AN INSERT PER OBJECT. The sharded
+// loader (gunbc.scm.object_shard_json, the 2026-09-23 persistence ruling) hands this verb the
+// objects it decoded; building the store through insert_admission would pay a full-list find plus
+// a full-list spine copy per object -- the quadratic shape the batch store verb was written to
+// remove (measured 2026-09-21: a 7,050-object seeding never completed a belt tick). The identity
+// law is unchanged: identity derives from content, duplicates dedupe, and two objects answering
+// one identity with different content is a collision, refused by identity.
+type StoreAssembly
+  = StoreAssembled { store: ObjectStore }
+  | StoreAssemblyCollision { identity: ObjectId }
+
+type StoreAssemblyAcc {
+  seen: Map<String, ScmObject>
+  objects: List<ScmObject>
+  collision: ObjectId?
+}
+
+fn store_assemble_decoded(objects: List<ScmObject>) -> StoreAssembly {
+  let acc = fold(
+    objects,
+    init: StoreAssemblyAcc { seen: empty_map(), objects: [], collision: none },
+    f: fn(acc, object) {
+      match acc.collision {
+        Present { value: _ } => acc
+        Absent => {
+          let identity = scm_object_identity(object: object)
+          let key = identity.digest as String
+          match map_lookup(m: acc.seen, key: key) {
+            Present { value: held } =>
+              if objects_equal(left: held, right: object) {
+                acc
+              } else {
+                StoreAssemblyAcc {
+                  seen: acc.seen,
+                  objects: acc.objects,
+                  collision: Present { value: identity },
+                }
+              }
+            Absent =>
+              StoreAssemblyAcc {
+                seen: map_insert(acc.seen, key, object),
+                objects: concat([object], acc.objects),
+                collision: none,
+              }
+          }
+        }
+      }
+    },
+  )
+  match acc.collision {
+    Present { value: identity } => StoreAssemblyCollision { identity: identity }
+    Absent => StoreAssembled { store: ObjectStore { objects: reverse(acc.objects) } }
+  }
+}
+
 data corpus_manifest_tag: NonEmptyStr = "gunbc.scm.corpus_manifest"
 data corpus_manifest_entry_tag: NonEmptyStr = "gunbc.scm.corpus_manifest.entry"
 

@@ -47,6 +47,8 @@ import extdeps.filesystem.filesystem_io { FilesystemEstablishedAbsence, filesyst
 import extdeps.languages.json.emit { serialize_json }
 import std.measure { ByteSize, byte_size }
 import std.checked_arithmetic { nat_magnitude }
+import gunbc.scm.object_shard_json { object_shard_json_text, object_shard_name_for, object_shard_path_for }
+import gunbc.scm.object_store { ScmObject, scm_object_identity }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
   RepositoryEncodeOutcome,
@@ -54,6 +56,7 @@ import gunbc.scm.repository_envelope {
   RepositoryEncodeRefused,
   RepositoryEncodeRefusal,
   encode_repository_checked,
+  encode_repository_sharded_checked,
 }
 
 // THE BYTE COUNT IS A MAGNITUDE, NOT A NUMBER, and it is carried as one. `ByteSize` is
@@ -150,6 +153,105 @@ fn save_repository(path: String, repo: RepositoryEnvelope) -> RepositorySave {
         RepositoryWriteByteCountUnrepresentable { path: path, reported: write.bytes_written }
       } else {
         RepositorySaved { path: path, written: byte_size(count: nat_magnitude(a: write.bytes_written)) }
+      }
+    }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE SHARDED WRITE (v7). The index document is the commit point: shards go down first (write-once
+// -- a shard's name is its content identity, so an existing shard with that name already holds
+// these bytes, and it is skipped rather than rewritten), and the index is written LAST, so an
+// interrupted save leaves the previous index naming only shards that exist. A save after one
+// candidate's change rewrites that candidate's few new shards and the small index, never another
+// object's bytes -- the delta write the monolith could not express.
+//
+// THE SHARDS ARE FLAT SIBLINGS OF THE INDEX, because the Filesystem interface has no mkdir and the
+// directories a repository lives in already exist: an envelope at <dir>/<name>.gunbc-repository.json
+// shards into <dir>/<name>.object.<digest>.json.
+// ------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+type ShardWriteAcc {
+  written: Int
+  refused: String?
+}
+
+fn save_object_shards(envelope_path: String, objects: List<ScmObject>) -> ShardWriteAcc {
+  let parent_dir = envelope_parent_dir(path: envelope_path)
+  let listing = Filesystem.List(path: parent_dir)
+  if !listing.success {
+    ShardWriteAcc {
+      written: 0,
+      refused: Present {
+        value: join(["the envelope's directory could not be listed, so which shards exist is unknown: ", parent_dir, " (", listing.error, ")"], ""),
+      },
+    }
+  } else {
+    let present = fold(
+      split(s: listing.entries, delimiter: "\n") |> filter(e => trim(e) != ""),
+      init: empty_map(),
+      f: fn(acc, name) { map_insert(acc, trim(name), true) },
+    )
+    fold(
+      objects,
+      init: ShardWriteAcc { written: 0, refused: none },
+      f: fn(acc, object) {
+        match acc.refused {
+          Present { value: _ } => acc
+          Absent => {
+            let digest = (scm_object_identity(object: object)).digest as String
+            let shard_name = object_shard_name_for(envelope_path: envelope_path, identity_digest: digest)
+            match map_lookup(m: present, key: shard_name) {
+              Present { value: _ } => acc
+              Absent => {
+                let shard_path = object_shard_path_for(envelope_path: envelope_path, identity_digest: digest)
+                let write = Filesystem.Write(
+                  path: shard_path,
+                  content: object_shard_json_text(object: object),
+                )
+                if write.success {
+                  ShardWriteAcc { written: acc.written + 1, refused: none }
+                } else {
+                  ShardWriteAcc {
+                    written: acc.written,
+                    refused: Present { value: join(["the object shard could not be written: ", shard_path, " (", write.error, ")"], "") },
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+    )
+  }
+}
+
+fn save_repository_sharded(path: String, repo: RepositoryEnvelope) -> RepositorySave {
+  match encode_repository_sharded_checked(repo: repo) {
+    RepositoryEncodeRefused { cause: cause } =>
+      RepositorySaveRefusedByCodec { path: path, cause: cause }
+    RepositoryEncoded { value: v } => {
+      match save_object_shards(envelope_path: path, objects: repo.store.objects) {
+        ShardWriteAcc { written: _, refused } =>
+          match refused {
+            Present { value: detail } =>
+              RepositoryFileUnwritable { path: path, error: detail }
+            Absent => {
+              let write = Filesystem.Write(path: path, content: serialize_json(v: v))
+              if !write.success {
+                RepositoryFileUnwritable { path: path, error: write.error }
+              } else if write.bytes_written < 0 {
+                RepositoryWriteByteCountUnrepresentable { path: path, reported: write.bytes_written }
+              } else {
+                RepositorySaved { path: path, written: byte_size(count: nat_magnitude(a: write.bytes_written)) }
+              }
+            }
+          }
       }
     }
   }

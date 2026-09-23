@@ -1119,6 +1119,8 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
         RepositoryMemberReadRefused { cause: _ } => "member_read"
         RepositoryFormatUnrecognized { found: _ } => "format"
         RepositoryFormatRetired { found: _ } => "format_retired"
+        RepositoryShardedIndexIsNotWhole { found: _ } => "format_sharded_index"
+        RepositoryShardNotDecodable { detail: _ } => "shard_not_decodable"
         RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
         RepositoryCommitRootReferenceUnresolved { reference: _ } => "commit_root"
         RepositoryCommitRootNotInObjectTable { root: _ } => "commit_root_absent"

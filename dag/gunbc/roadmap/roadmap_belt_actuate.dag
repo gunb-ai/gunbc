@@ -419,7 +419,7 @@ import gunbc.scm.write_spine {
 }
 import gunbc.scm.repository_load { load_repository, RepositoryLoaded, RepositoryLoadRefused, RepositoryLoadRefusal, RepositoryFileUnreadable, RepositoryDocumentUnparseable, RepositoryDocumentRefused }
 import gunbc.scm.repository_save {
-  save_repository,
+  save_repository_sharded,
   RepositorySaved, RepositorySaveRefusedByCodec, RepositoryFileUnwritable, RepositoryWriteByteCountUnrepresentable,
 }
 import gunbc.scm.worktree_inventory {
@@ -5514,7 +5514,7 @@ fn belt_scm_envelope_seeded(
                   StagedCommitSourceUnrecoverable { cause: _ } =>
                     SeedPoisoned { detail: "a staged base path's source is unrecoverable from the object store" }
                   StagedCommitMinted { repository: seeded, reference: _ } =>
-                    match save_repository(path: path, repo: seeded) {
+                    match save_repository_sharded(path: path, repo: seeded) {
                       RepositorySaved { path: _, written: _ } => SeedReady { envelope: seeded }
                       RepositorySaveRefusedByCodec { path: _, cause: _ } =>
                         SeedRefused { detail: "the base commit was minted but the envelope could not be encoded for persistence" }
@@ -5864,7 +5864,7 @@ fn belt_scm_delta_capture(
                                 },
                                 staged: with_candidate.staged,
                               }
-                              match save_repository(path: path, repo: restored) {
+                              match save_repository_sharded(path: path, repo: restored) {
                                 RepositorySaved { path: _, written: _ } =>
                                   ScmCandidateCaptured {
                                     repository_path: path,
@@ -9429,7 +9429,7 @@ fn belt_integrate_into_envelope(
                   checked_out: Present { value: new_head },
                   staged: advanced.staged,
                 }
-                match save_repository(path: capture.scm_repository, repo: moved) {
+                match save_repository_sharded(path: capture.scm_repository, repo: moved) {
                   RepositorySaved { path: _, written: _ } =>
                     match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationIntegrated) {
                       IntegrationReceiptRecorded => EnvelopeIntegrated
