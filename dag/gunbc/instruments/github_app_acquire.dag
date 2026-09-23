@@ -415,7 +415,6 @@ fn persist_issued_credentials(
   custody_name: NonEmptyStr,
   issuance: GitHubAppCredentialIssuance,
 ) -> IssuedCredentialCustody
-  uses fs: std.resources.Filesystem
 {
   match issuance {
     CredentialIssuedOnce { app_id: _, slug: _, pem: pem, webhook_secret: hook, client_id: _, client_secret: client } =>
@@ -774,7 +773,6 @@ fn installations_report(installations: List<GitHubAppInstallation>) -> String {
 }
 
 fn installations_read_exit(installations: List<GitHubAppInstallation>) -> ProcessExit
-  uses fs: std.resources.Filesystem
 {
   let path = installations_report_path()
   let wrote = Filesystem.Write(path: path, content: installations_report(installations: installations))

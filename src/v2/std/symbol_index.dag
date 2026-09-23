@@ -16,7 +16,8 @@ import v2.std.collection {
   Map,
   empty_map,
   map_get,
-  map_insert
+  map_insert,
+  map_lookup
 }
 import v2.std.optional {
   Absent,
@@ -35,13 +36,20 @@ import v2.std.qualified_name {
   qualified_name_snoc
 }
 
+// AN AMBIGUOUS LEAF CARRIES ITS CLAIMANTS' DECLARING PATHS. Ambiguity is a fact about a set of
+// declarations, and a reader that must decide something about them -- is any of them a declared
+// payload? -- needs the set, not only its size. Without it the pattern classifier in
+// v2.compiler.resolve read every ambiguous spelling as a constructor, so an ordinary binder `d`
+// refused because unrelated modules declare non-payloads named `d`. Paths are PREPENDED, so a leaf
+// shared by many modules costs one step per declaration rather than a scan per insert; the order is
+// therefore newest-first and carries no meaning.
 type GlobalBareBindingState
   = GlobalBareUnique { node: Node, path: QualifiedName }
-  | GlobalBareAmbiguous
+  | GlobalBareAmbiguous { paths: FreeMonoid<QualifiedName> }
 
 type GlobalBareLookup
   = GlobalBareHit { node: Node, path: QualifiedName }
-  | GlobalBareLookupAmbiguous
+  | GlobalBareLookupAmbiguous { paths: FreeMonoid<QualifiedName> }
   | GlobalBareLookupUnbound
 
 type LexicalBindingCandidate {
@@ -76,13 +84,25 @@ type SymbolIndex {
   entries: Map<QualifiedName, Node>
   global_bare: Map<Symbol, GlobalBareBindingState>
   bound_declarings: Map<QualifiedName, FreeMonoid<QualifiedName>>
+  declared_payloads: Map<QualifiedName, DeclaredPayloadKind>
 }
+
+// WHICH KIND OF DECLARED PAYLOAD A PATH DENOTES, stored as the map's value so the map cannot hold a
+// non-payload (review 70323): a `Map<QualifiedName, Bool>` could record `false` and a presence read
+// would still answer constructor. Every value this type has IS a declared payload, so membership
+// and kind are one fact. Minted here because no std type covers it: v2.std.decl_index ItemKind
+// classifies module items and has no arm for a variant, which is not an item. A unique
+// module-level variant alias denotes the same variant, so it is a VariantArmPayload.
+type DeclaredPayloadKind
+  = VariantArmPayload
+  | RecordTypePayload
 
 fn empty_symbol_index() -> SymbolIndex {
   SymbolIndex {
     entries: empty_map(),
     global_bare: empty_map(),
-    bound_declarings: empty_map()
+    bound_declarings: empty_map(),
+    declared_payloads: empty_map()
   }
 }
 
@@ -148,7 +168,17 @@ fn symbol_index_track_global_bare(
     Present { value: leaf } =>
       match v2.std.collection.map_get(index.global_bare, leaf) {
         Accepted { value: opt, diagnostics: _ } => match opt {
-          Present { value: GlobalBareAmbiguous } => index
+          Present { value: GlobalBareAmbiguous { paths: paths } } =>
+            SymbolIndex {
+              entries: index.entries,
+              global_bare: map_insert(
+                m: index.global_bare,
+                key: leaf,
+                value: GlobalBareAmbiguous { paths: Cons { head: qualified_path, tail: paths } }
+              ),
+              bound_declarings: index.bound_declarings,
+              declared_payloads: index.declared_payloads
+            }
           Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
             if existing_path == qualified_path && existing == resolved {
               index
@@ -158,9 +188,12 @@ fn symbol_index_track_global_bare(
                 global_bare: map_insert(
                   m: index.global_bare,
                   key: leaf,
-                  value: GlobalBareAmbiguous
+                  value: GlobalBareAmbiguous {
+                    paths: Cons { head: qualified_path, tail: Cons { head: existing_path, tail: Empty } }
+                  }
                 ),
-                bound_declarings: index.bound_declarings
+                bound_declarings: index.bound_declarings,
+                declared_payloads: index.declared_payloads
               }
             }
           Absent =>
@@ -171,7 +204,8 @@ fn symbol_index_track_global_bare(
                 key: leaf,
                 value: GlobalBareUnique { node: resolved, path: qualified_path }
               ),
-              bound_declarings: index.bound_declarings
+              bound_declarings: index.bound_declarings,
+              declared_payloads: index.declared_payloads
             }
         }
         Rejected { diagnostics: _ } => index
@@ -187,7 +221,8 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
       value: resolved
     ),
     global_bare: index.global_bare,
-    bound_declarings: index.bound_declarings
+    bound_declarings: index.bound_declarings,
+    declared_payloads: index.declared_payloads
   }
   symbol_index_track_global_bare(
     index: with_entry,
@@ -196,11 +231,42 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
   )
 }
 
+// WHAT A NAME DENOTES, RECORDED BY THE WRITER THAT KNOWS IT. A declared payload -- a variant arm,
+// its unique module-level alias, a record type -- is a constructor where a pattern names it; a
+// module, a data row, a fn, an alias is not. Every one of those is stored in `entries` as a Node,
+// and a declared payload, a module container and a declaration parse-rest node are all Conj with
+// Named edges, so the node cannot answer which it is: three shape predicates were tried on the
+// reader (v2.compiler.resolve resolve_pattern_atom_names_constructor) and each admitted a module --
+// admitted it as a CLASSIFICATION, which is what makes the predicate wrong; whether a module name
+// ever reaches that classifier is a separate question, and the measurement beside
+// v2.compiler.resolve says it does not, because the fill never gives a module a path to be found at.
+// So the fact is written HERE, keyed by DECLARING path, by the fill arms that know what they are
+// inserting (v2.compiler.symbol_index_fill), and the reader asks this map instead of the node.
+// Keyed by path, not leaf, so two records spelled alike in two modules are two facts.
+fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: QualifiedName, kind: DeclaredPayloadKind) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    bound_declarings: index.bound_declarings,
+    declared_payloads: map_insert(m: index.declared_payloads, key: qualified_path, value: kind)
+  }
+}
+
+// WHAT THE PATH DENOTES, WITH NO FAILURE ARM TO WIDEN (review 70226). The first cut read this
+// through map_get, whose Outcome carries a Rejected arm, and answered binder there -- which matches
+// every value, so a lookup that could not answer would have widened the arm silently, the fail-open
+// shape DESIGN section 5 forbids. map_lookup is the total read underneath map_get (which is
+// `outcome_accepted(map_lookup(..))`, so its refusal arm is unreachable by construction): the kind,
+// or Absent for a path that denotes no declared payload. The caller matches on it.
+fn symbol_index_declared_payload_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<DeclaredPayloadKind> {
+  map_lookup(m: index.declared_payloads, key: qualified_path)
+}
+
 fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> GlobalBareLookup {
   match v2.std.collection.map_get(index.global_bare, name) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: GlobalBareUnique { node: n, path: p } } => GlobalBareHit { node: n, path: p }
-      Present { value: GlobalBareAmbiguous } => GlobalBareLookupAmbiguous
+      Present { value: GlobalBareAmbiguous { paths: paths } } => GlobalBareLookupAmbiguous { paths: paths }
       Absent => GlobalBareLookupUnbound
     }
     Rejected { diagnostics: _ } => GlobalBareLookupUnbound
@@ -300,13 +366,15 @@ fn symbol_index_bind_at(
         m: index.bound_declarings,
         key: binding_path,
         value: list_snoc_item(xs: prior, item: declaring_path)
-      )
+      ),
+      declared_payloads: index.declared_payloads
     }
     if is_empty(xs: prior) {
       SymbolIndex {
         entries: map_insert(m: recorded.entries, key: binding_path, value: resolved),
         global_bare: recorded.global_bare,
-        bound_declarings: recorded.bound_declarings
+        bound_declarings: recorded.bound_declarings,
+        declared_payloads: recorded.declared_payloads
       }
     } else {
       recorded

@@ -2,10 +2,8 @@ module v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse
 
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
-import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
-import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
@@ -16,7 +14,7 @@ import v2.std.node { Node, canonicalize_node_strip_provenance }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Subject: two rows of the ONE dag grammar (v2.extdeps.languages.dag) that the native front end
-// lacked and v1.compiler.parse admits -- dag_grammar_type_alias_rhs_after_eq_expr (a coproduct
+// lacked and v1.compiler.parse admits -- dag_grammar_type_alias_rhs_lead_expr (a coproduct
 // opening with `|`) and dag_grammar_positional_variant_payload_expr (`Name(T)`). Both first
 // refused std.content_hash (`type HashFamily =` / `| Fnv1a64(Fnv1a64Structural)`), the module
 // the native adjudicate of //v2/test/parse:expression_bodied_fn_decl_parse stopped on. The
@@ -29,22 +27,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // stream keeps parse in the subject, which matters for the rows whose subject IS parsing, and
 // each specimen owes a cp_fidelity_* claim that the stream IS what the real tokenizer emits
 // (v2.test.parse.supplied_token_stream_support).
-fn cp_parse(tokens: TokenStream) -> Outcome<Node> {
-  match dag_prepared_grammar() {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
-      match parse_module_prepared(
-        tokens: tokens,
-        prepared: prepared,
-        validation_residue: residue
-      ) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: artifact, diagnostics: d } =>
-          Accepted { value: artifact.tree, diagnostics: d }
-      }
-  }
-}
-
 fn cp_parses(o: Outcome<Node>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
@@ -552,7 +534,7 @@ test fn cps_fidelity_11() -> Bool {
 }
 
 fn cps_parsed_0() -> Outcome<Node> {
-  cp_parse(tokens: cps_stream_0())
+  supplied_stream_parse(tokens: cps_stream_0())
 }
 
 fn cps_normalized_0() -> Outcome<NormalizedTree> {
@@ -563,7 +545,7 @@ fn cps_normalized_0() -> Outcome<NormalizedTree> {
 }
 
 fn cps_parsed_1() -> Outcome<Node> {
-  cp_parse(tokens: cps_stream_1())
+  supplied_stream_parse(tokens: cps_stream_1())
 }
 
 fn cps_normalized_1() -> Outcome<NormalizedTree> {
@@ -574,7 +556,7 @@ fn cps_normalized_1() -> Outcome<NormalizedTree> {
 }
 
 fn cps_parsed_2() -> Outcome<Node> {
-  cp_parse(tokens: cps_stream_2())
+  supplied_stream_parse(tokens: cps_stream_2())
 }
 
 fn cps_normalized_2() -> Outcome<NormalizedTree> {
@@ -585,7 +567,7 @@ fn cps_normalized_2() -> Outcome<NormalizedTree> {
 }
 
 fn cps_parsed_3() -> Outcome<Node> {
-  cp_parse(tokens: cps_stream_3())
+  supplied_stream_parse(tokens: cps_stream_3())
 }
 
 fn cps_normalized_3() -> Outcome<NormalizedTree> {
@@ -596,7 +578,7 @@ fn cps_normalized_3() -> Outcome<NormalizedTree> {
 }
 
 fn cps_parsed_4() -> Outcome<Node> {
-  cp_parse(tokens: cps_stream_4())
+  supplied_stream_parse(tokens: cps_stream_4())
 }
 
 fn cps_normalized_4() -> Outcome<NormalizedTree> {
@@ -607,7 +589,7 @@ fn cps_normalized_4() -> Outcome<NormalizedTree> {
 }
 
 fn cps_parsed_5() -> Outcome<Node> {
-  cp_parse(tokens: cps_stream_5())
+  supplied_stream_parse(tokens: cps_stream_5())
 }
 
 fn cps_normalized_5() -> Outcome<NormalizedTree> {
@@ -618,7 +600,7 @@ fn cps_normalized_5() -> Outcome<NormalizedTree> {
 }
 
 fn cps_parsed_6() -> Outcome<Node> {
-  cp_parse(tokens: cps_stream_6())
+  supplied_stream_parse(tokens: cps_stream_6())
 }
 
 fn cps_normalized_6() -> Outcome<NormalizedTree> {
@@ -629,7 +611,7 @@ fn cps_normalized_6() -> Outcome<NormalizedTree> {
 }
 
 fn cps_parsed_7() -> Outcome<Node> {
-  cp_parse(tokens: cps_stream_7())
+  supplied_stream_parse(tokens: cps_stream_7())
 }
 
 fn cps_normalized_7() -> Outcome<NormalizedTree> {
@@ -640,7 +622,7 @@ fn cps_normalized_7() -> Outcome<NormalizedTree> {
 }
 
 fn cps_parsed_8() -> Outcome<Node> {
-  cp_parse(tokens: cps_stream_8())
+  supplied_stream_parse(tokens: cps_stream_8())
 }
 
 fn cps_normalized_8() -> Outcome<NormalizedTree> {
@@ -651,7 +633,7 @@ fn cps_normalized_8() -> Outcome<NormalizedTree> {
 }
 
 fn cps_parsed_9() -> Outcome<Node> {
-  cp_parse(tokens: cps_stream_9())
+  supplied_stream_parse(tokens: cps_stream_9())
 }
 
 fn cps_normalized_9() -> Outcome<NormalizedTree> {
@@ -662,7 +644,7 @@ fn cps_normalized_9() -> Outcome<NormalizedTree> {
 }
 
 fn cps_parsed_10() -> Outcome<Node> {
-  cp_parse(tokens: cps_stream_10())
+  supplied_stream_parse(tokens: cps_stream_10())
 }
 
 fn cps_normalized_10() -> Outcome<NormalizedTree> {
@@ -673,7 +655,7 @@ fn cps_normalized_10() -> Outcome<NormalizedTree> {
 }
 
 fn cps_parsed_11() -> Outcome<Node> {
-  cp_parse(tokens: cps_stream_11())
+  supplied_stream_parse(tokens: cps_stream_11())
 }
 
 fn cps_normalized_11() -> Outcome<NormalizedTree> {

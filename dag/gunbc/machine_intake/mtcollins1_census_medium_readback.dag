@@ -226,7 +226,6 @@ fn remote_answer_of(outcome: TypedArgvExecOutcome) -> RemoteAnswer {
 // refused leg is unreadable, never diverged: the bytes were never read. The argv of each leg is the
 // coreutils / crypto authority's own command projected through argv_words, not a local spelling.
 fn mtcollins1_census_medium_readback(medium: MtCollins1BootMedium) -> CensusMediumReadback
-  uses net: std.resources.Network
 {
   match medium {
     MtCollins1StockInstallerMedium => CensusMediumReadbackNotCensus
