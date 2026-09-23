@@ -37,18 +37,27 @@ fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: Stri
   }
 }
 
-fn blocking_total(c: CompileDiagnosticCensus) -> Int {
+data harness_control_source: String = "module probe_unit_hold_harness_control\nimport std.types { NonEmptyStr }\nimport gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_key }\nfn key() -> NonEmptyStr { mtcollins1_unit_hold_key }\n"
+
+fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
   match c {
     CensusNotRunnable { cause: _ } => -1
     CensusObserved { rows: rows } =>
-      rows |> filter(r => r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+      rows |> filter(r => (r.diagnostic_class as String) == wanted && r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
   }
 }
 
-data harness_control_source: String = "module probe_unit_hold_harness_control\nimport std.types { NonEmptyStr }\nimport gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_key }\nfn key() -> NonEmptyStr { mtcollins1_unit_hold_key }\n"
-
-test fn the_harness_runs_and_a_clean_source_over_the_hold_module_is_clean() -> Bool {
-  blocking_total(c: census_of(source: harness_control_source)) == 0
+// THE CONTROL IS CLASS-SCOPED, AND WHY. Unlike the hold store's own probe, a source importing this
+// module pulls a closure deep enough that the census, which resolves a lone source string, reports
+// unrelated rows for it (unresolved measure types, incomplete effect summaries in std) -- so "zero
+// blocking rows" is not an honest control here. What the REDs below need is narrower and is what this
+// asserts: the census RAN, and a clean source over the same module yields NO row of either class the
+// REDs count. A red below is therefore the probe's own forgery or outside call, joined by class and
+// subject name, and not background the harness emits for any importer.
+test fn the_harness_runs_and_a_clean_source_emits_neither_wall_class() -> Bool {
+  let c = census_of(source: harness_control_source)
+  blocking_count_for_class(c: c, wanted: "SoleConstructorViolation") == 0
+    && blocking_count_for_class(c: c, wanted: "ConstructorCallAdmissionRefused") == 0
 }
 
 fn probe() -> CompileDiagnosticCensus {
