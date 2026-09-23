@@ -11,18 +11,18 @@ import std.types { NonEmptyStr, List, String }
 
 data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..d759da1c50e" as NonEmptyStr
 
-// THE FINAL-BASE CENSUS, COUNTED AT USES-0 ROW IDENTITY -- (module, declaration, alias, type) -- and
-// not by syntactic clause, since one clause can bind several aliases. At main d759da1c50e every
-// authored `uses` clause in the tree was enumerated (194 clauses carrying 220 identities) and every
-// ordinary fn carrying one was resolved and its ItemInfo.service_names read. 191 identities had
-// nonempty derived demand and were deleted under the unchanged criterion; none had EMPTY demand, so no
-// deletion flipped a function from effectful to pure; the other 29 are the retained rows below, and
-// that count is the length of the two lists, not a second figure. `gunbc.spark.v41_runtime_image_
-// converge`, which refused at the first census base, resolves at this one, so its rows were measured
-// and deleted. The roster of unmeasured modules is deleted rather than left empty -- an empty list
-// rendered into prose has no reader. A later merge can bring new rows and nothing walls them out yet
-// (the restatement refusal is EFFECTS-1's open slice), so a row outside the retained set is a new
-// arrival to measure.
+// THE FINAL-BASE CENSUS, AT USES-0 ROW IDENTITY -- (module, declaration, alias, type) -- not by
+// syntactic clause, since one clause can bind several aliases. At the range tip every authored `uses`
+// clause in the tree was enumerated, every ordinary fn carrying one was resolved, and its
+// ItemInfo.service_names read. Every identity with nonempty derived demand was deleted under the
+// unchanged criterion; none had EMPTY demand, so no deletion flipped a function from effectful to
+// pure. What was not deleted is exactly the retained lists below, so the retained population is read
+// off them rather than stated here. The counts of that pass are the landing change's receipt and are
+// not carried in this module: the census resolver has no entry point in the tree, so a figure written
+// here could not be re-derived and would rot (DESIGN 6). The re-derivable fact is the tree itself --
+// every authored `uses` row it still carries is one of the retained identities below, or a new
+// arrival: the roster of unmeasured modules is deleted rather than left empty, and nothing walls new
+// rows out yet (the restatement refusal is EFFECTS-1's open slice).
 
 // THE ROWS CUT (c) RETAINED, at the row identity USES-0 defined: the module, the declaration,
 // the alias the row binds, and the authored type. The grain matters because the earlier partition
