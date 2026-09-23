@@ -39,14 +39,17 @@ import gunbc.spark.v41_engram_row_store {
 // over a sample, not a derivation -- gunbc.rung_drop v41_row_store_host_realized_by_sample says so and
 // names what restores the structural rung.
 
-// ── THE PROGRAM, AS DATA OWNED HERE (ruling A, proud-deer-538, 2026-09-23) ─────────────────────
+// ── THE PROGRAM, AS DATA OWNED HERE, AND IT KNOWS NOTHING ABOUT V4.1 ────────────────────────
 //
-// The interleave v41_place_row describes, as the text shipped to the host and run with `python3 -c`
-// (the same shape as extdeps.tools.sha256sum sha256sum_byte_span_program's `bash -c`): the text is
-// fixed and every value -- shard, table offsets, row range, record widths, magic, output, chunk size --
-// is an argument v41_store_encode_argv renders from the spec. NO LAYOUT FACT IS IN THE TEXT: no stride,
-// no offset, no rank bound, no head size. It writes OUT.part and renames only when complete, and prints
-// nothing on success; each store's SHA-256 is read separately by sha256sum.
+// A generic byte copier: write PREFIX, then for i in [FIRST, FIRST + COUNT) the A-WIDTH bytes at
+// A-OFFSET + i * A-WIDTH followed by the B-WIDTH bytes at B-OFFSET + i * B-WIDTH, all from SRC. It names
+// no table, no layer, no rank, and holds no offset, stride, bound, head size or magic: every value is an
+// operand v41_store_encode_argv renders from v41_store_encode_plan, i.e. from the row-store spec and the
+// published span plan. Its SCAFFOLD STANDING is not settled by this module: review 70425 holds that a
+// hand-written copier beside v41_place_row needs operator admission (DESIGN section 5), and that
+// question is with the operator (the alternative being the emitted .dag encoder). It is run as
+// `python3 -c` (the shape of extdeps.tools.sha256sum sha256sum_byte_span_program's `bash -c`), writes
+// OUT.part and renames only when complete, and prints nothing on success.
 data v41_row_store_encoder_program_lines: List<String> = [
   "import argparse",
   "import os",
@@ -54,32 +57,32 @@ data v41_row_store_encoder_program_lines: List<String> = [
   "",
   "def main():",
   "    p = argparse.ArgumentParser()",
-  "    for name in ['--shard', '--magic-hex', '--out']:",
+  "    for name in ['--src', '--prefix-hex', '--out']:",
   "        p.add_argument(name, required=True)",
-  "    for name in ['--weight-offset', '--scale-offset', '--start', '--rows', '--weight-bytes', '--scale-bytes', '--chunk-rows']:",
+  "    for name in ['--a-offset', '--a-width', '--b-offset', '--b-width', '--first', '--count', '--chunk']:",
   "        p.add_argument(name, type=int, required=True)",
   "    a = p.parse_args()",
-  "    if a.rows <= 0 or a.weight_bytes <= 0 or a.scale_bytes <= 0 or a.chunk_rows <= 0 or a.start < 0:",
-  "        print('v41_row_store_encode: rows, widths and chunk must be positive and start non-negative', file=sys.stderr)",
+  "    if a.count <= 0 or a.a_width <= 0 or a.b_width <= 0 or a.chunk <= 0 or a.first < 0:",
+  "        print('interleave: count, widths and chunk must be positive and first non-negative', file=sys.stderr)",
   "        return 2",
-  "    wb = a.weight_bytes",
-  "    sb = a.scale_bytes",
-  "    w0 = a.weight_offset + a.start * wb",
-  "    s0 = a.scale_offset + a.start * sb",
+  "    aw = a.a_width",
+  "    bw = a.b_width",
+  "    a0 = a.a_offset + a.first * aw",
+  "    b0 = a.b_offset + a.first * bw",
   "    part = a.out + '.part'",
-  "    with open(a.shard, 'rb') as src, open(part, 'wb') as dst:",
-  "        dst.write(bytes.fromhex(a.magic_hex))",
+  "    with open(a.src, 'rb') as src, open(part, 'wb') as dst:",
+  "        dst.write(bytes.fromhex(a.prefix_hex))",
   "        done = 0",
-  "        while done < a.rows:",
-  "            n = min(a.chunk_rows, a.rows - done)",
-  "            src.seek(w0 + done * wb)",
-  "            w = src.read(n * wb)",
-  "            src.seek(s0 + done * sb)",
-  "            s = src.read(n * sb)",
-  "            if len(w) != n * wb or len(s) != n * sb:",
-  "                print('v41_row_store_encode: short read from the shard; the span is not all there', file=sys.stderr)",
+  "        while done < a.count:",
+  "            n = min(a.chunk, a.count - done)",
+  "            src.seek(a0 + done * aw)",
+  "            x = src.read(n * aw)",
+  "            src.seek(b0 + done * bw)",
+  "            y = src.read(n * bw)",
+  "            if len(x) != n * aw or len(y) != n * bw:",
+  "                print('interleave: short read from the source', file=sys.stderr)",
   "                return 3",
-  "            dst.write(b''.join(w[i * wb:(i + 1) * wb] + s[i * sb:(i + 1) * sb] for i in range(n)))",
+  "            dst.write(b''.join(x[i * aw:(i + 1) * aw] + y[i * bw:(i + 1) * bw] for i in range(n)))",
   "            done += n",
   "    os.replace(part, a.out)",
   "    return 0",
@@ -195,16 +198,16 @@ fn v41_store_encode_plan(spec: V41RowStoreEncodingSpec, spans: List<V41Published
 fn v41_store_encode_argv(shard_directory: NonEmptyStr, a: V41StoreEncodeArgs) -> List<String> {
   [
     "python3", "-c", v41_row_store_host_realization.program,
-    "--shard", join([shard_directory as String, "/", a.shard as String], ""),
-    "--weight-offset", to_string(byte_size_count(b: a.weight_offset)),
-    "--scale-offset", to_string(byte_size_count(b: a.scale_offset)),
-    "--start", to_string(a.start),
-    "--rows", to_string(a.rows),
-    "--weight-bytes", to_string(byte_size_count(b: a.weight_bytes)),
-    "--scale-bytes", to_string(byte_size_count(b: a.scale_bytes)),
-    "--magic-hex", a.magic_hex,
+    "--src", join([shard_directory as String, "/", a.shard as String], ""),
+    "--a-offset", to_string(byte_size_count(b: a.weight_offset)),
+    "--a-width", to_string(byte_size_count(b: a.weight_bytes)),
+    "--b-offset", to_string(byte_size_count(b: a.scale_offset)),
+    "--b-width", to_string(byte_size_count(b: a.scale_bytes)),
+    "--first", to_string(a.start),
+    "--count", to_string(a.rows),
+    "--prefix-hex", a.magic_hex,
     "--out", a.out as String,
-    "--chunk-rows", to_string(v41_row_store_encoder_chunk_rows),
+    "--chunk", to_string(v41_row_store_encoder_chunk_rows),
   ]
 }
 

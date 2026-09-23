@@ -32,14 +32,14 @@ import test.claim.vllm.vllm_engram_layout_witness { w_published_head_sizes }
 // dba1be0a and written at their TRUE file offsets into a sparse copy of that shard. The rendered
 // program gunbc.spark.v41_row_store_encode v41_row_store_encoder_program -- the exact text the fleet
 // mode ships, whose sha256 is w_program_sha256 -- then ran as `python3 -c <program>` with
-//   --weight-offset 664 --scale-offset 98305579672 --start 96000562 --rows 2
-//   --weight-bytes 256 --scale-bytes 8 --magic-hex 454e4752310a --chunk-rows 65536
-// and again with --chunk-rows 1, which crosses a chunk boundary between the two rows and wrote the same
+//   --a-offset 664 --a-width 256 --b-offset 98305579672 --b-width 8 --first 96000562 --count 2
+//   --prefix-hex 454e4752310a --chunk 65536
+// and again with --chunk 1, which crosses a chunk boundary between the two rows and wrote the same
 // bytes (the offsets and widths are the live plan's for layer 1, asserted by
 // the_live_plan_hands_the_encoder_what_the_sample_run_used), and w_host_store is its output file. The
-// perturbed receipt is the same run with --scale-offset one row further (98305579680): row 0 then
+// perturbed receipt is the same run with --b-offset one row further (98305579680): row 0 then
 // carries row 1's scale and row 1 carries row 2's.
-data w_program_sha256: String = "0c79e8da41f10401ae9696c2d617430e78a86a601dd3dee70468c258e12d6116"
+data w_program_sha256: String = "3d6a9c6d2a4c4423940af2b3f6467e0bf96eb5782e72792f1ffaa3edb681fec2"
 
 data w_weight_96000562: String = "73cbf4f370e0e7696f6ab56a6d5cec58e8e7e86e77f2ebc563eaee4b60f2e655c1ec657a76f7f5dad977f1fccef5d7ea5d74f1e57366f17174f1f3fb6ef6fe70f1faf3ebf1f36ff1f5db7b63e97779eb75f6ece87bf17af9717b79f777de78f8f36c6af272e4407375f179e4e55769faf7ecf068ea5e73e468776d6d6ff6f1f275d56eefc3d564e8ee6573686959e5ee71606a586b77e4e8e1f568ee5c595768df7377ef72f77bf763727b73fbf77b71767168f1e57a756c70fb6dea6dfbf57365f8f2f2e3e8fb775e6cfaf6f25cda707172e4e6f2eaea78f473fdecf2657252e979f24ff775fbf6707c71ef727ef7ecf767f6f377de6f706f706bfc7c6feaf9"
 data w_scale_96000562: String = "7877777778777777"
