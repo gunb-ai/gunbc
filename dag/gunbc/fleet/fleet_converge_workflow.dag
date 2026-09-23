@@ -126,6 +126,7 @@ import gunbc.ci_spec {
   gunbc_ci_spark_native_serving_apply_invoke,
   gunbc_ci_spark_runtime_image_probe_invoke,
   gunbc_ci_spark_v41_checkpoint_materialize_invoke,
+  gunbc_ci_spark_v41_index_selection_invoke,
   gunbc_ci_spark_v41_runtime_image_build_invoke,
   gunbc_fleet_converge_plan_artifact_name,
   gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
@@ -467,7 +468,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     FleetApply => FleetSshKeyConsumed
     AppControlPlaneObserve => FleetSshKeyConsumed
     MicrovmHostConverge => FleetSshKeyConsumed
-    MicrovmNetworkObserve => FleetSshKeyNotConsumed
+    MicrovmNetworkObserve => FleetSshKeyConsumed
     MicrovmNetworkApply => FleetSshKeyConsumed
     GuestImageObserve => FleetSshKeyConsumed
     GuestImageConverge => FleetSshKeyConsumed
@@ -728,13 +729,17 @@ data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"se
 fn fleet_converge_build_job_steps() -> List<Step> {
   concat(
     ci_prelude_steps_with_checkout(checkout: fleet_converge_checkout_step(), exact_head_preflight: []),
-    [
-      ci_release_build_step(),
-      fleet_converge_reset_observer_dispatch_admission_step(),
-      ci_release_bins_pack_step(),
-      ci_release_bins_upload_step(),
-    ],
+    fleet_converge_build_job_own_steps(),
   )
+}
+
+fn fleet_converge_build_job_own_steps() -> List<Step> {
+  [
+    ci_release_build_step(),
+    fleet_converge_reset_observer_dispatch_admission_step(),
+    ci_release_bins_pack_step(),
+    ci_release_bins_upload_step(),
+  ]
 }
 
 fn step_declared_timeout_minutes(st: Step) -> Int {
@@ -2635,6 +2640,30 @@ fn fleet_converge_spark_v41_checkpoint_materialize_step() -> Step {
   }
 }
 
+// ITS SECOND STEP READS THE .engram. SELECTION OVER THE PINNED INDEX IN ITS OWN PROCESS, so a parse that
+// is stopped for memory cannot take the fetch's per-file receipts with it. It runs after the fetch whether
+// or not the fetch finished (`always()` under the mode's own condition), because it verifies the index
+// against its manifest row itself and reads nothing the fetch did not already vouch for; a fetch still in
+// flight does not stop an index that is already present from being read.
+fn fleet_converge_spark_v41_index_selection_step() -> Step {
+  RunStep {
+    name: Present { value: "Spark V4.1 index selection (verify the pinned index on the selected Group A Spark and read its .engram. selection with parse_json_document, in its own process)" },
+    id: Present { value: "spark_v41_index_selection" },
+    run: gunbc_ci_spark_v41_index_selection_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_spark_v41_checkpoint_materialize_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+  }
+}
+
 // EVERY JOB CHECKS OUT R, THE REVISION THE OPERATOR NAMED, NOT WHATEVER main IS WHEN THE RUNNER
 // FINALLY PICKS THE JOB UP. The run-revision guard in gunbc.fleet_converge_plan_cli compares the
 // checked-out tree to RLM_EXPECTED_REVISION and refuses on mismatch; with a plain branch checkout
@@ -2843,6 +2872,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_spark_native_serving_apply_step(),
         fleet_converge_spark_runtime_image_probe_step(),
         fleet_converge_spark_v41_checkpoint_materialize_step(),
+        fleet_converge_spark_v41_index_selection_step(),
         fleet_converge_spark_v41_runtime_image_build_step(),
         fleet_converge_runner_host_file_observe_step(),
         fleet_converge_runner_host_file_converge_step(),

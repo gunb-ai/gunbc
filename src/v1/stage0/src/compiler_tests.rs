@@ -1140,7 +1140,7 @@ mod compiler_tests {
     #[test]
     #[ignore]
     fn fixture_closure_rustc_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_fixture_closure_discrimination(&probe_root);
         for line in crate::cli_run::fixture_discrimination_report(&pair) {
             eprintln!("{}", line);
@@ -1235,7 +1235,7 @@ mod compiler_tests {
     #[test]
     #[ignore]
     fn function_value_adapter_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_function_value_adapter_discrimination(&probe_root);
         for line in crate::cli_run::fixture_discrimination_report(&pair) {
             eprintln!("function-value-adapter {}", line);
@@ -1305,7 +1305,7 @@ mod compiler_tests {
     #[test]
     #[ignore]
     fn nested_refinement_cast_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_nested_refinement_cast_discrimination(&probe_root);
         for line in crate::cli_run::fixture_discrimination_report(&pair) {
             eprintln!("nested-refinement-cast {}", line);
@@ -1383,7 +1383,7 @@ mod compiler_tests {
     #[test]
     #[ignore]
     fn phantom_marker_identity_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_phantom_marker_identity_discrimination(&probe_root);
         for line in crate::cli_run::fixture_discrimination_report(&pair) {
             eprintln!("phantom-marker-identity {}", line);
@@ -1423,7 +1423,7 @@ mod compiler_tests {
     #[test]
     #[ignore]
     fn empty_map_turbofish_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_empty_map_turbofish_discrimination(&probe_root);
         for line in crate::cli_run::fixture_discrimination_report(&pair) {
             eprintln!("empty-map-turbofish {}", line);
@@ -1463,7 +1463,7 @@ mod compiler_tests {
     #[test]
     #[ignore]
     fn argv_word_list_splice_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_argv_word_list_splice_discrimination(&probe_root);
         for line in crate::cli_run::fixture_discrimination_report(&pair) {
             eprintln!("argv-word-list-splice {}", line);
@@ -1503,7 +1503,7 @@ mod compiler_tests {
     #[test]
     #[ignore]
     fn append_concat_form_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_append_concat_form_discrimination(&probe_root);
         for line in crate::cli_run::fixture_discrimination_report(&pair) {
             eprintln!("append-concat-form {}", line);
@@ -1550,7 +1550,7 @@ mod compiler_tests {
     #[test]
     #[ignore]
     fn shell_projection_arity_fixture_closure_discrimination() {
-        let probe_root = crate::cli_run::local_emit_compile_probe_root();
+        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();
         let pair = crate::cli_run::run_shell_projection_arity_discrimination(&probe_root);
         for line in crate::cli_run::fixture_discrimination_report(&pair) {
             eprintln!("shell-projection-arity {}", line);

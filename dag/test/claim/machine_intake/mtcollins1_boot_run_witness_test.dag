@@ -147,6 +147,12 @@ fn refused_with(v: MtCollins1BootTerminalVerdict, texts: List<String>) -> Bool {
   }
 }
 
+// An open envelope that refuses names every qualification it had not yet read
+// (mtcollins1_boot_run open_unresolved_causes), after the causes that refused.
+fn unobserved(name: String) -> String {
+  concat(name, " not yet observed when the open envelope refused; unqualified")
+}
+
 fn refused_with_prefix(v: MtCollins1BootTerminalVerdict, prefix: String) -> Bool {
   match v {
     TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => starts_with(s: mtcollins1_boot_terminal_cause_text(cause: c), prefix: prefix))
@@ -211,13 +217,13 @@ fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium:
   (match mtcollins1_boot_terminal_verdict(capture: restarted, subject: census_subject, medium: census_medium) {
     TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => string_contains(s: mtcollins1_boot_terminal_cause_text(cause: c), pattern: "second begin marker"))
     _ => false })
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: concat(begin_a, refusing_nproc), subject: census_subject, medium: census_medium), texts: ["nproc observed 80, qualification expects 160"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: concat(begin_a, refusing_nproc), subject: census_subject, medium: census_medium), texts: ["nproc observed 80, qualification expects 160", unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "workload"), unobserved(name: "edac-after")])
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: no_argv, subject: census_subject, medium: census_medium))
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: exit_before_argv, subject: census_subject, medium: census_medium))
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: two_argv, subject: census_subject, medium: census_medium), texts: ["section nproc carries two ARGV boundaries; which output the exit belongs to is not a fact"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: two_argv, subject: census_subject, medium: census_medium), texts: ["section nproc carries two ARGV boundaries; which output the exit belongs to is not a fact", unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "workload"), unobserved(name: "edac-after")])
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: unterminated, subject: census_subject, medium: census_medium))
     && refused_with(v: mtcollins1_boot_terminal_verdict(capture: closed_unterminated_workload, subject: census_subject, medium: census_medium), texts: ["workload write rc=1", "closed envelope's edac-after section never printed its EXIT line"])
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: terminated, subject: census_subject, medium: census_medium), texts: ["workload write rc=1"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: terminated, subject: census_subject, medium: census_medium), texts: ["workload write rc=1", unobserved(name: "nproc"), unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "edac-after")])
     && (match mtcollins1_boot_terminal_verdict(capture: clean, subject: same_name_other_digest, medium: census_medium) {
       TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => {
         let t = mtcollins1_boot_terminal_cause_text(cause: c)
@@ -403,7 +409,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     && refused_with(v: mtcollins1_boot_terminal_verdict(capture: digest_mismatch, subject: census_subject, medium: census_medium), texts: ["workload digest not stable across passes"])
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: begin_only, subject: census_subject, medium: census_medium))
     && is_pending(v: mtcollins1_boot_terminal_verdict(capture: begin_with_spurious_end, subject: census_subject, medium: census_medium))
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: boot23_open, subject: census_subject, medium: census_medium), texts: ["nproc observed 80, qualification expects 160", "workload write rc=1"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: boot23_open, subject: census_subject, medium: census_medium), texts: ["nproc observed 80, qualification expects 160", "workload write rc=1", unobserved(name: "edac-after")])
     && review_5269655400_walls(census_subject: census_subject, census_medium: census_medium, clean: clean, boot23_open: boot23_open)
     && string_contains(s: mtcollins1_boot_terminal_refusal_text(causes: [HardwareThreadCountMismatch { expected: hardware_thread_count(count: 160), observed: "80" }, WorkloadWriteFailed { rc: "1" }]), pattern: "nproc observed 80, qualification expects 160; workload write rc=1")
 }
