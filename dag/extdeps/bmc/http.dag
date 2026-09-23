@@ -4,7 +4,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
-import std.types { Bool, NonEmptyStr, Unit }
+import std.types { Bool, Int, NonEmptyStr, Unit }
 import std.string_type { String }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -80,6 +80,14 @@ data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: ever
 // on an unreachable host stdout is "\n000" and stderr is the only text naming the cause. A caller
 // that refuses on this op must refuse with stderr; refusing with the stdout blob refuses with
 // "\n000", which is typed but locates nothing.
+// GetResourceByPath IS THE ONE READ THAT FOLLOWS A LINK THE SERVICE PUBLISHED. DSP0266 makes a
+// resource's `@odata.id` and a collection's `Members@odata.nextLink` URIs the client follows as
+// given, so the path is an input carried exactly, never assembled from an Id; its consumer
+// (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle) admits only same-origin /redfish/v1/
+// paths before calling it, because the request presents a credential. It binds stderr and
+// exit_code beside the body because curl exit 7 (connection refused or unreachable), 28
+// (timeout) and 22 with "error: 401" (authentication refused) are different diagnoses, and it
+// takes --max-time as an input so the caller's deadline and the transport's bound are one value.
 service redfish.Http {
 
   operation GetServiceRoot {
@@ -313,6 +321,24 @@ service redfish.Http {
     exit {
       0 => Unit
       nonzero => String "redfish system reset POST failed"
+    }
+  }
+
+  operation GetResourceByPath {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, odata_path: NonEmptyStr, max_seconds: NonEmptyStr }
+    output {
+      body: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--connect-timeout", "5", "--max-time", "{max_seconds}", "--netrc-file", "{netrc_file}", "https://{bmc_host}{odata_path}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish resource GET failed"
     }
   }
 }
