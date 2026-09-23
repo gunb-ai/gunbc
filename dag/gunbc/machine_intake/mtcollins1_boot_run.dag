@@ -425,6 +425,8 @@ type MtCollins1BootTerminalCause
   | TerminalCaptureUnbound { reason: String }
   | TerminalSectionAbsent { name: String }
   | TerminalSectionUnterminated { name: String }
+  | TerminalSectionUnobservedAtRefusal { name: String }
+  | TerminalSectionUnterminatedAtRefusal { name: String }
   | TerminalSectionFailed { name: String, exit_code: String }
   | TerminalSectionMalformed { name: String, reason: String }
   | HardwareThreadCountMismatch { expected: HardwareThreadCount, observed: String }
@@ -599,12 +601,39 @@ fn terminal_over_closed(envelope: BoundHostCaptureEnvelope, threads: HardwareThr
 }
 
 fn terminal_over_open(envelope: BoundHostCaptureEnvelope, threads: HardwareThreadCount, label: NonEmptyStr) -> MtCollins1BootTerminalVerdict {
+  let qs = mtcollins1_boot_qualifications(envelope: envelope, threads: threads, label: label)
   let f = fold(
-    map(mtcollins1_boot_qualifications(envelope: envelope, threads: threads, label: label), q => q.qualification),
+    map(qs, q => q.qualification),
     init: TerminalFold { causes: [], pending: false },
     f: (acc, q) => terminal_fold_step(acc: acc, q: q),
   )
-  if count(f.causes) == 0 { TerminalPending { reason: "envelope open; no complete section refuses" } } else { TerminalRefused { causes: f.causes } }
+  if count(f.causes) == 0 {
+    TerminalPending { reason: "envelope open; no complete section refuses" }
+  } else {
+    TerminalRefused { causes: append(f.causes, items: open_unresolved_causes(envelope: envelope, qualifications: qs)) }
+  }
+}
+
+// AN OPEN ENVELOPE THAT REFUSES ENDS THE RUN, SO EVERY QUALIFICATION STILL PENDING THEN IS NAMED.
+// The verdict is terminal: the poller stops and the run aborts, so a qualification that had not
+// read its section yet will never be read by this run. Folding it as "pending" and then dropping
+// the flag once another cause refused made it vanish: mtcollins1_boot run 35808203121 refused on
+// "workload write rc=1" ONLY, while its nproc section (80 CPUs against 160) and boot-media section
+// sat unread behind NUL fill and edac-after never ran. A pending qualification is not a refusal of
+// its own, so it is typed apart from the causes that refused -- but it is never absent. And it
+// keeps its section's standing, as closed_qualification does: a section that never opened was NOT
+// OBSERVED, while one that opened and printed output without its EXIT line WAS observed and is
+// unterminated (review on #12112). A qualification that already refused keeps that cause alone.
+fn open_unresolved_causes(envelope: BoundHostCaptureEnvelope, qualifications: List<NamedQualification>) -> List<MtCollins1BootTerminalCause> {
+  fold(qualifications, init: [], f: (acc, q) =>
+    match q.qualification {
+      QualificationPending =>
+        match host_capture_section_reading(envelope: envelope, name: q.name) {
+          SectionAbsent => append(acc, items: [TerminalSectionUnobservedAtRefusal { name: q.name }])
+          _ => append(acc, items: [TerminalSectionUnterminatedAtRefusal { name: q.name }])
+        }
+      _ => acc
+    })
 }
 
 // BEFORE THE ENVELOPE BEGINS, THE CONSOLE CAN STILL SAY THE BOOT IS OVER. Boot 23 attempt 7
@@ -673,6 +702,8 @@ fn mtcollins1_boot_terminal_cause_text(cause: MtCollins1BootTerminalCause) -> St
     TerminalCaptureUnbound { reason: r } => concat("capture does not bind: ", r)
     TerminalSectionAbsent { name: n } => concat("closed envelope carries no ", n, " section")
     TerminalSectionUnterminated { name: n } => concat("closed envelope's ", n, " section never printed its EXIT line")
+    TerminalSectionUnobservedAtRefusal { name: n } => concat(n, " not yet observed when the open envelope refused; unqualified")
+    TerminalSectionUnterminatedAtRefusal { name: n } => concat(n, " section opened but had not printed its EXIT line when the open envelope refused; unqualified")
     TerminalSectionFailed { name: n, exit_code: c } => concat(n, " exited ", c)
     TerminalSectionMalformed { name: _, reason: r } => r
     HardwareThreadCountMismatch { expected: e, observed: o } => concat("nproc observed ", o, ", qualification expects ", hardware_thread_count_value(t: e) as String)

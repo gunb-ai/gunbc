@@ -15,7 +15,7 @@ import std.measure {
 import v2.std.optional { Present }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import extdeps.posix.termios { termios_onlcr_output_lines }
+import gunbc.machine_intake_terminal_transcript { terminal_transcript_lines }
 
 // ONE GRAMMAR, READ IN BOTH DIRECTIONS (DESIGN §4). The census program that runs on the host EMITS
 // this envelope and the boot run's verdict PARSES it. Before this module the two sides were spelled
@@ -475,14 +475,14 @@ fn host_capture_section_scan_line(acc: HostCaptureSectionScan, line: String) -> 
 // a section opener, not a refusing statement -- is read before the program finished writing it
 // (review 5269655400).
 fn host_capture_terminated_lines(capture: String) -> List<String> {
-  let parts = termios_onlcr_output_lines(text: capture)
+  let parts = terminal_transcript_lines(text: capture)
   if ends_with(s: capture, suffix: "\n") { parts } else { parts.take(n: count(parts) - 1) }
 }
 
 // THE LINE TERMINATOR IS THE CHANNEL'S, AND IT IS FRAMED BY THE CHANNEL'S AUTHORITY. The boot
 // capture is an SOL transcript: a serial tty whose output discipline maps every NL the program
 // prints to CR NL, so the bytes read "----EXIT nproc: 0\r\n". Lines are framed by
-// extdeps.posix.termios termios_onlcr_output_lines -- the same function
+// gunbc.machine_intake_terminal_transcript terminal_transcript_lines -- the same function
 // gunbc.machine_intake_pre_os_observer frames the same channel with. Every reader in this module
 // consumes lines produced there (section bodies are joins of framed lines), so no reader ever sees
 // the CR and none carries its own trim: a per-reader trim would be a second authority for the
@@ -500,7 +500,7 @@ type HostCaptureText
 fn host_capture_lines(capture: HostCaptureText) -> List<String> {
   match capture {
     HostCaptureLiveStream { text: t } => host_capture_terminated_lines(capture: t)
-    HostCaptureCompletedTranscript { text: t } => termios_onlcr_output_lines(text: t)
+    HostCaptureCompletedTranscript { text: t } => terminal_transcript_lines(text: t)
   }
 }
 
