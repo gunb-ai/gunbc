@@ -4,7 +4,6 @@ import std.types { Bool, List, NonEmptyStr, String, Secret }
 import std.nat { Nat }
 import std.measure { token_count_value }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import product.placement_supply { HostIdentity }
@@ -249,7 +248,6 @@ fn rank_startup_facet(
   container: ContainerInspect,
   log: RankLogCapture,
 ) -> RankStartupObservation
-  uses net: Network
 {
   match log {
     RankLogRefused { refusal: r } => RankStartupRefused { refusal: r }
@@ -334,7 +332,6 @@ fn observe_rank_report(
   credential_file: NonEmptyStr,
   subject: ObservedRankSubject,
 ) -> RankReport
-  uses net: Network
 {
   let ctx = rank_context(host: subject.host, trust: trust, path: path, administrator: administrator, credential_file: credential_file)
   match observe_rank_container(ctx: ctx, subject: subject) {
@@ -362,7 +359,6 @@ fn observe_rank_report(
 // the revision readback and both CUDA queries go through `pinned`, so they cannot straddle a stop and
 // recreate: a new container under the same name has a different id, and the pinned legs refuse on it.
 fn observe_rank_incarnation(ctx: SparkMaterializeContext, subject: ObservedRankSubject, c: ContainerInspect, incarnation: ObservedRankIncarnation) -> RankReport
-  uses net: Network
 {
   let pinned = incarnation_leg_subject(i: incarnation)
       let shape = match observed_verbs_shape(subject: subject, container: c) {
@@ -444,7 +440,6 @@ fn rank_report_memory_path_lines(r: RankReport) -> List<String> {
 // than only when someone writes it that way. Refusing before the access bracket also means an
 // unobserved group does not cause an administrator credential to be read off disk for no reason.
 fn glm_group_b_observe_wet() -> ProcessExit
-  uses net: Network
 {
   if count(glm_group_b_subjects()) == 0 {
     exit_failure(reason: "glm group b names no observed hosts, so there is nothing to read; an empty roster is a group whose members are not observed, not an arm with no ranks to check")
@@ -536,7 +531,6 @@ data glm_group_b_relaunch_receipt_path: String = "target/glm-group-b-transport-r
 // incumbent anywhere a declared axis does not explain, and that it rolls back to the preserved
 // incumbent from every step after that.
 fn glm_group_b_relaunch_wet() -> ProcessExit
-  uses net: Network
 {
   match glm_group_b_rank_plans() {
     ArmPlanRefused { cause: why } => exit_failure(reason: why as String)
@@ -578,7 +572,6 @@ fn with_group_b_access(
   attempt_raw: String,
   credential_file_name: NonEmptyStr,
 ) -> ProcessExit
-  uses net: Network
 {
   match observe_executor_reach() {
     ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["glm group b route: ", c], ""))

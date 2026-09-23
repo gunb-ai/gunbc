@@ -8,7 +8,6 @@ import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import std.upsert_decision {
   ObservationVerdict,
   Converged,
@@ -299,7 +298,7 @@ fn verdict_text(verdict: ObservationVerdict) -> String {
 // ENTRY TWO: OBSERVE AND DECIDE, WITHOUT ACTUATING. EnsureObserveOnly is passed as a literal here
 // because that is what this entry point IS - the policy is the instrument's identity, not a knob.
 // The acquiring entry below passes EnsureMayApply for the same reason.
-fn census_app_observe_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
+fn census_app_observe_receipt() -> ProcessExit {
   match observed_acquisition_reading() {
     AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
       acquisition_reading_exit(
@@ -313,7 +312,6 @@ fn census_app_observe_receipt() -> ProcessExit uses net: Network, fs: std.resour
 }
 
 fn census_app_observe_classified(record: GitHubAppAcquisitionRecord) -> ProcessExit
-  uses net: Network
 {
   let observation = observe_census_app_live(
     address: census_app_read_address(record: record),
@@ -335,7 +333,7 @@ fn census_app_observe_classified(record: GitHubAppAcquisitionRecord) -> ProcessE
 
 // THE EXCHANGE, PERFORMED. github.AppManifests.ConvertManifestCode carries no credential: the code
 // authenticates it, which is why this half of the flow runs in-process at all.
-fn exchange_census_app_code(code: GitHubAppManifestCode) -> CensusAppExchangeOutcome uses net: Network {
+fn exchange_census_app_code(code: GitHubAppManifestCode) -> CensusAppExchangeOutcome {
   let result = github.AppManifests.ConvertManifestCode(code: code as String)
   classify_census_app_exchange(conversion: result.result, outcome: result.outcome)
 }
@@ -346,7 +344,7 @@ fn issued_slug(issuance: GitHubAppCredentialIssuance) -> NonEmptyStr {
   }
 }
 
-fn acquisition_readback_live(issuance: GitHubAppCredentialIssuance) -> CensusAppReadback uses net: Network {
+fn acquisition_readback_live(issuance: GitHubAppCredentialIssuance) -> CensusAppReadback {
   census_app_readback(
     issuance: issuance,
     observation: observe_census_app_live(
@@ -550,7 +548,7 @@ fn readback_exit(readback: CensusAppReadback, paths: CustodyHandoffPaths) -> Pro
 // ENTRY THREE: THE WHOLE CONVERGE. observe -> decide -> actuate -> INDEPENDENT READBACK, with the
 // readback addressed at the slug the exchange returned and performed through the same public-record
 // read the observation used, not through the exchange's own reply.
-fn census_app_acquire_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
+fn census_app_acquire_receipt() -> ProcessExit {
   match observed_acquisition_reading() {
     AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
       acquisition_reading_exit(
@@ -563,7 +561,6 @@ fn census_app_acquire_receipt() -> ProcessExit uses net: Network, fs: std.resour
 }
 
 fn census_app_acquire_for(record: GitHubAppAcquisitionRecord) -> ProcessExit
-  uses net: Network, fs: std.resources.Filesystem
 {
   let observation = observe_census_app_live(
     address: census_app_read_address(record: record),
@@ -611,7 +608,7 @@ fn census_app_acquire_with_code(
   record: GitHubAppAcquisitionRecord,
   observation: CensusAppObservation,
   code: GitHubAppManifestCode,
-) -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
+) -> ProcessExit {
   let classified = classify_census_app(
     policy: EnsureMayApply,
     record: record,
@@ -667,7 +664,7 @@ data inhabitance_probe_app_slug: NonEmptyStr = "dependabot"
 
 data inhabitance_probe_absent_app_slug: NonEmptyStr = "gunbc-slug-that-no-app-holds"
 
-fn public_app_record_wire_receipt() -> ProcessExit uses net: Network {
+fn public_app_record_wire_receipt() -> ProcessExit {
   match observe_census_app_live(address: ReadAddressedAt { slug: inhabitance_probe_app_slug }) {
     AppNotYetAddressable =>
       exit_failure(reason: "the probe slug is addressable by construction; this arm is unreachable")
@@ -686,7 +683,7 @@ fn public_app_record_wire_receipt() -> ProcessExit uses net: Network {
 // THE ABSENT ARM IS READ FOR REAL TOO. A 404 reaching AppRecordAbsent rather than an exception is the
 // arm the duplicate-mint guard is built on, so it is established by a live read of a slug no App
 // holds, not by supplying a RestStatusRefused value to the fold.
-fn public_app_absence_receipt() -> ProcessExit uses net: Network {
+fn public_app_absence_receipt() -> ProcessExit {
   match observe_census_app_live(address: ReadAddressedAt { slug: inhabitance_probe_absent_app_slug }) {
     AppRecordAbsent => ExitSuccess
     AppRecordObserved { record: r } =>
@@ -738,7 +735,7 @@ fn installation_token_plan_line(installation: GitHubAppInstallation) -> String {
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/github_app_acquire.dag \
 //     --function census_app_installations_receipt
-fn census_app_installations_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
+fn census_app_installations_receipt() -> ProcessExit {
   match read_census_app_installations() {
     InstallationsUnreadable { reason: r } => exit_failure(reason: r as String)
     InstallationsUndecodable { decode: _ } =>
@@ -804,7 +801,7 @@ fn installations_read_exit(installations: List<GitHubAppInstallation>) -> Proces
 // An earlier cut performed the registration and custody reads here and handed the standings across
 // the module boundary, which left the exported mint accepting authorable evidence beside the one
 // sealed input (side-chat review, 2026-09-21); the reads moved rather than being copied.
-fn census_app_acquisition_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
+fn census_app_acquisition_receipt() -> ProcessExit {
   match observed_acquisition_reading() {
     AcquisitionRecordConflict { declared_app_id: da, declared_slug: d, handoff_app_id: ha, handoff_slug: h } =>
       acquisition_reading_exit(
@@ -818,7 +815,6 @@ fn census_app_acquisition_receipt() -> ProcessExit uses net: Network, fs: std.re
 }
 
 fn census_app_acquisition_receipt_for(record: GitHubAppAcquisitionRecord) -> ProcessExit
-  uses net: Network, fs: std.resources.Filesystem
 {
   let standing = census_app_acquisition_standing(record: record)
   match standing {
@@ -993,7 +989,6 @@ fn persist_then_read_back(
   custody_name: NonEmptyStr,
   issuance: GitHubAppCredentialIssuance,
 ) -> ProcessExit
-  uses net: Network, fs: std.resources.Filesystem
 {
   match persist_issued_credentials(custody_name: custody_name, issuance: issuance) {
     CredentialNameUnsafe { name: s } =>

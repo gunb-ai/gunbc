@@ -402,7 +402,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     slug: "c-linkage-unit-realization-design",
     primary_work: DeclarationRef { module_path: "v2.std.compilers.compilation_unit", decl_name: "CompilationUnit", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "v2.std.compilers.compilation_unit", decl_name: "partition_fold", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.std.compilers.compilation_unit", decl_name: "partition_fold_outcome", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.std.compilers.compilation_unit", decl_name: "CompilationUnitId", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject CompilationUnit describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
@@ -556,7 +556,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     slug: "emitted-crate-partition-design",
     primary_work: DeclarationRef { module_path: "v2.std.compilers.compilation_unit", decl_name: "CompilationUnit", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "v2.std.compilers.compilation_unit", decl_name: "partition_fold", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.std.compilers.compilation_unit", decl_name: "partition_fold_outcome", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.workflow.rust_crate_partition", decl_name: "PartitionPolicy", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject CompilationUnit describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },

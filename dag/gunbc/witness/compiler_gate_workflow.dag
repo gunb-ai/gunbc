@@ -27,7 +27,7 @@ module gunbc.compiler_gate_workflow
 
 import std.types { Bool, Int, List, String }
 import v2.std.optional { Present, Absent }
-import v2.std.algebra { list_map, filter, list_append }
+import v2.std.algebra { list_map, filter, list_append, length }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
@@ -95,8 +95,10 @@ import gunbc.heal_workflow { heal_same_repository_clause, heal_not_dependabot_cl
 import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command }
 import extdeps.exec.command { shell_command_render }
 import extdeps.github.expressions { interpolate, ContextAccess, Needs, default_expression_spellings }
+import extdeps.github.log_annotations { emit_line_shell }
 import gunbc.emitted_subject_build_gate {
   EmittedSubjectBuildRow,
+  emit_build_standing, emit_build_standing_notice_for,
   emitted_subject_build_rows,
   emitted_subject_build_command,
   emitted_subject_build_step_name
@@ -689,6 +691,48 @@ fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
   }
 }
 
+// THE NOTICE STEP RUNS ON FAILURE AND ONLY ON FAILURE, because that is the one moment a stranger
+// is looking at this job. It is the LAST step, so it appears directly beneath the diagnostic a
+// reader is trying to interpret rather than scrolled away above it.
+//
+// `if: failure()` rather than `always()`: a notice printed on a green run is noise on every
+// passing PR in the repository, and the reassurance has no subject when there is nothing to
+// reassure anyone about.
+//
+// THE QUOTING IS `extdeps.github.log_annotations` `emit_line_shell` AND NOT A SECOND SPELLING OF
+// IT. That module already owns printf-one-line-shell-quoted for exactly this purpose, and a
+// hand-rolled `echo '...'` here would be the section 3 fork -- with the usual downgrade attached,
+// since a line containing an apostrophe would terminate its own quote.
+//
+// IT ECHOES RATHER THAN ANNOTATES. A `::error::` would add a second red to a job that already has
+// one, and a `::notice::` on a failed job is rendered where nobody looking at the failure will
+// read it. Plain stdout at the end of the step list is where the eye already is.
+// THE LIVE NOTICE: the standing row composed with THIS lane row's blocking status, so "does NOT
+// block your merge" is printed only while `compiler_gate_lane_rows` says so, and the one-word flip
+// to `LaneBlocks` changes the notice in the same edit.
+fn compiler_gate_emit_build_notice_lines() -> List<String> {
+  emit_build_standing_notice_for(
+    standing: emit_build_standing,
+    lane_blocks: length(xs: filter(xs: compiler_gate_blocking_rows(), predicate: fn(row) {
+      row.job_id == compiler_gate_emit_build_job_id
+    })) > 0
+  )
+}
+
+fn compiler_gate_emit_build_notice_step() -> Step {
+  RunStep {
+    name: Present { value: "Why this lane is red, and what would be a real finding" },
+    id: none,
+    run: join(list_map(xs: compiler_gate_emit_build_notice_lines(), f: emit_line_shell), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: "failure()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep> {
   list_map(xs: emitted_subject_build_rows(), f: fn(row) {
     CompilerGateBoundStep {
@@ -704,7 +748,14 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 // instruments are invoked through. It is `compiler_gate_bound_steps` rather than a copy of it, so
 // a change to the prelude cannot reach one lane and miss the other.
 fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
-  concat(compiler_gate_bound_steps(), compiler_gate_emit_build_subject_bound_steps())
+  concat(
+    concat(compiler_gate_bound_steps(), compiler_gate_emit_build_subject_bound_steps()),
+    [CompilerGateBoundStep {
+      step: compiler_gate_emit_build_notice_step(),
+      role: capability_neutral,
+      step_name: "Why this lane is red, and what would be a real finding",
+    }]
+  )
 }
 
 fn compiler_gate_emit_build_capability_closure_holds() -> Bool {
