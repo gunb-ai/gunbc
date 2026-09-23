@@ -180,7 +180,7 @@ fn microvm_runner_group_create_under(s: RunnerGroupCreateSubject, escalation: No
     selected_workflow: s.selected_workflow,
   )
   if !created.success {
-    exit_failure(reason: concat("microvm runner group: POST /orgs/{org}/actions/runner-groups refused: ", created.stderr))
+    exit_failure(reason: concat("microvm runner group: POST /orgs/\{org\}/actions/runner-groups refused: ", created.stderr))
   } else {
     match readback_after_create(subject: s, listed: read_org_runner_groups(organization: s.organization)) {
       CreatedGroupNotRestricted { cause } =>

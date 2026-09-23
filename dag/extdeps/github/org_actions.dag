@@ -40,6 +40,14 @@ type OrgRunnerGroup {
   workflow_restrictions_read_only: Bool
 }
 
+// THE CREATE (CreateRunnerGroupJson below): POST /orgs/{org}/actions/runner-groups (REST API
+// version 2022-11-28, read 2026-09-23): name is required; visibility is one of selected | all | private (default all); selected_repository_ids,
+// allows_public_repositories (default false), restricted_to_workflows (default false) and
+// selected_workflows are optional. 201 returns the created group in the OrgRunnerGroup shape.
+// Every body member is an INPUT: which group, which repository and which workflow are the
+// caller's policy, never a literal of this interface. `-F` sends JSON-typed values (integers and
+// booleans) and `-f` sends strings; the `[]` suffix sends a one-element array.
+
 // THE CLI TRANSPORT, one of N realizations and not a fact about the dependency -
 // consistent with extdeps.github.actions_runs github.CliActionsRuns. Both operations are
 // readonly observations; the repositories read exists because per-repo admission is only
@@ -76,13 +84,6 @@ service github.CliOrgRunnerGroups {
     }
   }
 
-  // POST /orgs/{org}/actions/runner-groups (REST API version 2022-11-28, read 2026-09-23): name is
-  // required; visibility is one of selected | all | private (default all); selected_repository_ids,
-  // allows_public_repositories (default false), restricted_to_workflows (default false) and
-  // selected_workflows are optional. 201 returns the created group in the OrgRunnerGroup shape.
-  // Every body member is an INPUT: which group, which repository and which workflow are the
-  // caller's policy, never a literal of this interface. `-F` sends JSON-typed values (integers and
-  // booleans) and `-f` sends strings; the `[]` suffix sends a one-element array.
   operation CreateRunnerGroupJson {
     input {
       org: NonEmptyStr
