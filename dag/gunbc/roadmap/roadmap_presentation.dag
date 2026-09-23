@@ -56,7 +56,7 @@ import gunbc.worker_lifecycle {
 }
 import gunbc.harness.harness_throughput {
   HarnessThroughput, HarnessRoundLedger, RoundsUnobserved, throughput_cell_text, harness_throughput_from_ledger,
-  RoundSegmentKind, ReadRound, WriteRound, ReasonRound, UnmeasuredRound,
+  RoundSegment, RoundSegmentKind, ReadRound, WriteRound, ReasonRound, UnmeasuredRound, round_segments,
 }
 
 // THE PRESENTATION SEAM (A2, operator-directed 2026-08-01;
@@ -1987,6 +1987,60 @@ fn workspace_flat_table(
         concat(
           flat_map(done, e => band_entry_flat_rows(e: e)),
           flat_map(superseded, e => band_entry_flat_rows(e: e))))))
+}
+
+// THE ISSUE DETAIL'S LINK PANEL (owner ruling 2026-09-22: blocking edges express dependencies).
+// Blocking lists the node's children — the dependents this issue structurally blocks; Blocked-by
+// lists only the UNMET parents — an edge whose parent has closed is satisfied, not an obstruction,
+// and naming it as one would contradict the bar's "blocked on" signal, which derives from this
+// same scheduling_blockers seam. A link carries node id + headline only: the panel is a pointer
+// to the one place each issue renders, never a second row view.
+type IssueLinkView {
+  node_id: String
+  headline: String
+}
+
+type IssueLinkPanel {
+  blocking: List<IssueLinkView>
+  blocked_by: List<IssueLinkView>
+}
+
+fn issue_link_view_of(rn: RoadmapNode) -> IssueLinkView {
+  IssueLinkView { node_id: rn.node as String, headline: row_headline(line: rn.line) }
+}
+
+// A child is a node that names this one among its parents — the same roadmap_parent_ids read the
+// scheduling seam consumes, so the panel cannot list a dependency the frontier would not.
+fn child_nodes_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: RoadmapNodeId) -> List<RoadmapNode> {
+  filter(xs: nodes, predicate: n =>
+    any(roadmap_parent_ids(edges: edges, node: n.node), p => p == parent))
+}
+
+fn issue_link_panel(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> IssueLinkPanel {
+  IssueLinkPanel {
+    blocking: map(child_nodes_of(nodes: nodes, edges: edges, parent: rn.node), issue_link_view_of),
+    blocked_by: flat_map(scheduling_blockers(rn: rn, nodes: nodes, edges: edges), pid =>
+      match find_node(nodes: nodes, node_id: pid) {
+        Present { value: p } => [ issue_link_view_of(rn: p) ]
+        Absent => []
+      }),
+  }
+}
+
+fn find_node(nodes: List<RoadmapNode>, node_id: String) -> RoadmapNode? {
+  fold(nodes, init: none, f: (acc, n) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => if (n.node as String) == node_id { Present { value: n } } else { none }
+  })
+}
+
+// THE WORK TAB'S EXECUTION HISTORY, newest first: the attempt's clocked rounds reversed so the
+// freshest turn heads the list. The rounds are the harness ledger's own segments — nothing is
+// recomputed; the reversal is the only decision, and it is a presentation fact belonging to this
+// seam. A refused or absent ledger yields no rows: absence earns no furniture (the same law as
+// NoActiveWork).
+fn issue_work_history_rounds(ledger: HarnessRoundLedger) -> List<RoundSegment> {
+  fold(round_segments(ledger: ledger), init: [], f: (acc, seg) => concat([seg], acc))
 }
 
 fn row_is_active_work(row: WorkRowView) -> Bool {

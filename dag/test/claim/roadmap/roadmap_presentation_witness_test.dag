@@ -2,8 +2,9 @@ module test.claim.roadmap_presentation_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.harness.harness_throughput {
-  HarnessRoundLedger, RoundsUnobserved, HarnessThroughput, ThroughputUnobserved,
-  RoundSegmentKind, ReadRound, WriteRound, ReasonRound, UnmeasuredRound }
+  HarnessRoundLedger, RoundsObserved, RoundsUnobserved, HarnessThroughput, ThroughputUnobserved,
+  RoundSegmentKind, ReadRound, WriteRound, ReasonRound, UnmeasuredRound,
+  RoundObservation }
 import extdeps.languages.json.emit { serialize_json }
 
 import gunbc.roadmap_model {
@@ -73,6 +74,7 @@ import gunbc.roadmap_presentation {
   row_is_project, row_is_nested, row_display_parent_id, row_pulses,
   AttemptRevisionObservation, stale_attempt_nodes,
   activity_uniform_lane_summary,
+  IssueLinkView, IssueLinkPanel, issue_link_panel, issue_work_history_rounds,
 }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapNodeStanding, NodeOpen, NodeInProgress,
@@ -1645,4 +1647,55 @@ test fn witness_issue_table_carries_collapsed_chain_members_flat() -> Bool {
     && count(table |> filter(i => i == "hier-chain-b")) == 1
     && count(table |> filter(i => i == "hier-chain-c")) == 1
     && (match table.first() { Present { value: id } => id == "hier-chain-a" Absent => false })
+}
+
+// THE ISSUE DETAIL'S LINK PANEL (owner ruling 2026-09-22: blocking edges express dependencies):
+// Blocking names the node's children — the dependents it structurally blocks; Blocked-by names
+// ONLY the unmet parents — a done parent has closed its edge and must not read as an obstruction.
+// The met-parent half of the claim is the discriminating red: listing it would contradict the
+// bar's "blocked on" signal, which derives from the same scheduling_blockers seam.
+test fn witness_issue_link_panel_blocks_children_and_unmet_parents() -> Bool {
+  let signed_parent = gunbc.roadmap_authority.sign(
+    rn: fx_sized(id: "lnk-done", content: "closed parent"),
+    s: gunbc.roadmap_authority.signed(
+      by: "operator",
+      works: RedControlExecuted { witness_module: "test.claim.roadmap_presentation_witness", witness_fn: "witness_issue_link_panel_blocks_children_and_unmet_parents", executed_on: "2026-09-23" },
+      scope_equivalent: HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
+      as_expected: true))
+  let nodes = [
+    fx_sized(id: "lnk-top", content: "the issue"),
+    fx_sized(id: "lnk-mid", content: "open parent"),
+    fx_sized(id: "lnk-child", content: "dependent"),
+    signed_parent,
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "lnk-top", parent: "lnk-mid"),
+    gunbc.roadmap_authority.edge(child: "lnk-top", parent: "lnk-done"),
+    gunbc.roadmap_authority.edge(child: "lnk-child", parent: "lnk-top"),
+  ]
+  let top = (filter(nodes, n => (n.node as String) == "lnk-top")).first()
+  match top {
+    Absent => false
+    Present { value: rn } =>
+      let panel = issue_link_panel(rn: rn, nodes: nodes, edges: edges)
+      map(panel.blocking, l => l.node_id) == ["lnk-child"]
+        && map(panel.blocked_by, l => l.node_id) == ["lnk-mid"]
+  }
+}
+
+// THE WORK TAB'S HISTORY ORDER (owner ruling 2026-09-22: execution history as taskbar rows,
+// newest first): the ledger's clocked rounds reverse so the freshest turn heads the list; a
+// refused ledger renders no rows at all — absence earns no furniture.
+test fn witness_issue_work_history_is_newest_first() -> Bool {
+  let ledger = RoundsObserved { rounds: [
+    RoundObservation { step: 1, input_tokens: 0, output_tokens: 10, epoch_ms: 0, files_changed: none, tool_calls: none },
+    RoundObservation { step: 2, input_tokens: 0, output_tokens: 20, epoch_ms: 5000, files_changed: Present { value: 1 }, tool_calls: Present { value: 0 } },
+    RoundObservation { step: 3, input_tokens: 0, output_tokens: 30, epoch_ms: 9000, files_changed: none, tool_calls: none },
+    RoundObservation { step: 4, input_tokens: 0, output_tokens: 40, epoch_ms: 12000, files_changed: Present { value: 2 }, tool_calls: Present { value: 1 } },
+  ] }
+  // The first round has no predecessor epoch, so the clocked segments carry steps 2..4; newest
+  // first reads 4,3,2 — the strip's own segment authority, reversed.
+  let segs = issue_work_history_rounds(ledger: ledger)
+  map(segs, s => s.step) == [4, 3, 2]
+    && count(issue_work_history_rounds(ledger: RoundsUnobserved { reason: "refused" as NonEmptyStr })) == 0
 }

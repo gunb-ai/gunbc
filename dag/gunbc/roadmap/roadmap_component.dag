@@ -3366,13 +3366,14 @@ fn row_selection_bind_statements() -> List<TsStmt> {
   ]
 }
 
-// THE ISSUE TRACKER'S CLIENT BEHAVIORS (owner ruling 2026-09-22): three mechanics over the
+// THE ISSUE TRACKER'S CLIENT BEHAVIORS (owner ruling 2026-09-22): four mechanics over the
 // server's decided DOM, no presentation policy. A VIEW chip only writes the root's data-view —
 // the stylesheet decides which container shows and whether the band chrome renders; a BAND chip
 // only writes data-band-filter — the stylesheet hides non-matching rows; the search input hides
 // rows by inline display from the row's own data-search (headline · node id · owner, decided at
-// serve). Filters retain nothing: the table is flat by construction and matching is a substring
-// read, never a tree walk.
+// serve); a TAB chip on an issue detail only writes the detail root's data-tab — the stylesheet
+// decides which panel shows. Filters retain nothing: the table is flat by construction and
+// matching is a substring read, never a tree walk.
 
 fn ts_closest(obj: String, selector: String) -> TsExpr {
   ts_call(
@@ -3519,6 +3520,39 @@ fn issue_view_bind_statements() -> List<TsStmt> {
                     alternate: ts_lit_str(value: "none")))))]))),
           ])),
         ])),
+    ]),
+    ts_for_each(selector: "[data-tab-chip]", item: "c", body: [
+      ts_on_click(obj: "c", body: [
+        ts_const(name: "root", value: ts_closest(obj: "c", selector: ".issue-detail")),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_ident(name: "root"),
+          op: "&&",
+          right: ts_binop(
+            left: ts_member(
+              object: ts_member(object: ts_ident(name: "root"), property: "dataset"),
+              property: "tab"),
+            op: "=",
+            right: ts_member(
+              object: ts_member(object: ts_ident(name: "c"), property: "dataset"),
+              property: "tabChip")))),
+        ts_for_each(selector: "[data-tab-chip]", item: "d", body: [
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_member(
+              object: ts_member(object: ts_ident(name: "d"), property: "classList"),
+              property: "toggle"),
+            args: [
+              ts_lit_str(value: "chip-on"),
+              ts_binop(
+                left: ts_member(
+                  object: ts_member(object: ts_ident(name: "d"), property: "dataset"),
+                  property: "tabChip"),
+                op: "===",
+                right: ts_member(
+                  object: ts_member(object: ts_ident(name: "c"), property: "dataset"),
+                  property: "tabChip")),
+            ])),
+        ]),
+      ]),
     ]),
   ]
 }

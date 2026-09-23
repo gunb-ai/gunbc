@@ -1,6 +1,6 @@
 module gunbc.roadmap_page
 
-import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, roadmap_node_standing_key, roadmap_node_standing_text }
+import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, roadmap_node_standing_key, roadmap_node_standing_text, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete }
 import gunbc.roadmap_component { standing_chip_class }
 import std.types { list_length }
 import gunbc.harness.harness_throughput {
@@ -83,6 +83,7 @@ import gunbc.roadmap_presentation {
   IssueTableRow,
   project_tree_statuses,
   worker_alive_from_process,
+  IssueLinkView, IssueLinkPanel, issue_work_history_rounds,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap_workflow_stage {
@@ -1219,6 +1220,25 @@ fn issue_owner_value(view: WorkRowView) -> String {
     if f.label == "owner" { f.value } else { acc })
 }
 
+// THE ASSIGNEE IS THE STANDING'S HOLDER, not the domain owner: the event log records who claimed
+// the node, and that holder is the issue tracker's assignee. Open / forked / incomplete standings
+// name no holder — the field renders empty (unassigned), never the owner relabeled. Changing the
+// assignee is the follow-on intake slice; this is the decided holder read as a field.
+fn issue_assignee_value(view: WorkRowView) -> String {
+  match view.standing {
+    Absent => ""
+    Present { value: s } => match s {
+      NodeClaimed { by, since: _ } => by as String
+      NodeInProgress { by, last_note: _ } => by as String
+      NodeBlocked { by, reason: _ } => by as String
+      NodeHandedBack { by, reason: _ } => by as String
+      NodeOpen => ""
+      NodeForked { heads: _ } => ""
+      NodeHistoryIncomplete { missing_parents: _ } => ""
+    }
+  }
+}
+
 fn issue_search_value(view: WorkRowView) -> String {
   join([view.headline, " ", view.node_id, " ", issue_owner_value(view: view)], "")
 }
@@ -1307,6 +1327,164 @@ fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactV
     el_class("div", "issue-empty", [ txt("No issues match your search.") ]),
     el("ul", map(rows, r => issue_line_li(row: r, observation: observation))),
   ])
+}
+
+// THE ISSUE DETAIL PAGE (owner ruling 2026-09-22: each issue has a detail page and a separate
+// Work tab; the visual contract's detail anatomy — header id + title, a field panel, tabs —
+// docs/plans/buganizer-visual-contract.md). ONE page function over the decided row view and link
+// panel: serialize-only, the same contract render_task_row keeps. The Status field and the head
+// line read the decided bar view; the four-fact present-tense explanation lands as their
+// upgrade in its own slice. The page ships the same external client asset the workspace ships;
+// its tab chips are inert on surfaces that carry none.
+fn issue_field_row(label: String, value: List<Fragment>) -> Fragment {
+  el_class("div", "issue-field", concat(
+    [ el_class("span", "issue-field-label", [ txt(label) ]) ],
+    [ el_class("span", "issue-field-value", value) ]))
+}
+
+fn issue_field_text_row(label: String, value: String) -> Fragment {
+  issue_field_row(label: label, value: if value == "" { [] } else { [ txt(value) ] })
+}
+
+fn issue_link_value(links: List<IssueLinkView>) -> List<Fragment> {
+  map(links, l =>
+    el_attrs("a", [
+      attr(name: "class", value: "issue-link" ),
+      attr(name: "href", value: join(["/issue/", l.node_id], "") ),
+    ], [ txt(l.headline) ]))
+}
+
+// The Work tab's history rows ride the landed taskbar grammar: one bar per clocked round, the
+// round kind carrying its decided activity-line class, newest (highest step) first per the
+// presentation seam's issue_work_history_rounds. Beneath the rows the tab carries the decided
+// stage ledger and evidence rows — the same inspection facts the bar's disclosure owns, at tab
+// altitude.
+fn issue_work_history_row_node(seg: RoundSegment) -> Fragment {
+  el_attrs("div", [
+    attr(name: "class", value: join([
+      "taskbar work-history-row ", activity_line_prefix_class, activity_line_class_key(c: activity_line_class_of_round(k: seg.kind)),
+    ], "") ),
+    attr(name: "data-step", value: to_string(value: seg.step) ),
+  ], [
+    el_class("div", "taskbar-face", concat(
+      [ el_class("span", "work-history-step", [ txt(join(["round ", to_string(value: seg.step)], "")) ]) ],
+      concat(
+        [ el_class("span", "taskbar-title", [ txt(round_segment_kind_word(k: seg.kind)) ]) ],
+        [ el_class("span", "taskbar-count", [ txt(join([
+            to_string(value: seg.duration_ms / 1000), "s · ", to_string(value: seg.output_tokens), " tok",
+          ], "")) ]) ])))
+  ])
+}
+
+fn issue_work_tab_nodes(view: WorkRowView) -> List<Fragment> {
+  let rounds = issue_work_history_rounds(ledger: view.rounds)
+  concat(
+    if count(rounds) == 0 { [] } else {
+      [ el_class("div", "issue-work-history", map(rounds, issue_work_history_row_node)) ]
+    },
+    match view.activity {
+      NoActiveWork => []
+      ActivityUnobservable { reason: _ } => []
+      ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention: _, evidence } =>
+        issue_work_ledger_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: "")
+      ActiveWorkRefused { summary: _, located_reason, evidence, obligations } =>
+        issue_work_ledger_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: located_reason)
+      LegacySupersedableAttempt { summary: _, located_reason, attempt_key, evidence } =>
+        issue_work_ledger_nodes(view: view, obligations: [],
+          evidence: concat(evidence, [ ActivityEvidenceRow { label: "attempt key", value: attempt_key } ]),
+          located_reason: located_reason)
+      CompletedWork { outcome: _, evidence, obligations } =>
+        issue_work_ledger_nodes(view: view, obligations: obligations, evidence: evidence, located_reason: "")
+    })
+}
+
+fn issue_work_ledger_nodes(view: WorkRowView, obligations: List<WorkflowSegment>, evidence: List<ActivityEvidenceRow>, located_reason: String) -> List<Fragment> {
+  concat(
+    if count(obligations) == 0 { [] } else {
+      [ el_class("div", activity_ledger_class, map(obligations, activity_obligation_node)) ]
+    },
+    [ el_class("div", activity_evidence_class, concat(
+        map(evidence, row => activity_evidence_row_node(row: row)),
+        if located_reason == "" { [] } else {
+          [ el_class("div", activity_located_reason_class, [ txt(located_reason) ]) ]
+        })) ])
+}
+
+fn issue_tab_chip(label: String, tab: String) -> Fragment {
+  el_attrs("button", [
+    attr(name: "class", value: if tab == "issue" { "chip chip-on" } else { "chip" } ),
+    attr(name: "type", value: "button" ),
+    attr(name: "data-tab-chip", value: tab ),
+  ], [ txt(label) ])
+}
+
+fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView) -> Fragment {
+  let bar = task_bar_view_of(view: view, observation: observation)
+  el_attrs("main", [
+    attr(name: "class", value: "issue-detail" ),
+    attr(name: "data-tab", value: "issue" ),
+  ], [
+    el_class("div", "issue-detail-head", concat(
+      [ el_class("span", "issue-id", [ txt(view.node_id) ]) ],
+      concat(
+        [ el_class("h1", "issue-detail-title", inline_md_nodes(text: view.headline)) ],
+        concat(
+          status_chip_nodes(view: view),
+          concat(
+            standing_chip_nodes(view: view),
+            concat(
+              [ el_attrs("span", [
+                  attr(name: "class", value: join(["issue-status ", activity_line_prefix_class, bar.signal_class], "") ),
+                ], [ txt(bar.signal) ]) ],
+              workflow_controls_nodes(view: view))))))),
+    el_class("div", "issue-tabs", [
+      issue_tab_chip(label: "issue", tab: "issue"),
+      issue_tab_chip(label: "work", tab: "work"),
+    ]),
+    el_class("div", "issue-panels", [
+      el_class("section", "panel-issue", concat(
+        [ el_class("div", "issue-fields", concat(
+            [ issue_field_text_row(label: "status", value: bar.signal) ],
+            concat(
+              [ issue_field_text_row(label: "assignee", value: issue_assignee_value(view: view)) ],
+              concat(
+                [ issue_field_text_row(label: "component", value: issue_owner_value(view: view)) ],
+                concat(
+                  if count(panel.blocking) == 0 { [] } else {
+                    [ issue_field_row(label: "blocking", value: issue_link_value(links: panel.blocking)) ]
+                  },
+                  concat(
+                    if count(panel.blocked_by) == 0 { [] } else {
+                      [ issue_field_row(label: "blocked by", value: issue_link_value(links: panel.blocked_by)) ]
+                    },
+                    [ issue_field_text_row(label: "standing", value: match view.standing {
+                        Present { value: s } => roadmap_node_standing_text(s: s)
+                        Absent => ""
+                      }) ])))))) ],
+        disclosure_body_nodes(d: view.disclosure))),
+      el_class("section", "panel-work", issue_work_tab_nodes(view: view)),
+    ]),
+  ])
+}
+
+fn issue_detail_page_launch(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView) -> Fragment {
+  Element {
+    tag: "html",
+    attributes: [ attr(name: "lang", value: "en" ) ],
+    children: [
+      el("head", [
+        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
+        Element { tag: "meta", attributes: [ attr(name: "name", value: "viewport" ), attr(name: "content", value: "width=device-width, initial-scale=1" ) ], children: [] },
+        el("style", [ txt(roadmap_css()) ]),
+        el("title", [ txt(join(["gunbc — issue ", view.node_id], "")) ]),
+      ]),
+      el("body", [
+        roadmap_header(page: "issue"),
+        issue_detail_page(view: view, panel: panel, observation: observation),
+        dispatch_client_script(),
+      ]),
+    ],
+  }
 }
 
 fn workspace_markup(ws: DailyWorkspaceView) -> Fragment {

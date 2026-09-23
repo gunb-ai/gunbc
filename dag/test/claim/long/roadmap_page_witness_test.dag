@@ -8,7 +8,7 @@ import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import std.markup { Fragment, Element, FragmentText, attr }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import gunbc.roadmap_focus { RoadmapFocus, NoFocus }
-import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow, NodeInProgress }
+import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow, NodeInProgress, NodeClaimed }
 import gunbc.roadmap_belt { ManualReady }
 import gunbc.roadmap_launch_admission { LaunchHostStanding, LaunchAdmitted, LaunchIdentity, Operator }
 import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear, launch_fixture_with_contract, launch_fixture_doc, launch_fixture_identity }
@@ -22,6 +22,7 @@ import gunbc.roadmap_page {
   page_script_census,
   dispatch_client_script,
   finish_line_row,
+  issue_detail_page_launch,
 }
 import gunbc.v1_deletion_plan { v1_exit_finish_lines }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
@@ -1466,4 +1467,128 @@ test fn witness_view_switch_and_filter_contracts() -> Bool {
     && string_contains(s: css, pattern: ".roadmap-frontier[data-view=\"table\"] .view-forest { display: none }")
     && string_contains(s: css, pattern: ".roadmap-frontier[data-band-filter=\"active\"] .view-table li.node:not([data-band=\"active\"]) { display: none }")
     && string_contains(s: css, pattern: ".taskbar-sub:empty, .taskbar-signal:empty, .taskbar-count:empty { display: none }")
+}
+
+// THE ISSUE DETAIL PAGE (owner ruling 2026-09-22: each issue has a detail page and a separate
+// Work tab). The page renders the decided row view and link panel: the head carries the issue id
+// (the dense mono line) and the title; the field panel carries status / assignee / component /
+// blocking / blocked-by / standing; the assignee is the event-log standing's holder, not the
+// domain owner. Tabs ship as decided chips + panels — the stylesheet decides which panel shows.
+fn issue_detail_fixture_view() -> gunbc.roadmap_presentation.WorkRowView {
+  gunbc.roadmap_presentation.WorkRowView {
+    node_id: "issue-detail-specimen",
+    headline: "Specimen issue",
+    summary: none,
+    lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
+    scheduling: gunbc.roadmap_presentation.SchedulingReady,
+    superseded_by: "",
+    activity: gunbc.roadmap_presentation.ActiveWork {
+      summary: "Agent working",
+      obligations: hero_green_segments(),
+      remaining_obligation_count: 6,
+      current_activity: "",
+      attention: gunbc.roadmap_presentation.ActivityRoutine,
+      evidence: [],
+    },
+    action: gunbc.roadmap_presentation.action_view(
+      lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
+      admission: LaunchAdmitted { identity: launch_fixture_identity(node_id: "issue-detail-specimen", cause: Operator, mode: ManualReady) }),
+    supporting_facts: [ gunbc.roadmap_presentation.SupportingFact { label: "owner", value: "agent-35", href: "" } ],
+    disclosure: gunbc.roadmap_presentation.NoDisclosure,
+    rounds: hero_rounds_fixture(),
+    worker_alive: true,
+    standing: Present { value: NodeClaimed { by: "agent-35" as NonEmptyStr, since: "2026-09-23" } },
+    attempt_stale: false,
+  }
+}
+
+fn issue_detail_fixture_panel() -> gunbc.roadmap_presentation.IssueLinkPanel {
+  let nodes = [
+    gunbc.roadmap_authority.authored(identity: "rnfx_idspec", id: "issue-detail-specimen", done: false, content: "Specimen issue"),
+    gunbc.roadmap_authority.authored(identity: "rnfx_idparent", id: "issue-detail-parent", done: false, content: "Parent issue"),
+    gunbc.roadmap_authority.authored(identity: "rnfx_idchild", id: "issue-detail-child", done: false, content: "Child issue"),
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "issue-detail-specimen", parent: "issue-detail-parent"),
+    gunbc.roadmap_authority.edge(child: "issue-detail-child", parent: "issue-detail-specimen"),
+  ]
+  gunbc.roadmap_presentation.issue_link_panel(
+    rn: gunbc.roadmap_authority.authored(identity: "rnfx_idspec", id: "issue-detail-specimen", done: false, content: "Specimen issue"),
+    nodes: nodes,
+    edges: edges)
+}
+
+fn issue_detail_fixture_html() -> HtmlEmitResult {
+  try_serialize_html_source(node: issue_detail_page_launch(
+    view: issue_detail_fixture_view(),
+    panel: issue_detail_fixture_panel(),
+    observation: gunbc.roadmap_presentation.ObservationsNominal))
+}
+
+test fn witness_issue_detail_page_renders_header_fields_and_tabs() -> Bool {
+  match issue_detail_fixture_html() {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      string_contains(s: h, pattern: "<main class=\"issue-detail\" data-tab=\"issue\">")
+        && string_contains(s: h, pattern: "<span class=\"issue-id\">issue-detail-specimen</span>")
+        && string_contains(s: h, pattern: "<h1 class=\"issue-detail-title\">Specimen issue</h1>")
+        && string_contains(s: h, pattern: "<button class=\"chip chip-on\" type=\"button\" data-tab-chip=\"issue\">")
+        && string_contains(s: h, pattern: "<button class=\"chip\" type=\"button\" data-tab-chip=\"work\">")
+        && string_contains(s: h, pattern: "<section class=\"panel-issue\">")
+        && string_contains(s: h, pattern: "<section class=\"panel-work\">")
+        && string_contains(s: h, pattern: "<span class=\"issue-field-label\">assignee</span>")
+        && string_contains(s: h, pattern: "<span class=\"issue-field-value\">agent-35</span>")
+        && string_contains(s: h, pattern: "<span class=\"issue-field-label\">status</span>")
+        && string_contains(s: h, pattern: "<span class=\"issue-field-label\">component</span>")
+        && string_contains(s: h, pattern: "<span class=\"issue-field-label\">blocked by</span>")
+        && string_contains(s: h, pattern: "href=\"/issue/issue-detail-parent\"")
+        && string_contains(s: h, pattern: "<span class=\"issue-field-label\">blocking</span>")
+        && string_contains(s: h, pattern: "href=\"/issue/issue-detail-child\"")
+        && string_contains(s: h, pattern: "<span class=\"issue-field-label\">standing</span>")
+  }
+}
+
+// THE WORK TAB: execution history as taskbar rows, NEWEST FIRST — the fixture ledger clocks
+// rounds 1..4, and the segment authority (which cannot clock the first round: no predecessor
+// epoch) carries steps 2..4, so the rows must read 4,3,2 — each row carrying its decided
+// round-kind class. Beneath the rows the tab carries the stage ledger (the pipeline position)
+// decided by the same view the bar's disclosure owns.
+type SeenSteps {
+  seen: Int
+  steps: List<String>
+}
+
+fn ordered_work_steps(work_section: String) -> List<String> {
+  let parts = split(s: work_section, delimiter: "data-step=\"")
+  fold(parts, init: SeenSteps { seen: 0, steps: [] }, f: (acc, p) =>
+    if acc.seen == 0 {
+      SeenSteps { seen: 1, steps: acc.steps }
+    } else {
+      SeenSteps { seen: acc.seen + 1, steps: concat(acc.steps, [substring(s: p, start: 0, end: 1)]) }
+    }).steps
+}
+
+test fn witness_issue_work_tab_renders_history_newest_first() -> Bool {
+  match issue_detail_fixture_html() {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      let work_parts = split(s: h, delimiter: "<section class=\"panel-work\">")
+      count(work_parts) == 2
+        && ordered_work_steps(work_section: string_at(parts: work_parts, index: 1)) == ["4", "3", "2"]
+        && string_contains(s: string_at(parts: work_parts, index: 1), pattern: "taskbar-title\">write</span>")
+        && occurrence_count(s: h, pattern: "work-history-step\">round ") == 3
+        && string_contains(s: string_at(parts: work_parts, index: 1), pattern: "activity-obligation")
+  }
+}
+
+// The tab mechanics and the stylesheet law, pinned at their contracts: a TAB chip only writes the
+// detail root's data-tab, the stylesheet decides which panel shows, and the no-JavaScript default
+// is the issue panel — the page ships data-tab="issue" and the issue chip arrives chip-on.
+test fn witness_issue_tab_switch_contracts() -> Bool {
+  let js = dispatch_client_js_source()
+  let css = roadmap_css()
+  string_contains(s: js, pattern: "[data-tab-chip]")
+    && string_contains(s: js, pattern: "dataset")
+    && string_contains(s: js, pattern: "tab")
+    && string_contains(s: css, pattern: ".issue-detail[data-tab=\"issue\"] .panel-work, .issue-detail[data-tab=\"work\"] .panel-issue { display: none }")
 }
