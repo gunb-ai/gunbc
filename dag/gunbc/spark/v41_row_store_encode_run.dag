@@ -61,7 +61,7 @@ import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, obse
 data v41_encode_run_attempt_raw: String = "v41-row-store-encode"
 data v41_encode_run_receipt_path: String = "target/v41-row-store-encode-receipt.txt"
 
-type V41StoreRun sole_constructor {
+type V41StoreRun {
   store: V41StoreEncodeArgs
   encoded: Bool
   digest: Sha256Digest?

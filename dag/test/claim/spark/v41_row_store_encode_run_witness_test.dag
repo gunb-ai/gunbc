@@ -1,0 +1,52 @@
+module test.claim.spark.v41_row_store_encode_run_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { byte_size }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.v41_row_store_encode { V41StoreEncodeArgs }
+import gunbc.spark.v41_row_store_encode_run {
+  V41StoreRun, V41EncodeRan, V41EncodeRefusedBeforeRun, v41_encode_succeeded, v41_store_line,
+}
+
+// THE RUN'S VERDICT AND RECEIPT, OVER SUPPLIED STORE OUTCOMES (the host legs are the dispatched run's).
+
+fn w_args(layer: Nat, rank: Nat) -> V41StoreEncodeArgs {
+  V41StoreEncodeArgs {
+    layer: layer, rank: rank, shard: "model-00047-of-00048.safetensors" as NonEmptyStr,
+    weight_offset: byte_size(count: 664), scale_offset: byte_size(count: 98305579672), start: 0, rows: 1,
+    weight_bytes: byte_size(count: 256), scale_bytes: byte_size(count: 8), magic_hex: "454e4752310a", out: "/m/s" as NonEmptyStr,
+  }
+}
+
+data w_hex: String = "3e17ab5e78214d961c8ff395020ee135f485c7f5e84f635877e8058dbad7c435"
+
+fn w_read(layer: Nat, rank: Nat) -> V41StoreRun {
+  V41StoreRun { store: w_args(layer: layer, rank: rank), encoded: true, digest: Present { value: Sha256Digest { hex: w_hex as Sha256DigestHex } }, cause: "encoded" }
+}
+
+fn w_eight() -> List<V41StoreRun> {
+  [w_read(layer: 1, rank: 0), w_read(layer: 1, rank: 1), w_read(layer: 1, rank: 2), w_read(layer: 1, rank: 3),
+   w_read(layer: 14, rank: 0), w_read(layer: 14, rank: 1), w_read(layer: 14, rank: 2), w_read(layer: 14, rank: 3)]
+}
+
+test fn eight_read_stores_succeed() -> Bool {
+  v41_encode_succeeded(run: V41EncodeRan { stores: w_eight() })
+}
+
+// RED: one store unread, seven stores, or a refusal before the run is not success.
+test fn an_unread_or_missing_store_or_a_refusal_is_not_success() -> Bool {
+  let unread = concat(w_eight() |> take(n: 7), [V41StoreRun { store: w_args(layer: 14, rank: 3), encoded: false, digest: none, cause: "the host program exited 3: short read" }])
+  !v41_encode_succeeded(run: V41EncodeRan { stores: unread })
+    && !v41_encode_succeeded(run: V41EncodeRan { stores: w_eight() |> take(n: 7) })
+    && !v41_encode_succeeded(run: V41EncodeRefusedBeforeRun { cause: "the span plan refused" as NonEmptyStr })
+}
+
+// THE RECEIPT LINE CARRIES THE (layer, rank) KEY AND THE DIGEST, which is what is transcribed.
+test fn a_store_line_names_its_key_and_digest_or_says_unread() -> Bool {
+  let read = v41_store_line(r: w_read(layer: 14, rank: 2))
+  let unread = v41_store_line(r: V41StoreRun { store: w_args(layer: 1, rank: 0), encoded: false, digest: none, cause: "the encode leg did not run" })
+  read.contains("store layer.14.rank.2 sha256=") && read.contains(w_hex)
+    && unread.contains("store layer.1.rank.0 UNREAD") && unread.contains("did not run")
+}
