@@ -376,9 +376,8 @@ test fn a_whitespace_only_observer_is_refused_as_unnamed() -> Bool {
 // IT ASKS THE JOB'S OWN STEPS, NOT THE PRELUDE-PREFIXED LIST, and that is a subject fact before it is
 // a cost one (DESIGN section 3, a witness discriminates at one interface). The shared CI prelude is a
 // different producer with its own witnesses; folding it in made every prelude render part of this
-// claim's subject, and it was most of the cost -- measured by claim_batch --entry on this file (its
-// `[witness] ... eval_steps=` line), the prelude alone is roughly 60% of the old claim, which sat over
-// the 72,300 new-witness budget. fleet_converge_build_job_steps() is prelude ++ own steps, and the job
+// claim's subject, and it was most of the cost that put the old claim over the 72,300 new-witness
+// budget (re-derive with claim_batch --entry on this file, its `[witness] ... eval_steps=` line). fleet_converge_build_job_steps() is prelude ++ own steps, and the job
 // and its backstop sum both consume it, so membership in the own list is membership in the job.
 //
 // IT ASSERTS THE ROUTE, NOT ONLY THE ID. This is the one claim that runs the real producer, so an id
