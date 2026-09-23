@@ -110,12 +110,14 @@ type V41HostRealization sole_constructor {
   realizes: DeclarationRef
   program: String
   rung_drop: DeclarationRef
+  dissolution: DissolutionCondition
 }
 
 data v41_row_store_host_realization: V41HostRealization = V41HostRealization {
   realizes: decl_ref(module_path: "gunbc.spark.v41_engram_row_store", decl_name: "v41_place_row"),
   program: v41_row_store_encoder_program,
   rung_drop: decl_ref(module_path: "gunbc.rung_drop.v41_row_store_host_realized_by_sample", decl_name: "v41_row_store_host_realized_by_sample"),
+  dissolution: v41_row_store_encoder_program_dissolution_trigger,
 }
 
 
