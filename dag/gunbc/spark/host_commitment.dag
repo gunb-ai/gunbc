@@ -1084,7 +1084,6 @@ fn release_host_effect_live(handle: HostEffectHandle?, exit: ProcessExit) -> Pro
 //     --function host_effect_recover_wet --arg host=<identity> --arg claim=<event id>
 //     --arg claimant=terminated|abandoned --arg receipt=<how that was established>
 fn host_effect_recover_wet(host: String, claim: String, claimant: String, receipt: String) -> ProcessExit
-  uses net: Network
 {
   if host == "" || claim == "" {
     exit_failure(reason: "a host and the exact claim (event id) are required; this entry does not pick a claim by host")

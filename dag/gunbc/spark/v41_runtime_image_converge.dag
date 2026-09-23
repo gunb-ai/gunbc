@@ -2,7 +2,6 @@ module gunbc.spark.v41_runtime_image_converge
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.container.oci.digest { OciContentDigest, parse_oci_content_digest_wire, render_oci_content_digest_wire }
@@ -173,7 +172,6 @@ type V41KernelWheelVerification
   | V41KernelWheelVerificationRefused { step: NonEmptyStr, cause: String }
 
 fn verify_v41_kernel_wheels(target: SshTarget, context: FleetSshExecutionContext) -> V41KernelWheelVerification
-  uses net: Network
 {
   if length(v41_kernel_wheels()) == 0 {
     V41KernelWheelVerificationRefused {
@@ -304,7 +302,6 @@ fn converge_v41_produced_runtime_image(
   context: FleetSshExecutionContext,
   ctx: SparkMaterializeContext,
 ) -> V41ProducedRuntime
-  uses net: Network
 {
   match v41_storage_backed_patch_population() {
     V41PatchesAbsentByObservation => V41RuntimeProductionStopped {
@@ -430,7 +427,6 @@ data v41_production_attempt_raw: String = "v41-runtime-image-produce"
 data v41_production_receipt_path: String = "target/v41-runtime-image-produce-receipt.txt"
 
 fn v41_runtime_image_produce_ci_wet() -> ProcessExit
-  uses net: Network
 {
   let now = clock_now_probed_at()
   match spark_converge_target_selection(execute_apply: true) {
