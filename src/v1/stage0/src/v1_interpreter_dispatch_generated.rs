@@ -26,6 +26,7 @@ pub enum EvalBuiltinArm {
     FreeCallStringLength,
     FreeCallSubstring,
     FreeCallScanStringEnd,
+    FreeCallJsonUnescapeChecked,
     FreeCallCharAt,
     FreeCallStringContains,
     FreeCallStartsWith,
@@ -170,6 +171,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "string_length" => Some(EvalBuiltinArm::FreeCallStringLength),
         "substring" => Some(EvalBuiltinArm::FreeCallSubstring),
         "scan_string_end" => Some(EvalBuiltinArm::FreeCallScanStringEnd),
+        "json_unescape_checked" => Some(EvalBuiltinArm::FreeCallJsonUnescapeChecked),
         "char_at" => Some(EvalBuiltinArm::FreeCallCharAt),
         "string_contains" => Some(EvalBuiltinArm::FreeCallStringContains),
         "starts_with" => Some(EvalBuiltinArm::FreeCallStartsWith),
@@ -318,6 +320,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.string_length") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallStringLength };
     ("free_call.substring") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallSubstring };
     ("free_call.scan_string_end") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallScanStringEnd };
+    ("free_call.json_unescape_checked") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallJsonUnescapeChecked };
     ("free_call.char_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCharAt };
     ("free_call.string_contains") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallStringContains };
     ("free_call.starts_with") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallStartsWith };

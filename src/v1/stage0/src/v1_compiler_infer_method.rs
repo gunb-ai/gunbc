@@ -398,6 +398,15 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         returns: string_type(),
     }));
                 __m.insert("substring".to_string(), derived_signature(Rc::new(vec!["s".to_string(), "start".to_string(), "end".to_string()]), "substring".to_string(), string_type()));
+                __m.insert("json_unescape_checked".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "s".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: crate::v1_std_core::with_optional_cardinality(string_type()),
+    }));
                 __m.insert("from_code_point".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "cp".to_string(),

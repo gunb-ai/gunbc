@@ -371,19 +371,27 @@ fn json_text_escape_piece_valid(piece: String) -> Bool {
 // piece after it is literal — checking its head as an escape letter would refuse valid
 // documents such as `\\q` (an escaped backslash followed by plain text), which the
 // envelope-scale corpora genuinely contain.
+// ONE PASS, THE PARITY CARRIED IN THE ACCUMULATOR: the first walk of these pieces recursed
+// with a drop-first per level, re-walking the whole tail at every step — the square of a
+// string's escape count, which at the project envelope's measured ~3.45M escapes (3.2% of the
+// 104 MB document) is the read's long pole. The fold visits each piece exactly once;
+// literal_next is the same parity the recursion carried, so the verdict is unchanged.
+type EscapePiecesValidAcc { ok: Bool, literal_next: Bool }
+
 fn json_text_escape_pieces_valid(pieces: List<String>, literal_next: Bool) -> Bool {
-  match pieces.first() {
-    Absent => true
-    Present { value: head } =>
-      if literal_next {
-        json_text_escape_pieces_valid(pieces: drop_string_one(xs: pieces), literal_next: false)
-      } else if head == "" {
-        json_text_escape_pieces_valid(pieces: drop_string_one(xs: pieces), literal_next: true)
-      } else {
-        json_text_escape_piece_valid(piece: head)
-          && json_text_escape_pieces_valid(pieces: drop_string_one(xs: pieces), literal_next: false)
+  let acc = fold(
+    pieces,
+    init: EscapePiecesValidAcc { ok: true, literal_next: literal_next },
+    f: fn(a, piece) {
+      if !a.ok { a }
+      else if a.literal_next { EscapePiecesValidAcc { ok: true, literal_next: false } }
+      else if piece == "" { EscapePiecesValidAcc { ok: true, literal_next: true } }
+      else {
+        EscapePiecesValidAcc { ok: json_text_escape_piece_valid(piece: piece), literal_next: false }
       }
-  }
+    },
+  )
+  acc.ok
 }
 
 fn json_text_escape_set_valid(body: String) -> Bool {
@@ -395,11 +403,14 @@ fn json_text_escape_set_valid(body: String) -> Bool {
 }
 
 // DROPPING THE FIRST PIECE WITHOUT RE-TRAVERSING IT AS AN ESCAPE: the split's head is the
-// literal text before the first backslash and is never an escape.
+// literal text before the first backslash and is never an escape. The pieces are PREPENDED and
+// reversed once: the first version concatenated at the end, copying the accumulator per
+// element — the square of the piece count per string.
 fn drop_string_one(xs: List<String>) -> List<String> {
-  (fold(xs, init: PairAcc { skipped: false, kept: [] }, f: fn(acc, x) {
-    if acc.skipped { PairAcc { skipped: true, kept: concat(acc.kept, [x]) } } else { PairAcc { skipped: true, kept: [] } }
-  })).kept
+  let result = fold(xs, init: PairAcc { skipped: false, kept: [] }, f: fn(acc, x) {
+    if acc.skipped { PairAcc { skipped: true, kept: concat([x], acc.kept) } } else { PairAcc { skipped: true, kept: [] } }
+  })
+  reverse(result.kept)
 }
 
 type PairAcc { skipped: Bool, kept: List<String> }

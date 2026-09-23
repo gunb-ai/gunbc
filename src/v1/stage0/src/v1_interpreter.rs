@@ -19700,6 +19700,17 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Int(v1_rt::scan_string_end(&s, start))))
             },
 
+            // THE VALIDATED JSON UNESCAPE, NATIVE (RFC 8259 section 7; \u decodes through
+            // from_code_point's own semantics, lone surrogates included). None is the escape-set
+            // refusal: the grammar maps it to its parse failure before any value is built.
+            arm "free_call.json_unescape_checked" { "json_unescape_checked" } => {
+                let s = expect_str($positional.first().copied(), "json_unescape_checked")?;
+                match v1_rt::json_unescape_checked(&s) {
+                    Some(out) => Ok(Some(str_value(out))),
+                    None => Ok(Some(Value::Null)),
+                }
+            },
+
             arm "free_call.substring" { "substring" } => {
                 // `v1_rt::substring` clamps negative start/end to 0, and `RcStr::substring`
                 // clamps identically, so routing through the carrier preserves this arm exactly.

@@ -538,6 +538,18 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
+    // THE VALIDATED JSON UNESCAPE, ONE NATIVE PASS: the interpreted piece-walk it replaces was
+    // the 104 MB envelope read's remaining wall (~40 measured minutes across its ~2.2M escapes);
+    // the escape set is RFC 8259 section 7 exactly, so the review-45642 refusal holds natively.
+    InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "free_call.json_unescape_checked" },
+      form: FreeCall,
+      authored_spelling: "json_unescape_checked",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_builtin_inner",
+      dispatch_emit_site: EvalBuiltinInnerSite,
+      enumeration: AuthoredInRoster,
+    },
     InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "free_call.char_at" },
       form: FreeCall,

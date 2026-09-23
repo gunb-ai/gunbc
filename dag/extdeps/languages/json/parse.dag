@@ -74,35 +74,40 @@ fn json_unescape_decoded_pieces(pieces: List<String>) -> List<String> {
 // is LITERAL — its head was never an escape letter, because the backslash that would have made
 // it one is the pair's second half. (Without the flag, `\\b` decodes the b as \b and `\q`
 // refuses a valid document.) The flag lasts exactly one piece.
+// ONE PASS, THE PARITY AND THE DECODED PIECES IN THE ACCUMULATOR: the recursive walk
+// re-dropped the tail at every level (and the drop concatenated at the end, copying per
+// element), the square of a string's escape count — the read's long pole at the project
+// envelope's ~3.45M escapes. The fold visits each piece once, prepends, and reverses once;
+// the state machine is the recursion's, so the decoded bytes are unchanged.
+type JsonUnescapeDecodeAcc { literal_next: Bool, decoded_rev: List<String> }
+
 fn json_unescape_decode_rest(pieces: List<String>, literal_next: Bool) -> List<String> {
-  match pieces.first() {
-    Absent => []
-    Present { value: head } =>
-      if literal_next {
-        concat(
-          [head],
-          json_unescape_decode_rest(pieces: json_unescape_drop_first(xs: pieces), literal_next: false),
-        )
-      } else if head == "" {
-        concat(
-          ["\\"],
-          json_unescape_decode_rest(pieces: json_unescape_drop_first(xs: pieces), literal_next: true),
-        )
+  let acc = fold(
+    pieces,
+    init: JsonUnescapeDecodeAcc { literal_next: literal_next, decoded_rev: [] },
+    f: fn(a, piece) {
+      if a.literal_next {
+        JsonUnescapeDecodeAcc { literal_next: false, decoded_rev: concat([piece], a.decoded_rev) }
+      } else if piece == "" {
+        JsonUnescapeDecodeAcc { literal_next: true, decoded_rev: concat(["\\"], a.decoded_rev) }
       } else {
-        concat(
-          [json_unescape_decode_piece(piece: head)],
-          json_unescape_decode_rest(pieces: json_unescape_drop_first(xs: pieces), literal_next: false),
-        )
+        JsonUnescapeDecodeAcc {
+          literal_next: false,
+          decoded_rev: concat([json_unescape_decode_piece(piece: piece)], a.decoded_rev),
+        }
       }
-  }
+    },
+  )
+  reverse(acc.decoded_rev)
 }
 
 type JsonUnescapeDropAcc { skipped: Bool, kept: List<String> }
 
 fn json_unescape_drop_first(xs: List<String>) -> List<String> {
-  (fold(xs, init: JsonUnescapeDropAcc { skipped: false, kept: [] }, f: fn(acc, x) {
-    if acc.skipped { JsonUnescapeDropAcc { skipped: true, kept: concat(acc.kept, [x]) } } else { JsonUnescapeDropAcc { skipped: true, kept: [] } }
-  })).kept
+  let result = fold(xs, init: JsonUnescapeDropAcc { skipped: false, kept: [] }, f: fn(acc, x) {
+    if acc.skipped { JsonUnescapeDropAcc { skipped: true, kept: concat([x], acc.kept) } } else { JsonUnescapeDropAcc { skipped: true, kept: [] } }
+  })
+  reverse(result.kept)
 }
 
 // AN EMPTY PIECE IS THE ESCAPED BACKSLASH; any other piece's head is its escape letter, with \u

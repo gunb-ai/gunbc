@@ -873,6 +873,51 @@ pub fn code_point(c: String) -> i64 {
     c.chars().next().map(|ch| ch as i64).unwrap_or(0)
 }
 
+// THE VALIDATED JSON UNESCAPE, ONE NATIVE PASS — the interpreted piece-walk this primitive
+// replaces cost ~155M interpreted steps over the 104 MB project envelope (~40 minutes at the
+// measured interpreter constant), which was the read's wall once every quadratic above it was
+// gone. The escape set is RFC 8259 section 7 exactly, so review 45642's refusal (an unknown
+// escape refuses before a value is built) holds at native speed; \u decodes through
+// from_code_point's OWN semantics — a code point char::from_u32 cannot hold (a lone surrogate)
+// becomes the empty string there, and this kernel does not diverge from it. The caller owns the
+// span: this kernel takes the already-scanned body and answers the decoded value or None.
+pub fn json_unescape_checked(s: &str) -> Option<String> {
+    if !s.contains('\\') {
+        return Some(s.to_string());
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('"') => out.push('"'),
+            Some('\\') => out.push('\\'),
+            Some('/') => out.push('/'),
+            Some('b') => out.push('\u{8}'),
+            Some('f') => out.push('\u{c}'),
+            Some('n') => out.push('\n'),
+            Some('r') => out.push('\r'),
+            Some('t') => out.push('\t'),
+            Some('u') => {
+                let mut h = String::with_capacity(4);
+                for _ in 0..4 {
+                    match chars.next() {
+                        Some(d) if d.is_ascii_hexdigit() => h.push(d),
+                        _ => return None,
+                    }
+                }
+                let cp = i64::from_str_radix(&h, 16).ok()?;
+                out.push_str(&from_code_point(cp));
+            }
+            _ => return None,
+        }
+    }
+    Some(out)
+}
+
 pub fn from_code_point(cp: i64) -> String {
     char::from_u32(cp as u32)
         .map(|c| c.to_string())
