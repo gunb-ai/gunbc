@@ -10,6 +10,7 @@ import gunbc.fabric_capacity_class_gap {
   fabric_capacity_class_evidence, capacity_class_ruled_remedy,
   capacity_class_refused_remedies,
 }
+import v2.std.algebra { any }
 
 // THE THREE MEASUREMENTS ARE THREE DIFFERENT CLAIMS, AND THE ROW IS ONLY A FINDING WITH ALL THREE.
 //

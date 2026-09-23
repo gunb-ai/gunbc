@@ -99,7 +99,7 @@ import gunbc.commit_workflow {
   project_ci_floor_witness_entries
 }
 import std.realization_schedule { ScheduleWitnessEntry }
-import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.ci_diff_policy { DiffMergeBase, DiffTwoDot, DiffPolicy, gunbc_ci_diff_policy }
 import gunbc.auth.heal_publisher_federation {
   heal_publisher_installation_token_request_body,
   heal_publisher_key_unreadable_message,
@@ -139,8 +139,6 @@ import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { EmitDirective, SeverityWarning }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-
-type DiffMode = DiffMergeBase | DiffTwoDot
 
 type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
 
@@ -247,12 +245,6 @@ data gunbc_ci_floor_batch_stop_policy_claim_executor_seed_disposition: Dispositi
   }
 }
 
-type DiffPolicy {
-  base: String
-  head: String
-  mode: DiffMode
-}
-
 type DeployStage {
   id: String
   step_name: String
@@ -321,11 +313,7 @@ data gunbc_ci_spec: CiSpec = {
   gates: gunbc_ci_floor_gates,
   witness_entries: gunbc_ci_floor_witness_entries,
   discovery_scan_dirs: witness_discovery_scan_dirs,
-  diff_policy: {
-    base: gunbc_merge_target_ref as String,
-    head: "HEAD",
-    mode: DiffMergeBase
-  },
+  diff_policy: gunbc_ci_diff_policy,
   notice_title: "v2 claim corpus",
   deploy_stages: gunbc_ci_deploy_stages,
 }
