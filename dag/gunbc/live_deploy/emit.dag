@@ -2846,6 +2846,16 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
   )
 }
 
+// THE RELEASE HALF OF THE DARK INSTALL, NAMED: the release tree, then the helper snapshot and its
+// grant. The intent below consumes it, and a claim inspects the composition at this one interface
+// rather than rendering the whole orchestrated script (DESIGN section 3).
+fn approval_broker_dark_install_release_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  concat(
+    approval_broker_tree_copy_steps(spec: spec, revision: revision),
+    approval_broker_helper_grant_steps(spec: spec, revision: revision),
+  )
+}
+
 // ── THE ADDITIVE BROKER INSTALL: STAGE 1 OF THE CUTOVER ─────────────────────────────────────
 // IT TOUCHES gunbc-roadmap.service AND NOTHING IT DEPENDS ON, WHICH IS THE WHOLE REQUIREMENT
 // (operator directive 2026-09-19: roadmap redeploys are FROZEN at the current release until the
@@ -2879,10 +2889,7 @@ fn approval_broker_dark_install_intent(
       concat(
         [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
         concat(
-          concat(
-            approval_broker_tree_copy_steps(spec: spec, revision: revision),
-            approval_broker_helper_grant_steps(spec: spec, revision: revision),
-          ),
+          approval_broker_dark_install_release_steps(spec: spec, revision: revision),
           apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
         ),
       ),

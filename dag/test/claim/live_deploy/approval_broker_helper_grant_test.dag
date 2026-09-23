@@ -15,6 +15,8 @@ import gunbc.live_deploy.emit {
   approval_broker_helper_sudoers_path,
   approval_broker_helper_sudoers_temp_path,
   approval_broker_helper_grant_steps,
+  approval_broker_dark_install_release_steps,
+  approval_broker_tree_copy_steps,
   approval_broker_helper_snapshot_steps,
   approval_broker_helper_grant_admission,
   approval_broker_helper_grant_admission_at,
@@ -230,9 +232,26 @@ test fn only_the_renamed_file_is_ever_included_by_sudo() -> Bool {
     && !string_contains(s: basename(p: approval_broker_helper_sudoers_path as String), pattern: "~")
 }
 
-// THE REAL-ROUTE INHABITANCE CLAIM lives in test.claim.live_deploy.emit
-// the_dark_install_never_names_the_roadmap_unit, which already renders the dark install. Rendering it
-// again here cost 100982 eval steps against the new-witness budget of 72300.
+// THE DARK INSTALL CARRIES THIS RELEASE'S GRANT, inspected at the composition the dark install's
+// intent consumes (gunbc.live_deploy.emit approval_broker_dark_install_release_steps): the release
+// tree's steps, then exactly the seventeen snapshot and grant steps, ending with retirement of every
+// other release's snapshot. The whole orchestrated script is still rendered by the existing dark-install
+// claims in test.claim.live_deploy.emit, which now carry these steps. Rendering it again here cost
+// more than the new-witness budget (110041 and 100982 eval steps against 72300).
+test fn the_dark_install_composes_this_releases_grant() -> Bool {
+  let spec = deployment_spec_srv1()
+  let steps = approval_broker_dark_install_release_steps(spec: spec, revision: rev_a())
+  let tree = count(approval_broker_tree_copy_steps(spec: spec, revision: rev_a()))
+  count(steps) == tree + 17
+    && match steps |> skip(n: tree + 12) |> first {
+      Present { value: st } => string_contains(s: pipeline_step_text(st: st), pattern: "'/usr/bin/mv' '-T'")
+      Absent => false
+    }
+    && match steps |> last {
+      Present { value: st } => string_contains(s: pipeline_step_text(st: st), pattern: "'!' '-name' '0123456789abcdef0123456789abcdef01234567'")
+      Absent => false
+    }
+}
 
 // ── THE RUN-AS GENERALISATION MOVES NO EXISTING GRANT ──────────────────────────────────────
 test fn a_root_operation_still_renders_root_and_plain_sudo() -> Bool {
