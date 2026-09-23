@@ -1428,7 +1428,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },,,,
+    },
     {
       caller_module_path: "gunbc.review_sheet_spreadsheet_actuator",
       caller_decl_name: "converge_review_spreadsheet",
@@ -1438,7 +1438,7 @@ fn resource_requirement_frontier() -> List<ResourceRequirementFrontierRow> {
       occurrences: 1,
       cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.",
       dissolution: unbound_dissolution(description: "the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom")
-    },,,
+    },
     {
       caller_module_path: "test.claim.gcp_oauth_access_token_witness",
       caller_decl_name: "gcp_oauth_access_token_dispatch_swapped",
