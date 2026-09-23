@@ -15,6 +15,7 @@ import std.measure {
 import v2.std.optional { Present }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.posix.shell_command_language { posix_single_quote }
+import extdeps.posix.termios { termios_onlcr_mapped_carriage_return }
 
 // ONE GRAMMAR, READ IN BOTH DIRECTIONS (DESIGN §4). The census program that runs on the host EMITS
 // this envelope and the boot run's verdict PARSES it. Before this module the two sides were spelled
@@ -474,8 +475,30 @@ fn host_capture_section_scan_line(acc: HostCaptureSectionScan, line: String) -> 
 // a section opener, not a refusing statement -- is read before the program finished writing it
 // (review 5269655400).
 fn host_capture_terminated_lines(capture: String) -> List<String> {
-  let parts = split(s: capture, delimiter: "\n")
+  let parts = host_capture_framed_lines(capture: capture)
   if ends_with(s: capture, suffix: "\n") { parts } else { parts.take(n: count(parts) - 1) }
+}
+
+// THE LINE TERMINATOR IS THE CHANNEL'S, AND IT IS FRAMED HERE, ONCE. The boot capture is an SOL
+// transcript: a serial tty whose output discipline maps every NL the program prints to CR NL
+// (extdeps.posix.termios termios_onlcr_mapped_carriage_return), so the bytes read
+// "----EXIT nproc: 0\r\n". A line is the text before NL with that one mapped CR removed -- the CR
+// belongs to the terminator, not to the line -- and a transcript whose channel does not map NL
+// (an LF-only file, the seed's shell stdout) frames identically. Every reader in this module
+// consumes lines produced here (section bodies are joins of framed lines), so no reader ever sees
+// the CR and none carries its own trim: a per-reader trim would be a second authority for the
+// channel's framing, and the reader it missed would refuse a clean section (mtcollins1_boot run
+// 35793279839 refused nproc, boot-media and edac-before with "exited 0").
+fn host_capture_framed_lines(capture: String) -> List<String> {
+  map(split(s: capture, delimiter: "\n"), line => host_capture_line_without_mapped_cr(line: line))
+}
+
+fn host_capture_line_without_mapped_cr(line: String) -> String {
+  if ends_with(s: line, suffix: termios_onlcr_mapped_carriage_return) {
+    substring(s: line, start: 0, end: line.length() - termios_onlcr_mapped_carriage_return.length())
+  } else {
+    line
+  }
 }
 
 // A COMPLETED TRANSCRIPT HAS NO FRAGMENT: when the process that wrote it has exited, its last line
@@ -490,7 +513,7 @@ type HostCaptureText
 fn host_capture_lines(capture: HostCaptureText) -> List<String> {
   match capture {
     HostCaptureLiveStream { text: t } => host_capture_terminated_lines(capture: t)
-    HostCaptureCompletedTranscript { text: t } => split(s: t, delimiter: "\n")
+    HostCaptureCompletedTranscript { text: t } => host_capture_framed_lines(capture: t)
   }
 }
 
