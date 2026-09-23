@@ -43,6 +43,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
+import v2.std.qualified_name { declaration_reference_path_optional }
 import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness,
@@ -2161,6 +2162,14 @@ fn infer_gather_fold_not_derived(n: Node, partials: List<Node>, tree: Node) -> I
   )
 }
 
+// THE CONJ ARM READS A RESOLVED CORPUS-DECLARATION REFERENCE FIRST, BECAUSE IT IS CONJ-SHAPED AND
+// NOT A RECORD. Resolution carries a reference to a declaration as its declaring path
+// (v2.compiler.resolve resolved_reference_node), a qualified-name spine that shares the Conj
+// connective with a product; read as a product it would be typed as a two-field record of its own
+// segments, silently. It is exactly what a bare Atom reference was to this fold before the carrier
+// -- a grounding this fold does not derive -- and it takes that arm. Deriving the reference's type
+// FROM its declaration by path is the end-state the roster lookups above already name as their
+// dissolution, not this arm.
 fn infer_gather_fold_init(n: Node, partials: List<Node>, tree: Node) -> InferGatherFoldAcc {
   match n.kind {
     ComputationNode { behavior: Branch } =>
@@ -2221,6 +2230,9 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, tree: Node) -> InferGat
     ComputationNode { behavior: Bind } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
     TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
     TypeNode { connective: Conj } =>
+      match declaration_reference_path_optional(node: n) {
+        Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
+        Absent =>
       if infer_type_node_awaits_product_row(n: n) {
         infer_gather_fold_acc_ok(
           node: n,
@@ -2234,6 +2246,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, tree: Node) -> InferGat
         )
       } else {
         infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
+      }
       }
     TypeNode { connective: Disj } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
     TypeNode { connective: Arrow } =>

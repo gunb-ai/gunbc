@@ -390,6 +390,11 @@ fn model_snapshot_download_argv(snapshot: ModelSnapshotDesired) -> List<String> 
 // the acquisition and the mount cannot drift apart.
 data spark_hub_cache_root: NonEmptyStr = "/home/briansrls/.cache/huggingface/hub" as NonEmptyStr
 
+// THE FLEET'S LOCAL-DIRECTORY MODELS ROOT, beside the hub cache root and for the same reason: every
+// LocalDirectoryPlacement a desired row names on a Spark sits under it, so it is one declaration rather
+// than a prefix re-spelled per row.
+data spark_models_root: NonEmptyStr = "/home/briansrls/models" as NonEmptyStr
+
 fn model_snapshot_install_path(snapshot: ModelSnapshotDesired) -> NonEmptyStr? {
   match model_snapshot_subject(snapshot: snapshot, cache_root: spark_hub_cache_root) {
     Absent => none

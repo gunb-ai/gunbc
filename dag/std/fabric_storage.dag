@@ -53,14 +53,70 @@ fn fabric_object_preimage(object: FabricObject) -> NonEmptyStr {
   join(["fabric_storage.object;", link_words, "B", to_string(length(object.body as String)), ":", object.body as String], "") as NonEmptyStr
 }
 
+// THE DIGEST IS THE STRUCTURAL FAMILY, AND THAT IS A DECLARED STALL, NOT A CHOICE.
+//
+// Fnv1a64Structural is sixty-four non-cryptographic bits. Against an adversary that is a LOCATOR,
+// not an identity -- a second preimage is findable at birthday work no attacker would notice paying
+// -- so a store built on it can say "these are the bytes I have" and cannot say "these are the
+// bytes you asked for". The verified-cache guarantee this module exists to support is exactly the
+// second sentence, so minting a locator and calling the check verification would be rung inflation
+// in the DESIGN 4b(1) sense, and this module does not call it that.
+//
+// THE COMPUTATION EXISTS AND A MINT OVER IT WAS TRIED HERE AND WITHDRAWN, BOTH HALVES MEASURED.
+// extdeps.crypto.sha2 sha256_hex reaches the FIPS 180-4 digest with neither a write nor a spawn, and
+// gunbc#11996 authored a std.content_hash mint over it and bound it to this function. Two independent
+// measurements withdrew it. FIRST, at this module's real consumers: interpreted SHA-256 on every put,
+// every verified get and every closure step made each consumer of gunbc.fabric.fabric_storage_file_store
+// two to three hundred times slower and cancelled the required floor at its cap. SECOND, at the mint's
+// own inhabitance claim: one interpreted SHA-256 of a single-block preimage performed 244,396 eval steps
+// against the required floor's 72,300-step new-witness budget, so the seam could not carry an executing
+// claim at floor rate either -- a mint no claim can run is a declaration DESIGN 3c refuses. The row is
+// gunbc.recurring_failure_mode
+// fabric_object_identity_is_a_structural_locator: rung, ceiling, the receipt, and the trigger --
+// native emission of the sha2 closure SUFFICIENT FOR those consumers to run at floor rate. Until
+// that capability lands, this ref stays structural and the refusal to call it verification stays
+// in force. The structural mint is pure, which is what keeps fabric_object_verified a pure check; the shell arm
+// (extdeps.crypto.hash sha256sum over a PATH) was refused for the same reason under either family:
+// it would write every in-memory preimage to a file before hashing it, re-opening the custody gap
+// verification exists to close.
 fn fabric_object_ref_of(object: FabricObject) -> FabricObjectRef {
   FabricObjectRef { digest: content_hash_of_value(value: fabric_object_preimage(object: object)) }
+}
+
+// BYTES TOGETHER WITH THE REF THAT NAMES THEM, AND THE ONLY WAY TO BUILD ONE IS TO MINT IT.
+//
+// This exists because the alternative was measured and is a filed defect class: a function taking
+// (object, ref) as PEER PARAMETERS admits a ref for some OTHER object, and every downstream
+// guarantee citing that ref then describes a different value while reading exactly like a guarantee
+// about this one (gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters).
+// sole_constructor on FabricObjectRef does not close it -- that governs how a ref is MINTED, not
+// whether these bytes are the bytes it names.
+//
+// sole_constructor here is what closes it: no module can assemble a FabricAddressedObject, and the
+// one producer derives the ref FROM the object it stores beside it. So a mismatched pair has no
+// constructor rather than being refused by a check somebody has to remember to write
+// (DESIGN 5: construction over validation). Consumers that need both halves take this one value,
+// which is why the store's put path no longer passes them separately. It stands on its own and
+// does not depend on which family the ref is minted in.
+type FabricAddressedObject sole_constructor {
+  object: FabricObject
+  ref: FabricObjectRef
+}
+
+fn fabric_object_addressed(object: FabricObject) -> FabricAddressedObject {
+  FabricAddressedObject { object: object, ref: fabric_object_ref_of(object: object) }
 }
 
 fn fabric_object_ref_wire(object: FabricObjectRef) -> NonEmptyStr {
   serialize_content_hash(hash: object.digest)
 }
 
+// The inverse of fabric_object_ref_wire for a READ. It admits exactly the family this module mints
+// -- sixteen hex digits of the structural family -- so a ref this module could not have produced
+// is refused at the wire rather than parsed into a value fabric_object_verified would then reject as
+// cross-family. When the mint changes family (the row named above), this parse changes with it: the
+// two are one fact read in two directions, and gunbc#11996 recorded the failure mode of moving one
+// without the other (gunbc.recurring_failure_mode a_carrier_swap_moves_the_mint_and_strands_the_parser).
 fn fabric_object_ref_of_wire(wire: String) -> FabricObjectRef? {
   match content_hash_from_structural_digest(digest: wire) {
     Present { value: h } => Present { value: FabricObjectRef { digest: h } }
@@ -152,6 +208,16 @@ type FabricClosureRead
   | FabricClosureBudgetExhausted { at: FabricObjectRef, bound: Int }
   | FabricClosureRefused { fault: FabricStorageFault }
 
+// THE COMPARISON IS INLINE, AND EXTRACTING IT IS A DEFECT RATHER THAN A TIDY-UP. An earlier
+// revision of this change split the equality arm into a helper taking (asked, content, actual) --
+// the bytes and a digest of those bytes as PEER PARAMETERS with no arm relating them. That signature
+// admits a digest of something OTHER than the value beside it: called with A's ref and B's bytes it
+// reports B verified under A's name, having never hashed B. The class is already in this tree as
+// gunbc.recurring_failure_mode subject_and_its_digest_as_independent_parameters, and sole_constructor
+// on FabricObjectRef does not close it -- that walls how a ref is MINTED, not whether these bytes are
+// the bytes it names. Keeping the comparison inside the arm that just derived `actual` FROM `content`
+// means the relation is carried by the binding rather than by a caller's discipline, so the bad call
+// has no expression (DESIGN 5: construction over validation).
 // VERIFYING FETCHED BYTES AGAINST THE REF THEY WERE ASKED FOR. The single authority every handler
 // routes a fetched object through: a store that answered with other bytes is corrupt, never trusted.
 type FabricObjectVerification

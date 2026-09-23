@@ -228,6 +228,61 @@ fn binop_label(op: BinOp) -> String {
   }
 }
 
+// OPERAND DEMAND -- WHICH OPERANDS AN OPERATOR ACTUALLY ASKS FOR, DECLARED ONCE.
+//
+// This is the fact that was missing, and its absence is filed as gunbc.recurring_failure_mode
+// realization_arms_diverge_on_whether_the_program_refuses: OperatorRealization above names WHO
+// evaluates an operator without naming WHAT is evaluated, so each realization improvised. The
+// interpreter demanded both operands before dispatching; the Rust emitter rendered the host token,
+// which demands the right operand only conditionally. One accepted program, two behaviours --
+// `false && Filesystem.Write(...)` wrote the file under one arm and not the other, and the filed
+// row's red (`n != 0 && (100 / n) > 1` at n = 0) refused under one arm and returned false in the
+// other. Neither arm was wrong about a fact it consulted; there was no fact to consult.
+//
+// THE VALUE IS DERIVED, NOT CHOSEN. std.logic classical_and is `match a { False => False  True => b }`
+// and classical_or is its dual: a match arm is demanded only when its scrutinee selects it, so the
+// logical connectives of the corpus's own logic authority ask for their right operand only under one
+// left value, and every other operator is a function of both. This fold restates that reading over
+// the BinOp vocabulary so that BOTH realizations read one row; it does not mint a second semantics.
+//
+// WHY `deciding` IS THE LEFT VALUE AND NOT A VARIANT PER CONNECTIVE: And and Or differ in exactly
+// that value and in nothing else, so a variant each would be one concept spelled twice (DESIGN
+// section 2). A consumer short-circuits when the left value is NOT `deciding`, and the same arm
+// serves both connectives.
+//
+// NULL-COALESCING GETS ITS OWN ARM BECAUSE ITS CONDITION IS A DIFFERENT QUESTION, and folding it
+// into `deciding` would be the meaning fork DESIGN section 3 names: `a ?? b` demands `b` on the
+// CARDINALITY of the left operand, not on a Bool value of it, which is the same distinction the
+// note above operator_realization_for already draws for this operator. It is carried here and not
+// omitted because it has exactly the divergence this type exists to close, measured the same way:
+// the interpreter's eval_binop evaluates both operands at the call site before selecting, while
+// extdeps.languages.rust.emit rust_null_coalesce_template renders `{0}.unwrap_or_else(|| {1})`,
+// whose closure body is demanded only when the left is absent. Declaring it and leaving the
+// interpreter eager would be a row its own realization contradicts, so it is repaired here too.
+type OperandDemand
+  = DemandsBothOperands
+  | DemandsRightOnlyWhenLeftIs { deciding: Bool }
+  | DemandsRightOnlyWhenLeftIsAbsent
+
+fn operand_demand(op: BinOp) -> OperandDemand {
+  match op {
+    And => DemandsRightOnlyWhenLeftIs { deciding: true }
+    Or => DemandsRightOnlyWhenLeftIs { deciding: false }
+    Add => DemandsBothOperands
+    Sub => DemandsBothOperands
+    Mul => DemandsBothOperands
+    Div => DemandsBothOperands
+    Mod => DemandsBothOperands
+    Eq => DemandsBothOperands
+    Ne => DemandsBothOperands
+    Lt => DemandsBothOperands
+    Gt => DemandsBothOperands
+    Le => DemandsBothOperands
+    Ge => DemandsBothOperands
+    NullCoalesce => DemandsRightOnlyWhenLeftIsAbsent
+  }
+}
+
 type OperatorRealizationRefusal
   = NoStructuralOperationDeclared { declaration: DeclarationRef, operator: BinOp }
   | StructuralOrderingDuplicated { declaration: DeclarationRef, row_count: Int }
