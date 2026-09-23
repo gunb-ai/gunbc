@@ -1210,7 +1210,7 @@ fn explicit_return_conformance_diags(declared: Node, body_typed: Node, scope: In
   collect_explicit_return_values(n: body_typed)
     |> flat_map(returned => declared_type_conformance_diags(
          declared: declared,
-         produced: resolved_type(n: returned),
+         produced: expression_value_type(e: returned),
          span: returned.span,
          scope: scope))
 }
@@ -1358,11 +1358,8 @@ fn declared_type_conformance_diags(declared: Node, produced: Node, span: SourceS
       module_name: scope.module_name
     )]
   }
-  else if (type_node_is_callable(n: declared) && type_node_is_callable(n: produced)
-        && callable_signature_mismatch(formal: declared, actual: produced, source_indices: si))
-      || ((type_node_is_callable(n: declared) || type_node_is_callable(n: produced))
-        && !(type_node_is_callable(n: declared) && type_node_is_callable(n: produced))
-        && one_sided_callable_mismatch(formal: declared, actual: produced, type_env: scope.type_env)) {
+  else if type_node_is_callable(n: declared) && type_node_is_callable(n: produced)
+      && callable_signature_mismatch(formal: declared, actual: produced, source_indices: si) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),
@@ -5108,7 +5105,9 @@ fn callable_signature_mismatch(formal: Node, actual: Node, source_indices: Map<S
 // non-function side is established: a ground kernel type, or a nominal name whose declaration
 // resolves to a product or coproduct. An alias of a function type resolves to an arrow and is not
 // refused; a type variable, an unresolved name or an Optional is not established and is left
-// unjudged rather than guessed.
+// unjudged rather than guessed. A GENERIC function-typed formal is not established either, and the
+// callers keep their unbound-type-variable guard ahead of this arm: a generic formal's own arrow is
+// not established until the callee's substitution is, and this arm does not instantiate it.
 fn type_node_positively_not_callable(n: Node, type_env: TypeEnv) -> Bool {
   let si = type_env.source_indices
   if type_node_is_callable(n: n) { false }
@@ -5121,6 +5120,29 @@ fn type_node_positively_not_callable(n: Node, type_env: TypeEnv) -> Bool {
       Absent => false
     }
   }
+}
+
+// THE VALUE TYPE OF AN EXPRESSION, where it is not its resolved type. A lambda is DECLARATION-SHAPED:
+// its parameters sit on the expression node and its `inferred` is its BODY's type, so
+// resolved_type of `p => provider_is_copy_tier(p: p)` is `Bool`. Measured, not reasoned: judging a
+// lambda argument by resolved_type refused correct corpus code wherever a lambda met a function
+// formal (dag/std/materialization_ladder.dag first_provider_where callers, the std.algebra
+// fold_list callers). The lambda's value is the arrow over its own parameters and body type, minted
+// by the same constructor a named function value's arrow is. Every other expression's value type is
+// its resolved type.
+fn expression_value_type(e: Node) -> Node {
+  if is_lambda_expr(e: e) { resolved_callable_type(func_params: e.params, ret: resolved_type(n: e)) }
+  else { resolved_type(n: e) }
+}
+
+// The one-sided judgment at a position whose produced value is an expression in hand (an annotated
+// `let`), guarded exactly as the direct-call seam guards it: a declared or produced type carrying
+// an unbound type variable is not established.
+fn one_sided_callable_value_mismatch(declared: Node, produced: Node, type_env: TypeEnv) -> Bool {
+  (type_node_is_callable(n: declared) != type_node_is_callable(n: produced))
+    && !direct_call_formal_has_unbound_type_variable(n: declared)
+    && !direct_call_formal_has_unbound_type_variable(n: produced)
+    && one_sided_callable_mismatch(formal: declared, actual: produced, type_env: type_env)
 }
 
 fn one_sided_callable_mismatch(formal: Node, actual: Node, type_env: TypeEnv) -> Bool {
@@ -5142,10 +5164,10 @@ fn direct_call_arg_type_mismatch(
   else if type_node_is_callable(n: formal) && type_node_is_callable(n: actual) {
     callable_signature_mismatch(formal: formal, actual: actual, source_indices: source_indices)
   }
+  else if direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) { false }
   else if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) {
     one_sided_callable_mismatch(formal: formal, actual: actual, type_env: type_env)
   }
-  else if direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) { false }
   else {
     nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
@@ -5468,7 +5490,7 @@ fn direct_call_arg_mismatch_diags(
           } {
             []
           } else {
-          let actual_raw = resolved_type(n: actual_expr)
+          let actual_raw = expression_value_type(e: actual_expr)
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
           if direct_call_arg_type_mismatch(
             formal: formal, substitution_basis: app.formal.substitution_basis, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices) {
@@ -7989,11 +8011,22 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let val_typed = val_result.typed
       let val_type = resolved_type(n: val_typed)
       let val_annotation_diags = match declared_let_type {
-        Present { value: declared } => declared_type_conformance_diags(
-          declared: declared,
-          produced: val_type,
-          span: val_expr.span,
-          scope: scope)
+        Present { value: declared } =>
+          let produced_value_type = expression_value_type(e: val_typed)
+          let conformance = declared_type_conformance_diags(
+            declared: declared,
+            produced: produced_value_type,
+            span: val_expr.span,
+            scope: scope)
+          if (conformance |> count) > 0 { conformance }
+          else if one_sided_callable_value_mismatch(declared: declared, produced: produced_value_type, type_env: scope.type_env) {
+            [type_mismatch_error(
+              expected: node_type_shape(n: declared, source_indices: scope.type_env.source_indices),
+              got: node_type_shape(n: produced_value_type, source_indices: scope.type_env.source_indices),
+              span: val_expr.span,
+              module_name: scope.module_name
+            )]
+          } else { [] }
         Absent => []
       }
       let val_diags = concat(val_result.diagnostics, val_annotation_diags)
@@ -11874,7 +11907,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let val_diags = if item.type_annotation != none {
       concat(
         val_result.diagnostics,
-        declared_type_conformance_diags(declared: item.type_annotation.value, produced: resolved_type(n: val_typed), span: item.body.value.span, scope: scope)
+        declared_type_conformance_diags(declared: item.type_annotation.value, produced: expression_value_type(e: val_typed), span: item.body.value.span, scope: scope)
       )
     } else { val_result.diagnostics }
     let inferred_ret = if item.type_annotation != none { Present { value: Resolved { node: item.type_annotation.value } } } else { val_typed.inferred }
