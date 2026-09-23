@@ -47,6 +47,9 @@ pub use crate::gunbc_reference_derived_candidate::{
     ReferenceDerivedCandidateDisposition, ReferenceDerivedCandidateRow,
 };
 pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is_admitted;
+pub use crate::gunbc_rust_emitted_edge::EmittedEdgeProvenance;
+use crate::gunbc_rust_emitted_edge::EmittedEdgeProvenance::{ReexportFacade, RuntimePrelude};
+pub use crate::gunbc_rust_emitted_edge::{emitted_edge_target_module, rust_prelude_emitted_edges};
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
 pub use crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows;
 pub use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
@@ -10785,7 +10788,7 @@ pub fn emit_module_full(
             __result
         })
         .join(&"\n\n".to_string());
-        let prelude = emit_prelude(prelude_imported_names.clone(), local_type_names.clone());
+        let prelude = emit_prelude(this_module_name.clone());
         let imports_str = emit_imports(
             crate::v1_std_core::module_imports(m.clone()),
             emit_info.clone(),
@@ -15584,20 +15587,78 @@ pub fn emit_faithful_text_carrier_import_lines(
     }
 }
 
-pub fn emit_prelude(imported_names: Rc<Vec<String>>, local_type_names: Rc<Vec<String>>) -> String {
+pub fn emit_prelude(module_name: String) -> String {
     {
+        let edges = crate::gunbc_rust_emitted_edge::rust_prelude_emitted_edges(
+            crate::v1_compiler_emit_core_support::module_to_filename(module_name.clone()),
+        );
+        let runtime_modules = Rc::new({
+            let mut __result = Vec::new();
+            for edge in edges.iter().cloned() {
+                __result.extend(
+                    (*match edge.provenance.clone() {
+                        EmittedEdgeProvenance::RuntimePrelude => {
+                            crate::gunbc_rust_emitted_edge::emitted_edge_target_module(edge.clone())
+                        }
+                        _ => Rc::new(vec![]),
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let has_facade = {
+            let mut __found = false;
+            for edge in edges.iter().cloned() {
+                if match edge.provenance.clone() {
+                    EmittedEdgeProvenance::ReexportFacade => true,
+                    _ => false,
+                } {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        let runtime_trait_uses = Rc::new({
+            let mut __result = Vec::new();
+            for rt in runtime_modules.iter().cloned() {
+                __result.push(v1_rt::concat(
+                    v1_rt::concat("use crate::".to_string(), rt.clone()),
+                    "::{VecCompat, VecJoin};\n".to_string(),
+                ));
+            }
+            __result
+        })
+        .join(&"".to_string());
+        let runtime_module_uses = Rc::new({
+            let mut __result = Vec::new();
+            for rt in runtime_modules.iter().cloned() {
+                __result.push(v1_rt::concat(
+                    v1_rt::concat("use crate::".to_string(), rt.clone()),
+                    ";".to_string(),
+                ));
+            }
+            __result
+        })
+        .join(&"\n".to_string());
         let base = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
                     "use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};\n"
                         .to_string(),
-                    "use crate::v1_rt::{VecCompat, VecJoin};\n".to_string(),
+                    runtime_trait_uses.clone(),
                 ),
                 "use std::rc::Rc;\n".to_string(),
             ),
-            "use crate::v1_rt;".to_string(),
+            runtime_module_uses.clone(),
         );
-        let wrapper_use = "\nuse crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;".to_string();
+        let wrapper_use = if has_facade.clone() {
+            "\nuse crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;".to_string()
+        } else {
+            "".to_string()
+        };
         v1_rt::concat(base.clone(), wrapper_use.clone())
     }
 }
