@@ -6,32 +6,42 @@ import v2.std.optional { Present }
 
 // WHAT THE AMPERE DRAM FIRMWARE PRINTED ON THE SERIAL CONSOLE DURING ONE BOOT, as an observation
 // receipt of this repository. It is not an upstream fact: Ampere publishes no specification of these
-// lines that this corpus has read. The grammar is TRANSCRIBED FROM ONE CAPTURE, the mtcollins1 SOL
-// capture of fleet-converge run 35801475989 (eager-owl-205, 2026-09-23), and it recognises exactly
-// the four line shapes that capture showed:
+// lines that this corpus has read. The grammar is TRANSCRIBED FROM TWO CAPTURES, the mtcollins1 SOL
+// captures of fleet-converge runs 35801475989 and 35793279839 (artifact mtcollins1-boot-receipts),
+// whose bytes the witness carries verbatim. The block has this shape:
 //
-//   NOTICE: DRAM FW version 210525
-//   MEMC param: mcu_enable_mask = 00000011 [default: 000000ff]
-//   MCU param: ecc_en = 00000002 [default: 00000001]
-//   DRAM populated DIMMs: SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK
+//   NOTICE:  DRAM FW version 210525          starts a block
+//   CP: 0ff00900                             unindented lines between subsections belong to no subsection
+//   MEMC param:                              a param subsection, scope MEMC
+//     mcu_enable_mask = 00000011 [default: 000000ff]
+//   MCU param:                               a param subsection, scope MCU
+//     ecc_en = 00000002 [default: 00000001]
+//   DRAM populated DIMMs:                    the trained-DIMM roster
+//     SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK
+//   CP: 3ff00100                             an unindented line closes the subsection
 //
-// WHAT IS NOT CLAIMED (DESIGN section 4d). The meaning of a param's value, including
-// mcu_enable_mask as a bitmask over memory controllers, is not asserted: no source in the corpus
-// supports it. A param is carried as its name, its value and its default, as rendered, and a
-// value that differs from the stated default is reported as exactly that. The text after the
-// slot address on a DIMM line (module type, size, speed, part) is kept verbatim and not decoded.
-// "SK", "MC" and "S" are read as the socket, memory controller and slot indices the line's own
-// spelling names. That reading is transcribed from the capture, not cited.
+// Lines end in CR (the SOL transport is a serial line) and one capture carries a NUL before the
+// first NOTICE; both are removed before a line is read. Indentation (a leading two spaces) is
+// what places a line inside a subsection, so it is read before trimming.
 //
-// A LINE UNDER ONE OF THESE PREFIXES THAT DOES NOT PARSE IS KEPT AS A MALFORMED LINE, never
-// dropped, so a firmware release that changes the format shows up in the receipt rather than as
-// a shorter roster (DESIGN section 5).
+// WHAT IS NOT CLAIMED (DESIGN section 4d). No param value has a meaning here, mcu_enable_mask
+// included: a param is its name, value and printed default, recorded as an observation. That a
+// value differs from its default is not an adverse fact (earlier successful sparse boots printed
+// mcu_enable_mask 00000001 against default ff), so it is never a finding. "SK", "MC" and "S" are
+// read as the socket, memory controller and slot indices their spelling names, which is
+// transcribed from the captures, not cited. The text after the slot address is kept verbatim.
+//
+// AN INDENTED LINE INSIDE A RECOGNISED SUBSECTION THAT DOES NOT PARSE IS KEPT AS MALFORMED, never
+// dropped, so a firmware release that changes the row format shows up in the receipt rather than
+// as a shorter roster (DESIGN section 5).
 
 data ampere_dram_fw_version_marker: String = "DRAM FW version "
 
-data ampere_dram_populated_marker: String = "DRAM populated DIMMs: "
+data ampere_dram_populated_header: String = "DRAM populated DIMMs:"
 
-data ampere_dram_param_marker: String = " param: "
+data ampere_dram_param_header_suffix: String = " param:"
+
+data ampere_dram_indent: String = "  "
 
 type AmpereDramParam {
   scope: NonEmptyStr
@@ -47,20 +57,41 @@ type AmpereDramTrainedDimm {
   rendering: String
 }
 
+type AmpereDramMalformedLine {
+  subsection: NonEmptyStr
+  line: String
+}
+
 type AmpereDramBlock {
   firmware_version: NonEmptyStr
   params: List<AmpereDramParam>
   dimms: List<AmpereDramTrainedDimm>
-  malformed: List<String>
+  malformed: List<AmpereDramMalformedLine>
 }
 
 // BlockNotPrinted is its own arm because an absent roster is not an empty one: a capture that never
 // reached the DRAM firmware says nothing about which sockets trained. blocks_printed counts the
-// version lines, and the block read is the LAST one, because a reset loop prints the block once
-// per boot and the last is the one that led to whatever followed.
+// blocks, and the block read is the LAST one, because a reset loop prints the block once per boot
+// and the last is the one that led to whatever followed.
 type AmpereDramConsoleObservation
   = AmpereDramBlockNotPrinted
   | AmpereDramBlockObserved { block: AmpereDramBlock, blocks_printed: Int }
+
+type AmpereDramSubsection
+  = OutsideSubsection
+  | InParams { scope: NonEmptyStr }
+  | InRoster
+
+type AmpereDramReadState {
+  blocks: List<AmpereDramBlock>
+  current: AmpereDramBlock?
+  subsection: AmpereDramSubsection
+}
+
+// A SOL LINE AS THE FIRMWARE WROTE IT: CR and NUL removed, leading spaces kept.
+fn ampere_dram_console_line(raw: String) -> String {
+  join(split(s: join(split(s: raw, delimiter: "\r"), ""), delimiter: "\0"), "")
+}
 
 fn text_after(line: String, marker: String) -> String? {
   let parts = split(s: line, delimiter: marker)
@@ -71,20 +102,22 @@ fn text_after(line: String, marker: String) -> String? {
 
 fn prefixed_int(token: String, prefix: String) -> Int? {
   if !starts_with(s: token, prefix: prefix) { none } else {
-    let digits = join(split(s: token, delimiter: ":"), "")
-    parse_int(s: join(split(s: digits, delimiter: prefix), ""))
+    parse_int(s: join(split(s: join(split(s: token, delimiter: ":"), ""), delimiter: prefix), ""))
   }
 }
 
-fn ampere_dram_dimm_of(rest: String) -> AmpereDramTrainedDimm? {
-  let tokens = filter(split(s: trim(rest), delimiter: " "), t => t != "")
-  let sk = match tokens.first() { Absent => "" Present { value: t } => t }
-  let mc = match tokens.skip(n: 1).first() { Absent => "" Present { value: t } => t }
-  let sl = match tokens.skip(n: 2).first() { Absent => "" Present { value: t } => t }
+fn nth_token(tokens: List<String>, n: Int) -> String {
+  match tokens.skip(n: n).first() { Absent => "" Present { value: t } => t }
+}
+
+// "SK<n> MC<n> S<n>: <rendering>"
+fn ampere_dram_dimm_of(row: String) -> AmpereDramTrainedDimm? {
+  let tokens = filter(split(s: trim(row), delimiter: " "), t => t != "")
+  let sl = nth_token(tokens: tokens, n: 2)
   if !ends_with(s: sl, suffix: ":") { none } else {
-    match prefixed_int(token: sk, prefix: "SK") {
+    match prefixed_int(token: nth_token(tokens: tokens, n: 0), prefix: "SK") {
       Absent => none
-      Present { value: socket } => match prefixed_int(token: mc, prefix: "MC") {
+      Present { value: socket } => match prefixed_int(token: nth_token(tokens: tokens, n: 1), prefix: "MC") {
         Absent => none
         Present { value: controller } => match prefixed_int(token: sl, prefix: "S") {
           Absent => none
@@ -98,68 +131,99 @@ fn ampere_dram_dimm_of(rest: String) -> AmpereDramTrainedDimm? {
   }
 }
 
-// "<scope> param: <name> = <value> [default: <default>]"
-fn ampere_dram_param_of(line: String) -> AmpereDramParam? {
-  let halves = split(s: line, delimiter: ampere_dram_param_marker)
-  let scope_tokens = filter(split(s: match halves.first() { Absent => "" Present { value: h } => h }, delimiter: " "), t => t != "")
-  let scope = match reverse(scope_tokens).first() { Absent => "" Present { value: t } => t }
-  let body = join(halves.skip(n: 1), ampere_dram_param_marker)
-  let eq = split(s: body, delimiter: " = ")
+// "<name> = <value> [default: <default>]" under a "<SCOPE> param:" header.
+fn ampere_dram_param_of(scope: NonEmptyStr, row: String) -> AmpereDramParam? {
+  let eq = split(s: trim(row), delimiter: " = ")
   let name = trim(match eq.first() { Absent => "" Present { value: n } => n })
-  let right = join(eq.skip(n: 1), " = ")
-  let vd = split(s: right, delimiter: " [default: ")
+  let vd = split(s: join(eq.skip(n: 1), " = "), delimiter: " [default: ")
   let value = trim(match vd.first() { Absent => "" Present { value: v } => v })
   let def_raw = trim(join(vd.skip(n: 1), " [default: "))
-  if scope == "" || name == "" || value == "" || count(vd) != 2 || !ends_with(s: def_raw, suffix: "]") { none } else {
+  if count(eq) != 2 || name == "" || value == "" || count(vd) != 2 || !ends_with(s: def_raw, suffix: "]") { none } else {
     let default_value = trim(join(split(s: def_raw, delimiter: "]"), ""))
     if default_value == "" { none } else {
-      Present { value: AmpereDramParam { scope: scope as NonEmptyStr, name: name as NonEmptyStr, value: value as NonEmptyStr, default_value: default_value as NonEmptyStr } }
+      Present { value: AmpereDramParam { scope: scope, name: name as NonEmptyStr, value: value as NonEmptyStr, default_value: default_value as NonEmptyStr } }
     }
   }
 }
 
-fn is_version_line(line: String) -> Bool {
-  string_contains(s: line, pattern: ampere_dram_fw_version_marker)
+fn block_with_param(b: AmpereDramBlock, p: AmpereDramParam) -> AmpereDramBlock {
+  AmpereDramBlock { firmware_version: b.firmware_version, params: concat(b.params, [p]), dimms: b.dimms, malformed: b.malformed }
 }
 
-fn lines_after_last_version(lines: List<String>) -> List<String> {
-  let empty: List<String> = []
-  fold(lines, init: empty, f: (acc, line) => if is_version_line(line: line) { [line] } else { concat(acc, [line]) })
+fn block_with_dimm(b: AmpereDramBlock, d: AmpereDramTrainedDimm) -> AmpereDramBlock {
+  AmpereDramBlock { firmware_version: b.firmware_version, params: b.params, dimms: concat(b.dimms, [d]), malformed: b.malformed }
 }
 
-fn ampere_dram_block_of(lines: List<String>) -> AmpereDramBlock {
-  let version = match filter(lines, l => is_version_line(line: l)).first() {
-    Absent => ""
-    Present { value: l } => trim(match text_after(line: l, marker: ampere_dram_fw_version_marker) { Absent => "" Present { value: v } => v })
+fn block_with_malformed(b: AmpereDramBlock, m: AmpereDramMalformedLine) -> AmpereDramBlock {
+  AmpereDramBlock { firmware_version: b.firmware_version, params: b.params, dimms: b.dimms, malformed: concat(b.malformed, [m]) }
+}
+
+fn subsection_label(s: AmpereDramSubsection) -> NonEmptyStr {
+  match s {
+    OutsideSubsection => "outside"
+    InParams { scope: sc } => concat(sc as String, ampere_dram_param_header_suffix) as NonEmptyStr
+    InRoster => ampere_dram_populated_header as NonEmptyStr
   }
-  let empty_params: List<AmpereDramParam> = []
-  let empty_dimms: List<AmpereDramTrainedDimm> = []
-  let empty_bad: List<String> = []
-  let initial = AmpereDramBlock { firmware_version: (if version == "" { "unrendered" } else { version }) as NonEmptyStr, params: empty_params, dimms: empty_dimms, malformed: empty_bad }
-  fold(lines, init: initial, f: (acc, raw) => {
-    let line = trim(raw)
-    match text_after(line: line, marker: ampere_dram_populated_marker) {
-      Present { value: rest } => match ampere_dram_dimm_of(rest: rest) {
-        Present { value: d } => AmpereDramBlock { firmware_version: acc.firmware_version, params: acc.params, dimms: concat(acc.dimms, [d]), malformed: acc.malformed }
-        Absent => AmpereDramBlock { firmware_version: acc.firmware_version, params: acc.params, dimms: acc.dimms, malformed: concat(acc.malformed, [line]) }
+}
+
+fn closed_blocks(state: AmpereDramReadState) -> List<AmpereDramBlock> {
+  match state.current { Absent => state.blocks Present { value: b } => concat(state.blocks, [b]) }
+}
+
+fn ampere_dram_read_row(state: AmpereDramReadState, block: AmpereDramBlock, line: String) -> AmpereDramBlock {
+  match state.subsection {
+    OutsideSubsection => block
+    InParams { scope: sc } => match ampere_dram_param_of(scope: sc, row: line) {
+      Present { value: p } => block_with_param(b: block, p: p)
+      Absent => block_with_malformed(b: block, m: AmpereDramMalformedLine { subsection: subsection_label(s: state.subsection), line: trim(line) })
+    }
+    InRoster => match ampere_dram_dimm_of(row: line) {
+      Present { value: d } => block_with_dimm(b: block, d: d)
+      Absent => block_with_malformed(b: block, m: AmpereDramMalformedLine { subsection: subsection_label(s: state.subsection), line: trim(line) })
+    }
+  }
+}
+
+fn ampere_dram_read_step(state: AmpereDramReadState, raw: String) -> AmpereDramReadState {
+  let line = ampere_dram_console_line(raw: raw)
+  let stripped = trim(line)
+  match text_after(line: line, marker: ampere_dram_fw_version_marker) {
+    Present { value: v } => {
+      let version = trim(v)
+      AmpereDramReadState {
+        blocks: closed_blocks(state: state),
+        current: Present { value: AmpereDramBlock { firmware_version: (if version == "" { "unrendered" } else { version }) as NonEmptyStr, params: [], dimms: [], malformed: [] } },
+        subsection: OutsideSubsection,
       }
-      Absent =>
-        if string_contains(s: line, pattern: ampere_dram_param_marker) && (starts_with(s: line, prefix: "MEMC") || starts_with(s: line, prefix: "MCU")) {
-          match ampere_dram_param_of(line: line) {
-            Present { value: p } => AmpereDramBlock { firmware_version: acc.firmware_version, params: concat(acc.params, [p]), dimms: acc.dimms, malformed: acc.malformed }
-            Absent => AmpereDramBlock { firmware_version: acc.firmware_version, params: acc.params, dimms: acc.dimms, malformed: concat(acc.malformed, [line]) }
-          }
-        } else { acc }
     }
-  })
+    Absent => match state.current {
+      Absent => state
+      Present { value: block } =>
+        if starts_with(s: line, prefix: ampere_dram_indent) && stripped != "" {
+          AmpereDramReadState { blocks: state.blocks, current: Present { value: ampere_dram_read_row(state: state, block: block, line: line) }, subsection: state.subsection }
+        } else if stripped == ampere_dram_populated_header {
+          AmpereDramReadState { blocks: state.blocks, current: state.current, subsection: InRoster }
+        } else if ends_with(s: stripped, suffix: ampere_dram_param_header_suffix) && !string_contains(s: stripped, pattern: " = ") {
+          let scope = trim(join(split(s: stripped, delimiter: ampere_dram_param_header_suffix), ""))
+          if scope == "" {
+            AmpereDramReadState { blocks: state.blocks, current: Present { value: block_with_malformed(b: block, m: AmpereDramMalformedLine { subsection: "header", line: stripped }) }, subsection: OutsideSubsection }
+          } else {
+            AmpereDramReadState { blocks: state.blocks, current: state.current, subsection: InParams { scope: scope as NonEmptyStr } }
+          }
+        } else {
+          AmpereDramReadState { blocks: state.blocks, current: state.current, subsection: OutsideSubsection }
+        }
+    }
+  }
 }
 
 fn ampere_dram_console_observation(lines: List<String>) -> AmpereDramConsoleObservation {
-  let printed = count(filter(lines, l => is_version_line(line: l)))
-  if printed == 0 {
-    AmpereDramBlockNotPrinted
-  } else {
-    AmpereDramBlockObserved { block: ampere_dram_block_of(lines: lines_after_last_version(lines: lines)), blocks_printed: printed }
+  let empty: List<AmpereDramBlock> = []
+  let done = fold(lines, init: AmpereDramReadState { blocks: empty, current: none, subsection: OutsideSubsection }, f: (st, raw) => ampere_dram_read_step(state: st, raw: raw))
+  let blocks = closed_blocks(state: done)
+  match reverse(blocks).first() {
+    Absent => AmpereDramBlockNotPrinted
+    Present { value: last } => AmpereDramBlockObserved { block: last, blocks_printed: count(blocks) }
   }
 }
 
@@ -171,25 +235,23 @@ fn ampere_dram_dimms_on_socket(block: AmpereDramBlock, socket: Int) -> Int {
   count(filter(block.dimms, d => d.socket == socket))
 }
 
-// THE FINDINGS THIS RECEIPT SUPPORTS, given the sockets the caller expects. A socket with no trained
-// DIMM line in an observed block is named. A non-default param is named with both values and
-// nothing else. A malformed line under a recognised prefix is named.
+fn ampere_dram_socket_untrained(block: AmpereDramBlock, socket: Int) -> Bool {
+  ampere_dram_dimms_on_socket(block: block, socket: socket) == 0
+}
+
+// THE DECISIVE FINDINGS THIS RECEIPT ESTABLISHES, given the sockets the caller expects: an expected
+// socket with no trained DIMM row in an observed block, and a row inside a recognised subsection
+// that does not parse. Params are never findings (see the note at the top).
 fn ampere_dram_findings(observation: AmpereDramConsoleObservation, expected_sockets: List<Int>) -> List<String> {
   match observation {
     AmpereDramBlockNotPrinted => []
     AmpereDramBlockObserved { block: b, blocks_printed: _ } => {
-      let empty_sockets = map(filter(expected_sockets, k => ampere_dram_dims_zero(block: b, socket: k)),
-        k => concat("DRAM firmware ", b.firmware_version as String, " printed no trained DIMM for socket ", to_string(k), " (SK", to_string(k), ": 0 'DRAM populated DIMMs' lines)"))
-      let params = map(filter(b.params, p => ampere_dram_param_is_non_default(p: p)),
-        p => concat("DRAM firmware param ", p.scope as String, " ", p.name as String, " = ", p.value as String, " (default ", p.default_value as String, ")"))
-      let bad = map(b.malformed, l => concat("DRAM firmware line not in the transcribed grammar: ", l))
-      concat(empty_sockets, concat(params, bad))
+      let empty_sockets = map(filter(expected_sockets, k => ampere_dram_socket_untrained(block: b, socket: k)),
+        k => concat("DRAM firmware ", b.firmware_version as String, " printed no trained DIMM for socket ", to_string(k), " (no SK", to_string(k), " row under 'DRAM populated DIMMs:')"))
+      let bad = map(b.malformed, m => concat("DRAM firmware row under '", m.subsection as String, "' not in the transcribed grammar: ", m.line))
+      concat(empty_sockets, bad)
     }
   }
-}
-
-fn ampere_dram_dims_zero(block: AmpereDramBlock, socket: Int) -> Bool {
-  ampere_dram_dimms_on_socket(block: block, socket: socket) == 0
 }
 
 fn ampere_dram_console_text(observation: AmpereDramConsoleObservation, expected_sockets: List<Int>) -> String {
@@ -198,11 +260,11 @@ fn ampere_dram_console_text(observation: AmpereDramConsoleObservation, expected_
     AmpereDramBlockObserved { block: b, blocks_printed: n } =>
       join([
         concat("ampere dram firmware: version ", b.firmware_version as String, "; block printed ", to_string(n), " time(s), the last read"),
-        concat("params: ", to_string(count(b.params))),
-        join(map(b.params, p => concat("  ", p.scope as String, " ", p.name as String, " = ", p.value as String, " [default ", p.default_value as String, "]", if ampere_dram_param_is_non_default(p: p) { " NON-DEFAULT" } else { "" })), "\n"),
+        concat("params (observations; a value differing from its printed default is not a finding): ", to_string(count(b.params))),
+        join(map(b.params, p => concat("  ", p.scope as String, " ", p.name as String, " = ", p.value as String, " [default ", p.default_value as String, "]", if ampere_dram_param_is_non_default(p: p) { " (differs from printed default)" } else { "" })), "\n"),
         concat("trained dimms by socket: ", join(map(expected_sockets, k => concat("SK", to_string(k), "=", to_string(ampere_dram_dimms_on_socket(block: b, socket: k)))), " ")),
         join(map(b.dimms, d => concat("  SK", to_string(d.socket), " MC", to_string(d.memory_controller), " S", to_string(d.slot), ": ", d.rendering)), "\n"),
-        concat("malformed: ", to_string(count(b.malformed))),
+        concat("malformed rows: ", to_string(count(b.malformed))),
       ], "\n")
   }
 }

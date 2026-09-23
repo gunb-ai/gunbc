@@ -56,7 +56,7 @@ import extdeps.bootloader.grub {
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_capability_row }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
 import v2.std.optional { Present }
-import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
+import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import extdeps.bmc.ipmi
@@ -65,6 +65,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootDiagnosticBundle, SelSnapshotReading, SelSnapshotNotTaken, inventory_not_taken,
   mtcollins1_boot_sel_snapshot, mtcollins1_boot_inventory, mtcollins1_boot_console,
   mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_bundle_findings, bundle_write_receipt_line,
+  mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
 }
 import std.dissolution { dissolution_description }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -95,11 +96,6 @@ data mtcollins1_boot_actuation_allowance: Second = second(count: 480)
 
 data mtcollins1_boot_cleanup_allowance: Second = second(count: 180)
 
-// THE DIAGNOSTIC BUNDLE'S READS: two SEL snapshots, the Systems, Memory and Processors collections,
-// and one GET per member. Each Redfish read carries curl's 10 s connect and 30 s total limits, and
-// a member read that fails stops the rest, so a BMC that does not answer costs a bounded few
-// reads rather than one per slot.
-data mtcollins1_boot_diagnostics_allowance: Second = second(count: 300)
 
 data mtcollins1_boot_submit_timeout: Second = second(count: 30)
 
@@ -115,7 +111,7 @@ fn mtcollins1_boot_step_timeout_minutes() -> Minute {
     + second_count(s: mtcollins1_boot_issue_allowance)
     + second_count(s: mtcollins1_boot_actuation_allowance)
     + second_count(s: mtcollins1_boot_cleanup_allowance)
-    + second_count(s: mtcollins1_boot_diagnostics_allowance)
+    + second_count(s: mtcollins1_boot_diagnostics_allowance())
   minute(count: (secs + 59) / 60)
 }
 
@@ -876,7 +872,7 @@ type MtCollins1BootBmcAccess
 
 type MtCollins1BootAttempt {
   outcome: ProcessExit
-  escalation_id: String
+  escalation_id: NonEmptyStr?
   bmc: MtCollins1BootBmcAccess
 }
 
@@ -887,7 +883,7 @@ fn mtcollins1_boot_exit_reason(outcome: ProcessExit) -> String {
   }
 }
 
-fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit, escalation_id: String) -> MtCollins1BootAttempt {
+fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit, escalation_id: NonEmptyStr?) -> MtCollins1BootAttempt {
   MtCollins1BootAttempt {
     outcome: outcome,
     escalation_id: escalation_id,
@@ -895,7 +891,7 @@ fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit, escalation_id: String)
   }
 }
 
-fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: String, capture_path: String) -> MtCollins1BootDiagnosticBundle
+fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: AttemptIdentityReading, capture_path: String) -> MtCollins1BootDiagnosticBundle
   uses net: std.resources.Network
 {
   match attempt.bmc {
@@ -920,20 +916,28 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: String
   }
 }
 
+// THE ATTEMPT'S IDENTITY IS READ, AND A READ THAT FAILED IS CARRIED AS ITS CAUSE, never a blank.
+fn mtcollins1_boot_attempt_identity(read: ActionsVariableRead) -> AttemptIdentityReading {
+  match read {
+    ActionsVariablePresent { value: v } =>
+      if trim(s: v) == "" { AttemptIdentityUnavailable { variable: github_run_id_variable_name as NonEmptyStr, detail: "present but empty" } }
+      else { AttemptRunId { run_id: trim(s: v) as NonEmptyStr } }
+    ActionsVariableAbsent { variable: _, detail: d } => AttemptIdentityUnavailable { variable: github_run_id_variable_name as NonEmptyStr, detail: d }
+  }
+}
+
 fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
   uses net: std.resources.Network
 {
-  let run = match actions_variable_read(name: github_run_id_variable_name) {
-    ActionsVariablePresent { value: v } => v
-    ActionsVariableAbsent { variable: _, detail: _ } => ""
-  }
+  let run = mtcollins1_boot_attempt_identity(read: actions_variable_read(name: github_run_id_variable_name))
   let bundle = mtcollins1_boot_bundle_of_attempt(attempt: attempt, run: run, capture_path: actions_variable_trimmed(name: mtcollins1_boot_sol_capture_path_env))
   let write = mtcollins1_boot_write_bundle(bundle: bundle)
   let concluded = mtcollins1_boot_outcome_after_bundle(outcome: attempt.outcome, bundle: bundle, write: write)
   let findings = mtcollins1_boot_bundle_findings(bundle: bundle)
   let exit_word = match concluded { ExitSuccess => "ok"  _ => "refused" }
   let receipt_body = join([
-    concat("escalation_id=", if attempt.escalation_id == "" { "none" } else { attempt.escalation_id }),
+    concat("escalation_id=", match attempt.escalation_id { Present { value: e } => e as String Absent => "not-filed (the attempt ended before an approval request was filed)" }),
+    concat("attempt=", attempt_identity_text(a: run)),
     concat("exit=", exit_word),
     bundle_write_receipt_line(w: write),
     concat("findings=", if count(findings) == 0 { "none" } else { join(findings, "; ") }),
@@ -953,11 +957,11 @@ fn mtcollins1_boot_wet() -> ProcessExit
 {
   let attempt = match actions_variable_read(name: fleet_converge_expected_host_env_name) {
     ActionsVariableAbsent { variable: v, detail: d } =>
-      mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: ", concat(v, concat(" ", concat(d, "; loopback filing is srv1 only"))))), escalation_id: "")
+      mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: ", concat(v, concat(" ", concat(d, "; loopback filing is srv1 only"))))), escalation_id: none)
     ActionsVariablePresent { value: host } =>
       match mtcollins1_boot_refuses_off_srv1(host: host) {
         ExitSuccess => mtcollins1_boot_wet_on_srv1()
-        other => mtcollins1_boot_ended_before_bmc(outcome: other, escalation_id: "")
+        other => mtcollins1_boot_ended_before_bmc(outcome: other, escalation_id: none)
       }
   }
   mtcollins1_boot_conclude(attempt: attempt)
@@ -972,11 +976,11 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
 {
   let cred = actions_variable_trimmed(name: host_reset_bmc_credential_path_env)
   if cred == "" {
-    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: ", concat(host_reset_bmc_credential_path_env as String, " is unset; controller untouched"))), escalation_id: "")
+    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: ", concat(host_reset_bmc_credential_path_env as String, " is unset; controller untouched"))), escalation_id: none)
   }
   let sub_path = actions_variable_trimmed(name: approval_submission_mac_key_path_env)
   if sub_path == "" {
-    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: ", concat(approval_submission_mac_key_path_env as String, " is unset; controller untouched"))), escalation_id: "")
+    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: ", concat(approval_submission_mac_key_path_env as String, " is unset; controller untouched"))), escalation_id: none)
   }
   let sol_pid_path = actions_variable_trimmed(name: mtcollins1_boot_sol_pid_path_env)
   let sol_capture_path = actions_variable_trimmed(name: mtcollins1_boot_sol_capture_path_env)
@@ -985,21 +989,21 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
     ActionsVariableAbsent { variable: _, detail: _ } => ""
   }
   if run_id == "" {
-    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: GITHUB_RUN_ID is unset; refusing rather than reusing a standing escalation id"), escalation_id: "")
+    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: GITHUB_RUN_ID is unset; refusing rather than reusing a standing escalation id"), escalation_id: none)
   }
   let sha = match actions_variable_read(name: github_sha_variable_name) {
     ActionsVariablePresent { value: v } => v
     ActionsVariableAbsent { variable: _, detail: _ } => ""
   }
   if sha == "" {
-    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: GITHUB_SHA is unset; the signed subject binds the execution revision"), escalation_id: "")
+    return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: GITHUB_SHA is unset; the signed subject binds the execution revision"), escalation_id: none)
   }
   match mtcollins1_boot_medium_refusal(medium: mtcollins1_boot_medium) {
-    Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why), escalation_id: "")
+    Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why), escalation_id: none)
     Absent => {}
   }
   match mtcollins1_census_readback_refusal_before_filing(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
-    Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why), escalation_id: "")
+    Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why), escalation_id: none)
     Absent => {}
   }
   let escalation = concat("mtcollins1-boot-", run_id) as NonEmptyStr
@@ -1010,12 +1014,12 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
   )
   match approval_instant_now() {
     Absent =>
-      mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: clock unreadable; cannot mint issued_at or an approval window; controller untouched"), escalation_id: escalation as String)
+      mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: clock unreadable; cannot mint issued_at or an approval window; controller untouched"), escalation_id: Present { value: escalation })
     Present { value: issued } => {
       let expires = approval_expires_at(issued: issued, window: mtcollins1_boot_approval_window())
       match approval_file_stored_request(stored: stored_request_from_authorization(request: request, issued_at: issued, expires_at: expires), body_file_name: mtcollins1_boot_submit_body_file_name, submit_timeout: mtcollins1_boot_submit_timeout) {
         ApprovalFilingRefused { reason: r } =>
-          mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: ", concat(r, "; controller untouched"))), escalation_id: escalation as String)
+          mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: ", concat(r, "; controller untouched"))), escalation_id: Present { value: escalation })
         ApprovalFiled => {
           let gate = approval_gate_from_outcome(
             outcome: approval_poll_ticks(
@@ -1028,13 +1032,13 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
           )
           let pw_read = Filesystem.Read(path: cred)
           if !pw_read.success {
-            return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: BMC credential unreadable after approval: ", pw_read.error)), escalation_id: escalation as String)
+            return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: BMC credential unreadable after approval: ", pw_read.error)), escalation_id: Present { value: escalation })
           }
           match mtcollins1_bmc_username {
             Absent =>
               MtCollins1BootAttempt {
                 outcome: mtcollins1_boot_after_gate(gate: gate, request: request, password_file: cred, attempt: run_id, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path),
-                escalation_id: escalation as String,
+                escalation_id: Present { value: escalation },
                 bmc: BmcAccessNotReached { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" },
               }
             Present { value: user } => {
@@ -1049,7 +1053,7 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
               )
               MtCollins1BootAttempt {
                 outcome: actuated,
-                escalation_id: escalation as String,
+                escalation_id: Present { value: escalation },
                 bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sel_before: before },
               }
             }

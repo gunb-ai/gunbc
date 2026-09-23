@@ -1,7 +1,11 @@
 module gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle
 
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
+import std.nat { Nat }
 import std.algebra { trim }
+import std.measure { Second, second, second_count, ByteSize, byte_size, byte_size_count }
+import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
+import extdeps.tools.coreutils_stat
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import v2.std.optional { Present }
@@ -13,7 +17,9 @@ import extdeps.bmc.redfish_memory_inventory {
   RedfishResourceState, StateAbsent, StateDisabled, StateUnavailableOffline, StateStandbyOffline,
   RedfishHealth, HealthWarning, HealthCritical,
   redfish_resource_state_wire, redfish_health_wire,
-  redfish_collection_member_ids, redfish_memory_member_of, redfish_processor_member_of,
+  redfish_memory_member_of, redfish_processor_member_of,
+  RedfishCollectionPage, redfish_collection_page_of, RedfishLinkReading, RedfishLinkSameOrigin, RedfishLinkRefused, redfish_same_origin_link,
+  RedfishSystemInventoryLinks, redfish_system_inventory_links_of,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.auth.netrc_binding {
@@ -74,6 +80,8 @@ type BmcReadCause
   | BmcReadFailed { endpoint: NonEmptyStr, at: NonEmptyStr, exit_code: Int, detail: String }
   | BmcResponseMalformed { endpoint: NonEmptyStr, at: NonEmptyStr, detail: String }
   | BmcCredentialUnavailable { endpoint: NonEmptyStr, at: NonEmptyStr, detail: String }
+  | BmcCollectionIncomplete { endpoint: NonEmptyStr, at: NonEmptyStr, detail: String }
+  | BmcDeadlineReached { endpoint: NonEmptyStr, at: NonEmptyStr, not_reached: String }
 
 fn bmc_read_cause_text(cause: BmcReadCause) -> String {
   match cause {
@@ -85,16 +93,49 @@ fn bmc_read_cause_text(cause: BmcReadCause) -> String {
     BmcReadFailed { endpoint: e, at: a, exit_code: c, detail: d } => concat("BMC read failed at ", e as String, " (", a as String, ", exit ", to_string(c), "): ", d)
     BmcResponseMalformed { endpoint: e, at: a, detail: d } => concat("BMC response unreadable at ", e as String, " (", a as String, "): ", d)
     BmcCredentialUnavailable { endpoint: e, at: a, detail: d } => concat("no credential could be presented to ", e as String, " (", a as String, "): ", d)
+    BmcCollectionIncomplete { endpoint: e, at: a, detail: d } => concat("collection incomplete at ", e as String, " (", a as String, "): ", d)
+    BmcDeadlineReached { endpoint: e, at: a, not_reached: n } => concat("diagnostics read budget spent before ", e as String, " (", a as String, "); not reached: ", n)
   }
 }
 
-// A CAUSE THAT SAYS THE BMC ITSELF DID NOT ANSWER, as opposed to answering badly.
-fn bmc_read_cause_is_no_answer(cause: BmcReadCause) -> Bool {
+// A CAUSE THAT DEFINITIVELY SAYS THE BMC DID NOT ANSWER: the transport established that nothing
+// answered at all or in time. BmcSessionUnestablished is NOT one: ipmitool renders an unreachable
+// controller and a refused credential identically. Nor is any cause that carries an answer (an
+// HTTP status, a malformed body, an incomplete collection) or that no read was made for.
+fn bmc_read_cause_is_definitive_no_answer(cause: BmcReadCause) -> Bool {
   match cause {
     BmcUnreachable { endpoint: _, at: _, detail: _ } => true
     BmcTimeout { endpoint: _, at: _, detail: _ } => true
-    BmcSessionUnestablished { endpoint: _, at: _, detail: _ } => true
     _ => false
+  }
+}
+
+fn bmc_read_cause_kind(cause: BmcReadCause) -> String {
+  match cause {
+    BmcUnreachable { endpoint: _, at: _, detail: _ } => "unreachable"
+    BmcTimeout { endpoint: _, at: _, detail: _ } => "timed out"
+    BmcAuthRefused { endpoint: _, at: _, detail: _ } => "credential refused"
+    BmcSessionUnestablished { endpoint: _, at: _, detail: _ } => "no IPMI session (unreachable and credential-refused are indistinguishable)"
+    BmcHttpRefused { endpoint: _, at: _, detail: _ } => "answered with an HTTP error"
+    BmcReadFailed { endpoint: _, at: _, exit_code: _, detail: _ } => "read failed"
+    BmcResponseMalformed { endpoint: _, at: _, detail: _ } => "answered unreadably"
+    BmcCredentialUnavailable { endpoint: _, at: _, detail: _ } => "no credential presented"
+    BmcCollectionIncomplete { endpoint: _, at: _, detail: _ } => "collection incomplete"
+    BmcDeadlineReached { endpoint: _, at: _, not_reached: _ } => "read budget spent"
+  }
+}
+
+// THE AGGREGATE OVER BMC READS THAT ALL FAILED. "The BMC did not answer" is said only when EVERY
+// cause is a definitive no-answer; otherwise each distinct kind is named, so an ambiguous IPMI
+// session failure beside a Redfish timeout reads as exactly that and not as a verdict on the BMC.
+fn bmc_all_failed_text(causes: List<BmcReadCause>) -> String {
+  let empty: List<String> = []
+  let kinds = fold(map(causes, c => bmc_read_cause_kind(cause: c)), init: empty, f: (acc, k) => if any(acc, j => j == k) { acc } else { concat(acc, [k]) })
+  let first = match causes.first() { Absent => "" Present { value: c } => bmc_read_cause_text(cause: c) }
+  if all(causes, c => bmc_read_cause_is_definitive_no_answer(cause: c)) {
+    concat("every BMC read failed and the BMC did not answer; first: ", first)
+  } else {
+    concat("every BMC read failed (", join(kinds, "; "), "); first: ", first)
   }
 }
 
@@ -126,7 +167,9 @@ fn bmc_curl_read_cause(endpoint: NonEmptyStr, at: NonEmptyStr, exit_code: Int, s
 // of those is BmcSessionUnestablished.
 fn bmc_ipmitool_read_cause(endpoint: NonEmptyStr, at: NonEmptyStr, exit_code: Int, stderr: String) -> BmcReadCause {
   let detail = first_line(s: stderr)
-  if string_contains(s: stderr, pattern: "RAKP 2 HMAC is invalid") || string_contains(s: stderr, pattern: "Unauthorized name") || string_contains(s: stderr, pattern: "Insufficient privilege level") {
+  if exit_code == coreutils_timeout_expired_exit_code {
+    BmcTimeout { endpoint: endpoint, at: at, detail: concat("no answer within the diagnostics deadline (coreutils timeout exit 124)", if detail == "" { "" } else { concat("; ", detail) }) }
+  } else if string_contains(s: stderr, pattern: "RAKP 2 HMAC is invalid") || string_contains(s: stderr, pattern: "Unauthorized name") || string_contains(s: stderr, pattern: "Insufficient privilege level") {
     BmcAuthRefused { endpoint: endpoint, at: at, detail: detail }
   } else if string_contains(s: stderr, pattern: "Unable to establish IPMI v2") {
     BmcSessionUnestablished { endpoint: endpoint, at: at, detail: detail }
@@ -160,21 +203,38 @@ type InventoryReading {
 // kernel, and it is retained by the workflow's upload of mtcollins1_boot_artifact_glob, which
 // covers it only if it lives there. The bound is a policy row on artifact size, OBSERVED here:
 // the collector itself does not truncate, so a capture over the bound is reported, not clipped.
+// THE SIZE IS THE FILE'S BYTE COUNT FROM stat(1) (extdeps.tools.coreutils_stat PathSize), never the
+// length of the String read from it: a String's length counts Unicode scalar values, and calling
+// those bytes would under-count multi-byte console output. The size is taken before the content is
+// read, so a capture over the bound is reported without being loaded.
 type ConsoleReading
-  = ConsoleRetained { path: NonEmptyStr, bytes: Int, lines: Int, firmware: FirmwareConsoleReport, dram: AmpereDramConsoleObservation }
-  | ConsoleExceedsBound { path: NonEmptyStr, bytes: Int, bound: Int }
+  = ConsoleRetained { path: NonEmptyStr, size: ByteSize, lines: Int, firmware: FirmwareConsoleReport, dram: AmpereDramConsoleObservation }
+  | ConsoleExceedsBound { path: NonEmptyStr, size: ByteSize, bound: ByteSize }
   | ConsoleNotRetained { path: NonEmptyStr }
   | ConsoleUnread { path: NonEmptyStr, detail: String }
   | ConsoleNotConfigured
 
-data mtcollins1_boot_console_bound_bytes: Int = 16777216
+data mtcollins1_boot_console_bound: ByteSize = byte_size(count: 16777216)
+
+// WHICH ATTEMPT THIS BUNDLE BELONGS TO. The attempt is named by the Actions run id; a run whose id
+// could not be read carries that as a typed reading with the variable's own detail, never a blank.
+type AttemptIdentityReading
+  = AttemptRunId { run_id: NonEmptyStr }
+  | AttemptIdentityUnavailable { variable: NonEmptyStr, detail: String }
+
+fn attempt_identity_text(a: AttemptIdentityReading) -> String {
+  match a {
+    AttemptRunId { run_id: r } => r as String
+    AttemptIdentityUnavailable { variable: v, detail: d } => concat("UNAVAILABLE: ", v as String, " could not be read: ", d)
+  }
+}
 
 data mtcollins1_boot_diagnostics_path: String = "artifacts/mtcollins1-boot-diagnostics.txt"
 
 data mtcollins1_boot_retained_artifact_prefix: String = "artifacts/mtcollins1-boot-"
 
 type MtCollins1BootDiagnosticBundle {
-  attempt: String
+  attempt: AttemptIdentityReading
   outcome: String
   sel_before: SelSnapshotReading
   sel_after: SelSnapshotReading
@@ -266,7 +326,7 @@ fn mtcollins1_census_socket_count() -> Int {
 
 fn console_findings(c: ConsoleReading) -> List<String> {
   match c {
-    ConsoleRetained { path: _, bytes: _, lines: _, firmware: _, dram: d } => ampere_dram_findings(observation: d, expected_sockets: mtcollins1_census_sockets())
+    ConsoleRetained { path: _, size: _, lines: _, firmware: _, dram: d } => ampere_dram_findings(observation: d, expected_sockets: mtcollins1_census_sockets())
     _ => []
   }
 }
@@ -383,24 +443,23 @@ fn members_cause(m: MembersReading<T>) -> BmcReadCause? {
 
 // EVERY BMC READ WAS ATTEMPTED AND EVERY ONE FAILED. A section that was never attempted does not
 // count toward this: an attempt that refused before reading the credential says so separately.
-fn bmc_all_reads_failed(bundle: MtCollins1BootDiagnosticBundle) -> BmcReadCause? {
+fn bmc_all_reads_failed(bundle: MtCollins1BootDiagnosticBundle) -> List<BmcReadCause> {
   let causes = [
     sel_snapshot_cause(s: bundle.sel_before),
     sel_snapshot_cause(s: bundle.sel_after),
     members_cause(m: bundle.inventory.memory),
     members_cause(m: bundle.inventory.processors),
   ]
+  let empty: List<BmcReadCause> = []
   if all(causes, c => match c { Absent => false Present { value: _ } => true }) {
-    match causes.first() { Absent => none Present { value: c } => c }
-  } else { none }
+    fold(causes, init: empty, f: (acc, c) => match c { Absent => acc Present { value: v } => concat(acc, [v]) })
+  } else { empty }
 }
 
 fn mtcollins1_boot_bundle_findings(bundle: MtCollins1BootDiagnosticBundle) -> List<String> {
   let nothing: List<String> = []
-  let unreachable = match bmc_all_reads_failed(bundle: bundle) {
-    Absent => nothing
-    Present { value: c } => [concat(if bmc_read_cause_is_no_answer(cause: c) { "every BMC read failed and the BMC did not answer; first: " } else { "every BMC read failed; first: " }, bmc_read_cause_text(cause: c))]
-  }
+  let failed = bmc_all_reads_failed(bundle: bundle)
+  let unreachable = if count(failed) == 0 { nothing } else { [bmc_all_failed_text(causes: failed)] }
   let shred = if bundle.inventory.credential_removed { nothing } else { ["the per-attempt Redfish netrc could not be removed; credential material may remain on the runner"] }
   concat(unreachable, concat(processor_findings(processors: bundle.inventory.processors),
     concat(memory_findings(memory: bundle.inventory.memory),
@@ -502,10 +561,10 @@ fn firmware_report_text(report: FirmwareConsoleReport) -> String {
 
 fn console_text(c: ConsoleReading) -> String {
   match c {
-    ConsoleRetained { path: p, bytes: b, lines: n, firmware: f, dram: d } =>
-      concat("capture ", p as String, " retained in this artifact: ", to_string(b), " bytes, ", to_string(n), " line(s), within the ", to_string(mtcollins1_boot_console_bound_bytes), "-byte bound; ", firmware_report_text(report: f), "\n", ampere_dram_console_text(observation: d, expected_sockets: mtcollins1_census_sockets()))
-    ConsoleExceedsBound { path: p, bytes: b, bound: bound } =>
-      concat("capture ", p as String, " is ", to_string(b), " bytes, OVER the ", to_string(bound), "-byte bound; the collector does not truncate, so the artifact carries it whole")
+    ConsoleRetained { path: p, size: b, lines: n, firmware: f, dram: d } =>
+      concat("capture ", p as String, " retained in this artifact: ", to_string(byte_size_count(b: b)), " bytes (stat), ", to_string(n), " line(s), within the ", to_string(byte_size_count(b: mtcollins1_boot_console_bound)), "-byte bound; ", firmware_report_text(report: f), "\n", ampere_dram_console_text(observation: d, expected_sockets: mtcollins1_census_sockets()))
+    ConsoleExceedsBound { path: p, size: b, bound: bound } =>
+      concat("capture ", p as String, " is ", to_string(byte_size_count(b: b)), " bytes (stat), OVER the ", to_string(byte_size_count(b: bound)), "-byte bound; the collector does not truncate, so the artifact carries it whole")
     ConsoleNotRetained { path: p } =>
       concat("capture ", p as String, " is NOT under ", mtcollins1_boot_retained_artifact_prefix, " and is not uploaded with this artifact")
     ConsoleUnread { path: p, detail: d } => concat("capture ", p as String, " UNREAD: ", d)
@@ -517,7 +576,7 @@ fn mtcollins1_boot_bundle_text(bundle: MtCollins1BootDiagnosticBundle) -> String
   let findings = mtcollins1_boot_bundle_findings(bundle: bundle)
   join([
     "mtcollins1 boot diagnostics",
-    concat("attempt=", bundle.attempt),
+    concat("attempt=", attempt_identity_text(a: bundle.attempt)),
     concat("outcome=", bundle.outcome),
     "== decisive findings ==",
     if count(findings) == 0 { "none" } else { join(findings, "\n") },
@@ -537,21 +596,64 @@ fn mtcollins1_boot_bundle_text(bundle: MtCollins1BootDiagnosticBundle) -> String
   ], "\n")
 }
 
+// ── THE DIAGNOSTICS DEADLINE ─────────────────────────────────────────────────────────────────
+//
+// THE DIAGNOSTIC TRANSACTION HAS A TYPED OUTER BOUND, and the step's time allowance is DERIVED
+// from it rather than guessed. Every read is individually bounded by its transport: each SEL
+// snapshot runs under coreutils `timeout` (deadline plus --kill-after), and each Redfish GET under
+// curl --max-time. The Redfish reads are counted against a READ BUDGET, and a read the budget
+// cannot pay for is not made: its section records BmcDeadlineReached naming what was not reached,
+// and the attempt still shreds its netrc and writes the bundle. So the worst case is a sum of
+// bounds -- mtcollins1_boot_diagnostics_allowance below -- and an unbounded collection cannot push
+// the step past its timeout before cleanup and publish run.
+//
+// The budget is sized for this board's inventory as the census observed it (1 Systems page, the
+// system, 1 Processors page and 2 processors, 1 Memory page and 32 slots: 38 reads) with room for
+// extra pages; a firmware that pages more finely spends the rest and says so.
+data mtcollins1_boot_redfish_read_deadline: Second = second(count: 15)
+
+data mtcollins1_boot_ipmi_read_deadline: Second = second(count: 20)
+
+data mtcollins1_boot_ipmi_kill_after: Second = second(count: 5)
+
+data mtcollins1_boot_sel_snapshot_count: Int = 2
+
+data mtcollins1_boot_redfish_read_budget: Int = 48
+
+data mtcollins1_boot_collection_page_bound: Int = 8
+
+data mtcollins1_boot_collection_member_bound: Int = 40
+
+// The netrc shred and the bundle and receipt writes: local file operations.
+data mtcollins1_boot_publish_allowance: Second = second(count: 60)
+
+fn mtcollins1_boot_diagnostics_allowance() -> Second {
+  let sel = mtcollins1_boot_sel_snapshot_count * ((second_count(s: mtcollins1_boot_ipmi_read_deadline) as Int) + (second_count(s: mtcollins1_boot_ipmi_kill_after) as Int))
+  let redfish = mtcollins1_boot_redfish_read_budget * (second_count(s: mtcollins1_boot_redfish_read_deadline) as Int)
+  second(count: sel + redfish + (second_count(s: mtcollins1_boot_publish_allowance) as Int))
+}
+
 // ── READS (effects) ──────────────────────────────────────────────────────────────────────────
 
 fn mtcollins1_ipmi_endpoint() -> NonEmptyStr {
   concat("ipmi lanplus ", mtcollins1_endpoint.host as String) as NonEmptyStr
 }
 
-fn mtcollins1_redfish_endpoint(path: String) -> NonEmptyStr {
-  concat("https://", mtcollins1_endpoint.host as String, "/redfish/v1/", path) as NonEmptyStr
+fn mtcollins1_redfish_url(path: String) -> NonEmptyStr {
+  concat("https://", mtcollins1_endpoint.host as String, path) as NonEmptyStr
 }
 
 fn mtcollins1_boot_sel_snapshot(username: NonEmptyStr, password_file: NonEmptyStr) -> SelSnapshotReading
   uses net: std.resources.Network
 {
   let at = clock_now_probed_at_or_unknown()
-  let r = diagnostic.ipmi.Tool.SelListAuthenticated(bmc_host: mtcollins1_endpoint.host, username: username, password_file: password_file)
+  let r = diagnostic.ipmi.Tool.SelListAuthenticated(
+    bmc_host: mtcollins1_endpoint.host,
+    username: username,
+    password_file: password_file,
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
+  )
   if r.success {
     SelSnapshotRead { raw: r.stdout, at: at }
   } else {
@@ -559,106 +661,242 @@ fn mtcollins1_boot_sel_snapshot(username: NonEmptyStr, password_file: NonEmptySt
   }
 }
 
-fn redfish_malformed(path: String, at: NonEmptyStr, cause: NonEmptyStr) -> BmcReadCause {
-  BmcResponseMalformed { endpoint: mtcollins1_redfish_endpoint(path: path), at: at, detail: cause as String }
+// ── COLLECTION COMPLETENESS (pure) ───────────────────────────────────────────────────────────
+//
+// A COLLECTION IS COMPLETE ONLY WHEN ITS PAGES ACCOUNT FOR ITS COUNT. The pages are the ones the
+// reader followed through Members@odata.nextLink; the first page's Members@odata.count is the
+// total DSP0266 says every page reports. No count, a last page that still names a next page, a
+// member total different from the count, a count over the member bound, or a member link that is
+// not a same-origin path: each refuses as incomplete, and no member is read. A short inventory is
+// therefore never inferred from a first page alone.
+type CollectionAssembly
+  = CollectionComplete { links: List<NonEmptyStr> }
+  | CollectionRefused { detail: NonEmptyStr }
+
+fn redfish_collection_assembly(pages: List<RedfishCollectionPage>, member_bound: Int) -> CollectionAssembly {
+  match pages.first() {
+    Absent => CollectionRefused { detail: "no collection page was read" }
+    Present { value: first } =>
+      match first.member_count {
+        Absent => CollectionRefused { detail: "the first page carries no Members@odata.count, so completeness cannot be established" }
+        Present { value: total } => {
+          let links = fold(pages, init: [], f: (acc, p) => concat(acc, p.member_links))
+          let last_has_next = match reverse(pages).first() { Absent => false Present { value: p } => p.next_link != none }
+          let refused_links = filter(links, l => match redfish_same_origin_link(link: l) { RedfishLinkRefused { cause: _ } => true _ => false })
+          if last_has_next {
+            CollectionRefused { detail: concat("the last page read still carries Members@odata.nextLink; ", to_string(count(links)), " of ", to_string(total), " member(s) read") as NonEmptyStr }
+          } else if total > member_bound {
+            CollectionRefused { detail: concat("Members@odata.count ", to_string(total), " exceeds the member bound ", to_string(member_bound)) as NonEmptyStr }
+          } else if count(links) != total {
+            CollectionRefused { detail: concat("Members@odata.count ", to_string(total), " but ", to_string(count(links)), " member link(s) across ", to_string(count(pages)), " page(s)") as NonEmptyStr }
+          } else if count(refused_links) > 0 {
+            CollectionRefused { detail: concat("member link is not a same-origin path: ", match refused_links.first() { Absent => "" Present { value: l } => l }) as NonEmptyStr }
+          } else {
+            CollectionComplete { links: map(links, l => l as NonEmptyStr) }
+          }
+        }
+      }
+  }
 }
 
-fn read_memory_members(netrc: NonEmptyStr, system_id: NonEmptyStr) -> MembersReading<RedfishMemoryMember>
+// ── REDFISH READS UNDER THE BUDGET ───────────────────────────────────────────────────────────
+
+// THE BUDGET DECISION IS PURE: a read the budget cannot pay for is refused before any request is
+// made, and the refusal names what the transaction did not reach.
+fn redfish_budget_refusal(url: NonEmptyStr, at: NonEmptyStr, left: Int, not_reached: String) -> BmcReadCause? {
+  if left <= 0 { Present { value: BmcDeadlineReached { endpoint: url, at: at, not_reached: not_reached } } } else { none }
+}
+
+type RedfishGet
+  = RedfishGot { body: String, left: Int }
+  | RedfishGetFailed { cause: BmcReadCause, left: Int }
+
+fn redfish_get(netrc: NonEmptyStr, path: NonEmptyStr, left: Int, not_reached: String) -> RedfishGet
   uses net: std.resources.Network
 {
   let at = clock_now_probed_at_or_unknown()
-  let path = concat("Systems/", system_id as String, "/Memory")
-  let coll = redfish.Http.GetMemoryCollection(bmc_host: mtcollins1_endpoint.host, netrc_file: netrc, system_id: system_id)
-  if !coll.success {
-    return MembersUnread { cause: bmc_curl_read_cause(endpoint: mtcollins1_redfish_endpoint(path: path), at: at, exit_code: coll.exit_code, stderr: coll.transport_stderr) }
+  match redfish_budget_refusal(url: mtcollins1_redfish_url(path: path as String), at: at, left: left, not_reached: not_reached) {
+    Present { value: c } => return RedfishGetFailed { cause: c, left: left }
+    Absent => {}
   }
-  match redfish_collection_member_ids(body: coll.body) {
-    ObservationRefused { cause: c } => MembersUnread { cause: redfish_malformed(path: path, at: at, cause: c) }
-    ObservationEstablished { observed: ids } => {
-      let empty: List<RedfishMemoryMember> = []
-      let initial: MembersReading<RedfishMemoryMember> = MembersRead { members: empty }
-      fold(ids, init: initial, f: (acc, id) => match acc {
-        MembersRead { members: ms } => {
-          let member_path = concat(path, "/", id as String)
-          let got = redfish.Http.GetMemory(bmc_host: mtcollins1_endpoint.host, netrc_file: netrc, system_id: system_id, memory_id: id)
-          if !got.success {
-            MembersUnread { cause: bmc_curl_read_cause(endpoint: mtcollins1_redfish_endpoint(path: member_path), at: clock_now_probed_at_or_unknown(), exit_code: got.exit_code, stderr: got.transport_stderr) }
-          } else {
-            match redfish_memory_member_of(body: got.body) {
-              ObservationRefused { cause: c } => MembersUnread { cause: redfish_malformed(path: member_path, at: at, cause: c) }
-              ObservationEstablished { observed: m } => MembersRead { members: concat(ms, [m]) }
-            }
+  let r = redfish.Http.GetResourceByPath(
+    bmc_host: mtcollins1_endpoint.host,
+    netrc_file: netrc,
+    odata_path: path,
+    max_seconds: to_string(second_count(s: mtcollins1_boot_redfish_read_deadline)) as NonEmptyStr,
+  )
+  if r.success {
+    RedfishGot { body: r.body, left: left - 1 }
+  } else {
+    RedfishGetFailed { cause: bmc_curl_read_cause(endpoint: mtcollins1_redfish_url(path: path as String), at: at, exit_code: r.exit_code, stderr: r.transport_stderr), left: left - 1 }
+  }
+}
+
+type CollectionFetch
+  = CollectionFetched { links: List<NonEmptyStr>, left: Int }
+  | CollectionFetchFailed { cause: BmcReadCause, left: Int }
+
+fn fetch_collection_pages(
+  netrc: NonEmptyStr,
+  collection: NonEmptyStr,
+  page: NonEmptyStr,
+  pages_left: Int,
+  left: Int,
+  read: List<RedfishCollectionPage>,
+) -> CollectionFetch
+  uses net: std.resources.Network
+{
+  let at = clock_now_probed_at_or_unknown()
+  if pages_left <= 0 {
+    return CollectionFetchFailed { cause: BmcCollectionIncomplete { endpoint: mtcollins1_redfish_url(path: collection as String), at: at, detail: concat("page bound ", to_string(mtcollins1_boot_collection_page_bound), " reached with Members@odata.nextLink still pending") }, left: left }
+  }
+  match redfish_get(netrc: netrc, path: page, left: left, not_reached: concat("the rest of ", collection as String, " and every member of it")) {
+    RedfishGetFailed { cause: c, left: l } => CollectionFetchFailed { cause: c, left: l }
+    RedfishGot { body: body, left: l } =>
+      match redfish_collection_page_of(body: body) {
+        ObservationRefused { cause: c } => CollectionFetchFailed { cause: BmcResponseMalformed { endpoint: mtcollins1_redfish_url(path: page as String), at: at, detail: c as String }, left: l }
+        ObservationEstablished { observed: p } => {
+          let pages = concat(read, [p])
+          match p.next_link {
+            Present { value: next } =>
+              match redfish_same_origin_link(link: next) {
+                RedfishLinkRefused { cause: why } => CollectionFetchFailed { cause: BmcCollectionIncomplete { endpoint: mtcollins1_redfish_url(path: page as String), at: at, detail: concat("Members@odata.nextLink not followed: ", why as String) }, left: l }
+                RedfishLinkSameOrigin { path: next_path } => fetch_collection_pages(netrc: netrc, collection: collection, page: next_path, pages_left: pages_left - 1, left: l, read: pages)
+              }
+            Absent =>
+              match redfish_collection_assembly(pages: pages, member_bound: mtcollins1_boot_collection_member_bound) {
+                CollectionRefused { detail: d } => CollectionFetchFailed { cause: BmcCollectionIncomplete { endpoint: mtcollins1_redfish_url(path: collection as String), at: at, detail: d as String }, left: l }
+                CollectionComplete { links: links } => CollectionFetched { links: links, left: l }
+              }
           }
         }
-        other => other
-      })
+      }
+  }
+}
+
+fn fetch_collection(netrc: NonEmptyStr, collection: NonEmptyStr, left: Int) -> CollectionFetch
+  uses net: std.resources.Network
+{
+  fetch_collection_pages(netrc: netrc, collection: collection, page: collection, pages_left: mtcollins1_boot_collection_page_bound, left: left, read: [])
+}
+
+type MemoryFold { reading: MembersReading<RedfishMemoryMember>, left: Int }
+
+type ProcessorFold { reading: MembersReading<RedfishProcessorMember>, left: Int }
+
+fn member_not_reached(total: Int, read: Int) -> String {
+  concat(to_string(total - read), " of ", to_string(total), " member read(s)")
+}
+
+fn read_memory_members(netrc: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> MemoryFold
+  uses net: std.resources.Network
+{
+  let empty: List<RedfishMemoryMember> = []
+  fold(links, init: MemoryFold { reading: MembersRead { members: empty }, left: left }, f: (acc, link) => match acc.reading {
+    MembersRead { members: ms } =>
+      match redfish_get(netrc: netrc, path: link, left: acc.left, not_reached: member_not_reached(total: count(links), read: count(ms))) {
+        RedfishGetFailed { cause: c, left: l } => MemoryFold { reading: MembersUnread { cause: c }, left: l }
+        RedfishGot { body: body, left: l } =>
+          match redfish_memory_member_of(body: body) {
+            ObservationRefused { cause: c } => MemoryFold { reading: MembersUnread { cause: BmcResponseMalformed { endpoint: mtcollins1_redfish_url(path: link as String), at: clock_now_probed_at_or_unknown(), detail: c as String } }, left: l }
+            ObservationEstablished { observed: m } => MemoryFold { reading: MembersRead { members: concat(ms, [m]) }, left: l }
+          }
+      }
+    _ => acc
+  })
+}
+
+fn read_processor_members(netrc: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> ProcessorFold
+  uses net: std.resources.Network
+{
+  let empty: List<RedfishProcessorMember> = []
+  fold(links, init: ProcessorFold { reading: MembersRead { members: empty }, left: left }, f: (acc, link) => match acc.reading {
+    MembersRead { members: ps } =>
+      match redfish_get(netrc: netrc, path: link, left: acc.left, not_reached: member_not_reached(total: count(links), read: count(ps))) {
+        RedfishGetFailed { cause: c, left: l } => ProcessorFold { reading: MembersUnread { cause: c }, left: l }
+        RedfishGot { body: body, left: l } =>
+          match redfish_processor_member_of(body: body) {
+            ObservationRefused { cause: c } => ProcessorFold { reading: MembersUnread { cause: BmcResponseMalformed { endpoint: mtcollins1_redfish_url(path: link as String), at: clock_now_probed_at_or_unknown(), detail: c as String } }, left: l }
+            ObservationEstablished { observed: p } => ProcessorFold { reading: MembersRead { members: concat(ps, [p]) }, left: l }
+          }
+      }
+    _ => acc
+  })
+}
+
+fn link_absent_cause(system: NonEmptyStr, property: String) -> BmcReadCause {
+  BmcResponseMalformed { endpoint: mtcollins1_redfish_url(path: system as String), at: clock_now_probed_at_or_unknown(), detail: concat("the ComputerSystem publishes no ", property, " link, or a link that is not a same-origin path") }
+}
+
+fn same_origin_or_none(link: String?) -> NonEmptyStr? {
+  match link {
+    Absent => none
+    Present { value: l } => match redfish_same_origin_link(link: l) {
+      RedfishLinkSameOrigin { path: p } => Present { value: p }
+      RedfishLinkRefused { cause: _ } => none
     }
   }
 }
 
-fn read_processor_members(netrc: NonEmptyStr, system_id: NonEmptyStr) -> MembersReading<RedfishProcessorMember>
+fn read_processors(netrc: NonEmptyStr, system: NonEmptyStr, link: String?, left: Int) -> ProcessorFold
   uses net: std.resources.Network
 {
-  let at = clock_now_probed_at_or_unknown()
-  let path = concat("Systems/", system_id as String, "/Processors")
-  let coll = redfish.Http.GetProcessorCollection(bmc_host: mtcollins1_endpoint.host, netrc_file: netrc, system_id: system_id)
-  if !coll.success {
-    return MembersUnread { cause: bmc_curl_read_cause(endpoint: mtcollins1_redfish_endpoint(path: path), at: at, exit_code: coll.exit_code, stderr: coll.transport_stderr) }
-  }
-  match redfish_collection_member_ids(body: coll.body) {
-    ObservationRefused { cause: c } => MembersUnread { cause: redfish_malformed(path: path, at: at, cause: c) }
-    ObservationEstablished { observed: ids } => {
-      let empty: List<RedfishProcessorMember> = []
-      let initial: MembersReading<RedfishProcessorMember> = MembersRead { members: empty }
-      fold(ids, init: initial, f: (acc, id) => match acc {
-        MembersRead { members: ps } => {
-          let member_path = concat(path, "/", id as String)
-          let got = redfish.Http.GetProcessor(bmc_host: mtcollins1_endpoint.host, netrc_file: netrc, system_id: system_id, processor_id: id)
-          if !got.success {
-            MembersUnread { cause: bmc_curl_read_cause(endpoint: mtcollins1_redfish_endpoint(path: member_path), at: clock_now_probed_at_or_unknown(), exit_code: got.exit_code, stderr: got.transport_stderr) }
-          } else {
-            match redfish_processor_member_of(body: got.body) {
-              ObservationRefused { cause: c } => MembersUnread { cause: redfish_malformed(path: member_path, at: at, cause: c) }
-              ObservationEstablished { observed: p } => MembersRead { members: concat(ps, [p]) }
-            }
-          }
-        }
-        other => other
-      })
-    }
+  match same_origin_or_none(link: link) {
+    Absent => ProcessorFold { reading: MembersUnread { cause: link_absent_cause(system: system, property: "Processors") }, left: left }
+    Present { value: path } =>
+      match fetch_collection(netrc: netrc, collection: path, left: left) {
+        CollectionFetchFailed { cause: c, left: l } => ProcessorFold { reading: MembersUnread { cause: c }, left: l }
+        CollectionFetched { links: links, left: l } => read_processor_members(netrc: netrc, links: links, left: l)
+      }
   }
 }
 
-// THE SYSTEM ID IS READ, NOT ASSUMED. A Systems collection with exactly one member names the
-// system this inventory belongs to. Zero or several members is a typed reading, since picking one
-// would be a guess about which system the attempt booted.
+fn read_memory(netrc: NonEmptyStr, system: NonEmptyStr, link: String?, left: Int) -> MemoryFold
+  uses net: std.resources.Network
+{
+  match same_origin_or_none(link: link) {
+    Absent => MemoryFold { reading: MembersUnread { cause: link_absent_cause(system: system, property: "Memory") }, left: left }
+    Present { value: path } =>
+      match fetch_collection(netrc: netrc, collection: path, left: left) {
+        CollectionFetchFailed { cause: c, left: l } => MemoryFold { reading: MembersUnread { cause: c }, left: l }
+        CollectionFetched { links: links, left: l } => read_memory_members(netrc: netrc, links: links, left: l)
+      }
+  }
+}
+
+fn inventory_unread(cause: BmcReadCause) -> InventoryReading {
+  InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: true }
+}
+
+data mtcollins1_redfish_systems_path: NonEmptyStr = "/redfish/v1/Systems"
+
+// THE SYSTEM IS READ, NOT ASSUMED: the Systems collection must name exactly one member, whose own
+// Memory and Processors links name the collections read next. Zero or several systems is a typed
+// reading, since picking one would be a guess about which system the attempt booted.
 fn read_inventory_with_netrc(netrc: NonEmptyStr) -> InventoryReading
   uses net: std.resources.Network
 {
   let at = clock_now_probed_at_or_unknown()
-  let systems = redfish.Http.GetSystemsCollection(bmc_host: mtcollins1_endpoint.host, netrc_file: netrc)
-  if !systems.success {
-    let cause = bmc_curl_read_cause(endpoint: mtcollins1_redfish_endpoint(path: "Systems"), at: at, exit_code: systems.exit_code, stderr: systems.transport_stderr)
-    return InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: true }
-  }
-  match redfish_collection_member_ids(body: systems.body) {
-    ObservationRefused { cause: c } => {
-      let cause = redfish_malformed(path: "Systems", at: at, cause: c)
-      InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: true }
-    }
-    ObservationEstablished { observed: ids } =>
-      if count(ids) != 1 {
-        let cause = redfish_malformed(path: "Systems", at: at, cause: concat("Systems collection has ", to_string(count(ids)), " members; exactly one names the booted system") as NonEmptyStr)
-        InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: true }
+  match fetch_collection(netrc: netrc, collection: mtcollins1_redfish_systems_path, left: mtcollins1_boot_redfish_read_budget) {
+    CollectionFetchFailed { cause: c, left: _ } => inventory_unread(cause: c)
+    CollectionFetched { links: systems, left: left } =>
+      if count(systems) != 1 {
+        inventory_unread(cause: BmcResponseMalformed { endpoint: mtcollins1_redfish_url(path: mtcollins1_redfish_systems_path as String), at: at, detail: concat("Systems collection has ", to_string(count(systems)), " members; exactly one names the booted system") })
       } else {
-        match ids.first() {
+        match systems.first() {
           Absent => inventory_not_taken(reason: "Systems collection member vanished between count and read")
-          Present { value: id } =>
-            InventoryReading {
-              system_id: id as String,
-              processors: read_processor_members(netrc: netrc, system_id: id),
-              memory: read_memory_members(netrc: netrc, system_id: id),
-              credential_removed: true,
+          Present { value: system } =>
+            match redfish_get(netrc: netrc, path: system, left: left, not_reached: "the system resource and every inventory read after it") {
+              RedfishGetFailed { cause: c, left: _ } => inventory_unread(cause: c)
+              RedfishGot { body: body, left: l } =>
+                match redfish_system_inventory_links_of(body: body) {
+                  ObservationRefused { cause: c } => inventory_unread(cause: BmcResponseMalformed { endpoint: mtcollins1_redfish_url(path: system as String), at: at, detail: c as String })
+                  ObservationEstablished { observed: links } => {
+                    let processors = read_processors(netrc: netrc, system: system, link: links.processors, left: l)
+                    let memory = read_memory(netrc: netrc, system: system, link: links.memory, left: processors.left)
+                    InventoryReading { system_id: system as String, memory: memory.reading, processors: processors.reading, credential_removed: true }
+                  }
+                }
             }
         }
       }
@@ -669,12 +907,9 @@ fn mtcollins1_boot_inventory(username: NonEmptyStr, password: String) -> Invento
   uses net: std.resources.Network
 {
   let at = clock_now_probed_at_or_unknown()
-  let endpoint = mtcollins1_redfish_endpoint(path: "Systems")
+  let endpoint = mtcollins1_redfish_url(path: mtcollins1_redfish_systems_path as String)
   match place_netrc_binding_privately(machine: mtcollins1_endpoint.host, login: username, password: trim(s: password) as Secret) {
-    NetrcBindingRefused { cause: c } => {
-      let cause = BmcCredentialUnavailable { endpoint: endpoint, at: at, detail: c as String }
-      InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: true }
-    }
+    NetrcBindingRefused { cause: c } => inventory_unread(cause: BmcCredentialUnavailable { endpoint: endpoint, at: at, detail: c as String })
     NetrcBindingRefusedResidueRemains { cause: c } => {
       let cause = BmcCredentialUnavailable { endpoint: endpoint, at: at, detail: c as String }
       InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: false }
@@ -687,27 +922,50 @@ fn mtcollins1_boot_inventory(username: NonEmptyStr, password: String) -> Invento
   }
 }
 
-fn mtcollins1_boot_console_reading(capture: String, path: String, read_ok: Bool, read_error: String) -> ConsoleReading {
+fn console_path_retained(path: String) -> Bool {
+  starts_with(s: path, prefix: mtcollins1_boot_retained_artifact_prefix) || string_contains(s: path, pattern: concat("/", mtcollins1_boot_retained_artifact_prefix))
+}
+
+fn console_size_of_stat(size_text: String) -> ByteSize? {
+  match parse_int(s: trim(size_text)) {
+    Absent => none
+    Present { value: n } => if n < 0 { none } else { Present { value: byte_size(count: n as Nat) } }
+  }
+}
+
+// THE PURE DECISION over the capture's stat size and, when within the bound, its content.
+fn mtcollins1_boot_console_reading(path: String, size: ByteSize, capture: String, read_ok: Bool, read_error: String) -> ConsoleReading {
   if path == "" {
     ConsoleNotConfigured
-  } else if !(starts_with(s: path, prefix: mtcollins1_boot_retained_artifact_prefix) || string_contains(s: path, pattern: concat("/", mtcollins1_boot_retained_artifact_prefix))) {
+  } else if !console_path_retained(path: path) {
     ConsoleNotRetained { path: path as NonEmptyStr }
+  } else if (byte_size_count(b: size) as Int) > (byte_size_count(b: mtcollins1_boot_console_bound) as Int) {
+    ConsoleExceedsBound { path: path as NonEmptyStr, size: size, bound: mtcollins1_boot_console_bound }
   } else if !read_ok {
     ConsoleUnread { path: path as NonEmptyStr, detail: read_error }
-  } else if capture.length() > mtcollins1_boot_console_bound_bytes {
-    ConsoleExceedsBound { path: path as NonEmptyStr, bytes: capture.length(), bound: mtcollins1_boot_console_bound_bytes }
   } else {
     let lines = host_capture_lines(capture: HostCaptureLiveStream { text: capture })
-    ConsoleRetained { path: path as NonEmptyStr, bytes: capture.length(), lines: count(lines), firmware: firmware_console_report(lines: lines), dram: ampere_dram_console_observation(lines: lines) }
+    ConsoleRetained { path: path as NonEmptyStr, size: size, lines: count(lines), firmware: firmware_console_report(lines: lines), dram: ampere_dram_console_observation(lines: lines) }
   }
 }
 
 fn mtcollins1_boot_console(path: String) -> ConsoleReading {
   if path == "" {
     ConsoleNotConfigured
+  } else if !console_path_retained(path: path) {
+    ConsoleNotRetained { path: path as NonEmptyStr }
   } else {
-    let r = Filesystem.Read(path: path)
-    mtcollins1_boot_console_reading(capture: r.content, path: path, read_ok: r.success, read_error: r.error)
+    let st = coreutils.Stat.PathSize(path: path as NonEmptyStr)
+    match if st.success { console_size_of_stat(size_text: st.size_text) } else { none } {
+      Absent => ConsoleUnread { path: path as NonEmptyStr, detail: concat("stat -c %s could not size the capture: ", trim(st.size_text)) }
+      Present { value: size } =>
+        if (byte_size_count(b: size) as Int) > (byte_size_count(b: mtcollins1_boot_console_bound) as Int) {
+          ConsoleExceedsBound { path: path as NonEmptyStr, size: size, bound: mtcollins1_boot_console_bound }
+        } else {
+          let r = Filesystem.Read(path: path)
+          mtcollins1_boot_console_reading(path: path, size: size, capture: r.content, read_ok: r.success, read_error: r.error)
+        }
+    }
   }
 }
 

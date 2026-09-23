@@ -227,47 +227,111 @@ fn redfish_document(body: String) -> ObservationAttempt<JsonValue, NonEmptyStr> 
   }
 }
 
-// THE LAST PATH SEGMENT OF A MEMBER'S `@odata.id`, which is the resource's `Id` under the Redfish
-// URI rules (DSP0266: a member URI is its collection URI followed by the member's Id).
-fn redfish_odata_id_tail(odata_id: String) -> String {
-  let segments = filter(split(s: odata_id, delimiter: "/"), seg => seg != "")
-  match reverse(segments).first() {
-    Absent => ""
-    Present { value: last } => last
+// A RESOURCE LINK, KEPT EXACTLY AS THE SERVICE PUBLISHED IT. DSP0266 makes `@odata.id` the
+// resource's URI and a collection's `Members@odata.nextLink` the URI of its next page; neither is
+// reconstructed from an Id or a last segment. It is admitted only when it is a same-origin
+// service path -- "/redfish/v1/..." with no scheme, no authority, no dot segment and no fragment --
+// because the request that follows it presents a credential, and a link that could name another
+// host would carry that credential there.
+type RedfishLinkReading
+  = RedfishLinkSameOrigin { path: NonEmptyStr }
+  | RedfishLinkRefused { cause: NonEmptyStr }
+
+fn redfish_same_origin_link(link: String) -> RedfishLinkReading {
+  if !starts_with(s: link, prefix: "/redfish/v1/") {
+    RedfishLinkRefused { cause: concat("link is not a same-origin /redfish/v1/ path: ", link) as NonEmptyStr }
+  } else if string_contains(s: link, pattern: "//") || string_contains(s: link, pattern: "/../") || ends_with(s: link, suffix: "/..")
+    || string_contains(s: link, pattern: "#") || string_contains(s: link, pattern: " ") || string_contains(s: link, pattern: "\\") {
+    RedfishLinkRefused { cause: concat("link carries a segment a same-origin path may not: ", link) as NonEmptyStr }
+  } else {
+    RedfishLinkSameOrigin { path: link as NonEmptyStr }
   }
 }
 
-// A resource collection's `Members` array, read as the Ids of its members. A collection that
-// carries no `Members` array is refused: an absent array is not an empty collection.
-fn redfish_collection_member_ids(body: String) -> ObservationAttempt<List<NonEmptyStr>, NonEmptyStr> {
+// ONE PAGE OF A RESOURCE COLLECTION (DSP0266, "Resource collections"): its `Members` links,
+// `Members@odata.count` (the total across every page), and `Members@odata.nextLink` when more
+// pages follow. A page without a `Members` array is refused: an absent array is not an empty
+// collection. The links are carried as published; whether they are same-origin is decided by the
+// consumer that will follow them.
+type RedfishCollectionPage {
+  member_links: List<String>
+  member_count: Int?
+  next_link: String?
+}
+
+fn redfish_collection_page_of(body: String) -> ObservationAttempt<RedfishCollectionPage, NonEmptyStr> {
   match redfish_document(body: body) {
     ObservationRefused { cause: c } => ObservationRefused { cause: c }
     ObservationEstablished { observed: doc } =>
-      match json_field(obj: doc, key: "Members") {
-        FieldAbsent => ObservationRefused { cause: "collection carries no Members array" }
-        FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
-        FieldRead { value: members } =>
-          match members {
-            JsonArray { elements: elements } => {
-              let empty: List<NonEmptyStr> = []
-              let initial: ObservationAttempt<List<NonEmptyStr>, NonEmptyStr> = ObservationEstablished { observed: empty }
-              fold(elements, init: initial, f: (acc, member) => match acc {
-                ObservationRefused { cause: c } => ObservationRefused { cause: c }
-                ObservationEstablished { observed: ids } =>
-                  match redfish_optional_string(obj: member, key: "@odata.id") {
-                    RedfishStringBad { cause: c } => ObservationRefused { cause: c }
-                    RedfishStringOk { value: link } => {
-                      let tail = redfish_odata_id_tail(odata_id: link)
-                      if tail == "" {
-                        ObservationRefused { cause: "a collection member carries no @odata.id" }
-                      } else {
-                        ObservationEstablished { observed: concat(ids, [tail as NonEmptyStr]) }
+      match redfish_optional_int(obj: doc, key: "Members@odata.count") {
+        ObservationRefused { cause: c } => ObservationRefused { cause: c }
+        ObservationEstablished { observed: total } =>
+          match redfish_optional_string(obj: doc, key: "Members@odata.nextLink") {
+            RedfishStringBad { cause: c } => ObservationRefused { cause: c }
+            RedfishStringOk { value: next } =>
+              match json_field(obj: doc, key: "Members") {
+                FieldAbsent => ObservationRefused { cause: "collection page carries no Members array" }
+                FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+                FieldRead { value: members } =>
+                  match members {
+                    JsonArray { elements: elements } => {
+                      let empty: List<String> = []
+                      let initial: ObservationAttempt<List<String>, NonEmptyStr> = ObservationEstablished { observed: empty }
+                      let links = fold(elements, init: initial, f: (acc, member) => match acc {
+                        ObservationRefused { cause: c } => ObservationRefused { cause: c }
+                        ObservationEstablished { observed: ls } =>
+                          match redfish_optional_string(obj: member, key: "@odata.id") {
+                            RedfishStringBad { cause: c } => ObservationRefused { cause: c }
+                            RedfishStringOk { value: link } =>
+                              if link == "" { ObservationRefused { cause: "a collection member carries no @odata.id" } }
+                              else { ObservationEstablished { observed: concat(ls, [link]) } }
+                          }
+                      })
+                      match links {
+                        ObservationRefused { cause: c } => ObservationRefused { cause: c }
+                        ObservationEstablished { observed: ls } =>
+                          ObservationEstablished { observed: RedfishCollectionPage { member_links: ls, member_count: total, next_link: optional_text(s: next) } }
                       }
                     }
+                    _ => ObservationRefused { cause: "Members is not an array" }
                   }
-              })
-            }
-            _ => ObservationRefused { cause: "Members is not an array" }
+              }
+          }
+      }
+  }
+}
+
+// A ComputerSystem's links to its Memory and Processors collections (ComputerSystem schema
+// properties `Memory` and `Processors`, each a link object carrying `@odata.id`). A system that
+// publishes neither link has published no per-slot inventory.
+type RedfishSystemInventoryLinks {
+  memory: String?
+  processors: String?
+}
+
+fn redfish_link_property(doc: JsonValue, key: String) -> ObservationAttempt<String?, NonEmptyStr> {
+  match json_field(obj: doc, key: key) {
+    FieldAbsent => ObservationEstablished { observed: none }
+    FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+    FieldRead { value: link } =>
+      match redfish_optional_string(obj: link, key: "@odata.id") {
+        RedfishStringBad { cause: c } => ObservationRefused { cause: c }
+        RedfishStringOk { value: v } => ObservationEstablished { observed: optional_text(s: v) }
+      }
+  }
+}
+
+fn redfish_system_inventory_links_of(body: String) -> ObservationAttempt<RedfishSystemInventoryLinks, NonEmptyStr> {
+  match redfish_document(body: body) {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: doc } =>
+      match redfish_link_property(doc: doc, key: "Memory") {
+        ObservationRefused { cause: c } => ObservationRefused { cause: c }
+        ObservationEstablished { observed: memory } =>
+          match redfish_link_property(doc: doc, key: "Processors") {
+            ObservationRefused { cause: c } => ObservationRefused { cause: c }
+            ObservationEstablished { observed: processors } =>
+              ObservationEstablished { observed: RedfishSystemInventoryLinks { memory: memory, processors: processors } }
           }
       }
   }

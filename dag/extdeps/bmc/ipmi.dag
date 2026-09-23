@@ -62,7 +62,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // WITH ONE: every controller in this fleet refuses an unauthenticated session, and changing what
 // SelList means would silently change its existing readers. It binds stderr and exit_code because
 // its consumer (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle) records WHY a read failed,
-// and it carries -N/-R so a controller that does not answer is a bounded reading, not a hung step.
+// and it runs under coreutils `timeout` (extdeps.tools.gnu_coreutils timeout_command's argv shape,
+// --kill-after included; exit 124 on expiry) with the caller's bound, so a controller that does not
+// answer is a bounded reading, not a hung step, whatever ipmitool's own retry schedule is.
 //
 // SdrTypeList IS THE AUTHENTICATED, TYPE-SELECTED READ, AND IT EXISTS BECAUSE SdrList COULD NOT BE
 // USED. The three original readonly operations carry no credential, which the asymmetry paragraph
@@ -122,7 +124,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation SelListAuthenticated {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
     output {
       stdout: String from "stdout",
       transport_stderr: String from "stderr",
@@ -130,7 +132,7 @@ service diagnostic.ipmi.Tool {
       success: Bool from "exit_success",
     }
     readonly
-    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "-N", "5", "-R", "2", "sel", "elist"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "sel", "elist"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool authenticated sel elist failed"

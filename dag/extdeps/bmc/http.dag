@@ -80,15 +80,14 @@ data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: ever
 // on an unreachable host stdout is "\n000" and stderr is the only text naming the cause. A caller
 // that refuses on this op must refuse with stderr; refusing with the stdout blob refuses with
 // "\n000", which is typed but locates nothing.
-// THE INVENTORY READS (GetSystemsCollection, GetMemoryCollection, GetMemory, GetProcessorCollection,
-// GetProcessor) BIND stderr AND exit_code BESIDE THE BODY, because their consumer
-// (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle) records WHY a read failed, not only that
-// it did: curl exit 7 (connection refused or host unreachable), 28 (timeout), 6 (name not
-// resolved) and 22 with "returned error: 401" on stderr (authentication refused) are different
-// diagnoses for a remote operator, and a Bool collapses them. They carry --connect-timeout and
-// --max-time so a BMC that does not answer is a bounded, typed reading rather than a hung step.
-// The system id is an INPUT, never the literal "system" GetSystem hardcodes for OpenBMC: which Id a
-// controller publishes is read from its Systems collection, not assumed.
+// GetResourceByPath IS THE ONE READ THAT FOLLOWS A LINK THE SERVICE PUBLISHED. DSP0266 makes a
+// resource's `@odata.id` and a collection's `Members@odata.nextLink` URIs the client follows as
+// given, so the path is an input carried exactly, never assembled from an Id; its consumer
+// (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle) admits only same-origin /redfish/v1/
+// paths before calling it, because the request presents a credential. It binds stderr and
+// exit_code beside the body because curl exit 7 (connection refused or unreachable), 28
+// (timeout) and 22 with "error: 401" (authentication refused) are different diagnoses, and it
+// takes --max-time as an input so the caller's deadline and the transport's bound are one value.
 service redfish.Http {
 
   operation GetServiceRoot {
@@ -324,26 +323,9 @@ service redfish.Http {
       nonzero => String "redfish system reset POST failed"
     }
   }
-  operation GetSystemsCollection {
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
-    output {
-      body: String from "stdout",
-      transport_stderr: String from "stderr",
-      exit_code: Int from "exit_code",
-      success: Bool from "exit_success",
-    }
-    readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--connect-timeout", "10", "--max-time", "30", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Systems"]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "redfish Systems collection GET failed"
-    }
-  }
 
-  operation GetMemoryCollection {
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, system_id: NonEmptyStr }
+  operation GetResourceByPath {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, odata_path: NonEmptyStr, max_seconds: NonEmptyStr }
     output {
       body: String from "stdout",
       transport_stderr: String from "stderr",
@@ -352,65 +334,11 @@ service redfish.Http {
     }
     readonly
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--connect-timeout", "10", "--max-time", "30", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Systems/{system_id}/Memory"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--connect-timeout", "5", "--max-time", "{max_seconds}", "--netrc-file", "{netrc_file}", "https://{bmc_host}{odata_path}"]
     }
     exit {
       0 => Unit
-      nonzero => String "redfish Memory collection GET failed"
-    }
-  }
-
-  operation GetMemory {
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, system_id: NonEmptyStr, memory_id: NonEmptyStr }
-    output {
-      body: String from "stdout",
-      transport_stderr: String from "stderr",
-      exit_code: Int from "exit_code",
-      success: Bool from "exit_success",
-    }
-    readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--connect-timeout", "10", "--max-time", "30", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Systems/{system_id}/Memory/{memory_id}"]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "redfish Memory GET failed"
-    }
-  }
-
-  operation GetProcessorCollection {
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, system_id: NonEmptyStr }
-    output {
-      body: String from "stdout",
-      transport_stderr: String from "stderr",
-      exit_code: Int from "exit_code",
-      success: Bool from "exit_success",
-    }
-    readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--connect-timeout", "10", "--max-time", "30", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Systems/{system_id}/Processors"]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "redfish Processors collection GET failed"
-    }
-  }
-
-  operation GetProcessor {
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, system_id: NonEmptyStr, processor_id: NonEmptyStr }
-    output {
-      body: String from "stdout",
-      transport_stderr: String from "stderr",
-      exit_code: Int from "exit_code",
-      success: Bool from "exit_success",
-    }
-    readonly
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--connect-timeout", "10", "--max-time", "30", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Systems/{system_id}/Processors/{processor_id}"]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "redfish Processor GET failed"
+      nonzero => String "redfish resource GET failed"
     }
   }
 }
