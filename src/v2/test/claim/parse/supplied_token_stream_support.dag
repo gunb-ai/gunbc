@@ -71,8 +71,8 @@ fn supplied_stream_parse(tokens: TokenStream) -> Outcome<Node> {
   }
 }
 
-fn supplied_stream_normalize(tokens: TokenStream) -> Outcome<NormalizedTree> {
-  match supplied_stream_parse(tokens: tokens) {
+fn supplied_parsed_normalize(parsed: Outcome<Node>) -> Outcome<NormalizedTree> {
+  match parsed {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: tree, diagnostics: _ } => normalize(parse_tree: tree)
   }

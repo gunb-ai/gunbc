@@ -4,7 +4,7 @@ import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.test.parse.supplied_token_stream_support {
   supplied_stream_matches_tokenize,
-  supplied_stream_normalize,
+  supplied_parsed_normalize,
   supplied_stream_parse
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
@@ -40,11 +40,11 @@ fn cb2_normalizes(o: Outcome<NormalizedTree>) -> Bool {
 
 // B -- dag_grammar_generic_arg_expr (std.integer `MachineWidth<8>`).
 test fn int_literal_generic_argument_parses_holds() -> Bool {
-  cb2_parses(o: supplied_stream_parse(tokens: cb2_stream_0()))
+  cb2_parses(o: cb2_parsed_0())
 }
 
 test fn bare_int_literal_is_not_a_type_holds() -> Bool {
-  match cb2_parses(o: supplied_stream_parse(tokens: cb2_stream_1())) {
+  match cb2_parses(o: cb2_parsed_1()) {
     true => false
     false => true
   }
@@ -52,11 +52,11 @@ test fn bare_int_literal_is_not_a_type_holds() -> Bool {
 
 // C -- dag_grammar_primary_name_expr (std.cross_tree.resolution `{ module: module }`).
 test fn module_keyword_as_a_value_parses_holds() -> Bool {
-  cb2_parses(o: supplied_stream_parse(tokens: cb2_stream_2()))
+  cb2_parses(o: cb2_parsed_2())
 }
 
 test fn other_keywords_are_not_values_holds() -> Bool {
-  match cb2_parses(o: supplied_stream_parse(tokens: cb2_stream_3())) {
+  match cb2_parses(o: cb2_parsed_3()) {
     true => false
     false => true
   }
@@ -64,23 +64,23 @@ test fn other_keywords_are_not_values_holds() -> Bool {
 
 // D -- the field_decl_block arm of dag_grammar_type_expr (std.pareto `type AxisScan = { .. }`).
 test fn anonymous_record_type_expression_parses_holds() -> Bool {
-  cb2_parses(o: supplied_stream_parse(tokens: cb2_stream_4()))
+  cb2_parses(o: cb2_parsed_4())
 }
 
 // E -- dag_grammar_admit_callers_clause_expr (std.integer qualified_octets). Parsed and discarded
 // (gunbc.rung_drop admit_callers_discarded_on_the_native_route).
 test fn admit_callers_clause_parses_holds() -> Bool {
-  cb2_parses(o: supplied_stream_parse(tokens: cb2_stream_5()))
+  cb2_parses(o: cb2_parsed_5())
 }
 
 // The clause is consumed at fn lowering: the declaration normalizes to an Arrow with the clause
 // discarded, which is the rung drop's population, so a retained clause shell would fail here.
 test fn admit_callers_clause_normalizes_holds() -> Bool {
-  cb2_normalizes(o: supplied_stream_normalize(tokens: cb2_stream_5()))
+  cb2_normalizes(o: cb2_normalized_5())
 }
 
 test fn empty_admit_callers_refuses_as_in_v1_holds() -> Bool {
-  match cb2_parses(o: supplied_stream_parse(tokens: cb2_stream_6())) {
+  match cb2_parses(o: cb2_parsed_6()) {
     true => false
     false => true
   }
@@ -89,7 +89,7 @@ test fn empty_admit_callers_refuses_as_in_v1_holds() -> Bool {
 // A -- dag_grammar_else_less_if_stmt_expr (extdeps.uri_path guards): parsed, then refused at
 // lowering with its own typed cause, never dropped or rewritten.
 test fn else_less_if_refuses_at_lowering_with_its_cause_holds() -> Bool {
-  match supplied_stream_normalize(tokens: cb2_stream_7()) {
+  match cb2_normalized_7() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
       diagnostics_fatal_reason(d: d) == ^body_lowering_reason_else_less_if_unlowered
@@ -112,11 +112,11 @@ fn named_edge_count_anywhere(root: Node, name: Symbol) -> Int {
 }
 
 test fn two_declarations_named_node_projection_normalize_holds() -> Bool {
-  cb2_normalizes(o: supplied_stream_normalize(tokens: cb2_stream_8()))
+  cb2_normalizes(o: cb2_normalized_8())
 }
 
 test fn declaration_named_node_projection_is_kept_holds() -> Bool {
-  match supplied_stream_normalize(tokens: cb2_stream_9()) {
+  match cb2_normalized_9() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       named_edge_count_anywhere(root: tree.root, name: ^a_node_projection) == 1
@@ -126,11 +126,83 @@ test fn declaration_named_node_projection_is_kept_holds() -> Bool {
 // The roster still sees through real projection structure: an ordinary module normalizes and
 // its authored member is reachable once, exactly as above, so the change is not a blanket accept.
 test fn ordinary_declaration_is_kept_once_holds() -> Bool {
-  match supplied_stream_normalize(tokens: cb2_stream_10()) {
+  match cb2_normalized_10() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       named_edge_count_anywhere(root: tree.root, name: ^a) == 1
   }
+}
+
+// ONE PREPARED INPUT PER SPECIMEN. Each specimen is parsed once and normalized once, by the
+// nullary producers below, which v2.workflow.floor_pure_producer_share warms outside the fold (the
+// same disposition as v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse cps_*).
+// Every claim then inspects the result shape at the interface it discriminates at, instead of
+// each paying a full parse and normalize again (DESIGN section 3, a witness discriminates at one
+// interface). The real path still executes: these producers run the real prepared-grammar parse
+// and normalize over a stream each cb2_fidelity_* claim proves equal to the real tokenizer's.
+
+fn cb2_parsed_0() -> Outcome<Node> {
+  supplied_stream_parse(tokens: cb2_stream_0())
+}
+
+fn cb2_parsed_1() -> Outcome<Node> {
+  supplied_stream_parse(tokens: cb2_stream_1())
+}
+
+fn cb2_parsed_2() -> Outcome<Node> {
+  supplied_stream_parse(tokens: cb2_stream_2())
+}
+
+fn cb2_parsed_3() -> Outcome<Node> {
+  supplied_stream_parse(tokens: cb2_stream_3())
+}
+
+fn cb2_parsed_4() -> Outcome<Node> {
+  supplied_stream_parse(tokens: cb2_stream_4())
+}
+
+fn cb2_parsed_5() -> Outcome<Node> {
+  supplied_stream_parse(tokens: cb2_stream_5())
+}
+
+fn cb2_normalized_5() -> Outcome<NormalizedTree> {
+  supplied_parsed_normalize(parsed: cb2_parsed_5())
+}
+
+fn cb2_parsed_6() -> Outcome<Node> {
+  supplied_stream_parse(tokens: cb2_stream_6())
+}
+
+fn cb2_parsed_7() -> Outcome<Node> {
+  supplied_stream_parse(tokens: cb2_stream_7())
+}
+
+fn cb2_normalized_7() -> Outcome<NormalizedTree> {
+  supplied_parsed_normalize(parsed: cb2_parsed_7())
+}
+
+fn cb2_parsed_8() -> Outcome<Node> {
+  supplied_stream_parse(tokens: cb2_stream_8())
+}
+
+fn cb2_normalized_8() -> Outcome<NormalizedTree> {
+  supplied_parsed_normalize(parsed: cb2_parsed_8())
+}
+
+fn cb2_parsed_9() -> Outcome<Node> {
+  supplied_stream_parse(tokens: cb2_stream_9())
+}
+
+fn cb2_normalized_9() -> Outcome<NormalizedTree> {
+  supplied_parsed_normalize(parsed: cb2_parsed_9())
+}
+
+fn cb2_parsed_10() -> Outcome<Node> {
+  supplied_stream_parse(tokens: cb2_stream_10())
+}
+
+fn cb2_normalized_10() -> Outcome<NormalizedTree> {
+  supplied_parsed_normalize(parsed: cb2_parsed_10())
 }
 
 fn cb2_stream_0() -> TokenStream {
