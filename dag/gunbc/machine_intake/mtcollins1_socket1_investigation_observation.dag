@@ -279,14 +279,21 @@ data mtcollins1_socket_cpus: List<MtCollins1SocketCpu> = [
   MtCollins1SocketCpu { socket: 1, issue: ProductionPart, provenance: "The machine's original production CPU.", report: mtcollins1_cpu_report_2026_09_23 },
 ]
 
-// When the socket-0 swap happened relative to the 2026-09-13 two-socket restore is not known.
-// It is an open question, not a guess: before that restore, the pairing trained both sockets.
-type MtCollins1EventOrder
-  = EventOrderReported { before_reference: Bool, report: MtCollins1PhysicalFactStanding }
-  | EventOrderNotYetReported { question: NonEmptyStr }
+// Has this CPU pairing booted two-socket? The operator reported it has, without a date, so
+// this answers whether the pairing ever booted, not when the swap fell relative to 2026-09-13.
+type MtCollins1PairingBootHistory
+  = TwoSocketBootReportedSinceSwap { quote: NonEmptyStr, report: MtCollins1PhysicalFactStanding }
+  | PairingBootNotYetReported { question: NonEmptyStr }
 
-data mtcollins1_es_swap_vs_restore: MtCollins1EventOrder = EventOrderNotYetReported {
-  question: "Was the socket-0 engineering sample installed before or after the 2026-09-13 16-module two-socket restore?",
+data mtcollins1_pairing_boot_history: MtCollins1PairingBootHistory = TwoSocketBootReportedSinceSwap {
+  quote: "the machine has booted since i swapped the CPU - so it's probably not that",
+  report: mtcollins1_pairing_boot_history_report,
+}
+
+data mtcollins1_pairing_boot_history_report: MtCollins1PhysicalFactStanding = OperatorByEyeReport {
+  observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 },
+  relay: "eager-owl-205 message msg_bb424be5-be47-4841-8221-c88587f6e5da",
+  method: "Operator's recollection in chat, verbatim; no date for the swap or for that boot was given.",
 }
 
 // Spares on hand of this processor family: approximate, as the operator said it.
@@ -302,12 +309,20 @@ data mtcollins1_spare_processors: MtCollins1SpareProcessors = MtCollins1SparePro
   report: mtcollins1_cpu_report_2026_09_23,
 }
 
+// WHAT IS ESTABLISHED IS NARROW: firmware does not expose socket 1. SCP reports one active
+// socket and prints no Socket[1] block. That is not "socket 1 is bad"; which layer stops it is open.
+data mtcollins1_socket1_not_exposed: MtCollins1PhysicalFactStanding = FirmwareTrainedFact {
+  run_id: 35871654468,
+  artifact: "GitHub Actions artifact mtcollins1-boot-receipts, file mtcollins1-boot-sol.capture",
+  roster_lines: ["Number of active sockets    : 1", "Socket[0]: Max cores        : 80"],
+}
+
 // The diagnoses are hypotheses, typed as such (§4d): bets, not facts. Each names the
-// observation that would confirm or refute it. A refutation cites the receipts that did it;
-// Leading is the operator's ranking of the open bets, not evidence for them.
+// observation that would discriminate it. No standing ranks one bet above another: evidence
+// weakens or refutes, and a weakening or refutation cites what did it.
 type MtCollins1HypothesisStanding
-  = HypothesisLeading
-  | HypothesisOpen
+  = HypothesisOpen
+  | HypothesisWeakened { by: MtCollins1PhysicalFactStanding, basis: NonEmptyStr }
   | HypothesisRefuted { runs: List<Nat>, basis: NonEmptyStr }
 
 type MtCollins1DiagnosisHypothesis {
@@ -316,18 +331,24 @@ type MtCollins1DiagnosisHypothesis {
   standing: MtCollins1HypothesisStanding
 }
 
+// One open hypothesis per layer at which socket 1 could stop short of UEFI enumeration, in
+// bring-up order. Each is discriminated by per-socket SMpro/BMC evidence the socket-1
+// diagnostics work item is wiring into the boot bundle.
 data mtcollins1_socket1_open_hypotheses: List<MtCollins1DiagnosisHypothesis> = [
+  MtCollins1DiagnosisHypothesis { hypothesis: "Physical presence: CPU1 is not detected as present (seating, retention torque, bent or fouled socket pins, package damage).", discriminator: "BMC CPU1 presence sensor across a power-on; if absent, re-torque and inspect the socket and package.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "Power and rails: CPU1's VRM or rails do not come up.", discriminator: "BMC CPU1 VR sensors and the SEL across a power-on: absent or faulted CPU1 rails.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "Reset and firmware-ready: socket 1 is not released from reset or never signals firmware-ready.", discriminator: "Per-socket SMpro/BMC reset and ready status for socket 1 in the boot bundle.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "SCP/SMpro boot stage: socket 1's SCP or SMpro stops before joining the two-socket boot.", discriminator: "Socket 1's SCP/SMpro boot-stage and error registers via the BMC in the boot bundle.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "DDR init and training: socket 1 comes up but its memory initialisation fails, so the socket is dropped.", discriminator: "Socket 1 DDR init/training status from SMpro/BMC; a J17 module listed as SK1 MC0 in the roster.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "UEFI enumeration: socket 1 completes SCP bring-up but UEFI does not enumerate it.", discriminator: "A Socket[1] block in the SCP summary while UEFI and lscpu still report one socket.", standing: HypothesisOpen },
   MtCollins1DiagnosisHypothesis {
-    hypothesis: "The engineering-sample CPU0 with the production CPU1 is an unsupported two-socket pairing (stepping or microcode), so the secondary socket's release or memory training fails.",
-    discriminator: "Replace CPU0 with a production CPU matching CPU1 and boot J1+J17: SK1 MC0 trained confirms it. Also settle whether the ES swap preceded the 2026-09-13 restore, which trained both sockets.",
-    standing: HypothesisLeading,
+    hypothesis: "The engineering-sample CPU0 with the production CPU1 is an unsupported two-socket pairing (stepping or microcode).",
+    discriminator: "Boot J1+J17 with a production CPU0 matching CPU1: SK1 MC0 trained would support it.",
+    standing: HypothesisWeakened { by: mtcollins1_pairing_boot_history_report, basis: "A two-socket boot with this pairing is operator-reported." },
   },
-  MtCollins1DiagnosisHypothesis { hypothesis: "CPU1 retention or heatsink torque is wrong, so the package does not seat.", discriminator: "Re-torque CPU1 to specification and boot J1+J17: SK1 MC0 trained and 2 sockets / 160 CPUs confirms it.", standing: HypothesisOpen },
-  MtCollins1DiagnosisHypothesis { hypothesis: "Socket 1 pins are bent or fouled by debris, or the CPU1 package is damaged.", discriminator: "Remove CPU1 and inspect the socket for bent, missing or fouled pins and the package for damage.", standing: HypothesisOpen },
-  MtCollins1DiagnosisHypothesis { hypothesis: "CPU1 VRM, power delivery or the socket-1 board circuitry is not up.", discriminator: "Read the BMC's CPU1 presence, temperature and VR sensors and the SEL across a power-on (the diagnostics bundle, once its SEL-timeout abort is fixed): absent or faulted CPU1 rails confirm it.", standing: HypothesisOpen },
   MtCollins1DiagnosisHypothesis {
     hypothesis: "The DIMM is at fault: the stick in J17 is bad.",
     discriminator: "Swap the J1 and J17 sticks: SK0 MC0 still trained and SK1 silent clears the stick; SK0 MC0 lost implicates the stick.",
-    standing: HypothesisRefuted { runs: [35810323032, 35871654468], basis: "Each stick trained as SK0 MC0 in J1, one per run, and J17 (SK1 MC0) trained neither. A bad J17 slot alone would not take socket 1's 80 CPUs out of lscpu." },
+    standing: HypothesisRefuted { runs: [35810323032, 35871654468], basis: "Each stick trained as SK0 MC0 in J1, one per run, and J17 (SK1 MC0) trained neither. This clears the stick, not the J17 slot; a bad slot alone would not take socket 1's 80 CPUs out of lscpu." },
   },
 ]

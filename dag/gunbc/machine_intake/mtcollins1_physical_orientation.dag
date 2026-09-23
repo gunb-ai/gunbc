@@ -36,9 +36,9 @@ import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   MtCollins1PhysicalFactStanding, VendorFigureFact, OperatorByEyeReport, FirmwareTrainedFact,
   MtCollins1ChassisEnd, FrontEnd, RearEnd, MtCollins1Viewpoint, ViewpointReported, ViewpointNotYetReported,
   mtcollins1_operator_front_report,
-  MtCollins1DiagnosisHypothesis, MtCollins1HypothesisStanding, HypothesisLeading, HypothesisOpen, HypothesisRefuted,
+  MtCollins1DiagnosisHypothesis, MtCollins1HypothesisStanding, HypothesisWeakened, HypothesisOpen, HypothesisRefuted,
   MtCollins1SocketCpu, MtCollins1CpuRelease, EngineeringSample, ProductionPart, mtcollins1_socket_cpus,
-  MtCollins1EventOrder, EventOrderReported, EventOrderNotYetReported, mtcollins1_es_swap_vs_restore,
+  MtCollins1PairingBootHistory, TwoSocketBootReportedSinceSwap, PairingBootNotYetReported, mtcollins1_pairing_boot_history, mtcollins1_socket1_not_exposed,
   mtcollins1_spare_processors,
 }
 
@@ -703,7 +703,7 @@ fn history_block(history: List<MtCollins1Socket1InvestigationBoot>, orientation:
   if list_length(items: history) == 0 { [] } else {
     concat(concat(concat(["History (firmware rosters):"], map(history, b => boot_history_line(boot: b, orientation: orientation, banks: banks))),
       [socket1_standing_text(standing: socket1_standing(boots: history, orientation: orientation, banks: banks))]),
-      concat(cpu_block(cpus: mtcollins1_socket_cpus, order: mtcollins1_es_swap_vs_restore), map(mtcollins1_socket1_open_hypotheses, h => hypothesis_text(h: h, history: history))))
+      concat(cpu_block(cpus: mtcollins1_socket_cpus, history: mtcollins1_pairing_boot_history), map(mtcollins1_socket1_open_hypotheses, h => hypothesis_text(h: h, history: history))))
   }
 }
 
@@ -711,14 +711,19 @@ fn cpu_release_text(issue: MtCollins1CpuRelease) -> String {
   match issue { EngineeringSample => "engineering sample"  ProductionPart => "production part" }
 }
 
-// The operator's CPU facts, then the one ordering question they leave open.
-fn cpu_block(cpus: List<MtCollins1SocketCpu>, order: MtCollins1EventOrder) -> List<String> {
+// What firmware established, the operator's CPU facts, and whether the pairing has booted.
+fn cpu_block(cpus: List<MtCollins1SocketCpu>, history: MtCollins1PairingBootHistory) -> List<String> {
   let lines = map(cpus, c => concat(concat(concat(concat(concat("CPU", to_string(c.socket)), " (socket "), to_string(c.socket)), "): "), concat(concat(cpu_release_text(issue: c.issue), " - "), c.provenance)))
-  let open = match order {
-    EventOrderNotYetReported { question: q } => concat("Open question: ", q)
-    EventOrderReported { before_reference: b, report: _ } => if b { "The socket-0 swap preceded the 2026-09-13 restore (operator report)." } else { "The socket-0 swap followed the 2026-09-13 restore (operator report)." }
+  let exposed = match mtcollins1_socket1_not_exposed {
+    FirmwareTrainedFact { run_id: r, artifact: _, roster_lines: ls } => concat(concat(concat(concat("Established (run ", to_string(r)), "): firmware does not expose socket 1 - SCP reports '"), join(ls, "', '")), "' and no Socket[1] block. Which layer stops it is open.")
+    VendorFigureFact { figure: _, standing: _ } => "Socket 1 exposure: not a firmware reading."
+    OperatorByEyeReport { observed_on: _, relay: _, method: _ } => "Socket 1 exposure: not a firmware reading."
   }
-  concat(lines, [open, concat(concat(concat("Spares on hand: about ", to_string(mtcollins1_spare_processors.approximate_count)), " "), concat(mtcollins1_spare_processors.family, " processors (operator report)."))])
+  let booted = match history {
+    PairingBootNotYetReported { question: q } => concat("Open question: ", q)
+    TwoSocketBootReportedSinceSwap { quote: q, report: _ } => concat(concat("Operator: this CPU pairing has booted since the swap: \"", q), "\" (no date given).")
+  }
+  concat(concat([exposed], lines), [booted, concat(concat(concat("Spares on hand: about ", to_string(mtcollins1_spare_processors.approximate_count)), " "), concat(mtcollins1_spare_processors.family, " processors (operator report)."))])
 }
 
 // A refutation renders only when every run it cites is a receipt in the history; a citation
@@ -726,7 +731,7 @@ fn cpu_block(cpus: List<MtCollins1SocketCpu>, order: MtCollins1EventOrder) -> Li
 fn hypothesis_text(h: MtCollins1DiagnosisHypothesis, history: List<MtCollins1Socket1InvestigationBoot>) -> String {
   let bet = concat(concat(h.hypothesis, " Test: "), h.discriminator)
   match h.standing {
-    HypothesisLeading => concat("Leading hypothesis (not established): ", bet)
+    HypothesisWeakened { by: _, basis: why } => concat(concat(concat("Weakened hypothesis: ", bet), " Weakened: "), why)
     HypothesisOpen => concat("Open hypothesis (not established): ", bet)
     HypothesisRefuted { runs: rs, basis: why } => {
       let held = fold(rs, init: list_length(items: rs) > 0, f: (acc, r) => acc && list_length(items: filter(history, b => b.run_id == r)) > 0)
