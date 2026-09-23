@@ -48,7 +48,7 @@ test fn tp4_rank_ranges_tile_each_layer_contiguously() -> Bool {
       && all(rows, r => r.start < r.end)
       && match first(rows) { Present { value: r0 } => r0.start == 0  Absent => false }
       && match first(reverse(rows)) { Present { value: r3 } => r3.end == vllm_engram_sum(xs: l)  Absent => false }
-      && all(zip(rows, rows |> skip(n: 1)), p => p.first.end == p.second.start)
+      && all(enumerate(rows |> skip(n: 1)), p => match get(xs: rows, index: p.first) { Present { value: prev } => prev.end == p.second.start  Absent => false })
   }) && vllm_engram_every_rank_has_heads(n_hash_cols: 24, tp_size: 4)
     && !vllm_engram_every_rank_has_heads(n_hash_cols: 3, tp_size: 4)
 }

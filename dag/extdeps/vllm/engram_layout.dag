@@ -1,7 +1,7 @@
 module extdeps.vllm.engram_layout
 
 import std.types { Bool, List, Int, String, Map }
-import std.nat { Nat }
+import std.nat { Nat, nat_max }
 import v2.std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -129,7 +129,7 @@ fn vllm_engram_count_down(n: Nat) -> List<Nat> {
 // THE FLAT HEAD SIZES OF EVERY LAYER, in layer order: per layer, (max_ngram_size - 1) orders of
 // n_heads primes each, flattened order-major exactly as EngramLayout flattens them.
 fn vllm_engram_head_sizes(layer_count: Nat, max_ngram_size: Nat, n_heads: Nat, vocab_size: Nat) -> List<List<Int>> {
-  let orders = if max_ngram_size == 0 { 0 } else { max_ngram_size - 1 }
+  let orders = nat_max(a: max_ngram_size, b: 1) - 1
   let done = fold(vllm_engram_count_up(n: layer_count), init: VllmEngramLayoutDraw { seen: empty_map(), layers_newest_first: [] as List<List<Int>> }, f: (acc, _) => {
     let layer = fold(vllm_engram_count_up(n: orders), init: VllmEngramPrimeDraw { seen: acc.seen, drawn_newest_first: [] as List<Int> }, f: (st, _) => vllm_engram_draw_order(acc: st, vocab_size: vocab_size, n_heads: n_heads))
     VllmEngramLayoutDraw { seen: layer.seen, layers_newest_first: concat([reverse(layer.drawn_newest_first)], acc.layers_newest_first) }
@@ -146,9 +146,11 @@ fn vllm_engram_sum(xs: List<Int>) -> Int {
   fold(xs, init: 0, f: (acc, x) => acc + x)
 }
 
-// cdiv(n_hash_cols, tp_size): the hash columns one rank owns.
+// cdiv(n_hash_cols, tp_size): the hash columns one rank owns. A tp_size of 0 has no ranks at all
+// (vllm_engram_rank_rows returns none and vllm_engram_every_rank_has_heads refuses it), so the divisor
+// is floored at 1 only to keep this total.
 fn vllm_engram_part_hash_cols(n_hash_cols: Nat, tp_size: Nat) -> Nat {
-  if tp_size == 0 { 0 } else { (n_hash_cols + tp_size - 1) / tp_size }
+  (n_hash_cols + nat_max(a: tp_size, b: 1) - 1) / nat_max(a: tp_size, b: 1)
 }
 
 // A RANK'S CONTIGUOUS ROW RANGE in one layer's table: [start, end).
@@ -172,7 +174,7 @@ fn vllm_engram_rank_rows(head_sizes: List<Int>, tp_size: Nat) -> List<VllmEngram
   })
   let built = fold(reverse(ends.ends_newest_first), init: VllmEngramRankBuild { next_rank: 0, start: 0, rows_newest_first: [] as List<VllmEngramRankRows> }, f: (acc, end) =>
     VllmEngramRankBuild { next_rank: acc.next_rank + 1, start: end, rows_newest_first: concat([VllmEngramRankRows { rank: acc.next_rank, start: acc.start, end: end }], acc.rows_newest_first) })
-  let empty = map(vllm_engram_count_up(n: if tp_size > built.next_rank { tp_size - built.next_rank } else { 0 }), i => VllmEngramRankRows { rank: built.next_rank + i, start: built.start, end: built.start })
+  let empty = map(vllm_engram_count_up(n: nat_max(a: tp_size, b: built.next_rank) - built.next_rank), i => VllmEngramRankRows { rank: built.next_rank + i, start: built.start, end: built.start })
   concat(reverse(built.rows_newest_first), empty)
 }
 

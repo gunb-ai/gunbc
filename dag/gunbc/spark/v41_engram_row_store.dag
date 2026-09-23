@@ -611,12 +611,15 @@ fn v41_row_key(layer: Nat, global_row: Nat) -> String {
 fn v41_placed_index(placed: List<V41PlacedRow>) -> Map<String, V41PlacedIndexEntry> {
   fold(placed, init: empty_map(), f: (acc, p) => {
     let k = v41_row_key(layer: p.layer, global_row: p.global_row)
-    let n = match map_get(acc, k) {
-      Present { value: e } => e.count
-      Absent => 0
-    }
-    map_insert(acc, k, V41PlacedIndexEntry { count: n + 1, record: p.record })
+    map_insert(acc, k, V41PlacedIndexEntry { count: v41_placed_count(index: acc, key: k) + 1, record: p.record })
   })
+}
+
+fn v41_placed_count(index: Map<String, V41PlacedIndexEntry>, key: String) -> Int {
+  match map_get(index, key) {
+    Present { value: e } => e.count
+    Absent => 0
+  }
 }
 
 fn v41_lost_image_defects(source: List<V41SourceRow>, placed: List<V41PlacedRow>) -> List<NonEmptyStr> {
