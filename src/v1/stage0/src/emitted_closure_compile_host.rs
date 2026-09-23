@@ -981,10 +981,18 @@ fn probe_cargo_command_bound(
 ) -> (std::process::Command, ProbeCargoInvocation) {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     let manifest = crate_dir.join("Cargo.toml");
+    // `--color never` BECAUSE THE ATTRIBUTION READS PLAIN TEXT. attributed_diagnostic keys on a
+    // trimmed line that STARTS WITH `error`; a colored header is `ESC[1mESC[91merror[E0308]`, so
+    // under the CI job's `CARGO_TERM_COLOR: always` no header ever matched and every faulted arm
+    // answered NotDiscriminating ("no diagnostic names EMIT_COMPILE_MUTATION_PROBE") -- first
+    // observed on gunbc#12091, the first run whose baseline got past main's E0573. The flag on the
+    // argv outranks the ambient variable, and the argv is the receipt, so the receipt says it.
     let argv: Vec<String> = vec![
         cargo.clone(),
         "build".to_string(),
         "--release".to_string(),
+        "--color".to_string(),
+        "never".to_string(),
         "--manifest-path".to_string(),
         manifest.display().to_string(),
     ];
@@ -2413,6 +2421,13 @@ mod tests {
         let compiler = Path::new("/toolchain/bin/rustc");
         let (command, invocation) =
             probe_cargo_command_bound(crate_dir, workspace, compiler, "rustc 1.93.0; host: x");
+        assert!(
+            invocation
+                .argv
+                .windows(2)
+                .any(|w| w[0] == "--color" && w[1] == "never"),
+            "the spawn disables color on its own argv: attribution reads plain `error` headers"
+        );
         assert_eq!(
             env_of(&command, "RUSTFLAGS"),
             Some(Some(WARNING_DENIAL_RUSTFLAGS.to_string())),
@@ -2853,6 +2868,20 @@ mod tests {
     /// would then adjudicate an error class the fixture did not produce.
     #[test]
     fn the_attributed_diagnostic_is_the_header_governing_the_attributed_line() {
+        // A COLORED HEADER IS NOT ATTRIBUTABLE, which is why the probe spawn passes
+        // `--color never`: the shape CI printed under CARGO_TERM_COLOR=always.
+        let colored = "\x1b[1m\x1b[91merror[E0308]\x1b[0m\x1b[1m: mismatched types\x1b[0m\n   --> src/m.rs:9:40\n9 | pub const EMIT_COMPILE_MUTATION_PROBE: u8 = \"x\";\n";
+        assert_eq!(
+            attributed_diagnostic(colored, MUTATION_PROBE_SYMBOL),
+            (None, None)
+        );
+        let plain = "error[E0308]: mismatched types\n   --> src/m.rs:9:40\n9 | pub const EMIT_COMPILE_MUTATION_PROBE: u8 = \"x\";\n";
+        assert_eq!(
+            attributed_diagnostic(plain, MUTATION_PROBE_SYMBOL)
+                .1
+                .as_deref(),
+            Some("error[E0308]: mismatched types")
+        );
         let stderr = "\
 error[E0433]: failed to resolve: use of undeclared crate or module `nope`
   --> src/some_other_module.rs:4:5

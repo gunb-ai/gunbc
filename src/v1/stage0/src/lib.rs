@@ -147,6 +147,17 @@ pub mod gunbc_reference_derived_candidate;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod gunbc_rust_crate_package_ident;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod gunbc_rust_decl_type_overlay;
 #[allow(
     unused_imports,

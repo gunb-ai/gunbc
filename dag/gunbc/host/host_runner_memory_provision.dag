@@ -4,7 +4,6 @@ import std.types { String, List, Bool, NonEmptyStr }
 import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import product.placement_supply { HostIdentity }
 import gunbc.host_converge {
   fleet_converge_policy,
@@ -110,7 +109,6 @@ fn runner_memory_converge_effect(host: HostIdentity) -> HostEffect? {
 }
 
 fn provision_runner_memory_caps(host: HostIdentity) -> ProcessExit
-  uses net: Network
 {
   match host_toolchain_direct_access(host: host) {
     Present { value: access } =>

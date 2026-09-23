@@ -1,5 +1,6 @@
 module extdeps.systemd.systemctl
 
+import extdeps.transports.shell { ShellOutcome }
 import std.types { NonEmptyStr, List, Bool, Int, Unit }
 import std.string_type { String }
 import std.algebra { trim }
@@ -595,6 +596,7 @@ service systemd.Systemctl {
   operation ShowUserProperty {
     input { unit: NonEmptyStr, property: NonEmptyStr }
     output {
+      outcome: ShellOutcome
       value: String from "stdout"
       success: Bool from "exit_success"
     }
