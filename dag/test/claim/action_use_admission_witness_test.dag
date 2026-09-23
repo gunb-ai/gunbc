@@ -428,6 +428,79 @@ test fn quoted_escaped_and_spaced_uses_keys_are_read_and_script_text_is_not() ->
     && (step_uses_read(source: "jobs:\n  b:\n    steps:\n      - run: |\n          echo not-a-key\n          uses: script/line@v1\n") == [])
 }
 
+// THE ROUTE TEST OVER A REAL WORKFLOW: the first `uses:` line of a committed workflow is rewritten
+// into each spelling a line projection would have mis-read, and the census is run over the whole
+// rewritten file. Three spellings are outside the reader's subset or not a string where GitHub needs
+// one -- a flow sequence, an alias, an empty value -- and each must make the file UNREADABLE: never
+// an empty population, and never the unrewritten one. The other two -- a quoted key and a space
+// before the colon -- are YAML for the same key, so the correct reading is the ORIGINAL population,
+// exactly; refusing them would be the wrong-meaning reader this module replaced. Asserting the
+// original population also rules out the rewrite having been missed: every spelling is checked to
+// have changed the file.
+data route_rewrite_subject: String = "heal-publish.yml"
+
+fn route_rewrite_source() -> String {
+  filesystem_read(path: join([realized_workflow_directory, "/", route_rewrite_subject], "")).content
+}
+
+type RouteRewrite {
+  source: String
+  seen: Bool
+}
+
+// The first line holding `uses: `, respelled: `before` is everything ahead of `uses: ` on that line
+// (its indentation and any `- `), `value` everything after it.
+fn with_first_uses_line(source: String, spell: String) -> String {
+  let rewritten = fold(split(s: source, delimiter: "\n"), init: RouteRewrite { source: "", seen: false }, f: fn(acc, line) {
+    let next = if acc.seen {
+      line
+    } else if string_contains(s: line, pattern: "uses: ") {
+      let parts = split(s: line, delimiter: "uses: ")
+      respelled_uses_line(before: join(parts.take(n: 1), ""), value: join(parts.skip(n: 1), "uses: "), spell: spell)
+    } else {
+      line
+    }
+    RouteRewrite {
+      source: if acc.source == "" { next } else { join([acc.source, next], "\n") },
+      seen: acc.seen || string_contains(s: line, pattern: "uses: "),
+    }
+  })
+  rewritten.source
+}
+
+fn respelled_uses_line(before: String, value: String, spell: String) -> String {
+  if spell == "flow" {
+    join([before, "uses: [", value, ", ", value, "]"], "")
+  } else if spell == "alias" {
+    join([before, "uses: *pinned"], "")
+  } else if spell == "empty" {
+    join([before, "uses:"], "")
+  } else if spell == "quoted_key" {
+    join([before, "\"uses\": ", value], "")
+  } else {
+    join([before, "uses : ", value], "")
+  }
+}
+
+fn route_uses_texts(source: String) -> List<String> {
+  match realized_workflow_reading(path: "rewritten.yml", source: source) {
+    RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => ["unreadable"]
+    RealizedWorkflowUses { workflow_path: _, uses: us } => map(us, u => u.uses_text)
+  }
+}
+
+test fn a_real_uses_line_respelled_outside_the_subset_refuses_and_respelled_inside_it_reads_the_same() -> Bool {
+  let original = route_rewrite_source()
+  let expected = route_uses_texts(source: original)
+  let refusing = ["flow", "alias", "empty"]
+  let equivalent = ["quoted_key", "spaced_colon"]
+  ((expected |> count) > 0)
+    && !any(expected, t => t == "unreadable")
+    && all(concat(refusing, equivalent), sp => with_first_uses_line(source: original, spell: sp) != original)
+    && all(refusing, sp => unreadable_scan(source: with_first_uses_line(source: original, spell: sp)))
+    && all(equivalent, sp => route_uses_texts(source: with_first_uses_line(source: original, spell: sp)) == expected)
+}
+
 // The site comes from where the key sits, not from the value's shape: a job-level `uses` naming a
 // plain action is still job-level (and refused as an unmodeled reusable-workflow call).
 test fn the_site_is_where_the_key_sits() -> Bool {

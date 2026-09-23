@@ -165,6 +165,46 @@ test fn literal_content_keeps_blank_and_hash_lines_and_detects_indentation() -> 
   ] })
 }
 
+// EACH CHOMPING INDICATOR WITH ZERO, ONE AND THREE TRAILING EMPTY LINES, AT THE END OF THE DOCUMENT
+// AND BEFORE A FOLLOWING KEY, OVER A BODY WITH A MORE-INDENTED MIDDLE LINE. The expected values are
+// not this reader's opinion: each was produced by an independent YAML 1.2 implementation (the npm
+// package `yaml`, v2, parsing the same bytes with `version: "1.2"`) and is written here as a literal,
+// so a disagreement between the two readers is a red here and not a regenerated expectation.
+fn literal_reads(source: String, expected: String) -> Bool {
+  if string_contains(s: source, pattern: "\nnext: 1\n") {
+    reads(src: source, v: YamlMapping { entries: [YamlKeyValue { key: "k", value: str(s: expected) }, YamlKeyValue { key: "next", value: YamlInt { lexeme: "1" } }] })
+  } else {
+    reads(src: source, v: YamlMapping { entries: [YamlKeyValue { key: "k", value: str(s: expected) }] })
+  }
+}
+
+test fn literal_clip_chomping_matches_the_independent_reader_for_every_trailing_blank_count() -> Bool {
+  (literal_reads(source: "k: |\n  a\n    b\n  c\n", expected: "a\n  b\nc\n"))
+    && (literal_reads(source: "k: |\n  a\n    b\n  c\nnext: 1\n", expected: "a\n  b\nc\n"))
+    && (literal_reads(source: "k: |\n  a\n    b\n  c\n\n", expected: "a\n  b\nc\n"))
+    && (literal_reads(source: "k: |\n  a\n    b\n  c\n\nnext: 1\n", expected: "a\n  b\nc\n"))
+    && (literal_reads(source: "k: |\n  a\n    b\n  c\n\n\n\n", expected: "a\n  b\nc\n"))
+    && (literal_reads(source: "k: |\n  a\n    b\n  c\n\n\n\nnext: 1\n", expected: "a\n  b\nc\n"))
+}
+
+test fn literal_strip_chomping_matches_the_independent_reader_for_every_trailing_blank_count() -> Bool {
+  (literal_reads(source: "k: |-\n  a\n    b\n  c\n", expected: "a\n  b\nc"))
+    && (literal_reads(source: "k: |-\n  a\n    b\n  c\nnext: 1\n", expected: "a\n  b\nc"))
+    && (literal_reads(source: "k: |-\n  a\n    b\n  c\n\n", expected: "a\n  b\nc"))
+    && (literal_reads(source: "k: |-\n  a\n    b\n  c\n\nnext: 1\n", expected: "a\n  b\nc"))
+    && (literal_reads(source: "k: |-\n  a\n    b\n  c\n\n\n\n", expected: "a\n  b\nc"))
+    && (literal_reads(source: "k: |-\n  a\n    b\n  c\n\n\n\nnext: 1\n", expected: "a\n  b\nc"))
+}
+
+test fn literal_keep_chomping_matches_the_independent_reader_for_every_trailing_blank_count() -> Bool {
+  (literal_reads(source: "k: |+\n  a\n    b\n  c\n", expected: "a\n  b\nc\n"))
+    && (literal_reads(source: "k: |+\n  a\n    b\n  c\nnext: 1\n", expected: "a\n  b\nc\n"))
+    && (literal_reads(source: "k: |+\n  a\n    b\n  c\n\n", expected: "a\n  b\nc\n\n"))
+    && (literal_reads(source: "k: |+\n  a\n    b\n  c\n\nnext: 1\n", expected: "a\n  b\nc\n\n"))
+    && (literal_reads(source: "k: |+\n  a\n    b\n  c\n\n\n\n", expected: "a\n  b\nc\n\n\n\n"))
+    && (literal_reads(source: "k: |+\n  a\n    b\n  c\n\n\n\nnext: 1\n", expected: "a\n  b\nc\n\n\n\n"))
+}
+
 test fn red_folded_scalars_and_indentation_indicators_refuse() -> Bool {
   refuses_at(src: "a: >\n  x\n", line: 1, reason_part: "folded")
     && refuses_at(src: "a: |2\n  x\n", line: 1, reason_part: "block scalar header")
