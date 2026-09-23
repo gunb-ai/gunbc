@@ -31,7 +31,9 @@ import v2.std.node {
 }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
 import v2.std.symbol_index {
+  RecordTypePayload,
   SymbolIndex,
+  VariantArmPayload,
   symbol_index_bind_at,
   symbol_index_declaring_path_of,
   symbol_index_insert,
@@ -147,7 +149,8 @@ fn symbol_index_fill_containment_node(
                 qualified_path: variant_path,
                 resolved: edge.target
               ),
-              qualified_path: variant_path
+              qualified_path: variant_path,
+              kind: VariantArmPayload
             )
             symbol_index_fill_containment_node(
               index: with_variant,
@@ -350,7 +353,8 @@ fn symbol_index_fill_unique_variant_aliases(
                       qualified_path: qualified_name_snoc(qn: module_qn, segment: sym),
                       resolved: e.target
                     ),
-                    qualified_path: qualified_name_snoc(qn: module_qn, segment: sym)
+                    qualified_path: qualified_name_snoc(qn: module_qn, segment: sym),
+                    kind: VariantArmPayload
                   )
                 } else {
                   a2
@@ -400,7 +404,8 @@ fn symbol_index_fill_module_declarations(
         cons: fn(acc, name) {
           symbol_index_mark_declared_payload(
             index: acc,
-            qualified_path: qualified_name_snoc(qn: module_qn, segment: name)
+            qualified_path: qualified_name_snoc(qn: module_qn, segment: name),
+            kind: RecordTypePayload
           )
         }
       )

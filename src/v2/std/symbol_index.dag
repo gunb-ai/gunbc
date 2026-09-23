@@ -77,8 +77,18 @@ type SymbolIndex {
   entries: Map<QualifiedName, Node>
   global_bare: Map<Symbol, GlobalBareBindingState>
   bound_declarings: Map<QualifiedName, FreeMonoid<QualifiedName>>
-  declared_payloads: Map<QualifiedName, Bool>
+  declared_payloads: Map<QualifiedName, DeclaredPayloadKind>
 }
+
+// WHICH KIND OF DECLARED PAYLOAD A PATH DENOTES, stored as the map's value so the map cannot hold a
+// non-payload (review 70323): a `Map<QualifiedName, Bool>` could record `false` and a presence read
+// would still answer constructor. Every value this type has IS a declared payload, so membership
+// and kind are one fact. Minted here because no std type covers it: v2.std.decl_index ItemKind
+// classifies module items and has no arm for a variant, which is not an item. A unique
+// module-level variant alias denotes the same variant, so it is a VariantArmPayload.
+type DeclaredPayloadKind
+  = VariantArmPayload
+  | RecordTypePayload
 
 fn empty_symbol_index() -> SymbolIndex {
   SymbolIndex {
@@ -214,29 +224,23 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
 // So the fact is written HERE, keyed by DECLARING path, by the fill arms that know what they are
 // inserting (v2.compiler.symbol_index_fill), and the reader asks this map instead of the node.
 // Keyed by path, not leaf, so two records spelled alike in two modules are two facts.
-fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: QualifiedName) -> SymbolIndex {
+fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: QualifiedName, kind: DeclaredPayloadKind) -> SymbolIndex {
   SymbolIndex {
     entries: index.entries,
     global_bare: index.global_bare,
     bound_declarings: index.bound_declarings,
-    declared_payloads: map_insert(m: index.declared_payloads, key: qualified_path, value: true)
+    declared_payloads: map_insert(m: index.declared_payloads, key: qualified_path, value: kind)
   }
 }
 
-// MEMBERSHIP, WITH NO FAILURE ARM TO WIDEN (review 70226). The first cut read this through
-// map_get, whose Outcome carries a Rejected arm, and answered `false` there -- and `false` here
-// means BINDER, which matches every value, so a lookup that could not answer would have widened the
-// arm silently. That is the fail-open shape DESIGN section 5 forbids and the one this package
-// exists to close. map_lookup is the total read underneath map_get (which is
-// `outcome_accepted(map_lookup(..))`, so its refusal arm is unreachable by construction rather than
-// merely unlikely): present or absent, no third answer to default. The map is a SET of declaring
-// paths -- `true` is the only value written and absence is non-membership, the idiom
-// v2.std.declaration_marker marked_paths already uses -- so membership is the whole question.
-fn symbol_index_denotes_declared_payload(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
-  match map_lookup(m: index.declared_payloads, key: qualified_path) {
-    Present { value: _ } => true
-    Absent => false
-  }
+// WHAT THE PATH DENOTES, WITH NO FAILURE ARM TO WIDEN (review 70226). The first cut read this
+// through map_get, whose Outcome carries a Rejected arm, and answered binder there -- which matches
+// every value, so a lookup that could not answer would have widened the arm silently, the fail-open
+// shape DESIGN section 5 forbids. map_lookup is the total read underneath map_get (which is
+// `outcome_accepted(map_lookup(..))`, so its refusal arm is unreachable by construction): the kind,
+// or Absent for a path that denotes no declared payload. The caller matches on it.
+fn symbol_index_declared_payload_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<DeclaredPayloadKind> {
+  map_lookup(m: index.declared_payloads, key: qualified_path)
 }
 
 fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> GlobalBareLookup {

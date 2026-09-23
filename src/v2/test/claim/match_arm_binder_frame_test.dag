@@ -334,7 +334,7 @@ test fn mab_where_alias_is_not_a_record() -> Bool {
 // sibling MODULE v2.std.node that lexical ascent from the arm would reach. The claim is that the
 // arm binds `node` through the index-keyed classifier (v2.compiler.resolve
 // resolve_pattern_atom_names_constructor asking v2.std.symbol_index
-// symbol_index_denotes_declared_payload): the tree is Accepted and the binder's Atom survives. It is
+// symbol_index_declared_payload_at, which returns the payload kind): the tree is Accepted and the binder's Atom survives. It is
 // established HERE, at the resolve interface over a supplied mirror of the two modules -- not on the
 // native route, whose emitted compiler does not build -- and says so rather than more.
 fn mab_resolved_module_named_binder() -> Outcome<Node> {
