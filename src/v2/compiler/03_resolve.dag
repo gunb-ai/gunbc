@@ -910,100 +910,140 @@ fn resolve_transform_operator_child(
   }
 }
 
-// ── MEASUREMENT BRANCH ONLY — NOT FOR LANDING ────────────────────────────────────────────────
+// ── THE CHILD WALK: ONE OBSERVATION FOR THE FOUR CHILD FOLDS ─────────────────────────────────
 //
-// WHAT THIS IS FOR. The four child walks below stop after the first rejected child, so a module
-// with two independent post-cut refusals records the first and never observes the second. That is
-// truthful at MODULE grain and an undercount at OCCURRENCE grain, which is the grain XL-2's
-// rehearsal residual needs (gunbc.compiler_frontend_program_status ExactOccurrenceResidualCensus).
+// WHAT WAS WRONG. Each of the four walks below folded an Outcome<List<Edge>> and returned the
+// accumulator untouched once it went Rejected. That is not a policy choice about how much to
+// report -- the accumulator CONFLATES the successful output with the refusal state, so the moment
+// it rejects, the edge list is gone and there is no value left to continue accumulating into.
+// Stopping was forced by the carrier's shape. A module with two independent post-cut refusals
+// therefore recorded the first and never observed the second: truthful at MODULE grain, an
+// undercount at OCCURRENCE grain, which is the grain XL-2's rehearsal residual needs
+// (gunbc.compiler_frontend_program_status ExactOccurrenceResidualCensus).
 //
-// WHY IT MUST NOT LAND AS WRITTEN. It concatenates independent refusals into ONE
-// NonEmptyDiagnostics, which breaks that carrier's contract: v2.std.diagnostic diagnostics_fatal
-// reads the LAST diagnostic as the cause, on the premise that a chain is pending advisories
-// followed by exactly one fatal. Concatenating N independent failures makes the Nth arbitrarily
-// "the" cause. The landing design keeps NonEmptyDiagnostics at the grain where that contract is
-// true — one chain per independent failure — and carries an ORDERED POPULATION of chains, with the
-// FIRST projected back to Outcome so ordinary resolve consumers (the CLI's fatal pick, the native
-// test route's fatal reason) keep today's answer exactly.
+// WHY THE POPULATION IS A LIST OF CHAINS AND NOT ONE LONGER CHAIN. NonEmptyDiagnostics means
+// "pending advisories followed by exactly ONE fatal" -- v2.std.diagnostic diagnostics_fatal reads
+// the LAST element as the cause, and says so as the single authority for that ordering.
+// Concatenating N independent failures into one chain would make the Nth arbitrarily "the" cause
+// and silently change what every consumer of diagnostics_fatal answers. So each independent failure
+// keeps its own chain, where that contract stays true, and the walk carries an ORDERED POPULATION
+// of them.
 //
-// THIS VERSION EXISTS TO MEASURE WHICH CONSUMERS MOVE when a walk stops hiding refusals after the
-// first, so the typed carrier lands with its blast radius counted rather than estimated.
+// WHY ORDINAL IS CARRIED SEPARATELY, and it is load-bearing rather than tidy: resolve_transform_children
+// used `length(done) == 0` to mean "this is the operator child" -- the accumulated EDGE LIST
+// standing in for the child index. Once a refused child stops appending, that proxy promotes the
+// SECOND child to operator position whenever the first refuses. resolve_bind_edges had already
+// found this and threaded its own `idx`; the other three had not. The ordinal advances on every
+// arm, refused or not.
 //
-// STRUCTURAL NOTE THAT MAKES CONTINUING SOUND HERE, and it is checkable rather than assumed: in all
-// four walks every child's scope is fixed BEFORE the fold runs — resolve_transform_children uses one
-// ctx, resolve_children_homogeneous_scope computes child_ctx once above its fold, and both edge
-// walks take scope_outer/scope_inner as PARAMETERS. No child's scope is derived from another child's
-// resolution result, so continuing past a refusal cannot manufacture a spurious refusal from a
-// binding that failed to establish. Where that ceases to hold, the walk must report observation
-// INCOMPLETENESS rather than resolve under a guessed scope.
-// ORDINAL IS CARRIED INDEPENDENTLY OF THE EDGE LIST, and that is load-bearing rather than tidy:
-// resolve_transform_children used `length(done) == 0` to mean "this is the operator child". Once a
-// refused child stops appending an edge, that proxy silently promotes the SECOND child to operator
-// whenever the first refuses. The ordinal is incremented on every step, refused or not.
+// WHY CONTINUING IS SOUND IN THESE FOUR, checkable rather than assumed: every child's scope is
+// fixed BEFORE the fold runs -- one ctx, a child_ctx computed above the fold, or
+// scope_outer/scope_inner as parameters. No child's scope derives from another child's resolution
+// result, so observing a later site cannot be an artifact of an earlier failure. Where that ceases
+// to hold, the walk records ObservationIncomplete rather than resolving under a guessed scope: an
+// unobserved site must be reported as unobserved, never as clean.
+type ObservationCompleteness
+  = ObservationComplete
+  | ObservationIncomplete { reason: Symbol }
+
 type ChildWalk {
   ordinal: Int
   edges: List<Edge>
   pending: Diagnostics
-  refusals: Diagnostics
+  failures: List<NonEmptyDiagnostics>
+  observation: ObservationCompleteness
 }
 
 fn child_walk_init() -> ChildWalk {
-  ChildWalk { ordinal: 0, edges: empty_edge_list(), pending: None, refusals: None }
+  ChildWalk {
+    ordinal: 0,
+    edges: empty_edge_list(),
+    pending: None,
+    failures: [],
+    observation: ObservationComplete
+  }
+}
+
+fn child_walk_refused(w: ChildWalk, chain: NonEmptyDiagnostics) -> ChildWalk {
+  ChildWalk {
+    ordinal: w.ordinal + 1,
+    edges: w.edges,
+    pending: w.pending,
+    failures: list_snoc_item(xs: w.failures, item: chain),
+    observation: w.observation
+  }
+}
+
+fn child_walk_accepted(w: ChildWalk, edge: Edge, d: Diagnostics) -> ChildWalk {
+  ChildWalk {
+    ordinal: w.ordinal + 1,
+    edges: list_snoc_item(xs: w.edges, item: edge),
+    pending: diagnostics_merge(outer: w.pending, inner: d),
+    failures: w.failures,
+    observation: w.observation
+  }
+}
+
+// THE SITE WHOSE SCOPE COULD NOT BE BUILT IS RECORDED AS UNOBSERVED, NOT AS CLEAN. No walk below
+// reaches this today, because all four fix their scopes before folding; it exists so that a future
+// walk which derives a child's scope from an earlier child cannot quietly resolve under a guessed
+// scope and report the result as a complete observation.
+fn child_walk_unobservable(w: ChildWalk, reason: Symbol) -> ChildWalk {
+  ChildWalk {
+    ordinal: w.ordinal + 1,
+    edges: w.edges,
+    pending: w.pending,
+    failures: w.failures,
+    observation: ObservationIncomplete { reason: reason }
+  }
 }
 
 fn child_walk_step(w: ChildWalk, e: Edge, r: Outcome<Node>) -> ChildWalk {
   match r {
-    Rejected { diagnostics: rd } =>
-      ChildWalk {
-        ordinal: w.ordinal + 1,
-        edges: w.edges,
-        pending: w.pending,
-        refusals: diagnostics_merge(outer: w.refusals, inner: Some { diagnostics: rd })
-      }
+    Rejected { diagnostics: rd } => child_walk_refused(w: w, chain: rd)
     Accepted { value: t, diagnostics: ed } =>
-      ChildWalk {
-        ordinal: w.ordinal + 1,
-        edges: list_snoc_item(xs: w.edges, item: Edge { label: e.label, target: t }),
-        pending: diagnostics_merge(outer: w.pending, inner: ed),
-        refusals: w.refusals
-      }
+      child_walk_accepted(w: w, edge: Edge { label: e.label, target: t }, d: ed)
   }
 }
 
 fn child_walk_step_edge(w: ChildWalk, r: Outcome<Edge>) -> ChildWalk {
   match r {
-    Rejected { diagnostics: rd } =>
-      ChildWalk {
-        ordinal: w.ordinal + 1,
-        edges: w.edges,
-        pending: w.pending,
-        refusals: diagnostics_merge(outer: w.refusals, inner: Some { diagnostics: rd })
-      }
+    Rejected { diagnostics: rd } => child_walk_refused(w: w, chain: rd)
     Accepted { value: resolved_edge, diagnostics: ed } =>
-      ChildWalk {
-        ordinal: w.ordinal + 1,
-        edges: list_snoc_item(xs: w.edges, item: resolved_edge),
-        pending: diagnostics_merge(outer: w.pending, inner: ed),
-        refusals: w.refusals
-      }
+      child_walk_accepted(w: w, edge: resolved_edge, d: ed)
   }
 }
 
-// THE ACCEPTED ARM IS REACHABLE ONLY WHEN NOTHING REFUSED, so "never return a partial accepted
-// tree" is structural here rather than a rule a caller has to remember.
-fn child_walk_finish(w: ChildWalk) -> Outcome<List<Edge>> {
-  match w.refusals {
-    Some { diagnostics: rs } =>
-      Rejected { diagnostics: rejected_with_pending(pending: w.pending, rejected: rs) }
-    None => Accepted { value: w.edges, diagnostics: w.pending }
+// THE PROJECTION BACK TO Outcome, AND WHY IT CANNOT MOVE AN EXISTING ANSWER. resolve's Outcome
+// carries ONE chain, so the population's FIRST chain is projected -- and the first chain is exactly
+// the chain the previous short-circuiting walk produced, because it stopped at that same child. So
+// the CLI's fatal pick and the native test route's fatal reason are unchanged BY CONSTRUCTION
+// rather than by measurement agreeing. The remaining chains are not discarded: census-resolve reads
+// the population through child_walk_failures and emits one residual row per chain.
+//
+// THE ACCEPTED ARM IS REACHABLE ONLY WHEN THE POPULATION IS EMPTY, so "never return a partial
+// accepted tree" is enforced by this match rather than by a caller's discipline.
+fn child_walk_outcome(w: ChildWalk) -> Outcome<List<Edge>> {
+  match w.failures {
+    Empty => Accepted { value: w.edges, diagnostics: w.pending }
+    Cons { head: first, tail: _ } =>
+      Rejected { diagnostics: rejected_with_pending(pending: w.pending, rejected: first) }
   }
+}
+
+fn child_walk_failures(w: ChildWalk) -> List<NonEmptyDiagnostics> {
+  w.failures
+}
+
+fn child_walk_observation(w: ChildWalk) -> ObservationCompleteness {
+  w.observation
 }
 
 fn resolve_transform_children(
   ctx: ResolveContext,
   n: Node
 ) -> Outcome<Node> {
-  match child_walk_finish(w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+  match child_walk_outcome(w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
     child_walk_step(
       w: acc,
       e: e,
@@ -1173,7 +1213,7 @@ fn resolve_children_homogeneous_scope(
     ctx: resolve_ctx_with_under_module_root(ctx: ctx, under_module_root: at_module_root),
     scope: scope_here
   )
-  match child_walk_finish(w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+  match child_walk_outcome(w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
     child_walk_step_edge(w: acc, r: resolve_child_edge(ctx: child_ctx, e: e))
   })) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -1191,7 +1231,7 @@ fn resolve_edges_first_outer_then_inner(
   scope_outer: Scope,
   scope_inner: Scope
 ) -> Outcome<List<Edge>> {
-  child_walk_finish(w: fold(edges, init: child_walk_init(), f: fn(acc, e) {
+  child_walk_outcome(w: fold(edges, init: child_walk_init(), f: fn(acc, e) {
     child_walk_step(
       w: acc,
       e: e,
@@ -1221,7 +1261,7 @@ fn resolve_bind_edges(
   scope_outer: Scope,
   scope_inner: Scope
 ) -> Outcome<List<Edge>> {
-  child_walk_finish(w: fold(edges, init: child_walk_init(), f: fn(acc, e) {
+  child_walk_outcome(w: fold(edges, init: child_walk_init(), f: fn(acc, e) {
     child_walk_step(
       w: acc,
       e: e,
