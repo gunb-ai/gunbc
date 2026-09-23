@@ -192,7 +192,8 @@ type ActiveNtfyRuntimeGap
 // wildcards in sudoers, which is refused; the fixed, caller-sealed observation helper that reads
 // them without one is its own change. Until it lands the channel is UNESTABLISHED: every reading
 // that passes every other check still refuses on this gap, so issuance cannot happen, and nothing
-// is weakened in the meantime.
+// is weakened in the meantime. The helper's contract landing (gunbc#12124) does not retire this gap;
+// the classifier making the joins does.
 type ActiveProcessJoin
   = JoinProcessEnvironmentNames
   | JoinProcessExecutable
@@ -201,7 +202,7 @@ type ActiveProcessJoin
 
 data active_process_joins: List<ActiveProcessJoin> = [JoinProcessEnvironmentNames, JoinProcessExecutable, JoinAuthFileHeldByProcess, JoinListenerSocketHeldByProcess]
 
-data active_process_joins_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the per-release, caller-sealed runtime-observation helper lands (dispatched separately by eager-owl-205 from #12077): a modeled .dag entry in the broker's own release, run by that release's gunbc binary as the ntfy server's principal under a sudoers grant rendered per installed release by the modeled broker deployment, which reads MainPID's environment NAMES, /proc/MainPID/exe target and inode, and its fd inode set, and joins the declared binary, the auth-file inode and the 127.0.0.1:2586 socket inode to them. The four joins then move out of this gap into the classifier, each with its RED.")
+data active_process_joins_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the classifier MAKES the four joins, not merely that their helper exists. The helper contract landed with gunbc#12124 (gunbc.auth.approval_ntfy_runtime_observe: approval_ntfy_runtime_observe_helper_argv, ntfy_runtime_observe_encode / ntfy_runtime_observe_decode, the per-release sudoers grant), which is necessary and NOT sufficient: the gap retires only when this module reads that helper's observation through the one sealed root and refuses on each join -- MainPID's environment carries no NTFY_* name; /proc/MainPID/exe is the declared binary by target and inode; the declared auth-file's inode is among MainPID's open fds; the 127.0.0.1:2586 socket's inode is among them -- each with its own RED, in the follow-up to gunbc#12077 that wires them.")
 
 fn active_process_join_label(j: ActiveProcessJoin) -> String {
   match j {
