@@ -8,6 +8,7 @@ import std.content_hash { content_hash_of_value }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_create_new }
 import gunbc.durable_cas_file_store {
   CasSlotProbe, ProbedHead, cas_probe_bisect, cas_outcome_from_create, observe_cas_slot_state, cas_file_slot_path,
+  CasGenerationRead, GenerationPresent, GenerationAbsent, cas_read_generation,
 }
 import gunbc.auth.approval_assertion_counter {
   AssertionCounterAdmission, AssertionCounterAdmitted, AssertionCounterReplayed, AssertionCounterRaced, AssertionCounterStoreRefused,
@@ -107,24 +108,36 @@ test fn an_enrolment_keeps_admitting_past_four_thousand_ninety_six_assertions() 
 
 // AN APPEND THAT LANDS MID-SEARCH YIELDS A STALE HEAD, NEVER A FABRICATED ONE, AND A WRITER ACTING ON
 // THE STALE HEAD IS REFUSED BY THE EXCLUSIVE CREATE ITSELF. Five counters are admitted (generations
-// 1..5). A search has galloped past 1, 2, 4 and read 8 absent, then bisected and read 6 absent: its
-// state is present 4, absent 6. Only THEN does a concurrent writer publish generation 6. The search
-// is resumed from exactly that state, so the append is interleaved between its reads rather than
-// before or after the whole observation. It must report generation 5 holding counter 5 -- a
-// generation that really was committed, one behind the real head. A writer acting on that stale head
-// then attempts the real exclusive create of generation 6: the OS reports occupancy, the create
-// never overwrites (generation 6 still holds counter 6), and the store classifies it as a lost race.
+// 1..5). The search's boundary is OBSERVED, not supplied: generation 4 is READ present and generation 6
+// is READ absent through the store's own classified read (cas_read_generation), which is the state a
+// real search holds after its gallop and one bisection step. Only THEN does a concurrent writer publish
+// generation 6, and the bisection resumes from exactly those two observed facts -- the absent bound it
+// carries was true when it was read and is stale when it is used, which is the interleaving. It must
+// report generation 5 holding counter 5, a generation that really was committed, one behind the real
+// head. A writer acting on that stale head then attempts the real exclusive create of generation 6: the
+// OS reports occupancy, the create never overwrites (generation 6 still holds counter 6), and the store
+// classifies it as a lost race.
 test fn an_append_landing_mid_search_yields_a_stale_real_head_and_the_stale_writer_is_refused_by_the_create() -> Bool {
   let root = fresh_counter_root()
   let key: NonEmptyStr = "enr-interleave"
   let seeded = admit_sequentially(root: root as NonEmptyStr, enrollment_id: key, next: 1, last: 5)
-  let gen4 = Filesystem.Read(path: cas_file_slot_path(root: root as NonEmptyStr, key: key, generation: 4))
+  let observed_present = cas_read_generation(root: root as NonEmptyStr, key: key, generation: 4)
+  let observed_absent = cas_read_generation(root: root as NonEmptyStr, key: key, generation: 6)
   let appended = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: key, observed: 6)
-  let resumed = cas_probe_bisect(root: root as NonEmptyStr, key: key, present: 4, present_value: gen4.content as NonEmptyStr, absent: 6)
+  let resumed = match observed_present {
+    GenerationPresent { content: v4 } => match observed_absent {
+      GenerationAbsent => Present { value: cas_probe_bisect(root: root as NonEmptyStr, key: key, present: 4, present_value: v4, absent: 6) }
+      _ => Absent
+    }
+    _ => Absent
+  }
   let stale_real = match resumed {
-    ProbedHead { generation: g, value: v } =>
-      g == 5 && (v as String) == "5" && (v as String) == Filesystem.Read(path: cas_file_slot_path(root: root as NonEmptyStr, key: key, generation: g)).content
-    _ => false
+    Present { value: probe } => match probe {
+      ProbedHead { generation: g, value: v } =>
+        g == 5 && (v as String) == "5" && (v as String) == Filesystem.Read(path: cas_file_slot_path(root: root as NonEmptyStr, key: key, generation: g)).content
+      _ => false
+    }
+    Absent => false
   }
   let target_path = cas_file_slot_path(root: root as NonEmptyStr, key: key, generation: 6)
   let stale_write = Filesystem.WriteCreateNew(path: target_path, content: "7")
