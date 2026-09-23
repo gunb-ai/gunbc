@@ -15,6 +15,7 @@ import extdeps.systemd.unit_file {
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired,
+  gunbc_runner_slot_desired_for,
   RunnerSlotCpuQuota,
   CpuQuotaResolved,
   SlotCpuQuotaUnbounded,
@@ -134,6 +135,25 @@ fn fabric_cell_base_directory_effect() -> FabricCellEffect {
 // drop-in itself, so the privileged boundary is crossed by exactly these typed words and by no
 // authored file bytes (see the closed-sum note above). A unit-file carrier here would be a
 // representation of an artifact nothing constructs.
+// THE DIRECTIVES ARE PER SLOT, for the reason fabric_cell_converge's digest is: the shakedown slot's
+// 28 GiB row (gunbc.runner_slot_allocation gunbc_runner_slot_desired_for) renders as ITS slice's
+// MemoryMax, MemoryHigh and MemorySwapMax, and every other cell keeps the fleet row's. The quota
+// stays a parameter because it is the one member whose observed identity is compared separately.
+fn fabric_cell_slice_desired_directives_for_slot(slot: RunnerSlotIdentity, quota: RunnerSlotCpuQuota) -> List<SystemdSliceDirective> {
+  let desired = gunbc_runner_slot_desired_for(slot: slot)
+  [
+    slice_memory_max(bytes: desired.memory_max),
+    slice_memory_high(bytes: desired.memory_high),
+    slice_memory_swap_max(bytes: desired.memory_swap_max),
+    slice_tasks_max(count: desired.tasks_max),
+    slice_cpu_weight(weight: desired.cpu_weight),
+    fabric_cell_slice_quota_directive(quota: quota),
+  ]
+}
+
+// THE FLEET-ROW DIRECTIVES, FOR A CONSUMER THAT NAMES NO SLOT (the sudoers grant roster's witness
+// and the fleet-row grant). A consumer that HAS a slot reads _for_slot; answering the fleet row
+// for the shakedown slot would render a grant the apply never uses and miss the one it does.
 fn fabric_cell_slice_desired_directives_for(quota: RunnerSlotCpuQuota) -> List<SystemdSliceDirective> {
   let desired = gunbc_runner_slot_desired()
   [
@@ -148,6 +168,10 @@ fn fabric_cell_slice_desired_directives_for(quota: RunnerSlotCpuQuota) -> List<S
 
 fn fabric_cell_slice_desired_directives() -> List<SystemdSliceDirective> {
   fabric_cell_slice_desired_directives_for(quota: gunbc_runner_slot_desired().cpu_quota)
+}
+
+fn fabric_cell_slice_desired_directives_of_slot(slot: RunnerSlotIdentity) -> List<SystemdSliceDirective> {
+  fabric_cell_slice_desired_directives_for_slot(slot: slot, quota: gunbc_runner_slot_desired_for(slot: slot).cpu_quota)
 }
 
 fn fabric_cell_slice_quota_directive(quota: RunnerSlotCpuQuota) -> SystemdSliceDirective {
@@ -246,7 +270,7 @@ fn fabric_cell_boundary_add_realization(
   AddressRealizable {
     effect: FabricCellSliceEnsure {
       slice_unit: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
-      directives: fabric_cell_slice_desired_directives_for(quota: quota),
+      directives: fabric_cell_slice_desired_directives_for_slot(slot: slot, quota: quota),
     },
   }
 }

@@ -2,7 +2,6 @@ module gunbc.site_pxe_edge_converge
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import std.algebra { trim }
-import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, serialize_content_hash }
 import extdeps.uri { Uri }
@@ -411,7 +410,6 @@ fn site_pxe_edge_subject(host: HostIdentity) -> SitePxeEdgeSubjectAdmission {
 // ── Observation (effectful) ──────────────────────────────────────────────────────────────────────
 
 fn site_pxe_edge_argv_probe(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>, what: String) -> SitePxeEdgeProbe
-  uses net: Network
 {
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv) {
     TypedArgvExecRefused { reason: why } => SitePxeEdgeProbeUnobservable { reason: why }
@@ -425,7 +423,6 @@ fn site_pxe_edge_argv_probe(target: SshTarget, context: FleetSshExecutionContext
 }
 
 fn observe_site_pxe_edge_chainloader(target: SshTarget, context: FleetSshExecutionContext, pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderObservation
-  uses net: Network
 {
   match site_pxe_edge_chainloader_target(pin: pin) {
     Absent => ChainloaderDigestUnobservable { reason: "no pinned chainloader to digest" }
@@ -452,7 +449,6 @@ fn site_pxe_edge_file_admission(file: SitePxeEdgeFile) -> TypedRemoteFileWriteAd
 // The comparison is typed_remote_file_write's own far-side `cmp -s -`, so the plan's "identical" and
 // the write's read-back are one judgment.
 fn observe_site_pxe_edge_file(target: SshTarget, context: FleetSshExecutionContext, file: SitePxeEdgeFile) -> SitePxeEdgeFileStanding
-  uses net: Network
 {
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["test", "-e", file.path as String]) {
     TypedArgvExecRefused { reason: why } => EdgeFileUnobservable { reason: why }
@@ -481,7 +477,6 @@ fn observe_site_pxe_edge_file(target: SshTarget, context: FleetSshExecutionConte
 }
 
 fn observe_site_pxe_edge_unit_active(target: SshTarget, context: FleetSshExecutionContext) -> SitePxeEdgeProbe
-  uses net: Network
 {
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_property_argv(unit: site_pxe_edge_unit_name, property: ActiveState)) {
     TypedArgvExecRefused { reason: why } => SitePxeEdgeProbeUnobservable { reason: why }
@@ -554,7 +549,6 @@ fn site_pxe_edge_file_outcome_settled(outcome: SitePxeEdgeFileOutcome) -> Bool {
 }
 
 fn apply_site_pxe_edge_file(target: SshTarget, context: FleetSshExecutionContext, file: SitePxeEdgeFile, before: SitePxeEdgeFileStanding) -> SitePxeEdgeFileOutcome
-  uses net: Network
 {
   match before {
     EdgeFileIdentical => EdgeFileLeftInPlace
@@ -565,7 +559,6 @@ fn apply_site_pxe_edge_file(target: SshTarget, context: FleetSshExecutionContext
 }
 
 fn write_site_pxe_edge_file(target: SshTarget, context: FleetSshExecutionContext, file: SitePxeEdgeFile) -> SitePxeEdgeFileOutcome
-  uses net: Network
 {
   match converge_typed_remote_file(
     target: target,
@@ -582,7 +575,6 @@ fn write_site_pxe_edge_file(target: SshTarget, context: FleetSshExecutionContext
 // daemon-reload, enable, restart -- restart and not start, so a rewritten config is actually the one
 // running. Refused at the first failing step, by name.
 fn activate_site_pxe_edge_unit(target: SshTarget, context: FleetSshExecutionContext) -> SitePxeEdgeProbe
-  uses net: Network
 {
   match site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: systemctl_daemon_reload_argv()), what: "daemon-reload") {
     SitePxeEdgeProbeObservedNegative { reason: r } => SitePxeEdgeProbeObservedNegative { reason: r }
@@ -606,7 +598,6 @@ fn site_pxe_edge_file_results(
   gate_open: Bool,
   files: List<SitePxeEdgeFile>,
 ) -> List<SitePxeEdgeFileResult>
-  uses net: Network
 {
   map(files, f => {
     let before = observe_site_pxe_edge_file(target: target, context: context, file: f)
@@ -632,7 +623,6 @@ fn site_pxe_edge_file_results(
 // Every effect is sequenced by a let; the unit read-back is bound after activation, never ordered by
 // its position in the result record.
 fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode: SitePxeEdgeMode) -> SitePxeEdgeRun
-  uses net: Network
 {
   let pin = site_pxe_edge_chainloader_pin
   let privilege = site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: ["true"]), what: "non-interactive sudo")
@@ -772,7 +762,6 @@ data site_pxe_edge_converge_attempt_raw: String = "site-pxe-edge-converge-ci"
 
 
 fn site_pxe_edge_ci_wet(mode: SitePxeEdgeMode) -> ProcessExit
-  uses net: Network
 {
   match actions_variable_read(name: fleet_converge_expected_host_env_name) {
     ActionsVariableAbsent { variable: v, detail: d } =>
@@ -805,13 +794,11 @@ fn site_pxe_edge_ci_wet(mode: SitePxeEdgeMode) -> ProcessExit
 }
 
 fn site_pxe_edge_observe_ci_wet() -> ProcessExit
-  uses net: Network
 {
   site_pxe_edge_ci_wet(mode: SitePxeEdgeObserveOnly)
 }
 
 fn site_pxe_edge_converge_ci_wet() -> ProcessExit
-  uses net: Network
 {
   site_pxe_edge_ci_wet(mode: SitePxeEdgeApply)
 }

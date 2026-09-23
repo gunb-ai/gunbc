@@ -1,6 +1,6 @@
 module v2.std.lens_verdict
 
-import std.occurrence_identity { OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
 import v2.std.algebra { fold_list }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.diagnostic {
@@ -22,7 +22,8 @@ import v2.std.integer { integer_int_to_decimal_string }
 import extdeps.languages.json.emit { quote_json_string }
 import v2.std.node { Node, Symbol }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_empty, span_index_textual_locus_optional }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
 
@@ -129,13 +130,55 @@ fn lens_verdict_node_occurrence_text(node: Node) -> String {
   }
 }
 
+// THE SAME QUESTION, ASKED BY A CALLER WHO HOLDS THE INDEX. The paragraph above says the ordinal
+// can be resolved to a byte range given "that graph's SpanIndex, which the stages past parse do not
+// carry" -- `v2.compiler.program_assembly` now carries it, so this is that sentence's other half
+// rather than a second answer. The occurrence rendering above remains the ONE answer for every case
+// this cannot resolve, and is called directly rather than restated: a synthetic node, an occurrence
+// the index does not hold (assembly is fail-closed, so a file it never reached has no entries), and
+// a derivation chain that bottoms out in no textual origin all render exactly as they did before.
+// Nothing here can invent a file; it can only find one that was recorded.
+fn lens_verdict_node_occurrence_text_in_spans(node: Node, index: SpanIndex) -> String {
+  match node_occurrence_id_optional(node: node) {
+    Absent => lens_verdict_node_occurrence_text(node: node)
+    Present { value: id } =>
+      match span_index_textual_locus_optional(index: index, id: id) {
+        Absent => lens_verdict_node_occurrence_text(node: node)
+        Present { value: locus } =>
+          match locus {
+            Textual { file: f, extent: e } =>
+              concat(concat(symbol_lexeme(sym: f), " "), lens_verdict_extent_text(e: e))
+            _ => lens_verdict_node_occurrence_text(node: node)
+          }
+      }
+  }
+}
+
+// ONE `match d.at` FOR THE LOCUS TEXT, AND THE INDEX-FREE DOOR IS ITS PROJECTION. A caller without
+// a span index passes an empty one, every lookup finds nothing, and every arm renders exactly what
+// it rendered before -- so the two doors cannot disagree about a locus, because there is only one
+// set of arms to disagree with. Writing the second door as its own `match` is the section-3 fork
+// this module's own CLI consumer was already warned about.
+//
+// SCOPED TO THE TEXT RENDERING, AND THE SCOPE IS THE CORRECTION. `lens_verdict_diagnostic_locus_module`
+// above carries its own `match d.at` and always has; an earlier revision of this paragraph said
+// "one `match d.at` in this module", which was false when it was written and was repeated back
+// approvingly in review 69666. The two are not a fork because they answer DIFFERENT questions -- that
+// one projects the module NAME (and is deliberately empty for a node or invariant anchor), this one
+// renders a reader-facing position -- but "they answer different questions" is the honest claim and
+// "there is only one" was not.
 fn lens_verdict_diagnostic_locus_text(d: Diagnostic) -> String {
+  lens_verdict_diagnostic_locus_text_in_spans(d: d, index: span_index_empty())
+}
+
+fn lens_verdict_diagnostic_locus_text_in_spans(d: Diagnostic, index: SpanIndex) -> String {
   match d.at {
     Textual { file: f, extent: e } =>
       concat(concat(symbol_lexeme(sym: f), " "), lens_verdict_extent_text(e: e))
     SourcePortLocus { anchor: _, file: f, extent: e } =>
       concat(concat(symbol_lexeme(sym: f), " "), lens_verdict_extent_text(e: e))
-    NodeLocus { anchor: a } => lens_verdict_node_occurrence_text(node: a.at)
+    NodeLocus { anchor: a } =>
+      lens_verdict_node_occurrence_text_in_spans(node: a.at, index: index)
     InvariantPortLocus { anchor: _, invariant: inv } =>
       concat("<invariant ", concat(symbol_lexeme(sym: inv), ">"))
     DeclarationLocus { declaration: declaration } =>
@@ -145,8 +188,25 @@ fn lens_verdict_diagnostic_locus_text(d: Diagnostic) -> String {
 
 // ONE DIAGNOSTIC, LOCATED: "reason @ locus". The reason alone was what every boundary that
 // summarized a refusal kept, and the locus is what each of them dropped.
-fn lens_verdict_diagnostic_located_text(d: Diagnostic) -> String {
-  concat(symbol_lexeme(sym: d.reason), concat(" @ ", lens_verdict_diagnostic_locus_text(d: d)))
+//
+// THE INDEX-FREE SIBLING OF THIS DOOR IS DELETED, NOT RETAINED (review 70130). `..._located_text`
+// was consumed only by the chain fold below, which this change rewrote to call the `_in_spans`
+// form -- so it became a declaration with no call site in the closure, DESIGN section 3c's
+// mechanical tell, while its neighbours `lens_verdict_diagnostic_locus_text` and
+// `..._chain_text` kept live consumers and therefore stay.
+//
+// DELETED RATHER THAN LEFT STANDING for the reason this branch already applied twice, to
+// `program_assembly_read_to_normalized_root_prepared` (review 69837) and to the orphaned
+// `ProgramAssemblySeededRead` carrier (review 70027): a surviving index-free door is DESIGN
+// section 3's attractor, and it is the one the next caller reaches for -- silently re-introducing
+// the unlocated render this package exists to remove. A caller that genuinely has no index says so
+// by passing `span_index_empty()`, which is a statement rather than a default, exactly as the
+// seeded producer argument goes.
+fn lens_verdict_diagnostic_located_text_in_spans(d: Diagnostic, index: SpanIndex) -> String {
+  concat(
+    symbol_lexeme(sym: d.reason),
+    concat(" @ ", lens_verdict_diagnostic_locus_text_in_spans(d: d, index: index))
+  )
 }
 
 // THE WHOLE CHAIN, EACH LINK LOCATED, IN CARRIAGE ORDER. The last link is the cause that
@@ -155,9 +215,21 @@ fn lens_verdict_diagnostic_located_text(d: Diagnostic) -> String {
 // lookup class and each competing declaration. Rendering only the fatal would drop exactly
 // the detail those links exist to carry.
 fn lens_verdict_diagnostics_located_chain_text(d: NonEmptyDiagnostics) -> String {
+  lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: span_index_empty())
+}
+
+// EVERY LINK RESOLVED, NOT ONLY THE FATAL. The chain exists because the head is not the cause, and
+// the same reasoning applies to position: a reader chasing an advisory link wants its file as much
+// as the fatal's, and each link anchors on its own node.
+fn lens_verdict_diagnostics_located_chain_text_in_spans(
+  d: NonEmptyDiagnostics,
+  index: SpanIndex
+) -> String {
   fold_list(
     xs: d.tail,
-    empty: lens_verdict_diagnostic_located_text(d: d.head),
-    cons: fn(acc, diag) { concat(acc, concat(" -> ", lens_verdict_diagnostic_located_text(d: diag))) }
+    empty: lens_verdict_diagnostic_located_text_in_spans(d: d.head, index: index),
+    cons: fn(acc, diag) {
+      concat(acc, concat(" -> ", lens_verdict_diagnostic_located_text_in_spans(d: diag, index: index)))
+    }
   )
 }

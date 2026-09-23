@@ -38,7 +38,7 @@ import gunbc.fabric_cell_effect {
   FabricCellSubstrateOwner,
   CellSubstrateRootOwned,
   CellAttemptWriterOwned,
-  fabric_cell_slice_desired_directives,
+  fabric_cell_slice_desired_directives_of_slot,
 }
 import gunbc.fabric_allocation_store_substrate {
   AllocationStoreEffect,
@@ -154,7 +154,7 @@ fn fabric_cell_slice_property_operations(
 fn fabric_cell_slice_operations(slot: RunnerSlotIdentity) -> List<ExecutorPrivilegedOperation> {
   fabric_cell_slice_property_operations(
     unit: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
-    directives: fabric_cell_slice_desired_directives(),
+    directives: fabric_cell_slice_desired_directives_of_slot(slot: slot),
   )
 }
 
