@@ -1523,76 +1523,6 @@ fn body_lower_unwrap_optional_element(node: Node) -> Node {
 }
 
 
-// THE COMMA-LIST READER FOR FIELD DECLARATIONS, FIELD PATTERNS, FIELD INITIALIZERS, POSITIONAL
-// PATTERNS AND FN-TYPE DOMAINS. dag_grammar_comma_list_expr is one grammar helper --
-// seq(item, seq(repeat(seq(optional(comma), item)), optional(comma))) -- and each consumer maps its
-// own item. An optional wrapper around the whole list (an absent list is an empty Conj) is
-// flattened first. The reader answers Absent for any position that is not that shape, including
-// inside the repeat, and every caller refuses on Absent, so "not a list" is never read as "an empty
-// list" and no item is dropped silently. (The repeat walk once answered Empty for an unreadable
-// element or tail, which truncated the list with no diagnostic; found while merging gunbc#12108.)
-//
-// A SECOND READER OF THE SAME SHAPE EXISTS AND THIS IS STATED RATHER THAN HIDDEN. gunbc#12108 walks
-// the same grammar shape for CALL ARGUMENTS (body_lower_call_args_from_capture,
-// body_lower_call_args_from_repeat), fused with per-argument value lowering and refusing under the
-// call-specific cause body_lowering_reason_call_argument_list_shape_unread. Call arguments were
-// moved onto that reader at the merge, and this one no longer serves them. Folding both into one
-// shape reader needs a list-generic refusal cause and touches #12108's authority, so it is a follow-up
-// and not part of this merge.
-fn body_lower_comma_repeat_items(repeat_capture: Node) -> Optional<List<Node>> {
-  let stripped = body_lower_deep_unwrap_optional(node: repeat_capture)
-  if is_empty_conj_root(n: stripped) {
-    optional_present(value: Empty)
-  } else {
-    match sugar_sequence_pair_optional(node: stripped) {
-      Absent => Absent
-      Present { value: pair } =>
-        match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
-          Absent => Absent
-          Present { value: elem } =>
-            match body_lower_comma_repeat_items(repeat_capture: pair.right) {
-              Absent => Absent
-              Present { value: rest } => optional_present(value: list_append(left: [elem.right], right: rest))
-            }
-        }
-    }
-  }
-}
-
-// A COMMA LIST HAS THREE SHAPES, NOT TWO, AND THE THIRD IS A LIST OF ONE. An empty capture is the
-// empty list; a `seq(item, seq(repeat, opt))` spine is the multi-item list; ANYTHING ELSE NON-EMPTY
-// is a SINGLE ITEM, because the grammar's comma spine only appears once there is a comma. Reading
-// the third case as "unreadable" conflates arity one with a shape this reader cannot parse, and
-// both of the obvious dispositions for that conflation are wrong: answering an empty list drops
-// the argument silently (the erasure gunbc.recurring_failure_mode call_expression_erased_at_v2_
-// body_lowering records), and REFUSING rejects every one-argument call -- `x.step(a)` reached this
-// reader as the bare atom `a`, which is neither empty nor a spine. gunbc#12033 introduced that
-// refusal while repairing the drop, and the floor caught it as a claim_failed on
-// v2.test.claim.body_lowering_qualified_path body_lowering_local_receiver_call_callee_is_the_whole_path.
-//
-// SO THIS READER IS TOTAL AND REFUSES NOTHING. Its job is to classify LIST SHAPE, and every node
-// is one of the three. Whether an individual item is lowerable is the item lowerer's question --
-// body_lower_arg_lowered refuses there, located on the item -- which is where a refusal can name
-// what it could not read instead of blaming the list.
-fn body_lower_comma_list_items_optional(list_capture: Node) -> Optional<List<Node>> {
-  let stripped = body_lower_deep_unwrap_optional(node: list_capture)
-  if is_empty_conj_root(n: stripped) {
-    optional_present(value: Empty)
-  } else {
-    match sugar_sequence_pair_optional(node: stripped) {
-      Absent => optional_present(value: [stripped])
-      Present { value: pair } =>
-        match sugar_sequence_pair_optional(node: pair.right) {
-          Absent => optional_present(value: [stripped])
-          Present { value: tail } =>
-            match body_lower_comma_repeat_items(repeat_capture: tail.left) {
-              Absent => Absent
-              Present { value: rest } => optional_present(value: list_append(left: [pair.left], right: rest))
-            }
-        }
-    }
-  }
-}
 
 // THE WHOLE TYPE EXPRESSION, NOT ITS HEAD ATOM. dag_grammar_qualified_type_expr is
 // seq(seq(qualified_name, optional(`<` type_list `>`)), optional(`?`)). The head lowers as
@@ -3052,39 +2982,40 @@ fn body_lower_call_arg_value(arg_capture: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_call_arg_list_child(list: Node, name: Symbol) -> Outcome<Node> {
+// THE COMMA-LIST SHAPE, READ ONCE. Every dag_grammar_comma_list_expr parse -- call arguments, field
+// declarations, field patterns, field initializers, positional patterns, fn-type domains -- is
+//   list   = sequence(first_item, sequence(repeat, optional trailing comma))
+//   repeat = sequence(sequence(optional comma, item), repeat) | the empty conj
+// and this walker reads that shape and nothing else, answering the raw item captures in order. Each
+// consumer maps its own item. A position it cannot read refuses with the caller's shape cause, so
+// call arguments keep body_lowering_reason_call_argument_list_shape_unread exactly as gunbc#12108
+// introduced it. The walk was #12108's, fused with argument lowering; it is split out so field and
+// pattern lists read the same shape through the same code instead of a second walker.
+fn body_lower_comma_list_child(list: Node, name: Symbol, shape_refusal: Symbol) -> Outcome<Node> {
   match find_named_child(root: list, name: name) {
     Accepted { value: child, diagnostics: _ } =>
       outcome_accepted(value: body_lower_deep_unwrap_optional(node: child))
     Rejected { diagnostics: _ } =>
-      outcome_rejected(
-        d: body_lower_diagnostic(reason: ^body_lowering_reason_call_argument_list_shape_unread, n: list)
-      )
+      outcome_rejected(d: body_lower_diagnostic(reason: shape_refusal, n: list))
   }
 }
 
-// Cons on the way back up keeps argument order without copying an accumulator per element.
-fn body_lower_call_args_from_repeat(repeat_capture: Node) -> Outcome<List<Node>> {
+fn body_lower_comma_list_repeat_items(repeat_capture: Node, shape_refusal: Symbol) -> Outcome<List<Node>> {
   if is_empty_conj_root(n: repeat_capture) {
     outcome_accepted(value: Empty)
   } else {
     bind_outcome(
-      o: body_lower_call_arg_list_child(list: repeat_capture, name: ^grammar_sequence_left_node_projection),
+      o: body_lower_comma_list_child(list: repeat_capture, name: ^grammar_sequence_left_node_projection, shape_refusal: shape_refusal),
       f: fn(element) {
         bind_outcome(
-          o: body_lower_call_arg_list_child(list: element, name: ^grammar_sequence_right_node_projection),
-          f: fn(arg) {
+          o: body_lower_comma_list_child(list: element, name: ^grammar_sequence_right_node_projection, shape_refusal: shape_refusal),
+          f: fn(item) {
             bind_outcome(
-              o: body_lower_call_arg_value(arg_capture: arg),
-              f: fn(operand) {
+              o: body_lower_comma_list_child(list: repeat_capture, name: ^grammar_sequence_right_node_projection, shape_refusal: shape_refusal),
+              f: fn(rest) {
                 bind_outcome(
-                  o: body_lower_call_arg_list_child(list: repeat_capture, name: ^grammar_sequence_right_node_projection),
-                  f: fn(rest) {
-                    bind_outcome(
-                      o: body_lower_call_args_from_repeat(repeat_capture: rest),
-                      f: fn(operands) { outcome_accepted(value: Cons { head: operand, tail: operands }) }
-                    )
-                  }
+                  o: body_lower_comma_list_repeat_items(repeat_capture: rest, shape_refusal: shape_refusal),
+                  f: fn(items) { outcome_accepted(value: Cons { head: item, tail: items }) }
                 )
               }
             )
@@ -3095,28 +3026,23 @@ fn body_lower_call_args_from_repeat(repeat_capture: Node) -> Outcome<List<Node>>
   }
 }
 
-fn body_lower_call_args_from_capture(args_capture: Node) -> Outcome<List<Node>> {
-  let list = body_lower_deep_unwrap_optional(node: args_capture)
+fn body_lower_comma_list_items(list_capture: Node, shape_refusal: Symbol) -> Outcome<List<Node>> {
+  let list = body_lower_deep_unwrap_optional(node: list_capture)
   if is_empty_conj_root(n: list) {
     outcome_accepted(value: Empty)
   } else {
     bind_outcome(
-      o: body_lower_call_arg_list_child(list: list, name: ^grammar_sequence_left_node_projection),
+      o: body_lower_comma_list_child(list: list, name: ^grammar_sequence_left_node_projection, shape_refusal: shape_refusal),
       f: fn(first) {
         bind_outcome(
-          o: body_lower_call_arg_value(arg_capture: first),
-          f: fn(operand) {
+          o: body_lower_comma_list_child(list: list, name: ^grammar_sequence_right_node_projection, shape_refusal: shape_refusal),
+          f: fn(after_first) {
             bind_outcome(
-              o: body_lower_call_arg_list_child(list: list, name: ^grammar_sequence_right_node_projection),
-              f: fn(after_first) {
+              o: body_lower_comma_list_child(list: after_first, name: ^grammar_sequence_left_node_projection, shape_refusal: shape_refusal),
+              f: fn(repeat_capture) {
                 bind_outcome(
-                  o: body_lower_call_arg_list_child(list: after_first, name: ^grammar_sequence_left_node_projection),
-                  f: fn(repeat_capture) {
-                    bind_outcome(
-                      o: body_lower_call_args_from_repeat(repeat_capture: repeat_capture),
-                      f: fn(operands) { outcome_accepted(value: Cons { head: operand, tail: operands }) }
-                    )
-                  }
+                  o: body_lower_comma_list_repeat_items(repeat_capture: repeat_capture, shape_refusal: shape_refusal),
+                  f: fn(rest) { outcome_accepted(value: Cons { head: first, tail: rest }) }
                 )
               }
             )
@@ -3125,6 +3051,41 @@ fn body_lower_call_args_from_capture(args_capture: Node) -> Outcome<List<Node>> 
       }
     )
   }
+}
+
+// The consumers that refuse under their own cause read the shape through this adapter: Absent is
+// "not a comma list", and each such caller already turns Absent into its own located refusal.
+fn body_lower_comma_list_items_optional(list_capture: Node) -> Optional<List<Node>> {
+  match body_lower_comma_list_items(list_capture: list_capture, shape_refusal: ^body_lowering_reason_call_argument_list_shape_unread) {
+    Accepted { value: items, diagnostics: _ } => optional_present(value: items)
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+// Call arguments: the shape is read first, then each argument lowers in order and the first that
+// cannot refuses. (Before the split, a shape defect after an unreadable argument reported the
+// argument first; with both present the shape refusal now reports first. Either is a refusal.)
+fn body_lower_call_arg_values(items: List<Node>) -> Outcome<List<Node>> {
+  match items {
+    Empty => outcome_accepted(value: Empty)
+    Cons { head: item, tail: rest } =>
+      bind_outcome(
+        o: body_lower_call_arg_value(arg_capture: item),
+        f: fn(operand) {
+          bind_outcome(
+            o: body_lower_call_arg_values(items: rest),
+            f: fn(operands) { outcome_accepted(value: Cons { head: operand, tail: operands }) }
+          )
+        }
+      )
+  }
+}
+
+fn body_lower_call_args_from_capture(args_capture: Node) -> Outcome<List<Node>> {
+  bind_outcome(
+    o: body_lower_comma_list_items(list_capture: args_capture, shape_refusal: ^body_lowering_reason_call_argument_list_shape_unread),
+    f: fn(items) { body_lower_call_arg_values(items: items) }
+  )
 }
 
 fn body_lower_primary_call_suffix_optional(root: Node) -> Optional<Node> {
