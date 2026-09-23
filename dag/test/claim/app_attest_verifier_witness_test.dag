@@ -11,9 +11,15 @@ import extdeps.apple.app_attest {
   AssertionExpectation, verify_assertion, AssertionAuthentic, AssertionRefused, AssertionAppIdMismatch, AssertionValidationCategoryAbsent,
   assertion_signature_verifies_for, chain_link_verifies, base64_of,
   assertion_parts, AssertionPartsOk, AssertionPartsRefused,
+  AttestationDecoded, attestation_structural_refusal, attestation_step_order,
+  AttestationStep, KeyIdLengthStep, NonceStep, KeyIdStep, AppIdStep, CounterStep, EnvironmentStep, CredentialIdStep,
+  LeafIssuerStep, IntermediateIssuerStep, LeafValidityStep, IntermediateValidityStep, IntermediateCaAuthorityStep,
+  ValidationCategoryStep, BundleVersionStep,
+  ordered_step_refusal, OrderedStepRan, AttestationStepNotInOrder,
+  attestation_parts, AttestationPartsOk, AttestationPartsRefused, AttestationRefusal, app_attest_certificate,
 }
-import extdeps.standards.rfc_8949 { CborValue, CborSimple, CborDocumentDecoded, CborDocumentRefused, cbor_decode_document, CborMemberFound, cbor_map_unique_text_member, cbor_byte_string_octets, cbor_array_items }
-import extdeps.standards.rfc_5280 { X509Certificate, X509TbsFields, X509Decoded, X509Refused, decode_certificate }
+import extdeps.standards.rfc_5280 { X509Certificate, X509TbsFields }
+import extdeps.standards.webauthn_authenticator_data { AuthenticatorDataDecoded, AuthenticatorDataRefused, decode_authenticator_data }
 import extdeps.apple.app_attest_sample_ios_14_4 {
   sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_team_identifier, sample_bundle_identifier,
   sample_assertion_counter, sample_client_data,
@@ -43,40 +49,146 @@ fn sample_expectation() -> AttestationExpectation {
   }
 }
 
-fn sample_attestation_refusal_of(e: AttestationExpectation) -> String {
-  match verify_attestation(object: sample_attestation_octets, e: e) {
-    AttestationVerified { verified: _ } => "verified"
-    AttestationRefused { cause: c } => match c {
-      AttestationFormatUnexpected { declared: d } => "format:" + d
-      AttestationChainUntrusted { detail: d } => "chain:" + d
-      AttestationNonceMismatch => "nonce"
-      AttestationKeyIdMismatch { declared: _ } => "key-id"
-      AttestationAppIdMismatch { expected_app_id: _ } => "app-id"
-      AttestationCounterNonZero { counter: _ } => "counter"
-      AttestationEnvironmentUnexpected { expected: _ } => "environment"
-      AttestationCredentialIdMismatch { declared: _ } => "credential-id"
-      AttestationValidationCategoryAbsent => "category-absent"
-      AttestationUndecodable { cause: d } => "undecodable:" + d
-      _ => "other"
-    }
+fn attestation_refusal_name(c: AttestationRefusal) -> String {
+  match c {
+    AttestationFormatUnexpected { declared: d } => "format:" + d
+    AttestationChainUntrusted { detail: d } => "chain:" + d
+    AttestationNonceMismatch => "nonce"
+    AttestationKeyIdMismatch { declared: _ } => "key-id"
+    AttestationAppIdMismatch { expected_app_id: _ } => "app-id"
+    AttestationCounterNonZero { counter: _ } => "counter"
+    AttestationEnvironmentUnexpected { expected: _ } => "environment"
+    AttestationCredentialIdMismatch { declared: _ } => "credential-id"
+    AttestationValidationCategoryAbsent => "category-absent"
+    AttestationUndecodable { cause: d } => "undecodable:" + d
+    _ => "other"
   }
 }
 
-// Steps 2-8 and the chain's names and validity pass on the real object; the first refusal is
-// step 9's absence, which the 2021 sample cannot satisfy.
+// THE REAL PATH, end to end: Apple's bytes through decode_attestation and the whole verify fold.
+fn sample_attestation_refusal_of(e: AttestationExpectation) -> String {
+  match verify_attestation(object: sample_attestation_octets, e: e) {
+    AttestationVerified { verified: _ } => "verified"
+    AttestationRefused { cause: c } => attestation_refusal_name(c: c)
+  }
+}
+
+// INHABITANCE, THE ATTESTATION'S REAL PATH: Apple's bytes through decode_attestation and the whole
+// verify fold. It asserts the ROUTE by the refusal it names -- steps 2-8 and the chain's names and
+// validity pass on the real object, so the first refusal is step 9's absence, which the 2021 sample
+// cannot satisfy. Every supplied-input claim below leans on this one for the real path.
 test fn the_sample_passes_every_step_before_the_extension_steps() -> Bool {
   sample_attestation_refusal_of(e: sample_expectation()) == "category-absent"
 }
 
-// Each earlier step reds by name when its expectation is wrong: client data (nonce), key id,
-// App ID, environment; and observing it in 2026 finds the credential certificate expired.
-test fn each_expectation_reds_its_own_step() -> Bool {
+// THE FOLD'S INPUTS, SUPPLIED AT ITS INTERFACE. The step fold reads the pinned root ONLY for its
+// subject name (the intermediate's issuer must equal it), so the root is supplied as the one field
+// the fold reads -- a certificate whose subject is the intermediate's issuer -- rather than paid for
+// with a PEM decode of Apple's root in every claim. That the REAL root's subject is that name is
+// asserted on the real path by the_sample_passes_every_step_before_the_extension_steps, whose
+// refusal lies past the issuer check. Everything else is the sample's own decode.
+fn sample_fold_inputs() -> AttestationDecoded? {
+  match attestation_parts(object: sample_attestation_octets) {
+    AttestationPartsRefused { cause: _ } => none
+    AttestationPartsOk { parts: p } =>
+      match app_attest_certificate(octets: p.leaf) {
+        Absent => none
+        Present { value: leaf } =>
+          match app_attest_certificate(octets: p.ca) {
+            Absent => none
+            Present { value: ca } =>
+              match decode_authenticator_data(octets: p.auth_data) {
+                AuthenticatorDataRefused { cause: _ } => none
+                AuthenticatorDataDecoded { data: auth } => Present { value: AttestationDecoded {
+                  parts: p, leaf: leaf, ca: ca, auth: auth,
+                  root: X509Certificate { tbs: X509TbsFields {
+                    tbs_octets: [], serial: ca.tbs.serial, tbs_signature_algorithm: ca.tbs.tbs_signature_algorithm,
+                    issuer_octets: ca.tbs.issuer_octets, not_before: ca.tbs.not_before, not_after: ca.tbs.not_after, subject_octets: ca.tbs.issuer_octets,
+                    spki_algorithm: ca.tbs.spki_algorithm, spki_named_curve: ca.tbs.spki_named_curve, spki_public_key: [], extensions: ca.tbs.extensions,
+                  }, signature_algorithm: ca.signature_algorithm, signature_octets: [] },
+                } }
+              }
+          }
+      }
+  }
+}
+
+// SUBJECT: ONE NAMED STEP PER CLAIM. Each claim calls only its step (extdeps.apple.app_attest
+// nonce_step, key_id_step, ...) over supplied inputs (sample_fold_inputs), asserting that the step
+// REFUSES by name on the mutated expectation -- so its cost is its own step's and nothing before it.
+// The positive control for every step is the real-path claim: a step that refused everything would
+// make it name that step instead of category-absent. That the steps are the ones production runs, in production's
+// order, is attestation_step_order_is_the_declared_order below; the real path's inhabitance is
+// the_sample_passes_every_step_before_the_extension_steps.
+fn ordered_name(step: AttestationStep, d: AttestationDecoded, e: AttestationExpectation) -> String {
+  match ordered_step_refusal(step: step, d: d, e: e) {
+    AttestationStepNotInOrder => "not-in-order"
+    OrderedStepRan { refusal: r } =>
+      match r {
+        Absent => "none"
+        Present { value: c } => attestation_refusal_name(c: c)
+      }
+  }
+}
+
+// The nonce step reds by name when its expectation is wrong.
+test fn the_nonce_step_reds_on_other_client_data() -> Bool {
   let e = sample_expectation()
-  sample_attestation_refusal_of(e: AttestationExpectation { key_id: e.key_id, client_data: "wurzelpfropg" as NonEmptyStr, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "nonce"
-    && sample_attestation_refusal_of(e: AttestationExpectation { key_id: "YmbJO4x5nEHUvncp9zdWuVZjNBEMgJn3cdSToAXQe3Q=" as AttestKeyId, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "key-id"
-    && sample_attestation_refusal_of(e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: "6MURL8TA57.de.vincent-haupert.other" as NonEmptyStr, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "app-id"
-    && sample_attestation_refusal_of(e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: AppAttestProduction, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "environment"
-    && sample_attestation_refusal_of(e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: "2026-09-21T00:00:00Z", admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "chain:credential certificate expired at 2021-01-25T12:13:35Z"
+  match sample_fold_inputs() {
+    Absent => false
+    Present { value: d } =>
+      ordered_name(step: NonceStep, d: d, e: AttestationExpectation { key_id: e.key_id, client_data: "wurzelpfropg" as NonEmptyStr, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "nonce"
+  }
+}
+
+// The key id step reds by name when its expectation is wrong.
+test fn the_key_id_step_reds_on_another_key_id() -> Bool {
+  let e = sample_expectation()
+  match sample_fold_inputs() {
+    Absent => false
+    Present { value: d } =>
+      ordered_name(step: KeyIdStep, d: d, e: AttestationExpectation { key_id: "YmbJO4x5nEHUvncp9zdWuVZjNBEMgJn3cdSToAXQe3Q=" as AttestKeyId, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "key-id"
+  }
+}
+
+// The App ID step reds by name when its expectation is wrong.
+test fn the_app_id_step_reds_on_another_app_id() -> Bool {
+  let e = sample_expectation()
+  match sample_fold_inputs() {
+    Absent => false
+    Present { value: d } =>
+      ordered_name(step: AppIdStep, d: d, e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: "6MURL8TA57.de.vincent-haupert.other" as NonEmptyStr, environment: e.environment, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "app-id"
+  }
+}
+
+// The environment step reds by name when its expectation is wrong.
+test fn the_environment_step_reds_on_production() -> Bool {
+  let e = sample_expectation()
+  match sample_fold_inputs() {
+    Absent => false
+    Present { value: d } =>
+      ordered_name(step: EnvironmentStep, d: d, e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: AppAttestProduction, observed_at: e.observed_at, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "environment"
+  }
+}
+
+// The credential validity step reds by name when its expectation is wrong.
+test fn the_validity_step_reds_when_observed_in_2026() -> Bool {
+  let e = sample_expectation()
+  match sample_fold_inputs() {
+    Absent => false
+    Present { value: d } =>
+      ordered_name(step: LeafValidityStep, d: d, e: AttestationExpectation { key_id: e.key_id, client_data: e.client_data, app_id: e.app_id, environment: e.environment, observed_at: "2026-09-21T00:00:00Z", admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) == "chain:credential certificate expired at 2021-01-25T12:13:35Z"
+  }
+}
+
+// THE ROSTER IS PINNED: a step dropped from, or reordered in, production's fold reds here even while
+// its own unit claim above stays green. The order is Apple's steps as this module sequences them.
+test fn attestation_step_order_is_the_declared_order() -> Bool {
+  attestation_step_order() == [
+    KeyIdLengthStep, NonceStep, KeyIdStep, AppIdStep, CounterStep, EnvironmentStep, CredentialIdStep,
+    LeafIssuerStep, IntermediateIssuerStep, LeafValidityStep, IntermediateValidityStep,
+    IntermediateCaAuthorityStep, ValidationCategoryStep, BundleVersionStep,
+  ]
 }
 
 // The object with one octet of "apple-appattest" changed refuses as a format it does not know;
@@ -99,7 +211,7 @@ test fn a_malformed_object_refuses_before_any_step() -> Bool {
 // verify_attestation emits, so the attestation-output -> assertion-input join is one chain rather
 // than two islands agreeing by hand. Absent when the sample's leaf does not decode.
 fn assertion_expectation() -> AssertionExpectation? {
-  match vf_x5c(i: 0) {
+  match sample_leaf() {
     Absent => none
     Present { value: leaf } =>
       match base64_of(octets: leaf.tbs.spki_public_key, url_safe: true) {
@@ -126,6 +238,7 @@ test fn the_sample_assertion_counter_is_the_published_one() -> Bool {
   }
 }
 
+// INHABITANCE, THE ASSERTION'S REAL PATH, including the attestation -> assertion key join.
 // The assertion fold: RP ID passes on real bytes and the first refusal is step 7's absence (the
 // 37-octet prefix carries no extensions); the counter is carried out as 1 either way; a wrong App
 // ID reds step 4 by name.
@@ -180,44 +293,60 @@ fn the_sample_assertion_signature_is_false_for_other_client_data() -> Bool {
 
 // A key the caller stored that is not a base64url point is an ENCODING refusal (Absent), never a
 // verdict (review 69773 of gunbc#11989: the mapper carries it as AssertionUndecodable, not as
-// AssertionSignatureInvalid) -- and it is cheap, refusing before any curve arithmetic.
+// AssertionSignatureInvalid) -- and it is cheap, refusing before any curve arithmetic or nonce hash.
+// SUBJECT: assertion_signature_verifies' key decoding. The key is the value under test, so it is
+// supplied; it is not read from the attestation, whose join to the assertion is carried by
+// the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions.
 test fn an_undecodable_stored_key_is_absent_not_a_false_verdict() -> Bool {
-  match assertion_expectation() {
-    Absent => false
-    Present { value: e } =>
-  match assertion_signature_verifies_for(object: sample_assertion_octets, e: AssertionExpectation { key_id: e.key_id, public_key_point_b64url: "not*base64url" as NonEmptyStr, client_data: e.client_data, app_id: e.app_id, admitted_validation_categories: e.admitted_validation_categories, expected_bundle_version: e.expected_bundle_version }) {
+  match assertion_signature_verifies_for(object: sample_assertion_octets, e: AssertionExpectation {
+    key_id: sample_key_id_b64 as AttestKeyId,
+    public_key_point_b64url: "not*base64url" as NonEmptyStr,
+    client_data: sample_client_data,
+    app_id: app_attest_app_id(prefix: sample_team_identifier as AppIdPrefix, bundle_id: sample_bundle_identifier),
+    admitted_validation_categories: [2, 3, 4],
+    expected_bundle_version: "1" as NonEmptyStr,
+  }) {
     Present { value: _ } => false
     Absent => true
-  }
   }
 }
 
 // ── The chain link (Apple's step 1), claimed at its own producer ─────────────────────────────
-fn vf_member(v: CborValue, key: String) -> CborValue {
-  match cbor_map_unique_text_member(v: v, key: key) {
-    CborMemberFound { value: m } => m
-    _ => CborSimple { value: 23 }
+
+// The sample's two certificates, read from ONE parse of the attestation's parts: the chain-link
+// claim needs both and the assertion claims need the leaf, and none of them needs the pinned root
+// or the authenticator data, so none of them pays for decode_attestation.
+type SampleCertificates {
+  leaf: X509Certificate
+  ca: X509Certificate
+}
+
+fn sample_certificates() -> SampleCertificates? {
+  match attestation_parts(object: sample_attestation_octets) {
+    AttestationPartsRefused { cause: _ } => none
+    AttestationPartsOk { parts: p } =>
+      match app_attest_certificate(octets: p.leaf) {
+        Absent => none
+        Present { value: leaf } =>
+          match app_attest_certificate(octets: p.ca) {
+            Absent => none
+            Present { value: ca } => Present { value: SampleCertificates { leaf: leaf, ca: ca } }
+          }
+      }
   }
 }
 
-fn vf_x5c(i: Int) -> X509Certificate? {
-  match cbor_decode_document(octets: sample_attestation_octets) {
-    CborDocumentRefused { cause: _ } => none
-    CborDocumentDecoded { value: att } =>
-      match cbor_array_items(v: vf_member(v: vf_member(v: att, key: "attStmt"), key: "x5c")) {
-        Absent => none
-        Present { value: items } =>
-          match items |> get(i) {
-            null => none
-            c => match cbor_byte_string_octets(v: c) {
-              Absent => none
-              Present { value: o } => match decode_certificate(octets: o) {
-                X509Decoded { certificate: cert } => Present { value: cert }
-                X509Refused { cause: _ } => none
-              }
-            }
-          }
-      }
+fn sample_ca() -> X509Certificate? {
+  match attestation_parts(object: sample_attestation_octets) {
+    AttestationPartsRefused { cause: _ } => none
+    AttestationPartsOk { parts: p } => app_attest_certificate(octets: p.ca)
+  }
+}
+
+fn sample_leaf() -> X509Certificate? {
+  match attestation_parts(object: sample_attestation_octets) {
+    AttestationPartsRefused { cause: _ } => none
+    AttestationPartsOk { parts: p } => app_attest_certificate(octets: p.leaf)
   }
 }
 
@@ -230,12 +359,11 @@ fn vf_x5c(i: Int) -> X509Certificate? {
 // (review 69668 of gunbc#11989); their executing route is the native gunbc test row the frontier
 // names.
 test fn chain_link_refuses_an_unsupported_algorithm_or_curve_by_absence() -> Bool {
-  match vf_x5c(i: 0) {
+  match sample_certificates() {
     Absent => false
-    Present { value: leaf } =>
-      match vf_x5c(i: 1) {
-        Absent => false
-        Present { value: ca } => {
+    Present { value: certs } => {
+          let leaf = certs.leaf
+          let ca = certs.ca
           let other_alg = X509Certificate { tbs: leaf.tbs, signature_algorithm: "1.2.840.113549.1.1.11", signature_octets: leaf.signature_octets }
           let no_curve = X509Certificate { tbs: X509TbsFields {
             tbs_octets: ca.tbs.tbs_octets, serial: ca.tbs.serial, tbs_signature_algorithm: ca.tbs.tbs_signature_algorithm,
@@ -257,8 +385,6 @@ test fn chain_link_refuses_an_unsupported_algorithm_or_curve_by_absence() -> Boo
             }
             _ => false
           }
-        }
-      }
+    }
   }
 }
-
