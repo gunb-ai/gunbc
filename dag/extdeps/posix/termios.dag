@@ -1,6 +1,6 @@
 module extdeps.posix.termios
 
-import std.types { String }
+import std.types { List, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -33,3 +33,19 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // termios.h, c_oflag: "ONLCR  Map NL to CR-NL on output." The CR this row names is the one the
 // mapping inserts immediately before each NL; it is part of the line terminator, never of the line.
 data termios_onlcr_mapped_carriage_return: String = "\r"
+
+// THE INVERSE OF THAT MAPPING, ONCE, for every reader of a terminal transcript. A line is the text
+// before NL with the one mapped CR removed; a stream whose channel does not map NL (an LF-only file)
+// frames identically. Only the terminator's CR is removed -- any other byte, whitespace included,
+// is the line's content and reaches its reader unchanged.
+fn termios_onlcr_output_lines(text: String) -> List<String> {
+  map(split(s: text, delimiter: "\n"), line => termios_onlcr_line_without_mapped_cr(line: line))
+}
+
+fn termios_onlcr_line_without_mapped_cr(line: String) -> String {
+  if ends_with(s: line, suffix: termios_onlcr_mapped_carriage_return) {
+    substring(s: line, start: 0, end: line.length() - termios_onlcr_mapped_carriage_return.length())
+  } else {
+    line
+  }
+}
