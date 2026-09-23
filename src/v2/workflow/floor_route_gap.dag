@@ -1620,8 +1620,31 @@ fn floor_route_gap_expectation_chunk_23() -> List<FloorRouteGapExpectation> {
   }
 }
 
+// The six test.claim.live_deploy.approval_broker_helper_readback_real_execution identities: the approval broker helper
+// snapshot readback (gunbc.live_deploy.emit helper_snapshot_readback_command_at) executed under
+// bash through shell.Exec.RunArgv, which has no mock_response. Its subject is Bash's errexit behaviour
+// over a failed observation, which no mock supplies. Enrolled as the triple: this expectation, the
+// WetScheduledClaim rows in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, and the
+// gunbc.ci_layer_roots LocalRepoWetLane row. All six were executed wet (gunbc run --claim-run) and
+// held before these rows were written.
+fn floor_route_gap_expectation_chunk_24() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.live_deploy.approval_broker_helper_readback_real_execution.a_clean_observable_snapshot_reaches_the_grant_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
+    tail:  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.live_deploy.approval_broker_helper_readback_real_execution.a_missing_snapshot_stops_before_the_grant_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
+    tail:  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.live_deploy.approval_broker_helper_readback_real_execution.a_missing_ancestor_stops_before_the_grant_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
+    tail:  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.live_deploy.approval_broker_helper_readback_real_execution.a_writable_entry_stops_before_the_grant_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
+    tail:  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.live_deploy.approval_broker_helper_readback_real_execution.a_symlink_in_the_snapshot_stops_before_the_grant_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
+    tail:  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.live_deploy.approval_broker_helper_readback_real_execution.a_symlinked_ancestor_stops_before_the_grant_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
+    tail: Empty {} } } } } } }
+}
+
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Cons { head: floor_route_gap_expectation_chunk_21(), tail: Cons { head: floor_route_gap_expectation_chunk_22(), tail: Cons { head: floor_route_gap_expectation_chunk_23(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Cons { head: floor_route_gap_expectation_chunk_21(), tail: Cons { head: floor_route_gap_expectation_chunk_22(), tail: Cons { head: floor_route_gap_expectation_chunk_23(), tail: Cons { head: floor_route_gap_expectation_chunk_24(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {

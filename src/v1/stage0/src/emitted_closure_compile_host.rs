@@ -1171,6 +1171,22 @@ pub(crate) fn closure_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
         .collect())
 }
 
+/// THE UNATTRIBUTED REFUSAL CARRIES THE FAULTED RUN'S OWN OUTPUT. It names the class, and without
+/// cargo's stderr it cannot say WHY no diagnostic named the probe: an unrelated error, a lock, a
+/// full disk and an unreadable rendering all print the same sentence. `run_cargo` already captured
+/// the tail, and dropping it left the cause unreachable from every CI log. That is how the
+/// coloured-header defect #12091 repaired stayed unlocated until the tail was read.
+fn unattributed_fault_refusal(red: &CargoVerdict) -> MutationVerdict {
+    MutationVerdict::NotDiscriminating {
+        detail: format!(
+            "the faulted arm refused, but no diagnostic names {MUTATION_PROBE_SYMBOL} — the red \
+             is not attributable to the injected fault, so it establishes nothing about \
+             sensitivity to the emitted bytes; the faulted run's own output: {}",
+            cargo_verdict_stderr_tail(red)
+        ),
+    }
+}
+
 /// THE DISCRIMINATING RED, ESTABLISHED BY MUTATION AND RESTORED BEFORE THE PHASE REPORTS.
 ///
 /// One fault, in one file, failing alone -- the baseline before is the control, the restore after
@@ -1287,13 +1303,7 @@ pub(crate) fn establish_discriminating_red(
         CargoVerdict::Completed { .. } => {}
     }
     let Some(attributed) = cargo_verdict_probe_line(&red) else {
-        return MutationVerdict::NotDiscriminating {
-            detail: format!(
-                "the faulted arm refused, but no diagnostic names {MUTATION_PROBE_SYMBOL} — the \
-                 red is not attributable to the injected fault, so it establishes nothing about \
-                 sensitivity to the emitted bytes"
-            ),
-        };
+        return unattributed_fault_refusal(&red);
     };
     let attributed = attributed.to_string();
 
@@ -2408,6 +2418,27 @@ mod tests {
             .get_envs()
             .find(|(n, _)| *n == std::ffi::OsStr::new(name))
             .map(|(_, v)| v.map(|v| v.to_string_lossy().to_string()))
+    }
+
+    /// A faulted run whose red names no probe must surface its own stderr in the refusal, so the
+    /// cause is located and not only classed. The marker stands for whatever cargo said instead.
+    #[test]
+    fn an_unattributed_fault_refusal_carries_the_faulted_runs_stderr() {
+        let marker = "error: failed to write target/release/deps: No space left on device";
+        let red = CargoVerdict::Completed {
+            status: 101,
+            stderr_tail: marker.to_string(),
+            probe_line: None,
+            probe_diagnostic: None,
+            warning_count: 0,
+        };
+        match unattributed_fault_refusal(&red) {
+            MutationVerdict::NotDiscriminating { detail } => assert!(
+                detail.contains(marker),
+                "the refusal must carry the faulted run's stderr; got: {detail}"
+            ),
+            other => panic!("expected NotDiscriminating, got {other:?}"),
+        }
     }
 
     /// THE SPAWN OWNS EVERY CHANNEL CARGO READS, AND THE RECEIPT DESCRIBES THE SPAWN. The
