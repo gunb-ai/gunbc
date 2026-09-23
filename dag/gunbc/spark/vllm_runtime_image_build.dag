@@ -984,7 +984,6 @@ fn with_spark_build_host(
   identity_file_name: NonEmptyStr,
   use: fn(SshTarget, FleetSshExecutionContext, SparkMaterializeContext) -> SparkBuildHostWork,
 ) -> SparkBuildHostSession
-  uses net: Network
 {
   match observe_executor_reach() {
     ExecutorReachUnknown { cause: c } => SparkBuildHostRefused { cause: c }

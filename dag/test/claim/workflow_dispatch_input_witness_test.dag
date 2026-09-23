@@ -16,6 +16,7 @@ import gunbc.fleet_converge_workflow {
   RunnerPasswordSessionToolConverge,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
   fleet_converge_build_job_own_steps,
+  fleet_converge_job_edges, fleet_converge_release_bins_job_id,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
   fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0, SparkServingApply, SparkV41CheckpointMaterialize, SparkV41RuntimeImageBuild, SparkRuntimeImageProbe, SparkNativeServingApply, FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
@@ -23,7 +24,6 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
   fleet_converge_workflow, expected_fleet_converge_yml,
-  fleet_converge_job_kinds, fleet_converge_job_id, fleet_converge_job_needs, FcBuildJob,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
   fleet_converge_credential_prelude_steps, fleet_converge_mutation_concurrency_group_expression, fleet_converge_spark_v41_checkpoint_materialize_step,
   fleet_converge_dispatch_inputs,
@@ -113,7 +113,16 @@ test fn workflow_dispatch_empty_inputs_preserve_null_projection() -> Bool {
   }
 }
 
-fn mode_input_has_choice_options(v: YamlValue) -> Bool {
+// THE EXPECTED OPTION LIST IS A PARAMETER, NOT fleet_converge_mode_options HARD-WIRED.
+//
+// This predicate fused two subjects while the roster was baked in: the PROJECTION (an InputChoice's
+// options reach the yaml as a sequence of strings, all of them, and nothing else) and the CONTENT
+// (that the workflow's mode input carries the fleet's mode roster). Only the first is a fact about
+// workflow_trigger_entry, and the second is true by construction anyway -- the workflow literal
+// writes `options: fleet_converge_mode_options`, so asserting equality with that same row restates
+// a constraint the source already carries (DESIGN section 5). The roster's own coherence is
+// established separately by every_dispatch_option_is_a_wire_value_of_the_vocabulary.
+fn mode_input_has_choice_options(v: YamlValue, expected: List<String>) -> Bool {
   match v {
     YamlMapping { entries } =>
       fold(entries, init: false, f: fn(acc, entry) {
@@ -125,8 +134,8 @@ fn mode_input_has_choice_options(v: YamlValue) -> Bool {
                   fold(fields, init: false, f: fn(has_opts, field) {
                     has_opts || (field.key == "options" && match field.value {
                       YamlSequence { elements: opts } =>
-                        length(opts) == length(fleet_converge_mode_options)
-                          && all(fleet_converge_mode_options, m => any(opts, o => match o { YamlString { value } => value == m  _ => false }))
+                        length(opts) == length(expected)
+                          && all(expected, m => any(opts, o => match o { YamlString { value } => value == m  _ => false }))
                       YamlNull => false
                       YamlBool { value: _ } => false
                       YamlInt { lexeme: _ } => false
@@ -171,18 +180,38 @@ fn mode_input_has_choice_options(v: YamlValue) -> Bool {
 // and surfaced only from a local claim_batch run -- see
 // gunbc.recurring_failure_mode.witness_that_fails_to_compile_is_absent_rather_than_red (fourth
 // specimen: the falsifier is the compiler wall, not another file).
+// THE TRIGGER IS SUPPLIED, BECAUSE THE SUBJECT IS THE PROJECTION AND NOT THE WORKFLOW.
 //
-// THE TRIGGER IS BUILT FROM THE DISPATCH INPUTS THE WORKFLOW DECLARES, not read out of the built
-// workflow, whose construction is every job's steps (DESIGN §3). fleet_converge_workflow's `on` is
-// exactly this one WorkflowDispatch over fleet_converge_dispatch_inputs, and the emitted file is
-// checked whole by the generated-artifact drift gate.
+// This claim discriminates at ONE interface: workflow_trigger_entry turning a WorkflowDispatch
+// carrying a choice input into a yaml mapping with an `options` sequence under `mode`. It used to
+// reach that interface by forcing fleet_converge_workflow and taking its first trigger, which pays
+// to construct EVERY DispatchInput's description -- one of them is a multi-thousand-character
+// string -- for a fact about none of them. That is DESIGN section 3's tell verbatim: evaluation
+// dominated by one call whose result shape is all the claim inspects. Measured: 528572 eval steps
+// against a 72300 budget, and the cost rose with every input any lane added.
+//
+// The supplied trigger is the same construction the two sibling claims above already use. Its
+// PAIRING OBLIGATION -- that the real producer emits this shape -- is discharged by
+// fleet_converge_workflow_has_build_job_needs_release_bins and by the rendered-yaml claims below,
+// which run the real workflow end to end; deleting them would leave this input unpaired.
 test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
-  let entry = workflow_trigger_entry(trigger: WorkflowDispatch { inputs: fleet_converge_dispatch_inputs })
-  entry.key == "workflow_dispatch" && mode_input_has_choice_options(v: entry.value)
+  let entry = workflow_trigger_entry(trigger: WorkflowDispatch {
+    inputs: [DispatchInput {
+      name: "mode",
+      description: Present { value: "which convergence the run performs" },
+      required: true,
+      default: none,
+      type: InputChoice { options: ["plan", "apply"] },
+    }]
+  })
+  entry.key == "workflow_dispatch"
+    && mode_input_has_choice_options(v: entry.value, expected: ["plan", "apply"])
 }
 
 // THE COUNT IS KEPT BESIDE THE NAMES DELIBERATELY, and it moved from 2 to 3 because a
-// `dashboard-deploy` job was added -- not because the check was in the way. Naming each job without
+// `dashboard-deploy` job was added (and on to 8 with the broker dark install, the microVM controller
+// install, the launch-deployment receipt and the mtcollins1 boot, its own job because it federates as
+// its own identity, gunbc.auth.mtcollins1_boot_federation) -- not because the check was in the way. Naming each job without
 // pinning the total would let a fourth job appear unobserved; pinning the total without naming them
 // would pass for any set of jobs at all. Together they are an exact partition, which is the identity
 // join DESIGN section 5 asks for rather than a count standing in for one.
@@ -192,18 +221,60 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // that mutates a host without that edge would be installing whatever happened to be lying around.
 // `host-reset-return` is held to it for a sharper reason than the others -- it POWER-CYCLES its
 // subject, so a stale binary there would drive a real machine from a model nobody reviewed.
-// `mtcollins1-boot` power-cycles its subject too, as its own job since it federates as its own
-// identity (gunbc.auth.mtcollins1_boot_federation).
-// READ FROM THE JOB ROSTER, NOT FROM THE BUILT WORKFLOW: gunbc.fleet_converge_workflow
-// fleet_converge_job_kinds is what the workflow's jobs list maps over and what each job's id and
-// needs are drawn from, so this reads the fact the claim is about without constructing every job's
-// steps (DESIGN §3; the whole-workflow construction measured 519k eval steps on the floor).
+// THE EDGE ROSTER IS READ, AND THAT IS A DIFFERENT MECHANISM FROM THE ATTEMPT BEFORE IT.
+//
+// This claim's subject is the job partition and its dependency edges. It first read them off
+// fleet_converge_workflow (521845 eval steps, budget 72300), then off a lifted List<Job>
+// (521510 -- 335 steps, 0.06%), because forcing a list of Jobs forces every Job including every
+// step body: the projection WAS the construction, filed as gunbc.recurring_failure_mode
+// extracting_a_collection_whose_elements_are_the_cost.
+//
+// gunbc.fleet_converge_workflow fleet_converge_job_edges is ids and lists of strings, built
+// independently of any Job and CONSUMED BY the eight builders for their `needs`, so reading it
+// forces no job body. The partition is still exact -- every row named, and the count pinned so an
+// eighth cannot appear unobserved -- and the property the witness is really about is unchanged:
+// every job that touches a host waits for `build`, because the release binaries are produced once
+// and a job without that edge installs whatever was lying around. host-reset-return is held to it
+// most sharply, since it POWER-CYCLES its subject.
+//
+// THE CLAIM IS TOTAL: NO INDEX IS READ, AND THAT IS WHAT MAKES ITS RED DISCRIMINATE.
+//
+// The first form indexed -- edges[0].id, edges[1].needs -- with the count conjunct FIRST so a short
+// row would fail before any index. It did not: dropping an edge row produced an EVALUATION ERROR
+// on the absent index rather than a clean false, with the count conjunct already ahead of it. So
+// `&&` here does not spare the later operands from evaluation, and no reordering fixes it.
+//
+// That matters because a control that DIES is weaker evidence than one that ANSWERS false: an eval
+// error is also what a typo, a renamed field or a broken fixture produces, so the red stops
+// discriminating the thing it was built for. Comparing the projected id list against the expected
+// spelling, and folding the edge property with `all`, reads no index at all -- a dropped or renamed
+// row makes the lists unequal and the claim returns false, while an eval error now means something
+// else genuinely broke.
+//
+// THE INHABITANCE OBLIGATION IS DISCHARGED ELSEWHERE AND DELIBERATELY: the rendered-yaml claims in
+// this file run the real workflow end to end, so the edges asserted here are known to reach the
+// emitted jobs. Reading the roster alone would otherwise establish the graph a builder was TOLD,
+// never the graph the workflow emits.
 test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
-  let ids = map(fleet_converge_job_kinds, k => fleet_converge_job_id(kind: k))
-  ids == ["build", "fleet-converge", "mtcollins1-boot", "host-reset-return", "dashboard-deploy", "approval-broker-dark-install", "rlm-launch-deployment-receipt"]
-    && fleet_converge_job_needs(kind: FcBuildJob) == []
-    && all(filter(fleet_converge_job_kinds, k => fleet_converge_job_id(kind: k) != "build"), k => fleet_converge_job_needs(kind: k) == ["build"])
+  let edges = fleet_converge_job_edges
+  let build = [fleet_converge_release_bins_job_id as String]
+  map(edges, e => e.id as String) == [
+    "build",
+    "fleet-converge",
+    "mtcollins1-boot",
+    "host-reset-return",
+    "dashboard-deploy",
+    "approval-broker-dark-install",
+    "microvm-controller-install",
+    "rlm-launch-deployment-receipt",
+  ]
+    && all(edges, e => if (e.id as String) == (fleet_converge_release_bins_job_id as String) {
+      e.needs == []
+    } else {
+      e.needs == build
+    })
 }
+
 
 fn expected_fleet_converge_yml_content() -> String {
   match expected_fleet_converge_yml() {
