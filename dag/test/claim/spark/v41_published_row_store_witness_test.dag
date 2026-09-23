@@ -5,7 +5,7 @@ import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { byte_size, byte_size_count }
 import v2.std.optional { Present, Absent }
-import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.content_hash { Sha256Digest, Sha256DigestHex, serialize_content_hash }
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_engram_sharded_entries, deepseek_v4_1_flash_engram_shard_files,
 }
@@ -58,7 +58,7 @@ fn w_key(p: V41EngramResidencyPartition, r: V41PublishedSpanReadings) -> V41Publ
 
 fn w_hex(k: V41PublishedRowStoreKey) -> String {
   match k {
-    V41PublishedRowStoreKeyed { digest: d } => d.hex as String
+    V41PublishedRowStoreKeyed { digest: d } => serialize_content_hash(hash: d) as String
     V41PublishedRowStoreUnestablished { obligation: _ } => ""
     V41PublishedRowStoreRefused { defects: _ } => ""
   }
@@ -110,7 +110,7 @@ test fn an_absent_shard_file_row_refuses_as_unread_not_contradicted() -> Bool {
 
 // POSITIVE CONTROL: the exact plan read, and all eight stores read, keys.
 test fn a_reading_of_exactly_the_planned_spans_keys() -> Bool {
-  w_hex(k: w_key(p: v41_candidate_partition, r: w_read(spans: w_plan(p: v41_candidate_partition), c: "a"))).length() == 64
+  w_hex(k: w_key(p: v41_candidate_partition, r: w_read(spans: w_plan(p: v41_candidate_partition), c: "a"))).length() > 0
 }
 
 // THE DISCRIMINATING RED: a digest over a different table set does not key the candidate's partition.
@@ -145,7 +145,7 @@ test fn the_key_moves_with_the_bytes_and_the_table_set() -> Bool {
   let other_span_bytes = w_hex(k: w_key_with(p: v41_candidate_partition, r: w_read(spans: w_plan(p: v41_candidate_partition), c: "b"), st: w_stores(layers: w_candidate_layers, c: "c")))
   let reversed = w_hex(k: w_key_with(p: v41_candidate_partition, r: w_read(spans: reverse(w_plan(p: v41_candidate_partition)), c: "a"), st: w_stores(layers: [14, 1], c: "c")))
   let other_set = w_hex(k: w_key_with(p: w_other_partition, r: w_read(spans: w_plan(p: w_other_partition), c: "a"), st: w_stores(layers: [14], c: "c")))
-  base.length() == 64 && other_store_bytes.length() == 64 && other_set.length() == 64
+  base.length() > 0 && other_store_bytes.length() > 0 && other_set.length() > 0
     && base != other_store_bytes && base == other_span_bytes && base == reversed && base != other_set
 }
 

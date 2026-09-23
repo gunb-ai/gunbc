@@ -6,7 +6,6 @@ import std.integer { UInt8 }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, sha256_hex_digest, serialize_content_hash }
-import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_add }
 import v2.std.optional { Present, Absent }
@@ -846,7 +845,7 @@ type V41PublishedSpanReadings
   | V41PublishedSpansUnread { obligation: NonEmptyStr }
 
 type V41PublishedRowStoreKey
-  = V41PublishedRowStoreKeyed { digest: Sha256Digest }
+  = V41PublishedRowStoreKeyed { digest: ContentHash }
   | V41PublishedRowStoreUnestablished { obligation: NonEmptyStr }
   | V41PublishedRowStoreRefused { defects: List<NonEmptyStr> }
 
@@ -877,9 +876,10 @@ fn v41_span_reading_defects(plan: List<V41PublishedSpan>, read: List<V41Publishe
 
 // ── THE ROW-STORE ENCODING KEY: THE EIGHT ENCODED STORES, WITH THEIR INPUT JOINED ────────────
 //
-// WHAT KEYS THE CANDIDATE'S row_store_encoding AXIS (ruling, proud-deer-538, 2026-09-23): the digests
-// of the ENCODED stores, one per (layer, rank), each the SHA-256 the consumer checks on open, admitted by
-// v41_identify_row_store against the spec -- together with the spec key. The source spans are the
+// WHAT KEYS THE CANDIDATE'S row_store_encoding AXIS (ruling, proud-deer-538, 2026-09-23): the ENCODED
+// stores, one per (layer, rank), each the SHA-256 the consumer checks on open. The key IS
+// v41_identify_row_store's content_digest -- the one derivation over the spec key and the ordered store
+// digests -- and not a second serialization of the same facts (review 70467). The source spans are the
 // encoder's INPUT identity, not the key: they must be read and joined to v41_published_span_plan by
 // identity (every planned span exactly once, over exactly its region) before a key is minted, so "the
 // stores were encoded from exactly these spans" is a join rather than an assumption, but their bytes do
@@ -889,12 +889,6 @@ fn v41_span_reading_defects(plan: List<V41PublishedSpan>, read: List<V41Publishe
 type V41PublishedStoreReadings
   = V41PublishedStoresRead { host: NonEmptyStr, observed_at: NonEmptyStr, stores: List<V41RankStoreIdentity> }
   | V41PublishedStoresUnread { obligation: NonEmptyStr }
-
-fn v41_row_store_encoding_text(spec_key: ContentHash, stores: List<V41RankStoreIdentity>) -> String {
-  join(concat(
-    [join(["encoding_spec ", serialize_content_hash(hash: spec_key) as String, "\n"], "")],
-    map(v41_ordered_stores(stores: stores), r => join(["store ", v41_store_key(layer: r.layer, rank: r.rank), " ", r.digest.hex as String, "\n"], ""))), "")
-}
 
 // THE HEAD SIZES ARRIVE AS A DEFERRED VALUE, computed only once both readings exist: an unread axis
 // costs no bucket-layout search, and the selection defects are still refused before any obligation.
@@ -921,14 +915,7 @@ fn v41_row_store_encoding_key(partition: V41EngramResidencyPartition, sharded: L
                       match v41_identify_row_store(spec: spec, rank_stores: st) {
                         V41RowStoreEncodingRefused { defects: d } => V41PublishedRowStoreRefused { defects: d }
                         V41RowStoreEncodingUnestablished { obligation: o } => V41PublishedRowStoreUnestablished { obligation: o }
-                        V41RowStoreEncodingIdentified { spec: _, spec_key: k, rank_stores: rs, content_digest: _ } =>
-                          match sha256sum_stdin_digest_via_shell(content: v41_row_store_encoding_text(spec_key: k, stores: rs)) {
-                            Sha256FileDigestUnavailable { path: _, reason: r } => V41PublishedRowStoreUnestablished { obligation: join(["the row-store encoding key text could not be digested: ", r], "") as NonEmptyStr }
-                            Sha256FileDigest { digest: d } => match sha256_hex_digest(hex: d.hex as String) {
-                              Absent => V41PublishedRowStoreUnestablished { obligation: "sha256sum did not answer a sha256 digest over the row-store encoding key text" as NonEmptyStr }
-                              Present { value: h } => V41PublishedRowStoreKeyed { digest: h }
-                            }
-                          }
+                        V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: _, content_digest: d } => V41PublishedRowStoreKeyed { digest: d }
                       }
                   }
               }
