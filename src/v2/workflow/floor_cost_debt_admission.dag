@@ -30,7 +30,8 @@ type FloorCostDebtTypedAdmission {
   reason: NonEmptyStr
 }
 
-// THE APP ATTEST INTERPRETED-CRYPTO ROWS (gunbc#11981, 2026-09-22). Each identity below evaluates
+// THE APP ATTEST INTERPRETED-CRYPTO ROWS (gunbc#11981, 2026-09-22), and only those ten. Each identity
+// in `app_attest_interpreted_crypto_typed_admissions` evaluates
 // real P-384 field arithmetic or a real SHA-384 over a published vector, and the seed interpreter
 // realizes those primitives as 16-limb bignat folds and Word64 pairs because it reifies no machine
 // width. That realization, not the claim's shape, is what the CPU pays: there is no repeated
@@ -51,12 +52,7 @@ type FloorCostDebtTypedAdmission {
 // does not ground the subject it admits. Paired instead, each claim's cost is caused by its own
 // subject -- the second evaluation is the RED that DESIGN section 4b requires of the rung anyway,
 // not ballast bought to clear a budget -- and each measured decisively above the line.
-fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
-  [
-  FloorCostDebtTypedAdmission {
-    identity: "test.claim.machine_intake.mtcollins1_standing_ruling_witness_test.the_production_ruling_digest_is_the_sha256_of_its_encoding_and_the_request_carries_it",
-    reason: "the seed interpreter evaluates one SHA-256 over the production standing ruling's canonical encoding (about twenty-two blocks) as UInt32 word folds; it is the single inhabitance claim of the ruling-digest route, so the digest cannot be supplied; owner: the Mt. Collins boot lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
-  },
+data app_attest_interpreted_crypto_typed_admissions: List<FloorCostDebtTypedAdmission> = [
   FloorCostDebtTypedAdmission {
     identity: "test.claim.p384_dag_ecdsa_witness_test.the_p384_base_point_is_on_the_curve",
     reason: "the seed interpreter evaluates one P-384 curve equation over the standard base point as 16-limb bignat folds or Word64 pairs; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
@@ -97,7 +93,25 @@ fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
     identity: "test.claim.sha384_fips_witness_test.sha384_of_the_896_bit_message_is_the_published_two_block_value_and_one_octet_discriminates",
     reason: "the seed interpreter evaluates the published 896-bit two-block SHA-384 vector and the last-block mutation that discriminates its padding path as Word64 pairs, four block compressions on an interpreter that reifies no machine width; owner: the App Attest device-attestation lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
   },
-  ]
+]
+
+// THE MT. COLLINS STANDING-RULING DIGEST ROW (gunbc#12101, 2026-09-23), a separately bounded incident.
+// Its one identity is the single inhabitance claim of the standing ruling's real digest route
+// (standing_ruling_request -> standing_ruling_digest -> sha256_hex over the production ruling's
+// canonical encoding); every other ruling claim supplies its digest (DESIGN section 3), so this one
+// cannot. What the CPU pays is one interpreter-realized SHA-256 over that encoding. Its declared drop is
+// gunbc.rung_drop.mtcollins1_standing_ruling_digest_new_witness_eval_step_cost, whose trigger names
+// its own native route; the App Attest ECDSA route does not retire it. The measurement is the required
+// floor run on gunbc#12101 that the drop's row cites, enrolment-margin line.
+data mtcollins1_standing_ruling_digest_typed_admissions: List<FloorCostDebtTypedAdmission> = [
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.machine_intake.mtcollins1_standing_ruling_witness_test.the_production_ruling_digest_is_the_sha256_of_its_encoding_and_the_request_carries_it",
+    reason: "the seed interpreter evaluates one SHA-256 over the production standing ruling's canonical encoding (about twenty-two blocks) as UInt32 word folds; it is the single inhabitance claim of the ruling-digest route, so the digest cannot be supplied; owner: the Mt. Collins boot lane, discharged by the natively emitted crypto closure" as NonEmptyStr,
+  },
+]
+
+fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
+  concat(app_attest_interpreted_crypto_typed_admissions, mtcollins1_standing_ruling_digest_typed_admissions)
 }
 
 fn floor_cost_debt_typed_admitted_identities() -> List<String> {

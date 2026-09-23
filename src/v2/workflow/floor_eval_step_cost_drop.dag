@@ -7,15 +7,25 @@ import v2.std.text { String }
 import v2.std.integer { Int, int_gt }
 import std.types { NonEmptyStr }
 
-// THE POLICY HALF OF DECLARED 4b(3) EVAL-STEP COST DROPS. Four bounded populations share one
-// membership test (`floor_eval_step_cost_drop_members` / `_holds`): the live-roadmap four
-// (`gunbc.rung_drop` `roadmap_live_projection_new_witness_eval_step_cost`), the two
-// live-deploy apply-render readers (`gunbc.rung_drop`
-// `live_deploy_apply_render_new_witness_eval_step_cost`), and the one live forecast control
-// (`gunbc.rung_drop` `roadmap_live_forecast_new_witness_eval_step_cost`), and the one page
-// stylesheet inhabitance claim (`gunbc.rung_drop` `roadmap_page_style_new_witness_eval_step_cost`), and the one
-// byte-span program inhabitance claim (`gunbc.rung_drop`
-// `sha256_span_program_serialize_new_witness_eval_step_cost`). The loss is a WORKFLOW fact -- which
+// THE POLICY HALF OF DECLARED 4b(3) EVAL-STEP COST DROPS. Seven independently declared, bounded
+// populations share one membership test (`floor_eval_step_cost_drop_members` / `_holds`), one list
+// per drop, each list's `gunbc.rung_drop` declaration named beside it:
+//   - `floor_eval_step_cost_drop_rows`: the live roadmap projection readers
+//     (`roadmap_live_projection_new_witness_eval_step_cost`);
+//   - `floor_eval_step_cost_drop_apply_render_rows`: the live-deploy apply-render readers
+//     (`live_deploy_apply_render_new_witness_eval_step_cost`);
+//   - `floor_eval_step_cost_drop_live_forecast_rows`: the live forecast control
+//     (`roadmap_live_forecast_new_witness_eval_step_cost`);
+//   - `floor_eval_step_cost_drop_page_style_rows`: the page stylesheet inhabitance claim
+//     (`roadmap_page_style_new_witness_eval_step_cost`);
+//   - `floor_eval_step_cost_drop_interpreted_crypto_rows`: the App Attest interpreted P-256, P-384
+//     and SHA-384 checks (`app_attest_interpreted_crypto_new_witness_eval_step_cost`);
+//   - `floor_eval_step_cost_drop_span_program_rows`: the byte-span program inhabitance claim
+//     (`sha256_span_program_serialize_new_witness_eval_step_cost`);
+//   - `floor_eval_step_cost_drop_mtcollins1_standing_ruling_digest_rows`: the Mt. Collins
+//     standing-ruling digest inhabitance claim
+//     (`mtcollins1_standing_ruling_digest_new_witness_eval_step_cost`).
+// The loss is a WORKFLOW fact -- which
 // identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
 // ceiling consults (`v2.workflow.floor_grandfathered_roster`, `v2.workflow.floor_cost_debt`) and
 // `v2.workflow.required_floor` decides with it. Each rung-drop row DERIVES its population from
