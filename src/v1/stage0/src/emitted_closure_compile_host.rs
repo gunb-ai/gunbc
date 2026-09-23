@@ -1229,7 +1229,9 @@ pub(crate) fn establish_discriminating_red(
             detail: format!(
                 "the faulted arm refused, but no diagnostic names {MUTATION_PROBE_SYMBOL} — the \
                  red is not attributable to the injected fault, so it establishes nothing about \
-                 sensitivity to the emitted bytes"
+                 sensitivity to the emitted bytes; the faulted arm's own refusal, so the cause \
+                 is located rather than only named as unattributed: {}",
+                cargo_verdict_stderr_tail(&red)
             ),
         };
     };
