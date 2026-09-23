@@ -208,11 +208,16 @@ pub use crate::v1_compiler_infer_emit_info::{
 use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
 };
+use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
+    UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable, UnitVariantPhantomPresent,
+};
 pub use crate::v1_compiler_infer_env::{
     authored_name, binding_declares_span, empty_symbol_index, lookup_type_by_name, lookup_type_for,
-    type_reference_declaration_ref,
+    lookup_unit_variant_phantom_type, type_reference_declaration_ref,
 };
-pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{
+    GlobalBareLookupState, TypeBinding, TypeEnv, UnitVariantPhantomLookup,
+};
 pub use crate::v1_compiler_infer_items::item_kind;
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 use crate::v1_compiler_infer_items::ItemLookup::{ItemFound, ItemLeafAmbiguous, ItemNotFound};
@@ -220,13 +225,7 @@ pub use crate::v1_compiler_infer_items::{
     ItemInfo, ItemKind, ItemLookup, ResolvedGraph, TypedModule,
 };
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
-pub use crate::v1_compiler_infer_resolve::UnitVariantPhantomLookup;
-use crate::v1_compiler_infer_resolve::UnitVariantPhantomLookup::{
-    UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable, UnitVariantPhantomPresent,
-};
-pub use crate::v1_compiler_infer_resolve::{
-    is_width_nat_type_literal, lookup_unit_variant_phantom_type, resolve_node,
-};
+pub use crate::v1_compiler_infer_resolve::{is_width_nat_type_literal, resolve_node};
 pub use crate::v1_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
 };
@@ -2018,7 +2017,7 @@ pub fn rust_type_arg_identity_spelling(
         } {
             std::option::Option::None
         } else {
-            match (*crate::v1_compiler_infer_resolve::lookup_unit_variant_phantom_type(
+            match (*crate::v1_compiler_infer_env::lookup_unit_variant_phantom_type(
                 env.clone(),
                 name.clone(),
             ))
@@ -13006,7 +13005,7 @@ pub fn type_item_has_rust_nominal_shell_authority(
 }
 
 pub fn is_phantom_unit_variant_type_arg(env: Rc<TypeEnv>, variant_name: String) -> bool {
-    match (*crate::v1_compiler_infer_resolve::lookup_unit_variant_phantom_type(
+    match (*crate::v1_compiler_infer_env::lookup_unit_variant_phantom_type(
         env.clone(),
         variant_name.clone(),
     ))
