@@ -105,7 +105,7 @@ fn compute_memory_partition(host: NonEmptyStr) -> PartitionId {
 }
 
 // THE JOIN WITH THE DEPLOYMENT, and the only function in this module that knows what an instance is.
-fn compute_capacity_subject(instance: HostDashboardInstance) -> ComputeSubjectResolution {
+fn compute_capacity_subject(instance: HostDashboardInstance, request: Kibibyte) -> ComputeSubjectResolution {
   match dashboard_instance_for_host(host: instance.host_identity as String) {
     DashboardInstanceHostUnknown { host: h } => ComputeSubjectHostUnresolved { host: h as NonEmptyStr }
     DashboardInstanceForHost { instance: host_instance } =>
@@ -114,7 +114,7 @@ fn compute_capacity_subject(instance: HostDashboardInstance) -> ComputeSubjectRe
           root: compute_capacity_root(host_instance: host_instance),
           partition: compute_memory_partition(host: instance.host_identity),
           appropriation: compute_memory_appropriation(instance: host_instance),
-          request: compute_request_memory(instance: instance),
+          request: request,
         },
       }
   }
@@ -182,11 +182,13 @@ fn compute_memory_appropriation(instance: HostDashboardInstance) -> Kibibyte {
 // could have run. So one figure serves both, and it is the instance's worker memory ceiling --
 // the existing safety limit, unchanged and now also the thing being counted.
 //
-// DECLARED FRONTIER: a per-work-class amount (a claims run does not need a release build's
-// ceiling) needs per-class peak measurements, which the consumption reading this change starts
-// recording is the first producer of. Until those exist every class reserves the ceiling, which
-// over-reserves and never under-reserves.
-fn compute_request_memory(instance: HostDashboardInstance) -> Kibibyte {
+// THE CEILING IS WHAT A CLASS RESERVES WHEN IT HAS NO GRANT, and it is no longer what every request
+// reserves. The per-work-class amount (a claims run does not need a release build's ceiling) is
+// gunbc.compute.work_class_grant work_class_grant, which resolves to THIS figure for any class
+// without enough samples on the provider's own route -- the fail-closed arm, which over-reserves
+// and never under-reserves. A request's amount is therefore supplied to compute_reserve rather than
+// read here; this function only names the ceiling the grant falls back to and never exceeds.
+fn compute_memory_ceiling(instance: HostDashboardInstance) -> Kibibyte {
   kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)
 }
 
@@ -270,8 +272,8 @@ data compute_partition_read_budget: Nat = 4096
 // THE APPROPRIATION IS CHECKED AGAINST THE MACHINE BEFORE ANY SEAT IS TAKEN. A host too small for
 // the declared share is a configuration error that would otherwise present as an OOM kill during a
 // build, which is the same information arriving hours later and destructively.
-fn compute_reserve(instance: HostDashboardInstance, reference: NonEmptyStr, term_seconds: Nat) -> ComputeReservation {
-  match compute_capacity_subject(instance: instance) {
+fn compute_reserve(instance: HostDashboardInstance, reference: NonEmptyStr, term_seconds: Nat, request: Kibibyte) -> ComputeReservation {
+  match compute_capacity_subject(instance: instance, request: request) {
     ComputeSubjectHostUnresolved { host: h } =>
       ComputeReservationRefused { detail: join(["no dashboard instance is declared for host ", h as String, ", so this host has no compute capacity authority to reserve against"], "") }
     ComputeSubjectResolved { subject: subject } => compute_reserve_on(subject: subject, reference: reference, term_seconds: term_seconds)
@@ -443,8 +445,10 @@ type ComputeCapacityStanding
   = ComputeCapacityStandingRead { committed: Kibibyte, ceiling: Kibibyte, headroom: Kibibyte, observed_available: Kibibyte, observed_total: Kibibyte }
   | ComputeCapacityStandingUnread { detail: String }
 
+// THE STANDING IS A FACT ABOUT THE POOL, NOT ABOUT ANY REQUEST, so it reads the subject at the
+// ceiling: no field of the standing fold consults the subject's request.
 fn compute_capacity_standing(instance: HostDashboardInstance) -> ComputeCapacityStanding {
-  match compute_capacity_subject(instance: instance) {
+  match compute_capacity_subject(instance: instance, request: compute_memory_ceiling(instance: instance)) {
     ComputeSubjectHostUnresolved { host: h } => ComputeCapacityStandingUnread { detail: join(["no dashboard instance is declared for host ", h as String], "") }
     ComputeSubjectResolved { subject: subject } => compute_capacity_standing_on(subject: subject)
   }

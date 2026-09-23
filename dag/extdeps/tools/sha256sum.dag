@@ -1,6 +1,6 @@
 module extdeps.tools.sha256sum
 
-import std.types { NonEmptyStr, Bool, Unit }
+import std.types { NonEmptyStr, Bool, Unit, List }
 import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -12,6 +12,12 @@ import extdeps.crypto.hash { Digest, sha256_digest, sha256sum_program }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
+import v2.std.node { Node }
+import v2.extdeps.languages.bash_build {
+  bash_build_command_with_words, bash_build_word_lit, bash_build_word_var,
+  bash_build_word_concat_from_nodes, bash_build_pipe,
+}
+import gunbc.shell_command_text { shell_command_text_of_stmts }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -115,7 +121,7 @@ data sha256_verify_native_transport_frontier_rows: List<FrontierRow> = [
     ref: decl_ref(module_path: "extdeps.tools.sha256sum", decl_name: "Sha256VerifyVerdict"),
     reason: "Sha256VerifyVerdict|transport:shell-only",
     dissolution: unbound_dissolution(description: "a native/library SHA-256 realization lands and is bound as a second handler for the Sha256Verify shape"),
-  )
+  ),
 ]
 
 // sha256sum --check exits non-zero on DIGEST MISMATCH, which is this fn's Sha256Mismatch answer, not a fault — so the check call is OutcomeIsData. The guard holds on the same evidence as the caller: Sha256VerifyVerdict already separates the two content answers (Matches / Mismatch) from Sha256VerifyInfraFailure, the arm for the verification machinery itself breaking, so annotating the content comparison cannot silence an infra failure — that arm is reached by different conditions entirely.
@@ -176,3 +182,60 @@ fn sha256sum_verify_via_shell(path: NonEmptyStr, expected_digest: NonEmptyStr) -
     }
   }
 }
+
+// THE SHA256 OF A BYTE SPAN OF A FILE. sha256sum has no offset operand, so the span is streamed by
+// dd(1) (iflag=skip_bytes,count_bytes makes skip and count byte counts) into sha256sum -- a PIPELINE,
+// which no argv carrier expresses. It is therefore BUILT as a bash grammar tree and serialized by the
+// one authority for that (gunbc.shell_command_text over v2.workflow.bash_command_fold_serialize),
+// never hand-spelled: that module's own header states that the cap scripts and the live-deploy
+// spellings reached for this construction independently and "a second spelling would be the section 3
+// fork". A fixed-text version of this pipeline was the THIRD such reach and is removed here.
+//
+// The path, offset and length are POSITIONAL PARAMETERS ($1..$3), never spliced: sha256sum_byte_span_argv
+// passes them after the `bash` argv0, so no caller value is ever part of the program. Quoting is the
+// serializer's structural job rather than an apostrophe an author remembered to type. pipefail makes a
+// failed read fail the whole rather than pass as the digest of a short stream (dash, /bin/sh on these
+// hosts, refuses pipefail -- see extdeps.shell).
+fn sha256sum_byte_span_operand(prefix: String, param: String) -> Node {
+  bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: prefix), bash_build_word_var(name: param)])
+}
+
+fn sha256sum_byte_span_stmts() -> List<Node> {
+  [
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "set"),
+      bash_build_word_lit(text: "-o"),
+      bash_build_word_lit(text: "pipefail"),
+    ]),
+    bash_build_pipe(
+      left: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "dd"),
+        sha256sum_byte_span_operand(prefix: "if=", param: "1"),
+        bash_build_word_lit(text: "bs=4M"),
+        bash_build_word_lit(text: "iflag=skip_bytes,count_bytes"),
+        sha256sum_byte_span_operand(prefix: "skip=", param: "2"),
+        sha256sum_byte_span_operand(prefix: "count=", param: "3"),
+        bash_build_word_lit(text: "status=none"),
+      ]),
+      right: bash_build_command_with_words(words: [bash_build_word_lit(text: "sha256sum")])
+    ),
+  ]
+}
+
+data sha256sum_byte_span_program: String = shell_command_text_of_stmts(stmts: sha256sum_byte_span_stmts())
+
+
+// THE ASSEMBLY IS ITS OWN FUNCTION, TAKING THE PROGRAM AS A VALUE. Which slot each operand lands in
+// is a fact about THIS list, not about the serializer, so a claim over it supplies the program rather
+// than rendering one (DESIGN section 3: a witness discriminates at ONE interface, and its inputs belong
+// at that boundary as supplied values). The `bash` at index 3 is argv0 -- bash -c assigns the first
+// operand after the program to $0, so path/offset/length become $1..$3 and no caller value is ever
+// part of the program text.
+fn sha256sum_byte_span_argv_of(program: String, path: String, offset: String, length: String) -> List<String> {
+  ["bash", "-c", program, "bash", path, offset, length]
+}
+
+fn sha256sum_byte_span_argv(path: String, offset: String, length: String) -> List<String> {
+  sha256sum_byte_span_argv_of(program: sha256sum_byte_span_program, path: path, offset: offset, length: length)
+}
+
