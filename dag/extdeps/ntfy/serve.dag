@@ -4,6 +4,7 @@ import std.types { String, List, Bool, NonEmptyStr }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 // ── `ntfy serve`: where the running server takes its access-control inputs from ─────────────
 // Cited to cmd/serve.go at ntfy v2.28.0 (flagsServe), read against `ntfy serve --help` of the
@@ -29,6 +30,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 // cmd/app.go: the root command's `--version` prints `ntfy version <version>`, with no leading v.
 data ntfy_version_line_prefix: String = "ntfy version "
+
+// The root command's version flag, as the v2.28.0 binary answers it: one line `ntfy version X`.
+fn ntfy_version_command(binary: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: binary, arguments: ["--version"])
+}
 
 data ntfy_serve_verb: NonEmptyStr = "serve"
 data ntfy_config_flag: NonEmptyStr = "--config"

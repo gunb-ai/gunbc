@@ -2,31 +2,42 @@ module gunbc.auth.approval_ntfy_access_readback
 
 import std.types { NonEmptyStr, String, List, Bool, Int }
 import std.algebra { trim }
+import std.measure { Second, second }
+import std.resources { Network }
+import std.decl_ref { decl_ref }
 import extdeps.ntfy.access {
   NtfyAccessRead, NtfyAccessListed, NtfyAccessUnparseable, NtfyAccessListing, NtfyAccessUser, NtfyAccessGrant,
   NtfyPermission, NtfyReadWrite, NtfyReadOnly, NtfyWriteOnly, NtfyDenyAll,
   NtfyRole, NtfyRoleAdmin, NtfyRoleUser, NtfyRoleAnonymous,
-  ntfy_access_read, ntfy_everyone_user, ntfy_access_list_argv, ntfy_access_upstream_version,
+  ntfy_access_read, ntfy_everyone_user, ntfy_access_list_command, ntfy_access_upstream_version,
 }
-import std.resources { Network }
-import extdeps.sudo.elevation { sudo_elevate_as_command }
-import extdeps.exec.command { ArgvCommand }
-import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
-import extdeps.posix.sh_invocation { posix_sh_program }
 import extdeps.ntfy.serve {
   NtfyServeOption, NtfyAuthFile, NtfyAuthDefaultAccess, NtfyAuthAccessCache, NtfyListenHttp,
   NtfyConfigRead, NtfyConfigFlat, NtfyConfigUnreadable, NtfyConfigEntry,
   ntfy_config_read, ntfy_config_values, ntfy_version_line_prefix, ntfy_serve_verb, ntfy_config_flag, ntfy_environment_prefix,
+  ntfy_version_command,
 }
+import extdeps.sudo.elevation { sudo_elevate_as_command, sudo_elevate_command }
+import extdeps.exec.command { ArgvCommand, argv_words, LocalExec }
+import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
+import extdeps.tools.gnu_coreutils { cat_command, timeout_command }
+import extdeps.tools.stat { stat_mtime_epoch_command, stat_ctime_epoch_command, stat_birth_epoch_command }
+import extdeps.tools.id { id_uid_of_command }
+import extdeps.posix.getconf { getconf_clock_ticks_command, clock_ticks_reading, ClockTicksReading, ClockTicksObserved }
+import extdeps.systemd { SystemdUnitProperty, ActiveState, MainPID, EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty }
+import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_environment_command }
+import extdeps.linux.procfs { ProcNetTcp, ProcNetTcp6, procfs_path_literal, procfs_pid_file_path, procfs_stat_path }
+import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, ProcPidStatStartTime, StartTimeObserved }
+import extdeps.linux.proc_stat { proc_stat_boot_time, ProcStatBootTime, BootTimeObserved }
 import extdeps.linux.proc_net_tcp {
   TcpSocketRow, ProcNetTcpTable, ProcNetTcpParsed, ProcNetTcpUnparseable, TcpLocalPort, TcpPortBound, TcpPortUnbound,
   proc_net_tcp_table, tcp_listen_state_hex, tcp_local_ipv4_dotted_little_endian,
 }
-import extdeps.systemd { MainPID }
-import extdeps.systemd.systemctl { systemctl_show_property_argv }
+import extdeps.tailscale.serve { tailscale_serve_status_json_command, tailscale_serve_status_funnel_listeners, TailscaleFunnelProjection, FunnelListeners, FunnelStatusUnreadable }
+import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import gunbc.auth.approval_ntfy_deployment {
-  approval_ntfy_principal_name, approval_ntfy_config_path, approval_ntfy_binary_path,
+  approval_ntfy_principal_name, approval_ntfy_config_path, approval_ntfy_binary_path, approval_ntfy_auth_file_path,
   approval_ntfy_publisher_user, approval_ntfy_operator_user, approval_ntfy_unit_name,
   approval_ntfy_listen_address, approval_ntfy_listen_port, approval_ntfy_endpoint,
 }
@@ -38,7 +49,7 @@ import gunbc.auth.approval_ntfy_deployment {
 // NoDischargeSiteModeled); this module reads the live list back from the server and admits exactly
 // one shape -- anything else, including a readback that did not run or did not parse, refuses.
 // Refusal is the default: the only arm that admits is AclEstablished, and it is reached only by
-// the runtime join AND every listing check below holding on one observed run (DESIGN §5; §3b leasing/grants row -- a grant
+// the runtime binding AND every listing check below holding on one reading (DESIGN §5; §3b leasing/grants row -- a grant
 // is established by readback of who may perform the effect, never by the declaration).
 //
 // THE EXACT ACL, stated once:
@@ -51,8 +62,7 @@ import gunbc.auth.approval_ntfy_deployment {
 // user's wildcard grant may match it; admitting only the three rows makes that question vanish
 // instead of re-implementing ntfy's pattern matching here.
 type ApprovalNtfyAclDeviation
-  = AclReadbackDidNotRun { detail: String }
-  | AclListingUnparseable { line: String, cause: String }
+  = AclListingUnparseable { line: String, cause: String }
   | AclDefaultAccessNotDeny { observed: NtfyPermission }
   | AclAnonymousHasGrants { grants: List<NtfyAccessGrant> }
   | AclPrincipalMissing { user: String }
@@ -62,81 +72,568 @@ type ApprovalNtfyAclDeviation
   | AclUnexpectedPrincipal { user: String, role: NtfyRole }
   | ActiveNtfyRuntimeUnbound { gap: ActiveNtfyRuntimeGap }
 
-// ── THE LISTING IS ONLY THE SERVER'S IF IT IS JOINED TO THE RUNNING SERVER ─────────────────
+// ── THE LISTING IS ONLY THE SERVER'S IF IT IS BOUND TO THE RUNNING SERVER ─────────────────
 // `ntfy access --config C` reads the auth database C names. It does not ask the running server,
 // which may run another binary or another config, may override auth-file or auth-default-access on
 // its command line or in its environment (extdeps.ntfy.serve), or may answer from its ACL cache.
-// So the listing is admitted only beside an observation of the ACTIVE runtime, taken in the same
-// elevated read, that binds it: the unit's MainPID; that process's executable is the declared
-// binary at the modeled version; its argv is exactly `<binary> serve --config <declared config>`;
-// it carries no NTFY_* variable; the declared config predates the process's start and is flat and names one auth-file, deny-all
-// default access, no access cache and the declared loopback listener; the process holds that
-// auth-file open; and every TCP socket it listens on is the declared loopback endpoint. Until every
-// join holds the channel is unestablished, whatever the listing says.
+// So the listing is admitted only beside a set of MODELED READS of the active runtime, each one an
+// extdeps argv run under a timeout, and none of them a shell program:
+//
+//   unit        systemctl show: ActiveState, MainPID, Environment, EnvironmentFiles, PassEnvironment
+//   pid stat    /proc/<MainPID>/stat starttime            -- read FIRST, and again LAST
+//   boot, tick  /proc/stat btime, getconf CLK_TCK        -- the process's start, in epoch seconds
+//   argv        /proc/<MainPID>/cmdline                  -- exactly `<binary> serve --config <cfg>`
+//   binary      stat %Z of the declared binary, and its --version
+//   manager env systemctl show-environment
+//   uid         id -u of the server's principal
+//   sockets     /proc/net/tcp and tcp6
+//   config      stat %Y and the text of the declared config          (as the server's principal)
+//   auth file   stat %W of the declared auth-file                    (as the server's principal)
+//   listing     ntfy access --config <cfg>                           (as the server's principal)
+//   front door  tailscale serve status --json                        (as root)
+//
+// WHAT EACH JOIN ESTABLISHES, stated at the grain it was realized (operator ruling on #12077):
+//   - MainPID is the UNIT'S: systemd names it, and a unit that is not active or has MainPID 0 --
+//     a server started outside systemd -- refuses.
+//   - The unit's MainPID and its starttime are read first and last; any difference is a restart
+//     between the reads, and refuses. That bracket encloses every other read.
+//   - The ENVIRONMENT is the systemd-declared launch environment of that systemd-owned process: the
+//     manager's environment, the unit's Environment= and PassEnvironment=. Any NTFY_* name there
+//     refuses, and so does any EnvironmentFile=, whose contents this read does not see. It is not
+//     /proc/<pid>/environ, which needs ptrace-read access and would put PID wildcards in sudoers.
+//   - The EXECUTABLE is the declared binary by argv[0] of /proc/<pid>/cmdline, unchanged since the
+//     process started (its status-change time predates the start), at the modeled version.
+//   - The CONFIG predates the start, so it is what the server read; it names the declared
+//     auth-file, deny-all, no access cache and the declared listener, and the command line and
+//     environment name none of those options.
+//   - The AUTH FILE was born before the process started, so the file `ntfy access` reads is the
+//     one the server opened, not a copy put in its place since. A birth time the filesystem does
+//     not report refuses.
+//   - LISTENERS are attributed by the socket's owning UID, not by the process: every TCP socket
+//     the server's principal listens on must be 127.0.0.1:2586, and at least one must exist. Wider
+//     in scope than a per-process join -- any process running as that principal is held to it.
+//   - THE FRONT DOOR is tailscale serve on this node. No listener may be Funnel-enabled; a Funnel
+//     listener publishes the node to the public internet. Tailnet reach is bounded by the tailnet
+//     ACL, and every route still meets ntfy's own authorizer, which is what the listing binds.
+//
+// FAIL-CLOSED PER READ: a read that cannot be spawned, exits nonzero (a timeout exits 124) or
+// yields output its parser does not place refuses with RuntimeReadFailed naming THAT read. None
+// defaults and none is skipped. Until every join holds, the channel is unestablished, whatever the
+// listing says.
+type NtfyRuntimeRead
+  = ReadUnitBefore
+  | ReadPidStatBefore
+  | ReadBootTime
+  | ReadClockTicks
+  | ReadCommandLine
+  | ReadBinaryCtime
+  | ReadVersion
+  | ReadManagerEnvironment
+  | ReadServerUid
+  | ReadNetTcp
+  | ReadNetTcp6
+  | ReadConfigMtime
+  | ReadConfig
+  | ReadAuthFileBirth
+  | ReadAccessList
+  | ReadFrontDoor
+  | ReadUnitAfter
+  | ReadPidStatAfter
+
+type NtfyRuntimeReadFailure
+  = ReadNotSpawned { program: String, cause: String }
+  | ReadExitedNonzero { exit_code: Int, stderr: String }
+  | ReadUnparseable { detail: String }
+
 type ActiveNtfyRuntimeGap
-  = RuntimeObservationMalformed { cause: String }
-  | RuntimeStartUnreadable { started: String, config_mtime: String }
-  | RuntimeConfigChangedSinceStart { started: Int, config_mtime: Int }
-  | RuntimeExecutableNotDeclared { observed: String }
-  | RuntimeVersionNotModeled { observed: String }
+  = RuntimeReadFailed { read: NtfyRuntimeRead, failure: NtfyRuntimeReadFailure }
+  | RuntimeUnitNotActive { active_state: String, main_pid: String }
+  | RuntimeRestartedDuringRead { before: String, after: String }
   | RuntimeCommandLineNotDeclared { observed: List<String> }
+  | RuntimeBinaryChangedSinceStart { changed_at: Int, started: Int }
+  | RuntimeVersionNotModeled { observed: String }
+  | RuntimeEnvironmentFilesPresent { files: String }
   | RuntimeEnvironmentOverrides { names: List<String> }
+  | RuntimeConfigChangedSinceStart { started: Int, config_mtime: Int }
   | RuntimeConfigUnreadable { line: String, cause: String }
   | RuntimeConfigOptionNotSingle { key: String, values: List<String> }
   | RuntimeConfigDefaultAccessNotDeny { observed: String }
   | RuntimeConfigAccessCacheEnabled { observed: String }
   | RuntimeConfigListenNotDeclared { observed: String }
-  | RuntimeAuthFileNotHeldOpen { auth_file: String }
-  | RuntimeSocketTableUnreadable { line: String }
+  | RuntimeConfigAuthFileNotDeclared { observed: String }
+  | RuntimeAuthFileBirthUnknown
+  | RuntimeAuthFileReplacedSinceStart { born: Int, started: Int }
   | RuntimeListenerNotDeclared { local_address: String }
   | RuntimeNoListener
+  | FrontDoorFunnelled { host_ports: List<String> }
 
 type ApprovalNtfyAclVerdict
   = AclEstablished
   | AclRefused { deviation: ApprovalNtfyAclDeviation }
 
-// ── THE ONE ELEVATED READ ───────────────────────────────────────────────────────────────────
-// Runs as the server's own principal (who can read its /proc entries, its config and its auth
-// database) and prints thirteen `@@` sections in a fixed order. It READS and prints; every decision is
-// the classifier's below. `set -eu`: any read that fails ends the run nonzero, and a nonzero run is
-// AclReadbackDidNotRun -- which is also how a unit with no main process (MainPID 0, no /proc/0)
-// reads. The environment is printed as NTFY_* NAMES only -- values may be secrets. The listing is
-// read under `env -i`, so no NTFY_* variable of the elevation reaches the CLI and it reads exactly
-// the config it is named. `started` (now minus the process's elapsed seconds, procps `etimes`) and
-// the config's mtime join the file to the process: the server read its config when it started, so
-// a config written since then may not be what it runs.
-// A `sh -c` word is extdeps.posix.sh_invocation's residual class, and this DIVERGES from it with a
-// reason: the reads must be one elevation (one exact sudoers line, no PID wildcard) over one
-// instant (the PID read at the top is the PID every later section describes).
-data approval_ntfy_runtime_sections: List<String> = ["mainpid", "started", "exe", "version", "cmdline", "environ-names", "fds", "tcp", "tcp6", "config-mtime", "config", "access", "end"]
+// ── THE READS, AS MODELED COMMANDS ─────────────────────────────────────────────────────────
+// Every read is an extdeps argv builder; the four elevated ones are the ONLY sudoers lines this
+// needs, each an exact argv with no PID in it (the PID-bearing reads are world-readable procfs).
+data approval_ntfy_read_timeout: Second = second(count: 10)
+data approval_ntfy_read_kill_after: Second = second(count: 2)
 
-fn sh_quoted(word: String) -> String {
-  "'" + word + "'"
+fn approval_ntfy_timed(command: ArgvCommand) -> ArgvCommand {
+  timeout_command(duration: approval_ntfy_read_timeout, kill_after: approval_ntfy_read_kill_after, command: command)
 }
 
-fn approval_ntfy_runtime_readback_script() -> String {
-  let cfg = sh_quoted(word: approval_ntfy_config_path as String)
-  join([
-    "set -eu",
-    "pid=$(" + join(map(systemctl_show_property_argv(unit: approval_ntfy_unit_name, property: MainPID), w => sh_quoted(word: w)), " ") + ")",
-    "echo '@@mainpid'; echo \"$pid\"",
-    "echo '@@started'; now=$(date +%s); et=$(ps -o etimes= -p \"$pid\"); echo $((now - et))",
-    "echo '@@exe'; readlink \"/proc/$pid/exe\"",
-    "echo '@@version'; \"/proc/$pid/exe\" --version",
-    "echo '@@cmdline'; tr '\\000' '\\n' < \"/proc/$pid/cmdline\"",
-    "echo '@@environ-names'; tr '\\000' '\\n' < \"/proc/$pid/environ\" | sed -n 's/^\\(" + ntfy_environment_prefix + "[A-Za-z0-9_]*\\)=.*/\\1/p'",
-    "echo '@@fds'; for f in \"/proc/$pid/fd/\"*; do readlink \"$f\"; done",
-    "echo '@@tcp'; cat /proc/net/tcp",
-    "echo '@@tcp6'; cat /proc/net/tcp6",
-    "echo '@@config-mtime'; stat -c %Y " + cfg,
-    "echo '@@config'; cat " + cfg,
-    "echo '@@access'; env -i " + join(map(ntfy_access_list_argv(binary: approval_ntfy_binary_path, config: approval_ntfy_config_path), w => sh_quoted(word: w)), " "),
-    "echo '@@end'",
-  ], "\n") + "\n"
+fn as_ntfy_server(command: ArgvCommand) -> ArgvCommand {
+  sudo_elevate_as_command(user: approval_ntfy_principal_name, command: argv_words(command: command))
 }
 
-fn approval_ntfy_runtime_readback_command() -> ArgvCommand {
-  sudo_elevate_as_command(user: approval_ntfy_principal_name, command: [posix_sh_program as String, "-c", approval_ntfy_runtime_readback_script()])
+data approval_ntfy_unit_properties: List<SystemdUnitProperty> = [ActiveState, MainPID, EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty]
+
+fn approval_ntfy_read_command(read: NtfyRuntimeRead, pid: String) -> ArgvCommand {
+  approval_ntfy_timed(command: match read {
+    ReadUnitBefore => systemctl_show_properties_command(unit: approval_ntfy_unit_name, properties: approval_ntfy_unit_properties)
+    ReadUnitAfter => systemctl_show_properties_command(unit: approval_ntfy_unit_name, properties: approval_ntfy_unit_properties)
+    ReadPidStatBefore => cat_command(path: procfs_pid_file_path(pid: pid, file: "stat"))
+    ReadPidStatAfter => cat_command(path: procfs_pid_file_path(pid: pid, file: "stat"))
+    ReadBootTime => cat_command(path: procfs_stat_path)
+    ReadClockTicks => getconf_clock_ticks_command()
+    ReadCommandLine => cat_command(path: procfs_pid_file_path(pid: pid, file: "cmdline"))
+    ReadBinaryCtime => stat_ctime_epoch_command(path: approval_ntfy_binary_path as String)
+    ReadVersion => ntfy_version_command(binary: approval_ntfy_binary_path)
+    ReadManagerEnvironment => systemctl_show_environment_command()
+    ReadServerUid => id_uid_of_command(user: approval_ntfy_principal_name)
+    ReadNetTcp => cat_command(path: procfs_path_literal(p: ProcNetTcp) as String)
+    ReadNetTcp6 => cat_command(path: procfs_path_literal(p: ProcNetTcp6) as String)
+    ReadConfigMtime => as_ntfy_server(command: stat_mtime_epoch_command(path: approval_ntfy_config_path as String))
+    ReadConfig => as_ntfy_server(command: cat_command(path: approval_ntfy_config_path as String))
+    ReadAuthFileBirth => as_ntfy_server(command: stat_birth_epoch_command(path: approval_ntfy_auth_file_path as String))
+    ReadAccessList => as_ntfy_server(command: ntfy_access_list_command(binary: approval_ntfy_binary_path, config: approval_ntfy_config_path))
+    ReadFrontDoor => sudo_elevate_command(command: argv_words(command: tailscale_serve_status_json_command()))
+  })
+}
+
+// ── THE READING: what the one root gathers ─────────────────────────────────────────────────
+type NtfyRuntimeReads {
+  unit_before: ProcessRunOutcome
+  pid_stat_before: ProcessRunOutcome
+  boot_time: ProcessRunOutcome
+  clock_ticks: ProcessRunOutcome
+  command_line: ProcessRunOutcome
+  binary_ctime: ProcessRunOutcome
+  version: ProcessRunOutcome
+  manager_environment: ProcessRunOutcome
+  server_uid: ProcessRunOutcome
+  net_tcp: ProcessRunOutcome
+  net_tcp6: ProcessRunOutcome
+  config_mtime: ProcessRunOutcome
+  config: ProcessRunOutcome
+  auth_file_birth: ProcessRunOutcome
+  access_list: ProcessRunOutcome
+  front_door: ProcessRunOutcome
+  unit_after: ProcessRunOutcome
+  pid_stat_after: ProcessRunOutcome
+}
+
+// The unit read yields no MainPID to read the rest at, so only it was taken.
+type NtfyRuntimeReading
+  = RuntimeUnitUnresolved { unit_before: ProcessRunOutcome }
+  | RuntimeReadsTaken { pid: String, reads: NtfyRuntimeReads }
+
+fn approval_ntfy_run(read: NtfyRuntimeRead, pid: String) -> ProcessRunOutcome
+  uses net: Network
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_ntfy_access_readback", decl_name: "approval_ntfy_runtime_reading"),
+  ]
+{
+  run_shell_command_observe_outcome(command: approval_ntfy_read_command(read: read, pid: pid), transport: LocalExec)
+}
+
+// THE ONLY EFFECTFUL READER, sealed to the one root. It accepts nothing: every read is a function of
+// the declarations and of the MainPID its own first read returned. The unit and its process's
+// starttime are read first and last, so every other read sits inside the bracket.
+fn approval_ntfy_runtime_reading() -> NtfyRuntimeReading
+  uses net: Network
+  admit_callers: [
+    decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_device_enrolment_code"),
+  ]
+{
+  let unit_before = approval_ntfy_run(read: ReadUnitBefore, pid: "")
+  match approval_ntfy_unit_main_pid(run: unit_before) {
+    Absent => RuntimeUnitUnresolved { unit_before: unit_before }
+    Present { value: pid } => {
+      let pid_stat_before = approval_ntfy_run(read: ReadPidStatBefore, pid: pid)
+      let boot_time = approval_ntfy_run(read: ReadBootTime, pid: pid)
+      let clock_ticks = approval_ntfy_run(read: ReadClockTicks, pid: pid)
+      let command_line = approval_ntfy_run(read: ReadCommandLine, pid: pid)
+      let binary_ctime = approval_ntfy_run(read: ReadBinaryCtime, pid: pid)
+      let version = approval_ntfy_run(read: ReadVersion, pid: pid)
+      let manager_environment = approval_ntfy_run(read: ReadManagerEnvironment, pid: pid)
+      let server_uid = approval_ntfy_run(read: ReadServerUid, pid: pid)
+      let net_tcp = approval_ntfy_run(read: ReadNetTcp, pid: pid)
+      let net_tcp6 = approval_ntfy_run(read: ReadNetTcp6, pid: pid)
+      let config_mtime = approval_ntfy_run(read: ReadConfigMtime, pid: pid)
+      let config = approval_ntfy_run(read: ReadConfig, pid: pid)
+      let auth_file_birth = approval_ntfy_run(read: ReadAuthFileBirth, pid: pid)
+      let access_list = approval_ntfy_run(read: ReadAccessList, pid: pid)
+      let front_door = approval_ntfy_run(read: ReadFrontDoor, pid: pid)
+      let unit_after = approval_ntfy_run(read: ReadUnitAfter, pid: pid)
+      let pid_stat_after = approval_ntfy_run(read: ReadPidStatAfter, pid: pid)
+      RuntimeReadsTaken { pid: pid, reads: NtfyRuntimeReads {
+        unit_before: unit_before, pid_stat_before: pid_stat_before, boot_time: boot_time, clock_ticks: clock_ticks,
+        command_line: command_line, binary_ctime: binary_ctime, version: version, manager_environment: manager_environment,
+        server_uid: server_uid, net_tcp: net_tcp, net_tcp6: net_tcp6, config_mtime: config_mtime, config: config,
+        auth_file_birth: auth_file_birth, access_list: access_list, front_door: front_door,
+        unit_after: unit_after, pid_stat_after: pid_stat_after,
+      } }
+    }
+  }
+}
+
+// ── PURE READERS OF ONE READ ───────────────────────────────────────────────────────────────
+fn run_failure(run: ProcessRunOutcome) -> NtfyRuntimeReadFailure? {
+  match run {
+    ProcessNotSpawned { program: p, cause: c } => Present { value: ReadNotSpawned { program: p as String, cause: c as String } }
+    ProcessRan { observation: o } =>
+      if o.exit_code != 0 { Present { value: ReadExitedNonzero { exit_code: o.exit_code, stderr: trim(s: o.stderr) } } } else { none }
+  }
+}
+
+fn run_stdout(run: ProcessRunOutcome) -> String {
+  match run {
+    ProcessRan { observation: o } => o.stdout
+    ProcessNotSpawned { program: _, cause: _ } => ""
+  }
+}
+
+fn unit_property(text: String, key: String) -> String? {
+  match first(filter(split(s: text, delimiter: "\n"), l => starts_with(s: l, prefix: key + "="))) {
+    Present { value: l } => Present { value: substring(s: l, start: string_length(s: key) + 1, end: string_length(s: l)) }
+    Absent => none
+  }
+}
+
+// The unit's MainPID, when the unit read ran, is active, and names a process.
+fn approval_ntfy_unit_main_pid(run: ProcessRunOutcome) -> String? {
+  match run_failure(run: run) {
+    Present { value: _ } => none
+    Absent => match unit_property(text: run_stdout(run: run), key: "MainPID") {
+      Present { value: p } =>
+        if p == "" || p == "0" || unit_property(text: run_stdout(run: run), key: "ActiveState") != Present { value: "active" } { none }
+        else { Present { value: p } }
+      Absent => none
+    }
+  }
+}
+
+fn runtime_refused(gap: ActiveNtfyRuntimeGap) -> ApprovalNtfyAclVerdict {
+  AclRefused { deviation: ActiveNtfyRuntimeUnbound { gap: gap } }
+}
+
+fn read_failed(read: NtfyRuntimeRead, failure: NtfyRuntimeReadFailure) -> ApprovalNtfyAclVerdict {
+  runtime_refused(gap: RuntimeReadFailed { read: read, failure: failure })
+}
+
+fn unparseable(read: NtfyRuntimeRead, detail: String) -> ApprovalNtfyAclVerdict {
+  read_failed(read: read, failure: ReadUnparseable { detail: detail })
+}
+
+type ReadRun {
+  read: NtfyRuntimeRead
+  run: ProcessRunOutcome
+}
+
+fn reads_in_order(r: NtfyRuntimeReads) -> List<ReadRun> {
+  [
+    ReadRun { read: ReadUnitBefore, run: r.unit_before },
+    ReadRun { read: ReadPidStatBefore, run: r.pid_stat_before },
+    ReadRun { read: ReadBootTime, run: r.boot_time },
+    ReadRun { read: ReadClockTicks, run: r.clock_ticks },
+    ReadRun { read: ReadCommandLine, run: r.command_line },
+    ReadRun { read: ReadBinaryCtime, run: r.binary_ctime },
+    ReadRun { read: ReadVersion, run: r.version },
+    ReadRun { read: ReadManagerEnvironment, run: r.manager_environment },
+    ReadRun { read: ReadServerUid, run: r.server_uid },
+    ReadRun { read: ReadNetTcp, run: r.net_tcp },
+    ReadRun { read: ReadNetTcp6, run: r.net_tcp6 },
+    ReadRun { read: ReadConfigMtime, run: r.config_mtime },
+    ReadRun { read: ReadConfig, run: r.config },
+    ReadRun { read: ReadAuthFileBirth, run: r.auth_file_birth },
+    ReadRun { read: ReadAccessList, run: r.access_list },
+    ReadRun { read: ReadFrontDoor, run: r.front_door },
+    ReadRun { read: ReadUnitAfter, run: r.unit_after },
+    ReadRun { read: ReadPidStatAfter, run: r.pid_stat_after },
+  ]
+}
+
+fn first_failed_read(runs: List<ReadRun>) -> ApprovalNtfyAclVerdict? {
+  match first(filter(runs, x => match run_failure(run: x.run) { Present { value: _ } => true  Absent => false })) {
+    Present { value: x } => match run_failure(run: x.run) {
+      Present { value: f } => Present { value: read_failed(read: x.read, failure: f) }
+      Absent => none
+    }
+    Absent => none
+  }
+}
+
+fn one_integer(read: NtfyRuntimeRead, text: String) -> Int? {
+  parse_int(s: trim(s: text))
+}
+
+// The declared start instant of a process: btime + starttime / CLK_TCK, in whole seconds.
+type RuntimeStart
+  = RuntimeStartKnown { pid: String, start_ticks: Int, started: Int }
+  | RuntimeStartUnknown { verdict: ApprovalNtfyAclVerdict }
+
+fn pid_start_ticks(read: NtfyRuntimeRead, text: String) -> Int? {
+  match proc_pid_stat_start_time(content: text) {
+    StartTimeObserved { ticks_since_boot: t } => Present { value: t }
+    _ => none
+  }
+}
+
+// ── THE CLASSIFIER: the fixture seam, and nothing but a verdict ────────────────────────────
+// Pure over one reading. It returns AclEstablished or AclRefused and carries no value an effectful
+// function could accept in place of the reads: the only caller that turns AclEstablished into an
+// effect is gunbc.auth.approval_device_routes issue_device_enrolment_code, which took the reading
+// itself immediately before it asks.
+fn approval_ntfy_channel_verdict(reading: NtfyRuntimeReading) -> ApprovalNtfyAclVerdict {
+  match reading {
+    RuntimeUnitUnresolved { unit_before: u } => match run_failure(run: u) {
+      Present { value: f } => read_failed(read: ReadUnitBefore, failure: f)
+      Absent => match unit_property(text: run_stdout(run: u), key: "MainPID") {
+        Absent => unparseable(read: ReadUnitBefore, detail: "no MainPID= line")
+        Present { value: p } => runtime_refused(gap: RuntimeUnitNotActive {
+          active_state: match unit_property(text: run_stdout(run: u), key: "ActiveState") { Present { value: s } => s  Absent => "" },
+          main_pid: p,
+        })
+      }
+    }
+    RuntimeReadsTaken { pid: pid, reads: r } => match first_failed_read(runs: reads_in_order(r: r)) {
+      Present { value: v } => v
+      Absent => approval_ntfy_bracketed(pid: pid, r: r)
+    }
+  }
+}
+
+// Every read ran. The bracket first: the same active unit, the same MainPID, the same starttime.
+fn approval_ntfy_bracketed(pid: String, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
+  match approval_ntfy_unit_main_pid(run: r.unit_after) {
+    Absent => runtime_refused(gap: RuntimeRestartedDuringRead { before: pid, after: match unit_property(text: run_stdout(run: r.unit_after), key: "MainPID") { Present { value: p } => p  Absent => "" } })
+    Present { value: after_pid } =>
+      if after_pid != pid { runtime_refused(gap: RuntimeRestartedDuringRead { before: pid, after: after_pid }) }
+      else { match pid_start_ticks(read: ReadPidStatBefore, text: run_stdout(run: r.pid_stat_before)) {
+        Absent => unparseable(read: ReadPidStatBefore, detail: "no starttime field")
+        Present { value: t0 } => match pid_start_ticks(read: ReadPidStatAfter, text: run_stdout(run: r.pid_stat_after)) {
+          Absent => unparseable(read: ReadPidStatAfter, detail: "no starttime field")
+          Present { value: t1 } =>
+            if t0 != t1 { runtime_refused(gap: RuntimeRestartedDuringRead { before: pid + "@" + to_string(t0), after: pid + "@" + to_string(t1) }) }
+            else { approval_ntfy_started(t0: t0, r: r) }
+        }
+      } }
+  }
+}
+
+fn approval_ntfy_started(t0: Int, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
+  match proc_stat_boot_time(content: run_stdout(run: r.boot_time)) {
+    BootTimeObserved { epoch_seconds: btime } => match clock_ticks_reading(stdout: run_stdout(run: r.clock_ticks)) {
+      ClockTicksObserved { per_second: hz } => approval_ntfy_process(started: (btime as Int) + (t0 / hz), r: r)
+      _ => unparseable(read: ReadClockTicks, detail: "CLK_TCK is not a positive integer")
+    }
+    _ => unparseable(read: ReadBootTime, detail: "no btime line")
+  }
+}
+
+fn approval_ntfy_declared_cmdline() -> List<String> {
+  [approval_ntfy_binary_path as String, ntfy_serve_verb as String, ntfy_config_flag as String, approval_ntfy_config_path as String]
+}
+
+fn string_lists_equal(a: List<String>, b: List<String>) -> Bool {
+  count(a) == count(b) && join(a, "\n") == join(b, "\n")
+}
+
+// /proc/<pid>/cmdline: the argv words, each NUL-terminated.
+fn cmdline_words(text: String) -> List<String> {
+  let parts = split(s: text, delimiter: "\x00")
+  match last(parts) {
+    Present { value: "" } => parts.take(n: count(parts) - 1)
+    _ => parts
+  }
+}
+
+// The process: its argv, its executable, its version.
+fn approval_ntfy_process(started: Int, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
+  let argv = cmdline_words(text: run_stdout(run: r.command_line))
+  let version = trim(s: run_stdout(run: r.version))
+  let modeled = ntfy_version_line_prefix + substring(s: ntfy_access_upstream_version, start: 1, end: string_length(s: ntfy_access_upstream_version))
+  if !string_lists_equal(a: argv, b: approval_ntfy_declared_cmdline()) { runtime_refused(gap: RuntimeCommandLineNotDeclared { observed: argv }) }
+  else { match one_integer(read: ReadBinaryCtime, text: run_stdout(run: r.binary_ctime)) {
+    Absent => unparseable(read: ReadBinaryCtime, detail: "not an integer")
+    Present { value: ctime } =>
+      if ctime >= started { runtime_refused(gap: RuntimeBinaryChangedSinceStart { changed_at: ctime, started: started }) }
+      else { if version != modeled { runtime_refused(gap: RuntimeVersionNotModeled { observed: version }) }
+      else { approval_ntfy_environment(started: started, r: r) } }
+  } }
+}
+
+// Names of `A=b c` assignments as systemd renders Environment=: space-separated, a quoted
+// assignment carrying its quote.
+fn assignment_names(text: String) -> List<String> {
+  map(filter(split(s: trim(s: text), delimiter: " "), w => w != ""), w => match first(split(s: replace(s: w, from: "\"", to: ""), delimiter: "=")) { Present { value: n } => n  Absent => w })
+}
+
+fn ntfy_names(names: List<String>) -> List<String> {
+  filter(names, n => starts_with(s: n, prefix: ntfy_environment_prefix))
+}
+
+fn approval_ntfy_environment(started: Int, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
+  let unit = run_stdout(run: r.unit_before)
+  let files = match unit_property(text: unit, key: "EnvironmentFiles") { Present { value: f } => trim(s: f)  Absent => "" }
+  let unit_names = concat(
+    assignment_names(text: match unit_property(text: unit, key: "Environment") { Present { value: e } => e  Absent => "" }),
+    assignment_names(text: match unit_property(text: unit, key: "PassEnvironment") { Present { value: e } => e  Absent => "" }))
+  let manager_names = assignment_names(text: join(split(s: run_stdout(run: r.manager_environment), delimiter: "\n"), " "))
+  let overrides = ntfy_names(names: concat(unit_names, manager_names))
+  if files != "" { runtime_refused(gap: RuntimeEnvironmentFilesPresent { files: files }) }
+  else { if count(overrides) != 0 { runtime_refused(gap: RuntimeEnvironmentOverrides { names: overrides }) }
+  else { match one_integer(read: ReadConfigMtime, text: run_stdout(run: r.config_mtime)) {
+    Absent => unparseable(read: ReadConfigMtime, detail: "not an integer")
+    Present { value: m } =>
+      if m >= started { runtime_refused(gap: RuntimeConfigChangedSinceStart { started: started, config_mtime: m }) }
+      else { approval_ntfy_config_binding(started: started, r: r) }
+  } } }
+}
+
+fn single_config_value(entries: List<NtfyConfigEntry>, o: NtfyServeOption) -> String? {
+  let vs = ntfy_config_values(entries: entries, o: o)
+  if count(vs) == 1 { first(vs) } else { none }
+}
+
+fn approval_ntfy_config_binding(started: Int, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
+  match ntfy_config_read(text: run_stdout(run: r.config)) {
+    NtfyConfigUnreadable { line: l, cause: c } => runtime_refused(gap: RuntimeConfigUnreadable { line: l, cause: c })
+    NtfyConfigFlat { entries: es } =>
+      match single_config_value(entries: es, o: NtfyAuthFile) {
+        Absent => runtime_refused(gap: RuntimeConfigOptionNotSingle { key: "auth-file", values: ntfy_config_values(entries: es, o: NtfyAuthFile) })
+        Present { value: auth_file } =>
+          if auth_file != (approval_ntfy_auth_file_path as String) { runtime_refused(gap: RuntimeConfigAuthFileNotDeclared { observed: auth_file }) }
+          else { match single_config_value(entries: es, o: NtfyAuthDefaultAccess) {
+            Absent => runtime_refused(gap: RuntimeConfigOptionNotSingle { key: "auth-default-access", values: ntfy_config_values(entries: es, o: NtfyAuthDefaultAccess) })
+            Present { value: default_access } =>
+              if default_access != "deny-all" { runtime_refused(gap: RuntimeConfigDefaultAccessNotDeny { observed: default_access }) }
+              else { match first(filter(ntfy_config_values(entries: es, o: NtfyAuthAccessCache), v => v != "false")) {
+                Present { value: v } => runtime_refused(gap: RuntimeConfigAccessCacheEnabled { observed: v })
+                Absent => match single_config_value(entries: es, o: NtfyListenHttp) {
+                  Absent => runtime_refused(gap: RuntimeConfigOptionNotSingle { key: "listen-http", values: ntfy_config_values(entries: es, o: NtfyListenHttp) })
+                  Present { value: listen } =>
+                    if listen != approval_ntfy_endpoint() { runtime_refused(gap: RuntimeConfigListenNotDeclared { observed: listen }) }
+                    else { approval_ntfy_auth_file(started: started, r: r) }
+                }
+              } }
+          } }
+      }
+  }
+}
+
+fn approval_ntfy_auth_file(started: Int, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
+  match one_integer(read: ReadAuthFileBirth, text: run_stdout(run: r.auth_file_birth)) {
+    Absent => unparseable(read: ReadAuthFileBirth, detail: "not an integer")
+    Present { value: born } =>
+      if born == 0 { runtime_refused(gap: RuntimeAuthFileBirthUnknown) }
+      else { if born >= started { runtime_refused(gap: RuntimeAuthFileReplacedSinceStart { born: born, started: started }) }
+      else { approval_ntfy_listeners(r: r) } }
+  }
+}
+
+fn listener_is_declared(row: TcpSocketRow) -> Bool {
+  (match row.local_port { TcpPortBound { port: p } => p == approval_ntfy_listen_port  TcpPortUnbound => false })
+    && (match tcp_local_ipv4_dotted_little_endian(local_address: row.local_address) { Present { value: a } => a == (approval_ntfy_listen_address as String)  Absent => false })
+}
+
+// Every TCP socket the server's principal LISTENS on, in either table, must be the declared v4
+// endpoint (a v6 listener, e.g. a `::` wildcard, serves v4 too), and at least one must exist.
+fn approval_ntfy_listeners(r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
+  let uid = trim(s: run_stdout(run: r.server_uid))
+  if parse_int(s: uid) == none { unparseable(read: ReadServerUid, detail: "not an integer") }
+  else { match proc_net_tcp_table(text: run_stdout(run: r.net_tcp)) {
+    ProcNetTcpUnparseable { line: l } => unparseable(read: ReadNetTcp, detail: l)
+    ProcNetTcpParsed { rows: rows4 } => match proc_net_tcp_table(text: run_stdout(run: r.net_tcp6)) {
+      ProcNetTcpUnparseable { line: l } => unparseable(read: ReadNetTcp6, detail: l)
+      ProcNetTcpParsed { rows: rows6 } => {
+        let mine4 = filter(rows4, x => x.state == tcp_listen_state_hex && x.uid == uid)
+        let mine6 = filter(rows6, x => x.state == tcp_listen_state_hex && x.uid == uid)
+        match first(concat(mine6, filter(mine4, x => !listener_is_declared(row: x)))) {
+          Present { value: bad } => runtime_refused(gap: RuntimeListenerNotDeclared { local_address: bad.local_address })
+          Absent => if count(mine4) == 0 { runtime_refused(gap: RuntimeNoListener) } else { approval_ntfy_front_door(r: r) }
+        }
+      }
+    }
+  } }
+}
+
+fn approval_ntfy_front_door(r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict {
+  match tailscale_serve_status_funnel_listeners(status_json: run_stdout(run: r.front_door)) {
+    FunnelStatusUnreadable => unparseable(read: ReadFrontDoor, detail: "serve status did not read as the documented JSON")
+    FunnelListeners { host_ports: hs } =>
+      if count(hs) != 0 { runtime_refused(gap: FrontDoorFunnelled { host_ports: hs }) }
+      else { match ntfy_access_read(stdout: run_stdout(run: r.access_list)) {
+        NtfyAccessUnparseable { line: l, cause: c } => AclRefused { deviation: AclListingUnparseable { line: l, cause: c } }
+        NtfyAccessListed { listing: listing } => approval_ntfy_acl_of_listing(listing: listing)
+      } }
+  }
+}
+
+fn approval_ntfy_read_label(read: NtfyRuntimeRead) -> String {
+  match read {
+    ReadUnitBefore => "the unit (first)"
+    ReadPidStatBefore => "the process start (first)"
+    ReadBootTime => "the boot time"
+    ReadClockTicks => "the clock tick rate"
+    ReadCommandLine => "the process command line"
+    ReadBinaryCtime => "the binary's change time"
+    ReadVersion => "the binary's version"
+    ReadManagerEnvironment => "the service manager's environment"
+    ReadServerUid => "the server principal's uid"
+    ReadNetTcp => "/proc/net/tcp"
+    ReadNetTcp6 => "/proc/net/tcp6"
+    ReadConfigMtime => "the config's mtime"
+    ReadConfig => "the config"
+    ReadAuthFileBirth => "the auth file's birth time"
+    ReadAccessList => "the ntfy access listing"
+    ReadFrontDoor => "the tailscale serve status"
+    ReadUnitAfter => "the unit (last)"
+    ReadPidStatAfter => "the process start (last)"
+  }
+}
+
+fn approval_ntfy_read_failure_sentence(f: NtfyRuntimeReadFailure) -> String {
+  match f {
+    ReadNotSpawned { program: p, cause: c } => "'" + p + "' could not be spawned: " + c
+    ReadExitedNonzero { exit_code: e, stderr: x } => "exit " + to_string(e) + (if e == 124 { " (timed out)" } else { "" }) + ": " + x
+    ReadUnparseable { detail: d } => "its output did not read: " + d
+  }
+}
+
+fn approval_ntfy_runtime_gap_sentence(g: ActiveNtfyRuntimeGap) -> String {
+  match g {
+    RuntimeReadFailed { read: r, failure: f } => "the read of " + approval_ntfy_read_label(read: r) + " failed, " + approval_ntfy_read_failure_sentence(f: f)
+    RuntimeUnitNotActive { active_state: s, main_pid: p } => "unit " + (approval_ntfy_unit_name as String) + " is '" + s + "' with MainPID '" + p + "', so no systemd-owned server is running"
+    RuntimeRestartedDuringRead { before: b, after: a } => "the server changed between the first and last reads (" + b + " -> " + a + ")"
+    RuntimeCommandLineNotDeclared { observed: a } => "the server's argv is [" + join(a, " ") + "], not [" + join(approval_ntfy_declared_cmdline(), " ") + "]"
+    RuntimeBinaryChangedSinceStart { changed_at: c, started: s } => "the binary changed at " + to_string(c) + ", not before the server started at " + to_string(s)
+    RuntimeVersionNotModeled { observed: v } => "the binary reports '" + v + "', not the modeled ntfy " + ntfy_access_upstream_version
+    RuntimeEnvironmentFilesPresent { files: f } => "the unit reads EnvironmentFile " + f + ", whose contents this read does not see"
+    RuntimeEnvironmentOverrides { names: n } => "the server's launch environment sets " + join(n, ", ") + ", which override its config"
+    RuntimeConfigChangedSinceStart { started: a, config_mtime: m } => "the server config was written at " + to_string(m) + ", not before the server started at " + to_string(a)
+    RuntimeConfigUnreadable { line: l, cause: c } => "the server config did not read flat at '" + l + "': " + c
+    RuntimeConfigOptionNotSingle { key: k, values: v } => "the server config gives " + k + " " + to_string(count(v)) + " values, not one"
+    RuntimeConfigDefaultAccessNotDeny { observed: v } => "the server config sets auth-default-access '" + v + "', not deny-all"
+    RuntimeConfigAccessCacheEnabled { observed: v } => "the server config sets auth-access-cache '" + v + "'"
+    RuntimeConfigListenNotDeclared { observed: v } => "the server config listens on '" + v + "', not " + approval_ntfy_endpoint()
+    RuntimeConfigAuthFileNotDeclared { observed: v } => "the server config names auth-file '" + v + "', not " + (approval_ntfy_auth_file_path as String)
+    RuntimeAuthFileBirthUnknown => "the filesystem does not report the auth file's birth time"
+    RuntimeAuthFileReplacedSinceStart { born: b, started: s } => "the auth file was created at " + to_string(b) + ", not before the server started at " + to_string(s)
+    RuntimeListenerNotDeclared { local_address: a } => "the server's principal listens on " + a + ", not only " + approval_ntfy_endpoint()
+    RuntimeNoListener => "the server's principal holds no listening socket on " + approval_ntfy_endpoint()
+    FrontDoorFunnelled { host_ports: h } => "tailscale Funnel publishes " + join(h, ", ") + " to the public internet"
+  }
 }
 
 fn permission_is(p: NtfyPermission, want: NtfyPermission) -> Bool {
@@ -219,201 +716,8 @@ fn approval_ntfy_acl_of_principals(anonymous: List<NtfyAccessUser>, publisher: L
   }
 }
 
-// ── THE OBSERVATION, SPLIT INTO ITS SECTIONS ───────────────────────────────────────────────
-type RuntimeSection {
-  name: String
-  lines: List<String>
-}
-
-fn runtime_sections(stdout: String) -> List<RuntimeSection> {
-  fold(split(s: stdout, delimiter: "\n"), init: [], f: (acc, line) =>
-    if starts_with(s: line, prefix: "@@") { concat(acc, [RuntimeSection { name: substring(s: line, start: 2, end: string_length(s: line)), lines: [] }]) }
-    else { match last(acc) {
-      Absent => concat(acc, [RuntimeSection { name: "", lines: [line] }])
-      Present { value: cur } => if line == "" { acc } else { concat(acc.take(n: count(acc) - 1), [RuntimeSection { name: cur.name, lines: concat(cur.lines, [line]) }]) }
-    } })
-}
-
-fn section_lines(sections: List<RuntimeSection>, name: String) -> List<String> {
-  match first(filter(sections, x => x.name == name)) {
-    Present { value: x } => x.lines
-    Absent => []
-  }
-}
-
-fn one_line(lines: List<String>) -> String {
-  if count(lines) == 1 { match first(lines) { Present { value: l } => trim(s: l)  Absent => "" } } else { join(lines, " | ") }
-}
-
-fn runtime_refused(gap: ActiveNtfyRuntimeGap) -> ApprovalNtfyAclVerdict {
-  AclRefused { deviation: ActiveNtfyRuntimeUnbound { gap: gap } }
-}
-
-fn socket_inode_of_fd(target: String) -> String? {
-  if starts_with(s: target, prefix: "socket:[") && listing_ends_with_bracket(s: target) {
-    Present { value: substring(s: target, start: 8, end: string_length(s: target) - 1) }
-  } else { none }
-}
-
-fn listing_ends_with_bracket(s: String) -> Bool {
-  let n = string_length(s: s)
-  n > 0 && substring(s: s, start: n - 1, end: n) == "]"
-}
-
-fn tcp_table_of(lines: List<String>) -> ProcNetTcpTable {
-  proc_net_tcp_table(text: join(lines, "\n"))
-}
-
-// A socket this process LISTENS on, in either table. Every one must be the declared endpoint in
-// the v4 table: a v6 listener (a `::` wildcard serves v4 too) or any other address is refused.
-fn listener_is_declared(r: TcpSocketRow, v6: Bool) -> Bool {
-  !v6
-    && (match r.local_port { TcpPortBound { port: p } => p == approval_ntfy_listen_port  TcpPortUnbound => false })
-    && (match tcp_local_ipv4_dotted_little_endian(local_address: r.local_address) { Present { value: a } => a == (approval_ntfy_listen_address as String)  Absent => false })
-}
-
-fn approval_ntfy_listeners(fds: List<String>, tcp: List<String>, tcp6: List<String>) -> ApprovalNtfyAclVerdict {
-  let inodes = fold(fds, init: [], f: (acc, fd) => match socket_inode_of_fd(target: fd) { Present { value: i } => concat(acc, [i])  Absent => acc })
-  match tcp_table_of(lines: tcp) {
-    ProcNetTcpUnparseable { line: l } => runtime_refused(gap: RuntimeSocketTableUnreadable { line: l })
-    ProcNetTcpParsed { rows: rows4 } => match tcp_table_of(lines: tcp6) {
-      ProcNetTcpUnparseable { line: l } => runtime_refused(gap: RuntimeSocketTableUnreadable { line: l })
-      ProcNetTcpParsed { rows: rows6 } => {
-        let mine4 = filter(rows4, r => r.state == tcp_listen_state_hex && any(inodes, i => i == r.inode))
-        let mine6 = filter(rows6, r => r.state == tcp_listen_state_hex && any(inodes, i => i == r.inode))
-        match first(filter(mine6, r => !listener_is_declared(r: r, v6: true))) {
-          Present { value: bad } => runtime_refused(gap: RuntimeListenerNotDeclared { local_address: bad.local_address })
-          Absent => match first(filter(mine4, r => !listener_is_declared(r: r, v6: false))) {
-            Present { value: bad } => runtime_refused(gap: RuntimeListenerNotDeclared { local_address: bad.local_address })
-            Absent => if count(mine4) == 0 { runtime_refused(gap: RuntimeNoListener) } else { AclEstablished }
-          }
-        }
-      }
-    }
-  }
-}
-
-// One value for an option in the flat config, or a refusal naming the key.
-fn single_config_value(entries: List<NtfyConfigEntry>, o: NtfyServeOption) -> String? {
-  let vs = ntfy_config_values(entries: entries, o: o)
-  if count(vs) == 1 { first(vs) } else { none }
-}
-
-fn approval_ntfy_config_binding(config: List<String>, fds: List<String>) -> ApprovalNtfyAclVerdict {
-  match ntfy_config_read(text: join(config, "\n")) {
-    NtfyConfigUnreadable { line: l, cause: c } => runtime_refused(gap: RuntimeConfigUnreadable { line: l, cause: c })
-    NtfyConfigFlat { entries: es } =>
-      match single_config_value(entries: es, o: NtfyAuthFile) {
-        Absent => runtime_refused(gap: RuntimeConfigOptionNotSingle { key: "auth-file", values: ntfy_config_values(entries: es, o: NtfyAuthFile) })
-        Present { value: auth_file } => match single_config_value(entries: es, o: NtfyAuthDefaultAccess) {
-          Absent => runtime_refused(gap: RuntimeConfigOptionNotSingle { key: "auth-default-access", values: ntfy_config_values(entries: es, o: NtfyAuthDefaultAccess) })
-          Present { value: default_access } =>
-            if default_access != "deny-all" { runtime_refused(gap: RuntimeConfigDefaultAccessNotDeny { observed: default_access }) }
-            else { match first(filter(ntfy_config_values(entries: es, o: NtfyAuthAccessCache), v => v != "false")) {
-              Present { value: v } => runtime_refused(gap: RuntimeConfigAccessCacheEnabled { observed: v })
-              Absent => match single_config_value(entries: es, o: NtfyListenHttp) {
-                Absent => runtime_refused(gap: RuntimeConfigOptionNotSingle { key: "listen-http", values: ntfy_config_values(entries: es, o: NtfyListenHttp) })
-                Present { value: listen } =>
-                  if listen != approval_ntfy_endpoint() { runtime_refused(gap: RuntimeConfigListenNotDeclared { observed: listen }) }
-                  else { if !any(fds, f => f == auth_file) { runtime_refused(gap: RuntimeAuthFileNotHeldOpen { auth_file: auth_file }) }
-                  else { AclEstablished } }
-              }
-            } }
-        }
-      }
-  }
-}
-
-fn approval_ntfy_declared_cmdline() -> List<String> {
-  [approval_ntfy_binary_path as String, ntfy_serve_verb as String, ntfy_config_flag as String, approval_ntfy_config_path as String]
-}
-
-fn string_lists_equal(a: List<String>, b: List<String>) -> Bool {
-  count(a) == count(b) && join(a, "\n") == join(b, "\n")
-}
-
-// THE RUNTIME JOIN, in a fixed order; the first gap is the cause.
-fn approval_ntfy_runtime_binding(sections: List<RuntimeSection>) -> ApprovalNtfyAclVerdict {
-  let names = map(sections, x => x.name)
-  if !string_lists_equal(a: names, b: approval_ntfy_runtime_sections) { runtime_refused(gap: RuntimeObservationMalformed { cause: "sections were [" + join(names, ",") + "]" }) }
-  else {
-    let exe = one_line(lines: section_lines(sections: sections, name: "exe"))
-    let version = one_line(lines: section_lines(sections: sections, name: "version"))
-    let cmdline = section_lines(sections: sections, name: "cmdline")
-    let env = section_lines(sections: sections, name: "environ-names")
-    let fds = map(section_lines(sections: sections, name: "fds"), f => trim(s: f))
-    let modeled = ntfy_version_line_prefix + substring(s: ntfy_access_upstream_version, start: 1, end: string_length(s: ntfy_access_upstream_version))
-    let started = one_line(lines: section_lines(sections: sections, name: "started"))
-    let mtime = one_line(lines: section_lines(sections: sections, name: "config-mtime"))
-    match parse_int(s: started) {
-      Absent => runtime_refused(gap: RuntimeStartUnreadable { started: started, config_mtime: mtime })
-      Present { value: t0 } => match parse_int(s: mtime) {
-    Absent => runtime_refused(gap: RuntimeStartUnreadable { started: started, config_mtime: mtime })
-    Present { value: m } =>
-    if m >= t0 { runtime_refused(gap: RuntimeConfigChangedSinceStart { started: t0, config_mtime: m }) }
-    else { if exe != (approval_ntfy_binary_path as String) { runtime_refused(gap: RuntimeExecutableNotDeclared { observed: exe }) }
-    else { if version != modeled { runtime_refused(gap: RuntimeVersionNotModeled { observed: version }) }
-    else { if !string_lists_equal(a: cmdline, b: approval_ntfy_declared_cmdline()) { runtime_refused(gap: RuntimeCommandLineNotDeclared { observed: cmdline }) }
-    else { if count(env) != 0 { runtime_refused(gap: RuntimeEnvironmentOverrides { names: env }) }
-    else { match approval_ntfy_config_binding(config: section_lines(sections: sections, name: "config"), fds: fds) {
-      AclRefused { deviation: d } => AclRefused { deviation: d }
-      AclEstablished => approval_ntfy_listeners(fds: fds, tcp: section_lines(sections: sections, name: "tcp"), tcp6: section_lines(sections: sections, name: "tcp6"))
-    } } } } } } } }
-  }
-}
-
-// ── THE CLASSIFIER: the fixture seam, and nothing but a verdict ────────────────────────────
-// Pure over one run's (exit, stdout, stderr). It returns AclEstablished or AclRefused and carries
-// no value an effectful function could accept in place of the read: the only caller that turns
-// AclEstablished into an effect is gunbc.auth.approval_device_routes issue_device_enrolment_code,
-// which performs the run itself immediately before it asks.
-fn approval_ntfy_channel_verdict(exit_code: Int, stdout: String, stderr: String) -> ApprovalNtfyAclVerdict {
-  if exit_code != 0 { AclRefused { deviation: AclReadbackDidNotRun { detail: "exit=" + to_string(exit_code) + " " + trim(s: stderr) } } }
-  else {
-    let sections = runtime_sections(stdout: stdout)
-    match approval_ntfy_runtime_binding(sections: sections) {
-      AclRefused { deviation: d } => AclRefused { deviation: d }
-      AclEstablished => match ntfy_access_read(stdout: join(section_lines(sections: sections, name: "access"), "\n")) {
-        NtfyAccessUnparseable { line: l, cause: c } => AclRefused { deviation: AclListingUnparseable { line: l, cause: c } }
-        NtfyAccessListed { listing: listing } => approval_ntfy_acl_of_listing(listing: listing)
-      }
-    }
-  }
-}
-
-// THE VERDICT OF ONE RUN, spawn included: a read whose process never started (no sudo, no sh)
-// observed nothing, and is refused the same as one that exited nonzero.
-fn approval_ntfy_channel_verdict_of_run(run: ProcessRunOutcome) -> ApprovalNtfyAclVerdict {
-  match run {
-    ProcessNotSpawned { program: p, cause: c } => AclRefused { deviation: AclReadbackDidNotRun { detail: "'" + (p as String) + "' could not be spawned: " + (c as String) } }
-    ProcessRan { observation: o } => approval_ntfy_channel_verdict(exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr)
-  }
-}
-
-fn approval_ntfy_runtime_gap_sentence(g: ActiveNtfyRuntimeGap) -> String {
-  match g {
-    RuntimeObservationMalformed { cause: c } => "the runtime observation was malformed (" + c + ")"
-    RuntimeStartUnreadable { started: a, config_mtime: m } => "the server's start time ('" + a + "') or the config's mtime ('" + m + "') did not read as an integer"
-    RuntimeConfigChangedSinceStart { started: a, config_mtime: m } => "the server config was written at " + to_string(m) + ", not before the server started at " + to_string(a) + ", so it may not be what the server runs"
-    RuntimeExecutableNotDeclared { observed: e } => "the running executable is '" + e + "', not " + (approval_ntfy_binary_path as String)
-    RuntimeVersionNotModeled { observed: v } => "the running server reports '" + v + "', not the modeled ntfy " + ntfy_access_upstream_version
-    RuntimeCommandLineNotDeclared { observed: a } => "the server's argv is [" + join(a, " ") + "], not [" + join(approval_ntfy_declared_cmdline(), " ") + "]"
-    RuntimeEnvironmentOverrides { names: n } => "the server's environment sets " + join(n, ", ") + ", which override its config"
-    RuntimeConfigUnreadable { line: l, cause: c } => "the server config did not read flat at '" + l + "': " + c
-    RuntimeConfigOptionNotSingle { key: k, values: v } => "the server config gives " + k + " " + to_string(count(v)) + " values, not one"
-    RuntimeConfigDefaultAccessNotDeny { observed: v } => "the server config sets auth-default-access '" + v + "', not deny-all"
-    RuntimeConfigAccessCacheEnabled { observed: v } => "the server config sets auth-access-cache '" + v + "'"
-    RuntimeConfigListenNotDeclared { observed: v } => "the server config listens on '" + v + "', not " + approval_ntfy_endpoint()
-    RuntimeAuthFileNotHeldOpen { auth_file: f } => "the running server does not hold the configured auth-file " + f + " open"
-    RuntimeSocketTableUnreadable { line: l } => "a socket table row did not read: " + l
-    RuntimeListenerNotDeclared { local_address: a } => "the server listens on " + a + ", not only " + approval_ntfy_endpoint()
-    RuntimeNoListener => "the server holds no listening socket on " + approval_ntfy_endpoint()
-  }
-}
-
 fn approval_ntfy_acl_deviation_sentence(d: ApprovalNtfyAclDeviation) -> String {
   match d {
-    AclReadbackDidNotRun { detail: x } => "the ntfy access readback did not run (" + x + "); the channel is unobserved"
     AclListingUnparseable { line: l, cause: c } => "the ntfy access listing did not parse at '" + l + "': " + c
     AclDefaultAccessNotDeny { observed: _ } => "the server's default access is not deny-all, so an unlisted principal may subscribe"
     AclAnonymousHasGrants { grants: _ } => "the anonymous user '*' holds topic grants, so an unprivileged subscriber may read"

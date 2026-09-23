@@ -99,6 +99,12 @@ fn sudo_elevate_as_command(user: NonEmptyStr, command: List<String>) -> ArgvComm
   argv_command(program: elevated.bin_path as NonEmptyStr, arguments: elevated.args)
 }
 
+// sudo_elevate as a command: root, non-interactive.
+fn sudo_elevate_command(command: List<String>) -> ArgvCommand {
+  let elevated = sudo_elevate(command: command)
+  argv_command(program: elevated.bin_path as NonEmptyStr, arguments: elevated.args)
+}
+
 // THE FLAT ARGV OF AN ELEVATED INVOCATION. ElevatedInvocation splits binary from tail because the
 // host-effect surface takes it that way; a shell transport wants one word list, and three callers
 // had each written the same [bin_path] ++ args append to get it. One row, so a future change to

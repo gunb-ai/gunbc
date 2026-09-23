@@ -99,6 +99,21 @@ fn stat_mode_command(path: String) -> ArgvCommand {
   argv_command(program: stat_binary_path, arguments: ["-c", "%a", "--", path])
 }
 
+// THE THREE FILE TIMES, as whole seconds since the epoch (stat(1) %Y, %Z, %W): last data
+// modification, last status change, and birth. %W prints 0 when the filesystem or kernel does not
+// report a birth time, which is "unknown", never the epoch -- a consumer must refuse on it.
+fn stat_mtime_epoch_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%Y", "--", path])
+}
+
+fn stat_ctime_epoch_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%Z", "--", path])
+}
+
+fn stat_birth_epoch_command(path: String) -> ArgvCommand {
+  argv_command(program: stat_binary_path, arguments: ["-c", "%W", "--", path])
+}
+
 fn stat_size_bytes_command(path: String) -> ArgvCommand {
   argv_command(program: stat_binary_path, arguments: ["-c", "%s", "--", path])
 }

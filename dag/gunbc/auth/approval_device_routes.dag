@@ -26,10 +26,8 @@ import gunbc.auth.approval_notification { approval_notification }
 import gunbc.auth.approval_ntfy_deployment
 import gunbc.auth.approval_ntfy_access_readback {
   ApprovalNtfyAclVerdict, AclEstablished, AclRefused,
-  approval_ntfy_runtime_readback_command, approval_ntfy_channel_verdict_of_run, approval_ntfy_acl_deviation_sentence,
+  approval_ntfy_runtime_reading, approval_ntfy_channel_verdict, approval_ntfy_acl_deviation_sentence,
 }
-import extdeps.exec.command { LocalExec }
-import gunbc.command_runner { run_shell_command_observe_outcome }
 import std.decl_ref { decl_ref }
 import gunbc.auth.approval_broker_endpoint { approval_broker_base_url }
 import gunbc.auth.approval_request_submission { PublisherTokenRead, PublisherTokenLoaded, PublisherTokenUnavailable, read_publisher_token, publish_notification, NotificationPublish, NotificationAttempted, NotificationPublisherTokenUnavailable }
@@ -706,14 +704,14 @@ fn enrolment_code_delivery_of(publish: NotificationPublish) -> EnrolmentCodeDeli
 // and publish_notification are sealed in their homes to their callers. So a second root -- in this
 // module or any other -- is a compile refusal, not a review finding.
 //
-// THE FIRST THING IT DOES is the live read (gunbc.auth.approval_ntfy_access_readback
-// approval_ntfy_runtime_readback_command, one elevated run on this host), and the first match is
-// that run's verdict. Nothing is accepted from a caller: no standing, no verdict, no listing. A
+// THE FIRST THING IT DOES is the live reading (gunbc.auth.approval_ntfy_access_readback
+// approval_ntfy_runtime_reading: modeled reads of the running server, sealed to this function), and
+// the first match is that reading's verdict. Nothing is accepted from a caller: no standing, no verdict, no listing. A
 // refusal returns before the clock, the entropy, the slot, the token and the publish.
 fn issue_device_enrolment_code() -> CliWireResponse
   uses net: Network
 {
-  match approval_ntfy_channel_verdict_of_run(run: run_shell_command_observe_outcome(command: approval_ntfy_runtime_readback_command(), transport: LocalExec)) {
+  match approval_ntfy_channel_verdict(reading: approval_ntfy_runtime_reading()) {
     AclRefused { deviation: d } => CliWireUnprintable { cause: ("refused before any code was minted: the ntfy channel is not established private: " + approval_ntfy_acl_deviation_sentence(d: d)) as NonEmptyStr }
     AclEstablished =>
       match device_observed_at() {

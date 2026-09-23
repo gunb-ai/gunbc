@@ -4,6 +4,7 @@ import std.types { String, List, Bool, NonEmptyStr }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 // ── `ntfy access`: the server's access-control list, as the upstream CLI prints it ───────────
 // Cited to the upstream source at a pinned tag, because the listing is a text rendering and its
@@ -35,6 +36,10 @@ data ntfy_access_upstream_version: String = "v2.28.0"
 // caller's -- which install, which server -- so they are parameters, never literals here.
 fn ntfy_access_list_argv(binary: NonEmptyStr, config: NonEmptyStr) -> List<String> {
   [binary as String, "access", "--config", config as String]
+}
+
+fn ntfy_access_list_command(binary: NonEmptyStr, config: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: binary, arguments: ["access", "--config", config as String])
 }
 
 // user/types.go Everyone: the anonymous principal's row name.

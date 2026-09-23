@@ -11,7 +11,8 @@ import extdeps.uri { Uri, Https }
 // THE SHAPE OF /proc/net/tcp AND /proc/net/tcp6 (proc(5), "/proc/net/tcp"): one header line, then
 // one row per socket, whitespace-separated. The fields this module reads are the second
 // (local_address: hex IP, a colon, a 4-hex-digit port), the fourth (st: the socket state as two
-// hex digits, where 0A is TCP_LISTEN -- include/net/tcp_states.h) and the tenth (inode: the socket's
+// hex digits, where 0A is TCP_LISTEN -- include/net/tcp_states.h), the eighth (uid: the socket's
+// owner's effective uid, decimal) and the tenth (inode: the socket's
 // inode, the number /proc/<pid>/fd/N names as `socket:[inode]`). Everything else on the row is
 // carried past. The port is the same 16-bit hex field in both files; only the address width
 // differs (8 hex digits for v4, 32 for v6), and this parser reads the port from the right of the
@@ -43,6 +44,7 @@ type TcpSocketRow {
   local_address: String
   local_port: TcpLocalPort
   state: String
+  uid: String
   inode: String
 }
 
@@ -63,7 +65,9 @@ fn tcp_socket_row(line: String) -> TcpSocketRow? {
         Absent => none
         Present { value: st } => match get(xs: fields, index: 9) {
         Absent => none
-        Present { value: inode } => {
+        Present { value: inode } => match get(xs: fields, index: 7) {
+        Absent => none
+        Present { value: uid } => {
           let parts = split(s: local, delimiter: ":")
           if length(parts) != 2 { none } else {
             match get(xs: parts, index: 1) {
@@ -71,10 +75,11 @@ fn tcp_socket_row(line: String) -> TcpSocketRow? {
               Present { value: port_hex } =>
                 match base16_word_value(word: port_hex, max_digits: 4) {
                   Absent => none
-                  Present { value: port } => Present { value: TcpSocketRow { local_address: local, local_port: if port == 0 { TcpPortUnbound } else { TcpPortBound { port: port } }, state: st, inode: inode } }
+                  Present { value: port } => Present { value: TcpSocketRow { local_address: local, local_port: if port == 0 { TcpPortUnbound } else { TcpPortBound { port: port } }, state: st, uid: uid, inode: inode } }
                 }
             }
           }
+        }
         }
         }
       }

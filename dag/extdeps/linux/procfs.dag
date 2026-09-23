@@ -31,6 +31,14 @@ type ProcfsPath
   | ProcSysKernelHostname
   | ProcNetPnp
 
+// A FILE UNDER ONE PROCESS'S DIRECTORY, /proc/<pid>/<file> (proc(5)): stat and cmdline are
+// world-readable; exe, fd and environ need ptrace-read access to the process and are not read here.
+fn procfs_pid_file_path(pid: String, file: String) -> String {
+  "/proc/" + pid + "/" + file
+}
+
+data procfs_stat_path: String = "/proc/stat"
+
 fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
   match p {
     ProcMeminfo => "/proc/meminfo"

@@ -49,6 +49,9 @@ data approval_ntfy_config_dir: NonEmptyStr = "/etc/gunbc-ntfy"
 data approval_ntfy_dir_mode: DeclaredDirectoryMode = DirectoryOwnerAllGroupTraverse
 data approval_ntfy_config_file_name: NonEmptyStr = "server.yml"
 data approval_ntfy_config_path: NonEmptyStr = join([approval_ntfy_config_dir as String, "/", approval_ntfy_config_file_name as String], "") as NonEmptyStr
+// The server's auth database, under its state root. Declared so the config's auth-file is checked
+// against it and so the one elevated stat of it is an exact sudoers argv rather than a pattern.
+data approval_ntfy_auth_file_path: NonEmptyStr = join([approval_ntfy_state_root as String, "/user.db"], "") as NonEmptyStr
 data approval_ntfy_unit_name: NonEmptyStr = "gunbc-ntfy.service"
 
 // THE TWO ntfy USERS THE ACCESS LIST MAY NAME, declared so the ACL readback
@@ -268,17 +271,21 @@ fn approval_ntfy_subscriber_grant_intervention() -> HumanIntervention {
       approval_ntfy_operator_user as String,
       "', and create no other users. Enrolment-code issuance reads this list back with `ntfy access`",
       " and refuses on any other shape (gunbc.auth.approval_ntfy_access_readback), so this step is",
-      " checked rather than trusted. That read runs as '",
+      " checked rather than trusted. Four of its reads run as '",
       approval_ntfy_principal_name as String,
-      "' via `sudo -n` (one `sh -c` whose exact script is gunbc.auth.approval_ntfy_access_readback",
-      " approval_ntfy_runtime_readback_script), so the broker's POSIX user needs a sudoers rule for",
-      " exactly that command and nothing else; without it every issuance refuses. The server must",
-      " run as `",
+      "' and one as root, each via `sudo -n` at an exact argv (gunbc.auth.approval_ntfy_access_readback",
+      " approval_ntfy_read_command: stat and cat of the config, stat of the auth file, ntfy access; and",
+      " tailscale serve status --json), so the broker's POSIX user needs one sudoers line for each of",
+      " those five argv and nothing else; without them every issuance refuses. The server must run as",
+      " the unit's main process: `",
       approval_ntfy_binary_path as String,
       " serve --config ",
       approval_ntfy_config_path as String,
-      "` with no NTFY_* variable, no auth-access-cache, and its config written before it starts:",
-      " the read binds the listing to that running process and refuses otherwise. ntfy's documented default is read-write, so a topic",
+      "` with auth-file ",
+      approval_ntfy_auth_file_path as String,
+      ", no NTFY_* variable and no EnvironmentFile in its unit or the manager's environment, no",
+      " auth-access-cache, its config written and its auth file created before it starts (restart it",
+      " once after first creating the auth file), and no tailscale Funnel on the node. ntfy's documented default is read-write, so a topic",
       " left at the default is publishable and readable by anyone who learns its name -- and the",
       " approval URL is a credential, so a readable topic is a spendable approval. Publisher",
       " authentication alone does not close this: it protects who may SEND, and the leak is on the",
