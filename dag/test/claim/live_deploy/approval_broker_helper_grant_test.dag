@@ -1,0 +1,357 @@
+module test.claim.live_deploy.approval_broker_helper_grant
+
+import std.types { Bool, String, List, NonEmptyStr, Int }
+import v2.std.collection { Absent, Present }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_other_release_revision }
+import test.claim.live_deploy.apply_emission_projection { pipeline_step_text, pipeline_steps_text }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.emit {
+  ReleaseRevisionBinding,
+  RevisionBoundAtEmission,
+  RevisionNotInstalled,
+  approval_ntfy_runtime_observe_helper_argv,
+  approval_broker_helper_sudoers_line,
+  approval_broker_helper_sudoers_content,
+  approval_broker_helper_sudoers_path,
+  approval_broker_helper_sudoers_temp_path,
+  approval_broker_helper_grant_steps,
+  approval_broker_dark_install_release_steps,
+  approval_broker_tree_copy_steps,
+  approval_broker_helper_snapshot_steps,
+  approval_broker_helper_grant_admission,
+  approval_broker_helper_grant_admission_at,
+  approval_broker_release_locus,
+  path_ancestors_inclusive,
+  helper_snapshot_readback_command_at,
+  HelperLocus,
+  HelperGrantAdmission,
+  HelperGrantAdmitted,
+  HelperGrantWordRefused,
+  HelperGrantLocusWritableByGrantee,
+  approval_broker_release_revision_argument,
+}
+import gunbc.cli_invoke { NamedArgumentAdmission, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator }
+import gunbc.executor_privileged_operation {
+  SystemdDaemonReload,
+  executor_privileged_operation_sudoers_line,
+  executor_privileged_operation_elevated_argv,
+  executor_privileged_operation_argv,
+}
+import extdeps.sudo.elevation { sudo_elevate_argv }
+import gunbc.auth.privileged_effect_census { census_verdicts, SiteVerdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable }
+import gunbc.auth.approval_ntfy_runtime_observe {
+  NtfyOpenFd,
+  NtfyRuntimeProcessObservation,
+  NtfyRuntimeObserveOutcome,
+  NtfyRuntimeObserved,
+  NtfyRuntimeObserveRefused,
+  NtfyRuntimeObserveReading,
+  NtfyRuntimeReadingDecoded,
+  NtfyRuntimeReadingUndecodable,
+  ntfy_runtime_observe_encode,
+  ntfy_runtime_observe_decode,
+}
+
+// THE SUBJECT IS THE BROKER RELEASE'S HELPER GRANT (gunbc.live_deploy.emit) AND THE HELPER'S WIRE
+// (gunbc.auth.approval_ntfy_runtime_observe). The literals below are grounded in the controlled
+// fixture revision and root, not copied from a measurement of the tree.
+
+fn rev_a() -> ReleaseRevisionBinding {
+  RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+}
+
+fn rev_b() -> ReleaseRevisionBinding {
+  RevisionBoundAtEmission { revision: deploy_witness_other_release_revision }
+}
+
+data snapshot_a_dir: String = "/opt/gunbc/approval-broker-helpers/0123456789abcdef0123456789abcdef01234567"
+data release_a_dir: String = "/opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567"
+
+// ── ARGV PIN ──────────────────────────────────────────────────────────────────────────────
+// The exact words the verb runs. There is no --arg, and no word is a pattern. Every path names the
+// root-owned snapshot of one release.
+test fn the_helper_argv_is_pinned_word_for_word() -> Bool {
+  approval_ntfy_runtime_observe_helper_argv(revision: rev_a()) == [
+    "/usr/bin/sudo", "-n", "-u", "gunbc-ntfy",
+    concat(snapshot_a_dir, "/gunbc"),
+    "run",
+    "--source-root", concat(snapshot_a_dir, "/dag"),
+    "--source-root", concat(snapshot_a_dir, "/src/v2"),
+    "--entry", concat(snapshot_a_dir, "/dag/gunbc/auth/approval_ntfy_runtime_observe.dag"),
+    "--function", "approval_ntfy_runtime_observe",
+  ]
+}
+
+test fn the_grant_line_is_pinned() -> Bool {
+  (approval_broker_helper_sudoers_line(revision: rev_a()) as String) == join([
+    "briansrls ALL=(gunbc-ntfy) NOPASSWD: ",
+    snapshot_a_dir, "/gunbc run --source-root ", snapshot_a_dir, "/dag --source-root ", snapshot_a_dir,
+    "/src/v2 --entry ", snapshot_a_dir, "/dag/gunbc/auth/approval_ntfy_runtime_observe.dag --function approval_ntfy_runtime_observe",
+  ], "")
+}
+
+// ── THE GRANT AUTHORIZES EXACTLY ITS OWN RELEASE'S ARGV ────────────────────────────────────
+// sudo matches the words after its own four (`sudo -n -u <user>`) against the Cmnd.
+fn command_words_after_sudo(argv: List<String>) -> String {
+  join(argv |> skip(n: 4), " ")
+}
+
+fn grant_authorizes(line: NonEmptyStr, argv: List<String>) -> Bool {
+  ends_with(s: line as String, suffix: concat("NOPASSWD: ", command_words_after_sudo(argv: argv)))
+}
+
+test fn the_grant_authorizes_its_own_release_argv() -> Bool {
+  grant_authorizes(line: approval_broker_helper_sudoers_line(revision: rev_a()), argv: approval_ntfy_runtime_observe_helper_argv(revision: rev_a()))
+}
+
+// RED: A GRANT NAMING A DIFFERENT SHA does not authorize this release, in either direction.
+test fn a_grant_for_another_release_does_not_authorize_this_one() -> Bool {
+  !grant_authorizes(line: approval_broker_helper_sudoers_line(revision: rev_a()), argv: approval_ntfy_runtime_observe_helper_argv(revision: rev_b()))
+    && !grant_authorizes(line: approval_broker_helper_sudoers_line(revision: rev_b()), argv: approval_ntfy_runtime_observe_helper_argv(revision: rev_a()))
+}
+
+// ── RED: A STALE RELEASE'S LINE SURVIVING ─────────────────────────────────────────────────
+// The drop-in is the whole grant population: exactly one non-comment line, naming only the release
+// being installed. The rename replaces the file whole, so installing B leaves no line for A.
+fn grant_lines(content: String) -> List<String> {
+  fold(split(s: content, delimiter: "\n"), init: [], f: (acc, l) =>
+    if l == "" || starts_with(s: l, prefix: "#") { acc } else { concat(acc, [l]) })
+}
+
+test fn installing_release_b_leaves_no_line_for_release_a() -> Bool {
+  let content_b = approval_broker_helper_sudoers_content(revision: rev_b())
+  count(grant_lines(content: content_b)) == 1
+    && !string_contains(s: content_b, pattern: snapshot_a_dir)
+    && string_contains(s: content_b, pattern: "/opt/gunbc/approval-broker-helpers/89abcdef0123456789abcdef0123456789abcdef/")
+}
+
+// ── RED: A MALFORMED SUDOERS LINE IS NOT EMITTED ──────────────────────────────────────────
+test fn a_sudoers_special_word_refuses_the_grant() -> Bool {
+  let refused = match approval_broker_helper_grant_admission_at(
+    locus: HelperLocus { base: "/opt/gunbc/approval,broker", owner: "root" as NonEmptyStr },
+    revision: rev_a(),
+  ) {
+    HelperGrantWordRefused { word: w } => string_contains(s: w, pattern: ",")
+    HelperGrantAdmitted => false
+    HelperGrantLocusWritableByGrantee { owner: _ } => false
+  }
+  let unbound_refused = match approval_broker_helper_grant_admission(revision: RevisionNotInstalled) {
+    HelperGrantWordRefused { word: _ } => true
+    HelperGrantAdmitted => false
+    HelperGrantLocusWritableByGrantee { owner: _ } => false
+  }
+  refused && unbound_refused
+}
+
+// ── WALL 1: THE GRANTEE CANNOT WRITE WHAT THE GRANT EXECUTES ────────────────────────────────
+// RED: a grantee-writable locus gets no grant. The release directory is owned by the broker's service
+// user, which is the grantee, so a grant over it is refused. The positive control is the root-owned
+// snapshot locus, which is admitted.
+test fn a_grantee_writable_locus_gets_no_grant() -> Bool {
+  match approval_broker_helper_grant_admission_at(locus: approval_broker_release_locus(spec: deployment_spec_srv1()), revision: rev_a()) {
+    HelperGrantLocusWritableByGrantee { owner: o } => (o as String) == "briansrls"
+    HelperGrantAdmitted => false
+    HelperGrantWordRefused { word: _ } => false
+  }
+}
+
+test fn the_root_owned_snapshot_locus_is_admitted() -> Bool {
+  match approval_broker_helper_grant_admission(revision: rev_a()) {
+    HelperGrantAdmitted => true
+    HelperGrantWordRefused { word: _ } => false
+    HelperGrantLocusWritableByGrantee { owner: _ } => false
+  }
+}
+
+// A SOURCE BYTE REPLACED AFTER INSTALL IS IMPOSSIBLE, NOT DETECTED. Nothing the grant names lies in the
+// grantee-owned release directory, and the snapshot is copied by root from the checkout, not from
+// that directory. Before any grant is written, the install stops unless the snapshot and every
+// ancestor are root-owned, not group- or world-writable, and contain no symlink.
+test fn nothing_the_grant_executes_is_in_the_grantee_owned_release() -> Bool {
+  let line = approval_broker_helper_sudoers_line(revision: rev_a()) as String
+  let snapshot = pipeline_steps_text(steps: approval_broker_helper_snapshot_steps(revision: rev_a()))
+  !string_contains(s: line, pattern: release_a_dir)
+    && !string_contains(s: snapshot, pattern: release_a_dir)
+    && string_contains(s: snapshot, pattern: "\"$PWD\"'/dag'")
+    && string_contains(s: snapshot, pattern: "'--no-preserve=all'")
+    && string_contains(s: snapshot, pattern: "'-P'")
+}
+
+test fn the_snapshot_readback_covers_every_ancestor_and_refuses_links() -> Bool {
+  path_ancestors_inclusive(path: "/opt/gunbc/approval-broker-helpers") == ["/", "/opt", "/opt/gunbc", "/opt/gunbc/approval-broker-helpers"]
+    && string_contains(s: step_text_at(i: 7), pattern: "_gunbc_helper_ancestors=$('find' '/' '/opt' '/opt/gunbc' '/opt/gunbc/approval-broker-helpers' '-maxdepth' '0' '(' '!' '-user' 'root' '-o' '-perm' '/022' '-o' '-type' 'l' ')' '-print')\n")
+    && string_contains(s: step_text_at(i: 7), pattern: "_gunbc_helper_snapshot=$('find' ")
+    && ends_with(s: step_text_at(i: 7), suffix: "'test' '-z' \"$_gunbc_helper_ancestors\"\"$_gunbc_helper_snapshot\"")
+}
+
+// ── WALL 2: THE DROP-IN'S IDENTITY AND AN ATOMIC REPLACE ──────────────────────────────────
+fn step_text_at(i: Int) -> String {
+  match approval_broker_helper_grant_steps(spec: deployment_spec_srv1(), revision: rev_a()) |> skip(n: i) |> first {
+    Present { value: st } => pipeline_step_text(st: st)
+    Absent => ""
+  }
+}
+
+// Steps 0-7 are the snapshot, 8-15 the grant, and 16 retires the previous snapshot.
+//   8 stage   9 visudo -cf staged   10 install root:root 0440 to the dotted temp name
+//   11 visudo -c -O -P -f temp      12 mv -T temp final   13 visudo -c -O -P -f final
+//   14 privileged read of final into the stage              15 cmp
+test fn the_grant_replaces_atomically_and_reads_back_identity_and_bytes() -> Bool {
+  let temp = approval_broker_helper_sudoers_temp_path as String
+  let final_path = approval_broker_helper_sudoers_path as String
+  count(approval_broker_helper_grant_steps(spec: deployment_spec_srv1(), revision: rev_a())) == 17
+    && string_contains(s: step_text_at(i: 8), pattern: "NOPASSWD:")
+    && string_contains(s: step_text_at(i: 9), pattern: "'-cf'")
+    && string_contains(s: step_text_at(i: 10), pattern: "'-o' 'root' '-g' 'root'")
+    && string_contains(s: step_text_at(i: 10), pattern: "'0440'")
+    && string_contains(s: step_text_at(i: 10), pattern: temp)
+    && !string_contains(s: step_text_at(i: 10), pattern: "ghrunner")
+    && string_contains(s: step_text_at(i: 11), pattern: "'-c' '-O' '-P' '-f'")
+    && string_contains(s: step_text_at(i: 11), pattern: temp)
+    && string_contains(s: step_text_at(i: 12), pattern: "'/usr/bin/mv' '-T'")
+    && string_contains(s: step_text_at(i: 13), pattern: "'-c' '-O' '-P' '-f'")
+    && ends_with(s: step_text_at(i: 13), suffix: concat(final_path, "'"))
+    && string_contains(s: step_text_at(i: 14), pattern: final_path)
+    && starts_with(s: step_text_at(i: 15), prefix: "'cmp' '-s'")
+    && string_contains(s: step_text_at(i: 16), pattern: "'!' '-name' '0123456789abcdef0123456789abcdef01234567' '-exec' '/usr/bin/sudo' '-n' '/usr/bin/rm' '-rf' '--' '{}' '+'")
+}
+
+// INTERRUPTION BEFORE THE RENAME LEAVES THE PREVIOUS POLICY: sudoers(5) skips an #includedir file
+// whose name contains a `.`, so the temp file is never read by sudo, whatever state it is in. The
+// final name contains none, so the renamed file is included.
+fn basename(p: String) -> String {
+  match split(s: p, delimiter: "/") |> last {
+    Present { value: b } => b
+    Absent => p
+  }
+}
+
+test fn only_the_renamed_file_is_ever_included_by_sudo() -> Bool {
+  string_contains(s: basename(p: approval_broker_helper_sudoers_temp_path as String), pattern: ".")
+    && !string_contains(s: basename(p: approval_broker_helper_sudoers_path as String), pattern: ".")
+    && !string_contains(s: basename(p: approval_broker_helper_sudoers_path as String), pattern: "~")
+}
+
+// THE DARK INSTALL CARRIES THIS RELEASE'S GRANT, inspected at the composition the dark install's
+// intent consumes (gunbc.live_deploy.emit approval_broker_dark_install_release_steps): the release
+// tree's steps, then exactly the seventeen snapshot and grant steps, ending with retirement of every
+// other release's snapshot. The whole orchestrated script is still rendered by the existing dark-install
+// claims in test.claim.live_deploy.emit, which now carry these steps. Rendering it again here cost
+// more than the new-witness budget (110041 and 100982 eval steps against 72300).
+test fn the_dark_install_composes_this_releases_grant() -> Bool {
+  let spec = deployment_spec_srv1()
+  let steps = approval_broker_dark_install_release_steps(spec: spec, revision: rev_a())
+  let tree = count(approval_broker_tree_copy_steps(spec: spec, revision: rev_a()))
+  count(steps) == tree + 17
+    && match steps |> skip(n: tree + 12) |> first {
+      Present { value: st } => string_contains(s: pipeline_step_text(st: st), pattern: "'/usr/bin/mv' '-T'")
+      Absent => false
+    }
+    && match steps |> last {
+      Present { value: st } => string_contains(s: pipeline_step_text(st: st), pattern: "'!' '-name' '0123456789abcdef0123456789abcdef01234567'")
+      Absent => false
+    }
+}
+
+// ── THE RUN-AS GENERALISATION MOVES NO EXISTING GRANT ──────────────────────────────────────
+test fn a_root_operation_still_renders_root_and_plain_sudo() -> Bool {
+  (executor_privileged_operation_sudoers_line(grantee: "ghrunner" as NonEmptyStr, op: SystemdDaemonReload) as String)
+    == "ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload"
+    && executor_privileged_operation_elevated_argv(op: SystemdDaemonReload)
+      == sudo_elevate_argv(command: map(executor_privileged_operation_argv(op: SystemdDaemonReload), w => w as String))
+}
+
+// ── THE REVISION REACHES THE VERB AS A NAMED ARGUMENT ─────────────────────────────────────
+test fn the_revision_argument_names_the_release() -> Bool {
+  match approval_broker_release_revision_argument(revision: rev_a()) {
+    NamedArgumentAdmitted { argument: a } =>
+      a.name == "release_revision" && a.value == "0123456789abcdef0123456789abcdef01234567"
+    NamedArgumentNameEmpty => false
+    NamedArgumentNameHoldsSeparator { name: _ } => false
+  }
+}
+
+// ── THE HELPER'S WIRE ────────────────────────────────────────────────────────────────────
+data sample_observation: NtfyRuntimeProcessObservation = NtfyRuntimeProcessObservation {
+  main_pid: 4242,
+  start_ticks_before: 991,
+  start_ticks_after: 991,
+  environment_names: ["LANG", "PATH"],
+  exe_target: "/usr/bin/ntfy",
+  exe_inode: 131,
+  open_fds: [
+    NtfyOpenFd { target: "/var/lib/gunbc-ntfy/user.db (deleted)", target_inode: 77 },
+    NtfyOpenFd { target: "socket:[55123]", target_inode: 55123 },
+    NtfyOpenFd { target: "/tmp/a=b c", target_inode: 12 },
+  ],
+}
+
+fn round_trips(o: NtfyRuntimeObserveOutcome) -> Bool {
+  match ntfy_runtime_observe_decode(text: ntfy_runtime_observe_encode(outcome: o)) {
+    NtfyRuntimeReadingDecoded { outcome: back } => back == o
+    NtfyRuntimeReadingUndecodable { cause: _ } => false
+  }
+}
+
+// Verbatim targets survive, including ` (deleted)`, `socket:[N]`, `=`, spaces and a newline.
+test fn an_observation_round_trips_verbatim() -> Bool {
+  round_trips(o: NtfyRuntimeObserved { observation: sample_observation })
+    && round_trips(o: NtfyRuntimeObserved { observation: NtfyRuntimeProcessObservation {
+      main_pid: 4242, start_ticks_before: 1, start_ticks_after: 1, environment_names: [],
+      exe_target: "/usr/bin/ntfy", exe_inode: 1,
+      open_fds: [NtfyOpenFd { target: "/tmp/a\nb \"q\"", target_inode: 2 }],
+    } })
+}
+
+test fn a_refusal_round_trips() -> Bool {
+  round_trips(o: NtfyRuntimeObserveRefused { read: "unit", cause: "ActiveState=inactive MainPID=0" })
+}
+
+fn undecodable(text: String) -> Bool {
+  match ntfy_runtime_observe_decode(text: text) {
+    NtfyRuntimeReadingUndecodable { cause: _ } => true
+    NtfyRuntimeReadingDecoded { outcome: _ } => false
+  }
+}
+
+data observed_head: String = "{\"outcome\":\"observed\",\"start_ticks_before\":1,\"start_ticks_after\":1,\"environment_names\":[\"LANG\"],\"exe_target\":\"/usr/bin/ntfy\",\"exe_inode\":1,\"open_fds\":[{\"target\":\"socket:[5]\",\"target_inode\":5}]"
+
+fn observed_with(tail: String) -> String {
+  concat(observed_head, concat(tail, "}"))
+}
+
+data refused_ok: String = "{\"outcome\":\"refused\",\"read\":\"unit\",\"cause\":\"inactive\"}"
+
+// REDs over the decoder. Each is one defect away from an accepted text, and the first two conjuncts
+// are the positive controls. The mixed-outcome cases are review 70435's: each arm must refuse the
+// other arm's members instead of dropping them.
+test fn the_decoder_refuses_every_malformed_text() -> Bool {
+  !undecodable(text: observed_with(tail: ",\"main_pid\":7"))
+    && !undecodable(text: refused_ok)
+    && undecodable(text: observed_with(tail: ",\"main_pid\":7,\"read\":\"unit\",\"cause\":\"x\""))
+    && undecodable(text: "{\"outcome\":\"refused\",\"read\":\"unit\",\"cause\":\"inactive\",\"main_pid\":7,\"open_fds\":[]}")
+    && undecodable(text: observed_head)
+    && undecodable(text: observed_with(tail: ""))
+    && undecodable(text: observed_with(tail: ",\"main_pid\":0"))
+    && undecodable(text: observed_with(tail: ",\"main_pid\":7,\"main_pid\":8"))
+    && undecodable(text: observed_with(tail: ",\"main_pid\":\"7\""))
+    && undecodable(text: observed_with(tail: ",\"main_pid\":7,\"surprise\":1"))
+    && undecodable(text: concat(
+      "{\"outcome\":\"observed\",\"main_pid\":7,\"start_ticks_before\":1,\"start_ticks_after\":1,\"environment_names\":[],\"exe_target\":\"/usr/bin/ntfy\",\"exe_inode\":1,",
+      "\"open_fds\":[{\"target\":\"socket:[5]\",\"target_inode\":5,\"mode\":1}]}",
+    ))
+    && undecodable(text: "{\"outcome\":\"maybe\"}")
+    && undecodable(text: "outcome=observed\n")
+}
+
+// §3b: THE GRANT IS A PRIVILEGED-EFFECT SITE, CLASSIFIED BY EXECUTING THE SELECTION (review 70452).
+// The verdict is computed by gunbc.auth.privileged_effect_census, not stated here.
+test fn the_helper_grant_site_conforms_in_the_privileged_effect_census() -> Bool {
+  let hits = filter(census_verdicts(), v => v.site.module_path == "gunbc.live_deploy.emit" && v.site.decl_name == "approval_broker_helper_grant_steps")
+  count(hits) == 1 && all(hits, v => match v.conformance {
+    Conforms => true
+    DivergesWithReason { reason: _ } => false
+    Diverges => false
+    SiteNotDecidable { standing: _ } => false
+  })
+}
