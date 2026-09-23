@@ -8,9 +8,11 @@ import gunbc.fleet_intent_network { operator_host_srv2 }
 import gunbc.runner_microvm { gunbc_runner_guest_image }
 import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused }
 import gunbc.runner_microvm_lifecycle {
-  AttemptIdentity, GuestBringUpReading, GuestConsoleRead, GuestConsoleUnreadable, GuestConsoleNotStarted,
+  AttemptIdentity, GuestBringUpReading, GuestConsoleRead, GuestConsoleUnreadable, GuestConsoleUnbound, GuestConsoleNotStarted,
   guest_bring_up_from_console, bring_up_phase_label,
+  UnitInvocationReading, UnitInvocationRead, UnitInvocationUnread,
 }
+import gunbc.runner_microvm_lifecycle_realize { attempt_console_binding_of, AttemptConsoleBound, AttemptConsoleUnbound, AttemptConsoleNotStarted }
 import gunbc.runner_guest_image { guest_observation_line, GuestBooted, RunnerStarted, RunnerExited }
 import extdeps.github.actions_runner { actions_runner_listening_line_suffix }
 
@@ -55,6 +57,7 @@ fn reached(console: String) -> String {
       match guest_bring_up_from_console(identity: id, console: console) {
         GuestConsoleRead { reached: p, refused: rs } => join([bring_up_phase_label(phase: p), " refused=", to_string(length(rs))], "")
         GuestConsoleUnreadable { unit: _, detail: _ } => "unreadable"
+        GuestConsoleUnbound { reason: _ } => "unbound"
         GuestConsoleNotStarted => "not-started"
       }
   }
@@ -86,4 +89,27 @@ test fn a_listening_report_before_any_boot_report_is_refused_and_counted() -> Bo
 // a stream and the listener may print its readiness line more than once.
 test fn a_repeated_report_of_the_current_phase_is_not_a_refusal() -> Bool {
   reached(console: journal(lines: [booted(), booted(), listening(), listening()])) == "runner-listening refused=0"
+}
+
+// THE CONSOLE IS BOUND TO THIS ATTEMPT'S INVOCATION. The unit's environment must name the attempt's
+// own invocation_id and the unit's systemd invocation must have been read; an environment naming a
+// different attempt invocation -- the red: a unit reused, or a reading taken from the wrong one -- is
+// unbound, and so is an unread environment or an unread systemd invocation.
+fn binding_label(env: UnitInvocationReading, systemd_invocation: String) -> String {
+  match witness_identity() {
+    Absent => "fixture-refused"
+    Present { value: id } =>
+      match attempt_console_binding_of(identity: id, unit: "gunbc-attempt-w-1.service" as NonEmptyStr, environment: env, systemd_invocation: systemd_invocation) {
+        AttemptConsoleBound { unit: _, systemd_invocation: s } => join(["bound ", s as String], "")
+        AttemptConsoleUnbound { reason: _ } => "unbound"
+        AttemptConsoleNotStarted => "not-started"
+      }
+  }
+}
+
+test fn the_console_binds_only_to_this_attempts_invocation() -> Bool {
+  binding_label(env: UnitInvocationRead { invocation_id: "inv-1" as NonEmptyStr }, systemd_invocation: "abc123") == "bound abc123"
+    && binding_label(env: UnitInvocationRead { invocation_id: "inv-2" as NonEmptyStr }, systemd_invocation: "abc123") == "unbound"
+    && binding_label(env: UnitInvocationUnread { reason: "x" as NonEmptyStr }, systemd_invocation: "abc123") == "unbound"
+    && binding_label(env: UnitInvocationRead { invocation_id: "inv-1" as NonEmptyStr }, systemd_invocation: "") == "unbound"
 }
