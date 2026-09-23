@@ -25,7 +25,7 @@ import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SUBJECT: the match-arm scope frame of v2.compiler.resolve (resolve_match_node): the binders a
+// SUBJECT: the match-arm scope frame of v2.compiler.resolve (resolve_match_node_walk): the binders a
 // lowered pattern carries (v2.test.parse.variant_field_lowering asserts the shape) are a lexical
 // frame for the arm's body, and nothing else. BOUNDARY: source text in, assembled (normalized +
 // resolved) program out through assemble_program_from_ingest, the same real path the
