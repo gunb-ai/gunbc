@@ -1819,7 +1819,6 @@ fn live_custody_standing() -> CustodyStanding uses fs: std.resources.Filesystem 
 // over authored standings; what is not writable anywhere else is the step from its holding arm to
 // the receipt, and that step exists only here, over standings this function produced.
 fn census_app_acquisition_standing(record: GitHubAppAcquisitionRecord) -> CensusAppAcquisitionStanding
-  uses net: Network, fs: std.resources.Filesystem
 {
   let registration = registration_standing(
     record: record,
