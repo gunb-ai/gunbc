@@ -442,7 +442,7 @@ fn compiler_gate_stage0_regen_condition() -> String {
   concat(
     witness_step_status_guard(),
     concat(
-      concat("github.event_name == '", concat(github_event_name_merge_group, "' && ")),
+      concat("(github.event_name == '", concat(github_event_name_merge_group, "' || github.event_name == 'pull_request') && ")),
       "steps.build_witness_fold.outcome == 'success'"
     )
   )
