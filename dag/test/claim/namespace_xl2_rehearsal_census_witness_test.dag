@@ -1,6 +1,6 @@
 module test.claim.namespace_xl2_rehearsal_census
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.git.object_store { git_sha1_object_id }
 import gunbc.namespace_step0_subject_collector { Step0CommitIdentityUnreadable }
 import tools.multi_module_compile_fixture { FixtureSource }
@@ -104,6 +104,15 @@ test fn xl2_control_completeness_is_refused_holds() -> Bool {
         Xl2ScopeUnobserved { scope: Xl2ModuleResolveAbandonedAtFirstFailure { module: m, path: _ } } => m == "v2.xl2_control_residual"
         _ => false
       })
+    _ => false
+  }
+}
+
+// THE WALLS RIDE ON THEIR OWN AXIS: an observed run names both native requalification walls, and
+// they are not among its completeness refusals (the refusal type cannot carry them).
+test fn xl2_control_names_the_native_requalification_walls_holds() -> Bool {
+  match xl2_control_run() {
+    Xl2RehearsalObserved { native_requalification: walls } => count(walls) == 2
     _ => false
   }
 }

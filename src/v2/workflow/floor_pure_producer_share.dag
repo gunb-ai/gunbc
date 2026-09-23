@@ -597,7 +597,13 @@ import v2.std.collection { List }
 // The verdict did NOT move: it returns true on origin/main and on that head, same interpreter,
 // sources the only variable. So this is not a regression to revert but a pre-existing recompute the
 // change surfaced, and the honest repair is the one this roster exists for rather than re-hiding it.
+// THE XL-2 REHEARSAL CONTROL ROW IS THE census_probe_outcomes GROUND AGAIN: test.claim
+// .namespace_xl2_rehearsal_census drives native_test_context_from_ingest over a two-specimen
+// stripped ingest plus two census resolves, and its claims each read one field of the resulting
+// Xl2RehearsalRun (GitObjectIds, diagnostics chains, strip coordinate rows -- no resolution context,
+// no closure). WARM for the same arithmetic: one front end is more than one claim's budget.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "test.claim.namespace_xl2_rehearsal_census.xl2_control_run",
   "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_module",
   "v2.test.claim.resolve.namespace_candidate_rule.ncr_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",

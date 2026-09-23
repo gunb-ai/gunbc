@@ -1,6 +1,6 @@
 module gunbc.namespace_xl2_rehearsal_census
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Int, List, String }
 import std.import { ImportStripCoordinateSegment }
 import extdeps.git.object_store { GitObjectId }
 import extdeps.communication.medium { Lossless, Medium }
@@ -100,16 +100,13 @@ type Xl2CensusCompleteness
 // interpreter route this composition runs on and a native (emitted) requalification of it. They are
 // not reasons the census is incomplete -- a census observed completely on the interpreter is
 // complete -- so they are never folded into Xl2CompletenessRefusal.
+// Xl2ImportHygieneWall: import hygiene of the emitted closure (sleek-cat-104's lane) -- the composed
+// closure does not yet emit clean natively. Xl2DiagnosticFieldReadWall: v2.std.diagnostic field
+// reads on the native route (gunbc#12033 step 2) -- the chain is read by field, which the native
+// route does not yet requalify.
 type Xl2NativeRequalificationWall
   = Xl2ImportHygieneWall
   | Xl2DiagnosticFieldReadWall
-
-fn xl2_native_requalification_wall_label(w: Xl2NativeRequalificationWall) -> NonEmptyStr {
-  match w {
-    Xl2ImportHygieneWall => "import hygiene of the emitted closure (sleek-cat-104's lane): the composed closure does not yet emit clean natively" as NonEmptyStr
-    Xl2DiagnosticFieldReadWall => "v2.std.diagnostic field reads on the native route (gunbc#12033 step 2): the chain and its fatal are read by field, which the native route does not yet requalify" as NonEmptyStr
-  }
-}
 
 data xl2_native_requalification_walls: List<Xl2NativeRequalificationWall> = [
   Xl2ImportHygieneWall,
@@ -266,16 +263,16 @@ fn xl2_rehearse_stripped(source_commit: GitObjectId, source_tree: GitObjectId, s
 }
 
 // THE ENTRY: the exact base is pinned by the ref the collector resolves, in the same dispatch.
+// DECLARED FRONTIER, NOT EXECUTED IN THIS CHANGE. Its consumer is the XL-2 rehearsal run whose
+// receipt is the RehearsalInstrumentDelivered StageDeliveryReceipt read by
+// gunbc.compiler_frontend_program_status xl2_stage_standing; the trigger is P1 (call-argument
+// references reach resolve) and P4 (occurrence-complete refusal observation) both delivered, per
+// the parent's serialized prerequisite PR. Until then only the stages below the collector execute
+// (test.claim.namespace_xl2_rehearsal_census), and the collector's own live half carries the route
+// deficit its module states: the hermetic floor cannot reach the object store.
 fn run_xl2_rehearsal_at(ref: String) -> Xl2RehearsalRun {
   match collect_step0_subject_vector_at(ref: ref) {
     Step0SubjectCollectionRefused { cause: cause } => Xl2RehearsalBaseUnobserved { cause: cause }
     Step0SubjectCollected { vector: vector } => xl2_rehearse_vector(vector: vector)
-  }
-}
-
-fn xl2_census_is_complete(run: Xl2RehearsalRun) -> Bool {
-  match run {
-    Xl2RehearsalObserved { completeness: Xl2CensusComplete } => true
-    _ => false
   }
 }
