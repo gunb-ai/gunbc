@@ -37,6 +37,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // argv — the piped `journalctl -u X | grep -F ... | tail -1` shell body this operation
 // replaces did in one hand-written string what the typed model now does as two named,
 // independently testable functions over one typed read.
+// UnitInvocationLog READS ONE INVOCATION OF A UNIT, NOT EVERY INVOCATION THAT EVER CARRIED ITS NAME.
+// journalctl(1): a FIELD=VALUE match restricts output to entries carrying that field, and matches on
+// DIFFERENT fields are ANDed with -u. systemd.journal-fields(7): _SYSTEMD_INVOCATION_ID is "the
+// invocation ID for the runtime cycle of the unit the message was generated in", a trusted field the
+// journal daemon adds, not one the logging process can set. (man7.org, read 2026-09-23.)
 service systemd.Journalctl {
   operation UnitLog {
     input { unit: NonEmptyStr }
@@ -58,11 +63,6 @@ service systemd.Journalctl {
     }
   }
 
-  // ONE INVOCATION OF A UNIT, NOT EVERY INVOCATION THAT EVER CARRIED ITS NAME. journalctl(1): a
-  // FIELD=VALUE match restricts output to entries carrying that field, and matches on DIFFERENT
-  // fields are ANDed with -u. systemd.journal-fields(7): _SYSTEMD_INVOCATION_ID is "the invocation
-  // ID for the runtime cycle of the unit the message was generated in", a trusted field the journal
-  // daemon adds, not one the logging process can set. (man7.org, read 2026-09-23.)
   operation UnitInvocationLog {
     input { unit: NonEmptyStr, invocation_id: NonEmptyStr }
     output {
