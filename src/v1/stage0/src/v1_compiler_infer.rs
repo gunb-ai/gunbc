@@ -1828,28 +1828,51 @@ pub fn declared_type_conformance_diags(
                     scope.module_name.clone(),
                 )])
             } else {
-                if !both_ground.clone() {
-                    Rc::new(vec![])
-                } else {
-                    if crate::v1_compiler_infer_types::node_type_compatible(
+                if ((type_node_is_callable(declared.clone())
+                    && type_node_is_callable(produced.clone()))
+                    && callable_signature_mismatch(
                         declared.clone(),
                         produced.clone(),
                         si.clone(),
-                    ) {
+                        0,
+                    ))
+                {
+                    Rc::new(vec![type_mismatch_error(
+                        crate::v1_compiler_infer_types::node_type_shape(
+                            declared.clone(),
+                            si.clone(),
+                        ),
+                        crate::v1_compiler_infer_types::node_type_shape(
+                            produced.clone(),
+                            si.clone(),
+                        ),
+                        span.clone(),
+                        scope.module_name.clone(),
+                    )])
+                } else {
+                    if !both_ground.clone() {
                         Rc::new(vec![])
                     } else {
-                        Rc::new(vec![type_mismatch_error(
-                            crate::v1_compiler_infer_types::node_type_shape(
-                                declared.clone(),
-                                si.clone(),
-                            ),
-                            crate::v1_compiler_infer_types::node_type_shape(
-                                produced.clone(),
-                                si.clone(),
-                            ),
-                            span.clone(),
-                            scope.module_name.clone(),
-                        )])
+                        if crate::v1_compiler_infer_types::node_type_compatible(
+                            declared.clone(),
+                            produced.clone(),
+                            si.clone(),
+                        ) {
+                            Rc::new(vec![])
+                        } else {
+                            Rc::new(vec![type_mismatch_error(
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    declared.clone(),
+                                    si.clone(),
+                                ),
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    produced.clone(),
+                                    si.clone(),
+                                ),
+                                span.clone(),
+                                scope.module_name.clone(),
+                            )])
+                        }
                     }
                 }
             }
@@ -6876,6 +6899,121 @@ pub fn direct_call_formal_has_unbound_type_variable_at(n: Rc<Node>, depth: i64) 
     })
 }
 
+pub fn callable_signature_view(n: Rc<Node>) -> Rc<Node> {
+    if (n.connective.clone() == Connective::Arrow) {
+        n.clone()
+    } else {
+        crate::v1_compiler_infer_types::callable_inferred(n.clone())
+    }
+}
+
+pub fn callable_component_ground_mismatch(
+    formal_part: Rc<Node>,
+    actual_part: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    depth: i64,
+) -> bool {
+    if ((formal_part.connective.clone() == Connective::Arrow)
+        && (actual_part.connective.clone() == Connective::Arrow))
+    {
+        callable_signature_mismatch(
+            formal_part.clone(),
+            actual_part.clone(),
+            source_indices.clone(),
+            (depth.clone() + 1),
+        )
+    } else {
+        if (conformance_ground_type(formal_part.clone(), source_indices.clone())
+            && conformance_ground_type(actual_part.clone(), source_indices.clone()))
+        {
+            !crate::v1_compiler_infer_types::node_type_compatible(
+                formal_part.clone(),
+                actual_part.clone(),
+                source_indices.clone(),
+            )
+        } else {
+            false
+        }
+    }
+}
+
+pub fn callable_signature_mismatch(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    depth: i64,
+) -> bool {
+    if (depth.clone() >= 8) {
+        false
+    } else {
+        {
+            let f = callable_signature_view(formal.clone());
+            let a = callable_signature_view(actual.clone());
+            if ((f.connective.clone() != Connective::Arrow)
+                || (a.connective.clone() != Connective::Arrow))
+            {
+                false
+            } else {
+                if ((f.params.clone().len() as i64) != (a.params.clone().len() as i64)) {
+                    true
+                } else {
+                    {
+                        let params_mismatch = {
+                            let mut __found = false;
+                            for pair in Rc::new(
+                                f.params
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .enumerate()
+                                    .map(|(i, v)| (i as i64, v))
+                                    .collect::<Vec<_>>(),
+                            )
+                            .iter()
+                            .cloned()
+                            {
+                                if match a
+                                    .params
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(pair.0.clone() as usize)
+                                    .next()
+                                {
+                                    Some(ap) => callable_component_ground_mismatch(
+                                        crate::v1_compiler_infer_types::child_type_node(
+                                            crate::v1_std_core::param_node_type_expr(
+                                                pair.1.clone(),
+                                            ),
+                                        ),
+                                        crate::v1_compiler_infer_types::child_type_node(
+                                            crate::v1_std_core::param_node_type_expr(ap.clone()),
+                                        ),
+                                        source_indices.clone(),
+                                        depth.clone(),
+                                    ),
+                                    std::option::Option::None => true,
+                                } {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        };
+                        (params_mismatch.clone()
+                            || callable_component_ground_mismatch(
+                                crate::v1_compiler_infer_types::resolved_type(f.clone()),
+                                crate::v1_compiler_infer_types::resolved_type(a.clone()),
+                                source_indices.clone(),
+                                depth.clone(),
+                            ))
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn direct_call_arg_type_mismatch(
     formal: Rc<Node>,
     substitution_basis: Rc<Node>,
@@ -6891,31 +7029,43 @@ pub fn direct_call_arg_type_mismatch(
                 source_indices.clone(),
                 substitution_basis.clone(),
             )) == "Optional".to_string()));
-        if ((((substitution_is_optional.clone()
+        if ((substitution_is_optional.clone()
             || direct_call_formal_has_unbound_type_variable(substitution_basis.clone()))
             || direct_call_formal_has_unbound_type_variable(actual.clone()))
-            || type_node_is_callable(formal.clone()))
-            || type_node_is_callable(actual.clone()))
         {
             false
         } else {
-            ((nominal_call_arg_brand_mismatch(
-                formal.clone(),
-                actual.clone(),
-                type_env.clone(),
-                source_indices.clone(),
-            ) || container_element_nominal_brand_mismatch(
-                formal.clone(),
-                actual.clone(),
-                type_env.clone(),
-                module_name.clone(),
-                source_indices.clone(),
-            )) || kernel_value_declared_type_mismatch(
-                formal.clone(),
-                actual.clone(),
-                type_env.clone(),
-                source_indices.clone(),
-            ))
+            if (type_node_is_callable(formal.clone()) && type_node_is_callable(actual.clone())) {
+                callable_signature_mismatch(
+                    formal.clone(),
+                    actual.clone(),
+                    source_indices.clone(),
+                    0,
+                )
+            } else {
+                if (type_node_is_callable(formal.clone()) || type_node_is_callable(actual.clone()))
+                {
+                    false
+                } else {
+                    ((nominal_call_arg_brand_mismatch(
+                        formal.clone(),
+                        actual.clone(),
+                        type_env.clone(),
+                        source_indices.clone(),
+                    ) || container_element_nominal_brand_mismatch(
+                        formal.clone(),
+                        actual.clone(),
+                        type_env.clone(),
+                        module_name.clone(),
+                        source_indices.clone(),
+                    )) || kernel_value_declared_type_mismatch(
+                        formal.clone(),
+                        actual.clone(),
+                        type_env.clone(),
+                        source_indices.clone(),
+                    ))
+                }
+            }
         }
     }
 }
