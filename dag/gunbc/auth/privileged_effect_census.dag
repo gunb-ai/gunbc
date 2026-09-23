@@ -257,9 +257,27 @@ fn present_trigger_declarations() -> List<DeclarationRef> {
 // arm exists (two of them, managed_access_apply and fleet_multi_principal_probe, once carried
 // gunbc.spark.credential_workflow spark_credential_access_token_frontier_note as a reason; its
 // trigger has fired, and a reason whose trigger has fired is not a reason -- review 68577); and the
-// (c) exemplar, the Cloudflare bootstrap token, which has no API. Annotations sit here rather than
+// (c) exemplar, the Cloudflare bootstrap token, which has no API. The first row is the approval broker's per-release helper grant
+// (#12124): a recurring automated effect, realized by the dispatched run under the runner's own host
+// principal and its roster-scoped sudo drop-in, with no human token relayed, so it is classified as
+// the scoped-grant pattern. What it mints is resource-scoped: one exact argv, as one account, for
+// one release. Annotations sit here rather than
 // beside the rows because §4c admits them only at module-item grain.
 data privileged_effect_census: List<PrivilegedEffectSite> = [
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.live_deploy.emit", decl_name: "approval_broker_helper_grant_steps"),
+    effect: PrivilegedEffect {
+      subject: "on every broker release, install one exact NOPASSWD grant letting the operator's account run that release's root-owned ntfy runtime-observe helper as gunbc-ntfy, replacing the previous release's grant" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: "ghrunner on srv1, the dispatched dark-install run's host principal (gunbc.ci_deploy_access ci_deploy_srv1_local_access)" as NonEmptyStr },
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.patterns", decl_name: "credential_chain"),
     effect: recurring_credential_read(subject: "GitHub OIDC -> STS exchange -> Secret Manager AccessVersion for a workflow credential" as NonEmptyStr),
@@ -283,6 +301,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       minted_reach: MintsResourceScopedCredential,
       billing: NoBillingConsequence,
     },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.github_app_control_plane_observe", decl_name: "observe_github_app_control_plane"),
+    effect: recurring_credential_read(subject: "sign an App JWT with the gunbai-ci key the custody converge placed over WIF, then read GET /app and GET /app/installations/\{id\} to observe custody, registration and installation grant" as NonEmptyStr),
     realized: RealizedFederatedGrant,
     divergence_reason: none,
   },

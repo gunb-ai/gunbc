@@ -8,6 +8,8 @@ import extdeps.network.mac { MacAddressScope, LocallyAdministered, mac_address_s
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv1 }
 import gunbc.runner_microvm_network {
+  runner_microvm_host_network_install_operations, runner_microvm_nft_ruleset_path,
+  runner_microvm_nft_ruleset_dir,
   runner_slot_network, runner_slot_tap_device_name, runner_slot_guest_mac,
   runner_slot_host_address, runner_slot_guest_address,
   runner_slot_guest_ip_boot_arg, runner_microvm_shared_host_nft_ruleset_text,
@@ -46,7 +48,10 @@ import std.content_hash { Sha256Digest, Sha256DigestHex }
 import gunbc.runner_microvm_network { TapHolderObservation }
 import product.placement_supply { HostIdentity }
 import extdeps.exec.command { argv_words }
-import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit,
+  EnsureOwnedDirectory, SystemdDaemonReload, SystemdEnableUnit, SystemdRestartUnit,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -634,4 +639,46 @@ test fn a_subject_refuses_when_a_helper_surface_was_unread() -> Bool {
       slot: slot(i: 1),
       receipt: receipt_on(host: operator_host_srv2, slots: [converged_slot(i: 1)], helpers: excluded_helpers()),
     )) == "admitted"
+}
+
+
+// INSTALL(1) DOES NOT CREATE INTERMEDIATE DIRECTORIES, so a destination whose parent this converge
+// owns must be ensured before the file is installed. /etc/gunbc is ours -- every other destination
+// here (/etc/systemd/network, /etc/sysctl.d, /etc/systemd/system) exists on a stock host -- and the
+// first apply on srv1 installed all 45 slot files and then refused with `cannot create regular file
+// /etc/gunbc/microvm.nft: No such file or directory` (fleet-converge run 35776260724). The claim
+// pins the ORDER and not merely the presence, because an ensure-directory that ran after the
+// install would satisfy a membership check while refusing on the host exactly as before. The RED is
+// deleting the EnsureOwnedDirectory: the sequence then starts at install, which is the list that
+// refused.
+test fn the_ruleset_install_ensures_its_own_parent_directory_first() -> Bool {
+  map(runner_microvm_host_network_install_operations(
+    staged_ruleset: "/stage/microvm.nft" as NonEmptyStr,
+    staged_unit: "/stage/unit.service" as NonEmptyStr,
+    staged_forward_sysctl: "/stage/forward.conf" as NonEmptyStr,
+  ), o => match o {
+    EnsureOwnedDirectory { path: p, owner: _, group: _, mode: _ } => join(["ensure-dir:", p as String], "")
+    InstallFile { source: _, destination: d, owner: _, group: _, mode: _ } => join(["install:", d as String], "")
+    SystemdDaemonReload => "daemon-reload"
+    SystemdEnableUnit { unit: u } => join(["enable:", u as String], "")
+    SystemdRestartUnit { unit: u } => join(["restart:", u as String], "")
+    _ => "other"
+  }) == [
+    join(["ensure-dir:", runner_microvm_nft_ruleset_dir as String], ""),
+    join(["install:", runner_microvm_nft_ruleset_path as String], ""),
+    "install:/etc/systemd/system/gunbc-microvm-nft.service",
+    "install:/etc/sysctl.d/50-gunbc-microvm-forward.conf",
+    "daemon-reload",
+    "restart:systemd-sysctl.service",
+    "enable:gunbc-microvm-nft.service",
+    "restart:gunbc-microvm-nft.service",
+  ]
+}
+
+// AND THE LEAF IS DERIVED FROM THAT SAME DIRECTORY, so the path ensured and the path written to
+// cannot drift apart. The RED is respelling the ruleset path as an independent literal: change the
+// directory alone and this equality breaks, which is the drift the run above actually suffered.
+test fn the_ruleset_path_is_derived_from_the_directory_it_ensures() -> Bool {
+  runner_microvm_nft_ruleset_path as String
+    == join([runner_microvm_nft_ruleset_dir as String, "/microvm.nft"], "")
 }

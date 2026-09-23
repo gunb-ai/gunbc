@@ -1,5 +1,6 @@
 module v2.test.nat_semiring.rung_5
 
+import v2.test.rung_5_6_common { rung56_emit_vs_eval_run }
 
 fn rung5_emit_law_equals_claim(label: String, law_input: Node) -> TestClaim {
   EqualsClaim {

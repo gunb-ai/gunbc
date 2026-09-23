@@ -98,7 +98,7 @@ import gunbc.runner_microvm_network_converge {
 // AND IT INSTALLS; IT DOES NOT CONVERGE. This module reads back what it installed -- every staged
 // path root-only, every operation's exit, and the ruleset as the kernel lists it -- and records
 // that digest. It does NOT mint a ConvergedSlotNetwork: that value says what the host IS at a
-// generation and is produced only by runner_microvm_network_observe_wet from live readings, which
+// generation and is produced only by gunbc.runner_microvm_network_observe runner_microvm_network_observe_wet from live readings, which
 // is why the two are separate modes and separate receipts.
 
 // THE STAGING ROOT IS THE CONVERGE'S OWN, NOT A SECOND ONE. gunbc.runner_microvm_network_converge
@@ -146,6 +146,16 @@ type MicrovmNetworkApplyAdmission
   = MicrovmNetworkApplyAdmitted { subject: MicrovmNetworkApplySubject }
   | MicrovmNetworkApplyRefused { cause: String }
 
+// ONE ADMINISTRATOR TARGET FOR BOTH MODES. The apply installs as this principal and
+// gunbc.runner_microvm_network_observe reads the root-only surfaces back as it, so the account that
+// wrote the ruleset and the account that lists it are one fact, not two constructions free to drift.
+fn runner_microvm_administrator_target(host: HostIdentity) -> SshTarget {
+  SshTarget {
+    endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
+    principal: executor_bootstrap_principal.login,
+  }
+}
+
 // THE ADMINISTRATOR MAY NOT BE THE JOB USER, AND THAT IS THE WHOLE POINT OF THE MODE. If the two
 // accounts coincide on this host, reaching root "as the administrator" is reaching root as the
 // principal every CI step runs as, and the mode has moved nothing. gunbc.runner_host_file_converge
@@ -183,10 +193,7 @@ fn microvm_network_apply_admission_for_deploy(host: HostIdentity, revision: Stri
         MicrovmNetworkApplyAdmitted {
           subject: MicrovmNetworkApplySubject {
             host: host,
-            target: SshTarget {
-              endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-              principal: executor_bootstrap_principal.login,
-            },
+            target: runner_microvm_administrator_target(host: host),
             revision: revision,
             slots: map(runner_index_seq(n: d.runner_count), i => RunnerSlotIdentity { host: host, slot_index: i }),
             tap_owner: d.job_user,

@@ -5,8 +5,8 @@ import std.checked_arithmetic { nat_magnitude }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Https, Uri }
-import std.measure { ByteSize, byte_size }
-import std.types { Int, NonEmptyStr, String }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.types { Int, NonEmptyStr, String, List }
 import v2.std.optional { Present, Absent }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -128,4 +128,67 @@ fn parse_cgroup_memory_count(body: String) -> CgroupMemoryCountValue {
     Present { value: b } => CgroupMemoryCount { bytes: b }
     Absent => CgroupMemoryCountUnparseable { body: body }
   }
+}
+
+// ── THE HARD LIMIT THAT BINDS A PROCESS IS THE TIGHTEST memory.max ON ITS PATH ──────────────────
+//
+// cgroup-v2 (Documentation/admin-guide/cgroup-v2.rst, "memory.max"): a cgroup's usage is limited by its
+// own memory.max AND by every ancestor's, so what bounds a process is the minimum over its cgroup and
+// each ancestor below the root, and the root has no memory.max at all. memory.high is a throttle
+// allocations may cross, never a limit, so it is carried beside the reading and never taken as one.
+//
+// A LEVEL IS READ, HAS NO MEMORY FILES, OR COULD NOT BE READ, and those are three answers. A level
+// without the files imposes nothing (its parent does not enable the memory controller for it); a level
+// that could not be read may hold a tighter limit this reading cannot see, so it is carried and never
+// folded into either of the others.
+type CgroupMemoryLevel
+  = CgroupMemoryLevelRead { dir: NonEmptyStr, max: CgroupMemoryLimitValue, high: CgroupMemoryLimitValue }
+  | CgroupMemoryLevelWithoutFiles { dir: NonEmptyStr }
+  | CgroupMemoryLevelUnread { dir: NonEmptyStr, cause: String }
+
+type CgroupHardMemoryLimit
+  = CgroupHardLimitBinds { dir: NonEmptyStr, bytes: ByteSize }
+  | CgroupNoHardLimit
+
+fn cgroup_level_hard_limit(level: CgroupMemoryLevel) -> CgroupHardMemoryLimit {
+  match level {
+    CgroupMemoryLevelRead { dir: d, max: m, high: _ } => match m {
+      CgroupMemoryLimited { bytes: b } => CgroupHardLimitBinds { dir: d, bytes: b }
+      CgroupMemoryUnlimited => CgroupNoHardLimit
+      CgroupMemoryLimitUnparseable { body: _ } => CgroupNoHardLimit
+    }
+    CgroupMemoryLevelWithoutFiles { dir: _ } => CgroupNoHardLimit
+    CgroupMemoryLevelUnread { dir: _, cause: _ } => CgroupNoHardLimit
+  }
+}
+
+fn cgroup_tighter_hard_limit(a: CgroupHardMemoryLimit, b: CgroupHardMemoryLimit) -> CgroupHardMemoryLimit {
+  match a {
+    CgroupNoHardLimit => b
+    CgroupHardLimitBinds { dir: _, bytes: x } => match b {
+      CgroupNoHardLimit => a
+      CgroupHardLimitBinds { dir: _, bytes: y } => if byte_size_count(b: y) < byte_size_count(b: x) { b } else { a }
+    }
+  }
+}
+
+fn cgroup_tightest_hard_memory_limit(levels: List<CgroupMemoryLevel>) -> CgroupHardMemoryLimit {
+  fold(levels, init: CgroupNoHardLimit, f: (acc, l) => cgroup_tighter_hard_limit(a: acc, b: cgroup_level_hard_limit(level: l)))
+}
+
+// The directories whose memory files bound a member of `relative_path` (as /proc/self/cgroup names it on
+// the unified hierarchy): every level from the root's first child down to the member's own, excluding the
+// root, which carries no memory.max. Order does not matter to the minimum above.
+type CgroupBoundingDirsFold {
+  prefix: String
+  dirs: List<NonEmptyStr>
+}
+
+fn cgroup_v2_bounding_dirs(mount_point: NonEmptyStr, relative_path: NonEmptyStr) -> List<NonEmptyStr> {
+  fold(filter(split(s: relative_path as String, delimiter: "/"), p => p != ""),
+    init: CgroupBoundingDirsFold { prefix: mount_point as String, dirs: [] as List<NonEmptyStr> },
+    f: (acc, part) => {
+      let next = join([acc.prefix, "/", part], "")
+      CgroupBoundingDirsFold { prefix: next, dirs: acc.dirs |> list_push(next as NonEmptyStr) }
+    }).dirs
 }

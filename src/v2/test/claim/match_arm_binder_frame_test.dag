@@ -1,0 +1,393 @@
+module v2.test.claim.match_arm_binder_frame
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject
+}
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { assemble_program_from_ingest, dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  SourceRootIngest
+}
+import v2.extdeps.languages.dag { dag_language_model, dag_lex }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, TypeNode, node_subtree_nodes }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: the match-arm scope frame of v2.compiler.resolve (resolve_match_node_walk): the binders a
+// lowered pattern carries (v2.test.parse.variant_field_lowering asserts the shape) are a lexical
+// frame for the arm's body, and nothing else. BOUNDARY: source text in, assembled (normalized +
+// resolved) program out through assemble_program_from_ingest, the same real path the
+// declaration_graft_assemble rows run; the outcome and its typed reason are the observation.
+//
+// WHY THE SHADOWING CONTROL IS SHAPED THE WAY IT IS. A binder's canonical atom is its own symbol,
+// exactly as a parameter's is, so a resolved tree cannot show WHICH frame answered `x`. What can:
+// a frame local is answered BoundInFrame before the root is reached, and the root's test-code
+// wall (resolve_atom_bound) is never consulted for it. So the outer `x` here is a TEST-MARKED
+// declaration: with the frame, the arm's `x` binds to the arm and the module assembles; without
+// it, `x` reaches the root, names test code, and refuses resolve_reason_test_code_referenced --
+// the red that makes the green mean the arm bound it. The mutation receipt (frame deleted) is on
+// the PR.
+
+data mab_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^match_arm_binder_frame_artifact,
+  file_path: "src/v2/pilot/match_arm_binder_frame_pilot.dag"
+}
+
+fn mab_ingest_for(src: String) -> SourceRootIngest {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: src, fidelity: Lossless },
+      artifact: mab_artifact,
+      compilation_unit: ^match_arm_binder_frame_cu,
+      source_root: V2Tree
+    },
+    tail: Empty
+  }
+}
+
+fn mab_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } },
+    imports: Empty
+  }
+}
+
+fn mab_assemble(src: String) -> Outcome<Node> {
+  assemble_program_from_ingest(ingest: mab_ingest_for(src: src), admission: mab_admission(), lm: dag_language_model())
+}
+
+// THE RESOLVED OUTCOME IS THE SHARE POINT, NOT THE LANGUAGE MODEL. Each claim here reaches its
+// verdict through assemble_program_from_ingest, whose cost is dominated by dag_language_model()
+// -- measured at 90028 eval steps ALONE against the floor's 72300 per-claim ceiling, so a claim
+// that only calls it is already over. The model itself cannot be shared: gunbc run 35327371663
+// refused exactly that as ServeCacheValueNotPortable at .value.lm.canonical_symbols.member
+// kind=Closure, because a LanguageModel carries a function and the store serves values. So these
+// rows take the seam v2.workflow.floor_pure_producer_share already uses for resolve subjects --
+// the RESOLVED Outcome<Node> per subject, nullary, pure, over an inline source, Nodes and located
+// diagnostics with no closure at any depth.
+//
+// THE REAL PATH STILL EXECUTES. Preparation runs each producer once, for real, and is REFUSED
+// there if it cannot run; the rows then read it. That is the DESIGN section 3 pairing obligation
+// discharged by the mechanism rather than by an extra claim -- delete the integration and
+// preparation breaks, not just an assertion.
+fn mab_outcome_accepts(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn mab_outcome_refuses_with(o: Outcome<Node>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+fn mab_resolved_0() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\ntest fn x() -> Int { 1 }\n\nfn pick(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_1() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\ntest fn x() -> Int { 1 }\n\nfn pick(c: C) -> Int {\n  match c {\n    A(_) => x\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_2() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_3() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => z\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_4() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    Aa(y) => y\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_5() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    B => y\n  }\n}\n")
+}
+
+fn mab_resolved_6() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype Opt = Present { value: Int } | Absent\ntype C = A(Opt) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(Present { value: y }) => y\n    A(Absent) => 0\n    B => 1\n  }\n}\n")
+}
+
+fn mab_resolved_7() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype Opt = Present { value: Int } | Absent\n\nfn get(o: Opt) -> Int {\n  match o {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n")
+}
+
+fn mab_resolved_8() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype Opt = Present { value: Int } | Absent\n\nfn get(o: Opt) -> Int {\n  match o {\n    Present { value } => value\n    Absent => 0\n  }\n}\n")
+}
+
+fn mab_resolved_9() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn tag(c: C) -> Int {\n  match c {\n    A(_) => 1\n    B => 0\n  }\n}\n")
+}
+
+// (1) A binder shadowing an outer name binds the ARM's binding: the outer `x` is test code, and
+// the arm's `x` never reaches it.
+test fn mab_shadowing_binder_binds_the_arm() -> Bool {
+  mab_outcome_accepts(o: mab_resolved_0())
+}
+
+// The wall the frame bypasses is real: the same outer test-code name, referenced from an arm that
+// binds no `x`, refuses through the root exactly as the frame-less reading of (1) would.
+test fn mab_outer_test_code_name_still_refuses_without_a_binder() -> Bool {
+  mab_outcome_refuses_with(
+    o: mab_resolved_1(),
+    reason: ^resolve_reason_test_code_referenced
+  )
+}
+
+// A binder with no outer name at all binds through the frame (green) -- and the body naming a
+// different, unbound name refuses (red): the frame binds exactly the binder.
+test fn mab_fresh_binder_binds() -> Bool {
+  mab_outcome_accepts(o: mab_resolved_2())
+}
+
+test fn mab_unbound_name_in_arm_body_refuses() -> Bool {
+  mab_outcome_refuses_with(
+    o: mab_resolved_3(),
+    reason: ^resolve_reason_unbound_symbol
+  )
+}
+
+// (3) The constructor tag is not a binder: a misspelled variant refuses as an unbound reference
+// instead of becoming a fresh binder that matches everything.
+test fn mab_misspelled_tag_refuses() -> Bool {
+  mab_outcome_refuses_with(
+    o: mab_resolved_4(),
+    reason: ^resolve_reason_unbound_symbol
+  )
+}
+
+// (4) The binder does not leak: a sibling arm naming it is unbound.
+test fn mab_binder_does_not_leak_to_a_sibling_arm() -> Bool {
+  mab_outcome_refuses_with(
+    o: mab_resolved_5(),
+    reason: ^resolve_reason_unbound_symbol
+  )
+}
+
+// Nested constructs bind at depth, braced and shorthand spellings bind their field's binder, and
+// a wildcard binds nothing.
+test fn mab_nested_braced_and_shorthand_binders_bind() -> Bool {
+  mab_outcome_accepts(o: mab_resolved_6())
+    && mab_outcome_accepts(o: mab_resolved_7())
+    && mab_outcome_accepts(o: mab_resolved_8())
+    && mab_outcome_accepts(o: mab_resolved_9())
+}
+
+
+// PKG16: WHAT A BINDER SPELLING AN OUTER NAME BINDS, ASKED OF THE INDEX. The classifier
+// (v2.compiler.resolve resolve_pattern_atom_names_constructor) now reads the declared-payload fact
+// the symbol index holds instead of the node's shape. These rows are the census that repair was
+// measured against, kept enrolled as regression controls. Both readings of `A(W) => W` ACCEPT, so
+// acceptance cannot discriminate; what does is the resolved tree: a frame binder stays the Atom it
+// was spelled as, while a declaration reference resolves to its qualified spine
+// (resolved_reference_node). An Atom surviving is the arm having bound it.
+//
+// WHAT THIS CENSUS FOUND, stated because a reader will otherwise assume these rows are the red for
+// the repair: THEY ARE NOT. On #12033's head, with the old shape predicate, every row below already
+// holds -- a where-alias, a record-literal data row and the fresh control all bind, and the
+// ambiguous route refuses. A module container is never an index entry (the fill descends module
+// spine segments without inserting a path), so the module-name specimen this package was filed on
+// does not reach the classifier by lexical ascent. No shape was found that the old predicate admits
+// and the index rejects, so the repair is construction with no behavioural delta on this corpus.
+fn mab_has_atom(o: Outcome<Node>, id: Symbol) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: n, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: n), init: false, f: fn(found, m) {
+        found || (match m.kind {
+          TypeNode { connective: Atom { identity: i } } => i == id
+          _ => false
+        })
+      })
+  }
+}
+
+fn mab_resolved_where_alias_binder() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\nfn lower_hex_64(v: Int) -> Bool { true }\n\ntype W = Int where lower_hex_64\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(W) => W\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_unshadowed_binder() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\nfn lower_hex_64(v: Int) -> Bool { true }\n\ntype V = Int where lower_hex_64\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(W) => W\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_record_data_binder() -> Outcome<Node> {
+  mab_assemble(src: "module p\n\ntype Rec { f: Int }\ndata d: Rec = Rec { f: 1 }\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(d) => 0\n    B => 0\n  }\n}\n")
+}
+
+// The instrument is live: with no outer W, the binder's Atom survives.
+test fn mab_unshadowed_binder_atom_survives() -> Bool {
+  mab_has_atom(o: mab_resolved_unshadowed_binder(), id: ^W)
+}
+
+test fn mab_binder_spelling_a_where_alias_binds() -> Bool {
+  mab_outcome_accepts(o: mab_resolved_where_alias_binder())
+    && mab_has_atom(o: mab_resolved_where_alias_binder(), id: ^W)
+}
+
+test fn mab_binder_spelling_a_record_data_row_binds() -> Bool {
+  mab_has_atom(o: mab_resolved_record_data_binder(), id: ^d)
+}
+
+// THE ROUTE THE IN-TREE SPECIMEN ACTUALLY TAKES, at fixture size: `n` is off the arm's lexical
+// chain and two declarations spell it corpus-wide, so the global-bare lookup is Ambiguous and the
+// classifier's LexicalUnbound -> GlobalBareLookupAmbiguous arm answers constructor. The body's `n`
+// then REFUSES, located -- loud, not silent. That arm is the #12009 bridge and is not this
+// package's; this row records its current behaviour so a change to it is seen.
+fn mab_file(src: String, id: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: "src/v2/pilot/match_arm_binder_frame_pilot.dag" },
+    compilation_unit: id,
+    source_root: V2Tree
+  }
+}
+
+fn mab_resolved_ambiguous_binder() -> Outcome<Node> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: mab_file(src: "module p.a\n\nfn n() -> Int { 1 }\n", id: ^match_arm_binder_ambiguous_a_cu),
+      tail: Cons {
+        head: mab_file(src: "module r.b\n\nfn n() -> Int { 2 }\n", id: ^match_arm_binder_ambiguous_b_cu),
+        tail: Cons {
+          head: mab_file(src: "module p.q\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(n) => n\n    B => 0\n  }\n}\n", id: ^match_arm_binder_ambiguous_q_cu),
+          tail: Empty
+        }
+      }
+    },
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^p, tail: Cons { head: ^q, tail: Empty } } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+}
+
+test fn mab_binder_spelling_an_ambiguous_global_name_refuses_unbound() -> Bool {
+  mab_outcome_refuses_with(
+    o: mab_resolved_ambiguous_binder(),
+    reason: ^resolve_reason_unbound_symbol
+  )
+}
+
+// WHICH TYPES THE CARRIER CALLS RECORDS, AND WHICH IT MUST NOT (the record-versus-where-alias
+// control). The record half of the declared-payload fact is read before the record rehome by
+// v2.compiler.body_lowering_fold body_lower_type_decl_record_name_optional and carried on
+// NormalizedTree record_declarations. After the rehome a record and a where-alias are the same
+// Conj { N: .. } shape, so nothing downstream could catch this predicate answering Present for a
+// where-alias, or for a coproduct whose variant carries a field block on the parse tree. So the
+// capture itself is asserted, over all four spellings: a record, a nullary record, a where-alias,
+// and a coproduct with a fielded variant -- exactly the two records, in declaration order.
+fn mab_record_declarations(src: String) -> Outcome<FreeMonoid<Symbol>> {
+  match tokenize(text: src, file: ^match_arm_binder_record_probe, rules: dag_lex()) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: tokens, diagnostics: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: prepared, diagnostics: residue } =>
+          match parse_module_prepared(tokens: tokens, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize(parse_tree: artifact.tree) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: tree, diagnostics: d } =>
+                  Accepted { value: tree.record_declarations, diagnostics: d }
+              }
+          }
+      }
+  }
+}
+
+// NULLARY AND PURE so the floor prepares it once (v2.workflow.floor_pure_producer_share), for the
+// same reason the mab_resolved_* specimens are.
+fn mab_record_declarations_specimen() -> Outcome<FreeMonoid<Symbol>> {
+  mab_record_declarations(src: "module p\n\ntype R { f: Int }\ntype W = Int where non_empty\ntype C = A { v: Int } | B\ntype U {}\n")
+}
+
+test fn mab_where_alias_is_not_a_record() -> Bool {
+  match mab_record_declarations_specimen() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: names, diagnostics: _ } =>
+      names == Cons { head: ^R, tail: Cons { head: ^U, tail: Empty } }
+  }
+}
+
+// THE FILED SPECIMEN'S SHAPE, AT THE RESOLVE INTERFACE (Pkg16 trigger claim). The binder `node` of
+// a `Present { value: node }` arm inside v2.std.symbol_index symbol_index_candidates_at, with a
+// sibling MODULE v2.std.node that lexical ascent from the arm would reach. The claim is that the
+// arm binds `node` through the index-keyed classifier (v2.compiler.resolve
+// resolve_pattern_atom_names_constructor asking v2.std.symbol_index
+// symbol_index_declared_payload_at, which returns the payload kind): the tree is Accepted and the binder's Atom survives. It is
+// established HERE, at the resolve interface over a supplied mirror of the two modules -- not on the
+// native route, whose emitted compiler does not build -- and says so rather than more.
+fn mab_resolved_module_named_binder() -> Outcome<Node> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: mab_file(src: "module v2.std.node\n\nfn content_hash(v: Int) -> Int { v }\n", id: ^match_arm_binder_specimen_node_cu),
+      tail: Cons {
+        head: mab_file(src: "module v2.std.symbol_index\n\ntype Opt = Present { value: Int } | Absent\n\nfn symbol_index_candidates_at(o: Opt) -> Int {\n  match o {\n    Present { value: node } => node\n    Absent => 0\n  }\n}\n", id: ^match_arm_binder_specimen_index_cu),
+        tail: Empty
+      }
+    },
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^v2, tail: Cons { head: ^std, tail: Cons { head: ^symbol_index, tail: Empty } } } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+}
+
+test fn mab_binder_spelling_a_sibling_module_binds_the_arm() -> Bool {
+  mab_outcome_accepts(o: mab_resolved_module_named_binder())
+    && mab_has_atom(o: mab_resolved_module_named_binder(), id: ^node)
+}
+
+// AN UNIMPORTED CONSTRUCTOR IN A PATTERN REFUSES RATHER THAN BINDING. `None` is declared only in
+// p.o and not imported into p.q, so it is off the arm's lexical chain and the classifier takes its
+// LexicalUnbound -> global-bare branch. A variant is indexed under its containment path AND its
+// unique alias, so that lookup answers GlobalBareLookupAmbiguous, which reads as constructor: the
+// atom resolves as a reference and refuses unbound, rather than becoming a catch-all binder that
+// matches every A(_). WHAT IT DISCRIMINATES, measured: red with the GlobalBareLookupAmbiguous arm
+// answering binder; still green with the declared-payload fact forced false, because this spelling
+// never reaches the GlobalBareHit arm. It is the executed receipt for the bridge's fail-safe
+// direction, not evidence for the index-keyed payload fact.
+fn mab_resolved_unimported_constructor() -> Outcome<Node> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: mab_file(src: "module p.o\n\ntype Opt = Some(Int) | None\n", id: ^match_arm_binder_unimported_o_cu),
+      tail: Cons {
+        head: mab_file(src: "module p.q\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(None) => None\n    B => 0\n  }\n}\n", id: ^match_arm_binder_unimported_q_cu),
+        tail: Empty
+      }
+    },
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^p, tail: Cons { head: ^q, tail: Empty } } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+}
+
+test fn mab_unimported_constructor_in_a_pattern_refuses_rather_than_binding() -> Bool {
+  mab_outcome_refuses_with(
+    o: mab_resolved_unimported_constructor(),
+    reason: ^resolve_reason_unbound_symbol
+  )
+}
