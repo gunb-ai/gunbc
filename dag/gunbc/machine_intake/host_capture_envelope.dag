@@ -16,6 +16,7 @@ import v2.std.optional { Present }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import extdeps.posix.termios { termios_onlcr_mapped_carriage_return }
+import extdeps.render.ansi { ansi_null_fill }
 
 // ONE GRAMMAR, READ IN BOTH DIRECTIONS (DESIGN §4). The census program that runs on the host EMITS
 // this envelope and the boot run's verdict PARSES it. Before this module the two sides were spelled
@@ -489,8 +490,18 @@ fn host_capture_terminated_lines(capture: String) -> List<String> {
 // the CR and none carries its own trim: a per-reader trim would be a second authority for the
 // channel's framing, and the reader it missed would refuse a clean section (mtcollins1_boot run
 // 35793279839 refused nproc, boot-media and edac-before with "exited 0").
+// NUL IS FILL, AND IT IS REMOVED HERE, ONCE, for the same reason. The SOL transcript of run
+// 35808203121 carries 550,330 NUL bytes, runs of them landing at the start of lines -- before the
+// "80" nproc printed and before "----EXIT nproc: 0" -- so no line-start reader recognised either and
+// the nproc section read as never finished. Which hop inserts them (the BMC's SOL buffer, the
+// console's fill) is not observed; it does not need to be, because ECMA-48 defines NUL as media- or
+// time-fill whose removal does not change the stream's content (extdeps.render.ansi ansi_null_fill).
 fn host_capture_framed_lines(capture: String) -> List<String> {
-  map(split(s: capture, delimiter: "\n"), line => host_capture_line_without_mapped_cr(line: line))
+  map(split(s: host_capture_without_null_fill(capture: capture), delimiter: "\n"), line => host_capture_line_without_mapped_cr(line: line))
+}
+
+fn host_capture_without_null_fill(capture: String) -> String {
+  join(split(s: capture, delimiter: ansi_null_fill), "")
 }
 
 fn host_capture_line_without_mapped_cr(line: String) -> String {

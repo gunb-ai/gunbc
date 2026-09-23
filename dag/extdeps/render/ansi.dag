@@ -19,6 +19,11 @@ data ansi_carriage_return: String = "\x0d"
 data ansi_line_feed: String = "\n"
 data ansi_horizontal_tab: String = "\x09"
 
+// ECMA-48 §8.3.88, NUL: "NUL is used for media-fill or time-fill. NUL characters may be inserted
+// into, or removed from, a data stream without affecting the information content of that stream."
+// A reader framing text off a device channel may therefore remove every NUL without losing a fact.
+data ansi_null_fill: String = "\x00"
+
 data ansi_c0_controls: List<String> = [
   "\x00",
   "\x01",
