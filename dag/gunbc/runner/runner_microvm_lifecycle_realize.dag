@@ -732,7 +732,6 @@ fn attempt_mounts_deepest_first(mount_points: List<String>, jail: String) -> Lis
 }
 
 fn run_cleanup_step(command: ArgvCommand) -> AttemptCleanupStep
-  uses net: Network
 {
   AttemptCleanupStep {
     command: join(argv_words(command: command), " "),
@@ -747,7 +746,6 @@ fn clean_attempt_resources(
   credential_device: String,
   network: RunnerSlotNetwork,
 ) -> AttemptCleanupRun
-  uses net: Network, fs: Filesystem
 {
   if !stop_admits_cleanup(stop: stop) {
     CleanupSkippedStopNotQuiescent
@@ -800,12 +798,7 @@ fn teardown_cleanup_text(t: TeardownRun) -> String {
 fn perform_teardown_and_observe(
   bound: CellBoundAttempt,
   subject: SlotNetworkSanitationSubject,
-<<<<<<< ours
-) -> ObservedTeardown
-=======
 ) -> TeardownPerformance
-  uses net: Network, fs: Filesystem
->>>>>>> theirs
 {
   let attempt = bound.attempt.attempt
   let unit = in_flight_attempt_unit(attempt: bound.attempt)
@@ -1320,7 +1313,6 @@ fn run_launched_attempt(
 // guest that never booted from one that booted and idled to the deadline -- the two cases the
 // deadline alone cannot separate.
 fn observe_guest_bring_up(identity: AttemptIdentity, launch: AttemptLaunch) -> GuestBringUpReading
-  uses net: Network
 {
   match launch {
     VmmStarted { unit: u, receipt: _ } => {
