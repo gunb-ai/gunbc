@@ -1196,7 +1196,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             v1_compiler::cli_run::NativeRouteOutcome::LaneQualificationHeld { .. } => {
                 Ok(ExitCode::SUCCESS)
             }
-            v1_compiler::cli_run::NativeRouteOutcome::LaneQualificationRefused { summary } => {
+            v1_compiler::cli_run::NativeRouteOutcome::LaneQualificationRefused {
+                summary, ..
+            } => {
                 eprintln!("v2-native-route: refused: LaneQualificationRefused — {summary}");
                 Err(ExitCode::from(1))
             }
