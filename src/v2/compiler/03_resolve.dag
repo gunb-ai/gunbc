@@ -1088,17 +1088,27 @@ fn resolve_pattern_node_is_constructor(node: Node) -> Bool {
 // `false`). A fn or data declaration of the same name does NOT make it a constructor: the seed
 // binds `x` in `A(x)` even when a fn x exists, and so does this frame.
 //
-// DISSOLVE-ON gunbc#12009 (the namespace candidate rule): the LexicalUnbound -> global-unique
-// branch below is a BRIDGE. Before #12009 an imported variant is not on the lexical chain, so an
-// imported constructor in pattern position is only reachable through the corpus-wide spelling
-// census; after #12009 it IS on the chain and hits lexically, and this branch becomes the last
-// place a corpus-wide spelling decides a MEANING (binder versus constructor). Retire it then:
-// LexicalUnbound => namespace_has_canonical_symbol(..). Its fail-safe direction while it stands:
-// GlobalBareLookupAmbiguous reads as "constructor" (the census already answers Ambiguous for
-// essentially every variant name, containment path plus unique alias), so a fresh binder that
-// happens to spell a variant declared anywhere in the corpus is classified a constructor and then
-// refuses as an unbound reference -- loud, never a silent rebind (witty-cat-84's measurement,
-// 2026-09-22, on the emitted route).
+// THE LexicalUnbound BRANCH IS NOT A BRIDGE ANY MORE, AND WHY IT STAYS. It was first written as
+// DISSOLVE-ON gunbc#12009: before imports were bindings on the lexical chain, an imported
+// constructor in pattern position was reachable only through the corpus-wide spelling census.
+// #12009 closed unmerged, but its content landed on main inside gunbc#12048 (stacked on it), so
+// imports ARE chain bindings now and an imported constructor hits lexically. That trigger has
+// fired. What survives it is a different job: the census here never CHOOSES a meaning that
+// succeeds. A LexicalUnbound atom it classifies as a constructor is resolved as a reference by
+// resolve_pattern_node, finds nothing on the chain, and REFUSES as unbound, carrying main's
+// declared-elsewhere advisory (unbound_symbol_diagnostics). So the census only decides between
+// "binder" and "refuse". That is the oracle role docs/plans/namespace-resolution-design.md
+// section 13 keeps for global_bare -- explaining an absence -- and not the resolution mechanism
+// #12048 deleted.
+//
+// DELETING IT, the retirement this marker used to promise, would be the wrong move: with
+// `LexicalUnbound => namespace_has_canonical_symbol(..)`, an unimported constructor spelling
+// (`None` with no import of it) becomes a fresh binder that matches every value. That is Accepted,
+// wrong, and silent, which DESIGN section 5 forbids. The cost of keeping it is an
+// over-prohibition, stated so it can be priced (DESIGN section 4d): a genuinely fresh binder whose
+// spelling is a variant declared somewhere in the corpus refuses, loudly, and the author renames
+// it. The branch retires when an unbound pattern atom that spells a declared constructor has its
+// own typed refusal that does not consult the corpus-wide census.
 fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bool {
   match symbol_index_lexical_lookup(
     index: ctx.namespace.symbol_index,
