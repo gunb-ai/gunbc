@@ -106,9 +106,9 @@ type Xl2CompletenessRefusal
   = Xl2SequenceOperandReferencesUnobservable
   | Xl2ScopeUnobserved { scope: Xl2UnobservedScope }
 
-// COMPLETENESS IS A COPRODUCT, NOT A FLAG BESIDE THE ROWS. The complete arm is built only from an
-// empty refusal roster (xl2_completeness below), and the roster always carries the sequence-operand
-// arm today, so a complete census has no reachable constructor until that lowering is repaired.
+// COMPLETENESS IS A COPRODUCT, NOT A FLAG BESIDE THE ROWS. Only xl2_completeness decides it, and
+// today that decision has no complete arm at all (the sequence-operand refusal is unconditional), so
+// a complete census is unconstructible until that lowering is repaired and the arm is added there.
 type Xl2CensusCompleteness
   = Xl2CensusComplete
   | Xl2CensusCompletenessRefused { first: Xl2CompletenessRefusal, rest: List<Xl2CompletenessRefusal> }
@@ -317,9 +317,11 @@ fn xl2_observe(context: NativeTestContext, ingest: SourceRootIngest, members: Li
   )
 }
 
-// THE ONLY CONSTRUCTOR OF THE COMPLETE ARM. The sequence-operand refusal heads the roster
-// unconditionally (see Xl2CompletenessRefusal), so this answers refused on every input today; the
-// rest of the roster is exactly the scopes the run could not observe.
+// THE ONLY COMPLETENESS DECISION, AND TODAY IT HAS NO COMPLETE ARM. The sequence-operand refusal
+// heads the roster unconditionally (see Xl2CompletenessRefusal), so this answers refused on every
+// input and Xl2CensusComplete has no constructor anywhere. The change that repairs that lowering
+// must ADD the arm here: Xl2CensusComplete exactly when the unobserved roster is empty, refused with
+// the first unobserved scope at its head otherwise.
 fn xl2_completeness(unobserved: List<Xl2UnobservedScope>) -> Xl2CensusCompleteness {
   Xl2CensusCompletenessRefused {
     first: Xl2SequenceOperandReferencesUnobservable,
