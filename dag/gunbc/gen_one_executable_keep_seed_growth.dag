@@ -1,0 +1,23 @@
+module gunbc.gen_one_executable_keep_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data gen_one_executable_keep_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "keep_generation_one_executable",
+      field: WholeDeclaration
+    }
+  ],
+
+  reason: "Generation two needs a surviving generation-one executable. Generation two is the BUILT v2.cli.compile_cli binary emitting the v2.compiler.compile closure, and before this declaration the only place that binary existed was the run's PrivateProbeRoot, which removes itself on drop, so no generation-one artifact outlived the //gunbc/instruments:v2-native-cli run that built it and nothing could invoke it as a program. The declaration copies the executable out of the probe root under its own sha256, re-hashes the copy against the identity the run recorded and refuses on any mismatch, then lets the root drop as designed. The root is not retained: its per-run cargo target dir has no consumer once the copy is verified. It prints the kept path together with the binary, closure and seed identities as one provenance record. It performs no part of the generation-two emission and admits nothing, so the seed still does not stand in for the successor step.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete this declaration when the v2.cli.compile_cli door writes its own crate, that is, when the generation-one executable can assemble and build an emitted closure as a program, without the seed's write_probe_crate, so that generation one is a named, invocable artifact instead of something recovered from a seed probe root. WHAT DOES NOT RETIRE IT: moving the copy to another host file; keeping the probe root through PrivateProbeRoot retain instead of copying; or the door emitting a closure's text while the seed still assembles the crate. Each of those leaves the seed as the only producer of the generation-one executable.",
+
+  current_boundary: "src/v1/stage0/src/cli_run/native_lane_runner.rs keep_generation_one_executable, called once from run_v2_native_cli after walk_cli_door, behind gunbc test //gunbc/instruments:v2-native-cli"
+}
