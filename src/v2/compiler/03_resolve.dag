@@ -1099,7 +1099,12 @@ fn resolve_pattern_node_is_constructor(node: Node) -> Bool {
 // declared-elsewhere advisory (unbound_symbol_diagnostics). So the census only decides between
 // "binder" and "refuse". That is the oracle role docs/plans/namespace-resolution-design.md
 // section 13 keeps for global_bare -- explaining an absence -- and not the resolution mechanism
-// #12048 deleted.
+// #12048 deleted. EXECUTED, not only read: gunbc#12082's v2.test.claim.match_arm_binder_frame
+// mab_unimported_constructor_in_a_pattern_refuses_rather_than_binding (`None` declared in one
+// module, not imported, `A(None) => None` in another) refuses resolve_reason_unbound_symbol. The
+// route is GlobalBareLookupAmbiguous (a variant's containment path plus its unique alias), not
+// GlobalBareHit: the claim reds with the Ambiguous arm forced to binder and stays green with the
+// payload fact forced false.
 //
 // DELETING IT, the retirement this marker used to promise, would be the wrong move: with
 // `LexicalUnbound => namespace_has_canonical_symbol(..)`, an unimported constructor spelling
