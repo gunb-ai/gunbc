@@ -102,6 +102,7 @@ import v2.std.compilers.target_model {
   ProducedDeclUnwired, ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.compilers.target_model {
+  NoDeclarationReferenceForm,
   TargetAtomRealization,
   TargetAtomTypeShape,
   TargetFunctionTypeShape,
@@ -1654,7 +1655,8 @@ fn ts_type_expression_projection() -> TargetTypeExpressionProjection {
       separator: ^ts_token_comma,
       field_label_separator: optional_absent(),
       close: ^ts_token_gt
-    }
+    },
+    declaration_reference_form: NoDeclarationReferenceForm
   }
 }
 

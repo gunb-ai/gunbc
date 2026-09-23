@@ -180,12 +180,17 @@ type CapabilityIssuanceRefusal
   = IssuanceKeyIdDisagrees { claimed: MacKeyId, signing_key: MacKeyId }
   | IssuanceKeyMaterialNotHex { key_id: MacKeyId }
   | IssuanceImplementationTagNotHex { key_id: MacKeyId }
-  | IssuanceImplementationTagNotOctets { key_id: MacKeyId }
 
 type CapabilityIssuance
   = CapabilityIssued { capability: ApprovalCapability }
   | CapabilityIssuanceRefused { cause: CapabilityIssuanceRefusal }
 
+// THE SECOND ADMISSION IS GONE BECAUSE THE DECODER NOW CARRIES IT. base16_decode_lower returns
+// the sealed std.integer QualifiedOctets, so re-running its members through base64_octets asked
+// the same question twice, and the refusal arm that step needed -- IssuanceImplementationTagNotOctets
+// -- could not be reached by any hex string. An arm reporting a state no input produces is a
+// refusal vocabulary that lies about what can go wrong, so both the step and the arm are deleted;
+// the hex-shape refusal is the one real cause and it stays.
 fn issue_capability(claims: ApprovalCapabilityClaims, key: MacKey) -> CapabilityIssuance {
   if claims.key_id != key.id {
     CapabilityIssuanceRefused {
@@ -198,16 +203,12 @@ fn issue_capability(claims: ApprovalCapabilityClaims, key: MacKey) -> Capability
       MacSigned { tag: t } =>
         match base16_decode_lower(hex: t.hex as String) {
           Absent => CapabilityIssuanceRefused { cause: IssuanceImplementationTagNotHex { key_id: t.key_id } }
-          Present { value: octets } =>
-            match base64_octets(values: octets) {
-              QualifiedOctetsRefused { observed: _ } => CapabilityIssuanceRefused { cause: IssuanceImplementationTagNotOctets { key_id: t.key_id } }
-              QualifiedOctetsReady { value: qualified } =>
-                CapabilityIssued {
-                  capability: ApprovalCapability {
-                    claims: claims,
-                    tag_b64url: base64_encode(octets: qualified, variant: UrlSafe) as NonEmptyStr,
-                  }
-                }
+          Present { value: qualified } =>
+            CapabilityIssued {
+              capability: ApprovalCapability {
+                claims: claims,
+                tag_b64url: base64_encode(octets: qualified, variant: UrlSafe) as NonEmptyStr,
+              }
             }
         }
     }
@@ -229,7 +230,7 @@ fn capability_tag_hex(capability: ApprovalCapability) -> NonEmptyStr? {
           if base64_encode(octets: qualified, variant: UrlSafe) != presented || octets == [] {
             none
           } else {
-            Present { value: base16_encode_lower(octets: octets) as NonEmptyStr }
+            Present { value: base16_encode_lower(octets: qualified) as NonEmptyStr }
           }
       }
   }

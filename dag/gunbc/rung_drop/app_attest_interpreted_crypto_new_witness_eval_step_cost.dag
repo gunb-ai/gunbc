@@ -16,8 +16,7 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_interpr
 //
 // WHY THE OVERRUN IS THE PRIMITIVE'S AND NOT THE CLAIM'S. Each claim evaluates one P-384 curve
 // equation over a real Apple key, one doubling-and-addition closure check, or one SHA-384 over a
-// FIPS vector: there is no repeated demand,
-// no copied accumulator and no nested scan to remove. What the budget prices is the seed
+// FIPS vector: there is no repeated demand and no nested scan to remove -- and that is now a MEASURED claim rather than an asserted one (review 70100). One nested scan DID exist when this sentence was first written: octet_split recomputed count(acc.front) per octet, and curve_admit_point_octets calls it twice per point, so the sentence was false for the two point-octets rows it covered. The scan is removed (the fold carries its index). Removing it moved eval_steps by roughly six hundred out of eight hundred thousand -- upward, in fact, by the index arithmetic -- which is the receipt that the overrun really is the primitive's realization and not the fold's shape. The shape was fixed anyway on DESIGN section 6's ground, that a proven cost-shape defect is always fixed regardless of the realized n, never because the measurement demanded it. What the budget prices is the seed
 // interpreter realizing 384-bit field arithmetic as 16-limb bignat folds and SHA-384 as Word64
 // pairs, because the interpreter reifies no machine width (decision msg_54c92f2f, 2026-09-21: the
 // terminal shape is the natively emitted crypto closure). Supplying the curve check's answer, or
