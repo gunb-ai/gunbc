@@ -3,7 +3,6 @@ module gunbc.heal_publication
 import std.types { NonEmptyStr, String, List, Int, Bool, CommitSha, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
-import std.resources { Network }
 import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
@@ -133,7 +132,6 @@ fn event_refusal_message(kind: String, detail: String) -> String {
 // intact, and a candidate that did not decode -- stop before any request is made with a value the
 // candidate chose; everything else is decided by admit_heal_publication over the full observation.
 fn observe_and_admit_wet() -> PublisherRun
-  uses net: Network
 {
   match env_value(name: heal_publication_candidate_directory_env) {
     Absent => PublisherRunRefused { cause: "HealPublicationContextUnreadable: HEAL_CANDIDATE_DIRECTORY is not set" }
@@ -203,7 +201,6 @@ fn rest_outcome_ok(o: RestOutcome) -> Bool {
 }
 
 fn observe_candidate_world_wet(directory: String, candidate: HealRepairCandidate, run: TriggeringRunFacts) -> PublisherRun
-  uses net: Network
 {
   let owner = gunbc_repository.owner as String
   let repo = gunbc_repository.name as String
@@ -262,7 +259,6 @@ fn observe_candidate_world_wet(directory: String, candidate: HealRepairCandidate
 // ── The credential-free gate ────────────────────────────────────────────────────────────────
 
 fn heal_publication_admit_wet() -> ProcessExit
-  uses net: Network
 {
   match observe_and_admit_wet() {
     PublisherRunRefused { cause } => exit_failure(reason: cause)
@@ -285,7 +281,6 @@ fn content_for(blobs: List<ObservedBlobContent>, blob_hex: String) -> String? {
 }
 
 fn write_blob_wet(entry: AdmittedEntry, blobs: List<ObservedBlobContent>) -> BlobWrites
-  uses net: Network
 {
   let path = entry.path.value as String
   let hex = git_object_id_wire_hex(oid: entry.blob) as String
@@ -308,7 +303,6 @@ fn write_blob_wet(entry: AdmittedEntry, blobs: List<ObservedBlobContent>) -> Blo
 }
 
 fn write_blobs_wet(admitted: AdmittedHealPublication, blobs: List<ObservedBlobContent>) -> BlobWrites
-  uses net: Network
 {
   fold(admitted.entries, init: BlobsWritten, f: fn(acc, e) {
     match acc {
@@ -356,7 +350,6 @@ fn receipt_text(r: HealPublicationReceipt) -> String {
 // moved in between; any other refusal is a refusal of a different kind. A 5xx is ambiguous about
 // whether the write landed, so it is not a refusal at all: the readback decides.
 fn publish_admitted_wet(admitted: AdmittedHealPublication, blobs: List<ObservedBlobContent>) -> ProcessExit
-  uses net: Network
 {
   let owner = gunbc_repository.owner as String
   let repo = gunbc_repository.name as String
@@ -405,7 +398,6 @@ fn publish_admitted_wet(admitted: AdmittedHealPublication, blobs: List<ObservedB
 }
 
 fn readback_wet(admitted: AdmittedHealPublication, created_commit: String, created_tree: String) -> ProcessExit
-  uses net: Network
 {
   let owner = gunbc_repository.owner as String
   let repo = gunbc_repository.name as String
@@ -466,7 +458,6 @@ fn readback_wet(admitted: AdmittedHealPublication, created_commit: String, creat
 // ── The credentialed entry ──────────────────────────────────────────────────────────────────
 
 fn heal_publication_publish_wet() -> ProcessExit
-  uses net: Network
 {
   match observe_and_admit_wet() {
     PublisherRunRefused { cause } => exit_failure(reason: cause)

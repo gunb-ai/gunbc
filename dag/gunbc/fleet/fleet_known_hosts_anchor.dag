@@ -3,7 +3,6 @@ module gunbc.fleet_known_hosts_anchor
 import std.types { String, Bool, List, NonEmptyStr, PathSegment, path_segment_is_safe }
 import std.measure { second }
 import std.algebra { trim }
-import std.resources { Network }
 import std.content_hash {
   ContentHash,
   content_hash_of_value,
@@ -239,7 +238,6 @@ fn fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity) -> NonEmptySt
 // agreement. The readback is the success criterion; the write's exit code is not, because a
 // successful write to the wrong place is exactly the failure mode this replaces.
 fn materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> KnownHostsMaterializationOutcome
-  uses net: Network
 {
   if length(fleet_known_hosts_rows()) == 0 {
     KnownHostsRefused {
