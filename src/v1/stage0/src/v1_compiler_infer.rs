@@ -99,9 +99,9 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
 };
 pub use crate::v1_compiler_infer_env::{
     bare_name_miss_diagnostic, binding_declares_name, build_unit_variant_index,
-    census_declaration_type_env, declaration_provenance_of_ref, declaration_substitution_basis,
-    effective_visible_binding, empty_symbol_index, empty_type_env_cache,
-    env_with_type_variable_bindings, global_bare_is_ambiguous,
+    census_declaration_type_env, declaration_provenance_of_ref, declaration_ref_of_type_node,
+    declaration_substitution_basis, effective_visible_binding, empty_symbol_index,
+    empty_type_env_cache, env_with_type_variable_bindings, global_bare_is_ambiguous,
     global_bare_strict_ambiguity_candidates, inductive_fields_for, inductive_fields_list_to_map,
     is_recursive_type, is_recursive_type_by_name, listed_import_required_bare_call_blocked,
     lookup_binding_by_name, lookup_binding_on_chain, lookup_type, lookup_type_by_name,
@@ -137,13 +137,13 @@ use crate::v1_compiler_infer_lookup::DeclaredArgContract::{
     ContractKnown, ContractUnavailable, MethodUnresolved,
 };
 pub use crate::v1_compiler_infer_lookup::{
-    census_declaration_identity, constructor_declaration_for_admission,
-    declared_arg_types_for_method, field_summary_for_type, func_decl_binding_for_call,
-    global_bare_callable_node, lookup_coproduct_common_field_node, lookup_field_type_node,
-    lookup_func_sig, lookup_in_scope, lookup_structural_method, map_key_type_in_env,
-    map_value_type_in_env, product_field_result_type, resolve_known_method_node,
-    resolve_method_receiver_type, resolve_scrutinee_type_node, resolved_declaration_call_target,
-    resolved_plain_call_target_for_outcome, set_element_type_in_env,
+    census_declaration_identity, declared_arg_types_for_method, field_summary_for_type,
+    func_decl_binding_for_call, global_bare_callable_node, lookup_coproduct_common_field_node,
+    lookup_field_type_node, lookup_func_sig, lookup_in_scope, lookup_structural_method,
+    map_key_type_in_env, map_value_type_in_env, product_field_result_type,
+    resolve_known_method_node, resolve_method_receiver_type, resolve_scrutinee_type_node,
+    resolved_declaration_call_target, resolved_plain_call_target_for_outcome,
+    set_element_type_in_env,
 };
 pub use crate::v1_compiler_infer_lookup::{
     ConstructorDeclarationLookup, DeclarationLookupFailure, DeclaredArgContract,
@@ -246,11 +246,9 @@ use crate::v1_std_core::CompilerDiagnostic::{
     EqualityMemberUnjudgeable, EqualityOnFunctionMember, FieldNotFound,
     FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
     MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
-    ReceiverTypeUnestablished, ResourceFrontierOccurrenceBudgetExceeded,
-    ResourceRequirementFrontierAdmitted, ResourceRequirementUnestablished,
-    ServiceConfigReferenceJudgmentDeferred, SoleConstructorViolation, TypeArgumentArityMismatch,
-    TypeMismatch, TypeParameterInValuePosition, UnlistedVariantValueUse, UnresolvedType,
-    VariantCollision,
+    ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred, SoleConstructorViolation,
+    TypeArgumentArityMismatch, TypeMismatch, TypeParameterInValuePosition, UnlistedVariantValueUse,
+    UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -287,8 +285,8 @@ pub use crate::v1_std_core::{
     arm_body, arm_guard, arm_pattern, authored_name_at, binop_left, binop_right, bool_type,
     build_newline_index, callable_identity, cast_expr, cast_target, container_expected_arity,
     decl_ref_coords_label, default_ident_span, diagnostic_frontier_occurrence_key,
-    diagnostic_resource_frontier_key, diagnostic_to_span, empty_intern_table, error_type,
-    expr_call_func_at, expr_has_non_tail_self_call, expr_has_self_call, expr_literal_int_optional,
+    diagnostic_to_span, empty_intern_table, error_type, expr_call_func_at,
+    expr_has_non_tail_self_call, expr_has_self_call, expr_literal_int_optional,
     expr_literal_string_optional, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_access_spine, field_binding_name_at, field_binding_pattern,
     field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
@@ -319,8 +317,8 @@ pub use crate::v1_std_core::{
     Connective, DeclRefCoords, DeclarationMarker, DeclaredCallableIdentity, DeclaredFuncEnv,
     DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle,
     FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, ResolvedCallFormal, ResolvedFormal,
-    ResourceFrontierOccurrenceKey, ServiceConfigField, StringPart, UnaryOpKind, VarBindingKind,
+    MethodSemantics, NewlineIndex, Node, ResolvedCallFormal, ResolvedFormal, ServiceConfigField,
+    StringPart, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -859,31 +857,56 @@ pub fn nominal_ref_node(
     span: Rc<SourceSpan>,
     ident_span: Option<Rc<SourceSpan>>,
 ) -> Rc<Node> {
-    Rc::new(Node {
-        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name: name.clone(),
-        span: span.clone(),
-        ident_span: ident_span.clone(),
-        children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
-        inferred: Some(Rc::new(InferredNode::Resolved {
-            node: nominal_leaf_type(name.clone()),
-        })),
-        return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
-        body: std::option::Option::None,
-        transport: std::option::Option::None,
-        properties: Rc::new(vec![]),
-        type_annotation: std::option::Option::None,
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-        match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-        declaration_marker: DeclarationMarker::Unmarked,
-        expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
-    })
+    {
+        let declared_leaf = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: name.clone(),
+            span: span.clone(),
+            ident_span: ident_span.clone(),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: name.clone(),
+            span: span.clone(),
+            ident_span: ident_span.clone(),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: declared_leaf.clone(),
+            })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
 }
 
 pub fn resolved_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> {
@@ -1514,14 +1537,18 @@ match caller_decl_coords(scope.clone()) {
 pub fn resource_declaration_identity(
     scope: Rc<InferScope>,
     resource: Rc<Node>,
-) -> Option<Rc<Node>> {
-    crate::v1_compiler_infer_env::lookup_type_by_name(
-        scope.type_env.clone(),
-        type_node_label(
-            resource.clone(),
+) -> Option<Rc<DeclarationRef>> {
+    {
+        let resolved = match resource.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
+            _ => resource.clone(),
+        };
+        crate::v1_compiler_infer_env::declaration_ref_of_type_node(
+            resolved.clone(),
             scope.type_env.clone().source_indices.clone(),
-        ),
-    )
+            scope.type_env.clone(),
+        )
+    }
 }
 
 pub fn established_resource_binding(
@@ -1552,46 +1579,6 @@ pub fn established_resource_binding(
     }
 }
 
-pub fn resource_identity_label(scope: Rc<InferScope>, resource: Rc<Node>) -> String {
-    match resource_declaration_identity(scope.clone(), resource.clone()) {
-        Some(declaration) => type_node_label(
-            declaration.clone(),
-            scope.type_env.clone().source_indices.clone(),
-        ),
-        std::option::Option::None => type_node_label(
-            resource.clone(),
-            scope.type_env.clone().source_indices.clone(),
-        ),
-    }
-}
-
-pub fn resource_requirement_established(
-    scope: Rc<InferScope>,
-    required: Rc<ResourceRequirement>,
-    established: Rc<Vec<Rc<ResourceRequirement>>>,
-) -> bool {
-    (established_resource_binding(scope.clone(), required.clone(), established.clone())
-        != std::option::Option::None)
-}
-
-pub fn caller_is_test_root(scope: Rc<InferScope>) -> bool {
-    match (*crate::v1_compiler_infer_lookup::constructor_declaration_for_admission(
-        scope.type_env.clone(),
-        scope.module_name.clone(),
-        scope.caller_decl_name.clone(),
-    ))
-    .clone()
-    {
-        ConstructorDeclarationLookup::ExactConstructorDeclaration { declaration, .. } => {
-            match declaration.declaration_marker.clone() {
-                DeclarationMarker::TestMarked => true,
-                DeclarationMarker::Unmarked => false,
-            }
-        }
-        _ => false,
-    }
-}
-
 pub fn caller_resource_requirements(scope: Rc<InferScope>) -> Rc<Vec<Rc<ResourceRequirement>>> {
     match v1_rt::map_get(
         &scope.item_registry.clone(),
@@ -1602,647 +1589,6 @@ pub fn caller_resource_requirements(scope: Rc<InferScope>) -> Rc<Vec<Rc<Resource
     ) {
         Some(info) => info.resource_requirements.clone(),
         std::option::Option::None => Rc::new(vec![]),
-    }
-}
-
-pub fn callee_declaration_for_target(
-    scope: Rc<InferScope>,
-    call_target: Rc<CallTargetOutcome>,
-) -> Option<Rc<Node>> {
-    match (*call_target.clone()).clone() {
-        CallTargetOutcome::DeclaredCallableResolved { declared, .. } => {
-            match (*crate::v1_compiler_infer_lookup::constructor_declaration_for_admission(
-                scope.type_env.clone(),
-                declared.owner_module_path.clone(),
-                declared.decl_name.clone(),
-            ))
-            .clone()
-            {
-                ConstructorDeclarationLookup::ExactConstructorDeclaration {
-                    declaration, ..
-                } => Some(declaration.clone()),
-                _ => std::option::Option::None,
-            }
-        }
-        CallTargetOutcome::DeclaredCallableIdentityResolved {
-            borrowed_declaration: declaration,
-            ..
-        } => Some(declaration.clone()),
-        _ => std::option::Option::None,
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ResourceRequirementFrontierRow {
-    pub caller_module_path: String,
-    pub caller_decl_name: String,
-    pub callee_module_path: String,
-    pub callee_decl_name: String,
-    pub resource: String,
-    pub occurrences: i64,
-    pub cause: String,
-    pub dissolution: Rc<DissolutionCondition>,
-}
-
-pub fn resource_requirement_frontier() -> Rc<Vec<Rc<ResourceRequirementFrontierRow>>> {
-    Rc::new(vec![Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.auth.credentials".to_string(),
-    caller_decl_name: "gcp_oauth_access_token".to_string(),
-    callee_module_path: "gunbc.auth.credentials".to_string(),
-    callee_decl_name: "gcp_oauth_access_token_adc_for_path".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.auth.patterns".to_string(),
-    caller_decl_name: "acquire_subject_token".to_string(),
-    callee_module_path: "gunbc.auth.patterns".to_string(),
-    callee_decl_name: "github_oidc".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.auth.patterns".to_string(),
-    caller_decl_name: "acquire_subject_token".to_string(),
-    callee_module_path: "gunbc.auth.patterns".to_string(),
-    callee_decl_name: "metadata_oidc".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 2,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.github_app_acquisition".to_string(),
-    caller_decl_name: "census_app_acquisition_standing".to_string(),
-    callee_module_path: "gunbc.github_app_acquisition".to_string(),
-    callee_decl_name: "live_custody_standing".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    caller_decl_name: "census_app_acquire_for".to_string(),
-    callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    callee_decl_name: "read_handoff_value".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 3,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    caller_decl_name: "census_app_acquire_receipt".to_string(),
-    callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    callee_decl_name: "observed_acquisition_reading".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    caller_decl_name: "census_app_acquire_with_code".to_string(),
-    callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    callee_decl_name: "custody_preflight".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    caller_decl_name: "census_app_acquisition_receipt".to_string(),
-    callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    callee_decl_name: "observed_acquisition_reading".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    caller_decl_name: "census_app_installations_receipt".to_string(),
-    callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    callee_decl_name: "installations_read_exit".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    caller_decl_name: "census_app_observe_receipt".to_string(),
-    callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    callee_decl_name: "observed_acquisition_reading".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    caller_decl_name: "census_app_registration_instruction_receipt".to_string(),
-    callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    callee_decl_name: "observed_acquisition_reading".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    caller_decl_name: "census_app_registration_instruction_receipt".to_string(),
-    callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    callee_decl_name: "read_handoff_value".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    caller_decl_name: "custody_preflight_receipt".to_string(),
-    callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    callee_decl_name: "custody_preflight".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 2,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    caller_decl_name: "custody_write_receipt".to_string(),
-    callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    callee_decl_name: "persist_issued_credentials".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    caller_decl_name: "persist_then_read_back".to_string(),
-    callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    callee_decl_name: "persist_issued_credentials".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.review_sheet_spreadsheet_actuator".to_string(),
-    caller_decl_name: "converge_review_spreadsheet".to_string(),
-    callee_module_path: "gunbc.review_sheet_legacy_extent_producer".to_string(),
-    callee_decl_name: "read_operator_legacy_declaration".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "test.claim.gcp_oauth_access_token_witness".to_string(),
-    caller_decl_name: "gcp_oauth_access_token_dispatch_swapped".to_string(),
-    callee_module_path: "gunbc.auth.credentials".to_string(),
-    callee_decl_name: "gcp_oauth_access_token_via_adc_refresh".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "test.claim.gcp_oauth_access_token_witness".to_string(),
-    caller_decl_name: "witness_adc_refresh_absent_routes_to_adc_leaf".to_string(),
-    callee_module_path: "gunbc.auth.credentials".to_string(),
-    callee_decl_name: "gcp_oauth_access_token_via_adc_refresh".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "test.claim.gcp_oauth_access_token_witness".to_string(),
-    caller_decl_name: "witness_adc_refresh_null_optional_routes_to_adc_leaf".to_string(),
-    callee_module_path: "gunbc.auth.credentials".to_string(),
-    callee_decl_name: "gcp_oauth_access_token_via_adc_refresh".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "test.claim.gcp_oauth_access_token_witness".to_string(),
-    caller_decl_name: "witness_adc_refresh_present_routes_to_adc_leaf".to_string(),
-    callee_module_path: "gunbc.auth.credentials".to_string(),
-    callee_decl_name: "gcp_oauth_access_token_via_adc_refresh".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "test.claim.gcp_oauth_access_token_witness".to_string(),
-    caller_decl_name: "witness_leaves_are_distinguishable".to_string(),
-    callee_module_path: "gunbc.auth.credentials".to_string(),
-    callee_decl_name: "gcp_oauth_access_token_via_adc_refresh".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "test.claim.gcp_oauth_access_token_witness".to_string(),
-    caller_decl_name: "witness_swapped_gcloud_hits_adc_leaf".to_string(),
-    callee_module_path: "gunbc.auth.credentials".to_string(),
-    callee_decl_name: "gcp_oauth_access_token_via_adc_refresh".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "test.claim.review_sheet_header_init_witness".to_string(),
-    caller_decl_name: "plan_over_fixture".to_string(),
-    callee_module_path: "gunbc.review_sheet_formula_observation".to_string(),
-    callee_decl_name: "observe_formula_whole_tab".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "test.claim.review_sheet_legacy_declaration_wet_witness".to_string(),
-    caller_decl_name: "candidacy_over_declaration_file".to_string(),
-    callee_module_path: "gunbc.review_sheet_legacy_extent_producer".to_string(),
-    callee_decl_name: "read_operator_legacy_declaration".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "test.claim.review_sheet_legacy_declaration_wet_witness".to_string(),
-    caller_decl_name: "decision_over_declaration_file".to_string(),
-    callee_module_path: "gunbc.review_sheet_legacy_extent_producer".to_string(),
-    callee_decl_name: "read_operator_legacy_declaration".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "test.probe.census_app_acquisition_forged_probe".to_string(),
-    caller_decl_name: "mint_a_receipt_from_authored_standings".to_string(),
-    callee_module_path: "gunbc.github_app_acquisition".to_string(),
-    callee_decl_name: "census_app_acquisition_standing".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 1,
-    cause: "Predates the wall. The caller authors no `uses` clause for this resource and the interpreter served it ambiently, so the site is correct working code on the interpretation path and has no binding to pass on any emitted path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource (or the corpus gains one authority that propagates the callee's requirement to it), at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    caller_decl_name: "census_app_acquire_with_code".to_string(),
-    callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    callee_decl_name: "persist_then_read_back".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    caller_decl_name: "census_app_acquisition_receipt".to_string(),
-    callee_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    callee_decl_name: "census_app_acquisition_receipt_for".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 1,
-    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.machine_intake_mtcollins1_media_attach".to_string(),
-    caller_decl_name: "mtcollins1_attach_absent_image_control".to_string(),
-    callee_module_path: "gunbc.machine_intake_megarac_media_attach".to_string(),
-    callee_decl_name: "megarac_attach_remote_image".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.machine_intake_mtcollins1_media_attach".to_string(),
-    caller_decl_name: "mtcollins1_attach_diskless_image".to_string(),
-    callee_module_path: "gunbc.machine_intake_megarac_media_attach".to_string(),
-    callee_decl_name: "megarac_attach_remote_image".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.review_sheet_converge_cli".to_string(),
-    caller_decl_name: "converge_drive_half_cli".to_string(),
-    callee_module_path: "gunbc.review_sheet_converge_cli".to_string(),
-    callee_decl_name: "converge_drive_half".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.review_sheet_converge_cli".to_string(),
-    caller_decl_name: "format_converged_spreadsheet".to_string(),
-    callee_module_path: "gunbc.review_sheet_converge_cli".to_string(),
-    callee_decl_name: "format_with_validated_schema".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 3,
-    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.runner_host_file_converge".to_string(),
-    caller_decl_name: "run_runner_host_files".to_string(),
-    callee_module_path: "gunbc.runner_host_file_converge".to_string(),
-    callee_decl_name: "plan_runner_host_file".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.srv3_boot_once_cd".to_string(),
-    caller_decl_name: "srv3_boot_once_cd_gated".to_string(),
-    callee_module_path: "gunbc.srv3_bmc_credential_resolve".to_string(),
-    callee_decl_name: "observe_and_resolve_srv3_bmc_credential".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.srv3_os_install_actuate".to_string(),
-    caller_decl_name: "srv3_bmcweb_session_login".to_string(),
-    callee_module_path: "gunbc.srv3_bmc_credential_resolve".to_string(),
-    callee_decl_name: "observe_and_resolve_srv3_bmc_credential".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.tools.bmc_onboard".to_string(),
-    caller_decl_name: "srv1_converge_credential".to_string(),
-    callee_module_path: "gunbc.tools.bmc_onboard".to_string(),
-    callee_decl_name: "bmc_converge_credential_selected".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.tools.bmc_onboard".to_string(),
-    caller_decl_name: "srv2_converge_credential".to_string(),
-    callee_module_path: "gunbc.tools.bmc_onboard".to_string(),
-    callee_decl_name: "bmc_converge_credential_selected".to_string(),
-    resource: "Network".to_string(),
-    occurrences: 1,
-    cause: "Propagation depth, not pre-existing debt. The callee acquired its `uses` clause during this lane's re-derivation, which moves the requirement to this caller; the census reports one caller ring per run, and the lane's run budget closed before this ring could be authored (more than five sites). Correct working code on the interpretation path.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("the caller authors a `uses` clause establishing this resource, or a resource-requirement closure derived over the call graph names and authors every caller in one change, at which point the typecheck decides this call directly and this row is deleted -- the occurrence count is an equality, so repairing one of several occurrences lowers the row rather than leaving headroom".to_string()),
-}), Rc::new(ResourceRequirementFrontierRow {
-    caller_module_path: "gunbc.instruments.github_app_acquire".to_string(),
-    caller_decl_name: "census_app_acquisition_receipt_for".to_string(),
-    callee_module_path: "gunbc.github_app_acquisition".to_string(),
-    callee_decl_name: "census_app_acquisition_standing".to_string(),
-    resource: "Filesystem".to_string(),
-    occurrences: 1,
-    cause: "The resource-identity fork, not an absent clause. The caller DOES declare this resource; the callee spells it `std.resources.Filesystem`, which resolves to the corpus declaration, while the requirement join resolves the caller's binding to a different, kernel-spanned node, so the two never compare equal (gunbc.recurring_failure_mode a_sibling_refusal_masks_a_ratchet_rows_observation). Respelling either side to make the spellings agree would route around the fork rather than repair it.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("one resolved identity per resource regardless of spelling -- sufficient that a bare and a qualified reference to the same resource declaration resolve to one node at the requirement join, so this caller's authored clause establishes its callee's requirement and the typecheck admits the call directly; this row is then deleted".to_string()),
-})])
-}
-
-pub fn resource_requirement_frontier_trigger(
-    caller_module_path: String,
-    caller_decl_name: String,
-    callee_module_path: String,
-    callee_decl_name: String,
-    resource: String,
-) -> Option<Rc<DissolutionCondition>> {
-    match Rc::new({
-        let mut __result = Vec::new();
-        for r in resource_requirement_frontier().iter().cloned() {
-            if (((((r.caller_module_path.clone() == caller_module_path.clone())
-                && (r.caller_decl_name.clone() == caller_decl_name.clone()))
-                && (r.callee_module_path.clone() == callee_module_path.clone()))
-                && (r.callee_decl_name.clone() == callee_decl_name.clone()))
-                && (r.resource.clone() == resource.clone()))
-            {
-                __result.push(r);
-            }
-        }
-        __result
-    })
-    .first()
-    .cloned()
-    {
-        Some(row) => Some(row.dissolution.clone()),
-        std::option::Option::None => std::option::Option::None,
-    }
-}
-
-pub fn resource_frontier_diag_matches_row(
-    d: Rc<CompilerDiagnostic>,
-    row: Rc<ResourceRequirementFrontierRow>,
-) -> bool {
-    match crate::v1_std_core::diagnostic_resource_frontier_key(d.clone()) {
-        Some(key) => {
-            (((((key.caller_module_path.clone() == row.caller_module_path.clone())
-                && (key.caller_decl_name.clone() == row.caller_decl_name.clone()))
-                && (key.callee_module_path.clone() == row.callee_module_path.clone()))
-                && (key.callee_decl_name.clone() == row.callee_decl_name.clone()))
-                && (key.resource.clone() == row.resource.clone()))
-        }
-        std::option::Option::None => false,
-    }
-}
-
-pub fn resource_frontier_row_observed(
-    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    row: Rc<ResourceRequirementFrontierRow>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for e in diagnostics.iter().cloned() {
-            if resource_frontier_diag_matches_row(e.diagnostic.clone(), row.clone()) {
-                __result.push(e);
-            }
-        }
-        __result
-    })
-}
-
-pub fn resource_frontier_row_budget_diags(
-    row: Rc<ResourceRequirementFrontierRow>,
-    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    module_name: String,
-    module_span: Rc<SourceSpan>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    {
-        let observed = resource_frontier_row_observed(diagnostics.clone(), row.clone());
-        if ((observed.clone().len() as i64) == row.occurrences.clone()) {
-            Rc::new(vec![])
-        } else {
-            Rc::new(vec![crate::v1_std_core::make_error_node(
-                Rc::new(
-                    CompilerDiagnostic::ResourceFrontierOccurrenceBudgetExceeded {
-                        caller_decl_name: row.caller_decl_name.clone(),
-                        callee_module_path: row.callee_module_path.clone(),
-                        callee_decl_name: row.callee_decl_name.clone(),
-                        resource: row.resource.clone(),
-                        declared: row.occurrences.clone(),
-                        observed: (observed.clone().len() as i64),
-                        span: match observed.clone().first().cloned() {
-                            Some(witness) => {
-                                crate::v1_std_core::diagnostic_to_span(witness.diagnostic.clone())
-                            }
-                            std::option::Option::None => module_span.clone(),
-                        },
-                    },
-                ),
-                module_name.clone(),
-            )])
-        }
-    }
-}
-
-pub fn resource_frontier_occurrence_budget_diags(
-    module_name: String,
-    module_span: Rc<SourceSpan>,
-    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for r in Rc::new({
-            let mut __result = Vec::new();
-            for r in resource_requirement_frontier().iter().cloned() {
-                if (r.caller_module_path.clone() == module_name.clone()) {
-                    __result.push(r);
-                }
-            }
-            __result
-        })
-        .iter()
-        .cloned()
-        {
-            __result.extend(
-                (*resource_frontier_row_budget_diags(
-                    r.clone(),
-                    diagnostics.clone(),
-                    module_name.clone(),
-                    module_span.clone(),
-                ))
-                .iter()
-                .cloned(),
-            );
-        }
-        __result
-    })
-}
-
-pub fn resource_requirement_diags(
-    scope: Rc<InferScope>,
-    call_target: Rc<CallTargetOutcome>,
-    span: Rc<SourceSpan>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    {
-        let callee_identity = match (*call_target.clone()).clone() {
-            CallTargetOutcome::DeclaredCallableResolved { declared, .. } => Some(declared.clone()),
-            CallTargetOutcome::DeclaredCallableIdentityResolved { declared, .. } => {
-                Some(declared.clone())
-            }
-            _ => std::option::Option::None,
-        };
-        match callee_identity.clone() {
-    std::option::Option::None => Rc::new(vec![]),
-    Some(callee) => match callee_declaration_for_target(scope.clone(), call_target.clone()) {
-    std::option::Option::None => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("resource requirement contract unreadable for resolved callee '".to_string(), callee.owner_module_path.clone()), ".".to_string()), callee.decl_name.clone()), "': the call resolved to a declaration identity but its declaration could not be read, so its `uses` clause cannot be compared against the caller's. Admitting the call here would fabricate a success over a contract this fold cannot see".to_string()),
-    span: span.clone(),
-}), scope.module_name.clone())]),
-    Some(declaration) => {
-            let required = crate::v1_compiler_infer_items::resource_requirements_of_uses(declaration.uses.clone(), scope.type_env.clone().source_indices.clone());
-if ((required.clone().len() as i64) == 0) {
-                Rc::new(vec![])
-            } else {
-                if caller_is_test_root(scope.clone()) {
-                    Rc::new(vec![])
-                } else {
-                    {
-                        let established = caller_resource_requirements(scope.clone());
-let caller_name = if (scope.caller_decl_name.clone() == "".to_string()) {
-                            "<module scope>".to_string()
-                        } else {
-                            scope.caller_decl_name.clone()
-                        };
-Rc::new({ let mut __result = Vec::new(); for r in Rc::new({ let mut __result = Vec::new(); for r in required.iter().cloned() { if !resource_requirement_established(scope.clone(), r.clone(), established.clone()) { __result.push(r); } } __result }).iter().cloned() { __result.push({
-                            let resource_label = resource_identity_label(scope.clone(), r.resource.clone());
-match resource_requirement_frontier_trigger(scope.module_name.clone(), caller_name.clone(), callee.owner_module_path.clone(), callee.decl_name.clone(), resource_label.clone()) {
-    Some(trigger) => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::ResourceRequirementFrontierAdmitted {
-    callee_module_path: callee.owner_module_path.clone(),
-    callee_decl_name: callee.decl_name.clone(),
-    resource: resource_label.clone(),
-    caller_module_path: scope.module_name.clone(),
-    caller_decl_name: caller_name.clone(),
-    trigger: crate::std_dissolution::dissolution_description(trigger.clone()),
-    span: span.clone(),
-}), scope.module_name.clone()),
-    std::option::Option::None => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::ResourceRequirementUnestablished {
-    callee_module_path: callee.owner_module_path.clone(),
-    callee_decl_name: callee.decl_name.clone(),
-    resource: resource_label.clone(),
-    caller_module_path: scope.module_name.clone(),
-    caller_decl_name: caller_name.clone(),
-    span: span.clone(),
-}), scope.module_name.clone()),
-}
-}); } __result })
-}
-                }
-            }
-},
-},
-}
-    }
-}
-
-pub fn diag_is_resource_requirement_admitted(e: Rc<ErrorNode>) -> bool {
-    (crate::v1_std_core::diagnostic_resource_frontier_key(e.diagnostic.clone())
-        != std::option::Option::None)
-}
-
-pub fn resource_requirement_admitted_diags(
-    scope: Rc<InferScope>,
-    call_target: Rc<CallTargetOutcome>,
-    span: Rc<SourceSpan>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for e in resource_requirement_diags(scope.clone(), call_target.clone(), span.clone())
-            .iter()
-            .cloned()
-        {
-            if diag_is_resource_requirement_admitted(e.clone()) {
-                __result.push(e);
-            }
-        }
-        __result
-    })
-}
-
-pub fn resource_requirement_refusal(
-    func_name: String,
-    scope: Rc<InferScope>,
-    call_target: Rc<CallTargetOutcome>,
-    span: Rc<SourceSpan>,
-) -> Option<Rc<InferResult>> {
-    {
-        let diags = Rc::new({
-            let mut __result = Vec::new();
-            for e in resource_requirement_diags(scope.clone(), call_target.clone(), span.clone())
-                .iter()
-                .cloned()
-            {
-                if !diag_is_resource_requirement_admitted(e.clone()) {
-                    __result.push(e);
-                }
-            }
-            __result
-        });
-        match diags.clone().first().cloned() {
-            std::option::Option::None => std::option::Option::None,
-            Some(_) => Some(Rc::new(InferResult {
-                typed: semantic_expr_error_node(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "resource requirement unestablished for call to '".to_string(),
-                            func_name.clone(),
-                        ),
-                        "'".to_string(),
-                    ),
-                    span.clone(),
-                ),
-                diagnostics: diags.clone(),
-            })),
-        }
     }
 }
 
@@ -9095,15 +8441,8 @@ pub fn frontier_occurrence_budget_checked(
     diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     v1_rt::concat(
-        v1_rt::concat(
-            diagnostics.clone(),
-            frontier_occurrence_budget_diags(
-                module_name.clone(),
-                module_span.clone(),
-                diagnostics.clone(),
-            ),
-        ),
-        resource_frontier_occurrence_budget_diags(
+        diagnostics.clone(),
+        frontier_occurrence_budget_diags(
             module_name.clone(),
             module_span.clone(),
             diagnostics.clone(),
@@ -11289,98 +10628,70 @@ Rc::new(InferResult {
                     span.clone(),
                     scope.clone(),
                 ),
-                _ => {
-                    match constructor_reference_admission_unshadowed(
-                        func_name.clone(),
-                        span.clone(),
-                        scope.clone(),
-                    ) {
-                        Some(refusal) => refusal.clone(),
-                        std::option::Option::None => {
-                            match resource_requirement_refusal(
-                                func_name.clone(),
-                                scope.clone(),
-                                call_target.clone(),
-                                span.clone(),
-                            ) {
-                                Some(refusal) => refusal.clone(),
-                                std::option::Option::None => {
-                                    let sig =
-                                        crate::v1_compiler_infer_sigs::call_target_declared_sig(
-                                            call_target.clone(),
-                                        );
-                                    let sig_params = match sig.clone() {
-                                        Some(s) => s.params.clone(),
-                                        std::option::Option::None => Rc::new(vec![]),
-                                    };
-                                    let call_sig_split = split_sig_params(
-                                        sig_params.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
-                                    );
-                                    let resolved_formals = match sig.clone() {
-                                        Some(s) => match (*s.resolved_formals.clone()).clone() {
-                                            ResolvedFormals::DeclarationBoundFormals {
-                                                formals: formals,
-                                                ..
-                                            } => formals.clone(),
-                                            ResolvedFormals::KernelGroundedFormals {
-                                                formals: formals,
-                                                ..
-                                            } => formals.clone(),
-                                            ResolvedFormals::LocalFormalsAwaitingModuleContext => {
-                                                Rc::new(vec![])
-                                            }
-                                        },
-                                        std::option::Option::None => Rc::new(vec![]),
-                                    };
-                                    let formal_authority_available = match (*call_target.clone())
-                                        .clone()
-                                    {
-                                        CallTargetOutcome::DeclaredCallableResolved {
-                                            sig: s,
-                                            ..
-                                        } => match (*s.resolved_formals.clone()).clone() {
-                                            ResolvedFormals::DeclarationBoundFormals {
-                                                formals: formals,
-                                                ..
-                                            } => {
-                                                ((formals.clone().len() as i64)
-                                                    == (call_sig_split.value_params.clone().len()
-                                                        as i64))
-                                            }
-                                            ResolvedFormals::KernelGroundedFormals {
-                                                formals: formals,
-                                                ..
-                                            } => {
-                                                ((formals.clone().len() as i64)
-                                                    == (call_sig_split.value_params.clone().len()
-                                                        as i64))
-                                            }
-                                            ResolvedFormals::LocalFormalsAwaitingModuleContext => {
-                                                false
-                                            }
-                                        },
-                                        CallTargetOutcome::DeclaredCallableIdentityResolved {
-                                            ..
-                                        } => false,
-                                        CallTargetOutcome::BuiltinCallableResolved {
-                                            primitive_name: _,
-                                            ..
-                                        } => true,
-                                        CallTargetOutcome::LocallyBoundCallee { .. } => true,
-                                        CallTargetOutcome::CallableUnresolved {
-                                            name: _, ..
-                                        } => false,
-                                        CallTargetOutcome::CallableAmbiguous {
-                                            candidates: _,
-                                            ..
-                                        } => false,
-                                        CallTargetOutcome::LocallyBoundBindingMissing {
-                                            name: _,
-                                            ..
-                                        } => false,
-                                    };
-                                    let formal_authority_refusal_reason = match (*call_target.clone()).clone() {
+                _ => match constructor_reference_admission_unshadowed(
+                    func_name.clone(),
+                    span.clone(),
+                    scope.clone(),
+                ) {
+                    Some(refusal) => refusal.clone(),
+                    std::option::Option::None => {
+                        let sig = crate::v1_compiler_infer_sigs::call_target_declared_sig(
+                            call_target.clone(),
+                        );
+                        let sig_params = match sig.clone() {
+                            Some(s) => s.params.clone(),
+                            std::option::Option::None => Rc::new(vec![]),
+                        };
+                        let call_sig_split = split_sig_params(
+                            sig_params.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        );
+                        let resolved_formals = match sig.clone() {
+                            Some(s) => match (*s.resolved_formals.clone()).clone() {
+                                ResolvedFormals::DeclarationBoundFormals {
+                                    formals: formals,
+                                    ..
+                                } => formals.clone(),
+                                ResolvedFormals::KernelGroundedFormals {
+                                    formals: formals, ..
+                                } => formals.clone(),
+                                ResolvedFormals::LocalFormalsAwaitingModuleContext => {
+                                    Rc::new(vec![])
+                                }
+                            },
+                            std::option::Option::None => Rc::new(vec![]),
+                        };
+                        let formal_authority_available = match (*call_target.clone()).clone() {
+                            CallTargetOutcome::DeclaredCallableResolved { sig: s, .. } => {
+                                match (*s.resolved_formals.clone()).clone() {
+                                    ResolvedFormals::DeclarationBoundFormals {
+                                        formals: formals,
+                                        ..
+                                    } => {
+                                        ((formals.clone().len() as i64)
+                                            == (call_sig_split.value_params.clone().len() as i64))
+                                    }
+                                    ResolvedFormals::KernelGroundedFormals {
+                                        formals: formals,
+                                        ..
+                                    } => {
+                                        ((formals.clone().len() as i64)
+                                            == (call_sig_split.value_params.clone().len() as i64))
+                                    }
+                                    ResolvedFormals::LocalFormalsAwaitingModuleContext => false,
+                                }
+                            }
+                            CallTargetOutcome::DeclaredCallableIdentityResolved { .. } => false,
+                            CallTargetOutcome::BuiltinCallableResolved {
+                                primitive_name: _,
+                                ..
+                            } => true,
+                            CallTargetOutcome::LocallyBoundCallee { .. } => true,
+                            CallTargetOutcome::CallableUnresolved { name: _, .. } => false,
+                            CallTargetOutcome::CallableAmbiguous { candidates: _, .. } => false,
+                            CallTargetOutcome::LocallyBoundBindingMissing { name: _, .. } => false,
+                        };
+                        let formal_authority_refusal_reason = match (*call_target.clone()).clone() {
     CallTargetOutcome::DeclaredCallableResolved { sig: s, .. } => match (*s.resolved_formals.clone()).clone() {
     ResolvedFormals::DeclarationBoundFormals { formals: formals, .. } => if ((formals.clone().len() as i64) == (call_sig_split.value_params.clone().len() as i64)) {
                 "".to_string()
@@ -11401,330 +10712,355 @@ Rc::new(InferResult {
     CallTargetOutcome::CallableAmbiguous { candidates: _, .. } => "several declarations answer this call".to_string(),
     CallTargetOutcome::LocallyBoundBindingMissing { name: n, .. } => v1_rt::concat(v1_rt::concat("scope construction defect: ".to_string(), n.clone()), " is a body local with no binding in scope.locals".to_string()),
 };
-                                    let has_lambda = {
-                                        let mut __found = false;
-                                        for a in call_args.iter().cloned() {
-                                            if is_lambda_expr(crate::v1_std_core::arg_value(
-                                                a.clone(),
-                                            )) {
-                                                __found = true;
-                                                break;
-                                            }
-                                        }
-                                        __found
-                                    };
-                                    let call_method_args = Rc::new(
-                                        call_args
-                                            .clone()
-                                            .iter()
-                                            .cloned()
-                                            .skip(1 as usize)
-                                            .collect::<Vec<_>>(),
-                                    );
-                                    let call_method_name = Some(func_name.clone());
-                                    let call_fold_info = extract_fold_init_info(
-                                        call_method_name.clone(),
-                                        call_method_args.clone(),
-                                        2,
-                                        scope.clone(),
-                                        expected.clone(),
-                                    );
-                                    let call_fold_acc_type = match call_fold_info.clone() {
-                                        Some(fi) => crate::v1_compiler_infer_types::resolved_type(
-                                            crate::v1_std_core::arg_value(fi.typed_arg.clone()),
-                                        ),
-                                        std::option::Option::None => error_type(),
-                                    };
-                                    let declared_formal_authority_failed = match (*call_target
-                                        .clone())
-                                    .clone()
+                        let has_lambda = {
+                            let mut __found = false;
+                            for a in call_args.iter().cloned() {
+                                if is_lambda_expr(crate::v1_std_core::arg_value(a.clone())) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        };
+                        let call_method_args = Rc::new(
+                            call_args
+                                .clone()
+                                .iter()
+                                .cloned()
+                                .skip(1 as usize)
+                                .collect::<Vec<_>>(),
+                        );
+                        let call_method_name = Some(func_name.clone());
+                        let call_fold_info = extract_fold_init_info(
+                            call_method_name.clone(),
+                            call_method_args.clone(),
+                            2,
+                            scope.clone(),
+                            expected.clone(),
+                        );
+                        let call_fold_acc_type = match call_fold_info.clone() {
+                            Some(fi) => crate::v1_compiler_infer_types::resolved_type(
+                                crate::v1_std_core::arg_value(fi.typed_arg.clone()),
+                            ),
+                            std::option::Option::None => error_type(),
+                        };
+                        let declared_formal_authority_failed = match (*call_target.clone()).clone()
+                        {
+                            CallTargetOutcome::DeclaredCallableResolved { .. } => {
+                                !formal_authority_available.clone()
+                            }
+                            CallTargetOutcome::DeclaredCallableIdentityResolved { .. } => false,
+                            CallTargetOutcome::BuiltinCallableResolved {
+                                primitive_name: _,
+                                ..
+                            } => false,
+                            CallTargetOutcome::LocallyBoundCallee { .. } => false,
+                            CallTargetOutcome::CallableUnresolved { name: _, .. } => false,
+                            CallTargetOutcome::CallableAmbiguous { candidates: _, .. } => false,
+                            CallTargetOutcome::LocallyBoundBindingMissing { name: _, .. } => false,
+                        };
+                        let arg_call = if declared_formal_authority_failed.clone() {
+                            call_args.iter().cloned().fold(
+                                Rc::new(ArgGenericFoldState {
+                                    subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                                    results: Rc::new(vec![]),
+                                }),
+                                |st: Rc<ArgGenericFoldState>, a: Rc<Node>| {
+                                    let st = v1_rt::take_owned(st);
                                     {
-                                        CallTargetOutcome::DeclaredCallableResolved { .. } => {
-                                            !formal_authority_available.clone()
-                                        }
-                                        CallTargetOutcome::DeclaredCallableIdentityResolved {
-                                            ..
-                                        } => false,
-                                        CallTargetOutcome::BuiltinCallableResolved {
-                                            primitive_name: _,
-                                            ..
-                                        } => false,
-                                        CallTargetOutcome::LocallyBoundCallee { .. } => false,
-                                        CallTargetOutcome::CallableUnresolved {
-                                            name: _, ..
-                                        } => false,
-                                        CallTargetOutcome::CallableAmbiguous {
-                                            candidates: _,
-                                            ..
-                                        } => false,
-                                        CallTargetOutcome::LocallyBoundBindingMissing {
-                                            name: _,
-                                            ..
-                                        } => false,
-                                    };
-                                    let arg_call = if declared_formal_authority_failed.clone() {
-                                        call_args.iter().cloned().fold(Rc::new(ArgGenericFoldState {
-    subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
-    results: Rc::new(vec![]),
-}), |st: Rc<ArgGenericFoldState>, a: Rc<Node>| { let st = v1_rt::take_owned(st); {
-                    let ar = infer_expr(crate::v1_std_core::arg_value(a.clone()), scope.clone(), std::option::Option::None);
-Rc::new(ArgGenericFoldState {
-    subst: st.subst,
-    results: v1_rt::concat(st.results, Rc::new(vec![Rc::new(ArgInferResult {
-    typed_arg: crate::v1_std_core::make_arg_node(a.occurrence_identity.clone(), crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.clone().source_indices.clone()), ar.typed.clone(), a.span.clone(), a.span.clone()),
-    diagnostics: ar.diagnostics.clone(),
-})])),
-})
-} })
-                                    } else {
-                                        if ((has_lambda.clone()
-                                            && ((call_args.clone().len() as i64) >= 2))
-                                            && (sig.clone() == std::option::Option::None))
-                                        {
-                                            Rc::new(ArgGenericFoldState {
-                                                subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
-                                                results: match call_args.clone().first().cloned() {
-                                                    Some(first_arg) => {
-                                                        let first_result = infer_expr(
-                                                            crate::v1_std_core::arg_value(
-                                                                first_arg.clone(),
-                                                            ),
-                                                            scope.clone(),
-                                                            std::option::Option::None,
-                                                        );
-                                                        let first_type = crate::v1_compiler_infer_types::resolved_type(first_result.typed.clone());
-                                                        let elem_type = crate::v1_compiler_infer_types::for_each_element_type_node(first_type.clone(), scope.type_env.clone().source_indices.clone());
-                                                        let call_elem_provenance =
-                                                            derive_element_provenance(
-                                                                first_result.typed.clone(),
-                                                                elem_type.clone(),
-                                                                scope.clone(),
-                                                            );
-                                                        let remaining_results = infer_method_args_with_fold(call_method_name.clone(), call_method_args.clone(), call_fold_info.clone(), call_fold_acc_type.clone(), elem_type.clone(), call_elem_provenance.clone(), Rc::new(DeclaredArgContract::MethodUnresolved), scope.clone());
-                                                        v1_rt::concat(Rc::new(vec![Rc::new(ArgInferResult {
-    typed_arg: crate::v1_std_core::make_arg_node(first_arg.occurrence_identity.clone(), crate::v1_std_core::arg_name_at(first_arg.clone(), scope.type_env.clone().source_indices.clone()), first_result.typed.clone(), first_arg.span.clone(), first_arg.span.clone()),
-    diagnostics: first_result.diagnostics.clone(),
-})]), remaining_results.clone())
-                                                    }
-                                                    std::option::Option::None => Rc::new(vec![]),
-                                                },
-                                            })
-                                        } else {
-                                            {
-                                                let value_params =
-                                                    call_sig_split.value_params.clone();
-                                                let generic_names =
-                                                    call_sig_split.generic_names.clone();
-                                                let first_pass = infer_call_arguments_generic_pass(
-                                                    call_args.clone(),
-                                                    value_params.clone(),
-                                                    resolved_formals.clone(),
-                                                    generic_names.clone(),
-                                                    v1_rt::rc_empty_map::<String, Rc<Node>>(),
-                                                    scope.clone(),
-                                                );
-                                                if call_needs_generic_rebinding_pass(
-                                                    call_args.clone(),
-                                                    generic_names.clone(),
-                                                    first_pass.subst.clone(),
-                                                ) {
-                                                    infer_call_arguments_generic_pass(
-                                                        call_args.clone(),
-                                                        value_params.clone(),
-                                                        resolved_formals.clone(),
-                                                        generic_names.clone(),
-                                                        first_pass.subst.clone(),
-                                                        scope.clone(),
-                                                    )
-                                                } else {
-                                                    first_pass.clone()
-                                                }
-                                            }
-                                        }
-                                    };
-                                    let arg_infer_results = variant_tag_reference_argument_results(
-                                        func_name.clone(),
-                                        crate::v1_compiler_infer_sigs::call_target_is_locally_bound(
-                                            call_target.clone(),
-                                        ),
-                                        arg_call.results.clone(),
-                                        scope.clone(),
-                                    );
-                                    let call_subst = arg_call.subst.clone();
-                                    let typed_args = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for air in arg_infer_results.iter().cloned() {
-                                            __result.push(air.typed_arg.clone());
-                                        }
-                                        __result
-                                    });
-                                    let local_call_view = if (sig.clone()
-                                        != std::option::Option::None)
-                                    {
-                                        std::option::Option::None
-                                    } else {
-                                        match v1_rt::map_get(
-                                            &scope.locals.clone(),
-                                            func_name.clone(),
-                                        ) {
-                                            Some(binding) => Some(
-                                                if (type_node_is_callable(binding.resolved.clone())
-                                                    || !v1_rt::map_has(
-                                                        &scope.body_locals.clone(),
-                                                        func_name.clone(),
-                                                    ))
-                                                {
-                                                    Rc::new(NodeResolveResult {
-                                                        resolved: binding.resolved.clone(),
-                                                        diagnostics: Rc::new(vec![]),
-                                                    })
-                                                } else {
-                                                    expand_type_for_field_access(
-                                                        binding.resolved.clone(),
-                                                        scope.type_env.clone(),
-                                                        scope.module_name.clone(),
-                                                    )
-                                                },
+                                        let ar = infer_expr(
+                                            crate::v1_std_core::arg_value(a.clone()),
+                                            scope.clone(),
+                                            std::option::Option::None,
+                                        );
+                                        Rc::new(ArgGenericFoldState {
+                                            subst: st.subst,
+                                            results: v1_rt::concat(
+                                                st.results,
+                                                Rc::new(vec![Rc::new(ArgInferResult {
+                                                    typed_arg: crate::v1_std_core::make_arg_node(
+                                                        a.occurrence_identity.clone(),
+                                                        crate::v1_std_core::arg_name_at(
+                                                            a.clone(),
+                                                            scope
+                                                                .type_env
+                                                                .clone()
+                                                                .source_indices
+                                                                .clone(),
+                                                        ),
+                                                        ar.typed.clone(),
+                                                        a.span.clone(),
+                                                        a.span.clone(),
+                                                    ),
+                                                    diagnostics: ar.diagnostics.clone(),
+                                                })]),
                                             ),
-                                            std::option::Option::None => std::option::Option::None,
+                                        })
+                                    }
+                                },
+                            )
+                        } else {
+                            if ((has_lambda.clone() && ((call_args.clone().len() as i64) >= 2))
+                                && (sig.clone() == std::option::Option::None))
+                            {
+                                Rc::new(ArgGenericFoldState {
+                                    subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                                    results: match call_args.clone().first().cloned() {
+                                        Some(first_arg) => {
+                                            let first_result = infer_expr(
+                                                crate::v1_std_core::arg_value(first_arg.clone()),
+                                                scope.clone(),
+                                                std::option::Option::None,
+                                            );
+                                            let first_type =
+                                                crate::v1_compiler_infer_types::resolved_type(
+                                                    first_result.typed.clone(),
+                                                );
+                                            let elem_type = crate::v1_compiler_infer_types::for_each_element_type_node(first_type.clone(), scope.type_env.clone().source_indices.clone());
+                                            let call_elem_provenance = derive_element_provenance(
+                                                first_result.typed.clone(),
+                                                elem_type.clone(),
+                                                scope.clone(),
+                                            );
+                                            let remaining_results = infer_method_args_with_fold(
+                                                call_method_name.clone(),
+                                                call_method_args.clone(),
+                                                call_fold_info.clone(),
+                                                call_fold_acc_type.clone(),
+                                                elem_type.clone(),
+                                                call_elem_provenance.clone(),
+                                                Rc::new(DeclaredArgContract::MethodUnresolved),
+                                                scope.clone(),
+                                            );
+                                            v1_rt::concat(
+                                                Rc::new(vec![Rc::new(ArgInferResult {
+                                                    typed_arg: crate::v1_std_core::make_arg_node(
+                                                        first_arg.occurrence_identity.clone(),
+                                                        crate::v1_std_core::arg_name_at(
+                                                            first_arg.clone(),
+                                                            scope
+                                                                .type_env
+                                                                .clone()
+                                                                .source_indices
+                                                                .clone(),
+                                                        ),
+                                                        first_result.typed.clone(),
+                                                        first_arg.span.clone(),
+                                                        first_arg.span.clone(),
+                                                    ),
+                                                    diagnostics: first_result.diagnostics.clone(),
+                                                })]),
+                                                remaining_results.clone(),
+                                            )
                                         }
-                                    };
-                                    let local_call_diags = match local_call_view.clone() {
-                                        Some(view) => view.diagnostics.clone(),
                                         std::option::Option::None => Rc::new(vec![]),
-                                    };
-                                    let local_call_refused = {
-                                        let mut __found = false;
-                                        for d in local_call_diags.iter().cloned() {
-                                            if crate::v1_std_core::is_error_diagnostic(
-                                                d.diagnostic.clone(),
-                                            ) {
-                                                __found = true;
-                                                break;
-                                            }
-                                        }
-                                        __found
-                                    };
-                                    let callable_local = if local_call_refused.clone() {
-                                        std::option::Option::None
+                                    },
+                                })
+                            } else {
+                                {
+                                    let value_params = call_sig_split.value_params.clone();
+                                    let generic_names = call_sig_split.generic_names.clone();
+                                    let first_pass = infer_call_arguments_generic_pass(
+                                        call_args.clone(),
+                                        value_params.clone(),
+                                        resolved_formals.clone(),
+                                        generic_names.clone(),
+                                        v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                                        scope.clone(),
+                                    );
+                                    if call_needs_generic_rebinding_pass(
+                                        call_args.clone(),
+                                        generic_names.clone(),
+                                        first_pass.subst.clone(),
+                                    ) {
+                                        infer_call_arguments_generic_pass(
+                                            call_args.clone(),
+                                            value_params.clone(),
+                                            resolved_formals.clone(),
+                                            generic_names.clone(),
+                                            first_pass.subst.clone(),
+                                            scope.clone(),
+                                        )
                                     } else {
-                                        match local_call_view.clone() {
-                                            Some(view) => {
-                                                if type_node_is_callable(view.resolved.clone()) {
-                                                    Some(view.resolved.clone())
-                                                } else {
-                                                    std::option::Option::None
-                                                }
-                                            }
-                                            std::option::Option::None => std::option::Option::None,
-                                        }
-                                    };
-                                    let arg_diags = v1_rt::concat(
-                                        v1_rt::concat(
-                                            Rc::new({
-                                                let mut __result = Vec::new();
-                                                for air in arg_infer_results.iter().cloned() {
-                                                    __result.extend(
-                                                        (*air.diagnostics.clone()).iter().cloned(),
-                                                    );
-                                                }
-                                                __result
-                                            }),
-                                            local_call_diags.clone(),
-                                        ),
-                                        function_value_call_named_arg_diags(
+                                        first_pass.clone()
+                                    }
+                                }
+                            }
+                        };
+                        let arg_infer_results = variant_tag_reference_argument_results(
+                            func_name.clone(),
+                            crate::v1_compiler_infer_sigs::call_target_is_locally_bound(
+                                call_target.clone(),
+                            ),
+                            arg_call.results.clone(),
+                            scope.clone(),
+                        );
+                        let call_subst = arg_call.subst.clone();
+                        let typed_args = Rc::new({
+                            let mut __result = Vec::new();
+                            for air in arg_infer_results.iter().cloned() {
+                                __result.push(air.typed_arg.clone());
+                            }
+                            __result
+                        });
+                        let local_call_view = if (sig.clone() != std::option::Option::None) {
+                            std::option::Option::None
+                        } else {
+                            match v1_rt::map_get(&scope.locals.clone(), func_name.clone()) {
+                                Some(binding) => Some(
+                                    if (type_node_is_callable(binding.resolved.clone())
+                                        || !v1_rt::map_has(
+                                            &scope.body_locals.clone(),
                                             func_name.clone(),
-                                            typed_args.clone(),
+                                        ))
+                                    {
+                                        Rc::new(NodeResolveResult {
+                                            resolved: binding.resolved.clone(),
+                                            diagnostics: Rc::new(vec![]),
+                                        })
+                                    } else {
+                                        expand_type_for_field_access(
+                                            binding.resolved.clone(),
                                             scope.type_env.clone(),
                                             scope.module_name.clone(),
-                                            scope.body_locals.clone(),
-                                            callable_local.clone(),
-                                        ),
-                                    );
-                                    let formal_authority_diags = if declared_formal_authority_failed
-                                        .clone()
-                                    {
-                                        Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+                                        )
+                                    },
+                                ),
+                                std::option::Option::None => std::option::Option::None,
+                            }
+                        };
+                        let local_call_diags = match local_call_view.clone() {
+                            Some(view) => view.diagnostics.clone(),
+                            std::option::Option::None => Rc::new(vec![]),
+                        };
+                        let local_call_refused = {
+                            let mut __found = false;
+                            for d in local_call_diags.iter().cloned() {
+                                if crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        };
+                        let callable_local = if local_call_refused.clone() {
+                            std::option::Option::None
+                        } else {
+                            match local_call_view.clone() {
+                                Some(view) => {
+                                    if type_node_is_callable(view.resolved.clone()) {
+                                        Some(view.resolved.clone())
+                                    } else {
+                                        std::option::Option::None
+                                    }
+                                }
+                                std::option::Option::None => std::option::Option::None,
+                            }
+                        };
+                        let arg_diags = v1_rt::concat(
+                            v1_rt::concat(
+                                Rc::new({
+                                    let mut __result = Vec::new();
+                                    for air in arg_infer_results.iter().cloned() {
+                                        __result.extend((*air.diagnostics.clone()).iter().cloned());
+                                    }
+                                    __result
+                                }),
+                                local_call_diags.clone(),
+                            ),
+                            function_value_call_named_arg_diags(
+                                func_name.clone(),
+                                typed_args.clone(),
+                                scope.type_env.clone(),
+                                scope.module_name.clone(),
+                                scope.body_locals.clone(),
+                                callable_local.clone(),
+                            ),
+                        );
+                        let formal_authority_diags = if declared_formal_authority_failed.clone() {
+                            Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
     message: v1_rt::concat(v1_rt::concat(v1_rt::concat("resolved direct-call formal authority unavailable for ".to_string(), func_name.clone()), ": ".to_string()), formal_authority_refusal_reason.clone()),
     span: span.clone(),
 }), scope.module_name.clone())])
-                                    } else {
-                                        Rc::new(vec![])
+                        } else {
+                            Rc::new(vec![])
+                        };
+                        let typed_arg_nodes = typed_args.clone();
+                        if (sig.clone() != std::option::Option::None) {
+                            if declared_formal_authority_failed.clone() {
+                                Rc::new(InferResult {
+                                    typed: crate::v1_std_core::make_named_expr_node(
+                                        texpr.occurrence_identity.clone(),
+                                        func_name.clone(),
+                                        Rc::new(ExprData::ExprCall {
+                                            call_semantics: std::option::Option::None,
+                                            descent_evidence: std::option::Option::None,
+                                        }),
+                                        typed_arg_nodes.clone(),
+                                        Some(Rc::new(InferredNode::Resolved {
+                                            node: error_type(),
+                                        })),
+                                        span.clone(),
+                                        crate::v1_std_core::node_name_span(texpr.clone()),
+                                    ),
+                                    diagnostics: v1_rt::concat(
+                                        formal_authority_diags.clone(),
+                                        arg_diags.clone(),
+                                    ),
+                                })
+                            } else {
+                                {
+                                    let resolved_type = match sig.clone() {
+                                        Some(s) => substitute_generics(
+                                            s.inferred.clone(),
+                                            call_subst.clone(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                        ),
+                                        std::option::Option::None => error_type(),
                                     };
-                                    let typed_arg_nodes = typed_args.clone();
-                                    if (sig.clone() != std::option::Option::None) {
-                                        if declared_formal_authority_failed.clone() {
-                                            Rc::new(InferResult {
-                                                typed: crate::v1_std_core::make_named_expr_node(
-                                                    texpr.occurrence_identity.clone(),
-                                                    func_name.clone(),
-                                                    Rc::new(ExprData::ExprCall {
-                                                        call_semantics: std::option::Option::None,
-                                                        descent_evidence: std::option::Option::None,
-                                                    }),
-                                                    typed_arg_nodes.clone(),
-                                                    Some(Rc::new(InferredNode::Resolved {
-                                                        node: error_type(),
-                                                    })),
-                                                    span.clone(),
-                                                    crate::v1_std_core::node_name_span(
-                                                        texpr.clone(),
-                                                    ),
-                                                ),
-                                                diagnostics: v1_rt::concat(
-                                                    formal_authority_diags.clone(),
-                                                    arg_diags.clone(),
-                                                ),
-                                            })
-                                        } else {
-                                            {
-                                                let resolved_type = match sig.clone() {
-                                                    Some(s) => substitute_generics(
-                                                        s.inferred.clone(),
-                                                        call_subst.clone(),
-                                                        scope
-                                                            .type_env
-                                                            .clone()
-                                                            .source_indices
-                                                            .clone(),
-                                                    ),
-                                                    std::option::Option::None => error_type(),
-                                                };
-                                                let value_params_for_check =
-                                                    call_sig_split.value_params.clone();
-                                                let arg_shape_diags = direct_call_shape_diags(
-                                                    func_name.clone(),
-                                                    sig_params.clone(),
-                                                    typed_args.clone(),
-                                                    scope.type_env.clone(),
-                                                    scope.module_name.clone(),
-                                                    span.clone(),
-                                                );
-                                                let call_application_plan =
-                                                    build_call_application_plan(
-                                                        value_params_for_check.clone(),
-                                                        resolved_formals.clone(),
-                                                        typed_args.clone(),
-                                                        call_subst.clone(),
-                                                        scope.type_env.clone(),
-                                                        scope.module_name.clone(),
-                                                    );
-                                                let arg_compat_diags =
-                                                    direct_call_arg_mismatch_diags(
-                                                        call_application_plan.clone(),
-                                                        typed_args.clone(),
-                                                        scope.type_env.clone(),
-                                                        scope.module_name.clone(),
-                                                    );
-                                                let structured_arg_diags = direct_call_structured_application_mismatch_diags(call_application_plan.clone(), typed_args.clone(), scope.clone());
-                                                let inhabitance_arg_diags =
-                                                    direct_call_argument_inhabitance_diags(
-                                                        call_application_plan.clone(),
-                                                        typed_args.clone(),
-                                                        scope.clone(),
-                                                    );
-                                                let generic_type_argument_inhabitance_diags = direct_call_generic_type_argument_inhabitance_diags(call_application_plan.clone(), typed_args.clone(), scope.clone());
-                                                Rc::new(InferResult {
+                                    let value_params_for_check =
+                                        call_sig_split.value_params.clone();
+                                    let arg_shape_diags = direct_call_shape_diags(
+                                        func_name.clone(),
+                                        sig_params.clone(),
+                                        typed_args.clone(),
+                                        scope.type_env.clone(),
+                                        scope.module_name.clone(),
+                                        span.clone(),
+                                    );
+                                    let call_application_plan = build_call_application_plan(
+                                        value_params_for_check.clone(),
+                                        resolved_formals.clone(),
+                                        typed_args.clone(),
+                                        call_subst.clone(),
+                                        scope.type_env.clone(),
+                                        scope.module_name.clone(),
+                                    );
+                                    let arg_compat_diags = direct_call_arg_mismatch_diags(
+                                        call_application_plan.clone(),
+                                        typed_args.clone(),
+                                        scope.type_env.clone(),
+                                        scope.module_name.clone(),
+                                    );
+                                    let structured_arg_diags =
+                                        direct_call_structured_application_mismatch_diags(
+                                            call_application_plan.clone(),
+                                            typed_args.clone(),
+                                            scope.clone(),
+                                        );
+                                    let inhabitance_arg_diags =
+                                        direct_call_argument_inhabitance_diags(
+                                            call_application_plan.clone(),
+                                            typed_args.clone(),
+                                            scope.clone(),
+                                        );
+                                    let generic_type_argument_inhabitance_diags =
+                                        direct_call_generic_type_argument_inhabitance_diags(
+                                            call_application_plan.clone(),
+                                            typed_args.clone(),
+                                            scope.clone(),
+                                        );
+                                    Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::ResolvedDirectCallSemantics {
     target: crate::v1_compiler_infer_lookup::resolved_plain_call_target_for_outcome(call_target.clone()),
@@ -11734,55 +11070,59 @@ Rc::new(ArgGenericFoldState {
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
     node: resolved_type.clone(),
 })), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
-    diagnostics: v1_rt::concat(resource_requirement_admitted_diags(scope.clone(), call_target.clone(), span.clone()), v1_rt::concat(formal_authority_diags.clone(), v1_rt::concat(arg_diags.clone(), v1_rt::concat(arg_shape_diags.clone(), v1_rt::concat(arg_compat_diags.clone(), v1_rt::concat(structured_arg_diags.clone(), v1_rt::concat(inhabitance_arg_diags.clone(), generic_type_argument_inhabitance_diags.clone()))))))),
+    diagnostics: v1_rt::concat(formal_authority_diags.clone(), v1_rt::concat(arg_diags.clone(), v1_rt::concat(arg_shape_diags.clone(), v1_rt::concat(arg_compat_diags.clone(), v1_rt::concat(structured_arg_diags.clone(), v1_rt::concat(inhabitance_arg_diags.clone(), generic_type_argument_inhabitance_diags.clone())))))),
 })
+                                }
+                            }
+                        } else {
+                            {
+                                let first_arg_type = match typed_args.clone().first().cloned() {
+                                    Some(ta) => crate::v1_compiler_infer_types::resolved_type(
+                                        crate::v1_std_core::arg_value(ta.clone()),
+                                    ),
+                                    std::option::Option::None => unit_type(),
+                                };
+                                let method_receiver = match typed_args.clone().first().cloned() {
+                                    Some(ta) => crate::v1_std_core::arg_value(ta.clone()),
+                                    std::option::Option::None => internal_expr_error_node(
+                                        "method bridge missing receiver".to_string(),
+                                        span.clone(),
+                                    ),
+                                };
+                                let call_acc_is_under_resolved =
+                                    !crate::v1_compiler_infer_types::is_fully_resolved(
+                                        call_fold_acc_type.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    );
+                                let refined_call_fold_acc_type = if ((call_fold_info.clone()
+                                    != std::option::Option::None)
+                                    && call_acc_is_under_resolved.clone())
+                                {
+                                    match Rc::new({
+                                        let mut __result = Vec::new();
+                                        for a in typed_args.iter().cloned() {
+                                            if is_lambda_expr(crate::v1_std_core::arg_value(
+                                                a.clone(),
+                                            )) {
+                                                __result.push(a);
                                             }
                                         }
-                                    } else {
-                                        {
-                                            let first_arg_type = match typed_args
-                                                .clone()
-                                                .first()
-                                                .cloned()
-                                            {
-                                                Some(ta) => {
-                                                    crate::v1_compiler_infer_types::resolved_type(
-                                                        crate::v1_std_core::arg_value(ta.clone()),
-                                                    )
-                                                }
-                                                std::option::Option::None => unit_type(),
-                                            };
-                                            let method_receiver =
-                                                match typed_args.clone().first().cloned() {
-                                                    Some(ta) => {
-                                                        crate::v1_std_core::arg_value(ta.clone())
-                                                    }
-                                                    std::option::Option::None => {
-                                                        internal_expr_error_node(
-                                                            "method bridge missing receiver"
-                                                                .to_string(),
-                                                            span.clone(),
-                                                        )
-                                                    }
-                                                };
-                                            let call_acc_is_under_resolved =
-                                                !crate::v1_compiler_infer_types::is_fully_resolved(
-                                                    call_fold_acc_type.clone(),
-                                                    scope.type_env.clone().source_indices.clone(),
-                                                );
-                                            let refined_call_fold_acc_type = if ((call_fold_info
-                                                .clone()
-                                                != std::option::Option::None)
-                                                && call_acc_is_under_resolved.clone())
-                                            {
-                                                match Rc::new({ let mut __result = Vec::new(); for a in typed_args.iter().cloned() { if is_lambda_expr(crate::v1_std_core::arg_value(a.clone())) { __result.push(a); } } __result }).first().cloned() {
-    Some(lambda_arg) => crate::v1_compiler_infer_types::resolved_type(crate::v1_std_core::arg_value(lambda_arg.clone())),
-    std::option::Option::None => call_fold_acc_type.clone(),
-}
-                                            } else {
-                                                call_fold_acc_type.clone()
-                                            };
-                                            let method_resolution = if crate::v1_compiler_infer_env::listed_import_required_bare_call_blocked(scope.type_env.clone(), func_name.clone()) {
+                                        __result
+                                    })
+                                    .first()
+                                    .cloned()
+                                    {
+                                        Some(lambda_arg) => {
+                                            crate::v1_compiler_infer_types::resolved_type(
+                                                crate::v1_std_core::arg_value(lambda_arg.clone()),
+                                            )
+                                        }
+                                        std::option::Option::None => call_fold_acc_type.clone(),
+                                    }
+                                } else {
+                                    call_fold_acc_type.clone()
+                                };
+                                let method_resolution = if crate::v1_compiler_infer_env::listed_import_required_bare_call_blocked(scope.type_env.clone(), func_name.clone()) {
                         Rc::new(KnownMethodResolution {
     semantics: std::option::Option::None,
     result_type: std::option::Option::None,
@@ -11795,41 +11135,40 @@ Rc::new(ArgGenericFoldState {
                             std::option::Option::None
                         }, scope.service_registry.clone(), scope.type_env.clone().source_indices.clone())
                     };
-                                            let callee_is_body_binding = crate::v1_compiler_infer_sigs::call_target_is_locally_bound(call_target.clone());
-                                            let is_known_method = (!callee_is_body_binding.clone()
-                                                && (method_resolution.result_type.clone()
-                                                    != std::option::Option::None));
-                                            if (is_known_method.clone()
-                                                && ((typed_args.clone().len() as i64) > 0))
-                                            {
-                                                {
-                                                    let receiver = method_receiver.clone();
-                                                    let remaining = Rc::new(
-                                                        typed_args
-                                                            .clone()
-                                                            .iter()
-                                                            .cloned()
-                                                            .skip(1 as usize)
-                                                            .collect::<Vec<_>>(),
-                                                    );
-                                                    let base_result_type = match method_resolution
-                                                        .result_type
-                                                        .clone()
-                                                    {
-                                                        Some(mt) => mt.clone(),
-                                                        std::option::Option::None => error_type(),
-                                                    };
-                                                    let method_tv = if (method_resolution
-                                                        .semantics
-                                                        .clone()
-                                                        == std::option::Option::None)
-                                                    {
-                                                        Rc::new(KernelTypeBuild {
-                                                            ty: base_result_type.clone(),
-                                                            diagnostics: Rc::new(vec![]),
-                                                        })
-                                                    } else {
-                                                        match (*method_resolution.semantics.clone().clone().unwrap()).clone() {
+                                let callee_is_body_binding =
+                                    crate::v1_compiler_infer_sigs::call_target_is_locally_bound(
+                                        call_target.clone(),
+                                    );
+                                let is_known_method = (!callee_is_body_binding.clone()
+                                    && (method_resolution.result_type.clone()
+                                        != std::option::Option::None));
+                                if (is_known_method.clone()
+                                    && ((typed_args.clone().len() as i64) > 0))
+                                {
+                                    {
+                                        let receiver = method_receiver.clone();
+                                        let remaining = Rc::new(
+                                            typed_args
+                                                .clone()
+                                                .iter()
+                                                .cloned()
+                                                .skip(1 as usize)
+                                                .collect::<Vec<_>>(),
+                                        );
+                                        let base_result_type =
+                                            match method_resolution.result_type.clone() {
+                                                Some(mt) => mt.clone(),
+                                                std::option::Option::None => error_type(),
+                                            };
+                                        let method_tv = if (method_resolution.semantics.clone()
+                                            == std::option::Option::None)
+                                        {
+                                            Rc::new(KernelTypeBuild {
+                                                ty: base_result_type.clone(),
+                                                diagnostics: Rc::new(vec![]),
+                                            })
+                                        } else {
+                                            match (*method_resolution.semantics.clone().clone().unwrap()).clone() {
     MethodSemantics::AlgebraMethodSemantics { algebra_template: at, .. } => match at.clone() {
     Some(t) => if (crate::v1_compiler_infer_types::template_return_has_variables(t.clone()) || !crate::v1_compiler_infer_types::is_fully_resolved(base_result_type.clone(), scope.type_env.clone().source_indices.clone())) {
                                     {
@@ -11857,128 +11196,131 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
     diagnostics: Rc::new(vec![]),
 }),
 }
-                                                    };
-                                                    let bridge_result_type = method_tv.ty.clone();
-                                                    let template_subst_diags =
-                                                        method_tv.diagnostics.clone();
-                                                    let returns_receiver_self =
-                                                        if (method_resolution.semantics.clone()
-                                                            == std::option::Option::None)
-                                                        {
-                                                            false
-                                                        } else {
-                                                            match (*method_resolution.semantics.clone().clone().unwrap()).clone() {
+                                        };
+                                        let bridge_result_type = method_tv.ty.clone();
+                                        let template_subst_diags = method_tv.diagnostics.clone();
+                                        let returns_receiver_self = if (method_resolution
+                                            .semantics
+                                            .clone()
+                                            == std::option::Option::None)
+                                        {
+                                            false
+                                        } else {
+                                            match (*method_resolution.semantics.clone().clone().unwrap()).clone() {
     MethodSemantics::AlgebraMethodSemantics { algebra_template: at, .. } => match at.clone() {
     Some(t) => crate::v1_compiler_infer_types::template_return_is_receiver_self(t.clone()),
     std::option::Option::None => false,
 },
     _ => false,
 }
-                                                        };
-                                                    let final_receiver = if ((returns_receiver_self.clone() && crate::v1_compiler_infer_types::is_fully_resolved(bridge_result_type.clone(), scope.type_env.clone().source_indices.clone())) && !crate::v1_compiler_infer_types::is_fully_resolved(first_arg_type.clone(), scope.type_env.clone().source_indices.clone())) {
-                                Rc::new(Node {
-    occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-    name: receiver.name.clone(),
-    span: receiver.span.clone(),
-    ident_span: receiver.ident_span.clone(),
-    children: bridge_result_type.children.clone(),
-    connective: receiver.connective.clone(),
-    params: receiver.params.clone(),
-    inferred: Some(Rc::new(InferredNode::Resolved {
-    node: bridge_result_type.clone(),
-})),
-    return_cardinality: receiver.return_cardinality.clone(),
-    uses: receiver.uses.clone(),
-    body: receiver.body.clone(),
-    transport: receiver.transport.clone(),
-    properties: receiver.properties.clone(),
-    type_annotation: receiver.type_annotation.clone(),
-    is_self_recursive: receiver.is_self_recursive.clone(),
-    has_non_tail_self_call: receiver.has_non_tail_self_call.clone(),
-    match_pattern: receiver.match_pattern.clone(),
-    module_item_kind: receiver.module_item_kind.clone(),
-    declaration_marker: receiver.declaration_marker.clone(),
-    expr_data: receiver.expr_data.clone(),
-    ident: None,
-})
-                            } else {
-                                receiver.clone()
-                            };
-                                                    let remaining_arg_nodes = Rc::new({
-                                                        let mut __result = Vec::new();
-                                                        for ta in remaining.iter().cloned() {
-                                                            __result.push(
-                                                                crate::v1_std_core::make_arg_node(
-                                                                    ta.occurrence_identity.clone(),
-                                                                    crate::v1_std_core::arg_name_at(
-                                                                        ta.clone(),
-                                                                        scope
-                                                                            .type_env
-                                                                            .clone()
-                                                                            .source_indices
-                                                                            .clone(),
-                                                                    ),
-                                                                    crate::v1_std_core::arg_value(
-                                                                        ta.clone(),
-                                                                    ),
-                                                                    span.clone(),
-                                                                    span.clone(),
-                                                                ),
-                                                            );
-                                                        }
-                                                        __result
-                                                    });
-                                                    Rc::new(InferResult {
-                                                        typed:
-                                                            crate::v1_std_core::make_named_expr_node(
-                                                                texpr.occurrence_identity.clone(),
-                                                                func_name.clone(),
-                                                                Rc::new(ExprData::ExprMethodCall {
-                                                                    method_semantics:
-                                                                        method_resolution
-                                                                            .semantics
-                                                                            .clone(),
-                                                                }),
-                                                                v1_rt::concat(
-                                                                    Rc::new(vec![
-                                                                        final_receiver.clone()
-                                                                    ]),
-                                                                    remaining_arg_nodes.clone(),
-                                                                ),
-                                                                Some(Rc::new(
-                                                                    InferredNode::Resolved {
-                                                                        node: bridge_result_type
-                                                                            .clone(),
-                                                                    },
-                                                                )),
-                                                                span.clone(),
-                                                                crate::v1_std_core::node_name_span(
-                                                                    texpr.clone(),
-                                                                ),
-                                                            ),
-                                                        diagnostics: v1_rt::concat(
-                                                            arg_diags.clone(),
-                                                            relocated_algebra_evidence_diags(
-                                                                v1_rt::concat(
-                                                                    method_resolution
-                                                                        .diagnostics
-                                                                        .clone(),
-                                                                    template_subst_diags.clone(),
-                                                                ),
-                                                                span.clone(),
-                                                                scope.module_name.clone(),
-                                                            ),
-                                                        ),
-                                                    })
-                                                }
-                                            } else {
-                                                if (!callee_is_body_binding.clone()
-                                                    && (func_name.clone()
-                                                        == "empty_map".to_string()))
-                                                {
-                                                    {
-                                                        let bare_m = crate::v1_compiler_infer_types::bare_map_node();
-                                                        match expected.clone() {
+                                        };
+                                        let final_receiver = if ((returns_receiver_self.clone()
+                                            && crate::v1_compiler_infer_types::is_fully_resolved(
+                                                bridge_result_type.clone(),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            ))
+                                            && !crate::v1_compiler_infer_types::is_fully_resolved(
+                                                first_arg_type.clone(),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            )) {
+                                            Rc::new(Node {
+                                                occurrence_identity: Rc::new(
+                                                    NodeOccurrenceIdentity::OccurrenceSynthetic,
+                                                ),
+                                                name: receiver.name.clone(),
+                                                span: receiver.span.clone(),
+                                                ident_span: receiver.ident_span.clone(),
+                                                children: bridge_result_type.children.clone(),
+                                                connective: receiver.connective.clone(),
+                                                params: receiver.params.clone(),
+                                                inferred: Some(Rc::new(InferredNode::Resolved {
+                                                    node: bridge_result_type.clone(),
+                                                })),
+                                                return_cardinality: receiver
+                                                    .return_cardinality
+                                                    .clone(),
+                                                uses: receiver.uses.clone(),
+                                                body: receiver.body.clone(),
+                                                transport: receiver.transport.clone(),
+                                                properties: receiver.properties.clone(),
+                                                type_annotation: receiver.type_annotation.clone(),
+                                                is_self_recursive: receiver
+                                                    .is_self_recursive
+                                                    .clone(),
+                                                has_non_tail_self_call: receiver
+                                                    .has_non_tail_self_call
+                                                    .clone(),
+                                                match_pattern: receiver.match_pattern.clone(),
+                                                module_item_kind: receiver.module_item_kind.clone(),
+                                                declaration_marker: receiver
+                                                    .declaration_marker
+                                                    .clone(),
+                                                expr_data: receiver.expr_data.clone(),
+                                                ident: None,
+                                            })
+                                        } else {
+                                            receiver.clone()
+                                        };
+                                        let remaining_arg_nodes = Rc::new({
+                                            let mut __result = Vec::new();
+                                            for ta in remaining.iter().cloned() {
+                                                __result.push(crate::v1_std_core::make_arg_node(
+                                                    ta.occurrence_identity.clone(),
+                                                    crate::v1_std_core::arg_name_at(
+                                                        ta.clone(),
+                                                        scope
+                                                            .type_env
+                                                            .clone()
+                                                            .source_indices
+                                                            .clone(),
+                                                    ),
+                                                    crate::v1_std_core::arg_value(ta.clone()),
+                                                    span.clone(),
+                                                    span.clone(),
+                                                ));
+                                            }
+                                            __result
+                                        });
+                                        Rc::new(InferResult {
+                                            typed: crate::v1_std_core::make_named_expr_node(
+                                                texpr.occurrence_identity.clone(),
+                                                func_name.clone(),
+                                                Rc::new(ExprData::ExprMethodCall {
+                                                    method_semantics: method_resolution
+                                                        .semantics
+                                                        .clone(),
+                                                }),
+                                                v1_rt::concat(
+                                                    Rc::new(vec![final_receiver.clone()]),
+                                                    remaining_arg_nodes.clone(),
+                                                ),
+                                                Some(Rc::new(InferredNode::Resolved {
+                                                    node: bridge_result_type.clone(),
+                                                })),
+                                                span.clone(),
+                                                crate::v1_std_core::node_name_span(texpr.clone()),
+                                            ),
+                                            diagnostics: v1_rt::concat(
+                                                arg_diags.clone(),
+                                                relocated_algebra_evidence_diags(
+                                                    v1_rt::concat(
+                                                        method_resolution.diagnostics.clone(),
+                                                        template_subst_diags.clone(),
+                                                    ),
+                                                    span.clone(),
+                                                    scope.module_name.clone(),
+                                                ),
+                                            ),
+                                        })
+                                    }
+                                } else {
+                                    if (!callee_is_body_binding.clone()
+                                        && (func_name.clone() == "empty_map".to_string()))
+                                    {
+                                        {
+                                            let bare_m =
+                                                crate::v1_compiler_infer_types::bare_map_node();
+                                            match expected.clone() {
     Some(exp) => if crate::v1_compiler_infer_types::node_is_keyed_collection(exp.clone(), scope.type_env.clone().source_indices.clone()) {
                                     Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
@@ -12062,15 +11404,15 @@ match bare_m.clone() {
 }),
 },
 }
-                                                    }
-                                                } else {
-                                                    if (!callee_is_body_binding.clone()
-                                                        && (func_name.clone()
-                                                            == "empty_set".to_string()))
-                                                    {
-                                                        {
-                                                            let bare_s = crate::v1_compiler_infer_types::bare_set_node();
-                                                            match expected.clone() {
+                                        }
+                                    } else {
+                                        if (!callee_is_body_binding.clone()
+                                            && (func_name.clone() == "empty_set".to_string()))
+                                        {
+                                            {
+                                                let bare_s =
+                                                    crate::v1_compiler_infer_types::bare_set_node();
+                                                match expected.clone() {
     Some(exp) => if crate::v1_compiler_infer_types::node_is_set_collection(exp.clone(), scope.type_env.clone().source_indices.clone()) {
                                         Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
@@ -12139,9 +11481,9 @@ match bare_s.clone() {
 }),
 },
 }
-                                                        }
-                                                    } else {
-                                                        if (!callee_is_body_binding.clone() && (crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) != std::option::Option::None)) {
+                                            }
+                                        } else {
+                                            if (!callee_is_body_binding.clone() && (crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) != std::option::Option::None)) {
                                     {
                                         let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name.clone(), typed_args.clone(), scope.clone(), span.clone());
 let bt = tier2b.bt.clone();
@@ -12274,16 +11616,13 @@ Rc::new(InferResult {
                                         }
 }
                                 }
-                                                    }
-                                                }
-                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                }
+                },
             }
         }
         ExprData::ExprMethodCall {

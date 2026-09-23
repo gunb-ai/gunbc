@@ -638,15 +638,6 @@ pub enum CompilerDiagnostic {
         observed: i64,
         span: Rc<SourceSpan>,
     },
-    ResourceFrontierOccurrenceBudgetExceeded {
-        caller_decl_name: String,
-        callee_module_path: String,
-        callee_decl_name: String,
-        resource: String,
-        declared: i64,
-        observed: i64,
-        span: Rc<SourceSpan>,
-    },
     TestCodeReferenced {
         referrer: String,
         target: String,
@@ -753,23 +744,6 @@ pub enum CompilerDiagnostic {
     },
     AdmitCallersEntryNotDeclRef {
         constructor_decl_name: String,
-        span: Rc<SourceSpan>,
-    },
-    ResourceRequirementUnestablished {
-        callee_module_path: String,
-        callee_decl_name: String,
-        resource: String,
-        caller_module_path: String,
-        caller_decl_name: String,
-        span: Rc<SourceSpan>,
-    },
-    ResourceRequirementFrontierAdmitted {
-        callee_module_path: String,
-        callee_decl_name: String,
-        resource: String,
-        caller_module_path: String,
-        caller_decl_name: String,
-        trigger: String,
         span: Rc<SourceSpan>,
     },
     DeclaredTypeNotInhabited {
@@ -1024,7 +998,6 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ReceiverTypeUnestablished { span: s, .. } => s.clone(),
         CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { span: s, .. } => s.clone(),
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { span: s, .. } => s.clone(),
-        CompilerDiagnostic::ResourceFrontierOccurrenceBudgetExceeded { span: s, .. } => s.clone(),
         CompilerDiagnostic::TestCodeReferenced { span: s, .. } => s.clone(),
         CompilerDiagnostic::TestCodeReferenceAdmitted { span: s, .. } => s.clone(),
         CompilerDiagnostic::TestCodeReferenceBudgetMismatch { span: s, .. } => s.clone(),
@@ -1049,8 +1022,6 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         }
         CompilerDiagnostic::ConstructorCallAdmissionRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::AdmitCallersEntryNotDeclRef { span: s, .. } => s.clone(),
-        CompilerDiagnostic::ResourceRequirementUnestablished { span: s, .. } => s.clone(),
-        CompilerDiagnostic::ResourceRequirementFrontierAdmitted { span: s, .. } => s.clone(),
         CompilerDiagnostic::DeclaredTypeNotInhabited { span: s, .. } => s.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
@@ -1104,7 +1075,6 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { receiver_type: t, argument_index: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("algebra receiver application evidence unavailable for '".to_string(), t.clone()), "' at argument ".to_string()), (i.clone()).to_string()), ": structural members are not type arguments".to_string()),
     CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method".to_string(),
     CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: d, observed: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the declared frontier row for '".to_string(), m.clone()), v1_rt::concat("' on receiver type '".to_string(), t.clone())), v1_rt::concat(v1_rt::concat("' no longer matches what this module contains: the row declares ".to_string(), (d.clone()).to_string()), v1_rt::concat(" occurrence(s) and ".to_string(), (o.clone()).to_string()))), " were observed here. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.".to_string()),
-    CompilerDiagnostic::ResourceFrontierOccurrenceBudgetExceeded { caller_decl_name: caller_n, callee_module_path: cm, callee_decl_name: cn, resource: r, declared: d, observed: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the declared resource-requirement frontier row for '".to_string(), caller_n.clone()), "' calling '".to_string()), cm.clone()), ".".to_string()), cn.clone()), "' with resource '".to_string()), r.clone()), "' no longer matches what this module contains: the row declares ".to_string()), (d.clone()).to_string()), " occurrence(s) and ".to_string()), (o.clone()).to_string()), " were observed here. If MORE were observed, a new call site has stopped establishing the resource and the `uses` clause should be authored rather than the count raised. If FEWER were observed, the debt has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.".to_string()),
     CompilerDiagnostic::TestCodeReferenced { referrer: r, target: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), r.clone()), "' references test code '".to_string()), t.clone()), "': a `test` declaration is entered only by the witness runner, so no declaration may call, name or import it. Move shared logic into an ordinary fn, or delete a test that only re-asserts other tests".to_string()),
     CompilerDiagnostic::TestCodeReferenceAdmitted { referrer: r, target: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), r.clone()), "' references test code '".to_string()), t.clone()), "'; admitted by the declared test-reference debt ledger (v1.compiler.compile test_reference_debt), which may only shrink".to_string()),
     CompilerDiagnostic::TestCodeReferenceRowOrphaned { referrer: r, .. } => v1_rt::concat(v1_rt::concat("the test-reference debt row for '".to_string(), r.clone()), "' names a module that no longer exists in the corpus: it is neither compiled here nor in the loaded name census. A row that can never be observed again must be deleted, not left to persist".to_string()),
@@ -1127,8 +1097,6 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => crate::std_source_annotation::annotation_attachment_refusal_message(r.clone()),
     CompilerDiagnostic::ConstructorCallAdmissionRefused { constructor_module_path: cm, constructor_decl_name: cn, caller_module_path: caller_m, caller_decl_name: caller_n, permitted_callers: permitted, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("constructor call admission refused: '".to_string(), cm.clone()), ".".to_string()), cn.clone()), "' refuses call from '".to_string()), caller_m.clone()), ".".to_string()), caller_n.clone()), "' — permitted callers: [".to_string()), permitted.clone().join(&", ".to_string())), "]".to_string()),
     CompilerDiagnostic::AdmitCallersEntryNotDeclRef { constructor_decl_name: cn, .. } => v1_rt::concat(v1_rt::concat("admit_callers entry on '".to_string(), cn.clone()), "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored".to_string()),
-    CompilerDiagnostic::ResourceRequirementUnestablished { callee_module_path: cm, callee_decl_name: cn, resource: r, caller_module_path: caller_m, caller_decl_name: caller_n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("resource requirement unestablished: '".to_string(), cm.clone()), ".".to_string()), cn.clone()), "' requires resource '".to_string()), r.clone()), "' and the calling declaration '".to_string()), caller_m.clone()), ".".to_string()), caller_n.clone()), "' establishes no binding of that resource -- a call site must establish every resource its callee declares through `uses`, or the realized call has nothing to pass".to_string()),
-    CompilerDiagnostic::ResourceRequirementFrontierAdmitted { callee_module_path: cm, callee_decl_name: cn, resource: r, caller_module_path: caller_m, caller_decl_name: caller_n, trigger: tr, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("resource requirement unestablished, admitted by a declared frontier row: '".to_string(), cm.clone()), ".".to_string()), cn.clone()), "' requires resource '".to_string()), r.clone()), "' and the calling declaration '".to_string()), caller_m.clone()), ".".to_string()), caller_n.clone()), "' establishes no binding of it. The call is admitted at the typecheck as declared, counted debt -- emission still REFUSES it, because there is no binding to pass. Dissolves on: ".to_string()), tr.clone()),
     CompilerDiagnostic::DeclaredTypeNotInhabited { position: pos, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("value does not inhabit its declared type at the ".to_string(), pos.clone()), ": declared '".to_string()), e.clone()), "', produced '".to_string()), g.clone()), "'".to_string()),
     CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position: pos, reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("declared-type inhabitance is undecidable at the ".to_string(), pos.clone()), " (".to_string()), r.clone()), "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction".to_string()),
     CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
@@ -1167,37 +1135,6 @@ pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
         || (reason.clone() == "predicate argument is not an int literal".to_string()))
         || (reason.clone() == "int predicate not implemented".to_string()))
         || (reason.clone() == "string predicate not implemented".to_string()))
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ResourceFrontierOccurrenceKey {
-    pub caller_module_path: String,
-    pub caller_decl_name: String,
-    pub callee_module_path: String,
-    pub callee_decl_name: String,
-    pub resource: String,
-}
-
-pub fn diagnostic_resource_frontier_key(
-    d: Rc<CompilerDiagnostic>,
-) -> Option<Rc<ResourceFrontierOccurrenceKey>> {
-    match (*d.clone()).clone() {
-        CompilerDiagnostic::ResourceRequirementFrontierAdmitted {
-            callee_module_path: cm,
-            callee_decl_name: cn,
-            resource: r,
-            caller_module_path: caller_m,
-            caller_decl_name: caller_n,
-            ..
-        } => Some(Rc::new(ResourceFrontierOccurrenceKey {
-            caller_module_path: caller_m.clone(),
-            caller_decl_name: caller_n.clone(),
-            callee_module_path: cm.clone(),
-            callee_decl_name: cn.clone(),
-            resource: r.clone(),
-        })),
-        _ => std::option::Option::None,
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1287,10 +1224,6 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => Rc::new(DiagnosticDisposition {
-    severity: DiagnosticSeverity::SeverityError,
-    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
-}),
-    CompilerDiagnostic::ResourceFrontierOccurrenceBudgetExceeded { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -1390,14 +1323,6 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     CompilerDiagnostic::AdmitCallersEntryNotDeclRef { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
-}),
-    CompilerDiagnostic::ResourceRequirementUnestablished { .. } => Rc::new(DiagnosticDisposition {
-    severity: DiagnosticSeverity::SeverityError,
-    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
-}),
-    CompilerDiagnostic::ResourceRequirementFrontierAdmitted { .. } => Rc::new(DiagnosticDisposition {
-    severity: DiagnosticSeverity::SeverityNonError,
-    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::DeclaredTypeNotInhabited { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
