@@ -228,7 +228,9 @@ type V41RowStoreSpecStanding
   = V41RowStoreSpecAdmitted { spec: V41RowStoreEncodingSpec }
   | V41RowStoreSpecRefused { defects: List<NonEmptyStr> }
 
-// THE LIVE SPEC, DERIVED. The storage-backed names select a weight and a scale entry per layer; the
+// THE LIVE SPEC, DERIVED. A layer with no storage-backed tensor has no store; the bucket layout is
+// still drawn over EVERY configured layer, because upstream's primes are never reused across layers.
+// The storage-backed names select a weight and a scale entry per layer; the
 // record geometry is read off their dtypes and second dimensions; the rank ranges are vLLM's layout
 // recomputed from the config facts. The derived bucket rows must equal each layer's published row
 // count -- the two come from different authorities, so a disagreement refuses rather than choosing one.
@@ -243,7 +245,7 @@ fn v41_row_store_spec(population: List<SafetensorsEntry>, partition: V41EngramRe
     V41RowStoreSpecRefused { defects: concat(missing, unnamed) }
   } else {
     let head_sizes = vllm_engram_head_sizes(layer_count: length(tables.layer_ids), max_ngram_size: tables.max_ngram_size, n_heads: tables.n_heads, vocab_size: tables.vocab_size)
-    let per_layer = map(enumerate(tables.layer_ids), p => v41_layer_from_entries(layer: p.second, entries: filter(selected, e => v41_entry_in_layer(e: e, layer: p.second)), head_sizes: get(xs: head_sizes, index: p.first)))
+    let per_layer = map(filter(enumerate(tables.layer_ids), p => any(selected, e => v41_entry_in_layer(e: e, layer: p.second))), p => v41_layer_from_entries(layer: p.second, entries: filter(selected, e => v41_entry_in_layer(e: e, layer: p.second)), head_sizes: get(xs: head_sizes, index: p.first)))
     let defects = flat_map(per_layer, r => r.defects)
     if length(defects) != 0 {
       V41RowStoreSpecRefused { defects: defects }
