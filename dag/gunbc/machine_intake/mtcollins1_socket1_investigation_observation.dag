@@ -2,7 +2,11 @@ module gunbc.machine_intake_mtcollins1_socket1_investigation_observation
 
 import std.types { NonEmptyStr, List }
 import std.nat { Nat }
+import std.measure { Gibibyte, gibibyte }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.publication { SpecificationDocumentDate }
+import extdeps.external_authority { CitedFigureStanding }
+import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout { MtCollinsDimmFigure }
 
 // MT. COLLINS UNIT 1, 2026-09-23: THE SOCKET-1 INVESTIGATION, ONE RECEIPT PER BOOT.
 // This continues the unit's bring-up history rather than starting a second log: the previous
@@ -17,6 +21,37 @@ data mtcollins1_socket1_investigation_predecessor: DeclarationRef = DeclarationR
   module_path: "gunbc.machine_intake_mtcollins1_sixteen_module_restore_observation",
   decl_name: "mtcollins1_sixteen_module_restore_capture",
   field: WholeDeclaration,
+}
+
+// Three standings kept apart by type (§4d): a vendor figure, an operator's by-eye report, and
+// what firmware trained. On 2026-09-23 they were conflated: the operator placed DIMMs by a
+// drawing derived from Figure 9, and the firmware trained connectors the drawing did not name.
+type MtCollins1PhysicalFactStanding
+  = VendorFigureFact { figure: MtCollinsDimmFigure, standing: CitedFigureStanding }
+  | OperatorByEyeReport { observed_on: SpecificationDocumentDate, relay: NonEmptyStr, method: NonEmptyStr }
+  | FirmwareTrainedFact { run_id: Nat, artifact: NonEmptyStr, roster_lines: List<NonEmptyStr> }
+
+// WHICH END THE OPERATOR FACED. "Left" and "right" name nothing without it, so every count or
+// placement carries its own frame; none borrows another report's.
+type MtCollins1ChassisEnd = FrontEnd | RearEnd
+
+type MtCollins1Viewpoint
+  = ViewpointReported { end: MtCollins1ChassisEnd, report: MtCollins1PhysicalFactStanding }
+  | ViewpointNotYetReported { asked: NonEmptyStr }
+
+// The operator's frame for today's counts and drawing-label placements. "usually" is theirs: a
+// later report from another end must carry its own frame and does not inherit this one.
+data mtcollins1_operator_front_report: MtCollins1Viewpoint = ViewpointReported {
+  end: FrontEnd,
+  report: OperatorByEyeReport {
+    observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 },
+    relay: "eager-owl-205 messages msg_3007d41b-4817-487f-8b2c-806c5bd77437 and msg_7a56693a-abd1-40c8-84de-4242a728a8d2",
+    method: "Asked which end they faced for today's placements and counts, the operator said, verbatim: 'i am usually facing the front or J1 side'. A landmark report, independent of the firmware anchors.",
+  },
+}
+
+data mtcollins1_frame_not_asked: MtCollins1Viewpoint = ViewpointNotYetReported {
+  asked: "Not asked for this boot: its placement was described or given by J number, not counted from an edge.",
 }
 
 // A firmware roster line reduced to its identity: socket, memory controller, slot.
@@ -51,9 +86,10 @@ type MtCollins1Socket1InvestigationBoot {
   run_id: Nat
   capture_sha256: NonEmptyStr
   intended: MtCollins1IntendedPlacement
+  operator_frame: MtCollins1Viewpoint
   roster_lines: List<NonEmptyStr>
   trained: List<MtCollins1TrainedSlot>
-  dram_total_gib: Nat
+  dram_total: Gibibyte
   mcu_enable_mask: Nat?
   mcu_enable_mask_line: NonEmptyStr?
   host: MtCollins1HostCpuReading?
@@ -67,6 +103,7 @@ data mtcollins1_socket1_boot_eight_on_socket0: MtCollins1Socket1InvestigationBoo
   run_id: 35793279839,
   capture_sha256: "01b11164fbafddfb4123ca3b49c1dfae731b961d7ef3cfcf6b630996d2a1715b",
   intended: IntendedAsDescribed { description: "8 DIMMs on socket 0, none on socket 1" },
+  operator_frame: mtcollins1_frame_not_asked,
   roster_lines: [
     "SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK",
     "SK0 MC1 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK",
@@ -87,7 +124,7 @@ data mtcollins1_socket1_boot_eight_on_socket0: MtCollins1Socket1InvestigationBoo
     MtCollins1TrainedSlot { socket: 0, controller: 6, slot: 0 },
     MtCollins1TrainedSlot { socket: 0, controller: 7, slot: 0 },
   ],
-  dram_total_gib: 128,
+  dram_total: gibibyte(count: 128),
   mcu_enable_mask: Absent,
   mcu_enable_mask_line: Absent,
   host: Present { value: MtCollins1HostCpuReading { sockets: 1, cpus: 80, numa_nodes: 1 } },
@@ -99,6 +136,7 @@ data mtcollins1_socket1_boot_eight_plus_one: MtCollins1Socket1InvestigationBoot 
   run_id: 35801475989,
   capture_sha256: "cd53370a1dc09abf3eea2efd8cefa47327ee03daa5eb2ad69eb059965164b4b5",
   intended: IntendedAsDescribed { description: "8 DIMMs on socket 0 plus 1 on socket 1" },
+  operator_frame: mtcollins1_frame_not_asked,
   roster_lines: [
     "SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK",
     "SK0 MC4 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
@@ -107,7 +145,7 @@ data mtcollins1_socket1_boot_eight_plus_one: MtCollins1Socket1InvestigationBoot 
     MtCollins1TrainedSlot { socket: 0, controller: 0, slot: 0 },
     MtCollins1TrainedSlot { socket: 0, controller: 4, slot: 0 },
   ],
-  dram_total_gib: 32,
+  dram_total: gibibyte(count: 32),
   mcu_enable_mask: Present { value: 17 },
   mcu_enable_mask_line: Present { value: "mcu_enable_mask = 00000011 [default: 000000ff]" },
   host: Present { value: MtCollins1HostCpuReading { sockets: 1, cpus: 80, numa_nodes: 1 } },
@@ -119,6 +157,7 @@ data mtcollins1_socket1_boot_three_sticks: MtCollins1Socket1InvestigationBoot = 
   run_id: 35805796492,
   capture_sha256: "9e0f534602debb0a9acdf3f2a28611488be4f7dc5141285343a50865d9959155",
   intended: IntendedAtDrawingLabels { labels: [1, 17, 25] },
+  operator_frame: mtcollins1_operator_front_report,
   roster_lines: [
     "SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK",
     "SK0 MC4 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
@@ -127,7 +166,7 @@ data mtcollins1_socket1_boot_three_sticks: MtCollins1Socket1InvestigationBoot = 
     MtCollins1TrainedSlot { socket: 0, controller: 0, slot: 0 },
     MtCollins1TrainedSlot { socket: 0, controller: 4, slot: 0 },
   ],
-  dram_total_gib: 32,
+  dram_total: gibibyte(count: 32),
   mcu_enable_mask: Present { value: 17 },
   mcu_enable_mask_line: Present { value: "mcu_enable_mask = 00000011 [default: 000000ff]" },
   host: Absent,
@@ -144,11 +183,12 @@ data mtcollins1_socket1_boot_two_sticks: MtCollins1Socket1InvestigationBoot = Mt
   run_id: 35808203121,
   capture_sha256: "cb9b7392548d858971efcb81a22f35380699b0885093b4aab55d7caf72ad1660",
   intended: IntendedAtDrawingLabels { labels: [1, 17] },
+  operator_frame: mtcollins1_operator_front_report,
   roster_lines: [
     "SK0 MC4 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
   ],
   trained: [MtCollins1TrainedSlot { socket: 0, controller: 4, slot: 0 }],
-  dram_total_gib: 16,
+  dram_total: gibibyte(count: 16),
   mcu_enable_mask: Present { value: 16 },
   mcu_enable_mask_line: Present { value: "mcu_enable_mask = 00000010 [default: 000000ff]" },
   host: Present { value: MtCollins1HostCpuReading { sockets: 1, cpus: 80, numa_nodes: 1 } },
@@ -165,11 +205,12 @@ data mtcollins1_socket1_boot_canonical_j1_j17: MtCollins1Socket1InvestigationBoo
   run_id: 35810323032,
   capture_sha256: "9c599b8e4510b1c6089dc681639c861f6ada299539ff627c2306a0633927cdef",
   intended: IntendedAtPhysicalConnectors { connectors: [1, 17] },
+  operator_frame: mtcollins1_frame_not_asked,
   roster_lines: [
     "SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
   ],
   trained: [MtCollins1TrainedSlot { socket: 0, controller: 0, slot: 0 }],
-  dram_total_gib: 16,
+  dram_total: gibibyte(count: 16),
   mcu_enable_mask: Present { value: 1 },
   mcu_enable_mask_line: Present { value: "mcu_enable_mask = 00000001 [default: 000000ff]" },
   host: Present { value: MtCollins1HostCpuReading { sockets: 1, cpus: 80, numa_nodes: 1 } },
