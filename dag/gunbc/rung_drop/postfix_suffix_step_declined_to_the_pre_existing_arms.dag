@@ -1,0 +1,42 @@
+module gunbc.rung_drop.postfix_suffix_step_declined_to_the_pre_existing_arms
+
+import std.types { List, NonEmptyStr }
+import gunbc.rung_drop { Standing, RungDrop, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-09-23 (gunbc#12057, review 70293). The previous postfix reader,
+// v2.compiler.body_lowering_fold body_lower_try_postfix_projection, read ONE step of a postfix chain
+// and refused the rest FATAL under postfix_field_access_refused. That refusal covered two different
+// groups. One was the computed-receiver chains this PR lowers, which now lower instead of refusing.
+// The other was a step whose suffix is neither empty nor a parenthesised argument row: the
+// module-qualified record construction `a.b.C { f: v }` and an `as` suffix. The new one-walk chain
+// door does NOT lower that second group. It declines it to the older arms, and the file is still
+// Accepted with only a head-grain advisory, body_lowering_reason_postfix_suffix_carried
+// (v2.workflow.compile_door_cause_ownership). A located refusal becoming a counted advisory on an
+// Accepted file is a drop from MechanicallyPreventable to Mitigatable, and this row declares it.
+//
+// WHY THE DROP AND NOT THE REFUSAL. Refusing these shapes from the new door was measured to turn 32
+// modules that ACCEPT on base into refusals: 28 directly, and 4 as match_arm_navigation_refused,
+// propagating out of a match scrutinee. gunbc#11683 made the same trade for the call-before-end
+// class. Lowering them needs a construct tag that can carry a qualified name, and v2.std.node_query
+// construct_node's tag is a Symbol, so that is a change to the construct shape gunbc#12033 lands and
+// a wider package than this one.
+data postfix_suffix_step_declined_to_the_pre_existing_arms_population: List<String> = [
+  "every module over dag + src/v2 for which v2.compiler.body_lowering_fold emits body_lowering_reason_postfix_suffix_carried: a postfix chain step whose suffix is a brace record-literal (`a.b.C { f: v }`) or an `as` suffix. Measured at 8 of the 42 modules that refused postfix_field_access_refused on base; re-derived by the workload adjudicate over dag + src/v2 (claim_executor --v2-native-route), which counts the advisory per module",
+]
+
+data postfix_suffix_step_declined_to_the_pre_existing_arms: RungDrop = RungDrop {
+  identity: "postfix_suffix_step_declined_to_the_pre_existing_arms" as NonEmptyStr,
+  subject: "native-route body lowering either lowers a postfix chain step whose suffix is a brace record-literal or an `as` suffix, or refuses it located",
+  declared: "2026-09-23",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "a construct tag that carries a qualified name, so the one-walk postfix chain door lowers `a.b.C { f: v }` as a construction and an `as` step as its conversion"
+    },
+    population: postfix_suffix_step_declined_to_the_pre_existing_arms_population,
+    restoration_trigger: "native-route body lowering LOWERS every brace-suffix and `as`-suffix postfix step in dag + src/v2, so that body_lowering_reason_postfix_suffix_carried is emitted for zero modules in the workload adjudicate. Alternatively the door REFUSES those steps located, with no module that accepts on base refusing for any other reason. Changing the construct tag alone does not satisfy this: the trigger is that the population is lowered or refused, not that the carrier exists."
+  }
+}
