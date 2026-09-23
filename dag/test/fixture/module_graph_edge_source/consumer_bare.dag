@@ -1,7 +1,5 @@
 module test.fixture.module_graph_edge_source.consumer_bare
 
-import test.fixture.module_graph_edge_source.provider_referenced { edge_source_only_referenced_value }
-
 fn edge_source_bare_consumer_total() -> Int {
   edge_source_only_referenced_value()
 }
