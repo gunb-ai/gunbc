@@ -3778,10 +3778,15 @@ fn body_lower_postfix_suffix_read(repeat_elem: Node) -> PostfixSuffixRead {
     Present { value: suffix } =>
       if is_empty_conj_root(n: suffix) {
         PostfixSuffixEmpty
-      } else if body_lower_call_suffix_is_paren_list(call_suffix: suffix) {
-        PostfixSuffixCall
       } else {
-        PostfixSuffixUnlowered
+        // A paren call is decided by the ONE reader of a call suffix (#12108's comma-list route):
+        // body_lower_postfix_call_suffix_args answers Present exactly when the suffix opens with `(`,
+        // whether or not its argument list then reads. A malformed list is still a CALL here, so the
+        // fold reaches that reader and it refuses located rather than this read declining it.
+        match body_lower_postfix_call_suffix_args(call_suffix: suffix) {
+          Present { value: _ } => PostfixSuffixCall
+          Absent => PostfixSuffixUnlowered
+        }
       }
   }
 }
