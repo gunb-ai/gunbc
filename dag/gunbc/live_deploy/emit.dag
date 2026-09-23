@@ -51,7 +51,7 @@ import gunbc.executor_privileged_operation {
   executor_privileged_operation_elevated_argv,
   executor_privileged_operation_sudoers_line,
 }
-import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_posix_operator_user, fleet_posix_ci_runner_user }
+import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_rm_binary_path }
 import gunbc.cli_invoke { NamedArgumentAdmission, admit_named_argument }
 import gunbc.auth.approval_ntfy_runtime_observe {
   approval_ntfy_runtime_observe_entry_rel,
@@ -152,8 +152,12 @@ import gunbc.live_deploy.operations {
   deploy_stage_install_command,
   deploy_stage_install_owned_command,
   deploy_stage_visudo_check_command,
-  installed_visudo_check_command,
-  deploy_stage_cmp_installed_command,
+  installed_visudo_policy_check_command,
+  deploy_stage_install_from_command,
+  deploy_stage_cmp_stages_command,
+  rename_no_target_directory_command,
+  pwd_tree_copy_privileged_command,
+  pwd_file_install_privileged_command,
   install_directory_command,
   rm_force_command,
   rm_empty_directory_command,
@@ -1831,51 +1835,93 @@ fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisi
   )
 }
 
-// ── THE RELEASE'S HELPER GRANT: ONE EXACT SUDOERS LINE PER INSTALLED RELEASE ─────────────────
+// ── THE RELEASE'S HELPER GRANT: ONE EXACT SUDOERS LINE OVER A ROOT-OWNED SNAPSHOT ───────────
 // The enrolment-code verb must read the live ntfy process as gunbc-ntfy
-// (gunbc.auth.approval_ntfy_runtime_observe). It does that by running ONE entry of the broker's own
-// released binary through sudo. There is deliberately no `current` symlink (see
-// approval_broker_release_retention_note), so a fixed grant has to name releases/<sha>. The grant
-// is therefore a FUNCTION OF THE RELEASE, derived here from the same release-locus folds the unit's
-// ExecStart reads. It is installed by the same converge that installs the release.
+// (gunbc.auth.approval_ntfy_runtime_observe). It does that by running ONE entry of a released gunbc
+// through sudo. There is deliberately no `current` symlink (see approval_broker_release_retention_note),
+// so a fixed grant names the release sha.
+//
+// THE GRANT NAMES A ROOT-OWNED SNAPSHOT, NOT THE RELEASE DIRECTORY (side-chat HOLD wall 1 on
+// fbf351ecd9). A fixed argv is no wall when the grantee can author its payload, and for `gunbc run`
+// the payload is the binary PLUS every .dag the run interprets. The release directory is owned by the
+// broker's service user, and that is the same account as the grantee (both are briansrls). So the
+// grantee could replace the binary or a source there and run the granted argv as gunbc-ntfy. The
+// grant therefore names /opt/gunbc/approval-broker-helpers/<sha>, a copy made at install by root from
+// the deploying checkout. The binary, both source roots, the entry, and every ancestor directory are
+// root-owned and not group- or world-writable, and the copy contains no symlink. The install reads
+// that back before any grant is written. approval_broker_helper_grant_admission refuses outright a
+// locus whose owner is the grantee, so pointing the grant back at the release directory emits no grant.
 //
 // ONE OPERATION, TWO RENDERINGS. The grant line and the argv the verb runs are both projections of
-// approval_broker_ntfy_runtime_observe_operation, through gunbc.executor_privileged_operation (the
-// same seam that renders every runner-host grant). So there is no spelling in which the grant
-// authorizes a different command from the one the verb runs. The run-as account comes from that
-// module's principal match, not from a literal here.
+// approval_broker_ntfy_runtime_observe_operation, through gunbc.executor_privileged_operation (the seam
+// every runner-host grant renders through). So the grant cannot authorize a command other than the
+// one the verb runs.
 //
-// THE PREVIOUS RELEASE'S LINE IS REMOVED BY CONSTRUCTION, NOT BY A SWEEP. The drop-in holds exactly
-// one grant line, the one for THIS release. Installing it replaces the whole file, so the previous
-// release's line cannot survive a converge that completes. The readback (cmp against the staged
-// bytes) is what shows the replacement happened. A sweep that deleted "other" lines would need to
-// recognize them, which is a pattern -- the wildcard this construction exists to avoid.
-//
-// ORDER: visudo -cf on the STAGED file before install. A malformed line stops the stage there, and
-// never reaches sudoers.d, where it would break sudo for every user on the host. Then install
-// (0440, root-owned), visudo -cf on the INSTALLED path, and cmp. The file's group is the deploying
-// principal's (fleet_posix_ci_runner_user, the srv1 deploy runner, per gunbc.ci_deploy_access
-// ci_deploy_srv1_local_access) so that cmp can read it without a new sudo grant. sudo requires only
-// that a sudoers file is root-owned and not group- or world-WRITABLE, and 0440 is neither.
+// THE DROP-IN IS REPLACED ATOMICALLY, AND ITS IDENTITY IS CHECKED (wall 2). The file holds exactly one
+// grant line, the one for this release. It is written root:root 0440 to a temp name inside
+// sudoers.d that contains a `.`. sudoers(5), "Including other files from within sudoers": files
+// in an @includedir/#includedir directory "that end in the '~' character or contain a '.' character"
+// are skipped. So sudo never reads the temp file. It is checked with `visudo -c -O -P -f` (syntax,
+// owner, group and mode), then renamed over the final path with `mv -T` (one rename(2)). The final
+// path is checked again the same way. Its bytes are read back through a privileged fixed-path copy
+// into the stage and compared. An interruption at any step before the rename leaves the previous
+// release's valid file in place. A partial file only ever exists under the ignored name. The
+// previous release's line disappears in the rename, so nothing sweeps for "other" lines.
 data approval_broker_helper_sudoers_path: NonEmptyStr = "/etc/sudoers.d/gunbc-approval-broker-helpers"
+data approval_broker_helper_sudoers_temp_path: NonEmptyStr = "/etc/sudoers.d/gunbc-approval-broker-helpers.new"
 data approval_broker_helper_sudoers_stage_name: String = "gunbc-approval-broker-helpers.sudoers"
+data approval_broker_helper_sudoers_readback_stage_name: String = "gunbc-approval-broker-helpers.readback"
 data approval_broker_helper_sudoers_mode: NonEmptyStr = "0440"
+data approval_broker_helper_root_principal: NonEmptyStr = "root"
+data approval_broker_helper_snapshot_base: String = "/opt/gunbc/approval-broker-helpers"
 
-fn approval_broker_ntfy_runtime_observe_operation(root: String, revision: ReleaseRevisionBinding) -> ExecutorPrivilegedOperation {
-  let release_dir = approval_broker_release_dir(root: root, revision: revision)
+// WHERE A HELPER RUNS FROM, AND WHO CAN WRITE IT. The owner is the principal that owns every entry in
+// the locus (the install makes it so, and the snapshot readback checks it).
+type HelperLocus {
+  base: String
+  owner: NonEmptyStr
+}
+
+fn approval_broker_helper_snapshot_locus() -> HelperLocus {
+  HelperLocus { base: approval_broker_helper_snapshot_base, owner: approval_broker_helper_root_principal }
+}
+
+// The release locus, named only so its refusal is a control: it is owned by the broker's service
+// user.
+fn approval_broker_release_locus(spec: DeploymentSpec) -> HelperLocus {
+  HelperLocus {
+    base: approval_broker_releases_dir(root: spec.approval_broker.repo_root as String),
+    owner: spec.approval_broker.service_user,
+  }
+}
+
+fn helper_locus_dir(locus: HelperLocus, revision: ReleaseRevisionBinding) -> String {
+  match revision {
+    RevisionBoundAtEmission { revision: r } => join([locus.base, "/", r as String], "")
+    RevisionNotInstalled => approval_broker_release_dir_unbound_poison
+  }
+}
+
+fn approval_broker_ntfy_runtime_observe_operation_at(locus: HelperLocus, revision: ReleaseRevisionBinding) -> ExecutorPrivilegedOperation {
+  let dir = helper_locus_dir(locus: locus, revision: revision)
   RunGunbcEntryAs {
     run_as: approval_ntfy_runtime_observe_run_as(),
-    binary: approval_broker_release_binary_path(root: root, revision: revision) as NonEmptyStr,
-    source_roots: map(approval_broker_tree_subdirs, sub => join([release_dir, "/", sub], "") as NonEmptyStr),
-    entry: join([release_dir, "/", approval_ntfy_runtime_observe_entry_rel as String], "") as NonEmptyStr,
+    binary: join([dir, "/", gunbc_release_bin_name], "") as NonEmptyStr,
+    source_roots: map(approval_broker_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
+    entry: join([dir, "/", approval_ntfy_runtime_observe_entry_rel as String], "") as NonEmptyStr,
     function: approval_ntfy_runtime_observe_function,
   }
 }
 
-// THE ARGV THE VERB RUNS: `sudo -n -u gunbc-ntfy <release>/gunbc run ...`. It is pure and exported
-// so the verb (#12077) builds its invocation from this value, and a claim can pin it.
-fn approval_ntfy_runtime_observe_helper_argv(root: String, revision: ReleaseRevisionBinding) -> List<String> {
-  executor_privileged_operation_elevated_argv(op: approval_broker_ntfy_runtime_observe_operation(root: root, revision: revision))
+fn approval_broker_ntfy_runtime_observe_operation(revision: ReleaseRevisionBinding) -> ExecutorPrivilegedOperation {
+  approval_broker_ntfy_runtime_observe_operation_at(locus: approval_broker_helper_snapshot_locus(), revision: revision)
+}
+
+// THE ARGV THE VERB RUNS: `sudo -n -u gunbc-ntfy /opt/gunbc/approval-broker-helpers/<sha>/gunbc run ...`.
+// It is pure and exported so the verb (#12077) builds its invocation from this value, and a claim can
+// pin it.
+fn approval_ntfy_runtime_observe_helper_argv(revision: ReleaseRevisionBinding) -> List<String> {
+  executor_privileged_operation_elevated_argv(op: approval_broker_ntfy_runtime_observe_operation(revision: revision))
 }
 
 // THE GRANTEE IS THE ACCOUNT THE VERB RUNS AS: the operator's (gunbc.auth.approval_device_routes
@@ -1884,30 +1930,33 @@ fn approval_broker_helper_grantee() -> NonEmptyStr {
   fleet_posix_operator_user.name
 }
 
-fn approval_broker_helper_sudoers_line(root: String, revision: ReleaseRevisionBinding) -> NonEmptyStr {
+fn approval_broker_helper_sudoers_line_at(locus: HelperLocus, revision: ReleaseRevisionBinding) -> NonEmptyStr {
   executor_privileged_operation_sudoers_line(
     grantee: approval_broker_helper_grantee(),
-    op: approval_broker_ntfy_runtime_observe_operation(root: root, revision: revision),
+    op: approval_broker_ntfy_runtime_observe_operation_at(locus: locus, revision: revision),
   )
 }
 
-fn approval_broker_helper_sudoers_content(root: String, revision: ReleaseRevisionBinding) -> String {
+fn approval_broker_helper_sudoers_line(revision: ReleaseRevisionBinding) -> NonEmptyStr {
+  approval_broker_helper_sudoers_line_at(locus: approval_broker_helper_snapshot_locus(), revision: revision)
+}
+
+fn approval_broker_helper_sudoers_content(revision: ReleaseRevisionBinding) -> String {
   join([
     "# GENERATED by gunbc.live_deploy.emit approval_broker_helper_sudoers_content for release ",
     release_revision_execstart_text(binding: revision),
     ". Replaced whole by each broker release install; do not hand-edit.\n",
-    approval_broker_helper_sudoers_line(root: root, revision: revision) as String,
+    approval_broker_helper_sudoers_line(revision: revision) as String,
     "\n",
   ], "")
 }
 
 // THE GRANT'S WORDS MUST BE PLAIN, OR THE GRANT IS NOT EMITTED. A sudoers Cmnd_Spec treats these
-// characters specially: `,` and `:` separate list items, `=`, `!`, `(` and `)` are grammar, `\` escapes,
-// whitespace splits arguments, `#` starts a comment, and `*` `?` `[` `]` are glob metacharacters that
-// would turn an exact match into a pattern. Any of them in a release path would make the line mean
-// something other than this argv, or be refused by visudo. The poisoned RevisionNotInstalled path
-// contains spaces, so an unbound revision is refused here too. The remaining characters are shell
-// quoting and expansion, which could never reach a path this module names verbatim.
+// characters specially: `,` and `:` separate list items, `=`, `!`, `(` and `)` are grammar, `\`
+// escapes, whitespace splits arguments, `#` starts a comment, and `*` `?` `[` `]` are glob
+// metacharacters that would turn an exact match into a pattern. The poisoned RevisionNotInstalled
+// path contains spaces, so an unbound revision is refused here too. The rest are shell quoting and
+// expansion characters, which no path this module names verbatim contains.
 data sudoers_command_word_refused_characters: List<String> = [
   ",", ":", "=", "!", "(", ")", "\\", " ", "\t", "\n", "#", "*", "?", "[", "]", "\"", "'", "$", "`",
 ]
@@ -1915,48 +1964,157 @@ data sudoers_command_word_refused_characters: List<String> = [
 type HelperGrantAdmission
   = HelperGrantAdmitted
   | HelperGrantWordRefused { word: String }
+  | HelperGrantLocusWritableByGrantee { owner: NonEmptyStr }
 
-fn approval_broker_helper_grant_admission(root: String, revision: ReleaseRevisionBinding) -> HelperGrantAdmission {
-  fold(approval_ntfy_runtime_observe_helper_argv(root: root, revision: revision), init: HelperGrantAdmitted, f: (acc, w) =>
-    match acc {
-      HelperGrantWordRefused { word: x } => HelperGrantWordRefused { word: x }
-      HelperGrantAdmitted =>
-        if any(sudoers_command_word_refused_characters, c => string_contains(s: w, pattern: c)) {
-          HelperGrantWordRefused { word: w }
-        } else {
-          HelperGrantAdmitted
-        }
-    }
-  )
-}
-
-data approval_broker_helper_grant_refused_poison: String = "__GUNBC_DEPLOY_REFUSED__ approval-broker helper grant NOT EMITTED: a word of the helper argv carries a sudoers-special character, so its sudoers line would not mean that argv. This marker is not valid shell, so the stage fails before any sudoers file is written. word="
-
-fn approval_broker_helper_grant_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  let root = spec.approval_broker.repo_root as String
-  match approval_broker_helper_grant_admission(root: root, revision: revision) {
-    HelperGrantWordRefused { word: w } => [deploy_raw(command: concat(approval_broker_helper_grant_refused_poison, w))]
-    HelperGrantAdmitted => approval_broker_helper_grant_admitted_steps(root: root, revision: revision)
+fn approval_broker_helper_grant_admission_at(locus: HelperLocus, revision: ReleaseRevisionBinding) -> HelperGrantAdmission {
+  if locus.owner == approval_broker_helper_grantee() {
+    HelperGrantLocusWritableByGrantee { owner: locus.owner }
+  } else {
+    fold(
+      executor_privileged_operation_elevated_argv(op: approval_broker_ntfy_runtime_observe_operation_at(locus: locus, revision: revision)),
+      init: HelperGrantAdmitted,
+      f: (acc, w) =>
+        match acc {
+          HelperGrantWordRefused { word: x } => HelperGrantWordRefused { word: x }
+          HelperGrantLocusWritableByGrantee { owner: o } => HelperGrantLocusWritableByGrantee { owner: o }
+          HelperGrantAdmitted =>
+            if any(sudoers_command_word_refused_characters, c => string_contains(s: w, pattern: c)) {
+              HelperGrantWordRefused { word: w }
+            } else {
+              HelperGrantAdmitted
+            }
+        },
+    )
   }
 }
 
-fn approval_broker_helper_grant_admitted_steps(root: String, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  let dest = approval_broker_helper_sudoers_path as String
+fn approval_broker_helper_grant_admission(revision: ReleaseRevisionBinding) -> HelperGrantAdmission {
+  approval_broker_helper_grant_admission_at(locus: approval_broker_helper_snapshot_locus(), revision: revision)
+}
+
+data approval_broker_helper_grant_refused_poison: String = "__GUNBC_DEPLOY_REFUSED__ approval-broker helper grant NOT EMITTED: "
+
+fn approval_broker_helper_grant_refusal_text(a: HelperGrantAdmission) -> String {
+  match a {
+    HelperGrantAdmitted => ""
+    HelperGrantWordRefused { word: w } => concat("a word of the helper argv carries a sudoers-special character, so its sudoers line would not mean that argv. word=", w)
+    HelperGrantLocusWritableByGrantee { owner: o } => concat("the helper locus is owned by the grantee, who could replace the code the grant executes. owner=", o as String)
+  }
+}
+
+// ── THE ROOT-OWNED SNAPSHOT ──────────────────────────────────────────────────────────────────
+// Every path from / down to the snapshot base, so the readback covers the ancestors too.
+fn path_ancestors_inclusive(path: String) -> List<String> {
+  fold(split(s: path, delimiter: "/"), init: ["/"], f: (acc, seg) =>
+    if seg == "" {
+      acc
+    } else {
+      match acc |> last {
+        Present { value: prev } => concat(acc, [if prev == "/" { concat("/", seg) } else { join([prev, "/", seg], "") }])
+        Absent => acc
+      }
+    })
+}
+
+// THE READBACK THAT MAKES "A SOURCE BYTE REPLACED AFTER INSTALL" IMPOSSIBLE RATHER THAN UNLIKELY.
+// It fails the stage if any entry in the snapshot, or any ancestor of it, is not root-owned, is
+// group- or world-writable, or is a symlink. Owned by root and writable only by root means the
+// grantee cannot change a byte the grant executes.
+// 🟡 dissolve-on: shell syntax assembled as a string (a pipeline and a negation), the same
+// medium-as-string debt approval_broker_tree_digest_expr carries. It dissolves with that one, when
+// v2.workflow.bash_emit renders a piped command from modeled parts.
+// IT IS `test -z "$(...)"`, NOT A NEGATED PIPELINE: bash's -e does not stop on a failing command
+// whose status is inverted with `!`, so `! find ... | grep -q .` would let the stage continue past a
+// writable entry. test's own nonzero status is what -e acts on.
+fn approval_broker_helper_snapshot_readback_command(dir: String) -> String {
+  join([
+    "test -z \"$(", find_program as String, " ", join(path_ancestors_inclusive(path: approval_broker_helper_snapshot_base), " "),
+    " -maxdepth 0 \\( ! -user root -o -perm /022 \\) -print)$(",
+    find_program as String, " ", dir, " \\( ! -user root -o -perm /022 -o -type l \\) -print)\"",
+  ], "")
+}
+
+// RETIREMENT: the previous release's snapshot is removed in the same converge, after the rename has
+// taken its grant away. The sweep is confined to the root-owned snapshot base and keeps exactly this
+// release's directory.
+fn approval_broker_helper_snapshot_retire_command(revision: ReleaseRevisionBinding) -> String {
+  join([
+    find_program as String, " ", approval_broker_helper_snapshot_base,
+    " -mindepth 1 -maxdepth 1 ! -name ", release_revision_execstart_text(binding: revision),
+    " -exec ", join(sudo_elevate_argv(command: [fleet_rm_binary_path as String, "-rf", "--"]), " "), " {} +",
+  ], "")
+}
+
+fn approval_broker_helper_snapshot_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let dir = helper_locus_dir(locus: approval_broker_helper_snapshot_locus(), revision: revision)
+  concat(
+    [
+      deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: approval_broker_helper_snapshot_base, privileged: true)),
+      deploy_raw(command: rm_force_recursive_command(path: dir)),
+      deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: dir, privileged: true)),
+      deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: join([dir, "/src"], ""), privileged: true)),
+    ],
+    concat(
+      map(approval_broker_tree_subdirs, sub =>
+        deploy_raw(command: pwd_tree_copy_privileged_command(rel: sub, dest: join([dir, "/", sub], "")))),
+      [
+        deploy_raw(command: pwd_file_install_privileged_command(
+          rel: join(["target/release/", gunbc_release_bin_name], ""),
+          mode: install_executable_shared_mode,
+          owner: approval_broker_helper_root_principal,
+          group: approval_broker_helper_root_principal,
+          dest: join([dir, "/", gunbc_release_bin_name], ""),
+        )),
+        deploy_raw(command: approval_broker_helper_snapshot_readback_command(dir: dir)),
+      ],
+    ),
+  )
+}
+
+fn approval_broker_helper_grant_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  match approval_broker_helper_grant_admission(revision: revision) {
+    HelperGrantAdmitted => concat(
+      approval_broker_helper_snapshot_steps(revision: revision),
+      concat(
+        approval_broker_helper_grant_admitted_steps(revision: revision),
+        [deploy_raw(command: approval_broker_helper_snapshot_retire_command(revision: revision))],
+      ),
+    )
+    HelperGrantWordRefused { word: w } => [deploy_raw(command: concat(approval_broker_helper_grant_refused_poison, approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w })))]
+    HelperGrantLocusWritableByGrantee { owner: o } => [deploy_raw(command: concat(approval_broker_helper_grant_refused_poison, approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o })))]
+  }
+}
+
+fn approval_broker_helper_grant_admitted_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let final_path = approval_broker_helper_sudoers_path as String
+  let temp_path = approval_broker_helper_sudoers_temp_path as String
   [
     deploy_raw(command: deploy_stage_write_command(
       stage_name: approval_broker_helper_sudoers_stage_name,
-      content: approval_broker_helper_sudoers_content(root: root, revision: revision),
+      content: approval_broker_helper_sudoers_content(revision: revision),
     )),
     deploy_raw(command: deploy_stage_visudo_check_command(stage_name: approval_broker_helper_sudoers_stage_name)),
     deploy_raw(command: deploy_stage_install_owned_command(
       stage_name: approval_broker_helper_sudoers_stage_name,
       mode: approval_broker_helper_sudoers_mode,
-      owner: "root" as NonEmptyStr,
-      group: fleet_posix_ci_runner_user.name,
-      dest: dest,
+      owner: approval_broker_helper_root_principal,
+      group: approval_broker_helper_root_principal,
+      dest: temp_path,
     )),
-    deploy_raw(command: installed_visudo_check_command(dest: dest)),
-    deploy_raw(command: deploy_stage_cmp_installed_command(stage_name: approval_broker_helper_sudoers_stage_name, dest: dest)),
+    deploy_raw(command: installed_visudo_policy_check_command(path: temp_path)),
+    deploy_raw(command: rename_no_target_directory_command(source: temp_path, dest: final_path)),
+    deploy_raw(command: installed_visudo_policy_check_command(path: final_path)),
+    deploy_raw(command: deploy_stage_install_from_command(
+      source: final_path,
+      mode: "0400" as NonEmptyStr,
+      owner: fleet_posix_ci_runner_user.name,
+      group: fleet_posix_ci_runner_user.name,
+      stage_name: approval_broker_helper_sudoers_readback_stage_name,
+    )),
+    deploy_raw(command: deploy_stage_cmp_stages_command(
+      left: approval_broker_helper_sudoers_stage_name,
+      right: approval_broker_helper_sudoers_readback_stage_name,
+    )),
   ]
 }
 
