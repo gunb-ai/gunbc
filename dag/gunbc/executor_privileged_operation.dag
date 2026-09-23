@@ -18,7 +18,6 @@ module gunbc.executor_privileged_operation
 // that capability intent, sudoers command, sudoers file, and installation transaction are four
 // facts, not one carrier. This module owns exactly the second, and projects from the first.
 
-import extdeps.exec.command { ArgvCommand, argv_command }
 import std.types { String, NonEmptyStr, List }
 import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -482,15 +481,6 @@ fn executor_privileged_operation_converge_command(op: ExecutorPrivilegedOperatio
       executor_privileged_operation_shell_command(op: op),
     ], "")
   }
-}
-
-// THE SAME ELEVATED ARGV AS A TYPED COMMAND, for a caller that runs the operation on the local host
-// through gunbc.command_runner rather than rendering it into a script: the words are
-// executor_privileged_operation_elevated_argv's, so the command run, the shell rendering above and the
-// sudoers match all read one derivation.
-fn executor_privileged_operation_command(op: ExecutorPrivilegedOperation) -> ArgvCommand {
-  let e = executor_privileged_operation_elevated(op: op)
-  argv_command(program: e.bin_path as NonEmptyStr, arguments: e.args)
 }
 
 fn executor_privileged_operation_shell_command(op: ExecutorPrivilegedOperation) -> String {

@@ -15,7 +15,8 @@ import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
 import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_slot_unit_timeout_stop }
 import gunbc.runner_microvm_slot_controller { slot_controller_receipt_path }
 import gunbc.runner_microvm_host_ready { microvm_host_binding_wet, MicrovmHostBound, MicrovmHostBindingRefused, microvm_host_binding_refusal_text }
-import gunbc.executor_privileged_operation { SystemdStartUnit, executor_privileged_operation_command }
+import gunbc.executor_privileged_operation { SystemdStartUnit }
+import gunbc.executor_privileged_apply { executor_privileged_operation_command }
 
 // ONE START OF THE SHAKEDOWN SLOT'S CONTROLLER UNIT, AND WHAT IT LEFT BEHIND.
 //
