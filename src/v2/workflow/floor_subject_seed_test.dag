@@ -17,6 +17,8 @@ import v2.workflow.floor_subject_seed {
   ParserTypeOccurrence,
   MatchArmHead,
   NameOccurrence,
+  CallOccurrence,
+  BareDataNameOccurrence,
   InterfaceReadSite,
   ReadInInterface,
   ReadInBody,
@@ -192,4 +194,12 @@ test fn only_growth_and_a_narrowed_roster_plan_less_than_every_reader() -> Bool 
     DroppedCallersOnly { removed_callers: _ } => false
   }
   grown && changed && signature && narrowed && introduced
+}
+
+// A BARE CALL WITH NO IMPORT IS A READ; A BARE NAME IS NOT, unless it spells a changed data value.
+test fn an_unresolved_call_plans_its_module_where_an_unresolved_name_does_not() -> Bool {
+  let call = interface_read_disposition(declaring_candidates: [], changed_module_path: "flatfn.a", channel: CallOccurrence)
+  let data = interface_read_disposition(declaring_candidates: [], changed_module_path: "flatfn.a", channel: BareDataNameOccurrence)
+  let name = interface_read_disposition(declaring_candidates: [], changed_module_path: "flatfn.a", channel: NameOccurrence)
+  read_is_planned(read: call) && read_is_planned(read: data) && !read_is_planned(read: name)
 }

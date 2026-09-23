@@ -198,6 +198,16 @@ pub struct ModuleDeclarationRecord {
     /// Callee spellings authored in this module. Used only to partition cited authorities by
     /// whether the citing module also calls the cited declaration; it is not a resolver.
     pub called: BTreeSet<String>,
+    /// CALL OCCURRENCES at declaration grain: `(in_declaration, callee spelling)` for every call
+    /// node, a peer of `matched_arms`. A call is a genuine read of its callee -- unlike a name
+    /// occurrence it cannot be a binder or a label -- so an EMPTY candidate set here is the
+    /// global-bare channel the compiler resolves a unique top-level fn through after local and
+    /// import lookup miss, and it plans its module.
+    pub called_occurrences: BTreeSet<(String, String)>,
+    /// Module-scope `data` declarations. A bare read of one resolves through the same global-bare
+    /// index as a call, so an unresolved name occurrence that spells a changed DATA declaration
+    /// is admitted as a flat read (bounded: only spellings of a changed data value).
+    pub data_values: BTreeSet<String>,
     /// The authored NAME OCCURRENCES in this module's own tree that name something the module
     /// reaches, paired with the top-level declaration whose subtree carries it:
     /// `(in_declaration, spelling)`.
@@ -1229,6 +1239,15 @@ pub fn record_from_module(
     let mut referenced = BTreeSet::new();
     let mut matched_arms = BTreeSet::new();
     let mut called = BTreeSet::new();
+    let mut called_occurrences = BTreeSet::new();
+    let data_values: BTreeSet<String> = module_items(module.clone())
+        .iter()
+        .filter(|item| {
+            item.module_item_kind == crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
+        })
+        .map(|item| authored_name_at(source_indices.clone(), item.clone()))
+        .filter(|name| !name.is_empty())
+        .collect();
     for item in module_items(module.clone()).iter() {
         let in_declaration = authored_name_at(source_indices.clone(), item.clone());
         collect_reference_occurrences(
@@ -1241,6 +1260,7 @@ pub fn record_from_module(
         );
         for_each_node(item, &mut |node| {
             if is_call(node) && !node.name.is_empty() {
+                called_occurrences.insert((in_declaration.clone(), node.name.clone()));
                 called.insert(node.name.clone());
                 if let Some(tail) = node.name.rsplit('.').next() {
                     called.insert(tail.to_string());
@@ -1253,6 +1273,8 @@ pub fn record_from_module(
         referenced,
         matched_arms,
         called,
+        called_occurrences,
+        data_values,
         authored_type_references: authored_type_references_from_transport(transport, &declared),
         interface_references: interface_type_references(transport, &interface_regions),
         declaration_interfaces,

@@ -12502,6 +12502,90 @@ fn mint(tag: String) -> Sealed = Sealed { tag: tag }\n";
         assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
     }
 
+    /// A globally unique bare fn called with NO import -- the compiler's global-bare channel.
+    const FLATFN_A_BASE: &str = "module flatfn.a\n\nfn convert(x: Int) -> Int {\n  x\n}\n";
+    const FLATFN_A_HEAD: &str = "module flatfn.a\n\nfn convert(x: String) -> String {\n  x\n}\n";
+    const FLATFN_B: &str = "module flatfn.b\n\nfn use_it() -> Int {\n  convert(x: 1)\n}\n";
+    /// A module whose only spelling of `convert` is a LOCAL BINDER: not a read.
+    const FLATFN_BINDER: &str =
+        "module flatfn.l\n\nfn local(convert: Int) -> Int {\n  convert\n}\n";
+    /// A bare read of a changed DATA declaration, no import.
+    const FLATDATA_A_BASE: &str = "module flatdata.a\n\ndata limit: Int = 3\n";
+    const FLATDATA_A_HEAD: &str = "module flatdata.a\n\ndata limit: String = \"3\"\n";
+    const FLATDATA_B: &str = "module flatdata.b\n\nfn bound() -> Int {\n  limit\n}\n";
+
+    /// THE RED: the bare caller is planned through the CALL channel and refuses; the touched
+    /// module alone prepares green (the latent failure); and the plan is attributable to the call
+    /// channel alone -- the caller has no type occurrence or match head naming `convert`, so
+    /// without `called_occurrences` it disappears. The binder-only module is not planned.
+    #[test]
+    fn a_bare_call_with_no_import_plans_its_caller_and_a_binder_plans_nothing() {
+        let (selection, head_fx) = interface_selection(
+            "flatfn",
+            &[
+                ("a.dag", FLATFN_A_BASE),
+                ("b.dag", FLATFN_B),
+                ("l.dag", FLATFN_BINDER),
+            ],
+            &[
+                ("a.dag", FLATFN_A_HEAD),
+                ("b.dag", FLATFN_B),
+                ("l.dag", FLATFN_BINDER),
+            ],
+        );
+        assert_eq!(
+            consumers_of(&selection),
+            vec!["flatfn.b"],
+            "{:?}",
+            selection.consumers
+        );
+        assert!(selection.consumers.iter().all(|c| c.binding
+            == crate::cli_run::namespace_baseline::InterfaceConsumerBinding::BoundThroughFlatBareChannel));
+        let head_index = interface_index(&head_fx);
+        let b = crate::cli_run::declaration_index::index_records(&head_index)
+            .into_iter()
+            .find(|r| r.module_path == "flatfn.b")
+            .expect("b indexed")
+            .clone();
+        assert!(
+            b.called_occurrences
+                .iter()
+                .any(|(_, callee)| callee == "convert")
+                && !b
+                    .authored_type_references
+                    .iter()
+                    .any(|(_, n)| n == "convert")
+                && !b.matched_arms.iter().any(|(_, n)| n == "convert"),
+            "the plan must be attributable to the call channel alone"
+        );
+        let touched_only = prepare_seeds(&head_fx, &["flatfn.a"]);
+        let planned = prepare_seeds(&head_fx, &["flatfn.a", "flatfn.b"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(
+            touched_only.is_ok(),
+            "latent green without the call channel: {touched_only:?}"
+        );
+        assert!(planned.is_err(), "the bare caller must refuse");
+    }
+
+    #[test]
+    fn a_bare_read_of_a_changed_data_value_plans_its_reader() {
+        let (selection, head_fx) = interface_selection(
+            "flatdata",
+            &[("a.dag", FLATDATA_A_BASE), ("b.dag", FLATDATA_B)],
+            &[("a.dag", FLATDATA_A_HEAD), ("b.dag", FLATDATA_B)],
+        );
+        assert_eq!(
+            consumers_of(&selection),
+            vec!["flatdata.b"],
+            "{:?}",
+            selection.changes
+        );
+        let planned = prepare_seeds(&head_fx, &["flatdata.a", "flatdata.b"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(planned.is_err(), "the bare data reader must refuse");
+    }
+
     /// A module seed matches itself and the modules it CONTAINS by name, never a sibling that
     /// merely shares a textual prefix: `armset.y` must not seed `armset.yz`.
     #[test]
