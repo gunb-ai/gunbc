@@ -186,6 +186,8 @@ type Xl2Observation {
   unobserved: List<Xl2UnobservedScope>
 }
 
+// A file-refused module adds nothing here: its refusal is reported once, from the context's own
+// refusal roster in xl2_observe.
 fn xl2_observe_module(
   context: NativeTestContext,
   members: List<Xl2StrippedMember>,
@@ -197,7 +199,6 @@ fn xl2_observe_module(
     refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
     entry: entry
   ) {
-    // Reported once, from the context's own refusal roster in xl2_observe.
     NativeCensusModuleFileRefused => acc
     NativeCensusModuleResolved =>
       Xl2Observation { residual: acc.residual, resolved: acc.resolved + 1, unobserved: acc.unobserved }
