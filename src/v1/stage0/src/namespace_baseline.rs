@@ -166,7 +166,7 @@ fn declarer_of(index: &DeclarationIndex, module: &str, name: &str) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum InterfaceChangeGround {
     /// A coproduct GREW arms and nothing else moved: no arm removed, every surviving arm's payload
-    /// unchanged. A constructor or a projection cannot be stranded by growth; only an exhaustive
+    /// unchanged, and the residual interface outside the arms (name, generic parameters) unchanged. A constructor or a projection cannot be stranded by growth; only an exhaustive
     /// `match` can, so this ground plans MATCH READERS alone (gunbc#11194's original population).
     ArmSetGrown { arms_added: Vec<String> },
     /// A coproduct's arm set differs AND growth alone does not describe it -- an arm removed, or
@@ -187,6 +187,11 @@ pub(crate) enum InterfaceChangeGround {
     /// module and every caller of a widely called constructor.
     AdmittedCallersNarrowed {
         removed_callers: Vec<(String, String)>,
+    },
+    /// A function that admitted ANY caller now carries an `admit_callers:` roster. Every reader
+    /// the roster does not name is stranded; the ones it names are not.
+    AdmissionIntroduced {
+        admitted_callers: Vec<(String, String)>,
     },
     /// The declaration exists at base in this module and not at head. A reader that still
     /// names it is exactly as stale as one reading a retyped field.
@@ -273,14 +278,18 @@ fn direct_interface_changes(
                     let key = (declaration.clone(), arm.clone());
                     base_record.arm_interfaces.get(&key) == head_record.arm_interfaces.get(&key)
                 });
-                out.push(change(if arms_removed.is_empty() && survivors_unchanged {
-                    InterfaceChangeGround::ArmSetGrown { arms_added }
-                } else {
-                    InterfaceChangeGround::ArmSetChanged {
-                        arms_added,
-                        arms_removed,
-                    }
-                }));
+                let residual_unchanged = base_record.coproduct_residuals.get(declaration)
+                    == head_record.coproduct_residuals.get(declaration);
+                out.push(change(
+                    if arms_removed.is_empty() && survivors_unchanged && residual_unchanged {
+                        InterfaceChangeGround::ArmSetGrown { arms_added }
+                    } else {
+                        InterfaceChangeGround::ArmSetChanged {
+                            arms_added,
+                            arms_removed,
+                        }
+                    },
+                ));
                 continue;
             }
         }
@@ -288,28 +297,32 @@ fn direct_interface_changes(
             out.push(change(InterfaceChangeGround::SignatureChanged));
             continue;
         }
-        let empty = BTreeSet::new();
-        let base_admitted = base_record
-            .admitted_callers
-            .get(declaration)
-            .unwrap_or(&empty);
-        let head_admitted = head_record
-            .admitted_callers
-            .get(declaration)
-            .unwrap_or(&empty);
-        let removed_callers: Vec<(String, String)> =
-            base_admitted.difference(head_admitted).cloned().collect();
-        // A roster that appears where there was none narrows admission from "anyone" to its
-        // entries; a roster that disappears widens it. Only the first strands a caller, and the
-        // callers it strands are every reader not on the new roster -- the whole population.
-        if !base_record.admitted_callers.contains_key(declaration)
-            && head_record.admitted_callers.contains_key(declaration)
-        {
-            out.push(change(InterfaceChangeGround::SignatureChanged));
-        } else if !removed_callers.is_empty() {
-            out.push(change(InterfaceChangeGround::AdmittedCallersNarrowed {
-                removed_callers,
-            }));
+        // THE FOUR ROSTER TRANSITIONS, decided on presence first and difference second:
+        //   absent  -> present  narrows "anyone" to the roster: every NON-admitted reader;
+        //   present -> absent   widens to anyone: nobody;
+        //   present -> larger   widens: nobody;
+        //   present -> smaller  narrows: exactly the dropped callers.
+        // Taking `base - head` before asking whether head HAS a roster would read a deleted
+        // roster as narrowing every entry away -- the inverse of what it does.
+        match (
+            base_record.admitted_callers.get(declaration),
+            head_record.admitted_callers.get(declaration),
+        ) {
+            (None, Some(admitted)) => {
+                out.push(change(InterfaceChangeGround::AdmissionIntroduced {
+                    admitted_callers: admitted.iter().cloned().collect(),
+                }));
+            }
+            (Some(base_admitted), Some(head_admitted)) => {
+                let removed_callers: Vec<(String, String)> =
+                    base_admitted.difference(head_admitted).cloned().collect();
+                if !removed_callers.is_empty() {
+                    out.push(change(InterfaceChangeGround::AdmittedCallersNarrowed {
+                        removed_callers,
+                    }));
+                }
+            }
+            (Some(_), None) | (None, None) => {}
         }
     }
     out
@@ -419,6 +432,7 @@ pub(crate) fn interface_changed_consumers(
             if matches!(
                 change.ground,
                 InterfaceChangeGround::AdmittedCallersNarrowed { .. }
+                    | InterfaceChangeGround::AdmissionIntroduced { .. }
                     | InterfaceChangeGround::ArmSetGrown { .. }
             ) {
                 continue;
@@ -429,8 +443,13 @@ pub(crate) fn interface_changed_consumers(
                     if seen.contains(&(record.module_path.clone(), in_declaration.clone())) {
                         continue;
                     }
+                    // A FLAT-CHANNEL interface read propagates too. `interface_references` are the
+                    // parser's own type occurrences, so an empty candidate set there is a genuine
+                    // read the compiler resolves last-writer-wins -- the same read that plans its
+                    // module. Refusing to propagate it would plan B and leave B's readers C
+                    // unplanned while the population read as closed.
                     if read_binding(base, head, record, spelling, &change.module_path, &universe)
-                        != Some(InterfaceConsumerBinding::BoundToDeclaringModule)
+                        .is_none()
                     {
                         continue;
                     }
@@ -513,6 +532,19 @@ pub(crate) fn interface_changed_consumers(
                     }
                     _ => InterfaceConsumerBinding::BoundThroughFlatBareChannel,
                 });
+            }
+            // An introduced roster strands only readers it does not name: a module whose every
+            // reading declaration is admitted stays valid.
+            if let InterfaceChangeGround::AdmissionIntroduced { admitted_callers } = &change.ground
+            {
+                let all_admitted = in_declarations.iter().all(|in_declaration| {
+                    admitted_callers.iter().any(|(module, decl)| {
+                        module == &consumer.module_path && decl == in_declaration
+                    })
+                });
+                if all_admitted {
+                    continue;
+                }
             }
             if let Some(binding) = binding {
                 consumers.push(InterfaceChangedConsumer {

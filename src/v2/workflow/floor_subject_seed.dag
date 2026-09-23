@@ -54,13 +54,18 @@ type PreparedSubjectSeedGround
 // narrower than "every reader": pure arm GROWTH (no arm removed, no surviving payload changed)
 // can stale only an exhaustive match, so it plans match readers alone; and a caller roster
 // (`admit_callers:`) is not interface text at all -- growing it strands nobody, narrowing it
-// strands exactly the dropped callers, which are the only modules it plans.
+// strands exactly the dropped callers, which are the only modules it plans. Roster transitions
+// are decided on PRESENCE first: absent -> present strands every reader the roster does not
+// name; present -> absent and present -> larger strand nobody; present -> smaller strands the
+// dropped callers. Pure growth also requires the residual interface outside the arms (name,
+// generic parameters) to be unchanged.
 type InterfaceChangeGround
   = ArmSetGrown { arms_added: List<String> }
   | ArmSetChanged { arms_added: List<String>, arms_removed: List<String> }
   | SignatureChanged
   | DeclarationRemoved
   | AdmittedCallersNarrowed { removed_callers: List<String> }
+  | AdmissionIntroduced { admitted_callers: List<String> }
   | PropagatedThrough { module_path: String, declaration: String }
 
 // WHICH READERS A CHANGE CAN STRAND, per ground -- the host's consumer loop is a projection of
@@ -70,6 +75,7 @@ type InterfaceReaderPopulation
   = EveryReader
   | MatchReadersOnly
   | DroppedCallersOnly { removed_callers: List<String> }
+  | EveryReaderExceptAdmitted { admitted_callers: List<String> }
 
 fn interface_reader_population(ground: InterfaceChangeGround) -> InterfaceReaderPopulation {
   match ground {
@@ -78,12 +84,15 @@ fn interface_reader_population(ground: InterfaceChangeGround) -> InterfaceReader
     SignatureChanged => EveryReader
     DeclarationRemoved => EveryReader
     AdmittedCallersNarrowed { removed_callers: removed } => DroppedCallersOnly { removed_callers: removed }
+    AdmissionIntroduced { admitted_callers: admitted } => EveryReaderExceptAdmitted { admitted_callers: admitted }
     PropagatedThrough { module_path: _, declaration: _ } => EveryReader
   }
 }
 
 // WHERE A READ OF A CHANGED DECLARATION SITS inside the reading declaration. Only an interface
-// read PROPAGATES: a product whose field is a re-branded alias has itself changed, so ITS readers
+// read PROPAGATES -- through EITHER binding: a flat-channel interface read is the parser's own
+// type occurrence, the same read that plans its module, and refusing to propagate it would plan
+// B while leaving B's readers C unplanned under a population that reads as closed: a product whose field is a re-branded alias has itself changed, so ITS readers
 // are planned; a function whose body alone reads the changed type is planned and its callers are
 // not. That is the rule that keeps the dependents walk from becoming "every reverse importer".
 type InterfaceReadSite
@@ -95,7 +104,7 @@ fn interface_change_propagates(site: InterfaceReadSite, binding: InterfaceConsum
     ReadInInterface =>
       match binding {
         BoundToDeclaringModule => true
-        BoundThroughFlatBareChannel => false
+        BoundThroughFlatBareChannel => true
       }
     ReadInBody => false
   }

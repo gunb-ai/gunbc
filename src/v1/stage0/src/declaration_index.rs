@@ -280,6 +280,11 @@ pub struct ModuleDeclarationRecord {
     /// none removed -- only an exhaustive `match` can go stale) from a change that can break a
     /// constructor too.
     pub arm_interfaces: BTreeMap<(String, String), String>,
+    /// COPRODUCT RESIDUALS: coproduct -> its interface text BEFORE its first arm (name, generic
+    /// parameters, anything the arms do not carry). Growth is PURE only when this is unchanged
+    /// too: `Result<T> = Ok` -> `Result<T, E> = Ok | Err` adds an arm AND changes the arity every
+    /// `Result<Int>` reader spells.
+    pub coproduct_residuals: BTreeMap<String, String>,
     pub declares_construction_justification: bool,
     /// Whether this module is a witness or fixture carrier. See `module_is_fixture_carrier`.
     pub is_fixture_carrier: bool,
@@ -929,13 +934,21 @@ fn admitted_callers_of(
 /// The names and string literals of the unpositioned nodes below `node`, body excluded, in tree
 /// order. See `InterfaceRegion::unpositioned`.
 fn unpositioned_interface_parts(node: &Rc<Node>, file: &str, out: &mut Vec<String>) {
+    // An unpositioned node is serialized CANONICALLY: its name, its literal of EVERY kind (a
+    // `range(min: 1, max: 5)` bound is an Int, and a string-only reading made 5 -> 6 invisible),
+    // and its children inside brackets so argument position and nesting are part of the reading.
+    // A positioned node contributes nothing itself -- its text is already in the region.
     let positioned = node.span.file == file && node.span.end > node.span.start;
     if !positioned {
+        out.push("(".to_string());
         if !node.name.is_empty() {
             out.push(node.name.clone());
         }
-        if let Some(literal) = expr_literal_string_optional(node.clone()) {
-            out.push(format!("{literal:?}"));
+        match node.expr_data.as_ref() {
+            ExprData::ExprLiteral { value } | ExprData::ExprElaboratedLiteral { value, .. } => {
+                out.push(format!("{value:?}"));
+            }
+            _ => {}
         }
     }
     for child in node
@@ -956,6 +969,9 @@ fn unpositioned_interface_parts(node: &Rc<Node>, file: &str, out: &mut Vec<Strin
         if let crate::v1_std_core::InferredNode::Resolved { node: parked } = inferred.as_ref() {
             unpositioned_interface_parts(parked, file, out);
         }
+    }
+    if !positioned {
+        out.push(")".to_string());
     }
 }
 
@@ -1033,15 +1049,22 @@ fn interface_text(
             }),
         )
     };
-    let mut raw = String::new();
-    let mut cursor = region.start;
-    for (e_start, e_end) in &region.elided {
-        raw.push_str(&read(cursor, *e_start));
-        raw.push_str(" {} ");
-        cursor = *e_end;
+    // A declaration with an elided part (a body, a caller roster) is interface only UP TO the
+    // first of them: the signature. Everything after -- the roster's delimiters, `=`, the body,
+    // its closing brace -- is not interface, and the parser's subtree extents do not cover the
+    // delimiters, so reading around the elided ranges would leave `)]` or `=` behind and make a
+    // roster's presence alone read as a signature change.
+    let raw = match region.elided.first() {
+        Some((first_elided, _)) => read(region.start, *first_elided),
+        None => read(region.start, region.end),
+    };
+    let mut words: Vec<&str> = raw.split_whitespace().collect();
+    // The token that opens a body (`=` or `{`) is delimiter syntax: a roster before the body
+    // hides it, a bare body shows it, and neither is interface.
+    if !region.elided.is_empty() && matches!(words.last(), Some(&"=") | Some(&"{")) {
+        words.pop();
     }
-    raw.push_str(&read(cursor, region.end));
-    let text = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    let text = words.join(" ");
     if region.unpositioned.is_empty() {
         text
     } else {
@@ -1099,6 +1122,7 @@ pub fn record_from_module(
     let mut interface_regions: Vec<InterfaceRegion> = Vec::new();
     let mut admitted_callers: BTreeMap<String, BTreeSet<(String, String)>> = BTreeMap::new();
     let mut arm_interfaces: BTreeMap<(String, String), String> = BTreeMap::new();
+    let mut coproduct_residuals: BTreeMap<String, String> = BTreeMap::new();
     for item in module_items(module.clone()).iter() {
         let name = authored_name_at(source_indices.clone(), item.clone());
         if name.is_empty() {
@@ -1109,6 +1133,19 @@ pub fn record_from_module(
             admitted_callers.insert(name.clone(), admitted);
         }
         if item.connective == Connective::Disj {
+            let mut residual = interface_region(item, &name);
+            residual.elided.clear();
+            residual.unpositioned.clear();
+            for v in item.children.iter() {
+                let mut extent: Option<(i64, i64)> = None;
+                subtree_extent(v, &residual.file, &mut extent);
+                if let Some((arm_start, _)) = extent {
+                    if arm_start > residual.start {
+                        residual.end = residual.end.min(arm_start);
+                    }
+                }
+            }
+            coproduct_residuals.insert(name.clone(), interface_text(&residual, source_indices));
             let arms = coproduct_arms.entry(name.clone()).or_default();
             for v in item.children.iter() {
                 let vname = authored_name_at(source_indices.clone(), v.clone());
@@ -1221,6 +1258,7 @@ pub fn record_from_module(
         declaration_interfaces,
         admitted_callers,
         arm_interfaces,
+        coproduct_residuals,
         declares_construction_justification: declared.contains(CONSTRUCTION_JUSTIFICATION_DECL),
         is_fixture_carrier: module_is_fixture_carrier(&module_path, rel_path),
         module_path,

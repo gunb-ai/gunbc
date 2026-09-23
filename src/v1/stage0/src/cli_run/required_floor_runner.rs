@@ -5932,6 +5932,9 @@ pub fn run_required_floor(
                         InterfaceChangeGround::DeclarationRemoved => {
                             "DeclarationRemoved".to_string()
                         }
+                        InterfaceChangeGround::AdmissionIntroduced { admitted_callers } => {
+                            format!("AdmissionIntroduced admitted_callers={admitted_callers:?}")
+                        }
                         InterfaceChangeGround::AdmittedCallersNarrowed { removed_callers } => {
                             format!("AdmittedCallersNarrowed removed_callers={removed_callers:?}")
                         }
@@ -12381,6 +12384,122 @@ fn mint(tag: String) -> Sealed admit_callers: [decl_ref(module_path: \"adm.a\", 
         let planned = prepare_seeds(&head_fx, &["adm.m", "adm.b"]);
         let _ = std::fs::remove_dir_all(&head_fx);
         assert!(planned.is_err(), "the dropped caller must refuse");
+    }
+
+    /// WALL 1: A -> B through the FLAT channel -> C. B names A's alias with no import (the
+    /// last-writer-wins bare channel), C constructs B with the old `Int`.
+    const FLAT_A_BASE: &str = "module flat.a\n\ntype Gen = Int\n";
+    const FLAT_A_HEAD: &str = "module flat.a\n\ntype Gen = String\n";
+    const FLAT_B: &str = "module flat.b\n\ntype Holder {\n  gen: Gen\n}\n";
+    const FLAT_C: &str = "module flat.c\n\nimport flat.b { Holder }\n\n\
+fn holder() -> Holder {\n  Holder { gen: 3 }\n}\n";
+
+    #[test]
+    fn a_flat_channel_interface_read_propagates_to_its_own_readers() {
+        let (selection, head_fx) = interface_selection(
+            "flat_propagate",
+            &[("a.dag", FLAT_A_BASE), ("b.dag", FLAT_B), ("c.dag", FLAT_C)],
+            &[("a.dag", FLAT_A_HEAD), ("b.dag", FLAT_B), ("c.dag", FLAT_C)],
+        );
+        let consumers = consumers_of(&selection);
+        let planned = prepare_seeds(&head_fx, &["flat.a", "flat.b", "flat.c"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(
+            consumers.contains(&"flat.c"),
+            "{consumers:?} {:?}",
+            selection.changes
+        );
+        assert!(planned.is_err(), "C must refuse under Strict preparation");
+    }
+
+    /// WALL 2: an added arm WITH a generic arity change is not pure growth.
+    const GROW_R_BASE: &str = "module grow.r\n\ntype Res<T>\n  = Ok { value: T }\n";
+    const GROW_R_HEAD: &str =
+        "module grow.r\n\ntype Res<T, E>\n  = Ok { value: T }\n  | Err { error: E }\n";
+    const GROW_R_USER: &str = "module grow.u\n\nimport grow.r { Res, Ok }\n\n\
+fn res() -> Res<Int> {\n  Ok { value: 1 }\n}\n";
+
+    #[test]
+    fn an_added_arm_with_an_arity_change_plans_every_reader() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let (selection, head_fx) = interface_selection(
+            "grow_arity",
+            &[("r.dag", GROW_R_BASE), ("u.dag", GROW_R_USER)],
+            &[("r.dag", GROW_R_HEAD), ("u.dag", GROW_R_USER)],
+        );
+        let direct = direct_changes_in(&selection, "grow.r");
+        assert!(
+            direct
+                .iter()
+                .all(|c| !matches!(c.ground, InterfaceChangeGround::ArmSetGrown { .. })),
+            "{direct:?}"
+        );
+        assert_eq!(consumers_of(&selection), vec!["grow.u"]);
+        let planned = prepare_seeds(&head_fx, &["grow.r", "grow.u"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(planned.is_err(), "the Res<Int> reader must refuse");
+    }
+
+    /// WALL 3: a numeric refinement bound is interface.
+    const RANGE_BASE: &str = "module rng.t\n\ntype Retry = Int where range(min: 1, max: 6)\n";
+    const RANGE_HEAD: &str = "module rng.t\n\ntype Retry = Int where range(min: 1, max: 5)\n";
+    const RANGE_USER: &str = "module rng.u\n\nimport rng.t { Retry }\n\ndata retries: Retry = 6\n";
+
+    #[test]
+    fn a_numeric_refinement_bound_change_plans_its_reader() {
+        let (selection, head_fx) = interface_selection(
+            "range",
+            &[("t.dag", RANGE_BASE), ("u.dag", RANGE_USER)],
+            &[("t.dag", RANGE_HEAD), ("u.dag", RANGE_USER)],
+        );
+        assert_eq!(
+            consumers_of(&selection),
+            vec!["rng.u"],
+            "{:?}",
+            selection.changes
+        );
+        let planned = prepare_seeds(&head_fx, &["rng.t", "rng.u"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(planned.is_err(), "6 outside max 5 must refuse");
+    }
+
+    /// WALL 4: the two roster transitions not covered above -- absent -> present narrows to the
+    /// roster (the non-admitted reader is planned, the admitted one is not), present -> absent
+    /// widens (nobody).
+    const ADM_M_NONE: &str = "module adm.m\n\ntype Sealed sole_constructor { tag: String }\n\n\
+fn mint(tag: String) -> Sealed = Sealed { tag: tag }\n";
+
+    #[test]
+    fn an_introduced_caller_roster_plans_only_the_non_admitted_readers() {
+        use crate::cli_run::namespace_baseline::InterfaceChangeGround;
+        let (selection, head_fx) = interface_selection(
+            "admit_intro",
+            &[("m.dag", ADM_M_NONE), ("a.dag", ADM_A), ("b.dag", ADM_B)],
+            &[
+                ("m.dag", ADM_M_NARROWED),
+                ("a.dag", ADM_A),
+                ("b.dag", ADM_B),
+            ],
+        );
+        assert!(direct_changes_in(&selection, "adm.m")
+            .iter()
+            .any(|c| matches!(c.ground, InterfaceChangeGround::AdmissionIntroduced { .. })));
+        assert_eq!(consumers_of(&selection), vec!["adm.b"]);
+        let planned = prepare_seeds(&head_fx, &["adm.m", "adm.b"]);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        assert!(planned.is_err(), "the non-admitted reader must refuse");
+    }
+
+    #[test]
+    fn a_removed_caller_roster_plans_no_caller() {
+        let (selection, fx) = interface_selection(
+            "admit_removed",
+            &[("m.dag", ADM_M_BASE), ("a.dag", ADM_A), ("b.dag", ADM_B)],
+            &[("m.dag", ADM_M_NONE), ("a.dag", ADM_A), ("b.dag", ADM_B)],
+        );
+        let _ = std::fs::remove_dir_all(&fx);
+        assert!(selection.changes.is_empty(), "{:?}", selection.changes);
+        assert!(selection.consumers.is_empty(), "{:?}", selection.consumers);
     }
 
     /// A module seed matches itself and the modules it CONTAINS by name, never a sibling that
