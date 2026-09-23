@@ -415,21 +415,23 @@ fn app_attest_root() -> X509Certificate? {
 // verification at 16 limbs exceeds what a session container holds, by the instrument the roadmap
 // row v1-interpreter-p256-verify-cost-shape names; their executing route is the native gunbc test
 // row the frontier names.
+// THE DIGEST IS COMPUTED ONLY AFTER BOTH ENCODING REFUSALS HAVE BEEN ASKED: the algorithm and the
+// curve are facts of the two certificates' fields, and a link that will refuse on its issuer's
+// curve owes no hash of its subject's TBS.
+fn chain_link_digest_of(subject: X509Certificate) -> List<UInt8> {
+  if subject.signature_algorithm == oid_ecdsa_with_sha256 { sha256(message: subject.tbs.tbs_octets) } else { sha384(message: subject.tbs.tbs_octets) }
+}
+
 fn chain_link_verifies(subject: X509Certificate, issuer: X509Certificate) -> Bool? {
-  let digest = if subject.signature_algorithm == oid_ecdsa_with_sha256 { Present { value: sha256(message: subject.tbs.tbs_octets) } }
-    else if subject.signature_algorithm == oid_ecdsa_with_sha384 { Present { value: sha384(message: subject.tbs.tbs_octets) } }
-    else { none }
-  match digest {
-    Absent => none
-    Present { value: d } =>
-      match issuer.tbs.spki_named_curve {
-        Absent => none
-        Present { value: curve } =>
-          match issuer_curve(named_curve: curve) {
-            Absent => none
-            Present { value: c } => ecdsa_verifies_on(c: c, key: issuer.tbs.spki_public_key, signature_octets: subject.signature_octets, digest: d)
-          }
-      }
+  if subject.signature_algorithm != oid_ecdsa_with_sha256 && subject.signature_algorithm != oid_ecdsa_with_sha384 { none } else {
+    match issuer.tbs.spki_named_curve {
+      Absent => none
+      Present { value: curve } =>
+        match issuer_curve(named_curve: curve) {
+          Absent => none
+          Present { value: c } => ecdsa_verifies_on(c: c, key: issuer.tbs.spki_public_key, signature_octets: subject.signature_octets, digest: chain_link_digest_of(subject: subject))
+        }
+    }
   }
 }
 
@@ -802,13 +804,15 @@ fn assertion_refusal(parts: AssertionParts, e: AssertionExpectation) -> Assertio
 // while openssl `dgst -sha256 -verify` over the nonce bytes accepted it. Its own producer so it
 // can be claimed over real bytes independently of the structural steps (the sample assertion
 // predates the extensions steps 7 and 8 read, so the whole fold refuses on it before this runs).
+// The stored key is decoded FIRST: an undecodable key is an encoding refusal and owes no nonce.
 fn assertion_signature_verifies(parts: AssertionParts, e: AssertionExpectation) -> Bool? {
-  let client_data_hash = sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.client_data as String)))
-  let nonce = sha256(message: concat(parts.auth_octets, client_data_hash))
   match base64_decode(s: e.public_key_point_b64url as String, variant: UrlSafe) {
     Absent => none
-    Present { value: key } =>
+    Present { value: key } => {
+      let client_data_hash = sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.client_data as String)))
+      let nonce = sha256(message: concat(parts.auth_octets, client_data_hash))
       ecdsa_verifies_on(c: p256_curve, key: key, signature_octets: parts.signature, digest: sha256(message: nonce))
+    }
   }
 }
 
