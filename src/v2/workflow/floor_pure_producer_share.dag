@@ -612,7 +612,13 @@ import v2.std.collection { List }
 // The verdict did NOT move: it returns true on origin/main and on that head, same interpreter,
 // sources the only variable. So this is not a regression to revert but a pre-existing recompute the
 // change surfaced, and the honest repair is the one this roster exists for rather than re-hiding it.
+// THE XL-2 REHEARSAL CONTROL ROW IS THE census_probe_outcomes GROUND AGAIN: test.claim
+// .namespace_xl2_rehearsal_census drives native_test_context_from_ingest three times (the cut, the
+// pre-cut differential, the duplicated-path control) over two- and three-specimen ingests, and its
+// claims each read one field of the resulting Xl2ControlRuns (GitObjectIds, diagnostics chains, strip coordinate rows -- no resolution context,
+// no closure). WARM for the same arithmetic: one front end is more than one claim's budget.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "test.claim.namespace_xl2_rehearsal_census.xl2_control_runs",
   "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_module",
   "v2.test.claim.resolve.namespace_candidate_rule.ncr_outcomes",
   "v2.test.claim.namespace_xl0.call_argument_resolve_refusal.xl2_outcomes",
@@ -671,6 +677,22 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_9",
   "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_10",
   "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_11",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_0",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_1",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_2",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_3",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_4",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_5",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_6",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_7",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_8",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_9",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_10",
+  "v2.test.parse.closure_parse_batch_two.cb2_normalized_5",
+  "v2.test.parse.closure_parse_batch_two.cb2_normalized_7",
+  "v2.test.parse.closure_parse_batch_two.cb2_normalized_8",
+  "v2.test.parse.closure_parse_batch_two.cb2_normalized_9",
+  "v2.test.parse.closure_parse_batch_two.cb2_normalized_10",
   "v2.test.claim.match_arm_binder_frame.mab_resolved_0",
   "v2.test.claim.match_arm_binder_frame.mab_resolved_1",
   "v2.test.claim.match_arm_binder_frame.mab_resolved_2",
