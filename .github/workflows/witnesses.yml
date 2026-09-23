@@ -403,7 +403,7 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
-      - name: "Stage0 mirrors match what this seed emits (merge_group only): required CI build lane"
+      - name: Stage0 mirrors match what this seed emits, first generation (merge_group only)
         id: stage0_regen
         run: |
           GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
@@ -411,7 +411,7 @@ jobs:
           'set' '-o' 'pipefail'
           ('sh' '-e' '-c' 'ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           cd "$ROOT"
-          '\''target/release/claim_executor'\'' '\''--required-ci'\'' '\''--source-root'\'' '\''dag'\'' '\''--source-root'\'' '\''src/v2'\'' '\''--required-lane'\'' '\''build'\''
+          '\''target/release/claim_executor'\'' '\''--required-regen'\''
           ') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
           GUNBC_FLOOR_EXIT="$?"
           GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'

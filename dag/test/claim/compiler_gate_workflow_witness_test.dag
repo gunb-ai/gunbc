@@ -71,9 +71,9 @@ test fn w_RED_the_gate_floor_job_adjudicates_the_receipt_it_produces() -> Bool {
 
 // ── THE STAGE0 MIRRORS ARE ADJUDICATED ON THE MERGE QUEUE, AND ONLY THERE ──────────────────────
 //
-// operator decision msg_f1ade7cf-77e4-4896-a8b3-476747692c37 (2026-09-23): the build lane -- whose
-// phases own the ~157 compile_stage0 mirrors -- runs as a step of the floor job on merge_group and
-// on no other event. This claim reads the emitted job: some step runs `--required-lane` with no measurement receipt (the build lane's command; the witnesses lane is the one carrying a receipt),
+// operator decision msg_4a9045fc (2026-09-23, superseding msg_f1ade7cf's pricing): generation 1 of
+// the ~157 compile_stage0 mirrors runs as a step of the floor job on merge_group and on no other
+// event. This claim reads the emitted job: some step runs `--required-regen` (generation 1 of the stage0 mirrors, msg_4a9045fc),
 // its condition names the merge_group event, its condition carries a status function so a floor
 // red cannot disarm it, and it comes AFTER the floor's measurement producer (a separate process
 // after the floor exits, the measured memory constraint). Deleting the step, dropping its event
@@ -106,8 +106,7 @@ test fn w_RED_the_stage0_mirrors_are_adjudicated_on_merge_group_only_after_the_f
       let cond = step_if_text(step: step)
       let is_producer = !string_contains(s: run, pattern: "--adjudicate-measurement-receipt")
         && string_contains(s: run, pattern: "--measurement-receipt")
-      let is_stage0 = string_contains(s: run, pattern: "--required-lane")
-        && !string_contains(s: run, pattern: "--measurement-receipt")
+      let is_stage0 = string_contains(s: run, pattern: "--required-regen")
       Stage0RegenPositions {
         next: acc.next + 1,
         producer: if is_producer && acc.producer < 0 { acc.next } else { acc.producer },
