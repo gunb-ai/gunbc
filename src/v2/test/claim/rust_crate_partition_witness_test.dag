@@ -13,6 +13,7 @@ import v2.std.compilers.compilation_unit {
   ModuleId,
   PolicyDerived,
   ByValueTypeCycle,
+  PartitionInputRejected,
   LinkageCycle,
   SccSplit,
   UnitGraphCycle,
@@ -107,6 +108,7 @@ fn witness_refused_by_rust_rule(outcome: ResolvePartitionOutcome) -> String {
     ResolvePartitionRefused { cause: PartitionRustAdmissibilityRefused { cause: UnitGraphCycle { detail: _ } } } => "unit-graph-cycle"
     ResolvePartitionRefused { cause: PartitionRustAdmissibilityRefused { cause: LinkageCycle { detail: _ } } } => "linkage-cycle"
     ResolvePartitionRefused { cause: PartitionRustAdmissibilityRefused { cause: ByValueTypeCycle { detail: _ } } } => "by-value-type-cycle"
+    ResolvePartitionRefused { cause: PartitionRustAdmissibilityRefused { cause: PartitionInputRejected { cause: _ } } } => "partition-input-rejected"
     ResolvePartitionRefused { cause: PolicyTargetCountNotPositive { policy: _ } } => "target-not-positive"
     ResolvePartitionRefused { cause: AssignmentOmitsModule { module_id: _ } } => "omits-module"
     ResolvePartitionRefused { cause: AssignmentNamesModuleOutsideDag { module_id: _ } } => "outside-dag"

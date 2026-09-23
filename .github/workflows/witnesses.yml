@@ -231,6 +231,29 @@ jobs:
           if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
           'exit' "$GUNBC_FLOOR_EXIT"
 
+      - name: Why this lane is red, and what would be a real finding
+        run: |-
+          printf '%s\n' 'emit-build is a NON-REQUIRED detector lane. A red here does NOT block your merge:'
+          printf '%s\n' 'the required context is `witnesses`, and this job is not an input to it.'
+          printf '%s\n' ''
+          printf '%s\n' 'A RED IS CURRENTLY EXPECTED: main cannot self-host, and the break has this signature --'
+          printf '%s\n' '  E0573 PointerWidth at src/std_integer.rs'
+          printf '%s\n' ''
+          printf '%s\n' 'This notice names no owning pull request ON PURPOSE. Ownership of a standing break moves,'
+          printf '%s\n' 'and a stale pointer here would be read as authoritative by someone who has no other source.'
+          printf '%s\n' 'The SIGNATURE is the durable handle: search it to find whoever currently holds it.'
+          printf '%s\n' ''
+          printf '%s\n' 'WHAT TO DO: if the failure above matches that signature, this is not your defect and'
+          printf '%s\n' 'there is nothing for you to fix. Do not patch around it in your branch.'
+          printf '%s\n' ''
+          printf '%s\n' 'WHAT IS A REAL FINDING: a DIFFERENT error code, or a different emitted file. That is a'
+          printf '%s\n' 'second defect this lane just caught, and it should be reported rather than assumed to be'
+          printf '%s\n' 'the known one -- every break at this step shares cause=EmittedCompilerBuildFailed, so the'
+          printf '%s\n' 'cause line does not discriminate and the ERROR CODE is what you compare.'
+          printf '%s\n' ''
+          printf '%s\n' 'THIS STANDING RETIRES WHEN: a head of main on which `gunbc test //gunbc/instruments:self-host` and `gunbc test //gunbc/instruments:v2-native-cli` all exit zero'
+          printf '%s\n' 'If that already holds on main, this notice is stale: flip gunbc.emitted_subject_build_gate emit_build_standing to EmitBuildExpectedGreen.'
+        if: failure()
   floor:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
