@@ -3,7 +3,6 @@ module gunbc.runner.runner_host_kernel_config
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import gunbc.runner.runner_host_filtered_egress { KernelFeatureRequirement, runner_host_kernel_requirements }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import extdeps.tools.gnu_coreutils { cat_command }
 import gunbc.command_runner { ProcessObservation, run_shell_command_observe, LocalExec }
 
@@ -296,7 +295,6 @@ fn kernel_config_argv_text() -> String {
 // answers no -- which the emptiness arm already refuses, but saying so from the exit code names the
 // cause instead of leaving a reader to infer it from a config that looks blank.
 fn observe_built_kernel_config(path: String) -> KernelConfigVerdict
-  uses net: Network
 {
   let obs = run_shell_command_observe(command: cat_command(path: path), transport: LocalExec)
   if obs.exit_code != 0 {
@@ -315,7 +313,6 @@ fn observe_built_kernel_config(path: String) -> KernelConfigVerdict
 // each was required for travel with the non-zero status rather than needing a separate print a
 // caller could drop.
 fn verify_built_kernel_config(path: String) -> ProcessExit
-  uses net: Network
 {
   let verdict = observe_built_kernel_config(path: path)
   match verdict {
@@ -330,7 +327,6 @@ fn verify_built_kernel_config(path: String) -> ProcessExit
 data runner_host_kernel_config_path: NonEmptyStr = "/var/tmp/gunbc-hostimage/linux-6.12.108/.config"
 
 fn verify_runner_host_kernel_config() -> ProcessExit
-  uses net: Network
 {
   verify_built_kernel_config(path: runner_host_kernel_config_path as String)
 }

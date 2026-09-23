@@ -3970,9 +3970,20 @@ pub fn required_floor_nominal_subject_seeds(
     source_roots: &[String],
     gate_entry_index: &MultiEntryIndex,
 ) -> Result<RequiredFloorNominalSubjectSeeds, String> {
+    let corpus = crate::cli_run::read_source_corpus_once(source_roots);
+    required_floor_nominal_subject_seeds_from_corpus(&corpus, gate_entry_index)
+}
+
+/// The seed fold over a corpus the CALLER read. `run_required_floor` is the least common ancestor
+/// of this prepare and the gate prepare below it, so it reads once and lends to both; the wrapper
+/// above stays for callers with only one demand (the lane resolution census).
+pub fn required_floor_nominal_subject_seeds_from_corpus(
+    corpus: &crate::cli_run::SourceCorpusRead,
+    gate_entry_index: &MultiEntryIndex,
+) -> Result<RequiredFloorNominalSubjectSeeds, String> {
     let policy_seed = [REQUIRED_FLOOR_POLICY_MODULE.to_string()];
-    let (policy_prepared, _) = prepare_repository_closure(
-        source_roots,
+    let (policy_prepared, _) = crate::cli_run::prepare_repository_from_corpus(
+        corpus,
         &floor_prepared_subject_exclusions(),
         Some((gate_entry_index, &[], &policy_seed)),
     )?;
@@ -4334,6 +4345,36 @@ pub fn floor_seam(name: &str) {
         g.clear();
         g.push_str(name);
     }
+}
+
+/// THE SEAM AS IT STANDS RIGHT NOW, so a reading can say WHERE IN THE RUN it was taken.
+///
+/// `floor_seam` writes this slot; the heartbeat has always read it for its human line. This
+/// reader exists because `floor_cgroup_stat_beat` needs the same fact on its OWN line: a beat
+/// and the seam it was sampled in were two separate stderr streams, joined only by the order
+/// the lines happened to appear in, which is a positional citation of the kind DESIGN 3 forbids
+/// — any line emitted between them by any other thread invalidates the join, and the reader
+/// transcribing a receipt is the one who silently guesses. With the seam ON the beat, which
+/// phase established a peak is a value a fold reads rather than an author's reading of a log.
+///
+/// THE READ IS THE SHARED FACT; THE RENDERING IS NOT. This returns the slot's own state and
+/// renders nothing, because its two consumers owe DIFFERENT spellings of the same state and
+/// collapsing them here would be a fork wearing a helper's clothes (review 69697 caught the
+/// first version of this function doing exactly that).
+///
+/// `None` is a poisoned lock — no reading at all. `Some("")` is the genuinely unset slot, before
+/// any `floor_seam` call. `Some(name)` is the seam.
+///
+/// Why the callers differ, and why this must not decide for them: the heartbeat's seam crosses
+/// into `gunbc.observation_seed_render` `seed_heartbeat_subject`, which branches on `seam == ""`
+/// to decide whether a beat carries a `PhaseSegment` at all — the empty string IS that model's
+/// representation of "no phase", pinned by `test.claim.observation_seed_heartbeat_witness_test`.
+/// Handing it the beat line's `none` would mint `PhaseSegment { name: "none" }`, fabricating a
+/// phase named after the absence of one. The stat beat, whose line is transcribed into a typed
+/// `gunbc.floor_demand` `FloorSeam`, wants a single non-empty token it can map to
+/// `SeamNotYetEntered`. Same fact, two boundaries, one read.
+pub(crate) fn floor_seam_current() -> Option<String> {
+    FLOOR_SEAM.lock().ok().map(|g| g.clone())
 }
 
 // THE CONSTRUCTOR A DECODE ACTUALLY OBSERVED, for refusals whose cause is a shape mismatch.
@@ -5565,8 +5606,27 @@ pub(crate) fn floor_cgroup_envelope(when: &str) {
 ///
 /// Every field is printed as read or as `na`; a missing key is never rendered as zero, for the
 /// reason `floor_resource_sample` gives.
-pub(crate) fn floor_cgroup_stat_beat(when: &str) {
+pub(crate) fn floor_cgroup_stat_beat(
+    when: &str,
+    stall: Option<&crate::memory_governor::MemoryStallObservation>,
+) {
     let leaf = floor_cgroup_dir();
+    // THE SEAM IS READ BEFORE AND AFTER THE SAMPLE, AND A TRANSITION IS NAMED RATHER THAN PICKED.
+    //
+    // Putting the seam on the beat's own line removed the LOG-ADJACENCY join; it did not bind the
+    // two observations IN TIME, and those are different fixes. This function reads memory.stat and
+    // memory.current from procfs and then renders; the floor thread can call `floor_seam` at any
+    // point in between, so a single read taken after the sample would label a beat with a seam the
+    // sampled memory was not taken under -- confidently, and with nothing in the line to say so.
+    // A transition beat is exactly the one a reader most wants to trust, because it is where a
+    // phase's cost is attributed.
+    //
+    // Bracketing is preferred over holding the seam lock across the reads: the lock is written by
+    // the floor thread on every phase change, and blocking that thread on two procfs reads would
+    // let the instrument perturb the workload it is measuring. Bracketing cannot do that, and it
+    // makes the uncertainty EXPLICIT (`transition:A>B`) instead of resolving it silently -- which
+    // is the difference between a typed refusal and a fabricated plausible reading (DESIGN 5).
+    let seam_before = floor_seam_current();
     let body = std::fs::read_to_string(format!("{leaf}/memory.stat")).ok();
     let key = |k: &str| -> String {
         body.as_deref()
@@ -5582,8 +5642,40 @@ pub(crate) fn floor_cgroup_stat_beat(when: &str) {
     let current = std::fs::read_to_string(format!("{leaf}/memory.current"))
         .map(|v| v.trim().to_string())
         .unwrap_or_else(|_| "na".to_string());
+    let seam_after = floor_seam_current();
+    // The beat line's own spelling, one token each and no spaces, because this line is parsed
+    // field-by-field into a typed receipt. `none` is the unset slot and maps to
+    // `SeamNotYetEntered`; `unreadable` is a poisoned lock; `transition:A>B` is a seam that MOVED
+    // while this sample was being taken, and maps to a `FloorSeam` arm that can neither size nor
+    // attribute anything. Only a seam that was the SAME before and after the sample is reported
+    // as that seam.
+    let spell = |r: &Option<String>| -> String {
+        match r {
+            None => "unreadable".to_string(),
+            Some(s) if s.is_empty() => "none".to_string(),
+            Some(s) => s.clone(),
+        }
+    };
+    let before = spell(&seam_before);
+    let after = spell(&seam_after);
+    let seam = if before == after {
+        before
+    } else {
+        format!("transition:{before}>{after}")
+    };
+    // THE STALL CLAUSE ON THE BEAT'S OWN LINE, for the same reason as the seam. It is the
+    // heartbeat's quantity and used to be readable only from the heartbeat line printed BESIDE
+    // this one, so `gunbc.floor_demand` `FloorMemoryStatBeat.stall` was transcribed by adjacency
+    // -- and `receipt_last_unstalled_beat` derives the guest's cache allowance from that field,
+    // so a mis-joined stall mis-sizes a guest. `na` where the window could not be read, never a
+    // zero: a zero stall is the healthiest reading this line can carry, so fabricating one would
+    // manufacture progress, which is the inverse of the error the counters exist to catch.
+    let stall_text = match stall {
+        Some(o) => crate::memory_governor::memory_stall_major_faults_per_minute(o).to_string(),
+        None => "na".to_string(),
+    };
     eprintln!(
-        "[floor-cgroup] when={when} stat_level={leaf} current={current} \
+        "[floor-cgroup] when={when} stat_level={leaf} seam={seam} stall_per_min={stall_text} current={current} \
          memory_stat=[anon,{},file,{},shmem,{},unevictable,{},slab_unreclaimable,{},\
          slab_reclaimable,{},kernel_stack,{},pagetables,{},percpu,{},sock,{},file_dirty,{}]",
         key("anon"),
@@ -5636,7 +5728,7 @@ pub fn run_required_floor(
         );
     }
     floor_cgroup_envelope("floor-entry");
-    floor_cgroup_stat_beat("floor-entry");
+    floor_cgroup_stat_beat("floor-entry", None);
     spawn_floor_heartbeat();
     floor_seam("strict-preparation");
     eprintln!("[floor-phase] phase=strict-preparation state=started");
@@ -5651,6 +5743,21 @@ pub fn run_required_floor(
     // 4,260-module corpus, measured 2026-08-29), so it is built once here and lent to the
     // policy-closure prepare and the gate-closure prepare alike.
     let gate_entry_index = build_multi_entry_index(source_roots);
+    // ONE CORPUS READ FOR BOTH PREPARES, CARRIED FROM THE ANCESTOR THAT OWNS BOTH DEMANDS.
+    //
+    // This function prepares TWO subjects -- the policy closure through
+    // `required_floor_nominal_subject_seeds_from_corpus`, then the gate closure below -- and both
+    // call sites pass identical source roots, identical exclusions and this same
+    // `gate_entry_index`, differing ONLY in their closure seeds. Each prepare used to begin with
+    // its own `build_module_index(source_roots)`, which is not memoised: it walked every root and
+    // `read_to_string`d every `.dag` file in the corpus. So the floor read and indexed the whole
+    // corpus twice, on every run, for two questions that differ in their seeds and in nothing else.
+    //
+    // That is DESIGN §2's authored duplication rather than a cache obligation, and §2 names the
+    // repair: when several demands share a least common ancestor, CARRY the first value. This is
+    // that ancestor. The entry index one line above was already shared for exactly this reason --
+    // the corpus read simply never was.
+    let floor_corpus = crate::cli_run::read_source_corpus_once(source_roots);
     // ONE DERIVATION, CONSUMED FOUR WAYS. The same diff observation supplies changed-witness
     // identities, newly enrolled identities, the compile-subject modules of
     // `touched_entry_files`, and the match-bearing consumers of every coproduct whose arm set
@@ -5706,7 +5813,7 @@ pub fn run_required_floor(
         required_gate_prefixes,
         required_gate_authored_modules,
         local_repo_wet_schedule_rows,
-    } = required_floor_nominal_subject_seeds(source_roots, &gate_entry_index)?;
+    } = required_floor_nominal_subject_seeds_from_corpus(&floor_corpus, &gate_entry_index)?;
     // THE FLOOR'S OWN AUTHORITIES ARE ALWAYS IN THE SUBJECT: the floor evaluates its rosters
     // (expected red, route gap, cost debt, the gate itself) in a frame over the prepared graph,
     // and a gate roster that happened not to reach `v2.workflow.required_floor` refused with
@@ -5856,8 +5963,8 @@ pub fn run_required_floor(
     )
     .chain(arm_set_consumer_seeds.iter().cloned())
     .collect();
-    let (mut prepared, prepared_sources) = prepare_repository_closure(
-        source_roots,
+    let (mut prepared, prepared_sources) = crate::cli_run::prepare_repository_from_corpus(
+        &floor_corpus,
         &floor_prepared_subject_exclusions(),
         Some((
             &gate_entry_index,
