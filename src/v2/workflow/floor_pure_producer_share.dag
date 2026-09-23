@@ -613,8 +613,8 @@ import v2.std.collection { List }
 // sources the only variable. So this is not a regression to revert but a pre-existing recompute the
 // change surfaced, and the honest repair is the one this roster exists for rather than re-hiding it.
 // THE XL-2 REHEARSAL CONTROL ROW IS THE census_probe_outcomes GROUND AGAIN: test.claim
-// .namespace_xl2_rehearsal_census drives native_test_context_from_ingest three times (the cut, the
-// pre-cut differential, the duplicated-path control) over two- and three-specimen ingests, and its
+// .namespace_xl2_rehearsal_census drives native_test_context_from_ingest once per field of
+// Xl2ControlRuns (read the type for the roster, not a count here) over two- and three-specimen ingests, and its
 // claims each read one field of the resulting Xl2ControlRuns (GitObjectIds, diagnostics chains, strip coordinate rows -- no resolution context,
 // no closure). WARM for the same arithmetic: one front end is more than one claim's budget.
 data floor_cross_claim_pure_producers_warm: List<String> = [
