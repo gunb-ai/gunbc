@@ -7,7 +7,6 @@ import v2.workflow.compile_door_ledger {
   affected_ledger_from_diff, AffectedDiffRefused, AffectedLedgered, ledger_refused_count
 }
 import v2.workflow.floor_diff_observe { NameStatusDiffFail, NameStatusDiffOk }
-import v2.std.node { Symbol }
 
 // Fast pure receipt (no door, no live tree) for the flip-trigger table: every frontier cause the
 // histogram receipts pin is attributed to its owning lane, and an unknown cause is fail-closed
