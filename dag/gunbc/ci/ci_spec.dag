@@ -842,7 +842,7 @@ data gunbc_ci_runner_microvm_host_converge_target: GunbcRunStepTarget = GunbcRun
 }
 
 data gunbc_ci_runner_microvm_network_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/runner/runner_microvm_network_converge.dag",
+  entry: "dag/gunbc/runner/runner_microvm_network_observe.dag",
   function: "runner_microvm_network_observe_wet",
 }
 
