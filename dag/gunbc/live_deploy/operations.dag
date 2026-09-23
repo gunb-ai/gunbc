@@ -19,7 +19,11 @@ import extdeps.tools.gnu_coreutils {
   coreutils_install_mode_flag,
   coreutils_install_file_owned_argv,
   coreutils_install_directory_owned_argv,
+  coreutils_install_owner_flag,
+  coreutils_install_group_flag,
 }
+import extdeps.tools.diffutils { diffutils_cmp_program, diffutils_cmp_silent_flag }
+import gunbc.fleet_posix_accounts { fleet_visudo_binary_path, fleet_cp_binary_path, fleet_mv_binary_path }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.shell_command_text {
   shell_command_intent,
@@ -154,6 +158,145 @@ fn deploy_stage_install_command(stage_name: String, mode: NonEmptyStr, dest: Str
         deploy_stage_path_word(stage_name: stage_name),
         bash_build_word_lit(text: dest),
       ],
+    )),
+  )
+}
+
+// A STAGED FILE INSTALLED WITH ITS OWNERSHIP AT CREATION. Same shape as
+// deploy_stage_install_command, plus -o/-g, so no window exists where the destination has the
+// wrong owner.
+fn deploy_stage_install_owned_command(
+  stage_name: String,
+  mode: NonEmptyStr,
+  owner: NonEmptyStr,
+  group: NonEmptyStr,
+  dest: String,
+) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_command_with_words(words: concat(
+      shell_literal_words(words: sudo_elevate_argv(command: [
+        coreutils_install_binary_name as String,
+        coreutils_install_mode_flag as String,
+        mode as String,
+        coreutils_install_owner_flag as String,
+        owner as String,
+        coreutils_install_group_flag as String,
+        group as String,
+      ])),
+      [
+        deploy_stage_path_word(stage_name: stage_name),
+        bash_build_word_lit(text: dest),
+      ],
+    )),
+  )
+}
+
+// visudo -c -f <staged>: sudoers syntax is checked BEFORE the file can reach sudoers.d, so a
+// malformed line stops the stage before it can lock every sudo user out of the host.
+fn deploy_stage_visudo_check_command(stage_name: String) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_command_with_words(words: concat(
+      shell_literal_words(words: sudo_elevate_argv(command: [fleet_visudo_binary_path as String, "-cf"])),
+      [deploy_stage_path_word(stage_name: stage_name)],
+    )),
+  )
+}
+
+// THE INSTALLED POLICY CHECK ENFORCES OWNER AND MODE, NOT ONLY SYNTAX. visudo(8): `-O` enforces the
+// default owner and group, and `-P` the default mode, of the file checked with -c. Without them, a
+// file sudo will IGNORE for its ownership (root:ghrunner, say) passes -c. sudo reads a drop-in only
+// when it is owned by sudoers_uid:sudoers_gid (default 0:0) and is not group- or world-writable.
+fn installed_visudo_policy_check_command(path: String) -> String {
+  shell_privileged_command_text_of_argv(argv: [fleet_visudo_binary_path as String, "-c", "-O", "-P", "-f", path])
+}
+
+// A PRIVILEGED FIXED-PATH READ INTO THE STAGE: install copies a root-only file to the staging
+// directory, owned by the reading principal. That is how a readback observes bytes it could not
+// read directly, without loosening the file's own group or mode.
+fn deploy_stage_install_from_command(
+  source: String,
+  mode: NonEmptyStr,
+  owner: NonEmptyStr,
+  group: NonEmptyStr,
+  stage_name: String,
+) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_command_with_words(words: concat(
+      shell_literal_words(words: sudo_elevate_argv(command: [
+        coreutils_install_binary_name as String,
+        coreutils_install_mode_flag as String,
+        mode as String,
+        coreutils_install_owner_flag as String,
+        owner as String,
+        coreutils_install_group_flag as String,
+        group as String,
+        source,
+      ])),
+      [deploy_stage_path_word(stage_name: stage_name)],
+    )),
+  )
+}
+
+fn deploy_stage_cmp_stages_command(left: String, right: String) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_command_with_words(words: [
+      bash_build_word_lit(text: diffutils_cmp_program as String),
+      bash_build_word_lit(text: diffutils_cmp_silent_flag as String),
+      deploy_stage_path_word(stage_name: left),
+      deploy_stage_path_word(stage_name: right),
+    ]),
+  )
+}
+
+// mv -T: rename(2) of one path onto another, never "into" it if the destination is a directory.
+// A same-filesystem rename is atomic, so a reader sees either the old file or the new one, never
+// a partial one.
+fn rename_no_target_directory_command(source: String, dest: String) -> String {
+  shell_privileged_command_text_of_argv(argv: [fleet_mv_binary_path as String, "-T", source, dest])
+}
+
+fn pwd_word(rel: String) -> Node {
+  bash_build_word_concat_from_nodes(parts: [
+    bash_build_word_var(name: "PWD"),
+    bash_build_word_lit(text: concat("/", rel)),
+  ])
+}
+
+// A TREE FROM THE DEPLOYING CHECKOUT INTO A ROOT-OWNED LOCUS. The copy runs as root, and
+// --no-preserve=all means every created entry is owned by root with the source mode masked by the
+// umask. -P never follows a symlink, and -T copies onto `dest` instead of into it. The source is
+// "$PWD" (the job's checkout, which the CI job owns), not a release directory another principal can
+// write.
+fn pwd_tree_copy_privileged_command(rel: String, dest: String) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_command_with_words(words: concat(
+      shell_literal_words(words: sudo_elevate_argv(command: [
+        fleet_cp_binary_path as String, "-R", "-P", "--no-preserve=all", "-T",
+      ])),
+      [pwd_word(rel: rel), bash_build_word_lit(text: dest)],
+    )),
+  )
+}
+
+fn pwd_file_install_privileged_command(
+  rel: String,
+  mode: NonEmptyStr,
+  owner: NonEmptyStr,
+  group: NonEmptyStr,
+  dest: String,
+) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_command_with_words(words: concat(
+      shell_literal_words(words: sudo_elevate_argv(command: [
+        coreutils_install_binary_name as String,
+        coreutils_install_mode_flag as String,
+        mode as String,
+        coreutils_install_owner_flag as String,
+        owner as String,
+        coreutils_install_group_flag as String,
+        group as String,
+      ])),
+      [pwd_word(rel: rel), bash_build_word_lit(text: dest)],
     )),
   )
 }

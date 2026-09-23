@@ -6,7 +6,7 @@ import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatRea
 import std.algebra { trim }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.resources { Filesystem, Network }
+import std.resources { Filesystem }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.tools.stat {
@@ -648,7 +648,6 @@ type StoreOwnershipReading
   | OwnershipUnread { reason: NonEmptyStr }
 
 fn read_store_ownership(path: String) -> StoreOwnershipReading
-  uses net: Network
 {
   match stat_field_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: path), transport: LocalExec)) {
     StatFieldUnread { detail: d } =>
@@ -693,7 +692,6 @@ fn ownership_of_readings(uid_text: String, mode_text: String) -> StoreOwnershipR
 // with no readback behind it. StoreUnreadable withdraws the HOST and names the absence, which sends
 // an operator at the one thing that is missing instead of at every cell in turn.
 fn read_cell_readiness_store() -> CellReadinessStoreRead
-  uses net: Network, fs: Filesystem
 {
   match read_store_ownership(path: cell_readiness_store_dir) {
     OwnershipUnread { reason: r } => StoreUnreadable { reason: r }
@@ -720,7 +718,6 @@ fn read_cell_readiness_store() -> CellReadinessStoreRead
 // other-writable. The directory check stays because it is the one that stops creation; this is the
 // one that stops a pre-existing file being the tenant's.
 fn read_store_records(ownership: CellReadinessStoreOwnership) -> CellReadinessStoreRead
-  uses net: Network, fs: Filesystem
 {
   let listed = Filesystem.List(path: cell_readiness_store_dir)
   if listed.success == false {
@@ -748,7 +745,6 @@ fn no_named_records() -> NamedRecords {
 }
 
 fn read_named_records(names: List<String>) -> NamedRecords
-  uses net: Network, fs: Filesystem
 {
   fold(names, init: no_named_records(), f: (acc, name) => read_named_record_step(acc: acc, name: trim(s: name)))
 }
@@ -774,7 +770,6 @@ fn cell_of_record_filename(name: String) -> CellId? {
 }
 
 fn read_named_record_step(acc: NamedRecords, name: String) -> NamedRecords
-  uses net: Network, fs: Filesystem
 {
   match acc {
     NamedRecordsUnread { reason: r } => NamedRecordsUnread { reason: r }
@@ -790,7 +785,6 @@ fn read_named_record_step(acc: NamedRecords, name: String) -> NamedRecords
 }
 
 fn read_entry_for_cell(rs: List<CellReadinessRecord>, name: String, named: CellId) -> NamedRecords
-  uses net: Network, fs: Filesystem
 {
   let path = join([cell_readiness_store_dir, "/", name], "")
   match entry_is_root_authoritative(path: path) {
@@ -817,7 +811,6 @@ fn filename_body_disagreement(path: String, named: CellId, record: CellReadiness
 }
 
 fn decode_entry_for_cell(rs: List<CellReadinessRecord>, path: String, named: CellId) -> NamedRecords
-  uses fs: Filesystem
 {
   let body = Filesystem.Read(path: path)
   if body.success == false {
@@ -839,7 +832,6 @@ fn decode_entry_for_cell(rs: List<CellReadinessRecord>, path: String, named: Cel
 // may replace the link, and a link out of the store is how a record becomes a file the store does not
 // own.
 fn entry_is_root_authoritative(path: String) -> NonEmptyStr?
-  uses net: Network
 {
   match stat_field_reading(outcome: run_shell_command_capture(command: stat_file_type_command(path: path), transport: LocalExec)) {
     StatFieldUnread { detail: d } =>
@@ -854,7 +846,6 @@ fn entry_is_root_authoritative(path: String) -> NonEmptyStr?
 }
 
 fn entry_ownership_refusal(path: String) -> NonEmptyStr?
-  uses net: Network
 {
   match read_store_ownership(path: path) {
     OwnershipUnread { reason: r } => Present { value: r }
@@ -895,7 +886,6 @@ type CellReadinessStorePersist
   | StorePersistReadbackMismatch { path: String }
 
 fn persist_cell_readiness_write(write: CellReadinessWrite) -> CellReadinessStorePersist
-  uses net: Network, fs: Filesystem
 {
   match read_cell_readiness_store() {
     StoreUnreadable { reason: r } => StorePersistReadbackFailed { reason: r }
@@ -908,7 +898,6 @@ fn persist_cell_readiness_write(write: CellReadinessWrite) -> CellReadinessStore
 }
 
 fn persist_one_record(write: CellReadinessWrite) -> CellReadinessStorePersist
-  uses net: Network, fs: Filesystem
 {
   match cell_record_path(cell: write_cell(write: write)) {
     CellRecordNameRefused { spelling: sp } => StorePersistCellNotAddressable { spelling: sp }
@@ -933,7 +922,6 @@ fn record_bytes_equal(a: CellReadinessRecord, b: CellReadinessRecord) -> Bool {
 // write that landed somewhere other than where this one meant it to, or bytes that changed under
 // it, and reporting it as absent would send a reader to look for a file that is right there.
 fn confirm_persisted(path: String, record: CellReadinessRecord) -> CellReadinessStorePersist
-  uses fs: Filesystem
 {
   let back = Filesystem.Read(path: path)
   if back.success == false {

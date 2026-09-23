@@ -4,9 +4,8 @@ import std.types { String, NonEmptyStr, Bool, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.disposition { Disposition, SingleAuthority }
 import extdeps.exec.command { ArgvCommand, argv_command }
-import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
 import gunbc.executor_privileged_operation {
-  ExecutorPrivilegedOperation, executor_privileged_operation_argv,
+  ExecutorPrivilegedOperation, executor_privileged_operation_elevated,
 }
 import gunbc.command_runner { run_shell_commands, LocalExec }
 
@@ -43,7 +42,7 @@ data executor_privileged_apply_disposition: Disposition = SingleAuthority
 // environment ACROSS the privilege boundary, a security claim this applier has no reason to make
 // when every argv it runs is already absolute; and it deliberately omits -n, so it can prompt.
 fn executor_privileged_operation_command(op: ExecutorPrivilegedOperation) -> ArgvCommand {
-  let elevated = sudo_elevate(command: map(executor_privileged_operation_argv(op: op), w => w as String))
+  let elevated = executor_privileged_operation_elevated(op: op)
   argv_command(program: elevated.bin_path as NonEmptyStr, arguments: elevated.args)
 }
 
