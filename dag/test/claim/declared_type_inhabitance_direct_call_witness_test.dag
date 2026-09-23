@@ -607,3 +607,17 @@ data genuine_map_at_product_source: String = "module probe_with_genuine_map\nimp
 test fn w_a_genuine_map_at_a_product_formal_still_refuses() -> Bool {
   violation_count(source: genuine_map_at_product_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
+
+// THE SAME RELATION AT A SECOND WIRED POSITION. Every red above reaches
+// collection_versus_established_identity through PositionDirectCallArgument. Here the list
+// literal is the direct-call argument and the collection is its ELEMENT, so the refusal is
+// located at PositionListElement: one emitter (declared_type_obligation_diags), no per-position
+// code. The RECORD-LITERAL FIELD is deliberately not the second position: v1.compiler.infer
+// DeclaredTypePosition names PositionRecordLiteralField among the nine positions still awaiting
+// an obligation producer, so no control in this file reaches a record-literal field, and a probe
+// there would measure the missing producer rather than this relation.
+data collection_at_record_list_element_source: String = "module probe_inhabit_list_at_record_elem\nimport std.types { Int, String, List }\ntype Rec { a: String }\nfn takes_recs(rs: List<Rec>) -> Int { 1 }\nfn a_list() -> List<String> { [\"--quiet\"] }\nfn probe() -> Int { takes_recs(rs: [a_list()]) }\n"
+
+test fn w_a_collection_at_a_list_element_of_record_type_is_refused() -> Bool {
+  violation_count(source: collection_at_record_list_element_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
