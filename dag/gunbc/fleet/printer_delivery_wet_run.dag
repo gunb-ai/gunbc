@@ -2,7 +2,6 @@ module gunbc.fleet.printer_delivery_wet_run
 
 import std.types { NonEmptyStr, String, List }
 import gunbc.secret_provision_actuator { VerifiedVersionForAttempt }
-import std.resources { Network }
 import extdeps.shell
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.fleet_asset_identity { PhysicalAssetIdentity, printer_01, printer_02 }
@@ -95,7 +94,7 @@ fn select_wet_run_printer(supplied: String) -> WetRunPrinterSelection {
   }
 }
 
-fn run() -> ProcessExit uses net: Network {
+fn run() -> ProcessExit {
   let requested_printer = shell.Env.Get(name: wet_run_printer_env)
   match requested_printer.value {
     Absent =>

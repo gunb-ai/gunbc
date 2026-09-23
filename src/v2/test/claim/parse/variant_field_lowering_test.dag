@@ -39,7 +39,6 @@ import v2.std.node_query {
   find_named_child,
   node_labeled_child_edges,
   node_positional_child_targets,
-  payload_is_nullary,
   positional_payload_field_name
 }
 import v2.std.optional { Absent, Optional, Present }
@@ -202,7 +201,10 @@ test fn vf_positional_variant_declares_one_required_field_zero() -> Bool {
 test fn vf_bare_variant_is_nullary() -> Bool {
   match vf_arm_payload_of(o: vfs_normalized_13(), type_lexeme: "C", arm_lexeme: "B") {
     Absent => false
-    Present { value: payload } => payload_is_nullary(payload: payload) && (vf_field_count(payload: payload) == 0)
+    Present { value: payload } => (match payload.kind {
+      TypeNode { connective: Conj } => count(payload.children) == 0
+      _ => false
+    }) && (vf_field_count(payload: payload) == 0)
   }
 }
 
