@@ -99,9 +99,9 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
 };
 pub use crate::v1_compiler_infer_env::{
     bare_name_miss_diagnostic, binding_declares_name, build_unit_variant_index,
-    census_declaration_type_env, declaration_provenance_of_ref, declaration_substitution_basis,
-    effective_visible_binding, empty_symbol_index, empty_type_env_cache,
-    env_with_type_variable_bindings, global_bare_is_ambiguous,
+    census_declaration_type_env, declaration_provenance_of_ref, declaration_ref_of_type_node,
+    declaration_substitution_basis, effective_visible_binding, empty_symbol_index,
+    empty_type_env_cache, env_with_type_variable_bindings, global_bare_is_ambiguous,
     global_bare_strict_ambiguity_candidates, inductive_fields_for, inductive_fields_list_to_map,
     is_recursive_type, is_recursive_type_by_name, listed_import_required_bare_call_blocked,
     lookup_binding_by_name, lookup_binding_on_chain, lookup_type, lookup_type_by_name,
@@ -859,31 +859,56 @@ pub fn nominal_ref_node(
     span: Rc<SourceSpan>,
     ident_span: Option<Rc<SourceSpan>>,
 ) -> Rc<Node> {
-    Rc::new(Node {
-        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name: name.clone(),
-        span: span.clone(),
-        ident_span: ident_span.clone(),
-        children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
-        inferred: Some(Rc::new(InferredNode::Resolved {
-            node: nominal_leaf_type(name.clone()),
-        })),
-        return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
-        body: std::option::Option::None,
-        transport: std::option::Option::None,
-        properties: Rc::new(vec![]),
-        type_annotation: std::option::Option::None,
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-        match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-        declaration_marker: DeclarationMarker::Unmarked,
-        expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
-    })
+    {
+        let declared_leaf = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: name.clone(),
+            span: span.clone(),
+            ident_span: ident_span.clone(),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: name.clone(),
+            span: span.clone(),
+            ident_span: ident_span.clone(),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: declared_leaf.clone(),
+            })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
 }
 
 pub fn resolved_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> {
@@ -1514,25 +1539,17 @@ match caller_decl_coords(scope.clone()) {
 pub fn resource_declaration_identity(
     scope: Rc<InferScope>,
     resource: Rc<Node>,
-) -> Option<Rc<Node>> {
-    match crate::v1_compiler_infer_env::lookup_type_by_name(
-        scope.type_env.clone(),
-        type_node_label(
-            resource.clone(),
+) -> Option<Rc<DeclarationRef>> {
+    {
+        let resolved = match resource.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
+            _ => resource.clone(),
+        };
+        crate::v1_compiler_infer_env::declaration_ref_of_type_node(
+            resolved.clone(),
             scope.type_env.clone().source_indices.clone(),
-        ),
-    ) {
-        std::option::Option::None => std::option::Option::None,
-        Some(declaration) => {
-            if overlay_skips_kernel_name(declaration.name.clone()) {
-                crate::v1_compiler_infer_env::lookup_type_by_name(
-                    scope.type_env.clone(),
-                    declaration.name.clone(),
-                )
-            } else {
-                Some(declaration.clone())
-            }
-        }
+            scope.type_env.clone(),
+        )
     }
 }
 
@@ -1566,10 +1583,7 @@ pub fn established_resource_binding(
 
 pub fn resource_identity_label(scope: Rc<InferScope>, resource: Rc<Node>) -> String {
     match resource_declaration_identity(scope.clone(), resource.clone()) {
-        Some(declaration) => type_node_label(
-            declaration.clone(),
-            scope.type_env.clone().source_indices.clone(),
-        ),
+        Some(declaration) => declaration.decl_name.clone(),
         std::option::Option::None => type_node_label(
             resource.clone(),
             scope.type_env.clone().source_indices.clone(),
@@ -1614,6 +1628,48 @@ pub fn caller_resource_requirements(scope: Rc<InferScope>) -> Rc<Vec<Rc<Resource
     ) {
         Some(info) => info.resource_requirements.clone(),
         std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
+pub fn callee_resource_requirements(
+    scope: Rc<InferScope>,
+    callee: Rc<DeclaredCallableIdentity>,
+    declaration: Rc<Node>,
+) -> Rc<Vec<Rc<ResourceRequirement>>> {
+    match v1_rt::map_get(
+        &scope.item_registry.clone(),
+        crate::v1_std_core::callable_identity(callee.clone()),
+    ) {
+        Some(info) => info.resource_requirements.clone(),
+        std::option::Option::None => {
+            let owner_env = crate::v1_compiler_infer_env::census_declaration_type_env(
+                scope.type_env.clone().symbol_index.clone(),
+                callee.owner_module_path.clone(),
+                Rc::new(vec![]),
+                scope.type_env.clone().source_indices.clone(),
+            );
+            Rc::new({
+                let mut __result = Vec::new();
+                for r in crate::v1_compiler_infer_items::resource_requirements_of_uses(
+                    declaration.uses.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                )
+                .iter()
+                .cloned()
+                {
+                    __result.push(Rc::new(ResourceRequirement {
+                        binding_name: r.binding_name.clone(),
+                        resource: crate::v1_compiler_infer_env::qualify_borrowed_type_names(
+                            r.resource.clone(),
+                            callee.owner_module_path.clone(),
+                            owner_env.clone(),
+                            v1_rt::rc_empty_map::<String, bool>(),
+                        ),
+                    }));
+                }
+                __result
+            })
+        }
     }
 }
 
@@ -2196,7 +2252,7 @@ pub fn resource_requirement_diags(
     span: span.clone(),
 }), scope.module_name.clone())]),
     Some(declaration) => {
-            let required = crate::v1_compiler_infer_items::resource_requirements_of_uses(declaration.uses.clone(), scope.type_env.clone().source_indices.clone());
+            let required = callee_resource_requirements(scope.clone(), callee.clone(), declaration.clone());
 if ((required.clone().len() as i64) == 0) {
                 Rc::new(vec![])
             } else {

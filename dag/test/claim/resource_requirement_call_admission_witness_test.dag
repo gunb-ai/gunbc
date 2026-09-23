@@ -122,6 +122,31 @@ test fn a_callee_without_a_requirement_is_callable_from_a_plain_fn() -> Bool {
   blocking_unestablished_count(source: green_no_requirement_source) == 0
 }
 
+// THE SPELLING-FORK PAIR (gunbc#12047's identity fork). The callee spells its requirement
+// QUALIFIED and the caller spells it BARE. A bare resource name resolved to a kernel-spanned
+// stand-in (v1.compiler.infer nominal_ref_node) while the qualified name resolved to the
+// declaration, and the join compared nodes -- so this correct caller refused. The pair is read
+// against its controls: the bare/bare row must stay admitted (the repair must not move the case that
+// already worked), and a qualified callee whose caller establishes a DIFFERENT resource must still
+// refuse (identity, not spelling-blindness, is what admits the pair).
+data green_qualified_callee_bare_caller_source: String = "module probe_resource_spelling_fork\nimport std.types { String }\nimport std.resources { Filesystem }\nfn reads(path: String) -> String uses fs: std.resources.Filesystem {\n  filesystem_read(path)\n}\nfn forwards(path: String) -> String uses fs: Filesystem {\n  reads(path: path)\n}\n"
+
+data green_bare_callee_bare_caller_source: String = "module probe_resource_bare_bare\nimport std.types { String }\nimport std.resources { Filesystem }\nfn reads(path: String) -> String uses fs: Filesystem {\n  filesystem_read(path)\n}\nfn forwards(path: String) -> String uses fs: Filesystem {\n  reads(path: path)\n}\n"
+
+data red_qualified_callee_other_bare_resource_source: String = "module probe_resource_spelling_fork_wrong\nimport std.types { String }\nimport std.resources { Network }\nfn reads(path: String) -> String uses fs: std.resources.Filesystem {\n  filesystem_read(path)\n}\nfn networked(path: String) -> String uses net: Network {\n  reads(path: path)\n}\n"
+
+test fn a_bare_caller_establishes_a_qualified_callees_resource() -> Bool {
+  blocking_unestablished_count(source: green_qualified_callee_bare_caller_source) == 0
+}
+
+test fn a_bare_caller_establishes_a_bare_callees_resource() -> Bool {
+  blocking_unestablished_count(source: green_bare_callee_bare_caller_source) == 0
+}
+
+test fn a_bare_caller_of_a_different_resource_still_refuses_a_qualified_callee() -> Bool {
+  blocking_unestablished_count(source: red_qualified_callee_other_bare_resource_source) >= 1
+}
+
 // THE CONSUMER ROW: the emitted call carries the CALLER's binding (`&filesystem`), never the
 // callee's spelling (`&fs`), and the caller is realized as the effectful signature that binds it.
 test fn the_emitted_call_passes_the_callers_binding_not_the_callees_spelling() -> Bool {
