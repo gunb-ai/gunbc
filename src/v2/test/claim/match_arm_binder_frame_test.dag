@@ -246,11 +246,13 @@ test fn mab_binder_spelling_a_record_data_row_binds() -> Bool {
   mab_has_atom(o: mab_resolved_record_data_binder(), id: ^d)
 }
 
-// THE ROUTE THE IN-TREE SPECIMEN ACTUALLY TAKES, at fixture size: `n` is off the arm's lexical
-// chain and two declarations spell it corpus-wide, so the global-bare lookup is Ambiguous and the
-// classifier's LexicalUnbound -> GlobalBareLookupAmbiguous arm answers constructor. The body's `n`
-// then REFUSES, located -- loud, not silent. That arm is the #12009 bridge and is not this
-// package's; this row records its current behaviour so a change to it is seen.
+// A BINDER SPELLED LIKE A NON-PAYLOAD DECLARED IN TWO MODULES BINDS. `n` is off the arm's lexical
+// chain and two fns spell it corpus-wide, so the global-bare lookup is Ambiguous. That arm used to
+// answer constructor for ANY ambiguity, so `A(n) => n` refused resolve_reason_unbound_symbol -- the
+// over-prohibition behind the operator's seven expression_bodied_fn_decl_parse refusals at the
+// binder `d` of `Rejected { diagnostics: d }` on main 4446f2e990f. The arm now asks each claimant
+// whether it is a declared payload, and neither fn is. Red on that main (it refused); green here.
+// Its partner below keeps the fail-closed half: the same shape over two VARIANTS still refuses.
 fn mab_file(src: String, id: Symbol) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: src, fidelity: Lossless },
@@ -280,9 +282,39 @@ fn mab_resolved_ambiguous_binder() -> Outcome<Node> {
   )
 }
 
-test fn mab_binder_spelling_an_ambiguous_global_name_refuses_unbound() -> Bool {
+test fn mab_binder_spelling_a_non_payload_declared_in_two_modules_binds() -> Bool {
+  mab_outcome_accepts(o: mab_resolved_ambiguous_binder())
+    && mab_has_atom(o: mab_resolved_ambiguous_binder(), id: ^n)
+}
+
+// THE FAIL-CLOSED PARTNER: a pattern atom spelled like a VARIANT declared in two modules, imported
+// into neither, is still a constructor. `N` is a declared payload at both claimants, so the
+// ambiguous arm answers constructor, the atom resolves as a reference and refuses unbound, rather
+// than becoming a catch-all binder. It discriminates the per-candidate question from "ambiguity is
+// a binder": with the arm answering binder unconditionally this row reds.
+fn mab_resolved_two_module_variant() -> Outcome<Node> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: mab_file(src: "module p.a\n\ntype K = M | N\n", id: ^match_arm_binder_variant_a_cu),
+      tail: Cons {
+        head: mab_file(src: "module r.b\n\ntype L = N | O\n", id: ^match_arm_binder_variant_b_cu),
+        tail: Cons {
+          head: mab_file(src: "module p.q\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(N) => 1\n    B => 0\n  }\n}\n", id: ^match_arm_binder_variant_q_cu),
+          tail: Empty
+        }
+      }
+    },
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^p, tail: Cons { head: ^q, tail: Empty } } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+}
+
+test fn mab_binder_spelling_a_variant_declared_in_two_modules_refuses() -> Bool {
   mab_outcome_refuses_with(
-    o: mab_resolved_ambiguous_binder(),
+    o: mab_resolved_two_module_variant(),
     reason: ^resolve_reason_unbound_symbol
   )
 }

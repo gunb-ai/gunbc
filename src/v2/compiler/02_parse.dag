@@ -166,9 +166,37 @@ type ParseProvenanceState {
   frame: List<ParseProvFrameItem>
 }
 
+// THE ALLOCATOR RIDES BESIDE THE INDEX BECAUSE THEY ARE ONE FACT. `span_index` says where each
+// occurrence this parse minted came from; `alloc` says which ids this parse consumed, so the NEXT
+// parse in the same source graph can continue rather than restart. `std.occurrence_identity`
+// `occurrence_identity_scope_law` names "module-local allocator reset" a FORBIDDEN identity input
+// and requires that "a production source graph threads one allocator across every parsed source" --
+// a per-file reset makes two files' occurrence #3 the same value with different meanings, which is
+// the meaning fork of DESIGN section 3 at the identity layer, and it is what makes the ingest-wide
+// span index unbuildable: merging two files' indices would silently take one file's locus for the
+// other file's node. Carrying the high-water mark here is what lets the assembly fold seed each
+// file from the previous file's next id, so an occurrence id is unique across the whole ingest and
+// the join from a node to its file is a LOOKUP.
+//
+// A STANDALONE PARSE IS STILL AN ISOLATED SCOPE, which the same law admits: the unseeded entry
+// points below are projections that pass `occurrence_id_allocator_initial()`, so a caller that
+// parses one file alone is unchanged.
+//
+// WHAT THAT DOES NOT SAY, DELIBERATELY, IS THAT EVERY UNSEEDED CALLER PARSES ONE FILE. The door
+// cannot enforce its own precondition: an unseeded call states "this is a fresh scope", and whether
+// that is TRUE is a fact about the caller, not about this declaration. An earlier revision of this
+// annotation claimed the corpus had no multi-file unseeded caller, and the corpus did have one
+// (review 69644) -- prose asserting a property of code it cannot see, which is the same class as
+// review 69607 against this branch. The obligation belongs to each fold that walks an ingest, and
+// the two that do -- `v2.compiler.program_assembly` `program_assembly_fold_step` and
+// `v2.compiler.00_compile` `native_test_context_fold_step` -- both thread the mark. A NEW ingest
+// fold that calls the unseeded door is a defect this annotation cannot catch; making that
+// structurally unwritable would mean a carrier that distinguishes "a scope" from "a file", which is
+// a modeling change larger than this one and is not claimed here.
 type ParseArtifact {
   tree: ParseTree
   span_index: v2.std.provenance.SpanIndex
+  alloc: OccurrenceIdAllocator
 }
 
 data authored_parse_artifact_note: String = "The parse-layer twin of LexArtifact: the semantic parse result PLUS what the annotation channel captured, now bound to subjects. `authored_parse_semantic` is the erasure boundary — a consumer projecting through it sees exactly the ParseArtifact it saw before this channel existed, which is what lets every existing semantic consumer stay untouched while annotation-aware machinery reads the whole thing.
@@ -767,12 +795,16 @@ fn parse_non_empty_diagnostics_to_list(ned: NonEmptyDiagnostics) -> List<Diagnos
   list_append(left: [ned.head], right: ned.tail)
 }
 
-fn parse_prov_initial() -> ParseProvenanceState {
+fn parse_prov_seeded(seed: OccurrenceIdAllocator) -> ParseProvenanceState {
   ParseProvenanceState {
-    alloc: occurrence_id_allocator_initial(),
+    alloc: seed,
     index: span_index_empty(),
     frame: Empty
   }
+}
+
+fn parse_prov_initial() -> ParseProvenanceState {
+  parse_prov_seeded(seed: occurrence_id_allocator_initial())
 }
 
 fn parse_prov_replay_frame(
@@ -3646,10 +3678,28 @@ fn parse_production_prepared_measured(
   production_name: Symbol,
   materialization: Materialization
 ) -> ParseProductionMeasured {
+  parse_production_prepared_measured_seeded(
+    tokens: tokens,
+    validated: validated,
+    analysis: analysis,
+    production_name: production_name,
+    seed: occurrence_id_allocator_initial(),
+    materialization: materialization
+  )
+}
+
+fn parse_production_prepared_measured_seeded(
+  tokens: List<Token>,
+  validated: ValidatedGrammarRoot,
+  analysis: GrammarFirstAnalysis,
+  production_name: Symbol,
+  seed: OccurrenceIdAllocator,
+  materialization: Materialization
+) -> ParseProductionMeasured {
   let root = validated.root
   match grammar_lookup_production(root: root, name: production_name) {
     Holds { value: production } =>
-      let prov = parse_prov_initial()
+      let prov = parse_prov_seeded(seed: seed)
       let table = parse_table_for_production_analyzed(
         validated: validated,
         analysis: analysis,
@@ -3673,7 +3723,7 @@ fn parse_production_prepared_measured(
             )
             ParseProductionMeasured {
               outcome: Accepted {
-                value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index },
+                value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index, alloc: stamped.prov.alloc },
                 diagnostics: parse_diags_to_diagnostics(diags: diags)
               },
               memo: parse_table_memo_stats(table: final_table)
@@ -3821,6 +3871,20 @@ fn parse_module_prepared(
   ).outcome
 }
 
+fn parse_module_prepared_seeded(
+  tokens: TokenStream,
+  prepared: PreparedGrammar,
+  validation_residue: Diagnostics,
+  seed: OccurrenceIdAllocator
+) -> Outcome<ParseArtifact> {
+  parse_module_prepared_measured_seeded(
+    tokens: tokens,
+    prepared: prepared,
+    validation_residue: validation_residue,
+    seed: seed
+  ).outcome
+}
+
 // A VOID GRAMMAR CONSULTS NO MEMO, so its accounting is empty rather than absent: the counters are
 // zero because nothing was looked up, which is an answer. Reporting no stats at all would make a
 // void parse indistinguishable from a parse whose stats were dropped.
@@ -3829,13 +3893,33 @@ fn parse_module_prepared_measured(
   prepared: PreparedGrammar,
   validation_residue: Diagnostics
 ) -> ParseProductionMeasured {
+  parse_module_prepared_measured_seeded(
+    tokens: tokens,
+    prepared: prepared,
+    validation_residue: validation_residue,
+    seed: occurrence_id_allocator_initial()
+  )
+}
+
+// THE SEEDED DOOR, WHICH IS THE ONE AN INGEST USES. `seed` is the allocator the PREVIOUS file in
+// the same source graph left behind, so this file's occurrence ids continue where that one stopped
+// and no two files in one ingest mint the same id. The returned artifact carries the mark this
+// parse reached, which is what lets the assembly fold thread it to the next read. The unseeded
+// projection above is every other caller: one file, its own isolated scope, byte-identical to the
+// fold it was before this parameter existed.
+fn parse_module_prepared_measured_seeded(
+  tokens: TokenStream,
+  prepared: PreparedGrammar,
+  validation_residue: Diagnostics,
+  seed: OccurrenceIdAllocator
+) -> ParseProductionMeasured {
   let ntok = token_stream_remaining_count(stream: tokens)
   match prepared {
     PreparedVoidGrammar =>
       if ntok == 0 {
         ParseProductionMeasured {
           outcome: Accepted {
-            value: ParseArtifact { tree: grammar_to_node(grammar: VoidGrammar), span_index: span_index_empty() },
+            value: ParseArtifact { tree: grammar_to_node(grammar: VoidGrammar), span_index: span_index_empty(), alloc: seed },
             diagnostics: validation_residue
           },
           memo: parse_memo_stats_empty()
@@ -3851,11 +3935,12 @@ fn parse_module_prepared_measured(
         }
       }
     PreparedModeled { modeled: modeled, materialization: materialization } =>
-      let measured = parse_production_prepared_measured(
+      let measured = parse_production_prepared_measured_seeded(
         tokens: token_stream_remaining(stream: tokens),
         validated: modeled.validated,
         analysis: modeled.analysis,
         production_name: modeled.validated.root.start,
+        seed: seed,
         materialization: materialization
       )
       match measured.outcome {
