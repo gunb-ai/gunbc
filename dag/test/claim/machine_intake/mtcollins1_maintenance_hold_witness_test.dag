@@ -7,8 +7,7 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldSlotUndecodable,
 }
 import gunbc.machine_intake_mtcollins1_maintenance_hold {
-  BootHoldAdmission, BootHoldAcquired, BootHoldRefused,
-  mtcollins1_boot_hold_admission, operator_maintenance_owner, boot_run_owner, mtcollins1_unit_hold_key,
+  unit_hold_refusal, operator_maintenance_owner, boot_run_owner, host_reset_owner, mtcollins1_unit_hold_key,
 }
 import gunbc.auth.mtcollins1_boot_federation {
   OidcClaimPin, mtcollins1_boot_claim_pins, mtcollins1_boot_claims_admitted, mtcollins1_boot_wif_attribute_condition,
@@ -20,52 +19,51 @@ import v2.std.optional { Present, Absent }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // ── The interlock: the boot refuses under an active maintenance hold ──────────────────────────
-// Supplied at the interface (DESIGN §3, a witness discriminates at one interface): the outcomes are
-// the typed values gunbc.durable_exclusive_hold_file_store file_hold_acquire returns, whose store
-// route is exercised by test.claim.durable_exclusive_hold_file_store_wet_witness.
+// Supplied at the interface (DESIGN §3, a witness discriminates at one interface), and only into the
+// PURE refusal fold: a supplied outcome yields text and never a UnitHoldProof, whose one mint is the
+// live acquire (the forged-proof refusal is test.claim.machine_intake.mtcollins1_unit_hold_forged_probe_witness_test).
+// The store route itself is test.claim.durable_exclusive_hold_file_store_wet_witness.
 
 fn first_generation() -> CasGeneration {
   cas_generation_first()
 }
 
-fn refused_naming(a: BootHoldAdmission, pattern: String) -> Bool {
-  match a {
-    BootHoldRefused { reason: r } => string_contains(s: r as String, pattern: pattern) && string_contains(s: r as String, pattern: "controller untouched")
-    BootHoldAcquired { owner: _, generation: _ } => false
+fn refused_naming(r: NonEmptyStr?, pattern: String) -> Bool {
+  match r {
+    Present { value: why } => string_contains(s: why as String, pattern: pattern) && string_contains(s: why as String, pattern: "controller untouched")
+    Absent => false
   }
 }
 
-fn acquired(a: BootHoldAdmission) -> Bool {
-  match a {
-    BootHoldAcquired { owner: _, generation: _ } => true
-    BootHoldRefused { reason: _ } => false
+fn not_refused(r: NonEmptyStr?) -> Bool {
+  match r {
+    Present { value: _ } => false
+    Absent => true
   }
 }
 
-// THE RED: the operator holds the unit (DIMM reseat), and the boot refuses before any BMC write,
-// naming the holder. THE CONTROL beside it: the same unit, free, is acquired by the boot.
+// THE RED: the operator holds the unit (DIMM reseat), and the acquire is refused naming the holder.
+// THE CONTROL beside it: the same unit acquired is no refusal.
 test fn the_boot_refuses_under_an_active_maintenance_hold_and_names_the_holder() -> Bool {
   let held = FileHoldOccupied {
     slot_key: mtcollins1_unit_hold_key,
     holder: operator_maintenance_owner(reason: "reseating DIMMs"),
     generation: first_generation(),
   }
-  refused_naming(a: mtcollins1_boot_hold_admission(outcome: held), pattern: "operator-maintenance:reseating DIMMs")
-    && acquired(a: mtcollins1_boot_hold_admission(outcome: FileHoldAcquired { slot_key: mtcollins1_unit_hold_key, owner: boot_run_owner(run_id: "42"), generation: first_generation() }))
+  refused_naming(r: unit_hold_refusal(outcome: held), pattern: "operator-maintenance:reseating DIMMs")
+    && not_refused(r: unit_hold_refusal(outcome: FileHoldAcquired { slot_key: mtcollins1_unit_hold_key, owner: boot_run_owner(run_id: "42"), generation: first_generation() }))
 }
 
-// ANOTHER BOOT IS A HOLDER TOO: the exclusion the grant-keyed claim slot supplied is now the unit's.
-test fn a_second_boot_refuses_while_the_first_holds_the_unit() -> Bool {
-  refused_naming(
-    a: mtcollins1_boot_hold_admission(outcome: FileHoldOccupied { slot_key: mtcollins1_unit_hold_key, holder: boot_run_owner(run_id: "41"), generation: first_generation() }),
-    pattern: "mtcollins1-boot:41",
-  )
+// ANOTHER HOLDER IS A HOLDER: a running boot, or a host reset-return, excludes the next writer.
+test fn a_second_writer_refuses_while_another_run_holds_the_unit() -> Bool {
+  refused_naming(r: unit_hold_refusal(outcome: FileHoldOccupied { slot_key: mtcollins1_unit_hold_key, holder: boot_run_owner(run_id: "41"), generation: first_generation() }), pattern: "mtcollins1-boot:41")
+    && refused_naming(r: unit_hold_refusal(outcome: FileHoldOccupied { slot_key: mtcollins1_unit_hold_key, holder: host_reset_owner(attempt: "srv1-mtcollins1"), generation: first_generation() }), pattern: "host-reset-return:srv1-mtcollins1")
 }
 
 // AN INTERLOCK THAT CANNOT BE READ IS NOT RELEASED: a lost race and an undecodable slot refuse.
 test fn an_unreadable_or_contended_hold_refuses_rather_than_proceeding() -> Bool {
-  refused_naming(a: mtcollins1_boot_hold_admission(outcome: FileHoldAcquireLost { slot_key: mtcollins1_unit_hold_key }), pattern: "lost the race")
-    && refused_naming(a: mtcollins1_boot_hold_admission(outcome: FileHoldSlotUndecodable { slot_key: mtcollins1_unit_hold_key, generation: first_generation(), detail: "garbage" }), pattern: "undecodable")
+  refused_naming(r: unit_hold_refusal(outcome: FileHoldAcquireLost { slot_key: mtcollins1_unit_hold_key }), pattern: "lost the race")
+    && refused_naming(r: unit_hold_refusal(outcome: FileHoldSlotUndecodable { slot_key: mtcollins1_unit_hold_key, generation: first_generation(), detail: "garbage" }), pattern: "undecodable")
 }
 
 // ── The federation: only this workflow, at main, dispatched, in the boot environment ───────────

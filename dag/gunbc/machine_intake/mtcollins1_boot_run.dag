@@ -1,6 +1,7 @@
 module gunbc.machine_intake_mtcollins1_boot_run
 
 import std.types { Bool, Int, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
 import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
 import std.temporal_effect {
   HeldLeaseObservedState,
@@ -23,8 +24,8 @@ import gunbc.machine_intake_mtcollins1_boot_authorization {
   mtcollins1_boot_subject,
 }
 import gunbc.machine_intake_mtcollins1_maintenance_hold {
-  BootHoldAdmission, BootHoldAcquired, BootHoldRefused,
-  unit_hold_store_root, mtcollins1_boot_acquire_unit_hold, mtcollins1_boot_release_unit_hold,
+  UnitHoldProof, UnitHeld, UnitHoldRefused,
+  mtcollins1_boot_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal, mtcollins1_unit_hold_key,
 }
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff }
@@ -193,11 +194,20 @@ fn mtcollins1_boot_sol_is_held(pid_path: String) -> Bool {
 }
 
 fn mtcollins1_sol_release(
+  proof: UnitHoldProof,
   username: NonEmptyStr,
   password_file: NonEmptyStr,
 ) -> Bool
   uses net: std.resources.Network
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_acquire_under_unit_hold"),
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_release_sol"),
+  ]
 {
+  match unit_hold_proof_refusal(proof: proof, key: mtcollins1_unit_hold_key, label: "mtcollins1 SOL release") {
+    Present { value: _ } => return false
+    Absent => {}
+  }
   dropped = diagnostic.ipmi.Tool.SolDeactivate(
     bmc_host: mtcollins1_endpoint.host,
     username: username,
@@ -255,6 +265,7 @@ fn mtcollins1_sol_bind_capture_to_attempt(capture_path: String) -> Bool {
 }
 
 fn mtcollins1_sol_acquire_under_unit_hold(
+  proof: UnitHoldProof,
   password_file: NonEmptyStr,
   pid_path: String,
   capture_path: String,
@@ -280,11 +291,11 @@ fn mtcollins1_sol_acquire_under_unit_hold(
             exit_failure(reason: concat("mtcollins1 boot: a collector is held but the capture at ", capture_path, " could not be bound to this attempt; refusing rather than reading another attempt's lines"))
           }
         SolAcquireReleaseThenStart => {
-          let _cleared = mtcollins1_sol_release(username: username, password_file: password_file)
-          mtcollins1_sol_activate_held(username: username, password_file: password_file, pid_path: pid_path, capture_path: capture_path)
+          let _cleared = mtcollins1_sol_release(proof: proof, username: username, password_file: password_file)
+          mtcollins1_sol_activate_held(proof: proof, username: username, password_file: password_file, pid_path: pid_path, capture_path: capture_path)
         }
         SolAcquireStart =>
-          mtcollins1_sol_activate_held(username: username, password_file: password_file, pid_path: pid_path, capture_path: capture_path)
+          mtcollins1_sol_activate_held(proof: proof, username: username, password_file: password_file, pid_path: pid_path, capture_path: capture_path)
       }
   }
 }
@@ -295,13 +306,21 @@ fn mtcollins1_sol_acquire_under_unit_hold(
 // already-held converged collector, and that route binds it too. If the bind fails the acquire
 // refuses rather than proceeding against a capture of unknown provenance.
 fn mtcollins1_sol_activate_held(
+  proof: UnitHoldProof,
   username: NonEmptyStr,
   password_file: NonEmptyStr,
   pid_path: String,
   capture_path: String,
 ) -> ProcessExit
   uses net: std.resources.Network
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_acquire_under_unit_hold"),
+  ]
 {
+  match unit_hold_proof_refusal(proof: proof, key: mtcollins1_unit_hold_key, label: "mtcollins1 SOL activate") {
+    Present { value: why } => return exit_failure(reason: why)
+    Absent => {}
+  }
   if pid_path == "" {
     return exit_failure(reason: "mtcollins1 boot: SOL pid path unset; refusing acquire")
   }
@@ -674,13 +693,13 @@ fn mtcollins1_boot_await_capture_terminal(
   }
 }
 
-fn mtcollins1_boot_release_sol(password_file: String, pid_path: String) -> HeldLeaseObservedState
+fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_path: String) -> HeldLeaseObservedState
   uses net: std.resources.Network
 {
   match mtcollins1_bmc_username {
     Absent => LeaseInaccessible
     Present { value: user } => {
-      let _attempted = mtcollins1_sol_release(username: user, password_file: password_file as NonEmptyStr)
+      let _attempted = mtcollins1_sol_release(proof: proof, username: user, password_file: password_file as NonEmptyStr)
       mtcollins1_sol_observed_from_pid_path(pid_path: pid_path)
     }
   }
@@ -691,6 +710,7 @@ fn mtcollins1_boot_release_sol(password_file: String, pid_path: String) -> HeldL
 // device and the power cycle -- which is what dissolves the pre-approval SOL mutation: there is no
 // approval stage left for the SOL to precede, and the gate it must follow is the hold.
 fn mtcollins1_boot_actuate(
+  proof: UnitHoldProof,
   subject: MtCollins1BootSubject,
   password_file: String,
   attempt: String,
@@ -699,15 +719,16 @@ fn mtcollins1_boot_actuate(
 ) -> ProcessExit
   uses net: std.resources.Network
 {
-  match mtcollins1_sol_acquire_under_unit_hold(password_file: password_file as NonEmptyStr, pid_path: sol_pid_path, capture_path: sol_capture_path) {
+  match mtcollins1_sol_acquire_under_unit_hold(proof: proof, password_file: password_file as NonEmptyStr, pid_path: sol_pid_path, capture_path: sol_capture_path) {
     ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
     ExitSuccess => {
       let issued = match mtcollins1_census_readback_refusal_before_attach(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
         Present { value: why } => exit_failure(reason: why)
         Absent =>
-          match mtcollins1_attach_diskless_image(subject: subject, password_file: password_file, attempt: attempt) {
+          match mtcollins1_attach_diskless_image(proof: proof, subject: subject, password_file: password_file, attempt: attempt) {
             ExitSuccess =>
               mtcollins1_drive_handoff(
+                proof: proof,
                 label: "mtcollins1 cdrom handoff",
                 password_file_raw: password_file,
                 capability_row: mtcollins1_capability_row,
@@ -725,7 +746,7 @@ fn mtcollins1_boot_actuate(
           )
         other => other
       }
-      let teardown = mtcollins1_boot_release_sol(password_file: password_file, pid_path: sol_pid_path)
+      let teardown = mtcollins1_boot_release_sol(proof: proof, password_file: password_file, pid_path: sol_pid_path)
       match observed {
         ExitSuccess =>
           match teardown {
@@ -741,29 +762,29 @@ fn mtcollins1_boot_actuate(
   }
 }
 
-// THE HOLD GATES THE ACTUATION AND IS FREED WHATEVER THE ACTUATION ANSWERED. A refused hold returns
-// before any BMC write; an acquired one is released with the actuation's own outcome carried.
-fn mtcollins1_boot_under_unit_hold(
-  admission: BootHoldAdmission,
+// THE LIVE ACQUIRE AND THE EFFECT ARE ONE BOUNDARY. This function performs the acquire itself and
+// the only arm that reaches a BMC write is UnitHeld, whose proof exists only because the
+// compare-and-set this call made committed. Nothing is supplied: there is no admission parameter a
+// caller could author. The hold is freed whatever the actuation answered.
+fn mtcollins1_boot_under_live_unit_hold(
+  run_id: NonEmptyStr,
   subject: MtCollins1BootSubject,
   password_file: String,
-  attempt: String,
   sol_pid_path: String,
   sol_capture_path: String,
 ) -> ProcessExit
   uses net: std.resources.Network
 {
-  match admission {
-    BootHoldRefused { reason: r } => exit_failure(reason: r as String)
-    BootHoldAcquired { owner: o, generation: g } =>
-      mtcollins1_boot_release_unit_hold(
-        root: unit_hold_store_root,
-        owner: o,
-        generation: g,
+  match mtcollins1_boot_acquire_unit_hold(run_id: run_id) {
+    UnitHoldRefused { reason: r } => exit_failure(reason: concat("mtcollins1 boot: ", r as String))
+    UnitHeld { proof: p } =>
+      unit_hold_release(
+        proof: p,
         outcome: mtcollins1_boot_actuate(
+          proof: p,
           subject: subject,
           password_file: password_file,
-          attempt: attempt,
+          attempt: run_id as String,
           sol_pid_path: sol_pid_path,
           sol_capture_path: sol_capture_path,
         ),
@@ -832,11 +853,10 @@ fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
   if !pw_read.success {
     return exit_failure(reason: concat("mtcollins1 boot: BMC credential unreadable: ", pw_read.error))
   }
-  let actuated = mtcollins1_boot_under_unit_hold(
-    admission: mtcollins1_boot_acquire_unit_hold(root: unit_hold_store_root, run_id: run_id as NonEmptyStr),
+  let actuated = mtcollins1_boot_under_live_unit_hold(
+    run_id: run_id as NonEmptyStr,
     subject: mtcollins1_boot_subject(execution_revision: sha as NonEmptyStr),
     password_file: cred,
-    attempt: run_id,
     sol_pid_path: sol_pid_path,
     sol_capture_path: sol_capture_path,
   )

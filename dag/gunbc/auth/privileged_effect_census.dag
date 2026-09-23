@@ -1,7 +1,7 @@
 module gunbc.auth.privileged_effect_census
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_in_list }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_in_list, declaration_ref_eq }
 import std.dissolution {
   DissolutionCondition, DissolutionStatus, DissolutionFired, DissolutionPending, DissolutionUnbound,
   dissolution_status, unbound_dissolution, retires_dissolution,
@@ -21,6 +21,7 @@ import gunbc.auth.authorization_pattern_selection {
   MintsNoCredential, MintsResourceScopedCredential, MintsProjectWideCredential, MintsAccountWideCredential,
   ReversibleByReapply, IrreversibleEffect,
   BillsExternally, NoBillingConsequence,
+  WitnessDischarge, NoWitnessDischarge, StandingRulingUnderInterlock, StandingDestructiveAuthorization,
   AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep,
   OperatorOwnSession, PastedOperatorToken,
   AuthorizationPatternSelection, PatternSelected, ManualStepRequired, NoAdmissiblePattern,
@@ -195,6 +196,7 @@ fn recurring_credential_read(subject: NonEmptyStr) -> PrivilegedEffect {
     workload_identity: convergence_principal(),
     minted_reach: MintsNoCredential,
     billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
   }
 }
 
@@ -208,34 +210,41 @@ fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
     workload_identity: grant_administrator_unbindable,
     minted_reach: MintsNoCredential,
     billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
   }
 }
 
 // THE MT. COLLINS BOOT (operator ruling 2026-09-23), with its parameters stated as they are.
-// RECURRING: the boot is dispatched every time the unit is re-censused, with nobody at the end of
-// it, so EveryProvision -- an attendance premise the selection turns into "must run unattended".
-// REVERSIBLE BY REAPPLY: the actuation is a BMC virtual-media attach, a one-shot boot-device set, a
-// power cycle and a SOL session. Each is undone by the next boot or by detaching; the unit is an
-// intake unit that runs only the diskless census live image this mode itself boots (nothing is
-// written to its disks), so what a power cycle interrupts is a RAM-only session the mode reproduces.
-// The one harm that is NOT undone by reapplying -- power-cycling a unit a technician has hands in --
-// is not a property of the effect but of the unit's state, and it is excluded by the maintenance
-// hold rostered in privileged_effect_interlocks below, which the boot must acquire before any BMC
-// write. Without that interlock this row's reversibility would be false.
-// MINTS NO CREDENTIAL: it reads the pinned BMC credential and the pinned fleet key; the approval
-// submission MAC key it used to read existed only to sign the approval filing, which is gone.
-// WORKLOAD IDENTITY: the dedicated account of gunbc.auth.mtcollins1_boot_federation, reachable only
-// from a token the dedicated provider admitted (this workflow at main, workflow_dispatch, the
-// mtcollins1-boot environment) -- never the repo-wide convergence principal.
+// RECURRING: dispatched every time the unit is re-censused, with nobody at the end of it --
+// EveryProvision, which the selection reads as "must run unattended".
+// IRREVERSIBLE, AND SAID SO: a power cycle destroys the unit's RAM and whatever session it held, and
+// no reapply restores that. An earlier revision of this row declared ReversibleByReapply, and its own
+// mutation claim showed that label was what selected federation -- a relabel standing where a
+// decision belonged (side-chat review 5286225278).
+// THE DECISION IS THE OPERATOR'S, CARRIED AS ONE: a standing authorization for this recurring
+// destructive effect, conditional on the unit's durable maintenance hold being released before any
+// BMC write. It discharges the per-instance witness for irreversibility and nothing else; the
+// interlock it names is rostered in privileged_effect_interlocks below, and a ruling whose interlock
+// is not rostered against its site is red (rulings_without_a_rostered_interlock).
+// MINTS NO CREDENTIAL: it reads the pinned BMC credential and the pinned fleet key.
+// WORKLOAD IDENTITY: the dedicated account of gunbc.auth.mtcollins1_boot_federation.
+data mtcollins1_boot_standing_authorization: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
+  ruled_by: "operator (in chat, relayed by eager-owl-205)" as NonEmptyStr,
+  ruled_on: "2026-09-23" as NonEmptyStr,
+  effect_subject: "mtcollins1 boot: BMC virtual-media attach, one-shot CD boot device, power cycle and SOL capture" as NonEmptyStr,
+  interlock: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_unit_hold_key"),
+}
+
 fn mtcollins1_boot_effect() -> PrivilegedEffect {
   PrivilegedEffect {
     subject: "mtcollins1 boot: BMC virtual-media attach, one-shot CD boot device, power cycle and SOL capture under the pinned BMC credential, plus the census medium readback over the pinned fleet key" as NonEmptyStr,
     frequency: EveryProvision,
-    reversibility: ReversibleByReapply,
+    reversibility: IrreversibleEffect { what_is_lost: "a power cycle destroys the unit's RAM and the session it was running; no reapply restores it" as NonEmptyStr },
     surface: ApiSurface,
     workload_identity: WorkloadIdentityBindable { member: mtcollins1_boot_service_account_member() as NonEmptyStr },
     minted_reach: MintsNoCredential,
     billing: NoBillingConsequence,
+    witness_discharge: StandingRulingUnderInterlock { ruling: mtcollins1_boot_standing_authorization },
   }
 }
 
@@ -251,16 +260,70 @@ type PrivilegedEffectInterlock {
   hold: DeclarationRef
   refusal: DeclarationRef
   premise: NonEmptyStr
+  hold_owning_roots: List<InterlockRoot>
+}
+
+// EVERY PRODUCTION ROOT THAT REACHES A GATED WRITE ON THE UNIT, and the live acquire it owns. The set
+// is closed by the compiler rather than by this list: the BMC write wrappers take a sole_constructor
+// UnitHoldProof, and the generic operations beneath them are admit_callers-sealed to the callers named
+// in sealed_by (oob_boot_handoff -> mtcollins1_drive_handoff and host_reset_return_issue_and_watch;
+// megarac_attach_remote_image -> mtcollins1_attach_diskless_image; the SOL release and activate to
+// the boot's SOL acquire). A new caller refuses at compile time (ConstructorCallAdmissionRefused), so
+// adding a root means editing a seal, which is where this row is read.
+type InterlockRoot {
+  root: DeclarationRef
+  acquires_at: DeclarationRef
+  operations: List<NonEmptyStr>
+  sealed_by: List<DeclarationRef>
 }
 
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
     hold: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_unit_hold_key"),
-    refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_boot_hold_admission"),
-    premise: "ReversibleByReapply holds only while no operator maintenance hold is on the unit: the boot takes the unit's one durable exclusive hold before any BMC write and refuses FileHoldOccupied naming the holder" as NonEmptyStr,
+    refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
+    premise: "the boot takes the unit's one durable exclusive hold before any BMC write and refuses FileHoldOccupied naming the holder" as NonEmptyStr,
+    hold_owning_roots: [
+      InterlockRoot {
+        root: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
+        acquires_at: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
+        operations: ["SOL deactivate/activate" as NonEmptyStr, "virtual-media attach" as NonEmptyStr, "boot-device set" as NonEmptyStr, "power cycle" as NonEmptyStr],
+        sealed_by: [
+          site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_release"),
+          site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_activate_held"),
+          site(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_attach_diskless_image"),
+          site(module_path: "gunbc.machine_intake_megarac_media_attach", decl_name: "megarac_attach_remote_image"),
+          site(module_path: "gunbc.machine_intake_mtcollins1_actuate", decl_name: "mtcollins1_drive_handoff"),
+          site(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_boot_handoff"),
+        ],
+      },
+      InterlockRoot {
+        root: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+        acquires_at: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+        operations: ["boot-device set" as NonEmptyStr, "power cycle" as NonEmptyStr],
+        sealed_by: [
+          site(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_boot_handoff"),
+          site(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_power_cycle_after_confirmed_selection"),
+        ],
+      },
+    ],
   },
 ]
+
+// A STANDING RULING IS HONORED ONLY BESIDE ITS INTERLOCK: for every census row whose effect carries
+// one, the ruling's interlock must be the hold of an interlock rostered against that same site.
+fn ruling_interlock_is_rostered(site_ref: DeclarationRef, interlock: DeclarationRef) -> Bool {
+  any(privileged_effect_interlocks, i => declaration_ref_eq(a: i.site, b: site_ref) && declaration_ref_eq(a: i.hold, b: interlock))
+}
+
+fn rulings_without_a_rostered_interlock() -> List<DeclarationRef> {
+  flat_map(privileged_effect_census, row =>
+    match row.effect.witness_discharge {
+      NoWitnessDischarge => []
+      StandingRulingUnderInterlock { ruling: r } =>
+        if ruling_interlock_is_rostered(site_ref: row.site, interlock: r.interlock) { [] } else { [row.site] }
+    })
+}
 
 fn interlocked_sites_missing_from_census() -> List<DeclarationRef> {
   let rostered = map(privileged_effect_census, row => row.site)
@@ -339,6 +402,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsResourceScopedCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedFederatedGrant,
     divergence_reason: none,
@@ -365,6 +429,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsResourceScopedCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedRunSelected,
     divergence_reason: none,
@@ -385,6 +450,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: grant_administrator_unbindable,
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
     divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
@@ -405,6 +471,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsResourceScopedCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedRunSelected,
     divergence_reason: Present { value: interim_cloudflare_adapter_unlanded },
@@ -443,6 +510,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: grant_administrator_unbindable,
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
     divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
@@ -457,6 +525,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: grant_administrator_unbindable,
       minted_reach: MintsResourceScopedCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
     divergence_reason: Present { value: approval_bootstrap_circularity },
@@ -471,6 +540,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: grant_administrator_unbindable,
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
     divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
@@ -485,6 +555,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
     divergence_reason: none,
@@ -511,6 +582,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: none,
@@ -537,6 +609,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: convergence_principal(),
       minted_reach: MintsResourceScopedCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: none,
@@ -563,6 +636,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: WorkloadIdentityUnbindable { cause: "no fleet service account holds organization-wide read; the operator's identity is the only reader" as NonEmptyStr },
       minted_reach: MintsNoCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: none,
@@ -577,6 +651,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: WorkloadIdentityUnbindable { cause: "GitHub exposes no API that creates an App; the manifest form is submitted by the account or organization owner under a browser session, so no federated principal can be bound to it" as NonEmptyStr },
       minted_reach: MintsProjectWideCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedHumanStep,
     divergence_reason: none,
@@ -591,6 +666,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       workload_identity: WorkloadIdentityUnbindable { cause: "no API creates an account-owned token without an existing one" as NonEmptyStr },
       minted_reach: MintsAccountWideCredential,
       billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedHumanStep,
     divergence_reason: none,

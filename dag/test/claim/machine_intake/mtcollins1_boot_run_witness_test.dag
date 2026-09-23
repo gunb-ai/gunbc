@@ -20,8 +20,10 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1,
 }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
-import gunbc.fleet_converge_workflow { fleet_converge_mtcollins1_boot_job }
-import extdeps.github.actions { Step, RunStep, UsesStep }
+import gunbc.fleet_converge_workflow { fleet_converge_mtcollins1_boot_job, fleet_converge_checkout_ref_expr, fleet_converge_mtcollins1_boot_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group }
+import extdeps.github.actions { Step, RunStep, UsesStep, RunnerSpec, SelfHosted, RunsOnExpression, HostedRunner }
+import extdeps.languages.yaml.gha_workflow { job_yaml }
+import extdeps.languages.yaml.emit { serialize_yaml }
 import std.process { ExitSuccess }
 import std.temporal_effect {
   LeaseRunningExpected, LeaseRunningStale, LeaseInaccessible,
@@ -523,4 +525,39 @@ test fn every_acquisition_that_reads_the_capture_binds_it_to_this_attempt() -> B
       SolAcquireRefuse { reason: _ } => true  _ => false })
     && (match sol_acquire_plan(verdict: Converged, pid_path: "", capture_path: cap) {
       SolAcquireRefuse { reason: _ } => true  _ => false })
+}
+
+// WALL 1 (side-chat review 5286225278): NO DISPATCH INPUT SELECTS THE BYTES THE WIF JOB EXECUTES. The
+// boot job's own checkout names only the event sha, and nothing in the rendered job mentions
+// expected_revision; the build job that produces the binaries it downloads checks out the event sha
+// FIRST for this mode, before expected_revision is consulted. RED: put expected_revision back in
+// either expression and this claim fails.
+test fn another_expected_revision_cannot_change_a_byte_the_boot_job_executes() -> Bool {
+  let rendered = serialize_yaml(v: job_yaml(job: fleet_converge_mtcollins1_boot_job()))
+  fleet_converge_mtcollins1_boot_checkout_ref_expr == "${{ github.sha }}"
+    && !string_contains(s: rendered, pattern: "expected_revision")
+    && string_contains(s: rendered, pattern: "ref: ${{ github.sha }}")
+    && starts_with(s: fleet_converge_checkout_ref_expr, prefix: "${{ github.event.inputs.mode == 'mtcollins1_boot' && github.sha || ")
+}
+
+fn runner_labels(r: RunnerSpec) -> List<String> {
+  match r {
+    SelfHosted { labels: ls } => ls
+    RunsOnExpression { expression: _ } => []
+    HostedRunner { label: _ } => []
+  }
+}
+
+// WALL 2: THE CREDENTIALS NEVER REACH A CALLER-SELECTED RUNNER. runs-on is srv1's literal labels, the
+// concurrency domain is srv1's, and the job-level condition refuses any other host, so a dispatch of
+// mode=mtcollins1_boot host=srv2 never starts the job: no OIDC exchange and no secret fetch happen
+// anywhere. RED: the runner reading inputs.host, or the condition losing the host term.
+test fn a_boot_dispatch_naming_another_host_never_starts_the_job() -> Bool {
+  let j = fleet_converge_mtcollins1_boot_job()
+  let rendered = serialize_yaml(v: job_yaml(job: j))
+  runner_labels(r: j.runner) == ["self-hosted", "linux", "arm64", "srv1"]
+    && string_contains(s: fleet_converge_mtcollins1_boot_job_if, pattern: "github.event.inputs.host == 'srv1'")
+    && string_contains(s: fleet_converge_mtcollins1_boot_job_if, pattern: "github.event.inputs.mode == 'mtcollins1_boot'")
+    && fleet_converge_mtcollins1_boot_concurrency_group == "gunbc-host-mutation-srv1"
+    && !string_contains(s: rendered, pattern: "runs-on: ${{")
 }

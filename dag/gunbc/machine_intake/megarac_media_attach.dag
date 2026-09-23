@@ -1,5 +1,6 @@
 module gunbc.machine_intake_megarac_media_attach
 
+import std.decl_ref { decl_ref }
 import std.types { Bool, Int, NonEmptyStr, String }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.bmc.megarac
@@ -299,6 +300,9 @@ fn megarac_attach_remote_image(
   firmware: BmcFirmwareReleaseIdentity,
 ) -> MegaRacAttachResult
   uses net: std.resources.Network
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_attach_diskless_image"),
+  ]
 {
   session = megarac.Media.OpenSession(
     bmc_host: bmc_host,
