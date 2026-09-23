@@ -2,7 +2,6 @@ module gunbc.runner_microvm_network_observe
 
 import std.types { String, NonEmptyStr, List }
 import std.algebra { trim }
-import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -62,7 +61,6 @@ fn admin_read_outcome(
   context: FleetSshExecutionContext,
   op: ExecutorPrivilegedOperation,
 ) -> ProcessOutcome
-  uses net: Network
 {
   let argv = elevated_argv(command: map(executor_privileged_operation_argv(op: op), w => w as String))
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv) {
@@ -79,7 +77,6 @@ fn admin_read_outcome(
 }
 
 fn read_privileged_over_admin_edge(target: SshTarget, context: FleetSshExecutionContext) -> MicrovmPrivilegedReadings
-  uses net: Network
 {
   MicrovmPrivilegedReadings {
     table: admin_read_outcome(target: target, context: context, op: runner_microvm_nft_read_operation()),
@@ -93,7 +90,6 @@ fn read_privileged_over_admin_edge(target: SshTarget, context: FleetSshExecution
 data runner_microvm_network_observe_attempt_raw: String = "runner-microvm-network-observe-ci"
 
 fn runner_microvm_network_observe_wet() -> ProcessExit
-  uses net: Network
 {
   let host_reading = hostname_short_read(transport: LocalShell)
   match host_reading {
@@ -111,7 +107,6 @@ fn runner_microvm_network_observe_wet() -> ProcessExit
 }
 
 fn observe_bound_host_wet(bound: HostIdentity) -> ProcessExit
-  uses net: Network
 {
   let generation = converge_generation_reading()
   if generation == "" {
@@ -132,7 +127,6 @@ fn observe_bound_host_wet(bound: HostIdentity) -> ProcessExit
 // reading "as the administrator" when the administrator IS the job user would mean the job user
 // holds the reads, which is the grant this module exists not to need.
 fn observe_admitted_host_wet(deploy: RunnerHostDeploy, host: HostIdentity, generation: NonEmptyStr) -> ProcessExit
-  uses net: Network
 {
   if !bootstrap_principal_is_not_the_grantee(bootstrap: executor_bootstrap_principal, deploy: deploy) {
     exit_failure(reason: join(["microvm-network-observe: the administrator principal ", executor_bootstrap_principal.login as String, " is the job user on ", host as String, ", so the root-only readings would be taken by the account CI jobs run as"], ""))

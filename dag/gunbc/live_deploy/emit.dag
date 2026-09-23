@@ -75,7 +75,25 @@ import gunbc.live_deploy.member_identity {
   DirectoryRoot, plan_mutation_of, mutation_is_keep, PlanMutationLookup, MutationInPlan, MemberNotInPlan,
   plan_installs_executable, plan_publishes_tree, plan_writes_unit, plan_reloads_manager, plan_restarts_process,
 }
-import extdeps.crypto.hash { digest_shell_verify_line, sha256sum_program }
+import extdeps.crypto.hash { digest_shell_verify_line, sha256sum_program, sha256_digest }
+import extdeps.virtualization.firecracker {
+  firecracker_release_tarball_filename, firecracker_release_download_url,
+  firecracker_release_binary_path_in_tarball, firecracker_release_jailer_path_in_tarball,
+  firecracker_release_aarch64_tarball_sha256,
+}
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.exec.command { argv_words }
+import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name, release_locus_tree_receipt_name }
+import gunbc.runner_microvm_slot_unit {
+  microvm_controller_root, microvm_controller_owner, microvm_controller_firecracker_release,
+  microvm_controller_vmm_binary, microvm_controller_jailer_binary,
+  microvm_slot_unit_template_name, microvm_slot_unit_path, microvm_slot_unit_file,
+  microvm_slot_unit_timeout_stop_sec,
+  microvm_controller_slice_unit_name, microvm_controller_slice_unit_path, microvm_controller_slice_unit_file,
+  microvm_slot_controller_receipt_dir,
+}
 import extdeps.tools.findutils { find_program, xargs_program }
 import extdeps.tools.gnu_coreutils { sort_program, cut_program, printf_program, install_program }
 import gunbc.live_deploy.slice_bounds {
@@ -650,6 +668,7 @@ fn live_deploy_approval_broker_unit_file_on(
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
       WorkingDirectory { path: release_dir as NonEmptyStr },
+      release_locus_workspace_root_environment(release_dir: release_dir),
       ExecStart { command: join([
         approval_broker_release_binary_path(root: svc.repo_root as String, revision: revision),
         " serve --source-root dag --source-root src/v2",
@@ -1688,7 +1707,16 @@ fn approval_broker_release_binary_path(root: String, revision: ReleaseRevisionBi
 }
 
 fn approval_broker_tree_receipt_path_for(root: String, revision: ReleaseRevisionBinding) -> String {
-  join([approval_broker_release_dir(root: root, revision: revision), "/.gunbc-tree-receipt"], "")
+  join([approval_broker_release_dir(root: root, revision: revision), "/", release_locus_tree_receipt_name], "")
+}
+
+// EVERY UNIT THAT EXECS A gunbc BINARY FROM A RELEASE LOCUS SETS THE CHECKOUT ROOT AT SPAWN
+// (gunbc.cli_run_workspace_root_scaffold gunbc_workspace_root_env_name): the seed refuses to run
+// from a directory that is not a git checkout, and a locus is not one -- measured on srv1
+// 2026-09-21, where both the broker's serve unit and the microVM slot unit exited 101 in
+// workspace_root before any stage ran. One row feeds both units.
+fn release_locus_workspace_root_environment(release_dir: String) -> SystemdServiceDirective {
+  Environment { assignment: join([gunbc_workspace_root_env_name, "=", release_dir], "") as NonEmptyStr }
 }
 
 data approval_broker_tree_subdirs: List<String> = ["dag", "src/v2"]
@@ -1811,29 +1839,293 @@ fn approval_broker_binary_install_command(release_dir: String) -> String {
 }
 
 fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  let base_root = spec.approval_broker.repo_root as String
+  release_locus_install_steps(
+    owner: spec.service.service_user,
+    copy: LocusCopiedByJobUser,
+    base_root: spec.approval_broker.repo_root as String,
+    revision: revision,
+  )
+}
+
+// HOW THE TREE AND BINARY REACH THE LOCUS IS THE OWNER'S CONSEQUENCE, AND THE FIRST srv1 RUN OF THE
+// ROOT-OWNED LOCUS IS WHAT SAID SO (fleet-converge run 35655377521: rsync as the job user into
+// root-owned directories, `Permission denied`). The broker's locus is owned by the service user and
+// the job user's unprivileged rsync populates it. A root-owned locus can only be populated by a
+// privileged mover, and gunbc.ci_deploy_sudoers REFUSES the generic movers (rsync, chown) as sudo
+// grants by design -- so the privileged copy is install(1), the one granted mover, ONE FILE AT A
+// TIME: every directory `install -d -o root`, every file `install -m 0644 -o root` from the job's
+// checkout, driven by find over the same subdirectories and never by a recursive tool root would
+// have to trust. Slower than rsync by the sudo per file.
+//
+// WHAT THAT PRICE ACTUALLY BUYS ON srv1 TODAY, stated at the rung the evidence supports rather than
+// the one the shape suggests (review 70080, DESIGN §4b(1): a class's rung is the MINIMUM across its
+// in-scope paths, and citing the strongest while another stays silent is inflation). It removes the
+// UNPRIVILEGED-BY-DEFAULT write path: nothing reaches the locus without going through a granted
+// privileged mover, so an ordinary job step, a stray tool, or a mistaken relative path cannot land
+// bytes there, and the VMM the unit execs is this tree's rather than the job user's HOME copy.
+//
+// WHAT IT DOES NOT BUY, AND MUST NOT BE CITED AS: a tree the job user cannot write. ghrunner holds
+// NOPASSWD over a PATH-UNRESTRICTED /usr/bin/install on every host carrying
+// /etc/sudoers.d/gunbc-deploy -- install(1) being the very mover this step elevates with -- so the
+// same principal can write this locus by the same route. That is the standing drop
+// gunbc.rung_drop the_job_user_holds_a_path_unrestricted_root_grant, and the class is rostered at
+// gunbc.recurring_failure_mode the_grant_a_frontier_refuses_is_already_held_from_another_authority.
+// This change adds no grant and removes none; the stronger claim becomes true when that drop is
+// retired, not when this locus lands.
+type ReleaseLocusCopy
+  = LocusCopiedByJobUser
+  | LocusInstalledPrivilegedPerFile { owner: NonEmptyStr }
+
+fn release_locus_tree_copy_steps(copy: ReleaseLocusCopy, root: String) -> List<PipelineStep> {
+  match copy {
+    LocusCopiedByJobUser =>
+      map(approval_broker_tree_subdirs, sub =>
+        deploy_raw(command: approval_broker_tree_copy_command(src_sub: sub, root: root))
+      )
+    LocusInstalledPrivilegedPerFile { owner: o } =>
+      flat_map(approval_broker_tree_subdirs, sub => [
+        deploy_raw(command: privileged_tree_directories_install_command(src_sub: sub, root: root, owner: o)),
+        deploy_raw(command: privileged_tree_files_install_command(src_sub: sub, root: root, owner: o)),
+      ])
+  }
+}
+
+// 🟡 dissolve-on: the two commands below assemble a find | xargs pipeline as a string, the same
+// medium-as-string shape approval_broker_tree_digest_expr names, and dissolve with it.
+fn privileged_tree_directories_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
+  join([
+    "(cd \"$PWD\" && ", find_program as String, " ", src_sub, " -type d -print0) | ",
+    xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: [
+      install_program as String, "-d", "-m", "0755", "-o", owner as String, "-g", owner as String,
+    ]), " "), " ", root, "/{}",
+  ], "")
+}
+
+fn privileged_tree_files_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
+  join([
+    "(cd \"$PWD\" && ", find_program as String, " ", src_sub, " -type f -print0 | ", sort_program as String, " -z) | ",
+    xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: [
+      install_program as String, "-m", "0644", "-o", owner as String, "-g", owner as String,
+    ]), " "), " \"$PWD\"/{} ", root, "/{}",
+  ], "")
+}
+
+// THE PRIVILEGED BINARY SOURCE IS RELATIVE TO THE JOB'S WORKING DIRECTORY, not "$PWD": the argv
+// renderer single-quotes every word, so a variable there is a literal (run 35657588530: install
+// cannot stat '"$PWD"/target/release/gunbc').
+fn release_locus_binary_install_step(copy: ReleaseLocusCopy, root: String) -> PipelineStep {
+  match copy {
+    LocusCopiedByJobUser => deploy_raw(command: approval_broker_binary_install_command(release_dir: root))
+    LocusInstalledPrivilegedPerFile { owner: o } =>
+      deploy_raw(command: install_file_owned_command(
+        mode: install_executable_shared_mode,
+        owner: o,
+        group: o,
+        source: join(["target/release/", gunbc_release_bin_name], ""),
+        dest: join([root, "/", gunbc_release_bin_name], ""),
+      ))
+  }
+}
+
+// THE RELEASE LOCUS INSTALL, PARAMETERIZED BY OWNER AND BY ROOT AND BY NOTHING ELSE. The approval
+// broker's per-candidate locus (releases/<sha>/ holding binary + sources + digest receipt, ExecStart
+// pinned to it, requested-equals-installed decidable) and the microVM slot controller's are ONE
+// concept -- the same download -> verify -> copy pair feeds both from the same verified artifact in
+// the same job -- so the second consumer reuses these steps rather than mirroring them (parent
+// ruling on the microVM lane, 2026-09-21: a second locus with the same shape is the section 3
+// fork; 'the controller is root' is a difference in OWNER and CONSUMER, not in the locus). What
+// differs is exactly the two parameters: who owns the directories, and which root they hang under.
+// approval_broker_release_retention_note applies to every root this installs under; the microVM
+// controller inherits that named obligation rather than re-declaring it.
+fn release_locus_install_steps(owner: NonEmptyStr, copy: ReleaseLocusCopy, base_root: String, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
   let root = approval_broker_release_dir(root: base_root, revision: revision)
   concat(
     concat(
       [
         deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
-        deploy_raw(command: install_d_owned_command(spec: spec, path: base_root)),
-        deploy_raw(command: install_d_owned_command(spec: spec, path: approval_broker_releases_dir(root: base_root))),
-        deploy_raw(command: install_d_owned_command(spec: spec, path: root)),
+        deploy_raw(command: install_d_owned_for_user(user: owner, path: base_root)),
+        deploy_raw(command: install_d_owned_for_user(user: owner, path: approval_broker_releases_dir(root: base_root))),
+        deploy_raw(command: install_d_owned_for_user(user: owner, path: root)),
       ],
       map(approval_broker_tree_subdirs, sub =>
-        deploy_raw(command: install_d_owned_command(spec: spec, path: join([root, "/", sub], "")))
+        deploy_raw(command: install_d_owned_for_user(user: owner, path: join([root, "/", sub], "")))
       ),
     ),
     concat(
-      map(approval_broker_tree_subdirs, sub =>
-        deploy_raw(command: approval_broker_tree_copy_command(src_sub: sub, root: root))
-      ),
+      release_locus_tree_copy_steps(copy: copy, root: root),
       [
-        deploy_raw(command: approval_broker_binary_install_command(release_dir: root)),
-        deploy_raw(command: approval_broker_tree_receipt_command(base_root: base_root, revision: revision)),
+        release_locus_binary_install_step(copy: copy, root: root),
+        release_locus_tree_receipt_step(copy: copy, base_root: base_root, revision: revision),
       ],
     ),
+  )
+}
+
+// 🟡 dissolve-on: the privileged arm below assembles a `printf … | sudo install /dev/stdin` pipeline
+// as a string (medium-as-string, the same class approval_broker_tree_digest_expr marks); it
+// dissolves when v2.workflow.bash_emit can render a piped command from modeled parts.
+// THE RECEIPT IS WRITTEN BY THE SAME PRINCIPAL THAT OWNS THE LOCUS: `install -m 0644 /dev/stdin`
+// into a root-owned directory needs root, and the digest pipeline feeding it is the same either way.
+fn release_locus_tree_receipt_step(copy: ReleaseLocusCopy, base_root: String, revision: ReleaseRevisionBinding) -> PipelineStep {
+  match copy {
+    LocusCopiedByJobUser => deploy_raw(command: approval_broker_tree_receipt_command(base_root: base_root, revision: revision))
+    LocusInstalledPrivilegedPerFile { owner: o } =>
+      deploy_raw(command: join([
+        printf_program as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
+        "\\ninstalled_digest=%s\\n' ",
+        "\"$(", approval_broker_tree_digest_expr(root: approval_broker_release_dir(root: base_root, revision: revision)), ")\"",
+        " | ", join(sudo_elevate_argv(command: [install_program as String, "-m", "0644", "-o", o as String, "-g", o as String, "/dev/stdin",
+          approval_broker_tree_receipt_path_for(root: base_root, revision: revision)]), " "),
+      ], ""))
+  }
+}
+
+// ── THE microVM SLOT CONTROLLER'S RELEASE LOCUS AND UNIT ──────────────────────────────────────
+//
+// THE SAME LOCUS, OWNED BY root, PLUS THE VMM AND THE JAILER. gunbc.runner_microvm_slot_unit owns
+// the root, the owner and the unit's shape; this module owns the install because the locus is the
+// live_deploy one. The two binaries the controller execs beside gunbc -- Firecracker and its jailer
+// -- are installed INTO the locus from the upstream release tarball, digest-verified against
+// extdeps.virtualization.firecracker's cited sha256 before extraction, as root-owned 0755 files.
+// They were previously installed under the job user's HOME by gunbc.runner_microvm_host_ready
+// (firecracker only; the jailer was never copied out of the archive), which is a job-user-writable
+// binary that a root controller would exec -- the same class the slot-network frontier names for
+// staged sources -- so the controller reads them from here and from nowhere else.
+//
+// THE RECEIPT NAMES BOTH DIGESTS beside the tree digest, so requested-equals-installed is decidable
+// for the VMM as it is for the sources: a locus whose firecracker hashes differently from the
+// cited release is not the release, whatever `--version` prints.
+fn microvm_controller_release_dir(revision: ReleaseRevisionBinding) -> String {
+  approval_broker_release_dir(root: microvm_controller_root, revision: revision)
+}
+
+// THE TARBALL IS STAGED UNDER THE JOB'S OWN CHECKOUT, beside the verified release bins it copies
+// from, because the fetch and the extraction run as the job user and the locus is root's: the only
+// privileged steps are the two installs into the locus, exactly as the gunbc binary's install is.
+// The path is RELATIVE to the job's working directory (the checkout root, as "$PWD" is for the
+// tree copy) and carries no variable, because digest_shell_verify_line single-quotes the path it
+// checks and a "$PWD" inside single quotes would be verified as a literal.
+data microvm_controller_stage_dir: String = "target/microvm-controller-stage"
+
+fn microvm_controller_tarball_stage_path() -> String {
+  join([microvm_controller_stage_dir, "/", firecracker_release_tarball_filename(rel: microvm_controller_firecracker_release)], "")
+}
+
+fn microvm_controller_vmm_receipt_path(revision: ReleaseRevisionBinding) -> String {
+  join([microvm_controller_release_dir(revision: revision), "/.gunbc-vmm-receipt"], "")
+}
+
+// 🟡 dissolve-on: the last step below assembles `sha256sum … | sudo install /dev/stdin` as a string
+// (medium-as-string); it dissolves when v2.workflow.bash_emit can render a piped command from
+// modeled parts, exactly as approval_broker_tree_digest_expr's marker says.
+fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let rel = microvm_controller_firecracker_release
+  let dir = microvm_controller_release_dir(revision: revision)
+  let stage = microvm_controller_tarball_stage_path()
+  let extracted = microvm_controller_stage_dir
+  [
+    deploy_raw(command: join(argv_words(command: mkdir_parents_command(path: extracted)), " ")),
+    deploy_raw(command: join(argv_words(command: curl_download_command(url: firecracker_release_download_url(rel: rel), destination: stage)), " ")),
+    deploy_raw(command: digest_shell_verify_line(digest: sha256_digest(hex: firecracker_release_aarch64_tarball_sha256), file_path: stage as NonEmptyStr)),
+    deploy_raw(command: join(argv_words(command: tar_extract_command(archive: stage, into_directory: extracted, strip_components: 0)), " ")),
+    deploy_raw(command: install_file_owned_command(
+      mode: install_executable_shared_mode,
+      owner: microvm_controller_owner,
+      group: microvm_controller_owner,
+      source: join([extracted, "/", firecracker_release_binary_path_in_tarball(rel: rel)], ""),
+      dest: microvm_controller_vmm_binary(release_dir: dir),
+    )),
+    deploy_raw(command: install_file_owned_command(
+      mode: install_executable_shared_mode,
+      owner: microvm_controller_owner,
+      group: microvm_controller_owner,
+      source: join([extracted, "/", firecracker_release_jailer_path_in_tarball(rel: rel)], ""),
+      dest: microvm_controller_jailer_binary(release_dir: dir),
+    )),
+    deploy_raw(command: join([
+      sha256sum_program as String, " ",
+      microvm_controller_vmm_binary(release_dir: dir), " ",
+      microvm_controller_jailer_binary(release_dir: dir),
+      " | ", join(sudo_elevate_argv(command: [install_program as String, "-m", "0644", "-o", microvm_controller_owner as String, "-g", microvm_controller_owner as String, "/dev/stdin",
+        microvm_controller_vmm_receipt_path(revision: revision)]), " "),
+    ], "")),
+  ]
+}
+
+// THE SLOT UNIT IS RENDERED HERE WITH THE SPAWN ROOT ADDED, because the env row and the locus
+// belong to this module while the unit's shape belongs to gunbc.runner_microvm_slot_unit: the
+// service section is that module's list plus one directive, inserted rather than re-authored.
+fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUnitFile {
+  match microvm_slot_unit_file(release_dir: release_dir, timeout_stop_sec: microvm_slot_unit_timeout_stop_sec()) {
+    ServiceUnitFile { unit: u, service: s, install: i } =>
+      ServiceUnitFile {
+        unit: u,
+        service: concat([release_locus_workspace_root_environment(release_dir: release_dir)], s),
+        install: i,
+      }
+    other => other
+  }
+}
+
+fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  [
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: microvm_controller_slice_unit_name as String,
+      content: serialize_systemd_unit_file(file: microvm_controller_slice_unit_file()),
+    )),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: microvm_controller_slice_unit_name as String,
+      mode: install_file_shared_mode,
+      dest: microvm_controller_slice_unit_path() as String,
+    )),
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: microvm_slot_unit_template_name as String,
+      content: serialize_systemd_unit_file(file: microvm_slot_unit_file_with_workspace_root(
+        release_dir: microvm_controller_release_dir(revision: revision),
+      )),
+    )),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: microvm_slot_unit_template_name as String,
+      mode: install_file_shared_mode,
+      dest: microvm_slot_unit_path() as String,
+    )),
+  ]
+}
+
+// THE INSTALL IS ADDITIVE AND STARTS NOTHING: it writes the locus and the TEMPLATE unit and reloads
+// the manager. An instance is started by the shakedown's own dispatch (systemctl start
+// gunbc-microvm-slot@srv1-13), never by the deploy, because starting the controller IS running an
+// attempt and an attempt is admitted by the readiness store and a reservation, not by a deploy.
+fn microvm_controller_install_intent(revision: ReleaseRevisionBinding) -> Pipeline {
+  Pipeline {
+    steps: concat(
+      concat(
+        [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
+        concat(
+          release_locus_install_steps(
+            owner: microvm_controller_owner,
+            copy: LocusInstalledPrivilegedPerFile { owner: microvm_controller_owner },
+            base_root: microvm_controller_root,
+            revision: revision,
+          ),
+          microvm_controller_vmm_install_steps(revision: revision),
+        ),
+      ),
+      concat(
+        [deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: microvm_slot_controller_receipt_dir))],
+        concat(microvm_slot_unit_write_steps(revision: revision), [deploy_effect(inv: systemctl_daemon_reload_effect())]),
+      ),
+    ),
+    on_failure: FailFast,
+  }
+}
+
+data microvm_controller_install_emit_refused_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the microVM slot controller install pipeline did not emit; the stage refuses rather than running a partial script (DESIGN section 5)."
+
+fn microvm_controller_install_script(revision: ReleaseRevisionBinding) -> String {
+  emit_pipeline_or_poison(
+    p: microvm_controller_install_intent(revision: revision),
+    refused: microvm_controller_install_emit_refused_poison,
   )
 }
 
