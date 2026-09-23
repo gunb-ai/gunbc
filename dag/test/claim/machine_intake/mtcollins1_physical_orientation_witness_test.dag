@@ -27,10 +27,11 @@ import gunbc.machine_intake_mtcollins1_physical_orientation {
   mtcollins1_damaged_candidates, population_damage_standing, render_slot_map, mtcollins1_slot_map,
   expected_firmware_readback, trained_sets_equal,
   Socket1TrainedNothing, Socket1TrainedIn, MaskMatchedTrainedControllers, MaskDiverged,
-  socket1_standing, mask_correlation, mtcollins1_socket1_standing, mtcollins1_mask_correlation,
+  socket1_standing, mask_correlation, placement_readbacks, mtcollins1_placement_readbacks,
+  PlacementReadbackMatches, PlacementReadbackDiffers, PlacementReadbackUnevaluable, mtcollins1_socket1_standing, mtcollins1_mask_correlation,
 }
 import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
-  MtCollins1Socket1InvestigationBoot, MtCollins1TrainedSlot, mtcollins1_socket1_investigation_boots, mtcollins1_socket1_boot_two_sticks,
+  MtCollins1Socket1InvestigationBoot, MtCollins1TrainedSlot, IntendedAtPhysicalConnectors, mtcollins1_socket1_investigation_boots, mtcollins1_socket1_boot_two_sticks,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -98,7 +99,7 @@ test fn w_three_stick_anchor_alone_leaves_the_orientation_ambiguous() -> Bool {
     PopulationAvoidsDamage { population: _ } => false
     PopulationDamageUndetermined { candidates: _ } => false
   }
-  let refused = match render_slot_map(orientation: o, viewpoint: rear_fixture, tech_end: RearEnd, live_sockets: [0], history: [], population: mt_collins_population_8_dimms, installed_drawing_labels: [1, 17], report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
+  let refused = match render_slot_map(orientation: o, viewpoint: rear_fixture, tech_end: RearEnd, live_sockets: [0], history: [], population: mt_collins_population_8_dimms, installed: [25, 9], report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
     SlotMapRefused { refusal: r } => match r {
       SlotMapOrientationUnresolved { orientation: _ } => true
       SlotMapViewpointNotReported { asked: _ } => false
@@ -135,7 +136,7 @@ test fn w_production_anchors_resolve_the_full_mirror_and_j5() -> Bool {
     PopulationUsesDamaged { population: _, connectors: _ } => false
     PopulationDamageUndetermined { candidates: _ } => false
   }
-  let gated = match render_slot_map(orientation: mtcollins1_orientation(), viewpoint: ViewpointNotYetReported { asked: "controlled fixture" }, tech_end: FrontEnd, live_sockets: [0], history: [], population: mt_collins_population_8_dimms, installed_drawing_labels: [1, 17], report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
+  let gated = match render_slot_map(orientation: mtcollins1_orientation(), viewpoint: ViewpointNotYetReported { asked: "controlled fixture" }, tech_end: FrontEnd, live_sockets: [0], history: [], population: mt_collins_population_8_dimms, installed: [25, 9], report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
     SlotMapRefused { refusal: r } => match r {
       SlotMapViewpointNotReported { asked: _ } => true
       SlotMapOrientationUnresolved { orientation: _ } => false
@@ -202,17 +203,17 @@ test fn w_slot_map_renders_left_to_right_for_a_tech() -> Bool {
   match rendered_today() {
     SlotMapRendered { end: _, readback: rb, lines: ls, damage: _, agreement: a, text: t } =>
       list_length(items: ls) == 32
-      && fold(ls, init: true, f: (ok, l) => ok && ((l.connector == 5) == (l.state == SlotDamaged)) && ((l.connector == 25 || l.connector == 9) == (l.state == SlotPopulated)))
+      && fold(ls, init: true, f: (ok, l) => ok && ((l.connector == 5) == (l.state == SlotDamaged)) && ((l.connector == 1 || l.connector == 17) == (l.state == SlotPopulated)))
       && a == ViewpointAgreesWithFigureBet
-      && string_contains(s: t, pattern: "Standing at the FRONT (NVMe backplane and six fans (front)), from LEFT edge to RIGHT edge:\n1. blue  J25  SK1 MC4  populated\n")
-      && string_contains(s: t, pattern: "\n17. blue  J9  SK0 MC4  populated\n")
+      && string_contains(s: t, pattern: "Standing at the FRONT (NVMe backplane and six fans (front)), from LEFT edge to RIGHT edge:\n1. blue  J25  SK1 MC4  empty\n")
+      && string_contains(s: t, pattern: "\n16. blue  J17  SK1 MC0  populated\n17. blue  J9  SK0 MC4  empty\n")
       && string_contains(s: t, pattern: "\n28. blue  J5  SK0 MC2  DAMAGED - do not use\n")
-      && string_contains(s: t, pattern: "\n32. blue  J1  SK0 MC0  empty\n")
+      && string_contains(s: t, pattern: "\n32. blue  J1  SK0 MC0  populated\n")
       && string_contains(s: t, pattern: "Population of 8 DIMMs avoids the damaged connector.")
       && list_length(items: rb) == 4 && string_contains(s: t, pattern: "Expected firmware roster for this population: SK0 MC0 S0, SK0 MC1 S0, SK0 MC4 S0, SK0 MC5 S0")
       && string_contains(s: t, pattern: "\nrun 35808203121: drawing 'J1','J17' = physical J25, J9 -> trained SK0 MC4 S0; DRAM 16 GiB; mcu_enable_mask = 00000010 [default: 000000ff]\n")
       && string_contains(s: t, pattern: "\nrun 35805796492: drawing 'J1','J17','J25' = physical J25, J9, J1 -> trained SK0 MC0 S0, SK0 MC4 S0; DRAM 32 GiB;")
-      && string_contains(s: t, pattern: "Socket 1 trained no DIMM in 4 boots, including the J9+J25 placement (run 35805796492, run 35808203121).")
+      && string_contains(s: t, pattern: "Socket 1 trained no DIMM in 5 boots, including the J9+J25 placement (run 35805796492, run 35808203121).\n")
     SlotMapRefused { refusal: _ } => false
   }
 }
@@ -224,8 +225,8 @@ test fn w_other_end_reverses_left_right_but_not_identity() -> Bool {
     observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 }, relay: "controlled fixture", method: "controlled fixture",
   } }
   let o = resolve_orientation(anchors: [mtcollins1_three_stick_anchor, two_stick_fixture(controller: 4)], banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
-  let rear = render_slot_map(orientation: o, viewpoint: v, tech_end: RearEnd, live_sockets: [0], history: [], population: mt_collins_population_8_dimms, installed_drawing_labels: [1, 17], report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
-  let front = render_slot_map(orientation: o, viewpoint: v, tech_end: FrontEnd, live_sockets: [0], history: [], population: mt_collins_population_8_dimms, installed_drawing_labels: [1, 17], report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
+  let rear = render_slot_map(orientation: o, viewpoint: v, tech_end: RearEnd, live_sockets: [0], history: [], population: mt_collins_population_8_dimms, installed: [25, 9], report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
+  let front = render_slot_map(orientation: o, viewpoint: v, tech_end: FrontEnd, live_sockets: [0], history: [], population: mt_collins_population_8_dimms, installed: [25, 9], report: mtcollins1_damaged_connector_report, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs)
   match rear {
     SlotMapRendered { end: _, readback: _, lines: r, damage: _, agreement: _, text: _ } => match front {
       SlotMapRendered { end: _, readback: _, lines: f, damage: _, agreement: _, text: _ } =>
@@ -250,11 +251,11 @@ test fn w_commanded_install_carries_its_expected_readback() -> Bool {
 // red: a boot that trained SK1, or a boot whose printed mask is not its controller bitmap.
 test fn w_socket1_silence_and_mask_correlation_are_derived() -> Bool {
   let silent = match mtcollins1_socket1_standing() {
-    Socket1TrainedNothing { runs: rs, since: _, symmetric_mc4_runs: sy } => list_length(items: rs) == 4 && sy == [35805796492, 35808203121]
+    Socket1TrainedNothing { runs: rs, since: _, symmetric_mc4_runs: sy } => list_length(items: rs) == 5 && sy == [35805796492, 35808203121]
     Socket1TrainedIn { runs: _ } => false
   }
   let correlated = match mtcollins1_mask_correlation() {
-    MaskMatchedTrainedControllers { runs: rs, not_printed: np } => rs == [35801475989, 35805796492, 35808203121] && np == [35793279839]
+    MaskMatchedTrainedControllers { runs: rs, not_printed: np } => rs == [35801475989, 35805796492, 35808203121, 35810323032] && np == [35793279839]
     MaskDiverged { run_id: _, mask: _, bitmap: _ } => false
   }
   let b = mtcollins1_socket1_boot_two_sticks
@@ -269,5 +270,11 @@ test fn w_socket1_silence_and_mask_correlation_are_derived() -> Bool {
     MaskDiverged { run_id: _, mask: m, bitmap: bm } => m == 1 && bm == 16
     MaskMatchedTrainedControllers { runs: _, not_printed: _ } => false
   }
-  silent && correlated && red_socket && red_mask
+  let readback = mtcollins1_placement_readbacks() == [PlacementReadbackMatches { run_id: 35810323032 }]
+  let readback_red = match placement_readbacks(boots: [MtCollins1Socket1InvestigationBoot { run_id: 7, capture_sha256: b.capture_sha256, intended: IntendedAtPhysicalConnectors { connectors: [5] }, roster_lines: b.roster_lines,
+    trained: b.trained, dram_total_gib: b.dram_total_gib, mcu_enable_mask: b.mcu_enable_mask, mcu_enable_mask_line: b.mcu_enable_mask_line, host: b.host, live_sockets: b.live_sockets, findings: b.findings }], banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs).first() {
+    Present { value: r } => match r { PlacementReadbackDiffers { run_id: i, expected: _ } => i == 7  PlacementReadbackMatches { run_id: _ } => false  PlacementReadbackUnevaluable { run_id: _ } => false }
+    Absent => false
+  }
+  silent && correlated && red_socket && red_mask && readback && readback_red
 }
