@@ -1,5 +1,6 @@
 module gunbc.srv3_host_effect_apply
 
+import gunbc.ci_deploy_access { ci_deploy_srv1_access }
 
 type Srv3TypedReceipt {
   lines: List<String>
