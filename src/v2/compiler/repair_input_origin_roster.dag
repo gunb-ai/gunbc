@@ -42,6 +42,7 @@ import v2.compiler.resolution_provenance {
   resolve_reference_sites
 }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.std.namespace_alias { ModuleBindingSource, module_binding_source_roots }
 
 // NAMESPACE-XL STAGE XL-0: THE REPAIR-INPUT ORIGIN DENOMINATOR, ON THE v2 ROUTE.
 //
@@ -180,13 +181,19 @@ fn repair_input_origin_roster_is_total(roster: RepairInputOriginRoster) -> Bool 
 
 // THE WHOLE DENOMINATOR OVER ONE BASE'S MODULE ROOTS: index, roster and sites all derived from the
 // same roots, so no consumer can pair a roster with an index built from a different tree.
+// THE DENOMINATOR IS MEASURED AGAINST THE INDEX PRODUCTION RESOLVES WITH (review 69997 on
+// gunbc#12009). This roster's digest is what gunbc.namespace_cut_stage consumes as
+// DenominatorRosterDigest, so an index missing the transmuted import bindings would report every
+// cross-module reference production BINDS as an unbound repair input -- inflating the very
+// denominator the cut is defined by, with no red anywhere to say so.
 fn repair_input_origin_roster_over_roots(
-  roots: FreeMonoid<Node>
+  sources: FreeMonoid<ModuleBindingSource>
 ) -> RepairInputOriginRoster {
+  let roots = module_binding_source_roots(sources: sources)
   let collected = collect_reference_sites(roots: roots)
   RepairInputOriginRoster {
     carriers: repair_input_origin_roster_from_sites(
-      index: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: roots),
+      index: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: sources),
       module_roster: module_roster_from_roots(roots: roots),
       sites: collected.sites
     ),

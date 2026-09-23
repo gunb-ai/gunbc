@@ -198,10 +198,29 @@ type OctetSplit {
   back: List<UInt8>
 }
 
+// THE POSITION IS CARRIED, NOT RECOUNTED. This fold previously asked count(acc.front) once per
+// octet to decide which side the octet belonged on -- an O(n) scan inside an O(n) fold, so a
+// quadratic shape on the splitter the whole family consumes. curve_admit_point_octets calls it
+// TWICE PER POINT, and it is billed work on the acceptance path: two of the identities this change
+// admits under a declared drop run it over 97-octet P-384 points. DESIGN section 6, bare minimum
+// cost: a proven cost-shape defect is always fixed regardless of the realized n, because "n is
+// small here" is not a time-stable fact and reuse changes n. The index the fold already walks past
+// is the same number count() was recomputing, so carrying it is not an optimisation trade -- it
+// removes work without adding a cache, a key or an invalidation rule.
+type OctetSplitFold {
+  index: Int
+  front: List<UInt8>
+  back: List<UInt8>
+}
+
 fn octet_split(xs: List<UInt8>, n: Int) -> OctetSplit {
-  fold(xs, init: OctetSplit { front: [], back: [] }, f: (acc, x) =>
-    if count(acc.front) < n { OctetSplit { front: acc.front |> list_push(x), back: acc.back } }
-    else { OctetSplit { front: acc.front, back: acc.back |> list_push(x) } })
+  let split = fold(xs, init: OctetSplitFold { index: 0, front: [], back: [] }, f: (acc, x) =>
+    if acc.index < n {
+      OctetSplitFold { index: acc.index + 1, front: acc.front |> list_push(x), back: acc.back }
+    } else {
+      OctetSplitFold { index: acc.index + 1, front: acc.front, back: acc.back |> list_push(x) }
+    })
+  OctetSplit { front: split.front, back: split.back }
 }
 
 // ── ECDSA verification (FIPS 186-5 §6.4.2), over a SUPPLIED DIGEST ──────────────────────────

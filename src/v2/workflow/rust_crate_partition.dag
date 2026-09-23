@@ -109,7 +109,7 @@ data rust_crate_partition_declared_core_target: Int = 7
 
 data rust_crate_partition_module_bearing_unit_target: Int = 6
 
-// R3-only emit shell crate (reexport surface, NOT a partition_fold CompilationUnit): modules list
+// R3-only emit shell crate (reexport surface, NOT a partition_fold_outcome CompilationUnit): modules list
 // is the reexport bundle for render at cutover; those modules remain owned by module-bearing units
 // in stage0_interim_explicit_assignment. Physical crate count = module_bearing (6) + emit_shell (1)
 // = declared_core_target (7).
@@ -144,7 +144,7 @@ type TypeDefinitionsMapNotFrontierGrounded {
 }
 
 // Interim: ModuleDag.exports + type_definitions carry per-module keys with empty lists (structural
-// scaffold for partition_fold only). R3 render uses Stage0PartitionCrateRow.modules +
+// scaffold for partition_fold_outcome only). R3 render uses Stage0PartitionCrateRow.modules +
 // reexport_packages wildcard pub-use chain — not CompilationUnit.interface Nodes. Full Node-carrier
 // exports blocked on stage0 module ingest supplying them through the path-module binding index (see
 // stage0_grounding_target_repointed_note).
