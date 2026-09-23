@@ -226,9 +226,21 @@ fn repository_load_refusal_lines(cause: RepositoryLoadRefusal) -> List<String> {
 // ------------------------------------------------------------------------------------------------
 
 
+// The fold carries BLOCKS (one per shard) and prepends: concat-at-end would copy the accumulator
+// per shard, the quadratic shape the sharded read exists to remove at envelope scale. Prepending
+// flat object lists and reversing once at the end is NOT order-preserving -- it also reverses
+// inside each shard (measured 2026-09-23: a four-object store loaded back exactly backwards, and
+// every sealed shard identity moved at the next save). Each read therefore wraps its objects as
+// one block, and the flatten concatenates blocks in writer order.
 type ShardedObjectRead
-  = ShardObjectsRead { objects: List<ScmObject> }
+  = ShardObjectsRead { blocks: List<List<ScmObject>> }
   | ShardObjectReadRefused { path: String, reason: String }
+
+// CONTRACT: blocks arrive in writer order (first shard first). Copy work is one accumulator pass
+// per block boundary -- bounded by the shard count, not the object count.
+fn shard_blocks_flatten(blocks: List<List<ScmObject>>) -> List<ScmObject> {
+  fold(blocks, init: [] as List<ScmObject>, f: fn(acc, block) { concat(acc, block) })
+}
 
 fn load_object_shard(envelope_path: String, digest: String) -> ShardedObjectRead {
   let shard_path = object_shard_path_for(envelope_path: envelope_path, identity_digest: digest)
@@ -244,32 +256,30 @@ fn load_object_shard(envelope_path: String, digest: String) -> ShardedObjectRead
         ObjectShardNotDecodable { reason } =>
           ShardObjectReadRefused { path: shard_path, reason: reason }
         ObjectShardDecoded { objects } =>
-          ShardObjectsRead { objects: objects }
+          ShardObjectsRead { blocks: [objects] }
       }
   }
 }
 
-// The fold prepends and reverses once: concat-at-end would copy the accumulator per shard, which
-// is exactly the quadratic shape the sharded read exists to remove at envelope scale.
 fn load_sharded_objects(envelope_path: String, digests: List<String>) -> ShardedObjectRead {
   let acc = fold(
     digests,
-    init: ShardObjectsRead { objects: [] },
+    init: ShardObjectsRead { blocks: [] },
     f: fn(acc, digest) {
       match acc {
         ShardObjectReadRefused { path: _, reason: _ } => acc
-        ShardObjectsRead { objects } =>
+        ShardObjectsRead { blocks } =>
           match load_object_shard(envelope_path: envelope_path, digest: digest) {
             ShardObjectReadRefused { path: p, reason: r } => ShardObjectReadRefused { path: p, reason: r }
-            ShardObjectsRead { objects: one } =>
-              ShardObjectsRead { objects: concat(one, objects) }
+            ShardObjectsRead { blocks: one } =>
+              ShardObjectsRead { blocks: concat(one, blocks) }
           }
       }
     },
   )
   match acc {
     ShardObjectReadRefused { path: _, reason: _ } => acc
-    ShardObjectsRead { objects } => ShardObjectsRead { objects: reverse(objects) }
+    ShardObjectsRead { blocks } => ShardObjectsRead { blocks: [shard_blocks_flatten(blocks: reverse(blocks))] }
   }
 }
 
@@ -285,8 +295,8 @@ fn load_repository_sharded(path: String, v: JsonValue) -> RepositoryLoad {
               cause: RepositoryShardNotDecodable { detail: reason },
             },
           }
-        ShardObjectsRead { objects } =>
-          match store_assemble_decoded(objects: objects) {
+        ShardObjectsRead { blocks } =>
+          match store_assemble_decoded(objects: shard_blocks_flatten(blocks: blocks)) {
             StoreAssemblyCollision { identity: _ } =>
               RepositoryLoadRefused {
                 cause: RepositoryDocumentRefused {
