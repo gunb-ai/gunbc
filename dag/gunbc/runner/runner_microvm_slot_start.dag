@@ -14,6 +14,7 @@ import gunbc.build_cache_instance { runner_slot_instance_name }
 import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
 import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_slot_unit_timeout_stop }
 import gunbc.runner_microvm_slot_controller { slot_controller_receipt_path }
+import gunbc.runner_microvm_host_ready { microvm_host_binding_wet, MicrovmHostBound, MicrovmHostBindingRefused, microvm_host_binding_refusal_text }
 import gunbc.executor_privileged_operation { SystemdStartUnit, executor_privileged_operation_command }
 
 // ONE START OF THE SHAKEDOWN SLOT'S CONTROLLER UNIT, AND WHAT IT LEFT BEHIND.
@@ -46,7 +47,8 @@ data microvm_slot_start_poll_interval: Second = second(count: 5)
 data microvm_slot_start_receipt_path: String = "target/microvm-slot-start-receipt.txt"
 
 type MicrovmSlotStartRun
-  = SlotStartRefused { unit: NonEmptyStr, detail: String }
+  = SlotStartWrongHost { detail: String }
+  | SlotStartRefused { unit: NonEmptyStr, detail: String }
   | SlotStartInvocationUnread { unit: NonEmptyStr }
   | SlotStartStillActiveAtBound { unit: NonEmptyStr, invocation_id: NonEmptyStr, bound_seconds: Int }
   | SlotStartCompleted {
@@ -93,7 +95,23 @@ fn read_controller_receipt(invocation_id: NonEmptyStr) -> MicrovmControllerRecei
   }
 }
 
+// THE JOB RUNS ON THE HOST THE DISPATCH NAMED, AND THE SLOT LIVES ON ONE HOST. The unit name is
+// derived from the shakedown slot, so a dispatch pinned to any other host would ask that host to
+// start a unit it does not carry; the binding the boot probe already reads is checked first and a
+// mismatch refuses by name instead of reaching systemctl.
 fn microvm_slot_start_run() -> MicrovmSlotStartRun {
+  match microvm_host_binding_wet() {
+    MicrovmHostBindingRefused { cause: c } => SlotStartWrongHost { detail: microvm_host_binding_refusal_text(c: c) }
+    MicrovmHostBound { spec: _, host: h } =>
+      if (h as String) != (srv1_microvm_shakedown_slot().host as String) {
+        SlotStartWrongHost { detail: join(["this job is bound to ", h as String, " and the shakedown slot is on ", srv1_microvm_shakedown_slot().host as String], "") }
+      } else {
+        microvm_slot_start_on_its_host()
+      }
+  }
+}
+
+fn microvm_slot_start_on_its_host() -> MicrovmSlotStartRun {
   let unit = microvm_slot_start_unit()
   match run_shell_command_capture(command: executor_privileged_operation_command(op: SystemdStartUnit { unit: unit }), transport: LocalExec) {
     ProcessRefused { exit_code: c, stderr: e } =>
@@ -122,6 +140,7 @@ fn microvm_slot_start_run() -> MicrovmSlotStartRun {
 
 fn microvm_slot_start_text(r: MicrovmSlotStartRun) -> String {
   match r {
+    SlotStartWrongHost { detail: d } => join(["slot-start=wrong-host (", d, ")"], "")
     SlotStartRefused { unit: u, detail: d } => join(["slot-start=refused unit=", u as String, " (", d, ")"], "")
     SlotStartInvocationUnread { unit: u } => join(["slot-start=invocation-unread unit=", u as String], "")
     SlotStartStillActiveAtBound { unit: u, invocation_id: i, bound_seconds: b } =>

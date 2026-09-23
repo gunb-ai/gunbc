@@ -937,6 +937,11 @@ data gunbc_ci_host_reset_dispatch_admission_target: GunbcRunStepTarget = GunbcRu
   function: "host_reset_return_dispatch_admission_wet",
 }
 
+data gunbc_ci_microvm_slot_start_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_microvm_slot_start.dag",
+  function: "microvm_slot_start_ci_wet",
+}
+
 data gunbc_ci_runner_microvm_boot_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_microvm_boot_probe.dag",
   function: "runner_microvm_boot_probe_wet",
@@ -1188,6 +1193,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_password_session_tool_converge_target,
     gunbc_ci_host_credential_custody_converge_target,
     gunbc_ci_runner_microvm_boot_probe_target,
+    gunbc_ci_microvm_slot_start_target,
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_mtcollins1_fan_observe_target,
@@ -2468,6 +2474,16 @@ fn gunbc_ci_host_reset_dispatch_admission_invoke() -> String {
     function: gunbc_ci_host_reset_dispatch_admission_target.function,
     claim_run: false,
     receipt_rel: none
+  )
+}
+
+fn gunbc_ci_microvm_slot_start_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_microvm_slot_start_target.entry,
+    function: gunbc_ci_microvm_slot_start_target.function,
+    claim_run: false,
+    receipt_rel: "target/microvm-slot-start-receipt.txt"
   )
 }
 
