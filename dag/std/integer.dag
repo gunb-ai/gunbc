@@ -113,12 +113,11 @@ type QualifiedOctetsResult
 // the octet radix, each already through uint8_of_int -- so routing it through the fold would add a
 // refusal arm no input can reach, which is the unreachable-arm trap this change deletes elsewhere.
 //
-// base16_decode_lower, sha256_hex and sha384_hex are admitted on THAT SAME GROUND and on no weaker one, which
+// base16_decode_lower and sha256_hex are admitted on THAT SAME GROUND and on no weaker one, which
 // is why they are named rather than the roster being opened. Each member base16_decode_lower mints
 // is `high * 16 + low` over two digits drawn from base16_digit_rows, so it is computed in [0, 255]
 // by the operation that produced it; each member sha256_hex mints came out of sha256_word_octets,
-// which is the same modulo-radix decomposition word_to_octets performs, and sha384_hex's through
-// word64_octets, which is that decomposition applied to both halves. NONE IS A PROXY, which
+// which is the same modulo-radix decomposition word_to_octets performs. NEITHER IS A PROXY, which
 // is the property that decides whether a roster entry is safe: base16_decode_lower's only formal
 // is the hex STRING and sha256_hex's is the message, so no caller can pre-load the member list the
 // mint seals -- the proved list and the minted list are the same value, as they are above.
@@ -157,8 +156,7 @@ fn qualified_octets(members: List<Int>) -> QualifiedOctets
     decl_ref(module_path: "std.integer", decl_name: "uint8_octets_of_ints"),
     decl_ref(module_path: "std.machine_word", decl_name: "word_to_octets"),
     decl_ref(module_path: "extdeps.numeric.base16", decl_name: "base16_decode_lower"),
-    decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_hex"),
-    decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha384_hex")
+    decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_hex")
   ]
 {
   QualifiedOctets { members: members }
