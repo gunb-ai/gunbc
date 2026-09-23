@@ -12767,6 +12767,58 @@ fn data_shadow(limit: Int) -> Int {\n  limit\n}\n";
         );
     }
 
+    /// LEXICAL CALLABLES named like the changed global: a function-typed parameter called in its
+    /// body, and a `let`-bound local called after the binding. The compiler resolves both locally.
+    const FLAT_CALL_SHADOWS: &str = "module flatcall.s\n\nfn by_param(convert: fn(Int) -> Int) -> Int {\n  convert(1)\n}\n\n\
+fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local\n  convert(1)\n}\n";
+
+    /// CONTROLS (2)-(4): a call of a lexical callable plans nothing, while the genuine global
+    /// call beside it (control 1, `a_bare_call_with_no_import_plans_its_caller_and_a_binder_plans_nothing`)
+    /// is still planned. The record is asserted to CARRY the calls before shadowing would drop
+    /// them, so the negative is the filter's work and not an absent call -- deleting the filter
+    /// plans `flatcall.s` and fails here while the global-call RED stays green.
+    #[test]
+    fn a_call_of_a_lexical_callable_plans_nothing() {
+        let (selection, head_fx) = interface_selection(
+            "flatcallshadow",
+            &[
+                ("a.dag", FLATFN_A_BASE),
+                ("b.dag", FLATFN_B),
+                ("s.dag", FLAT_CALL_SHADOWS),
+            ],
+            &[
+                ("a.dag", FLATFN_A_HEAD),
+                ("b.dag", FLATFN_B),
+                ("s.dag", FLAT_CALL_SHADOWS),
+            ],
+        );
+        let head_index = interface_index(&head_fx);
+        let _ = std::fs::remove_dir_all(&head_fx);
+        let shadows = crate::cli_run::declaration_index::index_records(&head_index)
+            .into_iter()
+            .find(|r| r.module_path == "flatcall.s")
+            .expect("s indexed")
+            .clone();
+        assert!(
+            shadows.called.contains("convert"),
+            "PLANT MALFORMED: the fixture must carry calls spelled convert"
+        );
+        assert!(
+            !shadows
+                .called_occurrences
+                .iter()
+                .any(|(_, c)| c == "convert"),
+            "a lexically bound callee is not a call of the global: {:?}",
+            shadows.called_occurrences
+        );
+        assert_eq!(
+            consumers_of(&selection),
+            vec!["flatfn.b"],
+            "{:?}",
+            selection.consumers
+        );
+    }
+
     /// A module seed matches itself and the modules it CONTAINS by name, never a sibling that
     /// merely shares a textual prefix: `armset.y` must not seed `armset.yz`.
     #[test]

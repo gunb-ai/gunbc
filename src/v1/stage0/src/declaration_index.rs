@@ -199,7 +199,8 @@ pub struct ModuleDeclarationRecord {
     /// whether the citing module also calls the cited declaration; it is not a resolver.
     pub called: BTreeSet<String>,
     /// CALL OCCURRENCES at declaration grain: `(in_declaration, callee spelling)` for every call
-    /// node, a peer of `matched_arms`. A call is a genuine read of its callee -- unlike a name
+    /// reference the parser stamped, minus any a lexical binding in scope shadows (the same
+    /// containment authority as `value_occurrences`), a peer of `matched_arms`. A call is a genuine read of its callee -- unlike a name
     /// occurrence it cannot be a binder or a label -- so an EMPTY candidate set here is the
     /// global-bare channel the compiler resolves a unique top-level fn through after local and
     /// import lookup miss, and it plans its module.
@@ -1128,6 +1129,32 @@ fn value_occurrences_from_transport(
     transport: &Rc<OccurrenceTransport>,
     declared: &BTreeSet<String>,
 ) -> BTreeSet<(String, String)> {
+    lexical_reads_from_transport(
+        transport,
+        declared,
+        OccurrenceCategory::LexicalValueOccurrence,
+    )
+}
+
+/// The parser's CALL references (`ExprCall` is stamped `CallableOccurrence`), under the SAME
+/// shadowing authority as value reads: a call whose callee a same-spelled value declaration in
+/// scope binds -- a `let convert = ...`, a function-typed parameter named `convert` -- is a call
+/// of that local, not of any global, and is dropped.
+fn call_occurrences_from_transport(
+    transport: &Rc<OccurrenceTransport>,
+    declared: &BTreeSet<String>,
+) -> BTreeSet<(String, String)> {
+    lexical_reads_from_transport(transport, declared, OccurrenceCategory::CallableOccurrence)
+}
+
+/// ONE scope authority for both read channels: references of `category`, enclosed by a
+/// declaration this module declares, minus any a same-spelled `LexicalValueOccurrence`
+/// declaration shadows by containment prefix.
+fn lexical_reads_from_transport(
+    transport: &Rc<OccurrenceTransport>,
+    declared: &BTreeSet<String>,
+    category: OccurrenceCategory,
+) -> BTreeSet<(String, String)> {
     let mut by_id: HashMap<i64, String> = HashMap::new();
     for entry in transport.index.entries.iter() {
         by_id.insert(
@@ -1149,7 +1176,7 @@ fn value_occurrences_from_transport(
         .collect();
     let mut out = BTreeSet::new();
     for reference in transport.references.iter() {
-        if reference.category != OccurrenceCategory::LexicalValueOccurrence {
+        if reference.category != category {
             continue;
         }
         let Some(spelling) = by_id
@@ -1302,7 +1329,6 @@ pub fn record_from_module(
     let mut referenced = BTreeSet::new();
     let mut matched_arms = BTreeSet::new();
     let mut called = BTreeSet::new();
-    let mut called_occurrences = BTreeSet::new();
     for item in module_items(module.clone()).iter() {
         let in_declaration = authored_name_at(source_indices.clone(), item.clone());
         collect_reference_occurrences(
@@ -1315,7 +1341,6 @@ pub fn record_from_module(
         );
         for_each_node(item, &mut |node| {
             if is_call(node) && !node.name.is_empty() {
-                called_occurrences.insert((in_declaration.clone(), node.name.clone()));
                 called.insert(node.name.clone());
                 if let Some(tail) = node.name.rsplit('.').next() {
                     called.insert(tail.to_string());
@@ -1328,7 +1353,7 @@ pub fn record_from_module(
         referenced,
         matched_arms,
         called,
-        called_occurrences,
+        called_occurrences: call_occurrences_from_transport(transport, &declared),
         value_occurrences: value_occurrences_from_transport(transport, &declared),
         authored_type_references: authored_type_references_from_transport(transport, &declared),
         interface_references: interface_type_references(transport, &interface_regions),
