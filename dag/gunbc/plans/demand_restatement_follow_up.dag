@@ -15,9 +15,11 @@ data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..d759
 // syntactic clause, since one clause can bind several aliases. At the range tip every authored `uses`
 // clause in the tree was enumerated, every ordinary fn carrying one was resolved, and its
 // ItemInfo.service_names read. Every identity with nonempty derived demand was deleted under the
-// unchanged criterion; none had EMPTY demand, so no deletion flipped a function from effectful to
-// pure. What was not deleted is exactly the retained lists below, so the retained population is read
-// off them rather than stated here. The counts of that pass are the landing change's receipt and are
+// unchanged criterion EXCEPT the identities retained under EditedWitnessHasNoHermeticRoute; none had
+// EMPTY demand, so no deletion flipped a function from effectful to pure. What was not deleted is
+// exactly the retained lists below, in two kinds: identities the criterion cannot type, and identities
+// MEASURED DELETABLE whose deletion is not yet landable. The retained population is read off the lists
+// rather than stated here. The counts of that pass are the landing change's receipt and are
 // not carried in this module: the census resolver has no entry point in the tree, so a figure written
 // here could not be re-derived and would rot (DESIGN 6). The re-derivable fact is the tree itself --
 // every authored `uses` row it still carries is one of the retained identities below, or a new
