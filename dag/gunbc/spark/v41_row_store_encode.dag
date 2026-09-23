@@ -5,6 +5,7 @@ import std.nat { Nat }
 import std.content_hash { Sha256Digest }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { ByteSize, byte_size_count }
+import gunbc.spark.v41_checkpoint_materialize { v41_checkpoint_repo_directory }
 import v2.std.optional { Present, Absent }
 import extdeps.numeric.base16 { byte_hex_lower }
 import extdeps.deepseek.deepseek_v4_1_flash {
@@ -105,22 +106,25 @@ data v41_row_store_host_realization: V41HostRealization = V41HostRealization {
 }
 
 
-// THE DIRECTORY ON THE HOST, next to the materialized checkpoint (gunbc.spark.v41_checkpoint_materialize
-// v41_checkpoint_directory) and keyed by nothing yet: which path the runtime opens a store at is the
-// wiring patch's decision (gunbc.spark.v41_engram_row_store states that frontier), so this names where
-// the encoder writes and a later cut moves or links them.
-data v41_row_store_output_directory: NonEmptyStr = "/home/briansrls/models/deepseek-ai/DeepSeek-V4.1-Flash/engram-row-stores" as NonEmptyStr
+// THE DIRECTORY ON THE HOST: beside the materialized checkpoint, under the fleet's one models root
+// (gunbc.spark.v41_checkpoint_materialize v41_checkpoint_repo_directory, from
+// gunbc.spark.model_snapshot_acquisition spark_models_root). Which path the runtime OPENS a store at is
+// the wiring patch's decision (gunbc.spark.v41_engram_row_store states that frontier); this is where
+// the encoder writes.
+fn v41_row_store_output_directory() -> NonEmptyStr {
+  join([v41_checkpoint_repo_directory(), "/engram-row-stores"], "") as NonEmptyStr
+}
 
 type V41StoreEncodeArgs {
   layer: Nat
   rank: Nat
   shard: NonEmptyStr
-  weight_offset: Int
-  scale_offset: Int
+  weight_offset: ByteSize
+  scale_offset: ByteSize
   start: Int
   rows: Int
-  weight_bytes: Nat
-  scale_bytes: Nat
+  weight_bytes: ByteSize
+  scale_bytes: ByteSize
   magic_hex: String
   out: NonEmptyStr
 }
@@ -138,7 +142,7 @@ fn v41_span_named(spans: List<V41PublishedSpan>, name: NonEmptyStr) -> V41Publis
 }
 
 fn v41_store_out_path(layer: Nat, rank: Nat) -> NonEmptyStr {
-  join([v41_row_store_output_directory as String, "/", v41_store_key(layer: layer, rank: rank), ".engram"], "") as NonEmptyStr
+  join([v41_row_store_output_directory() as String, "/", v41_store_key(layer: layer, rank: rank), ".engram"], "") as NonEmptyStr
 }
 
 fn v41_layer_store_args(t: V41LayerTable, spec: V41RowStoreEncodingSpec, spans: List<V41PublishedSpan>) -> List<V41StoreEncodeArgs> {
@@ -150,12 +154,12 @@ fn v41_layer_store_args(t: V41LayerTable, spec: V41RowStoreEncodingSpec, spans: 
         layer: t.layer,
         rank: r.rank,
         shard: w.shard,
-        weight_offset: byte_size_count(b: w.file_offset),
-        scale_offset: byte_size_count(b: s.file_offset),
+        weight_offset: w.file_offset,
+        scale_offset: s.file_offset,
         start: r.start,
         rows: r.end - r.start,
-        weight_bytes: byte_size_count(b: weight_bytes(g: spec.geometry)),
-        scale_bytes: byte_size_count(b: scale_bytes(g: spec.geometry)),
+        weight_bytes: weight_bytes(g: spec.geometry),
+        scale_bytes: scale_bytes(g: spec.geometry),
         magic_hex: v41_magic_hex(),
         out: v41_store_out_path(layer: t.layer, rank: r.rank),
       })
@@ -192,12 +196,12 @@ fn v41_store_encode_argv(shard_directory: NonEmptyStr, a: V41StoreEncodeArgs) ->
   [
     "python3", "-c", v41_row_store_host_realization.program,
     "--shard", join([shard_directory as String, "/", a.shard as String], ""),
-    "--weight-offset", to_string(a.weight_offset),
-    "--scale-offset", to_string(a.scale_offset),
+    "--weight-offset", to_string(byte_size_count(b: a.weight_offset)),
+    "--scale-offset", to_string(byte_size_count(b: a.scale_offset)),
     "--start", to_string(a.start),
     "--rows", to_string(a.rows),
-    "--weight-bytes", to_string(a.weight_bytes),
-    "--scale-bytes", to_string(a.scale_bytes),
+    "--weight-bytes", to_string(byte_size_count(b: a.weight_bytes)),
+    "--scale-bytes", to_string(byte_size_count(b: a.scale_bytes)),
     "--magic-hex", a.magic_hex,
     "--out", a.out as String,
     "--chunk-rows", to_string(v41_row_store_encoder_chunk_rows),

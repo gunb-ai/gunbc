@@ -2,6 +2,7 @@ module test.claim.spark.v41_row_store_encode_witness
 
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.nat { Nat }
+import std.measure { byte_size, byte_size_count }
 import std.integer { UInt8, qualified_octet_members }
 import v2.std.optional { Present, Absent }
 import extdeps.numeric.base16 { base16_decode_lower }
@@ -52,8 +53,8 @@ data w_host_store_perturbed: String = "454e4752310a73cbf4f370e0e7696f6ab56a6d5ce
 fn w_sample_args() -> V41StoreEncodeArgs {
   V41StoreEncodeArgs {
     layer: 1, rank: 0, shard: "model-00047-of-00048.safetensors" as NonEmptyStr,
-    weight_offset: 664, scale_offset: 98305579672, start: 96000562, rows: 2,
-    weight_bytes: 256, scale_bytes: 8, magic_hex: v41_magic_hex(), out: "/s/out" as NonEmptyStr,
+    weight_offset: byte_size(count: 664), scale_offset: byte_size(count: 98305579672), start: 96000562, rows: 2,
+    weight_bytes: byte_size(count: 256), scale_bytes: byte_size(count: 8), magic_hex: v41_magic_hex(), out: "/s/out" as NonEmptyStr,
   }
 }
 
@@ -127,9 +128,9 @@ test fn the_live_plan_hands_the_encoder_what_the_sample_run_used() -> Bool {
         V41StoreEncodePlanned { stores: st } =>
           length(st) == 8
             && any(st, a => a.layer == 1 && a.rank == 0
-              && a.weight_offset == 664 && a.scale_offset == 98305579672
+              && byte_size_count(b: a.weight_offset) == 664 && byte_size_count(b: a.scale_offset) == 98305579672
               && a.start == 0 && a.rows == 96000564
-              && a.weight_bytes == 256 && a.scale_bytes == 8 && a.magic_hex == "454e4752310a"
+              && byte_size_count(b: a.weight_bytes) == 256 && byte_size_count(b: a.scale_bytes) == 8 && a.magic_hex == "454e4752310a"
               && (a.shard as String) == "model-00047-of-00048.safetensors")
       }
     }
