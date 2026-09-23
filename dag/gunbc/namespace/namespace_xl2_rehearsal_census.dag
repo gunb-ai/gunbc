@@ -36,6 +36,8 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
 import v2.std.node { Symbol }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import v2.std.optional { Absent, Present }
 import v2.std.algebra { fold_list }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import std.algebra { Cons, Empty }
@@ -71,11 +73,13 @@ type Xl2ResidualChain {
 //   - a module whose resolve refused was abandoned at its first failure: v2.compiler.resolve
 //     returns a Rejected accumulator without visiting the remaining children, so a second
 //     independent failure in the same module is unobserved (occurrence completeness, the
-//     obligation missing_instrument_label ExactOccurrenceResidualCensus names).
+//     obligation missing_instrument_label ExactOccurrenceResidualCensus names);
+//   - two members at one path cannot be told apart by any locus, so neither is picked.
 type Xl2UnobservedScope
   = Xl2MemberNotStripped { cause: Step0StripProductionRefusalCause }
   | Xl2FileRefusedBeforeResolve { refusal: NativeTestFileRefusal }
   | Xl2ModuleResolveAbandonedAtFirstFailure { module: String, path: Symbol }
+  | Xl2MemberPathDuplicated { path: Symbol }
 
 // WHY COMPLETENESS IS REFUSED. The call-argument arm is unconditional today: resolve fails OPEN for
 // every dependent reached through a call argument (gunbc.recurring_failure_mode
@@ -168,9 +172,23 @@ fn xl2_stripped_ingest(members: List<Xl2StrippedMember>) -> SourceRootIngest {
   fold(members, init: Empty, f: fn(acc, member) { Cons { head: xl2_member_read(member: member), tail: acc } })
 }
 
-fn xl2_base_coordinates_of(members: List<Xl2StrippedMember>, path: Symbol) -> List<ImportStripCoordinateSegment> {
-  fold(members, init: [], f: fn(acc, member) {
-    if symbol_intern_lexeme(lexeme: member.source.path as String) == path { member.base_coordinates } else { acc }
+// ONE PATH-KEYED INDEX, BUILT ONCE (DESIGN section 6, bare minimum cost): the per-module arm looks
+// its coordinate map up rather than rescanning the members. A second member at a path already
+// indexed is refused, never chosen.
+type Xl2CoordinateIndex {
+  by_path: Map<Symbol, List<ImportStripCoordinateSegment>>
+  duplicated: List<Xl2UnobservedScope>
+}
+
+fn xl2_coordinate_index(members: List<Xl2StrippedMember>) -> Xl2CoordinateIndex {
+  fold(members, init: Xl2CoordinateIndex { by_path: empty_map(), duplicated: [] }, f: fn(acc, member) {
+    let path = symbol_intern_lexeme(lexeme: member.source.path as String)
+    match map_lookup(acc.by_path, path) {
+      Present { value: _ } =>
+        Xl2CoordinateIndex { by_path: acc.by_path, duplicated: acc.duplicated |> list_push(Xl2MemberPathDuplicated { path: path }) }
+      Absent =>
+        Xl2CoordinateIndex { by_path: map_insert(acc.by_path, path, member.base_coordinates), duplicated: acc.duplicated }
+    }
   })
 }
 
@@ -187,13 +205,14 @@ type Xl2Observation {
 // refusal roster in xl2_observe.
 fn xl2_observe_module(
   context: NativeTestContext,
-  members: List<Xl2StrippedMember>,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  coordinates: Map<Symbol, List<ImportStripCoordinateSegment>>,
   acc: Xl2Observation,
   entry: NativeCensusModule
 ) -> Xl2Observation {
   match native_census_module_resolution(
     context: context,
-    refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+    refusal_index: refusal_index,
     entry: entry
   ) {
     NativeCensusModuleFileRefused => acc
@@ -205,7 +224,10 @@ fn xl2_observe_module(
           module: entry.module,
           path: entry.path,
           chain: d,
-          base_coordinates: xl2_base_coordinates_of(members: members, path: entry.path)
+          base_coordinates: match map_lookup(coordinates, entry.path) {
+            Present { value: c } => c
+            Absent => []
+          }
         }),
         resolved: acc.resolved,
         unobserved: acc.unobserved |> list_push(Xl2ModuleResolveAbandonedAtFirstFailure { module: entry.module, path: entry.path })
@@ -217,10 +239,14 @@ fn xl2_observe(context: NativeTestContext, ingest: SourceRootIngest, members: Li
   let file_refused = fold_list(xs: context.file_refusals, empty: [], cons: fn(acc, r) {
     acc |> list_push(Xl2FileRefusedBeforeResolve { refusal: r })
   })
+  let refusal_index = native_lane_file_refusal_index(refusals: context.file_refusals)
+  let index = xl2_coordinate_index(members: members)
   fold_list(
     xs: native_census_modules(ingest: ingest),
-    empty: Xl2Observation { residual: [], resolved: 0, unobserved: file_refused },
-    cons: fn(acc, entry) { xl2_observe_module(context: context, members: members, acc: acc, entry: entry) }
+    empty: Xl2Observation { residual: [], resolved: 0, unobserved: concat(file_refused, index.duplicated) },
+    cons: fn(acc, entry) {
+      xl2_observe_module(context: context, refusal_index: refusal_index, coordinates: index.by_path, acc: acc, entry: entry)
+    }
   )
 }
 
