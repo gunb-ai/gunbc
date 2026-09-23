@@ -1073,8 +1073,23 @@ test fn witness_jit_mint_authorizes_an_owned_cell_with_the_runner_permission() -
       (req.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
         && runner_label_sets_equal(
              a: map(req.labels, l => l.value as String),
-             b: ["self-hosted", "linux", "arm64", "gunbc-heavy", "srv2"],
+             b: ["self-hosted", runner_microvm_attempt_unit_name(attempt: a) as String],
            )
+    _ => false
+  }
+}
+
+// THE GUEST NEVER ANSWERS TO THE HOST'S PRODUCTION LABELS. This control used to pin
+// [self-hosted, linux, arm64, gunbc-heavy, srv2] -- the set fleet-desired.yml and the host-pinned
+// fleet-converge jobs target -- so a production converge job could have run inside a shakedown
+// VM. The red is that set: none of its host, class, OS or architecture labels may appear, and the
+// only non-provenance label is the attempt's own name.
+test fn witness_jit_mint_carries_no_host_production_label() -> Bool {
+  match planned(owned: true, perms: runner_grant) {
+    JitMintAuthorized { attempt: _, request: req } =>
+      let wire = map(req.labels, l => l.value as String)
+      count(filter(wire, w => w == "srv2" || w == "gunbc-heavy" || w == "linux" || w == "arm64")) == 0
+        && count(wire) == 2
     _ => false
   }
 }
