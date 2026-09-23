@@ -12,8 +12,14 @@ import gunbc.compute.work_provider_local {
   AttemptSettlement, AttemptSettled, AttemptNotSettled, AttemptUnsettleable,
   compute_settle_attempt, compute_attempt_settlement_wire, attempt_settlement_host_record,
   host_record_was_written,
+  ProvideResult, ProvideFresh, ProvideAttached, compute_run_ceiling_retry, compute_ceiling_retry_reference,
 }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.compute.host_capacity { ComputeReservationRefused }
+import gunbc.compute.work_class_grant { work_class_grant, work_class_grant_rows, work_class_of }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import gunbc.compute.work_request {
+  ExactTree, work_default_build,
   WorkEnding, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch,
 }
 import gunbc.compute.attempt_lifecycle {
@@ -371,4 +377,36 @@ test fn the_loser_of_a_launch_race_never_reports_that_it_settled_the_slot() -> B
     && !string_contains(s: compute_attempt_settlement_wire(closed: loser_settled), pattern: "settled in the attempt slot")
     && string_contains(s: compute_attempt_settlement_wire(closed: loser_settled), pattern: "NOT SETTLED BY THIS PRODUCER")
     && host_record_was_written(h: attempt_settlement_host_record(s: loser_settled))
+}
+
+
+// THE CEILING RETRY IS A NEW ATTEMPT AND IT ASKS THE GATE BEFORE IT SPAWNS. The retry's own slot --
+// compute_ceiling_retry_reference of the first attempt's reference -- is already held here by
+// another attempt, so the retry's open must be refused by the store and the retry must return
+// before a checkout or a unit exists. The refusal names the open, the held slot is untouched, and
+// the unused ceiling seat is returned through ComputeNothingToRelease rather than silently. Were
+// the retry route to skip compute_open_attempt, it would reach compute_run_leased and end as a
+// unit's outcome, never as this refusal.
+test fn the_ceiling_retry_opens_its_own_attempt_and_a_held_slot_refuses_it_before_spawn() -> Bool {
+  let root = fresh_root()
+  let layout = layout_at(root: root)
+  let retry_reference = compute_ceiling_retry_reference(reference: "attempt-first" as NonEmptyStr)
+  let squatter = record_for(reference: retry_reference as String)
+  let held = attempt_open(root: root as NonEmptyStr, record: squatter)
+  let op = work_default_build()
+  let tree = match git_object_id_from_untagged_hex(hex: "0000000000000000000000000000000000000000") { Present { value: oid } => oid  Absent => "0000000000000000000000000000000000000000" }
+  let r = compute_run_ceiling_retry(
+    instance: srv1_live_dashboard_instance(), commit: "0000000000000000000000000000000000000000", layout: layout,
+    identity: "abcdef0123456789", subject: ExactTree { tree: tree }, op: op, dependency_store: "",
+    grant: work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: kibibyte(count: 27262976)),
+    reference: retry_reference, reservation: ComputeReservationRefused { detail: "fixture: no ledger" })
+  let after = attempt_slot_read(root: root as NonEmptyStr, reference: retry_reference)
+  attempt_transition_advanced(t: held)
+    && (match r {
+      ProvideFresh { outcome: _, document: doc, host_record: _ } =>
+        string_contains(s: doc, pattern: "opening the attempt") && string_contains(s: doc, pattern: "no seat to return")
+      ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false
+    })
+    && generation_of(r: after) == 1
+    && state_word_of(r: after) == attempt_state_wire(s: AttemptReserved)
 }

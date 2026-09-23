@@ -74,13 +74,11 @@ fn srv3_boot_cd_override_mode_refusal(mode: RedfishBootSourceOverrideMode) -> St
 }
 
 fn srv3_boot_once_cd() -> ProcessExit
-  uses net: std.resources.Network, clock: std.resources.Clock
 {
   srv3_boot_once_cd_gated(approval: srv3_boot_once_cd_default_approval)
 }
 
 fn srv3_boot_once_cd_operator_approved() -> ProcessExit
-  uses net: std.resources.Network, clock: std.resources.Clock
 {
   srv3_boot_once_cd_gated(approval: srv3_boot_once_cd_operator_granted_approval)
 }
@@ -102,7 +100,6 @@ fn srv3_boot_once_cd_operator_approved() -> ProcessExit
 // Leaving the slot at ClaimedBy on a failure would make a crashed attempt indistinguishable from
 // a running one and block the retry forever.
 fn srv3_boot_once_cd_gated(approval: ScopedAuthorization<Srv3BootOverrideSubject>) -> ProcessExit
-  uses net: std.resources.Network, clock: std.resources.Clock
 {
   let observed_at = match clock_now_probed_at() {
     Present { value: ts } => ts as Timestamp
@@ -146,7 +143,6 @@ fn srv3_boot_once_cd_gated(approval: ScopedAuthorization<Srv3BootOverrideSubject
 // time this session I have put an annotation inside a declaration body. A match arm is a
 // declaration body; so is a service body. The rule has no in-body form to reach for.
 fn srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExit
-  uses net: std.resources.Network
 {
   let plan = srv3_onboarding_plan
   let host = plan.bmc.host
