@@ -6,6 +6,7 @@ import v2.compiler.compile {
   NativeCensusModuleResolveRefused,
   NativeCensusModuleResolved,
   NativeCensusModuleOutcome,
+  NativeCensusResidualRow,
   NativeTestContext,
   native_census_module_resolution,
   native_census_modules,
@@ -22,7 +23,7 @@ import std.algebra { Cons, Empty }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
@@ -72,6 +73,12 @@ data census_unbound_source: String = "module v2.census_probe_unbound\n\nimport v
 // claim below is the only arm in this file with the power to fail when the walk hides refusals.
 data census_two_source: String = "module v2.census_probe_two\n\nimport v2.std.logic { Bool }\n\nfn census_probe_two_first(p: Bool) -> Bool { census_probe_absent_one }\n\nfn census_probe_two_second(p: Bool) -> Bool { census_probe_absent_two }\n"
 
+// ONE CHAIN WITH A PENDING ADVISORY. The declaration names a value another probe module DOES
+// declare but this one never imports, so its one refusal carries the resolver's declared-elsewhere
+// advisory in front of its fatal: two diagnostics, ONE refused occurrence. A fan-out that made the
+// advisory a row of its own reports two residual sites here.
+data census_advised_source: String = "module v2.census_probe_advised\n\nimport v2.std.logic { Bool }\n\nfn census_probe_advised_first(p: Bool) -> Bool { census_probe_clean_value }\n"
+
 // THE POISON SPECIMEN REFUSES IN THE FRONT END, before the resolver is entered at all. The bytes
 // are the same shape as the lane's committed malformed control (fixtures/native_lane_malformed):
 // a string that never terminates, which any honest front end refuses at tokenize.
@@ -114,7 +121,15 @@ data census_probe_ingest: SourceRootIngest = Cons {
           unit: ^census_probe_two_cu,
           path: "dag/census_probe_two.dag"
         ),
-        tail: Empty
+        tail: Cons {
+          head: census_probe_read(
+            source: census_advised_source,
+            id: ^census_probe_advised_artifact,
+            unit: ^census_probe_advised_cu,
+            path: "dag/census_probe_advised.dag"
+          ),
+          tail: Empty
+        }
       }
     }
   }
@@ -151,8 +166,10 @@ type CensusProbeOutcomes
       clean: NativeCensusModuleOutcome
       unbound: NativeCensusModuleOutcome
       poison: NativeCensusModuleOutcome
+      advised: NativeCensusModuleOutcome
       unbound_residual_rows: Int
       two_residual_rows: Int
+      advised_rows: List<NativeCensusResidualRow>
     }
 
 fn census_probe_outcome_in(
@@ -180,13 +197,12 @@ fn census_probe_outcome_in(
 }
 
 // THE RESIDUAL FAN-OUT IS COUNTED HERE RATHER THAN IN THE CLAIM, so the claim that asserts
-// occurrence grain reads an Int instead of re-entering the resolver to obtain the diagnostics it
-// would then fan out. The count is the fan-out's own arithmetic: one row per diagnostic, which is
-// head plus tail.
+// occurrence grain reads an Int instead of re-entering the resolver to obtain the chain it would
+// then fan out.
 fn census_probe_unbound_rows(entry: NativeCensusModule, outcome: NativeCensusModuleOutcome) -> Int {
   match outcome {
     NativeCensusModuleResolveRefused { diagnostics: d } =>
-      length(xs: native_census_residual_rows(entry: entry, diagnostics: d))
+      length(xs: native_census_residual_rows(entry: entry, chain: d))
     NativeCensusModuleFileRefused => 0
     NativeCensusModuleResolved => 0
   }
@@ -203,6 +219,21 @@ fn census_probe_two_entry() -> NativeCensusModule {
   NativeCensusModule {
     module: "v2.census_probe_two",
     path: ^census_probe_two_cu
+  }
+}
+
+fn census_probe_advised_entry() -> NativeCensusModule {
+  NativeCensusModule {
+    module: "v2.census_probe_advised",
+    path: ^census_probe_advised_cu
+  }
+}
+
+fn census_probe_rows_of(entry: NativeCensusModule, outcome: NativeCensusModuleOutcome) -> List<NativeCensusResidualRow> {
+  match outcome {
+    NativeCensusModuleResolveRefused { diagnostics: d } => native_census_residual_rows(entry: entry, chain: d)
+    NativeCensusModuleFileRefused => []
+    NativeCensusModuleResolved => []
   }
 }
 
@@ -228,10 +259,15 @@ fn census_probe_outcomes() -> CensusProbeOutcomes {
                   match census_probe_outcome_in(context: context, index: index, module_name: "v2.census_probe_two") {
                     Absent => CensusProbeContextRefused
                     Present { value: two_outcome } =>
+                      match census_probe_outcome_in(context: context, index: index, module_name: "v2.census_probe_advised") {
+                        Absent => CensusProbeContextRefused
+                        Present { value: advised_outcome } =>
                       CensusProbeOutcomesDecided {
                         clean: clean_outcome,
                         unbound: unbound_outcome,
                         poison: poison_outcome,
+                        advised: advised_outcome,
+                        advised_rows: census_probe_rows_of(entry: census_probe_advised_entry(), outcome: advised_outcome),
                         unbound_residual_rows: census_probe_unbound_rows(
                           entry: census_probe_unbound_entry(),
                           outcome: unbound_outcome
@@ -240,6 +276,7 @@ fn census_probe_outcomes() -> CensusProbeOutcomes {
                           entry: census_probe_two_entry(),
                           outcome: two_outcome
                         )
+                      }
                       }
                   }
               }
@@ -253,13 +290,13 @@ fn census_probe_outcomes() -> CensusProbeOutcomes {
 // a file would under-report by exactly the files it dropped, and no per-module claim below could
 // see it: each of them asks about a module the roster already produced.
 test fn census_roster_carries_every_declared_module_holds() -> Bool {
-  length(xs: native_census_modules(ingest: census_probe_ingest)) == 4
+  length(xs: native_census_modules(ingest: census_probe_ingest)) == 5
 }
 
 test fn census_unbound_module_is_resolve_refused_holds() -> Bool {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
-    CensusProbeOutcomesDecided { clean: _, unbound: unbound, poison: _, unbound_residual_rows: _, two_residual_rows: _ } =>
+    CensusProbeOutcomesDecided { clean: _, unbound: unbound, poison: _, advised: _, unbound_residual_rows: _, two_residual_rows: _, advised_rows: _ } =>
       match unbound {
         NativeCensusModuleResolveRefused { diagnostics: _ } => true
         NativeCensusModuleFileRefused => false
@@ -268,20 +305,37 @@ test fn census_unbound_module_is_resolve_refused_holds() -> Bool {
   }
 }
 
-// THE RESIDUAL IS AT OCCURRENCE GRAIN, and this is the claim that keeps it there. The rows carry the
-// resolver's own Diagnostic, each with the locus a downstream occurrence rewrite joins on, and there
-// is ONE ROW PER DIAGNOSTIC rather than one per refusing module. A census that folded a module's
-// diagnostics to a single reason would still satisfy the claim above it -- the module would still
-// read resolve_refused -- and would be useless to the wave that consumes it.
-test fn census_resolve_refusal_yields_a_located_row_per_diagnostic_holds() -> Bool {
+// ONE REFUSED SITE IS ONE ROW, AND THE ROW NAMES ITS SITE. This replaces a control that compared
+// the row count to the chain's own diagnostic count (rows == tail + 1): that arithmetic made every
+// pending advisory a residual site, so it was green on exactly the inflation it should refuse.
+test fn census_single_refusal_is_one_row_naming_its_site_holds() -> Bool {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
-    CensusProbeOutcomesDecided { clean: _, unbound: unbound, poison: _, unbound_residual_rows: rows, two_residual_rows: _ } =>
+    CensusProbeOutcomesDecided { clean: _, unbound: unbound, poison: _, advised: _, unbound_residual_rows: rows, two_residual_rows: _, advised_rows: _ } =>
       match unbound {
-        NativeCensusModuleResolveRefused { diagnostics: d } => rows == length(xs: d.tail) + 1
+        NativeCensusModuleResolveRefused { diagnostics: d } =>
+          rows == 1 && diagnostics_fatal(d: d).reason == ^resolve_reason_unbound_symbol
         NativeCensusModuleFileRefused => false
         NativeCensusModuleResolved => false
       }
+  }
+}
+
+// A SINGLE CHAIN WITH A PENDING ADVISORY IS EXACTLY ONE ROW, AND THE ROW CARRIES THE WHOLE CHAIN.
+// The advised module's chain is [declared-elsewhere advisory, unbound fatal]: two diagnostics, one
+// occurrence. RED under a per-diagnostic fan-out (two rows), and RED if the row dropped the
+// advisory or carried anything but the unbound fatal as its diagnostics_fatal.
+test fn census_advised_chain_is_one_row_carrying_its_chain_holds() -> Bool {
+  match census_probe_outcomes() {
+    CensusProbeContextRefused => false
+    CensusProbeOutcomesDecided { clean: _, unbound: _, poison: _, advised: _, unbound_residual_rows: _, two_residual_rows: _, advised_rows: rows } =>
+      length(xs: rows) == 1
+        && fold_list(xs: rows, empty: true, cons: fn(acc, row) {
+          acc
+            && row.chain.head.reason == ^resolve_unbound_name_is_declared_elsewhere
+            && length(xs: row.chain.tail) == 1
+            && diagnostics_fatal(d: row.chain).reason == ^resolve_reason_unbound_symbol
+        })
   }
 }
 
@@ -292,7 +346,7 @@ test fn census_resolve_refusal_yields_a_located_row_per_diagnostic_holds() -> Bo
 test fn census_poison_module_is_file_refused_not_resolve_refused_holds() -> Bool {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
-    CensusProbeOutcomesDecided { clean: _, unbound: _, poison: poison, unbound_residual_rows: _, two_residual_rows: _ } =>
+    CensusProbeOutcomesDecided { clean: _, unbound: _, poison: poison, advised: _, unbound_residual_rows: _, two_residual_rows: _, advised_rows: _ } =>
       match poison {
         NativeCensusModuleFileRefused => true
         NativeCensusModuleResolveRefused { diagnostics: _ } => false
@@ -307,7 +361,7 @@ test fn census_poison_module_is_file_refused_not_resolve_refused_holds() -> Bool
 test fn census_clean_module_resolves_holds() -> Bool {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
-    CensusProbeOutcomesDecided { clean: clean, unbound: _, poison: _, unbound_residual_rows: _, two_residual_rows: _ } =>
+    CensusProbeOutcomesDecided { clean: clean, unbound: _, poison: _, advised: _, unbound_residual_rows: _, two_residual_rows: _, advised_rows: _ } =>
       match clean {
         NativeCensusModuleResolved => true
         NativeCensusModuleFileRefused => false
@@ -330,7 +384,7 @@ test fn census_clean_module_resolves_holds() -> Bool {
 test fn census_two_independent_refusals_both_reach_the_census_holds() -> Bool {
   match census_probe_outcomes() {
     CensusProbeContextRefused => false
-    CensusProbeOutcomesDecided { clean: _, unbound: _, poison: _, unbound_residual_rows: _, two_residual_rows: rows } =>
+    CensusProbeOutcomesDecided { clean: _, unbound: _, poison: _, advised: _, unbound_residual_rows: _, two_residual_rows: rows, advised_rows: _ } =>
       rows == 2
   }
 }

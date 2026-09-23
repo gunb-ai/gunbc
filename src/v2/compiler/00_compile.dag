@@ -3204,46 +3204,27 @@ fn native_census_module_resolution(
   }
 }
 
-// ONE ROW PER DIAGNOSTIC, WHICH IS ONE ROW PER REFUSED OCCURRENCE. The row carries the resolver's
-// own Diagnostic rather than a reason/locus pair copied out of it: the pair would be a second
-// spelling of a std.diagnostic shape, and the locus is the join key a downstream occurrence rewrite
-// reads, so re-coining it here is where it would silently lose a field.
-// THE LIST IS NOT SUMMARIZED. A module that refuses at forty sites yields forty rows; folding them
-// to a count, or to the last reason, is what makes a residual census an undercount, and this census
-// exists because a roster of front-end refusals was already an undercount by construction.
+// ONE ROW PER FAILURE CHAIN, WHICH IS ONE ROW PER REFUSED OCCURRENCE. A chain is pending
+// advisories followed by exactly one fatal, and the fatal's locus is the occurrence the row names --
+// v2.std.diagnostic diagnostics_fatal is the one authority for which element that is. The row
+// carries the chain WHOLE rather than a reason/locus pair copied out of it, so the advisories that
+// preceded this fatal stay attached to it. The previous fan-out emitted one row per DIAGNOSTIC,
+// which counted an advisory as a refused occurrence: an unbound name the corpus declares elsewhere
+// carries a declared-elsewhere advisory ahead of its fatal and read as TWO residual sites.
+// THE POPULATION IS NOT SUMMARIZED. A module that refuses at forty independent sites yields forty
+// chains and forty rows; folding them to a count, or to the first, is what makes a residual census
+// an undercount.
 type NativeCensusResidualRow {
   module: String
   path: Symbol
-  diagnostic: Diagnostic
+  chain: NonEmptyDiagnostics
 }
 
 fn native_census_residual_rows(
   entry: NativeCensusModule,
-  diagnostics: NonEmptyDiagnostics
+  chain: NonEmptyDiagnostics
 ) -> List<NativeCensusResidualRow> {
-  list_reverse(
-    xs: fold_list(
-      xs: diagnostics.tail,
-      empty: Cons {
-        head: NativeCensusResidualRow {
-          module: entry.module,
-          path: entry.path,
-          diagnostic: diagnostics.head
-        },
-        tail: Empty
-      },
-      cons: fn(acc, d) {
-        Cons {
-          head: NativeCensusResidualRow {
-            module: entry.module,
-            path: entry.path,
-            diagnostic: d
-          },
-          tail: acc
-        }
-      }
-    )
-  )
+  [NativeCensusResidualRow { module: entry.module, path: entry.path, chain: chain }]
 }
 
 // THE LIVE-VERDICT CONTROLS, EXECUTED BY THE SAME ROUTE AS EVERY MEMBER. They sit outside the
