@@ -1,0 +1,557 @@
+module v2.std.demand_engine
+
+import v2.std.algebra {
+  any,
+  contains,
+  filter,
+  fold_list,
+  for_all,
+  length,
+  list_map,
+  list_snoc_item
+}
+import v2.std.collection { List }
+import std.algebra { Cons, Empty }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.dependency { DependencyRelation }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import std.materialization_ladder { DemandNature, FreshEffect, IdempotentEffect, PureComputation, WorldRead }
+import std.materialization_provider { DemandIdentity, demand_identity_canonical }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE ONE DEMAND ENGINE -- AVAILABILITY, NOT SCHEDULING
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// The engine answers ONE question: which demands are ready. It does not decide what a demand
+// MEANS (that is the judgment's own evaluation), it does not decide WHERE work runs (that is
+// realization), and it does not decide whether a result may be reused across runs (that is
+// materialization). Those three are separate authorities and each is consumed here by its own
+// carrier: DemandIdentity keys, DemandNature admits sharing, and a caller-supplied lease answers
+// capacity.
+//
+// WHY THERE ARE NO LAYERS HERE. `v2.std.dependency` already carries `topological_layers` and
+// `ReadinessLayer`, and this engine deliberately does not call them. A layer is a BATCH: it makes
+// a demand wait for every peer in its layer rather than for its own prerequisites, so with
+// A1 -> B and an independent slow A2 in the same layer, B waits for A2 although nothing it needs
+// comes from A2. Readiness is per-demand and is recomputed on every completion; the discriminating
+// case is witnessed rather than asserted (see the diamond and independent-peer claims).
+//
+// THE ENGINE IS GENERIC IN THE RESULT VALUE AND NOTHING ELSE. Subjects are DemandIdentity, whose
+// canonical encoding is length-prefixed and injective (std.materialization_provider
+// demand_identity_canonical), so identity equality and the stable dispatch order are the SAME
+// authority rather than two. A second comparison written here would be the fork that makes two
+// runs disagree about which demand is "next".
+
+fn demand_identity_key(id: DemandIdentity) -> String {
+  demand_identity_canonical(demand: id) as String
+}
+
+fn demand_identity_eq(a: DemandIdentity, b: DemandIdentity) -> Bool {
+  demand_identity_key(id: a) == demand_identity_key(id: b)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// TYPED BLOCKED STATES: NINE DISTINCT CAUSES, NEVER ONE BOOLEAN
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// "Not ready" fuses a cycle, a missing edge, a refused prerequisite and an unadmitted lease into
+// one word, and those four demand four different operator actions: fix the program, fix the
+// derivation, read the upstream diagnostic, add capacity. A single boolean would report all four
+// identically, which is the conflation DESIGN section 5 forbids -- so each is its own arm and each
+// is separately reachable.
+type DemandBlockedCause
+  = BlockedByCycle { members: List<DemandIdentity> }
+  | BlockedByMissingEdge { prerequisite: DemandIdentity }
+  | BlockedByRefusedPrerequisite { prerequisite: DemandIdentity }
+  | BlockedWaitingForCapacity
+  | BlockedLookupPending
+  | BlockedNoDemand
+  | BlockedKeyConflict
+
+fn demand_blocked_cause_text(c: DemandBlockedCause) -> String {
+  match c {
+    BlockedByCycle { members: _ } => "a prerequisite cycle contains this demand"
+    BlockedByMissingEdge { prerequisite: _ } => "a declared prerequisite has no demand in the closure"
+    BlockedByRefusedPrerequisite { prerequisite: _ } => "a prerequisite refused, so this demand never becomes ready"
+    BlockedWaitingForCapacity => "ready, but no lease was offered for its requirements"
+    BlockedLookupPending => "a materialization lookup for this demand has not answered"
+    BlockedNoDemand => "nothing demanded this judgment"
+    BlockedKeyConflict => "two distinct subjects derived one demand key"
+  }
+}
+
+// AVAILABILITY IS THE RELEASING STATE, AND IT IS NOT "FINISHED". A refused demand is FINISHED and
+// never releases its dependents; an available demand carries the exact admitted result contract.
+// The distinction is the whole reason `DemandRefused` is not an arm of `DemandAvailable` with an
+// error value inside it: a dependent that could read a refusal as a value would proceed on it.
+type DemandState<V>
+  = DemandWaiting
+  | DemandReady
+  | DemandLeasePending
+  | DemandRunning
+  | DemandSuspended
+  | DemandCommitPending
+  | DemandAvailable { value: V }
+  | DemandRefused
+  | DemandBlocked { cause: DemandBlockedCause }
+
+fn demand_state_is_available<V>(s: DemandState<V>) -> Bool {
+  match s {
+    DemandAvailable { value: _ } => true
+    _ => false
+  }
+}
+
+fn demand_state_is_refused<V>(s: DemandState<V>) -> Bool {
+  match s {
+    DemandRefused => true
+    _ => false
+  }
+}
+
+fn demand_state_is_ready<V>(s: DemandState<V>) -> Bool {
+  match s {
+    DemandReady => true
+    _ => false
+  }
+}
+
+fn demand_state_is_running<V>(s: DemandState<V>) -> Bool {
+  match s {
+    DemandRunning => true
+    _ => false
+  }
+}
+
+// A demand is SETTLED when it will not change again without new work: available or refused. The
+// predicate exists because "done" and "available" are different questions and only one of them
+// releases a dependent.
+fn demand_state_is_settled<V>(s: DemandState<V>) -> Bool {
+  demand_state_is_available(s: s) || demand_state_is_refused(s: s)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE ENTRY: ONE PRODUCTION, MANY ATTACHMENTS
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// `attachments` is not bookkeeping for a report. It is the evidence that in-flight sharing HELD:
+// one equal share-admitted demand requested five times must show one entry with four attachments,
+// and the mutation that breaks sharing shows five entries. A count of entries alone cannot tell
+// those apart from a run that was only asked once, which is why the requests are counted on the
+// entry that served them.
+type DemandEntry<V> {
+  identity: DemandIdentity
+  nature: DemandNature
+  state: DemandState<V>
+  attachments: Int
+  productions: Int
+}
+
+fn demand_entry_new<V>(identity: DemandIdentity, nature: DemandNature) -> DemandEntry<V> {
+  DemandEntry {
+    identity: identity,
+    nature: nature,
+    state: DemandWaiting,
+    attachments: 0,
+    productions: 0
+  }
+}
+
+type DemandEngine<V> {
+  entries: List<DemandEntry<V>>
+  relations: List<DependencyRelation<DemandIdentity>>
+  completion_order: List<DemandIdentity>
+}
+
+fn demand_engine_empty<V>() -> DemandEngine<V> {
+  DemandEngine { entries: [], relations: [], completion_order: [] }
+}
+
+fn demand_engine_entry<V>(e: DemandEngine<V>, id: DemandIdentity) -> Optional<DemandEntry<V>> {
+  fold_list(
+    xs: e.entries,
+    empty: optional_absent(),
+    cons: fn(acc, entry) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if demand_identity_eq(a: entry.identity, b: id) {
+            optional_present(value: entry)
+          } else {
+            optional_absent()
+          }
+      }
+    }
+  )
+}
+
+fn demand_engine_has<V>(e: DemandEngine<V>, id: DemandIdentity) -> Bool {
+  match demand_engine_entry(e: e, id: id) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// SHARE ADMISSION IS READ OFF THE DEMAND'S NATURE, NOT DECIDED HERE. A fresh effect is never
+// attached in flight and never served from a prior result -- two invocations of a non-idempotent
+// effect are two different facts about the world, and collapsing them is the silent wrongness
+// DESIGN section 5 forbids. A world read shares only when it declared a staleness envelope,
+// because without one there is no statement of how long the read stays true.
+fn demand_nature_admits_sharing(nature: DemandNature) -> Bool {
+  match nature {
+    PureComputation => true
+    IdempotentEffect => true
+    WorldRead { staleness_envelope_declared: declared } => declared
+    FreshEffect => false
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// REQUESTING A DEMAND: THE ONLY DOOR THAT CREATES A PRODUCTION
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// A request for a demand that is already present and share-admitted ATTACHES: the production count
+// stays where it is and the attachment count rises. That is what makes "one equal share-admitted
+// demand is produced once" a fact about the structure rather than a hope about call order.
+//
+// A FRESH EFFECT REQUESTED AGAIN IS A SECOND PRODUCTION, and it is recorded on the same entry
+// rather than as a second keyed demand: the key names the judgment, and two fresh invocations of
+// one judgment are two productions of it, not two judgments.
+fn demand_engine_request<V>(
+  e: DemandEngine<V>,
+  id: DemandIdentity,
+  nature: DemandNature
+) -> DemandEngine<V> {
+  match demand_engine_entry(e: e, id: id) {
+    Present { value: existing } =>
+      if demand_nature_admits_sharing(nature: existing.nature) {
+        DemandEngine {
+          entries: list_map(
+            xs: e.entries,
+            f: fn(entry) {
+              if demand_identity_eq(a: entry.identity, b: id) {
+                DemandEntry {
+                  identity: entry.identity,
+                  nature: entry.nature,
+                  state: entry.state,
+                  attachments: entry.attachments + 1,
+                  productions: entry.productions
+                }
+              } else {
+                entry
+              }
+            }
+          ),
+          relations: e.relations,
+          completion_order: e.completion_order
+        }
+      } else {
+        DemandEngine {
+          entries: list_map(
+            xs: e.entries,
+            f: fn(entry) {
+              if demand_identity_eq(a: entry.identity, b: id) {
+                DemandEntry {
+                  identity: entry.identity,
+                  nature: entry.nature,
+                  state: DemandWaiting,
+                  attachments: entry.attachments,
+                  productions: entry.productions + 1
+                }
+              } else {
+                entry
+              }
+            }
+          ),
+          relations: e.relations,
+          completion_order: e.completion_order
+        }
+      }
+    Absent =>
+      DemandEngine {
+        entries: list_snoc_item(xs: e.entries, item: demand_entry_new(identity: id, nature: nature)),
+        relations: e.relations,
+        completion_order: e.completion_order
+      }
+  }
+}
+
+fn demand_engine_relate<V>(
+  e: DemandEngine<V>,
+  relation: DependencyRelation<DemandIdentity>
+) -> DemandEngine<V> {
+  DemandEngine {
+    entries: e.entries,
+    relations: list_snoc_item(xs: e.relations, item: relation),
+    completion_order: e.completion_order
+  }
+}
+
+fn demand_engine_prerequisites<V>(e: DemandEngine<V>, id: DemandIdentity) -> List<DemandIdentity> {
+  list_map(
+    xs: filter(xs: e.relations, predicate: fn(r) { demand_identity_eq(a: r.dependent, b: id) }),
+    f: fn(r) { r.prerequisite }
+  )
+}
+
+fn demand_engine_dependents<V>(e: DemandEngine<V>, id: DemandIdentity) -> List<DemandIdentity> {
+  list_map(
+    xs: filter(xs: e.relations, predicate: fn(r) { demand_identity_eq(a: r.prerequisite, b: id) }),
+    f: fn(r) { r.dependent }
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// CYCLE DETECTION: BOUNDED, BECAUSE THE SUBSTRATE IS
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// The walk carries the path it came by and refuses on re-entry. It is bounded by the entry count
+// rather than by a recursion the substrate would have to prove terminating over an arbitrary
+// graph: a walk that has taken more steps than there are demands has necessarily revisited one
+// (DESIGN section 4 -- execution is bounded and forward, so the bound is supplied rather than
+// discovered).
+fn demand_reaches<V>(
+  e: DemandEngine<V>,
+  from: DemandIdentity,
+  target: DemandIdentity,
+  fuel: Int
+) -> Bool {
+  if fuel <= 0 {
+    false
+  } else {
+    let prereqs = demand_engine_prerequisites(e: e, id: from)
+    any(xs: prereqs, predicate: fn(p) { demand_identity_eq(a: p, b: target) })
+      || any(
+        xs: prereqs,
+        predicate: fn(p) { demand_reaches(e: e, from: p, target: target, fuel: fuel - 1) }
+      )
+  }
+}
+
+fn demand_in_cycle<V>(e: DemandEngine<V>, id: DemandIdentity) -> Bool {
+  demand_reaches(e: e, from: id, target: id, fuel: length(xs: e.entries) + 1)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// READINESS IS DERIVED FROM THE PREREQUISITES' STATES, EVERY TIME
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// The order of the checks is load-bearing and is not stylistic. A demand inside a cycle also has
+// an unavailable prerequisite, and a demand whose prerequisite refused also has one that is not
+// available -- so if `waiting` were tested first, every distinguishable cause would collapse into
+// it and the nine typed states above would be decoration. The most specific cause is decided
+// first, and the residual "not yet" is last.
+//
+// A SETTLED DEMAND KEEPS ITS OWN STATE. Recomputing readiness for something already available
+// would discard the value it carries.
+fn demand_readiness<V>(e: DemandEngine<V>, id: DemandIdentity) -> DemandState<V> {
+  match demand_engine_entry(e: e, id: id) {
+    Absent => DemandBlocked { cause: BlockedNoDemand }
+    Present { value: entry } =>
+      if demand_state_is_settled(s: entry.state) {
+        entry.state
+      } else if demand_in_cycle(e: e, id: id) {
+        DemandBlocked { cause: BlockedByCycle { members: [id] } }
+      } else {
+        let prereqs = demand_engine_prerequisites(e: e, id: id)
+        let missing = filter(xs: prereqs, predicate: fn(p) { !demand_engine_has(e: e, id: p) })
+        let refused = filter(
+          xs: prereqs,
+          predicate: fn(p) {
+            match demand_engine_entry(e: e, id: p) {
+              Absent => false
+              Present { value: pe } => demand_state_is_refused(s: pe.state)
+            }
+          }
+        )
+        match missing {
+          Cons { head: m, tail: _ } => DemandBlocked { cause: BlockedByMissingEdge { prerequisite: m } }
+          Empty =>
+            match refused {
+              Cons { head: r, tail: _ } =>
+                DemandBlocked { cause: BlockedByRefusedPrerequisite { prerequisite: r } }
+              Empty =>
+                if for_all(
+                  xs: prereqs,
+                  predicate: fn(p) {
+                    match demand_engine_entry(e: e, id: p) {
+                      Absent => false
+                      Present { value: pe } => demand_state_is_available(s: pe.state)
+                    }
+                  }
+                ) {
+                  DemandReady
+                } else {
+                  DemandWaiting
+                }
+            }
+        }
+      }
+  }
+}
+
+// RE-EVALUATION IS TOTAL OVER THE ENTRIES AND IS APPLIED AFTER EVERY COMPLETION, which is what
+// makes the queue LIVE rather than a plan computed once. A demand becomes ready the moment its own
+// last prerequisite lands, not when some batch containing it closes.
+fn demand_engine_reevaluate<V>(e: DemandEngine<V>) -> DemandEngine<V> {
+  DemandEngine {
+    entries: list_map(
+      xs: e.entries,
+      f: fn(entry) {
+        DemandEntry {
+          identity: entry.identity,
+          nature: entry.nature,
+          state: demand_readiness(e: e, id: entry.identity),
+          attachments: entry.attachments,
+          productions: entry.productions
+        }
+      }
+    ),
+    relations: e.relations,
+    completion_order: e.completion_order
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE ONE READY QUEUE, IN ONE STABLE ORDER
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// The order is the canonical demand key and nothing else. Insertion order would make the queue a
+// function of how the closure happened to be walked, so two runs over one program could complete
+// in two orders and neither would be wrong -- which makes a completion-order receipt useless as
+// evidence. Keying the order to the identity makes the order re-derivable from the demands alone.
+fn demand_engine_ready_queue<V>(e: DemandEngine<V>) -> List<DemandIdentity> {
+  list_map(
+    xs: filter(xs: e.entries, predicate: fn(entry) { demand_state_is_ready(s: entry.state) }),
+    f: fn(entry) { entry.identity }
+  ) |> sort_by(id => demand_identity_key(id: id))
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// DISPATCH: ONE POLICY, AND CAPACITY IS ANSWERED BY THE CALLER
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// The engine does not observe CPUs, read cgroups or choose a width. It asks the supplied offer
+// whether this demand's requirements obtain a lease, and leaves an unadmittable demand READY --
+// not blocked, not dropped, not run anyway. That is the boundary between the engine and
+// realization: the engine knows the demand is ready, and realization knows whether there is a
+// seat for it. Putting a width here would be the authored-width control the program deletes.
+type DemandLeaseOffer {
+  seats: Int
+}
+
+fn demand_lease_admits(offer: DemandLeaseOffer, in_flight: Int) -> Bool {
+  in_flight < offer.seats
+}
+
+fn demand_engine_in_flight<V>(e: DemandEngine<V>) -> Int {
+  length(xs: filter(xs: e.entries, predicate: fn(entry) { demand_state_is_running(s: entry.state) }))
+}
+
+// The next demand to admit: the head of the stable queue, but only if a seat is available. The
+// ABSENCE of an admission is itself typed -- BlockedWaitingForCapacity -- rather than an empty
+// result a caller could read as "nothing left to do".
+type DemandAdmission
+  = DemandAdmitted { identity: DemandIdentity }
+  | DemandNotAdmitted { cause: DemandBlockedCause }
+
+fn demand_engine_next<V>(e: DemandEngine<V>, offer: DemandLeaseOffer) -> DemandAdmission {
+  match demand_engine_ready_queue(e: e) {
+    Empty => DemandNotAdmitted { cause: BlockedNoDemand }
+    Cons { head: first, tail: _ } =>
+      if demand_lease_admits(offer: offer, in_flight: demand_engine_in_flight(e: e)) {
+        DemandAdmitted { identity: first }
+      } else {
+        DemandNotAdmitted { cause: BlockedWaitingForCapacity }
+      }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// COMPLETION
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// Settling a demand appends it to the completion order and re-evaluates every dependent
+// immediately. The completion order is recorded rather than derived afterwards because it is the
+// receipt the A/B cutover compares: two runs of one closure must complete in one order, and an
+// order reconstructed from final states has already lost it.
+fn demand_engine_settle<V>(
+  e: DemandEngine<V>,
+  id: DemandIdentity,
+  state: DemandState<V>
+) -> DemandEngine<V> {
+  demand_engine_reevaluate(
+    e: DemandEngine {
+      entries: list_map(
+        xs: e.entries,
+        f: fn(entry) {
+          if demand_identity_eq(a: entry.identity, b: id) {
+            DemandEntry {
+              identity: entry.identity,
+              nature: entry.nature,
+              state: state,
+              attachments: entry.attachments,
+              productions: entry.productions + 1
+            }
+          } else {
+            entry
+          }
+        }
+      ),
+      relations: e.relations,
+      completion_order: list_snoc_item(xs: e.completion_order, item: id)
+    }
+  )
+}
+
+fn demand_engine_completion_keys<V>(e: DemandEngine<V>) -> List<String> {
+  list_map(xs: e.completion_order, f: fn(id) { demand_identity_key(id: id) })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// DEMAND CLOSURE: UNDEMANDED JUDGMENTS NEVER RUN
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// Evaluation starts from requested targets and pulls transitively. A judgment nothing asked for
+// does not enter lookup, readiness or realization -- so a corpus-wide fold that "prepares
+// everything first" is not an optimization of this engine, it is outside it.
+fn demand_closure_step<V>(
+  e: DemandEngine<V>,
+  frontier: List<DemandIdentity>,
+  seen: List<DemandIdentity>,
+  fuel: Int
+) -> List<DemandIdentity> {
+  if fuel <= 0 {
+    seen
+  } else {
+    match frontier {
+      Empty => seen
+      Cons { head: first, tail: rest } =>
+        if contains(xs: seen, item: first, eq: fn(a, b) { demand_identity_eq(a: a, b: b) }) {
+          demand_closure_step(e: e, frontier: rest, seen: seen, fuel: fuel - 1)
+        } else {
+          demand_closure_step(
+            e: e,
+            frontier: fold_list(
+              xs: demand_engine_prerequisites(e: e, id: first),
+              empty: rest,
+              cons: fn(acc, p) { list_snoc_item(xs: acc, item: p) }
+            ),
+            seen: list_snoc_item(xs: seen, item: first),
+            fuel: fuel - 1
+          )
+        }
+    }
+  }
+}
+
+fn demand_engine_closure<V>(e: DemandEngine<V>, targets: List<DemandIdentity>) -> List<DemandIdentity> {
+  demand_closure_step(
+    e: e,
+    frontier: targets,
+    seen: [],
+    fuel: (length(xs: e.entries) + length(xs: e.relations) + length(xs: targets) + 1) * 2
+  )
+}

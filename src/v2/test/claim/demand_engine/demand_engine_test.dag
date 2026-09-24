@@ -1,0 +1,368 @@
+module v2.test.demand_engine.demand_engine
+
+import v2.std.algebra { length, list_map }
+import v2.std.collection { List }
+import std.algebra { Cons, Empty }
+import v2.std.dependency { DataDependsOn, DependencyRelation }
+import v2.std.demand_engine {
+  BlockedByCycle,
+  BlockedByMissingEdge,
+  BlockedByRefusedPrerequisite,
+  BlockedNoDemand,
+  BlockedWaitingForCapacity,
+  DemandAdmitted,
+  DemandAvailable,
+  DemandBlocked,
+  DemandBlockedCause,
+  DemandEngine,
+  DemandLeaseOffer,
+  DemandNotAdmitted,
+  DemandReady,
+  DemandRefused,
+  DemandState,
+  DemandWaiting,
+  demand_engine_closure,
+  demand_engine_completion_keys,
+  demand_engine_empty,
+  demand_engine_entry,
+  demand_engine_next,
+  demand_engine_ready_queue,
+  demand_engine_reevaluate,
+  demand_engine_relate,
+  demand_engine_request,
+  demand_engine_settle,
+  demand_identity_key
+}
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+import std.cache_identity { parse_source_artifact_kind }
+import std.content_hash { Fnv1a64Structural }
+import std.materialization_ladder { FreshEffect, PureComputation }
+import std.materialization_provider { DemandIdentity }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECTS ARE SUPPLIED, NOT COMPUTED (DESIGN section 3, witness standing rule). This module's
+// subject is the ENGINE's one interface -- which demands are ready given prerequisite states -- so
+// the demand identities are constructed rather than derived by running a compiler stage. Deriving
+// them would re-execute parse and normalize inside every claim about readiness, paying for two
+// other modules' subjects to establish a fact about neither. The pairing obligation is discharged
+// elsewhere, by the production route that derives real identities and runs them through this same
+// engine; nothing here removes the last execution of that path.
+fn g_id(subject_hex: String) -> DemandIdentity {
+  DemandIdentity {
+    kind: parse_source_artifact_kind,
+    subject: Fnv1a64Structural { digest: subject_hex },
+    declared_inputs: []
+  }
+}
+
+fn g_a() -> DemandIdentity { g_id(subject_hex: "000000000000000a") }
+fn g_b() -> DemandIdentity { g_id(subject_hex: "000000000000000b") }
+fn g_c() -> DemandIdentity { g_id(subject_hex: "000000000000000c") }
+fn g_d() -> DemandIdentity { g_id(subject_hex: "000000000000000d") }
+fn g_e() -> DemandIdentity { g_id(subject_hex: "000000000000000e") }
+
+fn g_edge(prerequisite: DemandIdentity, dependent: DemandIdentity) -> DependencyRelation<DemandIdentity> {
+  DependencyRelation { prerequisite: prerequisite, dependent: dependent, kind: DataDependsOn }
+}
+
+fn g_state_is(e: DemandEngine<Int>, id: DemandIdentity, want: DemandState<Int>) -> Bool {
+  match demand_engine_entry(e: e, id: id) {
+    Absent => false
+    Present { value: entry } => g_state_eq(a: entry.state, b: want)
+  }
+}
+
+// STATE EQUALITY IS WRITTEN OUT ARM BY ARM rather than by comparing a rendered string, because a
+// rendering collapses two distinct blocked causes the moment their text is similar, and the nine
+// typed causes exist precisely so those cases stay apart.
+fn g_state_eq(a: DemandState<Int>, b: DemandState<Int>) -> Bool {
+  match a {
+    DemandWaiting => match b { DemandWaiting => true  _ => false }
+    DemandReady => match b { DemandReady => true  _ => false }
+    DemandRefused => match b { DemandRefused => true  _ => false }
+    DemandAvailable { value: av } =>
+      match b { DemandAvailable { value: bv } => av == bv  _ => false }
+    DemandBlocked { cause: ac } =>
+      match b { DemandBlocked { cause: bc } => g_cause_eq(a: ac, b: bc)  _ => false }
+    _ => false
+  }
+}
+
+fn g_cause_eq(a: DemandBlockedCause, b: DemandBlockedCause) -> Bool {
+  match a {
+    BlockedByCycle { members: _ } => match b { BlockedByCycle { members: _ } => true  _ => false }
+    BlockedByMissingEdge { prerequisite: ap } =>
+      match b {
+        BlockedByMissingEdge { prerequisite: bp } =>
+          demand_identity_key(id: ap) == demand_identity_key(id: bp)
+        _ => false
+      }
+    BlockedByRefusedPrerequisite { prerequisite: ap } =>
+      match b {
+        BlockedByRefusedPrerequisite { prerequisite: bp } =>
+          demand_identity_key(id: ap) == demand_identity_key(id: bp)
+        _ => false
+      }
+    BlockedWaitingForCapacity =>
+      match b { BlockedWaitingForCapacity => true  _ => false }
+    BlockedNoDemand => match b { BlockedNoDemand => true  _ => false }
+    _ => false
+  }
+}
+
+// A -> B, A -> C, B -> D, C -> D. The claim is not "D eventually runs": it is that D is READY only
+// once BOTH its prerequisites are available, and is still WAITING after the first one lands. A
+// join that released on its first prerequisite would pass a "D ran" assertion and be wrong.
+fn g_diamond() -> DemandEngine<Int> {
+  demand_engine_relate(
+    e: demand_engine_relate(
+      e: demand_engine_relate(
+        e: demand_engine_relate(
+          e: demand_engine_request(
+            e: demand_engine_request(
+              e: demand_engine_request(
+                e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation),
+                id: g_b(), nature: PureComputation
+              ),
+              id: g_c(), nature: PureComputation
+            ),
+            id: g_d(), nature: PureComputation
+          ),
+          relation: g_edge(prerequisite: g_a(), dependent: g_b())
+        ),
+        relation: g_edge(prerequisite: g_a(), dependent: g_c())
+      ),
+      relation: g_edge(prerequisite: g_b(), dependent: g_d())
+    ),
+    relation: g_edge(prerequisite: g_c(), dependent: g_d())
+  )
+}
+
+test fn diamond_join_waits_for_both_prerequisites_holds() -> Bool {
+  let after_a = demand_engine_settle(e: g_diamond(), id: g_a(), state: DemandAvailable { value: 1 })
+  let after_b = demand_engine_settle(e: after_a, id: g_b(), state: DemandAvailable { value: 2 })
+  let after_c = demand_engine_settle(e: after_b, id: g_c(), state: DemandAvailable { value: 3 })
+  g_state_is(e: after_a, id: g_b(), want: DemandReady)
+    && g_state_is(e: after_a, id: g_c(), want: DemandReady)
+    && g_state_is(e: after_a, id: g_d(), want: DemandWaiting)
+    && g_state_is(e: after_b, id: g_d(), want: DemandWaiting)
+    && g_state_is(e: after_c, id: g_d(), want: DemandReady)
+}
+
+// THE DISCRIMINATING CASE FOR "NO LAYERS" (demand-engine program section 2.5). A1 -> B with an
+// independent A2: B must become READY the moment A1 lands, without waiting for A2. A layered or
+// batched scheduler passes every other claim in this file and fails this one, which is why it is
+// written separately rather than folded into the diamond.
+fn g_independent_peer() -> DemandEngine<Int> {
+  demand_engine_relate(
+    e: demand_engine_request(
+      e: demand_engine_request(
+        e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation),
+        id: g_e(), nature: PureComputation
+      ),
+      id: g_b(), nature: PureComputation
+    ),
+    relation: g_edge(prerequisite: g_a(), dependent: g_b())
+  )
+}
+
+test fn independent_peer_does_not_delay_a_dependent_holds() -> Bool {
+  let after_a = demand_engine_settle(e: g_independent_peer(), id: g_a(), state: DemandAvailable { value: 1 })
+  g_state_is(e: after_a, id: g_b(), want: DemandReady)
+    && !g_state_is(e: after_a, id: g_e(), want: DemandAvailable { value: 1 })
+}
+
+// A REFUSED PREREQUISITE NEVER UNBLOCKS. The dependent must reach a TYPED blocked state naming the
+// prerequisite -- not Waiting, which reads as "later", and not Ready, which would run a judgment on
+// an input that does not exist.
+test fn refused_prerequisite_blocks_its_dependent_holds() -> Bool {
+  let refused = demand_engine_settle(e: g_independent_peer(), id: g_a(), state: DemandRefused)
+  g_state_is(
+    e: refused,
+    id: g_b(),
+    want: DemandBlocked { cause: BlockedByRefusedPrerequisite { prerequisite: g_a() } }
+  ) && !g_state_is(e: refused, id: g_b(), want: DemandReady)
+}
+
+// A CYCLE IS ITS OWN CAUSE, not "waiting forever". Both members report it.
+fn g_cycle() -> DemandEngine<Int> {
+  demand_engine_relate(
+    e: demand_engine_relate(
+      e: demand_engine_request(
+        e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation),
+        id: g_b(), nature: PureComputation
+      ),
+      relation: g_edge(prerequisite: g_a(), dependent: g_b())
+    ),
+    relation: g_edge(prerequisite: g_b(), dependent: g_a())
+  )
+}
+
+test fn cycle_is_reported_as_a_cycle_holds() -> Bool {
+  let e = demand_engine_reevaluate(e: g_cycle())
+  g_state_is(e: e, id: g_a(), want: DemandBlocked { cause: BlockedByCycle { members: [g_a()] } })
+    && g_state_is(e: e, id: g_b(), want: DemandBlocked { cause: BlockedByCycle { members: [g_b()] } })
+}
+
+// A RELATION NAMING A DEMAND THE CLOSURE DOES NOT CARRY IS A DERIVATION DEFECT, and it is reported
+// as one rather than as independence. Reading a missing prerequisite as "nothing to wait for" is
+// the absorbing fallback DESIGN section 5 forbids: it would make a dropped edge look like a
+// schedulable program.
+test fn missing_edge_is_reported_holds() -> Bool {
+  let e = demand_engine_reevaluate(
+    e: demand_engine_relate(
+      e: demand_engine_request(e: demand_engine_empty(), id: g_b(), nature: PureComputation),
+      relation: g_edge(prerequisite: g_a(), dependent: g_b())
+    )
+  )
+  g_state_is(e: e, id: g_b(), want: DemandBlocked { cause: BlockedByMissingEdge { prerequisite: g_a() } })
+}
+
+// ONE EQUAL SHARE-ADMITTED DEMAND IS PRODUCED ONCE. Three requests, one entry, two attachments.
+// The attachment count is what makes this discriminating: an engine that silently dropped repeat
+// requests would also show one entry, and would be a different (wrong) behaviour.
+test fn share_admitted_demand_is_produced_once_holds() -> Bool {
+  let e = demand_engine_request(
+    e: demand_engine_request(
+      e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation),
+      id: g_a(), nature: PureComputation
+    ),
+    id: g_a(), nature: PureComputation
+  )
+  match demand_engine_entry(e: e, id: g_a()) {
+    Absent => false
+    Present { value: entry } =>
+      length(xs: e.entries) == 1 && entry.attachments == 2 && entry.productions == 0
+  }
+}
+
+// A FRESH EFFECT IS NEVER ATTACHED IN FLIGHT. Two requests are two productions, not one production
+// with an attachment -- collapsing them would silently perform a non-idempotent effect once when
+// the program asked twice.
+test fn fresh_effect_is_never_attached_holds() -> Bool {
+  let e = demand_engine_request(
+    e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: FreshEffect),
+    id: g_a(), nature: FreshEffect
+  )
+  match demand_engine_entry(e: e, id: g_a()) {
+    Absent => false
+    Present { value: entry } => entry.attachments == 0 && entry.productions == 1
+  }
+}
+
+// CAPACITY LEAVES THE DEMAND READY. A demand that cannot obtain a seat is not blocked, not dropped
+// and not run anyway: it stays ready and the REFUSAL TO ADMIT carries the cause. An engine that
+// marked it blocked would need a second mechanism to un-block it when a seat freed.
+test fn no_seat_leaves_the_demand_ready_holds() -> Bool {
+  let e = demand_engine_reevaluate(
+    e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation)
+  )
+  let none_offered = demand_engine_next(e: e, offer: DemandLeaseOffer { seats: 0 })
+  let one_offered = demand_engine_next(e: e, offer: DemandLeaseOffer { seats: 1 })
+  g_state_is(e: e, id: g_a(), want: DemandReady)
+    && match none_offered {
+      DemandNotAdmitted { cause: c } => g_cause_eq(a: c, b: BlockedWaitingForCapacity)
+      DemandAdmitted { identity: _ } => false
+    }
+    && match one_offered {
+      DemandAdmitted { identity: id } => demand_identity_key(id: id) == demand_identity_key(id: g_a())
+      DemandNotAdmitted { cause: _ } => false
+    }
+}
+
+// THE READY QUEUE IS ORDERED BY DEMAND IDENTITY, NOT BY INSERTION. Two engines carrying the same
+// demands in opposite request order must present one queue, or a completion-order receipt cannot
+// discriminate a behaviour change from a walk-order change.
+test fn ready_queue_order_is_canonical_holds() -> Bool {
+  let forward = demand_engine_reevaluate(
+    e: demand_engine_request(
+      e: demand_engine_request(
+        e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation),
+        id: g_b(), nature: PureComputation
+      ),
+      id: g_c(), nature: PureComputation
+    )
+  )
+  let backward = demand_engine_reevaluate(
+    e: demand_engine_request(
+      e: demand_engine_request(
+        e: demand_engine_request(e: demand_engine_empty(), id: g_c(), nature: PureComputation),
+        id: g_b(), nature: PureComputation
+      ),
+      id: g_a(), nature: PureComputation
+    )
+  )
+  g_keys(ids: demand_engine_ready_queue(e: forward)) == g_keys(ids: demand_engine_ready_queue(e: backward))
+    && length(xs: demand_engine_ready_queue(e: forward)) == 3
+}
+
+fn g_keys(ids: List<DemandIdentity>) -> List<String> {
+  list_map(xs: ids, f: fn(id) { demand_identity_key(id: id) })
+}
+
+// UNDEMANDED JUDGMENTS NEVER ENTER THE CLOSURE. Asking for D pulls A, B and C; the unrelated E is
+// present in the engine and is NOT in the closure. This is the claim that makes "prepare everything
+// first" a different program rather than an optimization of this one.
+test fn undemanded_judgment_is_outside_the_closure_holds() -> Bool {
+  let e = demand_engine_request(e: g_diamond(), id: g_e(), nature: PureComputation)
+  let closure = demand_engine_closure(e: e, targets: [g_d()])
+  length(xs: closure) == 4
+    && g_contains_key(keys: g_keys(ids: closure), want: demand_identity_key(id: g_a()))
+    && !g_contains_key(keys: g_keys(ids: closure), want: demand_identity_key(id: g_e()))
+}
+
+fn g_contains_key(keys: List<String>, want: String) -> Bool {
+  match keys {
+    Empty => false
+    Cons { head: first, tail: rest } => (first == want) || g_contains_key(keys: rest, want: want)
+  }
+}
+
+// BRANCH SELECTION IS A STATIC DEMAND SET WITH A RUNTIME SELECTOR. Both arms are declared; the
+// selector picks one; only the selected arm is demanded. The unselected arm is modelled and never
+// enters the closure -- which is the difference between a static alternative and a dynamic edge.
+fn g_branch(select_left: Bool) -> DemandEngine<Int> {
+  let base = demand_engine_request(
+    e: demand_engine_request(
+      e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation),
+      id: g_b(), nature: PureComputation
+    ),
+    id: g_c(), nature: PureComputation
+  )
+  demand_engine_relate(
+    e: base,
+    relation: if select_left {
+      g_edge(prerequisite: g_b(), dependent: g_a())
+    } else {
+      g_edge(prerequisite: g_c(), dependent: g_a())
+    }
+  )
+}
+
+test fn branch_selector_demands_exactly_one_arm_holds() -> Bool {
+  let left = demand_engine_closure(e: g_branch(select_left: true), targets: [g_a()])
+  let right = demand_engine_closure(e: g_branch(select_left: false), targets: [g_a()])
+  length(xs: left) == 2
+    && length(xs: right) == 2
+    && g_contains_key(keys: g_keys(ids: left), want: demand_identity_key(id: g_b()))
+    && !g_contains_key(keys: g_keys(ids: left), want: demand_identity_key(id: g_c()))
+    && g_contains_key(keys: g_keys(ids: right), want: demand_identity_key(id: g_c()))
+    && !g_contains_key(keys: g_keys(ids: right), want: demand_identity_key(id: g_b()))
+}
+
+// THE COMPLETION ORDER IS RECORDED, and settling appends to it. The receipt the A/B cutover
+// compares is this list, so the claim is that it carries what settled and in what order.
+test fn completion_order_records_what_settled_holds() -> Bool {
+  let e = demand_engine_settle(
+    e: demand_engine_settle(e: g_diamond(), id: g_a(), state: DemandAvailable { value: 1 }),
+    id: g_b(),
+    state: DemandAvailable { value: 2 }
+  )
+  demand_engine_completion_keys(e: e)
+    == [demand_identity_key(id: g_a()), demand_identity_key(id: g_b())]
+}
