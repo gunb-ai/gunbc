@@ -33,10 +33,7 @@ import std.cache_identity {
   resolved_graph_artifact_kind,
   native_compiler_artifact_kind,
   native_test_universe_artifact_kind,
-  native_module_verdict_bundle_artifact_kind,
-  native_module_resolve_artifact_kind,
-  native_module_infer_artifact_kind,
-  native_test_identity_artifact_kind
+  native_module_verdict_bundle_artifact_kind
 }
 import std.computation_identity {
   ComputationIdentity, StructurallyIdentical, IdentityUnknown,
@@ -46,6 +43,48 @@ import std.artifact_store { ArtifactStore, store_put, store_put_fold }
 import v2.compiler.self_host.generation {
   PreMaterializationIdentity,
   pre_materialization_digest,
+}
+// THE SEMANTIC CONTRACT VOCABULARY IS CONSUMED, NOT REDECLARED. What a judgment is belongs below
+// this module (std.judgment_contract); this module is its PERSISTENCE PROJECTION and keeps only the
+// facts that need a store: request families, providers, addresses, retention. The dependency runs
+// one way, which is what lets a consumer that persists nothing -- the native scheduler -- take the
+// contract without taking the store, and without taking this module's own legitimate
+// v2.compiler.self_host.generation edge with it.
+import std.judgment_contract {
+  ArtifactOutputId,
+  DeclaredInput,
+  DecodedDeclaredInputs,
+  DemandIdentity,
+  JudgmentContract,
+  LengthPrefixedField,
+  LengthPrefixedScan,
+  OccurrencePersistenceContract,
+  PersistedOutputObligation,
+  ResultContract,
+  Scoped,
+  SemanticOnly,
+  Rebinding,
+  decode_declared_inputs,
+  demand_identity_canonical,
+  demand_identity_decode,
+  judgment_required_output_ids,
+  length_prefixed_decode,
+  length_prefixed_encode,
+  output_compile_clean_diagnostic_union,
+  output_module_preparation_diagnostics,
+  output_module_test_verdicts,
+  output_native_compiler_build_diagnostics,
+  output_native_compiler_executable,
+  output_parse_diagnostics,
+  output_parse_tree,
+  output_resolved_graph,
+  output_source_indices,
+  output_typecheck_diagnostics,
+  output_typed_module_interface,
+  output_universe_module_import_closures,
+  output_universe_test_identity_population,
+  persisted_output,
+  string_from_code_points
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -76,83 +115,6 @@ import std.materialization_ladder { DemandNature, PureComputation, IdempotentEff
 data materialization_provider_derivation_invariant: String = "THE GOVERNING INVARIANT OF THIS CONTRACT, stated once so it is not rediscovered instance by instance: NO CORRECTNESS-RELEVANT INPUT MAY BE CALLER-ASSERTED. Every one is derived from exactly one of three sources — (1) the request family's JudgmentContract, whose persistence projection is ArtifactRequest and which fixes kind, declared inputs, and the required-output roster; (2) a FOLD OVER THE CARRIED PARTS, which is how the content digest and the artifact size are obtained; or (3) a REALIZATION READ-BACK, which is observed_digest and nothing else. Anything a future variant or field adds must say which of the three it is, and if it is none of them it does not belong in this contract. Widening the carve-out below to a second item is the change this invariant exists to make visible.
 
 THE ONE CARVE-OUT, AND ITS HONEST CLASS (parent ruling on codex review 44286): source (3), the read-back, is today an ASSERTION — that the transport computed observed_digest from the stored parts by this same derivation. Classifying that as a permanent residual trust boundary would be the section 5 'never' trap: a permanent-sounding residue carries no trigger, so its frequency is zero by construction and it never ranks for fixing. It is not permanent. It is a WALL AFTER GROUNDING, and the grounding is decidable — just not INSIDE this module, which never receives bytes. It is decidable at the TRANSPORT: if the only way to obtain a ProviderProbe is to have called the realization's modeled read operation, the provenance is structural rather than asserted. Note what that does NOT mean — the grounding is not a brand on the digest value, because a brand is freely constructible here and would be forgeable theater (the same argument the 44265 custody token lost); it is that the PROBE is produced by the read rather than hand-built. What blocks it today is that ProbeFound stays freely constructible from any module — the same constructor-confinement gap DESIGN recorded for TransportScript. That precedent has since RESOLVED in the direction this carve-out needs: TransportScript is a sole_constructor record whose single mint is admit_callers-sealed to named production decls, and the cast form of sole_constructor was closed in 04_infer sole_constructor_construction_diags, so 'freely constructible from any module' is no longer the language's fate for a carrier — it is a property of ProbeFound's own declaration, which this module has not yet changed. DISSOLUTION TRIGGER: this carve-out grounds when ProviderProbe is minted only by the modeled read operation (extdeps.realization.artifact_store_fs is the concrete site — a function taking an ArtifactFsLookup and computing the digest itself makes a hand-built ProbeFound impossible at the seam that matters) and constructor confinement lands; tracked against the node/subtree visibility-grants lane, whose Reference verb gates whether the reference edge may be formed at all. Until then this is counted debt, not accepted permanence. WHY IT IS STATED RATHER THAN PATCHED (parent ruling, DESIGN section 6 root-cause-do-not-patch-the-sites): four review findings — 44175 caller-supplied required_outputs, 44265 caller-supplied ComputationIdentity, 44278 caller-authored carried_outputs beside a caller-authored content_digest, and artifact_bytes, found by the parent by reading the three together — were ONE defect found four times, each an accepted assertion where a derivation was available. The fourth was the sharpest because it was load-bearing on a wall built for it: provider_admit_bound branches the budget check on the size and hands that same size to store_put as the stored size, so an understated value did not merely walk past ProviderBudgetExhausted once, it corrupted store_bytes_used and therefore every subsequent LRU eviction decision. The symmetric fix was chosen over carrying the size in the probe precisely BECAUSE of this invariant: a probe field would have been honest but would have added a second item to the trust boundary, whereas a fold over the parts makes the roster the preimage of BOTH the digest and the size — one construction, one argument, no new trust."
-
-// PROGRESS ON THE CARVE-OUT ABOVE, stated narrowly so it is not read as the dissolution: the
-// persistent-store realization (std.materialization_object store_lookup_decide) now mints its
-// ProbeFound from the stored BYTES -- payload_part derives every part digest and size from the
-// payload, and store_observed_digest folds them -- so on that route observed_digest is computed,
-// not asserted. The carve-out still stands for every other caller, because ProbeFound remains
-// freely constructible; its trigger (constructor confinement of ProviderProbe) is unchanged.
-
-// Computation identity is CONSUMED, never re-invented (mandate rule; DESIGN duplicate-work thread):
-// the ComputationIdentity qualification belongs to the materialize spine (v2.std.materialize is the
-// structural-corner qualifier; std.computation_identity is the lattice authority). This slice
-// grounds exactly the StructurallyIdentical corner, because the exact structural content key is the
-// only sharing that key JUSTIFIES — and it DERIVES that grade from the binding it computes rather
-// than accepting one (see the derivation note below, review 44265). Advertising normalized or
-// extensional sharing while executing structural equality would be a fabricated capability, so
-// those grades are not reachable here at all; they arrive by the spine widening the KEY, not by
-// anyone passing a grade.
-
-// Relation to std.cache_interface (the shape/transport/policy cut, DESIGN section 3):
-// CacheLookupResult / CacheRejectReason are BACKEND-grain — what one storage backend said, with
-// producer receipts and transport faults (BackendUnavailable, TransportFaithfulnessFailure). This
-// contract is CONSUMER-grain: given what the realization found at the key (ProviderProbe), decide
-// serve or typed refusal under the request's correctness demands (declared-input key, artifact
-// kind, content verification, artifact completeness, identity grade). Backend faults stay in
-// CacheRejectReason at the transport and are deliberately not restated here; a transport that
-// cannot probe refuses at its own layer and no ProviderProbe is fabricated.
-
-// The artifact-completeness rule: an artifact carries ALL correctness-relevant outputs of the
-// transform it memoizes, including the compile-clean diagnostic union — a cached parse that dropped
-// its diagnostics would green a red, which is the fabricated-plausible-output arm section 5
-// forbids. The rule has TWO halves and both are load-bearing: the obligation roster is derived from
-// the request (below), and the SATISFACTION roster is derived from the payload — carried outputs
-// are digested parts whose fold IS the artifact's content digest, so a claimed-but-absent output is
-// caught by the read-back comparison rather than believed (codex review 44278; the payload-binding
-// note carries the reasoning). Completeness is enforced on BOTH doors, and BOTH doors derive every
-// obligation FROM THE REQUEST (operator rework ruling, PR 7385 blocker 1): provider_admit takes the
-// ArtifactRequest itself — there is no caller-supplied required_outputs parameter, so a weakened
-// obligation list is UNWRITABLE at the admission door by construction — and checks kind, request
-// key, content digest, completeness, and identity grade before any byte enters the store;
-// provider_serve runs the same request_artifact_binding as the validation backstop for pre-contract
-// artifacts already on disk. The obligation roster itself is derived from the request COPRODUCT
-// (codex review 44175), so 'admit against a weakened roster' is not merely unavailable at the door
-// — it is unrepresentable in the request. FIRST NAMED CONSUMER TARGET:
-// extdeps.realization.resolved_graph's disk-hit refusal
-// (resolved_graph_cache_faithful_probe_support_dissolve_trigger) — the modeled disk probe is
-// intentionally not entered on v1 because the cache format still exposes only the whole payload
-// digest and payload byte count, not per-output digests or byte sizes for
-// resolved_graph/source_indices; the transport refuses faithfully before provider_serve and
-// dissolves when the artifact FORMAT_VERSION persists those faithful parts so the probe can be
-// constructed through the interpreter instead of by fabrication.
-
-// Declared-input order is part of the key: declared_inputs_digest folds in list order, so the
-// REQUESTER owes a canonical input order (the same duty artifact_key_hash discharges by fixed field
-// order). Two requests that differ only by input permutation key apart — a loud miss, never a wrong
-// hit — so the fail-open direction is closed; the canonical-order duty is on the constructor rows
-// below, which fix an order by construction.
-
-type ArtifactOutputId = NonEmptyStr where brand("ArtifactOutputId")
-
-data output_parse_tree: ArtifactOutputId = "parse_tree"
-data output_parse_diagnostics: ArtifactOutputId = "parse_diagnostics"
-data output_typed_module_interface: ArtifactOutputId = "typed_module_interface"
-data output_typecheck_diagnostics: ArtifactOutputId = "typecheck_diagnostics"
-data output_resolved_graph: ArtifactOutputId = "resolved_graph"
-data output_source_indices: ArtifactOutputId = "source_indices"
-data output_compile_clean_diagnostic_union: ArtifactOutputId = "compile_clean_diagnostic_union"
-data output_native_compiler_executable: ArtifactOutputId = "native_compiler_executable"
-data output_native_compiler_build_diagnostics: ArtifactOutputId = "native_compiler_build_diagnostics"
-data output_universe_test_identity_population: ArtifactOutputId = "universe_test_identity_population"
-data output_universe_module_import_closures: ArtifactOutputId = "universe_module_import_closures"
-data output_module_test_verdicts: ArtifactOutputId = "module_test_verdicts"
-data output_module_preparation_diagnostics: ArtifactOutputId = "module_preparation_diagnostics"
-
-type DeclaredInput {
-  ref: NonEmptyStr
-  digest: Fnv1a64Structural
-}
 
 // The request is a COPRODUCT, not a freely-filled record (codex review 44175, DESIGN section 5
 // correctness-by-construction): a record carrying both the kind discriminator and a caller-supplied
@@ -280,37 +242,6 @@ data two_parses_occurrence_qualification_frontier: DissolutionCondition = unboun
   description: "two parses of one source through v2.compiler.parse / tokenize under distinct OccurrenceIdAllocator values, equal DemandIdentity and EvaluationIdentity, occurrence-bearing parse output refused under the other graph scope or rebound through OccurrencePersistenceContract Rebinding. TRIGGER: parser/tokenizer expose the allocator seam as a parameter; a split-on-whitespace token walk is not that seam."
 )
 
-type OccurrencePersistenceContract
-  = SemanticOnly
-  | Scoped
-  | Rebinding
-
-type PersistedOutputObligation {
-  id: ArtifactOutputId
-  occurrence_contract: OccurrencePersistenceContract
-}
-
-type ResultContract {
-  carries_semantic_value: Bool
-  ordered_diagnostics: Bool
-  carries_effect_requests_receipts: Bool
-  carries_refusal_arm: Bool
-  required_persisted_outputs: List<PersistedOutputObligation>
-}
-
-fn persisted_output(
-  id: ArtifactOutputId,
-  occurrence_contract: OccurrencePersistenceContract
-) -> PersistedOutputObligation {
-  PersistedOutputObligation { id: id, occurrence_contract: occurrence_contract }
-}
-
-type DemandIdentity {
-  kind: ArtifactKindId
-  subject: Fnv1a64Structural
-  declared_inputs: List<DeclaredInput>
-}
-
 type EvaluationIdentity {
   demand: DemandIdentity
 }
@@ -374,162 +305,6 @@ type EvaluationStoreAddress sole_constructor {
 type EvaluationStoreAddressAdmission
   = Admitted { address: EvaluationStoreAddress }
   | FamilyRefused { family: HashFamily, scope: KeyingScope }
-
-type LengthPrefixedField {
-  value: String
-  rest: String
-}
-
-type LengthPrefixedScan {
-  i: Int
-  hit: Int?
-}
-
-type DecodedDeclaredInputs {
-  inputs: List<DeclaredInput>
-  rest: String
-}
-
-fn string_from_code_points(cs: List<Int>) -> String {
-  join(cs |> map(c => from_code_point(cp: c)), "")
-}
-
-fn length_prefixed_encode(s: String) -> String {
-  join([to_string(s.length()), "#", s], "")
-}
-
-fn length_prefixed_decode(s: String) -> LengthPrefixedField? {
-  let cs = chars(s: s)
-  let scan = cs |> fold(
-    init: LengthPrefixedScan { i: 0, hit: none },
-    f: (st, c) =>
-      match st.hit {
-        Present { value: _ } => st
-        Absent =>
-          if c == 35 {
-            LengthPrefixedScan { i: st.i, hit: Present { value: st.i } }
-          } else {
-            LengthPrefixedScan { i: st.i + 1, hit: none }
-          }
-      }
-  )
-  match scan.hit {
-    Absent => none
-    Present { value: hash_at } => {
-      let len_text = string_from_code_points(cs: cs |> take(n: hash_at))
-      let after = string_from_code_points(cs: cs |> skip(n: hash_at + 1))
-      match parse_int(s: len_text) {
-        Absent => none
-        Present { value: n } =>
-          if n < 0 {
-            none
-          } else {
-            let after_cs = chars(s: after)
-            if (after_cs |> count()) < n {
-              none
-            } else {
-              Present {
-                value: LengthPrefixedField {
-                  value: string_from_code_points(cs: after_cs |> take(n: n)),
-                  rest: string_from_code_points(cs: after_cs |> skip(n: n))
-                }
-              }
-            }
-          }
-      }
-    }
-  }
-}
-
-fn decode_declared_inputs(remaining: Int, rest: String, acc: List<DeclaredInput>) -> DecodedDeclaredInputs? {
-  if remaining == 0 {
-    Present { value: DecodedDeclaredInputs { inputs: acc, rest: rest } }
-  } else {
-    match length_prefixed_decode(s: rest) {
-      Absent => none
-      Present { value: ref_f } =>
-        match length_prefixed_decode(s: ref_f.rest) {
-          Absent => none
-          Present { value: dig_f } =>
-            match fnv1a64_structural_hex_digest(hex: dig_f.value) {
-              Absent => none
-              Present { value: digest } =>
-                decode_declared_inputs(
-                  remaining: remaining - 1,
-                  rest: dig_f.rest,
-                  acc: concat(acc, [DeclaredInput { ref: ref_f.value as NonEmptyStr, digest: digest }])
-                )
-            }
-        }
-    }
-  }
-}
-
-fn demand_identity_canonical(demand: DemandIdentity) -> NonEmptyStr {
-  let inputs_enc = demand.declared_inputs |> fold(
-    init: "",
-    f: (acc, i) => concat(
-      concat(acc, length_prefixed_encode(s: i.ref as String)),
-      length_prefixed_encode(s: i.digest.digest as String)
-    )
-  )
-  concat(
-    concat(
-      concat(
-        length_prefixed_encode(s: "demand"),
-        length_prefixed_encode(s: demand.kind as String)
-      ),
-      length_prefixed_encode(s: demand.subject.digest as String)
-    ),
-    concat(length_prefixed_encode(s: to_string(demand.declared_inputs |> count())), inputs_enc)
-  ) as NonEmptyStr
-}
-
-fn demand_identity_decode(encoded: String) -> DemandIdentity? {
-  match length_prefixed_decode(s: encoded) {
-    Absent => none
-    Present { value: tag } =>
-      if (tag.value == "demand") == false {
-        none
-      } else {
-        match length_prefixed_decode(s: tag.rest) {
-          Absent => none
-          Present { value: kind_f } =>
-            match length_prefixed_decode(s: kind_f.rest) {
-              Absent => none
-              Present { value: sub_f } =>
-                match length_prefixed_decode(s: sub_f.rest) {
-                  Absent => none
-                  Present { value: n_f } =>
-                    match parse_int(s: n_f.value) {
-                      Absent => none
-                      Present { value: n } =>
-                        match fnv1a64_structural_hex_digest(hex: sub_f.value) {
-                          Absent => none
-                          Present { value: subject } =>
-                            match decode_declared_inputs(remaining: n, rest: n_f.rest, acc: []) {
-                              Absent => none
-                              Present { value: decoded } =>
-                                if decoded.rest == "" {
-                                  Present {
-                                    value: DemandIdentity {
-                                      kind: kind_f.value as ArtifactKindId,
-                                      subject: subject,
-                                      declared_inputs: decoded.inputs
-                                    }
-                                  }
-                                } else {
-                                  none
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-      }
-  }
-}
 
 fn evaluation_identity_canonical(evaluation: EvaluationIdentity) -> NonEmptyStr {
   concat(
@@ -697,16 +472,6 @@ fn evaluation_result_binding_outcome(
   }
 }
 
-type JudgmentContract {
-  demand_identity: DemandIdentity
-  result: ResultContract
-  demand_nature: DemandNature
-}
-
-fn judgment_required_output_ids(contract: JudgmentContract) -> List<ArtifactOutputId> {
-  contract.result.required_persisted_outputs |> map(o => o.id)
-}
-
 fn parse_module_judgment_contract(source_digest: Fnv1a64Structural, compiler: DeclaredInput) -> JudgmentContract {
   JudgmentContract {
     demand_identity: DemandIdentity {
@@ -750,95 +515,6 @@ fn typecheck_module_judgment_contract(
       required_persisted_outputs: [
         persisted_output(id: output_typed_module_interface, occurrence_contract: SemanticOnly),
         persisted_output(id: output_typecheck_diagnostics, occurrence_contract: Scoped)
-      ]
-    },
-    demand_nature: PureComputation
-  }
-}
-
-// THE NATIVE EVAL LAYER'S THREE JUDGMENTS. They are contracts rather than three inline identity
-// constructions because JudgmentContract is the authority for what a demand IS -- its subject, its
-// result contract and its demand nature -- and a scheduler that minted identities beside it would
-// be a second answer to that question, differing first on the field nobody checks. The scheduler
-// reads `demand_identity` and `demand_nature` off these and derives nothing itself.
-//
-// THE COMPILER IS A DECLARED INPUT OF ALL THREE, not an ambient fact. Two runs of one module under
-// different compilers are different judgments with different results, so a key that omitted the
-// compiler would let a later cross-run lookup serve the earlier compiler's answer -- which is the
-// whole reason the existing contracts above carry it too.
-//
-// ALL THREE ARE PureComputation, AND THAT IS A READING RATHER THAN A DEFAULT. Resolution, inference
-// and identity evaluation are functions of their inputs: they read no clock, mutate nothing, and
-// two evaluations of one subject under one compiler are interchangeable. That is what admits
-// in-flight sharing for them, and it is the property that would have to be withdrawn -- here, once
-// -- if any of them ever reached an effect.
-fn native_module_resolve_judgment_contract(
-  module_digest: Fnv1a64Structural,
-  compiler: DeclaredInput
-) -> JudgmentContract {
-  JudgmentContract {
-    demand_identity: DemandIdentity {
-      kind: native_module_resolve_artifact_kind,
-      subject: module_digest,
-      declared_inputs: [compiler]
-    },
-    result: ResultContract {
-      carries_semantic_value: true,
-      ordered_diagnostics: true,
-      carries_effect_requests_receipts: false,
-      carries_refusal_arm: true,
-      required_persisted_outputs: [
-        persisted_output(id: output_module_preparation_diagnostics, occurrence_contract: Scoped)
-      ]
-    },
-    demand_nature: PureComputation
-  }
-}
-
-fn native_module_infer_judgment_contract(
-  module_digest: Fnv1a64Structural,
-  compiler: DeclaredInput
-) -> JudgmentContract {
-  JudgmentContract {
-    demand_identity: DemandIdentity {
-      kind: native_module_infer_artifact_kind,
-      subject: module_digest,
-      declared_inputs: [compiler]
-    },
-    result: ResultContract {
-      carries_semantic_value: true,
-      ordered_diagnostics: true,
-      carries_effect_requests_receipts: false,
-      carries_refusal_arm: true,
-      required_persisted_outputs: [
-        persisted_output(id: output_module_preparation_diagnostics, occurrence_contract: Scoped)
-      ]
-    },
-    demand_nature: PureComputation
-  }
-}
-
-// THE SUBJECT IS THE MODULE AND DECLARATION COMBINED, not the declaration alone. `holds` names a
-// different judgment in every module that declares it, and a subject that lost the module would
-// give them one identity -- at which point the engine attaches one to the other as an equal
-// share-admitted demand and evaluates ONE, reporting a verdict for a declaration it never ran.
-fn native_test_identity_judgment_contract(
-  identity_digest: Fnv1a64Structural,
-  compiler: DeclaredInput
-) -> JudgmentContract {
-  JudgmentContract {
-    demand_identity: DemandIdentity {
-      kind: native_test_identity_artifact_kind,
-      subject: identity_digest,
-      declared_inputs: [compiler]
-    },
-    result: ResultContract {
-      carries_semantic_value: true,
-      ordered_diagnostics: true,
-      carries_effect_requests_receipts: false,
-      carries_refusal_arm: true,
-      required_persisted_outputs: [
-        persisted_output(id: output_module_test_verdicts, occurrence_contract: SemanticOnly)
       ]
     },
     demand_nature: PureComputation
