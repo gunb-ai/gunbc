@@ -3147,6 +3147,18 @@ fn body_lower_operand_ref_acceptable_optional(node: Node) -> Optional<Node> {
   }
 }
 
+// A LEXER KEYWORD TOKEN IS NEVER AN OPERAND. The first-atom fallback below answered a shell with its
+// first atom whatever it was, so a function literal `fn(y) { zz }` in an if arm lowered to the atom
+// dag_token_kw_fn and the literal was erased (gunbc.recurring_failure_mode
+// body_type_annotation_dropped_before_resolve_in_v2). `true` / `false` are keyword tokens that ARE
+// literal operands and are read above by body_lower_literal_bool_atom_optional before this fallback.
+fn body_lower_atom_is_keyword_token(node: Node) -> Bool {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => dag_lex_token_symbol(sym: id) && !(id == ^dag_token_kw_true) && !(id == ^dag_token_kw_false)
+    Absent => false
+  }
+}
+
 fn body_lower_try_operand_or_reject(shell: Node, captured: Node) -> Outcome<Node> {
   match body_lower_operand_ref_acceptable_optional(node: captured) {
     Present { value: operand } => outcome_accepted(value: operand)
@@ -3158,7 +3170,17 @@ fn body_lower_try_operand_or_reject(shell: Node, captured: Node) -> Outcome<Node
             Present { value: lit } => outcome_accepted(value: lit)
             Absent =>
               match body_lower_pattern_first_atom_optional(node: captured) {
-                Present { value: pat_atom } => outcome_accepted(value: pat_atom)
+                Present { value: pat_atom } =>
+                  if body_lower_atom_is_keyword_token(node: pat_atom) {
+                    outcome_rejected(
+                      d: body_lower_diagnostic(
+                        reason: ^body_lowering_reason_unsupported_form,
+                        n: shell
+                      )
+                    )
+                  } else {
+                    outcome_accepted(value: pat_atom)
+                  }
                 Absent =>
                   outcome_rejected(
                     d: body_lower_diagnostic(
@@ -5722,8 +5744,8 @@ fn body_lower_loop_expr(shell: Node) -> Outcome<Node> {
 // invisible to v2.compiler.resolve and `let y: Q = x` was Accepted with `Q` declared nowhere
 // (gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2). It refuses
 // body_lowering_reason_type_annotation_not_carried, located at the annotation, until a Bind
-// annotation carrier exists. A fn literal's return annotation is that row's other route and is
-// closed by gunbc#12210, which lowers function values to Arrows carrying their written return type.
+// annotation carrier exists. A fn literal's return annotation is that row's other route; it refuses
+// the same way in body_lower_bound_value until gunbc#12210 lowers function values to Arrows.
 fn body_lower_type_annotation_not_carried(at: Node) -> Outcome<Node> {
   outcome_rejected(
     d: body_lower_diagnostic(reason: ^body_lowering_reason_type_annotation_not_carried, n: at)
@@ -5883,10 +5905,74 @@ fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
 // path is tried first because a literal or a plain reference has a settled
 // operand form; anything else is a real expression and goes through the same
 // fold every other expression does.
+//
+// A FN LITERAL'S RETURN ANNOTATION IS REFUSED BEFORE THE OPERAND ARM SEES THE LITERAL. The operand
+// arm used to answer a fn-literal shell with its first token (body_lower_atom_is_keyword_token now
+// declines that), erasing the literal -- so `let g = fn(y) -> Q { y }` was Accepted with `Q`
+// declared nowhere. Nothing on this route carries a literal's written return type, so the annotation
+// refuses body_lowering_reason_type_annotation_not_carried at the authored type expression first. The
+// literal's parameters are bare identifiers in the grammar (dag_grammar_untyped_params_helper) and
+// an arrow lambda's likewise, so the return annotation is the only annotation a function literal
+// can carry. The unannotated literal keeps its existing disposition.
 fn body_lower_bound_value(node: Node) -> Outcome<Node> {
-  match body_lower_arm_operand_resolved_optional(arm: node) {
-    Present { value: operand } => outcome_accepted(value: operand)
-    Absent => body_lower_fold(node: node)
+  match body_lower_fn_literal_value_return_annotation_optional(node: node) {
+    Present { value: annotation } => body_lower_type_annotation_not_carried(at: annotation)
+    Absent =>
+      match body_lower_arm_operand_resolved_optional(arm: node) {
+        Present { value: operand } => outcome_accepted(value: operand)
+        Absent => body_lower_fold(node: node)
+      }
+  }
+}
+
+// fn_literal = seq(kw_fn, seq(lparen, seq(opt(params), seq(rparen, seq(opt(seq(arrow, type_expr)),
+// fn_body))))): the return clause is the LEFT of the fifth right-projection; an elided clause
+// carries no arrow. Answers the authored type expression.
+fn body_lower_fn_literal_return_annotation_optional(captured: Node) -> Optional<Node> {
+  match body_lower_fn_decl_spine_right(node: captured) {
+    Absent => optional_absent()
+    Present { value: a1 } =>
+      match body_lower_fn_decl_spine_right(node: a1) {
+        Absent => optional_absent()
+        Present { value: a2 } =>
+          match body_lower_fn_decl_spine_right(node: a2) {
+            Absent => optional_absent()
+            Present { value: a3 } =>
+              match body_lower_fn_decl_spine_right(node: a3) {
+                Absent => optional_absent()
+                Present { value: a4 } =>
+                  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: a4)) {
+                    Absent => optional_absent()
+                    Present { value: clause_body } =>
+                      match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: clause_body.left)) {
+                        Absent => optional_absent()
+                        Present { value: arrow_type } =>
+                          match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: arrow_type.left)) {
+                            Present { value: id } =>
+                              if id == ^dag_token_arrow { optional_present(value: arrow_type.right) } else { optional_absent() }
+                            Absent => optional_absent()
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_fn_literal_value_return_annotation_optional(node: Node) -> Optional<Node> {
+  let stripped = body_lower_unwrap_surface_shell(node: body_lower_deep_unwrap_optional(node: node))
+  match parse_production_emitted_identity_optional(node: stripped) {
+    Present { value: id } =>
+      if id == ^dag_surface_fn_literal {
+        match parse_production_captured_child_optional(node: stripped) {
+          Present { value: captured } => body_lower_fn_literal_return_annotation_optional(captured: captured)
+          Absent => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+    Absent => optional_absent()
   }
 }
 
