@@ -275,7 +275,7 @@ fn door_probe_cli_detail() -> String {
     },
     ingest: [door_probe_read()]
   ) {
-    CliEmitted { text: _, closure_size: _, layer_count: _, ready_size: _ } => ""
+    CliEmitted { text: _, closure_size: _, refused_count: _ } => ""
     CliRunRefused { reason: _, detail: detail } => detail
   }
 }

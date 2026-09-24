@@ -66,7 +66,7 @@ fn plan_first_root(plan: CliPlan) -> String {
 fn outcome_refusal_reason(outcome: CliRunOutcome) -> Symbol {
   match outcome {
     CliRunRefused { reason: reason, detail: _ } => reason
-    CliEmitted { text: _, closure_size: _, layer_count: _, ready_size: _ } =>
+    CliEmitted { text: _, closure_size: _, refused_count: _ } =>
       ^cli_outcome_was_not_refused
   }
 }
@@ -74,7 +74,7 @@ fn outcome_refusal_reason(outcome: CliRunOutcome) -> Symbol {
 fn outcome_emitted(outcome: CliRunOutcome) -> Bool {
   match outcome {
     CliRunRefused { reason: _, detail: _ } => false
-    CliEmitted { text: _, closure_size: _, layer_count: _, ready_size: _ } => true
+    CliEmitted { text: _, closure_size: _, refused_count: _ } => true
   }
 }
 
@@ -362,6 +362,6 @@ test fn a_trailing_token_refusal_locates_its_fatal_in_the_file_holds() -> Bool {
     CliRunRefused { reason: _, detail: detail } =>
       string_contains(s: detail, pattern: "FATAL AT cli_probe_trailing_cu bytes ")
         && string_contains(s: detail, pattern: "parse_g0_tokens_remain @ cli_probe_trailing_cu bytes ")
-    CliEmitted { text: _, closure_size: _, layer_count: _, ready_size: _ } => false
+    CliEmitted { text: _, closure_size: _, refused_count: _ } => false
   }
 }

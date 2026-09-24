@@ -10,7 +10,7 @@ import v2.compiler.name_resolve {
 }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
-import v2.compiler.reference_closure { ReferenceClosureMember, reference_derived_closure }
+import v2.compiler.reference_closure { ReferenceClosureMember, reference_closure_modules, reference_derived_closure }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
 import v2.std.algebra { contains, fold_list, length }
@@ -155,7 +155,7 @@ fn rc_closure_of(entry: String) -> Outcome<FreeMonoid<QualifiedName>> {
   bind_outcome(
     o: rc_fixture_normalized(),
     f: fn(roots) {
-      reference_derived_closure(
+      bind_outcome(o: reference_derived_closure(
         entry: qualified_name_from_dotted_string(dotted: entry),
         entry_locus: node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^rc_entry_locus } }, children: []),
         roster: rc_roster(roots: roots),
@@ -165,12 +165,13 @@ fn rc_closure_of(entry: String) -> Outcome<FreeMonoid<QualifiedName>> {
             f: fn(resolved) {
               outcome_accepted(value: ReferenceClosureMember {
                 resolved: resolved,
-                import_targets: rc_import_targets(roots: roots, member_module: member_module)
+                import_targets: rc_import_targets(roots: roots, member_module: member_module),
+                payload: true
               })
             }
           )
         }
-      )
+      ), f: fn(visits) { outcome_accepted(value: reference_closure_modules(visits: visits)) })
     }
   )
 }
