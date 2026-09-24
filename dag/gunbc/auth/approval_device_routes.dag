@@ -6,6 +6,7 @@ import std.logic { Bool }
 import std.integer { UInt8, QualifiedOctetsReady, QualifiedOctetsRefused }
 import std.measure { Second, second, second_count, ByteSize, byte_size, byte_size_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.encoding { base64_decode, base64_octets, Standard, UrlSafe }
 import std.algebra { trim }
 import extdeps.clock { Clock }
@@ -38,6 +39,12 @@ import gunbc.auth.approval_capability {
 }
 import gunbc.auth.approval_app_attest_config {
   AppAttestVerifierConfig, AppAttestVerifierConfigured, AppAttestVerifierAwaitingOperator, approval_app_attest_verifier, approval_app_attest_app_id,
+}
+import gunbc.auth.approval_device_crypto_realization {
+  DeviceCryptoRealization, DeviceCryptoAdmitted, DeviceCryptoRefused, device_crypto_admission, approval_device_crypto_realization,
+}
+import gunbc.auth.approval_assertion_counter {
+  AssertionCounterAdmitted, admit_assertion_counter, approval_assertion_counter_root, assertion_counter_refusal_status, assertion_counter_refusal_reason,
 }
 import gunbc.auth.approval_writer_authority {
   ApprovalServingProcess, ApprovalWriteAdmitted, ApprovalWriteRefused, approval_write_admission, approval_write_refusal_reason,
@@ -186,10 +193,27 @@ fn requested_at_within_skew(requested_at: Timestamp, observed_at: Timestamp) -> 
     && utc_instant_before(a: requested_at, b: device_instant_plus(t: observed_at, s: approval_device_read_skew))
 }
 
-// ADMISSION OF A READ: an ACTIVE enrolment named by the body, a claimed time inside the skew
-// window, and an assertion under that enrolment's App Attest key over exactly this route's client
-// data. A revoked or unknown enrolment is refused before any verification runs.
-fn admit_device_read(auth: ReadAuthentication, client_data: NonEmptyStr, observed_at: Timestamp) -> DeviceReadAdmission {
+// ADMISSION OF A READ: a bound native verifier realization, an ACTIVE enrolment named by the body, a
+// claimed time inside the skew window, an assertion under that enrolment's App Attest key over
+// exactly this route's client data, and that assertion's counter committed past the enrolment's
+// standing (gunbc.auth.approval_assertion_counter) BEFORE the operation runs. A revoked or unknown
+// enrolment is refused before any verification runs; an unbound realization before anything is read.
+//
+// THE COUNTER IS WHAT MAKES A CAPTURED ASSERTION SINGLE-USE here: the skew window bounds when a
+// read may be presented, not how often, so without the standing a captured authenticated read
+// replays inside it -- recovering the fetch response, or, on the push update, rolling the APNs
+// registration back to an older token. The redemption POST does NOT consult the standing: its
+// replay wall is the server-minted expiring challenge and the one-decision CAS slot of
+// redeem_device_over_store, and because Apple's counter is monotonic across the key, a redemption
+// that does not advance the standing leaves the reads' strict comparison sound.
+fn admit_device_read(realization: DeviceCryptoRealization, auth: ReadAuthentication, client_data: NonEmptyStr, observed_at: Timestamp) -> DeviceReadAdmission {
+  match device_crypto_admission(r: realization) {
+    DeviceCryptoRefused { status: st, reason: why } => DeviceReadRefused { status: st, reason: why }
+    DeviceCryptoAdmitted { handler_identity: _, exact_revision: _ } => admit_device_read_realized(auth: auth, client_data: client_data, observed_at: observed_at)
+  }
+}
+
+fn admit_device_read_realized(auth: ReadAuthentication, client_data: NonEmptyStr, observed_at: Timestamp) -> DeviceReadAdmission {
   match verifier_expectations() {
     VerifierUnconfigured { missing: m } => DeviceReadRefused { status: 503, reason: "the App Attest verifier is not configured: " + (m as String) }
     VerifierReady { app_id: app_id, config: config } =>
@@ -206,7 +230,12 @@ fn admit_device_read(auth: ReadAuthentication, client_data: NonEmptyStr, observe
               AssertionRefused { cause: _ } => DeviceReadRefused { status: 403, reason: "the read assertion did not verify" }
               AssertionAuthentic { authentic: a } =>
                 if a.client_data != client_data { DeviceReadRefused { status: 403, reason: "the read assertion covers other bytes" } }
-                else { DeviceReadAdmitted { enrollment: e } }
+                else {
+                  match admit_assertion_counter(root: approval_assertion_counter_root, enrollment_id: e.enrollment_id, observed: a.counter) {
+                    AssertionCounterAdmitted { enrollment_id: _, counter: _ } => DeviceReadAdmitted { enrollment: e }
+                    refused => DeviceReadRefused { status: assertion_counter_refusal_status(a: refused), reason: assertion_counter_refusal_reason(a: refused) }
+                  }
+                }
             }
           }
       }
@@ -283,36 +312,40 @@ fn store_push_registration(enrollment_id: NonEmptyStr, push_json: String) -> Dev
 fn device_enrol_response(body: String, process: ApprovalServingProcess) -> DeviceRouteResponse {
   match device_observed_at() {
     Absent => device_clock_refused()
-    Present { value: now } => device_enrol_response_at(body: body, process: process, observed_at: now)
+    Present { value: now } => device_enrol_response_at(realization: approval_device_crypto_realization, body: body, process: process, observed_at: now)
   }
 }
 
-fn device_enrol_response_at(body: String, process: ApprovalServingProcess, observed_at: Timestamp) -> DeviceRouteResponse {
-  match decode_enrolment_request(text: body) {
-    WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "enrolment request refused at " + (a as String) + ": " + (c as String))
-    WireDecoded { value: r } =>
-      match approval_write_admission(asker: process) {
-        ApprovalWriteRefused { holder: h, asker: a } => device_refused(status: 503, reason: approval_write_refusal_reason(holder: h, asker: a) as String)
-        ApprovalWriteAdmitted { writer: _ } =>
-          match verifier_expectations() {
-            VerifierUnconfigured { missing: m } => device_refused(status: 503, reason: "the App Attest verifier is not configured: " + (m as String))
-            VerifierReady { app_id: app_id, config: config } => {
-              let slot = observe_enrolment_slot(root: approval_device_store_root, code: r.code)
-              let attestation = attestation_for_request(r: r, app_id: app_id, config: config, observed_at: observed_at)
-              match enrolment_admission(slot: slot, platform: r.platform, decision_key: r.decision_key, attestation: attestation, observed_at: observed_at) {
-                EnrolmentRefused { cause: c } => device_refused(status: enrolment_refusal_status(r: c), reason: enrolment_refusal_reason(r: c))
-                EnrolmentAdmitted { enrollment: e } =>
-                  match commit_enrolment(root: approval_device_store_root, admitted: EnrolmentAdmitted { enrollment: e }) {
-                    DeviceStoreSlotOccupied => device_refused(status: 409, reason: "the code was consumed concurrently")
-                    DeviceStoreRefused { detail: d } => device_refused(status: 503, reason: d as String)
-                    DeviceStoreWritten =>
-                      match store_push_registration(enrollment_id: e.enrollment_id, push_json: push_update_json(p: r.push)) {
-                        Present { value: refused } => refused
-                        Absent => DeviceRouteResponse { status: 200, body: enrolment_grant_json(g: EnrolmentGrant { enrollment_id: e.enrollment_id }) }
+fn device_enrol_response_at(realization: DeviceCryptoRealization, body: String, process: ApprovalServingProcess, observed_at: Timestamp) -> DeviceRouteResponse {
+  match approval_write_admission(asker: process) {
+    ApprovalWriteRefused { holder: h, asker: a } => device_refused(status: 503, reason: approval_write_refusal_reason(holder: h, asker: a) as String)
+    ApprovalWriteAdmitted { writer: _ } =>
+      match decode_enrolment_request(text: body) {
+        WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "enrolment request refused at " + (a as String) + ": " + (c as String))
+        WireDecoded { value: r } =>
+          match device_crypto_admission(r: realization) {
+            DeviceCryptoRefused { status: st, reason: why } => device_refused(status: st, reason: why)
+            DeviceCryptoAdmitted { handler_identity: _, exact_revision: _ } =>
+              match verifier_expectations() {
+                VerifierUnconfigured { missing: m } => device_refused(status: 503, reason: "the App Attest verifier is not configured: " + (m as String))
+                VerifierReady { app_id: app_id, config: config } => {
+                  let slot = observe_enrolment_slot(root: approval_device_store_root, code: r.code)
+                  let attestation = attestation_for_request(r: r, app_id: app_id, config: config, observed_at: observed_at)
+                  match enrolment_admission(slot: slot, platform: r.platform, decision_key: r.decision_key, attestation: attestation, observed_at: observed_at) {
+                    EnrolmentRefused { cause: c } => device_refused(status: enrolment_refusal_status(r: c), reason: enrolment_refusal_reason(r: c))
+                    EnrolmentAdmitted { enrollment: e } =>
+                      match commit_enrolment(root: approval_device_store_root, admitted: EnrolmentAdmitted { enrollment: e }) {
+                        DeviceStoreSlotOccupied => device_refused(status: 409, reason: "the code was consumed concurrently")
+                        DeviceStoreRefused { detail: d } => device_refused(status: 503, reason: d as String)
+                        DeviceStoreWritten =>
+                          match store_push_registration(enrollment_id: e.enrollment_id, push_json: push_update_json(p: r.push)) {
+                            Present { value: refused } => refused
+                            Absent => DeviceRouteResponse { status: 200, body: enrolment_grant_json(g: EnrolmentGrant { enrollment_id: e.enrollment_id }) }
+                          }
                       }
                   }
+                }
               }
-            }
           }
       }
   }
@@ -372,32 +405,36 @@ fn redemption_assertion(slot: EnrolmentSlotStanding, r: SignedRedemption, app_id
 fn device_redeem_response(body: String, process: ApprovalServingProcess) -> DeviceRouteResponse {
   match device_observed_at() {
     Absent => device_clock_refused()
-    Present { value: now } => device_redeem_response_at(body: body, process: process, observed_at: now)
+    Present { value: now } => device_redeem_response_at(realization: approval_device_crypto_realization, body: body, process: process, observed_at: now)
   }
 }
 
-fn device_redeem_response_at(body: String, process: ApprovalServingProcess, observed_at: Timestamp) -> DeviceRouteResponse {
-  match decode_signed_redemption(text: body) {
-    WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "redemption refused at " + (a as String) + ": " + (c as String))
-    WireDecoded { value: r } =>
-      match approval_write_admission(asker: process) {
-        ApprovalWriteRefused { holder: h, asker: a } => device_refused(status: 503, reason: approval_write_refusal_reason(holder: h, asker: a) as String)
-        ApprovalWriteAdmitted { writer: _ } =>
-          match verifier_expectations() {
-            VerifierUnconfigured { missing: m } => device_refused(status: 503, reason: "the App Attest verifier is not configured: " + (m as String))
-            VerifierReady { app_id: app_id, config: config } => {
-              let slot = observe_enrollment(root: approval_device_store_root, enrollment_id: r.signing_input.enrollment_id)
-              let outcome = redeem_device_over_store(
-                root: approval_decision_store_root,
-                keyring: read_approval_keyring(),
-                enrolment: slot,
-                signed: r.signing_input,
-                signature: redemption_signature(slot: slot, r: r),
-                assertion: redemption_assertion(slot: slot, r: r, app_id: app_id, config: config),
-                observed_at: observed_at,
-              )
-              DeviceRouteResponse { status: redemption_status(o: outcome), body: redemption_response_json(r: redemption_response_of(o: outcome)) }
-            }
+fn device_redeem_response_at(realization: DeviceCryptoRealization, body: String, process: ApprovalServingProcess, observed_at: Timestamp) -> DeviceRouteResponse {
+  match approval_write_admission(asker: process) {
+    ApprovalWriteRefused { holder: h, asker: a } => device_refused(status: 503, reason: approval_write_refusal_reason(holder: h, asker: a) as String)
+    ApprovalWriteAdmitted { writer: _ } =>
+      match decode_signed_redemption(text: body) {
+        WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "redemption refused at " + (a as String) + ": " + (c as String))
+        WireDecoded { value: r } =>
+          match device_crypto_admission(r: realization) {
+            DeviceCryptoRefused { status: st, reason: why } => device_refused(status: st, reason: why)
+            DeviceCryptoAdmitted { handler_identity: _, exact_revision: _ } =>
+              match verifier_expectations() {
+                VerifierUnconfigured { missing: m } => device_refused(status: 503, reason: "the App Attest verifier is not configured: " + (m as String))
+                VerifierReady { app_id: app_id, config: config } => {
+                  let slot = observe_enrollment(root: approval_device_store_root, enrollment_id: r.signing_input.enrollment_id)
+                  let outcome = redeem_device_over_store(
+                    root: approval_decision_store_root,
+                    keyring: read_approval_keyring(),
+                    enrolment: slot,
+                    signed: r.signing_input,
+                    signature: redemption_signature(slot: slot, r: r),
+                    assertion: redemption_assertion(slot: slot, r: r, app_id: app_id, config: config),
+                    observed_at: observed_at,
+                  )
+                  DeviceRouteResponse { status: redemption_status(o: outcome), body: redemption_response_json(r: redemption_response_of(o: outcome)) }
+                }
+              }
           }
       }
   }
@@ -407,15 +444,15 @@ fn device_redeem_response_at(body: String, process: ApprovalServingProcess, obse
 fn device_pending_response(body: String) -> DeviceRouteResponse {
   match device_observed_at() {
     Absent => device_clock_refused()
-    Present { value: now } => device_pending_response_at(body: body, observed_at: now)
+    Present { value: now } => device_pending_response_at(realization: approval_device_crypto_realization, body: body, observed_at: now)
   }
 }
 
-fn device_pending_response_at(body: String, observed_at: Timestamp) -> DeviceRouteResponse {
+fn device_pending_response_at(realization: DeviceCryptoRealization, body: String, observed_at: Timestamp) -> DeviceRouteResponse {
   match decode_read_request(text: body) {
     WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "read refused at " + (a as String) + ": " + (c as String))
     WireDecoded { value: auth } =>
-      match admit_device_read(auth: auth, client_data: device_read_client_data(path: approval_device_pending_path, enrollment_id: auth.enrollment_id, requested_at: auth.requested_at), observed_at: observed_at) {
+      match admit_device_read(realization: realization, auth: auth, client_data: device_read_client_data(path: approval_device_pending_path, enrollment_id: auth.enrollment_id, requested_at: auth.requested_at), observed_at: observed_at) {
         DeviceReadRefused { status: s, reason: r } => device_refused(status: s, reason: r)
         DeviceReadAdmitted { enrollment: _ } =>
           match pending_escalations(root: approval_decision_store_root) {
@@ -456,11 +493,11 @@ fn verb_capability_for(key: MacKey, request: StoredApprovalRequest, approve: Boo
 fn device_request_response(body: String, segment: String) -> DeviceRouteResponse {
   match device_observed_at() {
     Absent => device_clock_refused()
-    Present { value: now } => device_request_response_at(body: body, segment: segment, observed_at: now)
+    Present { value: now } => device_request_response_at(realization: approval_device_crypto_realization, body: body, segment: segment, observed_at: now)
   }
 }
 
-fn device_request_response_at(body: String, segment: String, observed_at: Timestamp) -> DeviceRouteResponse {
+fn device_request_response_at(realization: DeviceCryptoRealization, body: String, segment: String, observed_at: Timestamp) -> DeviceRouteResponse {
   match decode_path_segment(presented: segment) {
     PathSegmentMalformed { cause: c } => device_refused(status: 400, reason: "request path: " + (c as String))
     PathSegmentNonCanonical { presented: _, canonical: _ } => device_refused(status: 400, reason: "request path segment is not canonical")
@@ -468,7 +505,7 @@ fn device_request_response_at(body: String, segment: String, observed_at: Timest
       match decode_read_request(text: body) {
         WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "read refused at " + (a as String) + ": " + (c as String))
         WireDecoded { value: auth } =>
-          match admit_device_read(auth: auth, client_data: device_read_client_data(path: device_request_path(escalation_id: escalation_id), enrollment_id: auth.enrollment_id, requested_at: auth.requested_at), observed_at: observed_at) {
+          match admit_device_read(realization: realization, auth: auth, client_data: device_read_client_data(path: device_request_path(escalation_id: escalation_id), enrollment_id: auth.enrollment_id, requested_at: auth.requested_at), observed_at: observed_at) {
             DeviceReadRefused { status: s, reason: r } => device_refused(status: s, reason: r)
             DeviceReadAdmitted { enrollment: e } =>
               match observe_escalation(root: approval_decision_store_root, escalation_id: escalation_id) {
@@ -509,11 +546,11 @@ fn device_request_response_at(body: String, segment: String, observed_at: Timest
 fn device_enrollment_readback_response(body: String, segment: String) -> DeviceRouteResponse {
   match device_observed_at() {
     Absent => device_clock_refused()
-    Present { value: now } => device_enrollment_readback_response_at(body: body, segment: segment, observed_at: now)
+    Present { value: now } => device_enrollment_readback_response_at(realization: approval_device_crypto_realization, body: body, segment: segment, observed_at: now)
   }
 }
 
-fn device_enrollment_readback_response_at(body: String, segment: String, observed_at: Timestamp) -> DeviceRouteResponse {
+fn device_enrollment_readback_response_at(realization: DeviceCryptoRealization, body: String, segment: String, observed_at: Timestamp) -> DeviceRouteResponse {
   match decode_path_segment(presented: segment) {
     PathSegmentMalformed { cause: c } => device_refused(status: 400, reason: "enrollment path: " + (c as String))
     PathSegmentNonCanonical { presented: _, canonical: _ } => device_refused(status: 400, reason: "enrollment path segment is not canonical")
@@ -523,7 +560,7 @@ fn device_enrollment_readback_response_at(body: String, segment: String, observe
         WireDecoded { value: auth } =>
           if auth.enrollment_id != enrollment_id { device_refused(status: 403, reason: "the read speaks for another enrolment") }
           else {
-            match admit_device_read(auth: auth, client_data: device_read_client_data(path: device_enrollment_path(enrollment_id: enrollment_id), enrollment_id: auth.enrollment_id, requested_at: auth.requested_at), observed_at: observed_at) {
+            match admit_device_read(realization: realization, auth: auth, client_data: device_read_client_data(path: device_enrollment_path(enrollment_id: enrollment_id), enrollment_id: auth.enrollment_id, requested_at: auth.requested_at), observed_at: observed_at) {
               DeviceReadRefused { status: s, reason: r } => device_refused(status: s, reason: r)
               DeviceReadAdmitted { enrollment: _ } =>
                 match enrolment_readback_of(standing: observe_enrollment(root: approval_device_store_root, enrollment_id: enrollment_id)) {
@@ -540,18 +577,18 @@ fn device_enrollment_readback_response_at(body: String, segment: String, observe
 fn device_push_update_response(body: String, process: ApprovalServingProcess) -> DeviceRouteResponse {
   match device_observed_at() {
     Absent => device_clock_refused()
-    Present { value: now } => device_push_update_response_at(body: body, process: process, observed_at: now)
+    Present { value: now } => device_push_update_response_at(realization: approval_device_crypto_realization, body: body, process: process, observed_at: now)
   }
 }
 
-fn device_push_update_response_at(body: String, process: ApprovalServingProcess, observed_at: Timestamp) -> DeviceRouteResponse {
-  match decode_push_update_request(text: body) {
-    WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "push update refused at " + (a as String) + ": " + (c as String))
-    WireDecoded { value: r } =>
-      match approval_write_admission(asker: process) {
-        ApprovalWriteRefused { holder: h, asker: a } => device_refused(status: 503, reason: approval_write_refusal_reason(holder: h, asker: a) as String)
-        ApprovalWriteAdmitted { writer: _ } =>
-          match admit_device_read(auth: r.auth, client_data: device_push_update_client_data(enrollment_id: r.auth.enrollment_id, requested_at: r.auth.requested_at, push: r.push), observed_at: observed_at) {
+fn device_push_update_response_at(realization: DeviceCryptoRealization, body: String, process: ApprovalServingProcess, observed_at: Timestamp) -> DeviceRouteResponse {
+  match approval_write_admission(asker: process) {
+    ApprovalWriteRefused { holder: h, asker: a } => device_refused(status: 503, reason: approval_write_refusal_reason(holder: h, asker: a) as String)
+    ApprovalWriteAdmitted { writer: _ } =>
+      match decode_push_update_request(text: body) {
+        WireRefused { at: a, cause: c } => device_refused(status: 400, reason: "push update refused at " + (a as String) + ": " + (c as String))
+        WireDecoded { value: r } =>
+          match admit_device_read(realization: realization, auth: r.auth, client_data: device_push_update_client_data(enrollment_id: r.auth.enrollment_id, requested_at: r.auth.requested_at, push: r.push), observed_at: observed_at) {
             DeviceReadRefused { status: s, reason: rr } => device_refused(status: s, reason: rr)
             DeviceReadAdmitted { enrollment: e } =>
               match store_push_registration(enrollment_id: e.enrollment_id, push_json: push_update_json(p: r.push)) {

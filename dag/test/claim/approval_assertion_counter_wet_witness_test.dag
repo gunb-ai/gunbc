@@ -1,0 +1,173 @@
+module test.claim.approval_assertion_counter_wet_witness_test
+
+import extdeps.shell
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, Int }
+import std.durable_compare_and_set { ExpectSlotGeneration, cas_attempt, CasPreconditionFailed, CasReadablePresent }
+import std.content_hash { content_hash_of_value }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_create_new }
+import gunbc.durable_cas_file_store {
+  CasSlotProbe, ProbedHead, cas_probe_bisect, cas_outcome_from_create, observe_cas_slot_state, cas_file_slot_path,
+  CasGenerationRead, GenerationPresent, GenerationAbsent, cas_read_generation,
+}
+import gunbc.auth.approval_assertion_counter {
+  AssertionCounterAdmission, AssertionCounterAdmitted, AssertionCounterReplayed, AssertionCounterRaced, AssertionCounterStoreRefused,
+  admit_assertion_counter, assertion_counter_commit, assertion_counter_refusal_status,
+}
+
+// THE ASSERTION COUNTER STANDING, EXECUTED AGAINST A REAL FILESYSTEM through
+// gunbc.durable_cas_file_store: each claim owns a fresh store under a throwaway /tmp directory and
+// removes it before returning. Effects: shell.Mktemp.DirWithTemplate, the CAS store's Filesystem
+// reads and create-new writes, shell.Remove.RecursiveForce. The route wiring that hands
+// AuthenticAssertion.counter to this admission is not executed here: minting AssertionAuthentic
+// needs a real verification, which the device routes refuse to run on the interpreter
+// (gunbc.auth.approval_device_crypto_realization).
+
+fn fresh_counter_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_assertion_counter.XXXXXX").path
+}
+
+fn admitted_at(a: AssertionCounterAdmission, counter: Int) -> Bool {
+  match a {
+    AssertionCounterAdmitted { enrollment_id: _, counter: c } => c == counter
+    _ => false
+  }
+}
+
+fn replayed(a: AssertionCounterAdmission) -> Bool {
+  match a {
+    AssertionCounterReplayed { observed: _, last_admitted: _ } => assertion_counter_refusal_status(a: a) == 403
+    _ => false
+  }
+}
+
+// A REPLAY AT AN ALREADY-ADMITTED COUNTER IS REFUSED, and so is an older one; the positive control
+// at a higher counter is admitted after both refusals, so the refusals did not wedge the slot.
+test fn a_replayed_assertion_counter_is_refused_and_a_higher_one_admitted() -> Bool {
+  let root = fresh_counter_root()
+  let first = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-482913", observed: 5)
+  let same = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-482913", observed: 5)
+  let older = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-482913", observed: 4)
+  let higher = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-482913", observed: 6)
+  let replay_of_higher = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-482913", observed: 6)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  admitted_at(a: first, counter: 5) && replayed(a: same) && replayed(a: older) && admitted_at(a: higher, counter: 6) && replayed(a: replay_of_higher) && removed.success
+}
+
+// THE STANDING IS PER ENROLMENT: one enrolment's admitted counter does not refuse another's.
+test fn the_counter_standing_is_per_enrolment() -> Bool {
+  let root = fresh_counter_root()
+  let a = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-aaaa", observed: 9)
+  let b = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-bbbb", observed: 1)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  admitted_at(a: a, counter: 9) && admitted_at(a: b, counter: 1) && removed.success
+}
+
+// A LOST COMPARE-AND-SET RACE IS REFUSED, NOT ADMITTED. Two requests that read the same standing
+// commit against the same generation; the second commit arrives after the first has advanced the
+// slot, so its expectation names a superseded generation and the store's exclusive create decides
+// against it. The positive control is the first commit itself.
+test fn a_lost_counter_race_is_refused_not_admitted() -> Bool {
+  let root = fresh_counter_root()
+  let first = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-race", observed: 5)
+  let winner = assertion_counter_commit(root: root as NonEmptyStr, enrollment_id: "enr-race", expected: ExpectSlotGeneration { generation: 1 }, observed: 6)
+  let loser = assertion_counter_commit(root: root as NonEmptyStr, enrollment_id: "enr-race", expected: ExpectSlotGeneration { generation: 1 }, observed: 7)
+  let after = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-race", observed: 6)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  let raced = match loser {
+    AssertionCounterRaced => assertion_counter_refusal_status(a: loser) == 409
+    _ => false
+  }
+  admitted_at(a: first, counter: 5) && admitted_at(a: winner, counter: 6) && raced && replayed(a: after) && removed.success
+}
+
+fn admit_sequentially(root: NonEmptyStr, enrollment_id: NonEmptyStr, next: Int, last: Int) -> Bool {
+  if next > last { true }
+  else {
+    match admit_assertion_counter(root: root, enrollment_id: enrollment_id, observed: next) {
+      AssertionCounterAdmitted { enrollment_id: _, counter: c } =>
+        if c == next { admit_sequentially(root: root, enrollment_id: enrollment_id, next: next + 1, last: last) } else { false }
+      _ => false
+    }
+  }
+}
+
+// THE CLAIM THAT WOULD HAVE CAUGHT THE CLIFF, AT ONE INTERFACE (DESIGN section 3). Its subject is
+// head discovery and the next admission past generation 4096 -- not 4200 admissions each run end to
+// end, which cost ~22 s and re-executed a path the claims above already execute for real. So the
+// history is SUPPLIED: 4200 contiguous generations are written into the slot through the store's own
+// slot-path authority (cas_file_slot_path), each holding the counter an admission would have written,
+// so the layout cannot drift from production. Then ONE real admission runs against it: the last counter
+// again and an older one are replays, and the next is admitted. Restoring the old 4096 bound or the
+// linear walk reds it.
+fn seed_contiguous_generations(root: NonEmptyStr, key: NonEmptyStr, next: Int, last: Int) -> Bool {
+  if next > last { true }
+  else {
+    let w = Filesystem.WriteCreateNew(path: cas_file_slot_path(root: root, key: key, generation: next), content: to_string(next))
+    if w.success { seed_contiguous_generations(root: root, key: key, next: next + 1, last: last) } else { false }
+  }
+}
+
+test fn an_enrolment_keeps_admitting_past_four_thousand_ninety_six_assertions() -> Bool {
+  let root = fresh_counter_root()
+  let seeded = seed_contiguous_generations(root: root as NonEmptyStr, key: "enr-long-lived", next: 1, last: 4200)
+  let again = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-long-lived", observed: 4200)
+  let older = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-long-lived", observed: 17)
+  let next = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: "enr-long-lived", observed: 4201)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  seeded && replayed(a: again) && replayed(a: older) && admitted_at(a: next, counter: 4201) && removed.success
+}
+
+// AN APPEND THAT LANDS MID-SEARCH YIELDS A STALE HEAD, NEVER A FABRICATED ONE, AND A WRITER ACTING ON
+// THE STALE HEAD IS REFUSED BY THE EXCLUSIVE CREATE ITSELF. Five counters are admitted (generations
+// 1..5). The search's boundary is OBSERVED, not supplied: generation 4 is READ present and generation 6
+// is READ absent through the store's own classified read (cas_read_generation), which is the state a
+// real search holds after its gallop and one bisection step. Only THEN does a concurrent writer publish
+// generation 6, and the bisection resumes from exactly those two observed facts -- the absent bound it
+// carries was true when it was read and is stale when it is used, which is the interleaving. It must
+// report generation 5 holding counter 5, a generation that really was committed, one behind the real
+// head. A writer acting on that stale head then attempts the real exclusive create of generation 6: the
+// OS reports occupancy, the create never overwrites (generation 6 still holds counter 6), and the store
+// classifies it as a lost race.
+test fn an_append_landing_mid_search_yields_a_stale_real_head_and_the_stale_writer_is_refused_by_the_create() -> Bool {
+  let root = fresh_counter_root()
+  let key: NonEmptyStr = "enr-interleave"
+  let seeded = admit_sequentially(root: root as NonEmptyStr, enrollment_id: key, next: 1, last: 5)
+  let observed_present = cas_read_generation(root: root as NonEmptyStr, key: key, generation: 4)
+  let observed_absent = cas_read_generation(root: root as NonEmptyStr, key: key, generation: 6)
+  let appended = admit_assertion_counter(root: root as NonEmptyStr, enrollment_id: key, observed: 6)
+  let resumed = match observed_present {
+    GenerationPresent { content: v4 } => match observed_absent {
+      GenerationAbsent => Present { value: cas_probe_bisect(root: root as NonEmptyStr, key: key, present: 4, present_value: v4, absent: 6) }
+      _ => Absent
+    }
+    _ => Absent
+  }
+  let stale_real = match resumed {
+    Present { value: probe } => match probe {
+      ProbedHead { generation: g, value: v } =>
+        g == 5 && (v as String) == "5" && (v as String) == Filesystem.Read(path: cas_file_slot_path(root: root as NonEmptyStr, key: key, generation: g)).content
+      _ => false
+    }
+    Absent => false
+  }
+  let target_path = cas_file_slot_path(root: root as NonEmptyStr, key: key, generation: 6)
+  let stale_write = Filesystem.WriteCreateNew(path: target_path, content: "7")
+  let stale_attempt = cas_attempt(key: key, expected: ExpectSlotGeneration { generation: 5 }, proposed: "7" as NonEmptyStr, proposed_content: content_hash_of_value(value: "7"))
+  let classified = cas_outcome_from_create(
+    attempt: stale_attempt,
+    target: 6,
+    created: filesystem_create_new(path: stale_write.path, success: stale_write.success, error: stale_write.error, error_kind: stale_write.error_kind),
+    post: observe_cas_slot_state(root: root as NonEmptyStr, key: key),
+  )
+  let refused_as_race = match classified {
+    CasPreconditionFailed { expected: _, observed: o } => match o {
+      CasReadablePresent { version: v } => v.generation == 6 && (v.value as String) == "6"
+      _ => false
+    }
+    _ => false
+  }
+  let not_overwritten = Filesystem.Read(path: target_path).content == "6"
+  let removed = shell.Remove.RecursiveForce(path: root)
+  seeded && admitted_at(a: appended, counter: 6) && stale_real && !stale_write.success && refused_as_race && not_overwritten && removed.success
+}
