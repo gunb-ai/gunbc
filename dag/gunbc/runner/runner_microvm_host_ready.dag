@@ -1,5 +1,6 @@
 module gunbc.runner_microvm_host_ready
 
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { String, NonEmptyStr, Bool, List, FilePath }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }

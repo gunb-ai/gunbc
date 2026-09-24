@@ -1,0 +1,14 @@
+module test.fixture.variant_owner_homonym.roster
+
+import std.types { String }
+
+type HomonymOwner
+  = FirstHomonymArm
+  | SecondHomonymArm
+
+fn homonym_arm_label(a: HomonymOwner) -> String {
+  match a {
+    FirstHomonymArm => "first"
+    SecondHomonymArm => "second"
+  }
+}
