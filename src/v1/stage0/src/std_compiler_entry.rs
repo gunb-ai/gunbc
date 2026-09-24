@@ -10,12 +10,20 @@ pub use crate::std_measure::Nanosecond;
 pub use crate::std_measure::{
     millisecond, millisecond_to_nanosecond, nanosecond, nanosecond_count,
 };
+pub use crate::std_process::ProcessExit;
+use crate::std_process::ProcessExit::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeClaimReport {
+    pub stdout: String,
+    pub exit: Rc<ProcessExit>,
+}
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -26,6 +34,7 @@ pub enum CompilerEntryDriver {
     DirectIngestDriver,
     SourceRootEvalDriver,
     NativeCliDriver,
+    NativeClaimDriver,
 }
 
 #[derive(
@@ -231,6 +240,8 @@ pub struct DirectIngestDriver;
 pub struct SourceRootEvalDriver;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NativeCliDriver;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeClaimDriver;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExclusiveLoad;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

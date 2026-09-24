@@ -97,12 +97,18 @@ fn off_curve_key(key: List<Int>) -> List<Int> {
 
 // Wycheproof publishes valid / invalid; which kind of invalid (false versus refused) is this
 // verifier's fact, stated per tcId beside the reason it takes that form.
+fn verified_as(b: Bool) -> Bool? {
+  Present { value: b }
+}
+
+fn refused_verdict() -> Bool? {
+  Absent
+}
+
 fn wycheproof_expected(c: WycheproofEcdsaCase) -> Bool? {
   match c.result {
-    WycheproofValid => Present { value: true }
-    WycheproofInvalid =>
-      if c.tc_id == 4 { Present { value: false } }
-      else { Absent }
+    WycheproofValid => verified_as(b: true)
+    WycheproofInvalid => if c.tc_id == 4 { verified_as(b: false) } else { refused_verdict() }
   }
 }
 
@@ -120,11 +126,11 @@ fn p256_cases() -> List<NativeCryptoCase> {
   let test = ascii_octets(s: rfc6979_a25_message_test)
   concat(
     [
-      p256_case(identity: "p256_rfc6979_sample", v: p256_ecdsa_verify_octets(key: key, signature: rfc6979_a25_p256_sha256_sample_signature, message: sample), expected: Present { value: true }),
-      p256_case(identity: "p256_rfc6979_test", v: p256_ecdsa_verify_octets(key: key, signature: rfc6979_a25_p256_sha256_test_signature, message: test), expected: Present { value: true }),
-      p256_case(identity: "p256_red_signature_for_a_different_message", v: p256_ecdsa_verify_octets(key: key, signature: rfc6979_a25_p256_sha256_sample_signature, message: test), expected: Present { value: false }),
-      p256_case(identity: "p256_red_wrong_key_rfc7515_a3", v: p256_ecdsa_verify_octets(key: rfc7515_a3_es256_public_key, signature: rfc6979_a25_p256_sha256_sample_signature, message: sample), expected: Present { value: false }),
-      p256_case(identity: "p256_red_key_off_the_curve", v: p256_ecdsa_verify_octets(key: off_curve_key(key: key), signature: rfc6979_a25_p256_sha256_sample_signature, message: sample), expected: Absent),
+      p256_case(identity: "p256_rfc6979_sample", v: p256_ecdsa_verify_octets(key: key, signature: rfc6979_a25_p256_sha256_sample_signature, message: sample), expected: verified_as(b: true)),
+      p256_case(identity: "p256_rfc6979_test", v: p256_ecdsa_verify_octets(key: key, signature: rfc6979_a25_p256_sha256_test_signature, message: test), expected: verified_as(b: true)),
+      p256_case(identity: "p256_red_signature_for_a_different_message", v: p256_ecdsa_verify_octets(key: key, signature: rfc6979_a25_p256_sha256_sample_signature, message: test), expected: verified_as(b: false)),
+      p256_case(identity: "p256_red_wrong_key_rfc7515_a3", v: p256_ecdsa_verify_octets(key: rfc7515_a3_es256_public_key, signature: rfc6979_a25_p256_sha256_sample_signature, message: sample), expected: verified_as(b: false)),
+      p256_case(identity: "p256_red_key_off_the_curve", v: p256_ecdsa_verify_octets(key: off_curve_key(key: key), signature: rfc6979_a25_p256_sha256_sample_signature, message: sample), expected: refused_verdict()),
     ],
     wycheproof_p256_sha256_p1363_group1_cases |> map(c => wycheproof_case(c: c))
   )
@@ -138,8 +144,8 @@ fn order_n_cases() -> List<NativeCryptoCase> {
   let zero = bignat_zero_limbs()
   let n_inf = jacobian_is_infinity(p: p256_double_scalar(u1: p256_n, g: g, u2: zero, q: g))
   let nm1_inf = match bignat_sub(a: p256_n, b: bignat_one()) {
-    Present { value: nm1 } => Present { value: jacobian_is_infinity(p: p256_double_scalar(u1: nm1, g: g, u2: zero, q: g)) }
-    Absent => Absent
+    Present { value: nm1 } => verified_as(b: jacobian_is_infinity(p: p256_double_scalar(u1: nm1, g: g, u2: zero, q: g)))
+    Absent => refused_verdict()
   }
   [
     NativeCryptoCase { identity: "p256_the_base_point_has_order_n", held: n_inf, observed: if n_inf { "infinity" } else { "finite" } },

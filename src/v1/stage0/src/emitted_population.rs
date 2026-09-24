@@ -22,6 +22,8 @@
 // src/extdeps_languages_rust_representation.rs
 // src/extdeps_languages_rust_syntax.rs
 // src/extdeps_languages_rust_types.rs
+// src/extdeps_process_gnu_bash_exit.rs
+// src/extdeps_process_posix_exit.rs
 // src/extdeps_units_dimensionless.rs
 // src/extdeps_units_iec_80000_13.rs
 // src/extdeps_units_iso8601.rs
@@ -79,6 +81,7 @@
 // src/std_occurrence_identity.rs
 // src/std_operator_realization.rs
 // src/std_primitive_projection.rs
+// src/std_process.rs
 // src/std_process_termination.rs
 // src/std_realization_schedule.rs
 // src/std_reference_binding_observation.rs
