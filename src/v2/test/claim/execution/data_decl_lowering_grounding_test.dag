@@ -1,0 +1,322 @@
+module v2.test.execution.data_decl_lowering_grounding
+
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.infer {
+  DerivedGrounding,
+  GroundingNotDerived,
+  InferredTree,
+  infer
+}
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag {
+  dag_int_literal_node_from_lexeme,
+  dag_language_model,
+  dag_node_is_int_literal_atom
+}
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.collection { List, list_at_optional }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  TypeNode,
+  node_subtree_nodes
+}
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CONTROLS FOR GEN-ONE'S ONE-LINE DOOR PROBE, ONE PER LINK THAT REFUSED IT. The built native CLI
+// could not emit `data native_cli_door_probe_value: Int = 606060` (fixture.native_cli_door.door_probe):
+// translate's grounding gate found nodes infer had left underived. Three links upstream of that gate
+// were wrong, and each has a control here.
+//
+// (1) BODY LOWERING KEPT A `data` DECLARATION AS SURFACE SYNTAX (v2.compiler.body_lowering_fold
+// body_lower_data_decl_to_member). Infer was handed `:` and `=` tokens and the type's spelling.
+// The declaration now lowers to the named member a nullary fn lowers to. The lowering control reads
+// that shape on the resolved tree. The grounding control asserts that nothing in the declaration's
+// tree is left underived. Before the change, the tree held the tokens.
+//
+// (2) A `= expr` BODY READ THE LITERAL'S DIGIT LIST AS ITS BODY (body_lower_is_core_substrate).
+// The magnitude payload has a qualified name's cons shape, and the literal atom that owns it was not
+// recognized as lowered, so a deep search stepped past the literal. Resolve then refused the digit
+// list as an unbound qualified name. The eq-body control is `fn f() -> Int = 606060`, which refused
+// with `resolve_reason_unbound_symbol` before the change.
+//
+// (3) INFER DISCHARGED A LITERAL'S PAYLOAD DIAGNOSTICS BUT NOT ITS FACTS (v2.compiler.infer
+// infer_literal_payload_entries), and left a nullary arrow's empty domain on the frontier
+// (infer_arrow_empty_domain_edge). The brace-body specimen `fn f() -> Int { 606060 }` grounds only
+// when both hold. The two boundary controls pin where each rule stops. A literal whose magnitude
+// the canonical-literal query rejects keeps its child on the frontier. A childless Conj in an
+// Arrow's CODOMAIN position is not its domain and stays frontier. The standalone childless Conj stays
+// frontier too (v2.test.execution.infer_product_introduction).
+
+data ddl_data_source: String = "module ddl_probe\n\ndata ddl_value: Int = 606060\n"
+
+data ddl_fn_eq_source: String = "module ddl_probe\n\nfn ddl_value() -> Int = 606060\n"
+
+data ddl_fn_brace_source: String = "module ddl_probe\n\nfn ddl_value() -> Int { 606060 }\n"
+
+fn ddl_ingest(source: String) -> SourceRootIngest {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: source, fidelity: Lossless },
+      artifact: Artifact {
+        kind: SourceFile,
+        id: ^ddl_probe_artifact,
+        file_path: "src/v2/test/claim/execution/ddl_probe.dag"
+      },
+      compilation_unit: ^ddl_probe_cu,
+      source_root: V2Tree
+    },
+    tail: Empty
+  }
+}
+
+fn ddl_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: Cons { head: ^ddl_probe, tail: Empty } },
+    imports: Empty
+  }
+}
+
+fn ddl_resolved(source: String) -> Outcome<Node> {
+  assemble_program_from_ingest(
+    ingest: ddl_ingest(source: source),
+    admission: ddl_admission(),
+    lm: dag_language_model()
+  )
+}
+
+// The resolved stage is the portable share point, the same rule as
+// v2.compiler.self_host.direct_rust_door_fixture direct_rust_door_specimen_resolved: each of these
+// is nullary and warm-enrolled in v2.workflow.floor_pure_producer_share, and infer stays per claim.
+fn ddl_data_resolved() -> Outcome<Node> {
+  ddl_resolved(source: ddl_data_source)
+}
+
+fn ddl_fn_eq_resolved() -> Outcome<Node> {
+  ddl_resolved(source: ddl_fn_eq_source)
+}
+
+fn ddl_fn_brace_resolved() -> Outcome<Node> {
+  ddl_resolved(source: ddl_fn_brace_source)
+}
+
+fn ddl_node_derived(inferred: InferredTree, n: Node) -> Bool {
+  match inferred.facts.lookup(n) {
+    Absent => false
+    Present { value: facts } =>
+      match facts.grounding {
+        GroundingNotDerived { node: _ } => false
+        DerivedGrounding { grounding: _ } => true
+      }
+  }
+}
+
+fn ddl_underived_count(inferred: InferredTree) -> Int {
+  fold_list(
+    xs: node_subtree_nodes(root: inferred.root),
+    empty: 0,
+    cons: fn(acc, n) {
+      if ddl_node_derived(inferred: inferred, n: n) { acc } else { acc + 1 }
+    }
+  )
+}
+
+// The whole resolved tree grounds, which is what translate's subtree gate demands of it. A count
+// of zero over a non-trivial tree is the claim: the node count guards against an empty walk.
+fn ddl_fully_grounded(resolved: Outcome<Node>) -> Bool {
+  match resolved {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: inferred, diagnostics: _ } =>
+          (length(xs: node_subtree_nodes(root: inferred.root)) > 3)
+            && (ddl_underived_count(inferred: inferred) == 0)
+      }
+  }
+}
+
+fn ddl_edge_target_childless(e: Edge) -> Bool {
+  length(xs: e.target.children) == 0
+}
+
+fn ddl_edge_target_is_int_literal(e: Edge) -> Bool {
+  dag_node_is_int_literal_atom(node: e.target)
+}
+
+fn ddl_edge_is_body(e: Edge) -> Bool {
+  match e.label {
+    Named { name: n } => n == ^arrow_body_edge
+    Positional => false
+  }
+}
+
+// An Arrow shaped the way a lowered nullary fn is: a childless domain, the declared type twice,
+// and a body edge whose target is the int literal ATOM (never its digit list).
+fn ddl_is_nullary_literal_arrow(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } =>
+      match list_at_optional(xs: n.children, index: 0) {
+        Absent => false
+        Present { value: domain } =>
+          match list_at_optional(xs: n.children, index: 3) {
+            Absent => false
+            Present { value: body } =>
+              (length(xs: n.children) == 4)
+                && ddl_edge_target_childless(e: domain)
+                && ddl_edge_is_body(e: body)
+                && ddl_edge_target_is_int_literal(e: body)
+          }
+      }
+    _ => false
+  }
+}
+
+fn ddl_edge_names_value_member(e: Edge) -> Bool {
+  match e.label {
+    Named { name: n } => (n == ^ddl_value) && ddl_is_nullary_literal_arrow(n: e.target)
+    Positional => false
+  }
+}
+
+fn ddl_has_value_member(resolved: Outcome<Node>) -> Bool {
+  match resolved {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      any(
+        xs: node_subtree_nodes(root: tree),
+        predicate: fn(n) { any(xs: n.children, predicate: fn(e) { ddl_edge_names_value_member(e: e) }) }
+      )
+  }
+}
+
+// No node anywhere in the lowered declaration is the `:` or `=` token. Before the change they were
+// the declaration's interior.
+fn ddl_is_surface_token(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => (id == ^dag_token_colon) || (id == ^dag_token_eq)
+    _ => false
+  }
+}
+
+fn ddl_holds_surface_tokens(resolved: Outcome<Node>) -> Bool {
+  match resolved {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: tree, diagnostics: _ } =>
+      any(xs: node_subtree_nodes(root: tree), predicate: fn(n) { ddl_is_surface_token(n: n) })
+  }
+}
+
+test fn data_decl_lowers_to_a_nullary_named_member_holds() -> Bool {
+  ddl_has_value_member(resolved: ddl_data_resolved())
+}
+
+test fn data_decl_leaves_no_surface_tokens_holds() -> Bool {
+  !ddl_holds_surface_tokens(resolved: ddl_data_resolved())
+}
+
+test fn data_decl_grounds_fully_holds() -> Bool {
+  ddl_fully_grounded(resolved: ddl_data_resolved())
+}
+
+test fn fn_eq_body_is_the_literal_not_its_digits_holds() -> Bool {
+  ddl_has_value_member(resolved: ddl_fn_eq_resolved())
+}
+
+test fn fn_brace_literal_body_grounds_fully_holds() -> Bool {
+  ddl_fully_grounded(resolved: ddl_fn_brace_resolved())
+}
+
+fn ddl_hand_grounding(tree: Node, n: Node) -> Int {
+  match infer(tree: tree) {
+    Rejected { diagnostics: _ } => 2
+    Accepted { value: inferred, diagnostics: _ } =>
+      match inferred.facts.lookup(n) {
+        Absent => 2
+        Present { value: facts } =>
+          match facts.grounding {
+            GroundingNotDerived { node: _ } => 1
+            DerivedGrounding { grounding: _ } => 0
+          }
+      }
+  }
+}
+
+fn ddl_childless_conj() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn ddl_unauthorized_atom() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^no_authority_declares_this_symbol } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// The payload rule covers only a literal the canonical-literal query ACCEPTS. A literal atom whose
+// magnitude field holds something that is not a decimal magnitude is malformed, and its child stays
+// on the frontier.
+test fn malformed_literal_payload_stays_on_the_frontier_holds() -> Bool {
+  let bogus = ddl_unauthorized_atom()
+  let literal = Node {
+    kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
+    children: [Edge { label: Named { name: ^integer_literal_magnitude_field }, target: bogus }],
+    occurrence_id: OccurrenceSynthetic
+  }
+  ddl_hand_grounding(tree: literal, n: bogus) == 1
+}
+
+// Its positive control: an accepted literal's payload derives, on the same hand-built route.
+test fn accepted_literal_payload_derives_holds() -> Bool {
+  match dag_int_literal_node_from_lexeme(lexeme: "42", occurrence_id: OccurrenceSynthetic) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: literal, diagnostics: _ } =>
+      match list_at_optional(xs: literal.children, index: 0) {
+        Absent => false
+        Present { value: magnitude } => ddl_hand_grounding(tree: literal, n: magnitude.target) == 0
+      }
+  }
+}
+
+// The empty-domain rule is positional. The same childless Conj as an Arrow's CODOMAIN is not the
+// product of any parameters and stays frontier. As the DOMAIN of an otherwise identical Arrow it
+// derives.
+fn ddl_arrow_with(domain: Node, codomain: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: domain },
+      Edge { label: Positional, target: codomain }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn childless_conj_in_codomain_stays_on_the_frontier_holds() -> Bool {
+  let codomain = ddl_childless_conj()
+  let tree = ddl_arrow_with(domain: ddl_unauthorized_atom(), codomain: codomain)
+  ddl_hand_grounding(tree: tree, n: codomain) == 1
+}
+
+test fn childless_conj_in_domain_derives_holds() -> Bool {
+  let domain = ddl_childless_conj()
+  let tree = ddl_arrow_with(domain: domain, codomain: ddl_unauthorized_atom())
+  ddl_hand_grounding(tree: tree, n: domain) == 0
+}

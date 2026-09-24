@@ -19,15 +19,11 @@ module fixture.native_cli_door.door_probe
 // root is walked RECURSIVELY for every `.dag` file under it; sharing a directory would make the
 // control's ingest a function of what some other fixture's author adds next to it.
 //
-// THE DECLARED VALUE IS NOT READ BY ANY CONTROL TODAY, and this paragraph claimed otherwise until
-// review 69621. It said the positive control required the emitted text on stdout to name this
-// declaration. THERE IS NO SUCH CONTROL: the built door cannot emit a closure, so the instrument's
-// emit arm is an EXPECTING-RED probe whose admitting verdict requires stdout to be EMPTY. The
-// declaration name is held by the harness for the FLIP INSTRUCTION -- the assertion a regression
-// control must make on the day the door does emit.
+// THE DECLARATION NAME IS WHAT THE POSITIVE CONTROL READS. Until 2026-09-23 the built door could
+// not emit this module, and the instrument's emit arm was an EXPECTING-RED probe that required
+// stdout to be EMPTY. v2 now lowers a `data` declaration to a named member and grounds it, so the
+// door emits, and the probe was flipped as its own instruction said. It now requires exit 0 and
+// emitted text naming `native_cli_door_probe_value`.
 //
-// WHAT THIS FILE IS ACTUALLY FOR, then, is being a well-formed source root: it is the accepting
-// input of the eval driver's census walk, and the argv subject the CLI door refuses over. A
-// declaration is still needed for the module to be worth walking, and this one is deliberately
-// trivial.
+// The declaration is deliberately trivial: one literal of a kernel type, with no imports.
 data native_cli_door_probe_value: Int = 606060
