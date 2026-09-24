@@ -7480,6 +7480,22 @@ pub fn type_node_is_arrow(n: Rc<Node>) -> bool {
     (n.connective.clone() == Connective::Arrow)
 }
 
+pub fn expression_is_local_value(e: Rc<Node>) -> bool {
+    match (*e.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: kind, ..
+        } => binding_kind_is_local_value(kind.clone()),
+        _ => false,
+    }
+}
+
+pub fn binding_kind_is_local_value(kind: Option<Rc<VarBindingKind>>) -> bool {
+    match kind.clone().as_deref().cloned() {
+        Some(VarBindingKind::LocalValueBinding) => true,
+        _ => false,
+    }
+}
+
 pub fn direct_call_arg_type_mismatch(
     formal: Rc<Node>,
     substitution_basis: Rc<Node>,
@@ -7508,11 +7524,11 @@ pub fn direct_call_arg_type_mismatch(
                     false
                 } else {
                     if (type_node_is_arrow(formal.clone()) || type_node_is_arrow(actual.clone())) {
-                        one_sided_callable_mismatch(
+                        (one_sided_callable_mismatch(
                             formal.clone(),
                             actual.clone(),
                             type_env.clone(),
-                        )
+                        ) && !expression_is_local_value(actual_expr.clone()))
                     } else {
                         if (type_node_is_callable(formal.clone())
                             || type_node_is_callable(actual.clone()))
@@ -12974,7 +12990,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             };
             let val_result = infer_expr(val_expr.clone(), scope.clone(), val_expected.clone());
             let val_typed = val_result.typed.clone();
-            let val_type = expression_value_type(val_typed.clone());
+            let val_type = crate::v1_compiler_infer_types::resolved_type(val_typed.clone());
             let val_annotation_diags = match declared_let_type.clone() {
                 Some(declared) => {
                     let produced_value_type = expression_value_type(val_typed.clone());
@@ -12987,11 +13003,12 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     if ((conformance.clone().len() as i64) > 0) {
                         conformance.clone()
                     } else {
-                        if one_sided_callable_value_mismatch(
+                        if (one_sided_callable_value_mismatch(
                             declared.clone(),
                             produced_value_type.clone(),
                             scope.type_env.clone(),
-                        ) {
+                        ) && !expression_is_local_value(val_typed.clone()))
+                        {
                             Rc::new(vec![type_mismatch_error(
                                 crate::v1_compiler_infer_types::node_type_shape(
                                     declared.clone(),

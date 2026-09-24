@@ -1466,22 +1466,13 @@ pub fn unify_template(
             AlgebraTypeTemplate::CallableOf {
                 return_type: ret_template,
                 ..
-            } => {
-                let produced = match concrete.connective.clone() {
-                    Connective::Arrow => match concrete.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
-                        _ => concrete.clone(),
-                    },
-                    _ => concrete.clone(),
-                };
-                unify_template(
-                    ret_template.clone(),
-                    produced.clone(),
-                    receiver.clone(),
-                    subst.clone(),
-                    source_indices.clone(),
-                )
-            }
+            } => unify_template(
+                ret_template.clone(),
+                concrete.clone(),
+                receiver.clone(),
+                subst.clone(),
+                source_indices.clone(),
+            ),
             AlgebraTypeTemplate::ContainerOf {
                 source: src,
                 element: elem_template,
