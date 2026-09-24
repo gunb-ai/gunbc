@@ -91,6 +91,12 @@ data vpw_arg_fn_literal_source: String = "module v2.test.vpw_arg_fn_literal\n\ni
 // resolve refused it as resolve_reason_unbound_symbol.
 data vpw_fn_literal_in_arm_source: String = "module v2.test.vpw_fn_literal_in_arm\n\nimport v2.std.logic { Bool }\n\nfn vpw_then(o: Bool, f: Bool) -> Bool { o }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match p {\n    true =>\n      vpw_then(\n        o: p,\n        f: fn(token_stream) {\n          match token_stream {\n            true => token_stream\n            false => p\n          }\n        }\n      )\n    false => p\n  }\n}\n"
 
+// FN LITERALS AS RECORD FIELDS INSIDE A CALL ARGUMENT (warm-bear-132's 02_parse c01376 / c02555 and
+// grammar c01874 shapes): the argument value is folded bottom-up before it is read, and a function
+// value must reach its producer unfolded. A single-atom body once came back unread, and a
+// record-construct body as an Arrow the post-normalize well-formedness gate refused.
+data vpw_fn_literal_record_source: String = "module v2.test.vpw_fn_literal_record\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_record(r: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool {\n  vpw_apply_record(\n    r: VpwAlgebra {\n      leaf: fn(t) { t },\n      node: fn(l, r) { VpwPair { a: l, b: r } }\n    },\n    v: p\n  )\n}\n"
+
 data vpw_arg_call_source: String = "module v2.test.vpw_arg_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_id(p: vpw_id(p: vpw_undeclared_argument)) }\n"
 
 fn vpw_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
@@ -264,7 +270,10 @@ data vpw_shape_ingest: SourceRootIngest = Cons {
         head: vpw_read(source: vpw_arg_lambda_source, id: ^vpw_arg_lambda_artifact, unit: ^vpw_arg_lambda_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_lambda.dag"),
         tail: Cons {
           head: vpw_read(source: vpw_arg_fn_literal_source, id: ^vpw_arg_fn_literal_artifact, unit: ^vpw_arg_fn_literal_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_fn_literal.dag"),
-          tail: Empty
+          tail: Cons {
+            head: vpw_read(source: vpw_fn_literal_record_source, id: ^vpw_fn_literal_record_artifact, unit: ^vpw_fn_literal_record_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_fn_literal_record.dag"),
+            tail: Empty
+          }
         }
       }
     }
@@ -451,4 +460,39 @@ test fn a_fn_literal_in_a_match_arm_binds_its_parameter_for_its_match_body() -> 
       vpw_is_resolved(v: v)
     VpwContextRefused => false
   }
+}
+
+// Any lowered node that is a function value binding `binder` whose body is that binder's own use.
+fn vpw_any_function_value_using(binder: Symbol) -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
+      a || vpw_is_lambda_using_its_binder(n: n, binder: binder)
+    })
+  })
+}
+
+// Any lowered Arrow binding `binder` in its domain, whatever its body.
+fn vpw_any_function_value_binding(binder: Symbol) -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
+      a || (match n.kind {
+        TypeNode { connective: Arrow } =>
+          match vpw_domain_binds(arrow: n, binder: binder) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        _ => false
+      })
+    })
+  })
+}
+
+test fn a_fn_literal_record_field_with_a_single_atom_body_lowers_unfolded() -> Bool {
+  vpw_any_function_value_using(binder: ^t)
+}
+
+// The shape ingest refuses as a whole if the record-construct-bodied literal's Arrow fails the
+// post-normalize well-formedness gate, so this claim is also that gate's control.
+test fn a_fn_literal_record_field_with_a_record_construct_body_lowers_well_formed() -> Bool {
+  vpw_any_function_value_binding(binder: ^l)
 }
