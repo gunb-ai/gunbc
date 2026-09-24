@@ -618,7 +618,12 @@ fn issue_tracker_root_css() -> String {
 // rules are the load-bearing half: the wrappers generate no boxes, so the header's and each row's
 // cells parent DIRECTLY into the table's one grid; the band-filter hide rules and the search
 // filter's inline display still beat contents (display: none from either channel wins), so
-// filtering is untouched.
+// filtering is untouched. VERTICAL ALIGNMENT (owner complaint 2026-09-24, staggered rows): the
+// grid aligns items stretch, never baseline — under baseline each cell shrank to its own content
+// and every border-bottom drew at a different height, so one row showed a cascade of offsets. Under
+// stretch every cell spans the row's full height, so the underlines are one continuous line; the
+// text rides a line-height equal to the row-height token (vertical centering without flex, which
+// would break the ellipsis chain), and the actions cell centers its buttons on the same law.
 fn roadmap_instance_rules_head() -> List<BuildRule> {
   [
     StaticRule { selector: RawSelector { text: "*" }, decls: [
@@ -952,7 +957,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Display, value: "grid"),
       decl(prop: GridTemplateColumns, value: issue_results_row_tracks()),
       decl(prop: Gap, value: join([scale_var(t: space_6), " ", scale_var(t: space_8)], "")),
-      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: AlignItems, value: "stretch"),
     ] },
     StaticRule { selector: RawSelector { text: ".issue-table ul" }, decls: [
       decl(prop: Display, value: "contents"),
@@ -1003,6 +1008,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
       decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
       decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
+      decl(prop: LineHeight, value: scale_var(t: roadmap_row_height)),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-cell-title" }, decls: [
       decl(prop: Color, value: "var(--issue-text)"),
@@ -1022,7 +1028,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     ] },
     StaticRule { selector: ClassSelector { name: "issue-row-actions" }, decls: [
       decl(prop: Display, value: "flex"),
-      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: AlignItems, value: "center"),
       decl(prop: Gap, value: scale_var(t: space_8)),
       decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
       decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
