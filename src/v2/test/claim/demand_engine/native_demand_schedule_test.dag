@@ -20,18 +20,19 @@ import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
 import std.algebra { Cons, Empty }
 import v2.std.text { String }
-import v2.compiler.compile { NativeLaneUniverseModule }
-import std.content_hash { Fnv1a64Structural }
-import std.materialization_provider { DeclaredInput }
-import std.types { NonEmptyStr }
-import v2.compiler.native_demand_schedule {
+import v2.compiler.compile {
   NativeDemandPlan,
   NativeDemandValue,
+  NativeLaneUniverseModule,
   native_demand_eval_identity,
   native_demand_infer_identity,
   native_demand_plan,
   native_demand_resolve_identity
 }
+import std.content_hash { Fnv1a64Structural }
+import std.materialization_provider { DeclaredInput }
+import std.types { NonEmptyStr }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
