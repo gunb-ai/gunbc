@@ -626,8 +626,8 @@ import v2.std.collection { List }
 // read as changed and each claim was judged at ~210,000 eval steps against the 72,300 new-witness
 // budget, almost all of it the ingest the claims are not about.
 // THE XL-2 REHEARSAL CONTROL ROW IS THE census_probe_outcomes GROUND AGAIN: test.claim
-// .namespace_xl2_rehearsal_census drives native_test_context_from_ingest three times (the cut, the
-// pre-cut differential, the duplicated-path control) over two- and three-specimen ingests, and its
+// .namespace_xl2_rehearsal_census drives native_test_context_from_ingest once per field of
+// Xl2ControlRuns (read the type for the roster, not a count here) over two- and three-specimen ingests, and its
 // claims each read one field of the resulting Xl2ControlRuns (GitObjectIds, diagnostics chains, strip coordinate rows -- no resolution context,
 // no closure). WARM for the same arithmetic: one front end is more than one claim's budget.
 //
@@ -806,6 +806,13 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_import_consumer_a",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_import_consumer_b",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_relay_consumer",
+  "v2.test.claim.reference_closure.rc_fixture_normalized",
+  "v2.test.claim.reference_closure.rc_resolved_entry",
+  "v2.test.claim.reference_closure.rc_resolved_imported",
+  "v2.test.claim.reference_closure.rc_resolved_dotted",
+  "v2.test.claim.reference_closure.rc_resolved_transitive",
+  "v2.test.claim.reference_closure.rc_resolved_logic",
+  "v2.test.claim.reference_closure.rc_resolved_broken_entry",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_normalized",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_parsed",
   "v2.extdeps.languages.dag.dag_canonical_symbol_map",
