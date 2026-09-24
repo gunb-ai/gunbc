@@ -1,0 +1,287 @@
+module gunbc.machine_intake_mtcollins1_maintenance_hold
+
+import std.types { Bool, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.durable_compare_and_set { CasGeneration }
+import v2.std.optional { Present, Absent }
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, DurableHoldReleaseRef,
+  HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
+}
+import gunbc.durable_exclusive_hold_file_store {
+  FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
+  FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
+  FileHoldReleasePlanned, FileHoldReleaseNotEligible,
+  FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable,
+  file_hold_acquire, file_hold_release_assess, file_hold_release_commit, observe_file_hold,
+}
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.machine_intake_mtcollins1_standing_ruling { StandingRulingConfirmation }
+import std.decl_ref { decl_ref }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_mtcollins1 }
+
+// ── THE INTERLOCK THE PER-RUN APPROVAL WAS PROVIDING WITHOUT SAYING SO ────────────────────────
+//
+// Until 2026-09-23 every Mt. Collins boot waited for one operator tap, and the operator tapped only
+// when nobody had hands in the chassis. That consent carried two facts: "this effect may run" and
+// "the unit is not under maintenance right now". The operator ruling of 2026-09-23 retired the
+// first (the boot is a recurring automated effect; gunbc.auth.privileged_effect_census derives the
+// federated pattern for it). The second is a physical-safety fact about the unit, not about who may
+// authorize, so it does not dissolve with the approval stage: a boot that power-cycles a unit whose
+// DIMMs are being reseated is the harm. It is carried here as ONE std.durable_exclusive_hold slot
+// per unit, keyed by the machine name the signed subject already uses.
+//
+// ONE SLOT, TWO KINDS OF HOLDER, AND THAT IS THE POINT. The operator takes the slot for
+// maintenance; the boot run takes the SAME slot before any BMC actuation and frees it after. So
+// the boot refuses while the operator holds it (FileHoldOccupied, typed, naming the holder), the
+// operator cannot start maintenance mid-boot without seeing the run as holder, and two boot runs
+// exclude each other -- the exclusion the grant-keyed authorization claim slot supplied, now keyed
+// by the unit rather than by an approval that no longer exists.
+//
+// THE STORE IS THE FILE-BACKED CAS ON THE RUNNER HOST (gunbc.durable_exclusive_hold_file_store),
+// where the boot job runs and where the operator's own session takes the hold. An undecodable slot
+// or an unavailable store REFUSES the boot: an interlock that cannot be read is not released.
+
+data unit_hold_store_root: NonEmptyStr = "/var/lib/gunbc/unit-holds" as NonEmptyStr
+
+data mtcollins1_unit_hold_key: NonEmptyStr = operator_host_mtcollins1 as NonEmptyStr
+
+// The host the store lives on: the srv1 runner, where the boot job is pinned and where the operator
+// takes maintenance holds. Every hold-owning root of this unit runs there.
+data mtcollins1_unit_hold_store_host: NonEmptyStr = operator_host_srv1 as NonEmptyStr
+
+// WHO HOLDS THE UNIT IS A DECLARED SUM (review 70459), each kind carrying its detail. The durable
+// owner string is RENDERED from it and DECODED back to it here, in one place: nothing else builds an
+// owner string or reads a kind out of one.
+type UnitHoldOwner
+  = OperatorMaintenance { reason: NonEmptyStr }
+  | BootRun { run_id: NonEmptyStr }
+  | HostResetReturn { attempt: NonEmptyStr }
+
+fn unit_hold_owner_tag(o: UnitHoldOwner) -> String {
+  match o {
+    OperatorMaintenance { reason: _ } => "operator-maintenance:"
+    BootRun { run_id: _ } => "mtcollins1-boot:"
+    HostResetReturn { attempt: _ } => "host-reset-return:"
+  }
+}
+
+fn unit_hold_owner_detail(o: UnitHoldOwner) -> String {
+  match o {
+    OperatorMaintenance { reason: r } => r as String
+    BootRun { run_id: r } => r as String
+    HostResetReturn { attempt: a } => a as String
+  }
+}
+
+fn unit_hold_owner_ref(o: UnitHoldOwner) -> DurableHoldOwnerRef {
+  concat(unit_hold_owner_tag(o: o), unit_hold_owner_detail(o: o)) as DurableHoldOwnerRef
+}
+
+fn unit_hold_owner_label(o: UnitHoldOwner) -> String {
+  match o {
+    OperatorMaintenance { reason: r } => concat("operator maintenance: ", r as String)
+    BootRun { run_id: r } => concat("the mtcollins1 boot run ", r as String)
+    HostResetReturn { attempt: a } => concat("host reset-return attempt ", a as String)
+  }
+}
+
+// THE DECODE IS TOTAL OVER THE THREE TAGS AND REFUSES ANYTHING ELSE: an owner string written by
+// something other than this module is not guessed into a kind.
+type UnitHoldOwnerDecode
+  = UnitHoldOwnerDecoded { owner: UnitHoldOwner }
+  | UnitHoldOwnerUnrecognized { raw: String }
+
+fn unit_hold_owner_detail_after(raw: String, tag: String) -> NonEmptyStr? {
+  let rest = substring(s: raw, start: string_length(tag), end: string_length(raw))
+  if rest == "" { none } else { Present { value: rest as NonEmptyStr } }
+}
+
+fn decode_unit_hold_owner(owner: DurableHoldOwnerRef) -> UnitHoldOwnerDecode {
+  let raw = owner as String
+  let op = unit_hold_owner_tag(o: OperatorMaintenance { reason: "x" as NonEmptyStr })
+  let boot = unit_hold_owner_tag(o: BootRun { run_id: "x" as NonEmptyStr })
+  let reset = unit_hold_owner_tag(o: HostResetReturn { attempt: "x" as NonEmptyStr })
+  if starts_with(s: raw, prefix: op) {
+    match unit_hold_owner_detail_after(raw: raw, tag: op) { Present { value: d } => UnitHoldOwnerDecoded { owner: OperatorMaintenance { reason: d } }  Absent => UnitHoldOwnerUnrecognized { raw: raw } }
+  } else if starts_with(s: raw, prefix: boot) {
+    match unit_hold_owner_detail_after(raw: raw, tag: boot) { Present { value: d } => UnitHoldOwnerDecoded { owner: BootRun { run_id: d } }  Absent => UnitHoldOwnerUnrecognized { raw: raw } }
+  } else if starts_with(s: raw, prefix: reset) {
+    match unit_hold_owner_detail_after(raw: raw, tag: reset) { Present { value: d } => UnitHoldOwnerDecoded { owner: HostResetReturn { attempt: d } }  Absent => UnitHoldOwnerUnrecognized { raw: raw } }
+  } else {
+    UnitHoldOwnerUnrecognized { raw: raw }
+  }
+}
+
+fn host_reset_owner(attempt: NonEmptyStr) -> DurableHoldOwnerRef {
+  unit_hold_owner_ref(o: HostResetReturn { attempt: attempt })
+}
+
+// The operator names why they hold the unit; the reason is the owner, so a refused boot prints it.
+data mtcollins1_maintenance_reason_env: NonEmptyStr = "GUNBC_MTCOLLINS1_MAINTENANCE_REASON"
+
+fn operator_maintenance_owner(reason: NonEmptyStr) -> DurableHoldOwnerRef {
+  unit_hold_owner_ref(o: OperatorMaintenance { reason: reason })
+}
+
+fn boot_run_owner(run_id: NonEmptyStr) -> DurableHoldOwnerRef {
+  unit_hold_owner_ref(o: BootRun { run_id: run_id })
+}
+
+// ── THE PROOF: MINTED ONLY INSIDE THE LIVE ACQUIRE'S FileHoldAcquired ARM ──────────────────────
+// Every function that performs a BMC write on a hold-gated unit takes a UnitHoldProof, and the
+// proof is sole_constructor: the compiler refuses a UnitHoldProof literal anywhere but this module
+// (SoleConstructorViolation), and this module mints one in exactly one place -- the FileHoldAcquired
+// arm of unit_hold_acquire, right after the live compare-and-set landed. A supplied or authored
+// acquire outcome therefore cannot become a proof: the pure refusal fold below reads outcomes, and
+// it returns text, never a proof. test.claim.machine_intake.mtcollins1_maintenance_hold_witness_test
+// enrolls test.probe.unit_hold_proof_forged_probe, where a forged proof is refused at the literal.
+type UnitHoldProof sole_constructor {
+  root: NonEmptyStr
+  key: NonEmptyStr
+  owner: DurableHoldOwnerRef
+  generation: CasGeneration
+}
+
+type UnitHoldAcquisition
+  = UnitHeld { proof: UnitHoldProof }
+  | UnitHoldRefused { reason: NonEmptyStr }
+
+// THE DECISION TEXT IS A PURE FOLD OVER THE STORE'S TYPED OUTCOME, and it is the only thing a
+// supplied outcome may feed. Absent means the outcome was an acquisition; it never mints anything.
+fn unit_hold_refusal(outcome: FileHoldAcquireOutcome) -> NonEmptyStr? {
+  match outcome {
+    FileHoldAcquired { slot_key: _, owner: _, generation: _ } => none
+    FileHoldOccupied { slot_key: k, holder: h, generation: _ } =>
+      Present { value: join(["unit ", k as String, " is held by '", h as String, "'; no BMC actuation until it is released; controller untouched"], "") as NonEmptyStr }
+    FileHoldAcquireLost { slot_key: k } =>
+      Present { value: join(["lost the race for unit hold ", k as String, "; controller untouched"], "") as NonEmptyStr }
+    FileHoldAcquireStoreUnavailable { slot_key: k, cause: _ } =>
+      Present { value: join(["unit hold store unavailable for ", k as String, "; an unreadable interlock is not a released one; controller untouched"], "") as NonEmptyStr }
+    FileHoldSlotUndecodable { slot_key: k, generation: _, detail: d } =>
+      Present { value: join(["unit hold ", k as String, " undecodable (", d as String, "); controller untouched"], "") as NonEmptyStr }
+    FileHoldKeyNotSlotAddressable { slot_key: k } =>
+      Present { value: join(["unit hold key ", k as String, " is not slot-addressable; controller untouched"], "") as NonEmptyStr }
+  }
+}
+
+// THE ONE MINT. The live acquire and the proof are one boundary: the proof exists only when the
+// compare-and-set this call performed committed a hold for this owner.
+fn unit_hold_acquire(ruling: StandingRulingConfirmation, root: NonEmptyStr, key: NonEmptyStr, owner: DurableHoldOwnerRef) -> UnitHoldAcquisition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_boot_acquire_unit_hold"),
+    decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
+  ]
+{
+  let outcome = file_hold_acquire(root: root, slot_key: key, requested_owner: owner)
+  match outcome {
+    FileHoldAcquired { slot_key: _, owner: o, generation: g } =>
+      UnitHeld { proof: UnitHoldProof { root: root, key: key, owner: o, generation: g } }
+    _ =>
+      match unit_hold_refusal(outcome: outcome) {
+        Present { value: r } => UnitHoldRefused { reason: r }
+        Absent => UnitHoldRefused { reason: "unit hold outcome unclassified; controller untouched" as NonEmptyStr }
+      }
+  }
+}
+
+fn unit_hold_proof_key(proof: UnitHoldProof) -> NonEmptyStr {
+  proof.key
+}
+
+fn mtcollins1_boot_acquire_unit_hold(ruling: StandingRulingConfirmation, run_id: NonEmptyStr) -> UnitHoldAcquisition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
+  ]
+{
+  unit_hold_acquire(ruling: ruling, root: unit_hold_store_root, key: mtcollins1_unit_hold_key, owner: boot_run_owner(run_id: run_id))
+}
+
+// THE RELEASE CONSUMES THE PROOF AND KEEPS THE STEP'S OWN OUTCOME, saying when the hold was left: a
+// run that actuated and then failed to free the unit has still actuated, and an operator reading a
+// bare success would not know the next run will refuse on a stale holder.
+type UnitHoldReleaseOutcome
+  = UnitHoldReleasedCleanly
+  | UnitHoldLeftHeld { cause: NonEmptyStr }
+
+fn unit_hold_release_outcome(proof: UnitHoldProof) -> UnitHoldReleaseOutcome {
+  match file_hold_release_assess(root: proof.root, slot_key: proof.key, owner: proof.owner, acquired_generation: proof.generation, released_by: proof.owner as String as DurableHoldReleaseRef) {
+    FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => UnitHoldLeftHeld { cause: "the slot no longer showed this run's hold" as NonEmptyStr }
+    FileHoldReleasePlanned { plan: p } =>
+      match file_hold_release_commit(plan: p) {
+        FileHoldReleased { slot_key: _, generation: _ } => UnitHoldReleasedCleanly
+        FileHoldReleaseLost { slot_key: _ } => UnitHoldLeftHeld { cause: "the slot moved before the release committed" as NonEmptyStr }
+        FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => UnitHoldLeftHeld { cause: "the store refused the release" as NonEmptyStr }
+        FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => UnitHoldLeftHeld { cause: "the key is not slot-addressable" as NonEmptyStr }
+      }
+  }
+}
+
+fn unit_hold_release(proof: UnitHoldProof, outcome: ProcessExit) -> ProcessExit {
+  match unit_hold_release_outcome(proof: proof) {
+    UnitHoldReleasedCleanly => outcome
+    UnitHoldLeftHeld { cause: c } =>
+      exit_failure(reason: join(["unit hold ", proof.key as String, " left held (", c as String, "); step outcome was: ", match outcome {
+        ExitSuccess => "success"
+        ExitFailure { code: _, reason: r } => concat("failure: ", r)
+      }], ""))
+  }
+}
+
+// A BMC WRITE PATH ASKS THIS BEFORE ITS FIRST REQUEST: the proof must be for this unit's slot. A
+// proof for another unit is still a proof, so the key is compared rather than assumed.
+fn unit_hold_proof_refusal(proof: UnitHoldProof, key: NonEmptyStr, label: String) -> String? {
+  if (proof.key as String) == (key as String) {
+    none
+  } else {
+    Present { value: join([label, ": unit hold proof is for '", proof.key as String, "', not '", key as String, "'; controller untouched"], "") }
+  }
+}
+
+// ── The operator's side: two entries run in the operator's own session on the runner host ──────
+fn mtcollins1_maintenance_hold_take() -> ProcessExit {
+  let reason = actions_variable_trimmed(name: mtcollins1_maintenance_reason_env)
+  if reason == "" {
+    return exit_failure(reason: concat(mtcollins1_maintenance_reason_env as String, " is unset; a maintenance hold names why the unit is held"))
+  }
+  match file_hold_acquire(root: unit_hold_store_root, slot_key: mtcollins1_unit_hold_key, requested_owner: operator_maintenance_owner(reason: reason as NonEmptyStr)) {
+    FileHoldAcquired { slot_key: _, owner: _, generation: _ } => ExitSuccess
+    FileHoldOccupied { slot_key: _, holder: h, generation: _ } =>
+      exit_failure(reason: concat("mtcollins1 maintenance hold: unit already held by ", h as String))
+    FileHoldAcquireLost { slot_key: _ } => exit_failure(reason: "mtcollins1 maintenance hold: lost the race; re-run")
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: "mtcollins1 maintenance hold: store unavailable; the unit is NOT held")
+    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } => exit_failure(reason: concat("mtcollins1 maintenance hold: slot undecodable: ", d as String))
+    FileHoldKeyNotSlotAddressable { slot_key: _ } => exit_failure(reason: "mtcollins1 maintenance hold: key not slot-addressable")
+  }
+}
+
+// THE OPERATOR RELEASES ONLY AN OPERATOR HOLD: a boot's own hold is the boot's to free, and freeing
+// it from outside would let a second boot start while the first still drives the BMC.
+fn mtcollins1_maintenance_hold_release() -> ProcessExit {
+  match observe_file_hold(root: unit_hold_store_root, key: mtcollins1_unit_hold_key) {
+    HoldSlotAbsent => exit_failure(reason: "mtcollins1 maintenance hold: no hold was ever taken")
+    HoldSlotFree { generation: _, released_by: b } => exit_failure(reason: concat("mtcollins1 maintenance hold: already free (released by ", concat(b as String, ")")))
+    HoldSlotUndecodable { generation: _, detail: d } => exit_failure(reason: concat("mtcollins1 maintenance hold: slot undecodable: ", d as String))
+    HoldObservationUnavailable { cause: _ } => exit_failure(reason: "mtcollins1 maintenance hold: store unavailable")
+    HoldSlotHeld { generation: g, owner: o } =>
+      match decode_unit_hold_owner(owner: o) {
+        UnitHoldOwnerUnrecognized { raw: r } =>
+          exit_failure(reason: concat("mtcollins1 maintenance hold: held by an owner this module did not write, so it is not released from here: ", r))
+        UnitHoldOwnerDecoded { owner: BootRun { run_id: r } } =>
+          exit_failure(reason: concat("mtcollins1 maintenance hold: held by ", concat(unit_hold_owner_label(o: BootRun { run_id: r }), ", not by maintenance; that run frees its own hold")))
+        UnitHoldOwnerDecoded { owner: HostResetReturn { attempt: a } } =>
+          exit_failure(reason: concat("mtcollins1 maintenance hold: held by ", concat(unit_hold_owner_label(o: HostResetReturn { attempt: a }), ", not by maintenance; that run frees its own hold")))
+        UnitHoldOwnerDecoded { owner: OperatorMaintenance { reason: _ } } =>
+        match file_hold_release_assess(root: unit_hold_store_root, slot_key: mtcollins1_unit_hold_key, owner: o, acquired_generation: g, released_by: "operator-maintenance-release" as DurableHoldReleaseRef) {
+          FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => exit_failure(reason: "mtcollins1 maintenance hold: slot moved before release; re-run")
+          FileHoldReleasePlanned { plan: p } =>
+            match file_hold_release_commit(plan: p) {
+              FileHoldReleased { slot_key: _, generation: _ } => ExitSuccess
+              FileHoldReleaseLost { slot_key: _ } => exit_failure(reason: "mtcollins1 maintenance hold: lost the release race; re-run")
+              FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: "mtcollins1 maintenance hold: store refused the release; the unit is STILL held")
+              FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => exit_failure(reason: "mtcollins1 maintenance hold: key not slot-addressable")
+            }
+        }
+      }
+  }
+}

@@ -311,6 +311,7 @@ fn heal_workflow_job() -> Job {
     id: heal_workflow_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
+    environment: none,
     steps: list_map(xs: heal_workflow_bound_steps(), f: fn(b) { b.step }),
     needs: [],
     env: none,
