@@ -2217,18 +2217,8 @@ fn infer_gather_transform_row_on_entries(
     match infer_transform_freemonoid_introduction(node: node, entries: entries, tree: tree) {
       Absent =>
         infer_gather_transform_frontier_on_entries(node: node, entries: entries, pending: pending, partials: partials, tree: tree)
-      Present { value: Rejected { diagnostics: r } } =>
-        infer_gather_fold_acc_failed(
-          node: node,
-          pending: rejected_with_pending(pending: pending, rejected: r),
-          await_branch_row: false,
-          await_match_row: false,
-          await_loop_row: false,
-          await_transform_row: false,
-          children_remaining: 0
-        )
-      Present { value: Accepted { value: facts, diagnostics: d } } =>
-        match admitted_inferred_facts_entry(node: node, facts: facts) {
+      Present { value: introduced } =>
+        match introduced {
           Rejected { diagnostics: r } =>
             infer_gather_fold_acc_failed(
               node: node,
@@ -2239,17 +2229,30 @@ fn infer_gather_transform_row_on_entries(
               await_transform_row: false,
               children_remaining: 0
             )
-          Accepted { value: entry, diagnostics: ed } =>
-            infer_gather_fold_acc_ok(
-              node: node,
-              entries: list_snoc_item(xs: entries, item: entry),
-              pending: diagnostics_merge(outer: diagnostics_merge(outer: pending, inner: d), inner: ed),
-              await_branch_row: false,
-              await_match_row: false,
-              await_loop_row: false,
-              await_transform_row: false,
-              children_remaining: 0
-            )
+          Accepted { value: facts, diagnostics: d } =>
+            match admitted_inferred_facts_entry(node: node, facts: facts) {
+              Rejected { diagnostics: r } =>
+                infer_gather_fold_acc_failed(
+                  node: node,
+                  pending: rejected_with_pending(pending: pending, rejected: r),
+                  await_branch_row: false,
+                  await_match_row: false,
+                  await_loop_row: false,
+                  await_transform_row: false,
+                  children_remaining: 0
+                )
+              Accepted { value: entry, diagnostics: ed } =>
+                infer_gather_fold_acc_ok(
+                  node: node,
+                  entries: list_snoc_item(xs: entries, item: entry),
+                  pending: diagnostics_merge(outer: diagnostics_merge(outer: pending, inner: d), inner: ed),
+                  await_branch_row: false,
+                  await_match_row: false,
+                  await_loop_row: false,
+                  await_transform_row: false,
+                  children_remaining: 0
+                )
+            }
         }
     }
   } else {
