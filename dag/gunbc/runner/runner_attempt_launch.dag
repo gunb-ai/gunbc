@@ -732,10 +732,13 @@ fn stage_jit_device(device: JitDeviceStaging) -> JitDeviceStagingOutcome
       if wrote.success == false {
         JitDeviceStagingRefused { step: JitDeviceWriteStep, detail: device.host_path }
       } else {
+        let uid_outcome = run_shell_command_capture(command: stat_owner_uid_command(path: device.host_path), transport: LocalExec)
+        let mode_outcome = run_shell_command_capture(command: stat_mode_command(path: device.host_path), transport: LocalExec)
+        let size_outcome = run_shell_command_capture(command: stat_size_bytes_command(path: device.host_path), transport: LocalExec)
         match jit_device_readback(
-          uid: stat_field_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: device.host_path), transport: LocalExec)),
-          mode: stat_field_reading(outcome: run_shell_command_capture(command: stat_mode_command(path: device.host_path), transport: LocalExec)),
-          size: stat_field_reading(outcome: run_shell_command_capture(command: stat_size_bytes_command(path: device.host_path), transport: LocalExec)),
+          uid: stat_field_reading(outcome: uid_outcome),
+          mode: stat_field_reading(outcome: mode_outcome),
+          size: stat_field_reading(outcome: size_outcome),
           content: device.content,
         ) {
           Present { value: refused } => refused
