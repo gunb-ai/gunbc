@@ -6,7 +6,7 @@ import extdeps.ntfy.access { NtfyRoleAdmin, NtfyRoleUser, NtfyReadWrite, ntfy_ac
 import extdeps.exec.command { LocalExec, SshExec, argv_words }
 import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned, process_observation }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
-import gunbc.command_runner { run_shell_command_observe, run_shell_command_observe_outcome }
+import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.remote_shell_command { Unknown }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_count_for_subject }
@@ -31,8 +31,6 @@ import gunbc.auth.approval_ntfy_access_readback {
   NtfyRuntimeReading, RuntimeUnitUnresolved, RuntimeReadsTaken, NtfyRuntimeReads,
   approval_ntfy_channel_verdict, approval_ntfy_read_command, approval_ntfy_unit_main_pid,
 }
-import gunbc.auth.approval_device_routes { issue_device_enrolment_code }
-import gunbc.auth.approval_device_redemption { approval_device_store_root }
 
 // ── Enrolment-code issuance: one root, modeled reads, a verdict bound to the running server ──
 // EVERY fx_* READING BELOW IS REAL unless its claim says SYNTHETIC. Each FxRead is the exit status,
@@ -1027,26 +1025,6 @@ test fn a_duplicated_principal_refuses() -> Bool {
   }
 }
 
-// ── THE ROOT, BY REAL EXECUTION (claim_batch --wet) ─────────────────────────────────────────
-// issue_device_enrolment_code accepts nothing, so this claim calls it exactly as production does.
-// On a host with no gunbc-ntfy unit (a CI runner, a session container) its own first read fails,
-// and the verb must refuse on THAT read, by name, before the store is touched. Forcing the verdict
-// -- the verb proceeding without its reading -- turns this red: it then goes on to the clock, the
-// entropy and the store instead.
-fn path_exists(path: String) -> Bool {
-  run_shell_command_observe(command: posix_sh_program_command(script: "test -e '" + path + "'\n"), transport: LocalExec).exit_code == 0
-}
-
-test fn the_root_refuses_on_its_own_failed_first_read_by_real_execution() -> Bool {
-  let before = path_exists(path: approval_device_store_root as String)
-  let r = issue_device_enrolment_code()
-  !before
-    && (match r {
-      CliWireUnprintable { cause: c } => string_contains(s: c as String, pattern: "refused before any code was minted") && string_contains(s: c as String, pattern: "the read of the unit (first) failed")
-      _ => false
-    })
-    && !path_exists(path: approval_device_store_root as String)
-}
 
 // ── THE SEALS: no second root compiles ─────────────────────────────────────────────────────
 // A fresh module reaching each effect leaf, and the runtime reader, from an unadmitted

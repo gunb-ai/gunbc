@@ -1446,6 +1446,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_device_enrolment_code_wet_witness_test", function: "the_code_slot_is_written_before_delivery_by_real_execution" },
+      entry: "dag/test/claim/approval_device_enrolment_code_wet_witness_test.dag",
+      function: "the_code_slot_is_written_before_delivery_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_device_enrolment_code_wet_witness_test", function: "the_minted_enrolment_code_carries_128_bits_as_32_lowercase_hex_by_real_execution" },
+      entry: "dag/test/claim/approval_device_enrolment_code_wet_witness_test.dag",
+      function: "the_minted_enrolment_code_carries_128_bits_as_32_lowercase_hex_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_ntfy_access_readback_wet_witness_test", function: "the_root_refuses_before_minting_on_this_host_by_real_execution" },
+      entry: "dag/test/claim/approval_ntfy_access_readback_wet_witness_test.dag",
+      function: "the_root_refuses_before_minting_on_this_host_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.durable_cas_file_store_wet_witness", function: "a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution" },
       entry: "dag/test/claim/durable_cas_file_store_wet_witness_test.dag",
       function: "a_missing_slot_root_refuses_rather_than_reading_absent_by_real_execution",

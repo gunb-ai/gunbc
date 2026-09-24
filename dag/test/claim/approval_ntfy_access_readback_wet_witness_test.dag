@@ -1,0 +1,35 @@
+module test.claim.approval_ntfy_access_readback_wet_witness_test
+
+import std.logic { Bool }
+import std.types { String }
+import extdeps.exec.command { LocalExec }
+import extdeps.posix.sh_invocation { posix_sh_program_command }
+import gunbc.command_runner { run_shell_command_observe }
+import gunbc.cli_wire { CliWireResponse, CliWireUnprintable }
+import gunbc.auth.approval_device_routes { issue_device_enrolment_code }
+import gunbc.auth.approval_device_redemption { approval_device_store_root }
+
+// THE ROOT, BY REAL EXECUTION, on the required floor's local-repo wet lane
+// (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule): issue_device_enrolment_code accepts
+// nothing, so this claim calls it exactly as production does, and its eighteen reads are
+// shell.Exec.RunArgv, which the hermetic route has no published mock case for. The verdict over
+// every reading is refusal -- a failed or inactive unit, any runtime gap, and, on a host where every
+// modeled read holds, ActiveProcessJoinsUnbound -- so the claim holds on ANY host: the verb refuses
+// before any code is minted and the store root is never created. Forcing the verdict (the verb
+// proceeding without its reading) reds it: it then goes on to the clock, the entropy and the store.
+// Every refusal arm is witnessed hermetically over supplied readings in
+// test.claim.approval_ntfy_access_readback_witness_test; this is the one claim that runs the real root.
+fn path_exists(path: String) -> Bool {
+  run_shell_command_observe(command: posix_sh_program_command(script: "test -e '" + path + "'\n"), transport: LocalExec).exit_code == 0
+}
+
+test fn the_root_refuses_before_minting_on_this_host_by_real_execution() -> Bool {
+  let before = path_exists(path: approval_device_store_root as String)
+  let r = issue_device_enrolment_code()
+  !before
+    && (match r {
+      CliWireUnprintable { cause: c } => string_contains(s: c as String, pattern: "refused before any code was minted")
+      _ => false
+    })
+    && !path_exists(path: approval_device_store_root as String)
+}

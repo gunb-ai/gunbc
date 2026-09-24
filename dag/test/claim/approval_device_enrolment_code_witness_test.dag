@@ -7,7 +7,7 @@ import gunbc.auth.approval_device_routes {
   EnrolmentCodeDeliveryReceipt, enrolment_code_delivery_line, enrolment_code_notification, approval_enrolment_code_notification_title,
   issue_and_deliver_enrolment_code_until, deliver_enrolment_code, EnrolmentCodeIssued, EnrolmentCodeIssuanceRefused,
   EnrolmentCodeDelivery, DeliveryAccepted, DeliveryRefused, DeliveryIndeterminate, enrolment_code_delivery_of, enrolment_code_issuance_response,
-  mint_enrolment_code,
+  enrolment_code_of_entropy,
 }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import extdeps.ntfy.ntfy { ntfy_publish_outcome_of, ntfy_publish_acceptance }
@@ -57,33 +57,6 @@ test fn the_delivered_receipt_comes_from_the_published_message_and_its_line_neve
     && message.topic == approval_ntfy_topic
 }
 
-// THE SLOT IS WRITTEN BEFORE ANY DELIVERY, by real execution against a fresh root: the write goes
-// through the file CAS, which the hermetic route has no arm for, so this claim runs on the wet
-// route (claim_batch --wet). Without a publisher token the outcome is IssuedNotDelivered and the
-// issued-code slot is readable afterwards; a second issuance of the same code refuses on the
-// occupied slot. Dropping the write, or publishing before it, reds this.
-test fn the_code_slot_is_written_before_delivery_by_real_execution() -> Bool {
-  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_enrol.XXXXXX").path
-  let root = root_path as NonEmptyStr
-  let publisher = PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "absent" }
-  let first = issue_and_deliver_enrolment_code_until(root: root, now: "2026-09-21T20:00:00Z", expires_at: fx_expires, code: fx_code, publisher: publisher)
-  let slot = observe_enrolment_slot(root: root, code: fx_code)
-  let second = issue_and_deliver_enrolment_code_until(root: root, now: "2026-09-21T20:00:00Z", expires_at: fx_expires, code: fx_code, publisher: publisher)
-  let removed = shell.Remove.RecursiveForce(path: root_path)
-  (match first {
-    EnrolmentCodeIssued { topic: _, expires_at: x, delivery: DeliveryRefused { detail: _ } } => x == fx_expires
-    _ => false
-  })
-    && (match slot {
-      EnrolmentCodeUnspent { challenge: c } => c.code == fx_code && c.expires_at == fx_expires
-      _ => false
-    })
-    && (match second {
-      EnrolmentCodeIssuanceRefused { cause: c } => string_contains(s: c, pattern: "occupied")
-      _ => false
-    })
-    && removed.success
-}
 
 // The remote argv runs the release's own binary over the release's own tree, as the operator's
 // POSIX user under non-interactive sudo, and names the verb by its module and function.
@@ -171,17 +144,16 @@ test fn a_transport_refusal_or_server_error_is_indeterminate_and_says_the_code_m
     })
 }
 
-// THE MINTED CODE IS 128 BITS: the real mint over the real entropy read yields 32 characters, each
-// a lowercase hex digit. Shrinking approval_enrolment_code_entropy, or switching the encoding, reds
-// this.
-fn fx_all_lower_hex_from(s: String, pos: Int) -> Bool {
-  if pos >= string_length(s: s) { true }
-  else { string_contains(s: "0123456789abcdef", pattern: char_at(s: s, pos: pos)) && fx_all_lower_hex_from(s: s, pos: pos + 1) }
-}
-
-test fn the_minted_enrolment_code_carries_128_bits_as_32_lowercase_hex() -> Bool {
-  match mint_enrolment_code() {
-    Present { value: c } => string_length(s: c as String) == 32 && fx_all_lower_hex_from(s: c as String, pos: 0)
+// THE CODE ENCODES 128 BITS AS 32 LOWERCASE HEX, over SUPPLIED entropy (DESIGN section 3: the
+// claim's subject is the encoding, so its input is a value, not a read): sixteen fixed octets give
+// exactly their lowercase hex, and fifteen or seventeen octets refuse rather than minting a shorter
+// or longer code. The real read is paired on the wet lane:
+// test.claim.approval_device_enrolment_code_wet_witness_test.
+test fn the_enrolment_code_is_sixteen_supplied_octets_as_lowercase_hex() -> Bool {
+  (match enrolment_code_of_entropy(octets_b64: "nzrB0gt+RMGl0+j2DCuRqg==") {
+    Present { value: c } => (c as String) == "9f3ac1d20b7e44c1a5d3e8f60c2b91aa"
     Absent => false
-  }
+  })
+    && (match enrolment_code_of_entropy(octets_b64: "nzrB0gt+RMGl0+j2DCuR") { Present { value: _ } => false  Absent => true })
+    && (match enrolment_code_of_entropy(octets_b64: "nzrB0gt+RMGl0+j2DCuRqgE=") { Present { value: _ } => false  Absent => true })
 }

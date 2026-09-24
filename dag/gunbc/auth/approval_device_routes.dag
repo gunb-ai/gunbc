@@ -634,9 +634,16 @@ data approval_enrolment_code_notification_title: NonEmptyStr = "Device enrolment
 
 fn mint_enrolment_code() -> NonEmptyStr? admit_callers: [
   decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_device_enrolment_code"),
-  decl_ref(module_path: "test.claim.approval_device_enrolment_code_witness_test", decl_name: "the_minted_enrolment_code_carries_128_bits_as_32_lowercase_hex"),
+  decl_ref(module_path: "test.claim.approval_device_enrolment_code_wet_witness_test", decl_name: "the_minted_enrolment_code_carries_128_bits_as_32_lowercase_hex_by_real_execution"),
 ] {
-  match base64_decode(s: trim(s: Urandom.ReadBytes(count: byte_size_count(b: approval_enrolment_code_entropy)).octets_b64), variant: Standard) {
+  enrolment_code_of_entropy(octets_b64: Urandom.ReadBytes(count: byte_size_count(b: approval_enrolment_code_entropy)).octets_b64)
+}
+
+// THE CODE AS A FUNCTION OF THE ENTROPY READ: the read's base64 octets decode, must number exactly
+// approval_enrolment_code_entropy, and encode as lowercase hex. Pure, so its encoding is witnessed
+// over supplied octets; mint_enrolment_code is the one caller that supplies the real read.
+fn enrolment_code_of_entropy(octets_b64: String) -> NonEmptyStr? {
+  match base64_decode(s: trim(s: octets_b64), variant: Standard) {
     Absent => none
     Present { value: octets } =>
       if count(octets) != byte_size_count(b: approval_enrolment_code_entropy) {
@@ -705,7 +712,7 @@ fn enrolment_code_issuance_response(i: EnrolmentCodeIssuance) -> CliWireResponse
 // published message and never from the code -- runs on the hermetic ntfy arm.
 fn issue_and_deliver_enrolment_code_until(root: NonEmptyStr, now: Timestamp, expires_at: Timestamp, code: NonEmptyStr, publisher: PublisherTokenRead) -> EnrolmentCodeIssuance admit_callers: [
   decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_device_enrolment_code"),
-  decl_ref(module_path: "test.claim.approval_device_enrolment_code_witness_test", decl_name: "the_code_slot_is_written_before_delivery_by_real_execution"),
+  decl_ref(module_path: "test.claim.approval_device_enrolment_code_wet_witness_test", decl_name: "the_code_slot_is_written_before_delivery_by_real_execution"),
 ] {
   match issue_enrolment_code(root: root, code: code, issued_at: now, expires_at: expires_at) {
     DeviceStoreSlotOccupied => EnrolmentCodeIssuanceRefused { cause: "the minted code's slot is already occupied; run again" }
