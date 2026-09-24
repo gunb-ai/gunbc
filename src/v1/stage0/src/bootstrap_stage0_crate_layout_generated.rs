@@ -51,6 +51,7 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "evaluation_budget_consequence_generated.rs",
     "gunbc_file_transport_generated.rs",
     "release_locus_seed_constants_generated.rs",
+    "fn_arrow_skeleton_seed_constants_generated.rs",
     "main.rs"
 ];
 

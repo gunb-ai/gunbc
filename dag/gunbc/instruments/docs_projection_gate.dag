@@ -33,7 +33,7 @@ import gunbc.generated_artifact {
   Stage0LinkedPartitionCratesArtifact,
   SeedRetentionFrontierGeneratedRsArtifact,
   V1InterpreterDispatchGeneratedRsArtifact,
-  EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact,
+  EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, FnArrowSkeletonSeedConstantsGeneratedRsArtifact,
   FileTransportRealizationGeneratedRsArtifact,
   Fci1BoundedExecutionContextArtifact,
   AutoinstallUserDataArtifact,
@@ -101,6 +101,7 @@ fn docs_projection_producer(a: GeneratedArtifact) -> Optional<String> {
     V1InterpreterDispatchGeneratedRsArtifact => Absent
     EvaluationBudgetConsequenceGeneratedRsArtifact => Absent
     ReleaseLocusSeedConstantsGeneratedRsArtifact => Absent
+    FnArrowSkeletonSeedConstantsGeneratedRsArtifact => Absent
     FileTransportRealizationGeneratedRsArtifact => Absent
     Fci1BoundedExecutionContextArtifact => Absent
     CouponCadQueryProgramArtifact => Absent

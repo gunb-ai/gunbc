@@ -398,7 +398,8 @@ data wet_actuator_generated_registrations: List<WetActuatorGeneratedRegistration
   WetActuatorGeneratedRegistration { basename: "v1_interpreter_dispatch_generated", declaration_route: MacroUsePubModSpliced },
   WetActuatorGeneratedRegistration { basename: "evaluation_budget_consequence_generated", declaration_route: PlainPubMod },
   WetActuatorGeneratedRegistration { basename: "gunbc_file_transport_generated", declaration_route: PlainPubMod },
-  WetActuatorGeneratedRegistration { basename: "release_locus_seed_constants_generated", declaration_route: PlainPubMod }
+  WetActuatorGeneratedRegistration { basename: "release_locus_seed_constants_generated", declaration_route: PlainPubMod },
+  WetActuatorGeneratedRegistration { basename: "fn_arrow_skeleton_seed_constants_generated", declaration_route: PlainPubMod }
 ]
 
 // THE CRATE EXPOSURE IS ITS OWN ENROLLMENT, and that is why this projection exists rather than the
