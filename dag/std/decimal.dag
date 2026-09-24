@@ -195,3 +195,44 @@ fn exact_decimal_wire(d: ExactDecimal) -> String {
     fixed_point_wire(value: c.units, decimals: c.fraction_digits)
   }
 }
+
+// ── Decimal digit text ───────────────────────────────────────────────────────────────────────
+// THE ONE PREDICATE for "this character is a decimal digit" and "this text is nothing but decimal
+// digits": the copies review 69672 of gunbc#12000 counted (gunbc.auth.approval_capability is_digit,
+// gunbc.build_cache.build_cache_endpoint_observe, gunbc.rust_item_host_observation,
+// gunbc.rust_item_scan) were cut over to it in the same change that added it, so a reader of a
+// fixed-width decimal field consumes it rather than minting its own. Hexadecimal digits are
+// extdeps.numeric.base16's, a different alphabet. THE BODY IS THE ORDERING TEST, NOT A TEN-WAY
+// EQUALITY CHAIN (review 70082 of gunbc#11989): three of the cut-over sites are per-character folds
+// over whole source trees, so the chain put up to a 5x constant on the innermost predicate of each.
+// DESIGN section 6, bare minimum cost: a proven cost-shape defect is always fixed regardless of the
+// realized n, because "n is small here" is not a time-stable fact. The ordering form is what
+// char_is_ident's neighbouring a-z and A-Z range tests already use, so it adds no convention.
+//
+// THE LENGTH GUARD IS NOT CEREMONY: IT IS WHAT KEEPS THIS TOTAL. String ordering is lexicographic,
+// so "12" >= "0" and "12" <= "9" BOTH HOLD -- the two-comparison form alone answers true for
+// multi-character text where the ten-way equality chain answered false. Every call site today
+// reaches this through char_at (decimal_digits_from; char_is_ident via leading_ident_from in
+// gunbc.rust_item_scan; digits_from in gunbc.rust_item_host_observation; leading_digits_from in
+// gunbc.build_cache.build_cache_endpoint_observe; is_digit in gunbc.auth.approval_capability,
+// whose caller folds char_at over the offsets), so no current consumer can reach the divergence --
+// but that is CALL-SITE COMPATIBILITY, not contract preservation. The parameter's enforced domain
+// is String, this is a PUBLIC std predicate, and a precondition that lives only in an annotation is
+// not a wall: no Accepted program can read one (section 4c), so a later caller may legally pass
+// "12" and be told it is a digit. DESIGN section 5 prefers construction to prose, and one length
+// check is a small price beside the nine comparisons this still removes. The eventual construction
+// is a typed single-character carrier that char_at produces, at which point the guard dissolves and
+// the body is the two comparisons; until that carrier exists the guard is the minimum honest form.
+fn decimal_digit_char(ch: String) -> Bool {
+  string_length(s: ch) == 1 && ch >= "0" && ch <= "9"
+}
+
+fn decimal_digits_from(s: String, i: Int) -> Bool {
+  if i >= string_length(s: s) { true } else { decimal_digit_char(ch: char_at(s: s, pos: i)) && decimal_digits_from(s: s, i: i + 1) }
+}
+
+// True for the empty text as well: "nothing but digits" holds vacuously, and a caller that also
+// needs non-emptiness says so beside it.
+fn decimal_digits_only(s: String) -> Bool {
+  decimal_digits_from(s: s, i: 0)
+}

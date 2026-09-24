@@ -16,7 +16,6 @@ pub use crate::extdeps_container_oci_digest::{
 };
 pub use crate::gunbc_structural_realization_bindings::literal_homomorphism_rows;
 pub use crate::std_algebra::carrier_container_equality_rows;
-pub use crate::std_algebra::AlgebraFieldTemplate;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
 pub use crate::std_coercion::{dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type};
@@ -62,7 +61,6 @@ pub use crate::std_literal_elaboration::{
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
-pub use crate::std_occurrence_identity::OccurrenceId;
 pub use crate::std_operator_realization::OperandDeclaration;
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
@@ -99,9 +97,9 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
 };
 pub use crate::v1_compiler_infer_env::{
     bare_name_miss_diagnostic, binding_declares_name, build_unit_variant_index,
-    census_declaration_type_env, declaration_provenance_of_ref, declaration_substitution_basis,
-    effective_visible_binding, empty_symbol_index, empty_type_env_cache,
-    env_with_type_variable_bindings, global_bare_is_ambiguous,
+    census_declaration_type_env, declaration_provenance_of_ref, declaration_ref_of_type_node,
+    declaration_substitution_basis, effective_visible_binding, empty_symbol_index,
+    empty_type_env_cache, env_with_type_variable_bindings, global_bare_is_ambiguous,
     global_bare_strict_ambiguity_candidates, inductive_fields_for, inductive_fields_list_to_map,
     is_recursive_type, is_recursive_type_by_name, listed_import_required_bare_call_blocked,
     lookup_binding_by_name, lookup_binding_on_chain, lookup_type, lookup_type_by_name,
@@ -123,10 +121,11 @@ use crate::v1_compiler_infer_items::ItemKind::{
 use crate::v1_compiler_infer_items::ModuleTypecheckProgress::{AbandonedBeforeItems, ItemsChecked};
 pub use crate::v1_compiler_infer_items::{
     inferred_to_outputs, item_is_effectful_callee, item_kind, leaf_owner_modules_from_registry,
+    resource_requirements_of_uses,
 };
 pub use crate::v1_compiler_infer_items::{
-    ItemInfo, ItemKind, ModuleInterface, ModuleTypecheckProgress, ResolvedGraph, TypedGraph,
-    TypedModule,
+    ItemInfo, ItemKind, ModuleInterface, ModuleTypecheckProgress, ResolvedGraph,
+    ResourceRequirement, TypedGraph, TypedModule,
 };
 use crate::v1_compiler_infer_lookup::ConstructorDeclarationLookup::{
     AdmissionBearingDeclarationUnavailable, ExactConstructorDeclaration,
@@ -192,9 +191,6 @@ use crate::v1_compiler_infer_sigs::ResolvedFormals::{
     DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext,
 };
 pub use crate::v1_compiler_infer_sigs::{
-    call_target_declared_sig, call_target_is_locally_bound, call_target_local_binding,
-};
-pub use crate::v1_compiler_infer_sigs::{
     callable_candidate_labels, callable_identity_label, flatten_parent_envs,
     func_sig_for_derivation, resolve_func_sigs,
 };
@@ -215,7 +211,6 @@ pub use crate::v1_compiler_infer_types::{
     structural_carrier_template_name, template_return_has_variables,
     template_return_is_receiver_self,
 };
-pub use crate::v1_compiler_ownership::fold_terminal_expr;
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
     ExposedTypeHead, MalformedApplicationHead, OpaqueTypeHead, StuckTypeHead,
@@ -309,9 +304,6 @@ pub use crate::v1_std_core::{
     return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
     string_type, type_name_compatible, type_reference_provenance, unaryop_operand, unit_type,
     with_optional_cardinality, with_required_cardinality,
-};
-pub use crate::v1_std_core::{
-    divergent_type, expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
 };
 pub use crate::v1_std_core::{
     AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic,
@@ -858,31 +850,56 @@ pub fn nominal_ref_node(
     span: Rc<SourceSpan>,
     ident_span: Option<Rc<SourceSpan>>,
 ) -> Rc<Node> {
-    Rc::new(Node {
-        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-        name: name.clone(),
-        span: span.clone(),
-        ident_span: ident_span.clone(),
-        children: Rc::new(vec![]),
-        connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
-        inferred: Some(Rc::new(InferredNode::Resolved {
-            node: nominal_leaf_type(name.clone()),
-        })),
-        return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
-        body: std::option::Option::None,
-        transport: std::option::Option::None,
-        properties: Rc::new(vec![]),
-        type_annotation: std::option::Option::None,
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-        match_pattern: std::option::Option::None,
-        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-        declaration_marker: DeclarationMarker::Unmarked,
-        expr_data: Rc::new(ExprData::NoExprData),
-        ident: None,
-    })
+    {
+        let declared_leaf = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: name.clone(),
+            span: span.clone(),
+            ident_span: ident_span.clone(),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: std::option::Option::None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: name.clone(),
+            span: span.clone(),
+            ident_span: ident_span.clone(),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: declared_leaf.clone(),
+            })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
+            properties: Rc::new(vec![]),
+            type_annotation: std::option::Option::None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: std::option::Option::None,
+            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
 }
 
 pub fn resolved_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> {
@@ -1000,6 +1017,21 @@ pub fn local_coproduct_owner_from_locals(scope: Rc<InferScope>, name: String) ->
 }
 
 pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option<String> {
+    match local_coproduct_owner_from_locals(scope.clone(), name.clone()) {
+        Some(owner) => Some(crate::v1_std_core::authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            owner.clone(),
+        )),
+        std::option::Option::None => {
+            lookup_variant_parent_enum_by_owner_name(scope.clone(), name.clone())
+        }
+    }
+}
+
+pub fn lookup_variant_parent_enum_by_owner_name(
+    scope: Rc<InferScope>,
+    name: String,
+) -> Option<String> {
     match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
         Some(binding) => match crate::v1_compiler_infer_env::lookup_type_for(
             scope.type_env.clone(),
@@ -1514,6 +1546,64 @@ match caller_decl_coords(scope.clone()) {
     ConstructorDeclarationLookup::NotAdmissionBearingReference => Rc::new(vec![]),
     ConstructorDeclarationLookup::AdmissionBearingDeclarationUnavailable { identity, cause, .. } => Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("constructor reference admission cannot establish the declaration identity of '".to_string(), identity.decl_name.clone()), "' owned by '".to_string()), identity.owner_module_path.clone()), "': ".to_string()), declaration_lookup_failure_label(cause.clone())), " -- refusing rather than reading admission facts off a resolved value node".to_string()), span.clone(), scope.module_name.clone())]),
 }
+    }
+}
+
+pub fn resource_declaration_identity(
+    scope: Rc<InferScope>,
+    resource: Rc<Node>,
+) -> Option<Rc<DeclarationRef>> {
+    {
+        let resolved = match resource.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
+            _ => resource.clone(),
+        };
+        crate::v1_compiler_infer_env::declaration_ref_of_type_node(
+            resolved.clone(),
+            scope.type_env.clone().source_indices.clone(),
+            scope.type_env.clone(),
+        )
+    }
+}
+
+pub fn established_resource_binding(
+    scope: Rc<InferScope>,
+    required: Rc<ResourceRequirement>,
+    established: Rc<Vec<Rc<ResourceRequirement>>>,
+) -> Option<String> {
+    match resource_declaration_identity(scope.clone(), required.resource.clone()) {
+        std::option::Option::None => std::option::Option::None,
+        Some(required_decl) => match Rc::new({
+            let mut __result = Vec::new();
+            for e in established.iter().cloned() {
+                if match resource_declaration_identity(scope.clone(), e.resource.clone()) {
+                    Some(e_decl) => (e_decl.clone() == required_decl.clone()),
+                    std::option::Option::None => false,
+                } {
+                    __result.push(e);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned()
+        {
+            Some(e) => Some(e.binding_name.clone()),
+            std::option::Option::None => std::option::Option::None,
+        },
+    }
+}
+
+pub fn caller_resource_requirements(scope: Rc<InferScope>) -> Rc<Vec<Rc<ResourceRequirement>>> {
+    match v1_rt::map_get(
+        &scope.item_registry.clone(),
+        crate::v1_std_core::callable_identity(Rc::new(DeclaredCallableIdentity {
+            owner_module_path: scope.module_name.clone(),
+            decl_name: scope.caller_decl_name.clone(),
+        })),
+    ) {
+        Some(info) => info.resource_requirements.clone(),
+        std::option::Option::None => Rc::new(vec![]),
     }
 }
 
@@ -22292,7 +22382,7 @@ pub fn local_binding_for_item(
                             params: item.params.clone(),
                             inferred: item.inferred.clone(),
                             return_cardinality: item.return_cardinality.clone(),
-                            uses: Rc::new(vec![]),
+                            uses: item.uses.clone(),
                             body: std::option::Option::None,
                             transport: std::option::Option::None,
                             properties: item.properties.clone(),
@@ -25467,16 +25557,10 @@ pub fn build_item_info(
 ) -> Rc<ItemInfo> {
     {
         let kind = crate::v1_compiler_infer_items::item_kind(item.clone());
-        let res_names = Rc::new({
-            let mut __result = Vec::new();
-            for u in item.uses.clone().iter().cloned() {
-                __result.push(crate::v1_std_core::resource_use_name_at(
-                    u.clone(),
-                    source_indices.clone(),
-                ));
-            }
-            __result
-        });
+        let requirements = crate::v1_compiler_infer_items::resource_requirements_of_uses(
+            item.uses.clone(),
+            source_indices.clone(),
+        );
         let item_name_str =
             crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
         match kind.clone() {
@@ -25492,7 +25576,7 @@ pub fn build_item_info(
                         source_indices.clone(),
                     )
                 },
-                resource_names: res_names.clone(),
+                resource_requirements: requirements.clone(),
                 params: item.params.clone(),
                 is_self_recursive: if (item.body.clone() == std::option::Option::None) {
                     false
@@ -25519,7 +25603,7 @@ pub fn build_item_info(
                 module_name: module_name.clone(),
                 kind: kind.clone(),
                 service_names: Rc::new(vec![]),
-                resource_names: res_names.clone(),
+                resource_requirements: requirements.clone(),
                 params: item.params.clone(),
                 is_self_recursive: false,
                 has_non_tail_self_call: false,

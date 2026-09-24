@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.caret_symbol_has_no_lowered_form
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data caret_symbol_has_no_lowered_form: RecurringFailureMode = RecurringFailureMode {
+  identity: "caret_symbol_has_no_lowered_form" as NonEmptyStr,
+
+  receipts: [
+    "no lowered form for a caret symbol `^sym` in v2 body lowering: `v2.extdeps.languages.dag` `dag_grammar_caret_symbol_expr` writes it as seq(`^`, ident), and no reader in `v2.compiler.body_lowering_fold` lowers that sequence. As an operator operand (`x == ^sym`) it refuses as `body_lowering_reason_operator_operand_unread`, located at the operand; on the bottom-up value route `body_lower_primary_expr` answers it with `body_lower_pattern_first_atom_optional`, the `^` token, so the symbol it names is lost there without a diagnostic.",
+    "SPECIMENS AND PINNED LOCUS: `dag/test/claim/long/dag_arrow_lambda_witness_test.dag` and `src/v2/test/claim/manual/body_lowering_projection_call_test.dag`, each refusing `operator_operand_unread` at a `dag_surface_primary_expr` whose atoms are `dag_token_caret dag_token_ident`.",
+    "EXPOSED, NOT INTRODUCED: the parent of gunbc#12145 (2de78893dfe) accepted this shape only by SILENT NARROWING -- the operand reader answered a sequence with its left element -- so the refusal on main after gunbc#12173 is a pre-existing defect made visible, not a new regression. Found by the XL-2 three-baseline identity census on gunbc#12194 (321 paths: 18 refusing at 2de78893dfe, 167 at ada85b9452, 101 after gunbc#12173).",
+    "RUNG FOUND AT: mitigated (a located refusal) on the operator route; below the floor on the value route. CEILING: structurally guaranteed -- a caret symbol lowers to a symbol-literal value the resolver does not read as a reference, or refuses. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: v2 body lowering has a lowered form for a caret symbol on every route, distinct from a reference, so no route answers it with its `^` token and no route refuses it as unread.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "a_caret_symbol_operand_refuses_at_normalize", field: WholeDeclaration },
+  ],
+}
