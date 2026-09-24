@@ -137,13 +137,13 @@ fn w_refused_with(s: V41CandidateVerdict, fragment: String) -> Bool {
   }
 }
 
-// THE LIVE CANDIDATE'S ROW-STORE AXIS IS READ (2026-09-24): the eight encoded stores were read on srv5
-// with digests and sizes (gunbc.spark.v41_engram_row_store v41_published_store_readings, fleet-converge run
-// 36023830860) over the verified spans, so the published-shard row-store content digest no longer names
-// an obligation. The weight manifest and the tokenizer files are keyed from the publisher's digests. What
-// is still open is the Engram membership closure: the index's names at this revision are not enumerated
-// (extdeps.deepseek.deepseek_v4_1_flash deepseek_v4_1_flash_engram_membership_closure), so the Engram axis
-// is Unestablished on that alone and the candidate is not yet keyed.
+// THE LIVE CANDIDATE IS KEYED (2026-09-24): the eight encoded stores were read on srv5 with digests and
+// sizes (gunbc.spark.v41_engram_row_store v41_published_store_readings, fleet-converge run 36023830860)
+// over the verified spans, so the published-shard row-store content digest no longer names an obligation.
+// The weight manifest and the tokenizer files are keyed from the publisher's digests, and the Engram
+// membership closure is discharged by srv8's index-selection reading (gunbc.spark.v41_index_engram_selection
+// v41_engram_population_observed, run 35877813088). No axis remains open, so the verdict is Keyed; the
+// operator's authorization obligation rides inside it. Any residual obligation turns this claim red.
 test fn the_live_candidate_is_keyed_end_to_end() -> Bool {
   match v41_candidate().standing {
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => true
