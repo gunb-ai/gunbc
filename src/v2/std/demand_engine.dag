@@ -483,11 +483,20 @@ fn demand_engine_reevaluate<V>(e: DemandEngine<V>) -> DemandEngine<V> {
 // function of how the closure happened to be walked, so two runs over one program could complete
 // in two orders and neither would be wrong -- which makes a completion-order receipt useless as
 // evidence. Keying the order to the identity makes the order re-derivable from the demands alone.
+// THE ORDER KEY AS A NAMED FUNCTION, NOT AN INLINE LAMBDA. `sort_by` takes a callable, and an
+// inline lambda reaches the Rust realization as a closure whose parameter type has nothing to
+// infer from, so the emitted crate refuses to compile. Naming it gives the callee a declared
+// signature at the point the realization needs one, which is what v2.std.compilers.compilation_unit
+// already does with node_sort_key.
+fn demand_queue_sort_key(id: DemandIdentity) -> String {
+  demand_identity_key(id: id)
+}
+
 fn demand_engine_ready_queue<V>(e: DemandEngine<V>) -> List<DemandIdentity> {
   list_map(
     xs: filter(xs: e.entries, predicate: fn(entry) { demand_state_is_ready(s: entry.state) }),
     f: fn(entry) { entry.identity }
-  ) |> sort_by(id => demand_identity_key(id: id))
+  ) |> sort_by(demand_queue_sort_key)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
