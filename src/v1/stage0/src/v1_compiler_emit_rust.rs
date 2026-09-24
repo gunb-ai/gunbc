@@ -20113,7 +20113,7 @@ pub fn emit_tco_param(
 ) -> String {
     {
         let authored = crate::v1_std_core::param_node_type_expr(param.clone());
-        let ty = if ((authored.params.clone().len() as i64) > 0) {
+        let ty = if rust_type_node_is_arrow(authored.clone()) {
             emit_rust_param_type(
                 authored.clone(),
                 generic_param_names.clone(),
@@ -20306,7 +20306,7 @@ pub fn emit_rust_param_type(
     env: Rc<TypeEnv>,
     fn_param_needs_static: bool,
 ) -> String {
-    if ((n.params.clone().len() as i64) > 0) {
+    if rust_type_node_is_arrow(n.clone()) {
         {
             let param_types = Rc::new({
                 let mut __result = Vec::new();
@@ -20378,7 +20378,7 @@ pub fn emit_param(
     {
         let pname = crate::v1_std_core::param_node_name_at(param.clone(), source_indices.clone());
         let authored = crate::v1_std_core::param_node_type_expr(param.clone());
-        let ty = if ((authored.params.clone().len() as i64) > 0) {
+        let ty = if rust_type_node_is_arrow(authored.clone()) {
             emit_rust_param_type(
                 authored.clone(),
                 generic_param_names.clone(),
@@ -37918,10 +37918,34 @@ pub fn emit_data_def_body(
                     scope.type_env.clone().source_indices.clone(),
                 ) && !data_value_has_cross_refs(value.clone()))
                 {
-                    match (*crate::v1_compiler_emit::emit_data_value_json(value.clone(), scope.type_env.clone().source_indices.clone(), emit_info.data_variant_wire_spellings.clone())).clone() {
-    EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(v1_rt::concat("            compile_error!(\"".to_string(), crate::v1_compiler_emit_core_support::escape_string_literal_body(r.clone())), "\")".to_string()),
-    EmitterOutcome::Emitted { json: json_str, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("            serde_json::from_str(\"".to_string(), crate::v1_compiler_emit_core_support::escape_string_literal_body(json_str.clone())), "\")\n".to_string()), "                .expect(\"valid data definition\")".to_string()),
-}
+                    match (*crate::v1_compiler_emit::emit_data_value_json(
+                        value.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                        emit_info.data_variant_wire_spellings.clone(),
+                    ))
+                    .clone()
+                    {
+                        EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(
+                            v1_rt::concat(
+                                "            compile_error!(\"".to_string(),
+                                crate::v1_compiler_emit_core_support::escape_string_literal_body(
+                                    r.clone(),
+                                ),
+                            ),
+                            "\")".to_string(),
+                        ),
+                        EmitterOutcome::Emitted { json: json_str, .. } => v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "            serde_json::from_value(serde_json::json!("
+                                        .to_string(),
+                                    json_str.clone(),
+                                ),
+                                "))\n".to_string(),
+                            ),
+                            "                .expect(\"valid data definition\")".to_string(),
+                        ),
+                    }
                 } else {
                     {
                         let is_map = crate::v1_compiler_infer_types::node_is_keyed_collection(

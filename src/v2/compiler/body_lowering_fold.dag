@@ -2022,6 +2022,138 @@ fn body_lower_fn_decl_return_clause_optional(captured: Node) -> Optional<Node> {
   }
 }
 
+// THE `<T>` LIST IS A POSITIONAL FACT OF THE SAME SPINE: it is the LEFT of the THIRD
+// right-projection (seq(kw_fn, seq(name, seq(opt(generic_params), ...)))), and an elided list
+// is grammar_empty_node, which carries no generic_params production. The production is looked
+// for ONLY inside that slot, so a generic list anywhere else in the declaration -- a parameter's
+// type, the body -- can never be read as this fn's binders.
+fn body_lower_fn_decl_generic_params_slot_optional(captured: Node) -> Optional<Node> {
+  match body_lower_fn_decl_spine_right(node: captured) {
+    Absent => optional_absent()
+    Present { value: after_kw_fn } =>
+      match body_lower_fn_decl_spine_right(node: after_kw_fn) {
+        Absent => optional_absent()
+        Present { value: after_name } =>
+          match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: after_name)) {
+            Absent => optional_absent()
+            Present { value: pair } => optional_present(value: pair.left)
+          }
+      }
+  }
+}
+
+fn body_lower_generic_param_binder_edge(item: Node) -> Optional<Edge> {
+  match body_lower_param_binding_optional(node: body_lower_deep_unwrap_optional(node: item)) {
+    Absent => optional_absent()
+    Present { value: name } =>
+      optional_present(value: Edge {
+        label: Named { name: name },
+        target: body_lower_param_ref_atom(source: item, identity: name)
+      })
+  }
+}
+
+// The repeat tail of comma_list(item): each element is seq(opt(comma), item).
+fn body_lower_no_type_param_edges() -> List<Edge> {
+  Empty
+}
+
+fn body_lower_generic_param_edges_from_repeat_tail(repeat_capture: Node) -> Optional<List<Edge>> {
+  if is_empty_conj_root(n: repeat_capture) {
+    optional_present(value: body_lower_no_type_param_edges())
+  } else {
+    match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
+      Rejected { diagnostics: _ } => optional_absent()
+      Accepted { value: element, diagnostics: _ } =>
+        match sugar_sequence_pair_optional(node: element) {
+          Absent => optional_absent()
+          Present { value: comma_then_item } =>
+            match body_lower_generic_param_binder_edge(item: comma_then_item.right) {
+              Absent => optional_absent()
+              Present { value: edge } =>
+                match find_named_child(root: repeat_capture, name: ^grammar_sequence_right_node_projection) {
+                  Rejected { diagnostics: _ } => optional_present(value: [edge])
+                  Accepted { value: tail, diagnostics: _ } =>
+                    match body_lower_generic_param_edges_from_repeat_tail(repeat_capture: tail) {
+                      Absent => optional_absent()
+                      Present { value: rest } => optional_present(value: list_append(left: [edge], right: rest))
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+// comma_list(item) = seq(item, seq(repeat(seq(opt(comma), item)), opt(comma))).
+fn body_lower_generic_param_edges(comma_list: Node) -> Optional<List<Edge>> {
+  match sugar_sequence_pair_optional(node: comma_list) {
+    Absent => optional_absent()
+    Present { value: head_rest } =>
+      match body_lower_generic_param_binder_edge(item: head_rest.left) {
+        Absent => optional_absent()
+        Present { value: first } =>
+          match sugar_sequence_pair_optional(node: head_rest.right) {
+            Absent => optional_absent()
+            Present { value: repeat_then_comma } =>
+              match body_lower_generic_param_edges_from_repeat_tail(repeat_capture: repeat_then_comma.left) {
+                Absent => optional_absent()
+                Present { value: rest } => optional_present(value: list_append(left: [first], right: rest))
+              }
+          }
+      }
+  }
+}
+
+// WHAT THE ARROW CARRIES FOR `<T, U>`. NoTypeParams when the slot is elided; TypeParams with the
+// Conj v2.std.node arrow_type_params_target_conforms admits when every name is recovered; and
+// TypeParamsUnreadable when the slot holds a generic list whose names cannot all be read. The
+// third arm is why this is not an Optional: a list that is present and unreadable must REFUSE
+// the declaration, never lower as if it declared nothing -- that silent drop is the class this
+// carrier exists to close.
+type FnDeclTypeParams
+  = NoTypeParams
+  | TypeParams { conj: Node }
+  | TypeParamsUnreadable
+
+fn body_lower_fn_decl_type_params(captured: Node) -> FnDeclTypeParams {
+  match body_lower_fn_decl_generic_params_slot_optional(captured: captured) {
+    Absent => TypeParamsUnreadable
+    Present { value: slot } =>
+      match body_lower_find_captured(root: slot, emitted: ^dag_surface_generic_params) {
+        ParseSubtreeAbsent => NoTypeParams
+        ParseSubtreeFound { captured: generic_params } =>
+          match sugar_sequence_pair_optional(node: generic_params) {
+            Absent => TypeParamsUnreadable
+            Present { value: lt_rest } =>
+              match sugar_sequence_pair_optional(node: lt_rest.right) {
+                Absent => TypeParamsUnreadable
+                Present { value: list_gt } =>
+                  match body_lower_generic_param_edges(comma_list: list_gt.left) {
+                    Absent => TypeParamsUnreadable
+                    Present { value: edges } =>
+                      TypeParams {
+                        conj: node_lowered_from(
+                          kind: TypeNode { connective: Conj },
+                          children: edges,
+                          source: generic_params
+                        )
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_type_params_unreadable_diagnostic(shell: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^body_lowering_reason_type_params_unreadable,
+    at: node_locus(node: shell),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
 fn body_lower_return_type_from_fn_captured(captured: Node) -> Optional<Node> {
   match body_lower_fn_decl_return_clause_optional(captured: captured) {
     Absent => optional_absent()
@@ -2737,6 +2869,7 @@ type BodyLowerFnSignature {
   domain: Node,
   return_type: Node,
   fn_name: Symbol,
+  type_params: FnDeclTypeParams,
 }
 
 fn body_lower_fn_signature_optional(captured: Node) -> Optional<BodyLowerFnSignature> {
@@ -2756,12 +2889,35 @@ fn body_lower_fn_signature_optional(captured: Node) -> Optional<BodyLowerFnSigna
                     value: BodyLowerFnSignature {
                       domain: domain,
                       return_type: return_type,
-                      fn_name: fn_name
+                      fn_name: fn_name,
+                      type_params: body_lower_fn_decl_type_params(captured: captured)
                     }
                   }
               }
           }
       }
+  }
+}
+
+// The type-parameter edge is part of the SIGNATURE, so the census grade carries it exactly as the
+// full grade does. A sig whose type parameters are TypeParamsUnreadable never reaches this builder:
+// both arms refuse it first (body_lower_fn_signature_type_params_refusal).
+fn body_lower_fn_decl_type_params_edges(sig: BodyLowerFnSignature) -> List<Edge> {
+  match sig.type_params {
+    TypeParams { conj: c } => [Edge { label: Named { name: ^arrow_type_params_edge }, target: c }]
+    NoTypeParams => body_lower_no_type_param_edges()
+    TypeParamsUnreadable => body_lower_no_type_param_edges()
+  }
+}
+
+fn body_lower_fn_signature_type_params_refusal(shell: Node, sig: BodyLowerFnSignature) -> Optional<Outcome<Node>> {
+  match sig.type_params {
+    TypeParamsUnreadable =>
+      optional_present(value: Rejected {
+        diagnostics: diagnostics_singleton(d: body_lower_type_params_unreadable_diagnostic(shell: shell))
+      })
+    NoTypeParams => optional_absent()
+    TypeParams { conj: _ } => optional_absent()
   }
 }
 
@@ -2857,22 +3013,22 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<Node> {
 }
 
 fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Optional<Node>) -> Node {
+  let signature = list_append(
+    left: [
+      Edge { label: Positional, target: sig.domain },
+      Edge { label: Positional, target: sig.return_type },
+      Edge { label: Positional, target: sig.return_type }
+    ],
+    right: body_lower_fn_decl_type_params_edges(sig: sig)
+  )
   body_lower_fn_decl_named_member_wrap(
     arrow: node_lowered_from(
       source: shell,
       kind: TypeNode { connective: Arrow },
       children: match body {
-        Absent => [
-          Edge { label: Positional, target: sig.domain },
-          Edge { label: Positional, target: sig.return_type },
-          Edge { label: Positional, target: sig.return_type }
-        ]
-        Present { value: b } => [
-          Edge { label: Positional, target: sig.domain },
-          Edge { label: Positional, target: sig.return_type },
-          Edge { label: Positional, target: sig.return_type },
-          Edge { label: Named { name: ^arrow_body_edge }, target: b }
-        ]
+        Absent => signature
+        Present { value: b } =>
+          list_append(left: signature, right: [Edge { label: Named { name: ^arrow_body_edge }, target: b }])
       }
     ),
     fn_name: sig.fn_name,
@@ -2897,7 +3053,10 @@ fn body_lower_fn_decl_to_census_arrow(shell: Node) -> Outcome<Node> {
       match body_lower_fn_signature_optional(captured: captured) {
         Absent => body_lower_wrapper_retained_shell(shell: shell)
         Present { value: sig } =>
-          outcome_accepted(value: body_lower_fn_decl_arrow(shell: shell, sig: sig, body: Absent))
+          match body_lower_fn_signature_type_params_refusal(shell: shell, sig: sig) {
+            Present { value: refused } => refused
+            Absent => outcome_accepted(value: body_lower_fn_decl_arrow(shell: shell, sig: sig, body: Absent))
+          }
       }
   }
 }
@@ -2909,23 +3068,27 @@ fn body_lower_fn_decl_to_arrow_admitted(shell: Node, captured: Node) -> Outcome<
   match body_lower_fn_signature_optional(captured: captured) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: sig } =>
-      match body_lower_body_from_fn_captured(captured: captured) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: body_opt, diagnostics: bd0 } =>
-          match body_opt {
-            Absent => body_lower_wrapper_retained_shell(shell: shell)
-            Present { value: body } =>
-              match body_lower_reify_arrow_body(body: body) {
-                Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                Accepted { value: reified_body, diagnostics: bd } =>
-                  outcome_with_diagnostics(
-                    value: body_lower_fn_decl_arrow(
-                      shell: shell,
-                      sig: sig,
-                      body: Present { value: reified_body }
-                    ),
-                    diagnostics: diagnostics_merge(outer: bd0, inner: bd)
-                  )
+      match body_lower_fn_signature_type_params_refusal(shell: shell, sig: sig) {
+        Present { value: refused } => refused
+        Absent =>
+          match body_lower_body_from_fn_captured(captured: captured) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: body_opt, diagnostics: bd0 } =>
+              match body_opt {
+                Absent => body_lower_wrapper_retained_shell(shell: shell)
+                Present { value: body } =>
+                  match body_lower_reify_arrow_body(body: body) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: reified_body, diagnostics: bd } =>
+                      outcome_with_diagnostics(
+                        value: body_lower_fn_decl_arrow(
+                          shell: shell,
+                          sig: sig,
+                          body: Present { value: reified_body }
+                        ),
+                        diagnostics: diagnostics_merge(outer: bd0, inner: bd)
+                      )
+                  }
               }
           }
       }
@@ -5753,26 +5916,19 @@ fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
   }
 }
 
-// THE GUARD IS THE WHOLE OVERLAP STORY. A statement spine is taken over by
-// the Bind lowering ONLY when it is headed by a statement-form let AND has a
-// following statement -- exactly the case that has no lowering today. Every
-// other spine keeps the path it already had, so this cannot re-route a body
-// that already lowers.
-fn body_lower_stmt_spine_is_let_headed(spine: Node) -> Bool {
-  match body_lower_stmt_spine_head_optional(spine: spine) {
+// A SPINE WITH A FOLLOWING STATEMENT BELONGS TO body_lower_stmt_spine, WHATEVER ITS HEAD IS. The
+// guard used to admit only a let-headed spine, so `{ c \n x }` fell to the expression walkers,
+// which read the first statement and dropped `x` with no refusal -- an undeclared `x` resolved.
+// body_lower_stmt_spine already owns the multi-statement answer: a let binds the rest, and any other
+// statement that precedes another refuses as statement_precedes_without_binding, located at it. A
+// one-statement spine keeps the path it had.
+fn body_lower_stmt_spine_has_successor(spine: Node) -> Bool {
+  match body_lower_stmt_spine_rest_optional(spine: spine) {
     Absent => false
-    Present { value: head } =>
-      match body_lower_stmt_spine_rest_optional(spine: spine) {
+    Present { value: rest } =>
+      match body_lower_stmt_spine_head_optional(spine: rest) {
         Absent => false
-        Present { value: rest } =>
-          match body_lower_stmt_spine_head_optional(spine: rest) {
-            Absent => false
-            Present { value: _ } =>
-              match body_lower_statement_let_captured_optional(stmt: head) {
-                Absent => false
-                Present { value: _ } => true
-              }
-          }
+        Present { value: _ } => true
       }
   }
 }
@@ -5785,7 +5941,7 @@ fn body_lower_try_statement_spine(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_stmt_seq) {
     ParseSubtreeAbsent => outcome_accepted(value: optional_absent())
     ParseSubtreeFound { captured: spine } =>
-      if body_lower_stmt_spine_is_let_headed(spine: spine) {
+      if body_lower_stmt_spine_has_successor(spine: spine) {
         bind_outcome(
           o: body_lower_stmt_spine(spine: spine),
           f: fn(lowered) { outcome_accepted(value: optional_present(value: lowered)) }
@@ -5971,6 +6127,54 @@ fn body_lower_if_condition_lowered(condition_capture: Node) -> Outcome<Optional<
   }
 }
 
+// AN ARM IS A STATEMENT SEQUENCE, SO IT LOWERS THROUGH THE STATEMENT AUTHORITY. The arms were read
+// by body_lower_if_arm_operand_optional alone, the operand reader, which reads a call `g(p: x)` as
+// `g`: an undeclared `x` in either arm reached no reference site, and a block arm kept only its
+// first statement. An arm is `{` stmt_seq `}`, and body_lower_stmt_spine is the one authority for a
+// statement sequence: one statement is folded whole, a let binds the rest, and any other statement
+// followed by another refuses located. Its refusal is the arm's refusal. An `else if` arm is an
+// if_expr, not a brace body -- a statement-sequence search there would find the nested then-arm --
+// so it keeps the if reader. The operand reader stays the fallback for an arm whose lowered
+// statement leaves no lowered node behind its shells.
+fn body_lower_if_arm_lowered(arm_capture: Node) -> Outcome<Optional<Node>> {
+  match parse_production_emitted_identity_optional(node: arm_capture) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_if_expr {
+        outcome_accepted(value: body_lower_if_arm_operand_resolved_optional(arm_capture: arm_capture))
+      } else {
+        body_lower_if_arm_statements_lowered(arm_capture: arm_capture)
+      }
+    Absent => body_lower_if_arm_statements_lowered(arm_capture: arm_capture)
+  }
+}
+
+fn body_lower_if_arm_statements_lowered(arm_capture: Node) -> Outcome<Optional<Node>> {
+  match body_lower_find_captured(root: arm_capture, emitted: ^dag_surface_stmt_seq) {
+    ParseSubtreeAbsent =>
+      outcome_accepted(value: body_lower_if_arm_operand_resolved_optional(arm_capture: arm_capture))
+    ParseSubtreeFound { captured: spine } =>
+      match body_lower_stmt_spine(spine: spine) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: lowered, diagnostics: d } =>
+          match body_lower_lowered_behind_shells_optional(node: lowered) {
+            Present { value: arm } => outcome_with_diagnostics(value: optional_present(value: arm), diagnostics: d)
+            Absent =>
+              outcome_with_diagnostics(
+                value: body_lower_if_arm_operand_resolved_optional(arm_capture: arm_capture),
+                diagnostics: d
+              )
+          }
+      }
+  }
+}
+
+fn body_lower_if_arm_operand_resolved_optional(arm_capture: Node) -> Optional<Node> {
+  match body_lower_if_arm_operand_optional(arm_capture: arm_capture) {
+    Present { value: raw } => body_lower_arm_operand_resolved_optional(arm: raw)
+    Absent => optional_absent()
+  }
+}
+
 fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
   match body_lower_if_condition_optional(captured: captured) {
     Present { value: condition_capture } =>
@@ -5983,13 +6187,15 @@ fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
                 Accepted { value: condition_opt, diagnostics: _ } =>
                   match condition_opt {
                     Present { value: condition } =>
-                      match body_lower_if_arm_operand_optional(arm_capture: then_capture) {
-                        Present { value: then_raw } =>
-                          match body_lower_arm_operand_resolved_optional(arm: then_raw) {
+                      match body_lower_if_arm_lowered(arm_capture: then_capture) {
+                        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                        Accepted { value: then_opt, diagnostics: _ } =>
+                          match then_opt {
                             Present { value: then_arm } =>
-                              match body_lower_if_arm_operand_optional(arm_capture: else_capture) {
-                                Present { value: else_raw } =>
-                                  match body_lower_arm_operand_resolved_optional(arm: else_raw) {
+                              match body_lower_if_arm_lowered(arm_capture: else_capture) {
+                                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                                Accepted { value: else_opt, diagnostics: _ } =>
+                                  match else_opt {
                                     Present { value: else_arm } =>
                                       outcome_accepted(
                                         value: optional_present(
@@ -6002,11 +6208,9 @@ fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
                                       )
                                     Absent => body_lower_if_navigation_reject(captured: else_capture)
                                   }
-                                Absent => body_lower_if_navigation_reject(captured: else_capture)
                               }
                             Absent => body_lower_if_navigation_reject(captured: then_capture)
                           }
-                        Absent => body_lower_if_navigation_reject(captured: then_capture)
                       }
                     Absent => body_lower_if_navigation_reject(captured: condition_capture)
                   }
