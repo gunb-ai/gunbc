@@ -16420,6 +16420,14 @@ fn value_inferred_type_is_rc_wrapped(value: Node, shared_types: Set<String>, sco
   }
 }
 
+// A NESTED-RECORD DATA ROW IS REALIZED BY PARSING ITS JSON DOCUMENT AS TEXT, not by splicing it
+// into `serde_json::json!` as Rust tokens. The macro made rustc read every number in the document as
+// a Rust integer literal, whose type defaults to i32 when nothing pins it, so an Int above 2^31 --
+// SHA-256's initial hash words, SHA-512's round-constant halves -- failed with `literal out of range
+// for i32` (89 sites when extdeps.crypto.sha2 was first emitted). JSON has one number grammar and
+// serde_json parses it into the declared field type, so parsing the same text is the realization the
+// document's own format defines. A per-literal i64 suffix was the other repair and is refused: it
+// would put a non-JSON spelling into emit_data_value_json, whose output is also read as real JSON.
 fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, needs_rc: Bool) -> String {
   let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
   let type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)
@@ -16480,7 +16488,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
   } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
     match emit_data_value_json(value: value, source_indices: scope.type_env.source_indices, variant_wire: emit_info.data_variant_wire_spellings) {
       Refused { reason: r } => concat("            compile_error!(\"", escape_string_literal_body(s: r), "\")")
-      Emitted { json: json_str } => concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
+      Emitted { json: json_str } => concat("            serde_json::from_str(\"", escape_string_literal_body(s: json_str), "\")\n",
         "                .expect(\"valid data definition\")")
     }
   } else {

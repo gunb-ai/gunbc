@@ -471,7 +471,7 @@ pub type FloorWorkerObservationReceiptPath = String;
 pub fn floor_worker_observation_receipt_path() -> FloorWorkerObservationReceiptPath {
     thread_local! {
         static CACHED: FloorWorkerObservationReceiptPath = {
-            serde_json::from_value(serde_json::json!("target/floor-worker-observation-receipt.tsv"))
+            serde_json::from_str("\"target/floor-worker-observation-receipt.tsv\"")
                 .expect("valid data definition")
         };
     }
