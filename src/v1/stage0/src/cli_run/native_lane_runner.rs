@@ -2449,8 +2449,10 @@ mod cli_emit_probe_tests {
         adjudicate_cli_emit_probe(r, &|_| Ok(()))
     }
 
-    /// THE REFUSAL THE BUILT BINARY GIVES TODAY, transcribed from a run of the door fold over the
-    /// fixture (`v2_cli_run`, gunbc#12207): the member arrow's body refuses at the arrow.
+    /// THE SHAPE OF THE PINNED REFUSAL: one located link whose reason is the body refusal, in the
+    /// rendering the door's fold produced when run over the fixture's declaration (`v2_cli_run`,
+    /// gunbc#12207). The byte range is illustrative -- the adjudication reads the reason and requires a
+    /// locus, and does not compare offsets.
     fn located_body_refusal() -> String {
         format!(
             "REFUSED: the closure did not emit; diagnostic chain: {CLI_DOOR_EMIT_BODY_REFUSAL} @ fixtures/native_cli_door/door_probe.dag bytes 43..47 | FATAL AT fixtures/native_cli_door/door_probe.dag bytes 43..47"
