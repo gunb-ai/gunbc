@@ -68,8 +68,9 @@ import extdeps.communication.medium { Lossless, Medium }
 // The shapes lowering is known to lose THAT A FIXTURE NEEDS TO EXCUSE, each pinned by its own
 // discriminating claim in v2.test.claim.namespace_xl0.reference_conservation. Closed on purpose: a
 // new shape is a new pinned claim first, then a row here, and a row enters only with the fixture
-// that consumes it (the block-later-statement and if-arm-argument drops are pinned there too, and
-// no admitted fixture's source contains them yet).
+// that consumes it (the block-later-statement drop is pinned there too, and no admitted fixture's
+// source contains it yet; the if-arm-argument drop was repaired by gunbc#12221 and is now a
+// conserved control there).
 type KnownDropShape
   = NamedArgumentLabel
   | WhereRefinementPredicate

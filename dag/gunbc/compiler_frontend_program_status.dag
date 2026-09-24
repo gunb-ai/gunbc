@@ -271,9 +271,10 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
       evidence: Xl2PrerequisiteEvidence { pr: 12108, merge_sha: "b0d307c31b" as NonEmptyStr, measured_at: "b8e0cc4eb9" as NonEmptyStr },
       qualification: "CORRECTION: the earlier premise that call arguments were represented after lowering was FALSE. At b8e0cc4eb9 v2.compiler.body_lowering_fold body_lower_call_args_from_capture read the argument capture with the parameter-list spine reader, so every argument of a plain call, named or positional, lowered to a call with ZERO arguments -- the fact was absent from the normalized tree, not lost between the tree and the denominator. #12108 replaced it with a structural, fail-closed argument reader; an undeclared name used only as an argument now refuses at resolve located at the argument (v2.test.claim.namespace_xl0.call_argument_resolve_refusal). Bounded to PLAIN calls: arguments inside an if-arm are IfArmCallArgumentReferenceVisibility." as NonEmptyStr,
     }
-    IfArmCallArgumentReferenceVisibility => PrerequisiteOutstanding {
-      tracked_by: decl_ref(module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "the_if_arm_call_argument_is_reported_dropped_holds"),
-      why: "a call argument inside an if-arm reaches no reference site: v2.compiler.body_lowering_fold body_lower_if_arm_operand_optional does not read it, and the conservation check reports it dropped (the tracking claim pins that drop). No fix has merged." as NonEmptyStr,
+    IfArmCallArgumentReferenceVisibility => PrerequisiteDelivered {
+      owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "the_if_arm_call_argument_is_conserved_holds"),
+      evidence: Xl2PrerequisiteEvidence { pr: 12221, merge_sha: "e74e345a93" as NonEmptyStr, measured_at: "53828ae4b2" as NonEmptyStr },
+      qualification: "gunbc#12221 lowers if-arms through the statement authority, so a call argument inside an if-arm keeps its occurrence and reaches resolve. Measured on origin/main 53828ae4b2 (fierce-gull-556, seed-interpreted): the former pinned-drop claim the_if_arm_call_argument_is_reported_dropped_holds returned false because the argument was no longer dropped. That claim is restated as the conserved control that owns this row (DESIGN section 4b(4)). Its fixture passes the argument POSITIONALLY, because a named argument's label is a separately rostered drop (NamedArgumentLabel)."
     }
     BareFieldTypeVisibility => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.declaring_identity_spelling.production_ingest", decl_name: "a_bare_parameter_type_reaches_and_a_bare_field_type_does_too"),

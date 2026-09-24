@@ -136,11 +136,18 @@ test fn the_block_second_statement_is_reported_dropped_holds() -> Bool {
   report_drop_count(report: block_second_statement_report(), wanted: ^dag_token_int_literal) == 1
 }
 
-// ---- drop 2: a call argument inside an if-arm --------------------------------------------------
+// ---- former drop 2: a call argument inside an if-arm (repaired by #12221) ---------------------
 
-// The argument's spelling is used NOWHERE else in its declaration, so the declaration-scoped pool
-// cannot account for it and the red names exactly it.
-data if_arm_call_argument_source: String = "module v2.test.reference_conservation_if_arm\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(probe: Bool) -> Bool { probe }\n\ndata rc_arm_arg: Bool = true\n\nfn rc_if_arm(c: Bool) -> Bool { if c { rc_callee(probe: rc_arm_arg) } else { c } }\n"
+// MEASURED BOTH WAYS. Before gunbc#12221 the if-arm's call argument `rc_arm_arg` reached no reference
+// site and this check reported it as exactly one DroppedReference. After #12221 (if-arms lower
+// through the statement authority) the argument keeps its occurrence, and the pinned-drop claim went
+// red on origin/main 53828ae4b2 (fierce-gull-556, seed-interpreted). Restated, not deleted (DESIGN
+// section 4b(4)): it is now the permanent regression control that the if-arm argument is conserved.
+// The argument is POSITIONAL on purpose: a named argument's label is its own, separately rostered
+// drop (a_named_argument_label_is_reported_dropped_holds below), which would red this control for a
+// reason that is not the if-arm. The argument's spelling is used NOWHERE else in its declaration, so
+// the declaration-scoped pool cannot account for it: a regression drops it and names exactly it.
+data if_arm_call_argument_source: String = "module v2.test.reference_conservation_if_arm\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(probe: Bool) -> Bool { probe }\n\ndata rc_arm_arg: Bool = true\n\nfn rc_if_arm(c: Bool) -> Bool { if c { rc_callee(rc_arm_arg) } else { c } }\n"
 
 fn if_arm_call_argument_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "if_arm_call_argument", source: if_arm_call_argument_source)
@@ -150,8 +157,9 @@ fn if_arm_call_argument_report() -> ReferenceConservationReport {
   conservation_report_of(subject: if_arm_call_argument_subject())
 }
 
-test fn the_if_arm_call_argument_is_reported_dropped_holds() -> Bool {
-  report_drop_count(report: if_arm_call_argument_report(), wanted: ^rc_arm_arg) == 1
+test fn the_if_arm_call_argument_is_conserved_holds() -> Bool {
+  let r = if_arm_call_argument_report()
+  reference_conservation_holds(report: r) && report_drop_count(report: r, wanted: ^rc_arm_arg) == 0
 }
 
 // ---- former drop 3: a later operand of an operator chain (repaired by #12145) ------------------
@@ -235,12 +243,19 @@ test fn a_list_literal_call_argument_refuses_its_whole_module_holds() -> Bool {
 
 // ---- the multiset control: a repeated spelling, one copy dropped -------------------------------
 
-// `rc_rep` is spelled three times in one declaration: as the parameter binder (rebuilt into an
-// edge label, so LocusErased against the pool's one label), as the first block statement (its
-// occurrence survives), and as the second block statement (dropped). The pool holds one copy and
-// the binder consumes it, so exactly ONE DroppedReference remains -- neither zero (a pool that
-// failed to consume) nor two (a pool that was never read).
-data repeated_spelling_source: String = "module v2.test.reference_conservation_repeat\n\nimport v2.std.logic { Bool }\n\nfn rc_repeat(rc_rep: Bool) -> Bool { rc_rep \n rc_rep }\n"
+// `rc_rep` is spelled three times in the declaration `rc_repeat`: as its parameter binder (rebuilt
+// into an edge label, so LocusErased against the pool's one label), as the named argument's LABEL at
+// the call (dropped: a call lowers its arguments positionally -- the rostered NamedArgumentLabel
+// shape), and as the argument's VALUE (its occurrence survives). The pool is declaration-scoped and
+// holds one copy, which the binder consumes, so exactly ONE DroppedReference remains -- neither zero
+// (a pool that failed to consume) nor two (a pool that was never read). `rc_callee`'s own `rc_rep`
+// binder and body use sit in a different declaration and cannot feed this pool.
+// RE-PINNED after gunbc#12221: the previous fixture dropped its repeated copy as the second of two
+// block statements (`{ rc_rep \n rc_rep }`), and #12221 made a statement followed by another refuse
+// located, so it no longer dropped one copy (red on origin/main 53828ae4b2). The multiset property is
+// the subject, not the statement shape, so the fixture now drops through the one shape still
+// rostered as a known drop.
+data repeated_spelling_source: String = "module v2.test.reference_conservation_repeat\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(rc_rep: Bool) -> Bool { rc_rep }\n\nfn rc_repeat(rc_rep: Bool) -> Bool { rc_callee(rc_rep: rc_rep) }\n"
 
 fn repeated_spelling_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "repeated_spelling", source: repeated_spelling_source)
