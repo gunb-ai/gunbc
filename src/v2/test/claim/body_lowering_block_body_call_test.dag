@@ -1,6 +1,7 @@
 module v2.test.claim.body_lowering_block_body_call
 
-import v2.compiler.normalize { normalize }
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text, conserved_normalize, no_explained_drops }
+import v2.compiler.reference_conservation { ReferenceConservationSubject }
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
@@ -56,36 +57,32 @@ test fn body_lowering_block_call_parses_holds() -> Bool {
 }
 
 test fn body_lowering_block_body_call_reaches_arrow_body() -> Bool {
-  match body_lowering_block_call_parsed() {
+  match conserved_normalize(subject: body_lowering_block_call_subject(), explained: no_explained_drops()) {
     Rejected { diagnostics: _ } => false
-    Accepted { value: parsed, diagnostics: _ } =>
-      match normalize(parse_tree: parsed) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match find_named_child(root: tree.root, name: ^grammar_production_captured_node_projection) {
         Rejected { diagnostics: _ } => false
-        Accepted { value: tree, diagnostics: _ } =>
-          match find_named_child(root: tree.root, name: ^grammar_production_captured_node_projection) {
+        Accepted { value: captured, diagnostics: _ } =>
+          match find_named_child(root: captured, name: ^wall) {
             Rejected { diagnostics: _ } => false
-            Accepted { value: captured, diagnostics: _ } =>
-              match find_named_child(root: captured, name: ^wall) {
+            Accepted { value: wall_n, diagnostics: _ } =>
+              match find_named_child(root: wall_n, name: ^same) {
                 Rejected { diagnostics: _ } => false
-                Accepted { value: wall_n, diagnostics: _ } =>
-                  match find_named_child(root: wall_n, name: ^same) {
+                Accepted { value: members, diagnostics: _ } =>
+                  match find_named_child(root: members, name: ^rollup) {
                     Rejected { diagnostics: _ } => false
-                    Accepted { value: members, diagnostics: _ } =>
-                      match find_named_child(root: members, name: ^rollup) {
+                    Accepted { value: rollup_member, diagnostics: _ } =>
+                      match find_arrow_body_child(root: rollup_member) {
                         Rejected { diagnostics: _ } => false
-                        Accepted { value: rollup_member, diagnostics: _ } =>
-                          match find_arrow_body_child(root: rollup_member) {
-                            Rejected { diagnostics: _ } => false
-                            Accepted { value: body, diagnostics: _ } =>
-                              match application_read(site: body) {
-                                Application { view: v } =>
-                                  match v.head_identity {
-                                    AtomHead { identity: id } => id == ^leaf
-                                    ArrowHead => false
-                                  }
-                                NotApplication => false
-                                ApplicationRefused { diagnostics: _ } => false
+                        Accepted { value: body, diagnostics: _ } =>
+                          match application_read(site: body) {
+                            Application { view: v } =>
+                              match v.head_identity {
+                                AtomHead { identity: id } => id == ^leaf
+                                ArrowHead => false
                               }
+                            NotApplication => false
+                            ApplicationRefused { diagnostics: _ } => false
                           }
                       }
                   }
@@ -93,4 +90,10 @@ test fn body_lowering_block_body_call_reaches_arrow_body() -> Bool {
           }
       }
   }
+}
+
+// Nullary and pure, enrolled WARM in v2.workflow.floor_pure_producer_share: the parse and normalize
+// are paid once and the claim is charged only the admitted route it names.
+fn body_lowering_block_call_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "body_lowering_block_call_file", text: body_lowering_block_call_source)
 }

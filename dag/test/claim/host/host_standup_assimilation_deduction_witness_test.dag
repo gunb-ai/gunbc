@@ -60,8 +60,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data zero_elapsed: Millisecond = millisecond(count: 0)
 
 test fn pre_install_within_budget_is_absent_not_converged() -> Bool {
-  srv3_pre_install_actuation_verdict(elapsed: zero_elapsed) == Absent
-    && !deduce_os_install_actuated_satisfied(verdict: Absent)
+  let v = srv3_pre_install_actuation_verdict(elapsed: zero_elapsed)
+  match v {
+    Absent => !deduce_os_install_actuated_satisfied(verdict: v)
+    _ => false
+  }
 }
 
 test fn post_install_lease_row_deduces_converged_noop() -> Bool {
@@ -92,7 +95,10 @@ test fn post_install_lease_row_deduces_converged_noop() -> Bool {
 
 test fn unreadable_lease_is_unknown_refused_not_pending() -> Bool {
   srv3_unreadable_lease_actuation_verdict(elapsed: zero_elapsed) == UnknownRefused
-    && srv3_unreadable_lease_actuation_verdict(elapsed: zero_elapsed) != Absent
+    && (match srv3_unreadable_lease_actuation_verdict(elapsed: zero_elapsed) {
+      Absent => false
+      _ => true
+    })
     && !deduce_os_install_actuated_satisfied(verdict: UnknownRefused)
     && match decision_for_os_install_actuation_verdict(
       verdict: UnknownRefused,

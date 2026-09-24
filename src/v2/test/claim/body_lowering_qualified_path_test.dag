@@ -18,7 +18,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_try_body_lowered
 }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
-import v2.compiler.normalize { normalize }
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
@@ -628,10 +628,11 @@ fn body_lowering_qualified_members(root: Node) -> Outcome<Node> {
 // is charged only its own reads. The route still executes for real -- this is the inhabitance
 // claim, and supplying its tree would remove the last execution of it.
 fn body_lowering_qualified_value_normalized() -> Outcome<NormalizedTree> {
-  match body_lowering_qualified_value_parsed() {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: parsed, diagnostics: _ } => normalize(parse_tree: parsed)
-  }
+  conserved_normalize_of_text(
+    path: "body_lowering_qualified_value_file",
+    text: body_lowering_qualified_value_source,
+    explained: no_explained_drops()
+  )
 }
 
 test fn body_lowering_qualified_value_reaches_arrow_body_whole() -> Bool {
