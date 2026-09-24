@@ -31,6 +31,7 @@ import v2.extdeps.languages.dag {
 import v2.extdeps.languages.python { python_declared_inhabitants_root }
 import v2.extdeps.languages.typescript { ts_declared_inhabitants_root }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
+import v2.std.integer { integer_decimal_digit_type_node, integer_decimal_digits_type_node }
 import v2.std.collection {
   List,
   Map,
@@ -126,6 +127,14 @@ type AlgebraRef {
   witness: Node
 }
 
+// TWO POSITION-SCOPED DERIVATIONS SIT BESIDE THE KIND RULES THIS ROW LISTS. An accepted int
+// literal's magnitude payload derives against the integer authority's own types
+// (infer_literal_payload_entries), and a childless Conj in an Arrow's domain position derives as
+// the empty product (infer_arrow_empty_domain_edge). A node's KIND does not decide whether it
+// grounds, so a count of kinds covered does not measure how much of a closure grounds: gen-one's
+// door probe (fixture.native_cli_door.door_probe) met this frontier only through Atom and Conj
+// nodes, because body lowering handed infer a data declaration's surface tokens (fixed at
+// v2.compiler.body_lowering_fold body_lower_data_decl_to_member).
 data node_grounding_frontier_note: String = "GroundingNotDerived is v2's typed inference frontier, not a failure arm and not an escape hatch. v2 derives a node's type for six of the closed vocabulary's twelve node kinds (Branch, Match, Loop, Transform add-shape only, and Conj and Arrow by product introduction — 6 connectives + 6 behaviors = 12); the other six kinds, and every other Transform shape, have no derivation rule yet. The Conj and Arrow rules are compositional: a non-roster Conj or Arrow whose every child carries DerivedGrounding derives with the same shape re-formed over the children's grounding evidence as its evidence, and one with any frontier or absent child stays frontier — the derivation discharges only on a fully-evidenced child spine. Above the kind rules sit five specimen-scope derivations, all lookups into declared authorities rather than inventions: a node declared in any ingested language authority's declared-inhabitants roster derives with that roster root as its grounding evidence (infer_node_declared_in_language_inhabitants) — deep subtree membership over the closed ingest set (dag, python, typescript), so a declared inhabitant's leaf fact atoms derive exactly as the inhabitant node itself does; an Atom whose identity is a canonical dag binding with a declared denotation derives with that denotation as its evidence (dag_binding_denotation) — the resolver already bound the surface spelling to the canonical binding, and the authority fixes what the binding denotes; a node that is a member of the target-model authority's canonical-operations roster derives with that roster root as its evidence (infer_node_declared_in_canonical_operations) — the resolver canonicalizes surface operators to those declared operations; a node that is a member of the dag grammar authority's productions roster derives with that roster root as its evidence (infer_node_declared_in_dag_grammar_productions) — the bridge projects a production's parse into (identity atom, captured content) pairs; and an Atom whose binding an enclosing arrow's domain declares derives with the declared domain type as its evidence (infer_find_arrow_domain_type_in_tree) — the declaration-site annotation, itself derived. The binding-reference lookup is scope-naive (whole-tree, first match), the same interim the branch-operand path already uses. All five delete in favor of consuming resolution output when the resolver hands infer declaration-resolved identities directly (the namespace migration's completed state); specimens no authority declares stay on the frontier unchanged. Before this carrier existed the nine were routed through solve_constraints with the singleton candidate set [root] under a predicate that reduces to root == root, and the resulting grounding carried the SOURCE NODE as its structural evidence — i.e. as the node's resolved type (inferred_facts_resolved_type reads that field), so every literal, binding and operation in v2 was typed as itself and every downstream consumer read that as an established judgment. Each frontier node now carries a typed, located, counted diagnostic (infer_grounding_not_derived) on the Accepted path, so the deficit's frequency is observable and prioritizable rather than zeroed by construction (DESIGN §5). dissolve-on: a behavior-specific derivation rule lands for a kind, at which point that kind moves to DerivedGrounding and its frontier count drops; the carrier deletes when all twelve kinds derive."
 
 fn infer_grounding_not_derived_diagnostic(at: Locus) -> Diagnostic {
@@ -2382,6 +2391,111 @@ fn infer_literal_edge_diagnostics_derived(parent: Node, edge: Edge) -> Bool {
   }
 }
 
+// THE EMPTY DOMAIN OF A NULLARY ARROW IS THE EMPTY PRODUCT, AND IT IS GROUNDED BY THE ARROW'S
+// POSITION, NOT BY ITS OWN SHAPE. body_lower_domain_from_param_list lowers `fn f()` to an Arrow
+// whose domain is a childless Conj: the product of zero parameters. Its resolved type is what
+// product introduction yields over zero children, the empty product: a fresh synthetic childless
+// Conj. The domain lowering produces carries its parameter list's occurrence, so it is never the
+// same node as that evidence. A domain that IS structurally the empty product (a synthetic
+// childless Conj) meets the self-evidence wall in canonical_grounding_from_derived_type, and infer
+// refuses it rather than typing a node as itself. The standalone childless-Conj rule deliberately
+// still refuses (v2.test.execution.infer_product_introduction
+// product_introduction_leaves_childless_conj_on_the_frontier_holds): a childless Conj elsewhere
+// is not known to be a product of anything, and parse residue has that shape too. What this adds
+// is the one position whose meaning the Arrow fixes: its first child, the domain. Before
+// 2026-09-23 every nullary fn stayed on the frontier through its domain, so the Arrow and every
+// enclosing member did too, and gen-one's translate gate refused it.
+fn infer_arrow_empty_domain_edge(parent: Node, edge: Edge, children_remaining: Int) -> Bool {
+  match parent.kind {
+    TypeNode { connective: Arrow } =>
+      (children_remaining == length(xs: parent.children))
+        && (edge.label == Positional)
+        && (length(xs: edge.target.children) == 0)
+        && (match edge.target.kind {
+          TypeNode { connective: Conj } => true
+          _ => false
+        })
+    _ => false
+  }
+}
+
+fn infer_arrow_empty_domain_entry(domain: Node) -> Outcome<InferredFactsEntry> {
+  bind_outcome(
+    o: inferred_facts_from_derived_type(
+      node: domain,
+      derived_type: Node {
+        kind: TypeNode { connective: Conj },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      },
+      descent: infer_descent_witness_for_node(n: domain)
+    ),
+    f: fn(facts) { admitted_inferred_facts_entry(node: domain, facts: facts) }
+  )
+}
+
+// THE PAYLOAD'S FACTS FOLLOW THE DISCHARGE ABOVE, OR THE TWO DISAGREE. The literal's derivation
+// already drops its magnitude subtree's frontier DIAGNOSTICS, and until 2026-09-23 it left that
+// subtree's FACTS at GroundingNotDerived. Translate reads facts, not diagnostics, so the payload of
+// every accepted int literal (its digit atoms and cons cells) refused emission at
+// translate_rejected_grounding_not_derived: gen-one could not emit `data x: Int = 606060`, nor
+// `fn f() -> Int { 606060 }`. The payload is the integer authority's canonical decimal
+// representation (v2.std.integer integer_decimal_magnitude_node): a fold_list_node of digit atoms.
+// So each payload node derives with ITS OWN TYPE in that authority as the resolved type: a digit
+// atom is a DecimalDigit (integer_decimal_digit_type_node), and a cons cell or the empty tail is a
+// FreeMonoid<DecimalDigit> (integer_decimal_digits_type_node). The resolved-type field
+// is never given the enclosing literal as a record of where the node came from (a meaning fork the
+// first cut of this rule had). A payload node of any other shape stays on the frontier. Only the
+// edge infer_literal_edge_diagnostics_derived admits reaches here, so a malformed literal keeps
+// every child on the frontier.
+fn infer_literal_payload_member_type(member: Node) -> Optional<Node> {
+  match member.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      optional_present(value: integer_decimal_digit_type_node())
+    TypeNode { connective: Conj } =>
+      optional_present(value: integer_decimal_digits_type_node())
+    _ => optional_absent()
+  }
+}
+
+fn infer_literal_payload_member_facts(member: Node) -> Outcome<InferredFacts> {
+  match infer_literal_payload_member_type(member: member) {
+    Present { value: member_type } =>
+      inferred_facts_from_derived_type(
+        node: member,
+        derived_type: member_type,
+        descent: infer_descent_witness_for_node(n: member)
+      )
+    Absent =>
+      inferred_facts_not_derived(node: member, descent: infer_descent_witness_for_node(n: member))
+  }
+}
+
+fn infer_literal_payload_entries(payload: Node) -> Outcome<List<InferredFactsEntry>> {
+  fold(
+    node_subtree_nodes(root: payload),
+    init: Accepted { value: empty_inferred_facts_entry_list(), diagnostics: None },
+    f: fn(acc, member) {
+      bind_outcome(
+        o: acc,
+        f: fn(entries) {
+          bind_outcome(
+            o: infer_literal_payload_member_facts(member: member),
+            f: fn(facts) {
+              bind_outcome(
+                o: admitted_inferred_facts_entry(node: member, facts: facts),
+                f: fn(entry) {
+                  outcome_accepted(value: list_snoc_item(xs: entries, item: entry))
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 fn infer_gather_acc_awaits_product_row(node: Node, entries: List<InferredFactsEntry>) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
@@ -2467,63 +2581,115 @@ fn infer_gather_fold_step(
       await_transform_row: acc.await_transform_row,
       children_remaining: acc.children_remaining
     )
+  } else if infer_arrow_empty_domain_edge(parent: acc.node, edge: edge, children_remaining: acc.children_remaining) {
+    match infer_arrow_empty_domain_entry(domain: edge.target) {
+      Rejected { diagnostics: r } =>
+        infer_gather_fold_acc_failed(
+          node: acc.node,
+          pending: rejected_with_pending(pending: acc.pending, rejected: r),
+          await_branch_row: acc.await_branch_row,
+          await_match_row: acc.await_match_row,
+          await_loop_row: acc.await_loop_row,
+          await_transform_row: acc.await_transform_row,
+          children_remaining: acc.children_remaining
+        )
+      Accepted { value: domain_entry, diagnostics: _ } =>
+        infer_gather_fold_step_merged(
+          acc: acc,
+          merged_entries: list_snoc_item(xs: acc.entries, item: domain_entry),
+          merged_pending: acc.pending,
+          partials: partials,
+          tree: tree
+        )
+    }
+  } else if infer_literal_edge_diagnostics_derived(parent: acc.node, edge: edge) {
+    match infer_literal_payload_entries(payload: edge.target) {
+      Rejected { diagnostics: r } =>
+        infer_gather_fold_acc_failed(
+          node: acc.node,
+          pending: rejected_with_pending(pending: acc.pending, rejected: r),
+          await_branch_row: acc.await_branch_row,
+          await_match_row: acc.await_match_row,
+          await_loop_row: acc.await_loop_row,
+          await_transform_row: acc.await_transform_row,
+          children_remaining: acc.children_remaining
+        )
+      Accepted { value: payload_entries, diagnostics: _ } =>
+        infer_gather_fold_step_merged(
+          acc: acc,
+          merged_entries: concat_inferred_facts_entries(a: acc.entries, b: payload_entries),
+          merged_pending: acc.pending,
+          partials: partials,
+          tree: tree
+        )
+    }
   } else {
-    let merged_entries = concat_inferred_facts_entries(a: acc.entries, b: child.entries)
-    let merged_pending = if infer_literal_edge_diagnostics_derived(parent: acc.node, edge: edge) {
-      acc.pending
-    } else {
-      diagnostics_merge(outer: acc.pending, inner: child.pending)
-    }
-    let children_remaining = acc.children_remaining - 1
-    if acc.await_branch_row && children_remaining == 0 {
-      infer_gather_branch_row_on_entries(
-        node: acc.node,
-        entries: merged_entries,
-        pending: merged_pending,
-        partials: partials
-      )
-    } else if acc.await_match_row && children_remaining == 0 {
-      infer_gather_match_row_on_entries(
-        node: acc.node,
-        entries: merged_entries,
-        pending: merged_pending,
-        partials: partials,
-        tree: tree
-      )
-    } else if acc.await_loop_row && children_remaining == 0 {
-      infer_gather_loop_row_on_entries(
-        node: acc.node,
-        entries: merged_entries,
-        pending: merged_pending,
-        partials: partials
-      )
-    } else if acc.await_transform_row && children_remaining == 0 {
-      infer_gather_transform_row_on_entries(
-        node: acc.node,
-        entries: merged_entries,
-        pending: merged_pending,
-        partials: partials,
-        tree: tree
-      )
-    } else if children_remaining == 0 && infer_gather_acc_awaits_product_row(node: acc.node, entries: merged_entries) {
-      infer_gather_product_row_on_entries(
-        node: acc.node,
-        entries: merged_entries,
-        pending: merged_pending,
-        partials: partials
-      )
-    } else {
-      infer_gather_fold_acc_ok(
-        node: acc.node,
-        entries: merged_entries,
-        pending: merged_pending,
-        await_branch_row: acc.await_branch_row,
-        await_match_row: acc.await_match_row,
-        await_loop_row: acc.await_loop_row,
-        await_transform_row: acc.await_transform_row,
-        children_remaining: children_remaining
-      )
-    }
+    infer_gather_fold_step_merged(
+      acc: acc,
+      merged_entries: concat_inferred_facts_entries(a: acc.entries, b: child.entries),
+      merged_pending: diagnostics_merge(outer: acc.pending, inner: child.pending),
+      partials: partials,
+      tree: tree
+    )
+  }
+}
+
+fn infer_gather_fold_step_merged(
+  acc: InferGatherFoldAcc,
+  merged_entries: List<InferredFactsEntry>,
+  merged_pending: Diagnostics,
+  partials: List<Node>,
+  tree: Node,
+) -> InferGatherFoldAcc {
+  let children_remaining = acc.children_remaining - 1
+  if acc.await_branch_row && children_remaining == 0 {
+    infer_gather_branch_row_on_entries(
+      node: acc.node,
+      entries: merged_entries,
+      pending: merged_pending,
+      partials: partials
+    )
+  } else if acc.await_match_row && children_remaining == 0 {
+    infer_gather_match_row_on_entries(
+      node: acc.node,
+      entries: merged_entries,
+      pending: merged_pending,
+      partials: partials,
+      tree: tree
+    )
+  } else if acc.await_loop_row && children_remaining == 0 {
+    infer_gather_loop_row_on_entries(
+      node: acc.node,
+      entries: merged_entries,
+      pending: merged_pending,
+      partials: partials
+    )
+  } else if acc.await_transform_row && children_remaining == 0 {
+    infer_gather_transform_row_on_entries(
+      node: acc.node,
+      entries: merged_entries,
+      pending: merged_pending,
+      partials: partials,
+      tree: tree
+    )
+  } else if children_remaining == 0 && infer_gather_acc_awaits_product_row(node: acc.node, entries: merged_entries) {
+    infer_gather_product_row_on_entries(
+      node: acc.node,
+      entries: merged_entries,
+      pending: merged_pending,
+      partials: partials
+    )
+  } else {
+    infer_gather_fold_acc_ok(
+      node: acc.node,
+      entries: merged_entries,
+      pending: merged_pending,
+      await_branch_row: acc.await_branch_row,
+      await_match_row: acc.await_match_row,
+      await_loop_row: acc.await_loop_row,
+      await_transform_row: acc.await_transform_row,
+      children_remaining: children_remaining
+    )
   }
 }
 

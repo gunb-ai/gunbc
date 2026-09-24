@@ -321,6 +321,17 @@ fn redfish_link_property(doc: JsonValue, key: String) -> ObservationAttempt<Stri
   }
 }
 
+// THE SERVICE ROOT'S LINK TO THE ComputerSystem COLLECTION (ServiceRoot schema property `Systems`, a
+// link object carrying `@odata.id`). DSP0266 fixes exactly one URI a client may author, the service
+// root `/redfish/v1/`; every other resource is reached by following a link the service published, so
+// the Systems collection's path is read here and never assumed. Absent when the root publishes none.
+fn redfish_service_root_systems_link_of(body: String) -> ObservationAttempt<String?, NonEmptyStr> {
+  match redfish_document(body: body) {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: doc } => redfish_link_property(doc: doc, key: "Systems")
+  }
+}
+
 fn redfish_system_inventory_links_of(body: String) -> ObservationAttempt<RedfishSystemInventoryLinks, NonEmptyStr> {
   match redfish_document(body: body) {
     ObservationRefused { cause: c } => ObservationRefused { cause: c }

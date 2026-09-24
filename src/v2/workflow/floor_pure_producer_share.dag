@@ -599,9 +599,9 @@ import v2.std.collection { List }
 // THE XL-2 SEQUENCE-OPERAND RESOLVE ROW IS THE SAME GROUND AT FIVE SPECIMENS:
 // v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal sqo_outcomes drives one front end
 // over five inline modules and stores one verdict arm per module, portable for the same reason.
-// THE XL-2 CALL-ARGUMENT VALUE RESOLVE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
+// THE XL-2 CALL-ARGUMENT VALUE RESOLVE ROW IS THE SAME GROUND AT TWENTY-ONE SPECIMENS:
 // v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal cav_outcomes drives one front end
-// over thirteen inline modules and stores one verdict arm per module, portable for the same reason.
+// over twenty-one inline modules and stores one verdict arm per module, portable for the same reason.
 // THE BODY-LOWERING NORMALIZE ROW IS THE SAME GROUND, FOUND BY BEING EXPOSED RATHER THAN BY BEING
 // NEW. v2.test.manual.body_lowering_normalize_add calls body_lowering_normalized_module() -- one
 // front end over a source literal -- from NINETEEN sites, and the value is an Optional<NormalizedTree>:
@@ -666,6 +666,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.resolve.namespace_candidate_rule.ncr_outcomes",
   "v2.test.claim.namespace_xl0.call_argument_resolve_refusal.xl2_outcomes",
   "v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal.sqo_outcomes",
+  "v2.test.claim.namespace_xl0.value_position_whole_read.vpw_outcomes",
+  "v2.test.claim.namespace_xl0.value_position_whole_read.vpw_normalized",
   "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal.cav_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",
@@ -680,6 +682,9 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_arrow_with_body",
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_swapped_arrow_with_body",
   "v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_specimen_resolved",
+  "v2.test.execution.data_decl_lowering_grounding.ddl_data_resolved",
+  "v2.test.execution.data_decl_lowering_grounding.ddl_fn_eq_resolved",
+  "v2.test.execution.data_decl_lowering_grounding.ddl_fn_brace_resolved",
   "v2.test.parse.variant_field_lowering.vfs_normalized_0",
   "v2.test.parse.variant_field_lowering.vfs_normalized_1",
   "v2.test.parse.variant_field_lowering.vfs_normalized_2",
@@ -797,6 +802,23 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.reference_conservation.repeated_spelling_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.named_argument_label_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.list_literal_argument_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.where_refinement_predicate_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.match_later_arm_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.statement_let_binder_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.two_same_spelled_labels_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.operator_call_argument_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.operator_if_arm_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.scope_member_dropping_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.scope_outsider_dropping_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.scope_member_clean_subject",
+  "v2.test.claim.body_lowering.declaration_structure_preserved.where_refinement_alias_subject",
+  "v2.test.claim.body_lowering.single_arm_match.three_arm_subject",
+  "v2.test.claim.body_lowering.single_arm_match.zero_arm_subject",
+  "v2.test.claim.body_lowering.statement_let_bind.let_then_reference_subject",
+  "v2.test.claim.body_lowering.statement_let_bind.let_chain_subject",
+  "v2.test.claim.body_lowering.statement_let_bind.let_in_form_subject",
+  "v2.test.claim.body_lowering.statement_let_bind.typed_let_subject",
+  "v2.test.claim.body_lowering_block_body_call.body_lowering_block_call_subject",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_fixture_normalized",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_local_consumer",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_declared_consumer",
