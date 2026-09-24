@@ -1,8 +1,20 @@
 module v2.std.grounding
 
 import std.types { Map }
+import v2.std.collection { empty_map, map_insert }
 import v2.std.compilers.target_model { FunctionBoundarySite, TargetModel }
-import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, Unavailable, UserInputBoundary }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  Outcome,
+  Rejected,
+  Unavailable,
+  UserInputBoundary,
+  invariant_port_locus,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
 import v2.std.logic { Bool }
 import v2.std.model_core {
   ModelCoreFactAxisEncoding,
