@@ -1,0 +1,127 @@
+module test.claim.infer_sibling_operand_effect_order_witness
+
+import gunbc.compile_census_probe { blocking_class_count_for, total_blocking_count_for }
+import std.types { Bool, Int, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE DISCRIMINATING RED FOR THE SIBLING-OPERAND EFFECT-ORDER WALL, AND ITS CONTROLS.
+//
+// THE CLASS: gunbc.recurring_failure_mode
+// sibling_operand_effect_order_is_underdetermined_and_unenforced. Two siblings of one operand list
+// each reach a declared effect, so the program's meaning depends on which runs first, and nothing
+// declares that order. The remedy the derivation reached is a REFUSAL rather than a declared order,
+// and v1.compiler.infer SiblingOperandEffectOrderUndetermined is that refusal. This file is the
+// executed evidence that it fires, that it fires on the right thing, and that the remedy it names
+// is actually writable.
+//
+// WHY THE MODULE IS NAMED test.claim.infer_ AND THE NAME IS LOAD-BEARING. v2.workflow.required_floor
+// admits the gate population by `required_gate_prefixes`, and `test.claim.infer_` is one of its
+// eleven rows -- so this module is inside the required gate BY CONSTRUCTION rather than because
+// somebody remembered to add a row for it. That is not a stylistic choice. The nearest precedent
+// for this evidence, test.claim.guarantee_floor_class_probe_witness, sits in NEITHER the prefix
+// roster nor `required_gate_authored_modules` after the 2026-09-19 nominal-roster cut, so the wall
+// that cites it as merge-path evidence is citing a witness the merge path no longer runs. A red
+// placed there would be green forever and cited as coverage, which is the decoration DESIGN
+// section 4b tells an author to check for BEFORE writing the check.
+//
+// EVERY SOURCE BELOW IS A STRING AND NEVER A CORPUS LITERAL. An inline expecting-red would be
+// refused by the compiler that compiles this file, so the fixture has to arrive as text handed to
+// a nested compile -- which is also what makes the red authorable at all, the question DESIGN
+// section 4b says to ask first.
+
+// TWO EFFECT-REACHING SIBLINGS IN ONE ARGUMENT LIST. This is the shape the authored ruling on
+// gunbc.host_effect_realize srv3_chown_then_read_back was written about, and the shape
+// v1.compiler.emit order_typed_call_args_from_semantics reorders into FORMAL order while
+// v1_compiler.interpreter eval_call evaluates in CALL-SITE order -- the live two-route divergence
+// that makes this class urgent rather than latent.
+data sibling_effect_order_argument_red_source: String = "module probe_sibling_effect_order_args\nimport std.resources { Filesystem }\nfn touch_a(p: String) -> Int uses fs: Filesystem { 1 }\nfn touch_b(p: String) -> Int uses fs: Filesystem { 2 }\nfn sink(x: Int, y: Int) -> Int { x + y }\nfn f() -> Int uses fs: Filesystem { sink(x: touch_a(p: \"a\"), y: touch_b(p: \"b\")) }\n"
+
+// THE SAME TWO EFFECTS, let-SEQUENCED. This is the POSITIVE CONTROL and it carries more weight than
+// a green usually does: the refusal above names `let` as the remedy, and a refusal whose remedy is
+// not writable has told the author to do something impossible. This is what establishes that the
+// only door the wall leaves open is in fact open.
+data sibling_effect_order_argument_green_source: String = "module probe_sibling_effect_order_args_let\nimport std.resources { Filesystem }\nfn touch_a(p: String) -> Int uses fs: Filesystem { 1 }\nfn touch_b(p: String) -> Int uses fs: Filesystem { 2 }\nfn sink(x: Int, y: Int) -> Int { x + y }\nfn f() -> Int uses fs: Filesystem { let a = touch_a(p: \"a\")\n  let b = touch_b(p: \"b\")\n  sink(x: a, y: b) }\n"
+
+// ONE EFFECT-REACHING SIBLING BESIDE A PURE ONE. THIS IS THE CONTROL THAT MATTERS MOST AND IT IS
+// NOT A FORMALITY. The wall's predicate counts effect-reaching children and refuses at more than
+// one; a wall that refused at one would reject most of the corpus, and -- worse for this PR -- it
+// would mean every census number reported for this class was measuring something else. A green
+// here is what separates "the wall works" from "the wall fires".
+data sibling_effect_order_single_effect_source: String = "module probe_sibling_effect_order_single\nimport std.resources { Filesystem }\nfn touch_a(p: String) -> Int uses fs: Filesystem { 1 }\nfn sink(x: Int, y: Int) -> Int { x + y }\nfn f() -> Int uses fs: Filesystem { sink(x: touch_a(p: \"a\"), y: 2) }\n"
+
+// TWO EFFECT-REACHING SIBLINGS IN ONE RECORD LITERAL. A SEPARATE ROW BECAUSE IT IS A SEPARATE
+// ROUTE: the argument case is refused at the resolved direct-call join and this one inside
+// infer_record_lit_structural, so one silent route would otherwise hide behind the other. It is
+// also the STRONGER face of the class -- v2.std.node canonicalize_labeled_for_content_hash sorts
+// labeled children before hashing, so two spellings of this literal differing only in field order
+// are the same node under content_hash while their effect order differs.
+data sibling_effect_order_record_red_source: String = "module probe_sibling_effect_order_record\nimport std.resources { Filesystem }\ntype Pair { a: Int, b: Int }\nfn touch_a(p: String) -> Int uses fs: Filesystem { 1 }\nfn touch_b(p: String) -> Int uses fs: Filesystem { 2 }\nfn f() -> Pair uses fs: Filesystem { Pair { a: touch_a(p: \"a\"), b: touch_b(p: \"b\") } }\n"
+
+data sibling_effect_order_record_green_source: String = "module probe_sibling_effect_order_record_let\nimport std.resources { Filesystem }\ntype Pair { a: Int, b: Int }\nfn touch_a(p: String) -> Int uses fs: Filesystem { 1 }\nfn touch_b(p: String) -> Int uses fs: Filesystem { 2 }\nfn f() -> Pair uses fs: Filesystem { let a = touch_a(p: \"a\")\n  let b = touch_b(p: \"b\")\n  Pair { a: a, b: b } }\n"
+
+// THE COUNTING HELPER IS CONSUMED, NOT RE-DECLARED. gunbc.compile_census_probe is the declared
+// single home for "compile this source string and count what it refused", and its own annotation
+// records that its helpers were hoisted there precisely because a second witness copying them
+// would make one concept answer from two authorities. So this file declares no census helper;
+// blocking_class_count_for was added AT THAT HOME, because the class-without-a-subject question
+// was the one shape it did not yet answer.
+//
+// THE CONTROLS ASSERT A PAIRWISE DIFFERENCE, NOT A ZERO, AND BOTH EARLIER ATTEMPTS WERE WRONG.
+// This paragraph records them because the repair is unreadable without the two failures.
+//
+// ATTEMPT 1 asserted only blocking_class_count_for(...) == 0 for each green. All three passed
+// against a binary carrying the wall -- because the fixtures were being REFUSED BY ANOTHER LANE'S
+// DIAGNOSTIC before this wall could judge them. Their calling functions declared no `uses`, so the
+// resource-requirement wall refused each source first, and a source refused by someone else's
+// diagnostic has a zero count of MINE. The -1 arm cannot see that: the census RAN and produced
+// rows, just none of this class. Repaired by declaring `uses` on every fixture's caller.
+//
+// ATTEMPT 2 added total_blocking_count_for(...) == 0, on the belief that it counts the FIXTURE'S
+// diagnostics. IT DOES NOT. compile_dag_diagnostic_census compiles the synthetic source AGAINST
+// THE LIVE TREE, so the total is the whole corpus census: measured at 151 for the green source and
+// 152 for the red. A literal 0 is unreachable, and asserting the measured 151 would be the change
+// detector DESIGN section 5 forbids -- a number copied from the tree it measures.
+//
+// SO THE CONTROL IS THE DIFFERENCE BETWEEN THE PAIR, which cancels the corpus baseline entirely:
+// the red source and its let-rewritten twin differ in exactly one authored respect, so the wall
+// must account for exactly one blocking diagnostic between them. Every number below is a fold
+// compared to another fold over the same two sources; no literal is copied from any tree. If the
+// green fixture acquires an unrelated refusal its total rises and the difference collapses, which
+// is precisely the failure attempt 1 could not see.
+//
+// TWO PROPERTIES OF THAT HELPER CARRY EVERY ASSERTION BELOW. It answers -1, never 0, when the
+// nested compile produced no observation -- so a harness failure cannot read as "the wall did not
+// fire", and the green controls asserting == 0 cannot pass by vacancy. And it reads the BLOCKING
+// projection, so a wall silently downgraded to advisory reds here rather than staying green on a
+// class-name match.
+
+data sibling_effect_order_class: String = "SiblingOperandEffectOrderUndetermined"
+
+test fn two_effect_reaching_arguments_refuse() -> Bool {
+  blocking_class_count_for(source: sibling_effect_order_argument_red_source, wanted_class: sibling_effect_order_class) == 1
+}
+
+test fn the_let_rewritten_arguments_are_accepted() -> Bool {
+  blocking_class_count_for(source: sibling_effect_order_argument_green_source, wanted_class: sibling_effect_order_class) == 0
+    && total_blocking_count_for(source: sibling_effect_order_argument_red_source) - total_blocking_count_for(source: sibling_effect_order_argument_green_source) == 1
+}
+
+// THIS ONE HAS NO PAIRED RED, so it cannot use the difference: it is the same fixture as the
+// argument red with one operand made pure, and what it establishes is that the predicate counts
+// MORE THAN ONE rather than AT LEAST ONE. Its total is held against the argument red's total
+// instead, which must exceed it by exactly the one diagnostic the red earns.
+test fn one_effect_reaching_argument_is_accepted() -> Bool {
+  blocking_class_count_for(source: sibling_effect_order_single_effect_source, wanted_class: sibling_effect_order_class) == 0
+    && total_blocking_count_for(source: sibling_effect_order_argument_red_source) - total_blocking_count_for(source: sibling_effect_order_single_effect_source) == 1
+}
+
+test fn two_effect_reaching_record_fields_refuse() -> Bool {
+  blocking_class_count_for(source: sibling_effect_order_record_red_source, wanted_class: sibling_effect_order_class) == 1
+}
+
+test fn the_let_rewritten_record_fields_are_accepted() -> Bool {
+  blocking_class_count_for(source: sibling_effect_order_record_green_source, wanted_class: sibling_effect_order_class) == 0
+    && total_blocking_count_for(source: sibling_effect_order_record_red_source) - total_blocking_count_for(source: sibling_effect_order_record_green_source) == 1
+}
