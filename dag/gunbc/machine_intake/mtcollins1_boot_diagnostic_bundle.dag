@@ -1,7 +1,8 @@
 module gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle
 
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
-import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
+import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { trim }
 import std.measure { Second, second, second_count, ByteSize, byte_size, byte_size_count }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
@@ -1111,18 +1112,16 @@ fn console_path_retained(path: String) -> Bool {
 // 35871654468 the first attempt that reached this read aborted the whole evaluation after the SEL
 // and Redfish reads had already been typed, and neither the bundle nor the receipt was written
 // (gunbc.recurring_failure_mode a_type_name_asserts_an_algebra_the_arithmetic_does_not_carry; the
-// sibling repair is gunbc.runner_microvm_cell_readiness_store decode_attempt). The negative guard
-// stays because checked_int_magnitude returns a magnitude: a negative size is no size, never its
-// absolute value.
+// sibling repair is gunbc.runner_microvm_cell_readiness_store decode_attempt). The crossing is
+// std.checked_arithmetic checked_int_to_nat, the one Int->Nat authority since #12166: a negative
+// size is absent, never clamped and never its absolute value.
 fn console_size_of_stat(size_text: String) -> ByteSize? {
   match parse_int(s: trim(size_text)) {
     Absent => none
     Present { value: n } =>
-      if n < 0 { none } else {
-        match checked_int_magnitude(a: n) {
-          CheckedNatOverflow { cause: _ } => none
-          CheckedNatReady { value: m } => Present { value: byte_size(count: m) }
-        }
+      match checked_int_to_nat(n: n) {
+        Absent => none
+        Present { value: count } => Present { value: byte_size(count: count) }
       }
   }
 }

@@ -51,38 +51,8 @@ import v1.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
   env_with_type_variable_bindings, bare_name_miss_diagnostic,
   type_ref_measure_binding_authority,
+  lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
   UnitVariantContribution
-}
-
-// Phantom unit-variant resolution reads the env's precomputed unit_variant_index (built and
-// maintained beside visible_str_bindings in v1.compiler.infer_env). The former shape re-merged
-// every parent's str_bindings and re-scanned every visible binding PER LOOKUP — one call per
-// bare-variant reference over an environment of thousands — measured 2026-08-28 at ~66% of the
-// whole-corpus compile.reconcile wall (92 of 148 gdb stack samples over strict preparation).
-// The contract is unchanged: exactly one visible unit variant with this name resolves; zero or
-// several refuse. Duplicate variant names within one coproduct keep count > 1 and refuse, as
-// the scan's multiple appended matches did.
-type UnitVariantPhantomLookup
-  = UnitVariantPhantomPresent { variant: Node }
-  | UnitVariantPhantomAbsent
-  | UnitVariantPhantomEvidenceUnavailable
-
-fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> UnitVariantPhantomLookup {
-  if !env.unit_variant_index_observed {
-    UnitVariantPhantomEvidenceUnavailable
-  } else {
-    match map_get(env.unit_variant_index, variant_name) {
-      Present { value: contribs } =>
-        let total = fold(contribs |> map_values, init: 0, f: (acc, c) => acc + c.count)
-        if total == 1 {
-          match filter(contribs |> map_values, c => c.count == 1) |> first {
-            Present { value: single } => UnitVariantPhantomPresent { variant: single.variant }
-            Absent => UnitVariantPhantomAbsent
-          }
-        } else { UnitVariantPhantomAbsent }
-      Absent => UnitVariantPhantomAbsent
-    }
-  }
 }
 
 // KIND INHABITANCE AT AN APPLIED TYPE ARGUMENT -- the wall that makes a kinded parameter position
