@@ -4,8 +4,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// AN AUTHORED IMPORT'S USE-LINE MUST FOLLOW THE MODULE THE AUTHOR NAMED, and today it does not
-// when two conditions hold together. This pair is the executing control for
+// AN AUTHORED IMPORT'S USE-LINE MUST FOLLOW THE MODULE THE AUTHOR NAMED. Until 2026-09-22 it did
+// not when the conditions below held together (repaired by v1.compiler.emit_rust
+// authored_import_binds_provider_declaration; the row records the second term's correction). This pair is the executing control for
 // gunbc.recurring_failure_mode an_authored_import_emits_no_use_line_when_its_spelling_is_forked:
 // the emitted module renders a bare type name it declined to import, which is one module
 // contradicting itself and refuses downstream at rustc with E0425.
@@ -38,10 +39,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // reference. The qualified module path is the discriminator instead: `crate::std_integer::`
 // appears ONLY in the use-line, since the signature spells `UInt8` unqualified.
 
-// DO NOT DELETE THIS MODULE BECAUSE ITS CLAIMS ARE GREEN. Every claim here is green TODAY and
-// that is the intended state: four of the five assert behaviour that is CORRECT, and the fifth
-// asserts that a KNOWN DEFECT is still present, which it is. Green therefore means "the defect is
-// still exactly where it was measured", not "there is nothing here to guard".
+// DO NOT DELETE THIS MODULE BECAUSE ITS CLAIMS ARE GREEN. Every claim here asserts behaviour that
+// is CORRECT. The fifth was enrolled asserting the KNOWN DEFECT, was observed RED once flipped on the
+// pre-repair emitter, and is green since the repair: it is now the regression control, so green
+// means "the use-line still follows the authored provider", not "there is nothing here to guard".
 //
 // The defect this module guards HAS NO OTHER SYMPTOM ANYWHERE IN THE CORPUS. The site that
 // exposed it -- extdeps.numeric.base16 refusing the self-host build with E0425 -- was repaired at
@@ -81,32 +82,33 @@ test fn a_singly_declared_phantom_import_emits_its_use_line() -> Bool {
   w_single_declarer_keeps_the_authored_use_line()
 }
 
-// THE EXPECTING-RED ARM, AND THE THIRD CONDITION IT ENCODES. The second declarer must reach the
-// closure through a module the consumer DOES NOT IMPORT. Measured 2026-09-22: a consumer that
-// imports std.integer AND v2.std.integer directly gets BOTH use-lines and is correct, so the
-// emitter is right whenever the author named both providers. Here the consumer names only
-// std.integer; extdeps.posix.identity is imported for an unrelated function and itself imports
-// v2.std.integer, so the second UInt8 declaration arrives in the crate without this module ever
-// mentioning it. That is the shape every real occurrence has -- extdeps.numeric.base16 never
-// mentioned v2.std.integer either.
+// THE FORMER EXPECTING-RED ARM, NOW THE REGRESSION CONTROL, AND THE THIRD CONDITION IT ENCODES.
+// The second declarer must reach the closure through a module the consumer DOES NOT IMPORT.
+// Measured 2026-09-22: a consumer that imports std.integer AND v2.std.integer directly gets BOTH
+// use-lines and is correct, so the emitter is right whenever the author named both providers. Here
+// the consumer names only std.integer; extdeps.posix.identity is imported for an unrelated function
+// and itself imports v2.std.integer, so the second UInt8 declaration arrives in the crate without
+// this module ever mentioning it. That is the shape every real occurrence has --
+// extdeps.numeric.base16 never mentioned v2.std.integer either.
 //
-// WHEN THE REPAIR LANDS THIS CLAIM GOES RED, AND THAT IS ITS JOB. Per DESIGN section 4b(4) it
-// then FLIPS to a permanent regression control -- move the string from excludes to includes --
-// rather than being deleted. It is the only thing in the corpus that fails if this defect
-// returns, and it matters because the symptom that exposed it (extdeps.numeric.base16 refusing
-// the self-host build) has been removed at the source by the sealed-carrier repair, leaving the
-// defect real and silent.
-fn w_second_declarer_drops_the_authored_use_line() -> Bool {
+// THE FLIP, AS A MEASURED TRANSITION RATHER THAN AN ASSUMED ONE (DESIGN section 4b(4)). This arm was
+// enrolled asserting the std_integer use-line ABSENT. On 2026-09-22 (bold-boar-16) the string moved
+// from excludes to includes and the arm was run on the PRE-REPAIR emitter: it returned false, RED.
+// After v1.compiler.emit_rust authored_import_binds_provider_declaration it returns true. It stays
+// enrolled: the symptom that exposed the defect (extdeps.numeric.base16 refusing the self-host
+// build) was removed at the source by the sealed-carrier repair, so this arm and
+// test.claim.authored_import_variant_spelling_witness_test are what fail if the defect returns.
+fn w_second_declarer_keeps_the_authored_use_line() -> Bool {
   compile_dag_rust_emit_check(
     "module aiulb_indirect\n\nimport std.types { Int, List, String }\nimport std.integer { UInt8 }\nimport extdeps.posix.identity { posix_id_value_from_text }\n\nfn count_octets(xs: List<UInt8>) -> Int {\n  count(xs)\n}\n\nfn read_id(text: String) -> Int {\n  0\n}\n",
     "src/aiulb_indirect.rs",
-    ["UInt8"],
-    ["pub use crate::std_integer::"]
+    ["UInt8", "pub use crate::std_integer::"],
+    []
   )
 }
 
-test fn a_second_declarer_in_the_closure_drops_the_use_line() -> Bool {
-  w_second_declarer_drops_the_authored_use_line()
+test fn a_second_declarer_in_the_closure_keeps_the_use_line() -> Bool {
+  w_second_declarer_keeps_the_authored_use_line()
 }
 
 // THE THIRD CONDITION, ISOLATED. Same two declarers in the closure, but the consumer NAMES both

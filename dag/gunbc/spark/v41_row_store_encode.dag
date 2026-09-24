@@ -1,0 +1,227 @@
+module gunbc.spark.v41_row_store_encode
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.nat { Nat }
+import std.content_hash { Sha256Digest }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.measure { ByteSize, byte_size_count }
+import gunbc.spark.v41_checkpoint_materialize { v41_checkpoint_repo_directory }
+import v2.std.optional { Present, Absent }
+import extdeps.numeric.base16 { byte_hex_lower }
+import extdeps.deepseek.deepseek_v4_1_flash {
+  deepseek_v4_1_flash_engram, deepseek_v4_1_flash_engram_sharded_entries, deepseek_v4_1_flash_engram_shard_files,
+}
+import gunbc.spark.v41_identity_input { V41EngramResidencyPartition }
+import gunbc.spark.v41_engram_row_store {
+  V41RowStoreEncodingSpec, V41LayerTable, V41RankStoreIdentity,
+  V41RowStoreEncoding, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
+  V41RowStoreSpecAdmitted, V41RowStoreSpecRefused,
+  V41PublishedSpan, V41PublishedSpansPlanned, V41PublishedSpansUnplannable,
+  v41_row_store_spec, v41_published_span_plan, v41_identify_row_store, v41_live_head_sizes,
+  v41_magic_octets, weight_bytes, scale_bytes, v41_store_key,
+}
+
+// ── THE HOST REALIZATION OF v41_place_row: WHAT THE ENCODER IS TOLD, DERIVED ───────────────────
+//
+// The published stores are hundreds of millions of rows, so they are not built by the .dag fold; they
+// are built on the host that holds the materialized shards by v41_row_store_encoder_program below, and
+// this module is the whole of what that program knows. For one
+// (layer, rank) store it derives, from the row-store spec and the published span plan:
+//   - the shard and the file offsets of the layer's weight and scale tables (the span plan, which is
+//     the publisher's header arithmetic -- the same plan the span-key read uses);
+//   - the rank's contiguous row range (the spec's layer table, vLLM's bucket layout);
+//   - the record widths (the spec's geometry, read off the published shapes);
+//   - the magic (v41_row_store_magic, as hex).
+// The program adds only the interleave. It is therefore a realization of v41_place_row /
+// v41_store_bytes and not a second encoder, and what licenses reading its output as the model's bytes
+// is test.claim.spark.v41_row_store_encode_witness: its output over real published rows is
+// byte-identical to v41_store_bytes, and a perturbed placement is not. That is differential evidence
+// over a sample, not a derivation -- gunbc.rung_drop v41_row_store_host_realized_by_sample says so and
+// names what restores the structural rung.
+
+// ── THE PROGRAM, AS DATA OWNED HERE, AND IT KNOWS NOTHING ABOUT V4.1 ────────────────────────
+//
+// A generic byte copier: write PREFIX, then for i in [FIRST, FIRST + COUNT) the A-WIDTH bytes at
+// A-OFFSET + i * A-WIDTH followed by the B-WIDTH bytes at B-OFFSET + i * B-WIDTH, all from SRC. It names
+// no table, no layer, no rank, and holds no offset, stride, bound, head size or magic: every value is an
+// operand v41_store_encode_argv renders from v41_store_encode_plan, i.e. from the row-store spec and the
+// published span plan. It is a DECLARED SCAFFOLD, admitted outside this diff (review 70425 held that a
+// hand-written copier beside v41_place_row needs operator admission, DESIGN section 5):
+// SCAFFOLD ADMISSION OF RECORD (2026-09-23): the operator's EXPLICIT ruling, a direct reply in the
+// proud-deer-538 (DS4.1) session ('follow your rec' = admit), recorded on #12122 at
+// https://github.com/gunb-ai/gunbc/pull/12122#issuecomment-5797563990 .
+// Scope: the host program text is layout-free (every V4.1 fact is an operand rendered from the .dag
+// plan), and the admission ends when the emitted .dag encoder encodes all eight stores. It supersedes
+// escalation msg_4de9efa4-51fb-4dbc-ab71-9ccf45f378e7, which was approved only by the dashboard's
+// 15-minute default and which reviews 70433 and 70470 rightly held was not an operator admission.
+// The debt and its end are gunbc.rung_drop v41_row_store_host_realized_by_sample. It is run as
+// `python3 -c` (the shape of extdeps.tools.sha256sum sha256sum_byte_span_program's `bash -c`), writes
+// OUT.part and renames only when complete, and prints nothing on success.
+data v41_row_store_encoder_program_lines: List<String> = [
+  "import argparse",
+  "import os",
+  "import sys",
+  "",
+  "def main():",
+  "    p = argparse.ArgumentParser()",
+  "    for name in ['--src', '--prefix-hex', '--out']:",
+  "        p.add_argument(name, required=True)",
+  "    for name in ['--a-offset', '--a-width', '--b-offset', '--b-width', '--first', '--count', '--chunk']:",
+  "        p.add_argument(name, type=int, required=True)",
+  "    a = p.parse_args()",
+  "    if a.count <= 0 or a.a_width <= 0 or a.b_width <= 0 or a.chunk <= 0 or a.first < 0:",
+  "        print('interleave: count, widths and chunk must be positive and first non-negative', file=sys.stderr)",
+  "        return 2",
+  "    aw = a.a_width",
+  "    bw = a.b_width",
+  "    a0 = a.a_offset + a.first * aw",
+  "    b0 = a.b_offset + a.first * bw",
+  "    part = a.out + '.part'",
+  "    with open(a.src, 'rb') as src, open(part, 'wb') as dst:",
+  "        dst.write(bytes.fromhex(a.prefix_hex))",
+  "        done = 0",
+  "        while done < a.count:",
+  "            n = min(a.chunk, a.count - done)",
+  "            src.seek(a0 + done * aw)",
+  "            x = src.read(n * aw)",
+  "            src.seek(b0 + done * bw)",
+  "            y = src.read(n * bw)",
+  "            if len(x) != n * aw or len(y) != n * bw:",
+  "                print('interleave: short read from the source', file=sys.stderr)",
+  "                return 3",
+  "            dst.write(b''.join(x[i * aw:(i + 1) * aw] + y[i * bw:(i + 1) * bw] for i in range(n)))",
+  "            done += n",
+  "    os.replace(part, a.out)",
+  "    return 0",
+  "",
+  "sys.exit(main())",
+]
+
+data v41_row_store_encoder_program: String = concat(join(v41_row_store_encoder_program_lines, "\n"), "\n")
+
+data v41_row_store_encoder_program_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.spark.v41_row_store_encode v41_row_store_encoder_program -- a hand-authored two-stream interleaver kept as program text and run with python3 -c (medium-as-string), beside the modeled v41_place_row / v41_store_bytes. DISSOLVES WHEN an emitted .dag encoder runs on the host with (1) a ranged binary read (Filesystem read of an offset and length), (2) a streaming binary append with rename-to-publish, (3) a bounded-memory chunked driver over v41_place_row, and (4) an emitted arm64 tool entry taking argv -- and encodes all eight published stores. This row, this program and gunbc.rung_drop v41_row_store_host_realized_by_sample delete together.")
+
+// The rows per read. Not a layout fact: any positive value yields the same bytes.
+data v41_row_store_encoder_chunk_rows: Nat = 65536
+
+// THIS PROGRAM DECLARES WHAT IT REALIZES AND THE RUNG THAT COSTS.
+type V41HostRealization sole_constructor {
+  realizes: DeclarationRef
+  program: String
+  rung_drop: DeclarationRef
+  dissolution: DissolutionCondition
+}
+
+data v41_row_store_host_realization: V41HostRealization = V41HostRealization {
+  realizes: decl_ref(module_path: "gunbc.spark.v41_engram_row_store", decl_name: "v41_place_row"),
+  program: v41_row_store_encoder_program,
+  rung_drop: decl_ref(module_path: "gunbc.rung_drop.v41_row_store_host_realized_by_sample", decl_name: "v41_row_store_host_realized_by_sample"),
+  dissolution: v41_row_store_encoder_program_dissolution_trigger,
+}
+
+
+// THE DIRECTORY ON THE HOST: beside the materialized checkpoint, under the fleet's one models root
+// (gunbc.spark.v41_checkpoint_materialize v41_checkpoint_repo_directory, from
+// gunbc.spark.model_snapshot_acquisition spark_models_root). Which path the runtime OPENS a store at is
+// the wiring patch's decision (gunbc.spark.v41_engram_row_store states that frontier); this is where
+// the encoder writes.
+fn v41_row_store_output_directory() -> NonEmptyStr {
+  join([v41_checkpoint_repo_directory(), "/engram-row-stores"], "") as NonEmptyStr
+}
+
+// THE PUBLISHED STORES' IDENTITIES are not here: they live with the row-store model
+// (gunbc.spark.v41_engram_row_store v41_published_store_readings, v41_row_store_encoding_key), where the
+// dispatched encode run's receipt is transcribed. This module owns only what the host program is told.
+type V41StoreEncodeArgs {
+  layer: Nat
+  rank: Nat
+  shard: NonEmptyStr
+  weight_offset: ByteSize
+  scale_offset: ByteSize
+  start: Int
+  rows: Int
+  weight_bytes: ByteSize
+  scale_bytes: ByteSize
+  magic_hex: String
+  out: NonEmptyStr
+}
+
+type V41StoreEncodePlan
+  = V41StoreEncodePlanned { stores: List<V41StoreEncodeArgs> }
+  | V41StoreEncodeUnplannable { defects: List<NonEmptyStr> }
+
+fn v41_magic_hex() -> String {
+  join(map(v41_magic_octets(), o => byte_hex_lower(v: o)), "")
+}
+
+fn v41_span_named(spans: List<V41PublishedSpan>, name: NonEmptyStr) -> V41PublishedSpan? {
+  first(filter(spans, s => (s.tensor as String) == (name as String)))
+}
+
+fn v41_store_out_path(layer: Nat, rank: Nat) -> NonEmptyStr {
+  join([v41_row_store_output_directory() as String, "/", v41_store_key(layer: layer, rank: rank), ".engram"], "") as NonEmptyStr
+}
+
+fn v41_layer_store_args(t: V41LayerTable, spec: V41RowStoreEncodingSpec, spans: List<V41PublishedSpan>) -> List<V41StoreEncodeArgs> {
+  match v41_span_named(spans: spans, name: t.weight) {
+    Absent => [] as List<V41StoreEncodeArgs>
+    Present { value: w } => match v41_span_named(spans: spans, name: t.scale) {
+      Absent => [] as List<V41StoreEncodeArgs>
+      Present { value: s } => map(t.ranks, r => V41StoreEncodeArgs {
+        layer: t.layer,
+        rank: r.rank,
+        shard: w.shard,
+        weight_offset: w.file_offset,
+        scale_offset: s.file_offset,
+        start: r.start,
+        rows: r.end - r.start,
+        weight_bytes: weight_bytes(g: spec.geometry),
+        scale_bytes: scale_bytes(g: spec.geometry),
+        magic_hex: v41_magic_hex(),
+        out: v41_store_out_path(layer: t.layer, rank: r.rank),
+      })
+    }
+  }
+}
+
+// EVERY STORE THE SPEC DECLARES, OR WHY NOT. A layer whose weight or scale has no span, or whose weight
+// and scale live in different shards, refuses by name: the encoder reads one shard per store.
+fn v41_store_encode_plan(spec: V41RowStoreEncodingSpec, spans: List<V41PublishedSpan>) -> V41StoreEncodePlan {
+  let unspanned = flat_map(spec.layers, t => concat(
+    match v41_span_named(spans: spans, name: t.weight) { Present { value: _ } => [] as List<NonEmptyStr>  Absent => [join(["layer ", to_string(t.layer), " weight ", t.weight as String, " has no published span"], "") as NonEmptyStr] },
+    match v41_span_named(spans: spans, name: t.scale) { Present { value: _ } => [] as List<NonEmptyStr>  Absent => [join(["layer ", to_string(t.layer), " scale ", t.scale as String, " has no published span"], "") as NonEmptyStr] }))
+  let split = flat_map(spec.layers, t => match v41_span_named(spans: spans, name: t.weight) {
+    Absent => [] as List<NonEmptyStr>
+    Present { value: w } => match v41_span_named(spans: spans, name: t.scale) {
+      Absent => [] as List<NonEmptyStr>
+      Present { value: s } => if (w.shard as String) == (s.shard as String) { [] as List<NonEmptyStr> } else { [join(["layer ", to_string(t.layer), " weight and scale live in different shards; one store reads one shard"], "") as NonEmptyStr] }
+    }
+  })
+  let defects = concat(unspanned, split)
+  if length(defects) != 0 {
+    V41StoreEncodeUnplannable { defects: defects }
+  } else {
+    V41StoreEncodePlanned { stores: flat_map(spec.layers, t => v41_layer_store_args(t: t, spec: spec, spans: spans)) }
+  }
+}
+
+// THE ARGV, rendered for a shard directory on the host: the program text inline, every value an operand. DECLARED FRONTIER: its executing consumer is the
+// dispatched spark_v41_row_store_encode mode (the next change in this lane), which runs it per rank on
+// the host that holds that rank's shards and transcribes sha256sum of each output into
+// v41_published_store_readings; it lands once Group A's shards are materialized (#12109).
+fn v41_store_encode_argv(shard_directory: NonEmptyStr, a: V41StoreEncodeArgs) -> List<String> {
+  [
+    "python3", "-c", v41_row_store_host_realization.program,
+    "--src", join([shard_directory as String, "/", a.shard as String], ""),
+    "--a-offset", to_string(byte_size_count(b: a.weight_offset)),
+    "--a-width", to_string(byte_size_count(b: a.weight_bytes)),
+    "--b-offset", to_string(byte_size_count(b: a.scale_offset)),
+    "--b-width", to_string(byte_size_count(b: a.scale_bytes)),
+    "--first", to_string(a.start),
+    "--count", to_string(a.rows),
+    "--prefix-hex", a.magic_hex,
+    "--out", a.out as String,
+    "--chunk", to_string(v41_row_store_encoder_chunk_rows),
+  ]
+}

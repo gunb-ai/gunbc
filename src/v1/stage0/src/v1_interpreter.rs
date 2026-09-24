@@ -10934,9 +10934,20 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // Int position without a cast, so `as Int` removes nothing a position enforced. A unit-bearing
     // type is a `std.measure` Measure, carried as a Record, and still refuses here.
     //
-    // Cast admissibility is decided ONLY here: validate_cast abstains whenever either side is
-    // outside std.coercion's dag_cast_rules domain, so this runtime arm is the sole wall, and
-    // std.coercion admits `Int as Nat` and `Bool as Int` while this fold refuses both.
+    // A REFINEMENT cast (std.coercion refinement_cast_rules, e.g. `Int as Nat`) is refused by the
+    // checker (v1.compiler.infer validate_cast) from the same rows, so no accepted program reaches
+    // this arm with one; it refuses here as the echo of that refusal, not as a second authority.
+    // The residue this fold still decides alone: validate_cast abstains whenever either side is
+    // outside dag_cast_rules, and dag_cast_rules admits `Bool as Int`, which this fold refuses --
+    // rostered in gunbc.recurring_failure_mode the_checker_admits_a_cast_the_evaluator_refuses.
+    if crate::std_coercion::dag_cast_requires_proof(source_name.clone(), target_name.clone()) {
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "{}: a refinement cast the checker refuses (std.coercion refinement_cast_rules); use std.checked_arithmetic checked_int_to_nat",
+                cast_refusal_message(&source_name, val.type_label(), &target_name)
+            ),
+        });
+    }
     match target_name.as_str() {
         "Float" => match val {
             Value::Float(n) => Ok(Value::Float(n)),
