@@ -1,0 +1,3 @@
+module nsroot.pkg.target
+
+data target_value: Int = 1

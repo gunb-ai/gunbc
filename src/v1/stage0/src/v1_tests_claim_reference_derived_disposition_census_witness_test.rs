@@ -27,7 +27,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::ErrorNode;
 use crate::v1_std_core::LeafOwner::*;
 pub use crate::v1_std_core::{diagnostic_to_message, is_error_diagnostic, no_span};
-pub use crate::v1_std_core::{FieldSummary, LeafOwner, NewlineIndex, Node};
+pub use crate::v1_std_core::{FieldSummary, LeafOwner, NewlineIndex};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -48,7 +48,7 @@ pub fn fixture_item_info(name: String, module_name: String) -> Rc<ItemInfo> {
         module_name: module_name.clone(),
         kind: ItemKind::FnItem,
         service_names: Rc::new(vec![]),
-        resource_names: Rc::new(vec![]),
+        resource_requirements: Rc::new(vec![]),
         params: Rc::new(vec![]),
         is_self_recursive: false,
         has_non_tail_self_call: false,

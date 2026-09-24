@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.else_less_if_statement_has_no_lowered_form
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data else_less_if_statement_has_no_lowered_form: RecurringFailureMode = RecurringFailureMode {
+  identity: "else_less_if_statement_has_no_lowered_form" as NonEmptyStr,
+
+  receipts: [
+    "no lowered form for an else-less `if` used as a statement (`if c { return x }` followed by further statements) in v2 body lowering: `v2.compiler.body_lowering_fold` `body_lower_try_if_from_captured` requires an else arm, and a Branch without one has no core shape, so it refuses as `body_lowering_reason_else_less_if_unlowered`, located at the `if`.",
+    "SPECIMEN AND PINNED LOCUS: `dag/gunbc/machine_intake/mtcollins1_handoff_probe.dag` `mtcollins1_admission_probe`, at `if admitted == false { return exit_failure(..) }`, a guard followed by more statements.",
+    "EXPOSED, NOT INTRODUCED: the parent of gunbc#12145 (2de78893dfe) accepted this shape only by SILENT NARROWING -- the operand reader answered a sequence with its left element -- so the refusal on main after gunbc#12173 is a pre-existing defect made visible, not a new regression. Found by the XL-2 three-baseline identity census on gunbc#12194 (321 paths: 18 refusing at 2de78893dfe, 167 at ada85b9452, 101 after gunbc#12173).",
+    "RUNG FOUND AT: mitigated (a located refusal). CEILING: structurally guaranteed -- an early-return guard lowers to a Branch whose else is the remainder of the statement spine, or refuses. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: v2 body lowering lowers a statement-form else-less `if` whose arm returns by binding the rest of the statement spine as its else, so that every statement after the guard reaches the reference-site collector.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal", decl_name: "an_else_less_if_statement_refuses_at_normalize", field: WholeDeclaration },
+  ],
+}

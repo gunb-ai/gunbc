@@ -2640,6 +2640,8 @@ pub fn reference_resolution_facts(
             let mut scratch_unclassified: Vec<String> = Vec::new();
             let mut classify = ExprVarClassification {
                 decl_index: None,
+                module_names: Some(&module_names),
+                module_path_heads: std::collections::HashSet::new(),
                 tally: &mut scratch_tally,
                 unclassified: &mut scratch_unclassified,
                 module: self_module.clone(),
@@ -2704,6 +2706,12 @@ pub fn reference_resolution_facts(
                 }
             }
             for name in &bare {
+                // A kernel or container spelling binds no module (`is_substrate_vocabulary`), so
+                // it is never an edge: `String` in `std.primitives` once resolved UniqueBare to
+                // std.string_type, a module the resolver never loads for that spelling.
+                if super::is_substrate_vocabulary(name) {
+                    continue;
+                }
                 if let Some(mods) = decl_index.get(name) {
                     // Same-module declaration wins by lexical scope (namespace-only): a bare name the
                     // referencing file itself declares resolves LOCALLY — no cross-module edge. This

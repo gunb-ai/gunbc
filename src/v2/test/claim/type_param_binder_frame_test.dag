@@ -1,0 +1,372 @@
+module v2.test.claim.type_param_binder_frame
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, Some, diagnostics_fatal_reason, diagnostics_has_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.compiler.emit_produced { emit_produced_decl }
+import v2.compiler.infer { infer }
+import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
+import v2.std.node {
+  Arrow,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Transform,
+  TypeNode,
+  arrow_type_param_names,
+  node_subtree_nodes,
+  node_synthetic,
+  well_formed
+}
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: the type-parameter frame of v2.compiler.resolve (resolve_arrow_node), fed by the
+// ^arrow_type_params_edge v2.compiler.body_lowering_fold lowers `<T>` onto (v2.std.node
+// arrow_type_param_names). BOUNDARY: source text in, assembled (normalized + resolved) program
+// out through assemble_program_from_ingest -- the production route, not a supplied tree -- so
+// the grammar's lexeme stamp, the lowering and the frame are all executed by every row.
+//
+// RED ON MAIN, MEASURED (origin/main 57f5b94e7f7, this file's rows run by `gunbc run
+// --claim-run`, with arrow_type_param_names supplied locally since main has none): the identity
+// specimen REFUSED resolve_reason_unbound_symbol -- `<T>` was dropped before the Arrow existed,
+// so `T` met the ordinary name chain -- and the colliding specimen was ACCEPTED, `T` binding to
+// the module's `type T = Int`: silent wrongness, the class
+// gunbc.recurring_failure_mode generic_type_parameter_resolved_as_an_ordinary_atom_in_v2 rosters.
+// Red there: (1) (2) (4) (5) (8), the well-formedness row, (9) (11). Green there, and kept as
+// regression controls: (3) (6) (7) (7b) (10) (12). (3) is green on main VACUOUSLY -- `f` refused
+// too -- so it discriminates only beside (1); (4)'s second conjunct is the non-vacuous leak row.
+//
+// MUTATION RECEIPT (this branch): deleting the type frame, the shadowing refusal and the
+// instantiation together reds (1) (2) (4) (5) (8) (9) (11) and leaves the partner rows green;
+// disabling the serializer's refusal reds (13).
+
+data tpb_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^type_param_binder_frame_artifact,
+  file_path: "src/v2/pilot/type_param_binder_frame_pilot.dag"
+}
+
+fn tpb_assemble(src: String) -> Outcome<Node> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: tpb_artifact,
+        compilation_unit: ^type_param_binder_frame_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+// THE RESOLVED OUTCOME IS THE SHARE POINT, for the reason v2.test.claim.match_arm_binder_frame
+// states for its own specimens: assemble_program_from_ingest is dominated by dag_language_model(),
+// over one claim's budget on its own, and the model carries a function so it cannot be served.
+// Each tpb_* specimen below is nullary and pure over an inline source -- Nodes and located
+// diagnostics, no closure -- and is enrolled in v2.workflow.floor_pure_producer_share, so
+// preparation runs the real route once per specimen and the rows read it.
+fn tpb_accepts(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn tpb_refuses_with(o: Outcome<Node>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+// The declared type-parameter names of every Arrow in the resolved tree, in walk order.
+fn tpb_type_param_rosters(o: Outcome<Node>) -> List<List<Symbol>> {
+  match o {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: n, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: n), init: [], f: fn(acc, m) {
+        match m.kind {
+          TypeNode { connective: Arrow } =>
+            if count(arrow_type_param_names(n: m)) == 0 { acc } else { concat(acc, [arrow_type_param_names(n: m)]) }
+          _ => acc
+        }
+      })
+  }
+}
+
+fn tpb_identity() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T { x }\n")
+}
+
+fn tpb_colliding() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype T = Int\n\nfn f<T>(x: T) -> T { x }\n")
+}
+
+fn tpb_used_outside() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T { x }\n\nfn h(y: T) -> Int { 1 }\n")
+}
+
+fn tpb_same_name_twice() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T { x }\n\nfn g<T>(y: T) -> T { y }\n")
+}
+
+fn tpb_sibling_binder_leak() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T { x }\n\nfn g<U>(y: T) -> U { y }\n")
+}
+
+fn tpb_two_params() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn first<A, B>(a: A, b: B) -> A { a }\n")
+}
+
+fn tpb_undeclared_type_name() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f<T>(x: V) -> T { x }\n")
+}
+
+fn tpb_non_generic() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int { x }\n")
+}
+
+// (1) `T` binds to the declaration's binder: the fn resolves, and its Arrow carries `T` as a
+// type-parameter binder. RED ON MAIN (refused unbound).
+test fn tpb_generic_param_binds_to_its_binder() -> Bool {
+  tpb_accepts(o: tpb_identity())
+    && tpb_type_param_rosters(o: tpb_identity()) == [[^T]]
+}
+
+// (2) NO SHADOWING: a type parameter spelled like a visible declaration refuses, located at the
+// binder, rather than binding the declaration (main) or silently shadowing it. RED ON MAIN
+// (Accepted, `T` bound to `type T = Int`).
+test fn tpb_type_param_shadowing_a_visible_name_refuses() -> Bool {
+  tpb_refuses_with(o: tpb_colliding(), reason: ^resolve_reason_type_parameter_shadows_visible_name)
+}
+
+// (3) `T` does not leak outside its declaration: a sibling fn naming it is unbound. (1) is the
+// control that the refusal is h's and not f's.
+test fn tpb_type_param_does_not_leak_to_a_sibling_declaration() -> Bool {
+  tpb_refuses_with(o: tpb_used_outside(), reason: ^resolve_reason_unbound_symbol)
+}
+
+// (4) Two generic fns spelling the same `T` each bind their own: both resolve, each Arrow
+// carries its own binder, and -- the discriminating half -- one fn's `T` does not answer inside
+// a sibling that declares a different name.
+test fn tpb_same_spelling_in_two_declarations_does_not_alias() -> Bool {
+  tpb_accepts(o: tpb_same_name_twice())
+    && tpb_type_param_rosters(o: tpb_same_name_twice()) == [[^T], [^T]]
+    && tpb_refuses_with(o: tpb_sibling_binder_leak(), reason: ^resolve_reason_unbound_symbol)
+}
+
+// (5) Every declared parameter is a binder, in declaration order.
+test fn tpb_every_declared_type_param_is_a_binder() -> Bool {
+  tpb_accepts(o: tpb_two_params())
+    && tpb_type_param_rosters(o: tpb_two_params()) == [[^A, ^B]]
+}
+
+// (6) An undeclared type name inside a generic fn still refuses: the frame binds exactly the
+// declared parameters.
+test fn tpb_undeclared_type_name_still_refuses() -> Bool {
+  tpb_refuses_with(o: tpb_undeclared_type_name(), reason: ^resolve_reason_unbound_symbol)
+}
+
+// (7) A fn declaring no type parameters carries no type-parameter edge.
+test fn tpb_non_generic_fn_carries_no_type_params() -> Bool {
+  tpb_accepts(o: tpb_non_generic()) && tpb_type_param_rosters(o: tpb_non_generic()) == []
+}
+
+fn tpb_type_param_as_value() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T { T }\n")
+}
+
+// (7b) A TYPE PARAMETER IS NOT A VALUE. The frame covers the signature and not the body, whose
+// lowered form carries no type position today (v2.compiler.resolve resolve_arrow_node says why),
+// so `T` in the body is a value-position use and refuses. Measured: with the frame over the body
+// this specimen was ACCEPTED -- the widening this row exists to keep out.
+test fn tpb_type_param_in_value_position_refuses() -> Bool {
+  tpb_refuses_with(o: tpb_type_param_as_value(), reason: ^resolve_reason_unbound_symbol)
+}
+
+// INFER READS THE BOUND `T` AS A DECLARED TYPE VARIABLE (v2.std.inhabitance FormalDeclaration).
+//
+// (8) THE PRODUCTION ROUTE: the lowered, resolved generic fn is admitted by infer -- the
+// type-parameter edge does not wedge the Arrow's derivation.
+test fn tpb_infer_admits_the_resolved_generic_fn() -> Bool {
+  match tpb_identity() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+// THE APPLICATION ROWS SUPPLY THE CALLEE ARROW rather than lowering it, because infer judges an
+// argument against a formal only when the operator IS an Arrow; (1) above is the inhabitance
+// claim that the real producer emits exactly this ^arrow_type_params_edge shape.
+fn tpb_binder_edge(name: Symbol) -> Edge {
+  Edge { label: Named { name: name }, target: dag_type_atom_node(identity: name) }
+}
+
+fn tpb_generic_arrow(type_params: List<Symbol>, formals: List<Edge>) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: node_synthetic(kind: TypeNode { connective: Conj }, children: formals) },
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge {
+        label: Named { name: ^arrow_type_params_edge },
+        target: node_synthetic(
+          kind: TypeNode { connective: Conj },
+          children: fold(type_params, init: [], f: fn(acc, p) { concat(acc, [tpb_binder_edge(name: p)]) })
+        )
+      },
+      Edge { label: Named { name: ^arrow_body_edge }, target: dag_int_literal_fixture_one() }
+    ]
+  )
+}
+
+fn tpb_formal(name: Symbol, declared: Symbol) -> Edge {
+  Edge { label: Named { name: name }, target: dag_type_atom_node(identity: declared) }
+}
+
+fn tpb_apply(arrow: Node, args: List<Node>) -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: concat(
+      [Edge { label: Positional, target: arrow }],
+      fold(args, init: [], f: fn(acc, a) { concat(acc, [Edge { label: Positional, target: a }]) })
+    )
+  )
+}
+
+fn tpb_true() -> Node {
+  dag_type_atom_node(identity: ^dag_token_kw_true)
+}
+
+// The supplied Arrow is one v2.std.node well_formed admits: the carrier's own wall.
+test fn tpb_generic_arrow_is_well_formed() -> Bool {
+  well_formed(n: tpb_generic_arrow(type_params: [^T], formals: [tpb_formal(name: ^x, declared: ^T)]))
+}
+
+// (9) An argument at a type-variable formal instantiates it. RED ON MAIN: judged as the ordinary
+// declared type `T`, the Int argument refused application_argument_does_not_inhabit.
+test fn tpb_argument_at_a_type_variable_instantiates_it() -> Bool {
+  match infer(tree: tpb_apply(
+    arrow: tpb_generic_arrow(type_params: [^T], formals: [tpb_formal(name: ^x, declared: ^T)]),
+    args: [dag_int_literal_fixture_one()]
+  )) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// (10) A type variable is ONE type per application: `f<T>(x: T, y: T)` applied to an Int and a
+// Bool refuses at the second argument. Without it, (9) could be green by admitting anything.
+test fn tpb_second_occurrence_must_inhabit_the_instance() -> Bool {
+  match infer(tree: tpb_apply(
+    arrow: tpb_generic_arrow(type_params: [^T], formals: [tpb_formal(name: ^x, declared: ^T), tpb_formal(name: ^y, declared: ^T)]),
+    args: [dag_int_literal_fixture_one(), tpb_true()]
+  )) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^application_argument_does_not_inhabit)
+  }
+}
+
+// (11) Distinct binders do not alias: `f<T, U>(x: T, y: U)` admits an Int and a Bool.
+test fn tpb_distinct_type_variables_do_not_alias() -> Bool {
+  match infer(tree: tpb_apply(
+    arrow: tpb_generic_arrow(type_params: [^T, ^U], formals: [tpb_formal(name: ^x, declared: ^T), tpb_formal(name: ^y, declared: ^U)]),
+    args: [dag_int_literal_fixture_one(), tpb_true()]
+  )) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// (12) The type variable is the callee's OWN: an Arrow declaring no `T` still judges `x: T` as the
+// ordinary declared type, and the Int argument refuses.
+test fn tpb_undeclared_t_is_not_a_type_variable() -> Bool {
+  match infer(tree: tpb_apply(
+    arrow: tpb_generic_arrow(type_params: [^U], formals: [tpb_formal(name: ^x, declared: ^T)]),
+    args: [dag_int_literal_fixture_one()]
+  )) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^application_argument_does_not_inhabit)
+  }
+}
+
+// (13) THE EMITTER REFUSES A GENERIC ARROW RATHER THAN DROPPING ITS TYPE PARAMETERS. The target
+// signature scaffold reads nothing off ^arrow_type_params_edge, so serializing it would emit a
+// signature naming a type nothing introduced. The twin is the golden `add` fixture
+// (v2.test.emit.rust_produced_decl_emit emits it); the specimen is that same decl with one
+// type-parameter edge added, so the refusal is the edge's and not the specimen's.
+fn tpb_with_type_param(decl: Node) -> Node {
+  node_synthetic(
+    kind: decl.kind,
+    children: fold(decl.children, init: [], f: fn(acc, e) {
+      concat(acc, [Edge {
+        label: e.label,
+        target: node_synthetic(
+          kind: e.target.kind,
+          children: concat(e.target.children, [Edge {
+            label: Named { name: ^arrow_type_params_edge },
+            target: node_synthetic(kind: TypeNode { connective: Conj }, children: [tpb_binder_edge(name: ^T)])
+          }])
+        )
+      }])
+    })
+  )
+}
+
+// THE EMIT OUTCOMES ARE THE SHARE POINT. Each claim that built the `add` fixture and ran the Rust
+// target model inline paid for both twice, over the new-witness budget (floor receipt on
+// 8215d985bf: 166,019 eval steps). The claim's subject is the serializer's verdict, so the two
+// outcomes are supplied as nullary pure producers -- a String or located diagnostics, no closure --
+// enrolled in v2.workflow.floor_pure_producer_share; preparation runs the real emitter once each.
+fn tpb_emitted_add_twin() -> Outcome<Medium<String>> {
+  match table_fixture_add_decl_node(fn_name: ^rust_binding_fn_add) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: decl, diagnostics: _ } => emit_produced_decl(decl: decl, target: rust_target_model())
+  }
+}
+
+fn tpb_emitted_add_generic() -> Outcome<Medium<String>> {
+  match table_fixture_add_decl_node(fn_name: ^rust_binding_fn_add) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: decl, diagnostics: _ } =>
+      emit_produced_decl(decl: tpb_with_type_param(decl: decl), target: rust_target_model())
+  }
+}
+
+test fn tpb_emitter_refuses_a_generic_arrow() -> Bool {
+  let twin_emits = match tpb_emitted_add_twin() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+  let generic_refused = match tpb_emitted_add_generic() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^translate_reason_generic_arrow_not_rendered)
+  }
+  twin_emits && generic_refused
+}

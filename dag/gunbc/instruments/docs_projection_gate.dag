@@ -17,6 +17,7 @@ import gunbc.generated_artifact {
   WitnessFloorYamlArtifact,
   FleetConvergeYamlArtifact,
   FleetDesiredAdmissionYamlArtifact,
+  MicrovmShakedownYamlArtifact,
   HealWorkflowYamlArtifact,
   HealPublisherWorkflowYamlArtifact,
   GitignoreArtifact,
@@ -83,6 +84,7 @@ fn docs_projection_producer(a: GeneratedArtifact) -> Optional<String> {
     WitnessFloorYamlArtifact => Absent
     FleetConvergeYamlArtifact => Absent
     FleetDesiredAdmissionYamlArtifact => Absent
+    MicrovmShakedownYamlArtifact => Absent
     HealWorkflowYamlArtifact => Absent
     HealPublisherWorkflowYamlArtifact => Absent
     GitignoreArtifact => Absent

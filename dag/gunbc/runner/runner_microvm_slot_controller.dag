@@ -63,6 +63,7 @@ import gunbc.github_effect_perform {
 import gunbc.runner_attempt_launch {
   AttemptLaunchPlan, plan_attempt_launch_reservation_authorized, attempt_jail_chroot_root, jail_jit_path,
 }
+import gunbc.runner_jit_mint { RunnerGroupRestrictionUnobserved }
 import gunbc.runner.runner_jit_perform {
   dispatch_jit_mint, JitMintDispatch,
   JitCredentialBoundToAttempt, JitCredentialNotDispatched, JitCredentialMintNotCreated,
@@ -74,7 +75,7 @@ import gunbc.runner_microvm_network {
 }
 import gunbc.runner_microvm_lifecycle { AttemptIdentity, guest_bring_up_text }
 import gunbc.runner_microvm_lifecycle_realize {
-  ControllerOutcome, run_controller, observe_attempt_ground,
+  ControllerOutcome, run_controller, observe_attempt_ground, teardown_cleanup_text,
   ControllerRefusedAdmission, ControllerRefusedBinding, ControllerQuarantinedUnattributedResidue,
   ControllerStartNotRecorded, ControllerRecovered, ControllerRanAttempt,
 }
@@ -262,7 +263,7 @@ fn mint_attempt_credential(binding: MicroVmCellBinding, state: GitHubAppControlP
     authority: controller_credential_authority(),
     control_plane: state,
     organization: github_organization_ref(),
-    runner_group_id: microvm_shakedown_runner_group,
+    runner_group: RunnerGroupRestrictionUnobserved { group: microvm_shakedown_runner_group },
     attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
   ))
 }
@@ -509,7 +510,7 @@ fn controller_outcome_label(c: ControllerOutcome) -> String {
     ControllerQuarantinedUnattributedResidue { persisted: _ } => "controller-quarantined-unattributed-residue"
     ControllerStartNotRecorded { persisted: _ } => "controller-start-not-recorded"
     ControllerRecovered { teardown: _ } => "controller-recovered"
-    ControllerRanAttempt { launch: _, trigger: _, bring_up: b, teardown: _ } => join(["controller-ran-attempt ", guest_bring_up_text(r: b)], "")
+    ControllerRanAttempt { launch: _, trigger: _, bring_up: b, teardown: t } => join(["controller-ran-attempt ", guest_bring_up_text(r: b), " ", teardown_cleanup_text(t: t)], "")
   }
 }
 
