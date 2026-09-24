@@ -5,6 +5,7 @@ import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import gunbc.spark.native_serving_apply { spark_native_apply_receipt_path }
+import gunbc.spark.v41_row_store_encode_run { v41_encode_run_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.ci_app_key_rotation {
@@ -2569,7 +2570,7 @@ fn gunbc_ci_spark_v41_row_store_encode_invoke() -> String {
     entry: gunbc_ci_spark_v41_row_store_encode_target.entry,
     function: gunbc_ci_spark_v41_row_store_encode_target.function,
     claim_run: false,
-    receipt_rel: "target/v41-row-store-encode-receipt.txt"
+    receipt_rel: v41_encode_run_receipt_path
   )
 }
 

@@ -54,8 +54,9 @@ import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, obse
 //   - otherwise the admitted host program is run over the shard with the plan's operands;
 //   - then sha256sum reads OUT, and the receipt carries one line per (layer, rank).
 // THIS DOOR IS THE INSTRUMENT of gunbc.spark.v41_engram_row_store v41_published_store_readings: its
-// receipt (v41_encode_run_receipt_path, target/v41-row-store-encode-receipt.txt, uploaded by the
-// spark_v41_row_store_encode fleet-converge step) is what a Read row transcribes, citing the run; v41_identify_row_store then admits exactly the declared eight. All eight
+// receipt (v41_encode_run_receipt_path) is printed into the spark_v41_row_store_encode fleet-converge
+// step's log on success, and on failure its body reaches the log through exit_failure; a Read row is
+// transcribed from that run's log, citing the run id. It is not uploaded as an artifact; v41_identify_row_store then admits exactly the declared eight. All eight
 // are encoded on the one host because the digests are host-independent; placing each rank's pair on
 // its own host is staging, a later step (gunbc.spark.v41_engram_staging).
 
