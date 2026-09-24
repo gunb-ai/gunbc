@@ -8,9 +8,11 @@ import v2.workflow.floor_enrolment_margin {
   EnrolmentWithinMargin, EnrolmentOverMargin, EnrolmentCeilingCensored,
   EnrolmentBoundWithoutCeiling, EnrolmentNotMeasured,
   EnrolmentOutsideThisRunsExecution, EnrolmentExpensivenessDeclared, EnrolmentRosterGroundStale,
+  EnrolmentDeadBandStale, EnrolmentDeadBandWrongGround,
   EnrolmentExpensivenessNotDeclared, EnrolmentExpensivenessIsDeclared,
-  EnrolmentExpensivenessGround, EnrolmentExpensivenessRoster, EnrolmentExpensivenessLongHome,
+  EnrolmentExpensivenessGround, EnrolmentExpensivenessRoster, EnrolmentExpensivenessLongHome, EnrolmentExpensivenessDeadBand,
   enrolment_expensiveness_declaration,
+  floor_enrolment_margin_budget_ms_count, enrolment_dead_band_observed_identities,
   EnrolmentPairingHole, EnrolmentPairingHoleNone, EnrolmentPairingHoleDeclared,
   EnrolmentPairingHoleOutsideExecution, enrolment_unpaired_pairing_hole,
   enrolment_margin_standing_name,
@@ -117,6 +119,8 @@ fn standing_kind(s: EnrolmentMarginStanding) -> String {
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => "outside-this-run"
     EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } => "expensiveness-declared"
     EnrolmentRosterGroundStale { witness_identity: _, observed_cpu_ms: _, line_ms: _ } => "roster-ground-stale"
+    EnrolmentDeadBandStale { witness_identity: _, observed_cpu_ms: _, budget_ms: _ } => "dead-band-stale"
+    EnrolmentDeadBandWrongGround { witness_identity: _, observed_cpu_ms: _, line_ms: _ } => "dead-band-wrong-ground"
   }
 }
 
@@ -408,6 +412,7 @@ test fn a_string_roster_hold_does_not_declare_at_enrolment() -> Bool {
     witness_identity: "fixture.tripwire_325",
     typed_admission_holds: false,
     long_home_holds: false,
+    dead_band_holds: false,
   ) {
     EnrolmentExpensivenessNotDeclared => true
     EnrolmentExpensivenessIsDeclared { witness_identity: _, ground: _ } => false
@@ -419,12 +424,14 @@ test fn a_long_home_declares_at_enrolment_even_when_a_string_roster_line_exists(
     witness_identity: "fixture.long_home_and_string",
     typed_admission_holds: false,
     long_home_holds: true,
+    dead_band_holds: false,
   ) {
     EnrolmentExpensivenessNotDeclared => false
     EnrolmentExpensivenessIsDeclared { witness_identity: _, ground: g } =>
       match g {
         EnrolmentExpensivenessLongHome => true
         EnrolmentExpensivenessRoster => false
+        EnrolmentExpensivenessDeadBand => false
       }
   }
 }
@@ -434,12 +441,14 @@ test fn typed_admission_is_the_only_roster_ground_at_enrolment() -> Bool {
     witness_identity: "fixture.typed_501",
     typed_admission_holds: true,
     long_home_holds: false,
+    dead_band_holds: false,
   ) {
     EnrolmentExpensivenessNotDeclared => false
     EnrolmentExpensivenessIsDeclared { witness_identity: _, ground: g } =>
       match g {
         EnrolmentExpensivenessRoster => true
         EnrolmentExpensivenessLongHome => false
+        EnrolmentExpensivenessDeadBand => false
       }
   }
 }
@@ -548,4 +557,73 @@ test fn a_roster_admission_with_a_bound_under_the_line_blocks_on_its_own_arm() -
     && enrolment_margin_standing_blocks(standing: b)
     && standing_kind(s: c) == "ceiling-censored"
     && enrolment_margin_standing_blocks(standing: c)
+}
+
+// ── THE DEAD BAND (v2.workflow.floor_enrolment_dead_band) ─────────────────────────────────────
+// A dead-band row holds ONLY for an exact reading strictly above the margin and at or under the line.
+// Each arm below is one side of that interval; the under-margin and over-line arms are the
+// self-staling REDs, so a row whose claim moved out of the band cannot keep admitting it.
+fn dead_band(reading: EnrolmentCostReading) -> EnrolmentMarginStanding {
+  standing_declared(reading: reading, identity: "fixture.dead_band", ground: EnrolmentExpensivenessDeadBand)
+}
+
+fn line_count() -> Int {
+  millisecond_count(m: required_floor_per_subject_cpu_line_ms())
+}
+
+test fn a_dead_band_reading_just_over_the_margin_is_observed_not_blocking() -> Bool {
+  let s = dead_band(reading: observed(cpu_ms: floor_enrolment_margin_budget_ms_count() + 1))
+  standing_kind(s: s) == "expensiveness-declared" && !enrolment_margin_standing_blocks(standing: s)
+}
+
+test fn a_dead_band_reading_at_the_line_is_observed_not_blocking() -> Bool {
+  let s = dead_band(reading: observed(cpu_ms: line_count()))
+  standing_kind(s: s) == "expensiveness-declared" && !enrolment_margin_standing_blocks(standing: s)
+}
+
+// SELF-STALING, LOW SIDE: at or under the margin the row is stale and blocks, naming its deletion.
+test fn a_dead_band_reading_at_the_margin_is_stale_and_blocks() -> Bool {
+  let s = dead_band(reading: observed(cpu_ms: floor_enrolment_margin_budget_ms_count()))
+  standing_kind(s: s) == "dead-band-stale"
+    && enrolment_margin_standing_blocks(standing: s)
+    && enrolment_margin_blocking_cause(standing: s) == "enrolment_dead_band_stale"
+}
+
+// SELF-STALING, HIGH SIDE: above the line the ground is wrong and it blocks.
+test fn a_dead_band_reading_over_the_line_is_the_wrong_ground_and_blocks() -> Bool {
+  let s = dead_band(reading: observed(cpu_ms: line_count() + 1))
+  standing_kind(s: s) == "dead-band-wrong-ground"
+    && enrolment_margin_standing_blocks(standing: s)
+    && enrolment_margin_blocking_cause(standing: s) == "enrolment_dead_band_wrong_ground"
+}
+
+// Only an EXACT reading can hold the band: a lower bound or a censored reading, and an absent one,
+// keep the blocking result an undeclared identity with the same reading gets.
+test fn a_dead_band_lower_bound_or_absence_still_blocks() -> Bool {
+  let bound = dead_band(reading: bound_without_ceiling(lower_bound_ms: floor_enrolment_margin_budget_ms_count() + 1))
+  let censor = dead_band(reading: censored(lower_bound_ms: floor_enrolment_margin_budget_ms_count() + 1, ceiling_ms: line_count()))
+  let absent = dead_band(reading: EnrolmentCostAbsent { witness_identity: "fixture.dead_band", cause: "no_row" })
+  standing_kind(s: bound) == "bound-without-ceiling" && enrolment_margin_standing_blocks(standing: bound)
+    && standing_kind(s: censor) == "ceiling-censored" && enrolment_margin_standing_blocks(standing: censor)
+    && standing_kind(s: absent) == "not-measured" && enrolment_margin_standing_blocks(standing: absent)
+}
+
+test fn the_dead_band_ground_is_selected_only_by_its_own_authority() -> Bool {
+  let dead = enrolment_expensiveness_declaration(witness_identity: "fixture.dead_band", typed_admission_holds: false, long_home_holds: false, dead_band_holds: true)
+  let typed_first = enrolment_expensiveness_declaration(witness_identity: "fixture.both", typed_admission_holds: true, long_home_holds: false, dead_band_holds: true)
+  (match dead {
+    EnrolmentExpensivenessIsDeclared { witness_identity: _, ground: EnrolmentExpensivenessDeadBand } => true
+    _ => false
+  }) && (match typed_first {
+    EnrolmentExpensivenessIsDeclared { witness_identity: _, ground: EnrolmentExpensivenessRoster } => true
+    _ => false
+  })
+}
+
+// THE AUTHORITY IS EXACTLY TWO IDENTITIES, not a growing roster.
+test fn the_dead_band_authority_names_exactly_the_two_app_attest_claims() -> Bool {
+  enrolment_dead_band_observed_identities() == [
+    "test.claim.app_attest_verifier_witness_test.the_key_id_step_admits_the_real_key_and_reds_on_another_key_id",
+    "test.claim.app_attest_verifier_witness_test.the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions",
+  ]
 }
