@@ -46,8 +46,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // hands it every spine with a following statement.
 //
 // Each red module varies one thing; the controls are the same shapes with declared names, a let
-// block, a match, and a let followed by its body, and must resolve. The bare-name arm is the neighbour main
-// already read, refusing on both sides.
+// block, a match, and a let followed by its body, and must resolve. Two neighbours already held on
+// main and hold on both sides: a bare name in an arm, and a let-headed spine whose later statement
+// does not bind.
 data iasl_ifarm_und_source: String = "module v2.test.iasl_ifarm_und\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { iasl_t(p: iasl_undeclared_ifarm) } else { c } }\n"
 
 data iasl_ifarm_else_und_source: String = "module v2.test.iasl_ifarm_else_und\n\nimport v2.std.logic { Bool }\n\nfn iasl_t(p: Bool) -> Bool { p }\n\nfn iasl_g(a: Bool, b: Bool) -> Bool { a }\n\nfn iasl_probe(c: Bool) -> Bool { if c { c } else { iasl_t(p: iasl_undeclared_else) } }\n"
