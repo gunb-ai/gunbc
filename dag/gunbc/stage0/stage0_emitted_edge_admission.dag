@@ -1,0 +1,207 @@
+module gunbc.stage0_emitted_edge_admission
+
+import std.types { Bool, Int, List, String }
+import gunbc.rust_emitted_edge {
+  EmittedEdge,
+  EmittedEdgeProvenance,
+  EmittedModuleTarget,
+  EmittedCrateRootTarget,
+  RuntimePrelude,
+  ReexportFacade,
+  SemanticSourceReference
+}
+import gunbc.stage0_crate_partition_generated { generated_partition_crate_rows }
+import gunbc.stage0_partition_package_graph {
+  stage0_host_shell_dependency_names,
+  stage0_host_shell_package_name,
+  stage0_partition_package_dependency_names,
+  stage0_partition_row_is_module_bearing_package
+}
+
+// DOES EVERY EDGE THE EMITTER WROTE RESOLVE IN THE CRATE ITS SOURCE MODULE LANDS IN. A `use
+// crate::m::X;` line compiles in a partition crate only when m lives in that crate or in a package
+// the crate re-exports (transitively, since each layered facade is `pub use <dep>::*;`). The
+// emitter returns each such edge beside the text it wrote (gunbc.rust_emitted_edge); this admission
+// maps both endpoints through the partition's owner rows and the package graph
+// (gunbc.stage0_partition_package_graph), and refuses an edge whose target package the source
+// package cannot reach -- the E0432 class, named before rustc is asked.
+//
+// THE POPULATION IS THE STAGE0 SEED, and it is stated rather than assumed. A module is owned by the
+// module-bearing partition row that lists it, else by the host shell package when the host shell's
+// module roster (the caller supplies it, read from the shell's lib.rs) lists it. A module in
+// neither is NOT COVERED: this admission has no crate for it, so it answers with that typed arm,
+// never with a pass. Emitting a closure that is not the seed therefore reaches the not-covered arm
+// by name.
+
+type Stage0EmittedModuleOwner
+  = Stage0EmittedModuleOwned { package_name: String }
+  | Stage0EmittedModuleNotCovered
+
+type Stage0EmittedEdgeCrossing {
+  from_module: String
+  to_module: String
+  from_package: String
+  to_package: String
+  provenance: EmittedEdgeProvenance
+}
+
+type Stage0EmittedEdgeUncovered {
+  module: String
+  edge_from: String
+  provenance: EmittedEdgeProvenance
+}
+
+type Stage0EmittedEdgeAdmission
+  = Stage0EmittedEdgesAdmitted { edge_count: Int }
+  | Stage0EmittedEdgesNotCovered { uncovered: List<Stage0EmittedEdgeUncovered> }
+  | Stage0EmittedEdgesRefused { crossings: List<Stage0EmittedEdgeCrossing> }
+
+// THE ONE ROW-OWNER LOOKUP. v1.compiler.stage0_crates stage0_lookup_module_owner_package_name reads
+// this too, so the crate a lib.rs includes a module into and the crate this admission places it in
+// are one answer.
+fn stage0_partition_module_owner_packages(module_basename: String) -> List<String> {
+  generated_partition_crate_rows
+    |> filter(row =>
+      stage0_partition_row_is_module_bearing_package(row: row)
+        && (row.modules |> any(m => m == module_basename))
+    )
+    |> map(row => row.package_name)
+}
+
+fn stage0_emitted_module_owner(module_basename: String, host_shell_modules: List<String>) -> Stage0EmittedModuleOwner {
+  match stage0_partition_module_owner_packages(module_basename: module_basename) |> first {
+    Present { value: package_name } => Stage0EmittedModuleOwned { package_name: package_name }
+    Absent =>
+      if host_shell_modules |> any(m => m == module_basename) {
+        Stage0EmittedModuleOwned { package_name: stage0_host_shell_package_name() }
+      } else {
+        Stage0EmittedModuleNotCovered
+      }
+  }
+}
+
+fn stage0_package_direct_dependencies(package_name: String) -> List<String> {
+  if package_name == stage0_host_shell_package_name() {
+    stage0_host_shell_dependency_names()
+  } else {
+    generated_partition_crate_rows
+      |> filter(row => row.package_name == package_name)
+      |> flat_map(row => stage0_partition_package_dependency_names(row: row))
+  }
+}
+
+// Bounded by the package count: each round adds every direct dependency of what is already
+// reached, and a chain over n partition packages plus the shell is complete after n rounds, so the
+// rows themselves are the fuel.
+fn stage0_package_reachable(package_name: String) -> List<String> {
+  generated_partition_crate_rows |> fold(init: [package_name], f: (reached, _row) =>
+    reached
+      |> concat(reached |> flat_map(p => stage0_package_direct_dependencies(package_name: p)))
+      |> fold(init: [], f: (acc, p) => if acc |> any(a => a == p) { acc } else { acc |> concat([p]) })
+  )
+}
+
+type Stage0PackageReach {
+  package_name: String
+  reachable: List<String>
+}
+
+// Computed once per admission, one row per package, so an edge asks a lookup rather than a closure.
+fn stage0_package_reach_table() -> List<Stage0PackageReach> {
+  concat([stage0_host_shell_package_name()], generated_partition_crate_rows |> map(row => row.package_name))
+    |> map(p => Stage0PackageReach { package_name: p, reachable: stage0_package_reachable(package_name: p) })
+}
+
+fn stage0_package_reaches(reach: List<Stage0PackageReach>, from_package: String, to_package: String) -> Bool {
+  from_package == to_package
+    || reach |> any(r => r.package_name == from_package && (r.reachable |> any(p => p == to_package)))
+}
+
+fn stage0_emitted_edge_target_basename(edge: EmittedEdge) -> List<String> {
+  match edge.to {
+    EmittedModuleTarget { module: target } => if target == edge.from { [] } else { [target] }
+    EmittedCrateRootTarget => []
+  }
+}
+
+fn stage0_emitted_edge_uncovered(edge: EmittedEdge, host_shell_modules: List<String>) -> List<Stage0EmittedEdgeUncovered> {
+  concat([edge.from], stage0_emitted_edge_target_basename(edge: edge)) |> flat_map(m =>
+    match stage0_emitted_module_owner(module_basename: m, host_shell_modules: host_shell_modules) {
+      Stage0EmittedModuleOwned { package_name: _ } => []
+      Stage0EmittedModuleNotCovered => [Stage0EmittedEdgeUncovered { module: m, edge_from: edge.from, provenance: edge.provenance }]
+    }
+  )
+}
+
+fn stage0_emitted_edge_crossing(edge: EmittedEdge, host_shell_modules: List<String>, reach: List<Stage0PackageReach>) -> List<Stage0EmittedEdgeCrossing> {
+  stage0_emitted_edge_target_basename(edge: edge) |> flat_map(target =>
+    match stage0_emitted_module_owner(module_basename: edge.from, host_shell_modules: host_shell_modules) {
+      Stage0EmittedModuleNotCovered => []
+      Stage0EmittedModuleOwned { package_name: from_package } =>
+        match stage0_emitted_module_owner(module_basename: target, host_shell_modules: host_shell_modules) {
+          Stage0EmittedModuleNotCovered => []
+          Stage0EmittedModuleOwned { package_name: to_package } =>
+            if stage0_package_reaches(reach: reach, from_package: from_package, to_package: to_package) {
+              []
+            } else {
+              [Stage0EmittedEdgeCrossing {
+                from_module: edge.from,
+                to_module: target,
+                from_package: from_package,
+                to_package: to_package,
+                provenance: edge.provenance
+              }]
+            }
+        }
+    }
+  )
+}
+
+fn stage0_emitted_edge_admission(edges: List<EmittedEdge>, host_shell_modules: List<String>) -> Stage0EmittedEdgeAdmission {
+  let uncovered = edges |> flat_map(edge => stage0_emitted_edge_uncovered(edge: edge, host_shell_modules: host_shell_modules))
+  let reach = stage0_package_reach_table()
+  let crossings = edges |> flat_map(edge => stage0_emitted_edge_crossing(edge: edge, host_shell_modules: host_shell_modules, reach: reach))
+  if uncovered |> count > 0 {
+    Stage0EmittedEdgesNotCovered { uncovered: uncovered }
+  } else if crossings |> count > 0 {
+    Stage0EmittedEdgesRefused { crossings: crossings }
+  } else {
+    Stage0EmittedEdgesAdmitted { edge_count: edges |> count }
+  }
+}
+
+fn stage0_emitted_edge_provenance_name(provenance: EmittedEdgeProvenance) -> String {
+  match provenance {
+    RuntimePrelude => "runtime-prelude"
+    ReexportFacade => "reexport-facade"
+    SemanticSourceReference => "semantic-source-reference"
+  }
+}
+
+fn stage0_emitted_edge_admission_refusal(outcome: Stage0EmittedEdgeAdmission) -> String? {
+  match outcome {
+    Stage0EmittedEdgesAdmitted { edge_count: _ } => none
+    Stage0EmittedEdgesNotCovered { uncovered: uncovered } =>
+      Present {
+        value: concat(
+          "Stage0EmittedEdgesNotCovered: ",
+          to_string(value: uncovered |> count),
+          " emitted edge endpoint(s) have no stage0 crate (neither a module-bearing partition row nor the host shell lists them):\n",
+          uncovered
+            |> map(u => concat("  ", u.module, " (edge from ", u.edge_from, ", ", stage0_emitted_edge_provenance_name(provenance: u.provenance), ")"))
+            |> join(separator: "\n")
+        )
+      }
+    Stage0EmittedEdgesRefused { crossings: crossings } =>
+      Present {
+        value: concat(
+          "Stage0EmittedEdgeCrossesCrateBoundary: ",
+          to_string(value: crossings |> count),
+          " emitted edge(s) name a module in a package their source crate does not depend on (E0432 class):\n",
+          crossings
+            |> map(c => concat("  ", c.from_module, " [", c.from_package, "] -> ", c.to_module, " [", c.to_package, "] (", stage0_emitted_edge_provenance_name(provenance: c.provenance), ")"))
+            |> join(separator: "\n")
+        )
+      }
+  }
+}

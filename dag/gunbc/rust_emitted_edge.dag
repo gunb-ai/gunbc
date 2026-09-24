@@ -13,12 +13,14 @@ import std.types { List, String }
 // This module lives under dag/ because the v1 emitter imports it and the v2 partition imports it:
 // one producer, two readers, no second list.
 
-// Only the provenances a producer below emits are arms. The typed use-line rows (helper
-// carriers, authored and reference-derived imports, service/CLI surfaces) add their arms in the
-// change that lands their producer, not before it.
+// Only the provenances a producer emits are arms. SemanticSourceReference is a use-line the
+// emitter derives from the source: an authored import (emit_imports), a reference-derived import
+// (reference_derived_use_line_plan), or a service import (emit_module_full). Helper-carrier and
+// service/CLI runtime-surface arms land with their producers, not before them.
 type EmittedEdgeProvenance
   = RuntimePrelude
   | ReexportFacade
+  | SemanticSourceReference
 
 type EmittedEdgeTarget
   = EmittedModuleTarget { module: String }
@@ -50,6 +52,10 @@ fn rust_prelude_emitted_edges(module: String) -> List<EmittedEdge> {
       EmittedEdge { from: module, to: EmittedCrateRootTarget, provenance: ReexportFacade }
     ]
   }
+}
+
+fn semantic_source_reference_edge(from: String, to_module: String) -> EmittedEdge {
+  EmittedEdge { from: from, to: EmittedModuleTarget { module: to_module }, provenance: SemanticSourceReference }
 }
 
 fn emitted_edge_target_module(edge: EmittedEdge) -> List<String> {

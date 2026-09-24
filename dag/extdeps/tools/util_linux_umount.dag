@@ -1,0 +1,25 @@
+module extdeps.tools.util_linux_umount
+
+import std.types { NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+// umount(8), util-linux: "The umount command detaches the mentioned file system(s) from the file
+// hierarchy. A file system is specified by giving the directory where it has been mounted."
+// (man7.org, util-linux, read 2026-09-23.) Only the plain form is modeled: no -l (lazy), which
+// detaches a busy mount from the namespace while leaving it alive -- the state a cleanup exists to
+// rule out -- and no -f, which upstream documents for unreachable NFS. A mount that will not detach
+// is left in place and refuses at the readback that follows.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man8/umount.8.html"
+  }
+}
+
+data util_linux_umount_binary_name: NonEmptyStr = "umount"
+
+fn umount_command(mount_point: String) -> ArgvCommand {
+  argv_command(program: util_linux_umount_binary_name, arguments: [mount_point])
+}

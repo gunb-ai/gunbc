@@ -1,0 +1,34 @@
+module test.claim.variant_owner_homonym_witness
+
+import std.types { String, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import test.fixture.variant_owner_homonym.roster { homonym_arm_label, FirstHomonymArm, SecondHomonymArm }
+import test.fixture.variant_owner_homonym.record { HomonymOwner }
+import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
+import v2.std.artifact { GeneratedArtifact }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT: a bare unit-variant reference whose OWNER coproduct shares its bare type name with
+// a record declared by another module in the same closure. The variant's locals binding carries
+// the owner coproduct node (v1.compiler.infer constructor_binding_authority), yet
+// lookup_variant_parent_enum re-looked the owner up by its bare name, landed on the record, found
+// no Disj, stamped no VariantValueBinding -- and the interpreter answered NoSuchVariable at run
+// time for a reference the typechecker had accepted. No module here reads `HomonymOwner` bare in
+// a position two declarations could answer, so this is not an ambiguity to refuse: the owner
+// identity is unique and was discarded.
+//
+// The record import is the discriminator, not decoration: without a same-spelled non-coproduct
+// declaration in the closure the bare re-lookup finds the coproduct and every row here is green
+// on the defective seed too.
+
+test fn a_variant_whose_owner_shares_a_record_name_evaluates() -> Bool {
+  homonym_arm_label(a: FirstHomonymArm) == "first" && homonym_arm_label(a: SecondHomonymArm) == "second"
+}
+
+// THE INHABITANCE ROW: the specimen that surfaced the class, on the real modules --
+// gunbc.generated_artifact GeneratedArtifact beside v2.std.artifact GeneratedArtifact (found by
+// proud-dove-705 on #12101 under a closure reaching gunbc.auth.heal_publisher_provision).
+test fn the_generated_artifact_roster_arm_evaluates_beside_the_std_record() -> Bool {
+  artifact_path(a: FleetConvergeYamlArtifact) == ".github/workflows/fleet-converge.yml"
+}
