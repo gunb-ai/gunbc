@@ -112,7 +112,7 @@ fn route_tally_of(n: Node) -> RouteTally {
           AtomHead { identity: id } => if id == ^count { 1 } else { 0 }
           ArrowHead => 0
         },
-        unprojected_first_arguments: match fold_list(xs: v.operands, empty: 0, cons: fn(acc, op) {
+        unprojected_first_arguments: fold_list(xs: v.operands, empty: 0, cons: fn(acc, op) {
           if acc > 0 { acc } else {
             match argument_value_read(n: op) {
               FirstArgUnreadable => 1
