@@ -1,19 +1,12 @@
 module v2.test.claim.body_lowering.normalize_outcome_helpers
 
-import v2.compiler.reference_conservation_admission { ExplainedDrop, conserved_normalize_of_text, no_explained_drops }
-import std.algebra { FreeMonoid }
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Symbol }
 
 fn body_lowering_normalize_outcome(src: String, file: Symbol) -> String {
-  body_lowering_normalize_outcome_explained(src: src, file: file, explained: no_explained_drops())
-}
-
-// The admitted route with the drops a fixture's source necessarily contains declared; see
-// v2.compiler.reference_conservation_admission ExplainedDrop.
-fn body_lowering_normalize_outcome_explained(src: String, file: Symbol, explained: FreeMonoid<ExplainedDrop>) -> String {
-  match conserved_normalize_of_text(path: symbol_lexeme(sym: file), text: src, explained: explained) {
+  match conserved_normalize_of_text(path: symbol_lexeme(sym: file), text: src, explained: no_explained_drops()) {
     Rejected { diagnostics: ds } => symbol_lexeme(sym: ds.head.reason)
     Accepted { value: _, diagnostics: _ } => "ACCEPTED"
   }

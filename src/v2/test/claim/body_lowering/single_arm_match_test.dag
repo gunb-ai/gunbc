@@ -2,13 +2,15 @@ module v2.test.claim.body_lowering.single_arm_match
 
 import v2.compiler.reference_conservation_admission {
   ExplainedDrop,
-  MatchLaterArm
+  MatchLaterArm,
+  no_explained_drops,
+  conservation_subject_of_text,
+  conserved_normalize
 }
+import v2.compiler.reference_conservation { ReferenceConservationSubject }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.test.claim.body_lowering.normalize_outcome_helpers {
-  body_lowering_normalize_outcome,
-  body_lowering_normalize_outcome_explained
+  body_lowering_normalize_outcome
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -46,7 +48,10 @@ test fn two_arm_match_still_accepts_holds() -> Bool {
 }
 
 test fn three_arm_match_is_not_parity_holds() -> Bool {
-  body_lowering_normalize_outcome_explained(src: src_three_arm_accepts, file: ^single_arm_match_subject, explained: three_arm_lost_arm()) == "ACCEPTED"
+  match conserved_normalize(subject: three_arm_subject(), explained: three_arm_lost_arm()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn one_arm_constructor_pattern_normalizes_holds() -> Bool {
@@ -58,15 +63,27 @@ test fn one_arm_shorthand_field_pattern_normalizes_holds() -> Bool {
 }
 
 test fn zero_arm_match_still_refuses_holds() -> Bool {
-  normalize_outcome(src: src_zero_arm_refuses)
-    == "body_lowering_reason_match_arm_navigation_refused"
+  match conserved_normalize(subject: zero_arm_subject(), explained: no_explained_drops()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^body_lowering_reason_match_arm_navigation_refused
+  }
 }
 
-// The third arm (`_ => 3`) is lost by lowering today, pattern and body both, pinned by
+// The third arm (`_ => 3`: the `_` and the `3`, at their extents in src_three_arm_accepts) is lost by lowering today, pattern and body both, pinned by
 // v2.test.claim.namespace_xl0.reference_conservation the_third_match_arm_is_reported_dropped_holds.
 fn three_arm_lost_arm() -> FreeMonoid<ExplainedDrop> {
   Cons {
-    head: ExplainedDrop { identity: symbol_intern_lexeme(lexeme: "_"), shape: MatchLaterArm },
-    tail: Cons { head: ExplainedDrop { identity: ^dag_token_int_literal, shape: MatchLaterArm }, tail: Empty }
+    head: ExplainedDrop { start: 88, end: 89, shape: MatchLaterArm },
+    tail: Cons { head: ExplainedDrop { start: 93, end: 94, shape: MatchLaterArm }, tail: Empty }
   }
+}
+
+// Nullary and pure, enrolled WARM in v2.workflow.floor_pure_producer_share: the parse and normalize
+// are paid once and the claim is charged only the admitted route it names.
+fn three_arm_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "single_arm_match_subject", text: src_three_arm_accepts)
+}
+
+fn zero_arm_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "single_arm_match_subject", text: src_zero_arm_refuses)
 }

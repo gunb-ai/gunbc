@@ -12,18 +12,18 @@ import v2.compiler.reference_conservation {
   reference_conservation_report_lines
 }
 import v2.compiler.reference_conservation_admission {
-  ChangedScopeAdmitted,
-  ChangedScopeConservationReceipt,
+  ChangedScopeObservedConserved,
+  ChangedScopeConservationObservation,
   ChangedScopeReadInput,
   ChangedScopeRow,
-  ChangedScopeRefused,
+  ChangedScopeObservedDropped,
   NoBodyLoweringChange,
   ScopeConserved,
   ScopeDropped,
   ScopeMembershipUnreadable,
   ScopeOutside,
-  changed_scope_receipt,
-  changed_scope_receipt_admits,
+  changed_scope_observation,
+  changed_scope_observation_conserves,
   conservation_read_of
 }
 import v2.extdeps.languages.dag { dag_language_model }
@@ -83,10 +83,10 @@ fn reference_conservation_census_for_paths(paths_csv: String) -> String {
 
 // THE CHANGED-SCOPE ENTRY (MQ-6). The host hands the change's path list (for a PR, the files
 // `git diff --name-only <base>...<head>` names; a deleted path is its own unreadable line) and this
-// reads each one, lets v2.compiler.reference_conservation_admission changed_scope_receipt decide
-// which are in the body-lowering scope from their own imports, and renders the typed receipt. The
+// reads each one, lets v2.compiler.reference_conservation_admission changed_scope_observation decide
+// which are in the body-lowering scope from their own imports, and renders the typed observation. The
 // first line is the verdict; one line per path follows, and a refused path carries one line per
-// refusal, so the receipt is reviewable without re-running it.
+// refusal, so the observation is reviewable without re-running it.
 fn changed_scope_read_inputs(paths_csv: String) -> ChangedScopeReadInputs {
   fold_list(
     xs: split(s: paths_csv, delimiter: ","),
@@ -124,55 +124,55 @@ fn changed_scope_row_lines(rows: FreeMonoid<ChangedScopeRow>) -> String {
   )
 }
 
-fn changed_scope_verdict_line(receipt: ChangedScopeConservationReceipt) -> String {
-  match receipt {
-    NoBodyLoweringChange { rows: _ } => "receipt no-body-lowering-change"
-    ChangedScopeAdmitted { rows: _, in_scope: n } => "receipt admitted in_scope=" + integer_int_to_decimal_string(value: n)
-    ChangedScopeRefused { rows: _, in_scope: n, refused: k } =>
-      "receipt refused in_scope=" + integer_int_to_decimal_string(value: n) + " refused=" + integer_int_to_decimal_string(value: k)
+fn changed_scope_verdict_line(observation: ChangedScopeConservationObservation) -> String {
+  match observation {
+    NoBodyLoweringChange { rows: _ } => "observation no-body-lowering-change"
+    ChangedScopeObservedConserved { rows: _, in_scope: n } => "observation conserved in_scope=" + integer_int_to_decimal_string(value: n)
+    ChangedScopeObservedDropped { rows: _, in_scope: n, refused: k } =>
+      "observation dropped in_scope=" + integer_int_to_decimal_string(value: n) + " refused=" + integer_int_to_decimal_string(value: k)
   }
 }
 
-fn changed_scope_receipt_rows(receipt: ChangedScopeConservationReceipt) -> FreeMonoid<ChangedScopeRow> {
-  match receipt {
+fn changed_scope_observation_rows(observation: ChangedScopeConservationObservation) -> FreeMonoid<ChangedScopeRow> {
+  match observation {
     NoBodyLoweringChange { rows: r } => r
-    ChangedScopeAdmitted { rows: r, in_scope: _ } => r
-    ChangedScopeRefused { rows: r, in_scope: _, refused: _ } => r
+    ChangedScopeObservedConserved { rows: r, in_scope: _ } => r
+    ChangedScopeObservedDropped { rows: r, in_scope: _, refused: _ } => r
   }
 }
 
-// An unreadable path refuses the receipt outright: a change's scope that could not be read is not
+// An unreadable path refuses the observation outright: a change's scope that could not be read is not
 // a change that reached no body-lowering module.
 type ChangedScopeRun {
-  admitted: Bool
+  conserved: Bool
   text: String
 }
 
 fn changed_scope_run(paths_csv: String) -> ChangedScopeRun {
   let read = changed_scope_read_inputs(paths_csv: paths_csv)
-  let receipt = changed_scope_receipt(inputs: read.inputs)
-  let rows = changed_scope_row_lines(rows: changed_scope_receipt_rows(receipt: receipt))
+  let observation = changed_scope_observation(inputs: read.inputs)
+  let rows = changed_scope_row_lines(rows: changed_scope_observation_rows(observation: observation))
   match read.unreadable {
-    Empty => ChangedScopeRun { admitted: changed_scope_receipt_admits(receipt: receipt), text: changed_scope_verdict_line(receipt: receipt) + "\n" + rows }
+    Empty => ChangedScopeRun { conserved: changed_scope_observation_conserves(observation: observation), text: changed_scope_verdict_line(observation: observation) + "\n" + rows }
     Cons { head: _, tail: _ } =>
       ChangedScopeRun {
-        admitted: false,
-        text: "receipt refused-unreadable\n" + fold_list(xs: read.unreadable, empty: "", cons: fn(acc, p) { acc + "unreadable " + p + "\n" }) + rows
+        conserved: false,
+        text: "observation refused-unreadable\n" + fold_list(xs: read.unreadable, empty: "", cons: fn(acc, p) { acc + "unreadable " + p + "\n" }) + rows
       }
   }
 }
 
-// The rendered receipt, for a reader.
-fn reference_conservation_changed_scope_receipt(paths_csv: String) -> String {
+// The rendered observation, for a reader.
+fn reference_conservation_changed_scope_observation(paths_csv: String) -> String {
   changed_scope_run(paths_csv: paths_csv).text
 }
 
-// The same receipt as a process verdict (`gunbc run --function
-// reference_conservation_changed_scope_verdict --arg <csv>`): a refused receipt exits non-zero and
-// carries the rendered receipt as its reason, so a caller cannot read a refusal as success.
-fn reference_conservation_changed_scope_verdict(paths_csv: String) -> ProcessExit {
+// The same observation as a process verdict (`gunbc run --function
+// reference_conservation_changed_scope_observation_exit --arg <csv>`): a refused observation exits non-zero and
+// carries the rendered observation as its reason, so a caller cannot read a refusal as success.
+fn reference_conservation_changed_scope_observation_exit(paths_csv: String) -> ProcessExit {
   let run = changed_scope_run(paths_csv: paths_csv)
-  if run.admitted { ExitSuccess } else { exit_failure(reason: run.text) }
+  if run.conserved { ExitSuccess } else { exit_failure(reason: run.text) }
 }
 
 

@@ -282,7 +282,7 @@ test fn the_where_refinement_predicate_is_reported_dropped_holds() -> Bool {
 data match_later_arm_source: String = "module v2.test.reference_conservation_match\n\ntype RcT = RcA | RcB | RcC\n\ndata rc_first: Int = 1\n\ndata rc_second: Int = 2\n\ndata rc_third: Int = 3\n\nfn rc_match(t: RcT) -> Int {\n  match t {\n    RcA => rc_first\n    RcB => rc_second\n    RcC => rc_third\n  }\n}\n"
 
 test fn the_third_match_arm_is_reported_dropped_holds() -> Bool {
-  report_drops_identity(report: conservation_report_of(subject: conservation_subject(id_tail: "match_later_arm", source: match_later_arm_source)), wanted: ^rc_third)
+  report_drops_identity(report: conservation_report_of(subject: match_later_arm_subject()), wanted: ^rc_third)
 }
 
 // Found the same way through v2.test.claim.body_lowering.statement_let_bind: a statement-form let's
@@ -291,6 +291,14 @@ test fn the_third_match_arm_is_reported_dropped_holds() -> Bool {
 data statement_let_binder_source: String = "module v2.test.reference_conservation_let\n\nfn rc_let() -> Int {\n  let rc_bound = 1\n  rc_bound\n}\n"
 
 test fn a_statement_let_binder_is_reported_dropped_holds() -> Bool {
-  let r = conservation_report_of(subject: conservation_subject(id_tail: "statement_let_binder", source: statement_let_binder_source))
+  let r = conservation_report_of(subject: statement_let_binder_subject())
   report_drop_count(report: r, wanted: ^rc_bound) == 1 && length(xs: r.dropped) == 1
+}
+
+fn match_later_arm_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "match_later_arm", source: match_later_arm_source)
+}
+
+fn statement_let_binder_subject() -> ReferenceConservationSubject {
+  conservation_subject(id_tail: "statement_let_binder", source: statement_let_binder_source)
 }

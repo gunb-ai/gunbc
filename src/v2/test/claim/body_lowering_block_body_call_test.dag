@@ -1,6 +1,7 @@
 module v2.test.claim.body_lowering_block_body_call
 
-import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text, conserved_normalize, no_explained_drops }
+import v2.compiler.reference_conservation { ReferenceConservationSubject }
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
@@ -55,7 +56,7 @@ test fn body_lowering_block_call_parses_holds() -> Bool {
 }
 
 test fn body_lowering_block_body_call_reaches_arrow_body() -> Bool {
-  match conserved_normalize_of_text(path: "body_lowering_block_call_file", text: body_lowering_block_call_source, explained: no_explained_drops()) {
+  match conserved_normalize(subject: body_lowering_block_call_subject(), explained: no_explained_drops()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match find_named_child(root: tree.root, name: ^grammar_production_captured_node_projection) {
@@ -91,4 +92,10 @@ test fn body_lowering_block_body_call_reaches_arrow_body() -> Bool {
           }
       }
   }
+}
+
+// Nullary and pure, enrolled WARM in v2.workflow.floor_pure_producer_share: the parse and normalize
+// are paid once and the claim is charged only the admitted route it names.
+fn body_lowering_block_call_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "body_lowering_block_call_file", text: body_lowering_block_call_source)
 }
