@@ -11,6 +11,8 @@ import v2.compiler.source_authority {
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse {
   ParseArtifact,
+  parse_module_prepared_seeded,
+  parse_module_prepared_measured_seeded,
   ParseProductionMeasured,
   PreparedGrammar,
   parse_memo_stats_empty,
@@ -47,6 +49,8 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.node { Node }
+import v2.std.provenance { SpanIndex, span_index_empty, span_index_merge }
+import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial }
 import v2.std.text { String }
 
 type ProgramAssemblyFoldState
@@ -71,13 +75,32 @@ type LocatedNormalizedTree {
   tree: NormalizedTree
 }
 
+// THE TWO PROVENANCE FIELDS ARE WHY A DIAGNOSTIC CAN NAME A FILE, and they are one fact in two
+// halves. `alloc` is the occurrence-id high-water mark reached so far, so the NEXT read is parsed
+// seeded from it rather than restarting at zero -- which is what makes an occurrence id unique
+// across the whole ingest instead of unique only within one file. `spans` is those ids' origins
+// merged into ONE index; because the ids are ingest-unique the merge cannot collide, and because
+// tokenize stamps each locus with the read's own compilation unit, every entry already names its
+// file. Together they turn "which file is this occurrence from" into a LOOKUP.
+//
+// THE ORDER OF THOSE TWO SENTENCES IS THE WHOLE DESIGN. Merging per-file indices WITHOUT seeding
+// would be the silent-wrongness arm: two files both mint occurrence #3, one entry overwrites or
+// shadows the other, and a node from file B resolves to a byte range in file A -- a confident,
+// plausible, wrong answer, which DESIGN section 5 forbids more strongly than no answer at all.
+// `std.occurrence_identity` `occurrence_identity_scope_law` already said so ("a production source
+// graph threads one allocator across every parsed source"; module-local reset is a FORBIDDEN
+// identity input); the fold simply stopped obeying it. Seeding is not an optimization here, it is
+// the precondition that makes the merge meaningful.
 type ProgramAssemblyLocatedFoldState
   = ProgramAssemblyLocatedFoldOk {
       located: FreeMonoid<LocatedNormalizedTree>,
-      index: SourceRootIndex
+      index: SourceRootIndex,
+      alloc: OccurrenceIdAllocator,
+      spans: SpanIndex
     }
   | ProgramAssemblyLocatedFoldFailed {
-      diagnostics: NonEmptyDiagnostics
+      diagnostics: NonEmptyDiagnostics,
+      spans: SpanIndex
     }
 
 fn program_assembly_empty_roots() -> FreeMonoid<NormalizedTree> {
@@ -92,9 +115,9 @@ fn program_assembly_fold_state_from_located(
   state: ProgramAssemblyLocatedFoldState
 ) -> ProgramAssemblyFoldState {
   match state {
-    ProgramAssemblyLocatedFoldFailed { diagnostics: d } =>
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
       ProgramAssemblyFoldFailed { diagnostics: d }
-    ProgramAssemblyLocatedFoldOk { located: located, index: idx } =>
+    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: _ } =>
       ProgramAssemblyFoldOk {
         roots: list_map(xs: located, f: fn(item) { item.tree }),
         index: idx
@@ -150,20 +173,40 @@ fn program_assembly_phase_tokenize(
   }
 }
 
-// THE MEASURED PARSE PHASE, AND THE PLAIN ONE AS ITS PROJECTION. The memo accounting is a
-// realization fact about one execution, so it rides beside the outcome rather than inside the
-// artifact (see ParseProductionMeasured); a caller that does not report counters takes `.outcome`
-// and is byte-for-byte the fold it was before.
+// THE SEEDED MEASURED PHASE, AND THE MARK READ BACK OUT AS A SCALAR. These two exist for the
+// emitted `SourceRootEvalDriver`, which does not call the composed per-file fold: it open-codes the
+// sequence so a clock can sit between the phases, which is admitted debt filed at
+// `gunbc.recurring_failure_mode` `realization_respells_a_modeled_folds_sequencing_to_instrument_it`.
+// That respelling is exactly why the driver needs its own seam -- it cannot inherit the threading
+// the composition does internally, so the threading has to be reachable phase by phase or the
+// driver silently keeps the per-file reset while the modeled fold no longer has it.
 //
 // THE REJECTED-INPUT ARM REPRODUCES bind_outcome EXACTLY, and is spelled out rather than reused
 // because bind_outcome cannot carry a second value out of the bound function: a Rejected token
 // stream passes its diagnostics through untouched and reports empty accounting, because no parse
 // ran -- an answer, not a missing measurement. The Accepted arm merges the incoming diagnostics
-// through bind_outcome_accepted, which is what bind_outcome itself calls.
-fn program_assembly_phase_parse_measured(
+// through bind_outcome_accepted, which is what bind_outcome itself calls. (That reasoning arrived
+// here with the unseeded twin this phase replaced; the twin is deleted, so the reasoning moves to
+// the survivor rather than being deleted with it.)
+//
+// THE FALLBACK ON A REFUSAL IS THE SEED ITSELF, NOT ZERO, AND NOT THE MARK THE ATTEMPT REACHED.
+// Returning `occurrence_id_allocator_initial()` would silently rewind the whole ingest to the
+// start, which is the collision this threading exists to prevent, at its worst.
+//
+// THE SEED IS A FLOOR, NOT A STATEMENT THAT NOTHING WAS MINTED (review 69819). A refused parse HAS
+// minted ids -- `parse_prov_seeded` threads the allocator through the entire attempt -- and an
+// earlier revision of this paragraph said "nothing after a refusal consumed an id", which was
+// false. What is true is that the mark the attempt reached is not RECOVERABLE here:
+// `ParseExprRejected` carries no provenance state, by construction, because the parse core
+// backtracks and a failed branch's mints are abandoned by design. Reusing those ids is sound
+// exactly while nothing retains a refused parse's node loci; the precondition and the carrier that
+// would break it are named on `v2.compiler.compile` `native_test_context_absorb`, which is where
+// the reuse actually happens.
+fn program_assembly_phase_parse_measured_seeded(
   tokens: Outcome<TokenStream>,
   prepared: PreparedGrammar,
-  residue: Diagnostics
+  residue: Diagnostics,
+  seed: OccurrenceIdAllocator
 ) -> ParseProductionMeasured {
   match tokens {
     Rejected { diagnostics: d } =>
@@ -172,10 +215,11 @@ fn program_assembly_phase_parse_measured(
         memo: parse_memo_stats_empty()
       }
     Accepted { value: token_stream, diagnostics: od } =>
-      let measured = parse_module_prepared_measured(
+      let measured = parse_module_prepared_measured_seeded(
         tokens: token_stream,
         prepared: prepared,
-        validation_residue: residue
+        validation_residue: residue,
+        seed: seed
       )
       ParseProductionMeasured {
         outcome: bind_outcome_accepted(od: od, inner: measured.outcome),
@@ -184,16 +228,23 @@ fn program_assembly_phase_parse_measured(
   }
 }
 
-fn program_assembly_phase_parse(
-  tokens: Outcome<TokenStream>,
-  prepared: PreparedGrammar,
-  residue: Diagnostics
-) -> Outcome<ParseArtifact> {
-  program_assembly_phase_parse_measured(
-    tokens: tokens,
-    prepared: prepared,
-    residue: residue
-  ).outcome
+// THE MARK AS A SCALAR, for the same reason the three memo counters above are read out one at a
+// time: the driver prints scalars, and a record does not cross that boundary as one. This is what
+// makes the emitted loop's threading OBSERVABLE from outside the binary -- the per-file line carries
+// the mark it was handed and the mark it reached, so a run over several files shows one sequence
+// continuing rather than a claim that it does.
+fn program_assembly_allocator_next(alloc: OccurrenceIdAllocator) -> Int {
+  alloc.next_id
+}
+
+fn program_assembly_measured_alloc(
+  measured: ParseProductionMeasured,
+  seed: OccurrenceIdAllocator
+) -> OccurrenceIdAllocator {
+  match measured.outcome {
+    Rejected { diagnostics: _ } => seed
+    Accepted { value: artifact, diagnostics: _ } => artifact.alloc
+  }
 }
 
 // The three counters, read out one at a time because the driver prints scalars and a record does
@@ -228,37 +279,89 @@ fn program_assembly_phase_token_count(tokens: Outcome<TokenStream>) -> Int {
   }
 }
 
-fn program_assembly_read_to_normalized_root_prepared(
+// THE SEEDED PER-FILE FRONT END, WHICH IS THE ONE THE INGEST FOLD USES. The occurrence ids it mints
+// continue the ingest's count instead of restarting, and it hands back the mark it reached and the
+// spans it recorded so the fold can thread them. Normalize is applied to the parse artifact's tree,
+// so the normalized nodes carry occurrence ids drawn from the SAME ingest-wide sequence the span
+// index is keyed by -- that agreement is what makes the later join a lookup rather than a search.
+//
+// (This paragraph described an earlier carrier, `ProgramAssemblySeededRead`, which the restructure
+// to the three-field result below replaced and which survived as an unconstructed declaration --
+// DESIGN section 3c's "pub declaration with no call site in the closure", found by review 70027.
+// The type is deleted and its reasoning folded here, onto the carrier that exists.)
+
+// THE SPANS SURVIVE THIS READ'S OWN REFUSAL, which is the same reason IngestAssembly exists one
+// layer up: a file that PARSED and then failed to normalize or graft has a fully recorded span
+// index, and it is exactly the file whose diagnostic a reader needs located. Returning
+// Outcome<...> alone would discard that index on the arm where it matters most.
+//
+// TOKENIZE OR PARSE REFUSING REPORTS AN EMPTY INDEX, and the reason is that the artifact holding
+// the index does not exist on that arm -- NOT that no occurrence was minted. A refused parse mints
+// ids and records spans for them inside a `ParseProvenanceState` the refusal discards. Empty here
+// is therefore "this producer cannot reach what was recorded", which `span_index_lookup` turns into
+// a refusal at the join rather than a wrong locus -- the fail-closed arm. An earlier revision of
+// this sentence claimed nothing was minted, which was a stronger and false claim (review 69819).
+type ProgramAssemblySeededReadResult {
+  alloc: OccurrenceIdAllocator,
+  spans: SpanIndex,
+  produced: Outcome<NormalizedTree>
+}
+
+fn program_assembly_read_to_normalized_root_seeded(
   read: DagSourceReadWitness,
   lm: LanguageModel,
   prepared: PreparedGrammar,
-  residue: Diagnostics
-) -> Outcome<NormalizedTree> {
-  program_assembly_phase_normalize(
-    parsed: program_assembly_phase_parse(
-      tokens: program_assembly_phase_tokenize(read: read, lm: lm),
-      prepared: prepared,
-      residue: residue
-    )
-  )
-}
-
-fn program_assembly_read_to_normalized_root(
-  read: DagSourceReadWitness,
-  lm: LanguageModel
-) -> Outcome<NormalizedTree> {
-  match prepare_grammar(grammar: lm.grammar) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
-      program_assembly_read_to_normalized_root_prepared(
-        read: read,
-        lm: lm,
+  residue: Diagnostics,
+  seed: OccurrenceIdAllocator
+) -> ProgramAssemblySeededReadResult {
+  match bind_outcome(
+    o: program_assembly_phase_tokenize(read: read, lm: lm),
+    f: fn(token_stream) {
+      parse_module_prepared_seeded(
+        tokens: token_stream,
         prepared: prepared,
-        residue: residue
+        validation_residue: residue,
+        seed: seed
       )
+    }
+  ) {
+    Rejected { diagnostics: d } =>
+      ProgramAssemblySeededReadResult {
+        alloc: seed,
+        spans: span_index_empty(),
+        produced: Rejected { diagnostics: d }
+      }
+    Accepted { value: artifact, diagnostics: od } =>
+      ProgramAssemblySeededReadResult {
+        alloc: artifact.alloc,
+        spans: artifact.span_index,
+        produced: bind_outcome_accepted(od: od, inner: normalize(parse_tree: artifact.tree))
+      }
   }
 }
 
+// THE UNSEEDED PER-FILE COMPOSITION IS DELETED, NOT RETAINED (review 69837). It was
+// `program_assembly_read_to_normalized_root_prepared` and its nullary sibling
+// `program_assembly_read_to_normalized_root`: a second per-file front-end composition that still
+// performed the per-file allocator reset. This change moved its last real consumer
+// (`v2.compiler.compile` `native_test_context_fold_step`) onto the seeded door, which left the pair
+// reachable from nothing -- DESIGN section 3c's "a pub declaration with no call site in the
+// closure".
+//
+// DELETED RATHER THAN LEFT STANDING, because a surviving unseeded composition is DESIGN section 3's
+// attractor: while it stands, the next fold that needs a per-file front end answers in its
+// vocabulary and silently reintroduces the reset. This module's own annotation on `02_parse`
+// already concedes that hazard is real and that no wall catches it -- "a NEW ingest fold that calls
+// the unseeded door is a defect this annotation cannot catch" -- so the honest move is to remove
+// the door rather than document the trap beside it. The seeded producer above is now the single
+// per-file front end, and a caller that wants an isolated scope seeds it with
+// `occurrence_id_allocator_initial()` explicitly, which is a statement rather than a default.
+
+// THE FAILING READ'S OWN SPANS ARE MERGED IN BEFORE THE REFUSAL IS BUILT (`carried`), and that is
+// the point of the repair review 69607 asked for: a file that parsed and then failed to normalize
+// or graft is exactly the file whose diagnostic needs locating, and its index would otherwise be
+// dropped one step before the renderer asked for it. Both refusing arms below -- the read's own
+// refusal and the module-name derivation's -- carry it, so neither loses what was recorded.
 fn program_assembly_fold_step(
   state: ProgramAssemblyLocatedFoldState,
   read: DagSourceReadWitness,
@@ -267,25 +370,35 @@ fn program_assembly_fold_step(
   residue: Diagnostics
 ) -> ProgramAssemblyLocatedFoldState {
   match state {
-    ProgramAssemblyLocatedFoldFailed { diagnostics: d } =>
-      ProgramAssemblyLocatedFoldFailed { diagnostics: d }
-    ProgramAssemblyLocatedFoldOk { located: acc, index: idx } =>
-      match program_assembly_read_to_normalized_root_prepared(read: read, lm: lm, prepared: prepared, residue: residue) {
-        Accepted { value: root, diagnostics: _ } =>
-          match qualified_name_from_module_node(root: root.root) {
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: spans } =>
+      ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: spans }
+    ProgramAssemblyLocatedFoldOk { located: acc, index: idx, alloc: seed, spans: spans } =>
+      let result = program_assembly_read_to_normalized_root_seeded(
+        read: read,
+        lm: lm,
+        prepared: prepared,
+        residue: residue,
+        seed: seed
+      )
+      let carried = span_index_merge(base: spans, incoming: result.spans)
+      match result.produced {
+        Accepted { value: tree, diagnostics: _ } =>
+          match qualified_name_from_module_node(root: tree.root) {
             Accepted { value: qn, diagnostics: _ } =>
               ProgramAssemblyLocatedFoldOk {
                 located: list_snoc_item(
                   xs: acc,
-                  item: LocatedNormalizedTree { path: read.artifact.file_path, tree: root }
+                  item: LocatedNormalizedTree { path: read.artifact.file_path, tree: tree }
                 ),
-                index: source_root_index_insert(index: idx, module: qn, root: read.source_root)
+                index: source_root_index_insert(index: idx, module: qn, root: read.source_root),
+                alloc: result.alloc,
+                spans: carried
               }
             Rejected { diagnostics: d } =>
-              ProgramAssemblyLocatedFoldFailed { diagnostics: d }
+              ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: carried }
           }
         Rejected { diagnostics: d } =>
-          ProgramAssemblyLocatedFoldFailed { diagnostics: d }
+          ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: carried }
       }
   }
 }
@@ -316,6 +429,10 @@ fn dag_prepared_grammar() -> Outcome<PreparedGrammar> {
   prepare_grammar(grammar: dag_grammar())
 }
 
+// THE GRAMMAR REFUSAL REPORTS AN EMPTY INDEX AND THAT IS AN ANSWER, NOT A DROP. An invalid grammar
+// fails the whole assembly before any module is parsed, so no occurrence was ever minted and there
+// is nothing recorded to carry -- which is a different fact from the per-read refusals above, where
+// something WAS recorded and losing it was the defect.
 fn program_assembly_fold_ingest_located(
   ingest: SourceRootIngest,
   lm: LanguageModel
@@ -324,18 +441,22 @@ fn program_assembly_fold_ingest_located(
     Empty =>
       ProgramAssemblyLocatedFoldOk {
         located: program_assembly_empty_located_roots(),
-        index: source_root_index_empty()
+        index: source_root_index_empty(),
+        alloc: occurrence_id_allocator_initial(),
+        spans: span_index_empty()
       }
     _ =>
       match prepare_grammar(grammar: lm.grammar) {
         Rejected { diagnostics: d } =>
-          ProgramAssemblyLocatedFoldFailed { diagnostics: d }
+          ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: span_index_empty() }
         Accepted { value: prepared, diagnostics: residue } =>
           fold_list(
             xs: ingest,
             empty: ProgramAssemblyLocatedFoldOk {
               located: program_assembly_empty_located_roots(),
-              index: source_root_index_empty()
+              index: source_root_index_empty(),
+              alloc: occurrence_id_allocator_initial(),
+              spans: span_index_empty()
             },
             cons: fn(state, read) {
               program_assembly_fold_step(state: state, read: read, lm: lm, prepared: prepared, residue: residue)
@@ -359,9 +480,31 @@ fn located_module_roots_from_source_root_ingest(
   lm: LanguageModel
 ) -> Outcome<FreeMonoid<LocatedNormalizedTree>> {
   match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
-    ProgramAssemblyLocatedFoldOk { located: located, index: _ } =>
+    ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: _ } =>
       outcome_accepted(value: located)
-    ProgramAssemblyLocatedFoldFailed { diagnostics: d } =>
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
+      Rejected { diagnostics: d }
+  }
+}
+
+// ONE FOLD, BOTH HALVES OF THE IDENTITY JOIN. A consumer that needs to relate a node back to the
+// file it came from needs the per-file roots AND the index those roots' occurrences are keyed in,
+// and taking them from two separate calls would parse the ingest twice for one question (DESIGN
+// section 2) while leaving the two results free to disagree. They are one fold's output, so they are
+// returned together.
+type LocatedIngestRoots {
+  located: FreeMonoid<LocatedNormalizedTree>,
+  spans: SpanIndex
+}
+
+fn located_roots_and_spans_from_source_root_ingest(
+  ingest: SourceRootIngest,
+  lm: LanguageModel
+) -> Outcome<LocatedIngestRoots> {
+  match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
+    ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: spans } =>
+      outcome_accepted(value: LocatedIngestRoots { located: located, spans: spans })
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
       Rejected { diagnostics: d }
   }
 }
@@ -395,26 +538,58 @@ fn assemble_program_from_module_roots(
   )
 }
 
+// THE SPANS RIDE BESIDE THE OUTCOME, NOT INSIDE IT, AND THAT IS THE WHOLE POINT. A diagnostic needs
+// its file exactly when the program did NOT assemble, and `Outcome`'s Rejected arm carries no value
+// -- so an index returned as part of the accepted program is an index that has evaporated precisely
+// where it was wanted. This carrier holds both arms' worth: the span index the fold recorded before
+// it stopped, and the outcome itself. It is the same stance `ParseProductionMeasured` already takes
+// for memo counters one layer down, for the same reason.
+//
+// A REFUSED ASSEMBLY STILL CARRIES THE SPANS OF EVERY FILE IT GOT THROUGH, which is the honest
+// answer rather than a convenient one: the fold is fail-closed and stops at the first refusing read,
+// so the index covers exactly the reads that were parsed, and an occurrence from a file that was
+// never reached is absent rather than fabricated. `span_index_lookup` refuses on absence, so the
+// renderer degrades to "no file" instead of to a wrong file.
+type IngestAssembly {
+  spans: SpanIndex,
+  program: Outcome<Node>
+}
+
+fn assemble_program_from_ingest_located(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  lm: LanguageModel
+) -> IngestAssembly {
+  match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: spans } =>
+      IngestAssembly { spans: spans, program: Rejected { diagnostics: d } }
+    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: spans } =>
+      IngestAssembly {
+        spans: spans,
+        program: bind_outcome(
+          o: validate_module_roots(roots: list_map(xs: located, f: fn(item) { item.tree })),
+          f: fn(validated_roots) {
+            resolve_with_admission_grounded(
+              lm: lm,
+              roots: validated_roots.roots,
+              admission: admission,
+              index: idx,
+              active_roots: source_root_set_from_ingest(ingest: ingest)
+            )
+          }
+        )
+      }
+  }
+}
+
 fn assemble_program_from_ingest(
   ingest: SourceRootIngest,
   admission: Admission,
   lm: LanguageModel
 ) -> Outcome<Node> {
-  match program_assembly_fold_ingest(ingest: ingest, lm: lm) {
-    ProgramAssemblyFoldFailed { diagnostics: d } =>
-      Rejected { diagnostics: d }
-    ProgramAssemblyFoldOk { roots: roots, index: idx } =>
-      bind_outcome(
-        o: validate_module_roots(roots: roots),
-        f: fn(validated_roots) {
-          resolve_with_admission_grounded(
-            lm: lm,
-            roots: validated_roots.roots,
-            admission: admission,
-            index: idx,
-            active_roots: source_root_set_from_ingest(ingest: ingest)
-          )
-        }
-      )
-  }
+  assemble_program_from_ingest_located(
+    ingest: ingest,
+    admission: admission,
+    lm: lm
+  ).program
 }

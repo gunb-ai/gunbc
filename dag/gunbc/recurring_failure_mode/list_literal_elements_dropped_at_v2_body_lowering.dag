@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.list_literal_elements_dropped_at_v2_body_lowering
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data list_literal_elements_dropped_at_v2_body_lowering: RecurringFailureMode = RecurringFailureMode {
+  identity: "list_literal_elements_dropped_at_v2_body_lowering" as NonEmptyStr,
+
+  receipts: [
+    "**v2 body lowering answers a list literal with its opening bracket, so every element and every reference inside it is dropped before resolve** (INVALID STATE: v2.compiler.body_lowering_fold body_lower_primary_expr lowers `[a]` to its first atom `[`; measured by fierce-hawk-274 on main 1b2f64fd49).",
+    "HARM. The drop happens on every route that reaches that reader -- data initializers, let values and call arguments -- so a reference that appears only inside a list literal never reaches resolve and cannot refuse there; the namespace cut's residual census undercounts it by construction. As a CALL ARGUMENT the shape currently refuses instead (body_lowering_reason_call_argument_unread), which is loud but still hides the elements.",
+    "DISTINGUISHING FACTS. Not call_expression_erased_at_v2_body_lowering (a call's callee or argument list is lost) and not lowering_accessor_collapses_a_sequence_operand (an operator operand is narrowed): here a primary expression of its own production is reduced to its delimiter token.",
+    "RUNG FOUND AT: outside the ladder -- silent wrongness on the data-init and let routes, where the module is Accepted with the elements gone.",
+    "CEILING: structurally guaranteed. A list literal's elements are a closed grammar production; lowering them whole, or refusing located, is decidable.",
+    "NEXT-RUNG TRIGGER, naming the capability: body_lower_primary_expr lowers a list literal to a node carrying every element on every route (data initializer, let value, call argument), or refuses located at the unread element; shown by an undeclared name used only inside a list literal refusing at resolve at its atom on each of those routes, beside a declared-element control that resolves.",
+  ],
+
+  evidence: [],
+}

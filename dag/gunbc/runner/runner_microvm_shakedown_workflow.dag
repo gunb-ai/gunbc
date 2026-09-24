@@ -3,7 +3,7 @@ module gunbc.runner_microvm_shakedown_workflow
 import std.types { String, List, NonEmptyStr }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.sha2 { sha256_hex }
-import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.types { yaml_string, kv }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
@@ -250,8 +250,10 @@ fn expected_microvm_shakedown_yml_with(workflow: Workflow) -> MicrovmShakedownWo
     WorkflowActionUsesAdmitted =>
       match admit_workflow_toolchain_homes(workflow: workflow) {
         WorkflowToolchainHomesAdmitted =>
-          MicrovmShakedownWorkflowGenerated {
-            content: serialize_yaml(v: project_workflow_to_yaml(workflow: workflow))
+          match emit_yaml(v: project_workflow_to_yaml(workflow: workflow)) {
+            EmittedYaml { text: t } => MicrovmShakedownWorkflowGenerated { content: t }
+            YamlEmitRefused { path: p, reason: r } =>
+              MicrovmShakedownWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.runner_microvm_shakedown_workflow", path: p, reason: r) }
           }
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           MicrovmShakedownWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }

@@ -2,7 +2,7 @@ module v2.compiler.self_host.compiler_closure_emit
 
 import v2.compiler.infer { infer }
 import v2.compiler.name_resolve { Admission }
-import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.program_assembly { assemble_program_from_ingest_located }
 import v2.compiler.program_partition { emit_for_target }
 import v2.compiler.source_authority { SourceRootIngest }
 import extdeps.communication.medium { Medium }
@@ -28,6 +28,7 @@ import v2.std.diagnostic {
 }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.node { Node }
+import v2.std.provenance { SpanIndex }
 import v2.std.program_segment {
   partition_boundary_fail_closed,
   program_segment_whole_program
@@ -85,14 +86,51 @@ fn compiler_closure_cyclic_diagnostic(root: Node) -> Diagnostic {
   }
 }
 
+// THE LOCATED DOOR, WHICH IS WHAT A CLI NEEDS AND THE PLAIN ONE CANNOT GIVE. Everything after
+// assembly -- infer, closure, emit -- refuses with diagnostics anchored on NODES, and a node names
+// a file only through the ingest's span index. That index is produced by assembly and would be
+// discarded here, so a caller rendering the refusal had nothing to join against; carrying it out
+// beside the outcome is the difference between "FATAL AT <node>" and a file and byte range. The
+// unlocated entry point below is this one's `.outcome`, so there is one emit and no second path.
+type CompilerClosureEmitLocated {
+  spans: SpanIndex,
+  outcome: Outcome<CompilerClosureEmitReceipt>
+}
+
 fn emit_compiler_import_closure_from_ingest(
   ingest: SourceRootIngest,
   admission: Admission,
   target: TargetModel
 ) -> Outcome<CompilerClosureEmitReceipt> {
+  emit_compiler_import_closure_from_ingest_located(
+    ingest: ingest,
+    admission: admission,
+    target: target
+  ).outcome
+}
+
+fn emit_compiler_import_closure_from_ingest_located(
+  ingest: SourceRootIngest,
+  admission: Admission,
+  target: TargetModel
+) -> CompilerClosureEmitLocated {
   let lm = dag_language_model()
+  let assembled = assemble_program_from_ingest_located(ingest: ingest, admission: admission, lm: lm)
+  CompilerClosureEmitLocated {
+    spans: assembled.spans,
+    outcome: emit_compiler_import_closure_from_assembled(
+      program: assembled.program,
+      target: target
+    )
+  }
+}
+
+fn emit_compiler_import_closure_from_assembled(
+  program: Outcome<Node>,
+  target: TargetModel
+) -> Outcome<CompilerClosureEmitReceipt> {
   bind_outcome(
-    o: assemble_program_from_ingest(ingest: ingest, admission: admission, lm: lm),
+    o: program,
     f: fn(resolved) {
       bind_outcome(
         o: infer(tree: resolved),
