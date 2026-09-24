@@ -153,16 +153,23 @@ fn lower_block_body_atoms(atoms: List<Node>, witness: Node) -> Outcome<Node> {
 // the very child Nodes it names, with nothing rebuilt, so a consumer that wants provenance, an
 // occurrence or a locus still reads it from the Node.
 //
-// THE CONSTRUCTOR ESTABLISHES THE WHOLE SHAPE OR REFUSES. The piecewise readers in
-// v2.std.node_query (node_is_call, call_callee_target, call_argument_targets) answer one question
-// each and stay silent about the rest, so a call whose argument list was truncated still has a
-// callee and still has "arguments" -- fewer of them -- and every consumer that asked only for the
-// callee was green over a lost argument. A view refuses, typed and located at the offending node,
-// when ANY part is missing: an unexpected edge label, a wrong child count, or an empty-Conj residue
-// standing where a whole operand should be. The residue check is what makes a truncated read a
-// refusal rather than a shorter answer: an operand reader that stops early leaves exactly that
-// empty sequence tail behind.
+// WHAT A VIEW ESTABLISHES, AND WHAT IT CANNOT. A view admits the Node in hand only if that Node is
+// internally consistent with the constructor's shape: every edge carries the expected label, the
+// child count matches, and no child is surface residue (an empty Conj, a grammar sequence, or an
+// unconsumed production capture) standing where a lowered operand belongs. Anything else refuses,
+// typed and located at the offending node. The piecewise readers in v2.std.node_query
+// (node_is_call, call_callee_target, call_argument_targets) answer one question each and do not
+// check this.
 //
+// A VIEW DOES NOT ESTABLISH SOURCE-TO-LOWERED COMPLETENESS, and must not be cited as if it did. It
+// sees only the Node, never the source it came from, so a loss the lowering already committed is
+// invisible to it: `f(x)` lowered to Transform[f] is a well-formed nullary application, and
+// application_read admits it. Whether the lowered Node carries everything the source authored is
+// established elsewhere: by the production-fed shape contracts
+// (v2.test.claim.namespace_xl0.body_shape_contract), which compare against the authored source; by
+// v2.compiler.reference_conservation; and by MQ-5. A view is how those claims read a Node, not a
+// substitute for them.
+
 // CALL AND OPERATOR ARE ONE SUBSTRATE SHAPE, and the substrate does not distinguish them: both are
 // Transform(head, operands...). What separates them is whether the head is one of
 // the language's operator terminals, which is a fact of the GRAMMAR, not of Node -- so the two views that
@@ -201,9 +208,10 @@ fn view_refusal<T>(reason: Symbol, at: Node) -> Outcome<T> {
   outcome_rejected(d: body_lowering_diagnostic(reason: reason, n: at))
 }
 
-// An operand that is not lowered substrate: the empty sequence tail an early-stopping reader leaves
-// behind, a grammar sequence, or a production capture the fold never consumed. Each is surface
-// syntax standing where a lowered operand belongs, which is a partial read, not a shape.
+// An operand that is not lowered substrate: an empty Conj, a grammar sequence, or a production
+// capture the fold never consumed. Each is surface syntax standing where a lowered operand belongs.
+// Refusing it keeps the Node internally consistent; it does not detect an operand that was dropped
+// outright (see the note above the views).
 fn view_is_surface_residue(n: Node) -> Bool {
   is_empty_conj_root(n: n)
     || (match sugar_sequence_pair_optional(node: n) { Present { value: _ } => true  Absent => false })
@@ -262,8 +270,8 @@ fn view_symbol_listed(id: Symbol, xs: List<Symbol>) -> Bool {
 // THE SHARED BASE: AN APPLICATION, READ WITHOUT ANY OPERATOR ROSTER. Every call and every operator
 // lowers to Transform(head, operands...), so "what is applied here, to what" is a question about
 // Node alone, and a walker that asks it of every node needs three answers, not two: this node is
-// not an application at all; it is one, whole; or it is a Transform whose shape is partial. Folding
-// the last two together is how a malformed call used to read as "not a call" and drop out of every
+// not an application at all; it is a well-formed application; or it is a Transform that is not
+// well formed. Folding the last two together is how a malformed call used to read as "not a call" and drop out of every
 // lens silently, so they are separate arms here and in each view built on this one.
 //
 // The head is an atom (a name, before or after resolution) or an Arrow (a resolved callee). Which
@@ -367,9 +375,9 @@ fn call_read(site: Node, operators: List<Symbol>) -> CallRead {
 }
 
 // An OPERATOR application: a binary terminal with exactly two whole operands, or a prefix terminal
-// with exactly one. A binary terminal carrying one operand is the truncation this view exists to
-// refuse, so arity is checked against the roster the head came from, and it refuses rather than
-// answering NotOperator.
+// with exactly one. Arity is checked against the roster the head came from, so a binary terminal
+// carrying one operand refuses rather than answering NotOperator. That catches an inconsistent
+// Node; an operand lowering dropped along with its operator is not visible here.
 fn operator_read(site: Node, binary_operators: List<Symbol>, prefix_operators: List<Symbol>) -> OperatorRead {
   match application_read(site: site) {
     NotApplication => NotOperator
