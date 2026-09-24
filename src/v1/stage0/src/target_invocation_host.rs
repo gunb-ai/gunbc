@@ -1019,7 +1019,8 @@ fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
             },
             message: format!(
                 "v2-native-cli: closure={} binary={} seed={} exit_status={} warning_count={} \
-                 door_exit_status={} door_emitted_bytes={} door_refusal_exit_status={}",
+                 door_exit_status={} door_emitted_bytes={} door_refusal_exit_status={} \
+                 generation_one_executable={}",
                 held.closure_identity,
                 held.binary_identity,
                 held.seed_identity,
@@ -1028,6 +1029,7 @@ fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
                 held.door_exit_status,
                 held.door_emitted_bytes,
                 held.door_refusal_exit_status,
+                held.generation_one_executable,
             ),
         },
         Err(cause) => InvocationOutcome {
