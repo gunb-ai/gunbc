@@ -56,10 +56,12 @@ import gunbc.fleet_intent_network { operator_host_srv1 }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import extdeps.bmc.ipmi
 import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_shell_emit_dissolution_trigger }
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_probes }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootDiagnosticBundle, SelSnapshotReading, SelSnapshotNotTaken, inventory_not_taken,
   SdrCacheReading, SdrCacheNotTaken, mtcollins1_boot_sdr_cache,
-  SensorsNotTaken, mtcollins1_boot_sensors,
+  SensorsNotTaken, mtcollins1_boot_sensors, SmproProbed, SmproNotTaken,
+  mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after,
   mtcollins1_boot_sel_snapshot, mtcollins1_boot_inventory, mtcollins1_boot_console,
   mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_bundle_findings, bundle_write_receipt_line,
   mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
@@ -899,6 +901,7 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         sel_after: SelSnapshotNotTaken { reason: why },
         sdr_cache: SdrCacheNotTaken { reason: why },
         sensors: SensorsNotTaken { reason: why },
+        smpro: SmproNotTaken { reason: why },
         inventory: inventory_not_taken(reason: why),
         console: mtcollins1_boot_console(path: capture_path),
       }
@@ -910,6 +913,7 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         sel_after: mtcollins1_boot_sel_snapshot(username: user, password_file: pf, sdr: sdr),
         sdr_cache: sdr,
         sensors: mtcollins1_boot_sensors(username: user, password_file: pf, sdr: sdr),
+        smpro: SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) },
         inventory: mtcollins1_boot_inventory(username: user, password: pw),
         console: mtcollins1_boot_console(path: capture_path),
       }

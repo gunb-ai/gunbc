@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.declaration_reference_recognised_by_a_shape_a_literal_also_has
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data declaration_reference_recognised_by_a_shape_a_literal_also_has: RecurringFailureMode = RecurringFailureMode {
+  identity: "declaration_reference_recognised_by_a_shape_a_literal_also_has" as NonEmptyStr,
+
+  receipts: [
+    "**a declaration reference is recognised by a shape a literal also has** (INVALID STATE: v2.std.qualified_name declaration_reference_path_optional answered 'this node is a resolved reference to a corpus declaration' from the SHAPE of the node alone -- a TypeNode Conj in the fold_list head/tail spine -- and that shape is not owned by references. An integer literal lowers to the same cons list of digit atoms (v2.std.integer FreeMonoid<DecimalDigit>, grounded by #12197), so the literal 606060 read as the declaration path integer_tag_digit_6.integer_tag_digit_0.integer_tag_digit_6... on fixtures/native_cli_door.",
+
+    "HARM: the reader's contract -- a declaration reference reads as its path or as nothing -- was false for every value whose carrier is a cons list, and v2.compiler.resolution_provenance resolution_provenance_second_resolver_dissolve_on routes every consumer of declaring paths to this reader, so infer, eval, translate and reference_closure each inherited the ambiguity silently. Found by stern-moth-549 through #12218's emit-build, whose consumer attributed a literal to a module; that PR interim-guarded its one consumer by SymbolIndex membership (validation standing where construction was available, DESIGN section 5).",
+
+    "DISTINGUISHING FACTS: the tell is a recogniser keyed on a generic container shape (a cons list, a record, a pair) for a fact only one producer establishes. Such a recogniser is correct only while no other producer builds that shape, which is not a time-stable fact: every new grounding of a value as a list (here the integer payload) silently widens its accepted set.",
+
+    "RUNG FOUND AT: OUTSIDE THE LADDER -- silent wrongness; the literal was accepted as a reference and nothing refused.",
+
+    "REPAIR AND RUNG CLAIMED: the resolver now mints the reference through v2.std.qualified_name declaration_reference_node, a one-edge Conj whose only label is the marker symbol declaration_reference_marker, over the spine; declaration_reference_path_optional reads the marker and never the shape. The marker's lexeme <declaration-reference> is not an identifier in the dag grammar, so no authored record field, binder or name can spell it: for the colliding populations the corpus can author (literals, records, dotted mentions) the confusion is unwritable, rung 4 at the surface-source subject grain. A hand-built Node in .dag code can still construct the marker by calling the constructor, so the Node-construction subject is not claimed above 3.",
+
+    "EVIDENCE: v2.test.claim.qualified_name.declaration_reference_marker -- declaration_reference_integer_literal_reads_as_no_reference (the 606060 specimen through the dag literal producer; red on the shape-keyed reader), declaration_reference_marked_reference_reads_its_exact_path, declaration_reference_unmarked_spine_reads_as_no_reference (the drop-the-marker mutation), declaration_reference_identifier_labelled_wrapper_reads_as_no_reference. Real-route inhabitance: v2.test.claim.namespace_xl0.cross_module_reference_resolution reads the resolver's output through the same reader.",
+
+    "CEILING: 4 at the surface-source grain (reached). NEXT-RUNG TRIGGER for the Node-construction grain: a constructor-visibility capability that confines declaration_reference_node to v2.compiler.resolve; none exists in the substrate today."
+  ],
+
+  evidence: [],
+}

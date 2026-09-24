@@ -821,6 +821,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_import_consumer_a",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_import_consumer_b",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_relay_consumer",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_imported_param_type_consumer",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_unimported_param_type_consumer",
   "v2.test.claim.reference_closure.rc_fixture_normalized",
   "v2.test.claim.reference_closure.rc_resolved_entry",
   "v2.test.claim.reference_closure.rc_resolved_imported",
