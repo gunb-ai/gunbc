@@ -50,6 +50,9 @@ data package_gcc_arm_linux_gnueabi: NonEmptyStr = "gcc-arm-linux-gnueabi"
 
 data package_jq: NonEmptyStr = "jq"
 data package_nfct: NonEmptyStr = "nfct"
+data package_conntrack: NonEmptyStr = "conntrack"
+data package_iptables: NonEmptyStr = "iptables"
+data package_nftables: NonEmptyStr = "nftables"
 
 data apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
 
