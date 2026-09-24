@@ -3,7 +3,6 @@
 
 use self::AliasKind::*;
 use self::KindInhabitance::*;
-use self::UnitVariantPhantomLookup::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -13,12 +12,17 @@ use crate::std_syntax::LiteralValue::LitInt;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_types::container_param_name;
 pub use crate::std_types::SourceSpan;
+use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
+    UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable, UnitVariantPhantomPresent,
+};
 pub use crate::v1_compiler_infer_env::{
     authored_name, bare_name_miss_diagnostic, env_with_type_variable_bindings, is_recursive_type,
     is_recursive_type_by_name, is_recursive_type_for, lookup_type, lookup_type_by_name,
-    lookup_type_for, type_ref_measure_binding_authority,
+    lookup_type_for, lookup_unit_variant_phantom_type, type_ref_measure_binding_authority,
 };
-pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv, UnitVariantContribution};
+pub use crate::v1_compiler_infer_env::{
+    TypeBinding, TypeEnv, UnitVariantContribution, UnitVariantPhantomLookup,
+};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
     node_is_keyed_collection, resolved_type,
@@ -70,77 +74,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum UnitVariantPhantomLookup {
-    UnitVariantPhantomPresent { variant: Rc<Node> },
-    UnitVariantPhantomAbsent,
-    UnitVariantPhantomEvidenceUnavailable,
-}
-impl UnitVariantPhantomLookup {
-    pub fn variant(&self) -> Rc<Node> {
-        match self {
-            UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: __val, .. } => {
-                __val.clone()
-            }
-            UnitVariantPhantomLookup::UnitVariantPhantomAbsent => {
-                panic!("no variant on unit variant")
-            }
-            UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => {
-                panic!("no variant on unit variant")
-            }
-        }
-    }
-}
-
-pub fn lookup_unit_variant_phantom_type(
-    env: Rc<TypeEnv>,
-    variant_name: String,
-) -> Rc<UnitVariantPhantomLookup> {
-    if !env.unit_variant_index_observed.clone() {
-        Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable)
-    } else {
-        match v1_rt::map_get(&env.unit_variant_index.clone(), variant_name.clone()) {
-            Some(contribs) => {
-                let total = Rc::new(v1_rt::map_values(&contribs))
-                    .iter()
-                    .cloned()
-                    .fold(0, |acc: i64, c: Rc<UnitVariantContribution>| {
-                        (acc + c.count.clone())
-                    });
-                if (total.clone() == 1) {
-                    match Rc::new({
-                        let mut __result = Vec::new();
-                        for c in Rc::new(v1_rt::map_values(&contribs)).iter().cloned() {
-                            if (c.count.clone() == 1) {
-                                __result.push(c);
-                            }
-                        }
-                        __result
-                    })
-                    .first()
-                    .cloned()
-                    {
-                        Some(single) => {
-                            Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomPresent {
-                                variant: single.variant.clone(),
-                            })
-                        }
-                        std::option::Option::None => {
-                            Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomAbsent)
-                        }
-                    }
-                } else {
-                    Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomAbsent)
-                }
-            }
-            std::option::Option::None => {
-                Rc::new(UnitVariantPhantomLookup::UnitVariantPhantomAbsent)
-            }
-        }
-    }
-}
-
 pub fn type_param_kind_diagnostics(
     carrier: Rc<Node>,
     decl: Rc<Node>,
@@ -169,7 +102,7 @@ pub fn type_param_kind_diagnostics(
     Some(arg) => {
         let kind_name = crate::v1_compiler_infer_env::authored_name(env.clone(), kind_node.clone());
 let param_name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), pair.1.clone());
-match type_arg_kind_inhabitance(arg.clone(), kind_node.clone(), env.clone()) {
+match type_arg_kind_inhabitance(arg.clone(), kind_node.clone(), env.clone(), module_name.clone()) {
     KindInhabitance::KindInhabited => Rc::new(vec![]),
     KindInhabitance::KindNotInhabited => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeArgumentKindMismatch {
     type_name: type_name.clone(),
@@ -217,6 +150,7 @@ pub fn type_arg_kind_inhabitance(
     arg: Rc<Node>,
     kind_node: Rc<Node>,
     env: Rc<TypeEnv>,
+    module_name: String,
 ) -> KindInhabitance {
     {
         let arg_is_type_var = match arg.inferred.clone() {
@@ -239,29 +173,44 @@ pub fn type_arg_kind_inhabitance(
                     Some(kind_decl) => {
                         let arg_name =
                             crate::v1_compiler_infer_env::authored_name(env.clone(), arg.clone());
-                        // TRANSIENT BOOTSTRAP PATCH -- the same arm v1.compiler.infer_resolve now
-                        // declares, carried into the seed by hand because this seed is what compiles
-                        // the corpus that regen needs, and without it the kind check cannot read a
-                        // coproduct kind's arms and refuses its own declared inhabitant. Replaced by
-                        // generated bytes on the next regen; not the authority.
-                        if kind_decl.children.iter().any(|c| {
-                            node_authored_or_own_name(c.clone(), env.clone()) == arg_name.clone()
-                        }) {
-                            KindInhabitance::KindInhabited
-                        } else if kind_names_admissible_inhabitant(
-                            kind_decl.clone(),
-                            arg_name.clone(),
-                            env.clone(),
-                        ) {
+                        if {
+                            let mut __found = false;
+                            for c in kind_decl.children.clone().iter().cloned() {
+                                if (node_authored_or_own_name(c.clone(), env.clone())
+                                    == arg_name.clone())
+                                {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        } {
                             KindInhabitance::KindInhabited
                         } else {
-                            if type_arg_name_is_bound_generic_parameter(
+                            if kind_names_admissible_inhabitant(
+                                kind_decl.clone(),
                                 arg_name.clone(),
                                 env.clone(),
                             ) {
                                 KindInhabitance::KindInhabited
                             } else {
-                                KindInhabitance::KindNotInhabited
+                                if kind_inhabitant_matches_resolved(
+                                    kind_node.clone(),
+                                    arg.clone(),
+                                    env.clone(),
+                                    module_name.clone(),
+                                ) {
+                                    KindInhabitance::KindInhabited
+                                } else {
+                                    if type_arg_name_is_bound_generic_parameter(
+                                        arg_name.clone(),
+                                        env.clone(),
+                                    ) {
+                                        KindInhabitance::KindInhabited
+                                    } else {
+                                        KindInhabitance::KindNotInhabited
+                                    }
+                                }
                             }
                         }
                     }
@@ -277,6 +226,32 @@ pub fn kind_names_admissible_inhabitant(
     env: Rc<TypeEnv>,
 ) -> bool {
     (kind_admissible_inhabitant_name(kind_decl.clone(), env.clone()) == arg_name.clone())
+}
+
+pub fn kind_inhabitant_matches_resolved(
+    kind_node: Rc<Node>,
+    arg: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> bool {
+    {
+        let resolved_kind = resolve_node_bounded(
+            kind_node.clone(),
+            env.clone(),
+            module_name.clone(),
+            0,
+            false,
+        )
+        .resolved
+        .clone();
+        let resolved_arg =
+            resolve_node_bounded(arg.clone(), env.clone(), module_name.clone(), 0, false)
+                .resolved
+                .clone();
+        let kind_name = node_authored_or_own_name(resolved_kind.clone(), env.clone());
+        let arg_name = node_authored_or_own_name(resolved_arg.clone(), env.clone());
+        ((kind_name.clone() != "".to_string()) && (kind_name.clone() == arg_name.clone()))
+    }
 }
 
 pub fn kind_admissible_inhabitant_name(kind_decl: Rc<Node>, env: Rc<TypeEnv>) -> String {
@@ -2156,7 +2131,7 @@ Rc::new(NodeResolveResult {
     diagnostics: Rc::new(vec![]),
 })
                                                     } else {
-                                                        match (*lookup_unit_variant_phantom_type(env.clone(), crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()))).clone() {
+                                                        match (*crate::v1_compiler_infer_env::lookup_unit_variant_phantom_type(env.clone(), crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone()))).clone() {
     UnitVariantPhantomLookup::UnitVariantPhantomPresent { variant: phantom, .. } => Rc::new(NodeResolveResult {
     resolved: phantom.clone(),
     diagnostics: Rc::new(vec![]),
