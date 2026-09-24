@@ -4,6 +4,7 @@ import std.compiler_entry { CompilerEntryDriver, NativeCliDriver }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.self_host.closure_emission {
+  closure_emission_first_refusal,
   closure_emission_json,
   closure_emission_refused_count,
   emit_closure_from_ingest_located
@@ -19,6 +20,8 @@ import v2.std.lens_verdict {
 }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_synthetic }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.optional { Absent, Present }
+import v2.std.provenance { SpanIndex }
 import v2.std.text { String }
 
 // THE V2-NATIVE CLI. THIS IS THE COMPILER'S OWN FRONT DOOR, WRITTEN IN THE COMPILER'S OWN LANGUAGE.
@@ -277,7 +280,7 @@ fn v2_cli_plan_source_roots(plan: CliPlan) -> FreeMonoid<String> {
 }
 
 type CliRunOutcome
-  = CliEmitted { text: String, closure_size: Int, refused_count: Int }
+  = CliEmitted { text: String, closure_size: Int, refused_count: Int, refusal_detail: String }
   | CliRunRefused { reason: Symbol, detail: String }
 
 // THE REFUSAL PRINTS ITS CAUSE, AND FOR ONE GENERATION IT DID NOT. The rejected arm already
@@ -337,29 +340,37 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
                 CliEmitted {
                   text: closure_emission_json(emission: emission),
                   closure_size: length(xs: emission.members),
-                  refused_count: closure_emission_refused_count(emission: emission)
+                  refused_count: closure_emission_refused_count(emission: emission),
+                  refusal_detail: match closure_emission_first_refusal(emission: emission) {
+                    Absent => ""
+                    Present { value: d } => v2_cli_refusal_detail(d: d, spans: emitted.spans)
+                  }
                 }
               Rejected { diagnostics: d } =>
                 CliRunRefused {
                   reason: diagnostics_fatal_reason(d: d),
-                  detail: concat(
-                    concat(
-                      "the closure did not emit; diagnostic chain: ",
-                      lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: emitted.spans)
-                    ),
-                    concat(
-                      " | FATAL AT ",
-                      lens_verdict_diagnostic_locus_text_in_spans(
-                        d: diagnostics_fatal(d: d),
-                        index: emitted.spans
-                      )
-                    )
-                  )
+                  detail: v2_cli_refusal_detail(d: d, spans: emitted.spans)
                 }
             }
           }
       }
   }
+}
+
+// ONE RENDERING OF A LOCATED REFUSAL, for a refused closure and for a refused member alike: the whole
+// ordered chain, then the fatal's file and extent. A member's refusal fails the process as a closure
+// refusal does, so its status line owes the same located cause and not a summary sentence.
+fn v2_cli_refusal_detail(d: NonEmptyDiagnostics, spans: SpanIndex) -> String {
+  concat(
+    concat(
+      "the closure did not emit; diagnostic chain: ",
+      lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: spans)
+    ),
+    concat(
+      " | FATAL AT ",
+      lens_verdict_diagnostic_locus_text_in_spans(d: diagnostics_fatal(d: d), index: spans)
+    )
+  )
 }
 
 // The entry's locus, for the one refusal that has no node of its own: an entry no ingested module
@@ -377,11 +388,11 @@ fn v2_cli_entry_locus(entry: String) -> Node {
 // reader sees every member's arm, and the status says the closure did not wholly emit.
 fn v2_cli_exit(outcome: CliRunOutcome) -> ProcessExit {
   match outcome {
-    CliEmitted { text: _, closure_size: _, refused_count: refused } =>
+    CliEmitted { text: _, closure_size: _, refused_count: refused, refusal_detail: detail } =>
       if refused == 0 {
         ExitSuccess
       } else {
-        exit_failure(reason: "one or more closure members refused to emit; each refusal is its member's arm in the emitted text")
+        exit_failure(reason: detail)
       }
     CliRunRefused { reason: _, detail: detail } => exit_failure(reason: detail)
   }
@@ -389,7 +400,7 @@ fn v2_cli_exit(outcome: CliRunOutcome) -> ProcessExit {
 
 fn v2_cli_outcome_text(outcome: CliRunOutcome) -> String {
   match outcome {
-    CliEmitted { text: text, closure_size: _, refused_count: _ } => text
+    CliEmitted { text: text, closure_size: _, refused_count: _, refusal_detail: _ } => text
     CliRunRefused { reason: _, detail: _ } => ""
   }
 }

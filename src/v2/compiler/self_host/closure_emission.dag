@@ -75,6 +75,7 @@ import v2.std.resolution_policy { default_name_resolution_policy }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.std.grammar { ParseTree }
 import v2.std.integer { Int }
+import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 
 // THE DOOR'S EMISSION OF ONE ENTRY'S CLOSURE, IN TWO PHASES, BECAUSE THE TWO HALVES OF THE CORPUS OWE
@@ -488,4 +489,19 @@ fn closure_emission_json(emission: ClosureEmission) -> String {
       list_snoc_item(xs: acc, item: closure_member_emission_json(m: m))
     })))
   ]))
+}
+
+// The first member refusal in reach order, for a consumer that must state one located cause (the
+// CLI's failing status); every refusal stays its member's arm in the carrier.
+fn closure_emission_first_refusal(emission: ClosureEmission) -> Optional<NonEmptyDiagnostics> {
+  fold_list(xs: emission.modules, empty: Absent, cons: fn(found, m) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match m {
+          ClosureMemberEmitted { module: _, text: _ } => found
+          ClosureMemberRefused { module: _, diagnostics: d } => Present { value: d }
+        }
+    }
+  })
 }
