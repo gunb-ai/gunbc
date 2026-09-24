@@ -62,7 +62,6 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_graph",
         "extdeps_uri",
         "extdeps_external_authority",
-        "extdeps_ietf_http_semantics",
         "std_process_termination",
         "std_primitive_projection",
         "extdeps_container_oci_digest",
@@ -76,7 +75,8 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_literal_elaboration",
         "std_operator_realization",
         "std_import",
-        "v1_std_core"
+        "v1_std_core",
+        "gunbc_rust_emitted_edge"
       ],
       reexport_packages: [
         "v1-stage0-runtime"
@@ -188,6 +188,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
       crate_dir: "src/v1/stage0_emit_core",
       kind: GeneratedEmitCoreCrate,
       modules: [
+        "gunbc_rust_emitted_edge",
         "v1_compiler_artifact",
         "v1_compiler_infer_env",
         "v1_compiler_infer_items",
