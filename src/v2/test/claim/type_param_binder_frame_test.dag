@@ -338,25 +338,35 @@ fn tpb_with_type_param(decl: Node) -> Node {
   )
 }
 
-fn tpb_emit_accepts(decl: Node) -> Bool {
-  match emit_produced_decl(decl: decl, target: rust_target_model()) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+// THE EMIT OUTCOMES ARE THE SHARE POINT. Each claim that built the `add` fixture and ran the Rust
+// target model inline paid for both twice, over the new-witness budget (floor receipt on
+// 8215d985bf: 166,019 eval steps). The claim's subject is the serializer's verdict, so the two
+// outcomes are supplied as nullary pure producers -- a String or located diagnostics, no closure --
+// enrolled in v2.workflow.floor_pure_producer_share; preparation runs the real emitter once each.
+fn tpb_emitted_add_twin() -> Outcome<Medium<String>> {
+  match table_fixture_add_decl_node(fn_name: ^rust_binding_fn_add) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: decl, diagnostics: _ } => emit_produced_decl(decl: decl, target: rust_target_model())
   }
 }
 
-fn tpb_emit_refuses_generic(decl: Node) -> Bool {
-  match emit_produced_decl(decl: decl, target: rust_target_model()) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
-      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^translate_reason_generic_arrow_not_rendered)
+fn tpb_emitted_add_generic() -> Outcome<Medium<String>> {
+  match table_fixture_add_decl_node(fn_name: ^rust_binding_fn_add) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: decl, diagnostics: _ } =>
+      emit_produced_decl(decl: tpb_with_type_param(decl: decl), target: rust_target_model())
   }
 }
 
 test fn tpb_emitter_refuses_a_generic_arrow() -> Bool {
-  match table_fixture_add_decl_node(fn_name: ^rust_binding_fn_add) {
+  let twin_emits = match tpb_emitted_add_twin() {
+    Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
-    Accepted { value: decl, diagnostics: _ } =>
-      tpb_emit_accepts(decl: decl) && tpb_emit_refuses_generic(decl: tpb_with_type_param(decl: decl))
   }
+  let generic_refused = match tpb_emitted_add_generic() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^translate_reason_generic_arrow_not_rendered)
+  }
+  twin_emits && generic_refused
 }
