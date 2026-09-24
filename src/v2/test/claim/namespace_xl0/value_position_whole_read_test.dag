@@ -61,6 +61,8 @@ data vpw_arg_lambda_source: String = "module v2.test.vpw_arg_lambda\n\nimport v2
 
 data vpw_operand_call_source: String = "module v2.test.vpw_operand_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { if p { vpw_id(p: vpw_undeclared_operand) && p } else { false } }\n"
 
+data vpw_operand_expr_source: String = "module v2.test.vpw_operand_expr\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(vpw_left: Bool, vpw_right: Bool) -> Bool { vpw_id(p: vpw_left) == vpw_right }\n"
+
 data vpw_arg_call_source: String = "module v2.test.vpw_arg_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_id(p: vpw_id(p: vpw_undeclared_argument)) }\n"
 
 fn vpw_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
@@ -82,14 +84,17 @@ data vpw_ingest: SourceRootIngest = Cons {
           head: vpw_read(source: vpw_arg_call_source, id: ^vpw_arg_call_artifact, unit: ^vpw_arg_call_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_call.dag"),
           tail: Cons {
             head: vpw_read(source: vpw_operand_call_source, id: ^vpw_operand_call_artifact, unit: ^vpw_operand_call_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_operand_call.dag"),
-            tail: Empty
+            tail: Cons {
+              head: vpw_read(source: vpw_operand_expr_source, id: ^vpw_operand_expr_artifact, unit: ^vpw_operand_expr_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_operand_expr.dag"),
+              tail: Empty
+            }
           }
         }
       }
     }
   }
 
-// ONE FRONT END FOR ALL FOUR CLAIMS; the stored value is a verdict per module, no Node or context.
+// ONE FRONT END FOR THE VERDICT CLAIMS; the stored value is a verdict per module, no Node or context.
 type VpwVerdict
   = VpwResolved
   | VpwRefused { reason: Symbol, at_atom: Optional<Symbol> }
@@ -275,11 +280,14 @@ fn vpw_nested_call_shape(n: Node, callee: Symbol, inner: Symbol) -> Bool {
 type VpwShape
   = VpwNestedCall { callee: Symbol, inner: Symbol }
   | VpwSingleCall { callee: Symbol, inner: Symbol }
+  | VpwCallOperand { operator: Symbol, callee: Symbol, inner: Symbol, right: Symbol }
 
 fn vpw_node_has_shape(n: Node, shape: VpwShape) -> Bool {
   match shape {
     VpwNestedCall { callee: c, inner: i } => vpw_nested_call_shape(n: n, callee: c, inner: i)
     VpwSingleCall { callee: c, inner: i } => vpw_single_call_shape(n: n, callee: c, inner: i)
+    VpwCallOperand { operator: o, callee: c, inner: i, right: r } =>
+      vpw_call_operand_shape(n: n, operator: o, callee: c, inner: i, right: r)
   }
 }
 
@@ -310,4 +318,28 @@ fn vpw_single_call_shape(n: Node, callee: Symbol, inner: Symbol) -> Bool {
     Present { value: a } => vpw_is_atom(n: a, id: inner)
     Absent => false
   })
+}
+
+// A LOWERED OPERATOR EXPRESSION IS THE SAME Transform A CALL IS (v2.std.compilers.body_lowering
+// lower_binary_infix: the operator first, then left, then right), so the call readers read it: the
+// operator as callee, the two operands as arguments. `vpw_id(p: vpw_left) == vpw_right` in an
+// expression body must lower to ==(vpw_id(vpw_left), vpw_right): the left operand the WHOLE call with
+// its argument present. This is the discriminator for v2.compiler.body_lowering_fold
+// body_lower_operator_operand's fallback -- the call is not an operand atom, so the operand reader
+// declines it and only the value reader lowers it. Removing that fallback refuses the module
+// (operator_operand_unread, no roots); a reader that answered the callee alone fails the inner-call
+// arm.
+fn vpw_call_operand_shape(n: Node, operator: Symbol, callee: Symbol, inner: Symbol, right: Symbol) -> Bool {
+  let args = call_argument_targets(node: n)
+  vpw_is_call_to(n: n, callee: operator) && (length(xs: args) == 2) && (match list_at_optional(xs: args, index: 0) {
+    Present { value: l } => vpw_single_call_shape(n: l, callee: callee, inner: inner)
+    Absent => false
+  }) && (match list_at_optional(xs: args, index: 1) {
+    Present { value: r } => vpw_is_atom(n: r, id: right)
+    Absent => false
+  })
+}
+
+test fn a_call_operand_lowers_whole_under_its_operator() -> Bool {
+  vpw_any_node(shape: VpwCallOperand { operator: ^dag_token_eq_eq, callee: ^vpw_id, inner: ^vpw_left, right: ^vpw_right })
 }
