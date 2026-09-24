@@ -29,7 +29,6 @@ fn claim_authorization_slot(
   attempt: AttemptIdentity,
   at: Timestamp,
 ) -> AuthorizationClaimOutcome
-  uses fs: std.resources.Filesystem
 {
   let proposed = claim_transition_claimed(attempt: attempt, at: at)
   match admit_cas_attempt(
@@ -66,7 +65,6 @@ fn settle_authorization_claim(
   held_at: CasGeneration,
   at: Timestamp,
 ) -> ProcessExit
-  uses fs: std.resources.Filesystem
 {
   let terminal = match outcome {
     ExitSuccess => claim_transition_completed(attempt: attempt, at: at)

@@ -3,7 +3,6 @@ module extdeps.crypto.signature
 import std.types { NonEmptyStr, String, Int, List }
 import std.logic { Bool }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.integer { UInt8 }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.encoding { base64_decode, UrlSafe }
 import std.bytes { bytes_octets, utf8_encode_bytes }
@@ -88,6 +87,8 @@ type SignatureVerification
   | SignatureMalformed { declared: ByteSize, expected: ByteSize }
   | VerifyingKeyMalformed { declared: ByteSize, expected: ByteSize }
   | SignatureSuiteMismatch { key_suite: SignatureSuite, signature_suite: SignatureSuite }
+  | VerifyingKeyUndecodable { point_b64url: NonEmptyStr }
+  | SignatureUndecodable { b64url: NonEmptyStr }
 
 // THE BOUND IMPLEMENTATION IS extdeps.crypto.nist_p256 p256_ecdsa_verify_octets, IN .dag: the
 // host-Rust primitive this note once named as missing was refused by the operator (gunbc#11588/
@@ -160,36 +161,38 @@ fn signature_verification_from_implementation(
 // before any arithmetic), and supplies the curve verifier's answer as the implementation verdict.
 // The message is signed as its UTF-8 octets, hashed by the suite (CryptoKit hashes the data it is
 // given; extdeps.apple.secure_enclave fixes that spelling). A carrier that does not base64-decode
-// is presented to the seam with size zero, so it refuses as malformed by name; a key of the right
-// size that is not an admitted point (off the curve, coordinate ≥ p) is answered SignatureInvalid
+// has NO measured size, so it refuses as VerifyingKeyUndecodable / SignatureUndecodable naming the
+// carrier -- never as Malformed with a size that was not observed (review 70731). A carrier that
+// decodes to zero octets was measured, and refuses as Malformed with declared 0. A key of the right
+// size that is not an admitted point (off the curve, coordinate >= p) is answered SignatureInvalid
 // -- typed, located at the suite, and never a verification.
-fn decoded_or_empty(b64url: NonEmptyStr) -> List<UInt8> {
-  match base64_decode(s: b64url as String, variant: UrlSafe) {
-    Present { value: o } => o
-    Absent => []
-  }
-}
-
 fn verify_signature(key: VerifyingKey, signature: SignatureBytes, message: NonEmptyStr) -> SignatureVerification {
-  let key_octets = decoded_or_empty(b64url: key.point_b64url)
-  let signature_octets = decoded_or_empty(b64url: signature.b64url)
-  let key_size = byte_size(count: count(key_octets))
-  let signature_size = byte_size(count: count(signature_octets))
-  match signature_carrier_refusal(key: key, key_size: key_size, signature: signature, signature_size: signature_size) {
-    Present { value: r } => r
-    Absent => {
-      let implementation_verified = match key.suite {
-        EcdsaP256Sha256 =>
-          match p256_ecdsa_verify_octets(key: key_octets, signature: signature_octets, message: bytes_octets(b: utf8_encode_bytes(s: message as String))) {
-            Present { value: v } => v
-            Absent => false
+  match base64_decode(s: key.point_b64url as String, variant: UrlSafe) {
+    Absent => VerifyingKeyUndecodable { point_b64url: key.point_b64url }
+    Present { value: key_octets } =>
+      match base64_decode(s: signature.b64url as String, variant: UrlSafe) {
+        Absent => SignatureUndecodable { b64url: signature.b64url }
+        Present { value: signature_octets } => {
+          let key_size = byte_size(count: count(key_octets))
+          let signature_size = byte_size(count: count(signature_octets))
+          match signature_carrier_refusal(key: key, key_size: key_size, signature: signature, signature_size: signature_size) {
+            Present { value: r } => r
+            Absent => {
+              let implementation_verified = match key.suite {
+                EcdsaP256Sha256 =>
+                  match p256_ecdsa_verify_octets(key: key_octets, signature: signature_octets, message: bytes_octets(b: utf8_encode_bytes(s: message as String))) {
+                    Present { value: v } => v
+                    Absent => false
+                  }
+              }
+              signature_verification_from_implementation(
+                key: key, key_size: key_size,
+                signature: signature, signature_size: signature_size,
+                message: message, implementation_verified: implementation_verified,
+              )
+            }
           }
+        }
       }
-      signature_verification_from_implementation(
-        key: key, key_size: key_size,
-        signature: signature, signature_size: signature_size,
-        message: message, implementation_verified: implementation_verified,
-      )
-    }
   }
 }
