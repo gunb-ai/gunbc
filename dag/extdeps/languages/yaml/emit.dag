@@ -2,9 +2,15 @@ module extdeps.languages.yaml.emit
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.algebra { trim }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
   YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping
+}
+import extdeps.languages.yaml.ingest {
+  yaml_string_reads_back_plain, yaml_string_reads_back_as_plain_key, yaml_resolve_plain,
+  yaml_contains_refused_character, yaml_first_refused_character, yaml_refused_character_reason,
+  yaml_line_containing, yaml_source_lines
 }
 import std.layout {
   Doc, DocLine, DocConcat,
@@ -20,69 +26,129 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// THE WRITER FOR THE SUBSET extdeps.languages.yaml.ingest READS. Its contract is the reader's,
+// turned around: for every value it emits, ingest_yaml_source(emitted) == IngestedYaml(value), and
+// a value it cannot write with that meaning is refused with the path to it, never written as
+// something else. Which strings go plain is decided by the reader's own predicates
+// (yaml_string_reads_back_plain, yaml_string_reads_back_as_plain_key), so the two cannot disagree
+// about what plain text means.
+
+type YamlEmitResult
+  = EmittedYaml { text: String }
+  | YamlEmitRefused { path: String, reason: String }
+
 data yaml_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "  " }
 
-fn is_expression(s: String) -> Bool {
-  starts_with(s: s, prefix: "${{")
+// ---------------------------------------------------------------------------------------------
+// WHAT CAN BE WRITTEN
+// ---------------------------------------------------------------------------------------------
+
+fn yaml_path_key(path: String, key: String) -> String {
+  if path == "" { key } else { join([path, ".", key], "") }
 }
 
-fn is_reserved_yaml_scalar(s: String) -> Bool {
-  (s == "true") ||
-    (s == "false") ||
-    (s == "null") ||
-    (s == "yes") ||
-    (s == "no") ||
-    (s == "~")
+fn yaml_lexeme_reads_back(v: YamlValue) -> Bool {
+  match v {
+    YamlInt { lexeme: l } => match yaml_resolve_plain(s: l) { YamlInt { lexeme: _ } => true  _ => false }
+    YamlFloat { lexeme: l } => match yaml_resolve_plain(s: l) { YamlFloat { lexeme: _ } => true  _ => false }
+    _ => true
+  }
 }
 
-fn starts_with_yaml_indicator(s: String) -> Bool {
-  starts_with(s: s, prefix: "- ") ||
-    starts_with(s: s, prefix: "?") ||
-    starts_with(s: s, prefix: ":") ||
-    starts_with(s: s, prefix: ",") ||
-    starts_with(s: s, prefix: "[") ||
-    starts_with(s: s, prefix: "]") ||
-    starts_with(s: s, prefix: "{") ||
-    starts_with(s: s, prefix: "}") ||
-    starts_with(s: s, prefix: "#") ||
-    starts_with(s: s, prefix: "&") ||
-    starts_with(s: s, prefix: "*") ||
-    starts_with(s: s, prefix: "!") ||
-    starts_with(s: s, prefix: "|") ||
-    starts_with(s: s, prefix: ">") ||
-    starts_with(s: s, prefix: "'") ||
-    starts_with(s: s, prefix: "\"") ||
-    starts_with(s: s, prefix: "%") ||
-    starts_with(s: s, prefix: "@") ||
-    starts_with(s: s, prefix: "`")
+// WHETHER A MULTI-LINE STRING CAN BE WRITTEN AS A LITERAL BLOCK THE READER TAKES BACK UNCHANGED.
+// The literal detects its indentation from its first non-empty line, so that line may not begin
+// with a space; the reader refuses a line that ends in whitespace or whose leading whitespace holds
+// a tab; and a string of line breaks alone has no content line to carry them. Every other string
+// is written double-quoted with its line breaks escaped, which the reader also takes back unchanged.
+fn yaml_literal_block_holds(s: String) -> Bool {
+  let first = fold(split(s: s, delimiter: "\n"), init: "", f: (acc, l) => if acc == "" { l } else { acc })
+  if (replace(s, "\n", "") == "") || string_contains(s: s, pattern: "\t") || starts_with(s: first, prefix: " ") {
+    false
+  } else {
+    !string_contains(s: s, pattern: " \n") && !ends_with(s: s, suffix: " ")
+  }
 }
 
-fn needs_double_quotes(s: String) -> Bool {
-  is_reserved_yaml_scalar(s: s) ||
-    starts_with_yaml_indicator(s: s) ||
-    string_contains(s: s, pattern: ": ") ||
-    string_contains(s: s, pattern: " #")
+type YamlEmitCheck
+  = YamlEmitAdmitted
+  | YamlEmitRefusedAt { path: String, reason: String }
+
+fn yaml_emit_check(v: YamlValue, path: String) -> YamlEmitCheck {
+  match v {
+    YamlInt { lexeme: l } =>
+      if yaml_lexeme_reads_back(v: v) { YamlEmitAdmitted } else { YamlEmitRefusedAt { path: path, reason: join(["the int lexeme `", l, "` does not read back as an int under the core schema"], "") } }
+    YamlFloat { lexeme: l } =>
+      if yaml_lexeme_reads_back(v: v) { YamlEmitAdmitted } else { YamlEmitRefusedAt { path: path, reason: join(["the float lexeme `", l, "` does not read back as a float under the core schema"], "") } }
+    YamlSequence { elements: els } =>
+      yaml_emit_check_elements(elements: els, index: 0, path: path)
+    YamlMapping { entries: ents } =>
+      yaml_emit_check_entries(entries: ents, index: 0, path: path, seen: empty_map())
+    _ => YamlEmitAdmitted
+  }
 }
 
-fn escape_double_quoted(s: String) -> String {
-  replace(replace(s, "\\", "\\\\"), "\"", "\\\"")
+fn yaml_emit_check_elements(elements: List<YamlValue>, index: Int, path: String) -> YamlEmitCheck {
+  match get(xs: elements, index: index) {
+    Absent => YamlEmitAdmitted
+    Present { value: e } =>
+      match yaml_emit_check(v: e, path: join([path, "[", to_string(index), "]"], "")) {
+        YamlEmitAdmitted => yaml_emit_check_elements(elements: elements, index: index + 1, path: path)
+        YamlEmitRefusedAt { path: p, reason: r } => YamlEmitRefusedAt { path: p, reason: r }
+      }
+  }
 }
 
+fn yaml_emit_check_entries(entries: List<YamlKeyValue>, index: Int, path: String, seen: Map<String, Bool>) -> YamlEmitCheck {
+  match get(xs: entries, index: index) {
+    Absent => YamlEmitAdmitted
+    Present { value: e } =>
+      if map_contains_key(seen, e.key) {
+        YamlEmitRefusedAt { path: yaml_path_key(path: path, key: e.key), reason: "a mapping holds this key twice, and YAML requires mapping keys to be unique" }
+      } else {
+        match yaml_emit_check(v: e.value, path: yaml_path_key(path: path, key: e.key)) {
+          YamlEmitAdmitted => yaml_emit_check_entries(entries: entries, index: index + 1, path: path, seen: map_insert(seen, e.key, true))
+          YamlEmitRefusedAt { path: p, reason: r } => YamlEmitRefusedAt { path: p, reason: r }
+        }
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// SCALARS
+// ---------------------------------------------------------------------------------------------
+
+fn yaml_double_quoted_text(s: String) -> String {
+  concat(concat("\"", replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")), "\"")
+}
+
+// A single-line string as a value in block context: plain when the reader reads it back plain,
+// `''` when empty, double-quoted otherwise.
 fn emit_inline_scalar_text(s: String) -> String {
   if s == "" {
     "''"
-  } else if is_expression(s: s) {
+  } else if yaml_string_reads_back_plain(s: s) {
     s
-  } else if needs_double_quotes(s: s) {
-    concat(concat("\"", escape_double_quoted(s: s)), "\"")
   } else {
+    yaml_double_quoted_text(s: s)
+  }
+}
+
+fn emit_key_text(k: String) -> String {
+  if yaml_string_reads_back_as_plain_key(k: k) { k } else { yaml_double_quoted_text(s: k) }
+}
+
+// In a flow sequence a plain entry may not contain a flow indicator either (section 7.3.3).
+fn emit_flow_scalar_text(s: String) -> String {
+  if (s != "") && yaml_string_reads_back_plain(s: s) && !string_contains(s: s, pattern: ",") && !string_contains(s: s, pattern: "[") && !string_contains(s: s, pattern: "]") && !string_contains(s: s, pattern: "{") && !string_contains(s: s, pattern: "}") {
     s
+  } else {
+    yaml_double_quoted_text(s: s)
   }
 }
 
 fn emit_scalar(v: YamlValue) -> String {
   match v {
-    YamlNull => ""
+    YamlNull => "null"
     YamlBool { value: b } => if b { "true" } else { "false" }
     YamlInt { lexeme: l } => l
     YamlFloat { lexeme: l } => l
@@ -92,61 +158,78 @@ fn emit_scalar(v: YamlValue) -> String {
   }
 }
 
+fn emit_flow_entry(v: YamlValue) -> String {
+  match v {
+    YamlString { value: s } => emit_flow_scalar_text(s: s)
+    _ => emit_scalar(v: v)
+  }
+}
+
 fn all_scalars_flowable(elements: List<YamlValue>) -> Bool {
-  fold(elements, init: true, f: (acc, e) => acc && match e {
+  all(elements, e => match e {
     YamlString { value: s } => !string_contains(s: s, pattern: "\n")
     YamlInt { lexeme: _ } => true
+    YamlFloat { lexeme: _ } => true
     YamlBool { value: _ } => true
+    YamlNull => true
     _ => false
   })
 }
 
 fn emit_flow_sequence(elements: List<YamlValue>) -> String {
-  concat(
-    concat(
-      "[",
-      fold(elements, init: "", f: (acc, e) => {
-        let part = emit_scalar(v: e)
-        if acc == "" { part } else { concat(concat(acc, ", "), part) }
-      })
-    ),
-    "]"
-  )
+  join(["[", join(map(elements, e => emit_flow_entry(v: e)), ", "), "]"], "")
 }
+
+// ---------------------------------------------------------------------------------------------
+// BLOCKS
+// ---------------------------------------------------------------------------------------------
 
 fn nested_body_doc(body: Doc) -> Doc {
   doc_nest(levels: 1, body: doc_concat(parts: [DocLine, body]))
 }
 
+// A LITERAL BLOCK SCALAR CARRIES ITS FINAL LINE BREAKS IN ITS CHOMPING INDICATOR (section 8.1.1.2):
+// `|-` for none, `|` for exactly one, `|+` for more. The body is every line of the string before
+// the chomped breaks, empty lines included; an empty line renders as a bare newline.
 fn multiline_block_doc(prefix: String, s: String) -> Doc {
-  let lines = filter(split(s: s, delimiter: "\n"), l => l != "")
-  let content = fold(lines, init: [], f: (acc, l) => append(acc, items: [DocLine, doc_text(text: l)]))
+  let header = if ends_with(s: s, suffix: "\n\n") { "|+" } else if ends_with(s: s, suffix: "\n") { "|" } else { "|-" }
+  let body = if ends_with(s: s, suffix: "\n") { substring(s: s, start: 0, end: s.length() - 1) } else { s }
+  let content = fold(split(s: body, delimiter: "\n"), init: [], f: (acc, l) => append(acc, items: [DocLine, doc_text(text: l)]))
   doc_concat(parts: [
-    doc_text(text: concat(prefix, "|")),
+    doc_text(text: concat(prefix, header)),
     doc_nest(levels: 1, body: doc_concat(parts: content)),
     DocLine
   ])
 }
 
+// A string in block context after `prefix`: a literal block when the reader takes it back from
+// one, otherwise one line (plain, `''` or double-quoted).
+fn string_doc(prefix: String, s: String) -> Doc {
+  if string_contains(s: s, pattern: "\n") && yaml_literal_block_holds(s: s) {
+    multiline_block_doc(prefix: prefix, s: s)
+  } else {
+    doc_line_of(text: concat(prefix, emit_inline_scalar_text(s: s)))
+  }
+}
+
 fn entry_doc(entry: YamlKeyValue) -> Doc {
-  let key = entry.key
+  let key = emit_key_text(k: entry.key)
   let val = entry.value
   match val {
     YamlNull => doc_line_of(text: concat(key, ":"))
     YamlMapping { entries: nested } =>
-      doc_concat(parts: [doc_text(text: concat(key, ":")), nested_body_doc(body: mapping_body_doc(entries: nested))])
+      if (nested |> count) == 0 {
+        doc_line_of(text: concat(key, ": {}"))
+      } else {
+        doc_concat(parts: [doc_text(text: concat(key, ":")), nested_body_doc(body: mapping_body_doc(entries: nested))])
+      }
     YamlSequence { elements: els } =>
       if all_scalars_flowable(elements: els) {
         doc_line_of(text: concat(concat(key, ": "), emit_flow_sequence(elements: els)))
       } else {
         doc_concat(parts: [doc_text(text: concat(key, ":")), nested_body_doc(body: block_sequence_doc(elements: els))])
       }
-    YamlString { value: s } =>
-      if string_contains(s: s, pattern: "\n") {
-        multiline_block_doc(prefix: concat(key, ": "), s: s)
-      } else {
-        doc_line_of(text: concat(concat(key, ": "), emit_inline_scalar_text(s: s)))
-      }
+    YamlString { value: s } => string_doc(prefix: concat(key, ": "), s: s)
     _ => doc_line_of(text: concat(concat(key, ": "), emit_scalar(v: val)))
   }
 }
@@ -158,18 +241,19 @@ fn mapping_body_doc(entries: List<YamlKeyValue>) -> Doc {
 fn block_sequence_element_doc(e: YamlValue) -> Doc {
   match e {
     YamlMapping { entries: ents } =>
-      doc_concat(parts: [doc_text(text: "- "), doc_nest(levels: 1, body: mapping_body_doc(entries: ents))])
-    YamlString { value: s } =>
-      if string_contains(s: s, pattern: "\n") {
-        multiline_block_doc(prefix: "- ", s: s)
+      if (ents |> count) == 0 {
+        doc_line_of(text: "- {}")
       } else {
-        doc_line_of(text: concat("- ", emit_inline_scalar_text(s: s)))
+        doc_concat(parts: [doc_text(text: "- "), doc_nest(levels: 1, body: mapping_body_doc(entries: ents))])
       }
-    YamlNull => doc_line_of(text: concat("- ", emit_scalar(v: e)))
-    YamlBool { value: _ } => doc_line_of(text: concat("- ", emit_scalar(v: e)))
-    YamlInt { lexeme: _ } => doc_line_of(text: concat("- ", emit_scalar(v: e)))
-    YamlFloat { lexeme: _ } => doc_line_of(text: concat("- ", emit_scalar(v: e)))
-    YamlSequence { elements: _ } => doc_line_of(text: concat("- ", emit_scalar(v: e)))
+    YamlSequence { elements: els } =>
+      if all_scalars_flowable(elements: els) {
+        doc_line_of(text: concat("- ", emit_flow_sequence(elements: els)))
+      } else {
+        doc_concat(parts: [doc_text(text: "- "), doc_nest(levels: 1, body: block_sequence_doc(elements: els))])
+      }
+    YamlString { value: s } => string_doc(prefix: "- ", s: s)
+    _ => doc_line_of(text: concat("- ", emit_scalar(v: e)))
   }
 }
 
@@ -177,28 +261,52 @@ fn block_sequence_doc(elements: List<YamlValue>) -> Doc {
   doc_concat(parts: map(elements, e => block_sequence_element_doc(e: e)))
 }
 
-fn project_yaml_to_doc(v: YamlValue) -> Doc {
+// ---------------------------------------------------------------------------------------------
+// DOCUMENT
+// ---------------------------------------------------------------------------------------------
+
+// The reader takes a document whose root is a non-empty block mapping or block sequence, so that
+// is what the writer writes.
+fn yaml_root_doc_refusal(v: YamlValue) -> String {
   match v {
-    YamlMapping { entries: ents } => mapping_body_doc(entries: ents)
-    YamlSequence { elements: els } =>
-      if all_scalars_flowable(elements: els) {
-        doc_line_of(text: emit_flow_sequence(elements: els))
-      } else {
-        block_sequence_doc(elements: els)
-      }
-    YamlString { value: s } =>
-      if string_contains(s: s, pattern: "\n") {
-        multiline_block_doc(prefix: "", s: s)
-      } else {
-        doc_line_of(text: emit_inline_scalar_text(s: s))
-      }
-    YamlNull => doc_line_of(text: emit_scalar(v: v))
-    YamlBool { value: _ } => doc_line_of(text: emit_scalar(v: v))
-    YamlInt { lexeme: _ } => doc_line_of(text: emit_scalar(v: v))
-    YamlFloat { lexeme: _ } => doc_line_of(text: emit_scalar(v: v))
+    YamlMapping { entries: ents } => if (ents |> count) == 0 { "an empty mapping has no block form, and a document root must be a block collection" } else { "" }
+    YamlSequence { elements: els } => if (els |> count) == 0 { "an empty sequence has no block form, and a document root must be a block collection" } else { "" }
+    _ => "a document root must be a block mapping or a block sequence"
   }
 }
 
-fn serialize_yaml(v: YamlValue) -> String {
-  render(doc: project_yaml_to_doc(v: v), proto: yaml_protocol)
+fn yaml_root_doc(v: YamlValue) -> Doc {
+  match v {
+    YamlMapping { entries: ents } => mapping_body_doc(entries: ents)
+    YamlSequence { elements: els } => block_sequence_doc(elements: els)
+    _ => doc_concat(parts: [])
+  }
+}
+
+fn emit_yaml(v: YamlValue) -> YamlEmitResult {
+  let root = yaml_root_doc_refusal(v: v)
+  if root != "" {
+    YamlEmitRefused { path: "", reason: root }
+  } else {
+    match yaml_emit_check(v: v, path: "") {
+      YamlEmitRefusedAt { path: p, reason: r } => YamlEmitRefused { path: p, reason: r }
+      YamlEmitAdmitted => yaml_emitted_text(text: render(doc: yaml_root_doc(v: v), proto: yaml_protocol))
+    }
+  }
+}
+
+fn yaml_emitted_text(text: String) -> YamlEmitResult {
+  if yaml_contains_refused_character(text: text) {
+    let cp = yaml_first_refused_character(text: text)
+    YamlEmitRefused {
+      path: join(["line ", to_string(yaml_line_containing(lines: yaml_source_lines(src: text), pattern: from_code_point(cp: cp), index: 0)), " of the emitted text"], ""),
+      reason: yaml_refused_character_reason(cp: cp),
+    }
+  } else {
+    EmittedYaml { text: text }
+  }
+}
+
+fn yaml_emit_refusal_text(module_path: String, path: String, reason: String) -> String {
+  join(["REFUSED ", module_path, ": the YAML writer cannot write the value at `", path, "` with its meaning: ", reason], "")
 }

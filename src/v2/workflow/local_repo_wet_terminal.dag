@@ -708,6 +708,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.srv3_seeded_install_media_real_execution", function: "install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution" },
+      entry: "dag/test/claim/srv3/srv3_seeded_install_media_real_execution_witness_test.dag",
+      function: "install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "the_attempt_three_capture_binds_and_reads_by_real_execution" },
       entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
       function: "the_attempt_three_capture_binds_and_reads_by_real_execution",
@@ -1617,18 +1623,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.spark.v41_row_store_encode_witness", function: "the_receipt_was_produced_by_the_rendered_program_the_mode_ships" },
       entry: "dag/test/claim/spark/v41_row_store_encode_witness_test.dag",
       function: "the_receipt_was_produced_by_the_rendered_program_the_mode_ships",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.v41_published_row_store_witness", function: "a_reading_of_exactly_the_planned_spans_keys" },
-      entry: "dag/test/claim/spark/v41_published_row_store_witness_test.dag",
-      function: "a_reading_of_exactly_the_planned_spans_keys",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.v41_published_row_store_witness", function: "the_key_moves_with_the_bytes_and_the_table_set" },
-      entry: "dag/test/claim/spark/v41_published_row_store_witness_test.dag",
-      function: "the_key_moves_with_the_bytes_and_the_table_set",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

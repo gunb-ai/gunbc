@@ -8,7 +8,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { package_curl }
+import extdeps.apt { apt_bin_dir, package_curl }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -22,7 +22,7 @@ data curl_pinned_version: VersionConstraint = ">= 7.68"
 data curl_cli_tool: CliTool = CliTool {
   name: "curl",
   min_version: Present { value: curl_pinned_version },
-  installable_via: [SourceApt { package: package_curl }],
+  installable_via: [SourceApt { package: package_curl, bin_dir: apt_bin_dir }],
 }
 
 data curl_localhost_connect_timeout: Second = second(count: 2)
@@ -126,7 +126,7 @@ data curl_aws_sigv4_min_version: VersionConstraint = ">= 7.75"
 data curl_aws_sigv4_cli_tool: CliTool = CliTool {
   name: curl_program,
   min_version: Present { value: curl_aws_sigv4_min_version },
-  installable_via: [SourceApt { package: package_curl }],
+  installable_via: [SourceApt { package: package_curl, bin_dir: apt_bin_dir }],
 }
 
 // THE SIGV4 PROVIDER STRING FOR AN S3-SHAPED ENDPOINT. curl's --aws-sigv4 value is

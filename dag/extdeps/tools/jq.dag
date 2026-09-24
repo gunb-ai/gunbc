@@ -28,7 +28,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.shell.exec { ProcessObservation, process_observation }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { package_jq }
+import extdeps.apt { apt_bin_dir, package_jq }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -48,7 +48,7 @@ data jq_authority: ExternalAuthority = extdeps_external_authority_anchor
 data jq_cli_tool: CliTool = CliTool {
   name: "jq",
   min_version: none,
-  installable_via: [SourceApt { package: package_jq }],
+  installable_via: [SourceApt { package: package_jq, bin_dir: apt_bin_dir }],
 }
 
 // THE EXECUTION HANDLER, and the argv here is NOT a second authority on jq's flags.
