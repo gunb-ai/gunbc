@@ -4,7 +4,6 @@ import v2.compiler.parse { ParseArtifact, PreparedGrammar }
 import v2.compiler.body_lowering_fold { body_lower_resolved_type_binding }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly {
-  program_assembly_measured_outcome,
   program_assembly_phase_normalize,
   program_assembly_phase_parse_measured_seeded,
   program_assembly_phase_tokenize
@@ -42,7 +41,7 @@ import v2.std.text { String }
 import v2.std.integer { Int, integer_int_to_decimal_string }
 import v2.std.witness { Holds, Violates }
 import std.algebra { Cons, Empty, FreeMonoid }
-import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, occurrence_id_allocator_initial }
+import std.occurrence_identity { OccurrenceId, occurrence_id_allocator_initial, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
 
 // REFERENCE CONSERVATION ACROSS LOWERING (XL-2).
 //
@@ -549,8 +548,8 @@ fn report_count_locus_erased(report: ReferenceConservationReport) -> ReferenceCo
 // ---- the declaration-scoped spelling pool (the LocusErased disposition) ------------------------
 //
 // WHY THIS EXISTS, AND WHY IT IS A SEPARATE COUNT. Measured at main fec339d561, most authored atoms
-// do NOT keep their occurrence through lowering: type-position atoms are rebuilt synthetic
-// (v2.compiler.body_lowering_fold body_lower_type_atom_node), field projections, constructors and
+// do NOT keep their occurrence through lowering (type-position atoms have kept theirs since
+// #11985; see occurrence_spelling_conserved): field projections, constructors and
 // dotted spines are rebuilt, and binders become Named edge labels, which carry no occurrence. Those
 // atoms are not dropped, but "same locus" cannot be decided for them on today's carrier. Reporting
 // them as drops would bury the real drops; reporting them as conserved would claim a locus the tree
@@ -727,16 +726,21 @@ fn absent_cause(declared: ItemDeclarationStanding) -> DroppedReferenceCause {
   }
 }
 
+// THE SAME OCCURRENCE UNDER LOWERING'S CANONICAL SPELLING IS CONSERVED. Since #11985 a type atom
+// keeps its minted occurrence through lowering, and v2.compiler.body_lowering_fold
+// body_lower_resolved_type_binding rewrites its spelling (`Bool` -> `bool_node_symbol`, `Int` ->
+// `dag_binding_type_int`) at that same occurrence. That is the single authority the spelling pool
+// below already consults, so it is asked here too: the locus is held and the spelling is the one
+// the rewrite derives. Any other spelling at the occurrence is still RespelledInNormalizedTree.
+fn occurrence_spelling_conserved(found: Symbol, identity: Symbol) -> Bool {
+  found == identity || found == body_lower_resolved_type_binding(sym: identity)
+}
+
 type TreeConservationState {
   report: ReferenceConservationReport
   pools: ItemPools
 }
 
-// A TYPE ATOM KEEPS ITS OCCURRENCE AND IS RESPELLED CANONICALLY. v2.compiler.body_lowering_fold
-// body_lower_type_atom_node lowers a type atom FROM its source, so its occurrence survives, and
-// spells it by lowering's canonical binding (`Bool` becomes its bool binding). The same single
-// authority the pool consults, body_lower_resolved_type_binding, decides whether the spelling
-// found at a preserved occurrence is this atom's; any other spelling is RespelledInNormalizedTree.
 fn conservation_against_tree(path: String, population: AuthoredAtomPopulation, tree: NormalizedTree) -> ReferenceConservationReport {
   let index = occurrence_identity_index(acc: empty_map(), node: tree.root)
   let declarations = declaration_pools(tree: tree)
@@ -750,7 +754,7 @@ fn conservation_against_tree(path: String, population: AuthoredAtomPopulation, t
     cons: fn(state, atom) {
       match map_lookup(m: index, key: atom.occurrence) {
         Present { value: found } =>
-          if found == atom.identity || found == body_lower_resolved_type_binding(sym: atom.identity) {
+          if occurrence_spelling_conserved(found: found, identity: atom.identity) {
             TreeConservationState { report: report_count_conserved(report: state.report), pools: state.pools }
           } else {
             TreeConservationState {
@@ -827,22 +831,22 @@ type ReferenceConservationSubject {
   normalized: Outcome<NormalizedTree>
 }
 
-// One module per subject, so the parse allocator starts at its seed: the ids are minted within
-// this parse and joined only against this parse's own normalized tree.
+// ONE MODULE, ONE ALLOCATOR SCOPE. The check parses each module on its own, which is the
+// standalone-parse case std.occurrence_identity occurrence_identity_scope_law names: an isolated
+// allocator scope, so the seed is the initial allocator. Occurrence ids are compared only within
+// this one subject, never across modules.
 fn reference_conservation_subject_of_read(
   read: DagSourceReadWitness,
   lm: LanguageModel,
   prepared: PreparedGrammar,
   residue: Diagnostics
 ) -> ReferenceConservationSubject {
-  let parsed = program_assembly_measured_outcome(
-    measured: program_assembly_phase_parse_measured_seeded(
-      tokens: program_assembly_phase_tokenize(read: read, lm: lm),
-      prepared: prepared,
-      residue: residue,
-      seed: occurrence_id_allocator_initial()
-    )
-  )
+  let parsed = program_assembly_phase_parse_measured_seeded(
+    tokens: program_assembly_phase_tokenize(read: read, lm: lm),
+    prepared: prepared,
+    residue: residue,
+    seed: occurrence_id_allocator_initial()
+  ).outcome
   ReferenceConservationSubject {
     path: read.artifact.file_path,
     parsed: parsed,
