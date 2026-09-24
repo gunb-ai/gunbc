@@ -25,6 +25,9 @@ type WireUncontractedShape {
   arm: UncontractedArm
 }
 
+// WifProvidersPage and WifPool carry the OUTPUT SHAPES of extdeps.cloud.gcp.iam_admin
+// ListWorkloadIdentityPoolProviders and GetWorkloadIdentityPool verbatim, so a recorded IAM body
+// reaches the same type-directed decode gunbc.auth.heal_publisher_provision reads through.
 service test.RestReplay {
   config { endpoint: "https://rest-replay.invalid" }
 
@@ -77,9 +80,6 @@ service test.RestReplay {
     response { 200 => WorkflowRunList }
   }
 
-  // WifProvidersPage and WifPool carry the OUTPUT SHAPES of extdeps.cloud.gcp.iam_admin
-  // ListWorkloadIdentityPoolProviders and GetWorkloadIdentityPool verbatim, so a recorded IAM body
-  // reaches the same type-directed decode gunbc.auth.heal_publisher_provision reads through.
   operation WifProvidersPage {
     output { providers: List<WifProviderWire>? from "workloadIdentityPoolProviders", outcome: RestOutcome }
     readonly
