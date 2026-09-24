@@ -1,6 +1,8 @@
 module extdeps.tools.conntrack
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, FilePath }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { apt_sbin_dir, apt_installed_bin_path, package_conntrack }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -72,4 +74,19 @@ data conntrack_list_expectations_arguments: List<NonEmptyStr> = ["-L", "expect"]
 
 fn conntrack_list_expectations_command() -> ArgvCommand {
   argv_command(program: conntrack_program, arguments: map(conntrack_list_expectations_arguments, a => a as String))
+}
+
+// WHERE conntrack IS INSTALLED IS STATED ONCE, HERE. Ubuntu noble ships it in the `conntrack` package
+// at /usr/sbin/conntrack (packages.ubuntu.com/noble/amd64/conntrack/filelist). The apt row below and
+// gunbc.fleet_posix_accounts' exec path both derive from conntrack_bin_dir, so they cannot disagree.
+data conntrack_bin_dir: FilePath = apt_sbin_dir
+
+fn conntrack_installed_path() -> FilePath {
+  apt_installed_bin_path(bin_dir: conntrack_bin_dir, binary: conntrack_program)
+}
+
+data conntrack_cli_tool: CliTool = CliTool {
+  name: conntrack_program,
+  min_version: none,
+  installable_via: [SourceApt { package: package_conntrack, bin_dir: conntrack_bin_dir }],
 }

@@ -1,4 +1,5 @@
 module gunbc.ci_spec
+import gunbc.runner_microvm_slot_unit { microvm_slot_start_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
@@ -929,6 +930,11 @@ data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "mtcollins1_boot_wet",
 }
 
+data gunbc_ci_mtcollins1_boot_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
+  function: "mtcollins1_boot_admit_executor",
+}
+
 // THE DISPATCH ADMISSION TARGET. It takes no arguments: both values it reads -- the mode and the
 // observer label -- arrive by environment on the step, which is the same route the reset entry uses
 // for the label. It runs in the BUILD job, after the release binaries exist, because the reset job
@@ -936,6 +942,11 @@ data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = GunbcRunStepTarget {
 data gunbc_ci_host_reset_dispatch_admission_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/host/host_reset_return_run.dag",
   function: "host_reset_return_dispatch_admission_wet",
+}
+
+data gunbc_ci_microvm_slot_start_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_microvm_slot_start.dag",
+  function: "microvm_slot_start_ci_wet",
 }
 
 data gunbc_ci_runner_microvm_boot_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1196,6 +1207,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_password_session_tool_converge_target,
     gunbc_ci_host_credential_custody_converge_target,
     gunbc_ci_runner_microvm_boot_probe_target,
+    gunbc_ci_microvm_slot_start_target,
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_mtcollins1_fan_observe_target,
@@ -1223,6 +1235,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_heal_publication_publish_target,
     gunbc_ci_approval_keyring_converge_target,
     gunbc_ci_mtcollins1_boot_target,
+    gunbc_ci_mtcollins1_boot_admit_target,
     gunbc_ci_pair_serving_d0_target,
     gunbc_ci_pair_serving_d0_admit_target
   ]
@@ -2479,6 +2492,16 @@ fn gunbc_ci_host_reset_dispatch_admission_invoke() -> String {
   )
 }
 
+fn gunbc_ci_microvm_slot_start_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_microvm_slot_start_target.entry,
+    function: gunbc_ci_microvm_slot_start_target.function,
+    claim_run: false,
+    receipt_rel: microvm_slot_start_receipt_path
+  )
+}
+
 fn gunbc_ci_runner_microvm_boot_probe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -2661,9 +2684,10 @@ data gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger: Dissolut
 // THE BOOT PRELUDE'S BMC FETCH IS THE SHARED ONE (gunbc_ci_mtcollins1_bmc_credential_fetch_steps).
 // The four steps it used to spell inline are byte-identical to what that function returns when it is
 // given this lane's destination variable, which is why the factoring changes no emitted YAML here.
-// Everything around it stays: this prelude's own file names, its trap with the SOL child kill, the
-// SECOND fetch for the approval submission MAC key, and the SOL capture wiring - none of which the
-// fan observation has or needs.
+// Everything around it stays: this prelude's own file names, its trap with the SOL child kill, and
+// the SOL capture wiring - none of which the fan observation has or needs. The second fetch, of the
+// approval submission MAC key, is gone with the approval stage (operator ruling 2026-09-23): the
+// key existed in this run only to sign the request filing.
 fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
   [
     Do { run: ci_retry_body_run(command: "set -euo pipefail") },
@@ -2671,15 +2695,10 @@ fn gunbc_ci_mtcollins1_boot_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/mtcollins1-boot-auth-header\"") },
     Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/mtcollins1-boot-sm.json\"") },
     Do { run: ci_retry_body_run(command: "DEST_FILE=\"$RUNNER_TEMP/mtcollins1-bmc-credential\"") },
-    Do { run: ci_retry_body_run(command: "SUB_FILE=\"$RUNNER_TEMP/approval-submission-mac-key\"") },
     Do { run: ci_retry_body_run(command: "SOL_PID_FILE=\"$RUNNER_TEMP/mtcollins1-sol.pid\"") },
     Do { run: ci_retry_body_run(command: "SOL_OUT=\"$GITHUB_WORKSPACE/artifacts/mtcollins1-boot-sol.capture\"") },
-    Do { run: ci_retry_body_run(command: "trap 'if [ -f \"$SOL_PID_FILE\" ]; then kill \"$(cat \"$SOL_PID_FILE\")\" 2>/dev/null || true; fi; rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\" \"$SUB_FILE\" \"$SOL_PID_FILE\"' EXIT") },
+    Do { run: ci_retry_body_run(command: "trap 'if [ -f \"$SOL_PID_FILE\" ]; then kill \"$(cat \"$SOL_PID_FILE\")\" 2>/dev/null || true; fi; rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\" \"$SOL_PID_FILE\"' EXIT") },
   ].concat(gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: host_reset_bmc_credential_path_env)).concat([
-    Do { run: ci_retry_body_run(command: "HOLD_BMC=\"$DEST_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("DEST_FILE=\"$SUB_FILE\"; ", concat(gunbc_ci_sm_secret_to_dest_file_command(url: approval_submission_mac_access_url()), "; DEST_FILE=\"$HOLD_BMC\""))) },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$SUB_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("export ", concat(approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\""))) },
     Do { run: ci_retry_body_run(command: "mkdir -p \"$GITHUB_WORKSPACE/artifacts\"") },
     Do { run: ci_retry_body_run(command: ": > \"$SOL_OUT\"") },
     Do { run: ci_retry_body_run(command: concat("export ", concat(mtcollins1_boot_sol_capture_path_env as String, "=\"$SOL_OUT\""))) },
@@ -2696,7 +2715,7 @@ data gunbc_ci_mtcollins1_boot_credential_shell_emit_scaffold: Disposition = Scaf
   }
 }
 
-data gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, PINNED BMC and submission-MAC secret versions fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. SOL hold is gunbc.machine_intake.sol_hold ActivateHeld (its own scaffold). The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+data gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, the PINNED BMC secret version fetched over curl, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. SOL hold is gunbc.machine_intake.sol_hold ActivateHeld (its own scaffold). The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
 
 // THE D0 DOOR'S PRELUDE materializes the submission MAC key alone (the door signs one filing; it
 // holds no BMC credential and no capability key): the shared auth header and SM decode, one
@@ -2723,6 +2742,18 @@ fn gunbc_ci_pair_serving_d0_prelude() -> List<PipelineStep> {
       "; then chmod 600 \"$SUB_FILE\"; export ", approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\"; else rm -f \"$SUB_FILE\"; echo 'submission MAC key not materialized: a run that must file will refuse there; a held lifecycle resumes without it'; fi",
     ], "")) },
   ]
+}
+
+// The mtcollins1 boot's credential-free host admission: no prelude, no secret, the same fold the
+// boot's wet entry re-runs.
+fn gunbc_ci_mtcollins1_boot_admit_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_mtcollins1_boot_admit_target.entry,
+    function: gunbc_ci_mtcollins1_boot_admit_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
 }
 
 // The credential-free admission: no prelude, no secret, just the door's pure fold over the

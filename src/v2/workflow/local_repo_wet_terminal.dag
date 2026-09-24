@@ -1602,9 +1602,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.v41_runtime_candidate_witness", function: "the_live_candidate_is_unestablished_and_names_every_missing_axis" },
+      identity: WitnessIdentity { module_path: "test.claim.spark.v41_runtime_candidate_witness", function: "the_live_candidate_is_keyed_end_to_end" },
       entry: "dag/test/claim/spark/v41_runtime_candidate_witness_test.dag",
-      function: "the_live_candidate_is_unestablished_and_names_every_missing_axis",
+      function: "the_live_candidate_is_keyed_end_to_end",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

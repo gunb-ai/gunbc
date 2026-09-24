@@ -370,14 +370,25 @@ fn ci_release_bins_unpack_verify_step() -> Step {
 }
 
 fn ci_fleet_wif_auth_step() -> Step {
+  ci_wif_auth_step_for(
+    name: "WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)",
+    provider_resource: probe_identity_secret_access_requirement.wif_provider_resource,
+    service_account: probe_identity_secret_access_requirement.service_account,
+  )
+}
+
+// ONE AUTH STEP SHAPE, THE IDENTITY A PARAMETER. A job federating through its own dedicated pool
+// (gunbc.auth.mtcollins1_boot_federation) binds its own provider and account; the step id stays
+// wif_auth so every consumer's ${{ steps.wif_auth.outputs.access_token }} reads the job's identity.
+fn ci_wif_auth_step_for(name: String, provider_resource: String, service_account: String) -> Step {
   UsesStep {
-    name: Present { value: "WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)" },
+    name: Present { value: name },
     id: Present { value: "wif_auth" },
     uses: google_auth_action,
     with: Present {
       value: [
-        kv(key: "workload_identity_provider", value: yaml_string(s: probe_identity_secret_access_requirement.wif_provider_resource)),
-        kv(key: "service_account", value: yaml_string(s: probe_identity_secret_access_requirement.service_account)),
+        kv(key: "workload_identity_provider", value: yaml_string(s: provider_resource)),
+        kv(key: "service_account", value: yaml_string(s: service_account)),
         kv(key: "token_format", value: yaml_string(s: "access_token")),
         kv(key: "create_credentials_file", value: yaml_bool(b: false))
       ]
@@ -734,6 +745,16 @@ fn gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() -> Int {
     + gunbc_ci_artifact_transfer_step_timeout_minutes
     + gunbc_ci_aux_step_timeout_minutes
     + gunbc_ci_live_deploy_step_timeout_minutes
+}
+
+// The Mt. Collins boot job: checkout prelude, release download (transfer) and unpack (aux), the host
+// admission (aux), WIF auth (aux), fleet key agent (aux) and its cleanup (aux), the boot step, and the
+// receipt upload (transfer).
+fn gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes(boot_step_minutes: Int) -> Int {
+  gunbc_ci_prelude_allowance_minutes
+    + (2 * gunbc_ci_artifact_transfer_step_timeout_minutes)
+    + (5 * gunbc_ci_aux_step_timeout_minutes)
+    + boot_step_minutes
 }
 
 fn gunbc_ci_fleet_job_backstop_timeout_minutes() -> Int {

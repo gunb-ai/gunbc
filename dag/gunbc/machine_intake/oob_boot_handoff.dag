@@ -1,5 +1,6 @@
 module gunbc.machine_intake_oob_boot_handoff
 
+import std.decl_ref { decl_ref }
 import std.types { Bool, NonEmptyStr, String }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi_boot_selection {
@@ -165,6 +166,9 @@ fn oob_power_cycle_after_confirmed_selection(
   device: NonEmptyStr,
   power_action: NonEmptyStr,
 ) -> OobBootHandoffOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_boot_handoff"),
+  ]
 {
   cycle = diagnostic.ipmi.Tool.ChassisPowerControl(
     bmc_host: bmc_host,
@@ -198,6 +202,10 @@ fn oob_boot_handoff(
   selection: IpmiBootSelection,
   power_action: NonEmptyStr,
 ) -> OobBootHandoffOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_actuate", decl_name: "mtcollins1_drive_handoff"),
+    decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_issue_and_watch"),
+  ]
 {
   let admission = oob_boot_handoff_admission(observation: observation, capability_row: capability_row)
   if oob_handoff_is_admitted(admission: admission) == false {

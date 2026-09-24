@@ -117,6 +117,19 @@ data xl0r_method_call_consumer_source: String = "module v2.test.xl0r_method_call
 
 data xl0r_shadowing_consumer_source: String = "module v2.test.xl0r_shadowing_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_shadows(v2: Bool) -> Bool { v2.test.xl0r_provider.xl0r_provided_fn }\n"
 
+// A TYPE NAMED BY A SELECTIVE IMPORT, IN PARAMETER POSITION. The provider's type is bodyless, the
+// shape v2.std.node declares Symbol with. The seven-test canary's `Symbol` wall (gunbc#12198) was
+// first read as this route failing; it does not -- these two rows were green on the tree where the
+// wall stood, and the refusing occurrences were in closure modules that imported nothing
+// (v2.std.artifact, v2.compiler.body_producer_forward, v2.std.grounding). The pair keeps the
+// import route and its boundary both executed: the imported spelling binds to its declaring path,
+// and the same spelling with no import refuses unbound rather than being found by corpus search.
+data xl0r_type_provider_source: String = "module v2.test.xl0r_type_provider\n\ntype Xl0rOpaque\n"
+
+data xl0r_imported_param_type_consumer_source: String = "module v2.test.xl0r_imported_param_type_consumer\n\nimport v2.std.logic { Bool }\nimport v2.test.xl0r_type_provider { Xl0rOpaque }\n\nfn xl0r_takes_opaque(x: Xl0rOpaque) -> Bool { true }\n"
+
+data xl0r_unimported_param_type_consumer_source: String = "module v2.test.xl0r_unimported_param_type_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_takes_unimported(x: Xl0rOpaque) -> Bool { true }\n"
+
 fn xl0r_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: source, fidelity: Lossless },
@@ -193,7 +206,16 @@ data xl0r_ingest: SourceRootIngest = Cons {
                             head: xl0r_read(source: xl0r_relay_source, id: ^xl0r_relay_read, unit: ^xl0r_relay_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_relay.dag"),
                             tail: Cons {
                               head: xl0r_read(source: xl0r_relay_consumer_source, id: ^xl0r_relay_consumer_read, unit: ^xl0r_relay_consumer_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_relay_consumer.dag"),
-                              tail: Empty
+                              tail: Cons {
+                                head: xl0r_read(source: xl0r_type_provider_source, id: ^xl0r_type_provider_read, unit: ^xl0r_type_provider_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_type_provider.dag"),
+                                tail: Cons {
+                                  head: xl0r_read(source: xl0r_imported_param_type_consumer_source, id: ^xl0r_imported_param_type_consumer_read, unit: ^xl0r_imported_param_type_consumer_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_imported_param_type_consumer.dag"),
+                                  tail: Cons {
+                                    head: xl0r_read(source: xl0r_unimported_param_type_consumer_source, id: ^xl0r_unimported_param_type_consumer_read, unit: ^xl0r_unimported_param_type_consumer_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_unimported_param_type_consumer.dag"),
+                                    tail: Empty
+                                  }
+                                }
+                              }
                             }
                           }
                         }
@@ -303,6 +325,14 @@ fn xl0r_resolved_import_consumer_b() -> Outcome<Node> {
 
 fn xl0r_resolved_relay_consumer() -> Outcome<Node> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_relay_consumer")
+}
+
+fn xl0r_resolved_imported_param_type_consumer() -> Outcome<Node> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_imported_param_type_consumer")
+}
+
+fn xl0r_resolved_unimported_param_type_consumer() -> Outcome<Node> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_unimported_param_type_consumer")
 }
 
 // THE DECLARING PATHS A RESOLVED BODY CARRIES, read through the one reader the carrier has
@@ -423,6 +453,20 @@ test fn two_import_bound_same_leaf_targets_resolve_to_distinct_declaring_paths_h
     && xl0r_resolved_carries_reference(o: b, dotted: "v2.test.xl0r_provider_b.xl0r_same_leaf")
     && !xl0r_resolved_carries_reference(o: a, dotted: "v2.test.xl0r_provider_b.xl0r_same_leaf")
     && !xl0r_resolved_carries_reference(o: b, dotted: "v2.test.xl0r_provider_a.xl0r_same_leaf")
+}
+
+test fn a_selectively_imported_type_in_parameter_position_resolves_to_its_declaring_path_holds() -> Bool {
+  xl0r_resolved_carries_reference(
+    o: xl0r_resolved_imported_param_type_consumer(),
+    dotted: "v2.test.xl0r_type_provider.Xl0rOpaque"
+  )
+}
+
+test fn an_unimported_type_in_parameter_position_refuses_unbound() -> Bool {
+  match xl0r_resolved_unimported_param_type_consumer() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
 }
 
 // THE BOUNDARY: the same chain shape naming a declaration that does not exist refuses, at resolve,

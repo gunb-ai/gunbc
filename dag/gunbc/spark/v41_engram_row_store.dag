@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.integer { UInt8 }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
-import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, sha256_hex_digest, serialize_content_hash }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, sha256_hex_digest, serialize_content_hash }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_add }
 import v2.std.optional { Present, Absent }
@@ -890,8 +890,44 @@ fn v41_span_reading_defects(plan: List<V41PublishedSpan>, read: List<V41Publishe
 // not enter the key text. This replaces a key over the span digests alone (#12010), which keyed the
 // transform's input and not its output; the name changed with the meaning.
 
+// ONE STORE AS READ ON THE HOST: its identity (layer, rank, sha256) and the size of the file. The size is
+// the cheap cross-check that the encoder obeyed the derived layout: a store whose size is not
+// magic + rows x record bytes would be keyed by a digest over a file FileBackedEngramStorage cannot
+// open (proud-deer-538, 2026-09-24), so the key refuses it before identifying.
+type V41ObservedRankStore {
+  identity: V41RankStoreIdentity
+  size: ByteSize
+}
+
+// THE SIZE OF A STORE OF `rows` RECORDS: the magic, then one record per row. The one formula; the key's
+// check below and the encode plan's expected size (gunbc.spark.v41_row_store_encode) both call it.
+fn v41_store_size(spec: V41RowStoreEncodingSpec, rows: Nat) -> ByteSize {
+  byte_size(count: byte_size_count(b: v41_row_store_magic_size()) + rows * byte_size_count(b: v41_row_bytes(g: spec.geometry)))
+}
+
+// THE SIZE A (layer, rank) STORE MUST HAVE, from the spec: v41_store_size over the rank's range.
+fn v41_store_derived_size(spec: V41RowStoreEncodingSpec, layer: Nat, rank: Nat) -> ByteSize? {
+  match v41_layer_of(spec: spec, layer: layer) {
+    Absent => none
+    Present { value: t } => match first(filter(t.ranks, r => r.rank == rank)) {
+      Absent => none
+      Present { value: r } => Present { value: v41_store_size(spec: spec, rows: r.end - r.start) }
+    }
+  }
+}
+
+fn v41_store_size_defects(spec: V41RowStoreEncodingSpec, stores: List<V41ObservedRankStore>) -> List<NonEmptyStr> {
+  flat_map(stores, o => match v41_store_derived_size(spec: spec, layer: o.identity.layer, rank: o.identity.rank) {
+    Absent => [join(["store ", v41_store_key(layer: o.identity.layer, rank: o.identity.rank), " has no derived size: the spec declares no such store"], "") as NonEmptyStr]
+    Present { value: d } =>
+      if byte_size_count(b: d) == byte_size_count(b: o.size) { [] as List<NonEmptyStr> } else {
+        [join(["store ", v41_store_key(layer: o.identity.layer, rank: o.identity.rank), " is ", to_string(byte_size_count(b: o.size)), " bytes and the layout derives ", to_string(byte_size_count(b: d)), "; its digest is not keyed"], "") as NonEmptyStr]
+      }
+  })
+}
+
 type V41PublishedStoreReadings
-  = V41PublishedStoresRead { host: NonEmptyStr, observed_at: NonEmptyStr, stores: List<V41RankStoreIdentity> }
+  = V41PublishedStoresRead { host: NonEmptyStr, observed_at: NonEmptyStr, stores: List<V41ObservedRankStore> }
   | V41PublishedStoresUnread { obligation: NonEmptyStr }
 
 // THE HEAD SIZES ARRIVE AS A DEFERRED VALUE, computed only once both readings exist: an unread axis
@@ -915,12 +951,16 @@ fn v41_row_store_encoding_key(partition: V41EngramResidencyPartition, sharded: L
                 V41PublishedStoresRead { host: _, observed_at: _, stores: st } =>
                   match v41_row_store_spec(population: map(sharded, e => e.entry), partition: partition, tables: deepseek_v4_1_flash_engram, head_sizes: head_sizes()) {
                     V41RowStoreSpecRefused { defects: sd } => V41PublishedRowStoreRefused { defects: sd }
-                    V41RowStoreSpecAdmitted { spec: spec } =>
-                      match v41_identify_row_store(spec: spec, rank_stores: st) {
-                        V41RowStoreEncodingRefused { defects: d } => V41PublishedRowStoreRefused { defects: d }
-                        V41RowStoreEncodingUnestablished { obligation: o } => V41PublishedRowStoreUnestablished { obligation: o }
-                        V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: _, content_digest: d } => V41PublishedRowStoreKeyed { digest: d }
+                    V41RowStoreSpecAdmitted { spec: spec } => {
+                      let size_defects = v41_store_size_defects(spec: spec, stores: st)
+                      if length(size_defects) != 0 { V41PublishedRowStoreRefused { defects: size_defects } } else {
+                        match v41_identify_row_store(spec: spec, rank_stores: map(st, o => o.identity)) {
+                          V41RowStoreEncodingRefused { defects: d } => V41PublishedRowStoreRefused { defects: d }
+                          V41RowStoreEncodingUnestablished { obligation: o } => V41PublishedRowStoreUnestablished { obligation: o }
+                          V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: _, content_digest: d } => V41PublishedRowStoreKeyed { digest: d }
+                        }
                       }
+                    }
                   }
               }
             }
@@ -933,16 +973,38 @@ fn v41_row_store_encoding_key(partition: V41EngramResidencyPartition, sharded: L
 // THE LIVE READINGS. The spans are read by spark_v41_checkpoint_materialize after the shards verify; the
 // stores by the encode run over them. Each stays Unread until its run's receipt is transcribed, and the
 // candidate's row_store_encoding axis stays Unestablished on whichever is still unread.
-data v41_published_span_readings: V41PublishedSpanReadings = V41PublishedSpansUnread {
-  obligation: "the encoder's input is unread: the storage-backed spans of shards model-00047/00048 have not been transcribed from a spark_v41_checkpoint_materialize receipt into gunbc.spark.v41_engram_row_store v41_published_span_readings" as NonEmptyStr,
+// srv5's storage-backed spans, read by spark_v41_checkpoint_materialize after every shard verified against
+// its manifest row (fleet-converge run 35840493821, main eb6bf6c, reported by sleek-bee-348 2026-09-23).
+data v41_published_span_readings: V41PublishedSpanReadings = V41PublishedSpansRead {
+  host: "srv5" as NonEmptyStr,
+  observed_at: "fleet-converge run 35840493821" as NonEmptyStr,
+  spans: [
+    V41PublishedSpanDigest { span: V41PublishedSpan { tensor: "layers.1.engram.embed.weight" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr, file_offset: byte_size(count: 664), length: byte_size(count: 98305579008) }, sha256: Sha256Digest { hex: "ada3f1b35065e3088b6cc8d45cde49320f25a1b884287d55c428618321310329" as Sha256DigestHex } },
+    V41PublishedSpanDigest { span: V41PublishedSpan { tensor: "layers.1.engram.embed.scale" as NonEmptyStr, shard: "model-00047-of-00048.safetensors" as NonEmptyStr, file_offset: byte_size(count: 98305579672), length: byte_size(count: 3072049344) }, sha256: Sha256Digest { hex: "75a1a0818a4e512dc1e298027fc70637d92df02c0534de9c3c311c87da2e392d" as Sha256DigestHex } },
+    V41PublishedSpanDigest { span: V41PublishedSpan { tensor: "layers.14.engram.embed.weight" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr, file_offset: byte_size(count: 672), length: byte_size(count: 98308270592) }, sha256: Sha256Digest { hex: "7b386ab53a08afb08a72907e4ab28456dece22f71d63ab4c9382c88896fda768" as Sha256DigestHex } },
+    V41PublishedSpanDigest { span: V41PublishedSpan { tensor: "layers.14.engram.embed.scale" as NonEmptyStr, shard: "model-00048-of-00048.safetensors" as NonEmptyStr, file_offset: byte_size(count: 98308271264), length: byte_size(count: 3072133456) }, sha256: Sha256Digest { hex: "5d5ed18e6bf6f87254bd0e02c8131446b0c44144c465cd2e48d5b3bbba70b47b" as Sha256DigestHex } },
+  ],
 }
 
-// THE STORE READINGS' INSTRUMENT IS A DECLARED FRONTIER (DESIGN section 3c). Nothing on main produces
-// them yet. The producer is the dispatched encode mode in gunbc#12150 (stacked on the host encoder,
-// gunbc#12122): it encodes the eight stores on one materialized Group A Spark and writes one
-// `store layer.L.rank.K sha256=...` line per store to its receipt. A Read row is transcribed from that
-// receipt, naming the run (observed_at) and the host it read. TRIGGER: gunbc#12150 landing, at which
-// point this comment cites its module and entry point by symbol.
-data v41_published_store_readings: V41PublishedStoreReadings = V41PublishedStoresUnread {
-  obligation: "no published-shard row-store content digest exists: the eight Engram row stores (layers 1 and 14 x four ranks) have not been encoded and read, so their sha256 are not in gunbc.spark.v41_engram_row_store v41_published_store_readings" as NonEmptyStr,
+// THE STORE READINGS' INSTRUMENT: the spark_v41_row_store_encode fleet-converge mode
+// (gunbc.spark.v41_row_store_encode_run v41_row_store_encode_ci_wet). Its receipt, printed into that step's
+// log, carries one `store layer.L.rank.K sha256=... size_bytes=...` line per store, each already checked
+// against the derived size. A Read row is transcribed from one run's log, names that run (observed_at)
+// and the host it read, and carries every store's size, which the key checks again.
+// The eight stores as read on srv5 by spark_v41_row_store_encode (fleet-converge run 36023830860, main
+// 86659c7, 2026-09-24): every store present, every size_bytes equal to its derived size. The digests
+// repeat run 35998756420's (the first encode) exactly.
+data v41_published_store_readings: V41PublishedStoreReadings = V41PublishedStoresRead {
+  host: "srv5" as NonEmptyStr,
+  observed_at: "fleet-converge run 36023830860" as NonEmptyStr,
+  stores: [
+    V41ObservedRankStore { identity: v41_rank_store_identity(layer: 1, rank: 0, digest: Sha256Digest { hex: "408fc45afaab71f7ae79af76636e031ca453f8d3a26c416a18baee6c0275de23" as Sha256DigestHex }), size: byte_size(count: 25344148902) },
+    V41ObservedRankStore { identity: v41_rank_store_identity(layer: 1, rank: 1, digest: Sha256Digest { hex: "ca2b254506628fa5e292022f184ebae50de62875e96dc3d73008724905201a3f" as Sha256DigestHex }), size: byte_size(count: 25344310470) },
+    V41ObservedRankStore { identity: v41_rank_store_identity(layer: 1, rank: 2, digest: Sha256Digest { hex: "15461f3def1f5ef66c6335756135be45a896be50735224a3c6246d6fc69a79e8" as Sha256DigestHex }), size: byte_size(count: 25344505302) },
+    V41ObservedRankStore { identity: v41_rank_store_identity(layer: 1, rank: 3, digest: Sha256Digest { hex: "b4ddf62c433427c0f6ad5d5ef053656a0ccf6bbb823d5d7cb5e3f9b4870a7f71" as Sha256DigestHex }), size: byte_size(count: 25344663702) },
+    V41ObservedRankStore { identity: v41_rank_store_identity(layer: 14, rank: 0, digest: Sha256Digest { hex: "b8227f2105cbd74195fbf1b1066b812456b8808c60e603d067821c688e181657" as Sha256DigestHex }), size: byte_size(count: 25344806262) },
+    V41ObservedRankStore { identity: v41_rank_store_identity(layer: 14, rank: 1, digest: Sha256Digest { hex: "f59d2f01751827ce5dd74400b4904ec8fccda0bb17fa1fcbc527ec6be564030b" as Sha256DigestHex }), size: byte_size(count: 25345045974) },
+    V41ObservedRankStore { identity: v41_rank_store_identity(layer: 14, rank: 2, digest: Sha256Digest { hex: "20da211045f113916088fede485cd1fa4058a9efe6fc21b9ba58bbb99a5dde91" as Sha256DigestHex }), size: byte_size(count: 25345200678) },
+    V41ObservedRankStore { identity: v41_rank_store_identity(layer: 14, rank: 3, digest: Sha256Digest { hex: "02450652d87576ab116348f1b3182540dc43d0eb1c1134d7d629eb287e378fb9" as Sha256DigestHex }), size: byte_size(count: 25345351158) },
+  ],
 }

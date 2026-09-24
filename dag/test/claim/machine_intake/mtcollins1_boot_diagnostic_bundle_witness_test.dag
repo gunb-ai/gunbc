@@ -14,7 +14,7 @@ import gunbc.machine_intake_sel_stimulus_listener { sel_read }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootDiagnosticBundle, InventoryReading, MembersRead, MembersUnread, MembersNotTaken,
   SelSnapshotRead, SelSnapshotUnread, SelSnapshotNotTaken, ConsoleNotConfigured,
-  SdrCacheDumped, SdrCacheUnread, SdrCacheNotTaken, SensorsRead, SensorsNotTaken,
+  SdrCacheDumped, SdrCacheUnread, SdrCacheNotTaken, SensorsRead, SensorsNotTaken, SmproProbed, SmproNotTaken,
   BmcUnreachable, BmcTimeout, BmcAuthRefused, BmcHttpRefused, BmcSessionUnestablished,
   bmc_curl_read_cause, bmc_ipmitool_read_cause, inventory_not_taken,
   mtcollins1_boot_bundle_findings, mtcollins1_boot_bundle_text, mtcollins1_boot_outcome_with_findings,
@@ -30,6 +30,8 @@ import gunbc.actions_run_binding { ActionsVariablePresent, ActionsVariableAbsent
 import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware }
 import std.measure { byte_size, byte_size_count, second_count }
 import extdeps.bmc.ipmi_sdr { sdr_decode_lines }
+import extdeps.ampere.smpro_register { smpro_manufacturer_id_reg, smpro_bootstage_reg }
+import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeRaw, smpro_probe_outcome }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -90,6 +92,7 @@ fn bundle_socket1_absent() -> MtCollins1BootDiagnosticBundle {
     sel_after: SelSnapshotRead { raw: sel_after_fixture, at: "2026-09-23T01:10:00Z" },
     sdr_cache: SdrCacheDumped { path: "/w/_temp/mtcollins1-bmc-credential.sdr-cache", at: "2026-09-23T00:58:50Z" },
     sensors: SensorsRead { lines: sdr_decode_lines(stdout: sensors_socket1_dark_fixture), at: "2026-09-23T01:00:10Z" },
+    smpro: SmproNotTaken { reason: "t" },
     inventory: InventoryReading {
       system_id: "Self",
       memory: MembersRead { members: concat(parsed_memory(body: memory_member_present_fixture), socket1_absent_members()) },
@@ -110,6 +113,7 @@ fn bundle_bmc_silent() -> MtCollins1BootDiagnosticBundle {
     sel_after: SelSnapshotUnread { cause: ipmi },
     sdr_cache: SdrCacheUnread { cause: ipmi },
     sensors: SensorsNotTaken { reason: "no SDR cache was dumped" },
+    smpro: SmproNotTaken { reason: "t" },
     inventory: InventoryReading { system_id: "", memory: MembersUnread { cause: cause }, processors: MembersUnread { cause: cause }, credential_removed: true },
     console: ConsoleNotConfigured,
   }
@@ -230,7 +234,7 @@ test fn a_link_is_used_exactly_or_refused_never_rebuilt() -> Bool {
 test fn an_incomplete_memory_collection_mints_no_short_inventory_finding() -> Bool {
   let cause = BmcCollectionIncomplete { endpoint: "https://192.168.1.228/redfish/v1/Systems/Self/Memory", at: "2026-09-23T01:00:00Z", detail: "Members@odata.nextLink not followed" }
   let b = bundle_socket1_absent()
-  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro,
     inventory: InventoryReading { system_id: "/redfish/v1/Systems/Self", memory: MembersUnread { cause: cause }, processors: b.inventory.processors, credential_removed: true },
     console: ConsoleNotConfigured }
   !any_contains(xs: mtcollins1_boot_bundle_findings(bundle: bundle), pattern: "Memory member(s); the census board")
@@ -239,9 +243,10 @@ test fn an_incomplete_memory_collection_mints_no_short_inventory_finding() -> Bo
 
 // ── THE DIAGNOSTICS DEADLINE ─────────────────────────────────────────────────────────────────
 
-// 2 SEL snapshots, 1 SDR dump and 1 sensor read x (20 s + 5 s kill-after) + 48 Redfish reads x 15 s + 60 s publish.
+// 2 SEL snapshots, 1 SDR dump, 1 sensor read and 10 SMpro probes (2 sockets x 5 registers) x (20 s
+// + 5 s kill-after) + 48 Redfish reads x 15 s + 60 s publish.
 test fn the_allowance_is_the_sum_of_the_bounds() -> Bool {
-  (second_count(s: mtcollins1_boot_diagnostics_allowance()) as Int) == 4 * 25 + mtcollins1_boot_redfish_read_budget * 15 + 60
+  (second_count(s: mtcollins1_boot_diagnostics_allowance()) as Int) == 14 * 25 + mtcollins1_boot_redfish_read_budget * 15 + 60
 }
 
 test fn a_spent_budget_refuses_the_read_and_names_what_was_not_reached() -> Bool {
@@ -255,7 +260,7 @@ test fn a_spent_budget_refuses_the_read_and_names_what_was_not_reached() -> Bool
 test fn a_partial_bundle_renders_the_reads_not_reached() -> Bool {
   let b = bundle_socket1_absent()
   let cause = BmcDeadlineReached { endpoint: "https://192.168.1.228/redfish/v1/Systems/Self/Memory/DIMM_20", at: "t", not_reached: member_not_reached(total: 32, read: 20) }
-  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro,
     inventory: InventoryReading { system_id: "/redfish/v1/Systems/Self", memory: MembersUnread { cause: cause }, processors: b.inventory.processors, credential_removed: true },
     console: ConsoleNotConfigured }
   contains(mtcollins1_boot_bundle_text(bundle: bundle), "memory: UNREAD: diagnostics read budget spent before https://192.168.1.228/redfish/v1/Systems/Self/Memory/DIMM_20 (t); not reached: 12 of 32 member read(s)")
@@ -347,7 +352,7 @@ test fn an_ambiguous_ipmi_failure_is_not_rendered_as_did_not_answer() -> Bool {
 test fn only_definitive_no_answers_say_the_bmc_did_not_answer() -> Bool {
   let b = bundle_bmc_silent()
   let timeout = bmc_ipmitool_read_cause(endpoint: "ipmi lanplus 192.168.1.228", at: "2026-09-23T00:59:00Z", exit_code: 124, stderr: "")
-  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: SelSnapshotUnread { cause: timeout }, sel_after: SelSnapshotUnread { cause: timeout }, sdr_cache: SdrCacheUnread { cause: timeout }, sensors: b.sensors, inventory: b.inventory, console: b.console }
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: SelSnapshotUnread { cause: timeout }, sel_after: SelSnapshotUnread { cause: timeout }, sdr_cache: SdrCacheUnread { cause: timeout }, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory, console: b.console }
   any_contains(xs: mtcollins1_boot_bundle_findings(bundle: bundle), pattern: "every BMC read failed and the BMC did not answer; first: BMC timed out at ipmi lanplus 192.168.1.228")
 }
 
@@ -358,7 +363,7 @@ test fn a_bmc_that_answered_on_the_sensor_channel_is_not_all_failed() -> Bool {
   let b = bundle_bmc_silent()
   let good = bundle_socket1_absent()
   let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after,
-    sdr_cache: good.sdr_cache, sensors: good.sensors, inventory: b.inventory, console: b.console }
+    sdr_cache: good.sdr_cache, sensors: good.sensors, smpro: b.smpro, inventory: b.inventory, console: b.console }
   let findings = mtcollins1_boot_bundle_findings(bundle: bundle)
   !any_contains(xs: findings, pattern: "every BMC read failed")
     && any_contains(xs: findings, pattern: "bmc sensor CPU1_CPU_VCORE status ns")
@@ -394,6 +399,7 @@ test fn a_bundle_from_an_attempt_that_never_reached_the_bmc_names_why_in_every_s
     sel_after: SelSnapshotNotTaken { reason: why },
     sdr_cache: SdrCacheNotTaken { reason: why },
     sensors: SensorsNotTaken { reason: why },
+    smpro: SmproNotTaken { reason: why },
     inventory: inventory_not_taken(reason: why),
     console: ConsoleNotConfigured,
   }
@@ -412,7 +418,7 @@ test fn a_bundle_from_an_attempt_that_never_reached_the_bmc_names_why_in_every_s
 // pre-credential return in mtcollins1_boot_wet_on_srv1 goes through, and its reason is what the
 // bundle's NOT TAKEN sections carry.
 test fn an_early_refusal_carries_its_own_reason_into_the_bmc_sections() -> Bool {
-  match mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: GITHUB_SHA is unset"), escalation_id: none).bmc {
+  match mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: GITHUB_SHA is unset")).bmc {
     BmcAccessNotReached { reason: r } => contains(r as String, "GITHUB_SHA is unset")
     _ => false
   }
@@ -456,7 +462,7 @@ test fn a_missing_run_id_is_a_typed_unavailable_identity_not_a_blank() -> Bool {
 
 test fn the_unavailable_identity_is_rendered_as_such() -> Bool {
   let b = bundle_bmc_silent()
-  let bundle = MtCollins1BootDiagnosticBundle { attempt: AttemptIdentityUnavailable { variable: "GITHUB_RUN_ID", detail: "not set" }, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, inventory: b.inventory, console: b.console }
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: AttemptIdentityUnavailable { variable: "GITHUB_RUN_ID", detail: "not set" }, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory, console: b.console }
   contains(mtcollins1_boot_bundle_text(bundle: bundle), "attempt=UNAVAILABLE: GITHUB_RUN_ID could not be read: not set")
 }
 
@@ -471,6 +477,7 @@ test fn an_empty_dram_socket_in_the_console_reaches_the_refusal() -> Bool {
     sel_after: SelSnapshotNotTaken { reason: "t" },
     sdr_cache: SdrCacheNotTaken { reason: "t" },
     sensors: SensorsNotTaken { reason: "t" },
+    smpro: SmproNotTaken { reason: "t" },
     inventory: inventory_not_taken(reason: "t"),
     console: mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 200), capture: capture, read_ok: true, read_error: "", reference: no_reference),
   }
@@ -511,7 +518,7 @@ test fn an_unread_sensor_section_says_why() -> Bool {
 test fn a_one_socket_firmware_summary_reaches_the_refusal() -> Bool {
   let capture = "UEFI RC version: 1.08\r\n    Number of active sockets    : 1\r\n    Number of active cores      : 80\r\n    Socket[0]: Core voltage     : 1065\r\n[    0.08] {2}[Hardware Error]: Hardware error from APEI Generic Hardware Error Source: 2\r\n[    0.08] {2}[Hardware Error]: event severity: info\r\n[    0.08] {2}[Hardware Error]:   section type: unknown, e8ed898d-df16-43cc-8ecc-54f060ef157f\r\n[    0.08] {2}[Hardware Error]:   00000000: 000003ce 22440074 00000000 00000000  ....t.D\"........\r\n"
   let b = bundle_socket1_absent()
-  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, inventory: b.inventory,
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory,
     console: mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 400), capture: capture, read_ok: true, read_error: "", reference: no_reference) }
   let text = mtcollins1_boot_bundle_text(bundle: bundle)
   any_contains(mtcollins1_boot_bundle_findings(bundle: bundle), "firmware boot summary: 1 active socket(s), the census holds 2")
@@ -526,13 +533,60 @@ test fn a_supplied_reference_renders_its_differences() -> Bool {
   match mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 100), capture: capture, read_ok: true, read_error: "", reference: reference_of(text: reference)) {
     ConsoleRetained { path: _, size: _, lines: _, firmware: _, dram: _, sockets: _, against_reference: _ } => {
       let b = bundle_socket1_absent()
-      let text = mtcollins1_boot_bundle_text(bundle: MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, inventory: b.inventory,
+      let text = mtcollins1_boot_bundle_text(bundle: MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory,
         console: mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 100), capture: capture, read_ok: true, read_error: "", reference: reference_of(text: reference)) })
       contains(text, "3 difference(s)") && contains(text, "Socket[1] printed in the reference summary, absent from this boot's")
         && contains(text, "Inter Socket Connection 0 (reference: Width: x16 / Speed 25 GT/s) not printed by this boot")
     }
     _ => false
   }
+}
+
+// ── THE SMpro SECTION THROUGH THE BUNDLE ────────────────────────────────────────────────────────
+// Supplied ipmitool raw renderings; no SMpro exchange with this BMC is in the corpus yet.
+
+fn smpro_raw(socket: Int, register: NonEmptyStr, exit_code: Int, stdout: String, stderr: String) -> SmproProbeRaw {
+  SmproProbeRaw { sequence: 0, socket: socket, register: register, request: "raw 0x06 0x52 0x05 0x9e 0x02 0xb0 0x02", at: "2026-09-24T12:00:00Z", exit_code: exit_code, stdout: stdout, stderr: stderr }
+}
+
+test fn a_socket_one_smpro_stage_reaches_the_refusal() -> Bool {
+  let b = bundle_socket1_absent()
+  let outcomes = [
+    smpro_probe_outcome(raw: smpro_raw(socket: 0, register: smpro_manufacturer_id_reg.name, exit_code: 0, stdout: "cd 3a", stderr: "")),
+    smpro_probe_outcome(raw: smpro_raw(socket: 0, register: smpro_bootstage_reg.name, exit_code: 0, stdout: "09 02", stderr: "")),
+    smpro_probe_outcome(raw: smpro_raw(socket: 1, register: smpro_manufacturer_id_reg.name, exit_code: 0, stdout: "cd 3a", stderr: "")),
+    smpro_probe_outcome(raw: smpro_raw(socket: 1, register: smpro_bootstage_reg.name, exit_code: 0, stdout: "03 03", stderr: "")),
+  ]
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
+    smpro: SmproProbed { outcomes: outcomes }, inventory: b.inventory, console: b.console }
+  (match mtcollins1_boot_outcome_with_findings(outcome: exit_failure(reason: "q"), findings: mtcollins1_boot_bundle_findings(bundle: bundle)) {
+    ExitFailure { code: _, reason: r } => contains(r, "SMpro socket 1: CUR_BOOTSTAGE UNAVAILABLE (CUR_BOOTSTAGE was not probed); BOOTSTAGE DDR initialization, failed")
+    ExitSuccess => false
+  }) && contains(mtcollins1_boot_bundle_text(bundle: bundle), "== smpro boot stage (ipmi master write-read) ==")
+}
+
+// A NAK FROM THE BMC IS AN ANSWER: a pass where SEL, SDR and Redfish all failed but the SMpro probe
+// came back with completion code 83h is not "every BMC read failed".
+test fn an_smpro_nak_means_the_bmc_answered() -> Bool {
+  let b = bundle_bmc_silent()
+  let nak = smpro_probe_outcome(raw: smpro_raw(socket: 0, register: smpro_manufacturer_id_reg.name, exit_code: 1, stdout: "", stderr: "Unable to send RAW command (channel=0x0 netfn=0x6 lun=0x0 cmd=0x52 rsp=0x83): Unknown (0x83)"))
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
+    smpro: SmproProbed { outcomes: [nak] }, inventory: b.inventory, console: b.console }
+  !any_contains(xs: mtcollins1_boot_bundle_findings(bundle: bundle), pattern: "every BMC read failed")
+    && any_contains(xs: mtcollins1_boot_bundle_findings(bundle: bundle_bmc_silent()), pattern: "every BMC read failed")
+}
+
+// AN EXIT-ZERO RESPONSE THAT DID NOT PARSE IS STILL THE BMC ANSWERING: with SEL, SDR and Redfish all
+// failed and the SMpro returning one byte, neither 'every BMC read failed' nor 'did not answer' is
+// rendered, and the probe keeps its MALFORMED standing in the dossier.
+test fn a_malformed_smpro_answer_means_the_bmc_answered() -> Bool {
+  let b = bundle_bmc_silent()
+  let bad = smpro_probe_outcome(raw: smpro_raw(socket: 0, register: smpro_manufacturer_id_reg.name, exit_code: 0, stdout: " cd\n", stderr: ""))
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
+    smpro: SmproProbed { outcomes: [bad] }, inventory: b.inventory, console: b.console }
+  let findings = mtcollins1_boot_bundle_findings(bundle: bundle)
+  !any_contains(xs: findings, pattern: "every BMC read failed") && !any_contains(xs: findings, pattern: "did not answer")
+    && contains(mtcollins1_boot_bundle_text(bundle: bundle), "MANUFACTURER_ID_REG: MALFORMED")
 }
 
 // ── IDENTITY COMPLETENESS ────────────────────────────────────────────────────────────────────
@@ -648,7 +702,7 @@ test fn a_negative_or_non_numeric_stat_size_is_no_size() -> Bool {
 test fn a_post_boot_sel_timeout_is_a_typed_after_section_and_moves_no_verdict() -> Bool {
   let b = bundle_socket1_absent()
   let timeout = bmc_ipmitool_read_cause(endpoint: "ipmi lanplus 192.168.1.228", at: "2026-09-23T15:12:43Z", exit_code: 124, stderr: "")
-  let bundle = MtCollins1BootDiagnosticBundle { attempt: AttemptRunId { run_id: "35871654468" }, outcome: "accepted", sel_before: b.sel_before, sel_after: SelSnapshotUnread { cause: timeout }, sdr_cache: b.sdr_cache, sensors: b.sensors, inventory: b.inventory, console: ConsoleNotConfigured }
+  let bundle = MtCollins1BootDiagnosticBundle { attempt: AttemptRunId { run_id: "35871654468" }, outcome: "accepted", sel_before: b.sel_before, sel_after: SelSnapshotUnread { cause: timeout }, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory, console: ConsoleNotConfigured }
   let text = mtcollins1_boot_bundle_text(bundle: bundle)
   let findings = mtcollins1_boot_bundle_findings(bundle: bundle)
   contains(text, "after: UNREAD: BMC timed out at ipmi lanplus 192.168.1.228 (2026-09-23T15:12:43Z): no answer within the diagnostics deadline (coreutils timeout exit 124)")
