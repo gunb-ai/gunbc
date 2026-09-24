@@ -1,0 +1,627 @@
+module v2.compiler.native_demand_schedule
+
+import v2.std.algebra { fold_list, length, list_map, list_snoc_item }
+import v2.std.collection { List, Map }
+import v2.std.dependency { DataDependsOn, DependencyRelation }
+import v2.std.demand_engine {
+  DemandAdmitted,
+  DemandAvailable,
+  DemandEngine,
+  DemandEntry,
+  DemandIdentity,
+  DemandLeaseOffer,
+  DemandNotAdmitted,
+  DemandRefused,
+  DemandState,
+  demand_engine_completion_keys,
+  demand_engine_empty,
+  demand_engine_entry,
+  demand_engine_next,
+  demand_engine_seal,
+  demand_engine_relate,
+  demand_engine_request,
+  demand_engine_settle,
+  demand_identity_eq,
+  demand_identity_key
+}
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import v2.std.node { Symbol }
+import std.algebra { Cons, Empty }
+import std.types { NonEmptyStr }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
+import std.materialization_provider {
+  DeclaredInput,
+  JudgmentContract,
+  native_module_infer_judgment_contract,
+  native_module_resolve_judgment_contract,
+  native_test_identity_judgment_contract
+}
+import std.materialization_ladder { DemandNature }
+import v2.compiler.compile {
+  NativeLaneModuleContextRowsDecided,
+  NativeLaneModulePrepared,
+  NativeLaneModulePreparation,
+  NativeLaneModuleResolution,
+  NativeLaneModuleResolved,
+  NativeLaneModuleResolveRowsDecided,
+  NativeLaneModuleRowsDecided,
+  NativeLaneUniverseModule,
+  NativeRouteMemberRow,
+  NativeTestContext,
+  NativeTestFileRefusal,
+  NativeTestPreparedModule,
+  native_lane_identity_row,
+  native_lane_module_inference,
+  native_lane_module_resolution
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE NATIVE EVAL LAYER AS A DERIVED DEMAND GRAPH
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// The emitted driver walks `for entry in universe.modules` and, inside it, `for declaration in
+// entry.declarations`. Those two loops ARE a dependency structure written as control flow: an
+// identity's evaluation consumes the prepared module that inference produced, and inference
+// consumes the tree that resolution produced. Nothing about that ordering is a policy choice --
+// it is what the values require -- so it is DERIVED here from the same three producers the loop
+// calls, rather than authored as a second roster beside them.
+//
+// WHY THE VERDICT PRODUCERS ARE UNCHANGED. This cut moves SCHEDULING authority and nothing else.
+// `native_lane_module_resolution`, `native_lane_module_inference` and `native_lane_identity_row`
+// are called here exactly as the loop calls them, with the same arguments in the same order, so
+// the verdicts are preserved BY CONSTRUCTION rather than by a comparison that could pass for the
+// wrong reason. A cut that also re-derived the verdicts would make a row difference ambiguous
+// between "the schedule changed" and "the judgment changed", which is the conflation that makes
+// an A/B receipt worthless.
+//
+// THE THREE STAGES ARE THREE DEMANDS, NOT ONE. Fusing them would hide exactly the fact the engine
+// exists to expose: a module whose resolution refuses must leave its identities BLOCKED on a named
+// refused prerequisite, not silently unevaluated, and that distinction is only visible if the
+// prerequisite is its own demand with its own settled state.
+
+// THE SUBJECT IS DERIVED FROM WHAT THE DEMAND IS ABOUT, and for an identity that is the PAIR. A
+// digest of the declaration alone would give `holds` in two modules one subject, and the engine
+// would then attach one to the other as an equal share-admitted demand and evaluate it once --
+// a wrong answer produced by a key that lost a field, which is why the pair is combined rather
+// than concatenated into a string whose separator could appear in either half.
+fn native_demand_module_subject(module: String) -> Fnv1a64Structural {
+  content_hash_atom(value: module as NonEmptyStr)
+}
+
+fn native_demand_identity_subject(module: String, declaration: String) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_atom(value: module as NonEmptyStr),
+    right: content_hash_atom(value: declaration as NonEmptyStr)
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// IDENTITY AND NATURE ARE READ OFF THE JUDGMENT CONTRACT, NEVER BUILT HERE
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// std.materialization_provider JudgmentContract is the authority for what a demand IS: its subject,
+// its result contract and its demand nature. A scheduler that constructed DemandIdentity values
+// itself would be a second answer to that question -- and the two would agree right up until one
+// of them gained a declared input, at which point the scheduler would key a demand the
+// materialization layer would not recognise, silently, in the direction where a stale result gets
+// served. So this module takes the contract and projects it; it derives nothing.
+//
+// THE SAME GOES FOR SHARING. `nature` decides whether two equal demands may attach in flight, and
+// that is a property of the JUDGMENT, not a policy the scheduler is entitled to choose. Reading it
+// here means a judgment that ever stops being pure withdraws its own share admission, once, at the
+// contract -- rather than in however many schedulers had hardcoded PureComputation beside it.
+fn native_demand_resolve_contract(module: String, compiler: DeclaredInput) -> JudgmentContract {
+  native_module_resolve_judgment_contract(
+    module_digest: native_demand_module_subject(module: module),
+    compiler: compiler
+  )
+}
+
+fn native_demand_infer_contract(module: String, compiler: DeclaredInput) -> JudgmentContract {
+  native_module_infer_judgment_contract(
+    module_digest: native_demand_module_subject(module: module),
+    compiler: compiler
+  )
+}
+
+fn native_demand_eval_contract(
+  module: String,
+  declaration: String,
+  compiler: DeclaredInput
+) -> JudgmentContract {
+  native_test_identity_judgment_contract(
+    identity_digest: native_demand_identity_subject(module: module, declaration: declaration),
+    compiler: compiler
+  )
+}
+
+fn native_demand_resolve_identity(module: String, compiler: DeclaredInput) -> DemandIdentity {
+  native_demand_resolve_contract(module: module, compiler: compiler).demand_identity
+}
+
+fn native_demand_infer_identity(module: String, compiler: DeclaredInput) -> DemandIdentity {
+  native_demand_infer_contract(module: module, compiler: compiler).demand_identity
+}
+
+fn native_demand_eval_identity(
+  module: String,
+  declaration: String,
+  compiler: DeclaredInput
+) -> DemandIdentity {
+  native_demand_eval_contract(
+    module: module,
+    declaration: declaration,
+    compiler: compiler
+  ).demand_identity
+}
+
+// THE ENGINE IS GENERIC IN ITS RESULT VALUE, so the three stages' three result shapes ride in one
+// coproduct. It is a coproduct rather than three engines because one ready queue over one identity
+// space is the whole point: three engines would reintroduce the cross-stage ordering question the
+// single queue answers, and would do it in a place with no typed blocked states.
+type NativeDemandValue
+  = NativeResolveValue { resolution: NativeLaneModuleResolution }
+  | NativeInferValue { preparation: NativeLaneModulePreparation }
+  | NativeEvalValue { row: NativeRouteMemberRow }
+
+// The binding from a keyed demand back to what it denotes. The engine keys, orders and admits; it
+// does not know what a key means, and it must not -- a scheduler that understood compiler stages
+// would be a second authority on both. This table is that knowledge, held beside the engine rather
+// than inside it.
+type NativeDemandSubject
+  = NativeResolveSubject { entry: NativeLaneUniverseModule }
+  | NativeInferSubject { entry: NativeLaneUniverseModule }
+  | NativeEvalSubject { module: String, declaration: String }
+
+type NativeDemandBinding {
+  identity: DemandIdentity
+  subject: NativeDemandSubject
+}
+
+type NativeDemandPlan {
+  engine: DemandEngine<NativeDemandValue>
+  bindings: List<NativeDemandBinding>
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// DERIVING THE GRAPH FROM THE UNIVERSE THE ROUTE ALREADY CARRIES
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// One resolve and one infer demand per module, one eval demand per declaration, and the edges the
+// values require. The universe roster is the SAME one the loop iterates, so the demand population
+// is exactly the population that would have been walked -- not a subset chosen here, and not a
+// hand-written list that could drift from it.
+fn native_demand_plan_module(
+  plan: NativeDemandPlan,
+  entry: NativeLaneUniverseModule,
+  compiler: DeclaredInput
+) -> NativeDemandPlan {
+  let resolve_contract = native_demand_resolve_contract(module: entry.module, compiler: compiler)
+  let infer_contract = native_demand_infer_contract(module: entry.module, compiler: compiler)
+  let resolve_id = resolve_contract.demand_identity
+  let infer_id = infer_contract.demand_identity
+  let with_stages = NativeDemandPlan {
+    engine: demand_engine_relate(
+      e: demand_engine_request(
+        e: demand_engine_request(e: plan.engine, id: resolve_id, nature: resolve_contract.demand_nature),
+        id: infer_id,
+        nature: infer_contract.demand_nature
+      ),
+      relation: DependencyRelation {
+        prerequisite: resolve_id,
+        dependent: infer_id,
+        kind: DataDependsOn
+      }
+    ),
+    bindings: list_snoc_item(
+      xs: list_snoc_item(
+        xs: plan.bindings,
+        item: NativeDemandBinding { identity: resolve_id, subject: NativeResolveSubject { entry: entry } }
+      ),
+      item: NativeDemandBinding { identity: infer_id, subject: NativeInferSubject { entry: entry } }
+    )
+  }
+  fold_list(
+    xs: entry.declarations,
+    empty: with_stages,
+    cons: fn(acc, declaration) {
+      let eval_contract = native_demand_eval_contract(
+        module: entry.module,
+        declaration: declaration,
+        compiler: compiler
+      )
+      let eval_id = eval_contract.demand_identity
+      NativeDemandPlan {
+        engine: demand_engine_relate(
+          e: demand_engine_request(e: acc.engine, id: eval_id, nature: eval_contract.demand_nature),
+          relation: DependencyRelation {
+            prerequisite: infer_id,
+            dependent: eval_id,
+            kind: DataDependsOn
+          }
+        ),
+        bindings: list_snoc_item(
+          xs: acc.bindings,
+          item: NativeDemandBinding {
+            identity: eval_id,
+            subject: NativeEvalSubject { module: entry.module, declaration: declaration }
+          }
+        )
+      }
+    }
+  )
+}
+
+fn native_demand_plan(
+  modules: List<NativeLaneUniverseModule>,
+  compiler: DeclaredInput
+) -> NativeDemandPlan {
+  let planned = fold_list(
+    xs: modules,
+    empty: NativeDemandPlan { engine: demand_engine_empty(), bindings: [] },
+    cons: fn(acc, entry) { native_demand_plan_module(plan: acc, entry: entry, compiler: compiler) }
+  )
+  NativeDemandPlan {
+    engine: demand_engine_seal(e: planned.engine),
+    bindings: planned.bindings
+  }
+}
+
+fn native_demand_binding(plan: NativeDemandPlan, id: DemandIdentity) -> Optional<NativeDemandSubject> {
+  fold_list(
+    xs: plan.bindings,
+    empty: optional_absent(),
+    cons: fn(acc, b) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if demand_identity_eq(a: b.identity, b: id) {
+            optional_present(value: b.subject)
+          } else {
+            optional_absent()
+          }
+      }
+    }
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE STATE-TRANSITION RECEIPT
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// One row per admission, in the order the single seat admitted them, carrying the demand key and
+// the state it settled into. It is RECORDED as it happens rather than reconstructed from final
+// states, because the order is the fact under test: two runs of one closure must admit the same
+// demands in the same order, and a final-state snapshot has already lost that.
+//
+// The key is the canonical demand encoding, so a receipt is comparable across runs without being
+// comparable across MEANINGS: two different subjects cannot print one key.
+type NativeDemandTransition {
+  key: String
+  settled: String
+}
+
+type NativeDemandRun {
+  engine: DemandEngine<NativeDemandValue>
+  transitions: List<NativeDemandTransition>
+  rows: List<NativeRouteMemberRow>
+}
+
+fn native_demand_settled_label(state: DemandState<NativeDemandValue>) -> String {
+  match state {
+    DemandAvailable { value: v } =>
+      match v {
+        NativeResolveValue { resolution: r } =>
+          match r {
+            NativeLaneModuleResolved { resolved: _ } => "resolve_available"
+            NativeLaneModuleContextRowsDecided { rows: _ } => "resolve_context_refused"
+            NativeLaneModuleResolveRowsDecided { rows: _ } => "resolve_refused"
+          }
+        NativeInferValue { preparation: p } =>
+          match p {
+            NativeLaneModulePrepared { prepared: _ } => "infer_available"
+            NativeLaneModuleRowsDecided { rows: _ } => "infer_refused"
+          }
+        NativeEvalValue { row: _ } => "eval_available"
+      }
+    DemandRefused => "refused"
+    _ => "unsettled"
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// RUNNING ONE DEMAND: THE ENGINE SAYS WHICH, THIS SAYS WHAT
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// A stage reads its prerequisite's value OUT OF THE ENGINE rather than from a local binding, which
+// is what makes the dependency real rather than decorative. If infer read a prepared tree that the
+// resolve demand had not published, the edge between them would be a comment.
+//
+// A REFUSED PREREQUISITE PRODUCES NO WORK HERE AND THAT IS THE POINT. The engine has already
+// decided such a demand never becomes ready, so this function is never asked about it; the rows
+// for those identities come from the refusing stage's own arms, which are the same arms the
+// displaced loop pushed from.
+fn native_demand_resolved_tree(
+  engine: DemandEngine<NativeDemandValue>,
+  module: String,
+  compiler: DeclaredInput
+) -> Optional<NativeLaneModuleResolution> {
+  match demand_engine_entry(e: engine, id: native_demand_resolve_identity(module: module, compiler: compiler)) {
+    Absent => optional_absent()
+    Present { value: entry } =>
+      match entry.state {
+        DemandAvailable { value: v } =>
+          match v {
+            NativeResolveValue { resolution: r } => optional_present(value: r)
+            _ => optional_absent()
+          }
+        _ => optional_absent()
+      }
+  }
+}
+
+fn native_demand_prepared(
+  engine: DemandEngine<NativeDemandValue>,
+  module: String,
+  compiler: DeclaredInput
+) -> Optional<NativeTestPreparedModule> {
+  match demand_engine_entry(e: engine, id: native_demand_infer_identity(module: module, compiler: compiler)) {
+    Absent => optional_absent()
+    Present { value: entry } =>
+      match entry.state {
+        DemandAvailable { value: v } =>
+          match v {
+            NativeInferValue { preparation: p } =>
+              match p {
+                NativeLaneModulePrepared { prepared: prepared } => optional_present(value: prepared)
+                NativeLaneModuleRowsDecided { rows: _ } => optional_absent()
+              }
+            _ => optional_absent()
+          }
+        _ => optional_absent()
+      }
+  }
+}
+
+// THE THREE PRODUCERS ARE CALLED HERE EXACTLY AS THE DISPLACED LOOP CALLED THEM. Same functions,
+// same arguments, same order. That is what makes "verdicts preserved" a structural claim rather
+// than an empirical hope.
+fn native_demand_execute(
+  run: NativeDemandRun,
+  subject: NativeDemandSubject,
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  compiler: DeclaredInput
+) -> DemandState<NativeDemandValue> {
+  match subject {
+    NativeResolveSubject { entry: entry } =>
+      DemandAvailable {
+        value: NativeResolveValue {
+          resolution: native_lane_module_resolution(
+            context: context,
+            refusal_index: refusal_index,
+            entry: entry
+          )
+        }
+      }
+    NativeInferSubject { entry: entry } =>
+      match native_demand_resolved_tree(engine: run.engine, module: entry.module, compiler: compiler) {
+        Absent => DemandRefused
+        Present { value: resolution } =>
+          match resolution {
+            NativeLaneModuleResolved { resolved: resolved } =>
+              DemandAvailable {
+                value: NativeInferValue {
+                  preparation: native_lane_module_inference(entry: entry, resolved: resolved)
+                }
+              }
+            NativeLaneModuleContextRowsDecided { rows: _ } => DemandRefused
+            NativeLaneModuleResolveRowsDecided { rows: _ } => DemandRefused
+          }
+      }
+    NativeEvalSubject { module: module, declaration: declaration } =>
+      match native_demand_prepared(engine: run.engine, module: module, compiler: compiler) {
+        Absent => DemandRefused
+        Present { value: prepared } =>
+          DemandAvailable {
+            value: NativeEvalValue {
+              row: native_lane_identity_row(
+                prepared: prepared,
+                module: module,
+                declaration: declaration
+              )
+            }
+          }
+      }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE ONE-SEAT DRAIN
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// Ask the engine for the next admissible demand, run it, settle it, repeat. ONE seat, so this cut
+// changes no timing and can change no interleaving -- it moves the authority for WHICH demand runs
+// next out of a hand-written loop and into the engine, and nothing else. Multi-seat realization is
+// a later cut against this same drain.
+//
+// THE FUEL IS THE POPULATION, NOT A GUESS. Every admission settles exactly one demand and a settled
+// demand is never re-admitted, so the number of admissions is bounded by the number of entries;
+// the bound is supplied rather than discovered because the substrate requires it (DESIGN section 4).
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// TWO GRAINS, ONE IMPLEMENTATION
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// `native_demand_step` runs exactly one admitted demand and returns the advanced run. The driver
+// calls it in a loop so it can open a span around each step -- which is the whole reason the
+// step-wise grain exists, since a `.dag` fold cannot read a clock and an opaque whole-population
+// call would have dissolved the per-demand rows of the cost partition.
+//
+// `native_demand_drain` is the same thing without the clock, and it is written IN TERMS OF the
+// step rather than beside it. Two spellings of one drain would be the fork DESIGN section 3
+// forbids, and it would be the expensive kind: the measured route and the ordinary route could
+// then disagree about what ran, which is precisely the question both exist to answer.
+//
+// NEITHER GRAIN DECIDES ORDER. Both ask the engine for the next admissible demand; the difference
+// is only who holds the clock.
+fn native_demand_step(
+  run: NativeDemandRun,
+  plan: NativeDemandPlan,
+  identity: DemandIdentity,
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  compiler: DeclaredInput
+) -> NativeDemandRun {
+  match native_demand_binding(plan: plan, id: identity) {
+    Absent => run
+    Present { value: subject } =>
+      let settled = native_demand_execute(
+        run: run,
+        subject: subject,
+        context: context,
+        refusal_index: refusal_index,
+        compiler: compiler
+      )
+      NativeDemandRun {
+        engine: demand_engine_settle(e: run.engine, id: identity, state: settled),
+        transitions: list_snoc_item(
+          xs: run.transitions,
+          item: NativeDemandTransition {
+            key: demand_identity_key(id: identity),
+            settled: native_demand_settled_label(state: settled)
+          }
+        ),
+        rows: native_demand_collect_rows(rows: run.rows, settled: settled)
+      }
+  }
+}
+
+// THE ADMISSION THE DRIVER ASKS FOR. One seat today; the seat count is the caller's, not the
+// engine's and not this module's, because capacity is a realization fact and authoring a width
+// here would be the control the demand-engine program deletes.
+fn native_demand_next(run: NativeDemandRun, seats: Int) -> DemandAdmission {
+  demand_engine_next(e: run.engine, offer: DemandLeaseOffer { seats: seats })
+}
+
+fn native_demand_drain(
+  run: NativeDemandRun,
+  plan: NativeDemandPlan,
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  compiler: DeclaredInput,
+  fuel: Int
+) -> NativeDemandRun {
+  if fuel <= 0 {
+    run
+  } else {
+    match native_demand_next(run: run, seats: 1) {
+      DemandNotAdmitted { cause: _ } => run
+      DemandAdmitted { identity: identity } =>
+        native_demand_drain(
+          run: native_demand_step(
+            run: run,
+            plan: plan,
+            identity: identity,
+            context: context,
+            refusal_index: refusal_index,
+            compiler: compiler
+          ),
+          plan: plan,
+          context: context,
+          refusal_index: refusal_index,
+          compiler: compiler,
+          fuel: fuel - 1
+        )
+    }
+  }
+}
+
+// THE DEMAND'S STAGE, FOR THE COST ROW IT IS CHARGED TO. The driver needs to know which exclusive
+// row a step's span belongs to, and that is a property of the demand's subject rather than
+// something the driver should re-derive from the key.
+fn native_demand_stage_label(plan: NativeDemandPlan, identity: DemandIdentity) -> String {
+  match native_demand_binding(plan: plan, id: identity) {
+    Absent => "unbound"
+    Present { value: subject } =>
+      match subject {
+        NativeResolveSubject { entry: _ } => "resolve"
+        NativeInferSubject { entry: _ } => "infer"
+        NativeEvalSubject { module: _, declaration: _ } => "eval"
+      }
+  }
+}
+
+// THE POPULATION IS ASSEMBLED FROM THE SAME ARMS THE LOOP PUSHED FROM. A refusing resolve or infer
+// contributes its decided rows -- one per declaration, produced by the refusing stage -- and an
+// evaluated identity contributes its own row. Nothing here mints a verdict.
+fn native_demand_collect_rows(
+  rows: List<NativeRouteMemberRow>,
+  settled: DemandState<NativeDemandValue>
+) -> List<NativeRouteMemberRow> {
+  match settled {
+    DemandAvailable { value: v } =>
+      match v {
+        NativeResolveValue { resolution: r } =>
+          match r {
+            NativeLaneModuleResolved { resolved: _ } => rows
+            NativeLaneModuleContextRowsDecided { rows: decided } => list_append_rows(left: rows, right: decided)
+            NativeLaneModuleResolveRowsDecided { rows: decided } => list_append_rows(left: rows, right: decided)
+          }
+        NativeInferValue { preparation: p } =>
+          match p {
+            NativeLaneModulePrepared { prepared: _ } => rows
+            NativeLaneModuleRowsDecided { rows: decided } => list_append_rows(left: rows, right: decided)
+          }
+        NativeEvalValue { row: row } => list_snoc_item(xs: rows, item: row)
+      }
+    _ => rows
+  }
+}
+
+fn list_append_rows(
+  left: List<NativeRouteMemberRow>,
+  right: List<NativeRouteMemberRow>
+) -> List<NativeRouteMemberRow> {
+  fold_list(xs: right, empty: left, cons: fn(acc, r) { list_snoc_item(xs: acc, item: r) })
+}
+
+// THE ENTRY POINT THE DRIVER CALLS IN PLACE OF ITS MODULE LOOP.
+fn native_demand_schedule_universe(
+  modules: List<NativeLaneUniverseModule>,
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  compiler: DeclaredInput
+) -> NativeDemandRun {
+  let plan = native_demand_plan(modules: modules, compiler: compiler)
+  native_demand_drain(
+    run: native_demand_run_empty(plan: plan),
+    plan: plan,
+    context: context,
+    refusal_index: refusal_index,
+    compiler: compiler,
+    fuel: native_demand_plan_size(plan: plan) + 1
+  )
+}
+
+fn native_demand_run_empty(plan: NativeDemandPlan) -> NativeDemandRun {
+  NativeDemandRun { engine: plan.engine, transitions: [], rows: [] }
+}
+
+fn native_demand_plan_size(plan: NativeDemandPlan) -> Int {
+  length(xs: plan.bindings)
+}
+
+fn native_demand_run_rows(run: NativeDemandRun) -> List<NativeRouteMemberRow> {
+  run.rows
+}
+
+fn native_demand_run_transition_count(run: NativeDemandRun) -> Int {
+  length(xs: run.transitions)
+}
+
+fn native_demand_run_receipt_lines(run: NativeDemandRun) -> List<String> {
+  list_map(xs: run.transitions, f: fn(t) { concat(concat(t.key, " "), t.settled) })
+}

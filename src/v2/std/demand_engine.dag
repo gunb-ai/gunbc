@@ -128,6 +128,21 @@ fn demand_state_is_running<V>(s: DemandState<V>) -> Bool {
 // A demand is SETTLED when it will not change again without new work: available or refused. The
 // predicate exists because "done" and "available" are different questions and only one of them
 // releases a dependent.
+// A CYCLE IS A PROPERTY OF THE RELATION SET, NOT OF A MOMENT. The relations are fixed once the
+// plan is sealed, so a demand either sits on a cycle for the whole run or never does -- and
+// re-deciding that on every readiness derivation would pay a transitive walk per completion for an
+// answer that cannot have changed. The verdict is taken once, at seal, and carried.
+fn demand_state_is_cycle_blocked<V>(s: DemandState<V>) -> Bool {
+  match s {
+    DemandBlocked { cause: c } =>
+      match c {
+        BlockedByCycle { members: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
 fn demand_state_is_settled<V>(s: DemandState<V>) -> Bool {
   demand_state_is_available(s: s) || demand_state_is_refused(s: s)
 }
@@ -159,14 +174,24 @@ fn demand_entry_new<V>(identity: DemandIdentity, nature: DemandNature) -> Demand
   }
 }
 
+// `readiness_computations` is not instrumentation riding along -- it is the only thing that makes
+// the engine's central law CHECKABLE from outside. "A completion re-evaluates its DIRECT dependents"
+// and "a completion rescans the graph" reach identical final states; a rescan is merely slower, and
+// slower is not something a witness over values can observe. Counting derivations makes the
+// difference observable: settling a demand that has one dependent among fifty unrelated demands must
+// cost ONE readiness derivation, not fifty-one.
+//
+// It counts DERIVATIONS, not entries visited. Locating the dependents is a scan of the relation
+// list; deciding whether a demand is ready is the work this bounds.
 type DemandEngine<V> {
   entries: List<DemandEntry<V>>
   relations: List<DependencyRelation<DemandIdentity>>
   completion_order: List<DemandIdentity>
+  readiness_computations: Int
 }
 
 fn demand_engine_empty<V>() -> DemandEngine<V> {
-  DemandEngine { entries: [], relations: [], completion_order: [] }
+  DemandEngine { entries: [], relations: [], completion_order: [], readiness_computations: 0 }
 }
 
 fn demand_engine_entry<V>(e: DemandEngine<V>, id: DemandIdentity) -> Optional<DemandEntry<V>> {
@@ -245,7 +270,8 @@ fn demand_engine_request<V>(
             }
           ),
           relations: e.relations,
-          completion_order: e.completion_order
+          completion_order: e.completion_order,
+          readiness_computations: e.readiness_computations
         }
       } else {
         DemandEngine {
@@ -266,14 +292,16 @@ fn demand_engine_request<V>(
             }
           ),
           relations: e.relations,
-          completion_order: e.completion_order
+          completion_order: e.completion_order,
+          readiness_computations: e.readiness_computations
         }
       }
     Absent =>
       DemandEngine {
         entries: list_snoc_item(xs: e.entries, item: demand_entry_new(identity: id, nature: nature)),
         relations: e.relations,
-        completion_order: e.completion_order
+        completion_order: e.completion_order,
+        readiness_computations: e.readiness_computations
       }
   }
 }
@@ -285,7 +313,8 @@ fn demand_engine_relate<V>(
   DemandEngine {
     entries: e.entries,
     relations: list_snoc_item(xs: e.relations, item: relation),
-    completion_order: e.completion_order
+    completion_order: e.completion_order,
+    readiness_computations: e.readiness_computations
   }
 }
 
@@ -352,8 +381,8 @@ fn demand_readiness<V>(e: DemandEngine<V>, id: DemandIdentity) -> DemandState<V>
     Present { value: entry } =>
       if demand_state_is_settled(s: entry.state) {
         entry.state
-      } else if demand_in_cycle(e: e, id: id) {
-        DemandBlocked { cause: BlockedByCycle { members: [id] } }
+      } else if demand_state_is_cycle_blocked(s: entry.state) {
+        entry.state
       } else {
         let prereqs = demand_engine_prerequisites(e: e, id: id)
         let missing = filter(xs: prereqs, predicate: fn(p) { !demand_engine_has(e: e, id: p) })
@@ -395,6 +424,37 @@ fn demand_readiness<V>(e: DemandEngine<V>, id: DemandIdentity) -> DemandState<V>
 // RE-EVALUATION IS TOTAL OVER THE ENTRIES AND IS APPLIED AFTER EVERY COMPLETION, which is what
 // makes the queue LIVE rather than a plan computed once. A demand becomes ready the moment its own
 // last prerequisite lands, not when some batch containing it closes.
+// SEALING IS THE PLAN-TIME PASS AND IT RUNS ONCE. It marks every demand that sits on a cycle, then
+// derives readiness for the whole population to find the roots. After this, readiness is only ever
+// derived for the DIRECT dependents of something that just settled -- see demand_engine_settle,
+// where the cost of a completion is bounded by that demand's out-degree rather than by the size of
+// the graph.
+fn demand_engine_seal<V>(e: DemandEngine<V>) -> DemandEngine<V> {
+  demand_engine_reevaluate(
+    e: DemandEngine {
+      entries: list_map(
+        xs: e.entries,
+        f: fn(entry) {
+          if demand_in_cycle(e: e, id: entry.identity) {
+            DemandEntry {
+              identity: entry.identity,
+              nature: entry.nature,
+              state: DemandBlocked { cause: BlockedByCycle { members: [entry.identity] } },
+              attachments: entry.attachments,
+              productions: entry.productions
+            }
+          } else {
+            entry
+          }
+        }
+      ),
+      relations: e.relations,
+      completion_order: e.completion_order,
+      readiness_computations: e.readiness_computations
+    }
+  )
+}
+
 fn demand_engine_reevaluate<V>(e: DemandEngine<V>) -> DemandEngine<V> {
   DemandEngine {
     entries: list_map(
@@ -410,7 +470,8 @@ fn demand_engine_reevaluate<V>(e: DemandEngine<V>) -> DemandEngine<V> {
       }
     ),
     relations: e.relations,
-    completion_order: e.completion_order
+    completion_order: e.completion_order,
+    readiness_computations: e.readiness_computations + length(xs: e.entries)
   }
 }
 
@@ -473,8 +534,12 @@ fn demand_engine_next<V>(e: DemandEngine<V>, offer: DemandLeaseOffer) -> DemandA
 // COMPLETION
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //
-// Settling a demand appends it to the completion order and re-evaluates every dependent
-// immediately. The completion order is recorded rather than derived afterwards because it is the
+// Settling a demand appends it to the completion order and re-derives readiness for its DIRECT
+// DEPENDENTS ONLY -- not for the population. That bound is the engine's central law, not an
+// optimization of it: a completion costs the settling demand's out-degree, so a graph of ten
+// thousand independent demands costs the same per completion as a graph of ten, and readiness
+// cannot drift for a demand nothing just satisfied. `readiness_computations` is what makes the
+// bound checkable from outside, since a rescan would reach the same final states. The completion order is recorded rather than derived afterwards because it is the
 // receipt the A/B cutover compares: two runs of one closure must complete in one order, and an
 // order reconstructed from final states has already lost it.
 fn demand_engine_settle<V>(
@@ -482,28 +547,49 @@ fn demand_engine_settle<V>(
   id: DemandIdentity,
   state: DemandState<V>
 ) -> DemandEngine<V> {
-  demand_engine_reevaluate(
-    e: DemandEngine {
-      entries: list_map(
-        xs: e.entries,
-        f: fn(entry) {
-          if demand_identity_eq(a: entry.identity, b: id) {
-            DemandEntry {
-              identity: entry.identity,
-              nature: entry.nature,
-              state: state,
-              attachments: entry.attachments,
-              productions: entry.productions + 1
-            }
-          } else {
-            entry
+  let settled = DemandEngine {
+    entries: list_map(
+      xs: e.entries,
+      f: fn(entry) {
+        if demand_identity_eq(a: entry.identity, b: id) {
+          DemandEntry {
+            identity: entry.identity,
+            nature: entry.nature,
+            state: state,
+            attachments: entry.attachments,
+            productions: entry.productions + 1
           }
+        } else {
+          entry
         }
-      ),
-      relations: e.relations,
-      completion_order: list_snoc_item(xs: e.completion_order, item: id)
-    }
-  )
+      }
+    ),
+    relations: e.relations,
+    completion_order: list_snoc_item(xs: e.completion_order, item: id),
+    readiness_computations: e.readiness_computations
+  }
+  let direct = demand_engine_dependents(e: settled, id: id)
+  DemandEngine {
+    entries: list_map(
+      xs: settled.entries,
+      f: fn(entry) {
+        if contains(xs: direct, item: entry.identity, eq: fn(a, b) { demand_identity_eq(a: a, b: b) }) {
+          DemandEntry {
+            identity: entry.identity,
+            nature: entry.nature,
+            state: demand_readiness(e: settled, id: entry.identity),
+            attachments: entry.attachments,
+            productions: entry.productions
+          }
+        } else {
+          entry
+        }
+      }
+    ),
+    relations: settled.relations,
+    completion_order: settled.completion_order,
+    readiness_computations: settled.readiness_computations + length(xs: direct)
+  }
 }
 
 fn demand_engine_completion_keys<V>(e: DemandEngine<V>) -> List<String> {

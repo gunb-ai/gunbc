@@ -1,0 +1,149 @@
+module v2.test.demand_engine.native_demand_schedule
+
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.demand_engine {
+  DemandEngine,
+  BlockedByRefusedPrerequisite,
+  DemandAvailable,
+  DemandBlocked,
+  DemandReady,
+  DemandRefused,
+  DemandWaiting,
+  demand_engine_entry,
+  demand_engine_ready_queue,
+  demand_engine_settle,
+  demand_identity_key
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Present }
+import std.algebra { Cons, Empty }
+import v2.std.text { String }
+import v2.compiler.compile { NativeLaneUniverseModule }
+import std.content_hash { Fnv1a64Structural }
+import std.materialization_provider { DeclaredInput }
+import std.types { NonEmptyStr }
+import v2.compiler.native_demand_schedule {
+  NativeDemandPlan,
+  NativeDemandValue,
+  native_demand_eval_identity,
+  native_demand_infer_identity,
+  native_demand_plan,
+  native_demand_resolve_identity
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS THE DERIVATION, NOT THE COMPILER. These claims are about what
+// native_demand_plan derives from a universe roster -- which demands exist, which prerequisites
+// relate them, and what is ready when. Running a real resolve to obtain a roster would re-execute
+// the whole front end inside every claim about graph SHAPE, paying for a subject none of them are
+// about (DESIGN section 3, witness standing rule). The pairing obligation is discharged by the
+// production route, which derives its plan from the real universe and runs it; nothing here
+// removes the last execution of that path.
+fn g_module(name: String, declarations: List<String>) -> NativeLaneUniverseModule {
+  NativeLaneUniverseModule { module: name, path: ^probe_path, declarations: declarations }
+}
+
+// THE COMPILER IS SUPPLIED, and it is supplied rather than read because these claims are about the
+// DERIVATION, not about which compiler ran. What matters here is that it reaches the identity at
+// all: two of the claims below turn on demands being distinct, and a compiler that silently dropped
+// out of the key would not change either verdict -- so it is held constant and the distinctness is
+// made to turn on the fields under test.
+fn g_compiler() -> DeclaredInput {
+  DeclaredInput {
+    ref: "probe_compiler" as NonEmptyStr,
+    digest: Fnv1a64Structural { digest: "00000000000000c0" }
+  }
+}
+
+fn g_one_module_plan() -> NativeDemandPlan {
+  native_demand_plan(
+    modules: [g_module(name: "p.a", declarations: ["h1", "h2", "h3"])],
+    compiler: g_compiler()
+  )
+}
+
+// ONE MODULE WITH THREE DECLARATIONS IS FIVE DEMANDS, NOT ONE. The stages are separate demands
+// because a module whose resolution refuses must leave its identities blocked on a NAMED refused
+// prerequisite, and that is only observable if the prerequisite is its own demand.
+test fn a_module_derives_one_demand_per_stage_and_one_per_declaration_holds() -> Bool {
+  length(xs: g_one_module_plan().bindings) == 5
+}
+
+// ONLY THE ROOT OF THE CHAIN IS READY AT THE START. If infer or eval were ready before resolve
+// settled, the edges would be decoration and the engine would admit work whose input does not
+// exist yet.
+test fn only_resolve_is_ready_before_anything_settles_holds() -> Bool {
+  let plan = g_one_module_plan()
+  length(xs: demand_engine_ready_queue(e: plan.engine)) == 1
+    && g_state_is_ready(plan: plan, key: demand_identity_key(id: native_demand_resolve_identity(module: "p.a", compiler: g_compiler())))
+}
+
+fn g_state_is_ready(plan: NativeDemandPlan, key: String) -> Bool {
+  match demand_engine_ready_queue(e: plan.engine) {
+    Cons { head: first, tail: _ } => demand_identity_key(id: first) == key
+    Empty => false
+  }
+}
+
+// A REFUSED PREPARATION BLOCKS ITS IDENTITIES ON A NAMED PREREQUISITE. This is the seven-test case
+// that matters: when a module cannot be prepared, its identities must not read as "waiting" (which
+// means later) or as "ready" (which would evaluate against a tree that does not exist). They must
+// name what refused.
+test fn a_refused_inference_blocks_every_identity_on_the_named_prerequisite_holds() -> Bool {
+  let plan = g_one_module_plan()
+  let infer = native_demand_infer_identity(module: "p.a", compiler: g_compiler())
+  let refused = demand_engine_settle(e: plan.engine, id: infer, state: DemandRefused)
+  g_eval_blocked_on(engine: refused, declaration: "h1")
+    && g_eval_blocked_on(engine: refused, declaration: "h2")
+    && g_eval_blocked_on(engine: refused, declaration: "h3")
+    && length(xs: demand_engine_ready_queue(e: refused)) == 0
+}
+
+fn g_eval_blocked_on(engine: DemandEngine<NativeDemandValue>, declaration: String) -> Bool {
+  match demand_engine_entry(e: engine, id: native_demand_eval_identity(module: "p.a", declaration: declaration, compiler: g_compiler())) {
+    Absent => false
+    Present { value: entry } =>
+      match entry.state {
+        DemandBlocked { cause: cause } =>
+          match cause {
+            BlockedByRefusedPrerequisite { prerequisite: p } =>
+              demand_identity_key(id: p)
+                == demand_identity_key(id: native_demand_infer_identity(module: "p.a", compiler: g_compiler()))
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+// TWO MODULES DECLARING THE SAME NAME ARE TWO DEMANDS. The identity subject combines module and
+// declaration rather than concatenating them, so `holds` in p.a and `holds` in p.b cannot collapse
+// into one key -- which would make the engine attach one to the other as an equal share-admitted
+// demand and evaluate ONE of them, reporting a verdict for a declaration it never ran.
+test fn one_declaration_name_in_two_modules_is_two_demands_holds() -> Bool {
+  demand_identity_key(id: native_demand_eval_identity(module: "p.a", declaration: "holds", compiler: g_compiler()))
+    != demand_identity_key(id: native_demand_eval_identity(module: "p.b", declaration: "holds", compiler: g_compiler()))
+}
+
+// THE STAGES OF ONE MODULE ARE DISTINCT DEMANDS TOO. They share a subject digest -- both are about
+// the module -- so only the artifact kind separates them, and a key that dropped the kind would
+// fuse resolve with infer.
+test fn the_two_module_stages_are_distinct_demands_holds() -> Bool {
+  demand_identity_key(id: native_demand_resolve_identity(module: "p.a", compiler: g_compiler()))
+    != demand_identity_key(id: native_demand_infer_identity(module: "p.a", compiler: g_compiler()))
+}
+
+// THE COMPILER REACHES THE KEY. A declared input that fell out of the identity would be invisible
+// to every other claim here -- they all hold it constant -- and would surface only later, as a
+// cross-run lookup serving one compiler's answer for another's question. So it is asserted directly.
+test fn the_compiler_input_is_part_of_the_demand_identity_holds() -> Bool {
+  let other = DeclaredInput {
+    ref: "probe_compiler" as NonEmptyStr,
+    digest: Fnv1a64Structural { digest: "00000000000000c1" }
+  }
+  demand_identity_key(id: native_demand_resolve_identity(module: "p.a", compiler: g_compiler()))
+    != demand_identity_key(id: native_demand_resolve_identity(module: "p.a", compiler: other))
+}
