@@ -1,75 +1,90 @@
 module test.claim.machine_intake.oob_power_action_witness
 
-import std.types { Bool, List }
+import std.types { Bool, Int, List, String }
+import extdeps.filesystem.filesystem_io
 import extdeps.bmc.ipmi_chassis_control {
   ChassisPowerObservation,
-  ChassisPowerRead,
-  ChassisStatusUndecodable,
   ChassisUnreadable,
-  IpmiChassisControlAction,
-  IpmiChassisHardReset,
-  IpmiChassisPowerCycle,
-  IpmiChassisPowerUp,
   chassis_observation,
-  ipmi_chassis_control_verb,
 }
 import gunbc.machine_intake_oob_boot_handoff {
+  OobPowerAction,
+  OobPowerCycle,
+  OobPowerUp,
   PowerActionSelected,
   PowerActionUnselectable,
-  PowerReadbackExpectation,
+  PowerNeverLeftOn,
+  PowerNeverReachedOn,
+  PowerReachedOffNotReturnedOn,
+  PowerReadbackUnavailable,
   PowerTransitionObserved,
   PowerTransitionPending,
+  PowerTransitionProgress,
   oob_power_action_selection,
-  power_readback_expectation,
+  oob_power_action_verb,
+  power_readback_start,
   power_readback_step,
+  power_transition_progress,
 }
-import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_power_action }
 import gunbc.machine_intake_mtcollins1_platform_observation {
   SupplyUncabledOperatorReported,
   mtcollins1_psu2_ac_loss_cause,
 }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable }
 
-// THE CONTROLS FOR THE MT. COLLINS OFF-HOST DEFECT (run 36023602469). Each decides through the
-// production folds the handoff calls: oob_power_action_selection picks the verb from the §28.2 read,
-// power_readback_step judges each post-actuation sample. The effectful poll is those steps with a
-// ChassisStatus read and a sleep between them, so folding a supplied sample sequence here exercises
-// the same decision the poll makes, sample by sample.
+// THE CONTROLS FOR THE MT. COLLINS OFF-HOST DEFECT (run 36023602469) AND FOR REVIEW 5310234917.
+// Each decides through the production folds the handoff calls: oob_power_action_selection picks the
+// action from the §28.2 read, power_readback_step judges each post-actuation sample, and
+// power_transition_progress names how far an exhausted read-back got. The effectful poll is those
+// steps with a ChassisStatus read and a sleep between them, so folding a supplied sample sequence
+// here exercises the same decision the poll makes, sample by sample.
 
 fn off() -> ChassisPowerObservation { chassis_observation(success: true, stdout: "System Power         : off\n") }
 
 fn on() -> ChassisPowerObservation { chassis_observation(success: true, stdout: "System Power         : on\n") }
 
-fn observed_within(action: IpmiChassisControlAction, samples: List<ChassisPowerObservation>) -> Bool {
-  let decided = fold(samples, init: PowerTransitionPending { expectation: power_readback_expectation(action: action) }, f: (acc, s) => match acc {
+type ReadbackOutcome
+  = ReadbackObserved
+  | ReadbackExhausted { progress: PowerTransitionProgress }
+
+fn read_back(action: OobPowerAction, samples: List<ChassisPowerObservation>) -> ReadbackOutcome {
+  let decided = fold(samples, init: PowerTransitionPending { progress: power_readback_start(action: action) }, f: (acc, s) => match acc {
     PowerTransitionObserved => PowerTransitionObserved
-    PowerTransitionPending { expectation: e } => power_readback_step(expectation: e, sample: s)
+    PowerTransitionPending { progress: p } => power_readback_step(progress: p, sample: s)
   })
   match decided {
-    PowerTransitionObserved => true
-    PowerTransitionPending { expectation: _ } => false
+    PowerTransitionObserved => ReadbackObserved
+    PowerTransitionPending { progress: p } => ReadbackExhausted { progress: power_transition_progress(progress: p) }
+  }
+}
+
+fn observed_within(action: OobPowerAction, samples: List<ChassisPowerObservation>) -> Bool {
+  match read_back(action: action, samples: samples) {
+    ReadbackObserved => true
+    ReadbackExhausted { progress: _ } => false
   }
 }
 
 test fn an_off_host_selects_power_up_not_the_restart_verb() -> Bool {
-  match oob_power_action_selection(observed: off(), running_restart: mtcollins1_power_action) {
-    PowerActionSelected { action: a } => ipmi_chassis_control_verb(action: a) == "on"
+  match oob_power_action_selection(observed: off()) {
+    PowerActionSelected { action: a } => oob_power_action_verb(action: a) == "on"
     PowerActionUnselectable { observed_state: _ } => false
   }
 }
 
-test fn an_on_host_selects_the_running_restart_verb() -> Bool {
-  match oob_power_action_selection(observed: on(), running_restart: mtcollins1_power_action) {
-    PowerActionSelected { action: a } => ipmi_chassis_control_verb(action: a) == "cycle"
+test fn an_on_host_selects_power_cycle_and_never_power_up() -> Bool {
+  match oob_power_action_selection(observed: on()) {
+    PowerActionSelected { action: a } => oob_power_action_verb(action: a) == "cycle"
     PowerActionUnselectable { observed_state: _ } => false
   }
 }
 
 test fn an_unread_or_undecodable_power_state_selects_nothing() -> Bool {
-  let unread = match oob_power_action_selection(observed: ChassisUnreadable, running_restart: IpmiChassisPowerCycle) {
+  let unread = match oob_power_action_selection(observed: ChassisUnreadable) {
     PowerActionUnselectable { observed_state: _ } => true
     PowerActionSelected { action: _ } => false
   }
-  let unknown = match oob_power_action_selection(observed: chassis_observation(success: true, stdout: "System Power         : unknown\n"), running_restart: IpmiChassisPowerCycle) {
+  let unknown = match oob_power_action_selection(observed: chassis_observation(success: true, stdout: "System Power         : unknown\n")) {
     PowerActionUnselectable { observed_state: _ } => true
     PowerActionSelected { action: _ } => false
   }
@@ -79,24 +94,88 @@ test fn an_unread_or_undecodable_power_state_selects_nothing() -> Bool {
 // THE INCIDENT ITSELF: a cycle at an off host, exit 0, the chassis never moves. Every sample reads
 // off, so the off-then-on transition is never completed and the read-back refuses.
 test fn an_off_host_cycled_with_no_transition_is_not_observed() -> Bool {
-  !observed_within(action: IpmiChassisPowerCycle, samples: [off(), off(), off(), off()])
+  !observed_within(action: OobPowerCycle, samples: [off(), off(), off(), off()])
 }
 
 test fn a_cycle_that_never_leaves_on_is_not_observed() -> Bool {
-  !observed_within(action: IpmiChassisPowerCycle, samples: [on(), on(), on()])
+  match read_back(action: OobPowerCycle, samples: [on(), on(), on()]) {
+    ReadbackExhausted { progress: PowerNeverLeftOn } => true
+    _ => false
+  }
+}
+
+// REVIEW 5310234917 ITEM 2: ON -> OFF -> unreadable established the OFF half, and exhaustion must
+// keep it rather than reporting the last (unreadable) sample as "no transition".
+test fn a_cycle_that_reached_off_and_exhausted_keeps_the_off_half() -> Bool {
+  (match read_back(action: OobPowerCycle, samples: [on(), off(), ChassisUnreadable, ChassisUnreadable]) {
+    ReadbackExhausted { progress: PowerReachedOffNotReturnedOn } => true
+    _ => false
+  }) && (match read_back(action: OobPowerCycle, samples: [ChassisUnreadable, ChassisUnreadable]) {
+    ReadbackExhausted { progress: PowerReadbackUnavailable } => true
+    _ => false
+  })
 }
 
 test fn a_cycle_observed_off_then_on_within_the_bound_passes() -> Bool {
-  observed_within(action: IpmiChassisPowerCycle, samples: [on(), off(), ChassisUnreadable, on()])
+  observed_within(action: OobPowerCycle, samples: [on(), off(), ChassisUnreadable, on()])
 }
 
 test fn a_power_up_observed_on_within_the_bound_passes() -> Bool {
-  observed_within(action: IpmiChassisPowerUp, samples: [off(), off(), on()])
-    && !observed_within(action: IpmiChassisPowerUp, samples: [off(), ChassisUnreadable, off()])
+  observed_within(action: OobPowerUp, samples: [off(), off(), on()])
+    && (match read_back(action: OobPowerUp, samples: [off(), ChassisUnreadable, off()]) {
+      ReadbackExhausted { progress: PowerNeverReachedOn } => true
+      _ => false
+    })
 }
 
-test fn a_hard_reset_is_never_witnessed_by_power_state() -> Bool {
-  !observed_within(action: IpmiChassisHardReset, samples: [on(), off(), on()])
+// REVIEW 5310234917 ITEM 1: POWER DOWN, HARD RESET AND A §28.3 POWER UP CANNOT ENTER THIS ROUTE.
+// The only action type the power write takes is OobPowerAction, and it is chosen by the selection
+// alone: power up only from an OFF read (an_on_host_selects_power_cycle_and_never_power_up), power
+// cycle only from an ON read. Each source below hands one broad §28.3 action to the route's action
+// type and must be refused by the compiler as DeclaredTypeNotInhabited (the value does not inhabit OobPowerAction). The control source hands it the
+// modeled OobPowerCycle and emits no such row, so a red below is the wrong action refused, not
+// background the harness emits for this import closure.
+fn action_source(arg_import: String, arg: String) -> String {
+  join([
+    "module probe_oob_power_action",
+    "import std.types { NonEmptyStr }",
+    "import gunbc.machine_intake_oob_boot_handoff { oob_power_action_verb }",
+    arg_import,
+    concat("fn verb() -> NonEmptyStr { oob_power_action_verb(action: ", arg, ") }"),
+    "",
+  ], "\n")
+}
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn not_inhabited_count(source: String) -> Int {
+  match census_of(source: source) {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => (r.diagnostic_class as String) == "DeclaredTypeNotInhabited" && r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn chassis_action_source(action: String) -> String {
+  action_source(arg_import: concat("import extdeps.bmc.ipmi_chassis_control { ", action, " }"), arg: action)
+}
+
+test fn the_modeled_power_action_compiles_clean() -> Bool {
+  not_inhabited_count(source: action_source(arg_import: "import gunbc.machine_intake_oob_boot_handoff { OobPowerCycle }", arg: "OobPowerCycle")) == 0
+}
+
+test fn power_down_cannot_reach_the_power_write() -> Bool {
+  not_inhabited_count(source: chassis_action_source(action: "IpmiChassisPowerDown")) >= 1
+}
+
+test fn hard_reset_cannot_reach_the_power_write() -> Bool {
+  not_inhabited_count(source: chassis_action_source(action: "IpmiChassisHardReset")) >= 1
+}
+
+test fn a_broad_power_up_cannot_reach_the_power_write() -> Bool {
+  not_inhabited_count(source: chassis_action_source(action: "IpmiChassisPowerUp")) >= 1
 }
 
 test fn the_psu2_ac_loss_carries_the_operator_report() -> Bool {

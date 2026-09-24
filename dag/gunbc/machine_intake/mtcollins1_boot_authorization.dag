@@ -5,10 +5,9 @@ import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image
 import gunbc.machine_intake_mtcollins1_boot_image_fetch { mtcollins1_boot_image_sha256 }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stem, mtcollins1_census_volume_id }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name }
-import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_power_action, mtcollins1_cdrom_selection }
+import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.fleet_intent_network { operator_host_srv2 }
-import extdeps.bmc.ipmi_chassis_control { IpmiChassisControlAction }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 
 // THE BOOT SUBJECT: what one Mt. Collins boot attaches, selects and power-cycles. It was the signed
@@ -25,7 +24,6 @@ type MtCollins1BootSubject {
   export_host: NonEmptyStr
   export_dir: NonEmptyStr
   selection: IpmiBootSelection
-  power_action: IpmiChassisControlAction
   execution_revision: NonEmptyStr
 }
 
@@ -98,7 +96,6 @@ fn mtcollins1_boot_subject_for(medium: MtCollins1BootMedium, execution_revision:
     export_host: operator_host_srv2 as NonEmptyStr,
     export_dir: mtcollins1_boot_export_dir,
     selection: mtcollins1_cdrom_selection,
-    power_action: mtcollins1_power_action,
     execution_revision: execution_revision,
   }
 }

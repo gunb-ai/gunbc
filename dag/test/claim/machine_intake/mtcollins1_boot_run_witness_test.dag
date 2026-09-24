@@ -214,7 +214,6 @@ fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium:
     export_host: census_subject.export_host,
     export_dir: census_subject.export_dir,
     selection: census_subject.selection,
-    power_action: census_subject.power_action,
     execution_revision: census_subject.execution_revision,
   }
   (match mtcollins1_boot_terminal_verdict(capture: restarted, subject: census_subject, medium: census_medium) {
