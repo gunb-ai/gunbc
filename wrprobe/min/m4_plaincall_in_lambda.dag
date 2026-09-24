@@ -1,0 +1,10 @@
+module chunk
+
+fn f(xs: List<Int>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, _) {
+    match h(v: acc) {
+      true => acc
+      false => acc
+    }
+  })
+}

@@ -1,0 +1,5 @@
+module chunk
+
+fn f(rest: FreeMonoid<String>, first: String, separator: String) -> String {
+  fold_list(xs: rest, empty: first, cons: fn(acc, field) { list_append(left: list_append(left: acc, right: separator), right: field) })
+}
