@@ -33,7 +33,8 @@ pub use crate::std_types::{
     container_expected_arity, container_param_name, container_template_algebra,
     container_template_alias_algebra, container_template_alias_rows, is_container_type,
 };
-pub use crate::v1_compiler_infer_env::TypeBinding;
+pub use crate::v1_compiler_infer_env::type_reference_declaration_ref;
+pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
@@ -3186,30 +3187,32 @@ pub fn infer_binop_type_node(
     op: BinOp,
     left_type: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> Rc<BinOpInferred> {
-    {
-        let operand_name = crate::v1_std_core::qualified_last_segment(
-            crate::v1_std_core::authored_name_at(source_indices.clone(), left_type.clone()),
-        );
-        match op.clone() {
-            BinOp::Sub => {
-                match crate::std_coercion::dag_subtraction_result_type(operand_name.clone()) {
-                    Some(escaped) => Rc::new(BinOpInferred {
-                        result_type: nominal_type_ref(escaped.clone()),
-                        algebra_field: std::option::Option::None,
-                    }),
-                    std::option::Option::None => infer_arithmetic_binop_type_node(
-                        op.clone(),
-                        left_type.clone(),
-                        source_indices.clone(),
-                    ),
-                }
-            }
-            _ => infer_arithmetic_binop_type_node(
-                op.clone(),
+    match op.clone() {
+        BinOp::Sub => {
+            let escaped = match crate::v1_compiler_infer_env::type_reference_declaration_ref(
                 left_type.clone(),
                 source_indices.clone(),
-            ),
+                env.clone(),
+            ) {
+                Some(operand) => crate::std_coercion::dag_subtraction_result_type(operand.clone()),
+                std::option::Option::None => std::option::Option::None,
+            };
+            match escaped.clone() {
+                Some(from_type) => Rc::new(BinOpInferred {
+                    result_type: nominal_type_ref(from_type.clone()),
+                    algebra_field: std::option::Option::None,
+                }),
+                std::option::Option::None => infer_arithmetic_binop_type_node(
+                    op.clone(),
+                    left_type.clone(),
+                    source_indices.clone(),
+                ),
+            }
+        }
+        _ => {
+            infer_arithmetic_binop_type_node(op.clone(), left_type.clone(), source_indices.clone())
         }
     }
 }

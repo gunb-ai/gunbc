@@ -7,6 +7,8 @@ use self::ReferenceIdentityUnavailableCause::*;
 use self::TypeDeclarationProvenance::*;
 use self::TypeRealizationDecision::*;
 use self::TypeReferenceIdentity::*;
+pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -127,6 +129,13 @@ pub struct CastRule {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RefinementCastRule {
+    pub from_type: String,
+    pub to_type: String,
+    pub to_declaration: Rc<DeclarationRef>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastSyntax {
     pub template: String,
     pub cast_rules: Rc<Vec<Rc<CastRule>>>,
@@ -152,14 +161,17 @@ pub fn grounded_primitive_coproduct_identities() -> Rc<Vec<Rc<CastRule>>> {
     CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
 }
 
-pub fn refinement_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
+pub fn refinement_cast_rules() -> Rc<Vec<Rc<RefinementCastRule>>> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<CastRule>>> = {
-            serde_json::from_value(serde_json::json!([{"from_type": "Int", "to_type": "Nat"}]))
-                .expect("valid data definition")
-        };
-    }
-    CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
+            static CACHED: Rc<Vec<Rc<RefinementCastRule>>> = {
+                Rc::new(vec![Rc::new(RefinementCastRule {
+        from_type: "Int".to_string(),
+        to_type: "Nat".to_string(),
+        to_declaration: crate::std_decl_ref::decl_ref("std.nat".to_string(), "Nat".to_string()),
+    })])
+            };
+        }
+    CACHED.with(|c: &Rc<Vec<Rc<RefinementCastRule>>>| c.clone())
 }
 
 pub fn dag_cast_requires_proof(source_type: String, target_type: String) -> bool {
@@ -177,11 +189,11 @@ pub fn dag_cast_requires_proof(source_type: String, target_type: String) -> bool
     }
 }
 
-pub fn dag_subtraction_result_type(operand_type: String) -> Option<String> {
+pub fn dag_subtraction_result_type(operand: Rc<DeclarationRef>) -> Option<String> {
     match Rc::new({
         let mut __result = Vec::new();
         for r in refinement_cast_rules().iter().cloned() {
-            if (r.to_type.clone() == operand_type.clone()) {
+            if crate::std_decl_ref::declaration_ref_eq(r.to_declaration.clone(), operand.clone()) {
                 __result.push(r);
             }
         }
