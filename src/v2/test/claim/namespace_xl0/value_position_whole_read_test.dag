@@ -45,7 +45,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // body_lowering_reason_call_argument_unread (with operator_operand_unread, 85 added and 4 removed
 // (cause, path) identities on the native lane against #12145's parent). gunbc#12173 repaired both
 // readers by reading the value whole through body_lower_value_lowered; the claims below that hold are
-// its permanent regression controls, red on the truncating fold and on the refusing one alike.
+// its permanent regression controls: measured red on the refusing fold (main before #12173), and red
+// on the truncating fold by construction, since truncation drops the atom they look for (not run).
 //
 // THE MODULES VARY ONE THING EACH. An undeclared name as the argument of a call scrutinee must refuse
 // at resolve at its own atom (the scrutinee reached resolve whole); the declared twin resolves. An
