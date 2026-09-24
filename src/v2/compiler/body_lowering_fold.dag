@@ -3140,45 +3140,11 @@ fn body_lower_value_is_function_value_shell(node: Node) -> Bool {
 // only for what that declines; an argument neither reads is still a located refusal, and a
 // refusal either raises is the argument's.
 //
-// A LIST LITERAL ANYWHERE IN THE VALUE STILL REFUSES. Body lowering has no lowered form for
-// `[e1, .., en]`: body_lower_primary_expr answers it with its first atom, the `[` token, so its
-// elements would reach no reference site. Until list literals lower on every route, an argument
-// whose value contains one -- directly, or inside a record or group this reader now accepts --
-// refuses at the list, so reading more argument shapes never turns a refusal into a silent drop.
-fn body_lower_is_list_literal(node: Node) -> Bool {
-  match sugar_sequence_pair_optional(node: node) {
-    Absent => false
-    Present { value: pair } =>
-      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: pair.left)) {
-        Present { value: id } => id == ^dag_token_lbracket
-        Absent => false
-      }
-  }
-}
-
-fn body_lower_find_list_literal_optional(node: Node) -> Optional<Node> {
-  if body_lower_is_list_literal(node: node) {
-    optional_present(value: node)
-  } else {
-    fold(node.children, init: optional_absent(), f: fn(acc, e) {
-      match acc {
-        Present { value: _ } => acc
-        Absent => body_lower_find_list_literal_optional(node: e.target)
-      }
-    })
-  }
-}
-
-fn body_lower_arg_value_lowered(arg_capture: Node, value_capture: Node) -> Outcome<Node> {
-  match body_lower_find_list_literal_optional(node: value_capture) {
-    Present { value: list } =>
-      outcome_rejected(
-        d: body_lower_diagnostic(reason: ^body_lowering_reason_list_literal_unlowered, n: list)
-      )
-    Absent => body_lower_arg_value_read(arg_capture: arg_capture, value_capture: value_capture)
-  }
-}
-
+// A LIST LITERAL IN THE VALUE LOWERS WITH IT. An argument whose value is or contains `[e1, .., en]`
+// once refused its whole module (body_lowering_reason_list_literal_unlowered), because body lowering
+// had no lowered form for the literal. The literal's producer is now body_lower_list_literal, reached
+// from body_lower_primary_expr, so the value reader below lowers it here exactly as in any other
+// value position; no argument-specific list handling remains.
 // A FUNCTION VALUE IN ARGUMENT POSITION IS CARRIED WHOLE, NOT READ AS ITS PARAMETER. `f => body`
 // and `fn(a) { body }` have no producer on this route (body_lower_value_is_function_value_shell), so
 // body_lower_value_lowered declines them. Before gunbc#12145 the operand reader then answered the
@@ -3217,14 +3183,14 @@ fn body_lower_call_arg_value(arg_capture: Node) -> Outcome<Node> {
   if body_lower_call_arg_capture_is_named(arg_capture: arg_capture) {
     match body_lower_named_arg_value_capture_optional(arg_capture: arg_capture) {
       Present { value: value_capture } =>
-        body_lower_arg_value_lowered(arg_capture: arg_capture, value_capture: value_capture)
+        body_lower_arg_value_read(arg_capture: arg_capture, value_capture: value_capture)
       Absent =>
         outcome_rejected(
           d: body_lower_diagnostic(reason: ^body_lowering_reason_call_argument_unread, n: arg_capture)
         )
     }
   } else {
-    body_lower_arg_value_lowered(arg_capture: arg_capture, value_capture: arg_capture)
+    body_lower_arg_value_read(arg_capture: arg_capture, value_capture: arg_capture)
   }
 }
 
@@ -6466,6 +6432,111 @@ fn body_lower_paren_group_lowered(group: Node, inner: Node) -> Outcome<Node> {
   }
 }
 
+// A LIST LITERAL IS SUGAR FOR ITS FREE-MONOID CONSTRUCTION (DESIGN section 4). `List<T>` is
+// v2.std.algebra FreeMonoid<T>, and the literal is lowered through that module's own operations,
+// as ordinary calls, in ONE canonical form: `[]` is freemonoid_empty(), `[e]` is
+// freemonoid_singleton(item: e) -- the generator embedding T -> FreeMonoid<T> -- and
+// `[e1, e2, .., en]` is the right-nested list_append(left: freemonoid_singleton(item: e1), right:
+// <the lowering of [e2, .., en]>). No new node kind, atom or constructor: each head is the
+// declaring qualified name (a spine, which resolve binds through its qualified door and mints as a
+// resolved reference), so resolve, infer and eval read calls they already read. Element order IS
+// the nesting and every element keeps its authored occurrence, so the lowered form cannot reorder,
+// truncate or drop an element without changing its shape. The grammar writes the literal as
+// seq(`[`, seq(optional comma_list(expr), `]`)) (v2.extdeps.languages.dag
+// dag_grammar_primary_expr_core); its items are read by the one comma-list walker. Every element is
+// lowered WHOLE through body_lower_value_lowered, the value reader every value position uses, so a
+// call, record, nested list or operator expression in element position lowers as it would
+// anywhere else. An element that reader cannot lower refuses located at that element. Before this
+// producer body_lower_primary_expr answered the literal with its `[` atom and every element was
+// dropped; call arguments refused the whole module instead (body_lowering_reason_list_literal_unlowered).
+fn body_lower_list_literal_items_capture_optional(captured: Node) -> Optional<Node> {
+  match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: captured)) {
+    Absent => optional_absent()
+    Present { value: pair } =>
+      if body_lower_node_is_token(node: pair.left, token: ^dag_token_lbracket) {
+        match sugar_sequence_pair_optional(node: pair.right) {
+          Absent => optional_absent()
+          Present { value: rest } =>
+            if body_lower_node_is_token(node: rest.right, token: ^dag_token_rbracket) {
+              optional_present(value: rest.left)
+            } else {
+              optional_absent()
+            }
+        }
+      } else {
+        optional_absent()
+      }
+  }
+}
+
+fn body_lower_list_literal_element(item: Node) -> Outcome<Node> {
+  match body_lower_value_lowered(node: item) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: Present { value: lowered }, diagnostics: d } =>
+      outcome_with_diagnostics(value: lowered, diagnostics: d)
+    Accepted { value: Absent, diagnostics: _ } =>
+      outcome_rejected(
+        d: body_lower_diagnostic(reason: ^body_lowering_reason_list_element_unlowered, n: item)
+      )
+  }
+}
+
+fn body_lower_list_algebra_head(operation: Symbol, source: Node) -> Node {
+  body_lower_qualified_name_spine_node(segments: [^v2, ^std, ^algebra, operation], source: source)
+}
+
+fn body_lower_list_algebra_call(operation: Symbol, operands: List<Node>, source: Node) -> Node {
+  node_lowered_from(
+    kind: ComputationNode { behavior: Transform },
+    children: fold(
+      operands,
+      init: [Edge { label: Positional, target: body_lower_list_algebra_head(operation: operation, source: source) }],
+      f: fn(acc, operand) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: operand }) }
+    ),
+    source: source
+  )
+}
+
+fn body_lower_list_construct(elements: List<Node>, source: Node) -> Node {
+  match elements {
+    Empty => body_lower_list_algebra_call(operation: ^freemonoid_empty, operands: Empty, source: source)
+    Cons { head: element, tail: rest } =>
+      match rest {
+        Empty => body_lower_list_algebra_call(operation: ^freemonoid_singleton, operands: [element], source: source)
+        Cons { head: _, tail: _ } =>
+          body_lower_list_algebra_call(
+            operation: ^list_append,
+            operands: [
+              body_lower_list_algebra_call(operation: ^freemonoid_singleton, operands: [element], source: source),
+              body_lower_list_construct(elements: rest, source: source)
+            ],
+            source: source
+          )
+      }
+  }
+}
+
+fn body_lower_list_literal(literal: Node, items_capture: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: body_lower_comma_list_items(
+      list_capture: items_capture,
+      shape_refusal: ^body_lowering_reason_list_literal_shape_unread
+    ),
+    f: fn(items) {
+      bind_outcome(
+        o: fold(items, init: outcome_accepted(value: Empty), f: fn(acc, item) {
+          bind_outcome(o: acc, f: fn(elements) {
+            bind_outcome(o: body_lower_list_literal_element(item: item), f: fn(element) {
+              outcome_accepted(value: list_snoc_item(xs: elements, item: element))
+            })
+          })
+        }),
+        f: fn(elements) { outcome_accepted(value: body_lower_list_construct(elements: elements, source: literal)) }
+      )
+    }
+  )
+}
+
 fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
   let captured = match body_lower_unwrap_captured(shell: shell) {
     Present { value: inner } => inner
@@ -6473,6 +6544,10 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
   }
   match body_lower_int_literal_with_magnitude_optional(node: captured) {
         Present { value: lit } => outcome_accepted(value: lit)
+        Absent =>
+      match body_lower_list_literal_items_capture_optional(captured: captured) {
+        Present { value: items_capture } =>
+          body_lower_list_literal(literal: captured, items_capture: items_capture)
         Absent =>
       match body_lower_try_record_literal(captured: captured) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -6537,6 +6612,7 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
           }
       }
   }
+      }
       }
 }
 

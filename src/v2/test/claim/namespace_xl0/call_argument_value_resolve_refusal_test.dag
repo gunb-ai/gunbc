@@ -229,10 +229,17 @@ fn cav_is_resolved(v: CavVerdict) -> Bool {
   }
 }
 
-// Refused at normalize, and the fatal cause is the list literal the argument reader does not lower.
-fn cav_is_list_refused(v: CavVerdict) -> Bool {
+// A list argument is no longer refused at normalize: v2.compiler.body_lowering_fold
+// body_lower_list_literal lowers it as its free-monoid construction and the module REACHES RESOLVE.
+// The verdict is "reached resolve", not "unbound at the element's atom", because this ingest does
+// not carry v2.std.algebra, whose operations the lowered list calls, so which reference resolve
+// reports first is not this claim's subject. That every element is lowered, in order, is claimed
+// on the lowered tree by v2.test.claim.namespace_xl0.list_literal_value_lowering. Before the
+// producer these modules were CavFileRefused under body_lowering_reason_list_literal_unlowered.
+fn cav_reached_resolve(v: CavVerdict) -> Bool {
   match v {
-    CavFileRefused { fatal_reason: Present { value: r } } => r == ^body_lowering_reason_list_literal_unlowered
+    CavRefused { reason: _, at_atom: _ } => true
+    CavResolved => true
     _ => false
   }
 }
@@ -246,18 +253,18 @@ fn cav_is_unbound_at(v: CavVerdict, spelling: Symbol) -> Bool {
   }
 }
 
-test fn a_named_list_argument_refuses_at_normalize_at_the_list() -> Bool {
+test fn a_named_list_argument_reaches_resolve() -> Bool {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: v, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _ } =>
-      cav_is_list_refused(v: v)
+      cav_reached_resolve(v: v)
     CavContextRefused => false
   }
 }
 
-test fn a_positional_list_argument_refuses_at_normalize_at_the_list() -> Bool {
+test fn a_positional_list_argument_reaches_resolve() -> Bool {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: v, call_named: _, call_list: _, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _ } =>
-      cav_is_list_refused(v: v)
+      cav_reached_resolve(v: v)
     CavContextRefused => false
   }
 }
@@ -270,10 +277,10 @@ test fn an_undeclared_name_in_a_nested_call_argument_refuses_at_resolve_at_its_a
   }
 }
 
-test fn a_list_inside_a_nested_call_argument_refuses_at_normalize_at_the_list() -> Bool {
+test fn a_list_inside_a_nested_call_argument_reaches_resolve() -> Bool {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: v, call_positional: _, record: _, record_list: _, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _ } =>
-      cav_is_list_refused(v: v)
+      cav_reached_resolve(v: v)
     CavContextRefused => false
   }
 }
@@ -294,10 +301,10 @@ test fn an_undeclared_name_in_a_record_literal_argument_refuses_at_resolve_at_it
   }
 }
 
-test fn a_list_inside_a_record_literal_argument_refuses_at_normalize_at_the_list() -> Bool {
+test fn a_list_inside_a_record_literal_argument_reaches_resolve() -> Bool {
   match cav_outcomes() {
     CavOutcomesDecided { list_named: _, list_positional: _, call_named: _, call_list: _, call_positional: _, record: _, record_list: v, group: _, literals: _, empty_list: _, declared_inside: _, plain_name: _, match_scrutinee: _ } =>
-      cav_is_list_refused(v: v)
+      cav_reached_resolve(v: v)
     CavContextRefused => false
   }
 }

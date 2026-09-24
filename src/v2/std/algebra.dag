@@ -45,6 +45,13 @@ type Equivalence<T> {
 fn freemonoid_empty<T>() -> FreeMonoid<T> {
   Empty
 }
+
+// The free monoid's generator embedding T -> FreeMonoid<T>, the value-side twin of
+// non_empty_singleton for FreeSemigroup. A list literal lowers through it
+// (v2.compiler.body_lowering_fold body_lower_list_construct).
+fn freemonoid_singleton<T>(item: T) -> FreeMonoid<T> {
+  Cons { head: item, tail: Empty }
+}
 type FreeMonoidUniqueState<T> {
   seen: FreeMonoid<T>
   unique: Bool

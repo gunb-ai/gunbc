@@ -1,0 +1,276 @@
+module v2.test.claim.namespace_xl0.list_literal_value_lowering
+
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list, length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { ComputationNode, Node, Symbol, Transform, node_subtree_nodes }
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_node }
+import v2.std.collection { List, list_at_optional }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A LIST LITERAL LOWERS TO ITS FREE-MONOID CONSTRUCTION, EVERY ELEMENT WHOLE AND IN ORDER.
+//
+// THE SUBJECT IS v2.compiler.body_lowering_fold body_lower_list_literal, reached through the value
+// reader every value position uses (body_lower_value_lowered, via body_lower_primary_expr), on the
+// production route the resolver is handed: program_assembly module_roots_from_source_root_ingest,
+// projected through normalized_tree_roots_to_nodes. The one canonical lowered form is
+//   []            freemonoid_empty()
+//   [e]           freemonoid_singleton(item: e)
+//   [e1, .., en]  list_append(left: freemonoid_singleton(item: e1), right: <[e2, .., en]>)
+// each head the v2.std.algebra qualified name. Before the producer the literal lowered to its `[`
+// atom in body position and refused its whole module in argument position
+// (body_lowering_reason_list_literal_unlowered).
+//
+// THE MODULES VARY ONE THING EACH: a list of calls, a nested list, an empty list in argument
+// position, and a three-element list in argument position. The reader below decodes a lowered node
+// back into its element list only through the canonical form, and each claim compares the WHOLE
+// decoded list against the authored elements in order, so a producer that kept only the first
+// element, dropped the tail, reordered, or answered `[` fails every claim; the mutation control at
+// the bottom states that directly.
+data llv_calls_source: String = "module v2.test.llv_calls\n\nimport v2.std.logic { Bool }\n\nfn llv_id(p: Bool) -> Bool { p }\n\nfn llv_probe(llv_a: Bool, llv_b: Bool) -> List<Bool> { [llv_id(p: llv_a), llv_id(p: llv_b)] }\n"
+
+data llv_nested_source: String = "module v2.test.llv_nested\n\nimport v2.std.logic { Bool }\n\nfn llv_probe(llv_c: Bool, llv_d: Bool, llv_e: Bool) -> List<List<Bool>> { [[llv_c], [llv_d, llv_e]] }\n"
+
+data llv_empty_arg_source: String = "module v2.test.llv_empty_arg\n\nimport v2.std.logic { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(p: Bool) -> Bool { llv_take(xs: []) }\n"
+
+data llv_arg_source: String = "module v2.test.llv_arg\n\nimport v2.std.logic { Bool }\n\nfn llv_take(xs: List<Bool>) -> Bool { true }\n\nfn llv_probe(llv_f: Bool, llv_g: Bool, llv_h: Bool) -> Bool { llv_take(xs: [llv_f, llv_g, llv_h]) }\n"
+
+fn llv_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data llv_ingest: SourceRootIngest = Cons {
+    head: llv_read(source: llv_calls_source, id: ^llv_calls_artifact, unit: ^llv_calls_cu, path: "src/v2/test/fixture/namespace_xl0/llv_calls.dag"),
+    tail: Cons {
+      head: llv_read(source: llv_nested_source, id: ^llv_nested_artifact, unit: ^llv_nested_cu, path: "src/v2/test/fixture/namespace_xl0/llv_nested.dag"),
+      tail: Cons {
+        head: llv_read(source: llv_empty_arg_source, id: ^llv_empty_arg_artifact, unit: ^llv_empty_arg_cu, path: "src/v2/test/fixture/namespace_xl0/llv_empty_arg.dag"),
+        tail: Cons {
+          head: llv_read(source: llv_arg_source, id: ^llv_arg_artifact, unit: ^llv_arg_cu, path: "src/v2/test/fixture/namespace_xl0/llv_arg.dag"),
+          tail: Empty
+        }
+      }
+    }
+  }
+
+// The ingest is enrolled warm (v2.workflow.floor_pure_producer_share); the walk runs per claim.
+fn llv_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: llv_ingest, lm: dag_language_model())
+}
+
+fn llv_roots() -> FreeMonoid<Node> {
+  match llv_normalized() {
+    Accepted { value: roots, diagnostics: _ } => normalized_tree_roots_to_nodes(roots: roots)
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+// ---- reading the canonical form ---------------------------------------------------------------
+
+// A Transform whose head is the v2.std.algebra qualified name `operation`: its operands, else Absent.
+fn llv_algebra_operands(n: Node, operation: Symbol) -> Optional<List<Node>> {
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      match node_positional_child_targets(node: n) {
+        Empty => optional_absent()
+        Cons { head: head, tail: operands } =>
+          match qualified_name_from_node(root: head) {
+            Accepted { value: qn, diagnostics: _ } =>
+              if llv_is_algebra_name(qn: qn, operation: operation) { optional_present(value: operands) } else { optional_absent() }
+            Rejected { diagnostics: _ } => optional_absent()
+          }
+      }
+    _ => optional_absent()
+  }
+}
+
+fn llv_is_algebra_name(qn: QualifiedName, operation: Symbol) -> Bool {
+  match qn {
+    Cons { head: a, tail: Cons { head: b, tail: Cons { head: c, tail: Cons { head: d, tail: Empty } } } } =>
+      (a == ^v2) && (b == ^std) && (c == ^algebra) && (d == operation)
+    _ => false
+  }
+}
+
+fn llv_sole(xs: List<Node>) -> Optional<Node> {
+  if length(xs: xs) == 1 { list_at_optional(xs: xs, index: 0) } else { optional_absent() }
+}
+
+// The singleton cell's element, when `n` is freemonoid_singleton(item: e).
+fn llv_singleton_element(n: Node) -> Optional<Node> {
+  match llv_algebra_operands(n: n, operation: ^freemonoid_singleton) {
+    Present { value: operands } => llv_sole(xs: operands)
+    Absent => optional_absent()
+  }
+}
+
+// The element list a lowered list node denotes, read ONLY through the canonical form; any other
+// node (including a `[` atom or an n-ary form) answers Absent.
+fn llv_list_elements(n: Node) -> Optional<List<Node>> {
+  match llv_algebra_operands(n: n, operation: ^freemonoid_empty) {
+    Present { value: Empty } => optional_present(value: Empty)
+    Present { value: _ } => optional_absent()
+    Absent =>
+      match llv_singleton_element(n: n) {
+        Present { value: e } => optional_present(value: [e])
+        Absent =>
+          match llv_algebra_operands(n: n, operation: ^list_append) {
+            Present { value: Cons { head: left, tail: Cons { head: right, tail: Empty } } } =>
+              match llv_singleton_element(n: left) {
+                Present { value: first } =>
+                  match llv_list_elements(n: right) {
+                    Present { value: rest } => optional_present(value: Cons { head: first, tail: rest })
+                    Absent => optional_absent()
+                  }
+                Absent => optional_absent()
+              }
+            _ => optional_absent()
+          }
+      }
+  }
+}
+
+// ---- the authored elements --------------------------------------------------------------------
+
+type LlvElement
+  = LlvAtom { id: Symbol }
+  | LlvCall { callee: Symbol, inner: Symbol }
+  | LlvList { items: List<LlvElement> }
+
+fn llv_is_atom(n: Node, id: Symbol) -> Bool {
+  match node_atom_identity_optional(node: n) {
+    Present { value: got } => got == id
+    Absent => false
+  }
+}
+
+// callee(p: inner): a Transform whose head is the callee atom and whose sole operand is the atom.
+fn llv_is_call(n: Node, callee: Symbol, inner: Symbol) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      match node_positional_child_targets(node: n) {
+        Cons { head: head, tail: Cons { head: arg, tail: Empty } } =>
+          llv_is_atom(n: head, id: callee) && llv_is_atom(n: arg, id: inner)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn llv_element_matches(n: Node, expected: LlvElement) -> Bool {
+  match expected {
+    LlvAtom { id: id } => llv_is_atom(n: n, id: id)
+    LlvCall { callee: c, inner: i } => llv_is_call(n: n, callee: c, inner: i)
+    LlvList { items: items } => llv_list_matches(n: n, items: items)
+  }
+}
+
+fn llv_elements_match(got: List<Node>, expected: List<LlvElement>) -> Bool {
+  match got {
+    Empty =>
+      match expected {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+    Cons { head: g, tail: gs } =>
+      match expected {
+        Empty => false
+        Cons { head: e, tail: es } => llv_element_matches(n: g, expected: e) && llv_elements_match(got: gs, expected: es)
+      }
+  }
+}
+
+// The node is a lowered list whose elements are EXACTLY `items`, in order.
+fn llv_list_matches(n: Node, items: List<LlvElement>) -> Bool {
+  match llv_list_elements(n: n) {
+    Present { value: got } => llv_elements_match(got: got, expected: items)
+    Absent => false
+  }
+}
+
+// A call `callee(xs: <list>)` whose sole argument is exactly the list.
+fn llv_call_with_list_matches(n: Node, callee: Symbol, items: List<LlvElement>) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      match node_positional_child_targets(node: n) {
+        Cons { head: head, tail: Cons { head: arg, tail: Empty } } =>
+          llv_is_atom(n: head, id: callee) && llv_list_matches(n: arg, items: items)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+type LlvShape
+  = LlvListShape { items: List<LlvElement> }
+  | LlvArgShape { callee: Symbol, items: List<LlvElement> }
+
+fn llv_node_has_shape(n: Node, shape: LlvShape) -> Bool {
+  match shape {
+    LlvListShape { items: items } => llv_list_matches(n: n, items: items)
+    LlvArgShape { callee: c, items: items } => llv_call_with_list_matches(n: n, callee: c, items: items)
+  }
+}
+
+fn llv_any_node(shape: LlvShape) -> Bool {
+  fold_list(xs: llv_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) { a || llv_node_has_shape(n: n, shape: shape) })
+  })
+}
+
+// ---- the claims -------------------------------------------------------------------------------
+
+test fn a_list_of_calls_lowers_every_call_whole_in_order() -> Bool {
+  llv_any_node(shape: LlvListShape {
+    items: [LlvCall { callee: ^llv_id, inner: ^llv_a }, LlvCall { callee: ^llv_id, inner: ^llv_b }]
+  })
+}
+
+test fn a_nested_list_lowers_each_inner_list_whole_in_order() -> Bool {
+  llv_any_node(shape: LlvListShape {
+    items: [
+      LlvList { items: [LlvAtom { id: ^llv_c }] },
+      LlvList { items: [LlvAtom { id: ^llv_d }, LlvAtom { id: ^llv_e }] }
+    ]
+  })
+}
+
+test fn an_empty_list_argument_lowers_to_freemonoid_empty() -> Bool {
+  llv_any_node(shape: LlvArgShape { callee: ^llv_take, items: Empty })
+}
+
+test fn a_list_argument_lowers_every_element_in_order() -> Bool {
+  llv_any_node(shape: LlvArgShape {
+    callee: ^llv_take,
+    items: [LlvAtom { id: ^llv_f }, LlvAtom { id: ^llv_g }, LlvAtom { id: ^llv_h }]
+  })
+}
+
+// THE MUTATION CONTROL: the argument's list is exactly three elements, so the first-element-only
+// and drop-the-tail readings of it are ABSENT from the argument position. A producer that kept only
+// the first element (or dropped the tail) would make these present and the claim red; so would a
+// reader that decoded an n-ary or truncated form as the whole list.
+test fn a_list_argument_is_not_its_first_element_or_a_truncation() -> Bool {
+  !llv_any_node(shape: LlvArgShape { callee: ^llv_take, items: [LlvAtom { id: ^llv_f }] })
+    && !llv_any_node(shape: LlvArgShape { callee: ^llv_take, items: [LlvAtom { id: ^llv_f }, LlvAtom { id: ^llv_g }] })
+    && !llv_any_node(shape: LlvArgShape { callee: ^llv_take, items: [LlvAtom { id: ^llv_h }, LlvAtom { id: ^llv_g }, LlvAtom { id: ^llv_f }] })
+}
