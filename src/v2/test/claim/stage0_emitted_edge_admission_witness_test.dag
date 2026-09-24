@@ -1,7 +1,8 @@
 module test.claim.stage0_emitted_edge_admission_witness
 
-import std.types { Bool }
+import std.types { Bool, List, String }
 import gunbc.rust_emitted_edge { rust_prelude_emitted_edges, semantic_source_reference_edge }
+import gunbc.stage0_crate_partition_generated { GeneratedPartitionCrateRow, generated_partition_crate_rows }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.stage0_emitted_edge_admission {
   Stage0EmittedEdgesAdmitted,
@@ -29,7 +30,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn an_edge_out_of_the_foundation_into_a_higher_crate_is_refused() -> Bool {
   match stage0_emitted_edge_admission(
     edges: [semantic_source_reference_edge(from: "v1_rt", to_module: "v1_compiler_infer")],
-    host_shell_modules: []
+    host_shell_modules: [],
+    rows: generated_partition_crate_rows
   ) {
     Stage0EmittedEdgesRefused { crossings: crossings } =>
       (crossings |> count) == 1
@@ -47,7 +49,8 @@ test fn an_edge_out_of_the_foundation_into_a_higher_crate_is_refused() -> Bool {
 test fn an_edge_from_a_partition_crate_into_the_host_shell_is_refused() -> Bool {
   match stage0_emitted_edge_admission(
     edges: [semantic_source_reference_edge(from: "v1_compiler_infer", to_module: "cli_run")],
-    host_shell_modules: ["cli_run"]
+    host_shell_modules: ["cli_run"],
+    rows: generated_partition_crate_rows
   ) {
     Stage0EmittedEdgesRefused { crossings: crossings } =>
       (crossings |> count) == 1
@@ -65,7 +68,8 @@ test fn edges_down_the_layering_are_admitted() -> Bool {
       semantic_source_reference_edge(from: "cli_run", to_module: "v1_compiler_infer"),
       semantic_source_reference_edge(from: "cli_run", to_module: "v1_rt")
     ],
-    host_shell_modules: ["cli_run"]
+    host_shell_modules: ["cli_run"],
+    rows: generated_partition_crate_rows
   ) {
     Stage0EmittedEdgesAdmitted { edge_count: n } => n == 3
     _ => false
@@ -77,7 +81,8 @@ test fn edges_down_the_layering_are_admitted() -> Bool {
 test fn the_emitter_prelude_rows_for_a_partition_module_are_admitted() -> Bool {
   match stage0_emitted_edge_admission(
     edges: rust_prelude_emitted_edges(module: "v1_compiler_infer"),
-    host_shell_modules: []
+    host_shell_modules: [],
+    rows: generated_partition_crate_rows
   ) {
     Stage0EmittedEdgesAdmitted { edge_count: _ } => true
     _ => false
@@ -89,7 +94,8 @@ test fn the_emitter_prelude_rows_for_a_partition_module_are_admitted() -> Bool {
 test fn a_module_outside_the_seed_is_not_covered_rather_than_admitted() -> Bool {
   match stage0_emitted_edge_admission(
     edges: [semantic_source_reference_edge(from: "fixture_closure_module", to_module: "std_types")],
-    host_shell_modules: ["cli_run"]
+    host_shell_modules: ["cli_run"],
+    rows: generated_partition_crate_rows
   ) {
     Stage0EmittedEdgesNotCovered { uncovered: uncovered } =>
       (uncovered |> count) == 1
@@ -103,11 +109,77 @@ test fn the_refusal_names_modules_packages_and_provenance() -> Bool {
   match stage0_emitted_edge_admission_refusal(
     outcome: stage0_emitted_edge_admission(
       edges: [semantic_source_reference_edge(from: "v1_rt", to_module: "v1_compiler_infer")],
-      host_shell_modules: []
+      host_shell_modules: [],
+      rows: generated_partition_crate_rows
     )
   ) {
     Present { value: message } =>
       string_contains(s: message, pattern: "v1_rt [v1-stage0-runtime] -> v1_compiler_infer [v1-stage0-v1-infer] (semantic-source-reference)")
     Absent => false
   }
+}
+
+// ── THE ROWS ARE THE EMITTED TREE'S, NOT THE BINARY'S ──────────────────────────────────────────
+//
+// The shape of every change that adds a seed module: the corpus being regenerated lists the module in
+// a partition row, while the rows the asking binary was built with do not yet. The admission decides
+// over the rows it is HANDED, so the same edge admits against the change's own partition and is not
+// covered against its predecessor's. Both arms are asserted on one edge, so the claim establishes the
+// route -- the supplied rows decide -- not only an answer.
+
+fn rows_with_a_module_added(rows: List<GeneratedPartitionCrateRow>, package_name: String, module: String) -> List<GeneratedPartitionCrateRow> {
+  rows |> map(row =>
+    if row.package_name == package_name {
+      GeneratedPartitionCrateRow {
+        package_name: row.package_name,
+        crate_dir: row.crate_dir,
+        kind: row.kind,
+        modules: row.modules |> concat([module]),
+        reexport_packages: row.reexport_packages,
+        carries_non_empty_wrappers: row.carries_non_empty_wrappers
+      }
+    } else {
+      row
+    }
+  )
+}
+
+test fn a_module_added_to_the_supplied_partition_is_admitted_where_the_predecessor_rows_do_not_cover_it() -> Bool {
+  let edge = semantic_source_reference_edge(from: "v1_compiler_infer", to_module: "fixture_added_std_core_module")
+  let added = rows_with_a_module_added(rows: generated_partition_crate_rows, package_name: "v1-stage0-std-core", module: "fixture_added_std_core_module")
+  let admitted_against_the_change = match stage0_emitted_edge_admission(edges: [edge], host_shell_modules: [], rows: added) {
+    Stage0EmittedEdgesAdmitted { edge_count: n } => n == 1
+    _ => false
+  }
+  let not_covered_against_the_predecessor = match stage0_emitted_edge_admission(edges: [edge], host_shell_modules: [], rows: generated_partition_crate_rows) {
+    Stage0EmittedEdgesNotCovered { uncovered: uncovered } => uncovered |> all(u => u.module == "fixture_added_std_core_module")
+    _ => false
+  }
+  admitted_against_the_change && not_covered_against_the_predecessor
+}
+
+// CONTROL: supplying the change's rows widens nothing. A module the change adds is still placed in its
+// own crate and layered like any other -- an edge out of the foundation into it is refused as a
+// crossing, and a module the change's rows do not list is still not covered.
+test fn the_supplied_partition_still_refuses_crossings_and_uncovered_modules() -> Bool {
+  let added = rows_with_a_module_added(rows: generated_partition_crate_rows, package_name: "v1-stage0-std-core", module: "fixture_added_std_core_module")
+  let crossing_refused = match stage0_emitted_edge_admission(
+    edges: [semantic_source_reference_edge(from: "v1_rt", to_module: "fixture_added_std_core_module")],
+    host_shell_modules: [],
+    rows: added
+  ) {
+    Stage0EmittedEdgesRefused { crossings: crossings } =>
+      crossings |> all(c => c.from_package == "v1-stage0-runtime" && c.to_package == "v1-stage0-std-core")
+    _ => false
+  }
+  let uncovered_refused = match stage0_emitted_edge_admission(
+    edges: [semantic_source_reference_edge(from: "fixture_added_std_core_module", to_module: "fixture_module_no_row_lists")],
+    host_shell_modules: [],
+    rows: added
+  ) {
+    Stage0EmittedEdgesNotCovered { uncovered: uncovered } =>
+      (uncovered |> count) == 1 && uncovered |> all(u => u.module == "fixture_module_no_row_lists")
+    _ => false
+  }
+  crossing_refused && uncovered_refused
 }
