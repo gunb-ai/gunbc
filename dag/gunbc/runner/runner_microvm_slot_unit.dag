@@ -170,6 +170,13 @@ fn microvm_controller_slice_unit_file() -> SystemdUnitFile {
 // fills it; a directory declared only in the controller (review 69796) was created by nothing.
 data microvm_slot_controller_receipt_dir: String = "/var/lib/gunbc/microvm-slot-controller"
 
+// WHERE THE START STEP WRITES ITS OWN RECEIPT, beside the controller's. It lives with the unit's
+// on-host layout rather than in gunbc.runner_microvm_slot_start so the workflow emitter and ci_spec can
+// name the path without importing the start module -- which would pull the whole controller subtree
+// (controller, lifecycle, guest image, launch planner) into every consumer of the workflow emitter to
+// read one string.
+data microvm_slot_start_receipt_path: String = "target/microvm-slot-start-receipt.txt"
+
 // THE TWO ENVIRONMENT NAMES THE UNIT SETS AND THE CONTROLLER READS. The slot arrives as systemd's
 // instance specifier (%i), so the unit instance name IS the slot instance name and a unit started
 // for srv1-13 cannot run the controller for another slot. The release directory is set explicitly

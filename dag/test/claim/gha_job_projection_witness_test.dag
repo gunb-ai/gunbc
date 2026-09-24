@@ -1,8 +1,8 @@
 module test.claim.gha_job_projection_witness_test
 
 import std.types { Bool, Int, String }
-import extdeps.languages.yaml.types { yaml_string, kv }
-import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.types { YamlValue, yaml_string, kv }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused }
 import extdeps.languages.yaml.gha_workflow { job_yaml }
 import extdeps.github.actions {
   Job, Step, RunStep,
@@ -95,11 +95,11 @@ fn minimal_job() -> Job {
 }
 
 fn all_fields_yaml() -> String {
-  serialize_yaml(v: job_yaml(job: all_fields_job()))
+  emitted_yaml_text(v: job_yaml(job: all_fields_job()))
 }
 
 fn minimal_yaml() -> String {
-  serialize_yaml(v: job_yaml(job: minimal_job()))
+  emitted_yaml_text(v: job_yaml(job: minimal_job()))
 }
 
 test fn every_populated_job_field_reaches_the_emitted_yaml() -> Bool {
@@ -193,8 +193,8 @@ fn queue_max_only_job() -> Job {
 }
 
 test fn queue_max_and_queue_not_max_no_longer_serialize_identically() -> Bool {
-  let qmax = serialize_yaml(v: job_yaml(job: queue_max_only_job()))
-  let qnot = serialize_yaml(v: job_yaml(job: queue_not_max_job()))
+  let qmax = emitted_yaml_text(v: job_yaml(job: queue_max_only_job()))
+  let qnot = emitted_yaml_text(v: job_yaml(job: queue_not_max_job()))
   !(qmax == qnot)
     && string_contains(s: qmax, pattern: "queue: max")
     && !string_contains(s: qnot, pattern: "queue: max")
@@ -215,7 +215,16 @@ test fn scalar_concurrency_group_still_projects_as_a_bare_string() -> Bool {
     concurrency: Present { value: ConcurrencyScalar { group: "scalar-group" } },
     permissions: none
   }
-  let y = serialize_yaml(v: job_yaml(job: j))
+  let y = emitted_yaml_text(v: job_yaml(job: j))
   string_contains(s: y, pattern: "concurrency: scalar-group")
     && !string_contains(s: y, pattern: "queue: max")
+}
+
+// The emitted text, or "" when the writer refuses: every claim below asserts content the refused
+// value does not have, so a refusal cannot pass one.
+fn emitted_yaml_text(v: YamlValue) -> String {
+  match emit_yaml(v: v) {
+    EmittedYaml { text: t } => t
+    YamlEmitRefused { path: _, reason: _ } => ""
+  }
 }

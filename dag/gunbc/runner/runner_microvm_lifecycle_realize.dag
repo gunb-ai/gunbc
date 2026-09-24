@@ -7,7 +7,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.resources { Filesystem }
 import std.measure { Second, second, second_count, ByteSize, byte_size }
 import std.algebra { trim }
-import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.exec.command { ArgvCommand, LocalExec, argv_words }
+import extdeps.tools.gnu_coreutils { rm_force_command, rm_recursive_force_one_file_system_command }
+import extdeps.tools.util_linux_umount { umount_command }
+import extdeps.linux.procfs { procfs_path_literal, ProcSelfMountinfo }
+import extdeps.linux.proc_mountinfo { mountinfo_mount_points, MountPointsRead, MountPointsUndecodable }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.posix.test_utility {
   test_exists_command,
@@ -21,11 +25,11 @@ import extdeps.linux.cgroup_v2 {
   cgroup_v2_kill_path, cgroup_v2_kill_trigger_value, cgroup_v2_procs_interface_file, decode_cgroup_procs,
   decode_cgroup_events_populated, CgroupEventsDecoded, CgroupEventsUnparseable,
 }
-import extdeps.systemd { systemd_unit_property_wire,
+import extdeps.systemd { systemd_unit_property_wire, InvocationIDProperty,
   SystemdUnitProperty, EnvironmentProperty, ExecMainStatus,
   SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path,
 }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fabric_cell_converge { fabric_cell_slice_name }
 import gunbc.runner_microvm_attempt {
@@ -57,6 +61,7 @@ import gunbc.runner_microvm_network {
   SlotNetworkSanitationSubject, SlotNetworkReadings,
   TapReading, TapIpv6Reading, SlotResidueReading, HostResidueReading, RulesetReading,
   TapHoldersUnreadable, TapIpv6Unread, ResidueUnreadable, RulesetUnreadable,
+  RunnerSlotNetwork, runner_slot_network, runner_slot_teardown_flush_commands,
 }
 import product.fabric.sanitation { CellId }
 import extdeps.tools.e2fsprogs {
@@ -72,6 +77,7 @@ import gunbc.runner_microvm_lifecycle {
   ControllerStart, StartAttempt, StartRecovery, StartQuarantineUnattributedResidue,
   StartRefused, StartBindingRefused, controller_start,
   TerminalTrigger, VmmExited, DeadlineReached, StopRequested,
+  GuestBringUpReading, GuestConsoleUnreadable, GuestConsoleUnbound, GuestConsoleNotStarted, guest_bring_up_from_console,
   UnitExitStatusReading, ExitStatusRead, ExitStatusUnread,
   ObservedStop, ObservedCgroup, ObservedPath, ObservedTeardown,
   AttemptTeardownReadback,
@@ -83,37 +89,15 @@ import gunbc.runner_microvm_lifecycle {
 
 data runner_microvm_lifecycle_realize_disposition: Disposition = SingleAuthority
 
-// THE STOP-AND-OBSERVE REALIZATION OF THE microVM SLOT LIFECYCLE. IT IS NOT THE COMPLETE CONTROLLER,
-// AND THE DIFFERENCE IS ONE STEP THAT IS MISSING RATHER THAN ONE THAT IS WEAK.
-//
-// WHAT IT DOES: admits the cell, records the attempt in flight, stages and launches through the
-// sealed staging receipt, waits for a terminal condition, stops the cell and then force-stops its
-// subtree, reads back the cgroup and each attempt resource, joins every observed subject against the
-// attempt, and settles.
-//
-// WHAT IT DOES NOT DO: CLEAN UP. Between the stop and the readbacks there is no unmount, no delete of
-// the credential device, no delete of the workspace, no recursive delete of the attempt root, and no
-// network flush. The only host mutation in the whole teardown is the write to the cell slice's
-// cgroup.kill.
-//
-// SO A FIRST FULL RUN QUARANTINES, BY CONSTRUCTION, AND THAT IS NOT A BUG IN THE READBACKS. Staging
-// creates the jail root, the attempt directory and the credential device; nothing removes them; the
-// absence readbacks then find them present and refuse MountsRemoved, WritableLayersDeleted and
-// SecretsRemoved. The verdict is correct -- those resources ARE still there -- and the cell is
-// correctly not released. What it is not is a warm pool: no cell settles CellReady through this
-// module today, so nothing here can hand a cell to a second incarnation (side-chat ruling on
-// gunbc#11803, which offered the narrowing or the implementation; this is the narrowing, stated).
-//
-// DECLARED FRONTIER (DESIGN 3c) for the missing step, at capability grain. NAMED CONSUMER: this
-// module's teardown, between stop_attempt and the absence readbacks. TRIGGER: a cleanup realization
-// that unmounts the attempt's mounts, deletes the credential device, the workspace and the attempt
-// root, and flushes the slot's conntrack and neighbour entries -- each with its own readback, since a
-// delete that returns zero and a path that is gone are different facts. SUFFICIENT FOR deleting this
-// row and for this header's narrowing. NOT satisfied by a witness supplying absent readbacks, nor by
-// a cleanup whose result is taken on the tool's word.
-//
-// THE NETWORK FLUSH IS BLOCKED BEHIND THE SAME THING THE READINGS ARE (see
-// slot_network_readings_producer_frontier): there is no converged slot network on any host to flush.
+// THE REALIZATION OF THE microVM SLOT LIFECYCLE: admits the cell, records the attempt in flight,
+// stages and launches through the sealed staging receipt, waits for a terminal condition, reads the
+// guest's bring-up from the attempt unit's console, stops the cell and then force-stops its subtree,
+// CLEANS UP what the attempt owns (clean_attempt_resources: its mounts, credential device, jail and
+// attempt directory, and the slot's own conntrack and neighbour entries -- only after a quiescent
+// stop), reads back the cgroup and each attempt resource, joins every observed subject against the
+// attempt, and settles. The cleanup's own exits are reported and are never the verdict; the
+// readbacks are, so an incomplete or uncertain cleanup quarantines the cell rather than reporting it
+// clean.
 //
 // gunbc.runner_microvm_lifecycle owns every DECISION this module makes and it adds none. What it owns
 // is the other half that module deliberately cannot have: reaching the host. Each producer below
@@ -126,10 +110,6 @@ data runner_microvm_lifecycle_realize_disposition: Disposition = SingleAuthority
 // own failure. Folding them into one would put every reading behind one refusal and lose which one
 // could not be taken, which is the distinction FactUnobservable exists to carry outward to an
 // operator.
-data attempt_cleanup_realization_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize's teardown, between stop_attempt and the resource-absence readbacks. TRIGGER: a cleanup realization that unmounts the attempt's mounts, deletes the credential device, the workspace and the attempt root, and flushes the slot's conntrack and neighbour entries, each with its own readback. SUFFICIENT FOR deleting this row and for retiring this module's stop-and-observe narrowing. NOT satisfied by a witness supplying absent readbacks, nor by a cleanup whose result is taken on the tool's word." as NonEmptyStr,
-)
-
 // ORIGINAL HEADER, KEPT BECAUSE ITS CLAIM IS STILL TRUE OF WHAT IS HERE:
 // THE WET HALF OF THE microVM SLOT LIFECYCLE: THE PROCESS THE SLOT UNIT EXECS AS ITS MainPID.
 //
@@ -334,14 +314,16 @@ fn observe_resource_absence(path: String) -> ResourceReadback
   if path == "" {
     ResourceUnreadable { reason: "the resource to prove absent has no path, so nothing was read" as NonEmptyStr }
   } else {
+    let parent_reading = observe_path_exists(path: parent_directory_of(path: path))
+    let child_reading = observe_path_exists(path: path)
     absence_of_containment(
       path: path,
       parent: parent_directory_of(path: path),
       contained: contained_existence(
         path: path,
         parent: parent_directory_of(path: path),
-        parent_reading: observe_path_exists(path: parent_directory_of(path: path)),
-        child_reading: observe_path_exists(path: path),
+        parent_reading: parent_reading,
+        child_reading: child_reading,
       ),
     )
   }
@@ -693,10 +675,132 @@ fn invocation_of_environment(unit: NonEmptyStr, environment: String) -> UnitInvo
 //
 // So the controller takes the SUBJECT and builds the readback itself, after the stop, from readings
 // it takes then. There is no parameter through which a reading from before the attempt can arrive.
+// ── the cleanup: the attempt's own resources, removed before they are read back ────────────────
+//
+// WHAT IS REMOVED IS WHAT THIS ATTEMPT OWNS AND NOTHING ELSE. The jail base, the attempt directory
+// (workspace and attempt root) and the staged credential device are all derived from the attempt
+// (gunbc.runner_microvm_attempt runner_microvm_attempt_jail_base / runner_microvm_attempt_dir, and
+// the in-flight record's device path); the network flush is the slot's own
+// (gunbc.runner_microvm_network runner_slot_teardown_flush_commands: conntrack entries to or from the
+// slot's guest address and the neighbour entry on the slot's tap). No host-wide flush, no other
+// slot's tap, no shared table.
+//
+// IT RUNS ONLY AFTER A STOP THAT LEFT NOTHING RUNNING. Deleting a jail under a live VMM would pull
+// files out from under a process that still holds them, and a stop whose outcome is unobservable or
+// whose force bound was exceeded is exactly that case. So those arms skip the cleanup entirely and
+// the readbacks below find the resources present, which quarantines the cell -- the uncertain case
+// never reports clean.
+//
+// NOTHING HERE IS EVIDENCE. Every step's exit is kept for the operator, but the verdict is the
+// readbacks' that follow in perform_teardown_and_observe: a delete that returned zero and a path that
+// is gone are different facts (the frontier this dissolves said so), so this function returns what it
+// did and decides nothing.
+//
+// MOUNTS FIRST, AND THE DELETES CANNOT CROSS ONE THAT SURVIVES. Firecracker's jailer makes its mounts
+// in its own mount namespace, so a clean attempt leaves none on the host; that is upstream's design,
+// not something this module has observed, so the host's mount table is read rather than assumed.
+// Every mount at or under the jail is detached, deepest first (the reverse of mountinfo's mount
+// order, which lists a parent before what is mounted under it). The recursive deletes then run with
+// --one-file-system, so a mount that would not detach stops the delete instead of letting rm empty
+// the mounted file system through it; the jail stays present and its readback refuses. A mount table
+// that cannot be read or decoded skips the deletes altogether, for the same reason.
+type AttemptCleanupStep {
+  command: String
+  outcome: ProcessOutcome
+}
+
+type AttemptCleanupRun
+  = CleanupSkippedStopNotQuiescent
+  | CleanupSkippedMountTableUnreadable { detail: String }
+  | CleanupPerformed { unmounted: List<String>, steps: List<AttemptCleanupStep> }
+
+fn stop_admits_cleanup(stop: TeardownStop) -> Bool {
+  match stop {
+    StoppedGracefully => true
+    StoppedByForce => true
+    StopFoundAlreadyQuiescent => true
+    ForceStopBoundExceeded { survivors: _ } => false
+    ForceNotAsked { reason: _ } => false
+    ForceStopOutcomeUnobservable { reason: _ } => false
+  }
+}
+
+fn mount_point_is_within(mount_point: String, root: String) -> Bool {
+  mount_point == root || starts_with(s: mount_point, prefix: join([root, "/"], ""))
+}
+
+fn attempt_mounts_deepest_first(mount_points: List<String>, jail: String) -> List<String> {
+  fold(filter(mount_points, m => mount_point_is_within(mount_point: m, root: jail)), init: [], f: (acc, m) => concat([m], acc))
+}
+
+fn run_cleanup_step(command: ArgvCommand) -> AttemptCleanupStep
+{
+  AttemptCleanupStep {
+    command: join(argv_words(command: command), " "),
+    outcome: run_shell_command_capture(command: command, transport: LocalExec),
+  }
+}
+
+fn clean_attempt_resources(
+  stop: TeardownStop,
+  jail: String,
+  attempt_dir: String,
+  credential_device: String,
+  network: RunnerSlotNetwork,
+) -> AttemptCleanupRun
+{
+  if !stop_admits_cleanup(stop: stop) {
+    CleanupSkippedStopNotQuiescent
+  } else {
+    let table = Filesystem.Read(path: procfs_path_literal(p: ProcSelfMountinfo) as String)
+    if !table.success {
+      CleanupSkippedMountTableUnreadable { detail: table.error }
+    } else {
+      match mountinfo_mount_points(content: table.content) {
+        MountPointsUndecodable { line: l, cause: c } =>
+          CleanupSkippedMountTableUnreadable { detail: join([c as String, ": ", l], "") }
+        MountPointsRead { mount_points: points } => {
+          let mounts = attempt_mounts_deepest_first(mount_points: points, jail: jail)
+          let unmounts = map(mounts, m => run_cleanup_step(command: umount_command(mount_point: m)))
+          let deletes = [
+            run_cleanup_step(command: rm_force_command(path: credential_device)),
+            run_cleanup_step(command: rm_recursive_force_one_file_system_command(path: jail)),
+            run_cleanup_step(command: rm_recursive_force_one_file_system_command(path: attempt_dir)),
+          ]
+          let flushes = map(runner_slot_teardown_flush_commands(net: network), c => run_cleanup_step(command: c))
+          CleanupPerformed { unmounted: mounts, steps: concat(concat(unmounts, deletes), flushes) }
+        }
+      }
+    }
+  }
+}
+
+type TeardownPerformance {
+  observed: ObservedTeardown
+  cleanup: AttemptCleanupRun
+}
+
+fn attempt_cleanup_text(c: AttemptCleanupRun) -> String {
+  match c {
+    CleanupSkippedStopNotQuiescent => "cleanup=skipped-stop-not-quiescent"
+    CleanupSkippedMountTableUnreadable { detail: d } => join(["cleanup=skipped-mount-table-unreadable (", d, ")"], "")
+    CleanupPerformed { unmounted: m, steps: st } =>
+      join(["cleanup=performed unmounted=", to_string(length(m)), " steps=", to_string(length(st)),
+            " refused_steps=", to_string(length(filter(st, x => !process_outcome_admitted(outcome: x.outcome))))], "")
+  }
+}
+
+fn teardown_cleanup_text(t: TeardownRun) -> String {
+  match t {
+    TeardownSettled { cleanup: c, settlement: _, persisted: _, unit_released: _ } => attempt_cleanup_text(c: c)
+    TeardownSubjectRefused { cleanup: c, binding: _ } => attempt_cleanup_text(c: c)
+  }
+}
+
 fn perform_teardown_and_observe(
   bound: CellBoundAttempt,
   subject: SlotNetworkSanitationSubject,
-) -> ObservedTeardown
+) -> TeardownPerformance
 {
   let attempt = bound.attempt.attempt
   let unit = in_flight_attempt_unit(attempt: bound.attempt)
@@ -706,15 +810,25 @@ fn perform_teardown_and_observe(
   let jail = runner_microvm_attempt_jail_base(attempt: attempt)
   let dir = runner_microvm_attempt_dir(attempt: attempt)
   let drive = bound.attempt.credential_device_path
-  ObservedTeardown {
-    host: attempt.slot.host as String,
-    generation: bound.generation,
-    stop: ObservedStop { unit: unit, invocation_id: invocation, outcome: outcome },
-    cgroup: ObservedCgroup { root: slice, readback: observe_cgroup_subtree(slice: slice) },
-    mounts: ObservedPath { path: jail, readback: observe_resource_absence(path: jail) },
-    attempt_storage: ObservedPath { path: dir, readback: observe_resource_absence(path: dir) },
-    credential_disk: ObservedPath { path: drive, readback: observe_resource_absence(path: drive) },
-    network: observe_slot_network_after_stop(subject: subject, after: outcome),
+  let cleanup = clean_attempt_resources(
+    stop: outcome,
+    jail: jail,
+    attempt_dir: dir,
+    credential_device: drive,
+    network: runner_slot_network(slot: attempt.slot),
+  )
+  TeardownPerformance {
+    observed: ObservedTeardown {
+      host: attempt.slot.host as String,
+      generation: bound.generation,
+      stop: ObservedStop { unit: unit, invocation_id: invocation, outcome: outcome },
+      cgroup: ObservedCgroup { root: slice, readback: observe_cgroup_subtree(slice: slice) },
+      mounts: ObservedPath { path: jail, readback: observe_resource_absence(path: jail) },
+      attempt_storage: ObservedPath { path: dir, readback: observe_resource_absence(path: dir) },
+      credential_disk: ObservedPath { path: drive, readback: observe_resource_absence(path: drive) },
+      network: observe_slot_network_after_stop(subject: subject, after: outcome),
+    },
+    cleanup: cleanup,
   }
 }
 
@@ -817,8 +931,8 @@ fn release_after_persist(readback: AttemptTeardownReadback, persisted: CellReadi
 // THE RELEASE IS PART OF THE SETTLED ARM AND OF NO OTHER, so the type itself says that a refused
 // binding leaves the unit loaded.
 type TeardownRun
-  = TeardownSettled { settlement: TeardownSettlement, persisted: CellReadinessStorePersist, unit_released: Bool }
-  | TeardownSubjectRefused { binding: TeardownReadbackBinding }
+  = TeardownSettled { cleanup: AttemptCleanupRun, settlement: TeardownSettlement, persisted: CellReadinessStorePersist, unit_released: Bool }
+  | TeardownSubjectRefused { cleanup: AttemptCleanupRun, binding: TeardownReadbackBinding }
 
 fn run_teardown(
   bound: CellBoundAttempt,
@@ -826,20 +940,23 @@ fn run_teardown(
   trigger: TerminalTrigger,
 ) -> TeardownRun
 {
-  let observed = perform_teardown_and_observe(bound: bound, subject: subject)
-  match attempt_teardown_readback(bound: bound, observed: observed) {
+  let performed = perform_teardown_and_observe(bound: bound, subject: subject)
+  match attempt_teardown_readback(bound: bound, observed: performed.observed) {
     TeardownReadbackForeignSubject { subject: s, expected: e, observed: o } =>
       TeardownSubjectRefused {
+        cleanup: performed.cleanup,
         binding: TeardownReadbackForeignSubject { subject: s, expected: e, observed: o },
       }
     TeardownReadbackSubjectUnobservable { subject: s, reason: r } =>
       TeardownSubjectRefused {
+        cleanup: performed.cleanup,
         binding: TeardownReadbackSubjectUnobservable { subject: s, reason: r },
       }
     TeardownReadbackBound { readback: rb } => {
       let settlement = settle_teardown(readback: rb, trigger: trigger)
       let persisted = persist_cell_readiness_write(write: settlement.record)
       TeardownSettled {
+        cleanup: performed.cleanup,
         settlement: settlement,
         persisted: persisted,
         unit_released: release_after_persist(readback: rb, persisted: persisted),
@@ -942,6 +1059,8 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
       let rootfs_outcome = run_staged_after(after: kernel_outcome, command: stage_rootfs)
       let create_outcome = run_staged_after(after: rootfs_outcome, command: create)
       let format_outcome = run_staged_after(after: create_outcome, command: format)
+      let kernel_present = observe_path_exists(path: jail_kernel_destination(jail_root: jail_root))
+      let rootfs_present = observe_path_exists(path: jail_rootfs_destination(jail_root: jail_root))
       AttemptStaged {
         verdict: attempt_staging_verdict(
           plan: plan,
@@ -949,8 +1068,8 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
             jail_root_exit: command_exit_code(outcome: root_outcome),
             kernel_exit: command_exit_code(outcome: kernel_outcome),
             rootfs_exit: command_exit_code(outcome: rootfs_outcome),
-            kernel: observe_path_exists(path: jail_kernel_destination(jail_root: jail_root)),
-            rootfs: observe_path_exists(path: jail_rootfs_destination(jail_root: jail_root)),
+            kernel: kernel_present,
+            rootfs: rootfs_present,
           },
           jit: stage_jit_device(device: device),
           workspace: WorkspaceStagingObservation {
@@ -1077,26 +1196,6 @@ fn await_terminal(unit: NonEmptyStr, polls_remaining: Int) -> TerminalTrigger
 
 // --- the controller ---
 
-// DECLARED FRONTIER (DESIGN 3c). The bring-up progression above VmmStarted -- GuestBooted,
-// RunnerListening, SlotServing -- is decided by gunbc.runner_microvm_lifecycle advance_bring_up from
-// BringUpEvents the GUEST reports, and this controller emits none of them: there is no channel from
-// the guest to the host in this tree yet. What the controller establishes on its own is
-// AttemptPrepared (staging read back) and VmmStarted (the host saw systemd start the unit in the
-// cell's slice), and it then waits for a terminal condition. NAMED CONSUMER of the missing half: this
-// module's run_controller, which will call advance_bring_up once a guest channel delivers a
-// BringUpEvent. TRIGGER: a modeled guest-to-host readiness channel -- the capability, not an
-// artifact -- carrying the runner's own listening report bound to this attempt's invocation id.
-// SUFFICIENT FOR deleting this row. NOT satisfied by the controller polling the host for something
-// the guest alone can know.
-//
-// WHY THAT IS SAFE TO DECLARE RATHER THAN FAKE. The progression decides only whether the slot is
-// SERVING. It never decides whether the cell is CLEAN, so a controller that never advances past
-// VmmStarted runs the job and settles the cell correctly; what it cannot do is tell a guest that
-// failed to boot from one that booted and is idle, and it will reach the deadline in both cases.
-data guest_bring_up_channel_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_microvm_lifecycle_realize run_controller, calling gunbc.runner_microvm_lifecycle advance_bring_up. TRIGGER: a modeled guest-to-host readiness channel carrying the runner's own listening report bound to this attempt's invocation id, so GuestBooted and RunnerListening are guest events the host receives rather than host guesses. SUFFICIENT FOR deleting this row. NOT satisfied by the controller polling host-side facts, which cannot distinguish a guest that failed to boot from one that booted and is idle." as NonEmptyStr,
-)
-
 // THE CONSUMER OF run_controller IS THE microVM SLOT UNIT, THROUGH gunbc.runner_microvm_slot_controller.
 //
 // This module used to carry controller_main_pid_consumer_frontier: nothing called run_controller,
@@ -1137,7 +1236,7 @@ type ControllerOutcome
   | ControllerQuarantinedUnattributedResidue { persisted: CellReadinessStorePersist }
   | ControllerStartNotRecorded { persisted: CellReadinessStorePersist }
   | ControllerRecovered { teardown: TeardownRun }
-  | ControllerRanAttempt { launch: AttemptLaunch, trigger: TerminalTrigger, teardown: TeardownRun }
+  | ControllerRanAttempt { launch: AttemptLaunch, trigger: TerminalTrigger, bring_up: GuestBringUpReading, teardown: TeardownRun }
 
 fn run_controller(
   identity: AttemptIdentity,
@@ -1158,11 +1257,12 @@ fn run_controller(
     StartQuarantineUnattributedResidue { trigger: _, record: r } =>
       ControllerQuarantinedUnattributedResidue { persisted: persist_cell_readiness_write(write: r) }
     StartRecovery { bound: b, trigger: t } => ControllerRecovered { teardown: run_teardown(bound: b, subject: subject, trigger: t) }
-    StartAttempt { bound: b, record: r } => run_started_attempt(bound: b, record: r, plan: plan, subject: subject)
+    StartAttempt { bound: b, record: r } => run_started_attempt(identity: identity, bound: b, record: r, plan: plan, subject: subject)
   }
 }
 
 fn run_started_attempt(
+  identity: AttemptIdentity,
   bound: CellBoundIdentity,
   record: CellReadinessWrite,
   plan: AttemptLaunchPlan,
@@ -1171,12 +1271,13 @@ fn run_started_attempt(
 {
   let persisted = persist_cell_readiness_write(write: record)
   match persisted {
-    StorePersisted { record: _ } => run_launched_attempt(bound: bound, plan: plan, subject: subject)
+    StorePersisted { record: _ } => run_launched_attempt(identity: identity, bound: bound, plan: plan, subject: subject)
     refused => ControllerStartNotRecorded { persisted: refused }
   }
 }
 
 fn run_launched_attempt(
+  identity: AttemptIdentity,
   bound: CellBoundIdentity,
   plan: AttemptLaunchPlan,
   subject: SlotNetworkSanitationSubject,
@@ -1187,13 +1288,114 @@ fn run_launched_attempt(
     invocation_id: bound.attempt.attempt.invocation_id,
     plan: plan,
   )
+  let console = bind_attempt_console(identity: identity, launch: launch)
   let trigger = terminal_trigger_of_launch(launch: launch)
+  let bring_up = observe_guest_bring_up(identity: identity, console: console)
   ControllerRanAttempt {
     launch: launch,
     trigger: trigger,
+    bring_up: bring_up,
     teardown: run_teardown(bound: bound.attempt, subject: subject, trigger: trigger),
   }
 }
+
+// ── the guest-to-host readiness channel ────────────────────────────────────────────────────────
+//
+// THE CHANNEL IS THE ATTEMPT UNIT'S OWN CONSOLE, AND THE BINDING IS THE HOST'S. gunbc.runner_guest_image
+// puts the guest agent's observation lines (GuestBooted, RunnerStarted, RunnerExited) and the
+// listener's own readiness line on ttyS0, which Firecracker delivers on the VMM's stdout, which
+// systemd records in the journal of the attempt's transient unit. The guest never names its attempt
+// -- a line that did would be the workload forging a key the host must hold -- so the join to THIS
+// attempt is that the line is in THIS unit's journal, and the unit's name is the attempt's
+// (gunbc.runner_microvm_attempt runner_microvm_attempt_unit_name carries the attempt segment), so no
+// other attempt's lines can be read here. Each event is then advanced under the controller's own
+// AttemptIdentity through gunbc.runner_microvm_lifecycle advance_bring_up, so the phase this reading
+// reports is the lifecycle's transition, not a second progression decided beside it.
+//
+// IT IS READ ONCE, AFTER THE TERMINAL TRIGGER. What it decides is attribution, not the teardown: the
+// progression never establishes that a cell is clean (the lifecycle module's rule), so reading it
+// after the VMM is gone loses nothing the teardown needs, and it is what lets the receipt tell a
+// guest that never booted from one that booted and idled to the deadline -- the two cases the
+// deadline alone cannot separate.
+// THE CONSOLE IS BOUND TO THIS ATTEMPT'S INVOCATION, NOT ONLY TO ITS UNIT NAME. The attempt's
+// invocation_id is the controller's own, written into the transient unit's Environment at launch
+// (launch_attempt); the journal keys its entries by systemd's _SYSTEMD_INVOCATION_ID, a trusted field
+// the guest cannot set. So the join is made while the unit is alive, right after the VMM starts: the
+// unit's Environment must name THIS attempt's invocation_id (observe_unit_attempt_invocation, the
+// reading the teardown already uses), and in the same moment the unit's systemd InvocationID is
+// captured. The console read after the terminal trigger is then restricted to entries carrying that
+// systemd invocation (extdeps.systemd.journalctl UnitInvocationLog), so a line from any other runtime
+// cycle of a unit with the same name -- or from no attempt at all -- cannot advance this attempt's
+// phase. A unit gone before the binding could be read, or one naming another attempt, is
+// GuestConsoleUnbound: the channel exists but carries nothing attributable, and no phase is read.
+type AttemptConsoleBinding
+  = AttemptConsoleBound { unit: NonEmptyStr, systemd_invocation: NonEmptyStr }
+  | AttemptConsoleUnbound { reason: String }
+  | AttemptConsoleNotStarted
+
+fn bind_attempt_console(identity: AttemptIdentity, launch: AttemptLaunch) -> AttemptConsoleBinding {
+  match launch {
+    VmmStarted { unit: u, receipt: _ } => {
+      let shown = systemd.Systemctl.ShowProperty(unit: u, property: systemd_unit_property_wire(property: InvocationIDProperty))
+      attempt_console_binding_of(
+        identity: identity,
+        unit: u,
+        environment: observe_unit_attempt_invocation(unit: u),
+        systemd_invocation: if shown.success { trim(s: shown.value) } else { "" },
+      )
+    }
+    VmmRefusedStaging { verdict: _ } => AttemptConsoleNotStarted
+    VmmNotPlanned { plan: _ } => AttemptConsoleNotStarted
+    VmmStartFailed { unit: _, detail: _ } => AttemptConsoleNotStarted
+  }
+}
+
+// THE BINDING DECISION OVER ITS TWO READINGS, separated from the reads so each arm is reachable from
+// a supplied value (DESIGN section 3).
+fn attempt_console_binding_of(
+  identity: AttemptIdentity,
+  unit: NonEmptyStr,
+  environment: UnitInvocationReading,
+  systemd_invocation: String,
+) -> AttemptConsoleBinding {
+  match environment {
+    UnitInvocationUnread { reason: r } => AttemptConsoleUnbound { reason: r as String }
+    UnitInvocationRead { invocation_id: i } =>
+      if (i as String) != (identity.invocation_id as String) {
+        AttemptConsoleUnbound { reason: join(["the unit's environment names attempt invocation ", i as String, ", not this attempt's ", identity.invocation_id as String], "") }
+      } else if systemd_invocation == "" {
+        AttemptConsoleUnbound { reason: join(["the unit's systemd InvocationID could not be read while it ran: ", unit as String], "") }
+      } else {
+        AttemptConsoleBound { unit: unit, systemd_invocation: systemd_invocation as NonEmptyStr }
+      }
+  }
+}
+
+// DECLARED FRONTIER: THE PHASE IS READ AFTER THE ATTEMPT, NOT WHILE IT RUNS. The channel above is bound
+// to the attempt's invocation and it reaches GuestBooted and RunnerListening, but it is read once,
+// after the terminal trigger, so it attributes the attempt rather than deciding that a slot is SERVING
+// while the attempt is live, and nothing advances to SlotServing. No consumer needs a live SERVING
+// decision today: the shakedown admits one attempt per start and the brief defers warm pools and
+// multi-slot scheduling, which are the only consumers of a live serving slot.
+data slot_serving_live_readiness_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: a slot scheduler that hands a live, SERVING slot to queued work (the warm pool this lane defers). TRIGGER: that consumer exists and reads the attempt's invocation-bound console WHILE the attempt runs, advancing through SlotServing on the listener's readiness under the controller's own identity. SUFFICIENT FOR deleting this row. NOT satisfied by the post-terminal attribution reading, which is what exists." as NonEmptyStr,
+)
+
+fn observe_guest_bring_up(identity: AttemptIdentity, console: AttemptConsoleBinding) -> GuestBringUpReading {
+  match console {
+    AttemptConsoleNotStarted => GuestConsoleNotStarted
+    AttemptConsoleUnbound { reason: r } => GuestConsoleUnbound { reason: r }
+    AttemptConsoleBound { unit: u, systemd_invocation: inv } => {
+      let log = systemd.Journalctl.UnitInvocationLog(unit: u, invocation_id: inv)
+      if !log.success {
+        GuestConsoleUnreadable { unit: u, detail: "journalctl could not read the attempt invocation's journal" }
+      } else {
+        guest_bring_up_from_console(identity: identity, console: log.stdout)
+      }
+    }
+  }
+}
+
 
 // A LAUNCH THAT NEVER STARTED STILL HAS A TERMINAL TRIGGER, and it is StopRequested rather than an
 // invented exit: nothing ran, so there is no exit code to report, and the teardown that follows is a

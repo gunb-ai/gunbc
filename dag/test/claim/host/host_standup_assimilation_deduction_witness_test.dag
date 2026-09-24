@@ -1,6 +1,58 @@
 module test.claim.host_standup_assimilation_deduction
 
 import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.logic { Bool }
+import std.measure { Millisecond, millisecond, millisecond_count }
+import std.temporal_effect { stall_budget_verdict }
+import std.upsert_decision {
+  ObservationVerdict,
+  Converged,
+  Drifted,
+  UnknownRefused,
+  Conflict,
+  Inaccessible,
+  UpsertClassification,
+  Noop,
+  Apply,
+  Refuse,
+}
+import extdeps.bmc.types { BootOverrideModeLegacy, BootOverrideModeUefi }
+import gunbc.os_install_deduction { SubiquityStorageScreen }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.host_standup {
+  host_standup_spine,
+  Prefix,
+  Assimilation,
+  OsInstallActuated,
+  HostIdentityConverge,
+  host_standup_gap_count_at_actuation_verdict,
+  host_standup_step_is_effective_gap_at_actuation_verdict,
+}
+import gunbc.host_standup_assimilation_deduction {
+  StallTransitionProbe,
+  StallCauseBootModeLegacyUefiRequired,
+  StallCauseConsoleRedirectOff,
+  StallCauseNoBootableDevice,
+  RemediationSetBootOverrideModeUefi,
+  RemediationStartNbdServeSession,
+  RemediationRemasterSeedOrDeclareStoragePolicy,
+  AssertOsInstallActuationPending,
+  srv3_pre_install_lease_observation,
+  srv3_post_install_lease_observation,
+  srv3_unreadable_lease_observation,
+  hang_budget_millisecond,
+  srv3_os_install_to_host_identity_budget,
+  srv3_pre_install_actuation_verdict,
+  srv3_post_install_actuation_verdict,
+  srv3_unreadable_lease_actuation_verdict,
+  deduce_os_install_actuated_satisfied,
+  decision_for_os_install_actuation_verdict,
+  classify_os_install_actuation_upsert,
+  stall_causes_from_probe,
+  cause_fold_primary_stall_remediation,
+  stall_transition_cause_label,
+}
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -8,8 +60,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data zero_elapsed: Millisecond = millisecond(count: 0)
 
 test fn pre_install_within_budget_is_absent_not_converged() -> Bool {
-  srv3_pre_install_actuation_verdict(elapsed: zero_elapsed) == Absent
-    && !deduce_os_install_actuated_satisfied(verdict: Absent)
+  let v = srv3_pre_install_actuation_verdict(elapsed: zero_elapsed)
+  match v {
+    Absent => !deduce_os_install_actuated_satisfied(verdict: v)
+    _ => false
+  }
 }
 
 test fn post_install_lease_row_deduces_converged_noop() -> Bool {
@@ -40,7 +95,10 @@ test fn post_install_lease_row_deduces_converged_noop() -> Bool {
 
 test fn unreadable_lease_is_unknown_refused_not_pending() -> Bool {
   srv3_unreadable_lease_actuation_verdict(elapsed: zero_elapsed) == UnknownRefused
-    && srv3_unreadable_lease_actuation_verdict(elapsed: zero_elapsed) != Absent
+    && (match srv3_unreadable_lease_actuation_verdict(elapsed: zero_elapsed) {
+      Absent => false
+      _ => true
+    })
     && !deduce_os_install_actuated_satisfied(verdict: UnknownRefused)
     && match decision_for_os_install_actuation_verdict(
       verdict: UnknownRefused,

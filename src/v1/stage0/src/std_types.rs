@@ -202,21 +202,72 @@ pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
 pub type CommitSha = String;
 
 pub fn commit_sha_text_holds(head: String) -> bool {
-    ((v1_rt::string_length(&head) == 40) && {
-        let mut __all = true;
-        for cp in Rc::new(head.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
-            .iter()
-            .cloned()
-        {
-            if !(((cp.clone() >= 48) && (cp.clone() <= 57))
-                || ((cp.clone() >= 97) && (cp.clone() <= 102)))
-            {
-                __all = false;
-                break;
-            }
-        }
-        __all
-    })
+    ((v1_rt::string_length(&head) == 40)
+        && (v1_rt::replace(
+            v1_rt::replace(
+                v1_rt::replace(
+                    v1_rt::replace(
+                        v1_rt::replace(
+                            v1_rt::replace(
+                                v1_rt::replace(
+                                    v1_rt::replace(
+                                        v1_rt::replace(
+                                            v1_rt::replace(
+                                                v1_rt::replace(
+                                                    v1_rt::replace(
+                                                        v1_rt::replace(
+                                                            v1_rt::replace(
+                                                                v1_rt::replace(
+                                                                    v1_rt::replace(
+                                                                        head.clone(),
+                                                                        "0".to_string(),
+                                                                        "".to_string(),
+                                                                    ),
+                                                                    "1".to_string(),
+                                                                    "".to_string(),
+                                                                ),
+                                                                "2".to_string(),
+                                                                "".to_string(),
+                                                            ),
+                                                            "3".to_string(),
+                                                            "".to_string(),
+                                                        ),
+                                                        "4".to_string(),
+                                                        "".to_string(),
+                                                    ),
+                                                    "5".to_string(),
+                                                    "".to_string(),
+                                                ),
+                                                "6".to_string(),
+                                                "".to_string(),
+                                            ),
+                                            "7".to_string(),
+                                            "".to_string(),
+                                        ),
+                                        "8".to_string(),
+                                        "".to_string(),
+                                    ),
+                                    "9".to_string(),
+                                    "".to_string(),
+                                ),
+                                "a".to_string(),
+                                "".to_string(),
+                            ),
+                            "b".to_string(),
+                            "".to_string(),
+                        ),
+                        "c".to_string(),
+                        "".to_string(),
+                    ),
+                    "d".to_string(),
+                    "".to_string(),
+                ),
+                "e".to_string(),
+                "".to_string(),
+            ),
+            "f".to_string(),
+            "".to_string(),
+        ) == "".to_string()))
 }
 
 pub type Sha256 = String;

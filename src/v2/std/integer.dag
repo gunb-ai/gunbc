@@ -833,6 +833,20 @@ fn integer_range_endpoint_node(endpoint: IntegerRangeEndpoint) -> Node {
   }
 }
 
+// THE TYPES OF A DECIMAL MAGNITUDE'S NODE ENCODING, AS NODES. integer_decimal_magnitude_node encodes
+// a magnitude as fold_list_node over integer_decimal_digit_node: each digit atom is a DecimalDigit and
+// each cons cell (and the empty tail) is a FreeMonoid<DecimalDigit>. v2.compiler.infer
+// infer_literal_payload_entries grounds an accepted int literal's magnitude payload against these,
+// so the resolved type it records for a payload node is that node's type in this authority, and not
+// the literal that carries it.
+fn integer_decimal_digit_type_node() -> Node {
+  integer_inhabitant_atom(id: ^integer_type_decimal_digit)
+}
+
+fn integer_decimal_digits_type_node() -> Node {
+  integer_inhabitant_atom(id: ^integer_type_decimal_digits)
+}
+
 fn integer_decimal_digit_node(digit: DecimalDigit) -> Node {
   match digit {
     D0 => integer_inhabitant_atom(id: ^integer_tag_digit_0)

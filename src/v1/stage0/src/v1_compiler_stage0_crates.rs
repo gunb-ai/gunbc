@@ -35,9 +35,8 @@ use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind::
 pub use crate::gunbc_stage0_crate_partition_generated::{
     GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
 };
-pub use crate::gunbc_stage0_partition_package_graph::{
-    stage0_partition_package_dependency_names, stage0_partition_row_is_module_bearing_package,
-};
+pub use crate::gunbc_stage0_emitted_edge_admission::stage0_partition_module_owner_packages;
+pub use crate::gunbc_stage0_partition_package_graph::stage0_partition_package_dependency_names;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
@@ -308,29 +307,19 @@ pub fn stage0_lookup_module_owner_package_name(
     module_basename: String,
 ) -> Rc<Stage0ModuleOwnerLookup> {
     {
-        let matches = Rc::new({
-            let mut __result = Vec::new();
-            for row in generated_partition_crate_rows().iter().cloned() {
-                if (crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package(row.clone()) && { let mut __found = false; for m in row.modules.clone().iter().cloned() { if (m.clone() == module_basename.clone()) { __found = true; break; } } __found }) { __result.push(row); }
-            }
-            __result
-        });
-        let package_name = Rc::new({
-            let mut __result = Vec::new();
-            for row in matches.iter().cloned() {
-                __result.push(row.package_name.clone());
-            }
-            __result
-        })
-        .iter()
-        .cloned()
-        .fold("".to_string(), |acc: String, pkg: String| {
-            if (acc.clone() == "".to_string()) {
-                pkg.clone()
-            } else {
-                acc.clone()
-            }
-        });
+        let package_name =
+            crate::gunbc_stage0_emitted_edge_admission::stage0_partition_module_owner_packages(
+                module_basename.clone(),
+            )
+            .iter()
+            .cloned()
+            .fold("".to_string(), |acc: String, pkg: String| {
+                if (acc.clone() == "".to_string()) {
+                    pkg.clone()
+                } else {
+                    acc.clone()
+                }
+            });
         if (package_name.clone() == "".to_string()) {
             Rc::new(Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused {
                 cause: Rc::new(Stage0ModuleOwnerRefusalCause::Stage0ModuleOwnerMissing {

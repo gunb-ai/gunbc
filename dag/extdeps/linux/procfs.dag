@@ -30,6 +30,7 @@ type ProcfsPath
   | ProcSwaps
   | ProcSysKernelHostname
   | ProcNetPnp
+  | ProcSelfMountinfo
 
 fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
   match p {
@@ -43,6 +44,7 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
     ProcSwaps => "/proc/swaps"
     ProcSysKernelHostname => "/proc/sys/kernel/hostname"
     ProcNetPnp => "/proc/net/pnp"
+    ProcSelfMountinfo => "/proc/self/mountinfo"
   }
 }
 
@@ -78,6 +80,7 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcNetUnix,
   ProcSwaps,
   ProcSysKernelHostname,
+  ProcSelfMountinfo,
   ProcNetPnp,
 ]
 
@@ -242,6 +245,7 @@ fn procfs_path_provision(p: ProcfsPath) -> ProcfsPathProvision {
     ProcSwaps => ProvisionNotYetQualified
     ProcSysKernelHostname => ProvisionNotYetQualified
     ProcNetPnp => ProvidedWhenConfigured { option: "CONFIG_IP_PNP" as NonEmptyStr }
+    ProcSelfMountinfo => ProvisionNotYetQualified
     ProcNetTcp => ProvisionNotYetQualified
     ProcNetTcp6 => ProvisionNotYetQualified
   }
