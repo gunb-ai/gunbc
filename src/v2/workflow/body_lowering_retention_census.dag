@@ -55,9 +55,9 @@ import v2.std.optional { Absent, Optional, Present }
 // MQ-4 every retained shell rode the refusal as a pending advisory, so this census counted all of
 // them; now it counts the first retained shell of each refused module. The full population is
 // BodyLoweredTree.retained (v2.compiler.body_lowering_fold), which does not survive into the
-// closure-level Rejected this census is handed (v2.workflow.product_receipt_stage). TRIGGER for
-// restoring full grain: the refused compile carrying each module's typed retention population
-// beside its diagnostics, so this census folds WrapperRetention values instead of refusal rows.
+// closure-level Rejected this census is handed (v2.workflow.product_receipt_stage). The loss is
+// declared as gunbc.rung_drop retention_census_counts_one_retention_per_refused_module, whose
+// trigger is the only thing that retires it.
 //
 // The refusal cause is ONE reason standing over
 // SEVERAL distinct absent producers: the fold's own note says an out-of-scope
