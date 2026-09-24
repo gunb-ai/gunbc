@@ -27,7 +27,8 @@ import gunbc.design.instrument_bob {
 }
 import extdeps.http.server { ServeHttpRequest, ServeHttpResponse }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
-import std.types { String, Int, Bool, List, HttpMethod, GET }
+import std.types { String, Int, Bool, List }
+import extdeps.ietf.http_semantics { HttpMethod, GET }
 
 data witness_subject_note: String = "THE MOTION LAB'S VERTICAL SLICE, exercised through the route rather than through the page function, because the thing that can break in production is the composition — a handler arm that renders the wrong page, an asset route serving the wrong body, a page whose attributes and whose client program have drifted apart. Calling instrument_motion_page() directly would prove the fragment and leave every seam above it untested.
 

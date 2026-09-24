@@ -1,6 +1,6 @@
 module gunbc.roadmap_static_site
 
-import std.types { String, Bool, List, CommitSha, NonEmptyStr, HttpMethod, GET, Port }
+import std.types { String, Bool, List, CommitSha, NonEmptyStr, Port }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -46,6 +46,7 @@ import extdeps.languages.json.emit {
   JsonKeyValue,
 }
 import extdeps.tools.curl { curl_localhost_bounded_get_argv_prefix }
+import extdeps.ietf.http_semantics { HttpMethod, GET }
 
 type SiteArtifactKind
   = RoadmapMarkdown

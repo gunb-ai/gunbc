@@ -12,7 +12,6 @@ import extdeps.ntfy.ntfy { NtfyTopic, NtfyPublishReceipt, NtfyErrorShape }
 import extdeps.transports.rest { RestOutcome, RestOk }
 import extdeps.uri { Uri, Https }
 import std.types { Secret }
-import v2.std.network { POST }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, EnsureSystemAccount, executor_privileged_operation_converge_command,
 }
@@ -21,6 +20,7 @@ import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllGroupTr
 import gunbc.fleet_intent_network { fleet_intent_network, operator_host_srv1 }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
+import extdeps.ietf.http_semantics { POST }
 
 // ── The self-hosted notification server on srv1 ──────────────────────────────────────────────
 // It follows gunbc-publication exactly: its own system account, its own state directory owned by

@@ -1,6 +1,6 @@
 module tools.approval_store_live_probe
 
-import std.types { Bool, NonEmptyStr, String, Timestamp, POST, Secret }
+import std.types { Bool, NonEmptyStr, String, Timestamp, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest }
 import std.scoped_authorization { AttemptIdentity, AuthorizationRequest, AuthorizationGranted, AuthorizationDenied, AuthorizationPending }
@@ -20,6 +20,7 @@ import gunbc.auth.approval_decision_store {
   store_redemption_reason,
   grant_from_store, GrantDerived, GrantStillPending, GrantEscalationNotFiled, GrantForAnotherIntent, GrantStoreUnreadable,
 }
+import extdeps.ietf.http_semantics { POST }
 
 // THE LIVE RECEIPT FOR THE EFFECTFUL HALF OF THE APPROVAL DECISION STORE, which the hermetic
 // witness (test.claim.approval_decision_store_witness_test) cannot reach: a request filed into a

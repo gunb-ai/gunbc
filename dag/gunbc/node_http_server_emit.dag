@@ -1,6 +1,5 @@
 module gunbc.node_http_server_emit
 
-import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import extdeps.uri_path { PathTemplate, LiteralToken, ParamToken }
 import extdeps.http.server {
   http_method_label,
@@ -40,6 +39,7 @@ import extdeps.languages.typescript.program {
   ts_prefix,
   ts_spread,
 }
+import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 
 // DISPOSITION (P5, UI-model migration): the belt-A ROADMAP dashboard emit is DELETED. Belt B (gunbc
 // serve / gunbc.roadmap_serve) retired it from deploy membership (live_deploy_spec_belt_b_note: the

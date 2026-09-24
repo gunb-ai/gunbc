@@ -141,7 +141,10 @@ pub fn make_indent(level: i64) -> String {
         if (level.clone() <= 0) {
             "".to_string()
         } else {
-            v1_rt::concat("    ".to_string(), make_indent((level.clone() - 1)))
+            v1_rt::concat(
+                "    ".to_string(),
+                make_indent(v1_rt::int_sub(level.clone(), 1)),
+            )
         }
     })
 }
@@ -171,7 +174,7 @@ pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
 pub fn to_string(value: i64) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (value.clone() < 0) {
-            v1_rt::concat("-".to_string(), to_string((0 - value.clone())))
+            v1_rt::concat("-".to_string(), to_string(v1_rt::int_sub(0, value.clone())))
         } else {
             if (value.clone() == 0) {
                 "0".to_string()
@@ -208,8 +211,8 @@ pub fn to_string_helper(
         if (value.clone() == 0) {
             break acc.clone();
         } else {
-            let rest = (value.clone() / 10);
-            let digit = (value.clone() - (rest.clone() * 10));
+            let rest = v1_rt::int_div(value.clone(), 10);
+            let digit = v1_rt::int_sub(value.clone(), v1_rt::int_mul(rest.clone(), 10));
             let digit_chars = Rc::new(vec![
                 "0".to_string(),
                 "1".to_string(),
@@ -322,7 +325,7 @@ pub fn to_lower_char(ch: i64) -> String {
         let cp = ch.clone();
         if ((cp.clone() >= 65) && (cp.clone() <= 90)) {
             {
-                let lower_cp = (cp.clone() + 32);
+                let lower_cp = v1_rt::int_add(cp.clone(), 32);
                 v1_rt::from_code_point(lower_cp.clone())
             }
         } else {
@@ -336,7 +339,7 @@ pub fn to_upper_char(ch: i64) -> String {
         let cp = ch.clone();
         if ((cp.clone() >= 97) && (cp.clone() <= 122)) {
             {
-                let upper_cp = (cp.clone() - 32);
+                let upper_cp = v1_rt::int_sub(cp.clone(), 32);
                 v1_rt::from_code_point(upper_cp.clone())
             }
         } else {
@@ -360,7 +363,7 @@ pub fn sanitize_service_name(name: String) -> String {
             }
             __result
         });
-        pascal_parts.clone().join(&"__".to_string())
+        pascal_parts.clone().join(&"".to_string())
     }
 }
 
@@ -398,15 +401,7 @@ pub fn capitalize_first(s: String) -> String {
 }
 
 pub fn service_var_name(service_name: String) -> String {
-    to_snake(
-        Rc::new(
-            sanitize_service_name(service_name.clone())
-                .split(&"__".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .join(&"".to_string()),
-    )
+    to_snake(sanitize_service_name(service_name.clone()))
 }
 
 pub fn to_pascal(name: String) -> String {

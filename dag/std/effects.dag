@@ -1,11 +1,12 @@
 module std.effects
 
-import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, String, List }
+import std.types { String, List }
 import std.realization_schedule { string_list_eq }
 import extdeps.uri_path {
   PathTemplate,
   has_path_params, last_path_param
 }
+import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, CONNECT, TRACE }
 
 type EffectShape<K>
   = ReadEffect
@@ -172,6 +173,7 @@ type DerivedOpEffect {
 
 type DeriveOpEffectResult
   = DerivedEffect { effect: DerivedOpEffect }
+  | MethodHasNoOperationEffect { operation_name: String, method: HttpMethod }
   | MalformedPathInput {
       operation_name: String,
       method: HttpMethod,
@@ -180,29 +182,39 @@ type DeriveOpEffectResult
       reason: String
     }
 
+// CONNECT (RFC 9110 section 9.3.6) asks the recipient to open a tunnel; it names no resource
+// operation, so no EffectShape describes it. It is a typed MethodHasNoEffectShape rather than any
+// shape arm -- a CreateEffect or ExecuteEffect here would be a fabricated classification that the
+// idempotency obligations downstream would then trust. TRACE (9.3.8) is safe, so it reads.
+type MethodEffectShape
+  = MethodShaped { shape: EffectShape<KeySource> }
+  | MethodHasNoEffectShape
+
 fn derive_effect_shape(
   method: HttpMethod,
   path: PathTemplate
-) -> EffectShape<KeySource> {
+) -> MethodEffectShape {
   match method {
-    GET     => ReadEffect
-    HEAD    => ReadEffect
-    OPTIONS => ReadEffect
-    POST    => CreateEffect { cause: PostAlways }
+    GET     => MethodShaped { shape: ReadEffect }
+    HEAD    => MethodShaped { shape: ReadEffect }
+    OPTIONS => MethodShaped { shape: ReadEffect }
+    TRACE   => MethodShaped { shape: ReadEffect }
+    CONNECT => MethodHasNoEffectShape
+    POST    => MethodShaped { shape: CreateEffect { cause: PostAlways } }
     DELETE =>
       match last_path_param(template: path) {
-        Present { value: p } => DeleteEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect { cause: KeylessFallback { method: DELETE } }
+        Present { value: p } => MethodShaped { shape: DeleteEffect { key_source: PathParam { param: p } } }
+        Absent => MethodShaped { shape: CreateEffect { cause: KeylessFallback { method: DELETE } } }
       }
     PUT =>
       match last_path_param(template: path) {
-        Present { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect { cause: KeylessFallback { method: PUT } }
+        Present { value: p } => MethodShaped { shape: UpsertEffect { key_source: PathParam { param: p } } }
+        Absent => MethodShaped { shape: CreateEffect { cause: KeylessFallback { method: PUT } } }
       }
     PATCH =>
       match last_path_param(template: path) {
-        Present { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect { cause: KeylessFallback { method: PATCH } }
+        Present { value: p } => MethodShaped { shape: UpsertEffect { key_source: PathParam { param: p } } }
+        Absent => MethodShaped { shape: CreateEffect { cause: KeylessFallback { method: PATCH } } }
       }
   }
 }
@@ -212,13 +224,17 @@ fn derive_op_effect(
   method: HttpMethod,
   path: PathTemplate
 ) -> DeriveOpEffectResult {
-  let shape = derive_effect_shape(method: method, path: path)
-  DerivedEffect { effect: DerivedOpEffect {
-    operation_name: operation_name,
-    method: method,
-    path_template: path,
-    shape: shape
-  } }
+  match derive_effect_shape(method: method, path: path) {
+    MethodShaped { shape: shape } =>
+      DerivedEffect { effect: DerivedOpEffect {
+        operation_name: operation_name,
+        method: method,
+        path_template: path,
+        shape: shape
+      } }
+    MethodHasNoEffectShape =>
+      MethodHasNoOperationEffect { operation_name: operation_name, method: method }
+  }
 }
 
 type ModifierAgreement
@@ -284,7 +300,8 @@ fn check_modifier_vs_derivation(
       GET => Agrees
       HEAD => Agrees
       OPTIONS => Agrees
-      _ => Disagrees { reason: "readonly declared but method is not GET/HEAD/OPTIONS" }
+      TRACE => Agrees
+      _ => Disagrees { reason: "readonly declared but method is not GET/HEAD/OPTIONS/TRACE" }
     }
   } else {
     Agrees
