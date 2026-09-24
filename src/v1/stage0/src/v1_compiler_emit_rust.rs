@@ -959,7 +959,12 @@ pub fn emit_rust_host_to_dag_string_via_seam(host_expr: String) -> String {
 pub fn emit_rust_map_literal_key(field_name: String, key_is_string: bool) -> String {
     {
         let key_literal = v1_rt::concat(
-            v1_rt::concat("\"".to_string(), field_name.clone()),
+            v1_rt::concat(
+                "\"".to_string(),
+                crate::v1_compiler_emit_core_support::escape_string_literal_body(
+                    field_name.clone(),
+                ),
+            ),
             "\"".to_string(),
         );
         let host_expr = if key_is_string.clone() {

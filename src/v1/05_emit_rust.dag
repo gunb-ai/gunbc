@@ -576,8 +576,11 @@ fn emit_rust_host_to_dag_string_via_seam(host_expr: String) -> String {
   host_expr
 }
 
+// THE KEY IS THE DECODED VALUE, NOT ITS SOURCE SPELLING, so it is escaped before it is quoted. A
+// key of one double quote (`"\"": 34` in extdeps.languages.yaml.ingest yaml_double_quoted_escapes)
+// rendered `""".to_string()` and knocked rustc's lexer out of the string for the rest of the file.
 fn emit_rust_map_literal_key(field_name: String, key_is_string: Bool) -> String {
-  let key_literal = concat("\"", field_name, "\"")
+  let key_literal = concat("\"", escape_string_literal_body(s: field_name), "\"")
   let host_expr = if key_is_string {
     concat(key_literal, ".to_string()")
   } else {
