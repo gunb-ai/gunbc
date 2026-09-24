@@ -112,6 +112,7 @@ import v2.std.node {
 }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup }
 import v2.std.compilers.target_model {
+  IntLiteralUnwired,
   ProducedDeclUnwired,
   CanonicalOperation,
   ConcreteSyntaxToken,
@@ -4671,6 +4672,7 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       true_token: ^dag_token_kw_true,
       false_token: ^dag_token_kw_false
     },
+    int_literal_form: IntLiteralUnwired,
     block_evaluation_mode: dag_block_evaluation_mode()
   }
 }
