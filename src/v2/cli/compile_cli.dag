@@ -373,10 +373,10 @@ fn v2_cli_entry_locus(entry: String) -> Node {
 // is an exit another process was OBSERVED to take), so the shim maps an arm to a number and decides
 // nothing. A shim that chose the status from whether stdout was empty would be a second
 // representation of the verdict, free to disagree with the outcome it was derived from.
+// A MEMBER'S REFUSAL IS CARRIED IN THE EMISSION AND STILL FAILS THE PROCESS: the text is written so a
+// reader sees every member's arm, and the status says the closure did not wholly emit.
 fn v2_cli_exit(outcome: CliRunOutcome) -> ProcessExit {
   match outcome {
-    // A MEMBER'S REFUSAL IS CARRIED IN THE EMISSION AND STILL FAILS THE PROCESS: the text is written
-    // so a reader sees every member's arm, and the status says the closure did not wholly emit.
     CliEmitted { text: _, closure_size: _, refused_count: refused } =>
       if refused == 0 {
         ExitSuccess
