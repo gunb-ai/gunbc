@@ -571,6 +571,45 @@ extdeps; mapping and policy in the workflow) — never a homegrown tracker shape
   misleading pending stages. A pending stage names what it waits on, not just
   that it waits.
 
+## Review ruling (2026-09-23): branch held on two blockers; the conservation laws
+
+The first full review of the integration branch returned HOLD with two blockers
+(the launch census reads only tmux while production attempts run in systemd
+units — an invisible-population defect on the live admission path; and
+ContinuationFresh conflating "no lineage" with "lineage active/unresolved" —
+an effectful spawn answer for non-fresh states) plus high findings (alignment
+model parallel-not-authoritative; submission capture not self-authenticating;
+launch admission not an atomic cross-invocation reservation; the actuation root
+too broad to audit). The laws it minted are now doctrine:
+
+1. **Observation conservation**: every identity discovered at an external
+   boundary survives into exactly one modeled output arm — classified,
+   unclassified/unknown, foreign, or malformed. No arm may mean "drop it."
+   Classification failure weakens what is KNOWN about the identity; it never
+   erases the identity.
+2. **No refusal-to-neutral conversion**: Refused or Unknown must never become
+   [], 0, false, or none at a safety boundary.
+3. **Current policy does not identify a historical occurrence**: an existing
+   attempt is read through the provider/realization/profile it was launched
+   with (its persisted spawn identity), never through the currently selected
+   policy.
+4. **Adjacency is not a join**: a digest, subject, locator, or authority
+   supplied beside a payload must be derived from it or checked against it.
+5. **Weaker evidence cannot improve admission**: replacing an observed fact
+   with unread/unknown keeps the verdict equal or more restrictive.
+
+The recurring-failure-mode row to file on the public side: "an observed member
+disappears when classification refuses," with the static census tripwire over
+helper-layer shapes (Refused => [], Unknown => none, Absent => accumulator).
+
+**The reopening gate is conjunctive (review ruling, 2026-09-24):** model-backed
+dispatch resumes only when ALL of: the population-conservation + continuation
+composition proof is accepted (an active systemd attempt reaches zero spawn
+effects), the memory proof reaches FitProved for the declared capacity intent,
+and the exact combined revision is deployed and read back. Until the launch
+lease lands, launch authority stays single-controller/manual — a bounded
+intermediate state, never evidence of cross-invocation exclusivity.
+
 ## Slices and their production exit criteria
 
 | Slice | What must be true before calling it complete |
