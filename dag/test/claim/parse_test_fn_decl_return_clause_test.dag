@@ -276,8 +276,14 @@ test fn nfbcp_no_return_type_specimen_parses_holds() -> Bool {
 // This row runs that whole route on the real parse and asserts WHERE the refusal lands: under the
 // door's cause, anchored at the fn_decl shell that was retained -- not at the module root, where the
 // pre-MQ-4 door placed its single diagnostic. Deleting the door's refusal arm (admitting every tree)
-// turns normalize Accepted and reds it; the positive control keeps it from holding by refusing
-// everything.
+// turns normalize Accepted and reds it. A door refusing everything is caught by the normalize-accepts
+// rows that already run the same route (v2.test.manual.body_lowering_normalize_add
+// body_lowering_normalize_accepts, v2.test.claim.body_lowering.data_initializer_fn_value
+// lambda_in_fn_body_control_holds), so this row adds no second parse for a positive control.
+//
+// The specimen is the smallest module whose fn declaration reaches the signature arm with no return
+// type -- the whole parse and normalize is this row's cost, so it carries nothing else.
+data nfbcp_retention_route_source: String = "module m\nfn g() { true }\n"
 fn nfbcp_retention_anchored_at_fn_decl(d: Diagnostic) -> Bool {
   match d.at {
     NodeLocus { anchor: a } =>
@@ -294,7 +300,7 @@ fn nfbcp_is_door_retention(d: Diagnostic) -> Bool {
 }
 
 test fn nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds() -> Bool {
-  match nfbcp_parsed(text: nfbcp_no_return_type_source) {
+  match nfbcp_parsed(text: nfbcp_retention_route_source) {
     Absent => false
     Present { value: tree } =>
       match normalize(parse_tree: tree) {
@@ -303,17 +309,6 @@ test fn nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds(
           fold(ne.tail, init: nfbcp_is_door_retention(d: ne.head) && nfbcp_retention_anchored_at_fn_decl(d: ne.head), f: fn(found, d) {
             found || (nfbcp_is_door_retention(d: d) && nfbcp_retention_anchored_at_fn_decl(d: d))
           })
-      }
-  }
-}
-
-test fn nfbcp_control_ordinary_fn_normalizes_holds() -> Bool {
-  match nfbcp_parsed(text: nfbcp_ordinary_fn_source) {
-    Absent => false
-    Present { value: tree } =>
-      match normalize(parse_tree: tree) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
       }
   }
 }
