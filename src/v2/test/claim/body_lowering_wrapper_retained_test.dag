@@ -1,7 +1,12 @@
 module v2.test.claim.body_lowering_wrapper_retained
 
-import v2.compiler.body_lowering_fold { BodyLowered, BodyWrapperRetained, body_lower_wrapper_retained_shell }
-import v2.std.diagnostic { Accepted, None, Rejected, Some }
+import v2.compiler.body_lowering_fold {
+  BodyLowered,
+  BodyWrapperRetained,
+  body_lower_wrapper_retained_shell,
+  body_lowering_refuse_retained
+}
+import v2.std.diagnostic { Accepted, NodeLocus, None, Rejected, Some }
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Node, TypeNode, content_hash, node_synthetic }
 
@@ -31,5 +36,23 @@ test fn body_lowering_wrapper_retained_emits_no_diagnostic_holds() -> Bool {
     Accepted { value: _, diagnostics: None } => true
     Accepted { value: _, diagnostics: Some { diagnostics: _ } } => false
     Rejected { diagnostics: _ } => false
+  }
+}
+
+// VALUE POSITION REFUSES, IT DOES NOT DROP. The bottom-up value fold reaches the declaration
+// producers (body_lower_reduce_emitted) and hands their result to the walker, which has no retention
+// channel; body_lowering_refuse_retained is the one arm between them. A retention through it must be
+// a refusal under the door's cause, anchored at the retained shell -- the pre-MQ-4 shape of this
+// read was body_lower_reduce_or_keep over an Accepted shell, which kept it as a lowered value.
+test fn body_lowering_value_position_refuses_a_retention_at_its_shell_holds() -> Bool {
+  let shell = wrapper_retained_probe_shell()
+  match body_lowering_refuse_retained(o: body_lower_wrapper_retained_shell(shell: shell)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ne } =>
+      (ne.head.reason == ^normalized_tree_reason_wrapper_retention_not_normalized)
+        && match ne.head.at {
+          NodeLocus { anchor: a } => content_hash(n: a.at) == content_hash(n: shell)
+          _ => false
+        }
   }
 }
