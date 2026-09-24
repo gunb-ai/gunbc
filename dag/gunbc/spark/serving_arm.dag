@@ -751,6 +751,37 @@ type ServingLaunchProfile sole_constructor {
   prefix_caching: VllmPrefixCachingRequest
 }
 
+// THE MINT, EXPORTED SO A PROFILE CAN BE DERIVED, NOT ONLY AUTHORED. The seal's job is keeping a
+// record literal that omits or reorders a dimension from compiling; a named derivation --
+// gunbc.spark.serving_capacity_intent profile_for_intent builds the executable profile FROM the
+// service obligation -- is a legitimate constructor, and without this mint the only profiles in
+// existence would be the authored rows, which would make "the engine config the proof prices" and
+// "the engine config the launch renders" two independently typed values that happen to agree.
+// Derived profiles still pass through the same type and the same key, so a derivation that
+// disagrees with the obligation is visible at the join (gunbc.spark.arm_memory_fit refuses it),
+// not silently launchable.
+fn serving_launch_profile(
+  max_model_len: TokenCount,
+  max_num_batched_tokens: TokenCount,
+  max_num_seqs: Nat,
+  decided_gpu_memory_basis_points: BasisPoint,
+  kv_cache_dtype_wire: NonEmptyStr,
+  serve_port: Port,
+  served_alias: NonEmptyStr,
+  prefix_caching: VllmPrefixCachingRequest,
+) -> ServingLaunchProfile {
+  ServingLaunchProfile {
+    max_model_len: max_model_len,
+    max_num_batched_tokens: max_num_batched_tokens,
+    max_num_seqs: max_num_seqs,
+    decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
+    kv_cache_dtype_wire: kv_cache_dtype_wire,
+    serve_port: serve_port,
+    served_alias: served_alias,
+    prefix_caching: prefix_caching,
+  }
+}
+
 // THE PREFIX-CACHING REQUEST IS PART OF THE IDENTITY. Two launches differing only in whether they asked
 // for prefix caching are two different launches, and a compatibility receipt recorded against one must not
 // cover the other -- which is precisely what a key omitting this field would let it do.

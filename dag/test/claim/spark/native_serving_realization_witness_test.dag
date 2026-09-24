@@ -41,6 +41,7 @@ test fn w_normal_serving_units_are_persistent_and_enrolled() -> Bool {
         && string_contains(s: t, pattern: "[Install]")
         && string_contains(s: t, pattern: "WantedBy=multi-user.target")
         && !string_contains(s: t, pattern: "StartLimitBurst")
+        && !string_contains(s: t, pattern: "RuntimeMaxSec")
         && !string_contains(s: t, pattern: "BOUNDED EXPERIMENT")
     })
 }
@@ -53,6 +54,9 @@ test fn w_bounded_experiment_units_are_one_shot_and_not_enrolled() -> Bool {
       string_contains(s: t, pattern: "Restart=no")
         && string_contains(s: t, pattern: "StartLimitIntervalSec=600")
         && string_contains(s: t, pattern: "StartLimitBurst=1")
+        && string_contains(s: t, pattern: "RuntimeMaxSec=3600")
+        && string_contains(s: t, pattern: "TimeoutStartSec=0")
+        && string_contains(s: t, pattern: "ExecStopPost=-/usr/bin/docker rm -f glm-native-tp4")
         && string_contains(s: t, pattern: "BOUNDED EXPERIMENT")
         && !string_contains(s: t, pattern: "Restart=always")
         && !string_contains(s: t, pattern: "[Install]")

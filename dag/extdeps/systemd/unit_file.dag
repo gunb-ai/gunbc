@@ -146,6 +146,7 @@ type SystemdServiceDirective
   | ServiceNice { priority: Int }
   | ServiceIoSchedulingClass { scheduling_class: SystemdIoSchedulingClass }
   | TimeoutStartSec { duration: NonEmptyStr }
+  | RuntimeMaxSec { duration: NonEmptyStr }
   | ServiceExitType { exit_type: SystemdExitType }
   | ServiceKillMode { mode: SystemdKillMode }
   | RestartSec { duration: NonEmptyStr }
@@ -225,6 +226,14 @@ type SystemdIoSchedulingClass
 // before systemd escalates to SIGKILL. They are two durations at opposite ends of a unit's life and
 // are two variants for the reason every pair in this module is: one value carrying both would put
 // the difference between "wait before starting again" and "wait before killing" into a position.
+//
+// `RuntimeMaxSec=` is the TOTAL-runtime bound, the one a bounded experiment exists for: systemd
+// terminates the unit once the duration elapses, which is how a one-shot measurement cannot become
+// an indefinitely running service even when its exit code says nothing. `TimeoutStartSec=` bounds
+// only the START, and leaving start unbounded while bounding the whole run is the shape an engine
+// unit needs -- startup is a multi-minute weight load, but once running the experiment has an
+// admitted maximum. Every rank unit of one experiment carries the same value, so the bound stops
+// ALL the ranks together rather than whichever of them an operator remembered.
 //
 // They take `NonEmptyStr` rather than a modeled duration, following `TimeoutStartSec=`'s established
 // precedent here. systemd's timespan grammar admits bare seconds and suffixed units ("5", "5min"),
@@ -563,6 +572,7 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     ServiceIoSchedulingClass { scheduling_class: v } =>
       join(["IOSchedulingClass=", systemd_io_scheduling_class_wire(scheduling_class: v)], "")
     TimeoutStartSec { duration: v } => join(["TimeoutStartSec=", v as String], "")
+    RuntimeMaxSec { duration: v } => join(["RuntimeMaxSec=", v as String], "")
     ServiceExitType { exit_type: v } => join(["ExitType=", systemd_exit_type_wire(exit_type: v)], "")
     ServiceKillMode { mode: v } => join(["KillMode=", systemd_kill_mode_wire(mode: v)], "")
     RestartSec { duration: v } => join(["RestartSec=", v as String], "")

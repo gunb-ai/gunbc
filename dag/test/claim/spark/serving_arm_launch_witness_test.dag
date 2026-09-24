@@ -14,7 +14,7 @@ import gunbc.spark.serving_arm {
   ServingLaunchProfile, glm_native_concurrent_profile, glm_native_serving_profile_2026_09_19,
   ArmIntent, ArmNormalServing, ArmBoundedExperiment,
   GunbcSparkrunVllmDs4Gb10,
-  Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
+  Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4, SingleSparkTp1,
   glm_native_initial_profile, serving_checkpoint_row, serving_runtime_row,
 }
 import gunbc.spark.serving_arm_launch {
@@ -22,7 +22,9 @@ import gunbc.spark.serving_arm_launch {
   plan_arm_launch_for, arm_node, arm_container_spec,
 }
 import gunbc.spark.arm_memory_fit {
-  arm_memory_fit_verdict_for_launch,
+  arm_memory_fit_subject_for_launch,
+  arm_memory_fit_verdict,
+  ArmMemorySubjectReady, ArmMemorySubjectRefused,
   ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
 }
 
@@ -233,6 +235,31 @@ test fn w_the_measured_arm_refuses_normal_serving_at_the_memory_wall() -> Bool {
     })
 }
 
+// ── A REFUSED FIT REFUSES THE EXPERIMENT TOO — tp1/tp2 ARE NOT ADMISSIBLE AS EXPERIMENTS ────────
+//
+// THE BLOCKER'S CONTROL. A single-rank topology cannot hold this checkpoint under ANY reading
+// (the aggregate argument proves it before any per-rank term), so a bounded experiment there
+// measures nothing a service could use: the plan arm must refuse, with the refusal carried up
+// through the wall, not admit the shape because the word "experiment" used to bypass the fit.
+fn plan_tp1_experiment() -> ArmLaunchPlan {
+  plan_arm_launch_for(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: SingleSparkTp1,
+    group: FabricGroupB,
+    intent: ArmBoundedExperiment,
+    profile: glm_native_initial_profile,
+  )
+}
+
+test fn w_a_refused_fit_refuses_the_bounded_experiment_at_the_wall() -> Bool {
+  match plan_tp1_experiment() {
+    ArmLaunchRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "even a bounded experiment refuses")
+    ArmLaunchPlanned { lines: _, master: _ } => false
+  }
+}
+
 // ── THE PRODUCTION SERVING PROFILE'S VERDICT IS CARRIED BY THE PROOF, NOT BY A POOL READING ─────
 //
 // The 2026-09-19 serving profile (262144 tokens, sixteen sequences, fp8 KV, 8400 basis points) is
@@ -243,15 +270,15 @@ test fn w_the_measured_arm_refuses_normal_serving_at_the_memory_wall() -> Bool {
 // receipt for this profile exists yet); the verdict row is what tells the operator what has to
 // exist BEFORE such a receipt can mean the arm is safe to serve on.
 test fn w_the_serving_profiles_verdict_is_unestablished_with_named_obligations() -> Bool {
-  match arm_memory_fit_verdict_for_launch(
+  match arm_memory_fit_subject_for_launch(
     checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
     profile: glm_native_serving_profile_2026_09_19,
   ) {
-    Absent => false
-    Present { value: verdict } =>
-      match verdict {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } =>
+      match arm_memory_fit_verdict(subject: subject) {
         ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => false
         ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => false
         ArmMemoryFitUnestablished { obligations: os } =>
@@ -319,5 +346,6 @@ test fn w_all_serving_arm_launch_claims_hold() -> Bool {
     && w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_answer()
     && w_the_utilisation_argv_is_the_profiles_value_at_full_precision()
     && w_the_measured_arm_refuses_normal_serving_at_the_memory_wall()
+    && w_a_refused_fit_refuses_the_bounded_experiment_at_the_wall()
     && w_the_serving_profiles_verdict_is_unestablished_with_named_obligations()
 }

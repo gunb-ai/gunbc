@@ -28,6 +28,7 @@ import gunbc.spark.serving_arm {
   glm_native_initial_profile, glm_native_serving_profile_2026_09_19,
   ArmIntent, ArmNormalServing, ArmBoundedExperiment,
 }
+import gunbc.spark.arm_memory_fit { arm_memory_experiment_runtime_seconds }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
@@ -259,13 +260,24 @@ fn glm_native_service_directives(intent: ArmIntent, run_line: NonEmptyStr, is_he
       ExecStartPre { command: join(["-/usr/bin/docker rm -f ", glm_native_container_name as String], "") as NonEmptyStr },
       ExecStart { command: run_line },
       ExecStop { command: join(["/usr/bin/docker stop ", glm_native_container_name as String], "") as NonEmptyStr },
+      ExecStopPost { command: join(["-/usr/bin/docker rm -f ", glm_native_container_name as String], "") as NonEmptyStr },
       Restart { policy: "no" as NonEmptyStr },
       TimeoutStartSec { duration: "0" as NonEmptyStr },
+      RuntimeMaxSec { duration: to_string(arm_memory_experiment_runtime_seconds()) },
       ServiceStandardOutput { stream: OutputAppendFile { path: log_path } },
       ServiceStandardError { stream: OutputAppendFile { path: log_path } },
     ]
   }
 }
+
+// THE EXPERIMENT'S RUNTIME IS ADMITTED, NOT UNBOUNDED. TimeoutStartSec stays zero because startup
+// is a multi-minute weight load; RuntimeMaxSec bounds the whole run at the same figure the
+// experiment plan admits (gunbc.spark.arm_memory_fit arm_memory_experiment_runtime_seconds -- the
+// engine's own multi-node ready timeout), and EVERY rank unit carries the same value, so the bound
+// stops all the ranks together. ExecStopPost removes the container after any stop -- including a
+// runtime expiry -- so a timed-out experiment leaves no engine holding pool bytes. The disposition
+// the timeout preserves (the per-rank logs, and a refusal disposition recorded against every
+// unminted expected receipt) is the plan's stop contract, carried as data beside the plan.
 
 // THE EXPERIMENT IS NOT ENROLLED, which is the property that keeps a bounded experiment from
 // becoming a service: NotInstallable renders no [Install] section at all, so no target pulls it

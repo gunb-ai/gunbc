@@ -1,9 +1,10 @@
 module gunbc.spark.serving_capacity_intent
 
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, List, Port }
 import std.nat { Nat, nat_range_inclusive }
-import std.measure { TokenCount, token_count, token_count_value }
-import gunbc.spark.serving_arm { ServingLaunchProfile }
+import std.measure { TokenCount, token_count, token_count_value, BasisPoint }
+import extdeps.vllm.engine_args { VllmPrefixCachingRequest }
+import gunbc.spark.serving_arm { ServingLaunchProfile, serving_launch_profile }
 
 // ── THE SERVICE OBLIGATION IS A SEAT POPULATION, NOT A POOL SIZE ────────────────────────────────
 //
@@ -96,6 +97,38 @@ fn intent_max_total_resident_tokens(i: ServingCapacityIntent) -> TokenCount {
 
 fn intent_batched_tokens(i: ServingCapacityIntent) -> TokenCount {
   i.max_batched_tokens
+}
+
+// ── THE EXECUTABLE PROFILE IS DERIVED FROM THE INTENT, NOT CHOSEN BESIDE IT ─────────────────────
+//
+// THE REVIEW BLOCKER THIS CLOSES: a proof subject that carries an intent and a profile as two
+// independent fields prices whatever workload a witness happens to put next to whatever profile
+// it happens to hold -- the 4-seat x 64K FitProved row was proving a small service beside a
+// sixteen-sequence 262K executable. THE ENGINE CONFIG THE PROOF PRICES AND THE ENGINE CONFIG THE
+// LAUNCH RENDERS ARE ONE VALUE, derived here: max_model_len is the largest seat budget, max_num_seqs
+// is the seat population (explicit policy: the engine admits what the service owes, not a cheaper
+// fraction of it), and the batched ceiling is the intent's own. What the intent does not decide --
+// utilization, KV dtype, port, alias, prefix caching -- arrives as launch policy from the caller,
+// and gunbc.spark.arm_memory_fit's subject mint REQUIRES the join: a subject assembled with a
+// profile that is not the intent's derivation is refused at construction, so profile-and-intent
+// disagreement is unwritable, not merely detectable after the fact.
+fn profile_for_intent(
+  intent: ServingCapacityIntent,
+  decided_gpu_memory_basis_points: BasisPoint,
+  kv_cache_dtype_wire: NonEmptyStr,
+  serve_port: Port,
+  served_alias: NonEmptyStr,
+  prefix_caching: VllmPrefixCachingRequest,
+) -> ServingLaunchProfile {
+  serving_launch_profile(
+    max_model_len: intent_max_single_sequence_tokens(i: intent),
+    max_num_batched_tokens: intent.max_batched_tokens,
+    max_num_seqs: intent_max_active_sequences(i: intent),
+    decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
+    kv_cache_dtype_wire: kv_cache_dtype_wire,
+    serve_port: serve_port,
+    served_alias: served_alias,
+    prefix_caching: prefix_caching)
 }
 
 // ── THE WORKLOAD A LAUNCH PROFILE ADMITS, DERIVED THE SAME WAY ──────────────────────────────────

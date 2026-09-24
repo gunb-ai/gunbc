@@ -7,62 +7,64 @@ import std.measure {
   ByteSize, byte_size, byte_size_count, measure_add, measure_le,
   Gibibyte, gibibyte, gibibyte_count, gibibyte_to_byte_size,
   BasisPoint, basis_point_count,
+  TokenCount, token_count_value,
 }
 import std.interval {
   OrderedClosedInterval, interval_low, interval_high,
-  closed_interval, IntervalConstruction, interval_construction_fold,
+  closed_interval, IntervalReady, IntervalRefused,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.vllm.runtime_defaults { vllm_requested_envelope_bytes }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_vllm_engine_ready_timeout_seconds }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology, ServingLaunchProfile,
-  serving_checkpoint_row, serving_topology_rank_count,
+  serving_checkpoint_row, serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
+  serving_topology_rank_count,
   gb10_unified_pool_gib,
   ArmIntent, ArmNormalServing, ArmBoundedExperiment,
 }
 import gunbc.spark.serving_capacity_intent {
   ServingCapacityIntent, intent_for_launch_profile,
+  intent_max_active_sequences, intent_max_single_sequence_tokens,
   ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
 }
 
-// ── WHAT THIS MODULE IS, AND WHAT REPLACED IT ────────────────────────────────────────────────────
+// ── WHAT THIS MODULE IS ─────────────────────────────────────────────────────────────────────────
 //
 // THE VERDICT IS THREE-ARMED AND THERE IS NO FOURTH. ArmMemoryFitProved / ArmMemoryFitRefused /
 // ArmMemoryFitUnestablished are the only constructors, and a launch is admitted for normal serving
 // only on the first. Refused means even the MOST FAVORABLE reading of supply against the least the
 // arm mandatorily needs cannot fit; Unestablished means a named component has no defensible bound
 // and the intervals do not decide. BOTH stop a normal-serving launch -- they name different
-// repairs, and "run it and see" is not a verdict arm. The aggregate pool x4 >= weights x5
-// heuristic this module retires (gunbc.spark.serving_arm serving_arm_fits, deleted) admitted the
-// tuple that has been OOM-crash-looping since 2026-09-18: it took no profile, no utilization, no
-// KV, and called that a fit.
+// repairs, and "run it and see" is not a verdict arm.
 //
-// THE PROOF IS COMPOSITIONAL, PER RANK, PER PHASE, OVER INTERVALS. Every resident mechanism is a
-// NAMED term with its own bound (nothing is folded into an unnamed sum): checkpoint residency per
-// rank, loader transformations and temporary copies, runtime fixed and non-Torch allocations, NCCL
-// collective workspaces, the activation/workspace peak, CUDA-graph capture and persistent graph
-// memory, the KV cache, and an allocator-fragmentation allowance. Demand carries lower and upper
-// endpoints; supply is the pool interval minus protected non-arm residency and foreign residency.
-// FitProved iff demand_upper <= supply_lower at EVERY rank and phase; FitRefused iff demand_lower >
-// supply_upper somewhere; otherwise Unestablished, naming what lacks a bound. Exact figures are
-// degenerate intervals; conservative estimates are wider ones; a genuinely unknown term is a named
-// obligation, never a zero.
+// THE PROOF IS COMPOSITIONAL, PER RANK, PER PHASE, OVER INTERVALS, and its subject is SEALED:
+// a consumer cannot assemble a subject by hand and hand it to the verdict fold. The mints are the
+// only constructors, and they enforce three things construction must guarantee, so no validation
+// downstream can be skipped by building the wrong shape (review blockers one and three):
 //
-// THE WORST RANK DECIDES, NOT THE AVERAGE. Tensor-parallel placement is not in general symmetric --
-// replicated tensors land on ranks unevenly -- so demand bounds are a per-rank roster and the
-// verdict fold quantifies over EVERY rank. An arm whose rank zero carries a replicated-tensor
-// surcharge is refused by rank zero while the three even ranks would each pass.
+//   1. THE INTENT/PROFILE JOIN. The executable profile the engine will run is DERIVED from the
+//      capacity intent (gunbc.spark.serving_capacity_intent profile_for_intent), and the mint
+//      refuses any subject whose profile is not that derivation. A proof about four 64K seats
+//      cannot stand beside a sixteen-sequence 262K executable: the engine config the proof prices
+//      and the engine config the launch renders are one value by construction. The launch wall
+//      prices the profile's maximum admitted behavior (every admitted sequence at the full
+//      window); a smaller recorded intent lowers demand only when a request-admission authority
+//      exists to enforce it, and none is modeled yet -- that is the honest direction until one is.
+//   2. CONSERVATION. A rank's demand is a COMPLETE RECORD -- one named bound per mechanism,
+//      checkpoint residency through fragmentation allowance -- and the supply side is a complete
+//      record of its two deductions. A missing KV term or a duplicated component has no spelling;
+//      a rank roster with a duplicated or absent rank index is refused at the mint.
+//   3. PROVENANCE. A measured bound's receipt must name the checkpoint, runtime and topology it
+//      was measured on; a receipt carried onto a changed checkpoint or runtime is refused. The
+//      checkpoint term itself is never even-split by assumption: per-rank placement bounds are OPEN
+//      until a CheckpointRankResidencyBound measurement mints them, and the aggregate impossibility
+//      argument ("at least one rank cannot hold its mandatory share") is carried separately so the
+//      proof never fabricates WHICH rank.
 //
-// PHASES KEEP TRANSIENTS IN THEIR PHASE. A load-time transformation bound is charged in
-// model_load / loader_transform / restart_overlap and is absent from idle and peak serving, so a
-// transient cannot be smuggled into the standing residency it does not hold.
-//
-// THE ENGINE'S DECIDED ENVELOPE IS A SECOND SUPPLY WALL. The profile carries the utilization the
-// launch will REQUEST; the engine mints KV inside ceil(device_total x utilization) and aborts when
-// its own accounting exceeds it. Demand must fit the envelope computed at the pool's LOWER reading
-// (the device may come in small), and the envelope plus bounded foreign residency must fit the
-// pool at all -- which is the unified-pool conservation law the crash loop demonstrated nobody was
-// checking.
+// PHASES KEEP TRANSIENTS IN THEIR PHASE, and the engine's decided envelope is a second supply
+// wall on the engine-admitted phases. AN UNMODELED POOL IS UNESTABLISHED, NOT REFUSED: "we have
+// no pool reading" names an obligation; it is not evidence the arm cannot fit.
 
 // ── THE PHASES ───────────────────────────────────────────────────────────────────────────────────
 //
@@ -115,14 +117,8 @@ data arm_memory_fit_phases: List<ArmMemoryFitPhase> = [
 
 // ── THE NAMED COMPONENTS, ONE TERM EACH ──────────────────────────────────────────────────────────
 //
-// THE LIST IS THE MECHANISM CENSUS, and adding a mechanism means adding a variant here -- an
-// exhaustive match over this coproduct is what keeps the sum from silently losing a term. The
-// census is the contract's: checkpoint residency (weights as placed per rank), loader
-// transformations/padding/temporary copies, runtime fixed and non-Torch allocations, NCCL and
-// collective workspaces, the activation/workspace peak, CUDA-graph capture plus persistent graph
-// memory, the KV cache, and the allocator-fragmentation allowance. Host/OS reserve and foreign
-// residency are SUPPLY terms (ArmSupplyTerm below), not demand: they are someone else's residency
-// of the same pool.
+// THE CENSUS IS CLOSED, and the rank record below carries exactly one bound per variant -- an
+// exhaustive match over this coproduct is what keeps the sum from silently losing a term.
 type ArmMemoryComponent
   = ArmCheckpointResidency
   | ArmLoaderTransform
@@ -148,13 +144,9 @@ fn arm_memory_component_wire(c: ArmMemoryComponent) -> String {
 
 // ── THE PHASE RESIDENCY TABLE ────────────────────────────────────────────────────────────────────
 //
-// WHICH COMPONENTS HOLD RESIDENT IN WHICH PHASE is one exhaustive function, so a new component
-// answers the phase question in the same commit that adds it and the demand folds cannot quietly
-// charge a component everywhere. The table encodes: the checkpoint is resident from model load
-// onward; the loader transient exists only while loading and again across a restart overlap; the
-// activation workspace exists from profiling through graph capture and again at the serving peak;
-// the KV cache exists only from graph capture onward (the engine mints it after profiling);
-// fragmentation is a peak-serving allowance.
+// WHICH COMPONENTS HOLD RESIDENT IN WHICH PHASE is one exhaustive function over both coproducts,
+// so a new component answers the phase question in the same commit that adds it and the demand
+// folds cannot quietly charge a component everywhere.
 fn component_resident_in_phase(c: ArmMemoryComponent, p: ArmMemoryFitPhase) -> Bool {
   match c {
     ArmCheckpointResidency => true
@@ -223,12 +215,10 @@ fn component_resident_in_phase(c: ArmMemoryComponent, p: ArmMemoryFitPhase) -> B
 }
 
 // THE ENVELOPE CONSTRAINS ONLY THE ENGINE-ADMITTED PHASES. The envelope is the engine's own
-// allocator ceiling: it is requested at startup and binds from profiling onward, where the
-// engine's accounting decides admission. The load phases precede that admission -- the loader's
-// host-side staging (the checkpoint is file-backed in the same pool; gunbc.spark.serving_arm
-// carries the placement) is pool-resident but NOT envelope-resident, and charging it against the
-// envelope would refuse a load the engine itself has not priced yet. Load-phase demand is bounded
-// by the pool wall alone.
+// allocator ceiling: requested at startup, binding from profiling onward. The load phases precede
+// that admission -- the loader's host-side staging (the checkpoint is file-backed in the same
+// pool) is pool-resident but NOT envelope-resident -- so load-phase demand is bounded by the pool
+// wall alone.
 fn envelope_constrains_phase(p: ArmMemoryFitPhase) -> Bool {
   match p {
     ArmPhaseModelLoad => false
@@ -243,26 +233,52 @@ fn envelope_constrains_phase(p: ArmMemoryFitPhase) -> Bool {
 
 // ── THE BOUND VOCABULARY ─────────────────────────────────────────────────────────────────────────
 //
-// A TERM CARRIES WHAT IS DEFENSIBLE AND NOTHING MORE. Interval is a DERIVED pair of endpoints --
-// both a lower and an upper the model can defend (the checkpoint's byte figure divides into one) --
-// and the mint refuses a reversed pair rather than swapping it into order. Ceiling is an UPPER
-// ONLY: a component-scoped receipt measured the term and bounds it above, and it contributes
-// nothing to a demand lower bound -- a ceiling is precisely what the deployment-selection screen
-// refuses to divide. Open is NEITHER: the named obligation states what measurement would bound it.
-// A zero is not the Open arm in a wig; an unbounded term blocks FitProved and is carried to the
-// verdict by name.
+// A TERM CARRIES WHAT IS DEFENSIBLE AND NOTHING MORE. Exact is a genuinely exact derivation -- the
+// KV byte figure is workload x layout arithmetic, not an estimate -- and an observation against it
+// must EQUAL it, in either direction of mismatch the derivation was derived from the wrong
+// subject. Interval is a DERIVED pair of endpoints with a refusing mint. Ceiling is an UPPER ONLY:
+// a component-scoped measurement bounds the term above and contributes nothing to a demand lower
+// bound. Open is NEITHER: the named obligation states what measurement would bound it. A zero is
+// not the Open arm in a wig.
 type ArmComponentBound
-  = ComponentBoundInterval { lower: ByteSize, upper: ByteSize, how: NonEmptyStr }
+  = ComponentBoundExact { bytes: ByteSize, how: NonEmptyStr }
+  | ComponentBoundInterval { lower: ByteSize, upper: ByteSize, how: NonEmptyStr }
   | ComponentBoundCeiling { bytes: ByteSize, receipt: NonEmptyStr }
   | ComponentBoundOpen { obligation: NonEmptyStr }
+
+fn bound_is_open(b: ArmComponentBound) -> Bool {
+  match b {
+    ComponentBoundOpen { obligation: _ } => true
+    ComponentBoundExact { bytes: _, how: _ } => false
+    ComponentBoundInterval { lower: _, upper: _, how: _ } => false
+    ComponentBoundCeiling { bytes: _, receipt: _ } => false
+  }
+}
+
+fn bound_upper_opt(b: ArmComponentBound) -> ByteSize? {
+  match b {
+    ComponentBoundExact { bytes: b, how: _ } => Present { value: b }
+    ComponentBoundInterval { lower: _, upper: u, how: _ } => Present { value: u }
+    ComponentBoundCeiling { bytes: b, receipt: _ } => Present { value: b }
+    ComponentBoundOpen { obligation: _ } => none
+  }
+}
+
+fn bound_lower(b: ArmComponentBound) -> ByteSize {
+  match b {
+    ComponentBoundExact { bytes: b, how: _ } => b
+    ComponentBoundInterval { lower: l, upper: _, how: _ } => l
+    ComponentBoundCeiling { bytes: _, receipt: _ } => byte_size(count: 0)
+    ComponentBoundOpen { obligation: _ } => byte_size(count: 0)
+  }
+}
 
 type ArmComponentBoundMint
   = ArmComponentBoundReady { bound: ArmComponentBound }
   | ArmComponentBoundRefused { cause: NonEmptyStr }
 
-// THE MINT FOR DERIVED INTERVALS, with the same law as std.interval: a reversed pair is refused,
-// typed and located, never silently swapped -- swapping would be the absorbing fallback, a
-// plausible range that destroys the evidence the endpoints were wrong.
+// THE MINT FOR DERIVED INTERVALS, with std.interval's law: a reversed pair is refused, typed and
+// located, never silently swapped.
 fn component_bound_interval(lower: ByteSize, upper: ByteSize, how: NonEmptyStr) -> ArmComponentBoundMint {
   if measure_le(a: lower, b: upper) {
     ArmComponentBoundReady { bound: ComponentBoundInterval { lower: lower, upper: upper, how: how } }
@@ -271,75 +287,360 @@ fn component_bound_interval(lower: ByteSize, upper: ByteSize, how: NonEmptyStr) 
   }
 }
 
-// A DEMAND TERM: ONE COMPONENT, ONE BOUND.
-type ArmComponentTermBound {
-  component: ArmMemoryComponent
-  bound: ArmComponentBound
-}
-
-// A RANK'S DEMAND TERMS. The roster is per rank because placement is not symmetric; a uniform arm
-// maps one term list across its ranks, and an arm with replicated-tensor asymmetry authors the
-// surcharged rank's list separately. `rank` is the roster position the launcher binds.
-type ArmRankDemandBounds {
-  rank: Nat
-  terms: List<ArmComponentTermBound>
-}
-
-// ── THE SUPPLY SIDE ──────────────────────────────────────────────────────────────────────────────
+// ── CONSERVATION: THE RANK RECORD AND THE DEDUCTIONS RECORD ──────────────────────────────────────
 //
-// THE POOL IS AN INTERVAL, NOT A CONSTANT. The GB10 figure this fleet carries was read rounded
-// (gunbc.spark.serving_arm gb10_unified_pool_gib, a `free -g` total), so the honest carrier is a
-// span whose width is the reporter's rounding unit -- and the obligation names the byte-exact
-// producer (the engine prints the device total at every launch) that replaces it. A pool with no
-// defensible span at all is the Unbounded arm, and it decides nothing.
+// A RANK'S DEMAND IS A COMPLETE RECORD, one named bound per mechanism. The review blocker this
+// closes: a terms-LIST subject with the right NUMBER of rows could omit the KV term (or duplicate
+// one) and the fold would price the hole as a zero, minting a FitProved that never priced the
+// cache. A record has no omit-or-duplicate spelling; the phase folds read the fields by name.
+type ArmRankDemand {
+  rank: Nat
+  checkpoint_residency: ArmComponentBound
+  loader_transform: ArmComponentBound
+  runtime_fixed: ArmComponentBound
+  collective_workspace: ArmComponentBound
+  activation_workspace: ArmComponentBound
+  graph_capture: ArmComponentBound
+  kv_cache: ArmComponentBound
+  fragmentation_allowance: ArmComponentBound
+}
+
+// THE FIELD ACCESSOR, exhaustive over the component coproduct: the folds below ask for a
+// component's bound through this function, so a component added to the census forces the record to
+// grow in the same commit and the record cannot be read at the wrong field.
+fn rank_component_bound(rd: ArmRankDemand, c: ArmMemoryComponent) -> ArmComponentBound {
+  match c {
+    ArmCheckpointResidency => rd.checkpoint_residency
+    ArmLoaderTransform => rd.loader_transform
+    ArmRuntimeFixed => rd.runtime_fixed
+    ArmCollectiveWorkspace => rd.collective_workspace
+    ArmActivationWorkspace => rd.activation_workspace
+    ArmGraphCapture => rd.graph_capture
+    ArmKvCache => rd.kv_cache
+    ArmFragmentationAllowance => rd.fragmentation_allowance
+  }
+}
+
+data arm_memory_components: List<ArmMemoryComponent> = [
+  ArmCheckpointResidency,
+  ArmLoaderTransform,
+  ArmRuntimeFixed,
+  ArmCollectiveWorkspace,
+  ArmActivationWorkspace,
+  ArmGraphCapture,
+  ArmKvCache,
+  ArmFragmentationAllowance,
+]
+
+// THE SUPPLY DEDUCTIONS ARE A COMPLETE RECORD TOO: the host/OS/control-plane reserve and the
+// foreign residency of the unified pool, each bounded above or carried open. There are exactly
+// two, for the same reason the rank record is complete -- an omitted deduction is a supply the
+// proof silently claims.
+type ArmSupplyDeductions {
+  host_os_control_reserve: ArmComponentBound
+  foreign_residency: ArmComponentBound
+}
+
+// ── THE POOL ─────────────────────────────────────────────────────────────────────────────────────
+//
+// THE POOL IS AN INTERVAL, NOT A CONSTANT: the GB10 figure this fleet carries was read rounded
+// (gunbc.spark.serving_arm gb10_unified_pool_gib), so the honest carrier is a span whose width is
+// the reporter's rounding unit. AN UNMODELED POOL IS THE UNBOUNDED ARM, and the verdict fold
+// treats it as UNESTABLISHED -- an obligation naming the missing reading -- never as a refusal:
+// "not modeled" is not "impossible".
 type ArmPoolBound
   = ArmPoolBounded { span: OrderedClosedInterval<ByteSize>, how: NonEmptyStr }
   | ArmPoolUnbounded { obligation: NonEmptyStr }
 
-// PROTECTED NON-ARM RESIDENCY AND FOREIGN RESIDENCY ARE DEDUCTIONS, each bounded above by a
-// measurement or carried open: the host/OS/control-plane reserve on the unified pool, and whatever
-// else on the host holds pool bytes the arm may not claim. supply_lower = pool lower bound minus
-// the deductions' UPPERS, so a deduction without an upper makes supply_lower unknown rather than
-// generous.
-type ArmSupplyTerm
-  = ArmHostOsControlReserve
-  | ArmForeignResidency
-
-fn arm_supply_term_wire(t: ArmSupplyTerm) -> String {
-  match t {
-    ArmHostOsControlReserve => "host-os-control-reserve"
-    ArmForeignResidency => "foreign-residency"
-  }
-}
-
-type ArmSupplyDeduction {
-  term: ArmSupplyTerm
-  bound: ArmComponentBound
-}
-
-// ── THE PROOF SUBJECT ────────────────────────────────────────────────────────────────────────────
+// ── THE PROOF SUBJECT, SEALED ────────────────────────────────────────────────────────────────────
 //
-// EVERYTHING THE VERDICT IS ABOUT IS A FIELD, so the verdict is a pure function of the subject and
-// two subjects agreeing field-for-field give one verdict. The intent is the service obligation
-// (gunbc.spark.serving_capacity_intent); the profile is the launch being asked for; the rank
-// rosters, pool, and deductions are the terms. Component receipts minted by bounded experiments
-// join HERE as they exist -- a receipt tightens ONE term's bound, never the verdict's shape.
-type ArmMemoryFitSubject {
+// EVERYTHING THE VERDICT IS ABOUT IS A FIELD, and the seal keeps it that way: the two mints below
+// are the only constructors. `profile` is ALWAYS the intent's derivation (join enforced at mint);
+// `ranks` is minted one row per topology rank; `checkpoint_total` is the derived aggregate the
+// per-rank placement argument uses; `intent` is the priced workload. A receipt is one producer of
+// a bound, not a structural prerequisite: measured rank records enter through the second mint,
+// whose provenance checks bind them to this exact identity.
+type ArmMemoryFitSubject sole_constructor {
   checkpoint: ServingCheckpoint
   runtime: ServingRuntime
   topology: ServingTopology
-  profile: ServingLaunchProfile
   intent: ServingCapacityIntent
-  ranks: List<ArmRankDemandBounds>
+  profile: ServingLaunchProfile
+  ranks: List<ArmRankDemand>
+  checkpoint_total: OrderedClosedInterval<ByteSize>
   pool: ArmPoolBound
-  deductions: List<ArmSupplyDeduction>
+  deductions: ArmSupplyDeductions
+}
+
+type ArmMemorySubjectMint
+  = ArmMemorySubjectReady { subject: ArmMemoryFitSubject }
+  | ArmMemorySubjectRefused { cause: NonEmptyStr }
+
+// THE VERIFIED JOIN: the executable profile must be the intent's derivation. The launch wall
+// reaches the intent as the profile's maximum admitted behavior (intent_for_launch_profile:
+// every admitted sequence at the full window, cold); a future request-admission authority may
+// record a smaller authored intent, and then this same check is the wall that keeps the launch
+// honest. Policy fields (utilization, KV dtype, port, alias, prefix caching) travel with the
+// requested profile and are not part of the join.
+fn profile_joins_intent(intent: ServingCapacityIntent, p: ServingLaunchProfile) -> Bool {
+  token_count_value(t: p.max_model_len) == token_count_value(t: intent_max_single_sequence_tokens(i: intent))
+    && p.max_num_seqs == intent_max_active_sequences(i: intent)
+    && token_count_value(t: p.max_num_batched_tokens) == token_count_value(t: intent.max_batched_tokens)
+}
+
+// RANK ROSTER VALIDATION, refusing what a count-only check would miss: the right NUMBER of rows
+// with a duplicated index, or an absent one, is refused. Exactly one row per rank index 0..n-1.
+fn rank_index_count(ranks: List<ArmRankDemand>, index: Nat) -> Nat {
+  count(filter(ranks, r => r.rank == index))
+}
+
+fn rank_roster_valid(ranks: List<ArmRankDemand>, rank_count: Nat) -> Bool {
+  count(ranks) == rank_count
+    && all(nat_range_inclusive(lo: 1, hi: rank_count), i => rank_index_count(ranks: ranks, index: i - 1) == 1)
+}
+
+fn rank_roster_refusal(ranks: List<ArmRankDemand>, rank_count: Nat) -> NonEmptyStr {
+  if count(ranks) != rank_count {
+    join([
+      "the rank roster carries ", to_string(count(ranks)),
+      " row(s) against a topology of ", to_string(rank_count),
+      " rank(s): a tensor-parallel degree is a property of the arm, so the roster must be exactly one row per rank",
+    ], "") as NonEmptyStr
+  } else {
+    join([
+      "the rank roster does not hold exactly one row per rank index 0..", to_string(rank_count - 1),
+      ": a duplicated or absent rank index means the demand population does not describe this arm",
+    ], "") as NonEmptyStr
+  }
+}
+
+// PROVENANCE: a non-open bound must name the identity it was derived or measured on, so a receipt
+// minted for one checkpoint, runtime or topology cannot be carried onto another. The check is a
+// containment test on the receipt/how text -- the typed identity ride-along lands with the
+// receipt-roster join (the dissolution frontier below), and until then the wires are spelled.
+fn bound_names_identity(b: ArmComponentBound, ckpt: ServingCheckpoint, rt: ServingRuntime, tp: ServingTopology) -> Bool {
+  let ckpt_wire = serving_checkpoint_wire(c: ckpt) as String
+  let rt_wire = serving_runtime_wire(r: rt) as String
+  let tp_wire = serving_topology_wire(t: tp) as String
+  match b {
+    ComponentBoundExact { bytes: _, how: h } =>
+      string_contains(s: h as String, pattern: ckpt_wire)
+        && string_contains(s: h as String, pattern: tp_wire)
+    ComponentBoundInterval { lower: _, upper: _, how: h } =>
+      string_contains(s: h as String, pattern: ckpt_wire)
+        && string_contains(s: h as String, pattern: tp_wire)
+    ComponentBoundCeiling { bytes: _, receipt: r } =>
+      string_contains(s: r as String, pattern: ckpt_wire)
+        && string_contains(s: r as String, pattern: rt_wire)
+        && string_contains(s: r as String, pattern: tp_wire)
+    ComponentBoundOpen { obligation: _ } => true
+  }
+}
+
+fn roster_names_identity(ranks: List<ArmRankDemand>, ckpt: ServingCheckpoint, rt: ServingRuntime, tp: ServingTopology) -> Bool {
+  all(ranks, r =>
+    all(arm_memory_components, c => bound_names_identity(b: rank_component_bound(rd: r, c: c), ckpt: ckpt, rt: rt, tp: tp)))
+}
+
+// THE DERIVED CHECKPOINT AGGREGATE. The checkpoint row's ceil-GiB figure bounds the TRUE total
+// bytes in ((g-1) GiB, g GiB]; an even per-rank split is NOT assumed anywhere -- per-rank
+// placement is open until measured -- and this aggregate is what the pigeonhole impossibility
+// argument and the rank-sum conservation law read.
+fn checkpoint_total_span(crow_weight_gib: Gibibyte) -> ArmComponentBoundMint {
+  let g = gibibyte_count(g: crow_weight_gib)
+  if g == 0 {
+    ArmComponentBoundRefused { cause: "the checkpoint row carries a zero weight figure, so the total residency interval cannot be derived from it" as NonEmptyStr }
+  } else {
+    component_bound_interval(
+      lower: byte_size(count: byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: g - 1))) + 1),
+      upper: gibibyte_to_byte_size(g: gibibyte(count: g)),
+      how: "the checkpoint row's ceil-GiB figure: the manifest bytes lie in ((g-1) GiB, g GiB]; the placement of those bytes across ranks is NOT derived here" as NonEmptyStr)
+  }
+}
+
+fn open_demand_obligation(component: ArmMemoryComponent, receipt_kind: NonEmptyStr) -> NonEmptyStr {
+  join([
+    "no component-scoped receipt of kind ", receipt_kind,
+    " exists for this checkpoint x loader/runtime x topology x rank; a bounded experiment on this subject is what mints one",
+  ], "") as NonEmptyStr
+}
+
+fn open_checkpoint_placement_obligation() -> NonEmptyStr {
+  "per-rank checkpoint placement is unread: an even tensor-parallel split is an assumption, not a measurement, and the true per-rank residency follows from the loader's placement decisions; a CheckpointRankResidencyBound measurement per rank bounds it" as NonEmptyStr
+}
+
+// ONE OPEN RANK ROW: every mechanism carried open, the checkpoint with the placement obligation.
+fn open_rank_demand(rank: Nat) -> ArmRankDemand {
+  ArmRankDemand {
+    rank: rank,
+    checkpoint_residency: ComponentBoundOpen { obligation: open_checkpoint_placement_obligation() },
+    loader_transform: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmLoaderTransform, receipt_kind: "CheckpointRankResidencyBound" as NonEmptyStr) },
+    runtime_fixed: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmRuntimeFixed, receipt_kind: "RuntimeFixedAllocationBound" as NonEmptyStr) },
+    collective_workspace: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmCollectiveWorkspace, receipt_kind: "CollectiveWorkspaceBound" as NonEmptyStr) },
+    activation_workspace: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmActivationWorkspace, receipt_kind: "ActivationWorkspaceBound" as NonEmptyStr) },
+    graph_capture: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmGraphCapture, receipt_kind: "GraphCaptureBound" as NonEmptyStr) },
+    kv_cache: ComponentBoundOpen { obligation: "required_kv_bytes derives from the workload intent over the group-aware resolved cache layout (extdeps.vllm.kv_layout), and the engine does not yet emit the per-group layer counts, page sizes and windows that the layout needs -- so the KV demand cannot be derived for this subject. Observed current_kv from a previous run is a readback and never a demand input" as NonEmptyStr },
+    fragmentation_allowance: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmFragmentationAllowance, receipt_kind: "AllocatorFragmentationBound" as NonEmptyStr) },
+  }
+}
+
+// THE MINTS. The first builds the all-open subject the launch wall prices; the second admits
+// rank records whose measured bounds name this exact identity. BOTH enforce the intent/profile
+// join and the roster law; only the second takes measured rows, so an all-open subject with the
+// right rank count but fabricated terms has no constructor at all.
+fn arm_memory_fit_subject(
+  checkpoint: ServingCheckpoint,
+  runtime: ServingRuntime,
+  topology: ServingTopology,
+  intent: ServingCapacityIntent,
+  requested_profile: ServingLaunchProfile,
+  pool: ArmPoolBound,
+  deductions: ArmSupplyDeductions,
+) -> ArmMemorySubjectMint {
+  if !profile_joins_intent(intent: intent, p: requested_profile) {
+    ArmMemorySubjectRefused {
+      cause: join([
+        "the executable profile does not derive from the capacity intent: the engine would run max_model_len ", to_string(token_count_value(t: requested_profile.max_model_len)),
+        " with ", to_string(requested_profile.max_num_seqs), " sequences and a ", to_string(token_count_value(t: requested_profile.max_num_batched_tokens)),
+        "-token batch ceiling, which is not the intent's largest seat ", to_string(token_count_value(t: intent_max_single_sequence_tokens(i: intent))),
+        " across ", to_string(intent_max_active_sequences(i: intent)), " seats with a ", to_string(token_count_value(t: intent.max_batched_tokens)),
+        "-token batch ceiling. The proof and the engine config must be one value: derive the profile FROM the intent (gunbc.spark.serving_capacity_intent profile_for_intent), never price one workload beside another",
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    match serving_checkpoint_row(c: checkpoint) {
+      Absent => ArmMemorySubjectRefused { cause: "no checkpoint row: the checkpoint's bytes are unmodelled, so neither the aggregate nor any term derives" as NonEmptyStr }
+      Present { value: crow } =>
+        match checkpoint_total_span(crow_weight_gib: crow.weight_gib) {
+          ArmComponentBoundRefused { cause: c } => ArmMemorySubjectRefused { cause: c }
+          ArmComponentBoundReady { bound: b } =>
+            match b {
+              ComponentBoundInterval { lower: l, upper: u, how: _ } =>
+                match closed_interval(low: l, high: u, le: measure_le) {
+                  IntervalRefused { reason: r } => ArmMemorySubjectRefused { cause: r }
+                  IntervalReady { interval: span } =>
+                    ArmMemorySubjectReady { subject: ArmMemoryFitSubject {
+                      checkpoint: checkpoint,
+                      runtime: runtime,
+                      topology: topology,
+                      intent: intent,
+                      profile: requested_profile,
+                      ranks: map(nat_range_inclusive(lo: 1, hi: serving_topology_rank_count(t: topology)), i => open_rank_demand(rank: i - 1)),
+                      checkpoint_total: span,
+                      pool: pool,
+                      deductions: deductions,
+                    } }
+                }
+              _ => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
+            }
+        }
+    }
+  }
+}
+
+fn arm_memory_fit_subject_with_rank_demands(
+  checkpoint: ServingCheckpoint,
+  runtime: ServingRuntime,
+  topology: ServingTopology,
+  intent: ServingCapacityIntent,
+  requested_profile: ServingLaunchProfile,
+  pool: ArmPoolBound,
+  deductions: ArmSupplyDeductions,
+  ranks: List<ArmRankDemand>,
+) -> ArmMemorySubjectMint {
+  let rank_count = serving_topology_rank_count(t: topology)
+  if !profile_joins_intent(intent: intent, p: requested_profile) {
+    ArmMemorySubjectRefused { cause: "the executable profile does not derive from the capacity intent (see arm_memory_fit_subject for the full cause shape): the join is enforced identically on every mint" as NonEmptyStr }
+  } else if !rank_roster_valid(ranks: ranks, rank_count: rank_count) {
+    ArmMemorySubjectRefused { cause: rank_roster_refusal(ranks: ranks, rank_count: rank_count) }
+  } else if !roster_names_identity(ranks: ranks, ckpt: checkpoint, rt: runtime, tp: topology) {
+    ArmMemorySubjectRefused { cause: "a measured bound's receipt or derivation does not name this checkpoint x runtime x topology: a receipt carried onto a changed checkpoint or runtime is evidence about a subject that is not this one, and is refused at the mint" as NonEmptyStr }
+  } else {
+    match serving_checkpoint_row(c: checkpoint) {
+      Absent => ArmMemorySubjectRefused { cause: "no checkpoint row: the checkpoint's bytes are unmodelled, so neither the aggregate nor any term derives" as NonEmptyStr }
+      Present { value: crow } =>
+        match checkpoint_total_span(crow_weight_gib: crow.weight_gib) {
+          ArmComponentBoundRefused { cause: c } => ArmMemorySubjectRefused { cause: c }
+          ArmComponentBoundReady { bound: b } =>
+            match b {
+              ComponentBoundInterval { lower: l, upper: u, how: _ } =>
+                match closed_interval(low: l, high: u, le: measure_le) {
+                  IntervalRefused { reason: r } => ArmMemorySubjectRefused { cause: r }
+                  IntervalReady { interval: span } =>
+                    ArmMemorySubjectReady { subject: ArmMemoryFitSubject {
+                      checkpoint: checkpoint,
+                      runtime: runtime,
+                      topology: topology,
+                      intent: intent,
+                      profile: requested_profile,
+                      ranks: ranks,
+                      checkpoint_total: span,
+                      pool: pool,
+                      deductions: deductions,
+                    } }
+                }
+              _ => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
+            }
+        }
+    }
+  }
+}
+
+// THE GB10 POOL AS THIS FLEET CURRENTLY READS IT: the rounded `free -g` figure carried by
+// gunbc.spark.serving_arm, widened by its rounding unit. The obligation names the byte-exact
+// producer (the engine prints the device total at every launch).
+fn gb10_pool_bound() -> ArmPoolBound {
+  let gib = gb10_unified_pool_gib
+  let pool_lower = gibibyte_to_byte_size(g: gibibyte(count: gib))
+  let pool_upper = byte_size(count: byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: gib + 1))) - 1)
+  match closed_interval(low: pool_lower, high: pool_upper, le: measure_le) {
+    IntervalReady { interval: i } =>
+      ArmPoolBounded {
+        span: i,
+        how: "gunbc.spark.serving_arm gb10_unified_pool_gib: a rounded `free -g` total read on one member on 2026-09-08; the true total lies within one rounding unit of the figure" as NonEmptyStr,
+      }
+    IntervalRefused { reason: r } =>
+      ArmPoolUnbounded { obligation: join(["the rounded GB10 pool reading could not be turned into a span: ", r as String], "") as NonEmptyStr }
+  }
+}
+
+// THE SUBJECT THE LAUNCH WALL PRICES: the profile's maximum admitted behavior as the intent
+// (every admitted sequence at the full window, cold -- the largest workload the launch can be
+// asked for, since no request-admission authority is modelled), the all-open rank roster, the
+// rounded pool, both deductions open. Absent means unmodelled (no checkpoint row or no
+// derivable intent), unreachable behind serving_arm_admits.
+fn arm_memory_fit_subject_for_launch(
+  checkpoint: ServingCheckpoint,
+  runtime: ServingRuntime,
+  topology: ServingTopology,
+  profile: ServingLaunchProfile,
+) -> ArmMemorySubjectMint {
+  match intent_for_launch_profile(p: profile) {
+    ServingCapacityIntentRefused { cause: c } => ArmMemorySubjectRefused { cause: c }
+    ServingCapacityIntentAdmitted { intent: intent } =>
+      arm_memory_fit_subject(
+        checkpoint: checkpoint,
+        runtime: runtime,
+        topology: topology,
+        intent: intent,
+        requested_profile: profile,
+        pool: gb10_pool_bound(),
+        deductions: ArmSupplyDeductions {
+          host_os_control_reserve: ComponentBoundOpen {
+            obligation: "no measured upper bound exists for the host/OS/control-plane reserve of the unified pool; the GB10's pool is shared with the OS page cache, the control plane and any co-tenant consumers, and a host-class measurement would bound it" as NonEmptyStr,
+          },
+          foreign_residency: ComponentBoundOpen {
+            obligation: "no inventory of protected non-arm residency exists for the serving hosts; the crash loop this proof exists to prevent was global pool pressure from consumers the admission did not count" as NonEmptyStr,
+          },
+        })
+  }
 }
 
 // ── THE PER-PHASE DEMAND FOLD ────────────────────────────────────────────────────────────────────
 //
-// upper IS ABSENT WHEN ANY RESIDENT TERM IS OPEN: an unbounded term is not a large number and
-// cannot be summed as one. lower accumulates only what is defensible (interval lowers); a ceiling
-// contributes zero, which is the honest contribution of "bounded above, floor unknown".
+// THE FOLD READS THE RECORD FIELDS BY NAME through the exhaustive accessor, so every component is
+// charged in every phase query and none can disappear through a list projection. upper is ABSENT
+// when any resident term is open; lower accumulates only what is defensible.
 type ArmPhaseDemand {
   lower: ByteSize
   upper: ByteSize?
@@ -348,42 +649,31 @@ type ArmPhaseDemand {
 }
 
 fn demand_term_upper(bound: ArmComponentBound) -> ByteSize? {
-  match bound {
-    ComponentBoundInterval { lower: _, upper: u, how: _ } => Present { value: u }
-    ComponentBoundCeiling { bytes: b, receipt: _ } => Present { value: b }
-    ComponentBoundOpen { obligation: _ } => none
-  }
+  bound_upper_opt(b: bound)
 }
 
 fn demand_term_lower(bound: ArmComponentBound) -> ByteSize {
-  match bound {
-    ComponentBoundInterval { lower: l, upper: _, how: _ } => l
-    ComponentBoundCeiling { bytes: _, receipt: _ } => byte_size(count: 0)
-    ComponentBoundOpen { obligation: _ } => byte_size(count: 0)
-  }
+  bound_lower(b: bound)
 }
 
-fn demand_for_phase(terms: List<ArmComponentTermBound>, phase: ArmMemoryFitPhase) -> ArmPhaseDemand {
-  let resident = filter(terms, t => component_resident_in_phase(c: t.component, p: phase))
-  let lower = fold(resident, init: byte_size(count: 0), f: (acc, t) =>
-    measure_add(a: acc, b: demand_term_lower(bound: t.bound)))
-  let lower_components = map(filter(resident, t => match t.bound {
+fn demand_for_phase(rd: ArmRankDemand, phase: ArmMemoryFitPhase) -> ArmPhaseDemand {
+  let resident_components = filter(arm_memory_components, c => component_resident_in_phase(c: c, p: phase))
+  let lower = fold(resident_components, init: byte_size(count: 0), f: (acc, c) =>
+    measure_add(a: acc, b: demand_term_lower(bound: rank_component_bound(rd: rd, c: c))))
+  let lower_components = filter(resident_components, c => match rank_component_bound(rd: rd, c: c) {
+    ComponentBoundExact { bytes: _, how: _ } => true
     ComponentBoundInterval { lower: _, upper: _, how: _ } => true
     ComponentBoundCeiling { bytes: _, receipt: _ } => false
     ComponentBoundOpen { obligation: _ } => false
-  }), t => t.component)
-  let open_components = map(filter(resident, t => match t.bound {
-    ComponentBoundInterval { lower: _, upper: _, how: _ } => false
-    ComponentBoundCeiling { bytes: _, receipt: _ } => false
-    ComponentBoundOpen { obligation: _ } => true
-  }), t => t.component)
-  let upper = fold(resident, init: Present { value: byte_size(count: 0) }, f: (acc, t) =>
+  })
+  let open_components = filter(resident_components, c => bound_is_open(b: rank_component_bound(rd: rd, c: c)))
+  let upper = fold(resident_components, init: Present { value: byte_size(count: 0) }, f: (acc, c) =>
     match acc {
       Absent => none
       Present { value: n } =>
-        match demand_term_upper(bound: t.bound) {
+        match demand_term_upper(bound: rank_component_bound(rd: rd, c: c)) {
           Absent => none
-          Present { value: c } => Present { value: measure_add(a: n, b: c) }
+          Present { value: b } => Present { value: measure_add(a: n, b: b) }
         }
     })
   ArmPhaseDemand { lower: lower, upper: upper, open_components: open_components, lower_components: lower_components }
@@ -391,37 +681,25 @@ fn demand_for_phase(terms: List<ArmComponentTermBound>, phase: ArmMemoryFitPhase
 
 // ── THE SUPPLY FOLDS ─────────────────────────────────────────────────────────────────────────────
 //
-// UPPER IS ALWAYS A NUMBER; LOWER MAY BE UNKNOWN. The favorable reading (refusal test) takes the
-// pool at its upper endpoint and the deductions at their lowers, so a refusal names a supply that
-// is generous in every dimension. The conservative reading (proof test) takes the pool at its
-// lower endpoint and the deductions at their uppers; a deduction that has no upper (or a pool with
-// no span) makes it unknown, and unknown supply proves nothing.
-fn supply_deduction_upper(d: ArmSupplyDeduction) -> ByteSize? {
-  match d.bound {
-    ComponentBoundInterval { lower: _, upper: u, how: _ } => Present { value: u }
-    ComponentBoundCeiling { bytes: b, receipt: _ } => Present { value: b }
-    ComponentBoundOpen { obligation: _ } => none
-  }
+// UPPER IS THE FAVORABLE READING, LOWER THE CONSERVATIVE ONE, and EITHER MAY BE UNKNOWN. The
+// favorable reading (refusal test) takes the pool at its upper endpoint and deductions at their
+// lowers; the conservative reading (proof test) takes the pool at its lower endpoint and the
+// deductions at their uppers. An UNMODELED pool makes BOTH unknown -- and unknown supply refuses
+// nothing, because "not modeled" is not "impossible".
+fn deduction_list(d: ArmSupplyDeductions) -> List<ArmComponentBound> {
+  [d.host_os_control_reserve, d.foreign_residency]
 }
 
-fn supply_deduction_lower(d: ArmSupplyDeduction) -> ByteSize {
-  match d.bound {
-    ComponentBoundInterval { lower: l, upper: _, how: _ } => l
-    ComponentBoundCeiling { bytes: _, receipt: _ } => byte_size(count: 0)
-    ComponentBoundOpen { obligation: _ } => byte_size(count: 0)
-  }
+fn sum_deduction_lowers(deductions: ArmSupplyDeductions) -> ByteSize {
+  fold(deduction_list(d: deductions), init: byte_size(count: 0), f: (acc, b) => measure_add(a: acc, b: bound_lower(b: b)))
 }
 
-fn sum_deduction_lowers(deductions: List<ArmSupplyDeduction>) -> ByteSize {
-  fold(deductions, init: byte_size(count: 0), f: (acc, d) => measure_add(a: acc, b: supply_deduction_lower(d: d)))
-}
-
-fn sum_deduction_uppers(deductions: List<ArmSupplyDeduction>) -> ByteSize? {
-  fold(deductions, init: Present { value: byte_size(count: 0) }, f: (acc, d) =>
+fn sum_deduction_uppers(deductions: ArmSupplyDeductions) -> ByteSize? {
+  fold(deduction_list(d: deductions), init: Present { value: byte_size(count: 0) }, f: (acc, b) =>
     match acc {
       Absent => none
       Present { value: n } =>
-        match supply_deduction_upper(d: d) {
+        match bound_upper_opt(b: b) {
           Absent => none
           Present { value: c } => Present { value: measure_add(a: n, b: c) }
         }
@@ -436,20 +714,15 @@ fn subtract_saturating(minuend: ByteSize, subtrahend: ByteSize) -> ByteSize {
   }
 }
 
-// THE FAVORABLE SUPPLY UPPER: pool upper minus the deductions' lowers. Saturates at zero -- a
-// supply computed below zero is zero, not a negative number the folds cannot carry.
-fn supply_upper_bound(pool: ArmPoolBound, deductions: List<ArmSupplyDeduction>) -> ByteSize {
+fn supply_upper_opt(pool: ArmPoolBound, deductions: ArmSupplyDeductions) -> ByteSize? {
   match pool {
     ArmPoolBounded { span: s, how: _ } =>
-      subtract_saturating(minuend: interval_high(interval: s), subtrahend: sum_deduction_lowers(deductions: deductions))
-    ArmPoolUnbounded { obligation: _ } => byte_size(count: 0)
+      Present { value: subtract_saturating(minuend: interval_high(interval: s), subtrahend: sum_deduction_lowers(deductions: deductions)) }
+    ArmPoolUnbounded { obligation: _ } => none
   }
 }
 
-// THE CONSERVATIVE SUPPLY LOWER: pool lower minus the deductions' uppers. Unknown when the pool
-// span or any deduction upper is unknown -- an unknown supply lower is exactly the state that
-// blocks FitProved.
-fn supply_lower_bound(pool: ArmPoolBound, deductions: List<ArmSupplyDeduction>) -> ByteSize? {
+fn supply_lower_opt(pool: ArmPoolBound, deductions: ArmSupplyDeductions) -> ByteSize? {
   match pool {
     ArmPoolUnbounded { obligation: _ } => none
     ArmPoolBounded { span: s, how: _ } =>
@@ -463,10 +736,9 @@ fn supply_lower_bound(pool: ArmPoolBound, deductions: List<ArmSupplyDeduction>) 
 
 // ── THE DECIDED ENVELOPE ─────────────────────────────────────────────────────────────────────────
 //
-// THE ENVELOPE IS DERIVED FROM THE POOL SPAN, never stored beside it
-// (extdeps.vllm.runtime_defaults vllm_requested_envelope_bytes owns the arithmetic). The device
-// the engine reads may come in anywhere in the pool span, so the envelope is itself a span:
-// envelope_upper prices the most generous device, envelope_lower the least.
+// DERIVED FROM THE POOL SPAN, never stored beside it
+// (extdeps.vllm.runtime_defaults vllm_requested_envelope_bytes owns the arithmetic). Unknown when
+// the pool is unmodeled, and then it constrains nothing.
 type ArmEnvelopeSpan {
   lower: ByteSize
   upper: ByteSize
@@ -485,12 +757,8 @@ fn decided_envelope_span(profile: ServingLaunchProfile, pool: ArmPoolBound) -> A
 
 // ── THE VERDICT ──────────────────────────────────────────────────────────────────────────────────
 //
-// THE THREE ARMS, VERBATIM. Proved carries the WORST rank and phase -- the pair whose
-// supply-lower-minus-demand-upper headroom is smallest -- because a proof that names its tightest
-// corner is the one a reviewer can check first. Refused carries the rank, phase and both numbers,
-// and the cause names the terms that carried the mandatory lower bound. Unestablished carries the
-// obligations: every open term by name, every interval pair that failed to decide, and the
-// conservation question the rounded pool reading leaves open.
+// THE THREE ARMS. Proved carries the WORST rank and phase; Refused carries the rank, phase and
+// both numbers with the cause naming the carrying terms; Unestablished carries the obligations.
 type ArmMemoryFitVerdict
   = ArmMemoryFitProved { rank: Nat, phase: ArmMemoryFitPhase, headroom_bytes: ByteSize }
   | ArmMemoryFitRefused {
@@ -502,54 +770,136 @@ type ArmMemoryFitVerdict
     }
   | ArmMemoryFitUnestablished { obligations: List<NonEmptyStr> }
 
-// A REFUSAL IS FOUND BEFORE ANYTHING ELSE, because it is the one verdict open terms cannot block:
-// if the mandatory demand exceeds even the most generous supply, no measurement of the unknown
-// terms can rescue the launch. This is the arm that makes "unknown-without-bound refuses" true --
-// unknown terms never WIDEN a refusal into an admission.
+// THE AGGREGATE IMPOSSIBILITY ARGUMENT, carried separately from the per-rank scan so the proof
+// never fabricates WHICH rank. Pigeonhole: some rank must hold at least
+// ceil(checkpoint_total_lower / rank_count); if that minimum-possible maximum exceeds the most
+// favorable supply, the shape is impossible no matter how the placement falls out. The refusal's
+// rank field carries the rank COUNT, which is not a valid rank index -- the sentinel for "at
+// least one rank, unnamed".
+fn aggregate_checkpoint_refusal(subject: ArmMemoryFitSubject, supply_up: ByteSize?) -> ArmMemoryFitVerdict? {
+  match supply_up {
+    Absent => none
+    Present { value: s } => {
+      let rank_count = serving_topology_rank_count(t: subject.topology)
+      let total_lower = interval_low(interval: subject.checkpoint_total)
+      let pigeonhole_lower = byte_size(count: (byte_size_count(b: total_lower) + rank_count - 1) / rank_count)
+      match byte_size_count(b: pigeonhole_lower) > byte_size_count(b: s) {
+        true =>
+          Present { value: ArmMemoryFitRefused {
+            rank: rank_count,
+            phase: ArmPhaseModelLoad,
+            demand_lower: pigeonhole_lower,
+            supply_upper: s,
+            cause: join([
+              "memory fit REFUSED before any per-rank reading: at least one rank must hold at least ",
+              to_string(byte_size_count(b: pigeonhole_lower)),
+              " bytes of this checkpoint (", to_string(byte_size_count(b: total_lower)),
+              " bytes total across ", to_string(rank_count),
+              " ranks, by pigeonhole), which exceeds the most favorable supply of ",
+              to_string(byte_size_count(b: s)),
+              " bytes even with every unbounded term priced at zero. No rank is named because placement is unread; the argument holds for EVERY placement",
+            ], "") as NonEmptyStr,
+          } }
+        false => none
+      }
+    }
+  }
+}
+
+// THE RANK-SUM CONSERVATION LAW: measured per-rank upper bounds must be able to hold the
+// checkpoint aggregate between them. A roster whose ceiling receipts sum to less than the
+// checkpoint's total bytes claims ranks that cannot hold the checkpoint however the receipts were
+// minted -- a conservation violation, carried as an obligation when it does not itself refuse.
+fn checkpoint_rank_sum(subject: ArmMemoryFitSubject) -> ByteSize? {
+  fold(subject.ranks, init: Present { value: byte_size(count: 0) }, f: (acc, r) =>
+    match acc {
+      Absent => none
+      Present { value: n } =>
+        match bound_upper_opt(b: r.checkpoint_residency) {
+          Absent => none
+          Present { value: c } => Present { value: measure_add(a: n, b: c) }
+        }
+    })
+}
+
+fn checkpoint_sum_obligation(subject: ArmMemoryFitSubject) -> List<NonEmptyStr> {
+  match checkpoint_rank_sum(subject: subject) {
+    Absent => [] as List<NonEmptyStr>
+    Present { value: sum } =>
+      match measure_le(a: interval_high(interval: subject.checkpoint_total), b: sum) {
+        true => [] as List<NonEmptyStr>
+        false =>
+          [join([
+            "the per-rank checkpoint upper bounds sum to ", to_string(byte_size_count(b: sum)),
+            " bytes, less than the checkpoint aggregate's upper endpoint of ", to_string(byte_size_count(b: interval_high(interval: subject.checkpoint_total))),
+            " bytes: these ranks cannot hold the checkpoint between them, so the measured bounds and the checkpoint row do not describe one arm",
+          ], "") as NonEmptyStr]
+      }
+  }
+}
+
+// A REFUSAL IS FOUND BEFORE ANYTHING ELSE, because it is the one verdict open terms cannot
+// block. The pool wall and the envelope wall are checked independently; EITHER deciding against
+// the mandatory demand refuses, and unknown supply skips its wall rather than reading absence as
+// zero.
 fn refusal_for_rank(
-  rb: ArmRankDemandBounds,
-  supply_up: ByteSize,
-  envelope_up: ByteSize,
+  rd: ArmRankDemand,
+  supply_up: ByteSize?,
+  envelope_up: ByteSize?,
   decided_bp: Nat,
 ) -> ArmMemoryFitVerdict? {
   fold(arm_memory_fit_phases, init: Absent, f: fn(acc, phase) {
     match acc {
       Present { value: _ } => acc
       Absent => {
-        let demand = demand_for_phase(terms: rb.terms, phase: phase)
-        match byte_size_count(b: demand.lower) > byte_size_count(b: supply_up) {
-          true => Present { value: ArmMemoryFitRefused {
-            rank: rb.rank,
-            phase: phase,
-            demand_lower: demand.lower,
-            supply_upper: supply_up,
-            cause: join([
-              "memory fit REFUSED at rank ", to_string(rb.rank), " phase ", arm_memory_fit_phase_wire(p: phase),
-              ": the mandatory demand lower bound of ", to_string(byte_size_count(b: demand.lower)),
-              " bytes (carried by ", join(map(demand.lower_components, c => arm_memory_component_wire(c: c)), ", "),
-              ") exceeds the most favorable supply of ", to_string(byte_size_count(b: supply_up)),
-              " bytes even before the unbounded terms are priced",
-            ], "") as NonEmptyStr,
-          } }
-          false =>
+        let demand = demand_for_phase(rd: rd, phase: phase)
+        let pool_refusal = match supply_up {
+          Absent => none
+          Present { value: s } =>
+            match byte_size_count(b: demand.lower) > byte_size_count(b: s) {
+              true =>
+                Present { value: ArmMemoryFitRefused {
+                  rank: rd.rank,
+                  phase: phase,
+                  demand_lower: demand.lower,
+                  supply_upper: s,
+                  cause: join([
+                    "memory fit REFUSED at rank ", to_string(rd.rank), " phase ", arm_memory_fit_phase_wire(p: phase),
+                    ": the mandatory demand lower bound of ", to_string(byte_size_count(b: demand.lower)),
+                    " bytes (carried by ", join(map(demand.lower_components, c => arm_memory_component_wire(c: c)), ", "),
+                    ") exceeds the most favorable supply of ", to_string(byte_size_count(b: s)),
+                    " bytes even before the unbounded terms are priced",
+                  ], "") as NonEmptyStr,
+                } }
+              false => none
+            }
+        }
+        match pool_refusal {
+          Present { value: _ } => pool_refusal
+          Absent =>
             match envelope_constrains_phase(p: phase) {
               false => none
               true =>
-                match byte_size_count(b: demand.lower) > byte_size_count(b: envelope_up) {
-                  true => Present { value: ArmMemoryFitRefused {
-                    rank: rb.rank,
-                    phase: phase,
-                    demand_lower: demand.lower,
-                    supply_upper: envelope_up,
-                    cause: join([
-                      "memory fit REFUSED at rank ", to_string(rb.rank), " phase ", arm_memory_fit_phase_wire(p: phase),
-                      ": the mandatory demand lower bound of ", to_string(byte_size_count(b: demand.lower)),
-                      " bytes exceeds the decided envelope's most generous reading of ", to_string(byte_size_count(b: envelope_up)),
-                      " bytes (pool upper at ", to_string(decided_bp),
-                      " basis points); the engine aborts when its own accounting passes the envelope, so the launch would not start",
-                    ], "") as NonEmptyStr,
-                  } }
-                  false => none
+                match envelope_up {
+                  Absent => none
+                  Present { value: e } =>
+                    match byte_size_count(b: demand.lower) > byte_size_count(b: e) {
+                      true =>
+                        Present { value: ArmMemoryFitRefused {
+                          rank: rd.rank,
+                          phase: phase,
+                          demand_lower: demand.lower,
+                          supply_upper: e,
+                          cause: join([
+                            "memory fit REFUSED at rank ", to_string(rd.rank), " phase ", arm_memory_fit_phase_wire(p: phase),
+                            ": the mandatory demand lower bound of ", to_string(byte_size_count(b: demand.lower)),
+                            " bytes exceeds the decided envelope's most generous reading of ", to_string(byte_size_count(b: e)),
+                            " bytes (pool upper at ", to_string(decided_bp),
+                            " basis points); the engine aborts when its own accounting passes the envelope, so the launch would not start",
+                          ], "") as NonEmptyStr,
+                        } }
+                      false => none
+                    }
                 }
             }
         }
@@ -558,12 +908,12 @@ fn refusal_for_rank(
   })
 }
 
-fn refusal_scan(subject: ArmMemoryFitSubject, supply_up: ByteSize, envelope_up: ByteSize) -> ArmMemoryFitVerdict? {
+fn refusal_scan(subject: ArmMemoryFitSubject, supply_up: ByteSize?, envelope_up: ByteSize?) -> ArmMemoryFitVerdict? {
   fold(subject.ranks, init: Absent, f: fn(acc, rb) {
     match acc {
       Present { value: _ } => acc
       Absent => refusal_for_rank(
-        rb: rb,
+        rd: rb,
         supply_up: supply_up,
         envelope_up: envelope_up,
         decided_bp: basis_point_count(bp: subject.profile.decided_gpu_memory_basis_points))
@@ -571,11 +921,8 @@ fn refusal_scan(subject: ArmMemoryFitSubject, supply_up: ByteSize, envelope_up: 
   })
 }
 
-// CONSERVATION REFUSED IS THE SECOND REFUSAL, and it is about the decided envelope rather than the
-// demand terms: if the envelope at its MOST generous reading plus the deductions at their LEAST
-// cannot fit the pool at its MOST generous reading, no device the host can turn out to be saves
-// the launch. The envelope is uniform across ranks, so the refusal names rank zero and the
-// model-load phase, which is where the envelope decision binds.
+// CONSERVATION REFUSED IS THE SECOND REFUSAL: the decided envelope at its most generous reading
+// plus the deductions at their least cannot fit the pool at its most generous reading.
 fn conservation_refusal(subject: ArmMemoryFitSubject, envelope: ArmEnvelopeSpan?) -> ArmMemoryFitVerdict? {
   match subject.pool {
     ArmPoolUnbounded { obligation: _ } => none
@@ -606,62 +953,48 @@ fn conservation_refusal(subject: ArmMemoryFitSubject, envelope: ArmEnvelopeSpan?
   }
 }
 
-// OPEN TERMS ARE NAMED, ONE OBLIGATION EACH, at the rank and component that carry them -- a
-// consumer can read the obligation list as the measurement program that would settle the verdict.
-fn open_demand_obligation(rb: ArmRankDemandBounds, t: ArmComponentTermBound) -> NonEmptyStr? {
-  match t.bound {
-    ComponentBoundOpen { obligation: o } =>
-      Present { value: join([
-        "rank ", to_string(rb.rank), " ", arm_memory_component_wire(c: t.component),
-        " has no defensible bound: ", o as String,
-      ], "") as NonEmptyStr }
-    ComponentBoundInterval { lower: _, upper: _, how: _ } => none
-    ComponentBoundCeiling { bytes: _, receipt: _ } => none
-  }
-}
-
-fn open_deduction_obligation(d: ArmSupplyDeduction) -> NonEmptyStr? {
-  match d.bound {
-    ComponentBoundOpen { obligation: o } =>
-      Present { value: join([
-        "the supply deduction ", arm_supply_term_wire(t: d.term),
-        " has no defensible upper bound: ", o as String,
-      ], "") as NonEmptyStr }
-    ComponentBoundInterval { lower: _, upper: _, how: _ } => none
-    ComponentBoundCeiling { bytes: _, receipt: _ } => none
-  }
-}
-
+// OPEN TERMS ARE NAMED, ONE OBLIGATION EACH, at the rank and component that carry them.
 fn open_term_obligations(subject: ArmMemoryFitSubject) -> List<NonEmptyStr> {
   concat(
     flat_map(subject.ranks, rb =>
-      flat_map(map(rb.terms, t => open_demand_obligation(rb: rb, t: t)), o => match o {
-        Present { value: text } => [text]
-        Absent => [] as List<NonEmptyStr>
-      })),
+      flat_map(arm_memory_components, c =>
+        match rank_component_bound(rd: rb, c: c) {
+          ComponentBoundOpen { obligation: o } =>
+            [join([
+              "rank ", to_string(rb.rank), " ", arm_memory_component_wire(c: c),
+              " has no defensible bound: ", o as String,
+            ], "") as NonEmptyStr]
+          ComponentBoundExact { bytes: _, how: _ } => [] as List<NonEmptyStr>
+          ComponentBoundInterval { lower: _, upper: _, how: _ } => [] as List<NonEmptyStr>
+          ComponentBoundCeiling { bytes: _, receipt: _ } => [] as List<NonEmptyStr>
+        })),
     concat(
-      flat_map(map(subject.deductions, d => open_deduction_obligation(d: d)), o => match o {
-        Present { value: text } => [text]
-        Absent => [] as List<NonEmptyStr>
-      }),
-      match subject.pool {
-        ArmPoolUnbounded { obligation: o } => [o]
-        ArmPoolBounded { span: _, how: _ } => [] as List<NonEmptyStr>
+      match subject.deductions.host_os_control_reserve {
+        ComponentBoundOpen { obligation: o } =>
+          [join(["the supply deduction host-os-control-reserve has no defensible upper bound: ", o as String], "") as NonEmptyStr]
+        ComponentBoundExact { bytes: _, how: _ } => [] as List<NonEmptyStr>
+        ComponentBoundInterval { lower: _, upper: _, how: _ } => [] as List<NonEmptyStr>
+        ComponentBoundCeiling { bytes: _, receipt: _ } => [] as List<NonEmptyStr>
+      },
+      match subject.deductions.foreign_residency {
+        ComponentBoundOpen { obligation: o } =>
+          [join(["the supply deduction foreign-residency has no defensible upper bound: ", o as String], "") as NonEmptyStr]
+        ComponentBoundExact { bytes: _, how: _ } => [] as List<NonEmptyStr>
+        ComponentBoundInterval { lower: _, upper: _, how: _ } => [] as List<NonEmptyStr>
+        ComponentBoundCeiling { bytes: _, receipt: _ } => [] as List<NonEmptyStr>
       }))
 }
 
-// INDETERMINATE COMPARISONS ARE NAMED AS OBLIGATIONS TOO. A phase whose demand upper and the
-// conservative supply lower fail to decide -- upper above lower, nothing open -- is not a proof
-// and not a refusal; it is a pair of intervals that a tighter measurement must separate, and the
-// obligation says which terms carry the slack (the ceiling-bounded ones, whose receipts can be
-// re-measured). The same pass carries the conservation question when the pool's rounded span
-// leaves it open.
-fn ceiling_terms_resident_in_phase(terms: List<ArmComponentTermBound>, phase: ArmMemoryFitPhase) -> List<ArmMemoryComponent> {
-  map(filter(filter(terms, t => component_resident_in_phase(c: t.component, p: phase)), t => match t.bound {
-    ComponentBoundCeiling { bytes: _, receipt: _ } => true
-    ComponentBoundInterval { lower: _, upper: _, how: _ } => false
-    ComponentBoundOpen { obligation: _ } => false
-  }), t => t.component)
+// INDETERMINATE COMPARISONS ARE NAMED AS OBLIGATIONS TOO, with the conservation law for the
+// checkpoint aggregate folded in.
+fn ceiling_terms_resident_in_phase(rd: ArmRankDemand, phase: ArmMemoryFitPhase) -> List<ArmMemoryComponent> {
+  filter(filter(arm_memory_components, c => component_resident_in_phase(c: c, p: phase)), c =>
+    match rank_component_bound(rd: rd, c: c) {
+      ComponentBoundCeiling { bytes: _, receipt: _ } => true
+      ComponentBoundExact { bytes: _, how: _ } => false
+      ComponentBoundInterval { lower: _, upper: _, how: _ } => false
+      ComponentBoundOpen { obligation: _ } => false
+    })
 }
 
 fn indeterminacy_obligations(
@@ -671,23 +1004,23 @@ fn indeterminacy_obligations(
 ) -> List<NonEmptyStr> {
   let demand_obligations = flat_map(subject.ranks, rb =>
     flat_map(map(arm_memory_fit_phases, phase => {
-      let demand = demand_for_phase(terms: rb.terms, phase: phase)
+      let demand = demand_for_phase(rd: rb, phase: phase)
       match demand.upper {
         Absent => [] as List<NonEmptyStr>
         Present { value: upper } => {
           let supply_excess = match supply_low {
             Absent => [] as List<NonEmptyStr>
             Present { value: low } =>
-              if byte_size_count(b: upper) > byte_size_count(b: low) {
-                [join([
-                  "rank ", to_string(rb.rank), " phase ", arm_memory_fit_phase_wire(p: phase),
-                  " does not decide: demand upper ", to_string(byte_size_count(b: upper)),
-                  " bytes exceeds the conservative supply lower ", to_string(byte_size_count(b: low)),
-                  " bytes; tighten ", join(map(ceiling_terms_resident_in_phase(terms: rb.terms, phase: phase), c => arm_memory_component_wire(c: c)), ", "),
-                  " or bound the supply deductions tighter",
-                ], "") as NonEmptyStr]
-              } else {
-                [] as List<NonEmptyStr>
+              match byte_size_count(b: upper) > byte_size_count(b: low) {
+                true =>
+                  [join([
+                    "rank ", to_string(rb.rank), " phase ", arm_memory_fit_phase_wire(p: phase),
+                    " does not decide: demand upper ", to_string(byte_size_count(b: upper)),
+                    " bytes exceeds the conservative supply lower ", to_string(byte_size_count(b: low)),
+                    " bytes; tighten ", join(map(ceiling_terms_resident_in_phase(rd: rb, phase: phase), c => arm_memory_component_wire(c: c)), ", "),
+                    " or bound the supply deductions tighter",
+                  ], "") as NonEmptyStr]
+                false => [] as List<NonEmptyStr>
               }
           }
           let envelope_excess = match envelope {
@@ -696,16 +1029,16 @@ fn indeterminacy_obligations(
               match envelope_constrains_phase(p: phase) {
                 false => [] as List<NonEmptyStr>
                 true =>
-                  if byte_size_count(b: upper) > byte_size_count(b: env.lower) {
-                    [join([
-                      "rank ", to_string(rb.rank), " phase ", arm_memory_fit_phase_wire(p: phase),
-                      " does not decide against the decided envelope: demand upper ", to_string(byte_size_count(b: upper)),
-                      " bytes exceeds the envelope at the pool's lower reading (", to_string(byte_size_count(b: env.lower)),
-                      " bytes at ", to_string(basis_point_count(bp: subject.profile.decided_gpu_memory_basis_points)),
-                      " basis points); a larger utilization decision or a byte-exact pool reading would settle it",
-                    ], "") as NonEmptyStr]
-                  } else {
-                    [] as List<NonEmptyStr>
+                  match byte_size_count(b: upper) > byte_size_count(b: env.lower) {
+                    true =>
+                      [join([
+                        "rank ", to_string(rb.rank), " phase ", arm_memory_fit_phase_wire(p: phase),
+                        " does not decide against the decided envelope: demand upper ", to_string(byte_size_count(b: upper)),
+                        " bytes exceeds the envelope at the pool's lower reading (", to_string(byte_size_count(b: env.lower)),
+                        " bytes at ", to_string(basis_point_count(bp: subject.profile.decided_gpu_memory_basis_points)),
+                        " basis points); a larger utilization decision or a byte-exact pool reading would settle it",
+                      ], "") as NonEmptyStr]
+                    false => [] as List<NonEmptyStr>
                   }
               }
           }
@@ -723,15 +1056,15 @@ fn indeterminacy_obligations(
             Absent => [] as List<NonEmptyStr>
             Present { value: uppers } => {
               let conservation_low = measure_add(a: env.lower, b: uppers)
-              if byte_size_count(b: conservation_low) > byte_size_count(b: interval_low(interval: s)) {
-                [join([
-                  "unified-pool conservation does not decide: the decided envelope at the pool's lower reading (",
-                  to_string(byte_size_count(b: env.lower)), " bytes) plus the bounded foreign residency uppers exceeds the pool's lower reading (",
-                  to_string(byte_size_count(b: interval_low(interval: s))),
-                  " bytes); the byte-exact pool producer decides whether the device this lands on is large enough",
-                ], "") as NonEmptyStr]
-              } else {
-                [] as List<NonEmptyStr>
+              match byte_size_count(b: conservation_low) > byte_size_count(b: interval_low(interval: s)) {
+                true =>
+                  [join([
+                    "unified-pool conservation does not decide: the decided envelope at the pool's lower reading (",
+                    to_string(byte_size_count(b: env.lower)), " bytes) plus the bounded foreign residency uppers exceeds the pool's lower reading (",
+                    to_string(byte_size_count(b: interval_low(interval: s))),
+                    " bytes); the byte-exact pool producer decides whether the device this lands on is large enough",
+                  ], "") as NonEmptyStr]
+                false => [] as List<NonEmptyStr>
               }
             }
           }
@@ -740,9 +1073,8 @@ fn indeterminacy_obligations(
   concat(demand_obligations, conservation_obligations)
 }
 
-// THE BINDING CEILING FOR ONE PHASE: the conservative supply everywhere, and the tighter of supply
-// and decided envelope on the engine-admitted phases, where the engine's own accounting can refuse
-// the launch even though the pool would hold the demand.
+// THE BINDING CEILING FOR ONE PHASE: the conservative supply everywhere, and the tighter of
+// supply and decided envelope on the engine-admitted phases.
 fn phase_binding(supply_low: ByteSize, envelope_lower: ByteSize, phase: ArmMemoryFitPhase) -> ByteSize {
   match envelope_constrains_phase(p: phase) {
     false => supply_low
@@ -754,9 +1086,6 @@ fn phase_binding(supply_low: ByteSize, envelope_lower: ByteSize, phase: ArmMemor
   }
 }
 
-// THE PROOF'S WORST CORNER, computed only when every comparison decided: the (rank, phase) pair
-// whose headroom -- the phase's binding ceiling minus demand upper -- is smallest. Proved carries
-// it so a reviewer reads the tightest corner first.
 fn proved_worst_corner(subject: ArmMemoryFitSubject, supply_low: ByteSize, envelope_lower: ByteSize) -> ArmMemoryFitVerdict? {
   fold(subject.ranks, init: Absent, f: fn(acc, rb) {
     fold(arm_memory_fit_phases, init: acc, f: fn(acc2, phase) {
@@ -764,7 +1093,7 @@ fn proved_worst_corner(subject: ArmMemoryFitSubject, supply_low: ByteSize, envel
         Present { value: prior } =>
           match prior {
             ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: h } => {
-              let demand = demand_for_phase(terms: rb.terms, phase: phase)
+              let demand = demand_for_phase(rd: rb, phase: phase)
               match demand.upper {
                 Absent => acc2
                 Present { value: upper } => {
@@ -780,7 +1109,7 @@ fn proved_worst_corner(subject: ArmMemoryFitSubject, supply_low: ByteSize, envel
             ArmMemoryFitUnestablished { obligations: _ } => acc2
           }
         Absent => {
-          let demand = demand_for_phase(terms: rb.terms, phase: phase)
+          let demand = demand_for_phase(rd: rb, phase: phase)
           match demand.upper {
             Absent => none
             Present { value: upper } =>
@@ -798,74 +1127,319 @@ fn proved_worst_corner(subject: ArmMemoryFitSubject, supply_low: ByteSize, envel
 
 // ── THE VERDICT FOLD ─────────────────────────────────────────────────────────────────────────────
 //
-// THE ORDER IS THE SEMANTICS. (1) a rank-population defect is Unestablished, because nothing about
-// the demand roster can be believed; (2) the refusal scan, because a refusal is decisive whatever
-// else is unknown; (3) the conservation refusal; (4) the obligation pass -- open terms first, then
-// indeterminate comparisons -- whose EMPTINESS is the definition of "every bound is defensible and
-// decides"; (5) Proved, with the worst corner. A consumer that wants the feasible frontier maps
-// this fold over the intents it is choosing between: (length, seats, batch ceiling) -> Proved |
-// Refused | Unestablished, and sizing becomes a service decision rather than a tuned answer.
+// THE ORDER IS THE SEMANTICS. (1) the aggregate impossibility argument, which never names a rank;
+// (2) the per-rank refusal scan; (3) the conservation refusal; (4) the obligation pass -- open
+// terms, the pool obligation when the pool is unmodeled, indeterminate comparisons, the rank-sum
+// conservation law -- whose EMPTINESS is the definition of "every bound is defensible and
+// decides"; (5) Proved, with the worst corner. Unknown supply and unknown envelope skip their
+// walls: an unmodeled pool is an obligation, not a refusal.
 fn arm_memory_fit_verdict(subject: ArmMemoryFitSubject) -> ArmMemoryFitVerdict {
-  if count(subject.ranks) != serving_topology_rank_count(t: subject.topology) {
-    ArmMemoryFitUnestablished { obligations: [join([
-      "the subject carries ", to_string(count(subject.ranks)),
-      " rank demand roster(s) against a topology of ", to_string(serving_topology_rank_count(t: subject.topology)),
-      " rank(s), so the demand population does not describe this arm",
-    ], "") as NonEmptyStr] }
+  if !rank_roster_valid(ranks: subject.ranks, rank_count: serving_topology_rank_count(t: subject.topology)) {
+    ArmMemoryFitUnestablished { obligations: [rank_roster_refusal(ranks: subject.ranks, rank_count: serving_topology_rank_count(t: subject.topology))] }
   } else {
-    let supply_up = supply_upper_bound(pool: subject.pool, deductions: subject.deductions)
+    let supply_up = supply_upper_opt(pool: subject.pool, deductions: subject.deductions)
     let envelope = decided_envelope_span(profile: subject.profile, pool: subject.pool)
     let envelope_up = match envelope {
-      Absent => supply_up
-      Present { value: e } => e.upper
+      Absent => none
+      Present { value: e } => Present { value: e.upper }
     }
-    match refusal_scan(subject: subject, supply_up: supply_up, envelope_up: envelope_up) {
+    match aggregate_checkpoint_refusal(subject: subject, supply_up: supply_up) {
       Present { value: v } => v
       Absent =>
-        match conservation_refusal(subject: subject, envelope: envelope) {
+        match refusal_scan(subject: subject, supply_up: supply_up, envelope_up: envelope_up) {
           Present { value: v } => v
-          Absent => {
-            let supply_low = supply_lower_bound(pool: subject.pool, deductions: subject.deductions)
-            let obligations = concat(
-              open_term_obligations(subject: subject),
-              indeterminacy_obligations(subject: subject, supply_low: supply_low, envelope: envelope))
-            if length(obligations) > 0 {
-              ArmMemoryFitUnestablished { obligations: obligations }
-            } else {
-              match supply_low {
-                Absent =>
-                  ArmMemoryFitUnestablished { obligations: ["unreachable: an empty obligation pass implies the supply lower bound computed" as NonEmptyStr] }
-                Present { value: low } =>
-                  match envelope {
-                    Absent =>
-                      ArmMemoryFitUnestablished { obligations: ["unreachable: an empty obligation pass implies the decided envelope computed" as NonEmptyStr] }
-                    Present { value: env } =>
-                      match proved_worst_corner(subject: subject, supply_low: low, envelope_lower: env.lower) {
-                        Present { value: v } => v
-                        Absent =>
-                          ArmMemoryFitUnestablished { obligations: ["unreachable: a subject with ranks has at least one rank-phase pair" as NonEmptyStr] }
-                      }
-                  }
+          Absent =>
+            match conservation_refusal(subject: subject, envelope: envelope) {
+              Present { value: v } => v
+              Absent => {
+                let supply_low = supply_lower_opt(pool: subject.pool, deductions: subject.deductions)
+                let pool_obligations = match subject.pool {
+                  ArmPoolUnbounded { obligation: o } => [o]
+                  ArmPoolBounded { span: _, how: _ } => [] as List<NonEmptyStr>
+                }
+                let obligations = concat(
+                  open_term_obligations(subject: subject),
+                  concat(
+                    pool_obligations,
+                    concat(
+                      indeterminacy_obligations(subject: subject, supply_low: supply_low, envelope: envelope),
+                      checkpoint_sum_obligation(subject: subject))))
+                match length(obligations) > 0 {
+                  true => ArmMemoryFitUnestablished { obligations: obligations }
+                  false =>
+                    match supply_low {
+                      Absent =>
+                        ArmMemoryFitUnestablished { obligations: ["unreachable: an empty obligation pass implies the conservative supply computed" as NonEmptyStr] }
+                      Present { value: low } =>
+                        match envelope {
+                          Absent =>
+                            ArmMemoryFitUnestablished { obligations: ["unreachable: an empty obligation pass implies the decided envelope computed" as NonEmptyStr] }
+                          Present { value: env } =>
+                            match proved_worst_corner(subject: subject, supply_low: low, envelope_lower: env.lower) {
+                              Present { value: v } => v
+                              Absent =>
+                                ArmMemoryFitUnestablished { obligations: ["unreachable: a subject with ranks has at least one rank-phase pair" as NonEmptyStr] }
+                            }
+                        }
+                    }
+                }
               }
             }
-          }
         }
+    }
+  }
+}
+
+// THE TYPED OPEN-COMPONENT LISTING the experiment plan consumes: a component is open when ANY
+// rank carries it open, read through the same exhaustive accessor the folds use.
+fn arm_memory_subject_open_components(subject: ArmMemoryFitSubject) -> List<ArmMemoryComponent> {
+  filter(arm_memory_components, c => any(subject.ranks, r => bound_is_open(b: rank_component_bound(rd: r, c: c))))
+}
+
+// ── THE MEASUREMENT CONTRACT ─────────────────────────────────────────────────────────────────────
+//
+// A MEASUREMENT IS NOT A BOUND. The review finding this closes: promoting one observed sample
+// into a ceiling made "the process once used N bytes" into "the process will never exceed N
+// bytes", which nothing about one sample establishes. THE CLASSIFICATION NAMES WHAT THE
+// OBSERVATION ESTABLISHES: only MeasuredUpperBound and MeasuredInterval discharge an open
+// obligation, and only when the measurement names the exact subject axes -- component, rank,
+// phase, workload, lifetime -- and its protocol is a bounding protocol. A single sample is
+// ObservationOnly; a measurement for a phase where the component is not resident, or for an
+// empty workload, or that does not cover the serving lifetime it would bound, refuses.
+type ArmMeasurementProtocol
+  = ProtocolPeakOverRuns { runs: Nat }
+  | ProtocolEngineReportedMaximum
+  | ProtocolSingleSample
+
+type ArmMeasurement {
+  component: ArmMemoryComponent
+  rank: Nat
+  phase: ArmMemoryFitPhase
+  workload: TokenCount
+  covers_lifetime: Bool
+  protocol: ArmMeasurementProtocol
+  observed: ByteSize
+  receipt: NonEmptyStr
+}
+
+type ArmMeasurementClass
+  = MeasuredUpperBound { measurement: ArmMeasurement }
+  | MeasuredInterval { lower: ByteSize, upper: ByteSize, measurement: ArmMeasurement }
+  | ObservationOnly { measurement: ArmMeasurement, why: NonEmptyStr }
+  | MeasurementRefused { cause: NonEmptyStr }
+
+fn arm_classify_measurement(m: ArmMeasurement) -> ArmMeasurementClass {
+  if !component_resident_in_phase(c: m.component, p: m.phase) {
+    MeasurementRefused {
+      cause: join([
+        "the measurement names phase ", arm_memory_fit_phase_wire(p: m.phase),
+        ", in which ", arm_memory_component_wire(c: m.component), " is not resident: an observation of an absent mechanism bounds nothing",
+      ], "") as NonEmptyStr,
+    }
+  } else if token_count_value(t: m.workload) == 0 {
+    MeasurementRefused { cause: "the measurement names an empty workload, so it establishes nothing about any admitted request" as NonEmptyStr }
+  } else if !m.covers_lifetime {
+    ObservationOnly {
+      measurement: m,
+      why: "the observation does not cover the lifetime it would bound: a point reading inside one run says nothing about peaks across the process's life" as NonEmptyStr,
+    }
+  } else {
+    match m.protocol {
+      ProtocolSingleSample =>
+        ObservationOnly {
+          measurement: m,
+          why: "a single sample bounds nothing above: an upper bound needs a peak-over-runs protocol or the engine's own reported maximum" as NonEmptyStr,
+        }
+      ProtocolPeakOverRuns { runs: n } =>
+        match n == 0 {
+          true => MeasurementRefused { cause: "a peak over zero runs is not a protocol" as NonEmptyStr }
+          false => MeasuredUpperBound { measurement: m }
+        }
+      ProtocolEngineReportedMaximum => MeasuredUpperBound { measurement: m }
+    }
+  }
+}
+
+// DISCHARGE IS THE ONLY ROUTE FROM OBSERVATION TO BOUND. ObservationOnly and MeasurementRefused
+// return the current bound UNCHANGED -- an observation that does not establish a bound changes no
+// bound, which is the whole point of the contract.
+fn arm_apply_measurement(current: ArmComponentBound, class: ArmMeasurementClass) -> ArmComponentBound {
+  match class {
+    MeasuredUpperBound { measurement: m } => ComponentBoundCeiling { bytes: m.observed, receipt: m.receipt }
+    MeasuredInterval { lower: l, upper: u, measurement: m } =>
+      match component_bound_interval(lower: l, upper: u, how: join(["measured interval, receipt ", m.receipt as String], "") as NonEmptyStr) {
+        ArmComponentBoundReady { bound: b } => b
+        ArmComponentBoundRefused { cause: _ } => current
+      }
+    ObservationOnly { measurement: _, why: _ } => current
+    MeasurementRefused { cause: _ } => current
+  }
+}
+
+// READBACK AGAINST AN EXISTING PREDICTION. An observation OUTSIDE a predicted interval falsifies
+// the model; INSIDE it is consistent -- a derived pair is a range claim, and the world landing
+// within the range is the range being right, not the world being wrong. Against an Exact figure
+// the observation must equal it; against a ceiling it must not exceed it; against an open term
+// there is no prediction, so anything observed is consistent (and the measurement contract, not
+// this fold, decides whether it may discharge).
+type ArmObservationVerdict
+  = ArmObservationConsistent { component: ArmMemoryComponent, predicted_bound: ArmComponentBound, observed: ByteSize, receipt: NonEmptyStr }
+  | ArmMemoryModelFalsified { component: ArmMemoryComponent, predicted_bound: ArmComponentBound, observed: ByteSize, receipt: NonEmptyStr }
+
+fn arm_readback_observation(component: ArmMemoryComponent, predicted: ArmComponentBound, observed: ByteSize, receipt: NonEmptyStr) -> ArmObservationVerdict {
+  match predicted {
+    ComponentBoundExact { bytes: b, how: _ } =>
+      match byte_size_count(b: observed) == byte_size_count(b: b) {
+        true => ArmObservationConsistent { component: component, predicted_bound: predicted, observed: observed, receipt: receipt }
+        false => ArmMemoryModelFalsified { component: component, predicted_bound: predicted, observed: observed, receipt: receipt }
+      }
+    ComponentBoundInterval { lower: l, upper: u, how: _ } =>
+      match measure_le(a: l, b: observed) && measure_le(a: observed, b: u) {
+        true => ArmObservationConsistent { component: component, predicted_bound: predicted, observed: observed, receipt: receipt }
+        false => ArmMemoryModelFalsified { component: component, predicted_bound: predicted, observed: observed, receipt: receipt }
+      }
+    ComponentBoundCeiling { bytes: b, receipt: _ } =>
+      match measure_le(a: observed, b: b) {
+        true => ArmObservationConsistent { component: component, predicted_bound: predicted, observed: observed, receipt: receipt }
+        false => ArmMemoryModelFalsified { component: component, predicted_bound: predicted, observed: observed, receipt: receipt }
+      }
+    ComponentBoundOpen { obligation: _ } =>
+      ArmObservationConsistent { component: component, predicted_bound: predicted, observed: observed, receipt: receipt }
+  }
+}
+
+// ── THE EXPERIMENT CONTRACT ──────────────────────────────────────────────────────────────────────
+//
+// FitRefused refuses the experiment too -- a known-impossible shape measures nothing a service
+// could use. FitUnestablished admits an experiment ONLY through a typed plan, and the plan is the
+// smallest configuration that measures the named unknowns: the workload is the subject's own
+// (the engine config priced and the engine config run are one, by the join), the envelope is no
+// larger than the normal-serving decision, the runtime is finite, the receipts the run must mint
+// are named, and the stop/cleanup contract plus the route-enrollment prohibition are carried as
+// typed fields the realization renders.
+type ArmAllRanksStopped
+  = ArmEveryRankStopped { witness: NonEmptyStr }
+
+type ArmRouteEnrollmentProhibited
+  = ArmNoRouteEnrollment { witness: NonEmptyStr }
+
+type ArmExperimentStopContract {
+  timeout_preserves: NonEmptyStr
+  cleanup: NonEmptyStr
+  stops_every_rank: ArmAllRanksStopped
+  route_enrollment: ArmRouteEnrollmentProhibited
+}
+
+type ArmMemoryExperimentPlan {
+  checkpoint: ServingCheckpoint
+  runtime: ServingRuntime
+  topology: ServingTopology
+  workload: ServingCapacityIntent
+  profile: ServingLaunchProfile
+  targets: List<ArmMemoryComponent>
+  envelope_basis_points: BasisPoint
+  max_runtime_seconds: Nat
+  expected_receipts: List<NonEmptyStr>
+  stop: ArmExperimentStopContract
+}
+
+type ArmMemoryExperimentAdmission
+  = ArmMemoryExperimentAdmitted { plan: ArmMemoryExperimentPlan }
+  | ArmMemoryExperimentRefused { cause: NonEmptyStr }
+
+// THE ADMITTED MAXIMUM RUNTIME for one experiment rank unit. Bounded by the engine's own
+// multi-node ready timeout: an engine that has not finished starting (including its profiling
+// pass, where the memory terms this experiment exists to measure are minted) within the window
+// its own base environment prescribes is not a slow measurement but a failed start.
+fn arm_memory_experiment_runtime_seconds() -> Nat {
+  glm_5_3_flash_vllm_engine_ready_timeout_seconds
+}
+
+fn experiment_receipt_kind(component: ArmMemoryComponent) -> NonEmptyStr {
+  match component {
+    ArmCheckpointResidency => "CheckpointRankResidencyBound" as NonEmptyStr
+    ArmLoaderTransform => "CheckpointRankResidencyBound" as NonEmptyStr
+    ArmRuntimeFixed => "RuntimeFixedAllocationBound" as NonEmptyStr
+    ArmCollectiveWorkspace => "CollectiveWorkspaceBound" as NonEmptyStr
+    ArmActivationWorkspace => "ActivationWorkspaceBound" as NonEmptyStr
+    ArmGraphCapture => "GraphCaptureBound" as NonEmptyStr
+    ArmKvCache => "KvLayoutReceipt" as NonEmptyStr
+    ArmFragmentationAllowance => "AllocatorFragmentationBound" as NonEmptyStr
+  }
+}
+
+// THE PLAN MINT. The workload joins the requested profile's policy fields into the derived
+// executable (same join as the subject); targets must be open in the subject these identities
+// mint -- an experiment targeting an already-bounded component measures nothing unknown; the
+// envelope must not exceed the normal-serving decision -- conservative means no larger.
+fn arm_memory_fit_experiment_plan(
+  checkpoint: ServingCheckpoint,
+  runtime: ServingRuntime,
+  topology: ServingTopology,
+  workload: ServingCapacityIntent,
+  policy_profile: ServingLaunchProfile,
+  targets: List<ArmMemoryComponent>,
+) -> ArmMemoryExperimentAdmission {
+  if !profile_joins_intent(intent: workload, p: policy_profile) {
+    ArmMemoryExperimentRefused {
+      cause: "the experiment's workload and its policy profile do not join: the experiment would run an engine config other than the one its plan prices" as NonEmptyStr,
+    }
+  } else if length(targets) == 0 {
+    ArmMemoryExperimentRefused { cause: "the experiment names no open obligations as targets: an experiment exists to measure the unknown, and a plan with nothing to measure is a service wearing an experiment's name" as NonEmptyStr }
+  } else {
+    match arm_memory_fit_subject_for_launch(checkpoint: checkpoint, runtime: runtime, topology: topology, profile: policy_profile) {
+      ArmMemorySubjectRefused { cause: c } => ArmMemoryExperimentRefused { cause: c }
+      ArmMemorySubjectReady { subject: subject } => {
+        let open_components = arm_memory_subject_open_components(subject: subject)
+        let not_open = filter(targets, t => !any(open_components, o => o == t))
+        match length(not_open) > 0 {
+          true =>
+            ArmMemoryExperimentRefused {
+              cause: join([
+                "the experiment targets ", join(map(not_open, c => arm_memory_component_wire(c: c)), ", "),
+                ", which is not open for this subject: measuring an already-bounded component establishes nothing, and targeting it means the plan was written against a different arm",
+              ], "") as NonEmptyStr,
+            }
+          false =>
+            ArmMemoryExperimentAdmitted { plan: ArmMemoryExperimentPlan {
+              checkpoint: checkpoint,
+              runtime: runtime,
+              topology: topology,
+              workload: workload,
+              profile: policy_profile,
+              targets: targets,
+              envelope_basis_points: policy_profile.decided_gpu_memory_basis_points,
+              max_runtime_seconds: arm_memory_experiment_runtime_seconds(),
+              expected_receipts: map(targets, t => experiment_receipt_kind(t)),
+              stop: ArmExperimentStopContract {
+                timeout_preserves: "on runtime expiry the engine container is stopped and the observer preserves the per-rank logs and records an unminted-receipt disposition against every expected receipt: a measurement that outlived its window establishes nothing" as NonEmptyStr,
+                cleanup: "docker rm -f the experiment container after stop, on every rank, so a timed-out experiment leaves no engine holding pool bytes" as NonEmptyStr,
+                stops_every_rank: ArmEveryRankStopped { witness: "every rank unit of the experiment carries the same admitted runtime bound" as NonEmptyStr },
+                route_enrollment: ArmNoRouteEnrollment { witness: "the experiment unit renders no [Install] section, so no target enrolls the route" as NonEmptyStr },
+              },
+            } }
+        }
+      }
     }
   }
 }
 
 // ── THE LAUNCH GATE ──────────────────────────────────────────────────────────────────────────────
 //
-// INTENT DECIDES WHAT THE VERDICT MUST SHOW. Normal serving requires FitProved and is refused on
-// either other arm, with the obligations or numbers carried into the cause -- BOTH stop a launch;
-// they name different repairs. A bounded experiment is admitted on ANY verdict: the experiment is
-// how the open terms earn their receipts, and refusing it would make the proof's own evidence
-// unreachable. What the bounded experiment may BE is governed separately by the realization layer
-// (gunbc.spark.native_serving_realization renders a bounded experiment one-shot and unenrolled, so
-// an experiment can never become an indefinitely restarting service).
-fn arm_memory_launch_gate(intent: ArmIntent, verdict: ArmMemoryFitVerdict) -> NonEmptyStr? {
+// INTENT DECIDES WHAT THE VERDICT MUST SHOW, and the experiment arm is verdict-aware. Normal
+// serving requires FitProved, refused on either other arm with the obligations or numbers carried
+// into the cause. A bounded experiment on FitRefused is refused too: a shape that cannot fit
+// under any reading has nothing a measurement can rescue. A bounded experiment on
+// FitUnestablished is admissible ONLY with a typed experiment plan -- the gate takes it as a
+// parameter, and the wall builds it through the plan mint -- because the plan is what makes the
+// experiment the smallest measuring configuration rather than an unbounded service wearing an
+// experiment's name.
+fn arm_memory_launch_gate(
+  intent: ArmIntent,
+  verdict: ArmMemoryFitVerdict,
+  experiment: ArmMemoryExperimentPlan?,
+) -> NonEmptyStr? {
   match intent {
-    ArmBoundedExperiment => none
     ArmNormalServing =>
       match verdict {
         ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => none
@@ -876,210 +1450,22 @@ fn arm_memory_launch_gate(intent: ArmIntent, verdict: ArmMemoryFitVerdict) -> No
             join(map(os, o => o as String), "; "),
           ], "") as NonEmptyStr }
       }
-  }
-}
-
-// ── THE SUBJECT THE LAUNCH WALL ASSEMBLES ────────────────────────────────────────────────────────
-//
-// TODAY'S ASSEMBLY IS MOSTLY OBLIGATIONS, and that is the honest state rather than a defect to
-// paper over: no component-scoped memory receipt exists for any native-arm subject (the only
-// receipt-class numbers on record belong to the retired EXL3 canary, a different subject and not
-// transferable), and the resolved KV layout's groups are unemitted by the engine. The checkpoint
-// residency and the pool DO derive today -- from the checkpoint row's ceil-GiB figure and the
-// rounded `free -g` reading -- and every other term names the receipt that would bound it. The
-// verdict this assembly yields for the production tuple is FitUnestablished with those names,
-// which is what refuses the launch.
-fn checkpoint_residency_term(crow_weight_gib: Gibibyte, ranks: Nat) -> ArmComponentTermBound {
-  let g = gibibyte_count(g: crow_weight_gib)
-  if g == 0 || ranks == 0 {
-    ArmComponentTermBound {
-      component: ArmCheckpointResidency,
-      bound: ComponentBoundOpen { obligation: "the checkpoint row carries a zero weight figure or the topology zero ranks, so the per-rank residency interval cannot be derived from it" as NonEmptyStr },
-    }
-  } else {
-    let total_upper = gibibyte_to_byte_size(g: gibibyte(count: g))
-    let total_lower = measure_add(a: gibibyte_to_byte_size(g: gibibyte(count: g - 1)), b: byte_size(count: 1))
-    let per_rank_lower = byte_size(count: byte_size_count(b: total_lower) / ranks)
-    let per_rank_upper = byte_size(count: (byte_size_count(b: total_upper) + ranks - 1) / ranks)
-    match component_bound_interval(lower: per_rank_lower, upper: per_rank_upper, how: "per-rank share of the checkpoint row's ceil-GiB figure: the row's weight_gib is ceiling-divided from the manifest bytes, so true total bytes lie in ((g-1) GiB, g GiB], and an even tensor-parallel split places per-rank residency within one split GiB of either endpoint" as NonEmptyStr) {
-      ArmComponentBoundReady { bound: b } =>
-        ArmComponentTermBound { component: ArmCheckpointResidency, bound: b }
-      ArmComponentBoundRefused { cause: c } =>
-        ArmComponentTermBound {
-          component: ArmCheckpointResidency,
-          bound: ComponentBoundOpen { obligation: join(["the derived checkpoint residency interval was refused by its own mint: ", c as String], "") as NonEmptyStr },
-        }
-    }
-  }
-}
-
-fn open_demand_term(component: ArmMemoryComponent, receipt_kind: NonEmptyStr) -> ArmComponentTermBound {
-  ArmComponentTermBound {
-    component: component,
-    bound: ComponentBoundOpen {
-      obligation: join([
-        "no component-scoped receipt of kind ", receipt_kind,
-        " exists for this checkpoint x loader/runtime x topology x rank; a bounded experiment on this subject is what mints one",
-      ], "") as NonEmptyStr,
-    }
-  }
-}
-
-// THE GB10 POOL AS THIS FLEET CURRENTLY READS IT: the rounded `free -g` figure carried by
-// gunbc.spark.serving_arm, widened by half its rounding unit either way. The obligation names the
-// replacement the fit itself asks for: the engine prints a byte-exact device total at every
-// launch, and a host-class byte producer (the second named obligation in the fit projection's own
-// header) turns this span into a point.
-fn gb10_pool_bound() -> ArmPoolBound {
-  let gib = gb10_unified_pool_gib
-  let pool_lower = gibibyte_to_byte_size(g: gibibyte(count: gib))
-  let pool_upper = byte_size(count: byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: gib + 1))) - 1)
-  match closed_interval(low: pool_lower, high: pool_upper, le: measure_le) {
-    IntervalReady { interval: i } =>
-      ArmPoolBounded {
-        span: i,
-        how: "gunbc.spark.serving_arm gb10_unified_pool_gib: a rounded `free -g` total read on one member on 2026-09-08; the true total lies within one rounding unit of the figure" as NonEmptyStr,
-      }
-    IntervalRefused { reason: r } =>
-      ArmPoolUnbounded { obligation: join(["the rounded GB10 pool reading could not be turned into a span: ", r as String], "") as NonEmptyStr }
-  }
-}
-
-fn uniform_rank_bounds(rank_count: Nat, terms: List<ArmComponentTermBound>) -> List<ArmRankDemandBounds> {
-  map(nat_range_inclusive(lo: 1, hi: rank_count), i =>
-    ArmRankDemandBounds { rank: i - 1, terms: terms })
-}
-
-// ASSEMBLY IS TOTAL BUT THE VERDICT IS THE WALL. Every term has a spelling today -- derived where
-// a derivation exists, open with its receipt named where it does not -- so the subject always
-// assembles and the verdict fold, not the assembly, decides. When the layout instrument lands
-// (extdeps.vllm.kv_layout names the trigger), the KV arm switches from Open to a derivation over
-// the observed layout and the seat population, and the verdict tightens without this signature
-// changing.
-fn arm_memory_fit_subject_for_launch(
-  checkpoint: ServingCheckpoint,
-  runtime: ServingRuntime,
-  topology: ServingTopology,
-  profile: ServingLaunchProfile,
-) -> ArmMemoryFitSubject? {
-  match serving_checkpoint_row(c: checkpoint) {
-    Absent => none
-    Present { value: crow } =>
-      match intent_for_launch_profile(p: profile) {
-        ServingCapacityIntentRefused { cause: _ } => none
-        ServingCapacityIntentAdmitted { intent: intent } => {
-          let rank_count = serving_topology_rank_count(t: topology)
-          let terms = [
-            checkpoint_residency_term(crow_weight_gib: crow.weight_gib, ranks: rank_count),
-            open_demand_term(component: ArmLoaderTransform, receipt_kind: "CheckpointRankResidencyBound" as NonEmptyStr),
-            open_demand_term(component: ArmRuntimeFixed, receipt_kind: "RuntimeFixedAllocationBound" as NonEmptyStr),
-            open_demand_term(component: ArmCollectiveWorkspace, receipt_kind: "CollectiveWorkspaceBound" as NonEmptyStr),
-            open_demand_term(component: ArmActivationWorkspace, receipt_kind: "ActivationWorkspaceBound" as NonEmptyStr),
-            open_demand_term(component: ArmGraphCapture, receipt_kind: "GraphCaptureBound" as NonEmptyStr),
-            ArmComponentTermBound {
-              component: ArmKvCache,
-              bound: ComponentBoundOpen {
-                obligation: "required_kv_bytes is derived from the workload intent over the group-aware resolved cache layout (extdeps.vllm.kv_layout), and the engine does not yet emit the per-group layer counts, page sizes and windows that the layout needs -- so the KV demand cannot be derived for this subject. Observed current_kv from a previous run is a readback and never a demand input" as NonEmptyStr,
-              },
-            },
-            open_demand_term(component: ArmFragmentationAllowance, receipt_kind: "AllocatorFragmentationBound" as NonEmptyStr),
-          ]
-          Present { value: ArmMemoryFitSubject {
-            checkpoint: checkpoint,
-            runtime: runtime,
-            topology: topology,
-            profile: profile,
-            intent: intent,
-            ranks: uniform_rank_bounds(rank_count: rank_count, terms: terms),
-            pool: gb10_pool_bound(),
-            deductions: [
-              ArmSupplyDeduction {
-                term: ArmHostOsControlReserve,
-                bound: ComponentBoundOpen {
-                  obligation: "no measured upper bound exists for the host/OS/control-plane reserve of the unified pool; the GB10's pool is shared with the OS page cache, the control plane and any co-tenant consumers, and a host-class measurement would bound it" as NonEmptyStr,
-                },
-              },
-              ArmSupplyDeduction {
-                term: ArmForeignResidency,
-                bound: ComponentBoundOpen {
-                  obligation: "no inventory of protected non-arm residency exists for the serving hosts; the crash loop this proof exists to prevent was global pool pressure from consumers the admission did not count" as NonEmptyStr,
-                },
-              },
-            ],
-          } }
-        }
+    ArmBoundedExperiment =>
+      match verdict {
+        ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => none
+        ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: c } =>
+          Present { value: join([
+            "even a bounded experiment refuses: ", c as String,
+            " -- a shape that cannot fit under its most favorable reading has nothing a measurement can rescue",
+          ], "") as NonEmptyStr }
+        ArmMemoryFitUnestablished { obligations: _ } =>
+          match experiment {
+            Present { value: _ } => none
+            Absent =>
+              Present { value: "an unestablished fit admits a bounded experiment only through a typed experiment plan -- one that names the open obligations it targets, runs at no larger an envelope than the normal-serving decision, carries a finite runtime and the receipts it must mint, and binds its stop/cleanup contract and route-enrollment prohibition; the full-serving configuration is not admissible on an unestablished fit by calling it an experiment" as NonEmptyStr }
+          }
       }
   }
 }
 
-// THE VERDICT FOR A LAUNCH, AS THE WALL ASKS IT. Absent means the arm itself is unmodelled (no
-// checkpoint row, or a profile deriving no seat population) -- unreachable behind
-// serving_arm_admits in the launch planner, and spelled for the callers that do not pass through
-// that wall first.
-fn arm_memory_fit_verdict_for_launch(
-  checkpoint: ServingCheckpoint,
-  runtime: ServingRuntime,
-  topology: ServingTopology,
-  profile: ServingLaunchProfile,
-) -> ArmMemoryFitVerdict? {
-  match arm_memory_fit_subject_for_launch(checkpoint: checkpoint, runtime: runtime, topology: topology, profile: profile) {
-    Absent => none
-    Present { value: subject } => Present { value: arm_memory_fit_verdict(subject: subject) }
-  }
-}
-
-// ── READBACK: A MEASUREMENT TIGHTENS ONE TERM; A CONTRADICTION FALSIFIES THE MODEL ───────────────
-//
-// AN OBSERVATION ABOVE THE PREDICTED BOUND IS MemoryModelFalsified, never a silent formula
-// replacement: the bound stood where it stood and the world disagreed, and a consumer that edited
-// the bound to match would be laundering a contradiction into a calibration. An observation at or
-// below a ceiling tightens THAT TERM to a new ceiling at the observed value (a measurement
-// tightens one term's bound); an observation against an exact derived figure must EQUAL it, and
-// anything else -- above or below -- falsifies, because an exact derivation that misses in either
-// direction was derived from the wrong subject. An observation against an open term is how the
-// obligation earns its ceiling.
-type ArmObservationVerdict
-  = ArmObservationConsistent { component: ArmMemoryComponent, tightened: ArmComponentBound, observed: ByteSize, receipt: NonEmptyStr }
-  | ArmMemoryModelFalsified { component: ArmMemoryComponent, predicted_bound: ByteSize, observed: ByteSize, receipt: NonEmptyStr }
-
-fn arm_observe_component(component: ArmMemoryComponent, bound: ArmComponentBound, observed: ByteSize, receipt: NonEmptyStr) -> ArmObservationVerdict {
-  match bound {
-    ComponentBoundInterval { lower: l, upper: u, how: _ } =>
-      if byte_size_count(b: observed) == byte_size_count(b: u) && byte_size_count(b: observed) == byte_size_count(b: l) {
-        ArmObservationConsistent { component: component, tightened: bound, observed: observed, receipt: receipt }
-      } else {
-        ArmMemoryModelFalsified {
-          component: component,
-          predicted_bound: u,
-          observed: observed,
-          receipt: receipt,
-        }
-      }
-    ComponentBoundCeiling { bytes: b, receipt: _ } =>
-      if byte_size_count(b: observed) > byte_size_count(b: b) {
-        ArmMemoryModelFalsified {
-          component: component,
-          predicted_bound: b,
-          observed: observed,
-          receipt: receipt,
-        }
-      } else {
-        ArmObservationConsistent {
-          component: component,
-          tightened: ComponentBoundCeiling { bytes: observed, receipt: receipt },
-          observed: observed,
-          receipt: receipt,
-        }
-      }
-    ComponentBoundOpen { obligation: _ } =>
-      ArmObservationConsistent {
-        component: component,
-        tightened: ComponentBoundCeiling { bytes: observed, receipt: receipt },
-        observed: observed,
-        receipt: receipt,
-      }
-  }
-}
-
-data arm_memory_fit_receipt_join_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the bounded-experiment observer admits component-scoped memory receipts (CheckpointRankResidencyBound, ActivationWorkspaceBound, GraphCaptureBound, CollectiveWorkspaceBound, RuntimeFixedAllocationBound, AllocatorFragmentationBound) bound to the launch that minted them, and this module gains a receipt-roster parameter on arm_memory_fit_subject_for_launch in the same change. SUFFICIENT FOR: a measurement tightens exactly the term it measured, the observed-above-bound arm above is reachable against live receipts, and the verdict tightens across experiment iterations without the verdict vocabulary changing." as NonEmptyStr)
-
+data arm_memory_fit_receipt_join_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the bounded-experiment observer admits component-scoped memory receipts (CheckpointRankResidencyBound, ActivationWorkspaceBound, GraphCaptureBound, CollectiveWorkspaceBound, RuntimeFixedAllocationBound, AllocatorFragmentationBound, KvLayoutReceipt) bound to the launch that minted them, typed as receipt records carrying the checkpoint, runtime, topology, rank and phase they measure, replacing the wire-containment provenance check in roster_names_identity with an equality join on typed identity. SUFFICIENT FOR: a measurement tightens exactly the term it measured, the observed-above-bound arm is reachable against live receipts, and the verdict tightens across experiment iterations without the verdict vocabulary changing." as NonEmptyStr)
