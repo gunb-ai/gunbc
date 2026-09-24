@@ -186,9 +186,9 @@ pub use crate::v1_compiler_emit_core_support::{
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{
-    build_emit_graph_info, build_params_scope, call_args_by_name, declared_return_type_node,
-    expand_type_for_field_access, expr_span, extend_scope, is_where_refinement_type,
-    resolved_type_name,
+    build_emit_graph_info, build_params_scope, call_args_by_name, caller_resource_requirements,
+    declared_return_type_node, established_resource_binding, expand_type_for_field_access,
+    expr_span, extend_scope, is_where_refinement_type, resolved_type_name,
 };
 pub use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling;
 use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::*;
@@ -216,9 +216,9 @@ pub use crate::v1_compiler_infer_env::{
 pub use crate::v1_compiler_infer_env::{
     GlobalBareLookupState, TypeBinding, TypeEnv, UnitVariantPhantomLookup,
 };
-pub use crate::v1_compiler_infer_items::item_kind;
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 use crate::v1_compiler_infer_items::ItemLookup::{ItemFound, ItemLeafAmbiguous, ItemNotFound};
+pub use crate::v1_compiler_infer_items::{item_is_effectful_callee, item_kind};
 pub use crate::v1_compiler_infer_items::{
     ItemInfo, ItemKind, ItemLookup, ResolvedGraph, TypedModule,
 };
@@ -15559,8 +15559,7 @@ pub fn emit_typed_item(
                         }),
                     ) {
                         Some(info) => {
-                            (((info.service_names.clone().len() as i64) > 0)
-                                || ((info.resource_names.clone().len() as i64) > 0))
+                            crate::v1_compiler_infer_items::item_is_effectful_callee(info.clone())
                         }
                         std::option::Option::None => false,
                     };
@@ -19587,8 +19586,13 @@ pub fn emit_func_def(
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
         );
-        let body_scope =
-            crate::v1_compiler_infer::build_params_scope(scope.clone(), params.clone());
+        let body_scope = crate::v1_compiler_infer::build_params_scope(
+            Rc::new(InferScope {
+                caller_decl_name: name.clone(),
+                ..(*scope.clone()).clone()
+            }),
+            params.clone(),
+        );
         let si = scope.type_env.clone().source_indices.clone();
         let body_scope =
             uses.iter()
@@ -25158,20 +25162,46 @@ pub fn emit_typed_call(
         });
         let extra_args = match callee.clone() {
             Some(info) => {
-                let has_effects = (((info.service_names.clone().len() as i64) > 0)
-                    || ((info.resource_names.clone().len() as i64) > 0));
+                let has_effects =
+                    crate::v1_compiler_infer_items::item_is_effectful_callee(info.clone());
                 if has_effects.clone() {
                     {
+                        let established =
+                            crate::v1_compiler_infer::caller_resource_requirements(scope.clone());
                         let resource_args = Rc::new({
                             let mut __result = Vec::new();
-                            for rn in info.resource_names.clone().iter().cloned() {
-                                __result.push(v1_rt::concat(
-                                    "&".to_string(),
-                                    crate::v1_compiler_emit::emit_ident(
-                                        rn.clone(),
-                                        RenderTarget::Rust,
-                                    ),
-                                ));
+                            for rr in info.resource_requirements.clone().iter().cloned() {
+                                __result.push(
+                                    match crate::v1_compiler_infer::established_resource_binding(
+                                        scope.clone(),
+                                        rr.clone(),
+                                        established.clone(),
+                                    ) {
+                                        Some(binding_name) => v1_rt::concat(
+                                            "&".to_string(),
+                                            crate::v1_compiler_emit::emit_ident(
+                                                binding_name.clone(),
+                                                RenderTarget::Rust,
+                                            ),
+                                        ),
+                                        std::option::Option::None => {
+                                            emit_rust_compile_error_expr(v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            "call to ".to_string(),
+                                                            func.clone(),
+                                                        ),
+                                                        " requires resource ".to_string(),
+                                                    ),
+                                                    rr.binding_name.clone(),
+                                                ),
+                                                " that the calling declaration does not establish"
+                                                    .to_string(),
+                                            ))
+                                        }
+                                    },
+                                );
                             }
                             __result
                         });
@@ -25324,8 +25354,8 @@ pub fn emit_typed_call(
         };
         match callee.clone() {
             Some(info) => {
-                let has_effects = (((info.service_names.clone().len() as i64) > 0)
-                    || ((info.resource_names.clone().len() as i64) > 0));
+                let has_effects =
+                    crate::v1_compiler_infer_items::item_is_effectful_callee(info.clone());
                 if has_effects.clone() {
                     v1_rt::concat(call_str.clone(), ".await?".to_string())
                 } else {
