@@ -631,7 +631,20 @@ fn local_coproduct_owner_from_locals(scope: InferScope, name: String) -> Node? {
   }
 }
 
+// The locals binding already carries the owner coproduct NODE (constructor_binding_authority),
+// so its authored name is read off that node, never re-derived by looking the owner's bare name
+// up again: under a closure that also reaches a same-spelled non-coproduct declaration
+// (v2.std.artifact GeneratedArtifact beside gunbc.generated_artifact GeneratedArtifact) the
+// re-lookup lands on the other declaration, no VariantValueBinding is stamped, and the
+// interpreter answers NoSuchVariable at run time for a reference the typechecker accepted.
 fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
+  match local_coproduct_owner_from_locals(scope: scope, name: name) {
+    Present { value: owner } => Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: owner) }
+    Absent => lookup_variant_parent_enum_by_owner_name(scope: scope, name: name)
+  }
+}
+
+fn lookup_variant_parent_enum_by_owner_name(scope: InferScope, name: String) -> String? {
   match map_get(scope.locals, name) {
     Present { value: binding } =>
       match lookup_type_for(env: scope.type_env, node: binding.resolved) {
