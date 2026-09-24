@@ -40,3 +40,31 @@ fn b1_body_kind() -> String {
       }
   }
 }
+fn b1_kind_renamed() -> String {
+  match wave1_gate1_b1_normalized_module(source: wave1_gate1_b1_bare_call_module_source) {
+    Absent => "NORMALIZE_ABSENT"
+    Present { value: root } =>
+      match wave1_gate1_b1_find_named_fn_arrow_body(root: root, fn_lexeme: "caller") {
+        Absent => "BODY_ABSENT"
+        Present { value: found } =>
+          match found.kind {
+            ComputationNode { behavior: Transform } => "TRANSFORM"
+            _ => "OTHER_KIND"
+          }
+      }
+  }
+}
+fn b1_kind_same_name() -> String {
+  match wave1_gate1_b1_normalized_module(source: wave1_gate1_b1_bare_call_module_source) {
+    Absent => "NORMALIZE_ABSENT"
+    Present { value: root } =>
+      match wave1_gate1_b1_find_named_fn_arrow_body(root: root, fn_lexeme: "caller") {
+        Absent => "BODY_ABSENT"
+        Present { value: body } =>
+          match body.kind {
+            ComputationNode { behavior: Transform } => "TRANSFORM"
+            _ => "OTHER_KIND"
+          }
+      }
+  }
+}
