@@ -69,6 +69,11 @@ pub struct ItemInfo {
     pub has_non_tail_self_call: bool,
 }
 
+pub fn item_is_effectful_callee(info: Rc<ItemInfo>) -> bool {
+    (((info.service_names.clone().len() as i64) > 0)
+        || ((info.resource_names.clone().len() as i64) > 0))
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ItemLookup {

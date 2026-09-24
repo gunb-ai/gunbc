@@ -1947,7 +1947,6 @@ fn placement_cleanup_line(c: PlacementCleanup) -> String {
 //     --function host_placement_abort_wet --arg preparation=<event id> --arg reason=<why>
 //       --arg claimant=terminated|abandoned --arg receipt=<how that was established>
 fn host_placement_finalize_wet(preparation: String) -> ProcessExit
-  uses net: Network
 {
   if preparation == "" { exit_failure(reason: "a preparation event id is required") } else {
     host_placement_cleanup_wet(preparation: preparation, cleanup: fn(store, executor, at) { placement_finalize(store: store, consumed: preparation_consumption(store: store, preparation: (preparation as NonEmptyStr) as EventId), actor: executor, at: at) })
@@ -1955,7 +1954,6 @@ fn host_placement_finalize_wet(preparation: String) -> ProcessExit
 }
 
 fn host_placement_abort_wet(preparation: String, reason: String, claimant: String, receipt: String) -> ProcessExit
-  uses net: Network
 {
   if preparation == "" || reason == "" || receipt == "" {
     exit_failure(reason: "a preparation event id, a reason and a receipt establishing the writer's standing are required")
@@ -1969,7 +1967,6 @@ fn host_placement_abort_wet(preparation: String, reason: String, claimant: Strin
 }
 
 fn host_placement_cleanup_wet(preparation: String, cleanup: fn(FabricStorageBinding, NonEmptyStr, EpochSecs) -> PlacementCleanup) -> ProcessExit
-  uses net: Network
 {
   match observe_executor_reach() {
     ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["the executor could not be identified: ", c], ""))
@@ -2072,7 +2069,6 @@ fn saga_abort_own(store: FabricStorageBinding, preparation: EventId, reason: Str
 // A group with no source row refuses; an already established group refuses (the state moves by
 // transition, never by re-establishment).
 fn pair_serving_authority_establish_wet(group: String) -> ProcessExit
-  uses net: Network
 {
   match parse_fabric_group(wire: group) {
     Absent => exit_failure(reason: join(["`", group, "` is not a fabric group"], ""))

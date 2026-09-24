@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.lowering_rebuilds_an_authored_atom_without_its_occurrence
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data lowering_rebuilds_an_authored_atom_without_its_occurrence: RecurringFailureMode = RecurringFailureMode {
+  identity: "lowering_rebuilds_an_authored_atom_without_its_occurrence" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: v2 lowering keeps an authored atom's spelling but rebuilds the node that carries it with OccurrenceSynthetic, or folds it into a Named edge label, so the normalized tree still says WHAT was written but no longer WHERE. The parse minted an OccurrenceId for the atom and recorded its extent in the SpanIndex (`v2.compiler.parse` `parse_mint_from_source`); after lowering, no node carries that id. A consumer that must address one occurrence cannot find it: a located diagnostic at the reference, an occurrence-exact rewrite (XL-5), or a check that one mention survived rather than some other mention of the same name.",
+    "SPECIMENS BY SYMBOL: `v2.compiler.body_lowering_fold` `body_lower_type_atom_node` builds every type-position atom with `node_synthetic` and respells `Int` / `Bool` through `body_lower_resolved_type_binding`. Field projections, match-arm and record-literal constructors, and dotted spines are rebuilt the same way. Declaration names, parameters and field labels become Named edge labels, and edge labels carry no occurrence.",
+    "HOW IT SURFACED: `v2.compiler.reference_conservation` keys every authored parse atom by its minted occurrence and asks the normalized tree to account for it. Measured on main fec339d561 over `v2.compiler.reference_conservation_census` `reference_conservation_stratified_sample_paths`, only a minority of authored atoms keep their occurrence. The instrument that re-derives the split is `reference_conservation_stratified_sample_census`. The check reports these atoms as `locus_erased`, a separate count, and never as conserved.",
+    "HARM: silent at the reference census, which keys by spelling and containment and so still counts these mentions. Not silent for anything occurrence-keyed. A diagnostic cannot point at the mention. A rewrite cannot target one occurrence of a repeated name. And a conservation check cannot tell a rebuilt atom from a dropped one without falling back to a spelling match inside the declaration, which is exactly the fallback `v2.compiler.reference_conservation` has to carry today (the declaration-scoped, multiset-consumed pool behind `locus_erased`).",
+    "RUNG FOUND AT: mitigatable. The loss is now counted per module by the conservation check, not prevented. CEILING: structurally impossible. A rebuilt node would have no way to be minted without its cause if every lowering constructor took the consumed node's identity and produced OccurrenceProjected { caused_by } (`std.occurrence_identity` NodeOccurrenceIdentity already has that arm). NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: lowering projects occurrences, meaning every atom lowering rebuilds carries the occurrence of the parse atom it consumed. When it holds, `locus_erased` reads zero on the stratified sample, and the declaration-scoped spelling pool in `v2.compiler.reference_conservation` is deleted. Recorded by the XL-2 manager as its own XL-2 prerequisite.",
+  ],
+
+  evidence: [],
+}

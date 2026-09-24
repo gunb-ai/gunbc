@@ -353,6 +353,17 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
 // operator-approved deploy that carries this change, not a hand edit.
 data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm, SudoUseradd, SudoUsermod, SudoCp, SudoMv]
 
+// THE GRANTS THE DROP-IN INSTALL ITSELF SPENDS, and so the only grants a deploy may demand BEFORE
+// the drop-in is installed. gunbc.ci_deploy_sudoers deploy_sudoers_install_shell is the one step that
+// renders ci_runner_sudo_binaries onto a host, and it runs `sudo -n visudo -cf` and `sudo -n install`
+// and nothing else under sudo; it reads its two binaries from this list, so the install and the
+// pre-install demand are one value. Every other roster row is probed AFTER the install, inside the
+// same script (deploy_sudoers_post_install_roster_probe_shell), still refusing on a miss. Demanding
+// the whole roster before the step that grants it made every roster addition refuse forever on every
+// host (#12124 -> srv1 deploy run 35890035317): gunbc.recurring_failure_mode
+// a_preflight_demands_the_grant_its_gated_step_installs.
+data ci_runner_sudoers_install_binaries: List<CiRunnerSudoBinary> = [SudoVisudo, SudoInstall]
+
 data fleet_useradd_binary_path: NonEmptyStr = "/usr/sbin/useradd"
 data fleet_usermod_binary_path: NonEmptyStr = "/usr/sbin/usermod"
 
@@ -1244,4 +1255,15 @@ fn automation_allocation_is_applied(a: FleetAutomationAllocationStanding) -> Boo
     AutomationAllocationApplied { host: _, user: _, source: _ } => true
     AutomationAllocationPending { host: _, cause: _ } => false
   }
+}
+
+// A LOGIN'S HOME DIRECTORY UNDER THE FLEET'S CONVENTION, SPELLED ONCE. Every fleet host creates its
+// accounts under /home/<login> (the provisioning rows above); a consumer that needs a home path --
+// the microVM slot controller reading the job user's guest image root -- derives it here rather
+// than joining the prefix itself. gunbc.spark.managed_access_bootstrap carries the same join and is
+// a consumer to move onto this row. It is the CONVENTION and not a readback: a host whose passwd
+// entry disagrees is a host this row is wrong about, and the reader's existence check is what
+// catches it.
+fn fleet_posix_home_directory(login: NonEmptyStr) -> NonEmptyStr {
+  join(["/home/", login as String], "") as NonEmptyStr
 }

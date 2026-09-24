@@ -2,13 +2,14 @@ module gunbc.runner_slot_allocation
 
 import std.types { Int, String, List, Bool }
 import std.nat { Nat, nat_range_inclusive }
-import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_sub, MeasureSubtraction, MeasureDifference, MeasureSubtrahendExceedsMinuend, measure_fit_count_floor, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.realization_width { byte_size_saturating_sub }
 import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import extdeps.github.actions { runner_labels_equivalent }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
+import gunbc.whole_corpus_compile_admission { whole_corpus_compile_public_root_peak }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
@@ -206,6 +207,67 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
     cpu_weight: 100,
     cpu_quota: gunbc_runner_slot_cpu_quota(),
     labels: RunnerSlotLabels { github_labels: ["gunbc-heavy"] }
+  }
+}
+
+// ── THE ONE 28 GiB microVM SHAKEDOWN SLOT ON srv1 (operator decision, side chat 2026-09-21) ────
+//
+// THIS IS A PER-SLOT ROW BESIDE A FLEET-UNIFORM ONE, AND THE ASYMMETRY IS DECLARED RATHER THAN
+// SMUGGLED. gunbc_runner_slot_desired is fleet-uniform on purpose (every note above derives width
+// from ONE slot size), and the fleet row does NOT move here: the expecting-red witness over the
+// production shape (test.claim.runner_microvm_witness_test) still reads that row and still refuses,
+// which is the runner_microvm_floor_fit_stall trigger left exactly where it was. What the operator
+// decided is narrower: ONE slot, on srv1, carries a 28 GiB OUTER ceiling so that one bounded microVM
+// attempt can be shaken down end to end -- guest memory plus the realization allowance
+// (gunbc.runner_microvm gunbc_runner_microvm_declared_realization_allowance) plus every other charged
+// overhead inside the cell's slice. The declaration is gunbc.rung_drop.microvm_shakedown_slot_row_
+// above_fleet_row, which carries the population (this one slot), the reason and the restoration
+// trigger; this row is the value that declaration is about.
+//
+// SWAP IS OFF FOR THIS SLOT AND THE THROTTLE LINE IS THE CEILING. The fleet row spills to swap after
+// throttling one GiB below MemoryMax; both are exactly what censors a memory reading (the 2026-09-19
+// pin receipt in gunbc.floor_demand is censored on that axis). A shakedown whose whole point is an
+// attributable peak cannot be read through a throttle or a spill, so memory_swap_max is zero -- a hit
+// at the line is a kernel OOM inside the guest, not a slower success -- and memory_high equals
+// memory_max, so nothing reclaims below the ceiling. A run that fails at 28 GiB yields ATTRIBUTION
+// (memory.peak of a fresh per-attempt cgroup) and never a larger request: no arm here or downstream
+// raises the ceiling on a failed fit.
+//
+// THE INDEX IS AUTHORED, NOT THE TOP OF THE WIDTH, for the reason fabric_first_slot_index gives:
+// an index at the width moves when the width moves. 13 sits above the twelve GitHub slots srv1
+// runs and below its memory-admitted width.
+data gunbc_microvm_shakedown_slot_memory_max: ByteSize = byte_size(30064771072)
+
+data gunbc_microvm_shakedown_slot_index: Nat = 13
+
+fn srv1_microvm_shakedown_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv1, slot_index: gunbc_microvm_shakedown_slot_index }
+}
+
+fn slot_is_microvm_shakedown_slot(slot: RunnerSlotIdentity) -> Bool {
+  runner_slot_identity_equal(a: slot, b: srv1_microvm_shakedown_slot())
+}
+
+// WHAT ONE SLOT IS GRANTED, ASKED PER SLOT. Every consumer that renders or judges a cell's envelope
+// for a NAMED slot reads this rather than the fleet row: the cell slice directives and their
+// sudoers grant (gunbc.fabric_cell_effect, gunbc.runner_host_grants), the cell boundary digest
+// (gunbc.fabric_cell_converge) and the guest shape (gunbc.runner_microvm). A consumer with no slot in
+// hand -- width arithmetic, the fleet offer envelope -- keeps reading gunbc_runner_slot_desired,
+// because the fleet row IS the answer to a question asked of no particular slot.
+fn gunbc_runner_slot_desired_for(slot: RunnerSlotIdentity) -> RunnerSlotDesired {
+  let fleet = gunbc_runner_slot_desired()
+  if slot_is_microvm_shakedown_slot(slot: slot) {
+    RunnerSlotDesired {
+      memory_max: gunbc_microvm_shakedown_slot_memory_max,
+      memory_swap_max: byte_size(0),
+      memory_high: gunbc_microvm_shakedown_slot_memory_max,
+      tasks_max: fleet.tasks_max,
+      cpu_weight: fleet.cpu_weight,
+      cpu_quota: fleet.cpu_quota,
+      labels: fleet.labels,
+    }
+  } else {
+    fleet
   }
 }
 
@@ -486,7 +548,63 @@ fn host_runner_memory_envelope(host: HostIdentity) -> ByteSize {
 // zero propagates as a stop rather than as an instruction. Keeping a held number here to avoid that
 // was protecting the reader from a word while leaving the walls unable to see the host at all.
 fn host_memory_admitted_width(host: HostIdentity) -> Int {
-  host_runner_memory_envelope_bytes(host: host) / gunbc_runner_slot_memory_max_bytes
+  memory_admitted_width_of_envelope(
+    envelope: host_runner_memory_envelope(host: host),
+    carries_shakedown_slot: (host as String) == (srv1_microvm_shakedown_slot().host as String),
+  )
+}
+
+// THE SHAKEDOWN SLOT'S CHARGE IS THE ATTEMPT'S CEILING PLUS ITS CONTROLLER'S OWN SLICE. The
+// controller runs beside the cell, not inside it (gunbc.runner_microvm_slot_unit
+// microvm_controller_slice_memory_max), and that is host memory charged PER SLOT all the same: a
+// shakedown slot costs ~52 GiB of admitted width today, not 28, and a width that counted only the
+// cell would be wrong by the controller (parent ruling 2026-09-22). The controller's figure is the
+// symptom of the seed's retained preparation set and falls with loyal-ibex-544's reduction; this
+// sum reads the row, so it falls with it.
+// THE CONTROLLER'S OWN CEILING: the measured whole-corpus demand row (the seed's resolve of the
+// controller's closure is the same front half that row measured) plus headroom for the typed-module
+// cache the seed sizes against its budget. gunbc.runner_microvm_slot_unit renders it into
+// gunbc-microvm-controller.slice and carries the srv1 readings behind it.
+data microvm_controller_slice_cache_headroom: ByteSize = byte_size(8589934592)
+
+// THE SUM STAYS IN THE CARRIER. An earlier cut of this function unwrapped
+// whole_corpus_compile_public_root_peak with byte_size_count, added a bare Int, and let
+// gunbc.runner_microvm_slot_unit re-wrap the result one module later -- which is this same change
+// MINTING a ByteSize authority and discarding it on the next line (review 70050). std.measure
+// measure_add is the existing surface for adding two measures of one quantity and scale, so
+// reaching past it to Int arithmetic is DESIGN section 2's re-invention of a concept that already
+// has a home.
+fn microvm_controller_slice_memory_max() -> ByteSize {
+  measure_add(a: whole_corpus_compile_public_root_peak, b: microvm_controller_slice_cache_headroom)
+}
+
+fn gunbc_microvm_shakedown_slot_charge() -> ByteSize {
+  measure_add(a: gunbc_microvm_shakedown_slot_memory_max, b: microvm_controller_slice_memory_max())
+}
+
+// THE WIDTH COST OF THE SHAKEDOWN SLOT IS DERIVED HERE AND NOWHERE ELSE. The host that carries it
+// spends its envelope on the slot's whole charge first -- the 28 GiB cell plus the controller's
+// slice -- and divides the remainder by the fleet row, so the cost is whatever the quotient loses
+// rather than a number written into the declaration. An envelope that cannot hold the charge at
+// all admits zero, which gunbc.ci_runner_placement refuses by name exactly as it refuses an
+// unestablished host.
+// THE FOLD STAYS IN THE CARRIER (review 70236). An earlier cut took the envelope as a bare Int and
+// excused it on the grounds that its divisor, the fleet row, was an Int on main; but that row
+// already has a ByteSize projection, gunbc_runner_slot_memory_max, so the excuse did not hold.
+// std.measure measure_sub keeps "the envelope cannot hold the charge" as its own arm rather than a
+// comparison beside the subtraction, and measure_fit_count_floor owns the division and its
+// zero-divisor guard -- so the conservation arithmetic the shakedown rung-drop depends on is
+// unit-checked end to end instead of trusted across an unwrap.
+fn memory_admitted_width_of_envelope(envelope: ByteSize, carries_shakedown_slot: Bool) -> Int {
+  if carries_shakedown_slot {
+    match measure_sub(a: envelope, b: gunbc_microvm_shakedown_slot_charge()) {
+      MeasureSubtrahendExceedsMinuend => 0
+      MeasureDifference { value: rest } =>
+        1 + (measure_fit_count_floor(capacity: rest, each: gunbc_runner_slot_memory_max) as Int)
+    }
+  } else {
+    measure_fit_count_floor(capacity: envelope, each: gunbc_runner_slot_memory_max) as Int
+  }
 }
 
 type HostDiskWidthConstraint
@@ -1553,8 +1671,16 @@ fn srv4_fabric_second_slot() -> RunnerSlotIdentity {
 // plane is placed by host convergence, never appears in a SupplierOffer, and must not need a Grant to
 // start. Overloading one variant across both would erase exactly that distinction, which is why
 // the variant is named SlotServesFabricExecution rather than SlotServesComputeFabric.
+// srv1 NOW CARRIES EXACTLY ONE FABRIC MEMBER, THE microVM SHAKEDOWN SLOT, AND THE PARAGRAPH ABOVE
+// STILL GOVERNS THE OTHERS. The 2026-09-21 operator decision places the bounded microVM shakedown on
+// srv1 (the host with the KVM grant, the Firecracker install and the built guest image), which
+// makes srv1-13 a fabric execution member: the fleet-converge spine creates its cell and its slice
+// from this list, and the slot controller's attempt is derived from a reservation on that cell.
+// The control-plane relation the paragraph above preserves is not settled by omission here -- one
+// slot does not fill the host -- but a second srv1 member should re-read that paragraph first.
 fn fabric_execution_slot_identities() -> List<RunnerSlotIdentity> {
   [
+    srv1_microvm_shakedown_slot(),
     srv3_fabric_first_slot(),
     srv3_fabric_second_slot(),
     srv4_fabric_first_slot(),
