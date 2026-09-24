@@ -306,3 +306,9 @@ fn match_later_arm_subject() -> ReferenceConservationSubject {
 fn statement_let_binder_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "statement_let_binder", source: statement_let_binder_source)
 }
+
+test fn probe_list_refused_positive() -> Bool { list_literal_argument_report().refused > 0 }
+test fn probe_list_dropped_nonempty() -> Bool { length(xs: list_literal_argument_report().dropped) > 0 }
+test fn probe_list_all_unlocated() -> Bool { report_every_drop_is_an_unlocated_refusal(report: list_literal_argument_report()) }
+test fn probe_list_elsewhere_dropped() -> Bool { report_drop_count(report: list_literal_argument_report(), wanted: ^rc_elsewhere) > 0 }
+test fn probe_list_conserved_positive() -> Bool { list_literal_argument_report().conserved > 0 }
