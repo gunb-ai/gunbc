@@ -2,6 +2,7 @@ module gunbc.recurring_failure_mode.emitted_int_arithmetic_wraps_where_the_inter
 
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data emitted_int_arithmetic_wraps_where_the_interpreter_refuses: RecurringFailureMode = RecurringFailureMode {
   identity: "emitted_int_arithmetic_wraps_where_the_interpreter_refuses" as NonEmptyStr,
@@ -23,8 +24,14 @@ data emitted_int_arithmetic_wraps_where_the_interpreter_refuses: RecurringFailur
 
     "RESIDUE, named so the row is not read as retired: an operand whose type realizes as some integer primitive OTHER than i64 still splices the wrapping token; the Go emitter's Int operators are unexamined against the same red; and hand-written seed Rust still wraps in release because overflow-checks is off in [profile.release] -- recommended as defense-in-depth and deliberately not flipped in this change.",
 
-    "RUNG: mechanically preventable on the source-to-Rust path by the realization rows, NOT structural: an emitter arm that splices an Int operator outside emit_rust_host_bin_op would reintroduce the class. NEXT-RUNG TRIGGER, as a capability: the Int operator's overflow semantics declared once in the substrate and consulted by the interpreter and by EVERY emission target's operator realization, so a target whose primitive's overflow disagrees refuses emission rather than splicing its token."
+    "RUNG, STATED AT WHAT EXECUTES AND NOT AT WHAT IS WRITTEN (DESIGN section 4b(1)): MITIGATABLE today. The route is guarded by the enrolled witness test.claim.emitter_refusing_int_operator_witness_test -- the discriminating RED is the pre-repair spelling (x.clone() + 1) and friends as forbidden text, the positive control is Float keeping its infix operators -- and that witness would make the class mechanically preventable, but the whole witness population is off the required gate under the declared drop gunbc.rung_drop witness_floor_off_the_required_gate, so an emitter arm splicing an Int token directly would turn no required check red. The rung rises to mechanically preventable by THAT drop's restoration trigger and by nothing this row does.",
+
+    "CEILING AND NEXT TRIGGER BEYOND IT, as a capability: the Int operator's overflow semantics declared once in the substrate and consulted by the interpreter and by EVERY emission target's operator realization, so a target whose primitive's overflow disagrees refuses emission rather than splicing its token -- structurally guaranteed, not merely witnessed."
   ],
 
-  evidence: [],
+  evidence: [
+    DeclarationRef { module_path: "test.claim.emitter_refusing_int_operator_witness_test", decl_name: "w_int_binary_operators_route_through_refusing_helpers", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.emitter_refusing_int_operator_witness_test", decl_name: "w_int_negation_routes_through_refusing_helper", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.emitter_refusing_int_operator_witness_test", decl_name: "w_float_operators_keep_infix", field: WholeDeclaration },
+  ],
 }

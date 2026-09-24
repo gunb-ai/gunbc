@@ -1,0 +1,51 @@
+module test.claim.emitter_refusing_int_operator_witness_test
+
+// Regression control for gunbc.recurring_failure_mode
+// emitted_int_arithmetic_wraps_where_the_interpreter_refuses. The interpreter refuses every
+// overflowing Int operator; release-profile i64 infix operators wrap. This asserts the ROUTE: each
+// Int operator reaches the refusing helper named by extdeps.languages.rust.emit
+// rust_refusing_int_operator_helper, and the wrapping infix spelling is absent. The executed
+// behaviour of those helpers (refusal text equal to the interpreter's) was measured by building the
+// emitted crate in release; this witness is what keeps the emitter from quietly splicing the token
+// again. Before the repair the red spelling below was exactly what the emitter wrote.
+
+fn w_int_binary_operators_route_through_refusing_helpers() -> Bool {
+  compile_dag_rust_emit_check(
+    "module int_refuse_bin\n\nimport std.types { Int }\n\nfn bump(x: Int) -> Int {\n  x + 1\n}\n\nfn dec(x: Int) -> Int {\n  x - 1\n}\n\nfn dbl(x: Int) -> Int {\n  x * 2\n}\n\nfn quot(x: Int, y: Int) -> Int {\n  x / y\n}\n\nfn rem(x: Int, y: Int) -> Int {\n  x % y\n}\n",
+    "src/int_refuse_bin.rs",
+    ["v1_rt::int_add(", "v1_rt::int_sub(", "v1_rt::int_mul(", "v1_rt::int_div(", "v1_rt::int_rem("],
+    ["(x.clone() + 1)", "(x.clone() - 1)", "(x.clone() * 2)", "(x.clone() / y.clone())", "(x.clone() % y.clone())"]
+  )
+}
+
+fn w_int_negation_routes_through_refusing_helper() -> Bool {
+  compile_dag_rust_emit_check(
+    "module int_refuse_neg\n\nimport std.types { Int }\n\nfn negate(x: Int) -> Int {\n  -x\n}\n",
+    "src/int_refuse_neg.rs",
+    ["v1_rt::int_neg("],
+    ["-x.clone()"]
+  )
+}
+
+// POSITIVE CONTROL: the route is taken for Int and only Int. Float keeps its IEEE infix operators,
+// which is also what the interpreter's float arm computes, so a helper here would be wrong.
+fn w_float_operators_keep_infix() -> Bool {
+  compile_dag_rust_emit_check(
+    "module int_refuse_float\n\nimport std.types { Float }\n\nfn fadd(a: Float, b: Float) -> Float {\n  a + b\n}\n\nfn fneg(a: Float) -> Float {\n  -a\n}\n",
+    "src/int_refuse_float.rs",
+    ["+"],
+    ["v1_rt::int_"]
+  )
+}
+
+test fn int_binary_operators_route_through_refusing_helpers() -> Bool {
+  w_int_binary_operators_route_through_refusing_helpers()
+}
+
+test fn int_negation_routes_through_refusing_helper() -> Bool {
+  w_int_negation_routes_through_refusing_helper()
+}
+
+test fn float_operators_keep_infix() -> Bool {
+  w_float_operators_keep_infix()
+}
