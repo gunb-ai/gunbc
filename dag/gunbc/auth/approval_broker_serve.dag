@@ -45,7 +45,7 @@ import gunbc.auth.approval_device_routes {
   device_enrol_response, device_redeem_response, device_pending_response, device_request_response, device_enrollment_readback_response, device_push_update_response,
 }
 import extdeps.http.server { application_json_utf8 }
-import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, HttpMethod, GET, POST, HttpStatus }
+import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment, attr }
 import gunbc.site.markup { txt, el, el_attrs, page_render_refusal_body }
@@ -65,6 +65,7 @@ import extdeps.http.server {
   http_method_label_join,
 }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
+import extdeps.ietf.http_semantics { HttpMethod, GET, POST }
 
 // ── THE APPROVAL BROKER IS ITS OWN SERVED PROCESS ────────────────────────────────────────────
 // WHY THIS MODULE EXISTS AT ALL, stated as the receipt rather than as a preference (side-chat

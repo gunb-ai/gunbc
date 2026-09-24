@@ -1,7 +1,7 @@
 module gunbc.auth.approval_decision_store
 
 import extdeps.numeric.base16 { base16_is_lower_digit_code_point }
-import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp, HttpMethod, Secret }
+import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp, Secret }
 import std.content_hash { ContentHash, serialize_content_hash }
 import std.scoped_authorization {
   AttemptIdentity,
@@ -63,6 +63,7 @@ import gunbc.auth.approval_broker {
   redeem_capability,
   redemption_refusal_reason,
 }
+import extdeps.ietf.http_semantics { HttpMethod }
 
 // THE DURABLE HALF OF THE APPROVAL LOOP: WHERE A REQUEST WAITS, WHERE A DECISION LANDS, AND THE
 // KEY THAT MAKES A TAPPED LINK MEAN SOMETHING. gunbc.auth.approval_broker owns the lifecycle and
