@@ -325,8 +325,6 @@ type ApplicationSlotsRead
   | ApplicationSlotsFound { slots: ApplicationSlots }
   | ApplicationSlotsRefused { diagnostics: NonEmptyDiagnostics }
 
-}
-
 fn application_positional_targets(site: Node) -> Outcome<List<Node>> {
   fold(site.children, init: outcome_accepted(value: Empty), f: fn(acc, e) {
     match acc {
