@@ -34,6 +34,7 @@
 // src/gunbc_cli_dispatch_surface.rs
 // src/gunbc_namespace_reference_derived_closure_admission.rs
 // src/gunbc_reference_derived_candidate.rs
+// src/gunbc_rust_crate_package_ident.rs
 // src/gunbc_rust_decl_type_overlay.rs
 // src/gunbc_rust_emitted_edge.rs
 // src/gunbc_rust_source_type_bindings.rs

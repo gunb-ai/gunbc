@@ -17,7 +17,6 @@ use self::TransportBindingRefusal::*;
 pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
 pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
 pub use crate::extdeps_languages_rust_emit::rust_method_templates;
-pub use crate::std_coercion::TypeCheckpoint;
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 pub use crate::std_coercion::TypeRealizationDecision;
