@@ -6566,26 +6566,29 @@ fn body_lower_paren_group_lowered(group: Node, inner: Node) -> Outcome<Node> {
   }
 }
 
-// A LIST LITERAL IS SUGAR FOR ITS FREE-MONOID CONSTRUCTION (DESIGN section 4). `List<T>` is
-// std.algebra FreeMonoid<T>, and the literal is lowered through that module's own operations,
-// as ordinary calls, in ONE canonical form: `[]` is freemonoid_empty(), `[e]` is
-// freemonoid_singleton(item: e) -- the generator embedding T -> FreeMonoid<T> -- and
-// `[e1, e2, .., en]` is the right-nested list_append(left: freemonoid_singleton(item: e1), right:
-// <the lowering of [e2, .., en]>). No new node kind, atom or constructor: each head is the
-// declaring qualified name (a spine, which resolve binds through its qualified door and mints as a
-// resolved reference), so resolve, infer and eval read calls they already read. The heads name
-// std.algebra (dag/std/algebra.dag), where FreeMonoid itself is declared, and NOT v2.std.algebra:
-// v2.std.algebra imports v2.std.node, so a list literal in v2.std.node lowered to a v2.std.algebra
-// call would close a node -> algebra -> node cycle, and v2 collapses onto dag/std, not the reverse. Element order IS
-// the nesting and every element keeps its authored occurrence, so the lowered form cannot reorder,
-// truncate or drop an element without changing its shape. The grammar writes the literal as
-// seq(`[`, seq(optional comma_list(expr), `]`)) (v2.extdeps.languages.dag
-// dag_grammar_primary_expr_core); its items are read by the one comma-list walker. Every element is
-// lowered WHOLE through body_lower_value_lowered, the value reader every value position uses, so a
-// call, record, nested list or operator expression in element position lowers as it would
-// anywhere else. An element that reader cannot lower refuses located at that element. Before this
-// producer body_lower_primary_expr answered the literal with its `[` atom and every element was
-// dropped; call arguments refused the whole module instead (body_lowering_reason_list_literal_unlowered).
+// A LIST LITERAL IS THE FLAT FREE-MONOID INTRODUCTION (DESIGN section 4). `List<T>` is
+// std.algebra FreeMonoid<T> (dag/std/algebra.dag), and `[e1, .., en]` lowers to ONE Transform whose
+// head is the reference to that declaration and whose remaining positional children are the
+// elements in order; `[]` is the Transform with the head alone. The authority for the shape is
+// std.literal_elaboration UnicodeScalarSequenceUnfold, which carries a text's image as "the
+// language's canonical FreeMonoid introduction (the list-literal node)" with one element per
+// operand and REJECTS a cons^n nesting: O(n^2) under a sequence-backed carrier, and n deep it
+// exceeds the emitter's bounded recursion fuel on ordinary literals. (gunbc#12208 first lowered to a
+// right-nested list_append over singletons; that forked this authority and was reversed.) The head
+// is the declaring qualified name as a spine -- resolve binds it through its qualified door and
+// mints it as a resolved reference -- and it names std.algebra, NOT v2.std.algebra: v2.std.algebra
+// imports v2.std.node, so a list literal in v2.std.node referring to v2.std.algebra would close a
+// node -> algebra -> node cycle, and v2 collapses onto dag/std, not the reverse. The Transform is
+// not an application: 04_infer types it by its one introduction case
+// (v2.compiler.infer infer_transform_freemonoid_introduction), every element unifying to one T.
+// The grammar writes the literal as seq(`[`, seq(optional comma_list(expr), `]`))
+// (v2.extdeps.languages.dag dag_grammar_primary_expr_core); its items are read by the one
+// comma-list walker. Every element is lowered WHOLE through body_lower_value_lowered, the value
+// reader every value position uses, so a call, record, nested list or operator expression in
+// element position lowers as it would anywhere else. An element that reader cannot lower refuses
+// located at that element. Before this producer body_lower_primary_expr answered the literal with
+// its `[` atom and every element was dropped; call arguments refused the whole module instead
+// (body_lowering_reason_list_literal_unlowered).
 fn body_lower_list_literal_items_capture_optional(captured: Node) -> Optional<Node> {
   match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: captured)) {
     Absent => optional_absent()
@@ -6618,39 +6621,21 @@ fn body_lower_list_literal_element(item: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_list_algebra_head(operation: Symbol, source: Node) -> Node {
-  body_lower_qualified_name_spine_node(segments: [^std, ^algebra, operation], source: source)
-}
-
-fn body_lower_list_algebra_call(operation: Symbol, operands: List<Node>, source: Node) -> Node {
+fn body_lower_list_construct(elements: List<Node>, source: Node) -> Node {
   node_lowered_from(
     kind: ComputationNode { behavior: Transform },
     children: fold(
-      operands,
-      init: [Edge { label: Positional, target: body_lower_list_algebra_head(operation: operation, source: source) }],
-      f: fn(acc, operand) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: operand }) }
+      elements,
+      init: [
+        Edge {
+          label: Positional,
+          target: body_lower_qualified_name_spine_node(segments: [^std, ^algebra, ^FreeMonoid], source: source)
+        }
+      ],
+      f: fn(acc, element) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: element }) }
     ),
     source: source
   )
-}
-
-fn body_lower_list_construct(elements: List<Node>, source: Node) -> Node {
-  match elements {
-    Empty => body_lower_list_algebra_call(operation: ^freemonoid_empty, operands: Empty, source: source)
-    Cons { head: element, tail: rest } =>
-      match rest {
-        Empty => body_lower_list_algebra_call(operation: ^freemonoid_singleton, operands: [element], source: source)
-        Cons { head: _, tail: _ } =>
-          body_lower_list_algebra_call(
-            operation: ^list_append,
-            operands: [
-              body_lower_list_algebra_call(operation: ^freemonoid_singleton, operands: [element], source: source),
-              body_lower_list_construct(elements: rest, source: source)
-            ],
-            source: source
-          )
-      }
-  }
 }
 
 fn body_lower_list_literal(literal: Node, items_capture: Node) -> Outcome<Node> {

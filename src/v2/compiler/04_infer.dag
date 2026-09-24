@@ -2,7 +2,7 @@ module v2.compiler.infer
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { any, Empty, TailAbsent, TailFound, length, list_tail, zip_map }
-import std.algebra { list_snoc_item }
+import std.algebra { Cons, list_snoc_item }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -45,7 +45,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { declaration_reference_path_optional }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_spine_node }
 import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness,
@@ -107,6 +107,7 @@ import v2.std.node {
   TypeNode,
   Value,
   all_edges_positional,
+  canonicalize_node_strip_provenance,
   fold_node,
   loop_edge_contributes_to_iteration_fold,
   match_arm_body,
@@ -347,6 +348,15 @@ fn infer_transform_operand_type_mismatch_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_transform_operand_type_mismatch,
     at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// An element of a list literal whose type differs from the first element's, located AT that element.
+fn infer_list_element_type_mismatch_diagnostic(element: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_list_element_type_mismatch,
+    at: node_locus(node: element),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -2084,7 +2094,170 @@ fn infer_gather_transform_frontier_on_entries(
   }
 }
 
+// THE FREE-MONOID INTRODUCTION: A LIST LITERAL'S ONE INFER CASE. v2 body lowering writes
+// `[e1, .., en]` as ONE flat Transform whose head is the reference to std.algebra FreeMonoid's
+// declaration and whose remaining positional children are the elements in order
+// (v2.compiler.body_lowering_fold body_lower_list_construct) -- the flat canonical introduction
+// std.literal_elaboration UnicodeScalarSequenceUnfold names, never a cons^n nesting. It is not an
+// application: the head is a type, so application-argument inhabitance is not asked of it. Every
+// element's type must be one T, compared with provenance stripped (two equal types minted at two
+// occurrences are one type); the first element that differs refuses located AT that element. The
+// literal's type is then FreeMonoid<T>: the Instantiation of the FreeMonoid reference at T. `[]`
+// carries no element to derive T from; its type is its boundary's, so it joins the counted
+// GroundingNotDerived frontier like every Transform this fold does not derive -- never a guessed T.
+fn infer_freemonoid_path() -> List<Symbol> {
+  [^std, ^algebra, ^FreeMonoid]
+}
+
+fn infer_transform_is_freemonoid_introduction(node: Node) -> Bool {
+  if !all_edges_positional(children: node.children) {
+    false
+  } else {
+    match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+      Absent => false
+      Present { value: head } =>
+        match declaration_reference_path_optional(node: head) {
+          Present { value: path } => path == infer_freemonoid_path()
+          Absent => false
+        }
+    }
+  }
+}
+
+fn infer_type_equal_ignoring_provenance(a: Node, b: Node) -> Bool {
+  infer_branch_type_atoms_equal(
+    a: canonicalize_node_strip_provenance(n: a),
+    b: canonicalize_node_strip_provenance(n: b)
+  )
+}
+
+fn infer_list_element_type(element: Node, entries: List<InferredFactsEntry>, tree: Node) -> Outcome<Node> {
+  match lookup_inferred_facts_in_entries(entries: entries, key: element) {
+    Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: element))
+    Present { value: facts } =>
+      match infer_branch_operand_resolved_type_in_tree(node: element, facts: facts, tree: tree) {
+        Violates { diagnostic: d } => outcome_rejected(d)
+        Holds { value: t } => outcome_accepted(value: t)
+      }
+  }
+}
+
+// Absent: `[]`, whose T is not derivable here. Present: the elements' one type, or the located
+// refusal of the first element that differs.
+fn infer_list_elements_unified_type(
+  elements: List<Node>,
+  entries: List<InferredFactsEntry>,
+  tree: Node
+) -> Optional<Outcome<Node>> {
+  match elements {
+    Empty => Absent
+    Cons { head: first, tail: rest } =>
+      Present {
+        value: bind_outcome(o: infer_list_element_type(element: first, entries: entries, tree: tree), f: fn(t) {
+          fold(rest, init: outcome_accepted(value: t), f: fn(acc, element) {
+            bind_outcome(o: acc, f: fn(unified) {
+              bind_outcome(o: infer_list_element_type(element: element, entries: entries, tree: tree), f: fn(et) {
+                if infer_type_equal_ignoring_provenance(a: unified, b: et) {
+                  outcome_accepted(value: unified)
+                } else {
+                  outcome_rejected(infer_list_element_type_mismatch_diagnostic(element: element))
+                }
+              })
+            })
+          })
+        })
+      }
+  }
+}
+
+fn infer_freemonoid_type_of(element_type: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: qualified_name_spine_node(qn: infer_freemonoid_path(), occurrence_id: OccurrenceSynthetic) },
+      Edge { label: Positional, target: canonicalize_node_strip_provenance(n: element_type) }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// Absent: `[]` (frontier). Present: the literal's facts, or a located refusal.
+fn infer_transform_freemonoid_introduction(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  tree: Node
+) -> Optional<Outcome<InferredFacts>> {
+  match infer_list_elements_unified_type(elements: infer_transform_argument_targets(node: node), entries: entries, tree: tree) {
+    Absent => Absent
+    Present { value: unified } =>
+      Present {
+        value: bind_outcome(o: unified, f: fn(element_type) {
+          match infer_descent_witness_for_node(n: node) {
+            Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+            Holds { value: descent_proof } =>
+              inferred_facts_from_derived_type(
+                node: node,
+                derived_type: infer_freemonoid_type_of(element_type: element_type),
+                descent: Holds { value: descent_proof }
+              )
+          }
+        })
+      }
+  }
+}
+
 fn infer_gather_transform_row_on_entries(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  tree: Node,
+) -> InferGatherFoldAcc {
+  if infer_transform_is_freemonoid_introduction(node: node) {
+    match infer_transform_freemonoid_introduction(node: node, entries: entries, tree: tree) {
+      Absent =>
+        infer_gather_transform_frontier_on_entries(node: node, entries: entries, pending: pending, partials: partials, tree: tree)
+      Present { value: Rejected { diagnostics: r } } =>
+        infer_gather_fold_acc_failed(
+          node: node,
+          pending: rejected_with_pending(pending: pending, rejected: r),
+          await_branch_row: false,
+          await_match_row: false,
+          await_loop_row: false,
+          await_transform_row: false,
+          children_remaining: 0
+        )
+      Present { value: Accepted { value: facts, diagnostics: d } } =>
+        match admitted_inferred_facts_entry(node: node, facts: facts) {
+          Rejected { diagnostics: r } =>
+            infer_gather_fold_acc_failed(
+              node: node,
+              pending: rejected_with_pending(pending: pending, rejected: r),
+              await_branch_row: false,
+              await_match_row: false,
+              await_loop_row: false,
+              await_transform_row: false,
+              children_remaining: 0
+            )
+          Accepted { value: entry, diagnostics: ed } =>
+            infer_gather_fold_acc_ok(
+              node: node,
+              entries: list_snoc_item(xs: entries, item: entry),
+              pending: diagnostics_merge(outer: diagnostics_merge(outer: pending, inner: d), inner: ed),
+              await_branch_row: false,
+              await_match_row: false,
+              await_loop_row: false,
+              await_transform_row: false,
+              children_remaining: 0
+            )
+        }
+    }
+  } else {
+    infer_gather_application_row_on_entries(node: node, entries: entries, pending: pending, partials: partials, tree: tree)
+  }
+}
+
+fn infer_gather_application_row_on_entries(
   node: Node,
   entries: List<InferredFactsEntry>,
   pending: Diagnostics,
