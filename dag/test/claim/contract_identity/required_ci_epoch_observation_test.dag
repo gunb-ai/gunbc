@@ -7,7 +7,6 @@ import gunbc.required_ci_epoch_observation {
   RequiredCiEpochObserved,
   RequiredCiEpochUnobservable,
   RequiredCiEpochAbsent,
-  RequiredCiEpochDuplicated,
   RequiredCiEpochMalformed,
   RequiredCiEpochDocumentUnparsable,
   required_ci_epoch_from_workflow_source,
@@ -49,9 +48,12 @@ test fn witness_epoch_absent_refuses_on_its_own_axis() -> Bool {
   }
 }
 
-test fn witness_epoch_duplicated_refuses_and_counts() -> Bool {
+// A duplicated epoch is a duplicated mapping key, which the YAML reader refuses at the second
+// occurrence: the refusal names that line and the key, not "no epoch".
+test fn witness_epoch_duplicated_refuses_at_the_reader_with_its_line() -> Bool {
   match required_ci_epoch_from_workflow_source(src: src_duplicated) {
-    RequiredCiEpochUnobservable { cause: RequiredCiEpochDuplicated { occurrences: n } } => n == 2
+    RequiredCiEpochUnobservable { cause: RequiredCiEpochDocumentUnparsable { detail: d } } =>
+      starts_with(s: d, prefix: "line 4: ") && string_contains(s: d, pattern: "duplicate mapping key `GUNBC_REQUIRED_CI_CONTRACT_EPOCH`")
     _ => false
   }
 }

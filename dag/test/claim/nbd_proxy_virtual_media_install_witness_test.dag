@@ -3,12 +3,16 @@ module test.claim.nbd_proxy_virtual_media_install
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// A SUPPLIED user-data body: the fixture needs the input's shape, not the renderer's output; the
+// real rendering route is exercised by test.claim.srv3_seeded_install_media.
+data srv3_seeded_user_data_fixture: NonEmptyStr = "#cloud-config\nautoinstall:\n  identity:\n    hostname: srv3\n" as NonEmptyStr
+
 // A SUPPLIED resolved image (DESIGN §3: a witness discriminates at one interface). What these
 // claims check does not depend on which bytes the actuator serves, only on the path reaching the
 // intent; the real resolution route is exercised by test.claim.mtcollins1_census_image.
 data srv3_resolved_image_fixture: SeededImageResolution = SeededImageResolved {
   built: ubuntu_seeded_install_media_built(
-    input: srv3_seeded_install_media_input,
+    input: srv3_seeded_install_media_input_for(user_data_body: srv3_seeded_user_data_fixture),
     output_digest: "abababababababababababababababababababababababababababababababab",
   ),
   path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso",

@@ -7,7 +7,7 @@ import gunbc.os_install {
   srv3_seeded_os_install_plan_standing,
   srv3_os_install_plan_autoinstall,
 }
-import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_input }
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media, Srv3SeededInstallMedia, Srv3SeededInstallMediaDerived, Srv3SeededInstallMediaRefused }
 import gunbc.assimilate.bmc_wif_delegation_chain { bmc_srv3_admin_secret_ref }
 import gunbc.assimilate.bmc_token_federation { bmc_srv3_secret_name }
 import gunbc.os_install_mechanism {
@@ -111,8 +111,12 @@ fn srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref() -> Bool {
 
 
 fn srv3_actuator_prep_binds_seeded_iso_path() -> Bool {
-  string_contains(s: srv3_seeded_install_media_input.image_stem as String, pattern: "srv3-seeded")
-    && string_contains(s: srv3_seeded_install_media_input.user_data_body as String, pattern: "hostname: srv3")
+  match srv3_seeded_install_media {
+    Srv3SeededInstallMediaRefused { reason: _ } => false
+    Srv3SeededInstallMediaDerived { input: i } =>
+      string_contains(s: i.image_stem as String, pattern: "srv3-seeded")
+        && string_contains(s: i.user_data_body as String, pattern: "hostname: srv3")
+  }
 }
 
 // PREP IS NOT INSTALL — still the claim, and now demonstrated more sharply. The
