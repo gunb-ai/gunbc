@@ -1,0 +1,33 @@
+module gunbc.emitted_crate_workspace_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data emitted_crate_workspace_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "WORKSPACE_ENTRY", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "PLAN_MODULE", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "EmittedCrateWorkspaceHeld", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "PlanRows", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "refusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "field", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "as_str", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "as_int", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "as_bool", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "as_str_list", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "str_list", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "row_from_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "rows_from_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "evaluate_plan", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "write_workspace", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "git_head", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emitted_crate_workspace_host", decl_name: "run_emitted_crate_workspace", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "run_emitted_crate_workspace", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "emitted_crate_workspace_source_roots", field: WholeDeclaration }
+  ],
+  reason: "The Pkg7e instrument //gunbc/instruments:emitted-crate-workspace (gunbc#12214). Every partition decision is modeled: v2.workflow.emitted_crate_workspace emitted_workspace_plan derives the crate rows, the dependency packages and the dropped RED edge, and v1.compiler.stage0_crates partition_crate_boundary_emit_outcome_over renders manifests and lib.rs files. What stays in host Rust is the effect boundary the interpreter cannot perform -- the in-process seed emission of v2.compiler.compile, file writes, git rev-parse for the receipt head, and two cargo runs through the existing emitted_closure_compile_host -- plus the TRANSPORT of values across it: the emission's basenames and edges into the plan as interpreter lists, and the plan's rows back out as GeneratedPartitionCrateRow structs (field, as_str, as_int, as_bool, as_str_list, str_list, row_from_value, rows_from_value). That transport carries no decision: an unexpected shape refuses PlanShapeUnexpected rather than defaulting. Admitted by purpose under gunbc.v1_maintenance_standing v1_seed_standing: it is the build that proves the emitted v2 compiler partitions into crates. It is an instrument, run by author invocation, not a required phase; the plan's refusals are gated separately through test.claim.emitted_crate_workspace_witness. Classified against the refused classes: no language behavior, no compatibility obligation, no escape hatch (every arm refuses typed), no seed feature (the seed compiles what it compiled), and no public surface beyond the one cli_run re-export of the runner and its receipt struct.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete this host module when host-effect emission lets the instrument be a .dag fold end to end: the emission, the workspace writes and the two cargo runs are emitted realizations of modeled effects (the capability gunbc.source_root_eval_driver_seed_growth names for its own shim -- the rendered main becoming one call into the fold), sufficient for the plan's rows to reach the renderer and the build as values inside one evaluated program, so no interpreter-value transport or hand effect sequencing remains. Preserve the green build, the attributed dropped-dependency RED and the typed plan refusals at that replacement boundary.",
+  current_boundary: "Host only: emitted_crate_workspace_host.rs (wired by mod in cli_run.rs, one pub use of run_emitted_crate_workspace and EmittedCrateWorkspaceHeld) and one registry row plus dispatch arm in target_invocation_host.rs. It calls existing seed producers (compile_entry_emission, lane_emit_compile_probe_root, probe_cargo_invocation, run_cargo, make_eval_context) and adds none. No generated mirror is hand-edited; the stage0_crates generalization it renders through is .dag with regenerated mirrors."
+}
