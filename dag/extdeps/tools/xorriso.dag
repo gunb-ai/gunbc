@@ -6,7 +6,7 @@ import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { package_xorriso }
+import extdeps.apt { apt_bin_dir, package_xorriso }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -20,7 +20,7 @@ data xorriso_pinned_version: VersionConstraint = ">= 1.5"
 data xorriso_cli_tool: CliTool = CliTool {
   name: "xorriso",
   min_version: Present { value: xorriso_pinned_version },
-  installable_via: [SourceApt { package: package_xorriso }],
+  installable_via: [SourceApt { package: package_xorriso, bin_dir: apt_bin_dir }],
 }
 
 service xorriso.Iso {

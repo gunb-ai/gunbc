@@ -73,9 +73,9 @@ import gunbc.runner_microvm_network {
   SlotNetworkSanitationSubject, slot_network_sanitation_subject, SanitationSubjectAdmitted, SanitationSubjectRefused,
   SanitationSubjectRefusal, runner_microvm_converged_receipt_path,
 }
-import gunbc.runner_microvm_lifecycle { AttemptIdentity }
+import gunbc.runner_microvm_lifecycle { AttemptIdentity, guest_bring_up_text }
 import gunbc.runner_microvm_lifecycle_realize {
-  ControllerOutcome, run_controller, observe_attempt_ground,
+  ControllerOutcome, run_controller, observe_attempt_ground, teardown_cleanup_text,
   ControllerRefusedAdmission, ControllerRefusedBinding, ControllerQuarantinedUnattributedResidue,
   ControllerStartNotRecorded, ControllerRecovered, ControllerRanAttempt,
 }
@@ -510,7 +510,7 @@ fn controller_outcome_label(c: ControllerOutcome) -> String {
     ControllerQuarantinedUnattributedResidue { persisted: _ } => "controller-quarantined-unattributed-residue"
     ControllerStartNotRecorded { persisted: _ } => "controller-start-not-recorded"
     ControllerRecovered { teardown: _ } => "controller-recovered"
-    ControllerRanAttempt { launch: _, trigger: _, teardown: _ } => "controller-ran-attempt"
+    ControllerRanAttempt { launch: _, trigger: _, bring_up: b, teardown: t } => join(["controller-ran-attempt ", guest_bring_up_text(r: b), " ", teardown_cleanup_text(t: t)], "")
   }
 }
 
