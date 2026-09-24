@@ -52,7 +52,12 @@ import v2.std.constraints {
   canonical_grounding_from_derived_type
 }
 import v2.std.inhabitance {
+  DeclaredType,
   DeclaredTypeObligation,
+  DeclaredTypeVariable,
+  TypeVariableInstance,
+  inhabitance_formal_declaration,
+  type_variable_instance_lookup,
   InhabitanceFormal,
   InhabitanceUndecidableReason,
   InhabitanceVerdict,
@@ -86,7 +91,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool, bool_node }
 import v2.std.node {
-  node_is_type_annotation_elided,
+  arrow_type_param_names,
   Arrow,
   Atom,
   Bind,
@@ -244,18 +249,6 @@ fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
 fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_canonical_grounding_incoherent,
-    at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-// A LAMBDA'S ELIDED TYPE IS A LOCATED REFUSAL, NOT A GUESS. The source wrote no type for a lambda
-// binder or return (v2.std.node type_annotation_elided_node), and this fold does not yet derive a
-// function value's types from its use. Refusing at the elided position keeps the parameter from
-// being typed as anything at all; function-value typing is the capability that retires this arm.
-fn infer_type_annotation_elided_uninferred_diagnostic(node: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^infer_reason_type_annotation_elided_uninferred,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -1627,18 +1620,29 @@ fn infer_formals_from_domain(domain: Node) -> Optional<List<InhabitanceFormal>> 
   }
 }
 
-fn infer_application_formals(node: Node) -> Optional<List<InhabitanceFormal>> {
+fn infer_application_callee_arrow(node: Node) -> Optional<Node> {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
     Absent => Absent
-    Present { value: operator } =>
-      match infer_operator_arrow(operator: operator) {
+    Present { value: operator } => infer_operator_arrow(operator: operator)
+  }
+}
+
+fn infer_application_formals(node: Node) -> Optional<List<InhabitanceFormal>> {
+  match infer_application_callee_arrow(node: node) {
+    Absent => Absent
+    Present { value: arrow } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
         Absent => Absent
-        Present { value: arrow } =>
-          match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
-            Absent => Absent
-            Present { value: domain } => infer_formals_from_domain(domain: domain)
-          }
+        Present { value: domain } => infer_formals_from_domain(domain: domain)
       }
+  }
+}
+
+// The callee's declared type parameters; empty when the operator is not an Arrow or declares none.
+fn infer_application_type_params(node: Node) -> List<Symbol> {
+  match infer_application_callee_arrow(node: node) {
+    Absent => []
+    Present { value: arrow } => arrow_type_param_names(n: arrow)
   }
 }
 
@@ -1715,6 +1719,68 @@ fn infer_judge_application_argument(
   }
 }
 
+fn infer_no_type_variable_instances() -> List<TypeVariableInstance> {
+  Empty
+}
+
+// A FORMAL DECLARED AS ONE OF THE CALLEE'S TYPE PARAMETERS IS INSTANTIATED, NOT COMPARED. Judged as
+// an ordinary declared type, `x: T` would demand the argument's type be structurally the Atom `T`
+// and refuse every real argument application_argument_does_not_inhabit -- a loud refusal for the
+// wrong reason. Instead the first derived argument at a type variable instantiates it for THIS
+// application, and every later occurrence must inhabit that instance through the same
+// declared_type_inhabitance fold an ordinary formal uses. An argument whose type is not derived
+// stays the counted frontier it is for any formal, and instantiates nothing.
+fn infer_judge_application_argument_instantiating(
+  application: Node,
+  entries: List<InferredFactsEntry>,
+  formal: InhabitanceFormal,
+  arg: Node,
+  type_params: List<Symbol>,
+  instances: List<TypeVariableInstance>
+) -> Outcome<List<TypeVariableInstance>> {
+  match inhabitance_formal_declaration(declared: formal.declared, type_params: type_params) {
+    DeclaredType { declared: _ } =>
+      match infer_judge_application_argument(application: application, entries: entries, formal: formal, arg: arg) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
+      }
+    DeclaredTypeVariable { binder: binder } =>
+      match type_variable_instance_lookup(instances: instances, binder: binder) {
+        Present { value: instance } =>
+          match infer_judge_application_argument(
+            application: application,
+            entries: entries,
+            formal: InhabitanceFormal { parameter_identity: formal.parameter_identity, declared: instance },
+            arg: arg
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
+          }
+        Absent =>
+          match lookup_inferred_facts_in_entries(entries: entries, key: arg) {
+            Absent =>
+              match infer_inhabitance_undecidable_accepted(application: application, reason: undecidable_argument_type_not_derived()) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
+              }
+            Present { value: facts } =>
+              match inferred_facts_resolved_type(facts: facts) {
+                Violates { diagnostic: _ } =>
+                  match infer_inhabitance_undecidable_accepted(application: application, reason: undecidable_argument_type_not_derived()) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
+                  }
+                Holds { value: produced } =>
+                  Accepted {
+                    value: list_snoc_item(xs: instances, item: TypeVariableInstance { binder: binder, instance: produced }),
+                    diagnostics: None
+                  }
+              }
+          }
+      }
+  }
+}
+
 fn infer_application_argument_inhabitance(
   node: Node,
   entries: List<InferredFactsEntry>
@@ -1736,7 +1802,8 @@ fn infer_application_argument_inhabitance(
           )
         )
       } else {
-        fold(
+        let type_params = infer_application_type_params(node: node)
+        match fold(
           zip_map(
             a: formals,
             b: args,
@@ -1744,27 +1811,32 @@ fn infer_application_argument_inhabitance(
               InhabitanceFormalArg { formal: formal, arg: arg }
             }
           ),
-          init: Accepted { value: true, diagnostics: None },
+          init: Accepted { value: infer_no_type_variable_instances(), diagnostics: None },
           f: fn(acc, pair) {
             match acc {
               Rejected { diagnostics: r } => Rejected { diagnostics: r }
-              Accepted { value: _, diagnostics: pd } =>
-                match infer_judge_application_argument(
+              Accepted { value: instances, diagnostics: pd } =>
+                match infer_judge_application_argument_instantiating(
                   application: node,
                   entries: entries,
                   formal: pair.formal,
-                  arg: pair.arg
+                  arg: pair.arg,
+                  type_params: type_params,
+                  instances: instances
                 ) {
                   Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                  Accepted { value: _, diagnostics: jd } =>
+                  Accepted { value: next, diagnostics: jd } =>
                     Accepted {
-                      value: true,
+                      value: next,
                       diagnostics: diagnostics_merge(outer: pd, inner: jd)
                     }
                 }
             }
           }
-        )
+        ) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+        }
       }
   }
 }
@@ -2427,20 +2499,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, tree: Node) -> InferGat
         )
       }
     ComputationNode { behavior: Bind } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
-    TypeNode { connective: Atom { identity: _ } } =>
-      if node_is_type_annotation_elided(node: n) {
-        infer_gather_fold_acc_failed(
-          node: n,
-          pending: diagnostics_singleton(d: infer_type_annotation_elided_uninferred_diagnostic(node: n)),
-          await_branch_row: false,
-          await_match_row: false,
-          await_loop_row: false,
-          await_transform_row: false,
-          children_remaining: 0
-        )
-      } else {
-        infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
-      }
+    TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
     TypeNode { connective: Conj } =>
       match declaration_reference_path_optional(node: n) {
         Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)

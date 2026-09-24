@@ -33,7 +33,8 @@ import v2.std.node {
   TypeNode,
   arrow_body_target_lookup,
   named_edge_target_lookup,
-  node_is_type_annotation_elided,
+  arrow_type_param_names,
+  arrow_type_params_target_lookup,
   node_subtree_nodes
 }
 import v2.std.node_query { call_argument_targets, call_callee_target }
@@ -99,6 +100,9 @@ data vpw_fn_literal_in_arm_source: String = "module v2.test.vpw_fn_literal_in_ar
 // value must reach its producer unfolded. A single-atom body once came back unread, and a
 // record-construct body as an Arrow the post-normalize well-formedness gate refused.
 data vpw_fn_literal_record_source: String = "module v2.test.vpw_fn_literal_record\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_record(r: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool {\n  vpw_apply_record(\n    r: VpwAlgebra {\n      leaf: fn(t) { t },\n      node: fn(l, r) { VpwPair { a: l, b: r } }\n    },\n    v: p\n  )\n}\n"
+
+// TWO LAMBDAS, ONE PARAMETER NAME: each must carry its OWN fresh type parameter, not share one.
+data vpw_two_lambdas_source: String = "module v2.test.vpw_two_lambdas\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_two(f: Bool, g: Bool) -> Bool { g }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply_two(f: x => x, g: x => p) }\n"
 
 data vpw_arg_call_source: String = "module v2.test.vpw_arg_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_id(p: vpw_id(p: vpw_undeclared_argument)) }\n"
 
@@ -275,7 +279,10 @@ data vpw_shape_ingest: SourceRootIngest = Cons {
           head: vpw_read(source: vpw_arg_fn_literal_source, id: ^vpw_arg_fn_literal_artifact, unit: ^vpw_arg_fn_literal_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_fn_literal.dag"),
           tail: Cons {
             head: vpw_read(source: vpw_fn_literal_record_source, id: ^vpw_fn_literal_record_artifact, unit: ^vpw_fn_literal_record_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_fn_literal_record.dag"),
-            tail: Empty
+            tail: Cons {
+              head: vpw_read(source: vpw_two_lambdas_source, id: ^vpw_two_lambdas_artifact, unit: ^vpw_two_lambdas_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_two_lambdas.dag"),
+              tail: Empty
+            }
           }
         }
       }
@@ -377,11 +384,16 @@ fn vpw_single_call_shape(n: Node, callee: Symbol, inner: Symbol) -> Bool {
 }
 
 // THE LAMBDA ARGUMENT'S SHAPE: a call to `callee` one of whose arguments is an Arrow whose first
-// positional child (the domain) has the Named edge `binder` targeting the elided type, and whose
-// arrow_body_edge target is the atom `binder` at its AUTHORED occurrence -- the body's own use, not
-// the binder's position (the elided type carries the binder's occurrence). Dropping the binder
-// edge, narrowing the lambda to its parameter, carrying its shell, or typing the binder as anything
-// but the elided annotation each fail it.
+// positional child (the domain) has the Named edge `binder` typed by one of THAT Arrow's own type
+// parameters (v2.std.node arrow_type_param_names -- the fresh `'p` gunbc#12217's binder model
+// carries), and whose arrow_body_edge target is the atom `binder` at its AUTHORED occurrence -- the
+// body's own use, not the binder's position (the type variable carries the binder's occurrence).
+// Dropping the binder edge, narrowing the lambda to its parameter, carrying its shell, or typing
+// the binder as anything but its own fresh type parameter each fail it.
+fn vpw_symbol_in(xs: List<Symbol>, s: Symbol) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == s) })
+}
+
 fn vpw_domain_binds(arrow: Node, binder: Symbol) -> Optional<Node> {
   match list_at_optional(xs: arrow.children, index: 0) {
     Present { value: e } =>
@@ -389,7 +401,11 @@ fn vpw_domain_binds(arrow: Node, binder: Symbol) -> Optional<Node> {
         Positional =>
           match named_edge_target_lookup(children: e.target.children, name: binder) {
             Found { target: t } =>
-              if node_is_type_annotation_elided(node: t) { optional_present(value: t) } else { optional_absent() }
+              match node_atom_identity_optional(node: t) {
+                Present { value: tv } =>
+                  if vpw_symbol_in(xs: arrow_type_param_names(n: arrow), s: tv) { optional_present(value: t) } else { optional_absent() }
+                Absent => optional_absent()
+              }
             _ => optional_absent()
           }
         Named { name: _ } => optional_absent()
@@ -498,4 +514,53 @@ test fn a_fn_literal_record_field_with_a_single_atom_body_lowers_unfolded() -> B
 // post-normalize well-formedness gate, so this claim is also that gate's control.
 test fn a_fn_literal_record_field_with_a_record_construct_body_lowers_well_formed() -> Bool {
   vpw_any_function_value_binding(binder: ^l)
+}
+
+// The occurrence of an Arrow's first type-parameter binder, if it declares one.
+fn vpw_first_type_binder(arrow: Node) -> Optional<Node> {
+  match arrow_type_params_target_lookup(children: arrow.children) {
+    Found { target: conj } =>
+      match list_at_optional(xs: conj.children, index: 0) {
+        Present { value: e } => optional_present(value: e.target)
+        Absent => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+fn vpw_is_arrow(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } => true
+    _ => false
+  }
+}
+
+// A call to `callee` with exactly two Arrow arguments, each declaring a type binder, the two binders
+// at DIFFERENT occurrences. One fresh type parameter shared across the two lambdas -- a single
+// module-wide `'x`, say -- fails it.
+fn vpw_two_distinct_type_binders(n: Node, callee: Symbol) -> Bool {
+  vpw_is_call_to(n: n, callee: callee) && (
+    match fold_list(xs: call_argument_targets(node: n), empty: Empty, cons: fn(acc, a) {
+      if vpw_is_arrow(n: a) { Cons { head: a, tail: acc } } else { acc }
+    }) {
+      Cons { head: f, tail: Cons { head: g, tail: Empty } } =>
+        match vpw_first_type_binder(arrow: f) {
+          Present { value: bf } =>
+            match vpw_first_type_binder(arrow: g) {
+              Present { value: bg } => bf.occurrence_id != bg.occurrence_id
+              Absent => false
+            }
+          Absent => false
+        }
+      _ => false
+    }
+  )
+}
+
+test fn two_lambdas_with_one_parameter_name_each_carry_their_own_fresh_type_parameter() -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
+      a || vpw_two_distinct_type_binders(n: n, callee: ^vpw_apply_two)
+    })
+  })
 }

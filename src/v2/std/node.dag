@@ -144,30 +144,6 @@ fn node_lowered_from(kind: NodeKind, children: List<Edge>, source: Node) -> Node
   )
 }
 
-// THE SOURCE WROTE NO TYPE AT THIS POSITION. A lambda binder `p => body` or `(a, b) => body`
-// declares a parameter and states no type for it, and states no return type. The lambda lowers to
-// the same Arrow a named fn lowers to, so its binder is a Named edge of the Arrow's Conj domain and
-// resolve scopes it through the one Arrow binder model; this atom is that edge's target (and the
-// codomain's), carrying the occurrence of the position it stands for. It is NOT a type and NOT a
-// name: resolve accepts it as itself, the way it accepts an integer literal, and infer refuses it
-// located at that occurrence (infer_reason_type_annotation_elided_uninferred) until function-value
-// typing derives the elided type from the lambda's use. Reading it as the empty Conj instead would
-// type every lambda parameter as Unit, silently.
-fn type_annotation_elided_node(at: Node) -> Node {
-  node_lowered_from(
-    kind: TypeNode { connective: Atom { identity: ^type_annotation_elided } },
-    children: [],
-    source: at
-  )
-}
-
-fn node_is_type_annotation_elided(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^type_annotation_elided
-    _ => false
-  }
-}
-
 fn node_synthetic(kind: NodeKind, children: List<Edge>) -> Node {
   node_with_occurrence_id(
     kind: kind,
@@ -371,9 +347,64 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      Named { name: sym } => acc && (sym == ^arrow_body_edge)
+      Named { name: sym } => acc && ((sym == ^arrow_body_edge) || (sym == ^arrow_type_params_edge))
     }
   })
+}
+
+// AN ARROW'S TYPE PARAMETERS ARE BINDERS, CARRIED THE WAY ITS VALUE PARAMETERS ARE. The domain is a
+// Conj whose Named edges are the value binders; the type-parameter list is a Conj whose Named edges
+// are the type binders, each targeting the Atom its own name spells. One binder concept -- a Named
+// edge in a Conj, scoped by v2.compiler.resolve as a lexical frame -- in two roles, told apart by
+// the edge that carries the Conj rather than by a second node kind. At most one such edge, and a
+// binder whose target is not its own Atom is unwritable here rather than refused downstream.
+fn arrow_type_params_target_lookup(children: List<Edge>) -> NamedEdgeTargetLookup {
+  named_edge_target_lookup(children: children, name: ^arrow_type_params_edge)
+}
+
+fn arrow_type_param_binder_conforms(e: Edge) -> Bool {
+  match e.label {
+    Positional => false
+    Named { name: sym } =>
+      match e.target.kind {
+        TypeNode { connective: Atom { identity: id } } => (id == sym) && (count(e.target.children) == 0)
+        _ => false
+      }
+  }
+}
+
+fn arrow_type_params_target_conforms(children: List<Edge>) -> Bool {
+  match arrow_type_params_target_lookup(children: children) {
+    Absent => true
+    Ambiguous => false
+    Found { target: t } =>
+      match t.kind {
+        TypeNode { connective: Conj } =>
+          (count(t.children) >= 1)
+            && all_names_distinct(children: t.children)
+            && fold(t.children, init: true, f: fn(acc, e) { acc && arrow_type_param_binder_conforms(e: e) })
+        _ => false
+      }
+  }
+}
+
+// The declared type-parameter names of an Arrow, in declaration order; empty when it declares none.
+fn arrow_type_param_names(n: Node) -> List<Symbol> {
+  match n.kind {
+    TypeNode { connective: Arrow } =>
+      match arrow_type_params_target_lookup(children: n.children) {
+        Found { target: t } =>
+          fold(t.children, init: [], f: fn(acc, e) {
+            match e.label {
+              Named { name: sym } => concat(acc, [sym])
+              Positional => acc
+            }
+          })
+        Absent => []
+        Ambiguous => []
+      }
+    _ => []
+  }
 }
 
 type NamedEdgeTargetLookup
@@ -493,6 +524,7 @@ fn arrow_body_edges_conform(children: List<Edge>) -> Bool {
   && arrow_signature_edges_conform(children: children)
   && (positional_child_count(children: children) >= 1)
   && arrow_body_target_conforms(children: children)
+  && arrow_type_params_target_conforms(children: children)
 }
 fn loop_bound_measure_target(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^loop_bound_edge)
