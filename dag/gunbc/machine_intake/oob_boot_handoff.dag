@@ -10,9 +10,7 @@ import extdeps.bmc.ipmi_chassis_control {
   ChassisStatusUndecodable,
   ChassisUnreadable,
   IpmiChassisControlAction,
-  IpmiChassisHardReset,
   IpmiChassisPowerCycle,
-  IpmiChassisPowerDown,
   IpmiChassisPowerUp,
   chassis_observation,
   ipmi_chassis_control_verb,
@@ -150,8 +148,8 @@ type OobBootHandoffOutcome
   | BootSelectionNotOneShot { requested: NonEmptyStr, readback: String }
   | BootSelectionFirmwareMismatch { requested: NonEmptyStr, readback: String }
   | PowerStateReadFailed { selected: NonEmptyStr, observed_state: ChassisPowerObservation }
-  | PowerCommandRefused { selected: NonEmptyStr, action: IpmiChassisControlAction }
-  | PowerCommandAcceptedNoTransition { selected: NonEmptyStr, action: IpmiChassisControlAction, observed_state: ChassisPowerObservation }
+  | PowerCommandRefused { selected: NonEmptyStr, action: OobPowerAction }
+  | PowerCommandAcceptedNoTransition { selected: NonEmptyStr, action: OobPowerAction, progress: PowerTransitionProgress, last_observed: ChassisPowerObservation }
   | BootHandoffNotAdmitted { admission: OobBootHandoffAdmission }
 
 type BootReadbackVerdict
@@ -179,6 +177,37 @@ fn boot_readback_verdict(readback: String, selection: IpmiBootSelection) -> Boot
   }
 }
 
+// THE WORKFLOW'S POWER VOCABULARY IS NARROWER THAN §28.3, ON PURPOSE. extdeps.bmc.ipmi_chassis_control
+// IpmiChassisControlAction models every Chassis Control action the spec names; this route may send
+// only the two whose effect a §28.2 power read-back can witness AND that a boot handoff can mean:
+// power up (host observed off) and power cycle (host observed on). Review 5310234917 on gunbc#12247
+// found the broad type let three invalid paths through: an already-on host "powered up" (exit 0, the
+// first read-back is already on, success minted with no transition and the override unconsumed);
+// power down minting a successful boot handoff that leaves the host off; and a hard reset sent
+// although power state cannot witness it. None of the three has a constructor here now, so none can
+// reach ChassisPowerControl on this route (a TypeMismatch probe enrols each).
+//
+// A RUNNING HOST IS RESTARTED BY POWER CYCLE, AND THAT IS NOT A PARAMETER. Exactly one running-restart
+// verb is evidenced (the Mt. Collins SEL shows `chassis power cycle` taking effect) and has a
+// witnessing read-back, so a caller-supplied restart would be a choice with one admissible value:
+// carried information of zero, and an opening for the broad §28.3 type to leak back in. A second
+// verb enters as a second OobPowerAction arm selected by a real policy type once it is evidenced and
+// witnessable -- never by widening the route to IpmiChassisControlAction.
+type OobPowerAction
+  = OobPowerUp
+  | OobPowerCycle
+
+fn oob_power_action_chassis_control(action: OobPowerAction) -> IpmiChassisControlAction {
+  match action {
+    OobPowerUp => IpmiChassisPowerUp
+    OobPowerCycle => IpmiChassisPowerCycle
+  }
+}
+
+fn oob_power_action_verb(action: OobPowerAction) -> NonEmptyStr {
+  ipmi_chassis_control_verb(action: oob_power_action_chassis_control(action: action))
+}
+
 // WHAT THE CHASSIS WAS SEEN TO DO, carried on BootControlIssued so the success arm states an
 // observed transition rather than an accepted command. It is still a control-plane fact about the
 // chassis, not evidence of what booted (gunbc.recurring_failure_mode
@@ -186,15 +215,11 @@ fn boot_readback_verdict(readback: String, selection: IpmiBootSelection) -> Boot
 type ObservedPowerTransition
   = PoweredOn
   | PowerCycled
-  | PoweredOff
-  | HostReset
 
-fn observed_power_transition(action: IpmiChassisControlAction) -> ObservedPowerTransition {
+fn observed_power_transition(action: OobPowerAction) -> ObservedPowerTransition {
   match action {
-    IpmiChassisPowerUp => PoweredOn
-    IpmiChassisPowerCycle => PowerCycled
-    IpmiChassisPowerDown => PoweredOff
-    IpmiChassisHardReset => HostReset
+    OobPowerUp => PoweredOn
+    OobPowerCycle => PowerCycled
   }
 }
 
@@ -202,83 +227,119 @@ fn observed_power_transition(action: IpmiChassisControlAction) -> ObservedPowerT
 // makes power cycle a no-op on a host in S4/S5, and run 36023602469 is the receipt: Mt. Collins
 // was off, `chassis power cycle` exited 0, nothing happened, and BootControlIssued was minted on
 // that exit alone. So the handoff reads §28.2 chassis status first: off selects power up; on
-// selects the caller's running_restart verb (which verb restarts a RUNNING host is per-host policy,
-// evidenced on that host's SEL). A read that established no power state refuses before any power
-// write, because choosing a verb over an unknown state is the same bet that failed.
+// selects power cycle. Power up is therefore reachable only from an OFF read, so an already-on host
+// can never be "powered up" and minted PoweredOn with no transition. A read that established no power state refuses before
+// any power write, because choosing a verb over an unknown state is the same bet that failed.
 type PowerActionSelection
-  = PowerActionSelected { action: IpmiChassisControlAction }
+  = PowerActionSelected { action: OobPowerAction }
   | PowerActionUnselectable { observed_state: ChassisPowerObservation }
 
-fn oob_power_action_selection(
-  observed: ChassisPowerObservation,
-  running_restart: IpmiChassisControlAction,
-) -> PowerActionSelection
+fn oob_power_action_selection(observed: ChassisPowerObservation) -> PowerActionSelection
 {
   match observed {
     ChassisPowerRead { power_on: on } => if on {
-      PowerActionSelected { action: running_restart }
+      PowerActionSelected { action: OobPowerCycle }
     } else {
-      PowerActionSelected { action: IpmiChassisPowerUp }
+      PowerActionSelected { action: OobPowerUp }
     }
     ChassisStatusUndecodable { cause: _ } => PowerActionUnselectable { observed_state: observed }
     ChassisUnreadable => PowerActionUnselectable { observed_state: observed }
   }
 }
 
-// WHAT A READ-BACK OF §28.2 POWER STATE CAN WITNESS FOR EACH ACTION. Exit 0 from Chassis Control is
+// WHAT A READ-BACK OF §28.2 POWER STATE MUST WITNESS FOR EACH ACTION. Exit 0 from Chassis Control is
 // the controller accepting a request, never evidence the chassis moved (DESIGN §5). Up must be
-// observed on; down observed off; a cycle observed off and THEN on, because an on reading after a
-// cycle is equally what a controller that ignored it would show. A hard reset leaves power on
-// throughout, so power state cannot discriminate it at all, and that is a typed refusal rather
-// than an acceptance nobody could have falsified.
+// observed on; a cycle observed off and THEN on, because an on reading after a cycle is equally what
+// a controller that ignored it would show.
 type PowerReadbackExpectation
   = ExpectPowerOn
-  | ExpectPowerOff
   | ExpectPowerOffThenOn { off_seen: Bool }
-  | PowerStateCannotWitness
 
-fn power_readback_expectation(action: IpmiChassisControlAction) -> PowerReadbackExpectation {
+fn power_readback_expectation(action: OobPowerAction) -> PowerReadbackExpectation {
   match action {
-    IpmiChassisPowerUp => ExpectPowerOn
-    IpmiChassisPowerDown => ExpectPowerOff
-    IpmiChassisPowerCycle => ExpectPowerOffThenOn { off_seen: false }
-    IpmiChassisHardReset => PowerStateCannotWitness
+    OobPowerUp => ExpectPowerOn
+    OobPowerCycle => ExpectPowerOffThenOn { off_seen: false }
   }
+}
+
+// THE POLL'S STATE IS THE EXPECTATION'S PROGRESS PLUS WHETHER ANY SAMPLE WAS READABLE. Both survive
+// into an exhausted read-back: review 5310234917 found that keeping only the last sample turned
+// ON -> OFF -> unreadable into "no transition", erasing an observed OFF half.
+type PowerReadbackProgress {
+  expectation: PowerReadbackExpectation
+  readable_seen: Bool
 }
 
 type PowerReadbackStep
   = PowerTransitionObserved
-  | PowerTransitionPending { expectation: PowerReadbackExpectation }
+  | PowerTransitionPending { progress: PowerReadbackProgress }
 
-// ONE SAMPLE AGAINST THE EXPECTATION. Pure, so the bounded poll below and the witnesses decide
-// through the same fold; an unreadable or undecodable sample advances nothing.
-fn power_readback_step(expectation: PowerReadbackExpectation, sample: ChassisPowerObservation) -> PowerReadbackStep {
+fn power_readback_start(action: OobPowerAction) -> PowerReadbackProgress {
+  PowerReadbackProgress { expectation: power_readback_expectation(action: action), readable_seen: false }
+}
+
+// ONE SAMPLE AGAINST THE PROGRESS. Pure, so the bounded poll below and the witnesses decide through
+// the same fold; an unreadable or undecodable sample advances nothing.
+fn power_readback_step(progress: PowerReadbackProgress, sample: ChassisPowerObservation) -> PowerReadbackStep {
   match sample {
-    ChassisPowerRead { power_on: on } => match expectation {
-      ExpectPowerOn => if on { PowerTransitionObserved } else { PowerTransitionPending { expectation: expectation } }
-      ExpectPowerOff => if on { PowerTransitionPending { expectation: expectation } } else { PowerTransitionObserved }
+    ChassisPowerRead { power_on: on } => match progress.expectation {
+      ExpectPowerOn => if on {
+        PowerTransitionObserved
+      } else {
+        PowerTransitionPending { progress: PowerReadbackProgress { expectation: ExpectPowerOn, readable_seen: true } }
+      }
       ExpectPowerOffThenOn { off_seen: seen } => if !on {
-        PowerTransitionPending { expectation: ExpectPowerOffThenOn { off_seen: true } }
+        PowerTransitionPending { progress: PowerReadbackProgress { expectation: ExpectPowerOffThenOn { off_seen: true }, readable_seen: true } }
       } else if seen {
         PowerTransitionObserved
       } else {
-        PowerTransitionPending { expectation: expectation }
+        PowerTransitionPending { progress: PowerReadbackProgress { expectation: ExpectPowerOffThenOn { off_seen: false }, readable_seen: true } }
       }
-      PowerStateCannotWitness => PowerTransitionPending { expectation: expectation }
     }
-    ChassisStatusUndecodable { cause: _ } => PowerTransitionPending { expectation: expectation }
-    ChassisUnreadable => PowerTransitionPending { expectation: expectation }
+    ChassisStatusUndecodable { cause: _ } => PowerTransitionPending { progress: progress }
+    ChassisUnreadable => PowerTransitionPending { progress: progress }
+  }
+}
+
+// HOW FAR THE TRANSITION GOT WHEN THE BOUND RAN OUT. Three different chassis states and three
+// different retry evidences: a cycle that never left on (the controller ignored it); one that
+// reached off and did not come back (the host is off now, the override may still be pending); and a
+// read-back that never answered, which establishes nothing about the chassis at all.
+type PowerTransitionProgress
+  = PowerNeverLeftOn
+  | PowerReachedOffNotReturnedOn
+  | PowerNeverReachedOn
+  | PowerReadbackUnavailable
+
+fn power_transition_progress(progress: PowerReadbackProgress) -> PowerTransitionProgress {
+  match progress.expectation {
+    ExpectPowerOffThenOn { off_seen: seen } =>
+      if seen { PowerReachedOffNotReturnedOn } else if progress.readable_seen { PowerNeverLeftOn } else { PowerReadbackUnavailable }
+    ExpectPowerOn =>
+      if progress.readable_seen { PowerNeverReachedOn } else { PowerReadbackUnavailable }
+  }
+}
+
+fn power_transition_progress_text(progress: PowerTransitionProgress) -> NonEmptyStr {
+  match progress {
+    PowerNeverLeftOn => "the chassis was read on throughout and never left on"
+    PowerReachedOffNotReturnedOn => "the chassis was observed OFF but was not observed back on"
+    PowerNeverReachedOn => "the chassis was read off throughout and never reached on"
+    PowerReadbackUnavailable => "no chassis status read answered, so nothing about the transition was established"
   }
 }
 
 type PowerReadback
   = PowerReadbackObserved
-  | PowerReadbackExhausted { observed_state: ChassisPowerObservation }
+  | PowerReadbackExhausted { progress: PowerTransitionProgress, last_observed: ChassisPowerObservation }
 
-// THE BOUND. A §28.3 cycle holds power off for at least one second (the Set Power Cycle Interval
-// default), and a ChassisStatus round trip over lanplus is itself about a second, so one-second
-// spacing samples every off window the spec admits. Sixty samples bounds the read-back; the
-// allowance a boot step's timeout must carry for it is derived below, not re-spelled by callers.
+// THE BOUND, AND WHAT IT DOES NOT GUARANTEE. Samples are one second apart plus a ChassisStatus call
+// budgeted at up to two seconds, so the gap between two samples can reach about three seconds. A
+// conforming §28.3 cycle whose off interval is shorter than that gap can therefore be missed, and
+// the read-back then refuses with PowerNeverLeftOn although the cycle happened. That false refusal
+// is loud, located and accepted; it is not coverage of every off window the spec admits. Sixty
+// samples bound the read-back, and the allowance a boot step's timeout carries for it is derived
+// below, not re-spelled by callers.
 data oob_power_readback_samples: Int = 60
 
 data oob_power_readback_interval: Second = second(count: 1)
@@ -304,24 +365,22 @@ fn oob_power_readback_poll(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
   password_file: NonEmptyStr,
-  action: IpmiChassisControlAction,
-  expectation: PowerReadbackExpectation,
+  progress: PowerReadbackProgress,
   samples_remaining: Int,
 ) -> PowerReadback
 {
   let sample = read_chassis_power(bmc_host: bmc_host, username: username, password_file: password_file)
-  return match power_readback_step(expectation: expectation, sample: sample) {
+  return match power_readback_step(progress: progress, sample: sample) {
     PowerTransitionObserved => PowerReadbackObserved
-    PowerTransitionPending { expectation: next } =>
+    PowerTransitionPending { progress: next } =>
       if samples_remaining <= 1 {
-        PowerReadbackExhausted { observed_state: sample }
+        PowerReadbackExhausted { progress: power_transition_progress(progress: next), last_observed: sample }
       } else {
         oob_power_readback_continue(
           bmc_host: bmc_host,
           username: username,
           password_file: password_file,
-          action: action,
-          expectation: next,
+          progress: next,
           samples_remaining: samples_remaining - 1,
         )
       }
@@ -332,8 +391,7 @@ fn oob_power_readback_continue(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
   password_file: NonEmptyStr,
-  action: IpmiChassisControlAction,
-  expectation: PowerReadbackExpectation,
+  progress: PowerReadbackProgress,
   samples_remaining: Int,
 ) -> PowerReadback
 {
@@ -342,8 +400,7 @@ fn oob_power_readback_continue(
     bmc_host: bmc_host,
     username: username,
     password_file: password_file,
-    action: action,
-    expectation: expectation,
+    progress: progress,
     samples_remaining: samples_remaining,
   )
 }
@@ -353,14 +410,13 @@ fn oob_power_action_after_confirmed_selection(
   username: NonEmptyStr,
   password_file: NonEmptyStr,
   device: NonEmptyStr,
-  running_restart: IpmiChassisControlAction,
 ) -> OobBootHandoffOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_boot_handoff"),
   ]
 {
   let before = read_chassis_power(bmc_host: bmc_host, username: username, password_file: password_file)
-  return match oob_power_action_selection(observed: before, running_restart: running_restart) {
+  return match oob_power_action_selection(observed: before) {
     PowerActionUnselectable { observed_state: o } => PowerStateReadFailed { selected: device, observed_state: o }
     PowerActionSelected { action: action } =>
       oob_power_actuate_and_read_back(
@@ -378,7 +434,7 @@ fn oob_power_actuate_and_read_back(
   username: NonEmptyStr,
   password_file: NonEmptyStr,
   device: NonEmptyStr,
-  action: IpmiChassisControlAction,
+  action: OobPowerAction,
 ) -> OobBootHandoffOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_power_action_after_confirmed_selection"),
@@ -388,7 +444,7 @@ fn oob_power_actuate_and_read_back(
     bmc_host: bmc_host,
     username: username,
     password_file: password_file,
-    action: ipmi_chassis_control_verb(action: action),
+    action: oob_power_action_verb(action: action),
   )
   if control.success == false {
     return PowerCommandRefused { selected: device, action: action }
@@ -397,13 +453,12 @@ fn oob_power_actuate_and_read_back(
     bmc_host: bmc_host,
     username: username,
     password_file: password_file,
-    action: action,
-    expectation: power_readback_expectation(action: action),
+    progress: power_readback_start(action: action),
     samples_remaining: oob_power_readback_samples,
   ) {
     PowerReadbackObserved => BootControlIssued { selected: device, power: observed_power_transition(action: action) }
-    PowerReadbackExhausted { observed_state: o } =>
-      PowerCommandAcceptedNoTransition { selected: device, action: action, observed_state: o }
+    PowerReadbackExhausted { progress: pr, last_observed: o } =>
+      PowerCommandAcceptedNoTransition { selected: device, action: action, progress: pr, last_observed: o }
   }
 }
 
@@ -424,7 +479,6 @@ fn oob_boot_handoff(
   username: NonEmptyStr,
   password_file: NonEmptyStr,
   selection: IpmiBootSelection,
-  running_restart: IpmiChassisControlAction,
 ) -> OobBootHandoffOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_actuate", decl_name: "mtcollins1_drive_handoff"),
@@ -470,7 +524,6 @@ fn oob_boot_handoff(
         username: username,
         password_file: password_file,
         device: device,
-        running_restart: running_restart,
       )
   }
 }
