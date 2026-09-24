@@ -6072,7 +6072,7 @@ fn body_lower_try_match_from_captured(captured: Node) -> Outcome<Optional<Node>>
           n: captured
         )
       )
-    Accepted { value: Present { value: scrutinee }, diagnostics: sd } =>
+    Accepted { value: Present { value: scrutinee }, diagnostics: _ } =>
       match body_lower_match_arms_optional(captured: captured) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: arms_opt, diagnostics: d } =>
@@ -6081,7 +6081,7 @@ fn body_lower_try_match_from_captured(captured: Node) -> Outcome<Optional<Node>>
               if count(arms) > 0 {
                 Accepted {
                   value: optional_present(value: lower_match(scrutinee: scrutinee, arms: arms)),
-                  diagnostics: diagnostics_merge(outer: sd, inner: d)
+                  diagnostics: d
                 }
               } else {
                 outcome_rejected(
