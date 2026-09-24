@@ -422,12 +422,21 @@ fn body_lower_wrapper_retained_shell(shell: Node) -> Outcome<Node> {
 // first -- must pass it through as it passes an Arrow or a Transform; the first-atom fallback
 // they otherwise take would answer the construct's tag and drop its fields, which is exactly how
 // `data d: R = R { .. }` reached the graft as the atom R before this arm.
+// A LOWERED INT LITERAL IS SUBSTRATE, AND ITS PAYLOAD IS NOT A NAME. body_lower_int_literal_with_magnitude_optional
+// produces an Atom(dag_token_int_literal) carrying the integer authority's decimal digit list as
+// its magnitude field, and that list is a FreeMonoid cons spine: the same head/tail shape
+// qualified_name_spine_shape_present recognizes. Until 2026-09-23 the literal atom was not
+// recognized here and its payload was, so a deep search from a `= expr` body (a data initializer,
+// or `fn f() -> Int = 606060`) stepped past the literal and returned its digit list as the body,
+// which resolve then refused as an unbound qualified name. Recognizing the literal stops every
+// search at the literal, before it reaches the payload.
 fn body_lower_is_core_substrate(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
     ComputationNode { behavior: _ } => true
     _ =>
-      qualified_name_spine_shape_present(root: node)
+      (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
+        || qualified_name_spine_shape_present(root: node)
         || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
   }
 }
@@ -489,7 +498,6 @@ fn body_lower_is_metadata_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_param_list)
     || (emitted == ^dag_surface_type_expr)
     || (emitted == ^dag_surface_type_decl)
-    || (emitted == ^dag_surface_data_decl)
     || (emitted == ^dag_surface_import_block)
 }
 
@@ -2198,6 +2206,8 @@ fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
     body_lower_reduce_or_keep(o: body_lower_fn_decl_to_arrow(shell: folded), folded: folded)
   } else if emitted == ^dag_surface_test_fn_decl {
     body_lower_reduce_or_keep(o: body_lower_test_fn_decl_to_member(shell: folded), folded: folded)
+  } else if emitted == ^dag_surface_data_decl {
+    body_lower_reduce_or_keep(o: body_lower_data_decl_to_member(shell: folded), folded: folded)
   } else {
     outcome_accepted(value: folded)
   }
@@ -2748,6 +2758,97 @@ fn body_lower_fn_signature_optional(captured: Node) -> Optional<BodyLowerFnSigna
                       return_type: return_type,
                       fn_name: fn_name
                     }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// A `data` DECLARATION LOWERS TO THE SAME NAMED MEMBER A NULLARY `fn` DOES: `data x: T = e` is
+// Conj { x: Arrow(<empty domain>, T, T, body: e) }. Until 2026-09-23 dag_surface_data_decl sat in
+// body_lower_is_metadata_preserved_emitted, so the declaration's interior reached infer as SURFACE
+// SYNTAX -- namespace_graft named the member `x -> <the parse tail ': T = e'>` -- and infer was
+// asked to ground `:` and `=` tokens and the type's spelling. Nothing could ground those, so every
+// data declaration stayed on the grounding frontier and gen-one's translate gate refused the
+// one-line door probe (fixture.native_cli_door.door_probe). A constant is the nullary function that
+// returns it: that is the seed's own realization (v1.compiler.emit_rust emits a data item as a
+// nullary fn and calls it at every reference), and it lets the existing Arrow, product and literal
+// derivations ground the member with no data-specific infer rule. The data-versus-fn distinction a
+// reference site needs is not carried by this shape; it lives in the declaration index
+// (v2.std.decl_index data_decl_type_facts), which reads the parse, not this tree. A shell whose
+// name, declared type or value is not reachable is retained as the counted frontier, exactly as
+// the fn arm retains, never guessed.
+// THE INITIALIZER IS ALREADY LOWERED WHEN THIS ARM RUNS. normalize_node_ctx folds a declaration's
+// children before it dispatches the declaration, so the node after `=` is the folded initializer: a
+// literal atom, a construct, a Transform. It is taken as it stands. Re-lowering it through
+// body_lower_eq_expr_to_body would walk an already-lowered tree with the deep first-match searches,
+// which retain on shapes they do not recognize (a record literal whose field is a fn literal).
+// Only an initializer that is not yet substrate goes through that reader.
+fn body_lower_data_initializer_body(expr: Node) -> Outcome<Optional<Node>> {
+  if body_lower_is_core_substrate(node: expr) {
+    outcome_accepted(value: optional_present(value: expr))
+  } else {
+    body_lower_eq_expr_to_body(expr: expr)
+  }
+}
+
+fn body_lower_data_decl_to_member(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent => body_lower_wrapper_retained_shell(shell: shell)
+    Present { value: captured } =>
+      match body_lower_find_captured(root: captured, emitted: ^dag_surface_type_expr) {
+        ParseSubtreeAbsent => body_lower_wrapper_retained_shell(shell: shell)
+        ParseSubtreeFound { captured: type_expr } =>
+          match body_lower_type_expr_lowered_optional(node: type_expr) {
+            Absent => body_lower_wrapper_retained_shell(shell: shell)
+            Present { value: declared_type } =>
+              match body_lower_body_after_eq_token(captured: captured) {
+                Absent => body_lower_wrapper_retained_shell(shell: shell)
+                Present { value: expr } =>
+                  match body_lower_data_initializer_body(expr: expr) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: body_opt, diagnostics: bd0 } =>
+                      match body_opt {
+                        Absent => body_lower_wrapper_retained_shell(shell: shell)
+                        Present { value: body } =>
+                          match body_lower_reify_arrow_body(body: body) {
+                            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                            Accepted { value: reified_body, diagnostics: bd } =>
+                              match dag_surface_kw_then_ident_from_captured(captured: captured) {
+                                Absent => body_lower_wrapper_retained_shell(shell: shell)
+                                Present { value: data_name } =>
+                                  let arrow = node_lowered_from(
+                                    source: shell,
+                                    kind: TypeNode { connective: Arrow },
+                                    children: [
+                                      Edge {
+                                        label: Positional,
+                                        target: node_lowered_from(
+                                          kind: TypeNode { connective: Conj },
+                                          children: [],
+                                          source: type_expr
+                                        )
+                                      },
+                                      Edge { label: Positional, target: declared_type },
+                                      Edge { label: Positional, target: declared_type },
+                                      Edge {
+                                        label: Named { name: ^arrow_body_edge },
+                                        target: reified_body
+                                      }
+                                    ]
+                                  )
+                                  outcome_with_diagnostics(
+                                    value: body_lower_fn_decl_named_member_wrap(
+                                      arrow: arrow,
+                                      fn_name: data_name,
+                                      source: shell
+                                    ),
+                                    diagnostics: diagnostics_merge(outer: bd0, inner: bd)
+                                  )
+                              }
+                          }
+                      }
                   }
               }
           }
@@ -6669,6 +6770,8 @@ fn body_lower_forward_row_apply(shell: Node, emitted: Symbol) -> Outcome<Node> {
     body_lower_fn_decl_to_arrow(shell: shell)
   } else if emitted == ^dag_surface_test_fn_decl {
     body_lower_test_fn_decl_to_member(shell: shell)
+  } else if emitted == ^dag_surface_data_decl {
+    body_lower_data_decl_to_member(shell: shell)
   } else if emitted == ^dag_surface_fn_body {
     body_lower_fn_body_shell(shell: shell)
   } else if emitted == ^dag_surface_match_expr {
