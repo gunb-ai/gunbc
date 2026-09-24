@@ -2,7 +2,7 @@ module std.encoding
 
 import std.algebra { BoundedLattice }
 import std.types { Bytes }
-import std.integer { UInt8, UInt8Result, UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints, qualified_octet_members }
+import std.integer { UInt8Result, UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints, qualified_octet_members }
 import std.machine_word { Word, Width8, Width32, WordResult, WordReady, WordRefused, WordValueOutOfRange, OctetsResult, OctetsReady, OctetsRefused, word_of_int, word_from_octets, word_to_octets, word_shift_left, word_shift_right, word_and, word_or }
 import extdeps.toolchain.architecture_profile { BigEndian }
 import std.bytes { pure_dag_seam_unreachable, pure_dag_seam_unreachable_string }
@@ -216,45 +216,19 @@ fn base64_sextet_char_at(alphabet: String, group: Word, offset: Int) -> String? 
   }
 }
 
-// THE ENCODE PATH CARRIES `Int`, AND THE DECODE PATH STILL SPELLS `UInt8`. That asymmetry is
-// deliberate and is recorded here so the next reader does not "tidy" it into agreement.
-//
-// `UInt8` is `Compose<UInt, MachineWidth<8>>`, and `std.machine_constraints` declares `Compose` as
-// `Phantom` -- UNINHABITED. So a `UInt8`-typed parameter never described a value; it named a width
-// nothing could carry and nothing checked. Everything on THIS side is fed by
-// `qualified_octet_members`, whose sealed carrier says `Int` (2026-09-21), so these spellings are
-// the ones this repair was obliged to correct: leaving them would have declared a list of an
-// uninhabited carrier while carrying `Int`s, which is exactly the state
-// `gunbc.recurring_failure_mode.bounded_natural_arithmetic_evaluated_as_unbounded_int` files.
-//
-// `base64_decode_values`, `base64_decode`, `utf8_admit_octet` and `utf8_decode_octets` are NOT fed
-// by that carrier -- `base64_decode_values` mints its own result from a `List<Int>` -- so they are a
-// SEPARATE PRODUCER of the same class. Their consumers (`extdeps.npm`
-// `npm_sri_base64_payload_is_canonical`, `extdeps.mercurial` `mercurial_node_id_from_octets` and its
-// `octetNN: UInt8` fields) sit behind that producer. Retyping a public network surface here would be
-// the second authority `std.machine_word`'s own note warns against.
-//
-// ONE OF THEM WAS TOUCHED, AND AN EARLIER VERSION OF THIS NOTE SAID OTHERWISE. `utf8_admit_octet`
-// called `uint8_int_value(v: b)` to cross out of `UInt8`; that function is an identity add over an
-// uninhabited carrier and is DELETED, so the call site now reads `word_of_int(width: Width8,
-// value: b)` with `b` still spelled `UInt8`. Saying the decode path was untouched was false about
-// this one function, and the correction is recorded rather than quietly rewritten (review 69606).
-//
-// WHY THE ELEMENT TYPE IS STILL `UInt8` HERE, WHICH IS A STATED GAP AND NOT A CLAIM OF CORRECTNESS.
-// `b: Int` alone does not repair the emission: `base64_decode` answers `List<UInt8>?` and feeds
-// `utf8_decode_octets`, so today BOTH sides of that call spell `UInt8` and the boundary typechecks
-// under emission (`PhantomData` meets `PhantomData`) while the mismatch sits INSIDE
-// `utf8_admit_octet` at the `Int` formal of `word_of_int`. Retyping the two utf8 declarations moves
-// that mismatch onto the `base64_decode` call boundary instead of removing it. Removing it requires
-// retyping `base64_decode_values` and `base64_decode` -- and therefore the npm and mercurial
-// surfaces behind them -- which is the separate producer's own decision.
-//
-// WHAT IS AND IS NOT NEW HERE: this closure did not emit cleanly BEFORE this change either. The
-// deleted crossing rendered as `compile_error!` ("operator realization: host operator `+` on
-// structural operand std.integer.UInt8"), so the decode path carried an emission defect of a
-// different shape. This change did not introduce a working path's failure; it exchanged one
-// unemittable form for another at a site it had to touch, and neither is reached by any closure the
-// instruments emit today.
+// BOTH PATHS CARRY `Int` (2026-09-24). `UInt8` is `Compose<UInt, MachineWidth<8>>`, a `Phantom`
+// with no inhabitant, so a `UInt8`-typed parameter named a width nothing carried or checked. The
+// encode side was retyped first (fed by `qualified_octet_members`, whose sealed carrier says `Int`).
+// The decode side -- `base64_decode_values`, `base64_decode`, `utf8_admit_octet`,
+// `utf8_decode_octets` -- was left spelled `UInt8` as a separate producer whose retype was to be
+// decided when a retained closure first emitted it. The App Attest native program
+// (gunbc.instruments.native_app_attest) is that closure, and the decision is `List<Int>`: every
+// decoded value leaves word_to_octets as a Width8 word, so its range is established by the operation
+// that produced it and the element type states what it holds (gunbc.recurring_failure_mode
+// bounded_natural_arithmetic_evaluated_as_unbounded_int, receipt of that date). Consumers that still
+// spell `UInt8` downstream (extdeps.npm, extdeps.mercurial's octetNN fields and others) remain that
+// row's open members; retyping this producer moves no mismatch onto them in the interpreter, and each
+// meets its own emission when a closure reaches it.
 fn base64_group_of_octets(x: Int, y: Int, z: Int) -> WordResult {
   match uint8_octets_of_ints(values: [0, x, y, z]) {
     QualifiedOctetsRefused { observed: o } => WordRefused { cause: WordValueOutOfRange { width: Width8, value: o } }
@@ -551,7 +525,7 @@ fn base64_decode_flush(st: Base64DecodeState) -> List<Int>? {
 // outside the byte range became a "UInt8" by being named one. It is deleted: every value here came
 // out of word_to_octets as a Width8 word, so the range is established by the operation that
 // produced it rather than re-asserted by a cast.
-fn base64_decode_values(vals: List<Int>) -> List<UInt8>? {
+fn base64_decode_values(vals: List<Int>) -> List<Int>? {
   let st = fold(vals,
     init: Present { value: Base64DecodeState { out: [], buf: DecEmpty } },
     f: (acc, v) => base64_decode_step_optional(st: acc, v: v)
@@ -562,7 +536,7 @@ fn base64_decode_values(vals: List<Int>) -> List<UInt8>? {
   }
 }
 
-fn base64_decode(s: String, variant: Base64Variant) -> List<UInt8>? {
+fn base64_decode(s: String, variant: Base64Variant) -> List<Int>? {
   match base64_collect_values(s: s, i: 0, len: string_length(s), variant: variant, seen_pad: false, acc: []) {
     Absent => none
     Present { value: vals } =>
@@ -652,14 +626,14 @@ fn utf8_step(d: Utf8DecodeState, o: Int) -> Utf8DecodeState {
 // is not an octet has not been handed UTF-8 -- and it is the state this fold already uses for every
 // other malformed input, so no new refusal vocabulary is minted for a case the model already had a
 // word for.
-fn utf8_admit_octet(d: Utf8DecodeState, b: UInt8) -> Utf8DecodeState {
+fn utf8_admit_octet(d: Utf8DecodeState, b: Int) -> Utf8DecodeState {
   match word_of_int(width: Width8, value: b) {
     WordRefused { cause: _ } => Utf8Refused
     WordReady { word: w } => utf8_step(d: d, o: w.value)
   }
 }
 
-fn utf8_decode_octets(octets: List<UInt8>) -> List<Int>? {
+fn utf8_decode_octets(octets: List<Int>) -> List<Int>? {
   match fold(octets, init: Utf8Ready { out: [] }, f: (d, octet) => utf8_admit_octet(d: d, b: octet)) {
     Utf8Ready { out: out } => Present { value: out }
     _ => none
