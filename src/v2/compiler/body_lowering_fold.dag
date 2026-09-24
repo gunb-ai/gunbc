@@ -470,7 +470,8 @@ fn body_lower_operand_fold_children_read(node: Node) -> OperandRefRead {
         } else {
           body_lower_operand_ref_read(node: e.target)
         }
-      _ => acc
+      OperandRefLowered { lowered: _ } => acc
+      OperandRefRefused { diagnostics: _ } => acc
     }
   })
 }
@@ -982,7 +983,8 @@ fn body_lower_operand_from_shell_read(shell: Node) -> OperandRefRead {
   match body_lower_operand_or_atom_read(captured: captured) {
     OperandRefAbsent =>
       body_lower_operand_ref_read_of(found: body_lower_int_literal_with_magnitude_optional(node: captured))
-    read => read
+    OperandRefLowered { lowered: lowered } => OperandRefLowered { lowered: lowered }
+    OperandRefRefused { diagnostics: r } => OperandRefRefused { diagnostics: r }
   }
 }
 
@@ -1052,7 +1054,8 @@ fn body_lower_operand_ref_read(node: Node) -> OperandRefRead {
         Present { value: captured } =>
           match body_lower_operand_ref_read(node: captured) {
             OperandRefAbsent => body_lower_operand_fold_children_read(node: node)
-            read => read
+            OperandRefLowered { lowered: lowered } => OperandRefLowered { lowered: lowered }
+            OperandRefRefused { diagnostics: r } => OperandRefRefused { diagnostics: r }
           }
         Absent => body_lower_operand_fold_children_read(node: node)
       }
@@ -3189,7 +3192,8 @@ fn body_lower_operand_ref_acceptable_read(node: Node) -> OperandRefRead {
             false => OperandRefLowered { lowered: operand }
           }
       }
-    read => read
+    OperandRefAbsent => OperandRefAbsent
+    OperandRefRefused { diagnostics: r } => OperandRefRefused { diagnostics: r }
   }
 }
 
@@ -3208,7 +3212,8 @@ fn body_lower_operand_or_atom_read(captured: Node) -> OperandRefRead {
               body_lower_operand_ref_read_of(found: body_lower_pattern_first_atom_optional(node: captured))
           }
       }
-    read => read
+    OperandRefLowered { lowered: lowered } => OperandRefLowered { lowered: lowered }
+    OperandRefRefused { diagnostics: r } => OperandRefRefused { diagnostics: r }
   }
 }
 
@@ -5158,7 +5163,8 @@ fn body_lower_arm_operand_resolved_read(arm: Node) -> OperandRefRead {
                       }
                   }
               }
-            read => read
+            OperandRefAbsent => OperandRefAbsent
+            OperandRefRefused { diagnostics: r } => OperandRefRefused { diagnostics: r }
           }
       }
   }
