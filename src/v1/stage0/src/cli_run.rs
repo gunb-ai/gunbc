@@ -104,6 +104,7 @@ pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
     floor_discovery_path_excluded, floor_seam, make_eval_context,
     make_eval_context_with_runtime_options, run_claim_measured, run_required_floor,
+    unimported_bare_provider_entry_refusals,
 };
 pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
@@ -9442,7 +9443,7 @@ fn bare_reference_pull_paths_for_source(
         sf,
         index,
         |root| closure_name_census(index, root),
-        |provider| {
+        |_name, _module, provider| {
             for path in import_closure_live_paths_with_facts(provider, &index.module_graph_facts) {
                 let path = workspace_relative_repo_path(&path);
                 if seen.insert(path.clone()) {
@@ -9453,6 +9454,56 @@ fn bare_reference_pull_paths_for_source(
         },
     )?;
     Ok(pulled)
+}
+
+/// One bare reference in a file that has switched its bare channel off (gate one: it declares
+/// an import line) and whose declarer lies OUTSIDE that file's own import closure. The loader
+/// never pulls such a declarer for this file, so the name resolves through the census only and
+/// the entry route realizes it by accident of what else the closure imports, or not at all
+/// (`gunbc.recurring_failure_mode` `bare_reference_channel_declines_a_pull_in_silence`).
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct UnimportedBareProvider {
+    pub(crate) file: String,
+    pub(crate) name: String,
+    pub(crate) provider_module: String,
+    pub(crate) provider: String,
+}
+
+/// The pairs `UnimportedBareProvider` names for ONE file, derived by the loader's own provider
+/// selection (`visit_bare_reference_providers`) rather than a second scanner, so the check and
+/// the pull can never disagree about which names are bare-pullable. A zero-import file is on the
+/// bare channel and owes nothing here.
+pub(crate) fn unimported_bare_providers(
+    sf: &Rc<v1_compiler_compile::SourceFile>,
+    index: &MultiEntryIndex,
+) -> Result<Vec<UnimportedBareProvider>, String> {
+    if !source_declares_import_lines(&sf.content) {
+        return Ok(Vec::new());
+    }
+    let file = workspace_relative_repo_path(&sf.path);
+    let closure: HashSet<String> =
+        import_closure_live_paths_with_facts(&sf.path, &index.module_graph_facts)
+            .iter()
+            .map(|p| workspace_relative_repo_path(p))
+            .collect();
+    let mut out = BTreeSet::new();
+    visit_bare_reference_providers(
+        sf,
+        index,
+        |root| closure_name_census(index, root),
+        |name, module, provider| {
+            if provider != file && !closure.contains(provider) {
+                out.insert(UnimportedBareProvider {
+                    file: file.clone(),
+                    name: name.to_string(),
+                    provider_module: module.to_string(),
+                    provider: provider.to_string(),
+                });
+            }
+            Ok(())
+        },
+    )?;
+    Ok(out.into_iter().collect())
 }
 
 /// Pool admission consumes the same resolution predicate as edge production, but never
@@ -9472,7 +9523,7 @@ fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
             source,
             index,
             |root| closure_name_census(index, root),
-            |_| Ok(()),
+            |_, _, _| Ok(()),
         )
     });
     *index.bare_reference_admission.borrow_mut() = Some(verdict.clone());
@@ -9486,7 +9537,7 @@ fn visit_bare_reference_providers(
     sf: &Rc<v1_compiler_compile::SourceFile>,
     index: &MultiEntryIndex,
     census_for: impl Fn(Option<&str>) -> Result<Rc<SymbolIndex>, String>,
-    mut visit: impl FnMut(&str) -> Result<(), String>,
+    mut visit: impl FnMut(&str, &str, &str) -> Result<(), String>,
 ) -> Result<(), String> {
     use crate::v1_compiler_infer_env::GlobalBareLookupState;
     let file_rel = workspace_relative_repo_path(&sf.path);
@@ -9748,7 +9799,7 @@ fn visit_bare_reference_providers(
                  (fail-closed)"
             ));
         }
-        visit(&dep_rel)?;
+        visit(&name, &module_path, &dep_rel)?;
     }
     // The whole-pool name reading forces the same shared
     // parse. In practice the census above has already forced it, so this delta is
@@ -9981,7 +10032,7 @@ mod closure_edge_demand_tests {
                     closure_name_census(index, root)
                 }
             },
-            |path| {
+            |_name, _module, path| {
                 providers.push(path.to_string());
                 Ok(())
             },

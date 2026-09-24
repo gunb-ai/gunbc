@@ -1,0 +1,98 @@
+module v2.test.claim.floor_unimported_bare_provider_debt
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.workflow.floor_unimported_bare_provider_debt {
+  UnimportedBareProviderRosterEdit,
+  RosterEditAdmitted,
+  RosterGainedIdentity,
+  RosterDroppedIdentityWithoutRetirement,
+  RetirementNamesNoBaseIdentity,
+  unimported_bare_provider_roster_edit,
+  unimported_bare_provider_roster_edit_refusal,
+}
+import v2.workflow.floor_unimported_bare_provider_debt_roster {
+  unimported_bare_provider_identity,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data id_a: String = unimported_bare_provider_identity(file: "dag/a.dag", name: "f")
+data id_b: String = unimported_bare_provider_identity(file: "dag/b.dag", name: "g")
+data id_c: String = unimported_bare_provider_identity(file: "dag/c.dag", name: "h")
+
+// The identity spelling is the roster's own, and it keeps file and name apart: two pairs that
+// share a file but not a name are different identities.
+test fn the_identity_spelling_keeps_file_and_name_apart() -> Bool {
+  id_a == "dag/a.dag#f"
+    && unimported_bare_provider_identity(file: "dag/a.dag", name: "g") != id_a
+}
+
+// The positive control: an unchanged roster, and a removal carried by a retirement, admit.
+test fn an_unchanged_roster_and_a_retired_removal_are_admitted() -> Bool {
+  let unchanged = unimported_bare_provider_roster_edit(
+    base: [id_a, id_b],
+    base_retired: [],
+    head: [id_a, id_b],
+    head_retired: [],
+  )
+  let retired = unimported_bare_provider_roster_edit(
+    base: [id_a, id_b],
+    base_retired: [],
+    head: [id_a],
+    head_retired: [id_b],
+  )
+  unimported_bare_provider_roster_edit_refusal(edit: unchanged) == ""
+    && unimported_bare_provider_roster_edit_refusal(edit: retired) == ""
+}
+
+// Growth is the edit the contract forbids outright, and the refusal names the gained identity.
+test fn a_gained_identity_is_refused_by_name() -> Bool {
+  let edit = unimported_bare_provider_roster_edit(
+    base: [id_a],
+    base_retired: [],
+    head: [id_a, id_c],
+    head_retired: [],
+  )
+  match edit {
+    RosterGainedIdentity { identity: id } => id == id_c
+    _ => false
+  }
+}
+
+// A row may not simply vanish: without a retirement the removal is refused by name.
+test fn a_dropped_identity_without_retirement_is_refused_by_name() -> Bool {
+  let edit = unimported_bare_provider_roster_edit(
+    base: [id_a, id_b],
+    base_retired: [],
+    head: [id_a],
+    head_retired: [],
+  )
+  match edit {
+    RosterDroppedIdentityWithoutRetirement { identity: id } => id == id_b
+    _ => false
+  }
+}
+
+// A retirement for a pair that was never debt is refused, so retirements cannot be minted freely;
+// one carried over from base stays admitted.
+test fn a_retirement_naming_no_base_identity_is_refused() -> Bool {
+  let minted = unimported_bare_provider_roster_edit(
+    base: [id_a],
+    base_retired: [],
+    head: [id_a],
+    head_retired: [id_c],
+  )
+  let carried = unimported_bare_provider_roster_edit(
+    base: [id_a],
+    base_retired: [id_b],
+    head: [id_a],
+    head_retired: [id_b],
+  )
+  (match minted {
+    RetirementNamesNoBaseIdentity { identity: id } => id == id_c
+    _ => false
+  })
+    && unimported_bare_provider_roster_edit_refusal(edit: carried) == ""
+}

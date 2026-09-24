@@ -1282,6 +1282,15 @@ fn changed_and_enrolled_witness_identities_with_index(
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let added_paths = parse_unified_diff_added_paths(&diff_text);
     let rename_from = parse_unified_diff_rename_sources(&diff_text);
+    // THE SAME DIFF every projection below reads, so the rule and the planned subject cannot
+    // describe different changes.
+    unimported_bare_provider_gate(
+        index,
+        source_roots,
+        &changed_paths,
+        &departed_paths,
+        &added_paths,
+    )?;
     let mut dag_paths: std::collections::HashSet<String> = line_ranges_by_file
         .keys()
         .filter(|p| p.ends_with(".dag"))
@@ -1833,6 +1842,441 @@ pub(crate) fn floor_enrolment_typed_cost_debt_identities(
         }
     }
     Ok(out)
+}
+
+/// `v2.workflow.floor_unimported_bare_provider_debt_roster`: the debt the rule inherited.
+const UNIMPORTED_BARE_PROVIDER_ROSTER: &str =
+    "src/v2/workflow/floor_unimported_bare_provider_debt_roster.dag";
+/// `v2.workflow.floor_unimported_bare_provider_debt`: the verdict over an edit of that roster.
+const UNIMPORTED_BARE_PROVIDER_VERDICT: &str =
+    "src/v2/workflow/floor_unimported_bare_provider_debt.dag";
+
+/// A workspace-relative authority path, anchored at the workspace root so resolution does not
+/// depend on the process's working directory.
+fn unimported_bare_provider_authority(rel: &str) -> String {
+    process_workspace_root()
+        .join(rel)
+        .to_string_lossy()
+        .to_string()
+}
+
+/// One (file, name) pair read off the roster, with the identity the roster itself spells for it.
+struct RosterPair {
+    file: String,
+    name: String,
+    identity: String,
+}
+
+/// The roster as one evaluation reads it. Every list is decoded from the `.dag`; the host composes
+/// no identity and supplies no default, so an unreadable row refuses rather than reading as empty.
+struct UnimportedBareProviderRosterReading {
+    ctx: v1_interpreter::InterpContext,
+    debt: Vec<RosterPair>,
+    retired: Vec<String>,
+    retired_imports_fixed: Vec<RosterPair>,
+    retired_file_deleted: Vec<RosterPair>,
+}
+
+impl UnimportedBareProviderRosterReading {
+    fn read(roots: &[String], entry: &str) -> Result<Self, String> {
+        let (graph, indices) = resolve_entry_graph_shared(roots, entry)
+            .map_err(|e| format!("unimported-bare-provider roster resolve ({entry}): {e}"))?;
+        let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+        let debt = Self::pairs(&ctx, "unimported_bare_provider_debt_pairs")?;
+        let retired = Self::strings(&ctx, "unimported_bare_provider_retired_identities")?;
+        let retired_imports_fixed =
+            Self::pairs(&ctx, "unimported_bare_provider_retired_as_imports_fixed")?;
+        let retired_file_deleted =
+            Self::pairs(&ctx, "unimported_bare_provider_retired_as_file_deleted")?;
+        Ok(Self {
+            ctx,
+            debt,
+            retired,
+            retired_imports_fixed,
+            retired_file_deleted,
+        })
+    }
+
+    fn call(
+        ctx: &v1_interpreter::InterpContext,
+        function: &str,
+        args: &[(Option<String>, v1_interpreter::Value)],
+    ) -> Result<v1_interpreter::Value, String> {
+        v1_interpreter::run_in_context_with_args(ctx, function, args, false)
+            .map_err(|e| format!("{function}: {e}"))
+    }
+
+    fn strings(ctx: &v1_interpreter::InterpContext, function: &str) -> Result<Vec<String>, String> {
+        let value = Self::call(ctx, function, &[])?;
+        floor_decode_list(ctx, Some(&value))
+            .map_err(|e| format!("{function}: {e}"))?
+            .into_iter()
+            .map(|item| match item {
+                v1_interpreter::Value::Str(s) => Ok(s.to_string()),
+                other => Err(format!(
+                    "{function}: expected an identity String, got {}",
+                    floor_value_shape(Some(other))
+                )),
+            })
+            .collect()
+    }
+
+    fn identity(
+        ctx: &v1_interpreter::InterpContext,
+        file: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        let args = [
+            (Some("file".to_string()), str_value(file)),
+            (Some("name".to_string()), str_value(name)),
+        ];
+        match Self::call(ctx, "unimported_bare_provider_identity", &args)? {
+            v1_interpreter::Value::Str(s) => Ok(s.to_string()),
+            other => Err(format!(
+                "unimported_bare_provider_identity: expected a String, got {}",
+                floor_value_shape(Some(&other))
+            )),
+        }
+    }
+
+    fn pairs(
+        ctx: &v1_interpreter::InterpContext,
+        function: &str,
+    ) -> Result<Vec<RosterPair>, String> {
+        let value = Self::call(ctx, function, &[])?;
+        let items = floor_decode_list(ctx, Some(&value)).map_err(|e| format!("{function}: {e}"))?;
+        let mut out = Vec::with_capacity(items.len());
+        for item in items {
+            let v1_interpreter::Value::Record { fields, .. } = item else {
+                return Err(format!(
+                    "{function}: expected UnimportedBareProviderDebt, got {}",
+                    floor_value_shape(Some(item))
+                ));
+            };
+            let text = |field: &str| match ctx.field(fields, field) {
+                Some(v1_interpreter::Value::Str(s)) => Ok(s.to_string()),
+                other => Err(format!(
+                    "{function}: row field `{field}` is not a String ({})",
+                    floor_value_shape(other)
+                )),
+            };
+            let (file, name) = (text("file")?, text("name")?);
+            let identity = Self::identity(ctx, &file, &name)?;
+            out.push(RosterPair {
+                file,
+                name,
+                identity,
+            });
+        }
+        Ok(out)
+    }
+
+    fn debt_identities(&self) -> Vec<String> {
+        self.debt.iter().map(|p| p.identity.clone()).collect()
+    }
+}
+
+/// THE RULE, applied where the floor already knows what the diff touched. A `.dag` file that
+/// declares an import line and bare-references a declaration outside its own import closure is
+/// refused at the file, naming the name and the module to import it from, unless the pair is
+/// inherited debt on the roster. The check is `unimported_bare_providers`, the loader's own
+/// provider selection, so what is refused here is exactly what the entry route declines to pull.
+///
+/// Four refusals, each located at identity grain and all reported before the line stops:
+/// an UNROSTERED pair in a touched file; a STALE roster row (a touched file no longer carries a
+/// rostered pair, so the row must be retired as `ImportsFixed`); a retirement whose cause is FALSE
+/// (`ImportsFixed` while the file still carries the pair or is gone, `FileDeleted` while it
+/// exists); and any roster edit the `.dag` verdict refuses -- growth, a drop without a retirement,
+/// a retirement for something that was never debt -- decided against the roster at the diff base.
+/// The roster is never regenerated here; the floor only reads it.
+pub(crate) fn unimported_bare_provider_gate(
+    index: &MultiEntryIndex,
+    source_roots: &[String],
+    changed_paths: &[String],
+    departed_paths: &HashSet<String>,
+    added_paths: &HashSet<String>,
+) -> Result<(), String> {
+    if departed_paths.contains(UNIMPORTED_BARE_PROVIDER_ROSTER) {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=UnimportedBareProviderRosterDeparted path={UNIMPORTED_BARE_PROVIDER_ROSTER} \
+             -- the roster is a monotone debt contract; deleting it would admit every pair it carries"
+        ));
+    }
+    let head = UnimportedBareProviderRosterReading::read(
+        source_roots,
+        &unimported_bare_provider_authority(UNIMPORTED_BARE_PROVIDER_ROSTER),
+    )?;
+    let lookup = path_to_source_lookup(&index.source_files);
+    let mut refusals: Vec<String> = Vec::new();
+
+    // The roster edit, judged against the base, and the truth of every retirement it adds.
+    let mut new_retirements: HashSet<String> = head.retired.iter().cloned().collect();
+    if changed_paths
+        .iter()
+        .any(|p| p == UNIMPORTED_BARE_PROVIDER_ROSTER)
+    {
+        if added_paths.contains(UNIMPORTED_BARE_PROVIDER_ROSTER) {
+            eprintln!(
+                "[floor-phase] phase=unimported-bare-provider-roster state=seeded rows={} \
+                 -- the change that lands the roster has no base to compare against",
+                head.debt.len()
+            );
+        } else {
+            let base = floor_diff_comparison_readout()?.base().to_string();
+            let base_source = unimported_bare_provider_roster_source_at_base(source_roots, &base)?;
+            let base_reading = unimported_bare_provider_base_reading(&base_source)?;
+            for id in &base_reading.retired {
+                new_retirements.remove(id);
+            }
+            if let Some(verdict) =
+                unimported_bare_provider_roster_edit_refusal(source_roots, &base_reading, &head)?
+            {
+                refusals.push(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=UnimportedBareProviderRosterEdit verdict={verdict} base={base} \
+                     -- the roster may not grow, and a row leaves only by a typed retirement"
+                ));
+            }
+        }
+    }
+    for pair in &head.retired_imports_fixed {
+        if !new_retirements.contains(&pair.identity) {
+            continue;
+        }
+        let Some(sf) = lookup.get(&pair.file) else {
+            refusals.push(format!(
+                "REQUIRED-FLOOR REFUSAL cause=UnimportedBareProviderRetirementFalse identity={} \
+                 claimed=ImportsFixed -- the file is not in the tree; retire it as FileDeleted",
+                pair.identity
+            ));
+            continue;
+        };
+        if unimported_bare_providers(sf, index)?
+            .iter()
+            .any(|v| v.name == pair.name)
+        {
+            refusals.push(format!(
+                "REQUIRED-FLOOR REFUSAL cause=UnimportedBareProviderRetirementFalse identity={} \
+                 claimed=ImportsFixed -- the file still bare-references '{}' outside its import closure",
+                pair.identity, pair.name
+            ));
+        }
+    }
+    for pair in &head.retired_file_deleted {
+        if new_retirements.contains(&pair.identity) && lookup.contains_key(&pair.file) {
+            refusals.push(format!(
+                "REQUIRED-FLOOR REFUSAL cause=UnimportedBareProviderRetirementFalse identity={} \
+                 claimed=FileDeleted -- the file is still in the tree",
+                pair.identity
+            ));
+        }
+    }
+
+    // The touched files themselves.
+    let mut touched: Vec<&String> = changed_paths
+        .iter()
+        .filter(|p| p.ends_with(".dag"))
+        .collect();
+    touched.sort();
+    touched.dedup();
+    let mut checked = 0usize;
+    for path in touched {
+        let Some(sf) = lookup.get(path.as_str()) else {
+            continue;
+        };
+        checked += 1;
+        refusals.extend(unimported_bare_provider_file_refusals(
+            "REQUIRED-FLOOR REFUSAL",
+            index,
+            sf,
+            &head,
+        )?);
+    }
+    eprintln!(
+        "[floor-phase] phase=unimported-bare-provider-gate touched_dag_files_checked={checked} refusals={}",
+        refusals.len()
+    );
+    if refusals.is_empty() {
+        return Ok(());
+    }
+    for r in &refusals {
+        eprintln!("{r}");
+    }
+    Err(refusals.join("\n"))
+}
+
+/// The `.dag` verdict over one roster edit (`unimported_bare_provider_roster_edit`), or `None` when
+/// the edit is admitted. The verdict's own refusal text is returned verbatim.
+fn unimported_bare_provider_roster_edit_refusal(
+    source_roots: &[String],
+    base: &UnimportedBareProviderRosterReading,
+    head: &UnimportedBareProviderRosterReading,
+) -> Result<Option<String>, String> {
+    let list = |ids: Vec<String>| list_value_from_vec(ids.iter().map(str_value).collect());
+    let args = [
+        (Some("base".to_string()), list(base.debt_identities())),
+        (Some("base_retired".to_string()), list(base.retired.clone())),
+        (Some("head".to_string()), list(head.debt_identities())),
+        (Some("head_retired".to_string()), list(head.retired.clone())),
+    ];
+    let (graph, indices) = resolve_entry_graph_shared(
+        source_roots,
+        &unimported_bare_provider_authority(UNIMPORTED_BARE_PROVIDER_VERDICT),
+    )
+    .map_err(|e| format!("floor_unimported_bare_provider_debt resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+    let edit = UnimportedBareProviderRosterReading::call(
+        &ctx,
+        "unimported_bare_provider_roster_edit",
+        &args,
+    )?;
+    match UnimportedBareProviderRosterReading::call(
+        &ctx,
+        "unimported_bare_provider_roster_edit_refusal",
+        &[(Some("edit".to_string()), edit)],
+    )? {
+        v1_interpreter::Value::Str(s) if s.is_empty() => Ok(None),
+        v1_interpreter::Value::Str(s) => Ok(Some(s.to_string())),
+        other => Err(format!(
+            "unimported_bare_provider_roster_edit_refusal: expected a String, got {}",
+            floor_value_shape(Some(&other))
+        )),
+    }
+}
+
+/// THE ONE JUDGMENT OF ONE FILE, shared by the floor (each touched file) and the entry route
+/// (`unimported_bare_provider_entry_refusals`), so the two routes cannot answer differently about
+/// the same file: an unrostered pair refuses naming the module to import from, and a rostered pair
+/// the file no longer carries refuses as stale. Only the route label in front differs.
+fn unimported_bare_provider_file_refusals(
+    route: &str,
+    index: &MultiEntryIndex,
+    sf: &Rc<v1_compiler_compile::SourceFile>,
+    head: &UnimportedBareProviderRosterReading,
+) -> Result<Vec<String>, String> {
+    let rostered: HashSet<&str> = head.debt.iter().map(|p| p.identity.as_str()).collect();
+    let mut refusals = Vec::new();
+    let mut carried: HashSet<String> = HashSet::new();
+    let file = workspace_relative_repo_path(&sf.path);
+    for v in unimported_bare_providers(sf, index)? {
+        let identity = UnimportedBareProviderRosterReading::identity(&head.ctx, &v.file, &v.name)?;
+        if !rostered.contains(identity.as_str()) {
+            refusals.push(format!(
+                "{route} cause=UnimportedBareProviderUnrostered file={} name={} provider={} \
+                 -- this file declares imports, so its bare channel is off and '{}' is never pulled \
+                 for it; add `import {} {{ {} }}`",
+                v.file, v.name, v.provider, v.name, v.provider_module, v.name
+            ));
+        }
+        carried.insert(identity);
+    }
+    for pair in head.debt.iter().filter(|p| p.file == file) {
+        if !carried.contains(&pair.identity) {
+            refusals.push(format!(
+                "{route} cause=UnimportedBareProviderRosterStale identity={} -- the file no longer \
+                 carries this pair; move the row to the retirements as ImportsFixed",
+                pair.identity
+            ));
+        }
+    }
+    Ok(refusals)
+}
+
+/// The entry route's half of the rule: the same judgment the floor applies to a touched file,
+/// applied to the files a `claim_batch --entry` run was asked to execute, against the committed
+/// roster. A refusal here is the located form of what would otherwise surface later as
+/// `effect summary incomplete ... names no registry row` at every call site.
+pub fn unimported_bare_provider_entry_refusals(
+    index: &MultiEntryIndex,
+    source_roots: &[String],
+    entry_paths: &[String],
+) -> Result<Vec<String>, String> {
+    let lookup = path_to_source_lookup(&index.source_files);
+    let head = UnimportedBareProviderRosterReading::read(
+        source_roots,
+        &unimported_bare_provider_authority(UNIMPORTED_BARE_PROVIDER_ROSTER),
+    )?;
+    let mut refusals = Vec::new();
+    for path in entry_paths {
+        let rel = workspace_relative_repo_path(path);
+        let Some(sf) = lookup.get(rel.as_str()) else {
+            continue;
+        };
+        refusals.extend(unimported_bare_provider_file_refusals(
+            "ENTRY REFUSAL",
+            index,
+            sf,
+            &head,
+        )?);
+    }
+    Ok(refusals)
+}
+
+/// The roster's bytes at the diff base, read through the `.dag` (`unimported_bare_provider_roster_at_base`),
+/// whose unreadable arm refuses here rather than reading as an empty roster.
+fn unimported_bare_provider_roster_source_at_base(
+    source_roots: &[String],
+    base: &str,
+) -> Result<String, String> {
+    let (graph, indices) = resolve_entry_graph_shared(
+        source_roots,
+        &unimported_bare_provider_authority(UNIMPORTED_BARE_PROVIDER_VERDICT),
+    )
+    .map_err(|e| format!("floor_unimported_bare_provider_debt resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let args = [
+        (Some("base".to_string()), str_value(base)),
+        (
+            Some("path".to_string()),
+            str_value(UNIMPORTED_BARE_PROVIDER_ROSTER),
+        ),
+    ];
+    let shown = UnimportedBareProviderRosterReading::call(
+        &ctx,
+        "unimported_bare_provider_roster_at_base",
+        &args,
+    )?;
+    let v1_interpreter::Value::Record { fields, .. } = &shown else {
+        return Err(format!(
+            "unimported_bare_provider_roster_at_base returned {}, expected UnimportedBareProviderBaseRoster",
+            floor_value_shape(Some(&shown))
+        ));
+    };
+    match (ctx.field(fields, "source"), ctx.field(fields, "stderr")) {
+        (Some(v1_interpreter::Value::Str(src)), _) => Ok(src.to_string()),
+        (_, Some(v1_interpreter::Value::Str(err))) => Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=UnimportedBareProviderBaseRosterUnreadable base={base} \
+             path={UNIMPORTED_BARE_PROVIDER_ROSTER} stderr={err} -- the roster is not added by this change, \
+             so it must exist at the base"
+        )),
+        _ => Err("UnimportedBareProviderBaseRoster carries neither `source` nor `stderr`".to_string()),
+    }
+}
+
+/// Evaluate the base roster ALONE, in a scratch source root under the ignored build tree: it
+/// shares a module path with the head roster, so the two cannot resolve in one pool. The roster
+/// module imports nothing for exactly this reason.
+///
+/// EVERY READ GETS ITS OWN DIRECTORY. `resolve_entry_graph_shared` memoizes by (roots, entry path)
+/// for the life of the process, so a second read at a reused path returns the FIRST read's graph
+/// whatever the new bytes say -- measured: a grown roster read second compared equal to the base.
+fn unimported_bare_provider_base_reading(
+    base_source: &str,
+) -> Result<UnimportedBareProviderRosterReading, String> {
+    static READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let dir = process_workspace_root().join(format!(
+        "target/floor-unimported-bare-provider-base-{}-{}",
+        std::process::id(),
+        READS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("base roster scratch dir {}: {e}", dir.display()))?;
+    let entry = dir.join("floor_unimported_bare_provider_debt_roster.dag");
+    std::fs::write(&entry, base_source)
+        .map_err(|e| format!("base roster write {}: {e}", entry.display()))?;
+    let root = dir.to_string_lossy().to_string();
+    let reading = UnimportedBareProviderRosterReading::read(&[root], &entry.to_string_lossy());
+    std::fs::remove_dir_all(&dir).ok();
+    reading
 }
 
 /// The per-claim cost population indexed by identity, built ONCE for the whole gate.
@@ -10703,6 +11147,43 @@ pub(crate) fn required_floor_disposition_matched_prefix(
 mod pure_producer_share_tests {
     use super::*;
     use std::rc::Rc;
+
+    /// The base-comparison half of the unimported-bare-provider gate, executed: each roster is
+    /// evaluated ALONE from its source (the path the floor takes for the base), and the `.dag`
+    /// verdict decides. An unchanged roster admits; a head that gained a row refuses naming it.
+    #[test]
+    fn unimported_bare_provider_roster_edit_admits_equal_and_refuses_growth() {
+        let roster = |rows: &str| {
+            std::fs::read_to_string(process_workspace_root().join(UNIMPORTED_BARE_PROVIDER_ROSTER))
+                .expect("roster source")
+                .split("data unimported_bare_provider_debt:")
+                .next()
+                .expect("roster head")
+                .to_string()
+                + "data unimported_bare_provider_debt: List<UnimportedBareProviderDebt> = [\n"
+                + rows
+                + "]\n"
+        };
+        let one = "  UnimportedBareProviderDebt { file: \"dag/a.dag\", name: \"f\" },\n";
+        let two = "  UnimportedBareProviderDebt { file: \"dag/b.dag\", name: \"g\" },\n";
+        let base = unimported_bare_provider_base_reading(&roster(one)).expect("base");
+        let same = unimported_bare_provider_base_reading(&roster(one)).expect("same");
+        let grown =
+            unimported_bare_provider_base_reading(&roster(&format!("{one}{two}"))).expect("grown");
+        let root = process_workspace_root();
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| root.join(r).to_string_lossy().to_string())
+            .collect();
+        assert_eq!(
+            unimported_bare_provider_roster_edit_refusal(&roots, &base, &same).expect("verdict"),
+            None
+        );
+        assert_eq!(
+            unimported_bare_provider_roster_edit_refusal(&roots, &base, &grown).expect("verdict"),
+            Some("RosterGainedIdentity dag/b.dag#g".to_string())
+        );
+    }
 
     /// A minimal PreparedRepository over in-memory sources — the same graph shape the floor
     /// prepares, without the corpus. Only the fields `install_pure_producer_share` reaches

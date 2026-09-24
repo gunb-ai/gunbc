@@ -1,0 +1,135 @@
+module v2.workflow.floor_unimported_bare_provider_debt
+
+import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.optional { Absent, Present }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import std.types { GitRef, FilePath }
+import extdeps.git
+
+// A FILE THAT DECLARES ANY IMPORT LINE HAS ITS BARE CHANNEL OFF (`gunbc.recurring_failure_mode`
+// `bare_reference_channel_declines_a_pull_in_silence`, gate one), so every bare name it uses whose
+// declarer lies outside its own import closure resolves through the census alone. The entry route
+// then realizes that declarer only when something else in the closure happens to import it, and
+// refuses at a distant registry join when nothing does, while the whole-pool floor realizes every
+// module and admits the same file. Removing gate one was measured and refused on cost (that row
+// carries the measurement), so the rule runs the other way: such a pair is REFUSED at the file, on
+// both routes, by one check (`v1_compiler.cli_run` `unimported_bare_providers`), and the pairs
+// standing on main when the rule landed are carried as monotone debt in
+// `v2.workflow.floor_unimported_bare_provider_debt_roster`.
+//
+// THIS MODULE IS THE VERDICT OVER AN EDIT OF THAT ROSTER. If CI rewrote the roster from the check,
+// the assertion would collapse into the check agreeing with itself (DESIGN section 5, a monotone
+// debt contract over a closed subject universe). So the floor evaluates the roster at the diff
+// base and at the head and asks `unimported_bare_provider_roster_edit`: the roster may not gain an
+// identity, a dropped identity must be retired, and a retirement may only name something that was
+// debt. Identities arrive as the roster's own spelling (`unimported_bare_provider_identity`).
+
+// Each refusal names the identity it is about, so a red is located and never a count.
+type UnimportedBareProviderRosterEdit =
+    RosterEditAdmitted
+  | RosterGainedIdentity { identity: String }
+  | RosterDroppedIdentityWithoutRetirement { identity: String }
+  | RetirementNamesNoBaseIdentity { identity: String }
+
+fn unimported_bare_provider_identity_set(ids: List<String>) -> Map<String, Bool> {
+  fold(ids, init: empty_map(), f: (acc, id) => map_insert(m: acc, key: id, value: true))
+}
+
+fn unimported_bare_provider_member(set: Map<String, Bool>, id: String) -> Bool {
+  match map_lookup(m: set, key: id) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// Order is fixed so the first refusal is deterministic: growth first (the one edit the contract
+// forbids outright), then a removal with no disposition, then a disposition naming nothing that was
+// owed -- neither a base roster row nor one already retired at base, which is what keeps a
+// retirement from being minted for a pair that was never debt. Membership is a map lookup, so the
+// verdict is linear in the roster, not quadratic.
+fn unimported_bare_provider_roster_edit(
+  base: List<String>,
+  base_retired: List<String>,
+  head: List<String>,
+  head_retired: List<String>,
+) -> UnimportedBareProviderRosterEdit {
+  let base_set = unimported_bare_provider_identity_set(ids: base)
+  let head_set = unimported_bare_provider_identity_set(ids: head)
+  let retired_set = unimported_bare_provider_identity_set(ids: head_retired)
+  let base_retired_set = unimported_bare_provider_identity_set(ids: base_retired)
+  let gained = fold(
+    head,
+    init: RosterEditAdmitted,
+    f: (acc, id) =>
+      match acc {
+        RosterEditAdmitted =>
+          if unimported_bare_provider_member(set: base_set, id: id) {
+            acc
+          } else {
+            RosterGainedIdentity { identity: id }
+          }
+        _ => acc
+      },
+  )
+  let dropped = fold(
+    base,
+    init: gained,
+    f: (acc, id) =>
+      match acc {
+        RosterEditAdmitted =>
+          if unimported_bare_provider_member(set: head_set, id: id)
+            || unimported_bare_provider_member(set: retired_set, id: id) {
+            acc
+          } else {
+            RosterDroppedIdentityWithoutRetirement { identity: id }
+          }
+        _ => acc
+      },
+  )
+  fold(
+    head_retired,
+    init: dropped,
+    f: (acc, id) =>
+      match acc {
+        RosterEditAdmitted =>
+          if unimported_bare_provider_member(set: base_set, id: id)
+            || unimported_bare_provider_member(set: base_retired_set, id: id) {
+            acc
+          } else {
+            RetirementNamesNoBaseIdentity { identity: id }
+          }
+        _ => acc
+      },
+  )
+}
+
+// The floor's receipt text for a refused edit, and the empty string for an admitted one: the
+// floor prints it and mints no wording of its own.
+fn unimported_bare_provider_roster_edit_refusal(edit: UnimportedBareProviderRosterEdit) -> String {
+  match edit {
+    RosterEditAdmitted => ""
+    RosterGainedIdentity { identity: id } => "RosterGainedIdentity " + id
+    RosterDroppedIdentityWithoutRetirement { identity: id } =>
+      "RosterDroppedIdentityWithoutRetirement " + id
+    RetirementNamesNoBaseIdentity { identity: id } => "RetirementNamesNoBaseIdentity " + id
+  }
+}
+
+// The roster AS IT STOOD AT THE DIFF BASE, for the floor to evaluate alone. A failed read is its own
+// arm and never an empty roster: `git show` exits 128 both for a path absent at the base and for a
+// bad ref (`extdeps.git` `Show`), so this read cannot tell the two apart and does not try. The floor
+// decides "the roster is being added by this change" from the diff's own added paths BEFORE it asks,
+// so reaching this read means the roster must exist at the base, and an unreadable one refuses.
+type UnimportedBareProviderBaseRoster =
+    BaseRosterShown { source: String }
+  | BaseRosterUnreadable { stderr: String }
+
+fn unimported_bare_provider_roster_at_base(base: String, path: String) -> UnimportedBareProviderBaseRoster {
+  let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
+  if shown.success {
+    BaseRosterShown { source: shown.content }
+  } else {
+    BaseRosterUnreadable { stderr: shown.stderr }
+  }
+}
