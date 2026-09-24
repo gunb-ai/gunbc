@@ -33,6 +33,7 @@ import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_engram_population_reading, deepseek_v4_1_flash_index_tensor_count,
 }
 import gunbc.spark.v41_engram_row_store {
+  V41PublishedRowStoreKeyed,
   V41RowStoreEncoding, V41RowStoreEncodingSpec, V41SourceRow,
   v41_source_row, v41_encoding_spec_of_layers, v41_layer_table, v41_row_geometry_of,
   v41_rank_digest_of, v41_identify_row_store, v41_rank_store_identity,
@@ -117,7 +118,7 @@ fn w_inputs(patches: V41PatchPopulation, partition: V41EngramResidencyPartition,
       weights: V41ManifestObserved { digest: w_sha(c: "a") },
       tokenizer: V41ManifestObserved { digest: w_sha(c: "b") },
     },
-    engram: V41EngramRealizationInputs { partition: partition, population: w_closed_population, row_store_encoding: V41ManifestObserved { digest: w_sha(c: "c") }, route: route },
+    engram: V41EngramRealizationInputs { partition: partition, population: w_closed_population, row_store_encoding: V41PublishedRowStoreKeyed { digest: Sha256Hash(w_sha(c: "c")) }, route: route },
     topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1),
     device: gb10_observed_compute_capability,
   }

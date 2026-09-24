@@ -7,13 +7,12 @@ import v2.std.algebra {
   contains,
   fold_list,
   is_empty,
-  is_prefix_of,
   length,
   list_snoc_item
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol, symbol_eq }
+import v2.std.node { Node, Symbol }
 import v2.std.optional {
   Absent,
   Optional,
@@ -23,7 +22,8 @@ import v2.std.optional {
 }
 import v2.std.qualified_name {
   QualifiedName,
-  qualified_name_last_segment
+  qualified_name_last_segment,
+  qualified_name_owning_module
 }
 import v2.std.symbol_index {
   GlobalBareHit,
@@ -95,33 +95,13 @@ fn module_roster_from_roots(roots: FreeMonoid<Node>) -> FreeMonoid<QualifiedName
   )
 }
 
-// Owner is the LONGEST rostered module path that contains the target. Longest
-// rather than first because module paths nest (a.b and a.b.c are both prefixes of
-// a.b.c.T) and only the innermost one owns the declaration; taking any prefix
-// would attribute the edge to an ancestor that declares nothing.
+// The owner rule's single home is v2.std.qualified_name qualified_name_owning_module; this module
+// is frozen, so it delegates rather than keeping a second copy.
 fn provenance_owner_of_target(
   roster: FreeMonoid<QualifiedName>,
   target: QualifiedName
 ) -> Optional<QualifiedName> {
-  fold_list(
-    xs: roster,
-    empty: optional_absent(),
-    cons: fn(best, candidate) {
-      if is_prefix_of(prefix: candidate, xs: target, eq: symbol_eq) {
-        match best {
-          Absent => optional_present(value: candidate)
-          Present { value: current } =>
-            if length(xs: candidate) > length(xs: current) {
-              optional_present(value: candidate)
-            } else {
-              best
-            }
-        }
-      } else {
-        best
-      }
-    }
-  )
+  qualified_name_owning_module(roster: roster, target: target)
 }
 
 fn provenance_from_target(
@@ -168,7 +148,7 @@ fn resolve_reference_provenance(
             match symbol_index_global_unique_lookup(index: index, name: name) {
               GlobalBareHit { node: _, path: path } =>
                 provenance_from_target(site: site, roster: roster, target: path)
-              GlobalBareLookupAmbiguous => ProvenanceAmbiguous { site: site }
+              GlobalBareLookupAmbiguous { paths: _ } => ProvenanceAmbiguous { site: site }
               GlobalBareLookupUnbound => ProvenanceUnbound { site: site }
             }
         }

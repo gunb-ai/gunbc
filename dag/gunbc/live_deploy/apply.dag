@@ -33,6 +33,7 @@ import gunbc.ci_deploy_access {
   deploy_access_preflight_pass_message,
   deploy_access_decision_reason,
   deploy_target_proof_from_access,
+  deploy_access_sudoers_install_scope,
 }
 import gunbc.ci_deploy_access_observe {
   deploy_mutation_gate,
@@ -128,6 +129,20 @@ import gunbc.running_release_identity {
   observe_running_release_identity, RunningReleaseIdentified, RunningReleaseUnidentified,
 }
 
+// WHAT A DEPLOY EFFECT MAY DEMAND BEFORE IT RUNS. Apply and retract both open with
+// gunbc.live_deploy.emit deploy_apply_preamble_steps, whose first step installs the deploy principal's
+// sudoers drop-in and then probes the whole roster against it, refusing on a miss before any other
+// mutation (gunbc.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_shell). So before them
+// the gate demands only what that install spends; demanding the rest would require the grant the
+// gated step exists to install. Every other effect installs nothing and is gated on the full roster.
+fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> DeployAccess {
+  match effect {
+    LiveDeployApply { spec: _, candidate: _, plan: _ } => deploy_access_sudoers_install_scope(access: access)
+    LiveDeployRetract { spec: _ } => deploy_access_sudoers_install_scope(access: access)
+    _ => access
+  }
+}
+
 fn live_deploy_preflight_intent(access: DeployAccess) -> HostEffectIntent {
   HostEffectIntent {
     target: HostOs { node: access.host },
@@ -203,8 +218,9 @@ fn live_deploy_fold(
   fixture_host: DeployTargetHostObservation?
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let target = HostOs { node: spec.target.host }
+  let gate_access = live_deploy_pre_mutation_access(effect: effect, access: access)
   let gate = deploy_mutation_gate(
-    access: access,
+    access: gate_access,
     fixture_actor: fixture_actor,
     fixture_host: fixture_host
   )
@@ -218,7 +234,7 @@ fn live_deploy_fold(
       )
     Permit =>
       host_effect_apply_gated(
-        access: access,
+        access: gate_access,
         target: target,
         effect: effect,
         evidence: host_effect_identity_evidence,
@@ -435,7 +451,7 @@ fn live_deploy_access_preflight_for(access: DeployAccess) -> Reconciliation<Host
     }
   } else {
     let gate = deploy_mutation_gate(
-      access: access,
+      access: deploy_access_sudoers_install_scope(access: access),
       fixture_actor: Absent,
       fixture_host: Absent
     )

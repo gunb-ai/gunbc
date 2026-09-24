@@ -47,10 +47,14 @@ data unsatisfiable_actuator_selection_fixture: OsInstallActuatorSelection = Actu
   reason: "fixture: no candidate host satisfies the srv3 actuator requirement conjunction",
 }
 
+// A SUPPLIED user-data body: the fixture needs the input's shape, not the renderer's output; the
+// real rendering route is exercised by test.claim.srv3_seeded_install_media.
+data srv3_seeded_user_data_fixture: NonEmptyStr = "#cloud-config\nautoinstall:\n  identity:\n    hostname: srv3\n" as NonEmptyStr
+
 // A SUPPLIED resolved image, so the actuator selection is the only thing here that can refuse.
 data srv3_resolved_image_fixture: SeededImageResolution = SeededImageResolved {
   built: ubuntu_seeded_install_media_built(
-    input: srv3_seeded_install_media_input,
+    input: srv3_seeded_install_media_input_for(user_data_body: srv3_seeded_user_data_fixture),
     output_digest: "abababababababababababababababababababababababababababababababab",
   ),
   path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso",

@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_namespace_root_segment_resolves_as_a_bare_reference
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_namespace_root_segment_resolves_as_a_bare_reference: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_namespace_root_segment_resolves_as_a_bare_reference" as NonEmptyStr,
+
+  receipts: [
+    "a namespace root segment resolves as a bare reference: the first segment of a qualified module path -- `v2` in `v2.std.node.Node` -- is classified as a free value reference, and because the pool happens to declare something with that spelling it resolves to that declaration. The reference-derived dependency producer then publishes an edge from the reading module into a module it never names. Nothing refuses: the edge is well formed, the closure it widens still resolves, and every consumer of the closure reads a larger population as the true one.",
+
+    "SPECIMEN, found 2026-09-23 by the Pkg7e emitted-workspace plan (v2.workflow.emitted_crate_workspace), whose two-closure join refused with ClosuresDisagree: the live dependency DAG of v2.compiler.compile carried 214 modules, the seed's emission 190, and the 24 extra included test.claim.secret_rotation_witness. That test module declares `fn v2()`. Every import-free production module reading a `v2.std.*` path -- src/v2/std/artifact, src/v2/std/grounding, src/v2/std/cross_tree/resolution among them -- gained a UniqueBare edge into it, and its imports pulled in the rest.",
+
+    "THE EARLIEST UNJUSTIFIED LINK (DESIGN section 6b), found by walking the producer from its output back: v1_compiler.cli_run ExprVarClassification classify decided that a dotted chain's head is a namespace segment only when NO declaration anywhere shares its spelling, and reference_resolution_facts runs with no declaration index at all, so that arm could never fire there and every head fell to the free-reference default. The dotted scan had already recorded the chain whole and resolved it Qualified by longest_declared_module_prefix; the head's role was a fact the producer held and did not consult. The repair classifies a head whose chain names a declared module as QualifiedChainHead, the member it always belonged to; only a binder outranks it, and a dotted read whose head names no module (a value row's field) keeps its edge.",
+
+    "RUNG: mechanically preventable. test.claim.namespace_root_reference_edge_witness runs the real producer over fixtures/namespace_root_homonym, where nsroot_decl.homonym declares fn nsroot() beside the nsroot.pkg.* modules: the RED asserts no consumer edge to the homonym and FAILED on the unrepaired binary; the control asserts the qualified edge and a value-chain edge both survive. The corpus-scale control is the Pkg7e plan's closure join, which admits only when the live DAG and the emission are the same population.",
+
+    "ATTAINABLE CEILING: structurally guaranteed. NEXT-RUNG TRIGGER, at capability grain: the namespace-cut terminal step (docs/plans/namespace-cut-replacement-plan.md), where dependencies are parse-then-derive from resolved container.member references rather than classified occurrences -- sufficient for a qualified path to reach the dependency graph only as a resolved module identity, so no segment of it is ever looked up as a bare name.",
+  ],
+
+  evidence: [],
+}
