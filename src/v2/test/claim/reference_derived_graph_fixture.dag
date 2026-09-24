@@ -3,6 +3,7 @@ module v2.test.claim.reference_derived_graph_fixture
 import extdeps.communication.medium { Lossless, Medium }
 import extdeps.filesystem.filesystem_io
 import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.normalize { record_declaration_capture }
 import v2.compiler.parse { parse_module }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.tokenize { tokenize }
@@ -24,7 +25,7 @@ import v2.std.diagnostic {
   outcome_accepted
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, node_subtree_nodes }
 import v2.std.optional { Optional }
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
@@ -121,7 +122,13 @@ fn parse_one(w: DagSourceReadWitness) -> Outcome<LocatedModuleRoot> {
       bind_outcome(
         o: parse_module(tokens: token_stream, grammar: lm.grammar),
         f: fn(artifact) {
-          outcome_accepted(value: LocatedModuleRoot { path: w.artifact.file_path, root: artifact.tree })
+          outcome_accepted(
+            value: LocatedModuleRoot {
+              path: w.artifact.file_path,
+              root: artifact.tree,
+              record_declarations: record_declaration_capture(nodes: node_subtree_nodes(root: artifact.tree))
+            }
+          )
         }
       )
     }

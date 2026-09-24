@@ -1,6 +1,40 @@
 module test.claim.deploy_mutation_gate_witness
 
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.spec { deployment_plan_listen_port }
+import gunbc.live_deploy.apply { live_deploy_fold, live_deploy_pre_mutation_access }
+import gunbc.ci_deploy_access {
+  DeployAccess,
+  DeployAccessActor,
+  ci_deploy_srv1_access,
+  deploy_access_decision_reason,
+  deploy_access_privileged_fixture_actor,
+  deploy_access_unprivileged_fixture_actor,
+  deploy_access_refusal_prefix,
+  gunbc_deploy_sudoers_dropin,
+}
+import gunbc.ci_deploy_access_observe { deploy_mutation_gate }
+import gunbc.ci_deploy_sudoers { deploy_sudoers_install_shell, deploy_sudoers_post_install_refusal_prefix }
+import gunbc.ci_deploy_target_host {
+  DeployTargetHostObservation,
+  deploy_target_host_fixture_observation,
+  deploy_target_host_refusal_prefix,
+}
+import gunbc.fleet_posix_accounts {
+  fleet_cp_binary_path,
+  fleet_tailscale_binary_path,
+  fleet_install_binary_path,
+  fleet_visudo_binary_path,
+  grounded_posix_principal_name,
+}
+import gunbc.host_effect { LiveDeployRetract, LiveDeployDigestReadback, Srv3ReceiptEmit, LocalShell }
+import std.access { Permit, Deny, decision_meet }
+import std.realization_reconcile { reconciliation_converged, Converged, NotConverged }
+import std.types { String, Bool, List }
+import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdGrantListProbeShape }
+import extdeps.sudo.nopasswd_execute_probe_check_op { sudo_nopasswd_grant_list_shell_condition }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.algebra { any, length }
 
 // Denial subjects are real deployment mutations. The permit pole uses receipt
 // data so exercising authorization never tears down a live deployment.
@@ -159,4 +193,88 @@ test fn witness_right_host_privileged_may_apply() -> Bool {
     },
     fixture_host: Present { value: srv1_host_observation() }
   ))
+}
+
+// THE PRE-INSTALL DEMAND IS THE INSTALL'S OWN SPEND, NOT THE ROSTER (#12124 bootstrap, srv1 deploy
+// run 35890035317). A roster row the host's drop-in does not yet carry -- cp, added by #12124 -- is
+// demanded only after gunbc.ci_deploy_sudoers deploy_sudoers_install_shell has installed the drop-in
+// that grants it, and there it still refuses on a miss. Four controls, each able to go red alone.
+
+fn gate_command_paths(access: DeployAccess) -> List<String> {
+  map(access.privileged_commands, c => c.grant.command_path as String)
+}
+
+fn srv1_retract_gate_access() -> DeployAccess {
+  live_deploy_pre_mutation_access(
+    effect: LiveDeployRetract { spec: deployment_spec_srv1() },
+    access: ci_deploy_srv1_access
+  )
+}
+
+// RED if the gate before a preamble-carrying effect demands a roster row the preamble installs:
+// the demand is exactly visudo and install, and cp -- in the roster, absent from a pre-#12124 drop-in
+// -- is not demanded before the install.
+test fn witness_preamble_effect_gate_demands_only_the_sudoers_install_spend() -> Bool {
+  let paths = gate_command_paths(access: srv1_retract_gate_access())
+  paths == [fleet_visudo_binary_path as String, fleet_install_binary_path as String]
+    && any(gate_command_paths(access: ci_deploy_srv1_access), p => p == fleet_cp_binary_path as String)
+}
+
+// RED if the narrowed demand leaked to an effect that installs nothing: a digest readback carries no
+// preamble, so its gate still demands the whole roster, cp included.
+test fn witness_non_preamble_effect_gate_keeps_the_full_roster() -> Bool {
+  let a = live_deploy_pre_mutation_access(
+    effect: LiveDeployDigestReadback { port: deployment_plan_listen_port(spec: deployment_spec_srv1()) },
+    access: ci_deploy_srv1_access
+  )
+  gate_command_paths(access: a) == gate_command_paths(access: ci_deploy_srv1_access)
+}
+
+// RED if the full roster is not re-demanded AFTER the drop-in lands: every roster command has a
+// fail-closed probe in the text following the install line, and none in the text before it.
+test fn witness_full_roster_probed_after_the_dropin_install_and_refuses_on_miss() -> Bool {
+  let sh = deploy_sudoers_install_shell(access: ci_deploy_srv1_access)
+  let halves = split(s: sh, delimiter: concat(" -m 0440 \"$_gunbc_stage/gunbc-deploy.sudoers\" ", gunbc_deploy_sudoers_dropin as String))
+  let before = halves.first()
+  let after = halves.skip(n: 1).first()
+  length(xs: halves) == 2
+    && !any(ci_deploy_srv1_access.privileged_commands, c =>
+      !string_contains(s: after, pattern: concat(deploy_sudoers_post_install_refusal_prefix, concat(" ", c.grant.command_path as String)))
+        || string_contains(s: before, pattern: concat(deploy_sudoers_post_install_refusal_prefix, concat(" ", c.grant.command_path as String))))
+    && string_contains(s: after, pattern: "if ! 'sudo' '-n' '/usr/bin/cp' '--version' >/dev/null 2>&1; then echo")
+    && string_contains(s: after, pattern: concat("if ! ", sudo_nopasswd_grant_list_shell_condition(probe: fleet_tailscale_binary_path as SudoNopasswdGrantListProbeShape)))
+    && string_contains(s: after, pattern: "exit 1; fi")
+}
+
+// RED if a host missing install/visudo reaches mutation: the narrowed gate still refuses an
+// unprivileged actor before the effect, and the refusal names the drop-in's first demanded row
+// (visudo), which only the narrowed scope makes first. The demand is built from the install's spend,
+// not filtered from the principal's roster, so an access carrying no commands still demands both.
+test fn witness_missing_install_or_visudo_still_refuses_before_mutation() -> Bool {
+  let empty_roster = DeployAccess {
+    principal: ci_deploy_srv1_access.principal,
+    host: ci_deploy_srv1_access.host,
+    transport: ci_deploy_srv1_access.transport,
+    privileged_commands: [],
+  }
+  let scoped_empty = live_deploy_pre_mutation_access(effect: LiveDeployRetract { spec: deployment_spec_srv1() }, access: empty_roster)
+  let folded = live_deploy_fold(
+    spec: deployment_spec_srv1(),
+    effect: LiveDeployRetract { spec: deployment_spec_srv1() },
+    transport: LocalShell,
+    access: ci_deploy_srv1_access,
+    fixture_actor: Present { value: DeployAccessActor { observed_name: grounded_posix_principal_name(p: ci_deploy_srv1_access.principal), sudo_granted: false } },
+    fixture_host: Present { value: srv1_host_observation() }
+  )
+  gate_command_paths(access: scoped_empty) == [fleet_visudo_binary_path as String, fleet_install_binary_path as String]
+    && match folded {
+      NotConverged { reason: why, applied: intent } =>
+        match intent.privilege_denial {
+          Present { value: Deny { refusal: _ } } =>
+            string_contains(s: why, pattern: deploy_access_refusal_prefix)
+              && string_contains(s: why, pattern: concat(" NOPASSWD: ", fleet_visudo_binary_path as String))
+          _ => false
+        }
+      Converged { evidence: _, applied: _ } => false
+    }
 }
