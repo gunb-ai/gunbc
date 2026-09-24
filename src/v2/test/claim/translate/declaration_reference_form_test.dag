@@ -19,7 +19,7 @@ import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
-import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_spine_node }
+import v2.std.qualified_name { declaration_reference_node, qualified_name_from_dotted_string }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -47,7 +47,7 @@ data drf_target: TargetModel = rust_sg2_type_expression_projection_target_model(
 data drf_expected_spelling: String = "crate::v2_test_drf_provider::DrfDeclared"
 
 fn drf_reference_spine() -> Node {
-  qualified_name_spine_node(
+  declaration_reference_node(
     qn: qualified_name_from_dotted_string(dotted: "v2.test.drf_provider.DrfDeclared"),
     occurrence_id: OccurrenceSynthetic
   )

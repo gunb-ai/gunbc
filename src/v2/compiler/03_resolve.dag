@@ -61,7 +61,7 @@ import v2.std.qualified_name {
   qualified_name_from_node,
   qualified_name_last_segment,
   qualified_name_snoc,
-  qualified_name_spine_node
+  declaration_reference_node
 }
 import v2.std.resolution_policy {
   ImportScoped,
@@ -617,7 +617,7 @@ fn resolved_reference_identity(ctx: ResolveContext, path: QualifiedName) -> Reso
 fn resolved_reference_node(identity: ResolvedReferenceIdentity, occurrence_id: NodeOccurrenceIdentity) -> Node {
   match identity {
     ResolvedToKernelSymbol { symbol: symbol } => canonical_atom(identity: symbol, occurrence_id: occurrence_id)
-    ResolvedToDeclaration { path: path } => qualified_name_spine_node(qn: path, occurrence_id: occurrence_id)
+    ResolvedToDeclaration { path: path } => declaration_reference_node(qn: path, occurrence_id: occurrence_id)
   }
 }
 
