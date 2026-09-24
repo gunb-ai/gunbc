@@ -108,12 +108,14 @@ test fn standing_admits_carried_debt_and_a_true_file_deleted() -> Bool {
     present_files: ["dag/a.dag"],
     checked_files: ["dag/a.dag"],
     carried: ["dag/a.dag#f"],
+    route_carried: ["dag/a.dag#f"],
   )) == 0
     && length(unimported_bare_provider_roster_standing(
       head: [a_file_deleted],
       present_files: [],
       checked_files: [],
       carried: [],
+      route_carried: [],
     )) == 0
 }
 
@@ -125,6 +127,7 @@ test fn standing_refuses_active_debt_on_a_deleted_file() -> Bool {
       present_files: [],
       checked_files: [],
       carried: [],
+      route_carried: [],
     ),
     expected: "ActiveDebtOnAbsentFile dag/a.dag#f -- the file is gone; retire the row as FileDeleted",
   )
@@ -138,6 +141,7 @@ test fn standing_refuses_a_false_cause() -> Bool {
       present_files: ["dag/a.dag"],
       checked_files: [],
       carried: [],
+      route_carried: [],
     ),
     expected: "RetiredFileDeletedButPresent dag/a.dag#f",
   )
@@ -147,6 +151,7 @@ test fn standing_refuses_a_false_cause() -> Bool {
         present_files: ["dag/a.dag"],
         checked_files: ["dag/a.dag"],
         carried: ["dag/a.dag#f"],
+        route_carried: ["dag/a.dag#f"],
       ),
       expected: "RetiredImportsFixedButCarried dag/a.dag#f",
     )
@@ -161,6 +166,7 @@ test fn standing_refuses_stale_debt_and_an_unrostered_pair() -> Bool {
       present_files: ["dag/a.dag"],
       checked_files: ["dag/a.dag"],
       carried: [],
+      route_carried: [],
     ),
     expected: "RosterStale dag/a.dag#f -- the file no longer carries this pair; retire it as ImportsFixed",
   )
@@ -170,6 +176,29 @@ test fn standing_refuses_stale_debt_and_an_unrostered_pair() -> Bool {
         present_files: ["dag/a.dag"],
         checked_files: ["dag/a.dag"],
         carried: ["dag/a.dag#f", "dag/a.dag#h"],
+        route_carried: ["dag/a.dag#f", "dag/a.dag#h"],
+      ),
+      expected: "Unrostered dag/a.dag#h",
+    )
+}
+
+// An ImportsFixed file is re-derived to hold its retirement true, not to hold an untouched file to
+// the rule: a new pair there is not unrostered unless the ROUTE carries it. Control and red.
+test fn standing_holds_only_the_route_to_the_unrostered_rule() -> Bool {
+  length(unimported_bare_provider_roster_standing(
+    head: [a_imports_fixed],
+    present_files: ["dag/a.dag"],
+    checked_files: ["dag/a.dag"],
+    carried: ["dag/a.dag#h"],
+    route_carried: [],
+  )) == 0
+    && refuses_exactly(
+      refusals: unimported_bare_provider_roster_standing(
+        head: [a_imports_fixed],
+        present_files: ["dag/a.dag"],
+        checked_files: ["dag/a.dag"],
+        carried: ["dag/a.dag#h"],
+        route_carried: ["dag/a.dag#h"],
       ),
       expected: "Unrostered dag/a.dag#h",
     )

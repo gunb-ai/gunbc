@@ -143,7 +143,11 @@ fn unimported_bare_provider_row_standing(
 }
 
 // The roster against the tree. `present_files` are the roster's files that exist; `checked_files`
-// are the files whose pairs the host derived, and `carried` the identities those files carry.
+// are the files whose pairs the host derived (the route's own files plus every ImportsFixed file),
+// and `carried` the identities those files carry. `route_carried` is the subset carried by the
+// ROUTE's files (touched, or entry): only those can be unrostered. An ImportsFixed file is
+// re-derived to hold its retirement true, not to hold a file nobody touched to the rule -- a new
+// pair there is refused when that file is next touched, as everywhere else.
 // A carried pair with NO row is unrostered. One with a row is judged by that row: active debt is
 // owed, and a retirement still carried is refused by its own cause check -- so each pair is
 // reported once, by the row that owns it.
@@ -152,6 +156,7 @@ fn unimported_bare_provider_roster_standing(
   present_files: List<String>,
   checked_files: List<String>,
   carried: List<String>,
+  route_carried: List<String>,
 ) -> List<String> {
   let present = unimported_bare_provider_string_set(ids: present_files)
   let checked = unimported_bare_provider_string_set(ids: checked_files)
@@ -169,7 +174,7 @@ fn unimported_bare_provider_roster_standing(
       ),
   )
   fold(
-    carried,
+    route_carried,
     init: row_refusals,
     f: (acc, id) =>
       if unimported_bare_provider_in(set: rostered_set, id: id) {

@@ -2053,11 +2053,12 @@ fn unimported_bare_provider_standing_refusals(
 ) -> Result<Vec<String>, String> {
     let lookup = path_to_source_lookup(&index.source_files);
     let mut present: BTreeSet<String> = BTreeSet::new();
-    let mut checked: BTreeSet<String> = route_files
+    let route_set: BTreeSet<String> = route_files
         .iter()
         .filter(|p| p.ends_with(".dag") && lookup.contains_key(p.as_str()))
         .cloned()
         .collect();
+    let mut checked: BTreeSet<String> = route_set.clone();
     for row in &head.rows {
         if lookup.contains_key(row.file.as_str()) {
             present.insert(row.file.clone());
@@ -2067,6 +2068,7 @@ fn unimported_bare_provider_standing_refusals(
         }
     }
     let mut carried: Vec<String> = Vec::new();
+    let mut route_carried: Vec<String> = Vec::new();
     let mut hints: HashMap<String, String> = HashMap::new();
     for path in &checked {
         let sf = &lookup[path.as_str()];
@@ -2080,6 +2082,9 @@ fn unimported_bare_provider_standing_refusals(
                     v.file, v.name, v.provider, v.name, v.provider_module, v.name
                 ),
             );
+            if route_set.contains(path) {
+                route_carried.push(id.clone());
+            }
             carried.push(id);
         }
     }
@@ -2097,6 +2102,7 @@ fn unimported_bare_provider_standing_refusals(
                 strings(checked.iter().cloned().collect()),
             ),
             (Some("carried".to_string()), strings(carried)),
+            (Some("route_carried".to_string()), strings(route_carried)),
         ],
     )?;
     Ok(verdict
