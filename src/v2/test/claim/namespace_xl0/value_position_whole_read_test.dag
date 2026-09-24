@@ -84,6 +84,13 @@ data vpw_lambda_undeclared_source: String = "module v2.test.vpw_lambda_undeclare
 // The callees differ from the lambda fixture's so each shape claim is satisfied by its own module.
 data vpw_arg_fn_literal_source: String = "module v2.test.vpw_arg_fn_literal\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_literal(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_apply_block(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply_literal(f: fn(x) { x }, v: p) }\n\nfn vpw_probe_block(p: Bool) -> Bool {\n  vpw_apply_block(f: fn(x) {\n    let y = x\n    y\n  }, v: p)\n}\n"
 
+// THE SEVEN'S token_stream WALL, MINIMISED (warm-bear-132's chunk c00017 of
+// src/v2/test/claim/parse/expression_bodied_fn_decl_parse_test.dag g_tokenize_parse): a match arm
+// whose body is a call taking a fn literal, whose own body is a match over the literal's binder and
+// also reads the enclosing fn's parameter. Before fn literals lowered, the binder was never scoped and
+// resolve refused it as resolve_reason_unbound_symbol.
+data vpw_fn_literal_in_arm_source: String = "module v2.test.vpw_fn_literal_in_arm\n\nimport v2.std.logic { Bool }\n\nfn vpw_then(o: Bool, f: Bool) -> Bool { o }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match p {\n    true =>\n      vpw_then(\n        o: p,\n        f: fn(token_stream) {\n          match token_stream {\n            true => token_stream\n            false => p\n          }\n        }\n      )\n    false => p\n  }\n}\n"
+
 data vpw_arg_call_source: String = "module v2.test.vpw_arg_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_id(p: vpw_id(p: vpw_undeclared_argument)) }\n"
 
 fn vpw_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
@@ -105,7 +112,10 @@ data vpw_ingest: SourceRootIngest = Cons {
           head: vpw_read(source: vpw_arg_call_source, id: ^vpw_arg_call_artifact, unit: ^vpw_arg_call_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_call.dag"),
           tail: Cons {
             head: vpw_read(source: vpw_lambda_undeclared_source, id: ^vpw_lambda_undeclared_artifact, unit: ^vpw_lambda_undeclared_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_lambda_undeclared.dag"),
-            tail: Empty
+            tail: Cons {
+              head: vpw_read(source: vpw_fn_literal_in_arm_source, id: ^vpw_fn_literal_in_arm_artifact, unit: ^vpw_fn_literal_in_arm_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_fn_literal_in_arm.dag"),
+              tail: Empty
+            }
           }
         }
       }
@@ -127,6 +137,7 @@ type VpwOutcomes
       arg_lambda: VpwVerdict
       arg_call: VpwVerdict
       lambda_undeclared: VpwVerdict
+      fn_literal_in_arm: VpwVerdict
     }
 
 fn vpw_verdict_of(outcome: NativeCensusModuleOutcome) -> VpwVerdict {
@@ -173,7 +184,8 @@ fn vpw_outcomes() -> VpwOutcomes {
         match_declared: vpw_verdict_in(context: context, module_name: "v2.test.vpw_match_declared"),
         arg_lambda: vpw_verdict_in(context: context, module_name: "v2.test.vpw_arg_lambda"),
         arg_call: vpw_verdict_in(context: context, module_name: "v2.test.vpw_arg_call"),
-        lambda_undeclared: vpw_verdict_in(context: context, module_name: "v2.test.vpw_lambda_undeclared")
+        lambda_undeclared: vpw_verdict_in(context: context, module_name: "v2.test.vpw_lambda_undeclared"),
+        fn_literal_in_arm: vpw_verdict_in(context: context, module_name: "v2.test.vpw_fn_literal_in_arm")
       }
   }
 }
@@ -195,7 +207,7 @@ fn vpw_is_unbound_at(v: VpwVerdict, spelling: Symbol) -> Bool {
 
 test fn an_undeclared_name_inside_a_call_scrutinee_refuses_at_resolve_at_its_atom() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: v, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: _ } =>
+    VpwOutcomesDecided { match_call: v, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _ } =>
       vpw_is_unbound_at(v: v, spelling: ^vpw_undeclared_scrutinee)
     VpwContextRefused => false
   }
@@ -203,7 +215,7 @@ test fn an_undeclared_name_inside_a_call_scrutinee_refuses_at_resolve_at_its_ato
 
 test fn a_match_on_a_call_with_declared_names_resolves() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: v, arg_lambda: _, arg_call: _, lambda_undeclared: _ } =>
+    VpwOutcomesDecided { match_call: _, match_declared: v, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _ } =>
       vpw_is_resolved(v: v)
     VpwContextRefused => false
   }
@@ -211,7 +223,7 @@ test fn a_match_on_a_call_with_declared_names_resolves() -> Bool {
 
 test fn a_lambda_argument_whose_body_uses_its_parameter_resolves() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: v, arg_call: _, lambda_undeclared: _ } =>
+    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: v, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: _ } =>
       vpw_is_resolved(v: v)
     VpwContextRefused => false
   }
@@ -219,7 +231,7 @@ test fn a_lambda_argument_whose_body_uses_its_parameter_resolves() -> Bool {
 
 test fn an_undeclared_name_inside_a_lambda_argument_body_refuses_at_resolve_at_its_atom() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: v } =>
+    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: v, fn_literal_in_arm: _ } =>
       vpw_is_unbound_at(v: v, spelling: ^vpw_undeclared_lambda_body)
     VpwContextRefused => false
   }
@@ -227,7 +239,7 @@ test fn an_undeclared_name_inside_a_lambda_argument_body_refuses_at_resolve_at_i
 
 test fn an_undeclared_name_inside_a_call_argument_refuses_at_resolve_at_its_atom() -> Bool {
   match vpw_outcomes() {
-    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: v, lambda_undeclared: _ } =>
+    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: v, lambda_undeclared: _, fn_literal_in_arm: _ } =>
       vpw_is_unbound_at(v: v, spelling: ^vpw_undeclared_argument)
     VpwContextRefused => false
   }
@@ -431,4 +443,12 @@ fn vpw_fn_literal_block_argument_shape(n: Node, callee: Symbol, binder: Symbol) 
 
 test fn a_fn_literal_argument_with_a_let_block_body_lowers_its_body_as_a_named_fn_does() -> Bool {
   vpw_any_node(shape: VpwFnLiteralBlockArgument { callee: ^vpw_apply_block, binder: ^x })
+}
+
+test fn a_fn_literal_in_a_match_arm_binds_its_parameter_for_its_match_body() -> Bool {
+  match vpw_outcomes() {
+    VpwOutcomesDecided { match_call: _, match_declared: _, arg_lambda: _, arg_call: _, lambda_undeclared: _, fn_literal_in_arm: v } =>
+      vpw_is_resolved(v: v)
+    VpwContextRefused => false
+  }
 }
