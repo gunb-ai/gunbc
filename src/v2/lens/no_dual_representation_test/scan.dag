@@ -230,42 +230,50 @@ fn eq_sites_from_output(root: Node) -> List<EqNodeSite> {
 // calls that way. The marshal now emits the call carrier, and the one base reader over it is
 // v2.std.compilers.body_lowering `application_slots`.
 //
-// The first argument's name is inlined into the callee body, so its VALUE must be read. On a real
-// fn-arrow skeleton an argument is not a bare value: the host marshal wraps every argument, so
-// `f(x)` is Transform[f, Conj[Conj[Atom x]]] and an argument it does not project is
-// Transform[f, Conj[Conj[]]] (probe recorded in gunbc#12202). The read therefore descends through
-// single-child wrappers to the value. Where it bottoms out in an empty Conj the content is
-// unprojected and the equivalence is undecided, never inlined as if it were a name.
+// The argument's name is inlined into the callee body, so its VALUE must be read -- and only a
+// call with EXACTLY ONE argument is a single-argument call; `f(x, y)` is a different shape and is
+// not judged at all. On a real fn-arrow skeleton an argument is not a bare value: the host marshal
+// wraps every argument, so `f(x)` is Transform[f, Conj[Conj[Atom x]]] and an argument it does not
+// project is Transform[f, Conj[Conj[]]] (probe recorded in gunbc#12202). The read descends through
+// single-positional-child wrappers to the value. Three answers, and no empty name stands for any
+// of them: not exactly one argument; a readable name; or unreadable -- an empty wrapper
+// (unprojected), a structured value (a call, a record, several or named children), which has no
+// name to inline, so the equivalence is undecided and reported as EqOperandUnreadable.
 type FirstArgRead
-  = FirstArgName { name: String }
+  = NotSingleArgument
+  | FirstArgName { name: String }
   | FirstArgUnreadable
 
 fn argument_value_read(n: Node) -> FirstArgRead {
   match n.kind {
     TypeNode { connective: Atom { identity: _ } } => FirstArgName { name: node_atom_name(n: n) }
     TypeNode { connective: Conj } =>
-      if count(n.children) == 0 {
-        FirstArgUnreadable
-      } else {
+      if count(n.children) == 1 {
         let positional = node_positional_child_targets(node: n)
-        if count(n.children) == 1 && length(xs: positional) == 1 {
+        if length(xs: positional) == 1 {
           match list_at_optional(xs: positional, index: 0) {
             Present { value: inner } => argument_value_read(n: inner)
-            Absent => FirstArgName { name: "" }
+            Absent => FirstArgUnreadable
           }
         } else {
-          FirstArgName { name: "" }
+          FirstArgUnreadable
         }
+      } else {
+        FirstArgUnreadable
       }
-    _ => FirstArgName { name: "" }
+    _ => FirstArgUnreadable
   }
 }
 
 fn first_call_arg_read(slots: ApplicationSlots) -> FirstArgRead {
-  match list_at_optional(xs: slots.operands, index: 0) {
-    Present { value: WholeOperand { node: arg } } => argument_value_read(n: arg)
-    Present { value: ResidueOperand { node: _ } } => FirstArgUnreadable
-    Absent => FirstArgName { name: "" }
+  if length(xs: slots.operands) == 1 {
+    match list_at_optional(xs: slots.operands, index: 0) {
+      Present { value: WholeOperand { node: arg } } => argument_value_read(n: arg)
+      Present { value: ResidueOperand { node: _ } } => FirstArgUnreadable
+      Absent => FirstArgUnreadable
+    }
+  } else {
+    NotSingleArgument
   }
 }
 
@@ -307,6 +315,7 @@ fn classify_application_lhs(
         ArrowHead => dual_rep_violation(path: path, fn_name: fn_name, kind: EqOperandUnreadable)
         AtomHead { identity: sym } =>
           match first_call_arg_read(slots: v) {
+            NotSingleArgument => empty_dual_rep_violations
             FirstArgUnreadable => dual_rep_violation(path: path, fn_name: fn_name, kind: EqOperandUnreadable)
             FirstArgName { name: arg } =>
               if body_alpha_equivalent_to_single_arg_call(callee: sym, arg: arg, rhs: site.rhs, fns: fns) {
