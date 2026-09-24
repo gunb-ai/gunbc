@@ -7,6 +7,7 @@ import gunbc.generated_artifact {
   WitnessFloorYamlArtifact,
   FleetConvergeYamlArtifact,
   FleetDesiredAdmissionYamlArtifact,
+  MicrovmShakedownYamlArtifact,
   HealWorkflowYamlArtifact,
   HealPublisherWorkflowYamlArtifact,
   NativeFrontierWorkflowYamlArtifact,
@@ -79,6 +80,10 @@ fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProve
     FleetDesiredAdmissionYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.fleet_desired_admission_workflow expected_fleet_desired_yml",
       authority: "gunbc.fleet_desired_admission_workflow fleet_desired_admission_workflow",
+    } }
+    MicrovmShakedownYamlArtifact => Present { value: GeneratedWorkflowProvenance {
+      generator: "gunbc.runner_microvm_shakedown_workflow expected_microvm_shakedown_yml",
+      authority: "gunbc.runner_microvm_shakedown_workflow microvm_shakedown_workflow",
     } }
     HealWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.heal_workflow expected_heal_workflow_yml",

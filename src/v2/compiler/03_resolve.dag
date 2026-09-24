@@ -22,7 +22,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list, length, list_append, list_snoc_item }
+import v2.std.algebra { any, fold_list, length, list_append, list_snoc_item }
 import v2.std.collection {
   Map,
   PointwisePower,
@@ -61,7 +61,7 @@ import v2.std.qualified_name {
   qualified_name_from_node,
   qualified_name_last_segment,
   qualified_name_snoc,
-  qualified_name_spine_node
+  declaration_reference_node
 }
 import v2.std.resolution_policy {
   ImportScoped,
@@ -446,7 +446,7 @@ fn unbound_symbol_diagnostics(ctx: ResolveContext, n: Node, name: Symbol) -> Non
         },
         tail: [fatal]
       }
-    GlobalBareLookupAmbiguous =>
+    GlobalBareLookupAmbiguous { paths: _ } =>
       NonEmptyDiagnostics {
         head: Diagnostic {
           reason: ^resolve_unbound_name_is_declared_in_several_modules,
@@ -617,7 +617,7 @@ fn resolved_reference_identity(ctx: ResolveContext, path: QualifiedName) -> Reso
 fn resolved_reference_node(identity: ResolvedReferenceIdentity, occurrence_id: NodeOccurrenceIdentity) -> Node {
   match identity {
     ResolvedToKernelSymbol { symbol: symbol } => canonical_atom(identity: symbol, occurrence_id: occurrence_id)
-    ResolvedToDeclaration { path: path } => qualified_name_spine_node(qn: path, occurrence_id: occurrence_id)
+    ResolvedToDeclaration { path: path } => declaration_reference_node(qn: path, occurrence_id: occurrence_id)
   }
 }
 
@@ -1250,28 +1250,36 @@ fn resolve_transform_children(
 // spelling is a variant declared somewhere in the corpus refuses, loudly, and the author renames
 // it. The branch retires when an unbound pattern atom that spells a declared constructor has its
 // own typed refusal that does not consult the corpus-wide census.
+// ONE QUESTION PER DECLARING PATH, AND AMBIGUITY ASKS IT OF EVERY CLAIMANT. An ambiguous spelling is
+// a constructor when ANY of its candidates is a declared payload -- the fail-closed direction for a
+// real payload ambiguity (`None` as a variant and as its unique alias, the mab_* claims), where
+// binding would be the silent wrong answer -- and a binder when NONE is. Reading every ambiguity as
+// a constructor, as this did before, refused an ordinary binder `d` in
+// `Rejected { diagnostics: d }` because several unrelated modules declare non-payloads named `d`:
+// an over-prohibition the paragraph above did not price, since it priced only a binder spelled like
+// a VARIANT.
+fn resolve_path_is_declared_payload(ctx: ResolveContext, path: QualifiedName) -> Bool {
+  match symbol_index_declared_payload_at(index: ctx.namespace.symbol_index, qualified_path: path) {
+    Present { value: VariantArmPayload } => true
+    Present { value: RecordTypePayload } => true
+    Absent => false
+  }
+}
+
 fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bool {
   match symbol_index_lexical_lookup(
     index: ctx.namespace.symbol_index,
     position: symbol_index_lookup_position(ctx: ctx),
     name: id
   ) {
-    LexicalHit { node: _, path: path } =>
-      match symbol_index_declared_payload_at(index: ctx.namespace.symbol_index, qualified_path: path) {
-        Present { value: VariantArmPayload } => true
-        Present { value: RecordTypePayload } => true
-        Absent => false
-      }
-    LexicalAmbiguous { candidates: _ } => true
+    LexicalHit { node: _, path: path } => resolve_path_is_declared_payload(ctx: ctx, path: path)
+    LexicalAmbiguous { candidates: candidates } =>
+      any(xs: candidates, predicate: fn(c) { resolve_path_is_declared_payload(ctx: ctx, path: c.path) })
     LexicalUnbound =>
       match symbol_index_global_unique_lookup(index: ctx.namespace.symbol_index, name: id) {
-        GlobalBareHit { node: _, path: path } =>
-          match symbol_index_declared_payload_at(index: ctx.namespace.symbol_index, qualified_path: path) {
-            Present { value: VariantArmPayload } => true
-            Present { value: RecordTypePayload } => true
-            Absent => false
-          }
-        GlobalBareLookupAmbiguous => true
+        GlobalBareHit { node: _, path: path } => resolve_path_is_declared_payload(ctx: ctx, path: path)
+        GlobalBareLookupAmbiguous { paths: paths } =>
+          any(xs: paths, predicate: fn(p) { resolve_path_is_declared_payload(ctx: ctx, path: p) })
         GlobalBareLookupUnbound => namespace_has_canonical_symbol(namespace: ctx.namespace, name: id)
       }
   }

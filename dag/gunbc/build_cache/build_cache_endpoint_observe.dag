@@ -1,6 +1,7 @@
 module gunbc.build_cache_endpoint_observe
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.decimal { decimal_digit_char }
 import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority }
 import std.algebra { trim }
@@ -221,7 +222,7 @@ fn leading_digits_from(s: String, at: Int, acc: String) -> String {
     acc
   } else {
     let c = char_at(s: s, pos: at)
-    if c >= "0" && c <= "9" {
+    if decimal_digit_char(ch: c) {
       leading_digits_from(s: s, at: at + 1, acc: concat(acc, c))
     } else {
       acc

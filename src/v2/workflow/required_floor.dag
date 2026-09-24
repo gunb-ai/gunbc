@@ -627,9 +627,10 @@ fn fixture_home_prefixes() -> List<String> {
 // IT DECLARES ReadsLiveTree TRUTHFULLY -- it reads the four fixture files from the checkout -- and
 // that is no longer a decline: `DeclinedLiveTree` is deleted at the root above.
 //
-// THE REALIZED-WORKFLOW ACTION-USE CENSUS IS ADMITTED AT EXACT MODULE GRAIN. Its
-// every_realized_workflow_action_use_is_modeled_and_executed_exactly row is the only route that
-// admits hand-authored .github/workflows files, which no generator sees, and
+// THE REALIZED-WORKFLOW ACTION-USE CENSUS IS ADMITTED AT EXACT MODULE GRAIN. Its per-file census
+// rows (census_<file>_uses_are_modeled_and_executed_exactly, joined to the directory listing by
+// every_executed_workflow_file_has_a_census_claim_and_no_claim_names_a_missing_file) are the only
+// route that admits hand-authored .github/workflows files, which no generator sees, and
 // gunbc.recurring_failure_mode.provider_substituted_action_runtime cites it as the executing wall.
 // Outside the gate it would disposition DeclinedOutsideRequiredGate, and changed-witness selection
 // fires only on edits to the witness's own test fns -- so a tag or node20 pin reintroduced into a
@@ -724,11 +725,22 @@ fn required_gate_prefixes() -> List<String> {
 // DeclinedOutsideRequiredGate and a broken line would stay green. ADMITTED BY OPERATOR DEFAULT-APPROVAL on a 15-minute timeout, 2026-09-23 (escalation msg_731e354b, relayed by stern-carp-604), NOT a deliberated ruling -- the same standing as the allowance ruling itself, and to be weighed as a default. The module declares
 // SubstrateInputsOnly, and its only preparation growth is extdeps.languages.yaml, which the
 // policy module itself now imports.
+//
+// THE FOURTH ROW IS THE STAGE0 EMITTED-EDGE ADMISSION'S WITNESSES (gunbc#12171, parent ruling msg_7d7e1845 from loyal-swift-608). The
+// admission itself runs over the real seed emission inside required-regen, which is the
+// generated-artifact phase, off this gate under `gunbc.rung_drop`
+// `witness_floor_off_the_required_gate`. What this row buys is narrower and stated as such: the
+// admission's discriminating REDs and controls execute over supplied edges and the committed
+// partition rows on every required run, so a regression in the ADMISSION is caught at merge. The
+// admission over the REAL emission still runs only at author regen, and rides that drop. The
+// module declares SubstrateInputsOnly and adds no preparation beyond gunbc.rust_emitted_edge and
+// the stage0 partition rows.
 fn required_gate_authored_modules() -> List<String> {
   [
     "test.claim.runner_capacity_plan_witness",
     "test.claim.runner_capacity_realize_witness",
     "test.claim.corpus_census_allowance_witness_test",
+    "test.claim.stage0_emitted_edge_admission_witness",
   ]
 }
 
@@ -1450,12 +1462,17 @@ type CorpusCensusMember {
   subject_path: String
 }
 
-// THE ROSTER. #11730 adds the realized-workflow census row (fleet-converge.yml); until then it holds
-// no production row, and the arm is exercised by the witnesses in
-// test.claim.corpus_census_allowance_witness over synthetic subjects. An empty roster is a legitimate
-// state -- no whole-file census needs a line -- unlike the grandfathered roster, whose emptiness would
-// reclassify the corpus.
-data corpus_census_roster: List<CorpusCensusMember> = []
+// THE ROSTER. Its one production row is the realized-workflow census over the largest committed
+// workflow (gunbc.action_use_admission, gunb-ai/gunbc#11730), whose subject is a generated file other
+// lanes grow; the arm is also exercised by the witnesses in test.claim.corpus_census_allowance_witness
+// over synthetic subjects. An empty roster is a legitimate state -- no whole-file census needs a line
+// -- unlike the grandfathered roster, whose emptiness would reclassify the corpus.
+data corpus_census_roster: List<CorpusCensusMember> = [
+  CorpusCensusMember {
+    identity: "test.claim.action_use_admission_witness.census_fleet_converge_uses_are_modeled_and_executed_exactly",
+    subject_path: ".github/workflows/fleet-converge.yml",
+  },
+]
 
 // THE POLICY, WITH ITS REASON IN THE CARRIER RATHER THAN BESIDE IT.
 type CorpusCensusAllowancePolicy {

@@ -9576,10 +9576,6 @@ fn visit_bare_reference_providers(
     // This does not under-pull. A module that uses a kernel type's CONSTRUCTORS references
     // those names (`True`, `False`) directly, and they resolve on their own; what is skipped
     // here is only the type spelling, which needs no declaring module.
-    let substrate_vocabulary = |name: &str| -> bool {
-        crate::std_types::kernel_type_set().contains_key(name)
-            || crate::std_types::container_type_arity().contains_key(name)
-    };
     let resolve_loop_started = std::time::Instant::now();
     let resolve_loop_pool_before = resolve_stage_slot_snapshot().pool_parse;
     for (name, service_head) in all_names {
@@ -9594,7 +9590,7 @@ fn visit_bare_reference_providers(
         if !service_head && explicit_imports.contains(&name) {
             continue;
         }
-        if !service_head && substrate_vocabulary(&name) {
+        if !service_head && is_substrate_vocabulary(&name) {
             continue;
         }
         let in_call_position = candidates.call_position.contains(&name);
@@ -32645,6 +32641,33 @@ fn collect_module_decl_names(module: &Rc<crate::v1_std_core::Node>) -> Vec<Strin
     names
 }
 
+/// SUBSTRATE VOCABULARY IS NOT A MODULE MEMBER: the kernel type names
+/// (`std_types::kernel_type_set`) and the container carrier spellings
+/// (`std_types::container_type_arity`) are resolved by the type env as primitives and pull no
+/// declaring module. ONE rule, read by every producer that turns a bare name into a module edge --
+/// the census pull and the reference-derived dependency producer -- so neither can bind `String`
+/// to whichever module happens to declare the spelling nearest the reader.
+pub(crate) fn is_substrate_vocabulary(name: &str) -> bool {
+    crate::std_types::kernel_type_set().contains_key(name)
+        || crate::std_types::container_type_arity().contains_key(name)
+}
+
+/// The head `ExprVar` of a dotted chain: the node `ref_field_chain` stops at, along the same
+/// receiver spine.
+fn ref_field_chain_head(
+    node: &Rc<crate::v1_std_core::Node>,
+) -> Option<Rc<crate::v1_std_core::Node>> {
+    use crate::v1_std_core::ExprData;
+    let mut cur = node.children.get(0).cloned()?;
+    loop {
+        match &*cur.expr_data {
+            ExprData::ExprFieldAccess { .. } => cur = cur.children.get(0).cloned()?,
+            ExprData::ExprVar { .. } => return Some(cur),
+            _ => return None,
+        }
+    }
+}
+
 /// Reconstruct a qualified-name segment list from a `FieldAccess` chain (`A.B.c` → `[A, B, c]`).
 /// `None` when the base is not a plain identifier (e.g. a call result `f(x).field` — that is a
 /// value field access, not a module-qualified name).
@@ -32799,6 +32822,14 @@ struct ExprVarClassification<'a> {
     /// empty map, because an empty map would answer "no module declares this name" to every
     /// question and silently collect nothing: ⊥-as-answer standing in for ⊥-as-ignorance.
     decl_index: Option<&'a HashMap<String, std::collections::BTreeSet<String>>>,
+    /// THE DECLARED MODULE NAMES, so a dotted chain can be asked whether its prefix IS a module
+    /// path. `None` where the caller holds no module set (the binder fixtures below).
+    module_names: Option<&'a std::collections::HashSet<String>>,
+    /// The head `ExprVar` of every dotted chain whose prefix names a declared module, marked when
+    /// the chain is recorded. Such a head is the ROOT SEGMENT OF A MODULE PATH -- `v2` in
+    /// `v2.std.node.Node` -- and never a reference to a declaration that happens to share its
+    /// spelling anywhere in the pool.
+    module_path_heads: std::collections::HashSet<*const crate::v1_std_core::Node>,
     tally: &'a mut BTreeMap<ExprVarClass, usize>,
     unclassified: &'a mut Vec<String>,
     /// The module currently being walked. ONE classification spans the whole index build so the
@@ -32837,7 +32868,13 @@ impl ExprVarClassification<'_> {
         ));
     }
 
-    fn classify(&mut self, name: &str, bound_as: Option<ExprVarClass>, chain_head: bool) -> bool {
+    fn classify(
+        &mut self,
+        name: &str,
+        bound_as: Option<ExprVarClass>,
+        chain_head: bool,
+        module_path_head: bool,
+    ) -> bool {
         self.occurrences += 1;
         // THE CHAIN HEAD ARM IS ORDERED LAST, AND THE ORDER IS THE WHOLE CORRECTNESS ARGUMENT.
         // A binder answers first: `fn f(cron: Tab) { cron.List }` reads the parameter. A
@@ -32845,12 +32882,21 @@ impl ExprVarClassification<'_> {
         // MODULE PATH — `some_data_row.field` is an ordinary value reference that merely looks
         // like one, and suppressing it here DELETES A REAL EDGE. Only a head that is neither
         // bound nor declared anywhere is the module-path segment this member is for.
+        //
+        // A HEAD WHOSE CHAIN NAMES A DECLARED MODULE IS A NAMESPACE ROOT, WHETHER OR NOT SOME
+        // DECLARATION SHARES ITS SPELLING. The declared-anywhere test above cannot see that case:
+        // `test.claim.secret_rotation_witness` declares `fn v2()`, so `v2` in `v2.std.node.Node`
+        // is "declared", and without this arm it became a bare reference that resolved to that
+        // test fn -- a dependency edge from production std modules into a test claim. The chain
+        // is already recorded whole and resolved Qualified by its module prefix; its head is that
+        // path's first segment. Only a binder outranks it, exactly as for the undeclared head.
         let head_is_undeclared = chain_head
             && bound_as.is_none()
-            && self
-                .decl_index
-                .map(|index| !index.contains_key(name))
-                .unwrap_or(false);
+            && (module_path_head
+                || self
+                    .decl_index
+                    .map(|index| !index.contains_key(name))
+                    .unwrap_or(false));
         if head_is_undeclared {
             *self
                 .tally
@@ -33019,6 +33065,13 @@ fn collect_node_refs_inner(
     let mut receiver_spine = false;
     if let ExprData::ExprFieldAccess { .. } = &*node.expr_data {
         if let Some(chain) = ref_field_chain(node) {
+            if let Some(module_names) = classify.module_names {
+                if longest_declared_module_prefix(&chain, module_names).is_some() {
+                    if let Some(head) = ref_field_chain_head(node) {
+                        classify.module_path_heads.insert(Rc::as_ptr(&head));
+                    }
+                }
+            }
             chains.push(chain);
             receiver_spine = true;
         }
@@ -33042,7 +33095,9 @@ fn collect_node_refs_inner(
                         .rev()
                         .find(|(n, _)| n == &node.name)
                         .map(|(_, class)| *class);
-                    if classify.classify(&node.name, bound_as, chain_receiver) {
+                    let module_path_head =
+                        chain_receiver && classify.module_path_heads.contains(&Rc::as_ptr(node));
+                    if classify.classify(&node.name, bound_as, chain_receiver, module_path_head) {
                         bare.insert(node.name.clone());
                         // A free `ExprVar` IS a value-position read: nothing binds it here, so
                         // the interpreter resolves it through the file's declarations, then the
@@ -42093,6 +42148,8 @@ pub(crate) fn build_reference_closure_index(
     let mut unclassified: Vec<String> = Vec::new();
     let mut classify = ExprVarClassification {
         decl_index: Some(&decl_index),
+        module_names: Some(&module_names),
+        module_path_heads: std::collections::HashSet::new(),
         tally: &mut class_tally,
         unclassified: &mut unclassified,
         module: String::new(),
@@ -45252,6 +45309,8 @@ mod reference_collector_binder_fixtures {
         let mut unclassified: Vec<String> = Vec::new();
         let mut classify = ExprVarClassification {
             decl_index,
+            module_names: None,
+            module_path_heads: std::collections::HashSet::new(),
             tally: &mut tally,
             unclassified: &mut unclassified,
             module: "fixture".to_string(),

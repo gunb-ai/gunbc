@@ -1,5 +1,6 @@
 module test.claim.approval_device_redemption_witness_test
 
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, Timestamp, Secret }
 import std.measure { byte_size }
@@ -96,11 +97,34 @@ fn fx_code_challenge(expires_at: Timestamp) -> EnrolmentChallenge {
 
 data fx_live_code: EnrolmentSlotStanding = EnrolmentCodeUnspent { challenge: fx_code_challenge(expires_at: "2026-09-17T10:05:00Z") }
 
-fn fx_attestation(client_data: NonEmptyStr) -> AttestationVerification {
+// EVIDENCE-RETURNING FIXTURES ARE CALLER-SEALED DOWN TO THE TERMINAL CLAIMS (review 5291201877):
+// the mints admit these fixtures by name, so each fixture that RETURNS trusted evidence (or an
+// admission built from it) admits only the declarations of this module that use it, and a module
+// importing one is refused at compile time at the fixture boundary rather than laundering a success.
+fn fx_attestation(client_data: NonEmptyStr) -> AttestationVerification
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "fx_admitted_enrollment"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_an_enrollment_for_another_operator"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_enrolment_refuses_a_consumed_code"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_enrolment_refuses_an_attestation_over_another_key"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_enrolment_refuses_an_expired_code"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_enrolment_refuses_android_until_its_verifier_exists"),
+  ]
+{
   attestation_verification_from_implementation(key_id: "attest-1", public_key_point_b64url: "BATTEST", receipt_b64: "RECEIPT", environment: AppAttestProduction, client_data: client_data, refusal: none)
 }
 
-fn fx_admitted_enrollment() -> VerifiedDeviceEnrollment? {
+fn fx_admitted_enrollment() -> VerifiedDeviceEnrollment?
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "admit"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_redemption_refuses_a_revoked_enrollment_before_the_store"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_enrolment_admits_a_live_code_with_an_attestation_over_its_transcript"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_enrolment_readback_projects_the_stored_standing"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_enrolment_record_at_the_wrong_generation_is_unreadable"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_enrolment_record_round_trips_at_generation_two"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_enrolment_refuses_a_consumed_code"),
+  ]
+{
   match enrolment_admission(slot: fx_live_code, platform: MobileIos, decision_key: key_a, attestation: fx_attestation(client_data: enrolment_transcript(code: fx_code, decision_key: key_a, platform: MobileIos)), observed_at: fx_observed_at) {
     EnrolmentAdmitted { enrollment: e } => Present { value: e }
     EnrolmentRefused { cause: _ } => none
@@ -224,15 +248,52 @@ fn fx_good_input() -> DeviceRedemptionSigningInput {
   fx_signing_input(request_text: stored_request_json(r: fx_request()) as NonEmptyStr, expiry: fx_challenge_expiry, nonce: fx_nonce(), tag: fx_tag())
 }
 
-fn verdict(key: VerifyingKey, message: NonEmptyStr) -> SignatureVerification {
+fn verdict(key: VerifyingKey, message: NonEmptyStr) -> SignatureVerification
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "good_signature"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_capability_for_the_other_verb"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_challenge_not_issued_here"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_different_displayed_request"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_hex_tag_in_the_base64url_field"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_signature_over_other_bytes"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_signature_under_another_key"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_an_expired_challenge"),
+  ]
+{
   signature_verification_from_implementation(key: key, key_size: byte_size(count: 65), signature: sig, signature_size: byte_size(count: 64), message: message, implementation_verified: true)
 }
 
-fn assertion_over(key_id: NonEmptyStr, client_data: NonEmptyStr) -> AssertionVerification {
+fn assertion_over(key_id: NonEmptyStr, client_data: NonEmptyStr) -> AssertionVerification
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "good_assertion"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_capability_for_the_other_verb"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_challenge_not_issued_here"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_different_displayed_request"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_hex_tag_in_the_base64url_field"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_an_assertion_from_another_app_key"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_an_assertion_over_other_bytes"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_an_expired_challenge"),
+  ]
+{
   assertion_verification_from_implementation(key_id: key_id, public_key_point_b64url: "BATTEST", counter: 1, client_data: client_data, refusal: none)
 }
 
-fn admit(input: DeviceRedemptionSigningInput, signature: SignatureVerification, assertion: AssertionVerification) -> DeviceAdmission {
+fn admit(input: DeviceRedemptionSigningInput, signature: SignatureVerification, assertion: AssertionVerification) -> DeviceAdmission
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_admits_the_exact_signed_request"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_capability_for_the_other_verb"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_challenge_not_issued_here"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_different_displayed_request"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_hex_tag_in_the_base64url_field"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_refused_assertion"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_signature_over_other_bytes"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_signature_under_another_key"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_an_assertion_from_another_app_key"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_an_assertion_over_other_bytes"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_an_assertion_under_another_public_key"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_an_expired_challenge"),
+  ]
+{
   match fx_admitted_enrollment() {
     Absent => DeviceNotAdmitted { outcome: DeviceEnrollmentUnknown }
     Present { value: e } =>
@@ -240,11 +301,31 @@ fn admit(input: DeviceRedemptionSigningInput, signature: SignatureVerification, 
   }
 }
 
-fn good_signature() -> SignatureVerification {
+fn good_signature() -> SignatureVerification
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_admits_the_exact_signed_request"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_refused_assertion"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_an_assertion_from_another_app_key"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_an_assertion_over_other_bytes"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_an_assertion_under_another_public_key"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_an_enrollment_for_another_operator"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_redemption_refuses_a_revoked_enrollment_before_the_store"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_redemption_refuses_an_unknown_enrollment_before_the_store"),
+  ]
+{
   verdict(key: key_a, message: device_redemption_signing_input(i: fx_good_input()))
 }
 
-fn good_assertion() -> AssertionVerification {
+fn good_assertion() -> AssertionVerification
+  admit_callers: [
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_admits_the_exact_signed_request"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_signature_over_other_bytes"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_a_signature_under_another_key"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_admission_refuses_an_enrollment_for_another_operator"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_redemption_refuses_a_revoked_enrollment_before_the_store"),
+    decl_ref(module_path: "test.claim.approval_device_redemption_witness_test", decl_name: "witness_device_redemption_refuses_an_unknown_enrollment_before_the_store"),
+  ]
+{
   assertion_over(key_id: "attest-1", client_data: device_redemption_signing_input(i: fx_good_input()))
 }
 
