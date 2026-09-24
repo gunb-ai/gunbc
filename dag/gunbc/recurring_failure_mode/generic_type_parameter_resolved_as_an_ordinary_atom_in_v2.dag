@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.generic_type_parameter_resolved_as_an_ordinary_atom_in_v2
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data generic_type_parameter_resolved_as_an_ordinary_atom_in_v2: RecurringFailureMode = RecurringFailureMode {
+  identity: "generic_type_parameter_resolved_as_an_ordinary_atom_in_v2" as NonEmptyStr,
+  receipts: [
+    "**a generic fn's type parameter reaches v2 resolve with no binder, so `T` is looked up as an ordinary name** (INVALID STATE: in `fn f<T>(x: T) -> T`, v2.compiler.body_lowering_fold treats the `<T>` list as preserved metadata (body_lower_is_metadata_preserved_emitted names dag_surface_generic_params), and body_lower_fn_decl_to_arrow_admitted builds the Arrow as [domain, codomain, codomain, arrow_body_edge] with no type-parameter edge. v2.compiler.resolve scopes only VALUE parameters (add_arrow_domain_named_params over the domain's Named edges), so the `T` in the domain and codomain goes through resolve_atom's ordinary chain: lexical frame, then the symbol index, then namespace_has_canonical_symbol.)",
+    "HARM, derived from reading that chain and NOT YET OBSERVED BY EXECUTION: the declared type variable has no identity of its own at resolve. Where no declaration spells `T`, the module refuses resolve_reason_unbound_symbol, which is a true refusal for the wrong reason. Where the symbol index or the canonical-symbol set does answer `T`, the parameter binds to THAT declaration and the module is Accepted with a meaning the author did not write, which is silent wrongness. Infer then has no type variable to generalise or instantiate, because the Arrow carries none.",
+    "DISTINGUISHING FACTS. v1's TypeParameterInValuePosition wall (gunbc#12163) is a different class in a different compiler: it refuses a type parameter USED AS A VALUE in the seed, and it presupposes the type-parameter binder this row says v2 lacks. The recognition rule: a v2-resolved Arrow for a fn declaring `<T>` has no child naming `T` as a binder, and the resolved atom at `T`'s occurrence is either a refusal or a binding to some other declaration.",
+    "RECEIPT (2026-09-24, fierce-gull-556, gunbc#12210 review 70826). Found while lowering `p => body`. The direction chosen for an elided lambda parameter type is a fresh type parameter scoped to the lambda (`<T>(p: T) => body`), and reusing v2's generic-fn representation for it turned up that no such representation exists: grep finds no type-parameter or generic handling in 03_resolve, symbol_index_fill or 04_infer.",
+    "RUNG FOUND AT: unmeasured. By reading, the Accepted arm is outside the ladder (silent wrongness) and the refusal arm is a mis-reasoned mitigation. The first executing receipt should be a fixture pair: a generic fn whose `T` collides with a declared `T` elsewhere in the closure (this class predicts Accepted, bound to the wrong declaration), and one whose `T` collides with nothing (predicts unbound).",
+    "CEILING: structurally guaranteed. Whether a type-position atom refers to a type binder in scope is decidable once the binder is carried in the tree.",
+    "NEXT-RUNG TRIGGER, naming the capability: a v2 model of type-parameter binders. The Arrow carries its declared type parameters as binders; resolve scopes them for the domain, codomain and body under the same outer/inner discipline it applies to value parameters; infer reads them as type variables. The trigger is satisfied when a `T` in a generic fn resolves to its binder and the colliding fixture above stays bound to the binder rather than the other declaration. The same model is what elided lambda parameter types lower into (gunbc#12210).",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_fn_decl_to_arrow_admitted", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_is_metadata_preserved_emitted", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "add_arrow_domain_named_params", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "resolve_atom", field: WholeDeclaration },
+  ],
+}
