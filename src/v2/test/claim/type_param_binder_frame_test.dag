@@ -14,30 +14,32 @@ import v2.std.logic { Bool }
 import v2.compiler.emit_produced { emit_produced_decl }
 import v2.compiler.infer { infer }
 import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
-import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.rust { rust_target_model, rust_type_expression_projection }
+import v2.compiler.translate { translate_type_expression_project }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
 import v2.std.node {
   Arrow,
   ComputationNode,
   Conj,
+  Disj,
   Edge,
   Named,
   Node,
   Positional,
   Transform,
   TypeNode,
-  arrow_type_param_names,
   node_subtree_nodes,
   node_synthetic,
   well_formed
 }
 import v2.std.text { String }
+import v2.std.type_binder { type_param_names, type_params_marker }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUBJECT: the type-parameter frame of v2.compiler.resolve (resolve_arrow_node), fed by the
-// ^arrow_type_params_edge v2.compiler.body_lowering_fold lowers `<T>` onto (v2.std.node
-// arrow_type_param_names). BOUNDARY: source text in, assembled (normalized + resolved) program
+// type-parameter edge v2.compiler.body_lowering_fold lowers `<T>` onto (v2.std.type_binder
+// type_param_names). BOUNDARY: source text in, assembled (normalized + resolved) program
 // out through assemble_program_from_ingest -- the production route, not a supplied tree -- so
 // the grammar's lexeme stamp, the lowering and the frame are all executed by every row.
 //
@@ -105,7 +107,7 @@ fn tpb_type_param_rosters(o: Outcome<Node>) -> List<List<Symbol>> {
       fold(node_subtree_nodes(root: n), init: [], f: fn(acc, m) {
         match m.kind {
           TypeNode { connective: Arrow } =>
-            if count(arrow_type_param_names(n: m)) == 0 { acc } else { concat(acc, [arrow_type_param_names(n: m)]) }
+            if count(type_param_names(n: m)) == 0 { acc } else { concat(acc, [type_param_names(n: m)]) }
           _ => acc
         }
       })
@@ -219,7 +221,7 @@ test fn tpb_infer_admits_the_resolved_generic_fn() -> Bool {
 
 // THE APPLICATION ROWS SUPPLY THE CALLEE ARROW rather than lowering it, because infer judges an
 // argument against a formal only when the operator IS an Arrow; (1) above is the inhabitance
-// claim that the real producer emits exactly this ^arrow_type_params_edge shape.
+// claim that the real producer emits exactly this type-parameter edge shape.
 fn tpb_binder_edge(name: Symbol) -> Edge {
   Edge { label: Named { name: name }, target: dag_type_atom_node(identity: name) }
 }
@@ -232,7 +234,7 @@ fn tpb_generic_arrow(type_params: List<Symbol>, formals: List<Edge>) -> Node {
       Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
       Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
       Edge {
-        label: Named { name: ^arrow_type_params_edge },
+        label: Named { name: type_params_marker() },
         target: node_synthetic(
           kind: TypeNode { connective: Conj },
           children: fold(type_params, init: [], f: fn(acc, p) { concat(acc, [tpb_binder_edge(name: p)]) })
@@ -316,7 +318,7 @@ test fn tpb_undeclared_t_is_not_a_type_variable() -> Bool {
 }
 
 // (13) THE EMITTER REFUSES A GENERIC ARROW RATHER THAN DROPPING ITS TYPE PARAMETERS. The target
-// signature scaffold reads nothing off ^arrow_type_params_edge, so serializing it would emit a
+// signature scaffold reads nothing off the type-parameter edge, so serializing it would emit a
 // signature naming a type nothing introduced. The twin is the golden `add` fixture
 // (v2.test.emit.rust_produced_decl_emit emits it); the specimen is that same decl with one
 // type-parameter edge added, so the refusal is the edge's and not the specimen's.
@@ -329,7 +331,7 @@ fn tpb_with_type_param(decl: Node) -> Node {
         target: node_synthetic(
           kind: e.target.kind,
           children: concat(e.target.children, [Edge {
-            label: Named { name: ^arrow_type_params_edge },
+            label: Named { name: type_params_marker() },
             target: node_synthetic(kind: TypeNode { connective: Conj }, children: [tpb_binder_edge(name: ^T)])
           }])
         )
@@ -369,4 +371,131 @@ test fn tpb_emitter_refuses_a_generic_arrow() -> Bool {
       diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^translate_reason_generic_arrow_not_rendered)
   }
   twin_emits && generic_refused
+}
+
+// TYPE DECLARATIONS (trigger (1) of gunbc.recurring_failure_mode
+// generic_type_parameter_resolved_as_an_ordinary_atom_in_v2). The same binder concept rides on the
+// declaration's member (v2.compiler.body_lowering_fold body_lower_type_decl_member) and resolve opens
+// the same frame over it (v2.compiler.resolve resolve_children_homogeneous_scope).
+//
+// RED BEFORE THIS CHANGE, MEASURED on 263f4c00a1d with a locally built gunbc: the colliding coproduct
+// was ACCEPTED with `T` bound to `type T = Int` (silent wrongness) and the bare coproduct and bare
+// record REFUSED resolve_reason_unbound_symbol. Red there: (14) (15) (16) (17). Green there, kept as
+// regression controls: (18) (19).
+
+// The declared type-parameter names of every non-Arrow node in the resolved tree, in walk order:
+// on a type declaration, the member that carries them.
+fn tpb_member_type_param_rosters(o: Outcome<Node>) -> List<List<Symbol>> {
+  match o {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: n, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: n), init: [], f: fn(acc, m) {
+        match m.kind {
+          TypeNode { connective: Arrow } => acc
+          _ => if count(type_param_names(n: m)) == 0 { acc } else { concat(acc, [type_param_names(n: m)]) }
+        }
+      })
+  }
+}
+
+fn tpb_type_decl_coproduct() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype Box<T> = Full { value: T } | Empty\n")
+}
+
+fn tpb_type_decl_coproduct_colliding() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype T = Int\n\ntype Box<T> = Full { value: T } | Empty\n")
+}
+
+fn tpb_type_decl_record() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype R<T> { f: T }\n")
+}
+
+fn tpb_type_decl_record_two() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype Pair<A, B> { left: A, right: B }\n")
+}
+
+fn tpb_type_decl_leak() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype Box<T> = Full { value: T } | Empty\n\ntype S { g: T }\n")
+}
+
+fn tpb_type_decl_non_generic() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype B = Full { value: Int } | Empty\n")
+}
+
+// (14) A coproduct's `T` binds to its declaration's binder, carried on the member.
+test fn tpb_type_decl_coproduct_param_binds_to_its_binder() -> Bool {
+  tpb_accepts(o: tpb_type_decl_coproduct())
+    && tpb_member_type_param_rosters(o: tpb_type_decl_coproduct()) == [[^T]]
+}
+
+// (15) NO SHADOWING, for type declarations as for fns: `type Box<T>` beside `type T = Int` refuses at
+// the binder rather than binding `T` to that type. RED BEFORE: Accepted, `T` bound to `type T = Int`.
+test fn tpb_type_decl_param_shadowing_a_visible_name_refuses() -> Bool {
+  tpb_refuses_with(o: tpb_type_decl_coproduct_colliding(), reason: ^resolve_reason_type_parameter_shadows_visible_name)
+}
+
+// (16) A record keeps its `<T>`: the rehome carries the binder instead of dropping it.
+test fn tpb_type_decl_record_keeps_its_type_params() -> Bool {
+  tpb_accepts(o: tpb_type_decl_record())
+    && tpb_member_type_param_rosters(o: tpb_type_decl_record()) == [[^T]]
+}
+
+// (17) Every declared parameter of a type declaration is a binder, in declaration order.
+test fn tpb_type_decl_every_param_is_a_binder() -> Bool {
+  tpb_accepts(o: tpb_type_decl_record_two())
+    && tpb_member_type_param_rosters(o: tpb_type_decl_record_two()) == [[^A, ^B]]
+}
+
+// (18) A type declaration's `T` does not leak to a sibling declaration. Green before VACUOUSLY (Box
+// refused too), so it discriminates only beside (14).
+test fn tpb_type_decl_param_does_not_leak_to_a_sibling() -> Bool {
+  tpb_refuses_with(o: tpb_type_decl_leak(), reason: ^resolve_reason_unbound_symbol)
+}
+
+// (19) A type declaration declaring no parameters carries no binder edge.
+test fn tpb_non_generic_type_decl_carries_no_type_params() -> Bool {
+  tpb_accepts(o: tpb_type_decl_non_generic())
+    && tpb_member_type_param_rosters(o: tpb_type_decl_non_generic()) == []
+}
+
+// (20) THE TYPE-EXPRESSION TRANSLATOR REFUSES A GENERIC TYPE DECLARATION'S MEMBER rather than
+// rendering its binder edge as a variant named `<type-parameters>` (v2.compiler.translate
+// translate_algebra_finalize). The twin is the same Disj without the edge, so the refusal is the
+// edge's. Both outcomes are nullary producers enrolled in v2.workflow.floor_pure_producer_share,
+// for the cost reason (13)'s are. (14) is the inhabitance claim that the real lowering puts exactly
+// this edge on exactly this member.
+fn tpb_box_member(with_params: Bool) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Disj },
+    children: concat(
+      [
+        Edge {
+          label: Named { name: ^Full },
+          target: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+        },
+        Edge { label: Named { name: ^Empty }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
+      ],
+      if with_params {
+        [Edge {
+          label: Named { name: type_params_marker() },
+          target: node_synthetic(kind: TypeNode { connective: Conj }, children: [tpb_binder_edge(name: ^T)])
+        }]
+      } else {
+        []
+      }
+    )
+  )
+}
+
+fn tpb_type_decl_emit_twin() -> Outcome<Node> {
+  translate_type_expression_project(node: tpb_box_member(with_params: false), target: rust_target_model(), projection: rust_type_expression_projection())
+}
+
+fn tpb_type_decl_emit_generic() -> Outcome<Node> {
+  translate_type_expression_project(node: tpb_box_member(with_params: true), target: rust_target_model(), projection: rust_type_expression_projection())
+}
+
+test fn tpb_translator_refuses_a_generic_type_decl_member() -> Bool {
+  tpb_accepts(o: tpb_type_decl_emit_twin())
+    && tpb_refuses_with(o: tpb_type_decl_emit_generic(), reason: ^translate_reason_generic_type_decl_not_rendered)
 }

@@ -1,0 +1,102 @@
+module v2.std.type_binder
+
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Conj,
+  Disj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  node_subtree_nodes,
+  type_binder_conj_conforms
+}
+
+// THE EDGE THAT CARRIES A DECLARATION'S TYPE PARAMETERS. One label for one concept: `fn f<T>` carries
+// its binder Conj on its Arrow under this label, and `type Box<T>` / `type R<T> { .. }` carry theirs on
+// the declaration's member (the coproduct's Disj, the record's Conj) under the same label.
+//
+// THE LABEL IS UNAUTHORABLE, NOT MERELY REFUSED. A type declaration's member is a Conj whose Named
+// edges are the author's field identifiers, or a Disj whose Named edges are the author's variant
+// identifiers, so a binder edge labeled with any identifier could collide with a field or variant of
+// that spelling. This lexeme is not an identifier in the dag grammar -- the precedent is
+// v2.std.qualified_name declaration_reference_marker -- so no authored field, variant, binder or name
+// can carry it, and only type_params_edge below writes it. The shape of the Conj it targets is
+// v2.std.node's (type_binder_conj_conforms).
+fn type_params_marker() -> Symbol {
+  symbol_intern_lexeme(lexeme: "<type-parameters>")
+}
+
+fn edge_is_type_params(e: Edge) -> Bool {
+  match e.label {
+    Named { name: sym } => sym == type_params_marker()
+    Positional => false
+  }
+}
+
+// THE ONE PRODUCER of the edge (consumed by v2.compiler.body_lowering_fold).
+fn type_params_edge(conj: Node) -> Edge {
+  Edge { label: Named { name: type_params_marker() }, target: conj }
+}
+
+// The declared type-parameter names a node carries, in declaration order; empty when it carries none.
+// A node carrying two marker edges is malformed (type_binder_labels_conform) and answers empty here.
+fn type_param_names(n: Node) -> List<Symbol> {
+  let carried = fold(n.children, init: [], f: fn(acc, e) {
+    if edge_is_type_params(e: e) { concat(acc, [e.target]) } else { acc }
+  })
+  if count(carried) == 1 {
+    fold(carried, init: [], f: fn(acc, t) { concat(acc, binder_conj_names(conj: t)) })
+  } else {
+    []
+  }
+}
+
+fn binder_conj_names(conj: Node) -> List<Symbol> {
+  fold(conj.children, init: [], f: fn(acc, e) {
+    match e.label {
+      Named { name: sym } => concat(acc, [sym])
+      Positional => acc
+    }
+  })
+}
+
+// WHERE THE MARKER MAY STAND, stated over the whole tree. A marker edge sits only on an Arrow (a fn's
+// signature) or on a Conj/Disj (a type declaration's member), at most once per node, and targets a
+// well-formed binder Conj; and an Arrow's non-body Named edge -- which v2.std.node admits by SHAPE --
+// is the marker. v2.compiler.resolve checks this beside v2.std.node well_formed, so the label half of
+// the binder wall is enforced on the same tree at the same point as its shape half.
+fn type_binder_node_conforms(n: Node) -> Bool {
+  let markers = fold(n.children, init: 0, f: fn(acc, e) { if edge_is_type_params(e: e) { acc + 1 } else { acc } })
+  let markers_ok = (markers == 0) || ((markers == 1) && marker_targets_conform(n: n))
+  match n.kind {
+    TypeNode { connective: Arrow } =>
+      markers_ok && arrow_named_labels_conform(n: n)
+    TypeNode { connective: Conj } => markers_ok
+    TypeNode { connective: Disj } => markers_ok
+    _ => markers == 0
+  }
+}
+
+fn marker_targets_conform(n: Node) -> Bool {
+  fold(n.children, init: true, f: fn(acc, e) {
+    acc && (!edge_is_type_params(e: e) || type_binder_conj_conforms(t: e.target))
+  })
+}
+
+fn arrow_named_labels_conform(n: Node) -> Bool {
+  fold(n.children, init: true, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      Named { name: sym } => acc && ((sym == ^arrow_body_edge) || (sym == type_params_marker()))
+    }
+  })
+}
+
+fn type_binder_labels_conform(root: Node) -> Bool {
+  fold(node_subtree_nodes(root: root), init: true, f: fn(acc, n) { acc && type_binder_node_conforms(n: n) })
+}

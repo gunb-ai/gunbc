@@ -48,6 +48,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v2.compiler.parse { parse_tree_projection_edge }
+import v2.std.type_binder { edge_is_type_params }
 
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -86,6 +87,10 @@ fn symbol_index_fill_containment_edge(
           path: path,
           node: edge.target
         )
+      } else if edge_is_type_params(e: edge) {
+        // A type declaration's binders (v2.std.type_binder) are its frame, not its members: `T` is
+        // scoped by v2.compiler.resolve over the declaration, never a declared identity `R.T`.
+        index
       } else {
         let child_path = qualified_name_snoc(qn: path, segment: sym)
         let with_binding = symbol_index_insert(
@@ -140,6 +145,7 @@ fn symbol_index_fill_containment_node(
       fold(node.children, init: index, f: fn(acc, edge) {
         match edge.label {
           Named { name: sym } =>
+            if edge_is_type_params(e: edge) { acc } else {
             let variant_path = qualified_name_snoc(qn: path, segment: sym)
             let with_variant = symbol_index_mark_declared_payload(
               index: symbol_index_insert(
@@ -155,6 +161,7 @@ fn symbol_index_fill_containment_node(
               path: variant_path,
               node: edge.target
             )
+            }
           Positional => acc
         }
       })
@@ -195,11 +202,15 @@ fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
           fold(n.children, init: counts, f: fn(c, e) {
             match e.label {
               Named { name: sym } =>
-                map_insert(
-                  m: c,
-                  key: sym,
-                  value: disj_variant_count_of(counts: c, sym: sym) + 1
-                )
+                if edge_is_type_params(e: e) {
+                  c
+                } else {
+                  map_insert(
+                    m: c,
+                    key: sym,
+                    value: disj_variant_count_of(counts: c, sym: sym) + 1
+                  )
+                }
               Positional => c
             }
           })
