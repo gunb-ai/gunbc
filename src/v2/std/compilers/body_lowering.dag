@@ -302,11 +302,12 @@ fn application_refused(reason: Symbol, at: Node) -> ApplicationRead {
   ApplicationRefused { diagnostics: diagnostics_singleton(d: body_lowering_diagnostic(reason: reason, n: at)) }
 }
 
-// THE ONE BASE READ, shared by application_read and its skeleton refinement
-// (v2.std.fn_index skeleton_application_read). It decides everything about the application except
-// what a residue OPERAND means: that depends on the route the Node came from, so a residue operand
-// is marked here rather than refused, and each reader above this one decides. Every other defect --
-// a named edge, a missing or non-callee head, a residue head -- refuses here, for every route.
+// THE ONE BASE READ under application_read. It decides everything about an application except
+// whether its OPERANDS are whole: a residue operand is marked here rather than refused. That split
+// exists for the readers whose question is the head alone -- the determinism and machine_shape
+// gates and the no_dual_representation scan -- so an operand they never read cannot decide their
+// answer; application_read refuses the first residue operand. Every other defect -- a named edge,
+// a missing or non-callee head, a residue head -- refuses here.
 type OperandSlot
   = WholeOperand { node: Node }
   | ResidueOperand { node: Node }
