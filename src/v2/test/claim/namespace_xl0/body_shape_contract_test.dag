@@ -9,17 +9,25 @@ import v2.extdeps.languages.dag { dag_lex }
 import v2.std.algebra { list_append }
 import v2.std.collection { List, list_at_optional }
 import v2.std.compilers.body_lowering {
+  AtomHead,
+  ArrowHead,
   BindView,
   BranchView,
+  Call,
+  CallRefused,
   CallView,
   MatchArmView,
   MatchView,
+  NotCall,
+  NotOperator,
+  Operator,
+  OperatorRefused,
   OperatorView,
   bind_view,
   branch_view,
-  call_view,
+  call_read,
   match_view,
-  operator_view
+  operator_read
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.integer { Int }
@@ -148,16 +156,25 @@ fn operand_is(xs: List<Node>, index: Int, id: Symbol) -> Bool {
 }
 
 fn as_call(n: Node) -> Optional<CallView> {
-  match call_view(site: n, operators: list_append(left: body_lower_binary_operators, right: body_lower_prefix_operators)) {
-    Accepted { value: v, diagnostics: _ } => Present { value: v }
-    Rejected { diagnostics: _ } => Absent
+  match call_read(site: n, operators: list_append(left: body_lower_binary_operators, right: body_lower_prefix_operators)) {
+    Call { view: v } => Present { value: v }
+    NotCall => Absent
+    CallRefused { diagnostics: _ } => Absent
   }
 }
 
 fn as_operator(n: Node) -> Optional<OperatorView> {
-  match operator_view(site: n, binary_operators: body_lower_binary_operators, prefix_operators: body_lower_prefix_operators) {
-    Accepted { value: v, diagnostics: _ } => Present { value: v }
-    Rejected { diagnostics: _ } => Absent
+  match operator_read(site: n, binary_operators: body_lower_binary_operators, prefix_operators: body_lower_prefix_operators) {
+    Operator { view: v } => Present { value: v }
+    NotOperator => Absent
+    OperatorRefused { diagnostics: _ } => Absent
+  }
+}
+
+fn callee_is(c: CallView, id: Symbol) -> Bool {
+  match c.callee_identity {
+    AtomHead { identity: s } => s == id
+    ArrowHead => false
   }
 }
 
@@ -166,7 +183,7 @@ fn is_leaf_of(n: Node, arg: Symbol) -> Bool {
   match as_call(n: n) {
     Absent => false
     Present { value: c } =>
-      (c.callee_identity == ^leaf) && (count(c.arguments) == 1) && operand_is(xs: c.arguments, index: 0, id: arg)
+      callee_is(c: c, id: ^leaf) && (count(c.arguments) == 1) && operand_is(xs: c.arguments, index: 0, id: arg)
   }
 }
 
@@ -278,8 +295,9 @@ test fn body_shape_branch_is_condition_then_else_holds() -> Bool {
   }
 }
 
-// REFUSAL CONTROLS OVER THE SAME REAL TREE: each view refuses a body of another behavior, so the
-// greens above are admissions and not a view that accepts anything.
+// CONTROLS OVER THE SAME REAL TREE: an operator is NotCall and a match is NotOperator -- the honest
+// "not this" arms, distinct from a refusal -- and the Outcome views refuse a body of another
+// behavior, so the greens above are admissions and not a view that accepts anything.
 test fn body_shape_views_refuse_the_wrong_shape_holds() -> Bool {
   match body_of(name: ^mq_match) {
     Absent => false
@@ -287,12 +305,12 @@ test fn body_shape_views_refuse_the_wrong_shape_holds() -> Bool {
       match body_of(name: ^mq_infix) {
         Absent => false
         Present { value: op } =>
-          let call_refuses_operator = match as_call(n: op) { Absent => true  Present { value: _ } => false }
-          let operator_refuses_match = match as_operator(n: m) { Absent => true  Present { value: _ } => false }
+          let call_is_not_operator = match call_read(site: op, operators: list_append(left: body_lower_binary_operators, right: body_lower_prefix_operators)) { NotCall => true  Call { view: _ } => false  CallRefused { diagnostics: _ } => false }
+          let operator_is_not_match = match operator_read(site: m, binary_operators: body_lower_binary_operators, prefix_operators: body_lower_prefix_operators) { NotOperator => true  Operator { view: _ } => false  OperatorRefused { diagnostics: _ } => false }
           let match_refuses_operator = match match_view(site: op) { Rejected { diagnostics: _ } => true  Accepted { value: _, diagnostics: _ } => false }
           let bind_refuses_match = match bind_view(site: m) { Rejected { diagnostics: _ } => true  Accepted { value: _, diagnostics: _ } => false }
           let branch_refuses_match = match branch_view(site: m) { Rejected { diagnostics: _ } => true  Accepted { value: _, diagnostics: _ } => false }
-          call_refuses_operator && operator_refuses_match && match_refuses_operator && bind_refuses_match && branch_refuses_match
+          call_is_not_operator && operator_is_not_match && match_refuses_operator && bind_refuses_match && branch_refuses_match
       }
   }
 }
