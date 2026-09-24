@@ -14,8 +14,7 @@ pub use crate::extdeps_languages_rust_emit::HigherOrderMethodSpec;
 pub use crate::extdeps_languages_rust_emit::{
     fresh_rust_value_binding_name, rt_bridge_function_names, rt_functions, rt_ref_map_functions,
     rt_wraps_result, rust_container_templates, rust_higher_order_methods, rust_method_templates,
-    rust_method_wraps_result, rust_refusing_int_negation_helper, rust_refusing_int_operator_helper,
-    rust_refusing_int_target_type, rust_serde_rename_all_screaming_snake_case,
+    rust_method_wraps_result, rust_serde_rename_all_screaming_snake_case,
     rust_serde_rename_all_snake_case, rust_trait_derive_attr_from_traits,
     rust_value_binding_candidate,
 };
@@ -298,7 +297,7 @@ use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemTypeDeclaration, ModuleItemUnrecognized, NotAModuleItem,
 };
 use crate::v1_std_core::StringPart::{Interpolation, Text};
-use crate::v1_std_core::UnaryOpKind::Neg;
+use crate::v1_std_core::UnaryOpKind::*;
 use crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition;
 use crate::v1_std_core::VarBindingKind::{
     FunctionValueBinding, LocalValueBinding, MatchBoundBinding, VariantValueBinding,
@@ -326,7 +325,7 @@ pub use crate::v1_std_core::{
     transport_env, transport_has_auth, transport_headers, transport_method,
     transport_path_template, transport_query, transport_request_body, transport_response_format,
     transport_stdin, transport_tls_posture, tuple_type_name, type_reference_provenance,
-    unaryop_operand, with_required_cardinality,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
@@ -3745,10 +3744,7 @@ pub fn value_ref_qualifier_prefix(name: String) -> String {
             v1_rt::substring(
                 &name,
                 0,
-                v1_rt::int_sub(
-                    v1_rt::int_sub(v1_rt::string_length(&name), v1_rt::string_length(&leaf)),
-                    1,
-                ),
+                ((v1_rt::string_length(&name) - v1_rt::string_length(&leaf)) - 1),
             )
         }
     }
@@ -3811,10 +3807,7 @@ pub fn rust_read_rendered_type_ident(type_str: String, start: i64) -> String {
                 } else {
                     v1_rt::concat(
                         c.clone(),
-                        rust_read_rendered_type_ident(
-                            type_str.clone(),
-                            v1_rt::int_add(start.clone(), 1),
-                        ),
+                        rust_read_rendered_type_ident(type_str.clone(), (start.clone() + 1)),
                     )
                 }
             }
@@ -3854,10 +3847,8 @@ pub fn rust_fold_rendered_type_has_spurious_from_pos(
         } else {
             match string_index_of_from(type_str.clone(), "<".to_string(), search_from.clone()) {
                 Some(lt_pos) => {
-                    let atom = rust_read_rendered_type_ident(
-                        type_str.clone(),
-                        v1_rt::int_add(lt_pos.clone(), 1),
-                    );
+                    let atom =
+                        rust_read_rendered_type_ident(type_str.clone(), (lt_pos.clone() + 1));
                     if ((((atom.clone().len() as i64) == 1)
                         && rust_is_uppercase_letter(atom.clone()))
                         && rust_fold_rendered_type_has_spurious_generic_atom(
@@ -3869,7 +3860,7 @@ pub fn rust_fold_rendered_type_has_spurious_from_pos(
                     } else {
                         {
                             let __tco_0 = type_str;
-                            let __tco_1 = v1_rt::int_add(lt_pos.clone(), 1);
+                            let __tco_1 = (lt_pos.clone() + 1);
                             let __tco_2 = generic_param_names;
                             __tco_loop_type_str = __tco_0;
                             __tco_loop_search_from = __tco_1;
@@ -4740,7 +4731,7 @@ pub fn resolve_wire_serde_policy_for_coproduct_seen(
                                                                 alias_name.clone(),
                                                                 true,
                                                             );
-                                                            let __tco_4 = v1_rt::int_sub(fuel, 1);
+                                                            let __tco_4 = (fuel - 1);
                                                             __tco_loop_wire_contract_item = __tco_0;
                                                             __tco_loop_source_indices = __tco_1;
                                                             __tco_loop_data_items = __tco_2;
@@ -4767,7 +4758,7 @@ pub fn resolve_wire_serde_policy_for_coproduct_seen(
 let __tco_1 = source_indices;
 let __tco_2 = data_items;
 let __tco_3 = v1_rt::rc_map_insert(seen_aliases, alias_name.clone(), true);
-let __tco_4 = v1_rt::int_sub(fuel, 1);
+let __tco_4 = (fuel - 1);
 __tco_loop_wire_contract_item = __tco_0;
 __tco_loop_source_indices = __tco_1;
 __tco_loop_data_items = __tco_2;
@@ -4803,7 +4794,7 @@ continue;
                                                     let __tco_1 = source_indices;
                                                     let __tco_2 = data_items;
                                                     let __tco_3 = seen_aliases;
-                                                    let __tco_4 = v1_rt::int_sub(fuel, 1);
+                                                    let __tco_4 = (fuel - 1);
                                                     __tco_loop_wire_contract_item = __tco_0;
                                                     __tco_loop_source_indices = __tco_1;
                                                     __tco_loop_data_items = __tco_2;
@@ -7482,7 +7473,7 @@ pub fn lib_rs_mod_name_from_path(path: String) -> String {
         v1_rt::substring(
             &path,
             src_prefix_len.clone(),
-            v1_rt::int_sub(path_len.clone(), ext_len.clone()),
+            (path_len.clone() - ext_len.clone()),
         )
     }
 }
@@ -9423,7 +9414,7 @@ pub fn rust_code_outside_string_literals(s: String) -> String {
             .iter()
             .cloned()
             {
-                if (v1_rt::int_rem(pair.0.clone(), 2) == 0) {
+                if ((pair.0.clone() % 2) == 0) {
                     __result.push(pair);
                 }
             }
@@ -9863,8 +9854,8 @@ pub fn reference_derived_census(
             ReferenceDerivedCandidateDisposition::CandidateSurvived {
                 provider_module: _, ..
             } => ReferenceDerivedCensus {
-                candidates: v1_rt::int_add(acc.candidates.clone(), 1),
-                survived: v1_rt::int_add(acc.survived.clone(), 1),
+                candidates: (acc.candidates.clone() + 1),
+                survived: (acc.survived.clone() + 1),
                 own_module: acc.own_module.clone(),
                 variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
                 variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
@@ -9873,9 +9864,9 @@ pub fn reference_derived_census(
                 export_proof_failed: acc.export_proof_failed.clone(),
             },
             ReferenceDerivedCandidateDisposition::CandidateOwnModule => ReferenceDerivedCensus {
-                candidates: v1_rt::int_add(acc.candidates.clone(), 1),
+                candidates: (acc.candidates.clone() + 1),
                 survived: acc.survived.clone(),
-                own_module: v1_rt::int_add(acc.own_module.clone(), 1),
+                own_module: (acc.own_module.clone() + 1),
                 variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
                 variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
                 registry_absent: acc.registry_absent.clone(),
@@ -9886,13 +9877,10 @@ pub fn reference_derived_census(
                 parent_enum: _,
                 ..
             } => ReferenceDerivedCensus {
-                candidates: v1_rt::int_add(acc.candidates.clone(), 1),
+                candidates: (acc.candidates.clone() + 1),
                 survived: acc.survived.clone(),
                 own_module: acc.own_module.clone(),
-                variant_delegated_to_parent: v1_rt::int_add(
-                    acc.variant_delegated_to_parent.clone(),
-                    1,
-                ),
+                variant_delegated_to_parent: (acc.variant_delegated_to_parent.clone() + 1),
                 variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
                 registry_absent: acc.registry_absent.clone(),
                 leaf_ambiguous: acc.leaf_ambiguous.clone(),
@@ -9900,14 +9888,11 @@ pub fn reference_derived_census(
             },
             ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved => {
                 ReferenceDerivedCensus {
-                    candidates: v1_rt::int_add(acc.candidates.clone(), 1),
+                    candidates: (acc.candidates.clone() + 1),
                     survived: acc.survived.clone(),
                     own_module: acc.own_module.clone(),
                     variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
-                    variant_parent_unresolved: v1_rt::int_add(
-                        acc.variant_parent_unresolved.clone(),
-                        1,
-                    ),
+                    variant_parent_unresolved: (acc.variant_parent_unresolved.clone() + 1),
                     registry_absent: acc.registry_absent.clone(),
                     leaf_ambiguous: acc.leaf_ambiguous.clone(),
                     export_proof_failed: acc.export_proof_failed.clone(),
@@ -9915,25 +9900,25 @@ pub fn reference_derived_census(
             }
             ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
                 ReferenceDerivedCensus {
-                    candidates: v1_rt::int_add(acc.candidates.clone(), 1),
+                    candidates: (acc.candidates.clone() + 1),
                     survived: acc.survived.clone(),
                     own_module: acc.own_module.clone(),
                     variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
                     variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
-                    registry_absent: v1_rt::int_add(acc.registry_absent.clone(), 1),
+                    registry_absent: (acc.registry_absent.clone() + 1),
                     leaf_ambiguous: acc.leaf_ambiguous.clone(),
                     export_proof_failed: acc.export_proof_failed.clone(),
                 }
             }
             ReferenceDerivedCandidateDisposition::CandidateLeafAmbiguous => {
                 ReferenceDerivedCensus {
-                    candidates: v1_rt::int_add(acc.candidates.clone(), 1),
+                    candidates: (acc.candidates.clone() + 1),
                     survived: acc.survived.clone(),
                     own_module: acc.own_module.clone(),
                     variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
                     variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
                     registry_absent: acc.registry_absent.clone(),
-                    leaf_ambiguous: v1_rt::int_add(acc.leaf_ambiguous.clone(), 1),
+                    leaf_ambiguous: (acc.leaf_ambiguous.clone() + 1),
                     export_proof_failed: acc.export_proof_failed.clone(),
                 }
             }
@@ -9941,14 +9926,14 @@ pub fn reference_derived_census(
                 provider_module: _,
                 ..
             } => ReferenceDerivedCensus {
-                candidates: v1_rt::int_add(acc.candidates.clone(), 1),
+                candidates: (acc.candidates.clone() + 1),
                 survived: acc.survived.clone(),
                 own_module: acc.own_module.clone(),
                 variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
                 variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
                 registry_absent: acc.registry_absent.clone(),
                 leaf_ambiguous: acc.leaf_ambiguous.clone(),
-                export_proof_failed: v1_rt::int_add(acc.export_proof_failed.clone(), 1),
+                export_proof_failed: (acc.export_proof_failed.clone() + 1),
             },
         },
     )
@@ -10467,9 +10452,7 @@ pub fn qualified_type_reference_rows(
                                     .clone()
                                     .iter()
                                     .cloned()
-                                    .take(
-                                        v1_rt::int_sub((segments.clone().len() as i64), 1) as usize
-                                    )
+                                    .take(((segments.clone().len() as i64) - 1) as usize)
                                     .collect::<Vec<_>>(),
                             )
                             .join(&".".to_string());
@@ -14671,7 +14654,7 @@ pub fn rust_pub_use_module_name(line: String) -> String {
                                     .iter()
                                     .cloned()
                                     .fold((0, "".to_string()), |acc: (i64, String), seg: String| {
-                                        if (acc.0.clone() < v1_rt::int_sub(seg_count.clone(), 1)) {
+                                        if (acc.0.clone() < (seg_count.clone() - 1)) {
                                             {
                                                 let next = if (acc.1.clone() == "".to_string()) {
                                                     seg.clone()
@@ -14684,7 +14667,7 @@ pub fn rust_pub_use_module_name(line: String) -> String {
                                                         seg.clone(),
                                                     )
                                                 };
-                                                (v1_rt::int_add(acc.0.clone(), 1), next.clone())
+                                                ((acc.0.clone() + 1), next.clone())
                                             }
                                         } else {
                                             acc.clone()
@@ -17799,14 +17782,14 @@ pub fn string_without_suffix(value: String, suffix: String) -> Option<String> {
         if ((v1_rt::string_length(&value) >= v1_rt::string_length(&suffix))
             && (v1_rt::substring(
                 &value,
-                v1_rt::int_sub(v1_rt::string_length(&value), v1_rt::string_length(&suffix)),
+                (v1_rt::string_length(&value) - v1_rt::string_length(&suffix)),
                 v1_rt::string_length(&value),
             ) == suffix.clone()))
         {
             Some(v1_rt::substring(
                 &value,
                 0,
-                v1_rt::int_sub(v1_rt::string_length(&value), v1_rt::string_length(&suffix)),
+                (v1_rt::string_length(&value) - v1_rt::string_length(&suffix)),
             ))
         } else {
             std::option::Option::None
@@ -17826,15 +17809,13 @@ pub fn string_index_of_from(
         let mut needle = __tco_loop_needle;
         #[allow(unused_mut)]
         let mut pos = __tco_loop_pos;
-        if (v1_rt::int_add(pos.clone(), v1_rt::string_length(&needle))
-            > v1_rt::string_length(&haystack))
-        {
+        if ((pos.clone() + v1_rt::string_length(&needle)) > v1_rt::string_length(&haystack)) {
             break std::option::Option::None;
         } else {
             if (v1_rt::substring(
                 &haystack,
                 pos.clone(),
-                v1_rt::int_add(pos.clone(), v1_rt::string_length(&needle)),
+                (pos.clone() + v1_rt::string_length(&needle)),
             ) == needle.clone())
             {
                 break Some(pos.clone());
@@ -17842,7 +17823,7 @@ pub fn string_index_of_from(
                 {
                     let __tco_0 = haystack;
                     let __tco_1 = needle;
-                    let __tco_2 = v1_rt::int_add(pos, 1);
+                    let __tco_2 = (pos + 1);
                     __tco_loop_haystack = __tco_0;
                     __tco_loop_needle = __tco_1;
                     __tco_loop_pos = __tco_2;
@@ -17923,7 +17904,7 @@ pub fn policy_serde_tag_field(policy: Rc<RustEnumWireSerde>) -> Option<String> {
         let needle = "tag = \"".to_string();
         match string_index_of(policy.enum_attr.clone(), needle.clone()) {
             Some(start) => {
-                let after = v1_rt::int_add(start.clone(), v1_rt::string_length(&needle));
+                let after = (start.clone() + v1_rt::string_length(&needle));
                 match string_index_of_from(
                     policy.enum_attr.clone(),
                     "\"".to_string(),
@@ -19286,7 +19267,7 @@ pub fn emit_fn_def(
                     value_params.clone(),
                     registry.clone(),
                     body_scope.clone(),
-                    v1_rt::int_add(depth.clone(), 1),
+                    (depth.clone() + 1),
                     shared_types.clone(),
                     body_emit_info.clone(),
                 );
@@ -19325,10 +19306,7 @@ pub fn emit_fn_def(
                                 ),
                                 " {\n".to_string(),
                             ),
-                            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                                depth.clone(),
-                                1,
-                            )),
+                            crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
                         ),
                         body_str.clone(),
                     ),
@@ -19609,7 +19587,7 @@ pub fn emit_rust_unit_discarding_stmt(
                     t.clone(),
                     registry.clone(),
                     scope.clone(),
-                    v1_rt::int_add(depth.clone(), 1),
+                    (depth.clone() + 1),
                     shared_types.clone(),
                     emit_info.clone(),
                 );
@@ -19619,7 +19597,7 @@ pub fn emit_rust_unit_discarding_stmt(
                             eb.clone(),
                             registry.clone(),
                             scope.clone(),
-                            v1_rt::int_add(depth.clone(), 1),
+                            (depth.clone() + 1),
                             shared_types.clone(),
                             emit_info.clone(),
                         );
@@ -19637,7 +19615,7 @@ pub fn emit_rust_unit_discarding_stmt(
                                                     " {\n".to_string(),
                                                 ),
                                                 crate::v1_compiler_emit_core_support::make_indent(
-                                                    v1_rt::int_add(depth.clone(), 1),
+                                                    (depth.clone() + 1),
                                                 ),
                                             ),
                                             then_str.clone(),
@@ -19645,7 +19623,7 @@ pub fn emit_rust_unit_discarding_stmt(
                                         "\n} else {\n".to_string(),
                                     ),
                                     crate::v1_compiler_emit_core_support::make_indent(
-                                        v1_rt::int_add(depth.clone(), 1),
+                                        (depth.clone() + 1),
                                     ),
                                 ),
                                 else_str.clone(),
@@ -19660,10 +19638,9 @@ pub fn emit_rust_unit_discarding_stmt(
                                     v1_rt::concat("if ".to_string(), cond_str.clone()),
                                     " {\n".to_string(),
                                 ),
-                                crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                                    depth.clone(),
-                                    1,
-                                )),
+                                crate::v1_compiler_emit_core_support::make_indent(
+                                    (depth.clone() + 1),
+                                ),
                             ),
                             then_str.clone(),
                         ),
@@ -19775,12 +19752,12 @@ pub fn emit_fn_def_non_tco(
                 return_is_unit.clone(),
                 registry.clone(),
                 scope.clone(),
-                v1_rt::int_add(depth.clone(), 2),
+                (depth.clone() + 2),
                 shared_types.clone(),
                 emit_info.clone(),
             );
             let kw = rust_items().func_keyword.clone();
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), kw.clone()), " ".to_string()), crate::v1_compiler_emit::emit_ident(name.clone(), RenderTarget::Rust)), type_params_str.clone()), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), " {\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 2))), body_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "})\n}".to_string())
+            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), kw.clone()), " ".to_string()), crate::v1_compiler_emit::emit_ident(name.clone(), RenderTarget::Rust)), type_params_str.clone()), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), " {\n".to_string()), crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1))), "stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {\n".to_string()), crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 2))), body_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1))), "})\n}".to_string())
         }
     } else {
         {
@@ -19789,7 +19766,7 @@ pub fn emit_fn_def_non_tco(
                 return_is_unit.clone(),
                 registry.clone(),
                 scope.clone(),
-                v1_rt::int_add(depth.clone(), 1),
+                (depth.clone() + 1),
                 shared_types.clone(),
                 emit_info.clone(),
             );
@@ -19828,10 +19805,7 @@ pub fn emit_fn_def_non_tco(
                             ),
                             " {\n".to_string(),
                         ),
-                        crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                            depth.clone(),
-                            1,
-                        )),
+                        crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
                     ),
                     body_str.clone(),
                 ),
@@ -19905,7 +19879,7 @@ pub fn emit_func_def(
             body.clone(),
             registry.clone(),
             body_scope.clone(),
-            v1_rt::int_add(depth.clone(), 1),
+            (depth.clone() + 1),
             shared_types.clone(),
             emit_info.clone(),
         );
@@ -19944,10 +19918,7 @@ pub fn emit_func_def(
                         ),
                         " {\n".to_string(),
                     ),
-                    crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                        depth.clone(),
-                        1,
-                    )),
+                    crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
                 ),
                 body_str.clone(),
             ),
@@ -20142,7 +20113,7 @@ pub fn emit_tco_param(
 ) -> String {
     {
         let authored = crate::v1_std_core::param_node_type_expr(param.clone());
-        let ty = if ((authored.params.clone().len() as i64) > 0) {
+        let ty = if rust_type_node_is_arrow(authored.clone()) {
             emit_rust_param_type(
                 authored.clone(),
                 generic_param_names.clone(),
@@ -20335,7 +20306,7 @@ pub fn emit_rust_param_type(
     env: Rc<TypeEnv>,
     fn_param_needs_static: bool,
 ) -> String {
-    if ((n.params.clone().len() as i64) > 0) {
+    if rust_type_node_is_arrow(n.clone()) {
         {
             let param_types = Rc::new({
                 let mut __result = Vec::new();
@@ -20407,7 +20378,7 @@ pub fn emit_param(
     {
         let pname = crate::v1_std_core::param_node_name_at(param.clone(), source_indices.clone());
         let authored = crate::v1_std_core::param_node_type_expr(param.clone());
-        let ty = if ((authored.params.clone().len() as i64) > 0) {
+        let ty = if rust_type_node_is_arrow(authored.clone()) {
             emit_rust_param_type(
                 authored.clone(),
                 generic_param_names.clone(),
@@ -24318,231 +24289,174 @@ pub fn emit_typed_expr(
     fuel: i64,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*texpr.expr_data.clone()).clone() {
-            ExprData::ExprUnaryOp {
-                op: UnaryOpKind::Neg,
-                ..
-            } => {
-                if expr_realizes_as_refusing_int(
-                    texpr.clone(),
+        crate::v1_compiler_emit::emit_shared_expr(
+            texpr.clone(),
+            RenderTarget::Rust,
+            scope.type_env.clone().source_indices.clone(),
+            |result| result.clone(),
+            |child| {
+                emit_typed_expr(
+                    child.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                    (fuel.clone() - 1),
+                )
+            },
+            |expr| {
+                emit_rust_expr_var(
+                    expr.clone(),
+                    registry.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
                     scope.type_env.clone().source_indices.clone(),
-                ) {
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(rust_refusing_int_negation_helper(), "(".to_string()),
-                            emit_typed_expr(
-                                crate::v1_std_core::unaryop_operand(texpr.clone()),
-                                registry.clone(),
-                                scope.clone(),
-                                depth.clone(),
-                                shared_types.clone(),
-                                emit_info.clone(),
-                                v1_rt::int_sub(fuel.clone(), 1),
-                            ),
-                        ),
-                        ")".to_string(),
-                    )
-                } else {
-                    emit_typed_expr_shared(
-                        texpr.clone(),
-                        registry.clone(),
-                        scope.clone(),
-                        depth.clone(),
-                        shared_types.clone(),
-                        emit_info.clone(),
-                        fuel.clone(),
-                    )
-                }
-            }
-            _ => emit_typed_expr_shared(
-                texpr.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-                fuel.clone(),
-            ),
-        }
+                    scope.module_name.clone(),
+                )
+            },
+            |expr| {
+                emit_rust_expr_field_access(
+                    expr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            },
+            |expr| {
+                emit_rust_expr_call(
+                    expr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            },
+            |expr| {
+                emit_rust_expr_method_call(
+                    expr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            },
+            |expr| {
+                emit_rust_expr_match(
+                    expr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            },
+            |expr| {
+                emit_rust_expr_if(
+                    expr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            },
+            |expr| {
+                emit_rust_expr_let(
+                    expr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            },
+            |expr| {
+                emit_rust_expr_record_lit(
+                    expr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            },
+            |expr| {
+                emit_rust_expr_string_interp(
+                    expr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            },
+            |expr| {
+                emit_rust_expr_block(
+                    expr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            },
+            |expr| {
+                emit_rust_expr_cast(
+                    expr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            },
+            |expr| {
+                emit_rust_expr_for_each(
+                    expr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            },
+            |expr| {
+                emit_rust_expr_index(
+                    expr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            },
+            |expr| {
+                emit_rust_expr_slice(
+                    expr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            },
+            |expr| {
+                emit_rust_expr_bin_op(
+                    expr.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            },
+        )
     })
-}
-
-pub fn emit_typed_expr_shared(
-    texpr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
-    depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
-    fuel: i64,
-) -> String {
-    crate::v1_compiler_emit::emit_shared_expr(
-        texpr.clone(),
-        RenderTarget::Rust,
-        scope.type_env.clone().source_indices.clone(),
-        |result| result.clone(),
-        |child| {
-            emit_typed_expr(
-                child.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-                v1_rt::int_sub(fuel.clone(), 1),
-            )
-        },
-        |expr| {
-            emit_rust_expr_var(
-                expr.clone(),
-                registry.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-                scope.type_env.clone().source_indices.clone(),
-                scope.module_name.clone(),
-            )
-        },
-        |expr| {
-            emit_rust_expr_field_access(
-                expr.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-            )
-        },
-        |expr| {
-            emit_rust_expr_call(
-                expr.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-            )
-        },
-        |expr| {
-            emit_rust_expr_method_call(
-                expr.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-            )
-        },
-        |expr| {
-            emit_rust_expr_match(
-                expr.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-            )
-        },
-        |expr| {
-            emit_rust_expr_if(
-                expr.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-            )
-        },
-        |expr| {
-            emit_rust_expr_let(
-                expr.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-            )
-        },
-        |expr| {
-            emit_rust_expr_record_lit(
-                expr.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-            )
-        },
-        |expr| {
-            emit_rust_expr_string_interp(
-                expr.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-            )
-        },
-        |expr| {
-            emit_rust_expr_block(
-                expr.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-            )
-        },
-        |expr| {
-            emit_rust_expr_cast(
-                expr.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-            )
-        },
-        |expr| {
-            emit_rust_expr_for_each(
-                expr.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-            )
-        },
-        |expr| {
-            emit_rust_expr_index(
-                expr.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-            )
-        },
-        |expr| {
-            emit_rust_expr_slice(
-                expr.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-            )
-        },
-        |expr| {
-            emit_rust_expr_bin_op(
-                expr.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-            )
-        },
-    )
 }
 
 pub fn emit_cloned_arg(
@@ -26051,15 +25965,13 @@ pub fn emit_typed_for_each(
             body.clone(),
             registry.clone(),
             body_scope.clone(),
-            v1_rt::int_add(depth.clone(), 2),
+            (depth.clone() + 2),
             shared_types.clone(),
             emit_info.clone(),
             1024,
         );
-        let ind1 =
-            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1));
-        let ind2 =
-            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 2));
+        let ind1 = crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1));
+        let ind2 = crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 2));
         let ind0 = crate::v1_compiler_emit_core_support::make_indent(depth.clone());
         let iter_str = crate::v1_compiler_emit_core_support::apply_type_template1(
             sharing.iter_owned.clone(),
@@ -28945,7 +28857,7 @@ pub fn fm_analyze_pattern(
                                     Some(hb) => match (*fm_analyze_pattern(
                                         tail_pat.clone(),
                                         si.clone(),
-                                        v1_rt::int_sub(fuel.clone(), 1),
+                                        (fuel.clone() - 1),
                                     ))
                                     .clone()
                                     {
@@ -28962,7 +28874,7 @@ pub fn fm_analyze_pattern(
                                             ..
                                         } => Rc::new(FmArmAnalysis::FmSpine {
                                             exact: e.clone(),
-                                            len: v1_rt::int_add(l.clone(), 1),
+                                            len: (l.clone() + 1),
                                             head_binds: v1_rt::concat(
                                                 Rc::new(vec![hb.clone()]),
                                                 hbs.clone(),
@@ -29086,9 +28998,9 @@ pub fn fm_first_uncovered_len(
                 } else {
                     {
                         let __tco_0 = plans;
-                        let __tco_1 = v1_rt::int_add(k, 1);
+                        let __tco_1 = (k + 1);
                         let __tco_2 = limit;
-                        let __tco_3 = v1_rt::int_sub(fuel, 1);
+                        let __tco_3 = (fuel - 1);
                         __tco_loop_plans = __tco_0;
                         __tco_loop_k = __tco_1;
                         __tco_loop_limit = __tco_2;
@@ -29128,25 +29040,22 @@ pub fn fm_plans_refusal(plans: Rc<Vec<Rc<FmArmPlan>>>) -> Option<Rc<FmArmPlan>> 
                 })),
                 std::option::Option::None => std::option::Option::None,
             },
-            Some(limit) => match fm_first_uncovered_len(
-                plans.clone(),
-                0,
-                limit.clone(),
-                v1_rt::int_add(limit.clone(), 1),
-            ) {
-                std::option::Option::None => std::option::Option::None,
-                Some(missing) => match plans.clone().first().cloned() {
-                    Some(anchor) => Some(Rc::new(FmArmPlan {
-                        arm: anchor.arm.clone(),
-                        analysis: Rc::new(FmArmAnalysis::FmUnsupportedArm {
-                            cause: Rc::new(FmLoweringRefusal::FmLengthMatchedByNoArm {
-                                len: missing.clone(),
-                            }),
-                        }),
-                    })),
+            Some(limit) => {
+                match fm_first_uncovered_len(plans.clone(), 0, limit.clone(), (limit.clone() + 1)) {
                     std::option::Option::None => std::option::Option::None,
-                },
-            },
+                    Some(missing) => match plans.clone().first().cloned() {
+                        Some(anchor) => Some(Rc::new(FmArmPlan {
+                            arm: anchor.arm.clone(),
+                            analysis: Rc::new(FmArmAnalysis::FmUnsupportedArm {
+                                cause: Rc::new(FmLoweringRefusal::FmLengthMatchedByNoArm {
+                                    len: missing.clone(),
+                                }),
+                            }),
+                        })),
+                        std::option::Option::None => std::option::Option::None,
+                    },
+                }
+            }
         },
     }
 }
@@ -29185,7 +29094,7 @@ pub fn fm_head_bind_lets(head_binds: Rc<Vec<String>>) -> String {
             }),
             |acc: Rc<FmBindAcc>, hb: String| {
                 Rc::new(FmBindAcc {
-                    index: v1_rt::int_add(acc.index.clone(), 1),
+                    index: (acc.index.clone() + 1),
                     out: if (hb.clone() == "_".to_string()) {
                         acc.out.clone()
                     } else {
@@ -29325,7 +29234,7 @@ pub fn fm_chain_from(pieces: Rc<Vec<Rc<FmChainPiece>>>, fuel: i64) -> String {
                                 ),
                                 " } else ".to_string(),
                             ),
-                            fm_chain_from(rest.clone(), v1_rt::int_sub(fuel.clone(), 1)),
+                            fm_chain_from(rest.clone(), (fuel.clone() - 1)),
                         )
                     }
                 }
@@ -32757,7 +32666,7 @@ if ((fuel.clone() > 0) && crate::v1_compiler_infer::is_where_refinement_type(rt.
 {
                                 let __tco_0 = base_resolved.clone();
 let __tco_1 = scope;
-let __tco_2 = v1_rt::int_sub(fuel, 1);
+let __tco_2 = (fuel - 1);
 __tco_loop_rt = __tco_0;
 __tco_loop_scope = __tco_1;
 __tco_loop_fuel = __tco_2;
@@ -32772,7 +32681,7 @@ continue;
                                 {
                                     let __tco_0 = crate::v1_compiler_infer_types::resolved_type(decl.clone());
 let __tco_1 = scope;
-let __tco_2 = v1_rt::int_sub(fuel, 1);
+let __tco_2 = (fuel - 1);
 __tco_loop_rt = __tco_0;
 __tco_loop_scope = __tco_1;
 __tco_loop_fuel = __tco_2;
@@ -33032,98 +32941,25 @@ pub fn emit_rust_host_bin_op(
                         ")".to_string(),
                     )
                 } else {
-                    match crate::extdeps_languages_rust_emit::rust_refusing_int_operator_helper(
-                        op.clone(),
-                    ) {
-                        Some(helper) => {
-                            if expr_realizes_as_refusing_int(
-                                left.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            ) {
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(helper.clone(), "(".to_string()),
-                                                l_str.clone(),
-                                            ),
-                                            ", ".to_string(),
-                                        ),
-                                        r_str.clone(),
-                                    ),
-                                    ")".to_string(),
-                                )
-                            } else {
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat("(".to_string(), l_str.clone()),
-                                                    " ".to_string(),
-                                                ),
-                                                op_str.clone(),
-                                            ),
-                                            " ".to_string(),
-                                        ),
-                                        r_str.clone(),
-                                    ),
-                                    ")".to_string(),
-                                )
-                            }
-                        }
-                        std::option::Option::None => v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat("(".to_string(), l_str.clone()),
-                                            " ".to_string(),
-                                        ),
-                                        op_str.clone(),
+                                        v1_rt::concat("(".to_string(), l_str.clone()),
+                                        " ".to_string(),
                                     ),
-                                    " ".to_string(),
+                                    op_str.clone(),
                                 ),
-                                r_str.clone(),
+                                " ".to_string(),
                             ),
-                            ")".to_string(),
+                            r_str.clone(),
                         ),
-                    }
+                        ")".to_string(),
+                    )
                 }
             }
         }
-    }
-}
-
-pub fn expr_realizes_as_refusing_int(
-    e: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    match e.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: rt, .. }) => {
-            if (rt.return_cardinality.clone() == Cardinality::CardOptional) {
-                false
-            } else {
-                {
-                    let normed =
-                        crate::v1_compiler_infer_types::normalize_access_type_node(rt.clone());
-                    match crate::v1_compiler_coercion::realized_checkpoint(
-                        crate::v1_compiler_coercion::type_reference_realization(
-                            normed.clone(),
-                            crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                normed.clone(),
-                            ),
-                            RenderTarget::Rust,
-                        ),
-                    ) {
-                        Some(cp) => (cp.target_type.clone() == rust_refusing_int_target_type()),
-                        std::option::Option::None => false,
-                    }
-                }
-            }
-        }
-        _ => false,
     }
 }
 
@@ -33360,7 +33196,7 @@ pub fn emit_typed_block(
             Rc::new(vec![]),
             scope.clone(),
             registry.clone(),
-            v1_rt::int_add(depth.clone(), 1),
+            (depth.clone() + 1),
             shared_types.clone(),
             emit_info.clone(),
         );
@@ -33368,10 +33204,7 @@ pub fn emit_typed_block(
             v1_rt::concat(
                 v1_rt::concat(
                     "{\n".to_string(),
-                    crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                        depth.clone(),
-                        1,
-                    )),
+                    crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
                 ),
                 state.text.clone().join(&"\n".to_string()),
             ),
@@ -33555,7 +33388,7 @@ pub fn emit_typed_tco_body(
             params.clone(),
             registry.clone(),
             scope.clone(),
-            v1_rt::int_add(depth.clone(), 1),
+            (depth.clone() + 1),
             shared_types.clone(),
             emit_info.clone(),
         );
@@ -33567,13 +33400,10 @@ pub fn emit_typed_tco_body(
                         crate::v1_compiler_emit::tco_loop_iteration_lets(
                             params.clone(),
                             scope.type_env.clone().source_indices.clone(),
-                            v1_rt::int_add(depth.clone(), 1),
+                            (depth.clone() + 1),
                         ),
                     ),
-                    crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                        depth.clone(),
-                        1,
-                    )),
+                    crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
                 ),
                 inner.clone(),
             ),
@@ -33649,7 +33479,7 @@ pub fn emit_rust_tco_if(
                 params.clone(),
                 registry.clone(),
                 frame.scope.clone(),
-                v1_rt::int_add(frame.depth.clone(), 1),
+                (frame.depth.clone() + 1),
                 shared_types.clone(),
                 emit_info.clone(),
             );
@@ -33661,7 +33491,7 @@ pub fn emit_rust_tco_if(
                         params.clone(),
                         registry.clone(),
                         frame.scope.clone(),
-                        v1_rt::int_add(frame.depth.clone(), 1),
+                        (frame.depth.clone() + 1),
                         shared_types.clone(),
                         emit_info.clone(),
                     );
@@ -33676,17 +33506,16 @@ pub fn emit_rust_tco_if(
                                                 " {\n".to_string(),
                                             ),
                                             crate::v1_compiler_emit_core_support::make_indent(
-                                                v1_rt::int_add(frame.depth.clone(), 1),
+                                                (frame.depth.clone() + 1),
                                             ),
                                         ),
                                         then_str.clone(),
                                     ),
                                     "\n} else {\n".to_string(),
                                 ),
-                                crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                                    frame.depth.clone(),
-                                    1,
-                                )),
+                                crate::v1_compiler_emit_core_support::make_indent(
+                                    (frame.depth.clone() + 1),
+                                ),
                             ),
                             else_str.clone(),
                         ),
@@ -33700,10 +33529,9 @@ pub fn emit_rust_tco_if(
                                 v1_rt::concat("if ".to_string(), cond_str.clone()),
                                 " {\n".to_string(),
                             ),
-                            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                                frame.depth.clone(),
-                                1,
-                            )),
+                            crate::v1_compiler_emit_core_support::make_indent(
+                                (frame.depth.clone() + 1),
+                            ),
                         ),
                         then_str.clone(),
                     ),
@@ -34425,7 +34253,7 @@ pub fn emit_typed_tco_reassign(
                 let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
                 let ref_count = arg_values.iter().cloned().fold(0, |n: i64, av: Rc<Node>| {
                     if expr_references_var(av.clone(), pname.clone(), si.clone()) {
-                        v1_rt::int_add(n.clone(), 1)
+                        (n.clone() + 1)
                     } else {
                         n.clone()
                     }
@@ -34489,10 +34317,7 @@ pub fn emit_typed_tco_reassign(
             v1_rt::concat(
                 v1_rt::concat(
                     "{\n".to_string(),
-                    crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                        depth.clone(),
-                        1,
-                    )),
+                    crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
                 ),
                 inner.clone(),
             ),
@@ -34643,7 +34468,7 @@ pub fn emit_service_impl(
                     transport.clone(),
                     op_node.clone(),
                     registry.clone(),
-                    v1_rt::int_add(depth.clone(), 1),
+                    (depth.clone() + 1),
                     shared_types.clone(),
                     env.clone(),
                     service_item.clone(),
@@ -34661,10 +34486,7 @@ pub fn emit_service_impl(
                         v1_rt::concat("impl ".to_string(), name.clone()),
                         " {\n".to_string(),
                     ),
-                    crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                        depth.clone(),
-                        1,
-                    )),
+                    crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
                 ),
                 methods_str.clone(),
             ),
@@ -34932,7 +34754,7 @@ pub fn emit_operation_method(
             bound.clone(),
             op_text.clone(),
             registry.clone(),
-            v1_rt::int_add(depth.clone(), 2),
+            (depth.clone() + 2),
             service_item.clone(),
             op_node.clone(),
             env.source_indices.clone(),
@@ -34974,7 +34796,7 @@ pub fn emit_operation_method(
                                     v1_rt::concat(
                                         "if self.dry_run.is_dry_run() {\n".to_string(),
                                         crate::v1_compiler_emit_core_support::make_indent(
-                                            v1_rt::int_add(depth.clone(), 2),
+                                            (depth.clone() + 2),
                                         ),
                                     ),
                                     dry_run_body.clone(),
@@ -34983,10 +34805,7 @@ pub fn emit_operation_method(
                             ),
                             "} else {\n".to_string(),
                         ),
-                        crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                            depth.clone(),
-                            2,
-                        )),
+                        crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 2)),
                     ),
                     real_body.clone(),
                 ),
@@ -35034,10 +34853,7 @@ pub fn emit_operation_method(
                         ),
                         ", Box<dyn std::error::Error>> {\n".to_string(),
                     ),
-                    crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                        depth.clone(),
-                        1,
-                    )),
+                    crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
                 ),
                 body.clone(),
             ),
@@ -37590,10 +37406,7 @@ pub fn emit_resource_def(
                                 ),
                                 " {\n".to_string(),
                             ),
-                            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                                depth.clone(),
-                                1,
-                            )),
+                            crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
                         ),
                         methods_str.clone(),
                     ),
@@ -38272,10 +38085,7 @@ pub fn emit_test_file(
         let test_fns = Rc::new({
             let mut __result = Vec::new();
             for p in projections.iter().cloned() {
-                __result.push(emit_operation_test(
-                    p.clone(),
-                    v1_rt::int_add(depth.clone(), 1),
-                ));
+                __result.push(emit_operation_test(p.clone(), (depth.clone() + 1)));
             }
             __result
         });
@@ -38310,10 +38120,9 @@ pub fn emit_test_file(
                                     ),
                                     "    use super::*;\n\n".to_string(),
                                 ),
-                                crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                                    depth.clone(),
-                                    1,
-                                )),
+                                crate::v1_compiler_emit_core_support::make_indent(
+                                    (depth.clone() + 1),
+                                ),
                             ),
                             tests_str.clone(),
                         ),
@@ -38396,8 +38205,7 @@ pub fn emit_operation_test(projection: Rc<TestProjection>, depth: i64) -> String
         );
         let op_method =
             crate::v1_compiler_emit_core_support::to_snake(projection.operation_name.clone());
-        let indent =
-            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1));
+        let indent = crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1));
         let param_args = Rc::new({
             let mut __result = Vec::new();
             for p in projection.params.clone().iter().cloned() {
@@ -39396,10 +39204,7 @@ pub fn emit_modeled_subcommand_variant(sub: Rc<CliSubcommandRow>, depth: i64) ->
             v1_rt::concat(
                 doc_lines.clone().join(&v1_rt::concat(
                     "\n".to_string(),
-                    crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                        depth.clone(),
-                        1,
-                    )),
+                    crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
                 )),
                 "\n".to_string(),
             )
@@ -39419,10 +39224,7 @@ pub fn emit_modeled_subcommand_variant(sub: Rc<CliSubcommandRow>, depth: i64) ->
                 v1_rt::concat(
                     v1_rt::concat(
                         doc_str.clone(),
-                        crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                            depth.clone(),
-                            1,
-                        )),
+                        crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
                     ),
                     sub.variant.clone(),
                 ),
@@ -39435,7 +39237,7 @@ pub fn emit_modeled_subcommand_variant(sub: Rc<CliSubcommandRow>, depth: i64) ->
                     for operand in emitted_operands.iter().cloned() {
                         __result.push(emit_modeled_operand_field(
                             operand.clone(),
-                            v1_rt::int_add(depth.clone(), 2),
+                            (depth.clone() + 2),
                         ));
                     }
                     __result
@@ -39443,10 +39245,7 @@ pub fn emit_modeled_subcommand_variant(sub: Rc<CliSubcommandRow>, depth: i64) ->
                 let option_fields = Rc::new({
                     let mut __result = Vec::new();
                     for opt in emitted_options.iter().cloned() {
-                        __result.push(emit_modeled_option_field(
-                            opt.clone(),
-                            v1_rt::int_add(depth.clone(), 2),
-                        ));
+                        __result.push(emit_modeled_option_field(opt.clone(), (depth.clone() + 2)));
                     }
                     __result
                 });
@@ -39460,7 +39259,7 @@ pub fn emit_modeled_subcommand_variant(sub: Rc<CliSubcommandRow>, depth: i64) ->
                                     v1_rt::concat(
                                         doc_str.clone(),
                                         crate::v1_compiler_emit_core_support::make_indent(
-                                            v1_rt::int_add(depth.clone(), 1),
+                                            (depth.clone() + 1),
                                         ),
                                     ),
                                     sub.variant.clone(),
@@ -39469,10 +39268,7 @@ pub fn emit_modeled_subcommand_variant(sub: Rc<CliSubcommandRow>, depth: i64) ->
                             ),
                             field_str.clone(),
                         ),
-                        crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                            depth.clone(),
-                            1,
-                        )),
+                        crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
                     ),
                     "},".to_string(),
                 )
