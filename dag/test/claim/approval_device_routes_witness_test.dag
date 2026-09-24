@@ -6,12 +6,14 @@ import gunbc.auth.approval_writer_authority { ApprovalServingProcess, BrokerProc
 import gunbc.auth.approval_device_routes {
   DeviceRouteResponse,
   device_enrol_response_at, device_redeem_response_at, device_pending_response_at, device_request_response_at, device_enrollment_readback_response_at, device_push_update_response_at,
-  redemption_status, requested_at_within_skew,
+  redemption_status,
 }
 import gunbc.auth.approval_device_redemption { observe_enrollment, EnrolmentSlotUnreadable, approval_device_store_root, DeviceLostTheRace, DeviceEnrollmentUnknown, DeviceChallengeNotIssuedHere, DeviceCommitRefused, DevicePlatformUnrealized, DeviceCapabilityTagMalformed }
 import gunbc.auth.approval_device_redemption_fixtures { envelope_vector_body }
 import gunbc.auth.approval_decision_store { observe_escalation, EscalationUnreadable }
-import gunbc.auth.approval_device_wire { ReadAuthentication, read_authentication_json, PushUpdateRequest, push_update_request_json, ApnsRegistration, path_segment }
+import gunbc.auth.approval_device_wire { ReadAuthentication, read_authentication_json, PushUpdateRequest, push_update_request_json, ApnsRegistration, path_segment, SignedRedemption, DeviceRedemptionSigningInput, RedemptionChallenge, IosAppAttestAssertion, signed_redemption_json }
+import extdeps.crypto.signature { SignatureBytes, EcdsaP256Sha256, P1363FixedWidth }
+import gunbc.auth.approval_capability { ProposeApprove }
 import extdeps.apple.apns { ApnsProduction }
 import gunbc.auth.approval_app_attest_config { approval_app_attest_verifier, approval_app_attest_app_id, approval_app_bundle_id, AppAttestVerifierAwaitingOperator, AppAttestVerifierConfigured }
 import gunbc.auth.approval_device_crypto_realization {
@@ -122,18 +124,6 @@ test fn a_traversal_identity_is_refused_by_the_store_before_any_read() -> Bool {
     })
 }
 
-// The skew window is closed below and open above: 60 s before is inside, 61 s before is not; 59 s
-// after is inside, 60 s after is not; a non-canonical claimed time is never inside. The bounds are
-// Clock.TimestampAdd's (the same resource gunbc.auth.approval_gate approval_expires_at uses), which
-// the hermetic route has no arm for, so this claim executes on the wet route (claim_batch --wet).
-test fn the_read_skew_window_brackets_sixty_seconds() -> Bool {
-  requested_at_within_skew(requested_at: "2026-09-21T11:59:00Z", observed_at: fx_now)
-    && !requested_at_within_skew(requested_at: "2026-09-21T11:58:59Z", observed_at: fx_now)
-    && requested_at_within_skew(requested_at: "2026-09-21T12:00:59Z", observed_at: fx_now)
-    && !requested_at_within_skew(requested_at: "2026-09-21T12:01:00Z", observed_at: fx_now)
-    && !requested_at_within_skew(requested_at: "not-a-time", observed_at: fx_now)
-}
-
 // The redemption outcome's status map, exhaustive over the closed outcome: the arms the app
 // branches on, plus the two that answer neither 403 nor a store status (a malformed tag is the
 // caller's 400; an unrealized platform is 501).
@@ -180,16 +170,28 @@ test fn the_enrolment_refuses_503_before_any_crypto_while_the_native_handler_is_
   writer_route_refused_unrealized(name: "enrolment_request", route: fn(body) { device_enrol_response_at(realization: fx_unbound, body: body, process: fx_writer(), observed_at: fx_now) })
 }
 
+// THE REDEMPTION BODY IS SUPPLIED, NOT DERIVED (DESIGN section 3, a witness discriminates at one
+// interface). The envelope vector's signing input is built from the redemption vectors, which mint
+// real capability tags through interpreted hashing; this claim is about the gate, and needs only a
+// body the wire decodes. The real vector's decode is the inhabitance claim in
+// test.claim.approval_device_wire_witness_test, so supplying it here removes no execution of the real path.
+data fx_signed_redemption: String = signed_redemption_json(r: SignedRedemption {
+  signing_input: DeviceRedemptionSigningInput {
+    audience: "gunbc-approval", enrollment_id: "enr-482913",
+    challenge: RedemptionChallenge { expires_at: "2026-09-21T12:05:00Z", nonce_hex: "9c1d" },
+    escalation_id: "esc-1", request_revision: "sha256:abab", stored_request_text: "{}",
+    decision: ProposeApprove, capability_text: "approve-text", capability_tag_b64url: "dGFn",
+  },
+  signature: SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: "c2lnbmF0dXJl" },
+  platform_proof: IosAppAttestAssertion { assertion_b64: "omlzaWduYXR1cmU" },
+})
+
 test fn the_redemption_refuses_503_before_any_crypto_while_the_native_handler_is_unbound() -> Bool {
-  writer_route_refused_unrealized(name: "signed_redemption", route: fn(body) { device_redeem_response_at(realization: fx_unbound, body: body, process: fx_writer(), observed_at: fx_now) })
+  device_route_refused_with(r: device_redeem_response_at(realization: fx_unbound, body: fx_signed_redemption, process: fx_writer(), observed_at: fx_now), status: 503, fragment: fx_unrealized)
 }
 
-// The discriminating control for the four claims above: the SAME read under a bound realization does
-// not answer the realization reason -- it proceeds past the gate and answers from the store -- so it
-// is the gate, not a later failure, that decided them.
-test fn a_bound_realization_passes_the_read_past_the_gate() -> Bool {
-  !string_contains(s: device_pending_response_at(realization: fx_bound(covered: [P256SignatureVerification, AppAttestAttestationVerification, AppAttestAssertionVerification, P256BasePointOrder]), body: read_authentication_json(a: fx_auth), observed_at: fx_now).body, pattern: fx_unrealized)
-}
+// The discriminating control for the claims above -- the same read under a bound realization --
+// reaches the store and so runs on the wet lane: test.claim.approval_device_routes_wet_witness_test.
 
 fn writer_route_refused_unrealized(name: String, route: fn(String) -> DeviceRouteResponse) -> Bool {
   match envelope_vector_body(name: name) {
