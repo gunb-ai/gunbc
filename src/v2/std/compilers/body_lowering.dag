@@ -39,7 +39,7 @@ import v2.std.node {
   node_synthetic
 }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
-import v2.std.node_query { find_named_child }
+import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
 
 fn body_lowering_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {
@@ -209,15 +209,17 @@ fn view_refusal<T>(reason: Symbol, at: Node) -> Outcome<T> {
 }
 
 // An operand that is not lowered substrate: an empty Conj, a grammar sequence, or a production
-// capture the fold never consumed. Each is surface syntax standing where a lowered operand belongs.
+// capture the fold never consumed (one capture edge or, ambiguously, several -- never read as
+// "no capture"). Each is surface syntax standing where a lowered operand belongs.
 // Refusing it keeps the Node internally consistent; it does not detect an operand that was dropped
 // outright (see the note above the views).
 fn view_is_surface_residue(n: Node) -> Bool {
   is_empty_conj_root(n: n)
     || (match sugar_sequence_pair_optional(node: n) { Present { value: _ } => true  Absent => false })
-    || (match find_named_child(root: n, name: ^grammar_production_captured_node_projection) {
-          Accepted { value: _, diagnostics: _ } => true
-          Rejected { diagnostics: _ } => false
+    || (match named_child_lookup(root: n, name: ^grammar_production_captured_node_projection) {
+          NamedChildFound { target: _ } => true
+          NamedChildAmbiguous => true
+          NamedChildMissing => false
         })
 }
 
