@@ -10937,9 +10937,10 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // A REFINEMENT cast (std.coercion refinement_cast_rules, e.g. `Int as Nat`) is refused by the
     // checker (v1.compiler.infer validate_cast) from the same rows, so no accepted program reaches
     // this arm with one; it refuses here as the echo of that refusal, not as a second authority.
-    // The residue this fold still decides alone: validate_cast abstains whenever either side is
-    // outside dag_cast_rules, and dag_cast_rules admits `Bool as Int`, which this fold refuses --
-    // rostered in gunbc.recurring_failure_mode the_checker_admits_a_cast_the_evaluator_refuses.
+    // `Bool as Int` is refused by the checker too since dag_cast_rules withdrew that row. The
+    // residue this fold still decides alone: validate_cast abstains whenever either side is outside
+    // dag_cast_rules -- rostered in gunbc.recurring_failure_mode
+    // the_checker_admits_a_cast_the_evaluator_refuses.
     if crate::std_coercion::dag_cast_requires_proof(source_name.clone(), target_name.clone()) {
         return Err(InterpError::TypeError {
             msg: format!(

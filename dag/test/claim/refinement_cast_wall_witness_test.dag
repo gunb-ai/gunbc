@@ -64,6 +64,39 @@ test fn w_non_refinement_int_cast_is_still_accepted() -> Bool {
   blocking_count(source: non_refinement_cast_source) == 0
 }
 
+// THREE CONSEQUENCES OF THE SAME ROWS, each observed through the one wall above so no new instrument
+// is minted. (1) std.coercion dag_subtraction_result_type: a difference of two Nats leaves the
+// refinement, so `(a - b) as Nat` is an Int-as-Nat refinement cast and refuses; the sum stays Nat
+// and casts by identity (the positive control on the same operands). Before, the binop fold typed
+// every difference at its left operand, so the cast was a Nat identity and a negative Nat was
+// writable. (2) std.algebra count / length return Nat -- a cardinality is never negative -- so
+// `count(xs) as Nat` is an identity cast; before, it was the Int refinement cast. (3) `Bool as Int`
+// is no longer a dag_cast_rules row: validate_cast refuses it at compile time instead of the seed's
+// eval_cast refusing it at runtime.
+data nat_difference_source: String = "module probe_refinement_nat_difference\nimport std.nat { Nat }\nfn gap(a: Nat, b: Nat) -> Nat { (a - b) as Nat }\n"
+
+data nat_sum_source: String = "module probe_refinement_nat_sum\nimport std.nat { Nat }\nfn total(a: Nat, b: Nat) -> Nat { (a + b) as Nat }\n"
+
+data count_is_nat_source: String = "module probe_refinement_count_nat\nimport std.types { List, Int }\nimport std.nat { Nat }\nfn size_of(xs: List<Int>) -> Nat { count(xs) as Nat }\n"
+
+data bool_as_int_source: String = "module probe_refinement_bool_as_int\nimport std.types { Bool, Int }\nfn bit(b: Bool) -> Int { b as Int }\n"
+
+test fn w_nat_difference_leaves_the_refinement() -> Bool {
+  blocking_count(source: nat_difference_source) >= 1
+}
+
+test fn w_nat_sum_stays_in_the_refinement() -> Bool {
+  blocking_count(source: nat_sum_source) == 0
+}
+
+test fn w_count_is_a_nat() -> Bool {
+  blocking_count(source: count_is_nat_source) == 0
+}
+
+test fn w_bool_as_int_is_refused_by_the_checker() -> Bool {
+  blocking_count(source: bool_as_int_source) >= 1
+}
+
 // The sanctioned crossing's own semantics, executed: a negative is absent, never clamped.
 test fn w_checked_int_to_nat_refuses_a_negative_and_keeps_a_nonnegative() -> Bool {
   let neg = match checked_int_to_nat(n: 0 - 3) { Absent => true  Present { value: _ } => false }

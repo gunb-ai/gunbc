@@ -20,6 +20,8 @@ import std.algebra {
 
 import std.syntax { AlgAdd, AlgebraFieldKind, BinOp, LitStr, LiteralValue }
 
+import std.coercion { dag_subtraction_result_type }
+
 import v1.std.core { Unmarked,
   Node, make_param_node, param_node_type_expr,
   find_child_named, NewlineIndex,
@@ -1265,6 +1267,18 @@ type BinOpInferred {
 }
 
 fn infer_binop_type_node(op: BinOp, left_type: Node, source_indices: Map<String, NewlineIndex>) -> BinOpInferred {
+  let operand_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: left_type))
+  match op {
+    Sub =>
+      match dag_subtraction_result_type(operand_type: operand_name) {
+        Present { value: escaped } => BinOpInferred { result_type: nominal_type_ref(name: escaped), algebra_field: none }
+        Absent => infer_arithmetic_binop_type_node(op: op, left_type: left_type, source_indices: source_indices)
+      }
+    _ => infer_arithmetic_binop_type_node(op: op, left_type: left_type, source_indices: source_indices)
+  }
+}
+
+fn infer_arithmetic_binop_type_node(op: BinOp, left_type: Node, source_indices: Map<String, NewlineIndex>) -> BinOpInferred {
   match op {
     Eq => BinOpInferred { result_type: bool_type, algebra_field: none }
     Ne => BinOpInferred { result_type: bool_type, algebra_field: none }

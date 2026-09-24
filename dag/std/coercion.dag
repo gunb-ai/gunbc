@@ -224,12 +224,19 @@ type CastSyntax {
 // primitive->coproduct straddles stay red by construction: Bool->FreeMonoid (card_intake),
 // String->Doc (live_deploy), String->AuthScheme (auth) are genuine site bugs with no identity.
 
+// `Bool as Int` IS NOT A ROW. It was, while the seed's eval_cast refused it at runtime, so the
+// checker blessed a cast the evaluator crashed on (gunbc.recurring_failure_mode
+// the_checker_admits_a_cast_the_evaluator_refuses). A Bool is not an Int -- an Iverson bracket is
+// a function the author writes, not a re-typing -- so the row is withdrawn rather than taught to
+// eval. `Bool -> Bool` keeps Bool IN the cast domain, which is what makes validate_cast REFUSE
+// `b as Int` located instead of abstaining on it; and dag_can_cast, read at implicit admission,
+// no longer admits a Bool where an Int is declared.
 data dag_cast_rules: List<CastRule> = [
   { from_type: "Int",   to_type: "Int" },
   { from_type: "Int",   to_type: "Float" },
   { from_type: "Float", to_type: "Int" },
   { from_type: "Float", to_type: "Float" },
-  { from_type: "Bool",  to_type: "Int" },
+  { from_type: "Bool",  to_type: "Bool" },
 ]
 
 data grounded_primitive_coproduct_identities: List<CastRule> = [
@@ -253,6 +260,20 @@ data refinement_cast_rules: List<CastRule> = [
 
 fn dag_cast_requires_proof(source_type: String, target_type: String) -> Bool {
   refinement_cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)
+}
+
+// SUBTRACTION LEAVES A REFINEMENT. A refinement row says every to_type value IS a from_type value
+// and not the converse, so the refinement is closed under whatever its predicate is closed under
+// and no more: a Nat is closed under + and * (it is a commutative semiring) but `a - b` over two
+// Nats is an arbitrary Int. The difference is therefore typed at the row's SOURCE type, read from
+// the same rows that make `n as Nat` a refinement cast -- not a second rule beside them. Absent
+// means the operand type is not the target of any refinement row, and the operand's own algebra
+// decides as before.
+fn dag_subtraction_result_type(operand_type: String) -> String? {
+  match refinement_cast_rules |> filter(r => r.to_type == operand_type) |> first {
+    Present { value: r } => Present { value: r.from_type }
+    Absent => none
+  }
 }
 
 fn dag_can_cast(source_type: String, target_type: String) -> Bool {
