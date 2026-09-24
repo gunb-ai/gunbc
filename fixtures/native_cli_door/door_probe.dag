@@ -22,8 +22,10 @@ module fixture.native_cli_door.door_probe
 // THE DECLARATION NAME IS WHAT THE POSITIVE CONTROL READS. Until 2026-09-23 the built door could
 // not emit this module, and the instrument's emit arm was an EXPECTING-RED probe that required
 // stdout to be EMPTY. v2 now lowers a `data` declaration to a named member and grounds it, so the
-// door emits, and the probe was flipped as its own instruction said. It now requires exit 0 and
-// emitted text naming `native_cli_door_probe_value`.
+// door gets through translate's gate and exits 0, and the probe was flipped as its own instruction
+// said. It requires exit 0 and emitted text naming `native_cli_door_probe_value`. That is NOT an
+// emission of this module: the text drops the value `606060` and is not Rust
+// (gunbc.recurring_failure_mode closure_emit_renders_an_arrow_without_its_body).
 //
 // The declaration is deliberately trivial: one literal of a kernel type, with no imports.
 data native_cli_door_probe_value: Int = 606060
