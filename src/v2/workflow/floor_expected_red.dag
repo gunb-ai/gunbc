@@ -598,9 +598,11 @@ fn floor_expected_red_chunk_14() -> List<String> {
 // statement after a `let` stays an unlowered grammar sequence. The cause is the value-position
 // operand read in v2.compiler.body_lowering_fold, the class
 // v2.test.claim.namespace_xl0.reference_conservation already reports dropped; the rows green when
-// those positions are read whole.
+// those positions are read whole. The branch row (body_shape_branch_is_condition_then_else_holds)
+// greened when main's value-position whole read reached if arms, and was removed on the floor's
+// stale-quarantine refusal; the bind row stands.
 fn floor_expected_red_chunk_15() -> List<String> {
-  Cons { head: "v2.test.claim.namespace_xl0.body_shape_contract.body_shape_bind_is_key_value_body_holds", tail: Cons { head: "v2.test.claim.namespace_xl0.body_shape_contract.body_shape_branch_is_condition_then_else_holds", tail: Empty {} } }
+  Cons { head: "v2.test.claim.namespace_xl0.body_shape_contract.body_shape_bind_is_key_value_body_holds", tail: Empty {} }
 }
 
 fn floor_expected_red_chunk_16() -> List<String> {
