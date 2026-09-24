@@ -125,13 +125,14 @@ data approve_app_target: XcodeGenTarget = XcodeGenTarget {
 }
 
 // The test bundle carries the fixture vectors EMITTED by gunbc.auth.approval_device_redemption_fixtures
-// (gunbc.generated_artifact ApprovalDeviceVectorsArtifact) as a resource, never a hand copy.
+// (gunbc.generated_artifact ApprovalDeviceVectorsArtifact) as a resource, never a hand copy. A test
+// bundle needs an Info.plist and declares no key of its own, so Xcode synthesizes it
+// (GENERATE_INFOPLIST_FILE); without it the target has none and does not build.
 data approve_tests_target: XcodeGenTarget = XcodeGenTarget {
   name: "ApproveTests",
   product_type: UnitTestBundleProduct,
   platform: IosPlatform,
   sources: [SourcePath { path: "ApproveTests" }, ResourcePath { path: "../../dag/test/fixture/approval_device_redemption/vectors.json" }],
-  // A test bundle needs an Info.plist and declares no key of its own, so Xcode synthesizes it.
   settings: [build_setting_bool(name: GenerateInfoPlistFile, on: true)],
   info: NoPlist,
   entitlements: NoPlist,
