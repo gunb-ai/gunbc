@@ -418,13 +418,14 @@ pub fn emit_go_operation_test(projection: Rc<TestProjection>, depth: i64) -> Str
         let struct_name = crate::v1_compiler_emit_core_support::sanitize_service_name(
             projection.service_name.clone(),
         );
-        let indent = crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1));
+        let indent =
+            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1));
         let mock_setup = Rc::new({
             let mut __result = Vec::new();
             for mp in projection.mock_field_inits.clone().iter().cloned() {
                 __result.push(emit_go_mock_prop_setup(
                     mp.clone(),
-                    (depth.clone() + 1),
+                    v1_rt::int_add(depth.clone(), 1),
                     projection.source_indices.clone(),
                 ));
             }

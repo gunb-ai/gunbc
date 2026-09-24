@@ -121,7 +121,7 @@ pub fn binding_unit_variant_contributions(
                                     acc.clone(),
                                     vname.clone(),
                                     Rc::new(UnitVariantContribution {
-                                        count: (prev.count.clone() + 1),
+                                        count: v1_rt::int_add(prev.count.clone(), 1),
                                         variant: prev.variant.clone(),
                                     }),
                                 ),
@@ -1142,7 +1142,7 @@ pub fn segment_lcp_len(a: Rc<Vec<String>>, b: Rc<Vec<String>>) -> i64 {
                                             .skip(1 as usize)
                                             .collect::<Vec<_>>(),
                                     ),
-                                    matched: (acc.matched.clone() + 1),
+                                    matched: v1_rt::int_add(acc.matched.clone(), 1),
                                     live: true,
                                 })
                             } else {
@@ -1190,7 +1190,7 @@ pub fn global_bare_nearest_ancestor_candidate(
         let env_segs = crate::v1_std_core::module_path_segments(env_module_path.clone());
         let scan = candidates.iter().cloned().fold(
             Rc::new(GlobalBareNearestCandidateScan {
-                best_lcp: (0 - 1),
+                best_lcp: v1_rt::int_sub(0, 1),
                 best: std::option::Option::None,
                 tie: false,
             }),
@@ -1625,7 +1625,7 @@ pub fn qualified_all_but_last(name: String) -> String {
                     segs.clone()
                         .iter()
                         .cloned()
-                        .take((seg_count.clone() - 1) as usize)
+                        .take(v1_rt::int_sub(seg_count.clone(), 1) as usize)
                         .collect::<Vec<_>>(),
                 )
                 .iter()
@@ -1865,7 +1865,7 @@ pub fn lookup_unit_variant_phantom_type(
                     .iter()
                     .cloned()
                     .fold(0, |acc: i64, c: Rc<UnitVariantContribution>| {
-                        (acc + c.count.clone())
+                        v1_rt::int_add(acc, c.count.clone())
                     });
                 if (total.clone() == 1) {
                     match Rc::new({

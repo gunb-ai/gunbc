@@ -1,0 +1,37 @@
+module gunbc.recurring_failure_mode.emitted_int_arithmetic_wraps_where_the_interpreter_refuses
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data emitted_int_arithmetic_wraps_where_the_interpreter_refuses: RecurringFailureMode = RecurringFailureMode {
+  identity: "emitted_int_arithmetic_wraps_where_the_interpreter_refuses" as NonEmptyStr,
+
+  receipts: [
+    "emitted Int arithmetic WRAPS where the interpreter REFUSES (one accepted program, two realizations, and on every overflowing input one of them returns a fabricated value).",
+
+    "INVALID STATE: a substrate Int operator realized on Rust as the bare i64 infix token. The interpreter evaluates + - * / % and negation with checked arithmetic and refuses with IntegerOverflow or DivisionByZero (v1.interpreter eval_int_binop, eval_unaryop); Rust's + - * and prefix - on i64 trap only under overflow-checks, which neither the workspace release profile nor any emitted Cargo.toml turns on, so in release they wrap in two's complement -- the fact extdeps.languages.rust.primitives already recorded on the i64 row as overflow: TwoComplementWrap, and nothing consulted.",
+
+    "HARM: silent wrongness on the source-to-Rust path, outside the DESIGN section 4b ladder. It covered every emitted crate AND the seed's own generated arithmetic: after the repair 556 operator sites across 46 stage0 mirror files route through the refusing helpers (357 add, 115 sub, 43 mul, 24 div, 10 rem, 7 neg).",
+
+    "THE INTERPRETER'S REFUSAL IS TERMINAL, WHICH IS WHAT MAKES A PANIC THE FAITHFUL REALIZATION: an operator IntegerOverflow is an Err(InterpError) propagated by ? to a failed run; no interpreter arm converts it back into a Value a program can match. The matchable form is a different API, std.checked_arithmetic CheckedInt, whose bodies apply the operators only to operands proven in range, so it is unaffected.",
+
+    "DISCRIMINATING RED, executed 2026-09-24 on a BuildBuddy amd64 runner, emitted crate built with cargo --release: `fn bump(x: Int) -> Int { x + 1 }` at 9223372036854775807 printed -9223372036854775808 and exited 0; sub at i64::MIN, mul at 2^62*2 and negation of i64::MIN likewise wrapped. / and % by zero and i64::MIN / -1 and i64::MIN % -1 already panicked in release, but with rustc's text rather than the interpreter's (the last as 'attempt to calculate the remainder with overflow', where the interpreter takes the % IntegerOverflow arm and NOT DivisionByZero). The interpreter refused all eight with IntegerOverflow or DivisionByZero.",
+
+    "REPAIR: one realization authority. extdeps.languages.rust.emit rust_refusing_int_operator_helper and rust_refusing_int_negation_helper name the helpers; v1.compiler.emit_rust emit_rust_host_bin_op and emit_typed_expr route every operand whose realized checkpoint is rust_refusing_int_target_type through them; v1.compiler.runtime_rust rt_checked_int_ops realizes them with checked_* and panics with the interpreter's own Display text. GREEN, same runner and harness: all eight overflowing cases refuse with the interpreter's message, and the in-range control returns 55 on both arms.",
+
+    "COST: the regen round (claim_executor --required-regen, whole population, one runner) measured 384819 ms on the pre-repair seed and 354101 ms on the fixed-point repaired seed; the difference is inside runner noise and is not claimed as a speedup, only as no measurable regression.",
+
+    "RESIDUE, named so the row is not read as retired: an operand whose type realizes as some integer primitive OTHER than i64 still splices the wrapping token; the Go emitter's Int operators are unexamined against the same red; and hand-written seed Rust still wraps in release because overflow-checks is off in [profile.release] -- recommended as defense-in-depth and deliberately not flipped in this change.",
+
+    "RUNG, STATED AT WHAT EXECUTES AND NOT AT WHAT IS WRITTEN (DESIGN section 4b(1)): MITIGATABLE today. The route is guarded by the enrolled witness test.claim.emitter_refusing_int_operator_witness_test -- the discriminating RED is the pre-repair spelling (x.clone() + 1) and friends as forbidden text, the positive control is Float keeping its infix operators -- and that witness would make the class mechanically preventable, but the whole witness population is off the required gate under the declared drop gunbc.rung_drop witness_floor_off_the_required_gate, so an emitter arm splicing an Int token directly would turn no required check red. The rung rises to mechanically preventable by THAT drop's restoration trigger and by nothing this row does.",
+
+    "CEILING AND NEXT TRIGGER BEYOND IT, as a capability: the Int operator's overflow semantics declared once in the substrate and consulted by the interpreter and by EVERY emission target's operator realization, so a target whose primitive's overflow disagrees refuses emission rather than splicing its token -- structurally guaranteed, not merely witnessed."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.emitter_refusing_int_operator_witness_test", decl_name: "w_int_binary_operators_route_through_refusing_helpers", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.emitter_refusing_int_operator_witness_test", decl_name: "w_int_negation_routes_through_refusing_helper", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.emitter_refusing_int_operator_witness_test", decl_name: "w_float_operators_keep_infix", field: WholeDeclaration },
+  ],
+}
