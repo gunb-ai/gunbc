@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.rest_response_nested_from_key_ignored
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data rest_response_nested_from_key_ignored: RecurringFailureMode = RecurringFailureMode {
+  identity: "rest_response_nested_from_key_ignored" as NonEmptyStr,
+
+  receipts: [
+    "**A nested REST response field read under a spelling the wire does not use** (INVALID STATE: an interpreted program reads a field of a record nested inside a REST response -- `extdeps.cloud.gcp.gcp` `WifProviderWire.attribute_condition`, `WifOidcWire.issuer_uri` -- and gets null although the body carried the value under its wire key, `attributeCondition`, `issuerUri`).",
+
+    "TWO LINKS, BOTH WRONG. The model: the IAM wire types declared snake_case fields with no `from` key, although the service answers in proto3 JSON, whose multi-word fields are lowerCamelCase (cloud.google.com/iam/docs/reference/rest/v1/projects.locations.workloadIdentityPools.providers#WorkloadIdentityPoolProvider). The interpreter: `v1_interpreter.rs` `decode_json_by_declared_type` matched a nested object's keys against AUTHORED field names and stored the record under the WIRE key, so a type-level `from` -- which the Rust emitter already honours as a serde rename -- was ignored on nested records, and a renamed field could never reach its reader on the interpretation path. Only the operation's top-level output fields honoured `from`.",
+
+    "HARM: section 5 silent wrongness read as a refusal. THE SPECIMEN, 2026-09-24: `gunbc.auth.mtcollins1_boot_federation_provision` created the pool, provider and account correctly, then its readback (`gunbc.auth.heal_publisher_provision` `provider_reasons`) reported the provider's issuer as null, its condition as empty and its mapping as differing, and refused every grant -- on the first run and on the rerun alike. A direct GET showed every field matching.",
+
+    "THE WITNESS THAT DID NOT SEE IT: every classifier row of `test.claim.heal_publisher_provision_witness_test` handed the classifier a CONSTRUCTED WifProviderWire, so the decode between the wire and the classifier was never executed. Same lesson as `rest_response_coproduct_decoded_type_blind`, one representation over.",
+
+    "THE REPAIR: the wire types carry their real keys as `from`; the interpreter's nested decode finds a declared field by its wire key (its `from`, else its authored name) and stores it under the authored name. Sibling IAM decoders were checked: `GcpServiceAccount` gained `uniqueId`/`displayName`, `WifPoolWire` and GetWorkloadIdentityPool gained `displayName`; `GcpPolicy`, `GcpBinding` and `IamCondition` fields are single words and were already correct.",
+
+    "RUNG FOUND AT: below the ladder. RUNG AFTER THIS CHANGE: mitigatable for this population, discriminated by recorded-body replay rows that go red on the old decode. CEILING: 3 for the declaration side -- whether a REST-reachable multi-word field of a service whose module declares a lowerCamelCase wire naming carries its wire key is decidable over the corpus. NEXT-RUNG TRIGGER, phrased as the capability: a REST service module declares its wire field naming once (proto3 JSON lowerCamelCase for googleapis), and both the interpreter's decode and the Rust emitter's serde rename derive every field's wire key from it, so a snake_case field with no `from` in such a module is not a place a mismatch can hide.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.cloud.gcp.gcp", decl_name: "WifProviderWire", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.auth.heal_publisher_provision", decl_name: "provider_reasons", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.heal_publisher_provision_witness_test", decl_name: "the_live_provider_list_decodes_its_camel_case_fields", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.heal_publisher_provision_witness_test", decl_name: "the_live_mtcollins1_federation_read_back_from_the_wire_is_fully_present", field: WholeDeclaration },
+  ],
+}

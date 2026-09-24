@@ -18094,21 +18094,33 @@ fn decode_json_by_declared_type(
     if let serde_json::Value::Object(obj) = json {
         if ty.connective == Connective::Conj && !ty.children.is_empty() {
             let mut fields: HamtMap<CanonKey, Value> = HamtMap::new();
+            // A declared field is found by its WIRE key -- its `from` key when it carries one,
+            // else its authored name -- and the decoded value is stored under the AUTHORED name,
+            // which is the only name a program's field access reads. Keying the record by the
+            // wire spelling left every renamed nested field (`issuerUri` for `issuer_uri`) absent
+            // to its reader: gunbc.auth.heal_publisher_provision read a live provider whose
+            // oidc.issuerUri, attributeCondition and attributeMapping all matched and refused it
+            // as "issuer is null" (gunbc.recurring_failure_mode
+            // rest_response_nested_from_key_ignored).
             for (key, value) in obj.iter() {
-                let declared = ty
-                    .children
-                    .iter()
-                    .find(|f| authored_name_at(ctx.si(), (*f).clone()) == *key);
-                let decoded = match declared {
-                    Some(f) => decode_json_by_declared_field_at(
-                        value,
-                        f,
-                        &format!("{}.{}", path, key),
-                        ctx,
-                    )?,
-                    None => json_to_value(value),
+                let declared = ty.children.iter().find(|f| {
+                    extract_from_key(f, ctx)
+                        .unwrap_or_else(|| authored_name_at(ctx.si(), (*f).clone()))
+                        == *key
+                });
+                let (stored, decoded) = match declared {
+                    Some(f) => (
+                        authored_name_at(ctx.si(), f.clone()),
+                        decode_json_by_declared_field_at(
+                            value,
+                            f,
+                            &format!("{}.{}", path, key),
+                            ctx,
+                        )?,
+                    ),
+                    None => (key.clone(), json_to_value(value)),
                 };
-                if let Some(ck) = CanonKey::new(str_value(key.clone())) {
+                if let Some(ck) = CanonKey::new(str_value(stored)) {
                     fields.insert(ck, decoded);
                 }
             }
