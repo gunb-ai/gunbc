@@ -447,25 +447,29 @@ test fn a_fn_literal_argument_lowers_to_the_same_arrow_as_a_lambda() -> Bool {
 
 // A let-block body is lowered by the named fn's body lowering, so the Arrow's body is the Bind a
 // named fn's `let` lowers to -- not the block's first atom, and not an unlowered shell.
+fn vpw_is_arrow_binding_with_bind_body(a: Node, binder: Symbol) -> Bool {
+  match a.kind {
+    TypeNode { connective: Arrow } =>
+      match vpw_domain_binds(arrow: a, binder: binder) {
+        Present { value: _ } =>
+          match arrow_body_target_lookup(children: a.children) {
+            Found { target: body } =>
+              match body.kind {
+                ComputationNode { behavior: Bind } => true
+                _ => false
+              }
+            _ => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
 fn vpw_fn_literal_block_argument_shape(n: Node, callee: Symbol, binder: Symbol) -> Bool {
   vpw_is_call_to(n: n, callee: callee)
     && fold_list(xs: call_argument_targets(node: n), empty: false, cons: fn(acc, a) {
-      acc || (match a.kind {
-        TypeNode { connective: Arrow } =>
-          match vpw_domain_binds(arrow: a, binder: binder) {
-            Present { value: _ } =>
-              match arrow_body_target_lookup(children: a.children) {
-                Found { target: body } =>
-                  match body.kind {
-                    ComputationNode { behavior: Bind } => true
-                    _ => false
-                  }
-                _ => false
-              }
-            Absent => false
-          }
-        _ => false
-      })
+      acc || vpw_is_arrow_binding_with_bind_body(a: a, binder: binder)
     })
 }
 
@@ -491,17 +495,21 @@ fn vpw_any_function_value_using(binder: Symbol) -> Bool {
 }
 
 // Any lowered Arrow binding `binder` in its domain, whatever its body.
+fn vpw_is_arrow_binding(n: Node, binder: Symbol) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } =>
+      match vpw_domain_binds(arrow: n, binder: binder) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    _ => false
+  }
+}
+
 fn vpw_any_function_value_binding(binder: Symbol) -> Bool {
   fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
     acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
-      a || (match n.kind {
-        TypeNode { connective: Arrow } =>
-          match vpw_domain_binds(arrow: n, binder: binder) {
-            Present { value: _ } => true
-            Absent => false
-          }
-        _ => false
-      })
+      a || vpw_is_arrow_binding(n: n, binder: binder)
     })
   })
 }

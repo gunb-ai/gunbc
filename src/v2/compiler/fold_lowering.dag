@@ -9,7 +9,9 @@ import v2.extdeps.languages.dag {
 import v2.std.optional {
   Absent,
   Optional,
-  Present
+  Present,
+  optional_absent,
+  optional_present
 }
 import v2.std.diagnostic {
   Accepted,
@@ -227,8 +229,8 @@ fn fv_binder_optional(node: Node) -> Optional<FunctionValueBinder> {
   let at = fv_unwrap(node: node)
   match node_atom_identity_optional(node: at) {
     Present { value: sym } =>
-      if dag_lex_token_symbol(sym: sym) { Absent } else { Present { value: FunctionValueBinder { name: sym, at: at } } }
-    Absent => Absent
+      if dag_lex_token_symbol(sym: sym) { optional_absent() } else { optional_present(value: FunctionValueBinder { name: sym, at: at }) }
+    Absent => optional_absent()
   }
 }
 
@@ -241,28 +243,28 @@ fn fv_no_binders() -> List<FunctionValueBinder> {
 fn fv_repeat_binders_optional(repeat: Node, comma_required: Bool) -> Optional<List<FunctionValueBinder>> {
   let r = fv_unwrap(node: repeat)
   if is_empty_conj_root(n: r) {
-    Present { value: fv_no_binders() }
+    optional_present(value: fv_no_binders())
   } else {
     match fold_seq_left(node: r) {
-      Absent => Absent
+      Absent => optional_absent()
       Present { value: element } =>
         match fold_seq_left(node: element) {
-          Absent => Absent
+          Absent => optional_absent()
           Present { value: sep } =>
             if fv_token_is(node: sep, token: ^dag_token_comma)
               || ((!comma_required) && is_empty_conj_root(n: fv_unwrap(node: sep))) {
               match fold_seq_right(node: element) {
-                Absent => Absent
+                Absent => optional_absent()
                 Present { value: item } =>
                   match fv_binder_optional(node: item) {
-                    Absent => Absent
+                    Absent => optional_absent()
                     Present { value: b } =>
                       match fold_seq_right(node: r) {
-                        Absent => Absent
+                        Absent => optional_absent()
                         Present { value: rest_repeat } =>
                           match fv_repeat_binders_optional(repeat: rest_repeat, comma_required: comma_required) {
-                            Absent => Absent
-                            Present { value: rest } => Present { value: Cons { head: b, tail: rest } }
+                            Absent => optional_absent()
+                            Present { value: rest } => optional_present(value: Cons { head: b, tail: rest })
                           }
                       }
                   }
@@ -278,15 +280,15 @@ fn fv_repeat_binders_optional(repeat: Node, comma_required: Bool) -> Optional<Li
 // seq(`=>`, expr) -> the expr.
 fn fv_after_fat_arrow_optional(node: Node) -> Optional<Node> {
   match fold_seq_left(node: node) {
-    Absent => Absent
+    Absent => optional_absent()
     Present { value: arrow } =>
-      if fv_token_is(node: arrow, token: ^dag_token_fat_arrow) { fold_seq_right(node: node) } else { Absent }
+      if fv_token_is(node: arrow, token: ^dag_token_fat_arrow) { fold_seq_right(node: node) } else { optional_absent() }
   }
 }
 
 fn fv_expr_parts(binders: List<FunctionValueBinder>, after_binders: Node) -> Optional<FunctionValueParts> {
   match fv_after_fat_arrow_optional(node: after_binders) {
-    Absent => Absent
+    Absent => optional_absent()
     Present { value: expr } =>
       Present {
         value: FunctionValueParts {
@@ -305,32 +307,32 @@ fn fv_empty_return_clause() -> Node {
 
 fn arrow_lambda_parts_optional(lambda: Node) -> Optional<FunctionValueParts> {
   match fold_seq_left(node: lambda) {
-    Absent => Absent
+    Absent => optional_absent()
     Present { value: head } =>
       if fv_token_is(node: head, token: ^dag_token_lparen) {
         match fold_seq_right(node: lambda) {
-          Absent => Absent
+          Absent => optional_absent()
           Present { value: s1 } =>
             match fold_seq_left(node: s1) {
-              Absent => Absent
+              Absent => optional_absent()
               Present { value: first_node } =>
                 match fold_seq_right(node: s1) {
-                  Absent => Absent
+                  Absent => optional_absent()
                   Present { value: s2 } =>
                     match fold_seq_right(node: s2) {
-                      Absent => Absent
+                      Absent => optional_absent()
                       Present { value: s3 } =>
                         match fold_seq_right(node: s3) {
-                          Absent => Absent
+                          Absent => optional_absent()
                           Present { value: s4 } =>
                             match fold_seq_right(node: s4) {
-                              Absent => Absent
+                              Absent => optional_absent()
                               Present { value: s5 } =>
                                 match fv_seq_parts(first: first_node, comma: fold_seq_left(node: s2), second: fold_seq_left(node: s3), repeat: fold_seq_left(node: s4), close: fold_seq_left(node: s5)) {
-                                  Absent => Absent
+                                  Absent => optional_absent()
                                   Present { value: binders } =>
                                     match fold_seq_right(node: s5) {
-                                      Absent => Absent
+                                      Absent => optional_absent()
                                       Present { value: after } => fv_expr_parts(binders: binders, after_binders: after)
                                     }
                                 }
@@ -342,10 +344,10 @@ fn arrow_lambda_parts_optional(lambda: Node) -> Optional<FunctionValueParts> {
         }
       } else {
         match fv_binder_optional(node: head) {
-          Absent => Absent
+          Absent => optional_absent()
           Present { value: b } =>
             match fold_seq_right(node: lambda) {
-              Absent => Absent
+              Absent => optional_absent()
               Present { value: after } => fv_expr_parts(binders: Cons { head: b, tail: Empty }, after_binders: after)
             }
         }
@@ -362,27 +364,27 @@ fn fv_seq_parts(
   close: Optional<Node>
 ) -> Optional<List<FunctionValueBinder>> {
   match comma {
-    Absent => Absent
+    Absent => optional_absent()
     Present { value: c } =>
       match close {
-        Absent => Absent
+        Absent => optional_absent()
         Present { value: rp } =>
           if fv_token_is(node: c, token: ^dag_token_comma) && fv_token_is(node: rp, token: ^dag_token_rparen) {
             match fv_binder_optional(node: first) {
-              Absent => Absent
+              Absent => optional_absent()
               Present { value: b1 } =>
                 match second {
-                  Absent => Absent
+                  Absent => optional_absent()
                   Present { value: s } =>
                     match fv_binder_optional(node: s) {
-                      Absent => Absent
+                      Absent => optional_absent()
                       Present { value: b2 } =>
                         match repeat {
-                          Absent => Absent
+                          Absent => optional_absent()
                           Present { value: rep } =>
                             match fv_repeat_binders_optional(repeat: rep, comma_required: true) {
-                              Absent => Absent
-                              Present { value: rest } => Present { value: Cons { head: b1, tail: Cons { head: b2, tail: rest } } }
+                              Absent => optional_absent()
+                              Present { value: rest } => optional_present(value: Cons { head: b1, tail: Cons { head: b2, tail: rest } })
                             }
                         }
                     }
@@ -399,23 +401,23 @@ fn fv_seq_parts(
 fn fv_comma_list_binders_optional(params: Node) -> Optional<List<FunctionValueBinder>> {
   let p = fv_unwrap(node: params)
   if is_empty_conj_root(n: p) {
-    Present { value: fv_no_binders() }
+    optional_present(value: fv_no_binders())
   } else {
     match fold_seq_left(node: p) {
-      Absent => Absent
+      Absent => optional_absent()
       Present { value: first_node } =>
         match fv_binder_optional(node: first_node) {
-          Absent => Absent
+          Absent => optional_absent()
           Present { value: first } =>
             match fold_seq_right(node: p) {
-              Absent => Absent
+              Absent => optional_absent()
               Present { value: tail } =>
                 match fold_seq_left(node: tail) {
-                  Absent => Absent
+                  Absent => optional_absent()
                   Present { value: rep } =>
                     match fv_repeat_binders_optional(repeat: rep, comma_required: false) {
-                      Absent => Absent
-                      Present { value: rest } => Present { value: Cons { head: first, tail: rest } }
+                      Absent => optional_absent()
+                      Present { value: rest } => optional_present(value: Cons { head: first, tail: rest })
                     }
                 }
             }
@@ -426,32 +428,32 @@ fn fv_comma_list_binders_optional(params: Node) -> Optional<List<FunctionValueBi
 
 fn fn_literal_parts_optional(fn_literal: Node) -> Optional<FunctionValueParts> {
   match fold_seq_right(node: fn_literal) {
-    Absent => Absent
+    Absent => optional_absent()
     Present { value: after_fn } =>
       match fold_seq_right(node: after_fn) {
-        Absent => Absent
+        Absent => optional_absent()
         Present { value: after_lparen } =>
           match fold_seq_left(node: after_lparen) {
-            Absent => Absent
+            Absent => optional_absent()
             Present { value: params } =>
               match fold_seq_right(node: after_lparen) {
-                Absent => Absent
+                Absent => optional_absent()
                 Present { value: after_params } =>
                   match fold_seq_left(node: after_params) {
-                    Absent => Absent
+                    Absent => optional_absent()
                     Present { value: rparen } =>
                       if fv_token_is(node: rparen, token: ^dag_token_rparen) {
                         match fold_seq_right(node: after_params) {
-                          Absent => Absent
+                          Absent => optional_absent()
                           Present { value: after_rparen } =>
                             match fold_seq_left(node: after_rparen) {
-                              Absent => Absent
+                              Absent => optional_absent()
                               Present { value: ret } =>
                                 match fold_seq_right(node: after_rparen) {
-                                  Absent => Absent
+                                  Absent => optional_absent()
                                   Present { value: fn_body } =>
                                     match fv_comma_list_binders_optional(params: params) {
-                                      Absent => Absent
+                                      Absent => optional_absent()
                                       Present { value: binders } =>
                                         Present {
                                           value: FunctionValueParts {
@@ -493,8 +495,8 @@ fn function_value_parts_optional(captured: Node, emitted: Symbol) -> Optional<Fu
 // step's body is its fn_body block's captured child, as body_producer_loop_body reads it.
 fn fold_step_first_binder(parts: FunctionValueParts) -> Optional<Symbol> {
   match parts.binders {
-    Cons { head: b, tail: _ } => Present { value: b.name }
-    Empty => Absent
+    Cons { head: b, tail: _ } => optional_present(value: b.name)
+    Empty => optional_absent()
   }
 }
 
@@ -507,38 +509,38 @@ fn fold_step_has_two_binders(parts: FunctionValueParts) -> Bool {
 
 fn fold_step_body(parts: FunctionValueParts) -> Optional<Node> {
   match parts.body {
-    FunctionValueExprBody { expr: e } => Present { value: e }
+    FunctionValueExprBody { expr: e } => optional_present(value: e)
     FunctionValueBlockBody { fn_body: b } => parse_production_captured_child_optional(node: fv_unwrap(node: b))
   }
 }
 
 fn step_fn_iteration_body(fn_literal: Node) -> Optional<Node> {
   match fn_literal_parts_optional(fn_literal: fn_literal) {
-    Absent => Absent
+    Absent => optional_absent()
     Present { value: parts } => fold_step_body(parts: parts)
   }
 }
 
 fn step_fn_carrier_binder_symbol(fn_literal: Node) -> Optional<Symbol> {
   match fn_literal_parts_optional(fn_literal: fn_literal) {
-    Absent => Absent
+    Absent => optional_absent()
     Present { value: parts } => fold_step_first_binder(parts: parts)
   }
 }
 
 fn arrow_lambda_iteration_body(lambda: Node) -> Optional<Node> {
   match arrow_lambda_parts_optional(lambda: lambda) {
-    Absent => Absent
+    Absent => optional_absent()
     Present { value: parts } =>
-      if fold_step_has_two_binders(parts: parts) { fold_step_body(parts: parts) } else { Absent }
+      if fold_step_has_two_binders(parts: parts) { fold_step_body(parts: parts) } else { optional_absent() }
   }
 }
 
 fn arrow_lambda_carrier_binder_symbol(lambda: Node) -> Optional<Symbol> {
   match arrow_lambda_parts_optional(lambda: lambda) {
-    Absent => Absent
+    Absent => optional_absent()
     Present { value: parts } =>
-      if fold_step_has_two_binders(parts: parts) { fold_step_first_binder(parts: parts) } else { Absent }
+      if fold_step_has_two_binders(parts: parts) { fold_step_first_binder(parts: parts) } else { optional_absent() }
   }
 }
 
