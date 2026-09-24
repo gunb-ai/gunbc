@@ -1,0 +1,44 @@
+module test.claim.namespace_root_reference_edge_witness
+
+import std.types { Bool, List, String }
+import v2.lens.module_graph { ImportResolutionFact, reference_derived_import_resolution_facts_live }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ── A QUALIFIED PATH'S FIRST SEGMENT IS A NAMESPACE ROOT, NEVER A REFERENCE ────────────────────
+//
+// The subject is the reference-derived dependency producer (v2.lens.module_graph
+// reference_derived_import_resolution_facts_live, realized by the host's
+// reference_resolution_facts), run for real over an import-free fixture pool:
+//   nsroot.pkg.consumer reads nsroot.pkg.target.target_value through the qualified path, and
+//   nsroot_decl.homonym declares fn nsroot() -- the same spelling as that path's first segment.
+// Before the repair the chain head `nsroot` was classified as a bare reference and resolved
+// UniqueBare to the homonym fn, so the consumer gained a dependency on a module it never names.
+// On the live corpus that was test.claim.secret_rotation_witness's fn v2(): every v2.std.* path in
+// an import-free production module grew an edge into a test claim.
+
+data nsroot_fixture_roots: List<String> = ["fixtures/namespace_root_homonym"]
+
+fn nsroot_consumer_targets() -> List<String> {
+  reference_derived_import_resolution_facts_live(
+    pool_roots: nsroot_fixture_roots,
+    importer_roots: nsroot_fixture_roots,
+    exclude_substrings: []
+  )
+    |> filter(f => ends_with(s: f.path, suffix: "consumer.dag"))
+    |> map(f => f.import_module)
+}
+
+// RED: the homonym is not a dependency of the consumer.
+test fn a_qualified_path_head_never_resolves_to_a_same_named_declaration() -> Bool {
+  !(nsroot_consumer_targets() |> any(t => t == "nsroot_decl.homonym"))
+}
+
+// CONTROL, same run: the qualified path still yields its own edge, and a dotted read of a real
+// value (ns_row.tag, whose head names no module) still yields the edge to the row's module, so the
+// repair removes the homonym edge and nothing else.
+test fn the_qualified_target_and_a_value_chain_keep_their_edges() -> Bool {
+  let targets = nsroot_consumer_targets()
+  (targets |> any(t => t == "nsroot.pkg.target")) && (targets |> any(t => t == "nsroot_decl.rows"))
+}
