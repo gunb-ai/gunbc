@@ -9,7 +9,11 @@ import extdeps.tools.websocat { websocat_cli_tool }
 import extdeps.tools.mosquitto_pub { mosquitto_pub_cli_tool }
 import extdeps.apt { package_sshpass, package_nfct, apt_installed_bin_path, apt_bin_dir }
 import extdeps.netfilter.nfct { nfct_cli_tool }
-import gunbc.fleet_posix_accounts { fleet_nfct_binary_path }
+import gunbc.fleet_posix_accounts { fleet_nfct_binary_path, fleet_conntrack_binary_path, fleet_iptables_legacy_save_binary_path, fleet_nft_binary_path }
+import extdeps.tools.conntrack { conntrack_cli_tool }
+import extdeps.netfilter.iptables_legacy { iptables_legacy_save_cli_tool }
+import extdeps.nftables.ruleset { nft_cli_tool }
+import gunbc.host_cli_dependency { microvm_network_host_cli_requirements }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -89,4 +93,31 @@ test fn a_tool_with_no_apt_source_has_no_declared_path() -> Bool {
     Present { value: _ } => false
     Absent => true
   }
+}
+
+// EVERY SLOT-NETWORK PREREQUISITE'S ROW DERIVES THE PATH ITS PRIVILEGED READ EXECS. One row per
+// reader, each compared against the gunbc.fleet_posix_accounts path its sudo grant names; both
+// derive from the tool module's own *_bin_dir, so a mismatch means a route diverged, not a copy.
+fn row_derives(tool: CliTool, exec_path: String) -> Bool {
+  match apt_binary_path_of(tool: tool) {
+    Present { value: p } => (p as String) == exec_path
+    Absent => false
+  }
+}
+
+test fn every_slot_network_reader_row_derives_its_exec_path() -> Bool {
+  row_derives(tool: conntrack_cli_tool, exec_path: fleet_conntrack_binary_path as String)
+    && row_derives(tool: iptables_legacy_save_cli_tool, exec_path: fleet_iptables_legacy_save_binary_path as String)
+    && row_derives(tool: nft_cli_tool, exec_path: fleet_nft_binary_path as String)
+    && row_derives(tool: nfct_cli_tool, exec_path: fleet_nfct_binary_path as String)
+}
+
+// THE ROSTER CARRIES EVERY READER, and each member has an apt source the apply can act on -- a
+// member apt_package_of answered Absent for would make the apply refuse on every host.
+test fn the_slot_network_roster_is_four_acquirable_readers() -> Bool {
+  length(microvm_network_host_cli_requirements) == 4
+    && fold(microvm_network_host_cli_requirements, init: true, f: (acc, t) => acc && match apt_package_of(tool: t) {
+         Present { value: _ } => true
+         Absent => false
+       })
 }
