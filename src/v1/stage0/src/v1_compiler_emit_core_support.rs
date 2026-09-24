@@ -360,7 +360,7 @@ pub fn sanitize_service_name(name: String) -> String {
             }
             __result
         });
-        pascal_parts.clone().join(&"".to_string())
+        pascal_parts.clone().join(&"__".to_string())
     }
 }
 
@@ -398,7 +398,15 @@ pub fn capitalize_first(s: String) -> String {
 }
 
 pub fn service_var_name(service_name: String) -> String {
-    to_snake(sanitize_service_name(service_name.clone()))
+    to_snake(
+        Rc::new(
+            sanitize_service_name(service_name.clone())
+                .split(&"__".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .join(&"".to_string()),
+    )
 }
 
 pub fn to_pascal(name: String) -> String {

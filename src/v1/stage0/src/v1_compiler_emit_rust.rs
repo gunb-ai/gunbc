@@ -34410,7 +34410,13 @@ pub fn emit_service_struct(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(derives.clone(), "\npub struct ".to_string()),
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    derives.clone(),
+                                    service_struct_case_allowance(name.clone()),
+                                ),
+                                "\npub struct ".to_string(),
+                            ),
                             name.clone(),
                         ),
                         " {\n".to_string(),
@@ -34421,6 +34427,22 @@ pub fn emit_service_struct(
             ),
             "\n}".to_string(),
         )
+    }
+}
+
+pub fn service_struct_case_allowance(name: String) -> String {
+    if ((Rc::new(
+        name.clone()
+            .split(&"__".to_string())
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    )
+    .len() as i64)
+        > 1)
+    {
+        "\n#[allow(non_camel_case_types)]".to_string()
+    } else {
+        "".to_string()
     }
 }
 
