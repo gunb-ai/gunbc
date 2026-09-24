@@ -32,10 +32,15 @@ import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   IntendedAsDescribed, IntendedAtDrawingLabels, IntendedAtPhysicalConnectors,
   mtcollins1_boot_receipts_artifact, mtcollins1_socket1_investigation_boots,
   mtcollins1_socket1_boot_three_sticks, mtcollins1_socket1_boot_two_sticks,
-  mtcollins1_socket1_investigation_predecessor, mtcollins1_socket1_open_hypotheses,
+  mtcollins1_socket1_investigation_predecessor, mtcollins1_socket1_hypotheses,
   MtCollins1PhysicalFactStanding, VendorFigureFact, OperatorByEyeReport, FirmwareTrainedFact,
   MtCollins1ChassisEnd, FrontEnd, RearEnd, MtCollins1Viewpoint, ViewpointReported, ViewpointNotYetReported,
   mtcollins1_operator_front_report,
+  MtCollins1DiagnosisHypothesis, MtCollins1HypothesisStanding, HypothesisOpen, HypothesisRefutedByStickSwap,
+  MtCollins1StickSwapReport, MtCollins1StickPlacement, MtCollins1FirmwareSocketSummary, mtcollins1_firmware_socket_summary,
+  MtCollins1SocketCpu, MtCollins1CpuRelease, EngineeringSample, ProductionPart, mtcollins1_socket_cpus,
+  MtCollins1PairingBootHistory, MachineBootReportedSinceSwap, PairingBootNotYetReported, mtcollins1_pairing_boot_history,
+  mtcollins1_spare_processors,
 }
 
 // THE PHYSICAL ORIENTATION OF MT. COLLINS UNIT 1'S DIMM ROW, AS THIS REPOSITORY OBSERVED IT.
@@ -699,7 +704,73 @@ fn history_block(history: List<MtCollins1Socket1InvestigationBoot>, orientation:
   if list_length(items: history) == 0 { [] } else {
     concat(concat(concat(["History (firmware rosters):"], map(history, b => boot_history_line(boot: b, orientation: orientation, banks: banks))),
       [socket1_standing_text(standing: socket1_standing(boots: history, orientation: orientation, banks: banks))]),
-      map(mtcollins1_socket1_open_hypotheses, h => concat(concat(concat("Open hypothesis (not established): ", h.hypothesis), " Test: "), h.discriminator)))
+      concat(cpu_block(cpus: mtcollins1_socket_cpus, history: mtcollins1_pairing_boot_history, banks: banks), map(mtcollins1_socket1_hypotheses, h => hypothesis_text(h: h, history: history, banks: banks, pairs: mt_collins_channel_connector_pairs))))
+  }
+}
+
+fn cpu_release_text(issue: MtCollins1CpuRelease) -> String {
+  match issue { EngineeringSample => "engineering sample"  ProductionPart => "production part" }
+}
+
+// Firmware's socket count against the board's: fewer active than the board has is what
+// "not exposed" means here, and it is derived, never authored.
+fn socket_summary_text(summary: MtCollins1FirmwareSocketSummary, banks: List<MtCollinsDimmFigureBank>) -> String {
+  let board = list_length(items: board_sockets(banks: banks))
+  let head = concat(concat(concat(concat("Established (run ", to_string(summary.run_id)), "): SCP reports '"), summary.line), "'")
+  if summary.active_sockets < board { concat(head, " of the board's sockets - firmware does not expose them all. Which layer stops socket 1 is open.") } else { concat(head, " - every board socket is active.") }
+}
+
+// What firmware established, the operator's CPU facts, and the operator's boot report.
+fn cpu_block(cpus: List<MtCollins1SocketCpu>, history: MtCollins1PairingBootHistory, banks: List<MtCollinsDimmFigureBank>) -> List<String> {
+  let lines = map(cpus, c => concat(concat(concat(concat(concat("CPU", to_string(c.socket)), " (socket "), to_string(c.socket)), "): "), concat(concat(cpu_release_text(issue: c.issue), " - "), c.provenance)))
+  let booted = match history {
+    PairingBootNotYetReported { question: q } => concat("Open question: ", q)
+    MachineBootReportedSinceSwap { quote: q, report: _ } => concat(concat("Operator: \"", q), "\" (a boot since the swap, no socket count and no date given).")
+  }
+  concat(concat([socket_summary_text(summary: mtcollins1_firmware_socket_summary, banks: banks)], lines), [booted, concat(concat(concat("Spares on hand: about ", to_string(mtcollins1_spare_processors.approximate_count)), " "), concat(mtcollins1_spare_processors.family, " processors (operator report)."))])
+}
+
+// THE STICK REFUTATION IS DERIVED. A stick is cleared when the swap report places it at a
+// connector that trained nothing in one receipt, and at a connector that trained its expected
+// slot in another. A placement naming a run with no receipt, or no such pair, clears nothing.
+type MtCollins1StickVerdict
+  = StickCleared { stick: NonEmptyStr, silent_run: Nat, silent_connector: Nat, trained_run: Nat, trained_connector: Nat }
+  | StickNotCleared
+
+type MtCollins1PlacementOutcome = PlacementTrained | PlacementSilent | PlacementUnevaluable
+
+fn placement_trained(p: MtCollins1StickPlacement, history: List<MtCollins1Socket1InvestigationBoot>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> MtCollins1PlacementOutcome {
+  let e = expected_firmware_readback(connectors: [p.connector], live_sockets: board_sockets(banks: banks), banks: banks, pairs: pairs)
+  match filter(history, b => b.run_id == p.run_id).first() {
+    Absent => PlacementUnevaluable
+    Present { value: b } => if list_length(items: e.unresolved) > 0 || list_length(items: e.predicted) == 0 { PlacementUnevaluable } else {
+      let hits = list_length(items: filter(e.predicted, t => list_length(items: filter(b.trained, u => u.socket == t.socket && u.controller == t.controller && u.slot == t.slot)) > 0))
+      if hits == list_length(items: e.predicted) { PlacementTrained } else { if hits == 0 { PlacementSilent } else { PlacementUnevaluable } }
+    }
+  }
+}
+
+fn stick_swap_verdict(swap: MtCollins1StickSwapReport, history: List<MtCollins1Socket1InvestigationBoot>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> MtCollins1StickVerdict {
+  let silent = filter(swap.placements, p => placement_trained(p: p, history: history, banks: banks, pairs: pairs) == PlacementSilent)
+  let trained = filter(swap.placements, p => placement_trained(p: p, history: history, banks: banks, pairs: pairs) == PlacementTrained)
+  fold(silent, init: StickNotCleared, f: (acc, s) => match acc {
+    StickCleared { stick: _, silent_run: _, silent_connector: _, trained_run: _, trained_connector: _ } => acc
+    StickNotCleared => match filter(trained, t => t.stick == s.stick && t.run_id != s.run_id).first() {
+      Present { value: t } => StickCleared { stick: s.stick, silent_run: s.run_id, silent_connector: s.connector, trained_run: t.run_id, trained_connector: t.connector }
+      Absent => StickNotCleared
+    }
+  })
+}
+
+fn hypothesis_text(h: MtCollins1DiagnosisHypothesis, history: List<MtCollins1Socket1InvestigationBoot>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> String {
+  let bet = concat(concat(h.hypothesis, " Test: "), h.discriminator)
+  match h.standing {
+    HypothesisOpen => concat("Open hypothesis (not established): ", bet)
+    HypothesisRefutedByStickSwap { swap: sw } => match stick_swap_verdict(swap: sw, history: history, banks: banks, pairs: pairs) {
+      StickCleared { stick: k, silent_run: sr, silent_connector: sc, trained_run: tr, trained_connector: tc } =>
+        concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat("Refuted hypothesis: ", h.hypothesis), " By the operator's swap report: "), k), " was silent in J"), to_string(sc)), " (run "), to_string(sr)), ") and trained in J"), to_string(tc)), " (run "), to_string(tr)), "). The J17 slot is not cleared.")
+      StickNotCleared => concat("Stick refutation not derivable from the swap report and receipts (unverified): ", h.hypothesis)
+    }
   }
 }
 

@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { package_npm }
+import extdeps.apt { apt_bin_dir, package_npm }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -18,7 +18,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data npm_cli_tool: CliTool = CliTool {
   name: "npm",
   min_version: none,
-  installable_via: [SourceApt { package: package_npm }],
+  installable_via: [SourceApt { package: package_npm, bin_dir: apt_bin_dir }],
 }
 
 // min_version = none is NOT a materialization receipt. Observed npm --version is recorded on
