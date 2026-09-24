@@ -1,0 +1,11 @@
+module test.fixture.forked_spelling.variant_twin
+
+import std.types { Int }
+
+// A second declarer of the spelling as a UNIT VARIANT only, the shape v2.std.integer
+// StandardIntegerType gives UInt8. Reached only through variant_bystander.
+type FspWidth = FspOctet | FspWord
+
+fn fsp_variant_twin_answer() -> Int {
+  1
+}
