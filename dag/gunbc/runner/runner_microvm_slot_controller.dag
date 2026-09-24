@@ -1,5 +1,6 @@
 module gunbc.runner_microvm_slot_controller
 
+import std.durable_compare_and_set { cas_unreadable_slot_detail }
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.algebra { trim }
 import std.disposition { Disposition, SingleAuthority }
@@ -487,8 +488,8 @@ fn reservation_observation_text(o: RequiredBuildCellObservation) -> String {
   match o {
     RequiredBuildCellObserved { snapshot: _ } => "observed"
     ReservationAbsent { slot_key: k } => join(["no reservation holds ", k as String], "")
-    ReservationUnreadable { slot_key: k } => join(["the allocation store could not be read for ", k as String], "")
-    ReservationPayloadUndecodable { slot_key: k } => join(["the hold payload for ", k as String, " did not decode"], "")
+    ReservationUnreadable { slot_key: k, cause: c } => join(["the allocation store could not be read for ", k as String, ": ", cas_unreadable_slot_detail(cause: c)], "")
+    ReservationPayloadUndecodable { slot_key: k, detail: d } => join(["the hold payload for ", k as String, " did not decode: ", d as String], "")
     ReservationPayloadWorkMismatch { slot_key: k } => join(["the hold on ", k as String, " belongs to a different demand/offer than the shakedown's"], "")
     SelectedOfferCellMismatch { slot_key: k, executor: e } => join(["the shakedown offer's executor ", e as String, " is not the slot key ", k as String], "")
     CellSubstrateNotConverged { cell: c } => join(["the cell substrate for ", c as String, " is not converged"], "")
