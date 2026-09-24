@@ -1,6 +1,6 @@
 module gunbc.fleet.org_actions_inspection
 
-import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.types { NonEmptyStr, String, Bool, Int, List, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.cardinality { Never }
 import v2.std.algebra { non_empty_to_list }
@@ -23,6 +23,9 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject
 }
 import extdeps.shell.credentials { env_credential }
+import extdeps.github.org_actions { OrgRunnerGroupListWire }
+import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.host_cli_dependency { first_absent_gh_cli_operation_host_cli_dependency, host_dependency_absent_wire }
@@ -58,19 +61,18 @@ data org_actions_organization: NonEmptyStr = "gunb-ai"
 
 type OrgActionsReadRequest { credential_env: NonEmptyStr }
 
-// Every way the read can fail to produce a snapshot, kept apart by owner: a refused request is an
-// access or transport fact, an undecodable body is a contract fact about GitHub's response. The
-// shape this replaced folded a group's refused request and its undecodable body into one string.
+// Every way the read can fail to produce a snapshot. The runner-groups list has ONE read
+// (read_runner_groups), whose refusal already names whether the request was refused, unreached,
+// undecodable or short of total_count, so it is carried as that reason; the per-group repository
+// reads keep their CLI refusal and decode arms apart.
 type OrgActionsReadRefusal
-  = RunnerGroupsReadRefused { stderr: String }
-  | RunnerGroupsUndecodable { reason: NonEmptyStr }
+  = RunnerGroupsUnread { reason: NonEmptyStr }
   | GroupRepositoriesReadRefused { group: NonEmptyStr, stderr: String }
   | GroupRepositoriesUndecodable { group: NonEmptyStr, reason: NonEmptyStr }
 
 fn render_org_actions_read_refusal(cause: OrgActionsReadRefusal) -> String {
   match cause {
-    RunnerGroupsReadRefused { stderr } => concat("OrgActionsRunnerGroupsReadRefused: ", stderr)
-    RunnerGroupsUndecodable { reason } => concat("OrgActionsRunnerGroupsUndecodable: ", reason as String)
+    RunnerGroupsUnread { reason } => concat("OrgActionsRunnerGroupsUnread: ", reason as String)
     GroupRepositoriesReadRefused { group, stderr } =>
       join(["OrgActionsGroupRepositoriesReadRefused group=", group as String, ": ", stderr], "")
     GroupRepositoriesUndecodable { group, reason } =>
@@ -120,74 +122,52 @@ fn json_member_bool(v: JsonValue, key: String) -> Bool? {
   }
 }
 
-// An array of non-empty strings, or absent when the member is missing, not an array, or holds any
-// element that is not a non-empty string -- one bad element is not dropped, it refuses the member.
-fn json_member_string_list(v: JsonValue, key: String) -> List<NonEmptyStr>? {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberFound { value: JsonArray { elements } } => {
-      let strings = map(elements, e => match e {
-        JsonString { value } => if value == "" { none } else { Present { value: value as NonEmptyStr } }
-        _ => none
-      })
-      if any(strings, s => match s { Absent => true, Present { value: _ } => false }) {
-        none
-      } else {
-        Present { value: flat_map(strings, s => match s {
-          Present { value } => [value]
-          Absent => []
-        }) }
-      }
-    }
-    _ => none
+// THE ORGANIZATION'S RUNNER GROUPS HAVE ONE READ, and every consumer goes through it: this
+// inspection, gunbc.runner_group_restriction_ensure_run and the microVM slot controller. It is the
+// REST operation extdeps.github.org_actions github.OrgRunnerGroupsRest ListOrganizationRunnerGroups
+// under a bearer token the caller holds, and one pure fold over what came back -- so there is one
+// page contract (per_page at the documented maximum), one completeness refusal (fewer groups than
+// total_count), and one set of element refusals. A second read bound to another transport was the
+// §3 fork review 70883 found: the gh-CLI copy fetched GitHub's default page and never compared
+// total_count, so on a page boundary the ensure could read the shakedown group as absent and
+// create a duplicate while the controller refused.
+fn runner_groups_of_rest_read(outcome: RestOutcome, body: OrgRunnerGroupListWire) -> RunnerGroupListDecode {
+  match outcome {
+    RestOk => runner_groups_from_wire(body: body)
+    RestStatusRefused { status: s, body: b } =>
+      RunnerGroupListDecodeRefused { reason: join(["GET /orgs/\{org\}/actions/runner-groups answered ", to_string(s), ": ", b], "") as NonEmptyStr }
+    RestTransportRefused { cause: c } =>
+      RunnerGroupListDecodeRefused { reason: concat("runner-groups read unreached: ", c as String) as NonEmptyStr }
+    RestBodyUndecodable { status: s, cause: c } =>
+      RunnerGroupListDecodeRefused { reason: join(["runner-groups body undecodable at ", to_string(s), ": ", c as String], "") as NonEmptyStr }
   }
 }
 
-fn decode_runner_group(v: JsonValue) -> RunnerGroupIdentity? {
-  match json_member_int(v: v, key: "id") {
-    Absent => none
-    Present { value: id } => match json_member_string(v: v, key: "name") {
-      Absent => none
-      Present { value: name } => match json_member_bool(v: v, key: "allows_public_repositories") {
-        Absent => none
-        Present { value: allows_public } => match json_member_bool(v: v, key: "restricted_to_workflows") {
-          Absent => none
-          Present { value: restricted } => match json_member_string_list(v: v, key: "selected_workflows") {
-            Absent => none
-            Present { value: selected } => Present { value: RunnerGroupIdentity {
-              id: id,
-              name: name,
-              allows_public_repositories: allows_public,
-              restricted_to_workflows: restricted,
-              selected_workflows: selected
-            } }
-          }
-        }
-      }
-    }
-  }
+fn read_runner_groups(token: Secret, organization: NonEmptyStr) -> RunnerGroupListDecode uses net: Network {
+  let listed = github.OrgRunnerGroupsRest.ListOrganizationRunnerGroups(installation_token: token, org: organization)
+  runner_groups_of_rest_read(outcome: listed.outcome, body: listed.result)
 }
 
-fn decode_runner_groups_json(body: String) -> RunnerGroupListDecode {
-  match parse_json_document(s: body) {
-    JsonDocumentUnreadable { gap } => RunnerGroupListDecodeRefused {
-      reason: concat("runner-groups response is ", json_document_gap_text(gap: gap)) as NonEmptyStr
-    }
-    JsonDocumentParsed { value: doc } => match json_object_unique_member(v: doc, key: "runner_groups") {
-      JsonMemberFound { value: JsonArray { elements } } => {
-        let decoded = map(elements, v => decode_runner_group(v: v))
-        if any(decoded, d => match d { Absent => true, Present { value: _ } => false }) {
-          RunnerGroupListDecodeRefused { reason: "runner_groups contains an element without exact id/name/allows_public_repositories/restricted_to_workflows/selected_workflows fields" }
-        } else {
-          RunnerGroupListDecoded { groups: flat_map(decoded, d => match d {
-            Present { value } => [value]
-            Absent => []
-          }) }
-        }
-      }
-      JsonMemberFound { value: _ } => RunnerGroupListDecodeRefused { reason: "runner_groups is not a JSON array" }
-      JsonMemberAbsent => RunnerGroupListDecodeRefused { reason: "runner_groups is absent" }
-      JsonMemberDuplicated { count: _ } => RunnerGroupListDecodeRefused { reason: "runner_groups is duplicated" }
-      JsonMemberNotAnObject => RunnerGroupListDecodeRefused { reason: "runner-groups response is not a JSON object" }
+// THE WIRE BODY, PROJECTED INTO THE ROWS THE CONSUMERS READ. Refuses a read that returned fewer
+// groups than total_count, because a group on an unread page would otherwise read as absent, and
+// refuses an empty name or an empty selected_workflows entry rather than dropping it.
+fn runner_groups_from_wire(body: OrgRunnerGroupListWire) -> RunnerGroupListDecode {
+  if count(body.runner_groups) != body.total_count {
+    RunnerGroupListDecodeRefused { reason: join([
+      "runner-groups read returned ", to_string(count(body.runner_groups)), " of total_count ", to_string(body.total_count),
+      "; a group on an unread page would read as absent",
+    ], "") as NonEmptyStr }
+  } else {
+    if any(body.runner_groups, g => g.name == "" || any(g.selected_workflows, w => w == "")) {
+      RunnerGroupListDecodeRefused { reason: "runner_groups contains an element with an empty name or an empty selected_workflows entry" }
+    } else {
+      RunnerGroupListDecoded { groups: map(body.runner_groups, g => RunnerGroupIdentity {
+        id: g.id,
+        name: g.name as NonEmptyStr,
+        allows_public_repositories: g.allows_public_repositories,
+        restricted_to_workflows: g.restricted_to_workflows,
+        selected_workflows: map(g.selected_workflows, w => w as NonEmptyStr),
+      }) }
     }
   }
 }
@@ -267,12 +247,10 @@ fn observe_org_actions(
   organization: NonEmptyStr,
   request: OrgActionsReadRequest,
 ) -> ObservationAttempt<List<ObservedGroupAccess>, OrgActionsReadRefusal> {
-  let listed = github.CliOrgRunnerGroups.ListRunnerGroupsJson(org: organization)
-  if !listed.success {
-    ObservationRefused { cause: RunnerGroupsReadRefused { stderr: listed.stderr } }
-  } else {
-    match decode_runner_groups_json(body: listed.stdout) {
-      RunnerGroupListDecodeRefused { reason } => ObservationRefused { cause: RunnerGroupsUndecodable { reason: reason } }
+  match env_credential(env_var: request.credential_env).token {
+    Absent => ObservationRefused { cause: RunnerGroupsUnread { reason: concat(request.credential_env as String, " is absent; no bearer token to read the runner groups with") as NonEmptyStr } }
+    Present { value: token } => match read_runner_groups(token: token, organization: organization) {
+      RunnerGroupListDecodeRefused { reason } => ObservationRefused { cause: RunnerGroupsUnread { reason: reason } }
       RunnerGroupListDecoded { groups } => {
         let reads = map(groups, g => read_observed_group(organization: organization, group: g))
         match first_group_read_refusal(reads: reads) {

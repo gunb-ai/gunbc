@@ -1,8 +1,10 @@
 module test.claim.runner.runner_group_restriction_observation_witness_test
 
-import std.types { Bool, String, List, Int }
+import std.types { Bool, String, List, Int, NonEmptyStr }
 import extdeps.github.actions_jit_runner { JitRunnerGroupId }
-import gunbc.fleet.org_actions_inspection { decode_runner_groups_json }
+import gunbc.fleet.org_actions_inspection { runner_groups_of_rest_read }
+import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestBodyUndecodable }
+import extdeps.github.org_actions { OrgRunnerGroupWire, OrgRunnerGroupListWire }
 import gunbc.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictedToShakedownWorkflow, RunnerGroupRestrictionRefused,
   RunnerGroupListUnreadable, RunnerGroupAbsent, RunnerGroupDuplicated,
@@ -10,87 +12,135 @@ import gunbc.runner_group_restriction_observation {
   observe_shakedown_runner_group_restriction, microvm_shakedown_selected_workflow,
 }
 
-// THE OBSERVER'S SUBJECT IS ONE INTERFACE: a runner-groups body as GitHub returns it, decoded by the
-// production decode (gunbc.fleet.org_actions_inspection decode_runner_groups_json), in; a standing
-// out. Each red below differs from the positive control in ONE fact of the group, so the only thing
-// that can refuse it is the observer reading that fact.
+// THE OBSERVER'S SUBJECT IS ONE INTERFACE: the runner-groups wire body as GitHub's REST read
+// returns it, projected by the one production fold (gunbc.fleet.org_actions_inspection
+// runner_groups_of_rest_read), in; a standing out. Each red below differs from the positive
+// control in ONE fact of the group, so the only thing that can refuse it is the observer reading
+// that fact.
 
-fn group_json(id: Int, restricted: Bool, selected: List<String>) -> String {
-  join([
-    "\{\"id\":", to_string(id),
-    ",\"name\":\"microvm-shakedown\",\"visibility\":\"selected\",\"allows_public_repositories\":false,\"restricted_to_workflows\":",
-    if restricted { "true" } else { "false" },
-    ",\"selected_workflows\":[", join(map(selected, w => join(["\"", w, "\""], "")), ","),
-    "],\"workflow_restrictions_read_only\":false}",
-  ], "")
+// Group 7 holds the shakedown group's name; any other id is some other group.
+fn name_of(id: Int) -> String {
+  if id == 7 { "microvm-shakedown" } else { concat("other-", to_string(id)) }
 }
 
-fn body_of(groups: List<String>) -> String {
-  join(["\{\"total_count\":", to_string(count(groups)), ",\"runner_groups\":[", join(groups, ","), "]}"], "")
+fn group(id: Int, restricted: Bool, selected: List<String>) -> OrgRunnerGroupWire {
+  OrgRunnerGroupWire {
+    id: id,
+    name: name_of(id: id),
+    visibility: "selected",
+    allows_public_repositories: false,
+    restricted_to_workflows: restricted,
+    selected_workflows: selected,
+    workflow_restrictions_read_only: false,
+  }
 }
 
-fn observed(body: String) -> MicrovmRunnerGroupStanding {
-  observe_shakedown_runner_group_restriction(group: JitRunnerGroupId { value: 7 }, listed: decode_runner_groups_json(body: body))
+fn listed(groups: List<OrgRunnerGroupWire>) -> OrgRunnerGroupListWire {
+  OrgRunnerGroupListWire { total_count: count(groups), runner_groups: groups }
+}
+
+fn observed_read(outcome: RestOutcome, body: OrgRunnerGroupListWire) -> MicrovmRunnerGroupStanding {
+  observe_shakedown_runner_group_restriction(name: "microvm-shakedown" as NonEmptyStr, listed: runner_groups_of_rest_read(outcome: outcome, body: body))
+}
+
+fn observed(body: OrgRunnerGroupListWire) -> MicrovmRunnerGroupStanding {
+  observed_read(outcome: RestOk, body: body)
 }
 
 fn shakedown() -> String { microvm_shakedown_selected_workflow() as String }
 
 // POSITIVE CONTROL, and the route: the authorized arm names the group read and the exact workflow.
 test fn witness_runner_group_restricted_to_exactly_the_shakedown_workflow_is_held() -> Bool {
-  match observed(body: body_of(groups: [group_json(id: 3, restricted: false, selected: []), group_json(id: 7, restricted: true, selected: [shakedown()])])) {
+  match observed(body: listed(groups: [group(id: 3, restricted: false, selected: []), group(id: 7, restricted: true, selected: [shakedown()])])) {
     RunnerGroupRestrictedToShakedownWorkflow { restriction: r } =>
-      r.group.value == 7 && (r.selected_workflow as String) == "gunb-ai/gunbc/.github/workflows/microvm-shakedown.yml@refs/heads/main"
+      r.group.value == 7 && (r.name as String) == "microvm-shakedown" && (r.selected_workflow as String) == "gunb-ai/gunbc/.github/workflows/microvm-shakedown.yml@refs/heads/main"
     _ => false
   }
 }
 
 test fn witness_runner_group_not_restricted_refuses_even_when_it_lists_the_workflow() -> Bool {
-  match observed(body: body_of(groups: [group_json(id: 7, restricted: false, selected: [shakedown()])])) {
-    RunnerGroupRestrictionRefused { group: g, cause: RunnerGroupNotRestrictedToWorkflows } => g.value == 7
+  match observed(body: listed(groups: [group(id: 7, restricted: false, selected: [shakedown()])])) {
+    RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupNotRestrictedToWorkflows { group: g } } => g.value == 7
     _ => false
   }
 }
 
 test fn witness_runner_group_selecting_a_second_workflow_refuses() -> Bool {
-  match observed(body: body_of(groups: [group_json(id: 7, restricted: true, selected: [shakedown(), "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main"])])) {
-    RunnerGroupRestrictionRefused { group: _, cause: RunnerGroupSelectsOtherWorkflows { selected: s } } => count(s) == 2
+  match observed(body: listed(groups: [group(id: 7, restricted: true, selected: [shakedown(), "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main"])])) {
+    RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupSelectsOtherWorkflows { group: _, selected: s } } => count(s) == 2
     _ => false
   }
 }
 
 // The same file at another ref is another workflow: a branch could carry an edited copy.
 test fn witness_runner_group_selecting_the_workflow_at_another_ref_refuses() -> Bool {
-  match observed(body: body_of(groups: [group_json(id: 7, restricted: true, selected: ["gunb-ai/gunbc/.github/workflows/microvm-shakedown.yml@refs/heads/feature"])])) {
-    RunnerGroupRestrictionRefused { group: _, cause: RunnerGroupSelectsOtherWorkflows { selected: _ } } => true
+  match observed(body: listed(groups: [group(id: 7, restricted: true, selected: ["gunb-ai/gunbc/.github/workflows/microvm-shakedown.yml@refs/heads/feature"])])) {
+    RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupSelectsOtherWorkflows { group: _, selected: _ } } => true
     _ => false
   }
 }
 
 test fn witness_runner_group_restricted_to_nothing_refuses() -> Bool {
-  match observed(body: body_of(groups: [group_json(id: 7, restricted: true, selected: [])])) {
-    RunnerGroupRestrictionRefused { group: _, cause: RunnerGroupSelectsOtherWorkflows { selected: s } } => count(s) == 0
+  match observed(body: listed(groups: [group(id: 7, restricted: true, selected: [])])) {
+    RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupSelectsOtherWorkflows { group: _, selected: s } } => count(s) == 0
     _ => false
   }
 }
 
 test fn witness_runner_group_absent_from_the_read_refuses() -> Bool {
-  match observed(body: body_of(groups: [group_json(id: 3, restricted: true, selected: [shakedown()])])) {
-    RunnerGroupRestrictionRefused { group: _, cause: RunnerGroupAbsent } => true
+  match observed(body: listed(groups: [group(id: 3, restricted: true, selected: [shakedown()])])) {
+    RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupAbsent } => true
     _ => false
   }
 }
 
 test fn witness_runner_group_duplicated_in_the_read_refuses() -> Bool {
-  match observed(body: body_of(groups: [group_json(id: 7, restricted: true, selected: [shakedown()]), group_json(id: 7, restricted: true, selected: [shakedown()])])) {
-    RunnerGroupRestrictionRefused { group: _, cause: RunnerGroupDuplicated { count: n } } => n == 2
+  match observed(body: listed(groups: [group(id: 7, restricted: true, selected: [shakedown()]), group(id: 7, restricted: true, selected: [shakedown()])])) {
+    RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupDuplicated { count: n } } => n == 2
     _ => false
   }
 }
 
-// A body without the restriction members is not an unrestricted group, it is an unreadable one.
-test fn witness_runner_group_body_without_restriction_members_refuses_as_unreadable() -> Bool {
-  match observed(body: "\{\"total_count\":1,\"runner_groups\":[\{\"id\":7,\"name\":\"g\",\"allows_public_repositories\":false}]}") {
-    RunnerGroupRestrictionRefused { group: _, cause: RunnerGroupListUnreadable { reason: _ } } => true
+// A READ THAT DID NOT RETURN A BODY IS NOT AN EMPTY ORGANIZATION. A refused status and an
+// undecodable body (a member missing from GitHub's response fails the typed decode) each refuse the
+// list; neither may read as "no such group", which would send the ensure to create one.
+test fn witness_runner_group_read_refused_by_status_refuses_as_unreadable() -> Bool {
+  match observed_read(outcome: RestStatusRefused { status: 403, body: "Resource not accessible by integration" }, body: listed(groups: [])) {
+    RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupListUnreadable { reason: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_runner_group_body_undecodable_refuses_as_unreadable() -> Bool {
+  match observed_read(outcome: RestBodyUndecodable { status: 200, cause: "runner_groups[0] lacks restricted_to_workflows" }, body: listed(groups: [])) {
+    RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupListUnreadable { reason: _ } } => true
+    _ => false
+  }
+}
+
+// ── The REST read's wire body, the controller's route ──────────────────────────────────────────
+// The completeness and element refusals of the one projection, and the positive control that a
+// complete body of several groups reaches the sealed arm with the id GitHub assigned.
+
+test fn witness_wire_body_reaches_the_restricted_arm() -> Bool {
+  match observed(body: OrgRunnerGroupListWire { total_count: 2, runner_groups: [OrgRunnerGroupWire { id: 1, name: "Default", visibility: "all", allows_public_repositories: false, restricted_to_workflows: false, selected_workflows: [], workflow_restrictions_read_only: false }, group(id: 7, restricted: true, selected: [shakedown()])] }) {
+    RunnerGroupRestrictedToShakedownWorkflow { restriction: r } => r.group.value == 7
+    _ => false
+  }
+}
+
+// A read that returned fewer groups than total_count refuses: the shakedown group could sit on the
+// unread page, and reading it as absent would send the ensure to create a duplicate.
+test fn witness_wire_body_short_of_total_count_refuses_as_unreadable() -> Bool {
+  match observed(body: OrgRunnerGroupListWire { total_count: 101, runner_groups: [group(id: 7, restricted: true, selected: [shakedown()])] }) {
+    RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupListUnreadable { reason: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_wire_body_with_an_empty_workflow_entry_refuses_as_unreadable() -> Bool {
+  match observed(body: OrgRunnerGroupListWire { total_count: 1, runner_groups: [group(id: 7, restricted: true, selected: [""])] }) {
+    RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupListUnreadable { reason: _ } } => true
     _ => false
   }
 }
