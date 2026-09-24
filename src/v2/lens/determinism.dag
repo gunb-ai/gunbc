@@ -18,21 +18,19 @@ import std.primitive_identity {
 import std.determinism { Determinism, Deterministic, NonDeterministic, determinism_compose }
 import std.algebra { Cons, Empty }
 import v2.std.determinism { DeterminismFact }
-import v2.std.collection {
-  List,
-  list_at_optional
-}
-import v2.std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
-}
+import v2.std.collection { List }
+import v2.std.optional { Absent, Present }
 import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, NonEmptyDiagnostics, Outcome, Rejected, Unavailable, node_locus, invariant_port_locus, outcome_accepted }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Node, NodeFold, Symbol, TypeNode, fold_node }
-import v2.std.node_query { node_is_call, node_positional_child_targets }
+import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node }
+import v2.std.compilers.body_lowering {
+  Application,
+  ApplicationRefused,
+  ArrowHead,
+  AtomHead,
+  NotApplication,
+  application_read
+}
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.algebra { fold_list, length }
@@ -89,56 +87,70 @@ fn traversal_order_leaks(order: TraversalOrder) -> Bool {
   }
 }
 
-fn node_callee_symbol(n: Node) -> Optional<Symbol> {
-  if node_is_call(node: n) {
-    match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
-      Present { value: callee } => match callee.kind {
-        TypeNode { connective: Atom { identity: sym } } => optional_present(value: sym)
-        _ => optional_absent()
-      }
-      Absent => optional_absent()
-    }
-  } else {
-    optional_absent()
-  }
-}
-
-fn local_determinism_axis(n: Node) -> std.determinism.Determinism {
-  match node_callee_symbol(n: n) {
-    Present { value: sym } => match primitive_identity_for_canonical_name(authored_symbol: symbol_lexeme(sym: sym)) {
-      Present { value: identity } => match primitive_traversal_order_for_identity(identity: identity) {
-        Present { value: order } =>
-          if traversal_order_leaks(order: order) {
-            std.determinism.NonDeterministic { source: determinism_leak_source() }
-          } else {
-            std.determinism.Deterministic
-          }
-        Absent => std.determinism.NonDeterministic { source: determinism_leak_source() }
-      }
-      Absent => std.determinism.Deterministic
+fn determinism_axis_for_primitive_name(sym: Symbol) -> std.determinism.Determinism {
+  match primitive_identity_for_canonical_name(authored_symbol: symbol_lexeme(sym: sym)) {
+    Present { value: identity } => match primitive_traversal_order_for_identity(identity: identity) {
+      Present { value: order } =>
+        if traversal_order_leaks(order: order) {
+          std.determinism.NonDeterministic { source: determinism_leak_source() }
+        } else {
+          std.determinism.Deterministic
+        }
+      Absent => std.determinism.NonDeterministic { source: determinism_leak_source() }
     }
     Absent => std.determinism.Deterministic
   }
 }
 
-fn determinism_axis_fold_step(acc: std.determinism.Determinism, _e: Edge, child: std.determinism.Determinism) -> std.determinism.Determinism {
-  std.determinism.determinism_compose(outer: acc, inner: child)
+// WHAT THE LENS COULD CLASSIFY, AND WHAT IT COULD NOT READ. `axis` composes over every node the
+// lens could read; `unread` carries each application v2.std.compilers.body_lowering
+// application_read refused, located at its offending node. A refused application is not "not a
+// call": it may be exactly the order-leaking call, so an `axis` of Deterministic establishes
+// nothing while `unread` is non-empty, and every consumer below refuses on it (DESIGN §5).
+type DeterminismRead {
+  axis: std.determinism.Determinism
+  unread: List<Diagnostic>
 }
 
-fn determinism_axis_for_node(n: Node) -> std.determinism.Determinism {
+data determinism_read_nothing_unread: List<Diagnostic> = []
+
+// An Arrow head is a resolved reference to a declared function, not a primitive name, so it joins
+// no PrimitiveIdentity; the callee's own body is classified where that declaration is read.
+fn local_determinism_read(n: Node) -> DeterminismRead {
+  match application_read(site: n) {
+    NotApplication => DeterminismRead { axis: std.determinism.Deterministic, unread: determinism_read_nothing_unread }
+    ApplicationRefused { diagnostics: d } =>
+      DeterminismRead { axis: std.determinism.Deterministic, unread: Cons { head: d.head, tail: d.tail } }
+    Application { view: v } =>
+      match v.head_identity {
+        AtomHead { identity: sym } =>
+          DeterminismRead { axis: determinism_axis_for_primitive_name(sym: sym), unread: determinism_read_nothing_unread }
+        ArrowHead => DeterminismRead { axis: std.determinism.Deterministic, unread: determinism_read_nothing_unread }
+      }
+  }
+}
+
+fn determinism_read_fold_step(acc: DeterminismRead, _e: Edge, child: DeterminismRead) -> DeterminismRead {
+  DeterminismRead {
+    axis: std.determinism.determinism_compose(outer: acc.axis, inner: child.axis),
+    unread: concat(acc.unread, child.unread)
+  }
+}
+
+fn determinism_axis_for_node(n: Node) -> DeterminismRead {
   fold_node(
     n: n,
     algebra: NodeFold {
-      init: fn(n0) { local_determinism_axis(n: n0) },
-      step: fn(acc, e, child) { determinism_axis_fold_step(acc: acc, e: e, child: child) }
+      init: fn(n0) { local_determinism_read(n: n0) },
+      step: fn(acc, e, child) { determinism_read_fold_step(acc: acc, e: e, child: child) }
     }
   )
 }
 
-fn determinism_fact_for_node(signature: Symbol, n: Node) -> v2.std.determinism.DeterminismFact {
+fn determinism_fact_of_axis(signature: Symbol, axis: std.determinism.Determinism) -> v2.std.determinism.DeterminismFact {
   v2.std.determinism.DeterminismFact {
     signature: signature,
-    classification: determinism_axis_for_node(n: n)
+    classification: axis
   }
 }
 
@@ -151,10 +163,14 @@ fn determinism_leak_diagnostic(n: Node) -> Diagnostic {
 }
 
 fn determinism_contract_witness(signature: Symbol, n: Node) -> Witness<v2.std.determinism.DeterminismFact> {
-  let fact = determinism_fact_for_node(signature: signature, n: n)
-  match fact.classification {
-    std.determinism.NonDeterministic { source: _ } => Violates { diagnostic: determinism_leak_diagnostic(n: n) }
-    std.determinism.Deterministic => Holds { value: fact }
+  let read = determinism_axis_for_node(n: n)
+  match read.unread {
+    Cons { head: first, tail: _ } => Violates { diagnostic: first }
+    Empty =>
+      match read.axis {
+        std.determinism.NonDeterministic { source: _ } => Violates { diagnostic: determinism_leak_diagnostic(n: n) }
+        std.determinism.Deterministic => Holds { value: determinism_fact_of_axis(signature: signature, axis: read.axis) }
+      }
   }
 }
 
@@ -187,10 +203,12 @@ fn determinism_denominator_findings() -> List<Diagnostic> {
     |> map(fn(d) { determinism_denominator_diagnostic(d: d) })
 }
 
+// A leaking call and an unreadable application are both findings: the gate batches both, located.
 fn local_determinism_findings(n: Node) -> List<Diagnostic> {
-  match local_determinism_axis(n: n) {
-    std.determinism.NonDeterministic { source: _ } => [determinism_leak_diagnostic(n: n)]
-    std.determinism.Deterministic => []
+  let read = local_determinism_read(n: n)
+  match read.axis {
+    std.determinism.NonDeterministic { source: _ } => concat([determinism_leak_diagnostic(n: n)], read.unread)
+    std.determinism.Deterministic => read.unread
   }
 }
 
@@ -307,8 +325,6 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 
 data determinism_transitive_terminal_callees: List<String> = []
 
-data determinism_no_findings: List<Diagnostic> = []
-
 // NOTHING TERMINATES THE WALK. The reachability authority takes a roster of callee spellings whose
 // bodies are not entered, because its other two consumers stop at host effect sinks and at
 // live-read carriers respectively. Determinism has no such frontier: an order-leaking primitive is
@@ -319,14 +335,18 @@ fn determinism_transitive_findings(
   closure_modules: List<String>,
   decls: List<FnArrowDecl>
 ) -> List<Diagnostic> {
+  let reach = call_reachable_decls(
+    entry_module: entry_module,
+    terminal_callee_symbols: determinism_transitive_terminal_callees,
+    closure_modules: closure_modules,
+    decls: decls
+  )
+  // The walk's refusals seed the findings: a call it could not read may lead to a declaration it
+  // never entered. An application refused inside a reached body is reported again by that body's
+  // own findings; the repeat is harmless to a consumer that asks only whether findings are empty.
   fold_list(
-    xs: call_reachable_decls(
-      entry_module: entry_module,
-      terminal_callee_symbols: determinism_transitive_terminal_callees,
-      closure_modules: closure_modules,
-      decls: decls
-    ),
-    empty: determinism_no_findings,
+    xs: reach.reached,
+    empty: reach.refusals,
     cons: fn(acc, decl) { concat(acc, determinism_findings(root: decl.output)) }
   )
 }

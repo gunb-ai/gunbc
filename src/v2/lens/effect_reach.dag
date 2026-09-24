@@ -34,6 +34,7 @@ import v2.std.effect_reach {
   EffectReachClassification,
   LocalEffect,
   HostEffectReach,
+  EffectReachRefused,
   FilesystemReadSink,
   WitnessBinRunSink,
   ShellExecRunSink,
@@ -425,14 +426,14 @@ fn effect_reach_classification_from_facts(
   data_inits: List<DataInitDecl>
 ) -> EffectReachClassification {
   let closure_modules = witness_import_closure(root: entry_module, facts: facts)
-  let reachable = call_reachable_decls(
+  let reach = call_reachable_decls(
     entry_module: entry_module,
     terminal_callee_symbols: effect_reach_host_sink_callee_symbols_v0,
     closure_modules: closure_modules,
     decls: decls
   )
   let from_calls = flows_from_reachable_decls(
-    reachable: reachable,
+    reachable: reach.reached,
     data_inits: data_inits
   )
   let from_data = closure_data_init_path_flows(
@@ -440,7 +441,9 @@ fn effect_reach_classification_from_facts(
     data_inits: data_inits
   )
   let flows = merge_flows(left: from_calls, right: from_data)
-  if length(xs: flows) == 0 {
+  if length(xs: reach.refusals) > 0 {
+    EffectReachRefused { refusals: reach.refusals }
+  } else if length(xs: flows) == 0 {
     LocalEffect
   } else {
     HostEffectReach { flows: flows }
@@ -464,11 +467,17 @@ fn classification_is_local(classification: EffectReachClassification) -> Bool {
   match classification {
     LocalEffect => true
     HostEffectReach { flows: _ } => false
+    EffectReachRefused { refusals: _ } => false
   }
 }
 
+// A refused reading establishes neither answer, so both predicates are false on it.
 fn derived_host_reading(classification: EffectReachClassification) -> Bool {
-  !classification_is_local(classification: classification)
+  match classification {
+    LocalEffect => false
+    HostEffectReach { flows: _ } => true
+    EffectReachRefused { refusals: _ } => false
+  }
 }
 
 fn flow_touched_by_path(flow: EffectReachFlow, path: String) -> Bool {
@@ -492,6 +501,10 @@ fn classification_has_path_literal(
     LocalEffect => false
     HostEffectReach { flows: flows } =>
       any(xs: flows, predicate: fn(flow) { flow_touched_by_path(flow: flow, path: path) })
+    // No flow was established, so no path literal is carried. A consumer must not read "false"
+    // here as "untouched": that conclusion needs derived_host_reading or classification_is_local
+    // first, both of which are false on a refused reading.
+    EffectReachRefused { refusals: _ } => false
   }
 }
 
@@ -509,5 +522,6 @@ fn effect_reach_flow_count(classification: EffectReachClassification) -> Int {
   match classification {
     LocalEffect => 0
     HostEffectReach { flows: flows } => length(xs: flows)
+    EffectReachRefused { refusals: _ } => 0
   }
 }

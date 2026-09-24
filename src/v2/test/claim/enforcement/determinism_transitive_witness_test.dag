@@ -298,10 +298,11 @@ data deterministic_callee: String = "sorted_map_keys"
 data no_terminal_callees: List<String> = []
 
 test fn bare_atom_is_not_a_call_edge() -> Bool {
-  length(xs: callees_from_node(
+  let scan = callees_from_node(
     node: shape_gap_conj_shaped_call(),
     terminal_callee_symbols: no_terminal_callees
-  )) == 0
+  )
+  length(xs: scan.texts) == 0 && length(xs: scan.refusals) == 0
 }
 
 test fn callee_text_is_not_filtered_by_path_spelling() -> Bool {
@@ -309,7 +310,7 @@ test fn callee_text_is_not_filtered_by_path_spelling() -> Bool {
     xs: callees_from_node(
       node: call_node(callee: "src/fixture.dag"),
       terminal_callee_symbols: no_terminal_callees
-    ),
+    ).texts,
     item: "src/fixture.dag",
     eq: fn(a, b) { a == b }
   )

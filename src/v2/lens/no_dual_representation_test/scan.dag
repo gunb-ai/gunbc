@@ -25,22 +25,30 @@ import v2.std.node {
   fold_node,
   node_synthetic
 }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node_query {
-  call_argument_targets,
-  call_callee_target,
-  node_is_call,
-  node_positional_child_targets
+import v2.std.compilers.body_lowering {
+  Application,
+  ApplicationRefused,
+  ApplicationView,
+  ArrowHead,
+  AtomHead,
+  NotApplication,
+  application_read
 }
+import v2.std.node_query { node_positional_child_targets }
 import v2.std.text { Char, String }
 
 // This consumer's subject is DIRECTORY-GRAIN: it names roots and no single modules.
 data no_declared_pool_files: List<String> = []
 
+// EqOperandUnreadable: the left operand of an equality site is an application this scan could not
+// read -- application_read refused it, or its head is a resolved Arrow with no name to look the
+// callee up by -- so whether the site is BodyAlphaEquivalent is undecided. It is reported, not
+// read as "not a call" (DESIGN §5).
 type DualRepViolationKind
   = SameSymbolEquality
   | DataLiteralMirror
   | BodyAlphaEquivalent
+  | EqOperandUnreadable
 
 type DualRepViolation {
   path: String
@@ -127,7 +135,7 @@ fn eq_conj(lhs: Node, rhs: Node) -> Node {
   )
 }
 
-// The shape the fn-arrow marshal emits for a call, and it is the SAME shape `node_is_call`
+// The shape the fn-arrow marshal emits for a call, and it is the SAME shape `application_read`
 // recognises. It was `TypeNode { connective: Conj }` here, matching a marshal that spelled every
 // node Conj; the fixture agreed with the marshal and both disagreed with the substrate's own call
 // carrier, so this module needed a private call predicate to read its own input.
@@ -214,57 +222,61 @@ fn eq_sites_from_output(root: Node) -> List<EqNodeSite> {
 }
 
 // THE FORKED CALL PREDICATE IS GONE. This module carried `skeleton_is_call`,
-// `skeleton_is_callee_atom`, `skeleton_callee_target` and `skeleton_call_argument_targets` --
-// `v2.std.node_query`'s `node_is_call` / `call_callee_target` / `call_argument_targets` respelled
-// against `TypeNode { connective: Conj }`, because the marshal spelled calls that way and the
-// shared authority could not answer over this input. That is one question with two answers, which
-// §3 forbids: the fork was not a different judgment, it was the same judgment re-derived because
-// its authority had been made inapplicable. The marshal now emits the call carrier, so the
-// authority applies and the copies are deleted rather than parameterised.
-fn skeleton_callee_target(node: Node) -> Node {
-  match call_callee_target(node: node) {
-    Accepted { value: callee, diagnostics: _ } => callee
-    Rejected { diagnostics: _ } => atom_node(sym: empty_sym)
-  }
-}
-
-fn callee_name_from_call(operand: Node) -> String {
-  if node_is_call(node: operand) {
-    node_atom_name(n: skeleton_callee_target(node: operand))
-  } else {
-    ""
-  }
-}
-
-fn first_call_arg_name(operand: Node) -> String {
-  match list_at_optional(xs: call_argument_targets(node: operand), index: 0) {
+// `skeleton_is_callee_atom`, `skeleton_callee_target` and `skeleton_call_argument_targets` -- the
+// shared call reader respelled against `TypeNode { connective: Conj }`, because the marshal spelled
+// calls that way. The marshal now emits the call carrier, and the one reader over it is
+// v2.std.compilers.body_lowering `application_read`.
+fn first_call_arg_name(view: ApplicationView) -> String {
+  match list_at_optional(xs: view.operands, index: 0) {
     Present { value: arg } => node_atom_name(n: arg)
     Absent => ""
   }
 }
 
 fn body_alpha_equivalent_to_single_arg_call(
-  lhs: Node,
+  callee: String,
+  view: ApplicationView,
   rhs: Node,
   fns: List<DualRepFnFact>
 ) -> Bool {
-  let callee = callee_name_from_call(operand: lhs)
-  if is_empty(xs: callee) {
+  let rec = lookup_fn_fact(fns: fns, name: callee)
+  if is_empty(xs: rec.name) {
     false
   } else {
-    let rec = lookup_fn_fact(fns: fns, name: callee)
-    if is_empty(xs: rec.name) {
-      false
-    } else {
-      let arg = first_call_arg_name(operand: lhs)
-      let param = first_param_sym(params: rec.params)
-      let inlined = replace_param_in_output(
-        output: rec.output,
-        param: param,
-        arg_name: arg
-      )
-      rhs == inlined
-    }
+    let arg = first_call_arg_name(view: view)
+    let param = first_param_sym(params: rec.params)
+    let inlined = replace_param_in_output(
+      output: rec.output,
+      param: param,
+      arg_name: arg
+    )
+    rhs == inlined
+  }
+}
+
+fn dual_rep_violation(path: String, fn_name: String, kind: DualRepViolationKind) -> List<DualRepViolation> {
+  [DualRepViolation { path: path, fn_name: fn_name, kind: kind }]
+}
+
+fn classify_application_lhs(
+  path: String,
+  fn_name: String,
+  site: EqNodeSite,
+  fns: List<DualRepFnFact>
+) -> List<DualRepViolation> {
+  match application_read(site: site.lhs) {
+    NotApplication => empty_dual_rep_violations
+    ApplicationRefused { diagnostics: _ } => dual_rep_violation(path: path, fn_name: fn_name, kind: EqOperandUnreadable)
+    Application { view: v } =>
+      match v.head_identity {
+        ArrowHead => dual_rep_violation(path: path, fn_name: fn_name, kind: EqOperandUnreadable)
+        AtomHead { identity: sym } =>
+          if body_alpha_equivalent_to_single_arg_call(callee: sym, view: v, rhs: site.rhs, fns: fns) {
+            dual_rep_violation(path: path, fn_name: fn_name, kind: BodyAlphaEquivalent)
+          } else {
+            empty_dual_rep_violations
+          }
+      }
   }
 }
 
@@ -381,18 +393,8 @@ fn classify_eq_node_site(
     } else {
       empty_dual_rep_violations
     }
-  } else if node_is_call(node: site.lhs)
-    && body_alpha_equivalent_to_single_arg_call(lhs: site.lhs, rhs: site.rhs, fns: fns)
-  {
-    [
-      DualRepViolation {
-        path: path,
-        fn_name: fn_name,
-        kind: BodyAlphaEquivalent
-      }
-    ]
   } else {
-    empty_dual_rep_violations
+    classify_application_lhs(path: path, fn_name: fn_name, site: site, fns: fns)
   }
 }
 

@@ -272,6 +272,7 @@ test fn g2_unknown_path_pattern_fail_closed_touched() -> Bool {
         touched_path: "dag/unrelated.dag"
       )
     LocalRead => false
+    LiveReadUnestablished { refusals: _ } => false
   }
 }
 

@@ -6,17 +6,18 @@ import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import v2.std.grammar { node_atom_identity_optional }
+import v2.std.compilers.body_lowering {
+  Application,
+  ApplicationRefused,
+  ArrowHead,
+  AtomHead,
+  NotApplication,
+  application_read
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
-import v2.std.node_query {
-  call_callee_target,
-  find_arrow_body_child,
-  find_named_child,
-  node_is_call
-}
-import v2.std.optional { Absent, Present }
+import v2.std.node_query { find_arrow_body_child, find_named_child }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -76,17 +77,14 @@ test fn body_lowering_block_body_call_reaches_arrow_body() -> Bool {
                           match find_arrow_body_child(root: rollup_member) {
                             Rejected { diagnostics: _ } => false
                             Accepted { value: body, diagnostics: _ } =>
-                              if node_is_call(node: body) {
-                                match call_callee_target(node: body) {
-                                  Rejected { diagnostics: _ } => false
-                                  Accepted { value: callee, diagnostics: _ } =>
-                                    match node_atom_identity_optional(node: callee) {
-                                      Present { value: id } => id == ^leaf
-                                      Absent => false
-                                    }
-                                }
-                              } else {
-                                false
+                              match application_read(site: body) {
+                                Application { view: v } =>
+                                  match v.head_identity {
+                                    AtomHead { identity: id } => id == ^leaf
+                                    ArrowHead => false
+                                  }
+                                NotApplication => false
+                                ApplicationRefused { diagnostics: _ } => false
                               }
                           }
                       }

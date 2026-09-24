@@ -8,8 +8,14 @@ import v2.std.collection { Absent, List, Present }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.logic { Bool }
 import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node, node_subtree_count, symbol_eq }
-import v2.std.node_query { call_callee_target, node_is_call }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.compilers.body_lowering {
+  Application,
+  ApplicationRefused,
+  ArrowHead,
+  AtomHead,
+  NotApplication,
+  application_read
+}
 import v2.std.text { String, string_eq }
 import v2.std.fn_index {
   FnArrowDecl,
@@ -115,8 +121,8 @@ fn param_collides_with_a_declaration(
 // THE CALL-CHANNEL READER THE #10282 CARRIER MADE POSSIBLE, measured beside the atom scan rather
 // than swapped in on the strength of the trigger having fired. The counts below are the sharpest
 // form of the question review 60065 asks: how many nodes of a LIVE fn-arrow skeleton does
-// `node_is_call` accept at all, and of those, how many yield a callee lexeme through
-// `call_callee_target`. A zero in the first column is not a small over-approximation traded for a
+// v2.std.compilers.body_lowering `application_read` admit as applications, and of those, how many
+// have a named (Atom) head. A zero in the first column is not a small over-approximation traded for a
 // small under-approximation -- it is a reader that cannot see any edge on this substrate.
 //
 // COUNTED AS Int, NOT COLLECTED AS A LIST, deliberately. The first form of this measurement
@@ -124,53 +130,45 @@ fn param_collides_with_a_declaration(
 // accumulated list over a 60k-node corpus and did not terminate in twenty minutes. A cost shape
 // that bad is fixed rather than tolerated even in an instrument (DESIGN section 6, bare minimum
 // cost), and the distinct-callee refinement buys nothing a raw count does not already decide.
+// ONE application_read PER NODE, three counts. `refused_applications` is the population the old
+// node_query reader folded into "not a call": a Transform whose shape application_read refuses.
+// It is counted, not dropped, so a non-zero is visible in the tally and refused by the verdict.
 type ChannelState {
   node: Node
   call_nodes: Int
   resolved_callees: Int
+  refused_applications: Int
 }
 
 fn channel_init(n: Node) -> ChannelState {
-  ChannelState { node: n, call_nodes: 0, resolved_callees: 0 }
+  ChannelState { node: n, call_nodes: 0, resolved_callees: 0, refused_applications: 0 }
 }
 
-fn node_is_call_shaped(node: Node) -> Int {
-  match node_is_call(node: node) {
-    true => 1
-    false => 0
-  }
+type ChannelCounts {
+  call_nodes: Int
+  resolved_callees: Int
+  refused_applications: Int
 }
 
-// THE RESOLVED-CALLEE HALF IS GATED ON THE CALL-SHAPED HALF, and not merely as an optimization.
-// `call_callee_target` builds a diagnostic-carrying `Accepted`/`Rejected` per node; calling it on
-// all 60k nodes of the live skeleton ran 35 minutes at 9.8GB without finishing, which on a shared
-// 64GiB slice is a hazard to other sessions, not just a slow instrument. It is also unnecessary:
-// `node_is_call` is the precondition for a callee existing at all, so when the call-shaped count is
-// zero the resolved count is zero WITHOUT evaluating the accessor, and when it is nonzero the
-// accessor runs only on that population. The zero arm is the one that decides review 60065.
-fn resolved_callee_count(node: Node) -> Int {
-  if node_is_call(node: node) {
-    match call_callee_target(node: node) {
-      Accepted { value: callee, diagnostics: _ } =>
-        match node_atom_identity_optional(node: callee) {
-          Present { value: _sym } => 1
-          Absent => 0
-        }
-      Rejected { diagnostics: _ } => 0
-    }
-  } else {
-    0
+fn channel_counts_of(node: Node) -> ChannelCounts {
+  match application_read(site: node) {
+    NotApplication => ChannelCounts { call_nodes: 0, resolved_callees: 0, refused_applications: 0 }
+    ApplicationRefused { diagnostics: _ } => ChannelCounts { call_nodes: 0, resolved_callees: 0, refused_applications: 1 }
+    Application { view: v } =>
+      match v.head_identity {
+        AtomHead { identity: _ } => ChannelCounts { call_nodes: 1, resolved_callees: 1, refused_applications: 0 }
+        ArrowHead => ChannelCounts { call_nodes: 1, resolved_callees: 0, refused_applications: 0 }
+      }
   }
 }
 
 fn channel_step(acc: ChannelState, _edge: Edge, child: ChannelState) -> ChannelState {
-  let child_shaped = node_is_call_shaped(node: child.node)
-  let below_resolved = acc.resolved_callees + child.resolved_callees
-  let child_resolved = if child_shaped > 0 { resolved_callee_count(node: child.node) } else { 0 }
+  let here = channel_counts_of(node: child.node)
   ChannelState {
     node: acc.node,
-    call_nodes: acc.call_nodes + child.call_nodes + child_shaped,
-    resolved_callees: below_resolved + child_resolved
+    call_nodes: acc.call_nodes + child.call_nodes + here.call_nodes,
+    resolved_callees: acc.resolved_callees + child.resolved_callees + here.resolved_callees,
+    refused_applications: acc.refused_applications + child.refused_applications + here.refused_applications
   }
 }
 
@@ -179,17 +177,17 @@ fn channel_subtree(node: Node) -> ChannelState {
     n: node,
     algebra: NodeFold { init: channel_init, step: channel_step }
   )
-  let root_shaped = node_is_call_shaped(node: node)
-  let root_resolved = if root_shaped > 0 { resolved_callee_count(node: node) } else { 0 }
+  let root = channel_counts_of(node: node)
   ChannelState {
     node: node,
-    call_nodes: below.call_nodes + root_shaped,
-    resolved_callees: below.resolved_callees + root_resolved
+    call_nodes: below.call_nodes + root.call_nodes,
+    resolved_callees: below.resolved_callees + root.resolved_callees,
+    refused_applications: below.refused_applications + root.refused_applications
   }
 }
 
 // THE ONE-DECLARATION PROBE, because the question review 60065 raises is STRUCTURAL, not
-// statistical. If `node_is_call` accepts no node of a live fn-arrow skeleton, it accepts none in
+// statistical. If `application_read` admits no node of a live fn-arrow skeleton, it accepts none in
 // any of them for the same reason, and one declaration exhibits that at a thousandth of the cost.
 // `subtree_nodes` is carried beside `call_shaped` so the zero is readable: a zero over zero nodes
 // would be an empty probe, and a zero over a populated subtree is the finding.
@@ -227,7 +225,7 @@ fn pick_first_decl(acc: FirstDeclChannel, decl: FnArrowDecl) -> FirstDeclChannel
         xs: callees_from_node(
           node: decl.output,
           terminal_callee_symbols: no_terminal_callees
-        )
+        ).texts
       )
     }
   }
@@ -244,8 +242,7 @@ fn first_decl_channel() -> FirstDeclChannel {
 // THE BOUNDED COMPARISON, AND WHY IT IS BOUNDED RATHER THAN CORPUS-WIDE. Running the call-channel
 // reader beside the atom reader over all live declarations did not finish in 85 minutes, against a
 // 2-minute baseline for the same tally without it. That 40x is not an artifact of collecting: the
-// list-collecting form was already replaced by Int counts, and `call_callee_target` is already
-// gated behind `node_is_call`. The cost is `node_is_call` itself, per node, over 60k nodes -- and
+// list-collecting form was already replaced by Int counts. The cost is the per-node application read itself, per node, over 60k nodes -- and
 // that is not merely an inconvenience for this instrument, it is a fact about what review 60065
 // proposes, because routing production `callees_from_node` through the same predicate imports the
 // same per-node cost into every consumer of call reachability.
@@ -261,6 +258,7 @@ type BoundedChannelCompare {
   channel_callee_total: Int
   channel_fewer: Int
   channel_none_atom_some: Int
+  channel_refused_total: Int
 }
 
 data empty_bounded_compare: BoundedChannelCompare = BoundedChannelCompare {
@@ -269,7 +267,8 @@ data empty_bounded_compare: BoundedChannelCompare = BoundedChannelCompare {
   channel_call_shaped_total: 0,
   channel_callee_total: 0,
   channel_fewer: 0,
-  channel_none_atom_some: 0
+  channel_none_atom_some: 0,
+  channel_refused_total: 0
 }
 
 data bounded_compare_limit: Int = 150
@@ -286,7 +285,7 @@ fn bounded_compare_step(
       xs: callees_from_node(
         node: decl.output,
         terminal_callee_symbols: no_terminal_callees
-      )
+      ).texts
     )
     BoundedChannelCompare {
       compared: acc.compared + 1,
@@ -300,7 +299,8 @@ fn bounded_compare_step(
       channel_none_atom_some: bump_when(
         count: acc.channel_none_atom_some,
         flag: channel.resolved_callees == 0 && atom > 0
-      )
+      ),
+      channel_refused_total: acc.channel_refused_total + channel.refused_applications
     }
   }
 }
@@ -364,7 +364,7 @@ fn tally_decl(
     xs: callees_from_node(
       node: decl.output,
       terminal_callee_symbols: no_terminal_callees
-    )
+    ).texts
   )
   DepthAgreementTally {
     decls: acc.decls + 1,
@@ -440,9 +440,9 @@ fn fn_index_depth_agreement() -> ProcessExit {
     exit_failure(
       reason: "no live declaration references its own parameter by a lexeme that also names a declaration, so the parameter exclusion in callees_from_node excludes nothing"
     )
-  } else if bounded_channel_compare().channel_none_atom_some == 0 {
+  } else if bounded_channel_compare().channel_refused_total > 0 {
     exit_failure(
-      reason: "the call-channel reader no longer loses whole declarations to the atom reader, so the refusal to switch callees_from_node onto node_is_call is stale and should be revisited"
+      reason: "application_read refused an application in a live fn-arrow skeleton; the call walk over it is incomplete"
     )
   } else {
     ExitSuccess
