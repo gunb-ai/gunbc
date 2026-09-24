@@ -13299,6 +13299,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 op.clone(),
                 crate::v1_compiler_infer_types::resolved_type(left_typed.clone()),
                 scope.type_env.clone().source_indices.clone(),
+                scope.type_env.clone(),
             );
             let eq_wall_diags = equality_admission_diags(
                 op.clone(),
