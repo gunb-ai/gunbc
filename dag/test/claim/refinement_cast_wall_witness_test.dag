@@ -103,6 +103,28 @@ test fn w_count_is_a_nat() -> Bool {
   blocking_count(source: count_is_nat_source) == 0
 }
 
+// BOTH ROUTES, BOTH NAMES. A free call `count(xs)` / `length(xs)` is typed on the builtin
+// registry route (v1.compiler.infer_method builtin_function_registry, whose return is derived from
+// std.algebra by algebra_named_return); a method call `xs |> count` / `s.length()` is typed on the
+// algebra-template route. Each claim is an identity cast that refuses if its route answers Int.
+data length_is_nat_source: String = "module probe_refinement_length_nat\nimport std.types { List, Int }\nimport std.nat { Nat }\nfn size_of(xs: List<Int>) -> Nat { length(xs) as Nat }\n"
+
+data method_count_is_nat_source: String = "module probe_refinement_method_count_nat\nimport std.types { List, Int }\nimport std.nat { Nat }\nfn size_of(xs: List<Int>) -> Nat { (xs |> count) as Nat }\n"
+
+data method_length_is_nat_source: String = "module probe_refinement_method_length_nat\nimport std.types { String }\nimport std.nat { Nat }\nfn size_of(s: String) -> Nat { s.length() as Nat }\n"
+
+test fn w_length_is_a_nat() -> Bool {
+  blocking_count(source: length_is_nat_source) == 0
+}
+
+test fn w_method_count_is_a_nat() -> Bool {
+  blocking_count(source: method_count_is_nat_source) == 0
+}
+
+test fn w_method_length_is_a_nat() -> Bool {
+  blocking_count(source: method_length_is_nat_source) == 0
+}
+
 test fn w_bool_as_int_is_refused_by_the_checker() -> Bool {
   blocking_count(source: bool_as_int_source) >= 1
 }

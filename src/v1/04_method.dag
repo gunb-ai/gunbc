@@ -19,7 +19,7 @@ import v1.std.core { Unmarked,
   NoExprData,
   ErrorNode,
   no_span, with_optional_cardinality,
-  unit_type, bool_type, string_type, hash_type, int_type
+  unit_type, bool_type, string_type, hash_type, int_type, error_type
 }
 import v1.compiler.infer_types {
   make_container_type, make_map_type, nominal_type_ref,
@@ -82,6 +82,29 @@ fn pair_declared_names(names: List<String>, templates: List<AlgebraTypeTemplate>
         Absent => AlgebraTypeVariable { id: "unpaired_declared_parameter" }
       }
     })
+}
+
+// THE RETURN IS DERIVED TOO, where std.algebra names it by a plain type name. count and length
+// return std.nat.Nat there, and the free-call surface must not restate it: a restated return is a
+// second authority that one row can drift from while the other stays green -- which is what a
+// mutation of the restated count row showed, with every claim still passing. A template whose
+// return is not a named type has no row here that reads it, and answers error_type so a future
+// consumer refuses loudly rather than typing against a guess.
+fn algebra_named_return(method: String) -> Node {
+  match all_algebra_profiles()
+    |> flat_map(p => algebra_templates_for_profile(profile: p) |> filter(t => t.name == method))
+    |> first {
+    Present { value: t } =>
+      match t.return_type {
+        NamedTemplate { name: n } => nominal_type_ref(name: n)
+        _ => error_type
+      }
+    Absent => error_type
+  }
+}
+
+fn derived_signature_and_return(names: List<String>, method: String) -> BuiltinSignature {
+  derived_signature(names: names, method: method, returns: algebra_named_return(method: method))
 }
 
 fn derived_signature(names: List<String>, method: String, returns: Node) -> BuiltinSignature {
@@ -268,7 +291,7 @@ fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
 // match each other); name declared against a disagreement; name evidenced by a single call site.
 // One word "declared" covering all four would be the rung inflation the ladder names.
 data builtin_function_registry: Map<String, BuiltinSignature> = {
-  "count": derived_signature(names: ["xs"], method: "count", returns: nominal_type_ref(name: "std.nat.Nat")),
+  "count": derived_signature_and_return(names: ["xs"], method: "count"),
   "hmac_sha256_verify_hex": BuiltinSignature { params: [BuiltinParam { name: "key_hex", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "message", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "tag_hex", ty: NamedTemplate { name: "String" } }], returns: bool_type },
   "hmac_sha256_hex": BuiltinSignature { params: [BuiltinParam { name: "key_hex", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "message", ty: NamedTemplate { name: "String" } }], returns: with_optional_cardinality(n: string_type) },
   "string_length": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }], returns: int_type },
@@ -320,7 +343,7 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "observed_peak_resident_bytes": BuiltinSignature { params: [], returns: int_type },
   "observed_monotonic_nanos": BuiltinSignature { params: [], returns: int_type },
   "string_contains": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "pattern", ty: NamedTemplate { name: "String" } }], returns: bool_type },
-  "length": derived_signature(names: ["xs"], method: "length", returns: nominal_type_ref(name: "std.nat.Nat")),
+  "length": derived_signature_and_return(names: ["xs"], method: "length"),
   "starts_with": derived_signature(names: ["s", "prefix"], method: "starts_with", returns: bool_type),
   "replace": derived_signature(names: ["s", "from", "to"], method: "replace", returns: string_type),
   "filesystem_read": BuiltinSignature { params: [BuiltinParam { name: "path", ty: NamedTemplate { name: "String" } }], returns: filesystem_read_result_type() },
