@@ -472,6 +472,37 @@ test fn witness_superseded_node_marked_no_button() -> Bool {
 
 data readable_witness_enrollment_note: String = "The six readability witnesses below (raw-text style serialization, chip min-width, container centering, the <details> disclosure, the dispatch accent) were authored with the fixes they verify but never bundled into this file's only `test fn`, and discovery keys on the `test fn `/`test data ` prefix — so they had ZERO executing consumers and CI was blind to the exact regressions they were written to catch. Proven by execution rather than by reading, 2026-07-24: reverting `.status` min-width back to width (the original defect) left roadmap_page_keystone_holds returning true. That is the orphaned-enrollment shape DESIGN calls coverage by illusion, and an inert witness is a lie about coverage, so they are enrolled here. Every witness in this file is now reachable from this one entry; adding an unbundled `fn witness_*` is the defect to look for in review."
 
+// THE UPDATES NEGATIVE WAS A FACT ABOUT THE AUTHORITY'S CONTENT, NOT ABOUT THE RENDERER. When this
+// row was written no authored ticket carried an update, so "the authority page holds no
+// ticket-updates block" stood in for "a ticket with no updates renders no updates block". Tickets
+// have since gained dated notes through gunbc.roadmap_authority updated, and the page legitimately
+// renders them -- so the page-wide negative redded on correct output while saying nothing about the
+// property. The property is the renderer's (disclosure_updates_block renders nothing for an empty
+// thread and one block for a non-empty one), so it is asserted over two supplied tickets differing
+// ONLY in their updates, in both directions; the structural assertions stay on the real authority.
+fn updates_fixture(updates: List<gunbc.roadmap_status.TicketUpdate>) -> RoadmapNode {
+  gunbc.roadmap_authority.ticket_row(identity: "rnfx_UPD8TESFXTR3KZ0MQ7WV", id: "updates-fixture", done: false, t: TicketFields {
+    headline: "fixture",
+    brief: "a brief",
+    displaced_cost: "",
+    current_state: "",
+    first_slice: "",
+    red_control: "",
+    out_of_scope: "",
+    handback: "",
+    updates: updates,
+    authored_on: "",
+    last_verified_on: "",
+  })
+}
+
+fn renders_updates_block(rn: RoadmapNode) -> Bool {
+  match dispatch_doc_html_for(rn: rn) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } => string_contains(s: h, pattern: "class=\"ticket-updates\"")
+  }
+}
+
 test fn witness_ticket_rows_render_structured() -> Bool {
   match authority_page_html() {
     EmitRejected { reason: _ } => false
@@ -479,7 +510,8 @@ test fn witness_ticket_rows_render_structured() -> Bool {
       string_contains(s: h, pattern: "class=\"item-detail ticket-row\"><summary><span class=\"disclosure-mark\">›</span>details</summary>")
         && string_contains(s: h, pattern: "class=\"ticket-brief\"")
         && string_contains(s: h, pattern: ">displaced cost</span>")
-        && !string_contains(s: h, pattern: "class=\"ticket-updates\"")
+        && !renders_updates_block(rn: updates_fixture(updates: []))
+        && renders_updates_block(rn: updates_fixture(updates: [gunbc.roadmap_status.TicketUpdate { on: "2026-09-24", note: "a dated note" }]))
         && string_contains(s: h, pattern: "href=\"https://github.com/gunb-ai/gunbc/blob/main/docs/plans/roadmap-workspace-ux-plan.md\"")
   }
 }
@@ -538,9 +570,18 @@ test fn witness_item_detail_disclosure_present() -> Bool {
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "<details class=\"item-detail ticket-row\"><summary><span class=\"disclosure-mark\">›</span>details</summary>")
         && string_contains(s: h, pattern: "class=\"item-body\"")
-        && !string_contains(s: h, pattern: "<span class=\"disclosure-mark\">›</span>brief</summary>")
+        && !string_contains(s: h, pattern: "class=\"item-detail ticket-row\"><summary><span class=\"disclosure-mark\">›</span>brief</summary>")
+        && !string_contains(s: h, pattern: "class=\"item-detail\"><summary><span class=\"disclosure-mark\">›</span>details</summary>")
   }
 }
+
+// THE "brief" NEGATIVE ABOVE IS SCOPED TO TICKET ROWS, AND THE SCOPE IS THE PROPERTY. It used to
+// forbid the "brief" label anywhere on the page, which held only while no legacy row carried a body.
+// gunbc.roadmap_page view_detail_block labels a LEGACY row with a body "brief" by design (tickets
+// say "details", body-less legacy rows say "facts"), and the authority now holds superseded rows
+// whose content runs past its lead -- so the page-wide negative redded on the renderer doing what it
+// declares. What the row exists to hold is that the label follows the disclosure KIND: a ticket
+// never says "brief" and a non-ticket never says "details". Both directions are asserted.
 
 test fn witness_status_chip_min_width() -> Bool {
   match authority_page_html() {
