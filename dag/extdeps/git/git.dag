@@ -1466,6 +1466,22 @@ service git.Core {
     transport shell { argv: ["git", "-C", "{repo}", "fetch", "--quiet", "--force", "{remote}", "{refspec}"] }
   }
 
+  // `-c safe.directory=<path>` on the command line is PROTECTED configuration (git-config(1),
+  // safe.directory: honoured from system, global and command-line scope, never from a repository's
+  // own config), and a local-path fetch hands it to the upload-pack it spawns through
+  // GIT_CONFIG_PARAMETERS. So this is the shape for fetching from a repository another principal
+  // owns: the trust is one path, one invocation, persisted nowhere. WHICH path to trust is the
+  // caller's decision, so it is an input here and never derived from `remote`.
+  operation FetchForcedRefInRepoTrustingDirectory {
+    input { repo: FilePath, remote: String, refspec: String, trusted_directory: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-c", "safe.directory={trusted_directory}", "-C", "{repo}", "fetch", "--quiet", "--force", "{remote}", "{refspec}"] }
+  }
+
   operation PushForcedRefInRepo {
     input { repo: FilePath, remote: String, refspec: String }
     output {

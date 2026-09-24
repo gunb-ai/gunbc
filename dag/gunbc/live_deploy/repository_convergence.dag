@@ -1066,7 +1066,7 @@ fn repository_bootstrap_wet(
   if !inited.success {
     convergence_exit(outcome: ConvergenceBootstrapInitRefused { repo: repo, stderr: inited.stderr })
   } else {
-    let fetched = git.Core.FetchForcedRefInRepo(repo: repo as FilePath, remote: remote, refspec: candidate)
+    let fetched = git.Core.FetchForcedRefInRepoTrustingDirectory(repo: repo as FilePath, remote: remote, refspec: candidate, trusted_directory: remote)
     if fetched.exit_code != 0 {
       convergence_exit(outcome: ConvergenceBootstrapObjectImportRefused {
         candidate: candidate,
@@ -1143,10 +1143,11 @@ fn repository_converge_wet(
       Absent => convergence_exit(outcome: ConvergencePreStateUnobservable { detail: convergence_ref_observation_detail(observation: before.refs) })
       Present { value: refs_before } => {
       let expected_old = convergence_ref_hex_at(refs: refs_before, refname: base_ref)
-      let fetched = git.Core.FetchForcedRefInRepo(
+      let fetched = git.Core.FetchForcedRefInRepoTrustingDirectory(
         repo: repo as FilePath,
         remote: remote,
         refspec: candidate,
+        trusted_directory: remote,
       )
       if fetched.exit_code != 0 {
         convergence_exit(outcome: ConvergenceObjectImportRefused {
