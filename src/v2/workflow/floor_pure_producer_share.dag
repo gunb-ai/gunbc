@@ -669,6 +669,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.value_position_whole_read.vpw_outcomes",
   "v2.test.claim.namespace_xl0.value_position_whole_read.vpw_normalized",
   "v2.test.claim.namespace_xl0.list_literal_value_lowering.llv_normalized",
+  "v2.test.claim.namespace_xl0.list_literal_value_lowering.llv_self_outcome",
+  "v2.test.claim.namespace_xl0.list_literal_value_lowering.llv_self_missing_outcome",
   "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal.cav_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",

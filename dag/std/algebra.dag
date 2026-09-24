@@ -151,6 +151,38 @@ type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: FreeMonoid<T> }
 
+fn freemonoid_empty<T>() -> FreeMonoid<T> {
+  Empty
+}
+
+// The free monoid's generator embedding T -> FreeMonoid<T>, the value-side twin of
+// v2.std.algebra non_empty_singleton for FreeSemigroup. A list literal lowers through it
+// (v2.compiler.body_lowering_fold body_lower_list_construct).
+fn freemonoid_singleton<T>(item: T) -> FreeMonoid<T> {
+  Cons { head: item, tail: Empty }
+}
+
+// THE COST IS CHARGED IN THE RIGHT OPERAND, AND THE RIGHT-FOLD THIS REPLACED CHARGED THE LEFT.
+// `concat` is the primitive two-list append; `std.primitives` `concat_contract` declares its
+// persistent carrier cost as `log(n + m)`. The `fold_list_right` form that stood here walked
+// its LEFT operand instead, one `Cons` per element, so an accumulate-on-the-left fold paid the
+// whole accumulator at every step and came out quadratic in the accumulated length --
+// `list_snoc_item` below is exactly that shape, which is why it inherited the defect, and it is
+// the shape the corpus uses wherever it builds a list by appending. Routing to the primitive
+// makes the singleton case constant and the general case linear in the appended side only.
+// DESIGN section 6 fixes a proven cost-shape defect at the root rather than per callsite.
+fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
+  left |> concat(right)
+}
+
+// `list_push` is the primitive single-item append (amortized O(log n) on the persistent
+// carrier); routing through list_append paid a full O(n) right-fold per snoc, which made
+// every build-by-appending accumulator quadratic — measured on the first-set union fold in
+// the self-hosted parser (2026-09-09, required-v2-native lane work).
+fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
+  xs |> list_push(item)
+}
+
 type FreeSemigroup<T> {
   head: T
   tail: FreeMonoid<T>

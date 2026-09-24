@@ -1,5 +1,16 @@
 module v2.test.claim.namespace_xl0.list_literal_value_lowering
 
+import v2.compiler.compile {
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleOutcome,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
 import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
@@ -17,6 +28,7 @@ import v2.std.collection { List, list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
 import std.algebra { Cons, Empty, FreeMonoid }
 import extdeps.communication.medium { Lossless, Medium }
 
@@ -31,7 +43,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //   []            freemonoid_empty()
 //   [e]           freemonoid_singleton(item: e)
 //   [e1, .., en]  list_append(left: freemonoid_singleton(item: e1), right: <[e2, .., en]>)
-// each head the v2.std.algebra qualified name. Before the producer the literal lowered to its `[`
+// each head the std.algebra qualified name (dag/std/algebra.dag, FreeMonoid's own module). Before the producer the literal lowered to its `[`
 // atom in body position and refused its whole module in argument position
 // (body_lowering_reason_list_literal_unlowered).
 //
@@ -86,7 +98,7 @@ fn llv_roots() -> FreeMonoid<Node> {
 
 // ---- reading the canonical form ---------------------------------------------------------------
 
-// A Transform whose head is the v2.std.algebra qualified name `operation`: its operands, else Absent.
+// A Transform whose head is the std.algebra qualified name `operation`: its operands, else Absent.
 fn llv_algebra_operands(n: Node, operation: Symbol) -> Optional<List<Node>> {
   match n.kind {
     ComputationNode { behavior: Transform } =>
@@ -105,8 +117,8 @@ fn llv_algebra_operands(n: Node, operation: Symbol) -> Optional<List<Node>> {
 
 fn llv_is_algebra_name(qn: QualifiedName, operation: Symbol) -> Bool {
   match qn {
-    Cons { head: a, tail: Cons { head: b, tail: Cons { head: c, tail: Cons { head: d, tail: Empty } } } } =>
-      (a == ^v2) && (b == ^std) && (c == ^algebra) && (d == operation)
+    Cons { head: a, tail: Cons { head: b, tail: Cons { head: c, tail: Empty } } } =>
+      (a == ^std) && (b == ^algebra) && (c == operation)
     _ => false
   }
 }
@@ -273,4 +285,93 @@ test fn a_list_argument_is_not_its_first_element_or_a_truncation() -> Bool {
   !llv_any_node(shape: LlvArgShape { callee: ^llv_take, items: [LlvAtom { id: ^llv_f }] })
     && !llv_any_node(shape: LlvArgShape { callee: ^llv_take, items: [LlvAtom { id: ^llv_f }, LlvAtom { id: ^llv_g }] })
     && !llv_any_node(shape: LlvArgShape { callee: ^llv_take, items: [LlvAtom { id: ^llv_h }, LlvAtom { id: ^llv_g }, LlvAtom { id: ^llv_f }] })
+}
+
+// ---- the self-reference case: std.algebra's own list literals ----------------------------------
+
+// THE HEADS NAME THE MODULE THAT DECLARES FreeMonoid, SO THAT MODULE'S OWN LISTS REFER TO ITSELF.
+// dag/std/algebra.dag carries list literals of its own; lowered, each is a call whose head is
+// std.algebra.<operation> -- a qualified reference from std.algebra to std.algebra. The claim is
+// that resolve BINDS it there: the module resolves whole on the native lane's route
+// (native_test_context_from_ingest, then native_census_module_resolution). A claim cannot read the
+// real file, so the subject is a fixture module OF THE SAME NAME carrying exactly the operations the
+// lowering names, and its twin omits list_append. The twin must REFUSE at resolve: that is what
+// shows the heads are resolved references and not text a consumer skips, so the positive arm cannot
+// be green by the heads going unread. The real file is covered by the srv closure run.
+data llv_self_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n\nfn freemonoid_empty<T>() -> FreeMonoid<T> {\n  Empty\n}\n\nfn freemonoid_singleton<T>(item: T) -> FreeMonoid<T> {\n  Cons { head: item, tail: Empty }\n}\n\nfn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {\n  right\n}\n\nfn llv_self_pair<T>(a: T, b: T) -> FreeMonoid<T> {\n  [a, b]\n}\n\nfn llv_self_none<T>() -> FreeMonoid<T> {\n  []\n}\n"
+
+data llv_self_missing_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n\nfn freemonoid_empty<T>() -> FreeMonoid<T> {\n  Empty\n}\n\nfn freemonoid_singleton<T>(item: T) -> FreeMonoid<T> {\n  Cons { head: item, tail: Empty }\n}\n\nfn llv_self_pair<T>(a: T, b: T) -> FreeMonoid<T> {\n  [a, b]\n}\n"
+
+// One module per ingest: the two fixtures share a module name, as the self-reference requires.
+fn llv_self_ingest(source: String, tail: String) -> SourceRootIngest {
+  Cons {
+    head: llv_read(
+      source: source,
+      id: symbol_intern_lexeme(lexeme: "llv_self_artifact_" + tail),
+      unit: symbol_intern_lexeme(lexeme: "llv_self_cu_" + tail),
+      path: "src/v2/test/fixture/namespace_xl0/llv_self_" + tail + ".dag"
+    ),
+    tail: Empty
+  }
+}
+
+type LlvSelfVerdict
+  = LlvSelfResolved
+  | LlvSelfResolveRefused
+  | LlvSelfFileRefused
+  | LlvSelfAbsent
+  | LlvSelfContextRefused
+
+fn llv_self_verdict_of(outcome: NativeCensusModuleOutcome) -> LlvSelfVerdict {
+  match outcome {
+    NativeCensusModuleResolved => LlvSelfResolved
+    NativeCensusModuleFileRefused => LlvSelfFileRefused
+    NativeCensusModuleResolveRefused { first: _, rest: _, observation: _ } => LlvSelfResolveRefused
+  }
+}
+
+fn llv_self_verdict(ingest: SourceRootIngest) -> LlvSelfVerdict {
+  match native_test_context_from_ingest(ingest: ingest) {
+    Rejected { diagnostics: _ } => LlvSelfContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      fold_list(
+        xs: native_census_modules(ingest: ingest),
+        empty: LlvSelfAbsent,
+        cons: fn(acc, entry) {
+          if entry.module == "std.algebra" {
+            llv_self_verdict_of(
+              outcome: native_census_module_resolution(
+                context: context,
+                refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+                entry: entry
+              )
+            )
+          } else {
+            acc
+          }
+        }
+      )
+  }
+}
+
+fn llv_self_outcome() -> LlvSelfVerdict {
+  llv_self_verdict(ingest: llv_self_ingest(source: llv_self_source, tail: "whole"))
+}
+
+fn llv_self_missing_outcome() -> LlvSelfVerdict {
+  llv_self_verdict(ingest: llv_self_ingest(source: llv_self_missing_source, tail: "missing"))
+}
+
+test fn std_algebra_own_list_literals_bind_to_its_own_qualified_names() -> Bool {
+  match llv_self_outcome() {
+    LlvSelfResolved => true
+    _ => false
+  }
+}
+
+test fn std_algebra_without_list_append_refuses_its_own_list_literal_at_resolve() -> Bool {
+  match llv_self_missing_outcome() {
+    LlvSelfResolveRefused => true
+    _ => false
+  }
 }

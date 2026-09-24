@@ -297,7 +297,7 @@ fn cav_is_file_refused_for(v: CavVerdict, reason: Symbol) -> Bool {
 // A list argument is no longer refused at normalize: v2.compiler.body_lowering_fold
 // body_lower_list_literal lowers it as its free-monoid construction and the module REACHES RESOLVE.
 // The verdict is "reached resolve", not "unbound at the element's atom", because this ingest does
-// not carry v2.std.algebra, whose operations the lowered list calls, so which reference resolve
+// not carry std.algebra, whose operations the lowered list calls, so which reference resolve
 // reports first is not this claim's subject. That every element is lowered, in order, is claimed
 // on the lowered tree by v2.test.claim.namespace_xl0.list_literal_value_lowering. Before the
 // producer these modules were CavFileRefused under body_lowering_reason_list_literal_unlowered.

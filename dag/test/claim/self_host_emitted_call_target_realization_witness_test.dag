@@ -506,7 +506,7 @@ test fn w_map_receiver_operation_is_not_read_as_a_callable_field() -> Bool {
 // is the carrier authority and must be what the arm falls back to.
 test fn w_witness_carrier_falls_back_to_the_fn_return_when_the_value_identity_is_erased() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.witness_carrier_probe\nimport std.types { Int }\nimport std.algebra { Cons, Empty }\nimport v2.std.algebra { fold_list, list_snoc_item }\nimport v2.std.witness { Holds, Violates, Witness }\nimport v2.std.diagnostic { Diagnostic }\ntype Progress { edges: List<Int>, index: Int }\nfn step(p: Witness<Progress>, x: Int) -> Witness<Progress> { match p { Holds { value: Progress { edges: es, index: i } } => Holds { value: Progress { edges: list_snoc_item(xs: es, item: x), index: i + 1 } }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\nfn probe(xs: List<Int>) -> Witness<List<Int>> { match fold_list(xs: xs, empty: Holds { value: Progress { edges: Empty, index: 0 } }, cons: fn(p, x) { step(p: p, x: x) }) { Holds { value: Progress { edges: result, index: _ } } => Holds { value: result }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\n",
+    "module test.claim.witness_carrier_probe\nimport std.types { Int }\nimport std.algebra { Cons, Empty }\nimport v2.std.algebra { fold_list }\nimport std.algebra { list_snoc_item }\nimport v2.std.witness { Holds, Violates, Witness }\nimport v2.std.diagnostic { Diagnostic }\ntype Progress { edges: List<Int>, index: Int }\nfn step(p: Witness<Progress>, x: Int) -> Witness<Progress> { match p { Holds { value: Progress { edges: es, index: i } } => Holds { value: Progress { edges: list_snoc_item(xs: es, item: x), index: i + 1 } }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\nfn probe(xs: List<Int>) -> Witness<List<Int>> { match fold_list(xs: xs, empty: Holds { value: Progress { edges: Empty, index: 0 } }, cons: fn(p, x) { step(p: p, x: x) }) { Holds { value: Progress { edges: result, index: _ } } => Holds { value: result }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\n",
     "src/test_claim_witness_carrier_probe.rs",
     ["Witness::<"],
     ["UNRESOLVED_CompilerError"]
@@ -931,7 +931,7 @@ test fn w_depth_one_shared_field_refutation_stays_shape_guarded() -> Bool {
 // `v1_rt::concat` from that file. fold_list_right stays elsewhere in algebra, so it is not
 // a whole-file exclude. Not a doubling-ratio timing witness: both arms are linear.
 test fn w_list_append_emits_the_concat_primitive_not_a_left_fold() -> Bool {
-  let source = "module test.claim.list_append_concat_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.algebra { FreeMonoid, list_append }\nfn probe(left: FreeMonoid<Int>, right: FreeMonoid<Int>) -> FreeMonoid<Int> { list_append(left: left, right: right) }\n"
+  let source = "module test.claim.list_append_concat_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\nimport std.algebra { FreeMonoid, list_append }\nfn probe(left: FreeMonoid<Int>, right: FreeMonoid<Int>) -> FreeMonoid<Int> { list_append(left: left, right: right) }\n"
   compile_dag_rust_emit_check(
     source,
     "src/test_claim_list_append_concat_probe.rs",
