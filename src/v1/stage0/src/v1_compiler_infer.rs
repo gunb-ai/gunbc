@@ -10347,6 +10347,7 @@ pub fn qualified_value_projection(
     texpr: Rc<Node>,
     scope: Rc<InferScope>,
     span: Rc<SourceSpan>,
+    expected: Option<Rc<Node>>,
 ) -> Option<Rc<InferResult>> {
     match crate::v1_std_core::field_access_spine(
         texpr.clone(),
@@ -10368,11 +10369,16 @@ pub fn qualified_value_projection(
                             std::option::Option::None => decl.clone(),
                         },
                     };
-                    let value_type = crate::v1_compiler_infer_env::qualify_borrowed_type_names(
+                    let declared_type = crate::v1_compiler_infer_env::qualify_borrowed_type_names(
                         raw_value_type.clone(),
                         crate::v1_compiler_infer_env::qualified_all_but_last(spine.dotted.clone()),
                         scope.type_env.clone(),
                         v1_rt::rc_empty_map::<String, bool>(),
+                    );
+                    let value_type = qualified_function_value_type(
+                        decl.clone(),
+                        declared_type.clone(),
+                        expected.clone(),
                     );
                     Some(ok_infer(crate::v1_std_core::make_named_expr_node(
                         texpr.occurrence_identity.clone(),
@@ -10393,12 +10399,32 @@ pub fn qualified_value_projection(
     }
 }
 
+pub fn qualified_function_value_type(
+    decl: Rc<Node>,
+    declared: Rc<Node>,
+    expected: Option<Rc<Node>>,
+) -> Rc<Node> {
+    match decl.module_item_kind.clone() {
+        ParsedModuleItemKind::ModuleItemFunction => {
+            if (((decl.params.clone().len() as i64) == 0)
+                && !expected_type_is_arrow(expected.clone()))
+            {
+                declared.clone()
+            } else {
+                resolved_callable_type(decl.params.clone(), declared.clone())
+            }
+        }
+        _ => declared.clone(),
+    }
+}
+
 pub fn qualified_or_service_projection(
     texpr: Rc<Node>,
     scope: Rc<InferScope>,
     span: Rc<SourceSpan>,
+    expected: Option<Rc<Node>>,
 ) -> Option<Rc<InferResult>> {
-    match qualified_value_projection(texpr.clone(), scope.clone(), span.clone()) {
+    match qualified_value_projection(texpr.clone(), scope.clone(), span.clone(), expected.clone()) {
         Some(proj) => Some(proj.clone()),
         std::option::Option::None => match service_spine_projection(texpr.clone(), scope.clone()) {
             std::option::Option::None => std::option::Option::None,
@@ -11027,7 +11053,12 @@ Rc::new(InferResult {
             );
             let span = texpr.span.clone();
             let base_expr = crate::v1_std_core::field_access_base(texpr.clone());
-            match qualified_or_service_projection(texpr.clone(), scope.clone(), span.clone()) {
+            match qualified_or_service_projection(
+                texpr.clone(),
+                scope.clone(),
+                span.clone(),
+                expected.clone(),
+            ) {
                 Some(proj) => proj.clone(),
                 std::option::Option::None => {
                     let base_result =

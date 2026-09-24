@@ -12,7 +12,7 @@ import std.repair_input_origin {
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
 }
-import gunbc.rust_emitted_edge { EmittedEdge, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, RuntimePrelude, ReexportFacade }
+import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, RuntimePrelude, ReexportFacade }
 import gunbc.reference_derived_candidate {
   ReferenceDerivedCandidateDisposition,
   CandidateSurvived,
@@ -3595,15 +3595,10 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   EmitResult { files: files, diagnostics: module_refusals, emitted_edges: published_module_emissions |> flat_map(e => e.emitted_edges) }
 }
 
-// THE ONE PLACE A MODULE'S EMITTED FILENAME IS DECIDED, read by the renderer and by every
-// population-denominated aggregate that must name a module it did not render. `main` collides
-// with the crate's own entry file, so it renders as `main_mod`; that rename used to live inside
-// `emit_module_full` alone, where a second reader of the same fact had no way to reach it.
-fn rust_module_emit_filename(module_name: String) -> String {
-  let raw = module_to_filename(name: module_name)
-  if raw == "main" { "main_mod" } else { raw }
-}
-
+// A MODULE'S EMITTED PATH, read by the renderer and by every population-denominated aggregate that
+// must name a module it did not render. The basename is decided once, in gunbc.rust_emitted_edge
+// rust_module_emit_filename, because the emitter's edge rows name their endpoints by it and a
+// partition over dotted module names maps onto those endpoints with the same function.
 fn rust_module_emit_path(module_name: String) -> String {
   concat(rust_source_root(), rust_module_emit_filename(module_name: module_name), rust_source_ext())
 }
@@ -16425,6 +16420,14 @@ fn value_inferred_type_is_rc_wrapped(value: Node, shared_types: Set<String>, sco
   }
 }
 
+// A NESTED-RECORD DATA ROW IS REALIZED BY PARSING ITS JSON DOCUMENT AS TEXT, not by splicing it
+// into `serde_json::json!` as Rust tokens. The macro made rustc read every number in the document as
+// a Rust integer literal, whose type defaults to i32 when nothing pins it, so an Int above 2^31 --
+// SHA-256's initial hash words, SHA-512's round-constant halves -- failed with `literal out of range
+// for i32` (89 sites when extdeps.crypto.sha2 was first emitted). JSON has one number grammar and
+// serde_json parses it into the declared field type, so parsing the same text is the realization the
+// document's own format defines. A per-literal i64 suffix was the other repair and is refused: it
+// would put a non-JSON spelling into emit_data_value_json, whose output is also read as real JSON.
 fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, needs_rc: Bool) -> String {
   let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
   let type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)
@@ -16485,7 +16488,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
   } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
     match emit_data_value_json(value: value, source_indices: scope.type_env.source_indices, variant_wire: emit_info.data_variant_wire_spellings) {
       Refused { reason: r } => concat("            compile_error!(\"", escape_string_literal_body(s: r), "\")")
-      Emitted { json: json_str } => concat("            serde_json::from_value(serde_json::json!(", json_str, "))\n",
+      Emitted { json: json_str } => concat("            serde_json::from_str(\"", escape_string_literal_body(s: json_str), "\")\n",
         "                .expect(\"valid data definition\")")
     }
   } else {
