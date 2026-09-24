@@ -905,42 +905,29 @@ fn shape_git_config_local_get_argv(key: String) -> List<String> {
   ["git", "config", "--local", "--get", key]
 }
 
-fn git_config_global_get_all_args(key: String) -> List<String> {
-  ["config", "--global", "--get-all", key]
-}
-
-fn git_config_global_add_args(key: String, value: String) -> List<String> {
-  ["config", "--global", "--add", key, value]
-}
-
-fn git_config_global_get_all_command(key: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_config_global_get_all_args(key: key))
-}
-
-fn git_config_global_add_command(key: String, value: String) -> ArgvCommand {
-  argv_command(program: git_binary_name, arguments: git_config_global_add_args(key: key, value: value))
-}
-
-// THE GLOBAL-CONFIG OPERANDS, ONE SHAPE PER OPERATION with the program (git_binary_name) kept
-// separate, so every transport binds the same words. They address the EXECUTING principal's global config. `--get-all`
-// prints one value per line and exits 1 when the key has no value, which is an answer, not a failure
-// (extdeps.git.inspect config_reading); `--add` appends one value to a multi-valued key without
-// touching the others, where a set would replace every existing value.
+// git-config(1) safe.directory: the configuration git consults before operating in a repository its
+// caller does not own ("detected dubious ownership"). It is protected configuration, honoured from
+// the command line as well as from global config, and `-c` scopes it to ONE invocation: nothing is
+// written, nothing outlives the command, and no other git call by the same principal is widened.
 //
-// git-config(1) safe.directory: the multi-valued global key naming repositories git will operate on
-// although the executing user does not own them. "*" disables the ownership check entirely.
-data git_safe_directory_key: String = "safe.directory"
-data git_safe_directory_wildcard: String = "*"
-
-// ONE SAFE.DIRECTORY TRUST: the principal git runs as, and the exact repository path it may operate on
-// although it does not own it. Its consumer today is the persisted global entry
-// (gunbc.live_deploy.checkout_safe_directory). It lives here rather than there because a second
-// realization is declared: the invocation-scoped `-c safe.directory=<path>` form, landing in gunbc#12246
-// (tree-sync's fetch from the runner checkout). The two realizations will differ in how long the trust
-// lasts, never in what it grants.
+// ONE SAFE.DIRECTORY TRUST, carried by one shape for every call that needs it: the exact repository
+// path. It names no principal because an invocation-scoped trust is held by whoever runs that
+// invocation and by no one else -- a principal field here would be a claim nothing checks.
 type SafeDirectoryGrant {
-  principal: NonEmptyStr
   path: NonEmptyStr
+}
+
+data git_safe_directory_key: String = "safe.directory"
+
+fn git_safe_directory_override_args(grant: SafeDirectoryGrant) -> List<String> {
+  ["-c", join([git_safe_directory_key, "=", grant.path as String], "")]
+}
+
+// A CALL INTO A REPOSITORY TRUSTS EXACTLY THAT REPOSITORY. The grant is derived from the same path
+// `-C` names, so a caller cannot trust one directory while operating in another, and cannot pass the
+// wildcard: the narrowest grant is the only one this shape can spell.
+fn git_in_trusted_repository_args(repo: NonEmptyStr) -> List<String> {
+  append(git_safe_directory_override_args(grant: SafeDirectoryGrant { path: repo }), items: ["-C", repo as String])
 }
 
 fn shape_git_config_local_in_repo_argv(repo: FilePath, key: String, value: String) -> List<String> {

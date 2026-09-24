@@ -4,6 +4,7 @@ import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.algebra { trim }
 import extdeps.git
+import extdeps.git { git_in_trusted_repository_args }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq, git_object_id_wire_hex }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
@@ -73,8 +74,13 @@ fn deployed_tree_locus_transport(locus: DeployedTreeLocus) -> HostEffectTranspor
 // the whole locus would also make the builders unreachable to any witness, because the execution
 // context is sealed with an admitted caller list and no test can mint one. A wall that makes the
 // wrong factoring untestable is the wall doing its job.
+// EVERY LEG TRUSTS THE DEPLOYED REPOSITORY FOR ITS OWN INVOCATION ONLY (extdeps.git
+// git_in_trusted_repository_args). The deployed tree is owned by the publication principal and read
+// by the deploy principal, and git refuses a repository its caller does not own; the trust rides the
+// command line with the exact path `-C` names, so nothing is written to any principal's config and no
+// other git call is widened (srv1 dashboard_deploy, 2026-09-24).
 fn deployed_tree_revision_argv(repo: NonEmptyStr) -> List<String> {
-  ["git", "-C", repo as String, "rev-parse", "HEAD"]
+  append(append(["git"], items: git_in_trusted_repository_args(repo: repo)), items: ["rev-parse", "HEAD"])
 }
 
 // THE ROOT-TREE OBJECT IDENTITY (RLM-2 ruling section 4, G7). `HEAD:` is the colon form naming the
@@ -84,7 +90,7 @@ fn deployed_tree_revision_argv(repo: NonEmptyStr) -> List<String> {
 data deployed_tree_root_tree_ref: String = "HEAD:"
 
 fn deployed_tree_root_tree_argv(repo: NonEmptyStr) -> List<String> {
-  ["git", "-C", repo as String, "rev-parse", deployed_tree_root_tree_ref]
+  append(append(["git"], items: git_in_trusted_repository_args(repo: repo)), items: ["rev-parse", deployed_tree_root_tree_ref])
 }
 
 // THE WORKTREE IS COMPARED AGAINST AN INDEX WE BUILD, AND THE DEPLOYED REPO'S OWN INDEX IS NEVER
@@ -187,20 +193,19 @@ fn deployed_tree_temp_index_path(locus: DeployedTreeLocus) -> String {
 // tracked path then reads as intentionally absent rather than as drift. That is a false CLEAN on
 // precisely the failure this observation exists to catch -- a path the sync did not deliver.
 fn deployed_tree_read_tree_argv(repo: NonEmptyStr, revision_hex: String, index_path: String) -> List<String> {
-  [
-    env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""),
-    "git", "-C", repo as String, "read-tree", "--no-sparse-checkout", revision_hex,
-  ]
+  append(
+    append([env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""), "git"], items: git_in_trusted_repository_args(repo: repo)),
+    items: ["read-tree", "--no-sparse-checkout", revision_hex],
+  )
 }
 
 // `env` carries GIT_INDEX_FILE because that variable has no command-line equivalent, and every word
 // here stays inside the portable alphabet: letters, digits and `_ = / . -`. No shell, no pipe.
 fn deployed_tree_status_argv(repo: NonEmptyStr, index_path: String) -> List<String> {
-  [
-    env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""),
-    "git", "-C", repo as String, "--no-optional-locks",
-    "status", "--porcelain=v1", "-z", "--untracked-files=all",
-  ]
+  append(
+    append([env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""), "git"], items: git_in_trusted_repository_args(repo: repo)),
+    items: ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+  )
 }
 
 // THE IGNORED LEG EXISTS BECAUSE THE SYNC SHIPS IGNORED PATHS AND git status NEVER REPORTS THEM.
@@ -215,11 +220,10 @@ fn deployed_tree_status_argv(repo: NonEmptyStr, index_path: String) -> List<Stri
 // consults the index to decide what "other" means, and the deployed repo's index is the artifact this
 // module refuses to trust.
 fn deployed_tree_ignored_argv(repo: NonEmptyStr, index_path: String) -> List<String> {
-  [
-    env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""),
-    "git", "-C", repo as String,
-    "ls-files", "--others", "--ignored", "--exclude-standard", "-z",
-  ]
+  append(
+    append([env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""), "git"], items: git_in_trusted_repository_args(repo: repo)),
+    items: ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
+  )
 }
 
 // A TRANSPORT REFUSAL IS ITS OWN ARM, NEVER A SYNTHETIC EXIT CODE. Rendering a leg that was never

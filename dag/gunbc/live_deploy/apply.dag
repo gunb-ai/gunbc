@@ -62,10 +62,6 @@ import gunbc.host_effect {
   DeployAccessPreflight,
 }
 import gunbc.host_effect_realize { host_effect_apply_gated }
-import gunbc.live_deploy.checkout_safe_directory {
-  ensure_deploy_checkout_safe_directory, deploy_checkout_safe_directory_grant, safe_directory_refusal_reason,
-  SafeDirectoryRefused,
-}
 import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
 import gunbc.auth.approval_broker_cutover {
@@ -268,26 +264,6 @@ fn live_deploy_ensure_dependency(
 // the same evaluation that decides also acts, and a plan that could not be derived refuses here with
 // every member's cause, installing nothing -- never the whole roster as a fallback.
 fn live_deploy_apply_mutation_via_transport(
-  spec: DeploymentSpec,
-  candidate: CandidateRelease,
-  transport: HostEffectTransport,
-  access: DeployAccess
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let safe_directory = ensure_deploy_checkout_safe_directory(grant: deploy_checkout_safe_directory_grant(access: access, spec: spec), transport: transport)
-  match safe_directory {
-    SafeDirectoryRefused { grant, cause } =>
-      NotConverged {
-        reason: safe_directory_refusal_reason(grant: grant, cause: cause),
-        applied: live_deploy_preflight_intent(access: access),
-      }
-    _ => live_deploy_apply_mutation_after_safe_directory(spec: spec, candidate: candidate, transport: transport, access: access)
-  }
-}
-
-// THE CHECKOUT IS READABLE BY THE DEPLOY PRINCIPAL BEFORE ITS HEAD IS OBSERVED
-// (gunbc.live_deploy.checkout_safe_directory): the tree-publication member's first read is
-// `git rev-parse HEAD` in a checkout another principal owns.
-fn live_deploy_apply_mutation_after_safe_directory(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
   transport: HostEffectTransport,

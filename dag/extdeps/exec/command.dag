@@ -162,8 +162,6 @@ fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "scp_upload_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_enable_now_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_config_local_set_command"),
-    decl_ref(module_path: "extdeps.git", decl_name: "git_config_global_get_all_command"),
-    decl_ref(module_path: "extdeps.git", decl_name: "git_config_global_add_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_clone_shallow_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_fetch_shallow_revision_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_checkout_revision_command"),
