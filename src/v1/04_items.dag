@@ -77,13 +77,6 @@ fn item_resource_names(info: ItemInfo) -> List<String> {
   info.resource_requirements |> map(r => r.binding_name)
 }
 
-// THE ONE EFFECT PREDICATE. A declaration is effectful when it carries a service requirement
-// (inferred, transitive) or a resource requirement (authored `uses`); every emitter site that
-// decides async-ness, extra arguments or the await suffix reads this rather than respelling the
-// disjunction.
-fn item_is_effectful_callee(info: ItemInfo) -> Bool {
-  info.service_names |> count > 0 || item_resource_names(info: info) |> count > 0
-}
 
 type ItemInfo {
   name: String
@@ -94,6 +87,25 @@ type ItemInfo {
   params: List<Node>
   is_self_recursive: Bool
   has_non_tail_self_call: Bool
+}
+
+// DOES THIS CALLEE HAVE EFFECTS -- ONE AUTHORITY, NAMED FOR WHAT IT ANSWERS RATHER THAN FOR ITS
+// FIELDS.
+//
+// WHY IT EXISTS. The question was spelled out FIVE TIMES as the same disjunction over the same
+// ItemInfo -- twice in v1.compiler.emit and three times in v1.compiler.emit_rust -- so a sixth
+// consumer asking it would have made the corpus answer one question from six places, which is the
+// DESIGN section 3 fork. It is hoisted here, at the home of the type it reads, rather than beside
+// any one caller: `gunbc.recurring_failure_mode`
+// `sibling_operand_effect_order_is_underdetermined_and_unenforced` needs exactly this question at
+// the acceptance join, and inference may not import the emitter to get it.
+//
+// NAMED FOR THE QUESTION, NOT THE FIELDS, and that is load-bearing rather than taste: the resource
+// half of this disjunction is scheduled to move from a `resource_names: List<String>` projection to
+// a typed requirement carrier. A predicate named for its answer survives that change with every
+// consumer untouched; one named for its fields would move six call sites.
+fn item_is_effectful_callee(info: ItemInfo) -> Bool {
+  info.service_names |> count > 0 || item_resource_names(info: info) |> count > 0
 }
 
 // THE ANSWER TO "WHICH MODULE DECLARES THIS LEAF" HAS THREE SHAPES, SO IT IS A COPRODUCT.

@@ -11,8 +11,8 @@ import std.scoped_authorization {
 }
 import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name, mtcollins1_boot_export_dir }
 import gunbc.machine_intake_mtcollins1_boot_image_fetch { mtcollins1_boot_image_sha256 }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_input }
-import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_built }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stem, mtcollins1_census_volume_id }
+import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_power_action, mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.fleet_intent_network { operator_host_srv2 }
@@ -70,16 +70,18 @@ data mtcollins1_boot_medium: MtCollins1BootMedium = MtCollins1CensusMedium {
 }
 
 // THE CENSUS ARM AUTHORS ONE FACT, THE MEASURED OUTPUT DIGEST from the publish receipt. The image name
-// derives from that digest through the same build input that owns the census volume id
-// (gunbc.machine_intake_mtcollins1_census_image mtcollins1_census_image_input), so a census arm naming
-// a stock installer, or any artifact but the census image, has no spelling: the row cannot disagree
-// with the label the verdict binds to (review 5261662425). The published file's name is its digest,
-// so the digest is also the sha256 the signed subject and the attach carry.
+// derives from that digest through the same stem row the census build input is built from, and the
+// label is the same volume-id row (gunbc.machine_intake_mtcollins1_census_image
+// mtcollins1_census_image_stem, mtcollins1_census_volume_id), so a census arm naming a stock
+// installer, or any artifact but the census image, has no spelling: the row cannot disagree with the
+// label the verdict binds to (review 5261662425). Neither fact is seeded content, so neither waits on
+// the derivation that renders the seed. The published file's name is its digest, so the digest is
+// also the sha256 the signed subject and the attach carry.
 fn mtcollins1_boot_medium_image_name(medium: MtCollins1BootMedium) -> NonEmptyStr {
   match medium {
     MtCollins1StockInstallerMedium => mtcollins1_diskless_image_name
     MtCollins1CensusMedium { output_digest: d } =>
-      ubuntu_seeded_install_media_built(input: mtcollins1_census_image_input, output_digest: d).image_name
+      ubuntu_seeded_install_media_image_name(image_stem: mtcollins1_census_image_stem, output_digest: d)
   }
 }
 
@@ -93,7 +95,7 @@ fn mtcollins1_boot_medium_image_sha256(medium: MtCollins1BootMedium) -> NonEmpty
 fn mtcollins1_boot_medium_label(medium: MtCollins1BootMedium) -> NonEmptyStr? {
   match medium {
     MtCollins1StockInstallerMedium => none
-    MtCollins1CensusMedium { output_digest: _ } => Present { value: mtcollins1_census_image_input.volume_id }
+    MtCollins1CensusMedium { output_digest: _ } => Present { value: mtcollins1_census_volume_id }
   }
 }
 
