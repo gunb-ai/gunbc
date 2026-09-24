@@ -135,7 +135,6 @@ pub use crate::v1_compiler_coercion::{
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v1_compiler_dag_collect_support::connective_name;
-pub use crate::v1_compiler_emit::render_target_name;
 use crate::v1_compiler_emit::BoundOperation::{
     BindingRefused, FileBound, LocalBound, RestBound, ShellBound,
 };
@@ -9421,6 +9420,10 @@ pub fn rust_code_outside_string_literals(s: String) -> String {
     .join(&" ".to_string())
 }
 
+pub fn rust_qualified_segments_marked(s: String) -> String {
+    v1_rt::replace(s.clone(), "::".to_string(), " @".to_string())
+}
+
 pub fn rust_identifier_tokens(s: String) -> Rc<Vec<String>> {
     {
         let spaced = v1_rt::replace(
@@ -10104,8 +10107,9 @@ pub fn reference_derived_use_line_plan(
                 }
                 __result
             }));
-        let emitted_source_tokens =
-            rust_identifier_tokens(rust_code_outside_string_literals(emitted_source.clone()));
+        let emitted_source_tokens = rust_identifier_tokens(rust_qualified_segments_marked(
+            rust_code_outside_string_literals(emitted_source.clone()),
+        ));
         let emitted_source_token_set = emitted_source_tokens.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, t: String| v1_rt::rc_map_insert(acc, t.clone(), true),
