@@ -1,0 +1,204 @@
+module extdeps.xcodegen.project_spec
+
+import std.types { String, Bool, Int, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.apple.property_list { PlistEntry, PlistValue, PlistString, PlistBoolean, PlistArray, PlistDictionary }
+import extdeps.apple.build_settings { BuildSetting, build_setting_name_token }
+import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, kv, yaml_string, yaml_bool, yaml_mapping, yaml_sequence }
+
+// XcodeGen's project spec (project.yml), pinned at release 2.46.0. Field names are the spec's. Only
+// the fields a consumer in this tree writes are modeled: Options (bundleIdPrefix, deploymentTarget,
+// xcodeVersion, createIntermediateGroups), configFiles, Settings.base, and Target (type, platform,
+// sources, settings.base, info, entitlements, dependencies). Further fields land with their first
+// consumer. project_spec_yaml below is the spec's YAML encoding: one total projection from the modeled
+// spec, written by extdeps.languages.yaml.emit.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/yonaskolb/XcodeGen/blob/2.46.0/Docs/ProjectSpec.md"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.xcodegen.project_spec",
+      decl_name: "ProjectSpec",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// Target.platform / Options.deploymentTarget keys.
+type XcodeGenPlatform
+  = IosPlatform
+  | TvosPlatform
+  | MacosPlatform
+  | WatchosPlatform
+  | VisionosPlatform
+
+fn xcodegen_platform_token(p: XcodeGenPlatform) -> String {
+  match p {
+    IosPlatform => "iOS"
+    TvosPlatform => "tvOS"
+    MacosPlatform => "macOS"
+    WatchosPlatform => "watchOS"
+    VisionosPlatform => "visionOS"
+  }
+}
+
+// Target.type: the product type.
+type XcodeGenProductType
+  = ApplicationProduct
+  | UnitTestBundleProduct
+
+fn xcodegen_product_type_token(t: XcodeGenProductType) -> String {
+  match t {
+    ApplicationProduct => "application"
+    UnitTestBundleProduct => "bundle.unit-test"
+  }
+}
+
+// A dotted `major.minor` version, the spelling Options.deploymentTarget and Options.xcodeVersion
+// accept. XcodeGen turns an xcodeVersion into the project's LastUpgradeCheck (major padded to two
+// digits, then minor and patch: 26.0 -> 2600), which is what Xcode compares against its own version
+// to decide whether to offer "Update to recommended settings".
+type DottedVersion {
+  major: Int
+  minor: Int
+}
+
+fn dotted_version_text(v: DottedVersion) -> String {
+  join([to_string(v.major), ".", to_string(v.minor)], "")
+}
+
+type PlatformDeploymentTarget {
+  platform: XcodeGenPlatform
+  version: DottedVersion
+}
+
+type ProjectOptions {
+  bundle_id_prefix: String
+  deployment_targets: List<PlatformDeploymentTarget>
+  xcode_version: DottedVersion
+  create_intermediate_groups: Bool
+}
+
+// configFiles: one .xcconfig per build configuration name.
+type ConfigFile {
+  configuration: String
+  path: String
+}
+
+// Plist: XcodeGen WRITES this file on every generation and points INFOPLIST_FILE /
+// CODE_SIGN_ENTITLEMENTS at it -- so for Info.plist, the properties here are the whole of what the
+// app's bundle declares beyond the keys XcodeGen fills in itself (CFBundleIdentifier,
+// CFBundleExecutable, CFBundleName, versions, package type).
+type XcodeGenPlist {
+  path: String
+  properties: List<PlistEntry>
+}
+
+// Target sources: a path compiled by the default rule for its type, or a path forced into the
+// resources build phase (buildPhase: resources).
+type TargetSource
+  = SourcePath { path: String }
+  | ResourcePath { path: String }
+
+type TargetPlist
+  = NoPlist
+  | WritesPlist { plist: XcodeGenPlist }
+
+type XcodeGenTarget {
+  name: String
+  product_type: XcodeGenProductType
+  platform: XcodeGenPlatform
+  sources: List<TargetSource>
+  settings: List<BuildSetting>
+  info: TargetPlist
+  entitlements: TargetPlist
+  dependencies: List<String>
+}
+
+type ProjectSpec {
+  name: String
+  options: ProjectOptions
+  config_files: List<ConfigFile>
+  settings: List<BuildSetting>
+  targets: List<XcodeGenTarget>
+}
+
+// ── The YAML encoding ─────────────────────────────────────────────────────────────────────────
+
+fn plist_value_yaml(v: PlistValue) -> YamlValue {
+  match v {
+    PlistString { value: s } => yaml_string(s: s)
+    PlistBoolean { value: b } => yaml_bool(b: b)
+    PlistArray { elements: es } => yaml_sequence(elements: map(es, e => plist_value_yaml(v: e)))
+    PlistDictionary { entries: es } => plist_entries_yaml(entries: es)
+  }
+}
+
+fn plist_entries_yaml(entries: List<PlistEntry>) -> YamlValue {
+  yaml_mapping(entries: map(entries, e => kv(key: e.key, value: plist_value_yaml(v: e.value))))
+}
+
+fn build_settings_yaml(settings: List<BuildSetting>) -> YamlValue {
+  yaml_mapping(entries: [kv(key: "base", value: yaml_mapping(entries: map(settings, s => kv(key: build_setting_name_token(n: s.name), value: yaml_string(s: s.value)))))])
+}
+
+fn options_yaml(o: ProjectOptions) -> YamlValue {
+  yaml_mapping(entries: [
+    kv(key: "bundleIdPrefix", value: yaml_string(s: o.bundle_id_prefix)),
+    kv(key: "deploymentTarget", value: yaml_mapping(entries: map(o.deployment_targets, d => kv(key: xcodegen_platform_token(p: d.platform), value: yaml_string(s: dotted_version_text(v: d.version)))))),
+    kv(key: "xcodeVersion", value: yaml_string(s: dotted_version_text(v: o.xcode_version))),
+    kv(key: "createIntermediateGroups", value: yaml_bool(b: o.create_intermediate_groups))
+  ])
+}
+
+fn config_files_yaml(files: List<ConfigFile>) -> YamlValue {
+  yaml_mapping(entries: map(files, f => kv(key: f.configuration, value: yaml_string(s: f.path))))
+}
+
+fn target_source_yaml(s: TargetSource) -> YamlValue {
+  match s {
+    SourcePath { path: p } => yaml_string(s: p)
+    ResourcePath { path: p } => yaml_mapping(entries: [kv(key: "path", value: yaml_string(s: p)), kv(key: "buildPhase", value: yaml_string(s: "resources"))])
+  }
+}
+
+fn plist_yaml(p: XcodeGenPlist) -> YamlValue {
+  yaml_mapping(entries: [kv(key: "path", value: yaml_string(s: p.path)), kv(key: "properties", value: plist_entries_yaml(entries: p.properties))])
+}
+
+fn target_plist_entries(key: String, p: TargetPlist) -> List<YamlKeyValue> {
+  match p {
+    NoPlist => []
+    WritesPlist { plist: pl } => [kv(key: key, value: plist_yaml(p: pl))]
+  }
+}
+
+fn target_yaml(t: XcodeGenTarget) -> YamlKeyValue {
+  let head = [
+    kv(key: "type", value: yaml_string(s: xcodegen_product_type_token(t: t.product_type))),
+    kv(key: "platform", value: yaml_string(s: xcodegen_platform_token(p: t.platform))),
+    kv(key: "sources", value: yaml_sequence(elements: map(t.sources, s => target_source_yaml(s: s))))
+  ]
+  let settings = if (t.settings |> count) == 0 { [] } else { [kv(key: "settings", value: build_settings_yaml(settings: t.settings))] }
+  let deps = if (t.dependencies |> count) == 0 { [] } else { [kv(key: "dependencies", value: yaml_sequence(elements: map(t.dependencies, d => yaml_mapping(entries: [kv(key: "target", value: yaml_string(s: d))]))))] }
+  kv(key: t.name, value: yaml_mapping(entries: concat(concat(concat(concat(head, settings), target_plist_entries(key: "info", p: t.info)), target_plist_entries(key: "entitlements", p: t.entitlements)), deps)))
+}
+
+fn project_spec_yaml(p: ProjectSpec) -> YamlValue {
+  yaml_mapping(entries: [
+    kv(key: "name", value: yaml_string(s: p.name)),
+    kv(key: "options", value: options_yaml(o: p.options)),
+    kv(key: "configFiles", value: config_files_yaml(files: p.config_files)),
+    kv(key: "settings", value: build_settings_yaml(settings: p.settings)),
+    kv(key: "targets", value: yaml_mapping(entries: map(p.targets, t => target_yaml(t: t))))
+  ])
+}

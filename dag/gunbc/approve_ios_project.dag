@@ -1,0 +1,151 @@
+module gunbc.approve_ios_project
+
+import std.types { String, List }
+import extdeps.apple.property_list { PlistEntry, plist_entry, plist_string }
+import extdeps.apple.info_plist {
+  LaunchScreen, system_default_launch_screen, BackgroundMode, RemoteNotificationMode,
+  launch_screen_entry, face_id_usage_entry, display_name_entry, background_modes_entry
+}
+import extdeps.apple.build_settings {
+  BuildSetting, build_setting_bool,
+  SwiftVersion, SwiftStrictConcurrency, CodeSignStyle, ProductBundleIdentifier, AssetCatalogCompilerAppIconName,
+  EnableUserScriptSandboxing, StringCatalogGenerateSymbols
+}
+import extdeps.xcodegen.project_spec {
+  ProjectSpec, ProjectOptions, ConfigFile, XcodeGenTarget, XcodeGenPlist, PlatformDeploymentTarget, DottedVersion,
+  IosPlatform, ApplicationProduct, UnitTestBundleProduct, SourcePath, ResourcePath, NoPlist, WritesPlist, project_spec_yaml
+}
+
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
+
+// THE APPROVE APP'S XCODE PROJECT, as the authority apps/approve-ios/project.yml is projected from
+// (gunbc.generated_artifact ApproveIosProjectYmlArtifact; the drift gate holds the committed file
+// equal to expected_approve_ios_project_yml). XcodeGen reads that file on the operator's Mac and
+// writes Approve.xcodeproj and Approve/Info.plist from it; neither is committed.
+//
+// WHY THE INFO.PLIST KEYS ARE FIELDS OF A RECORD RATHER THAN A LIST OF ENTRIES. XcodeGen writes the
+// target's Info.plist itself from `info.properties`, so Xcode does not generate it and every
+// INFOPLIST_KEY_* build setting is IGNORED (extdeps.apple.build_settings carries no such arm). That
+// is how the app shipped letterboxed and with no Face ID purpose string while the spec appeared to
+// declare both. Each key the app cannot run correctly without is therefore a required field here:
+// omitting one is not a missing row a check might notice, it is a record that does not construct.
+//   launch_screen      UILaunchScreen -- without it iOS runs the app letterboxed.
+//   face_id_purpose    NSFaceIDUsageDescription -- without it the first Face ID prompt (the enclave
+//                      key's access control, extdeps.apple.secure_enclave) terminates the app.
+//   display_name       CFBundleDisplayName -- the home-screen name.
+//   background_modes   UIBackgroundModes -- remote-notification, so an approval push wakes the app.
+//   server_host        ApproveServerHost -- read by ServerConfig at launch.
+//   apns_environment   ApproveApnsEnvironment -- read by ServerConfig at launch.
+// The last two are xcconfig-substituted from Config/Team.xcconfig.
+type ApproveAppInfo {
+  launch_screen: LaunchScreen
+  face_id_purpose: String
+  display_name: String
+  background_modes: List<BackgroundMode>
+  server_host: String
+  apns_environment: String
+}
+
+data approve_app_info: ApproveAppInfo = ApproveAppInfo {
+  launch_screen: system_default_launch_screen,
+  face_id_purpose: "Approving a request signs it with a key that only unlocks with Face ID.",
+  display_name: "Approve",
+  background_modes: [RemoteNotificationMode],
+  server_host: "$(APPROVE_SERVER_HOST)",
+  apns_environment: "$(APNS_ENVIRONMENT)",
+}
+
+fn approve_info_properties(i: ApproveAppInfo) -> List<PlistEntry> {
+  [
+    launch_screen_entry(s: i.launch_screen),
+    face_id_usage_entry(purpose: i.face_id_purpose),
+    display_name_entry(name: i.display_name),
+    background_modes_entry(modes: i.background_modes),
+    plist_entry(key: "ApproveServerHost", value: plist_string(s: i.server_host)),
+    plist_entry(key: "ApproveApnsEnvironment", value: plist_string(s: i.apns_environment))
+  ]
+}
+
+// aps-environment follows how the build was signed (extdeps.apple.apns ApnsEnvironment); the App
+// Attest environment is extdeps.apple.app_attest AppAttestEnvironment -- "development" for an Xcode
+// build, "production" for TestFlight/App Store (the AAGUID the server checks follows it).
+data approve_entitlements: List<PlistEntry> = [
+  plist_entry(key: "aps-environment", value: plist_string(s: "$(APNS_ENVIRONMENT)")),
+  plist_entry(key: "com.apple.developer.devicecheck.appattest-environment", value: plist_string(s: "$(APP_ATTEST_ENVIRONMENT)"))
+]
+
+// XCODE VERSION 26.0: the operator builds with Xcode 26 (26.6 on 2026-09-24). XcodeGen stamps this
+// as LastUpgradeCheck 2600, so Xcode 26 finds nothing newer to offer; with 16.0 it offered "Update
+// to recommended settings" on every regeneration. The two settings that check proposes are set
+// explicitly at the project level below, so the prompt has nothing left to ask for.
+// DEPLOYMENT TARGET iOS 17.0: kept, the operator's ruling for this app (gunbc.approve_ios_app:
+// SwiftUI, iOS 17+). Raising the toolchain does not raise it; nothing in the app needs a newer OS.
+data approve_project_options: ProjectOptions = ProjectOptions {
+  bundle_id_prefix: "ai.gunb",
+  deployment_targets: [PlatformDeploymentTarget { platform: IosPlatform, version: DottedVersion { major: 17, minor: 0 } }],
+  xcode_version: DottedVersion { major: 26, minor: 0 },
+  create_intermediate_groups: true,
+}
+
+// DEVELOPMENT_TEAM, APPROVE_SERVER_HOST, APNS_ENVIRONMENT and APP_ATTEST_ENVIRONMENT come from
+// Config/Team.xcconfig (operator-local, not generated).
+data approve_project_settings: List<BuildSetting> = [
+  BuildSetting { name: SwiftVersion, value: "5.10" },
+  BuildSetting { name: SwiftStrictConcurrency, value: "complete" },
+  BuildSetting { name: CodeSignStyle, value: "Automatic" },
+  build_setting_bool(name: EnableUserScriptSandboxing, on: true),
+  build_setting_bool(name: StringCatalogGenerateSymbols, on: true)
+]
+
+data approve_app_target: XcodeGenTarget = XcodeGenTarget {
+  name: "Approve",
+  product_type: ApplicationProduct,
+  platform: IosPlatform,
+  sources: [SourcePath { path: "Approve" }],
+  settings: [
+    BuildSetting { name: ProductBundleIdentifier, value: "ai.gunb.approve" },
+    BuildSetting { name: AssetCatalogCompilerAppIconName, value: "AppIcon" }
+  ],
+  info: WritesPlist { plist: XcodeGenPlist { path: "Approve/Info.plist", properties: approve_info_properties(i: approve_app_info) } },
+  entitlements: WritesPlist { plist: XcodeGenPlist { path: "Approve/Approve.entitlements", properties: approve_entitlements } },
+  dependencies: [],
+}
+
+// The test bundle carries the fixture vectors EMITTED by gunbc.auth.approval_device_redemption_fixtures
+// (gunbc.generated_artifact ApprovalDeviceVectorsArtifact) as a resource, never a hand copy.
+data approve_tests_target: XcodeGenTarget = XcodeGenTarget {
+  name: "ApproveTests",
+  product_type: UnitTestBundleProduct,
+  platform: IosPlatform,
+  sources: [SourcePath { path: "ApproveTests" }, ResourcePath { path: "../../dag/test/fixture/approval_device_redemption/vectors.json" }],
+  settings: [],
+  info: NoPlist,
+  entitlements: NoPlist,
+  dependencies: ["Approve"],
+}
+
+data approve_ios_project_spec: ProjectSpec = ProjectSpec {
+  name: "Approve",
+  options: approve_project_options,
+  config_files: [ConfigFile { configuration: "Debug", path: "Config/Team.xcconfig" }, ConfigFile { configuration: "Release", path: "Config/Team.xcconfig" }],
+  settings: approve_project_settings,
+  targets: [approve_app_target, approve_tests_target],
+}
+
+type ApproveIosProjectGeneration
+  = ApproveIosProjectGenerated { content: String }
+  | ApproveIosProjectRefused { reason: String }
+
+data approve_ios_project_header: String = join([
+  "# Generated by gunbc.approve_ios_project expected_approve_ios_project_yml — do not hand-edit.",
+  "# Authority: gunbc.approve_ios_project approve_ios_project_spec; regen via tools.generated_artifact_gate main_wet.",
+  "# XcodeGen spec; no .xcodeproj is committed. On the Mac: `brew install xcodegen && xcodegen generate`.",
+  ""
+], "\n")
+
+fn expected_approve_ios_project_yml() -> ApproveIosProjectGeneration {
+  match emit_yaml(v: project_spec_yaml(p: approve_ios_project_spec)) {
+    EmittedYaml { text: t } => ApproveIosProjectGenerated { content: concat(approve_ios_project_header, t) }
+    YamlEmitRefused { path: p, reason: r } => ApproveIosProjectRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.approve_ios_project", path: p, reason: r) }
+  }
+}

@@ -1,0 +1,68 @@
+module extdeps.apple.build_settings
+
+import std.types { String, Bool }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// Xcode build settings (Xcode > Build settings reference). Each setting this tree writes is one arm
+// named by Apple's setting name, the spelling a project file and an .xcconfig carry.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.apple.com/documentation/xcode/build-settings-reference"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.apple.build_settings",
+      decl_name: "BuildSettingName",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// ENABLE_USER_SCRIPT_SANDBOXING ("User Script Sandboxing"): run script phases sandboxed to their
+// declared inputs and outputs. STRING_CATALOG_GENERATE_SYMBOLS ("Generate String Catalog Symbols"):
+// generate Swift symbols for String Catalog keys. Both are defaults Xcode's "Update to recommended
+// settings" check offers to turn on for a project last upgraded before them; setting them explicitly
+// is what satisfies the check.
+//
+// NO INFOPLIST_KEY_* ARM EXISTS, deliberately: the INFOPLIST_KEY_*
+// settings are read only when Xcode generates the Info.plist, so a project that supplies its own
+// Info.plist (INFOPLIST_FILE, as XcodeGen does for a target with `info`) must carry those keys in
+// the file instead (extdeps.apple.info_plist); a setting it would ignore is not modeled.
+type BuildSettingName
+  = SwiftVersion
+  | SwiftStrictConcurrency
+  | CodeSignStyle
+  | ProductBundleIdentifier
+  | AssetCatalogCompilerAppIconName
+  | EnableUserScriptSandboxing
+  | StringCatalogGenerateSymbols
+
+fn build_setting_name_token(n: BuildSettingName) -> String {
+  match n {
+    SwiftVersion => "SWIFT_VERSION"
+    SwiftStrictConcurrency => "SWIFT_STRICT_CONCURRENCY"
+    CodeSignStyle => "CODE_SIGN_STYLE"
+    ProductBundleIdentifier => "PRODUCT_BUNDLE_IDENTIFIER"
+    AssetCatalogCompilerAppIconName => "ASSETCATALOG_COMPILER_APPICON_NAME"
+    EnableUserScriptSandboxing => "ENABLE_USER_SCRIPT_SANDBOXING"
+    StringCatalogGenerateSymbols => "STRING_CATALOG_GENERATE_SYMBOLS"
+  }
+}
+
+type BuildSetting {
+  name: BuildSettingName
+  value: String
+}
+
+// Boolean build settings are spelled YES / NO.
+fn build_setting_bool(name: BuildSettingName, on: Bool) -> BuildSetting {
+  BuildSetting { name: name, value: if on { "YES" } else { "NO" } }
+}

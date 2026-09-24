@@ -1,0 +1,125 @@
+module test.claim.approve_ios_project_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool, List }
+import extdeps.languages.yaml.types {
+  YamlValue, YamlKeyValue, YamlString, YamlSequence, YamlMapping,
+  YamlKeyLookup, YamlKeyPresent, YamlKeyAbsent, yaml_lookup, kv, yaml_string, yaml_mapping, yaml_sequence
+}
+import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml }
+import gunbc.approve_ios_project { expected_approve_ios_project_yml, ApproveIosProjectGenerated, ApproveIosProjectRefused }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THE OPERATOR'S MAC NEEDS FROM apps/approve-ios/project.yml, READ BACK FROM THE BYTES. XcodeGen
+// writes Info.plist from targets.Approve.info.properties and ignores INFOPLIST_KEY_* build settings,
+// so each required key is asserted at THAT path of the document the generated-artifact gate commits
+// -- the real route (gunbc.approve_ios_project expected_approve_ios_project_yml, emitted, then read
+// back by the YAML reader), not the .dag record it was projected from. The predicate is shown to
+// discriminate over supplied documents below, one red per failure the Mac actually hit.
+
+fn at(v: YamlValue, path: List<String>) -> YamlKeyLookup {
+  fold(path, init: YamlKeyPresent { value: v }, f: (acc, k) => match acc {
+    YamlKeyPresent { value: YamlMapping { entries: es } } => yaml_lookup(entries: es, key: k)
+    _ => YamlKeyAbsent
+  })
+}
+
+fn is_string(v: YamlValue, path: List<String>, expected: String) -> Bool {
+  at(v: v, path: path) == YamlKeyPresent { value: YamlString { value: expected } }
+}
+
+fn no_infoplist_key_settings(v: YamlValue) -> Bool {
+  match at(v: v, path: ["targets", "Approve", "settings", "base"]) {
+    YamlKeyPresent { value: YamlMapping { entries: es } } => all(es, e => !starts_with(s: e.key, prefix: "INFOPLIST_KEY_"))
+    YamlKeyAbsent => true
+    _ => false
+  }
+}
+
+fn project_carries_required_content(v: YamlValue) -> Bool {
+  let props = ["targets", "Approve", "info", "properties"]
+  (at(v: v, path: append(props, items: ["UILaunchScreen"])) == YamlKeyPresent { value: YamlMapping { entries: [] } })
+    && is_string(v: v, path: append(props, items: ["NSFaceIDUsageDescription"]), expected: "Approving a request signs it with a key that only unlocks with Face ID.")
+    && is_string(v: v, path: append(props, items: ["CFBundleDisplayName"]), expected: "Approve")
+    && (at(v: v, path: append(props, items: ["UIBackgroundModes"])) == YamlKeyPresent { value: YamlSequence { elements: [YamlString { value: "remote-notification" }] } })
+    && is_string(v: v, path: append(props, items: ["ApproveServerHost"]), expected: "$(APPROVE_SERVER_HOST)")
+    && is_string(v: v, path: ["targets", "Approve", "info", "path"], expected: "Approve/Info.plist")
+    && no_infoplist_key_settings(v: v)
+    && is_string(v: v, path: ["options", "xcodeVersion"], expected: "26.0")
+    && is_string(v: v, path: ["options", "deploymentTarget", "iOS"], expected: "17.0")
+    && is_string(v: v, path: ["settings", "base", "ENABLE_USER_SCRIPT_SANDBOXING"], expected: "YES")
+    && is_string(v: v, path: ["settings", "base", "STRING_CATALOG_GENERATE_SYMBOLS"], expected: "YES")
+}
+
+test fn the_committed_projection_carries_every_required_info_plist_key_and_setting() -> Bool {
+  match expected_approve_ios_project_yml() {
+    ApproveIosProjectRefused { reason: _ } => false
+    ApproveIosProjectGenerated { content: t } => match ingest_yaml_source(src: t) {
+      IngestedYaml { value: v } => project_carries_required_content(v: v)
+      _ => false
+    }
+  }
+}
+
+// ── Discrimination, over supplied documents ────────────────────────────────────────────────
+
+
+fn supplied(properties: List<YamlKeyValue>, approve_settings: List<YamlKeyValue>, xcode_version: String) -> YamlValue {
+  yaml_mapping(entries: [
+    kv(key: "options", value: yaml_mapping(entries: [
+      kv(key: "deploymentTarget", value: yaml_mapping(entries: [kv(key: "iOS", value: yaml_string(s: "17.0"))])),
+      kv(key: "xcodeVersion", value: yaml_string(s: xcode_version))
+    ])),
+    kv(key: "settings", value: yaml_mapping(entries: [kv(key: "base", value: yaml_mapping(entries: [
+      kv(key: "ENABLE_USER_SCRIPT_SANDBOXING", value: yaml_string(s: "YES")),
+      kv(key: "STRING_CATALOG_GENERATE_SYMBOLS", value: yaml_string(s: "YES"))
+    ]))])),
+    kv(key: "targets", value: yaml_mapping(entries: [kv(key: "Approve", value: yaml_mapping(entries: [
+      kv(key: "settings", value: yaml_mapping(entries: [kv(key: "base", value: yaml_mapping(entries: approve_settings))])),
+      kv(key: "info", value: yaml_mapping(entries: [
+        kv(key: "path", value: yaml_string(s: "Approve/Info.plist")),
+        kv(key: "properties", value: yaml_mapping(entries: properties))
+      ]))
+    ]))]))
+  ])
+}
+
+data launch: YamlKeyValue = kv(key: "UILaunchScreen", value: yaml_mapping(entries: []))
+data face_id: YamlKeyValue = kv(key: "NSFaceIDUsageDescription", value: yaml_string(s: "Approving a request signs it with a key that only unlocks with Face ID."))
+data display: YamlKeyValue = kv(key: "CFBundleDisplayName", value: yaml_string(s: "Approve"))
+data modes: YamlKeyValue = kv(key: "UIBackgroundModes", value: yaml_sequence(elements: [yaml_string(s: "remote-notification")]))
+data host: YamlKeyValue = kv(key: "ApproveServerHost", value: yaml_string(s: "$(APPROVE_SERVER_HOST)"))
+data bundle_id: YamlKeyValue = kv(key: "PRODUCT_BUNDLE_IDENTIFIER", value: yaml_string(s: "ai.gunb.approve"))
+
+test fn witness_a_complete_supplied_document_is_admitted() -> Bool {
+  project_carries_required_content(v: supplied(properties: [launch, face_id, display, modes, host], approve_settings: [bundle_id], xcode_version: "26.0"))
+}
+
+// The Mac's letterboxing: UILaunchScreen missing from the written Info.plist.
+test fn red_a_document_without_a_launch_screen_is_refused() -> Bool {
+  !project_carries_required_content(v: supplied(properties: [face_id, display, modes, host], approve_settings: [bundle_id], xcode_version: "26.0"))
+}
+
+// The Mac's crash on first Face ID use: no purpose string.
+test fn red_a_document_without_a_face_id_purpose_is_refused() -> Bool {
+  !project_carries_required_content(v: supplied(properties: [launch, display, modes, host], approve_settings: [bundle_id], xcode_version: "26.0"))
+}
+
+test fn red_a_document_without_a_display_name_is_refused() -> Bool {
+  !project_carries_required_content(v: supplied(properties: [launch, face_id, modes, host], approve_settings: [bundle_id], xcode_version: "26.0"))
+}
+
+// The shape that hid all three: the keys spelled as INFOPLIST_KEY_* settings XcodeGen's own plist ignores.
+test fn red_a_dead_infoplist_key_setting_is_refused() -> Bool {
+  !project_carries_required_content(v: supplied(
+    properties: [launch, face_id, display, modes, host],
+    approve_settings: [bundle_id, kv(key: "INFOPLIST_KEY_CFBundleDisplayName", value: yaml_string(s: "Approve"))],
+    xcode_version: "26.0"
+  ))
+}
+
+// The upgrade prompt: a project stamped with an Xcode older than the one building it.
+test fn red_a_stale_xcode_version_is_refused() -> Bool {
+  !project_carries_required_content(v: supplied(properties: [launch, face_id, display, modes, host], approve_settings: [bundle_id], xcode_version: "16.0"))
+}
