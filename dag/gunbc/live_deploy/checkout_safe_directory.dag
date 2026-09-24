@@ -2,13 +2,14 @@ module gunbc.live_deploy.checkout_safe_directory
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.algebra { trim }
-import extdeps.git
 import extdeps.git {
-  shape_git_config_global_get_all_argv, shape_git_config_global_add_argv,
+  git_config_global_get_all_command, git_config_global_add_command,
   git_safe_directory_key, git_safe_directory_wildcard,
 }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import gunbc.command_runner { run_shell_command_observe }
 import extdeps.git.inspect { config_reading, ConfigReading, ConfigSet, ConfigUnset, ConfigUnreadable }
-import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
+import gunbc.host_effect { HostEffectTransport, LocalShell }
 import gunbc.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.live_deploy.spec { DeploymentSpec }
@@ -86,31 +87,30 @@ type ConfigExec
   = ConfigExecRan { exit_code: Int, stdout: String, stderr: String }
   | ConfigExecRefused { cause: String }
 
-fn config_exec_over(transport: HostEffectTransport, argv: List<String>) -> ConfigExec {
-  match run_typed_argv_transport(argv: argv, transport: transport) {
-    TypedArgvExecRefused { reason } => ConfigExecRefused { cause: reason }
-    TypedArgvExecConverged { result: r } => ConfigExecRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+// ONE ARGV, BOUND TO THE TRANSPORT AT ONE POINT. The command (program and operands) comes from extdeps.git once; on the host
+// itself they run as a process argv through gunbc.command_runner run_shell_command_observe (no shell
+// re-parse), and behind ssh the same
+// words go through run_typed_argv_transport, which refuses LocalShell because it has no remote
+// target. This is the only place the transport is consulted.
+fn run_git_command(transport: HostEffectTransport, command: ArgvCommand) -> ConfigExec {
+  match transport {
+    LocalShell => {
+      let r = run_shell_command_observe(command: command, transport: LocalExec)
+      ConfigExecRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+    }
+    _ => match run_typed_argv_transport(argv: append([command.program as String], items: command.arguments), transport: transport) {
+      TypedArgvExecRefused { reason } => ConfigExecRefused { cause: reason }
+      TypedArgvExecConverged { result: r } => ConfigExecRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+    }
   }
 }
 
 fn read_safe_directory(transport: HostEffectTransport) -> ConfigExec {
-  match transport {
-    LocalShell => {
-      let r = git.Core.ConfigGlobalGetAll(key: git_safe_directory_key)
-      ConfigExecRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
-    }
-    _ => config_exec_over(transport: transport, argv: shape_git_config_global_get_all_argv(key: git_safe_directory_key))
-  }
+  run_git_command(transport: transport, command: git_config_global_get_all_command(key: git_safe_directory_key))
 }
 
 fn add_safe_directory(transport: HostEffectTransport, grant: SafeDirectoryGrant) -> ConfigExec {
-  match transport {
-    LocalShell => {
-      let r = git.Core.ConfigGlobalAdd(key: git_safe_directory_key, value: grant.path as String)
-      ConfigExecRan { exit_code: r.exit_code, stdout: "", stderr: r.stderr }
-    }
-    _ => config_exec_over(transport: transport, argv: shape_git_config_global_add_argv(key: git_safe_directory_key, value: grant.path as String))
-  }
+  run_git_command(transport: transport, command: git_config_global_add_command(key: git_safe_directory_key, value: grant.path as String))
 }
 
 fn observed_standing(grant: SafeDirectoryGrant, exec: ConfigExec) -> SafeDirectoryStanding {
@@ -156,10 +156,6 @@ fn ensure_deploy_checkout_safe_directory(grant: SafeDirectoryGrant, transport: H
   }
 }
 
-fn safe_directory_refusal_reason(e: SafeDirectoryEnsure) -> String {
-  match e {
-    SafeDirectoryRefused { grant, cause } =>
-      join(["live_deploy: the deploy checkout ", grant.path as String, " is not a git safe.directory of ", grant.principal as String, ": ", cause], "")
-    _ => ""
-  }
+fn safe_directory_refusal_reason(grant: SafeDirectoryGrant, cause: String) -> String {
+  join(["live_deploy: the deploy checkout ", grant.path as String, " is not a git safe.directory of ", grant.principal as String, ": ", cause], "")
 }

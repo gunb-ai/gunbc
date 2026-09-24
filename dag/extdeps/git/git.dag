@@ -905,15 +905,24 @@ fn shape_git_config_local_get_argv(key: String) -> List<String> {
   ["git", "config", "--local", "--get", key]
 }
 
-fn shape_git_config_global_get_all_argv(key: String) -> List<String> {
-  ["git", "config", "--global", "--get-all", key]
+fn git_config_global_get_all_args(key: String) -> List<String> {
+  ["config", "--global", "--get-all", key]
 }
 
-fn shape_git_config_global_add_argv(key: String, value: String) -> List<String> {
-  ["git", "config", "--global", "--add", key, value]
+fn git_config_global_add_args(key: String, value: String) -> List<String> {
+  ["config", "--global", "--add", key, value]
 }
 
-// ConfigGlobalGetAll / ConfigGlobalAdd address the EXECUTING principal's global config. `--get-all`
+fn git_config_global_get_all_command(key: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: git_config_global_get_all_args(key: key))
+}
+
+fn git_config_global_add_command(key: String, value: String) -> ArgvCommand {
+  argv_command(program: git_binary_name, arguments: git_config_global_add_args(key: key, value: value))
+}
+
+// THE GLOBAL-CONFIG OPERANDS, ONE SHAPE PER OPERATION with the program (git_binary_name) kept
+// separate, so every transport binds the same words. They address the EXECUTING principal's global config. `--get-all`
 // prints one value per line and exits 1 when the key has no value, which is an answer, not a failure
 // (extdeps.git.inspect config_reading); `--add` appends one value to a multi-valued key without
 // touching the others, where a set would replace every existing value.
@@ -1342,26 +1351,6 @@ service git.Core {
       0 => Unit
       nonzero => String "Config set failed"
     }
-  }
-
-  operation ConfigGlobalGetAll {
-    input { key: String }
-    output {
-      exit_code: Int from "exit_code"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    readonly
-    transport shell { argv: ["git", "config", "--global", "--get-all", "{key}"] }
-  }
-
-  operation ConfigGlobalAdd {
-    input { key: String, value: String }
-    output {
-      exit_code: Int from "exit_code"
-      stderr: String from "stderr"
-    }
-    transport shell { argv: ["git", "config", "--global", "--add", "{key}", "{value}"] }
   }
 
   operation InitInRepo {
