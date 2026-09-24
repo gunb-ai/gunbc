@@ -1,9 +1,6 @@
 module v2.test.claim.body_lowering.atom_body_discriminator_helpers
 
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
 import v2.std.algebra { any, list_snoc_item }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
@@ -66,9 +63,7 @@ type TopLevelIdentityJoinRefusal {
 }
 
 type AtomBodyDiscriminatorObservation
-  = TokenizeRejected { diagnostics: NonEmptyDiagnostics }
-  | ParseRejected { diagnostics: NonEmptyDiagnostics }
-  | NormalizeRejected { diagnostics: NonEmptyDiagnostics }
+  = RouteRejected { diagnostics: NonEmptyDiagnostics }
   | TopLevelIdentityJoinRefused { refusal: TopLevelIdentityJoinRefusal }
   | DiscriminatorObserved { tree: Node, rows: AtomBodyDiscriminatorObservedRows }
 
@@ -247,56 +242,43 @@ fn atom_body_discriminator_observed_rows(scope: Node) -> Optional<AtomBodyDiscri
 }
 
 fn atom_body_discriminator_observe() -> AtomBodyDiscriminatorObservation {
-  let lm = dag_language_model()
-  match tokenize(
-    text: atom_body_discriminator_module_source,
-    file: ^atom_body_discriminator_file,
-    rules: lm.lex
-  ) {
-    Rejected { diagnostics: d } => TokenizeRejected { diagnostics: d }
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: d } => ParseRejected { diagnostics: d }
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: d } => NormalizeRejected { diagnostics: d }
-            Accepted { value: normalized, diagnostics: _ } =>
-              let root = normalized.root
-              match atom_body_discriminator_module_scope_body(root: root) {
-                Absent =>
-                  TopLevelIdentityJoinRefused {
-                    refusal: atom_body_discriminator_top_level_identity_join_refusal(
-                      expected: atom_body_discriminator_expected_arrow_identities,
-                      observed: []
-                    )
-                  }
-                Present { value: scope } =>
-                  let observed =
-                    atom_body_discriminator_observed_top_level_arrow_lexemes(root: scope)
-                  if atom_body_discriminator_top_level_arrow_lexemes_identity_join(
+  match conserved_normalize_of_text(path: "atom_body_discriminator_file", text: atom_body_discriminator_module_source, explained: no_explained_drops()) {
+    Rejected { diagnostics: d } => RouteRejected { diagnostics: d }
+    Accepted { value: normalized, diagnostics: _ } =>
+      let root = normalized.root
+      match atom_body_discriminator_module_scope_body(root: root) {
+        Absent =>
+          TopLevelIdentityJoinRefused {
+            refusal: atom_body_discriminator_top_level_identity_join_refusal(
+              expected: atom_body_discriminator_expected_arrow_identities,
+              observed: []
+            )
+          }
+        Present { value: scope } =>
+          let observed =
+            atom_body_discriminator_observed_top_level_arrow_lexemes(root: scope)
+          if atom_body_discriminator_top_level_arrow_lexemes_identity_join(
+            expected: atom_body_discriminator_expected_arrow_identities,
+            observed: observed
+          ) {
+            match atom_body_discriminator_observed_rows(scope: scope) {
+              Absent =>
+                TopLevelIdentityJoinRefused {
+                  refusal: atom_body_discriminator_top_level_identity_join_refusal(
                     expected: atom_body_discriminator_expected_arrow_identities,
                     observed: observed
-                  ) {
-                    match atom_body_discriminator_observed_rows(scope: scope) {
-                      Absent =>
-                        TopLevelIdentityJoinRefused {
-                          refusal: atom_body_discriminator_top_level_identity_join_refusal(
-                            expected: atom_body_discriminator_expected_arrow_identities,
-                            observed: observed
-                          )
-                        }
-                      Present { value: rows } =>
-                        DiscriminatorObserved { tree: root, rows: rows }
-                    }
-                  } else {
-                    TopLevelIdentityJoinRefused {
-                      refusal: atom_body_discriminator_top_level_identity_join_refusal(
-                        expected: atom_body_discriminator_expected_arrow_identities,
-                        observed: observed
-                      )
-                    }
-                  }
-              }
+                  )
+                }
+              Present { value: rows } =>
+                DiscriminatorObserved { tree: root, rows: rows }
+            }
+          } else {
+            TopLevelIdentityJoinRefused {
+              refusal: atom_body_discriminator_top_level_identity_join_refusal(
+                expected: atom_body_discriminator_expected_arrow_identities,
+                observed: observed
+              )
+            }
           }
       }
   }
@@ -377,9 +359,7 @@ fn atom_body_discriminator_arrow_classifies(
 
 fn atom_body_discriminator_batched_receipt_holds() -> Bool {
   match atom_body_discriminator_observe() {
-    TokenizeRejected { diagnostics: _ } => false
-    ParseRejected { diagnostics: _ } => false
-    NormalizeRejected { diagnostics: _ } => false
+    RouteRejected { diagnostics: _ } => false
     TopLevelIdentityJoinRefused { refusal: _ } => false
     DiscriminatorObserved { tree: _, rows: rows } =>
       atom_body_discriminator_arrow_row_holds(

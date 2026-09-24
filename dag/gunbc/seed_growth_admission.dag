@@ -55,6 +55,7 @@ import gunbc.generated_artifact_boundary_seed_growth { generated_artifact_bounda
 import gunbc.joint_claim_join_seed_growth { joint_claim_join_seed_growth_justification }
 import gunbc.floor_arm_set_consumer_seed_growth { floor_arm_set_consumer_seed_growth_justification }
 import gunbc.floor_corpus_census_allowance_seed_growth { floor_corpus_census_allowance_seed_growth_justification }
+import gunbc.enrolment_dead_band_seed_growth { enrolment_dead_band_seed_growth_justification }
 import gunbc.regen_convergence_seed_growth { regen_convergence_seed_growth_justification }
 import gunbc.dag_artifact_identity_seed_growth { dag_artifact_identity_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
@@ -307,7 +308,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     primitive_egress_census_seed_growth_justification,
     required_lane_resolution_census_seed_growth_justification,
     bare_reference_channel_outcome_seed_growth_justification,
-    floor_corpus_census_allowance_seed_growth_justification
+    floor_corpus_census_allowance_seed_growth_justification,
+    enrolment_dead_band_seed_growth_justification
   ]
 }
 

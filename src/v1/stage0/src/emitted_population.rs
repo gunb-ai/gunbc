@@ -40,6 +40,7 @@
 // src/gunbc_rust_source_type_bindings.rs
 // src/gunbc_stage0_crate_layout_generated.rs
 // src/gunbc_stage0_crate_partition_generated.rs
+// src/gunbc_stage0_emitted_edge_admission.rs
 // src/gunbc_stage0_emitted_population_manifest.rs
 // src/gunbc_stage0_executable_assembly_generated.rs
 // src/gunbc_stage0_partition_package_graph.rs
