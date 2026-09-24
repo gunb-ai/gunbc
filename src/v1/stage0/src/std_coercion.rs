@@ -135,7 +135,7 @@ pub struct CastSyntax {
 pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<CastRule>>> = {
-            serde_json::from_value(serde_json::json!([{"from_type": "Int", "to_type": "Int"}, {"from_type": "Int", "to_type": "Float"}, {"from_type": "Float", "to_type": "Int"}, {"from_type": "Float", "to_type": "Float"}, {"from_type": "Bool", "to_type": "Int"}]))
+            serde_json::from_value(serde_json::json!([{"from_type": "Int", "to_type": "Int"}, {"from_type": "Int", "to_type": "Float"}, {"from_type": "Float", "to_type": "Int"}, {"from_type": "Float", "to_type": "Float"}, {"from_type": "Bool", "to_type": "Bool"}]))
                 .expect("valid data definition")
         };
     }
@@ -174,6 +174,24 @@ pub fn dag_cast_requires_proof(source_type: String, target_type: String) -> bool
             }
         }
         __found
+    }
+}
+
+pub fn dag_subtraction_result_type(operand_type: String) -> Option<String> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for r in refinement_cast_rules().iter().cloned() {
+            if (r.to_type.clone() == operand_type.clone()) {
+                __result.push(r);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(r) => Some(r.from_type.clone()),
+        std::option::Option::None => std::option::Option::None,
     }
 }
 

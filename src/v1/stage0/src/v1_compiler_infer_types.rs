@@ -16,6 +16,7 @@ pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profi
 pub use crate::std_algebra::{
     AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
 };
+pub use crate::std_coercion::dag_subtraction_result_type;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_syntax::AlgebraFieldKind::AlgAdd;
@@ -3182,6 +3183,38 @@ pub struct BinOpInferred {
 }
 
 pub fn infer_binop_type_node(
+    op: BinOp,
+    left_type: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<BinOpInferred> {
+    {
+        let operand_name = crate::v1_std_core::qualified_last_segment(
+            crate::v1_std_core::authored_name_at(source_indices.clone(), left_type.clone()),
+        );
+        match op.clone() {
+            BinOp::Sub => {
+                match crate::std_coercion::dag_subtraction_result_type(operand_name.clone()) {
+                    Some(escaped) => Rc::new(BinOpInferred {
+                        result_type: nominal_type_ref(escaped.clone()),
+                        algebra_field: std::option::Option::None,
+                    }),
+                    std::option::Option::None => infer_arithmetic_binop_type_node(
+                        op.clone(),
+                        left_type.clone(),
+                        source_indices.clone(),
+                    ),
+                }
+            }
+            _ => infer_arithmetic_binop_type_node(
+                op.clone(),
+                left_type.clone(),
+                source_indices.clone(),
+            ),
+        }
+    }
+}
+
+pub fn infer_arithmetic_binop_type_node(
     op: BinOp,
     left_type: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
