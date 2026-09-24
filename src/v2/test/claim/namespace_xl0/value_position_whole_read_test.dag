@@ -74,7 +74,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // gunbc#12198 (a lambda argument refused its module as call_argument_unread, gen-one's first fatal at
 // dag/examples/weather/weather.dag, and carrying its shell whole left the parameter unscoped at
 // resolve). They hold now that the lambda lowers to the Arrow a named fn lowers to
-// (body_lowering_fold body_lower_arrow_lambda_value), its binder a Named edge of the Arrow's domain
+// (body_lowering_fold body_lower_function_value), its binder a Named edge of the Arrow's domain
 // that resolve scopes through the one Arrow binder model.
 data vpw_match_call_source: String = "module v2.test.vpw_match_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match vpw_id(p: vpw_undeclared_scrutinee) {\n    true => p\n    false => p\n  }\n}\n"
 
