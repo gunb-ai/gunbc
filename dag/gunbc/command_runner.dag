@@ -251,17 +251,18 @@ fn run_shell_command_observe(command: ArgvCommand, transport: CommandTransport) 
 }
 
 // THE SAME RUN, with the spawn a value: a caller that must refuse typed when no process ran (a
-// missing sudo, a missing binary) gets ProcessNotSpawned instead of an aborted evaluation.
+// missing sudo, a missing binary) gets ProcessNotSpawned instead of an aborted evaluation. A
+// transport that refuses to build the command spawned nothing either, so it is the same arm, never
+// an exit code: no process ran, and a sentinel exit status would be a fabricated observation (§5).
 fn run_shell_command_observe_outcome(command: ArgvCommand, transport: CommandTransport) -> ProcessRunOutcome
   uses net: Network
 {
   match command_over_transport(command: command, transport: transport) {
     CommandOverTransportRefused { cause: c } =>
-      ProcessRan { observation: process_observation(
-        exit_code: 0 - 1,
-        stdout: "",
-        stderr: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)),
-      ) }
+      ProcessNotSpawned {
+        program: command.program,
+        cause: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)) as NonEmptyStr,
+      }
     CommandOverTransportBuilt { command: over } =>
       {
         let run = shell.Exec.RunArgvOutcome(

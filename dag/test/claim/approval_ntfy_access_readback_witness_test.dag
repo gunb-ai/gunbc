@@ -3,10 +3,11 @@ module test.claim.approval_ntfy_access_readback_witness_test
 import std.logic { Bool }
 import std.types { String, List, NonEmptyStr, Int }
 import extdeps.ntfy.access { NtfyRoleAdmin, NtfyRoleUser, NtfyReadWrite, ntfy_access_read, NtfyAccessListed, NtfyAccessUnparseable, NtfyUserAccess, AdminAllTopics, TopicGrants }
-import extdeps.exec.command { LocalExec, argv_words }
+import extdeps.exec.command { LocalExec, SshExec, argv_words }
 import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned, process_observation }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
-import gunbc.command_runner { run_shell_command_observe }
+import gunbc.command_runner { run_shell_command_observe, run_shell_command_observe_outcome }
+import gunbc.remote_shell_command { Unknown }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class, census_blocking_count_for_subject }
 import gunbc.auth.approval_ntfy_access_readback {
@@ -1069,5 +1070,19 @@ test fn the_one_root_compiles_without_an_admission_refusal() -> Bool {
   match census_blocking_count_for_class(census: compile_dag_diagnostic_census(admitted_root_caller_source), wanted: "ConstructorCallAdmissionRefused") {
     Present { value: n } => n == 0
     Absent => false
+  }
+}
+
+// Review 70602: a transport that refuses to BUILD the command spawned nothing, so the outcome is the
+// typed not-spawned arm naming the program and the refusal -- never ProcessRan with a sentinel exit
+// code. Restoring the old `exit_code: 0 - 1` mapping lands on the ProcessRan arm and turns this red.
+test fn a_transport_refusal_is_a_typed_not_spawned_outcome_never_an_exit_code() -> Bool {
+  match run_shell_command_observe_outcome(
+    command: posix_sh_program_command(script: "true\n"),
+    transport: SshExec { ssh_target: "unreachable.invalid", interpretation: Unknown },
+  ) {
+    ProcessNotSpawned { program: p, cause: c } =>
+      p as String == "sh" && string_contains(s: c as String, pattern: "command_over_transport refused: ")
+    ProcessRan { observation: _ } => false
   }
 }
