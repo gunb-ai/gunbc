@@ -1,6 +1,6 @@
 module gunbc.gunbhub_serve
 
-import std.types { HttpMethod, HttpStatus, GET }
+import std.types { HttpStatus }
 import extdeps.uri_path { PathTemplate, UrlPathToken }
 import extdeps.uri_path {
   PathTemplateParseResult,
@@ -32,6 +32,7 @@ import extdeps.http.server {
   ServedStaticRoute,
   ServedStaticRouteTable,
 }
+import extdeps.ietf.http_semantics { HttpMethod, GET }
 
 type GunbhubServeRequest {
   method: HttpMethod

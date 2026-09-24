@@ -20,6 +20,7 @@ import gunbc.machine_intake_mtcollins1_actuate {
   mtcollins1_power_action,
 }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_key, mtcollins1_unit_hold_store_host }
 import gunbc.fleet_runner_connectivity { fleet_hosts }
 
 // WHICH HOSTS THIS FLEET MAY DRIVE BACK TO A KNOWN STATE THROUGH THEIR CONTROLLERS, and it is a
@@ -55,7 +56,16 @@ type ResetSubjectCandidate {
   username: NonEmptyStr
   boot_selection: IpmiBootSelection
   power_action: NonEmptyStr
+  unit_hold: ResetUnitHold
 }
+
+// WHETHER A RESET OF THIS SUBJECT MUST TAKE THE UNIT'S MAINTENANCE HOLD FIRST, and on which host the
+// hold store lives. Mt. Collins unit 1 is serviced by hand (gunbc.machine_intake_mtcollins1_maintenance_hold),
+// so a power cycle of it is gated by the same slot the boot takes; the reset may only run where that
+// store is, or it would acquire a hold in an empty store the operator never sees.
+type ResetUnitHold
+  = ResetUnitHoldRequired { key: NonEmptyStr, store_host: NonEmptyStr }
+  | ResetNoUnitHold
 
 // THE CANDIDATE SET IS EVERY HOST THAT HAS LANDED THE EVIDENCE, ADMITTED OR NOT. It is stated as
 // candidates rather than as members so that the admission fold below has something to refuse: a
@@ -78,6 +88,7 @@ fn reset_subject_candidates() -> List<ResetSubjectCandidate> {
           username: username,
           boot_selection: mtcollins1_cdrom_selection,
           power_action: mtcollins1_power_action,
+          unit_hold: ResetUnitHoldRequired { key: mtcollins1_unit_hold_key, store_host: mtcollins1_unit_hold_store_host },
         },
       ]
   }

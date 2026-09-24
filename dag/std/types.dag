@@ -316,8 +316,6 @@ type BinaryFilePath = FilePath
 
 type MimeType = String
 
-type HttpMethod = GET | POST | PUT | PATCH | DELETE | HEAD | OPTIONS
-
 type AuthScheme
   = Bearer
   | Header { name: String }
@@ -342,19 +340,6 @@ type Credential {
 type FilesystemHandle = FilePath where brand("FilesystemHandle")
 type NetworkHandle    = Unit where brand("NetworkHandle")
 type ToolHandle       = String where brand("ToolHandle")
-
-type TransportRequest {
-  method: HttpMethod
-  url: String
-  headers: Json
-  body: String
-}
-
-type TransportResponse {
-  status: Int
-  headers: Json
-  body: String
-}
 
 type FileResponse {
   path: String

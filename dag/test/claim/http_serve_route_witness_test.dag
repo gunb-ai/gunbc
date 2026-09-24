@@ -15,7 +15,8 @@ import extdeps.uri_path {
 }
 import extdeps.uri_path { PathTemplate, PathParamBinding }
 import gunbc.node_http_server_emit { emit_path_template_regex_source }
-import std.types { String, Bool, List, Int, HttpMethod, GET, POST }
+import std.types { String, Bool, List, Int }
+import extdeps.ietf.http_semantics { HttpMethod, GET, POST }
 
 type ProbeHandler
   = ProbePage
