@@ -43,27 +43,6 @@ pub struct EmittedEdge {
     pub provenance: EmittedEdgeProvenance,
 }
 
-pub fn module_to_filename(name: String) -> String {
-    Rc::new(
-        name.clone()
-            .split(&".".to_string())
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>(),
-    )
-    .join(&"_".to_string())
-}
-
-pub fn rust_module_emit_filename(module_name: String) -> String {
-    {
-        let raw = module_to_filename(module_name.clone());
-        if (raw.clone() == "main".to_string()) {
-            "main_mod".to_string()
-        } else {
-            raw.clone()
-        }
-    }
-}
-
 pub fn rust_runtime_prelude_module() -> String {
     thread_local! {
         static CACHED: String = {

@@ -1,0 +1,221 @@
+module v2.test.claim.namespace_xl0.reference_conservation_admission
+
+import v2.compiler.reference_conservation_admission {
+  ChangedScopeObservedConserved,
+  ChangedScopeObservedDropped,
+  ExplainedDrop,
+  KnownDropShape,
+  NamedArgumentLabel,
+  MatchLaterArm,
+  StatementLetBinder,
+  WhereRefinementPredicate,
+  known_drop_shape_restoration_trigger,
+  NoBodyLoweringChange,
+  changed_scope_observation_of_subjects,
+  conservation_subject_of_text,
+  conserved_normalize,
+  changed_scope_observation_conserves,
+  no_explained_drops
+}
+import v2.compiler.reference_conservation { ReferenceConservationSubject }
+import v2.test.claim.namespace_xl0.reference_conservation {
+  clean_control_subject,
+  named_argument_label_subject
+}
+import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CONTROLS FOR v2.compiler.reference_conservation_admission, at its one interface: what the
+// admitted route returns for a source of a given shape. The sources are the pinned fixtures of
+// v2.test.claim.namespace_xl0.reference_conservation, so a shape measured there is the shape
+// admitted here, and the route executes for real on every claim (it is the subject).
+
+// ---- the fixture grain -------------------------------------------------------------------------
+
+test fn the_admitted_route_accepts_the_clean_control_holds() -> Bool {
+  match conserved_normalize(subject: clean_control_subject(), explained: no_explained_drops()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The discriminating red of the route: normalize ACCEPTS this source (the label is lost silently),
+// and the admitted route refuses it, located at the lost atom's own byte range.
+test fn the_admitted_route_refuses_an_unexplained_drop_at_the_lost_atom_holds() -> Bool {
+  match conserved_normalize(subject: named_argument_label_subject(), explained: no_explained_drops()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^conservation_reason_dropped_reference && match d.head.at {
+        Textual { file: _, extent: _ } => true
+        _ => false
+      }
+  }
+}
+
+// The label `rc_label` in `rc_callee(rc_label: c)`, at its exact extent in named_argument_label_source.
+data rc_label_explained: ExplainedDrop = ExplainedDrop { start: 170, end: 178, shape: NamedArgumentLabel }
+
+test fn a_declared_explanation_admits_exactly_the_drop_it_names_holds() -> Bool {
+  match conserved_normalize(subject: named_argument_label_subject(), explained: Cons { head: rc_label_explained, tail: Empty }) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// An explanation for a drop that does not happen is a refusal, so a repaired shape reds every
+// fixture still excusing it.
+test fn an_explanation_that_consumes_no_drop_refuses_holds() -> Bool {
+  match conserved_normalize(subject: clean_control_subject(), explained: Cons { head: rc_label_explained, tail: Empty }) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^conservation_reason_explanation_stale
+  }
+}
+
+// THE JOIN IS BY OCCURRENCE AND SHAPE, NOT BY SPELLING. Two calls each drop a label spelled
+// `rc_label`; explaining the first leaves the second refused, at the second's own extent.
+data two_same_spelled_labels_source: String = "module v2.test.rc_two_labels\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(rc_label: Bool) -> Bool { rc_label }\n\nfn rc_first(c: Bool) -> Bool { rc_callee(rc_label: c) }\n\nfn rc_second(c: Bool) -> Bool { rc_callee(rc_label: c) }\n"
+
+data first_label_explained: ExplainedDrop = ExplainedDrop { start: 152, end: 160, shape: NamedArgumentLabel }
+
+test fn explaining_one_of_two_same_spelled_drops_leaves_the_other_refused_holds() -> Bool {
+  match conserved_normalize(subject: two_same_spelled_labels_subject(), explained: Cons { head: first_label_explained, tail: Empty }) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^conservation_reason_dropped_reference && match d.head.at {
+        Textual { file: _, extent: ByteRange { start: s, end: _ } } => s == 210
+        _ => false
+      }
+  }
+}
+
+// The exact extent under the wrong shape consumes nothing: the drop stays refused and the
+// explanation is stale.
+data rc_label_misclassified: ExplainedDrop = ExplainedDrop { start: 170, end: 178, shape: MatchLaterArm }
+
+test fn an_explanation_with_the_wrong_shape_consumes_nothing_holds() -> Bool {
+  match conserved_normalize(subject: named_argument_label_subject(), explained: Cons { head: rc_label_misclassified, tail: Empty }) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^conservation_reason_dropped_reference
+  }
+}
+
+// ---- the discriminating red: an operator expression read as an operand ------------------------
+
+// v2.compiler.body_lowering_fold body_lower_operand_ref_optional reads a sequence with a non-empty
+// right WHOLE, as an operator expression, and narrows only a one-element sequence to its left
+// (gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand). MEASURED BOTH WAYS
+// (MQ-6): on the tree as it stands both sources are admitted; with that arm replaced by
+// `body_lower_operand_ref_optional(node: pair.left)` the operand `rc_q` loses its occurrence in
+// each, and both claims red at it. The other operator shapes (a third chain operand, a prefix `!`
+// at body grain) do not reach this reader and stay admitted under the same edit, so these two are
+// the fixtures that stand over the arm.
+data operator_call_argument_source: String = "module v2.test.rc_operator_arg\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(probe: Bool) -> Bool { probe }\n\nfn rc_arg(p: Bool, rc_q: Bool) -> Bool { rc_callee(p && rc_q) }\n"
+
+data operator_if_arm_source: String = "module v2.test.rc_operator_branch\n\nimport v2.std.logic { Bool }\n\nfn rc_branch(p: Bool, rc_q: Bool) -> Bool { if p { p && rc_q } else { false } }\n"
+
+test fn an_operator_expression_call_argument_is_admitted_holds() -> Bool {
+  match conserved_normalize(subject: operator_call_argument_subject(), explained: no_explained_drops()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn an_operator_expression_in_an_if_arm_is_admitted_holds() -> Bool {
+  match conserved_normalize(subject: operator_if_arm_subject(), explained: no_explained_drops()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Every declared shape names, by declaration, the lowering authority that retires it and the claim
+// that pins it.
+fn restoration_named(shape: KnownDropShape) -> Bool {
+  let t = known_drop_shape_restoration_trigger(shape: shape)
+  t.retired_by.module_path == "v2.compiler.body_lowering_fold" && t.pinned_by.module_path == "v2.test.claim.namespace_xl0.reference_conservation"
+}
+
+test fn every_known_drop_shape_names_its_restoration_trigger_holds() -> Bool {
+  restoration_named(shape: NamedArgumentLabel) && restoration_named(shape: WhereRefinementPredicate) && restoration_named(shape: MatchLaterArm) && restoration_named(shape: StatementLetBinder)
+}
+
+// Removing a declaration reds the fixture: the same source, with and without its explanation.
+test fn removing_a_declared_explanation_reds_its_fixture_holds() -> Bool {
+  match conserved_normalize(subject: named_argument_label_subject(), explained: no_explained_drops()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } =>
+      match conserved_normalize(subject: named_argument_label_subject(), explained: Cons { head: rc_label_explained, tail: Empty }) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+// ---- the changed-scope grain -------------------------------------------------------------------
+
+// Membership is read off the file's own import declarations; these two sources differ only in
+// whether they import the body-lowering root, and each carries the named-argument drop.
+data scope_member_dropping_source: String = "module v2.test.rc_scope_member\n\nimport v2.compiler.body_lowering_fold { body_lower_operand_ref_optional }\nimport v2.std.logic { Bool }\n\nfn rc_callee(rc_label: Bool) -> Bool { rc_label }\n\nfn rc_labelled(c: Bool) -> Bool { rc_callee(rc_label: c) }\n"
+
+data scope_outsider_dropping_source: String = "module v2.test.rc_scope_outsider\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(rc_label: Bool) -> Bool { rc_label }\n\nfn rc_labelled(c: Bool) -> Bool { rc_callee(rc_label: c) }\n"
+
+data scope_member_clean_source: String = "module v2.test.rc_scope_member_clean\n\nimport v2.compiler.body_lowering_fold { body_lower_operand_ref_optional }\nimport v2.std.logic { Bool }\n\nfn rc_bare(c: Bool) -> Bool { c }\n"
+
+test fn a_change_outside_body_lowering_is_a_typed_no_change_observation_holds() -> Bool {
+  match changed_scope_observation_of_subjects(subjects: Cons { head: scope_outsider_dropping_subject(), tail: Empty }) {
+    NoBodyLoweringChange { rows: _ } => true
+    _ => false
+  }
+}
+
+test fn a_dropping_body_lowering_member_is_observed_dropped_holds() -> Bool {
+  let observation = changed_scope_observation_of_subjects(subjects: Cons {
+    head: scope_member_dropping_subject(),
+    tail: Cons { head: scope_outsider_dropping_subject(), tail: Empty }
+  })
+  match observation {
+    ChangedScopeObservedDropped { rows: _, in_scope: n, refused: k } => n == 1 && k == 1 && changed_scope_observation_conserves(observation: observation) == false
+    _ => false
+  }
+}
+
+test fn a_conserving_body_lowering_member_is_observed_conserved_holds() -> Bool {
+  match changed_scope_observation_of_subjects(subjects: Cons { head: scope_member_clean_subject(), tail: Empty }) {
+    ChangedScopeObservedConserved { rows: _, in_scope: n } => n == 1
+    _ => false
+  }
+}
+
+// ---- the subjects, enrolled WARM ---------------------------------------------------------------
+
+// Each is the parse + normalize of one inline source, nullary and pure, enrolled WARM in
+// v2.workflow.floor_pure_producer_share for the reason v2.test.claim.namespace_xl0.reference_conservation
+// states: the production phases no claim here is about are paid once, and every claim still executes
+// the admitted route or the observation it names.
+fn two_same_spelled_labels_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "rc_two_labels", text: two_same_spelled_labels_source)
+}
+
+fn operator_call_argument_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "rc_operator_arg", text: operator_call_argument_source)
+}
+
+fn operator_if_arm_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "rc_operator_branch", text: operator_if_arm_source)
+}
+
+fn scope_member_dropping_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "member.dag", text: scope_member_dropping_source)
+}
+
+fn scope_outsider_dropping_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "outsider.dag", text: scope_outsider_dropping_source)
+}
+
+fn scope_member_clean_subject() -> ReferenceConservationSubject {
+  conservation_subject_of_text(path: "member_clean.dag", text: scope_member_clean_source)
+}
