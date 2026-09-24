@@ -2,7 +2,6 @@ module gunbc.runner_microvm_network_apply
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import std.algebra { trim }
-import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -39,6 +38,16 @@ import gunbc.runner_host_file_converge {
   elevated_argv,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
+import extdeps.tools { CliTool, apt_package_of }
+import gunbc.host_cli_dependency { microvm_network_host_cli_requirements }
+import gunbc.host_effect { HostEffectTransport, FleetSsh }
+import gunbc.host_effect_realize {
+  Srv3HostPredicate,
+  Srv3PredicateHolds,
+  Srv3PredicateFails,
+  Srv3PredicateUnobserved,
+  srv3_ensure_apt_tool,
+}
 import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, EnsureOwnedDirectory, executor_privileged_operation_argv }
 import gunbc.runner_microvm_network {
   runner_microvm_shared_host_grain,
@@ -98,7 +107,7 @@ import gunbc.runner_microvm_network_converge {
 // AND IT INSTALLS; IT DOES NOT CONVERGE. This module reads back what it installed -- every staged
 // path root-only, every operation's exit, and the ruleset as the kernel lists it -- and records
 // that digest. It does NOT mint a ConvergedSlotNetwork: that value says what the host IS at a
-// generation and is produced only by runner_microvm_network_observe_wet from live readings, which
+// generation and is produced only by gunbc.runner_microvm_network_observe runner_microvm_network_observe_wet from live readings, which
 // is why the two are separate modes and separate receipts.
 
 // THE STAGING ROOT IS THE CONVERGE'S OWN, NOT A SECOND ONE. gunbc.runner_microvm_network_converge
@@ -146,6 +155,16 @@ type MicrovmNetworkApplyAdmission
   = MicrovmNetworkApplyAdmitted { subject: MicrovmNetworkApplySubject }
   | MicrovmNetworkApplyRefused { cause: String }
 
+// ONE ADMINISTRATOR TARGET FOR BOTH MODES. The apply installs as this principal and
+// gunbc.runner_microvm_network_observe reads the root-only surfaces back as it, so the account that
+// wrote the ruleset and the account that lists it are one fact, not two constructions free to drift.
+fn runner_microvm_administrator_target(host: HostIdentity) -> SshTarget {
+  SshTarget {
+    endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
+    principal: executor_bootstrap_principal.login,
+  }
+}
+
 // THE ADMINISTRATOR MAY NOT BE THE JOB USER, AND THAT IS THE WHOLE POINT OF THE MODE. If the two
 // accounts coincide on this host, reaching root "as the administrator" is reaching root as the
 // principal every CI step runs as, and the mode has moved nothing. gunbc.runner_host_file_converge
@@ -183,10 +202,7 @@ fn microvm_network_apply_admission_for_deploy(host: HostIdentity, revision: Stri
         MicrovmNetworkApplyAdmitted {
           subject: MicrovmNetworkApplySubject {
             host: host,
-            target: SshTarget {
-              endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-              principal: executor_bootstrap_principal.login,
-            },
+            target: runner_microvm_administrator_target(host: host),
             revision: revision,
             slots: map(runner_index_seq(n: d.runner_count), i => RunnerSlotIdentity { host: host, slot_index: i }),
             tap_owner: d.job_user,
@@ -207,7 +223,6 @@ fn run_admin_leg(
   context: FleetSshExecutionContext,
   argv: List<String>,
 ) -> ApplyLeg
-  uses net: Network
 {
   match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: argv) {
     TypedArgvExecRefused { reason: why } => ApplyLegRefused { reason: why }
@@ -223,7 +238,6 @@ fn observe_administrator_privilege(
   subject: MicrovmNetworkApplySubject,
   context: FleetSshExecutionContext,
 ) -> AdministratorPrivilege
-  uses net: Network
 {
   match run_admin_leg(subject: subject, context: context, argv: elevated_argv(command: ["true"])) {
     ApplyLegRefused { reason: why } => AdministratorPrivilegeMissing { reason: why }
@@ -259,7 +273,6 @@ fn observe_paths_root_only(
   paths: List<String>,
   kind: String,
 ) -> RunnerHostPathMetadata
-  uses net: Network
 {
   match run_admin_leg(subject: subject, context: context, argv: runner_microvm_root_only_probe_argv(paths: paths, kind: kind)) {
     ApplyLegRefused { reason: why } => PathsUnobservable { reason: why }
@@ -283,7 +296,6 @@ fn run_operation(
   context: FleetSshExecutionContext,
   op: ExecutorPrivilegedOperation,
 ) -> ApplyLeg
-  uses net: Network
 {
   run_admin_leg(
     subject: subject,
@@ -337,7 +349,6 @@ fn run_operations_until_failure(
   context: FleetSshExecutionContext,
   ops: List<ExecutorPrivilegedOperation>,
 ) -> List<OperationResult>
-  uses net: Network
 {
   let sequence = fold(
     ops,
@@ -393,7 +404,6 @@ fn write_staged_file(
   context: FleetSshExecutionContext,
   file: StagedFile,
 ) -> StagedWriteResult
-  uses net: Network
 {
   StagedWriteResult {
     path: file.path,
@@ -446,7 +456,6 @@ fn read_back_ruleset(
   subject: MicrovmNetworkApplySubject,
   context: FleetSshExecutionContext,
 ) -> RulesetReadback
-  uses net: Network
 {
   match run_operation(subject: subject, context: context, op: runner_microvm_nft_read_operation()) {
     ApplyLegRefused { reason: why } => RulesetNotListed { reason: why }
@@ -459,11 +468,71 @@ fn read_back_ruleset(
   }
 }
 
+// ── The host prerequisites ──────────────────────────────────────────────────────────────────────
+
+// THE SLOT NETWORK'S HOST TOOLS ARE ENSURED HERE, BEFORE A BYTE IS STAGED, AND READ BACK. The
+// roster is gunbc.host_cli_dependency microvm_network_host_cli_requirements -- the same fact the
+// observe mode's helper reading depends on -- and the package and install path come off each
+// CliTool's own SourceApt row, so this module authors neither. The installer is the corpus's one
+// apt ensure, gunbc.host_effect_realize srv3_ensure_apt_tool, over FleetSsh as the administrator:
+// the job user holds no apt grant for the reason every mutation in this module runs as the
+// administrator. The ensure's verdict IS the readback -- Holds only after the binary tests
+// executable at its declared path -- so a tool that installs but lands elsewhere refuses.
+type HostToolPrerequisite {
+  tool: NonEmptyStr
+  verdict: Srv3HostPredicate
+}
+
+fn ensure_host_tool(tool: CliTool, subject: MicrovmNetworkApplySubject, context: FleetSshExecutionContext) -> HostToolPrerequisite
+  uses net: Network
+{
+  match apt_package_of(tool: tool) {
+    Absent =>
+      HostToolPrerequisite {
+        tool: tool.name,
+        verdict: Srv3PredicateUnobserved {
+          reason: join([tool.name as String, " is a slot-network host prerequisite but declares no apt source, so apply has no modeled way to acquire it"], ""),
+        },
+      }
+    Present { value: p } =>
+      HostToolPrerequisite {
+        tool: tool.name,
+        verdict: srv3_ensure_apt_tool(
+          tool: tool,
+          package: p,
+          require_version_probe: false,
+          transport: FleetSsh { target: subject.target, context: context },
+        ),
+      }
+  }
+}
+
+fn host_tool_prerequisite_holds(r: HostToolPrerequisite) -> Bool {
+  match r.verdict {
+    Srv3PredicateHolds => true
+    Srv3PredicateFails => false
+    Srv3PredicateUnobserved { reason: _ } => false
+  }
+}
+
+fn host_tool_prerequisite_wire(r: HostToolPrerequisite) -> String {
+  join([
+    "host_tool ", r.tool as String, "=",
+    match r.verdict {
+      Srv3PredicateHolds => "present"
+      Srv3PredicateFails => "ABSENT after install"
+      Srv3PredicateUnobserved { reason: why } => concat("UNOBSERVED ", why)
+    },
+    "\n",
+  ], "")
+}
+
 // ── The run ──────────────────────────────────────────────────────────────────────────────────────
 
 type MicrovmNetworkApplyRun {
   subject: MicrovmNetworkApplySubject
   privilege: AdministratorPrivilege
+  prerequisites: List<HostToolPrerequisite>
   staging_dir: RunnerHostPathMetadata
   staged: List<StagedWriteResult>
   staged_root_only: RunnerHostPathMetadata
@@ -475,7 +544,9 @@ fn apply_run_succeeded(run: MicrovmNetworkApplyRun) -> Bool {
   match run.privilege {
     AdministratorPrivilegeMissing { reason: _ } => false
     AdministratorPrivilegeHeld =>
-      path_metadata_ok(m: run.staging_dir)
+      length(run.prerequisites) > 0
+        && fold(run.prerequisites, init: true, f: (acc, r) => acc && host_tool_prerequisite_holds(r: r))
+        && path_metadata_ok(m: run.staging_dir)
         && fold(run.staged, init: true, f: (acc, r) => acc && staged_write_ok(r: r))
         && path_metadata_ok(m: run.staged_root_only)
         && length(run.operations) > 0
@@ -509,6 +580,7 @@ fn apply_run_text(run: MicrovmNetworkApplyRun) -> String {
     "revision=", run.subject.revision, "\n",
     "administrator=", run.subject.target.principal as String, "\n",
     privilege_wire(p: run.privilege),
+    join(map(run.prerequisites, r => host_tool_prerequisite_wire(r: r)), ""),
     "staging_dir=", runner_host_path_metadata_wire(m: run.staging_dir), " ", runner_microvm_staging_dir as String, "\n",
     join(map(run.staged, r => staged_write_wire(r: r)), ""),
     "staged_files=", runner_host_path_metadata_wire(m: run.staged_root_only), "\n",
@@ -526,7 +598,6 @@ fn run_microvm_network_apply(
   subject: MicrovmNetworkApplySubject,
   context: FleetSshExecutionContext,
 ) -> MicrovmNetworkApplyRun
-  uses net: Network
 {
   let privilege = observe_administrator_privilege(subject: subject, context: context)
   match privilege {
@@ -534,13 +605,30 @@ fn run_microvm_network_apply(
       MicrovmNetworkApplyRun {
         subject: subject,
         privilege: privilege,
+        prerequisites: [],
         staging_dir: PathsNotApplicable,
         staged: [],
         staged_root_only: PathsNotApplicable,
         operations: [],
         readback: RulesetNotListed { reason: "the administrator holds no non-interactive sudo on this host, so nothing was staged, installed or read back" },
       }
-    AdministratorPrivilegeHeld => run_privileged_microvm_network_apply(subject: subject, context: context, privilege: privilege)
+    AdministratorPrivilegeHeld => {
+      let prerequisites = map(microvm_network_host_cli_requirements, t => ensure_host_tool(tool: t, subject: subject, context: context))
+      if fold(prerequisites, init: true, f: (acc, r) => acc && host_tool_prerequisite_holds(r: r)) {
+        run_privileged_microvm_network_apply(subject: subject, context: context, privilege: privilege, prerequisites: prerequisites)
+      } else {
+        MicrovmNetworkApplyRun {
+          subject: subject,
+          privilege: privilege,
+          prerequisites: prerequisites,
+          staging_dir: PathsNotApplicable,
+          staged: [],
+          staged_root_only: PathsNotApplicable,
+          operations: [],
+          readback: RulesetNotListed { reason: "a slot-network host prerequisite is not present at its declared path, so nothing was staged, installed or read back" },
+        }
+      }
+    }
   }
 }
 
@@ -548,8 +636,8 @@ fn run_privileged_microvm_network_apply(
   subject: MicrovmNetworkApplySubject,
   context: FleetSshExecutionContext,
   privilege: AdministratorPrivilege,
+  prerequisites: List<HostToolPrerequisite>,
 ) -> MicrovmNetworkApplyRun
-  uses net: Network
 {
   let ensured = run_operation(subject: subject, context: context, op: staging_dir_ensure_operation())
   let dir = match ensured {
@@ -563,11 +651,12 @@ fn run_privileged_microvm_network_apply(
   }
   match dir {
     PathsRootOnly =>
-      run_staged_microvm_network_apply(subject: subject, context: context, privilege: privilege, dir: dir)
+      run_staged_microvm_network_apply(subject: subject, context: context, privilege: privilege, prerequisites: prerequisites, dir: dir)
     _ =>
       MicrovmNetworkApplyRun {
         subject: subject,
         privilege: privilege,
+        prerequisites: prerequisites,
         staging_dir: dir,
         staged: [],
         staged_root_only: PathsNotApplicable,
@@ -581,9 +670,9 @@ fn run_staged_microvm_network_apply(
   subject: MicrovmNetworkApplySubject,
   context: FleetSshExecutionContext,
   privilege: AdministratorPrivilege,
+  prerequisites: List<HostToolPrerequisite>,
   dir: RunnerHostPathMetadata,
 ) -> MicrovmNetworkApplyRun
-  uses net: Network
 {
   let files = converge_staged_files(
     slots: subject.slots,
@@ -604,6 +693,7 @@ fn run_staged_microvm_network_apply(
       MicrovmNetworkApplyRun {
         subject: subject,
         privilege: privilege,
+        prerequisites: prerequisites,
         staging_dir: dir,
         staged: staged,
         staged_root_only: staged_meta,
@@ -619,6 +709,7 @@ fn run_staged_microvm_network_apply(
       MicrovmNetworkApplyRun {
         subject: subject,
         privilege: privilege,
+        prerequisites: prerequisites,
         staging_dir: dir,
         staged: staged,
         staged_root_only: staged_meta,
@@ -654,7 +745,6 @@ fn apply_checked_out_revision() -> String {
 }
 
 fn runner_microvm_network_apply_ci_wet() -> ProcessExit
-  uses net: Network
 {
   match microvm_network_apply_admission(
     host: apply_expected_host(),

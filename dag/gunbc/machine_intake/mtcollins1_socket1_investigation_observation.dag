@@ -1,0 +1,389 @@
+module gunbc.machine_intake_mtcollins1_socket1_investigation_observation
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { Gibibyte, gibibyte }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.publication { SpecificationDocumentDate }
+import extdeps.external_authority { CitedFigureStanding }
+import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout { MtCollinsDimmFigure }
+
+// MT. COLLINS UNIT 1, 2026-09-23: THE SOCKET-1 INVESTIGATION, ONE RECEIPT PER BOOT.
+// This continues the unit's bring-up history rather than starting a second log: the previous
+// chapter is gunbc.machine_intake_mtcollins1_sixteen_module_restore_observation (2026-09-12/13),
+// named below as this history's predecessor. Every row was read from its run's own
+// mtcollins1-boot-receipts artifact (mtcollins1-boot-sol.capture) and carries that capture's
+// sha256, so re-reading the artifact re-derives the row. Nothing here interprets placement:
+// which physical connectors a boot populated is derived by
+// gunbc.machine_intake_mtcollins1_physical_orientation from the drawing labels recorded here,
+// under the orientation the firmware anchors resolve.
+data mtcollins1_socket1_investigation_predecessor: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.machine_intake_mtcollins1_sixteen_module_restore_observation",
+  decl_name: "mtcollins1_sixteen_module_restore_capture",
+  field: WholeDeclaration,
+}
+
+// Three standings kept apart by type (§4d): a vendor figure, an operator's by-eye report, and
+// what firmware trained. On 2026-09-23 they were conflated: the operator placed DIMMs by a
+// drawing derived from Figure 9, and the firmware trained connectors the drawing did not name.
+type MtCollins1PhysicalFactStanding
+  = VendorFigureFact { figure: MtCollinsDimmFigure, standing: CitedFigureStanding }
+  | OperatorByEyeReport { observed_on: SpecificationDocumentDate, relay: NonEmptyStr, method: NonEmptyStr }
+  | FirmwareTrainedFact { run_id: Nat, artifact: NonEmptyStr, roster_lines: List<NonEmptyStr> }
+
+// WHICH END THE OPERATOR FACED. "Left" and "right" name nothing without it, so every count or
+// placement carries its own frame; none borrows another report's.
+type MtCollins1ChassisEnd = FrontEnd | RearEnd
+
+type MtCollins1Viewpoint
+  = ViewpointReported { end: MtCollins1ChassisEnd, report: MtCollins1PhysicalFactStanding }
+  | ViewpointNotYetReported { asked: NonEmptyStr }
+
+// The operator's frame for today's counts and drawing-label placements. "usually" is theirs: a
+// later report from another end must carry its own frame and does not inherit this one.
+data mtcollins1_operator_front_report: MtCollins1Viewpoint = ViewpointReported {
+  end: FrontEnd,
+  report: OperatorByEyeReport {
+    observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 },
+    relay: "eager-owl-205 messages msg_3007d41b-4817-487f-8b2c-806c5bd77437 and msg_7a56693a-abd1-40c8-84de-4242a728a8d2",
+    method: "Asked which end they faced for today's placements and counts, the operator said, verbatim: 'i am usually facing the front or J1 side'. A landmark report, independent of the firmware anchors.",
+  },
+}
+
+data mtcollins1_frame_not_asked: MtCollins1Viewpoint = ViewpointNotYetReported {
+  asked: "Not asked for this boot: its placement was described or given by J number, not counted from an edge.",
+}
+
+// A firmware roster line reduced to its identity: socket, memory controller, slot.
+type MtCollins1TrainedSlot {
+  socket: Nat
+  controller: Nat
+  slot: Nat
+}
+
+// What the operator meant to install, in the words they used. Only drawing labels are an
+// input to the orientation join; a described intent is kept as said and joins nothing.
+type MtCollins1IntendedPlacement
+  = IntendedAsDescribed { description: NonEmptyStr }
+  | IntendedAtDrawingLabels { labels: List<Nat> }
+  | IntendedAtPhysicalConnectors { connectors: List<Nat> }
+
+type MtCollins1HostCpuReading {
+  sockets: Nat
+  cpus: Nat
+  numa_nodes: Nat
+}
+
+type MtCollins1BootFinding
+  = InitrdLoadFailedKernelPanic { lines: List<NonEmptyStr> }
+  | NprocSectionNulCorrupted { fail_open_repair: NonEmptyStr }
+  | WorkloadShmNoSpace { lines: List<NonEmptyStr> }
+  | QualificationRefused { verdict: NonEmptyStr, receipt_line: NonEmptyStr }
+  | SelReadTimedOut { log_line: NonEmptyStr }
+  | RedfishRouteNotFound { log_line: NonEmptyStr }
+  | DiagnosticPublicationAborted { log_lines: List<NonEmptyStr>, log_source: NonEmptyStr }
+
+// mcu_enable_mask is kept as the printed value (Absent when the boot printed none). Its
+// relation to the trained controllers is computed, as an observed correlation, downstream.
+type MtCollins1Socket1InvestigationBoot {
+  run_id: Nat
+  capture_sha256: NonEmptyStr
+  intended: MtCollins1IntendedPlacement
+  operator_frame: MtCollins1Viewpoint
+  roster_lines: List<NonEmptyStr>
+  trained: List<MtCollins1TrainedSlot>
+  dram_total: Gibibyte
+  mcu_enable_mask: Nat?
+  mcu_enable_mask_line: NonEmptyStr?
+  host: MtCollins1HostCpuReading?
+  live_sockets: List<Nat>
+  findings: List<MtCollins1BootFinding>
+}
+
+data mtcollins1_boot_receipts_artifact: NonEmptyStr = "GitHub Actions artifact mtcollins1-boot-receipts, file mtcollins1-boot-sol.capture"
+
+data mtcollins1_socket1_boot_eight_on_socket0: MtCollins1Socket1InvestigationBoot = MtCollins1Socket1InvestigationBoot {
+  run_id: 35793279839,
+  capture_sha256: "01b11164fbafddfb4123ca3b49c1dfae731b961d7ef3cfcf6b630996d2a1715b",
+  intended: IntendedAsDescribed { description: "8 DIMMs on socket 0, none on socket 1" },
+  operator_frame: mtcollins1_frame_not_asked,
+  roster_lines: [
+    "SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK",
+    "SK0 MC1 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK",
+    "SK0 MC2 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+    "SK0 MC3 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+    "SK0 MC4 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+    "SK0 MC5 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK",
+    "SK0 MC6 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+    "SK0 MC7 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK",
+  ],
+  trained: [
+    MtCollins1TrainedSlot { socket: 0, controller: 0, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 1, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 2, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 3, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 4, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 5, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 6, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 7, slot: 0 },
+  ],
+  dram_total: gibibyte(count: 128),
+  mcu_enable_mask: Absent,
+  mcu_enable_mask_line: Absent,
+  host: Present { value: MtCollins1HostCpuReading { sockets: 1, cpus: 80, numa_nodes: 1 } },
+  live_sockets: [0],
+  findings: [],
+}
+
+data mtcollins1_socket1_boot_eight_plus_one: MtCollins1Socket1InvestigationBoot = MtCollins1Socket1InvestigationBoot {
+  run_id: 35801475989,
+  capture_sha256: "cd53370a1dc09abf3eea2efd8cefa47327ee03daa5eb2ad69eb059965164b4b5",
+  intended: IntendedAsDescribed { description: "8 DIMMs on socket 0 plus 1 on socket 1" },
+  operator_frame: mtcollins1_frame_not_asked,
+  roster_lines: [
+    "SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK",
+    "SK0 MC4 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+  ],
+  trained: [
+    MtCollins1TrainedSlot { socket: 0, controller: 0, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 4, slot: 0 },
+  ],
+  dram_total: gibibyte(count: 32),
+  mcu_enable_mask: Present { value: 17 },
+  mcu_enable_mask_line: Present { value: "mcu_enable_mask = 00000011 [default: 000000ff]" },
+  host: Present { value: MtCollins1HostCpuReading { sockets: 1, cpus: 80, numa_nodes: 1 } },
+  live_sockets: [0],
+  findings: [],
+}
+
+data mtcollins1_socket1_boot_three_sticks: MtCollins1Socket1InvestigationBoot = MtCollins1Socket1InvestigationBoot {
+  run_id: 35805796492,
+  capture_sha256: "9e0f534602debb0a9acdf3f2a28611488be4f7dc5141285343a50865d9959155",
+  intended: IntendedAtDrawingLabels { labels: [1, 17, 25] },
+  operator_frame: mtcollins1_operator_front_report,
+  roster_lines: [
+    "SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK",
+    "SK0 MC4 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+  ],
+  trained: [
+    MtCollins1TrainedSlot { socket: 0, controller: 0, slot: 0 },
+    MtCollins1TrainedSlot { socket: 0, controller: 4, slot: 0 },
+  ],
+  dram_total: gibibyte(count: 32),
+  mcu_enable_mask: Present { value: 17 },
+  mcu_enable_mask_line: Present { value: "mcu_enable_mask = 00000011 [default: 000000ff]" },
+  host: Absent,
+  live_sockets: [0],
+  findings: [
+    InitrdLoadFailedKernelPanic { lines: [
+      "EFI stub: ERROR: Failed to load initrd: 0x8000000000000001",
+      "Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)",
+    ] },
+  ],
+}
+
+data mtcollins1_socket1_boot_two_sticks: MtCollins1Socket1InvestigationBoot = MtCollins1Socket1InvestigationBoot {
+  run_id: 35808203121,
+  capture_sha256: "cb9b7392548d858971efcb81a22f35380699b0885093b4aab55d7caf72ad1660",
+  intended: IntendedAtDrawingLabels { labels: [1, 17] },
+  operator_frame: mtcollins1_operator_front_report,
+  roster_lines: [
+    "SK0 MC4 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+  ],
+  trained: [MtCollins1TrainedSlot { socket: 0, controller: 4, slot: 0 }],
+  dram_total: gibibyte(count: 16),
+  mcu_enable_mask: Present { value: 16 },
+  mcu_enable_mask_line: Present { value: "mcu_enable_mask = 00000010 [default: 000000ff]" },
+  host: Present { value: MtCollins1HostCpuReading { sockets: 1, cpus: 80, numa_nodes: 1 } },
+  live_sockets: [0],
+  findings: [
+    NprocSectionNulCorrupted { fail_open_repair: "work item adhoc-370c3139-99c" },
+    WorkloadShmNoSpace { lines: ["dd: error writing '/dev/shm/gunbc/chunk0': No space left on device"] },
+  ],
+}
+
+// The canonical Table 11 two-DIMM row, placed at physical J1 + J17 under the resolved mapping.
+// The same row trained both sockets on 2026-09-13 at 32GB; here socket 1 trained nothing.
+data mtcollins1_socket1_boot_canonical_j1_j17: MtCollins1Socket1InvestigationBoot = MtCollins1Socket1InvestigationBoot {
+  run_id: 35810323032,
+  capture_sha256: "9c599b8e4510b1c6089dc681639c861f6ada299539ff627c2306a0633927cdef",
+  intended: IntendedAtPhysicalConnectors { connectors: [1, 17] },
+  operator_frame: mtcollins1_frame_not_asked,
+  roster_lines: [
+    "SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+  ],
+  trained: [MtCollins1TrainedSlot { socket: 0, controller: 0, slot: 0 }],
+  dram_total: gibibyte(count: 16),
+  mcu_enable_mask: Present { value: 1 },
+  mcu_enable_mask_line: Present { value: "mcu_enable_mask = 00000001 [default: 000000ff]" },
+  host: Present { value: MtCollins1HostCpuReading { sockets: 1, cpus: 80, numa_nodes: 1 } },
+  live_sockets: [0],
+  findings: [
+    QualificationRefused {
+      verdict: "REFUSED (nproc observed 80, qualification expects 160), relayed by eager-owl-205 message msg_0c6ce3c6-c06a-416c-84ab-74bf3f61477e",
+      receipt_line: "exit=refused",
+    },
+  ],
+}
+
+// The same J1 + J17 population booted again after the operator exchanged the two sticks (the
+// exchange itself is mtcollins1_j1_j17_stick_swap below). The roster fields are from the SOL
+// capture; the findings are from the workflow log, as each says.
+data mtcollins1_socket1_boot_j1_j17_sticks_swapped: MtCollins1Socket1InvestigationBoot = MtCollins1Socket1InvestigationBoot {
+  run_id: 35871654468,
+  capture_sha256: "6bfd827b10ef0731cba430f8fc22a1fa8ecafdfbe14f00510e15fc38cf8b8006",
+  intended: IntendedAtPhysicalConnectors { connectors: [1, 17] },
+  operator_frame: mtcollins1_frame_not_asked,
+  roster_lines: [
+    "SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK",
+  ],
+  trained: [MtCollins1TrainedSlot { socket: 0, controller: 0, slot: 0 }],
+  dram_total: gibibyte(count: 16),
+  mcu_enable_mask: Present { value: 1 },
+  mcu_enable_mask_line: Present { value: "mcu_enable_mask = 00000001 [default: 000000ff]" },
+  host: Present { value: MtCollins1HostCpuReading { sockets: 1, cpus: 80, numa_nodes: 1 } },
+  live_sockets: [0],
+  findings: [
+    SelReadTimedOut { log_line: "diagnostic.ipmi.Tool.SelListAuthenticated failed: $ timeout --kill-after 5s 20s ipmitool ... sel elist (exit=124) in 20 seconds" },
+    RedfishRouteNotFound { log_line: "redfish.Http.GetResourceByPath failed: ... https://192.168.1.228/redfish/v1/Systems (exit=22) | curl: (22) The requested URL returned error: 404" },
+    DiagnosticPublicationAborted {
+      log_lines: [
+        "error: evaluating mtcollins1_boot_wet in dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
+        "cause: TypeError { msg: \"cannot cast Int to Nat\" }",
+      ],
+      log_source: "GitHub Actions run 35871654468, job fleet-converge log (not the SOL capture). The two readings above were typed failures the run carried on past; this evaluation defect is what ended it before the bundle and receipt were written.",
+    },
+  ],
+}
+
+data mtcollins1_socket1_investigation_boots: List<MtCollins1Socket1InvestigationBoot> = [
+  mtcollins1_socket1_boot_eight_on_socket0,
+  mtcollins1_socket1_boot_eight_plus_one,
+  mtcollins1_socket1_boot_three_sticks,
+  mtcollins1_socket1_boot_two_sticks,
+  mtcollins1_socket1_boot_canonical_j1_j17,
+  mtcollins1_socket1_boot_j1_j17_sticks_swapped,
+]
+
+// WHICH PROCESSOR SITS IN EACH SOCKET (operator, chat, 2026-09-23). Release is the part's
+// production standing, not a stepping: no stepping or microcode reading has been taken.
+type MtCollins1CpuRelease = EngineeringSample | ProductionPart
+
+type MtCollins1SocketCpu {
+  socket: Nat
+  issue: MtCollins1CpuRelease
+  provenance: NonEmptyStr
+  report: MtCollins1PhysicalFactStanding
+}
+
+data mtcollins1_cpu_report_2026_09_23: MtCollins1PhysicalFactStanding = OperatorByEyeReport {
+  observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 },
+  relay: "eager-owl-205 brief for work item adhoc-712174ff-d1e",
+  method: "Operator's statement of what they installed; not read from firmware.",
+}
+
+data mtcollins1_socket_cpus: List<MtCollins1SocketCpu> = [
+  MtCollins1SocketCpu { socket: 0, issue: EngineeringSample, provenance: "Ampere Altra engineering sample the operator installed as a replacement.", report: mtcollins1_cpu_report_2026_09_23 },
+  MtCollins1SocketCpu { socket: 1, issue: ProductionPart, provenance: "The machine's original production CPU.", report: mtcollins1_cpu_report_2026_09_23 },
+]
+
+// Has this CPU pairing booted since the swap? The operator's words say the machine booted; a
+// degraded one-socket boot satisfies them too, so this carries no socket count and weakens no
+// hypothesis. A report naming both sockets or 160 CPUs would be a different, stronger arm.
+type MtCollins1PairingBootHistory
+  = MachineBootReportedSinceSwap { quote: NonEmptyStr, report: MtCollins1PhysicalFactStanding }
+  | PairingBootNotYetReported { question: NonEmptyStr }
+
+data mtcollins1_pairing_boot_history: MtCollins1PairingBootHistory = MachineBootReportedSinceSwap {
+  quote: "the machine has booted since i swapped the CPU - so it's probably not that",
+  report: OperatorByEyeReport {
+    observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 },
+    relay: "eager-owl-205 message msg_bb424be5-be47-4841-8221-c88587f6e5da",
+    method: "Operator's recollection in chat, verbatim; no date and no socket or CPU count was given.",
+  },
+}
+
+// Spares on hand of this processor family: approximate, as the operator said it.
+type MtCollins1SpareProcessors {
+  approximate_count: Nat
+  family: NonEmptyStr
+  report: MtCollins1PhysicalFactStanding
+}
+
+data mtcollins1_spare_processors: MtCollins1SpareProcessors = MtCollins1SpareProcessors {
+  approximate_count: 45,
+  family: "Ampere Altra",
+  report: mtcollins1_cpu_report_2026_09_23,
+}
+
+// WHAT IS ESTABLISHED IS NARROW: firmware reports one active socket. That is not "socket 1
+// is bad"; which layer stops it is open. Only the printed count is carried: no complete parse
+// of the summary's socket blocks is, so nothing here asserts what the summary omitted.
+type MtCollins1FirmwareSocketSummary {
+  run_id: Nat
+  capture_sha256: NonEmptyStr
+  line: NonEmptyStr
+  active_sockets: Nat
+}
+
+data mtcollins1_firmware_socket_summary: MtCollins1FirmwareSocketSummary = MtCollins1FirmwareSocketSummary {
+  run_id: 35871654468,
+  capture_sha256: "6bfd827b10ef0731cba430f8fc22a1fa8ecafdfbe14f00510e15fc38cf8b8006",
+  line: "Number of active sockets    : 1",
+  active_sockets: 1,
+}
+
+// THE STICK EXCHANGE, AS THE OPERATOR REPORTED IT. The captures print the same part number for
+// both modules, so which stick sat where is not in them: this report is the only source, and
+// the stick refutation is derived from it joined to the two boot receipts.
+type MtCollins1StickPlacement {
+  run_id: Nat
+  stick: NonEmptyStr
+  connector: Nat
+}
+
+type MtCollins1StickSwapReport {
+  placements: List<MtCollins1StickPlacement>
+  report: MtCollins1PhysicalFactStanding
+}
+
+data mtcollins1_j1_j17_stick_swap: MtCollins1StickSwapReport = MtCollins1StickSwapReport {
+  placements: [
+    MtCollins1StickPlacement { run_id: 35810323032, stick: "stick A", connector: 1 },
+    MtCollins1StickPlacement { run_id: 35810323032, stick: "stick B", connector: 17 },
+    MtCollins1StickPlacement { run_id: 35871654468, stick: "stick B", connector: 1 },
+    MtCollins1StickPlacement { run_id: 35871654468, stick: "stick A", connector: 17 },
+  ],
+  report: OperatorByEyeReport {
+    observed_on: SpecificationDocumentDate { year: 2026, month: 9, day: 23 },
+    relay: "eager-owl-205 brief for work item adhoc-712174ff-d1e",
+    method: "Operator's report that the J1 and J17 sticks were exchanged between the two runs; A and B are labels for that exchange, not serial numbers.",
+  },
+}
+
+// The diagnoses are hypotheses, typed as such (§4d): bets, not facts. Each names the
+// observation that would discriminate it. No standing ranks one bet above another. A
+// refutation is not authored: it names the report it is derived from, and the renderer derives it.
+type MtCollins1HypothesisStanding
+  = HypothesisOpen
+  | HypothesisRefutedByStickSwap { swap: MtCollins1StickSwapReport }
+
+type MtCollins1DiagnosisHypothesis {
+  hypothesis: NonEmptyStr
+  discriminator: NonEmptyStr
+  standing: MtCollins1HypothesisStanding
+}
+
+// One open hypothesis per layer at which socket 1 could stop short of UEFI enumeration, in
+// bring-up order, each discriminated by per-socket SMpro/BMC evidence the socket-1
+// diagnostics work item is wiring into the boot bundle; then the CPU pairing and the stick.
+data mtcollins1_socket1_hypotheses: List<MtCollins1DiagnosisHypothesis> = [
+  MtCollins1DiagnosisHypothesis { hypothesis: "Physical presence: CPU1 is not detected as present (seating, retention torque, bent or fouled socket pins, package damage).", discriminator: "BMC CPU1 presence sensor across a power-on; if absent, re-torque and inspect the socket and package.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "Power and rails: CPU1's VRM or rails do not come up.", discriminator: "BMC CPU1 VR sensors and the SEL across a power-on: absent or faulted CPU1 rails.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "Reset and firmware-ready: socket 1 is not released from reset or never signals firmware-ready.", discriminator: "Per-socket SMpro/BMC reset and ready status for socket 1 in the boot bundle.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "SCP/SMpro boot stage: socket 1's SCP or SMpro stops before joining the two-socket boot.", discriminator: "Socket 1's SCP/SMpro boot-stage and error registers via the BMC in the boot bundle.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "DDR init and training: socket 1 comes up but its memory initialisation fails, so the socket is dropped.", discriminator: "Socket 1 DDR init/training status from SMpro/BMC; a J17 module listed as SK1 MC0 in the roster.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "UEFI enumeration: socket 1 completes SCP bring-up but UEFI does not enumerate it.", discriminator: "SCP reporting two active sockets while UEFI and lscpu still report one.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "The engineering-sample CPU0 with the production CPU1 is an unsupported two-socket pairing (stepping or microcode).", discriminator: "An operator report that this pairing showed both sockets / 160 CPUs after the swap would weaken it; booting J1+J17 with a production CPU0 matching CPU1 and seeing SK1 MC0 train would support it.", standing: HypothesisOpen },
+  MtCollins1DiagnosisHypothesis { hypothesis: "The DIMM is at fault: a stick placed in J17 is bad.", discriminator: "Exchange the J1 and J17 sticks: the stick that was silent in J17 training in J1 clears it. This clears the stick, not the J17 slot.", standing: HypothesisRefutedByStickSwap { swap: mtcollins1_j1_j17_stick_swap } },
+]

@@ -4,7 +4,8 @@ import std.types { Bool, String, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, NamedField, decl_field_ref }
 import v2.std.optional { Present, Absent }
-import std.content_hash { ContentHash, Sha256Digest, Sha256DigestHex, serialize_content_hash }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, serialize_content_hash }
+import gunbc.spark.v41_engram_row_store { V41PublishedRowStoreKeyed, V41PublishedRowStoreRefused }
 import extdeps.gpu.types { GpuComputeCapability }
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vendor.nvidia { nvidia }
@@ -14,12 +15,15 @@ import extdeps.flashinfer.flashinfer { FlashInferWheel, FlashInferWheelAdmission
 import gunbc.spark.serving_deployment_selection { topology_shape }
 import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity, engram_route_c_identity }
 import gunbc.spark.serving_runtime_capability_probe { gb10_observed_compute_capability }
+import gunbc.spark.v41_identity_input { V41EngramResidencyPartition }
+import gunbc.spark.v41_index_engram_selection { v41_engram_population_observed_of, V41IndexEngramSelectionRead }
+import std.measure { byte_size }
 import gunbc.spark.v41_runtime_candidate {
   V41EnginePatch, v41_engine_patch, V41PatchPopulation, V41PatchesObserved, V41PatchesAbsentByObservation, V41PatchesUnestablished,
   V41EngramPartitionAuthority, PartitionFixedByPatch, PartitionByLaunchConfiguration,
   V41RuntimeArtifactInputs, V41ModelSourceInputs, V41EngramRealizationInputs, V41CandidateInputs,
   V41ManifestObserved, V41ManifestUnestablished, V41ManifestRefused, V41ModelSourceInputs, v41_model_source_key, V41IdentityRefused, V41IdentityUnestablished, V41IdentityKeyed,
-  V41EngramResidencyPartition, V41PartitionAdmitted, V41PartitionRefused, v41_admit_partition,
+  V41PartitionAdmitted, V41PartitionRefused, v41_admit_partition,
   V41CandidateStanding, V41CandidateVerdict, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused,
   v41_candidate_standing, v41_candidate, v41_candidate_inputs, v41_candidate_partition, v41_candidate_recipe,
   v41_engram_population_of, v41_is_embedding_table,
@@ -28,7 +32,7 @@ import gunbc.spark.v41_runtime_candidate {
 }
 import extdeps.safetensors.format {
   SafetensorsPopulationStanding, safetensors_population_standing,
-  MembershipClosedAgainstFullIndex,
+  MembershipClosedAgainstFullIndex, MembershipScopedToReadRows,
 }
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_engram,
@@ -91,7 +95,7 @@ fn w_inputs_with_wheels(patches: V41PatchPopulation, partition: V41EngramResiden
       weights: V41ManifestObserved { digest: w_sha(c: "a") },
       tokenizer: V41ManifestObserved { digest: w_sha(c: "b") },
     },
-    engram: V41EngramRealizationInputs { partition: partition, population: w_closed_population, row_store_encoding: V41ManifestObserved { digest: w_sha(c: "c") }, route: route },
+    engram: V41EngramRealizationInputs { partition: partition, population: w_closed_population, row_store_encoding: V41PublishedRowStoreKeyed { digest: Sha256Hash(w_sha(c: "c")) }, route: route },
     topology: topology_shape(tensor_parallel_degree: tp, replica_count: 1),
     device: device,
   }
@@ -159,7 +163,7 @@ test fn a_refused_manifest_refuses_the_model_source_and_is_not_an_obligation() -
   let residual_and_refused = v41_candidate_standing(c: V41CandidateInputs {
     runtime: w_default(patches: w_two_patches()).runtime,
     model_source: w_default(patches: w_two_patches()).model_source,
-    engram: V41EngramRealizationInputs { partition: v41_candidate_partition, population: deepseek_v4_1_flash_engram_population, row_store_encoding: V41ManifestRefused { first: "row store: a row of another table" as NonEmptyStr, rest: [] as List<NonEmptyStr> }, route: engram_route_b_identity },
+    engram: V41EngramRealizationInputs { partition: v41_candidate_partition, population: deepseek_v4_1_flash_engram_population, row_store_encoding: V41PublishedRowStoreRefused { defects: ["row store: a row of another table" as NonEmptyStr] }, route: engram_route_b_identity },
     topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1),
     device: gb10_observed_compute_capability,
   })
@@ -277,29 +281,41 @@ test fn the_partition_is_admitted_with_derived_bytes_and_a_malformed_one_refuses
     })
 }
 
-// THE LIVE CHECKPOINT CANNOT KEY ITS ENGRAM AXIS, AND THAT IS THE POINT. The population closes against
-// the twelve rows that were read rather than against the revision's index, so a thirteenth Engram tensor
-// would be neither reconciled nor refused and a partition can be total over the twelve while missing it.
-// The fixture standing differs from the live one in the closure ALONE -- same members, same shards, same
-// reading -- so this pair discriminates the membership residual and nothing else.
-test fn an_unreconciled_membership_leaves_the_engram_axis_unestablished() -> Bool {
-  let live = v41_candidate_standing(c: V41CandidateInputs {
+// A MEMBERSHIP SCOPED TO THE ROWS READ STILL CANNOT KEY, AND ONE CLOSED BY A READING OF THE PINNED
+// INDEX CAN (gunbc.spark.v41_index_engram_selection v41_engram_population_observed_of, supplied a reading). The scoped
+// standing differs from it in the closure ALONE -- same members, same shards, same reading -- and must
+// stay unestablished, so this pair discriminates the membership closure and nothing else.
+fn w_engram_with(population: SafetensorsPopulationStanding) -> V41CandidateVerdict {
+  v41_candidate_standing(c: V41CandidateInputs {
     runtime: w_default(patches: w_two_patches()).runtime,
     model_source: w_default(patches: w_two_patches()).model_source,
     engram: V41EngramRealizationInputs {
       partition: v41_candidate_partition,
-      population: deepseek_v4_1_flash_engram_population,
-      row_store_encoding: V41ManifestObserved { digest: w_sha(c: "c") },
+      population: population,
+      row_store_encoding: V41PublishedRowStoreKeyed { digest: Sha256Hash(w_sha(c: "c")) },
       route: engram_route_b_identity,
     },
     topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1),
     device: gb10_observed_compute_capability,
   })
-  match live.standing {
+}
+
+test fn a_scoped_membership_is_unestablished_and_the_closed_live_population_keys() -> Bool {
+  let scoped = safetensors_population_standing(
+    members: deepseek_v4_1_flash_engram_index_members,
+    shards: deepseek_v4_1_flash_engram_shard_files,
+    closure: MembershipScopedToReadRows { read_rows: 12, unenumerated: "fixture: the index is not enumerated" as NonEmptyStr },
+    reading: deepseek_v4_1_flash_engram_population_reading,
+  )
+  (match w_engram_with(population: scoped).standing {
     V41CandidateUnestablished { obligations: o } => any(o, x => (x as String).contains("membership is reconciled against 12 index rows that were read"))
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => false
     V41CandidateRefused { defects: _ } => false
-  }
+  }) && (match w_engram_with(population: v41_engram_population_observed_of(reading: V41IndexEngramSelectionRead { index_sha256_hex: "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8" as Sha256DigestHex, index_bytes: byte_size(count: 7470294), name_count: 96085, members: deepseek_v4_1_flash_engram_index_members, observed: "fixture: a reading of the pinned file" as NonEmptyStr })).standing {
+    V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => true
+    V41CandidateUnestablished { obligations: _ } => false
+    V41CandidateRefused { defects: _ } => false
+  })
 }
 
 // A TOTAL, DISJOINT PARTITION CAN STILL BE THE WRONG WAY ROUND, AND THE CHEAP TEST FOR IT IS NOT ENOUGH.

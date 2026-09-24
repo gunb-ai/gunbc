@@ -26,6 +26,7 @@ import extdeps.safetensors.format {
 }
 import extdeps.deepseek.deepseek_v4_1_flash {
   deepseek_v4_1_flash_revision, deepseek_v4_1_flash_engram_population,
+  deepseek_v4_1_flash_engram_sharded_entries, deepseek_v4_1_flash_engram_shard_files,
   DeepseekV41EngramTables, deepseek_v4_1_flash_engram,
   deepseek_v4_1_flash_weight_manifest_standing, WeightManifestAdmitted, WeightManifestRefused,
   deepseek_v4_1_flash_tokenizer_standing, TokenizerPopulationAdmitted, TokenizerPopulationRefused,
@@ -38,6 +39,12 @@ import gunbc.spark.vllm_image_identity {
 }
 import gunbc.spark.serving_runtime_capability_probe { gb10_observed_compute_capability }
 import gunbc.spark.serving_deployment_selection { TopologyShape, topology_shape }
+import gunbc.spark.v41_identity_input { V41EngramResidencyPartition, v41_input }
+import gunbc.spark.v41_engram_row_store {
+  V41PublishedRowStoreKey, V41PublishedRowStoreKeyed, V41PublishedRowStoreUnestablished, V41PublishedRowStoreRefused,
+  v41_row_store_encoding_key, v41_published_span_readings, v41_published_store_readings, v41_live_head_sizes,
+}
+import gunbc.spark.v41_index_engram_selection { v41_engram_population_observed }
 import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell, sha256sum_stdin_digest_via_shell }
 
@@ -108,10 +115,6 @@ type V41IdentityStanding
   = V41IdentityKeyed { key: ContentHash }
   | V41IdentityUnestablished { obligations: List<NonEmptyStr> }
   | V41IdentityRefused { defects: List<NonEmptyStr> }
-
-fn v41_input(identity: String, value: String) -> ArtifactRealizationInput {
-  ArtifactRealizationInput { identity: identity as NonEmptyStr, content_digest: content_hash_atom(value: value as NonEmptyStr) }
-}
 
 // THE KERNELS THE KEY NAMES MUST BE THE KERNELS THE RECIPE INSTALLS. main already carries one defect
 // of this shape -- a flashinfer version keyed and never passed to the build -- so a candidate whose
@@ -325,14 +328,11 @@ fn v41_runtime_artifact_key(i: V41RuntimeArtifactInputs, partition: V41EngramRes
 
 // ── THE ENGRAM RESIDENCY PARTITION ──────────────────────────────────────────────────────────────
 
-// WHICH OF THE TWELVE ENGRAM TENSORS ARE READ FROM STORAGE AND WHICH STAY RESIDENT. Admitted against the
-// cited population in extdeps.deepseek.deepseek_v4_1_flash: the two sets must be disjoint and together
-// name every tensor exactly once, and nothing outside the population. The storage-backed byte total is
-// DERIVED from the cited spans, never written down.
-type V41EngramResidencyPartition {
-  storage_backed: List<NonEmptyStr>
-  resident: List<NonEmptyStr>
-}
+// WHICH OF THE TWELVE ENGRAM TENSORS ARE READ FROM STORAGE AND WHICH STAY RESIDENT
+// (gunbc.spark.v41_identity_input V41EngramResidencyPartition). Admitted against the cited population
+// in extdeps.deepseek.deepseek_v4_1_flash: the two sets must be disjoint and together name every tensor
+// exactly once, and nothing outside the population. The storage-backed byte total is DERIVED from the
+// cited spans, never written down.
 
 type V41PartitionAdmission
   = V41PartitionAdmitted { partition: V41EngramResidencyPartition }
@@ -494,7 +494,7 @@ fn v41_model_source_key(s: V41ModelSourceInputs) -> V41IdentityStanding {
 type V41EngramRealizationInputs {
   partition: V41EngramResidencyPartition
   population: SafetensorsPopulationStanding
-  row_store_encoding: V41ManifestStanding
+  row_store_encoding: V41PublishedRowStoreKey
   route: DeclarationRef
 }
 
@@ -518,26 +518,40 @@ fn v41_decl_field_wire(f: DeclField) -> String {
 // membership residual alone hid the row-store encoding's obligation, so a reader of the live candidate saw
 // one missing axis where there were two -- a partial answer that looks complete, which is worse than the
 // silence it replaced because it would be read as the full list.
-fn v41_row_store_obligations(m: V41ManifestStanding) -> List<NonEmptyStr> {
-  v41_manifest_obligations(m: m)
+fn v41_row_store_obligations(k: V41PublishedRowStoreKey) -> List<NonEmptyStr> {
+  match k {
+    V41PublishedRowStoreUnestablished { obligation: o } => [o]
+    V41PublishedRowStoreKeyed { digest: _ } => [] as List<NonEmptyStr>
+    V41PublishedRowStoreRefused { defects: _ } => [] as List<NonEmptyStr>
+  }
+}
+
+// A REFUSED ROW STORE WITH NO DEFECT NAMED STILL REFUSES, naming that, rather than falling through.
+fn v41_row_store_key_defects(k: V41PublishedRowStoreKey) -> List<NonEmptyStr> {
+  match k {
+    V41PublishedRowStoreRefused { defects: d } => if length(d) != 0 { d } else { ["the row-store encoding refused with no defect named" as NonEmptyStr] }
+    V41PublishedRowStoreKeyed { digest: _ } => [] as List<NonEmptyStr>
+    V41PublishedRowStoreUnestablished { obligation: _ } => [] as List<NonEmptyStr>
+  }
 }
 
 // AN UNRECONCILED MEMBERSHIP IS AN UNESTABLISHED AXIS, NOT A KEYABLE ONE. This module's own law is that
-// no key is minted for an axis with a hole in it. The checkpoint's Engram population closes against the
-// twelve rows that were READ rather than against the revision's 96085-name index, so a thirteenth Engram
-// tensor at this revision would be neither reconciled nor refused -- and a partition can be total and
-// disjoint over the twelve while missing it entirely. Keying here would hash "the Engram tensors we
+// no key is minted for an axis with a hole in it. A population closed only against the rows that were
+// READ, rather than against the revision's full index, would let a thirteenth Engram tensor pass
+// neither reconciled nor refused -- and a partition can be total and disjoint over the twelve while
+// missing it entirely. (The live population is gunbc.spark.v41_index_engram_selection v41_engram_population_observed:
+// closed only once a reading of the pinned index is transcribed; a scoped closure lands here.) Keying here would hash "the Engram tensors we
 // happen to have read" and call it the Engram realization, and two different future candidates over
 // different readings of the same checkpoint would share it. So the residual the population carries is
 // folded onto this axis as an obligation, and it is the only one of the three standings that can be
 // discharged by reading the index rather than by writing something.
 fn v41_engram_realization_key(e: V41EngramRealizationInputs) -> V41IdentityStanding {
   let membership = safetensors_population_closure_obligations(s: e.population)
-  let row_store_defects = v41_manifest_defects(m: e.row_store_encoding)
+  let row_store_defects = v41_row_store_key_defects(k: e.row_store_encoding)
   if length(row_store_defects) != 0 {
     V41IdentityRefused { defects: row_store_defects }
   } else if length(membership) != 0 {
-    V41IdentityUnestablished { obligations: concat(membership, v41_row_store_obligations(m: e.row_store_encoding)) }
+    V41IdentityUnestablished { obligations: concat(membership, v41_row_store_obligations(k: e.row_store_encoding)) }
   } else {
   match v41_admit_partition(p: e.partition, standing: e.population) {
     V41PartitionRefused { defects: d } => V41IdentityRefused { defects: d }
@@ -546,11 +560,11 @@ fn v41_engram_realization_key(e: V41EngramRealizationInputs) -> V41IdentityStand
         V41IdentityRefused { defects: [join(["route ", e.route.decl_name as String, " is not a storage-backed token-time route this candidate admits (B or D)"], "") as NonEmptyStr] }
       } else {
         match e.row_store_encoding {
-          V41ManifestUnestablished { obligation: o } => V41IdentityUnestablished { obligations: [o] }
-          V41ManifestRefused { first: f, rest: r } => V41IdentityRefused { defects: concat([f], r) }
-          V41ManifestObserved { digest: d } =>
+          V41PublishedRowStoreUnestablished { obligation: o } => V41IdentityUnestablished { obligations: [o] }
+          V41PublishedRowStoreRefused { defects: d } => V41IdentityRefused { defects: d }
+          V41PublishedRowStoreKeyed { digest: d } =>
             V41IdentityKeyed { key: artifact_realization_digest(inputs: concat(v41_partition_inputs(p: p), [
-              v41_input(identity: "row_store_encoding", value: d.hex as String),
+              v41_input(identity: "row_store_encoding", value: serialize_content_hash(hash: d) as String),
               v41_input(identity: "route.module_path", value: e.route.module_path as String),
               v41_input(identity: "route.decl_name", value: e.route.decl_name as String),
               v41_input(identity: "route.field", value: v41_decl_field_wire(f: e.route.field)),
@@ -731,8 +745,8 @@ data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
   },
   engram: V41EngramRealizationInputs {
     partition: v41_candidate_partition,
-    population: deepseek_v4_1_flash_engram_population,
-    row_store_encoding: V41ManifestUnestablished { obligation: "no published-shard row-store content digest exists; fixture correspondence over eight rows is a different subject and does not identify the materialized tables" as NonEmptyStr },
+    population: v41_engram_population_observed(),
+    row_store_encoding: v41_row_store_encoding_standing(),
     route: engram_route_b_identity,
   },
   topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1),
@@ -771,6 +785,22 @@ fn v41_manifest_digest(text: String, subject: String) -> V41ManifestStanding {
         Present { value: h } => V41ManifestObserved { digest: h }
       }
   }
+}
+
+// THE ROW-STORE ENCODING AXIS, KEYED BY THE ENCODED STORES (gunbc.spark.v41_engram_row_store
+// v41_row_store_encoding_key): the spec key and the sha256 of each of the eight (layer, rank) stores the
+// encoder produced -- the whole-file digests the file-backed patch checks on open, which are D1's
+// "row-store identities" -- admitted by v41_identify_row_store. The published spans are the encoder's
+// input and are joined to the span plan before a key is minted, but they do not key the axis.
+fn v41_row_store_encoding_standing() -> V41PublishedRowStoreKey {
+  v41_row_store_encoding_key(
+    partition: v41_candidate_partition,
+    sharded: deepseek_v4_1_flash_engram_sharded_entries,
+    shards: deepseek_v4_1_flash_engram_shard_files,
+    spans: v41_published_span_readings,
+    stores: v41_published_store_readings,
+    head_sizes: fn() { v41_live_head_sizes(tables: deepseek_v4_1_flash_engram) },
+  )
 }
 
 fn v41_candidate() -> V41CandidateVerdict {

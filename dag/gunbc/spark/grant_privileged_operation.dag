@@ -16,7 +16,6 @@ import std.scoped_authorization {
   AuthorizationScope,
   AuthorizationRequest,
 }
-import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
@@ -429,7 +428,6 @@ fn run_privileged_step(
   lease: AuthorizationRequest<SparkBootstrapSubject>,
   command: AdmittedRootArgv,
 ) -> PrivilegedStepOutcome
-  uses net: Network
 {
   match lease.subject.administrator {
     CredentialMaterializationPending => CredentialNotEnrolled { lease: lease }

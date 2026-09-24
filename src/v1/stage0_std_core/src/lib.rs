@@ -140,3 +140,6 @@ pub mod std_import;
 #[rustfmt::skip]
 #[path = "../../stage0/src/v1_std_core.rs"]
 pub mod v1_std_core;
+#[rustfmt::skip]
+#[path = "../../stage0/src/gunbc_rust_emitted_edge.rs"]
+pub mod gunbc_rust_emitted_edge;

@@ -1,0 +1,459 @@
+module extdeps.bmc.redfish_memory_inventory
+
+import std.types { Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.json.emit { JsonValue, JsonArray }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  FieldAbsent, FieldRead, FieldMalformed,
+  json_field, json_field_string, json_field_int,
+}
+
+// THE PER-SLOT AND PER-SOCKET INVENTORY THAT A REDFISH SERVICE PUBLISHES UNDER A ComputerSystem,
+// modeled from DMTF's published schemas: Memory (the `Memory` resource and its `MemoryLocation`
+// object), Processor, and the Resource schema's `Status` object (`State`, `Health`). The property
+// names are DMTF's, kept verbatim. This module carries what the SCHEMA says a member is. What a
+// particular controller was OBSERVED to return is a receipt in the observing layer
+// (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle), never a row here.
+//
+// WHAT THIS MODULE HAS NOT READ (DESIGN section 4d). No response from mtcollins1's MegaRAC
+// Memory or Processors collection exists in this corpus, so nothing here claims which optional
+// properties that firmware populates, what its member ids look like, or whether it lists an
+// unpopulated slot as a member with State Absent or leaves it out. Every optional property
+// therefore parses to an explicit "not reported" value, and a controller that omits unpopulated
+// slots produces a shorter member list, which the consumer reports as a count rather than
+// reading it as "all present".
+//
+// WHY THIS IS A MODULE OF ITS OWN AND NOT MORE FIELDS ON extdeps.bmc.types. That module's
+// RedfishMemorySummary and RedfishProcessorSummary are the ComputerSystem's AGGREGATE
+// properties (MemorySummary, ProcessorSummary). The member resources are different schemas with
+// their own citations, and a per-slot fact cannot be derived from a total.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "redfish.dmtf.org/schemas/v1/Memory.json"
+  }
+}
+
+data redfish_processor_schema_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "redfish.dmtf.org/schemas/v1/Processor.json"
+  }
+}
+
+data redfish_resource_schema_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "redfish.dmtf.org/schemas/v1/Resource.json"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.redfish_memory_inventory",
+      decl_name: "RedfishMemoryMember",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [redfish_processor_schema_authority, redfish_resource_schema_authority]
+}
+
+// Resource.State, as the Resource schema enumerates it. A rendering outside the enumeration is
+// carried as StateUnrecognized rather than mapped onto the nearest known value, and an absent or
+// null `State` is StateNotReported. Neither is read as Enabled.
+type RedfishResourceState
+  = StateEnabled
+  | StateDisabled
+  | StateStandbyOffline
+  | StateStandbySpare
+  | StateInTest
+  | StateStarting
+  | StateAbsent
+  | StateUnavailableOffline
+  | StateDeferring
+  | StateQuiesced
+  | StateUpdating
+  | StateQualified
+  | StateDegraded
+  | StateUnrecognized { rendering: NonEmptyStr }
+  | StateNotReported
+
+// Resource.Health: OK, Warning, Critical.
+type RedfishHealth
+  = HealthOk
+  | HealthWarning
+  | HealthCritical
+  | HealthUnrecognized { rendering: NonEmptyStr }
+  | HealthNotReported
+
+type RedfishResourceStatus {
+  state: RedfishResourceState
+  health: RedfishHealth
+}
+
+// Memory.MemoryLocation: Socket, MemoryController, Channel, Slot (all integers in the schema).
+type RedfishMemoryLocation {
+  socket: Int?
+  memory_controller: Int?
+  channel: Int?
+  slot: Int?
+}
+
+// One Memory member. `Id` is required by the schema. `DeviceLocator` is the printed silkscreen
+// label and is deprecated in later schema versions in favour of `Location`; it is kept because it
+// is what a MegaRAC-era service most plausibly populates, and it is carried as a reading, not
+// inferred.
+type RedfishMemoryMember {
+  id: NonEmptyStr
+  device_locator: String?
+  memory_location: RedfishMemoryLocation?
+  capacity_mib: Int?
+  status: RedfishResourceStatus
+}
+
+// One Processor member. Processor.Socket is a STRING in the schema ("the socket or location of
+// the processor"), so it is carried as the controller's rendering and never parsed into an index.
+type RedfishProcessorMember {
+  id: NonEmptyStr
+  socket: String?
+  total_cores: Int?
+  status: RedfishResourceStatus
+}
+
+fn redfish_resource_state_of_wire(s: String) -> RedfishResourceState {
+  if s == "Enabled" { StateEnabled }
+  else if s == "Disabled" { StateDisabled }
+  else if s == "StandbyOffline" { StateStandbyOffline }
+  else if s == "StandbySpare" { StateStandbySpare }
+  else if s == "InTest" { StateInTest }
+  else if s == "Starting" { StateStarting }
+  else if s == "Absent" { StateAbsent }
+  else if s == "UnavailableOffline" { StateUnavailableOffline }
+  else if s == "Deferring" { StateDeferring }
+  else if s == "Quiesced" { StateQuiesced }
+  else if s == "Updating" { StateUpdating }
+  else if s == "Qualified" { StateQualified }
+  else if s == "Degraded" { StateDegraded }
+  else if s == "" { StateNotReported }
+  else { StateUnrecognized { rendering: s as NonEmptyStr } }
+}
+
+fn redfish_resource_state_wire(state: RedfishResourceState) -> String {
+  match state {
+    StateEnabled => "Enabled"
+    StateDisabled => "Disabled"
+    StateStandbyOffline => "StandbyOffline"
+    StateStandbySpare => "StandbySpare"
+    StateInTest => "InTest"
+    StateStarting => "Starting"
+    StateAbsent => "Absent"
+    StateUnavailableOffline => "UnavailableOffline"
+    StateDeferring => "Deferring"
+    StateQuiesced => "Quiesced"
+    StateUpdating => "Updating"
+    StateQualified => "Qualified"
+    StateDegraded => "Degraded"
+    StateUnrecognized { rendering: r } => concat("unrecognized:", r as String)
+    StateNotReported => "not-reported"
+  }
+}
+
+fn redfish_health_of_wire(s: String) -> RedfishHealth {
+  if s == "OK" { HealthOk }
+  else if s == "Warning" { HealthWarning }
+  else if s == "Critical" { HealthCritical }
+  else if s == "" { HealthNotReported }
+  else { HealthUnrecognized { rendering: s as NonEmptyStr } }
+}
+
+fn redfish_health_wire(health: RedfishHealth) -> String {
+  match health {
+    HealthOk => "OK"
+    HealthWarning => "Warning"
+    HealthCritical => "Critical"
+    HealthUnrecognized { rendering: r } => concat("unrecognized:", r as String)
+    HealthNotReported => "not-reported"
+  }
+}
+
+type RedfishStringRead = RedfishStringOk { value: String } | RedfishStringBad { cause: NonEmptyStr }
+
+fn redfish_optional_string(obj: JsonValue, key: String) -> RedfishStringRead {
+  match json_field_string(obj: obj, key: key) {
+    FieldAbsent => RedfishStringOk { value: "" }
+    FieldRead { value: v } => RedfishStringOk { value: v }
+    FieldMalformed { cause: c } => RedfishStringBad { cause: c as NonEmptyStr }
+  }
+}
+
+fn redfish_optional_int(obj: JsonValue, key: String) -> ObservationAttempt<Int?, NonEmptyStr> {
+  match json_field_int(obj: obj, key: key) {
+    FieldAbsent => ObservationEstablished { observed: none }
+    FieldRead { value: n } => ObservationEstablished { observed: Present { value: n } }
+    FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+  }
+}
+
+fn redfish_status_of(obj: JsonValue) -> ObservationAttempt<RedfishResourceStatus, NonEmptyStr> {
+  match json_field(obj: obj, key: "Status") {
+    FieldAbsent => ObservationEstablished { observed: RedfishResourceStatus { state: StateNotReported, health: HealthNotReported } }
+    FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+    FieldRead { value: status } =>
+      match redfish_optional_string(obj: status, key: "State") {
+        RedfishStringBad { cause: c } => ObservationRefused { cause: c }
+        RedfishStringOk { value: state } =>
+          match redfish_optional_string(obj: status, key: "Health") {
+            RedfishStringBad { cause: c } => ObservationRefused { cause: c }
+            RedfishStringOk { value: health } =>
+              ObservationEstablished { observed: RedfishResourceStatus {
+                state: redfish_resource_state_of_wire(s: state),
+                health: redfish_health_of_wire(s: health),
+              } }
+          }
+      }
+  }
+}
+
+fn redfish_document(body: String) -> ObservationAttempt<JsonValue, NonEmptyStr> {
+  match parse_json_document(s: body) {
+    JsonDocumentParsed { value: v } => ObservationEstablished { observed: v }
+    JsonDocumentUnreadable { gap: g } => ObservationRefused { cause: concat("response is not a JSON document: ", json_document_gap_text(gap: g)) as NonEmptyStr }
+  }
+}
+
+// A RESOURCE LINK, KEPT EXACTLY AS THE SERVICE PUBLISHED IT. DSP0266 makes `@odata.id` the
+// resource's URI and a collection's `Members@odata.nextLink` the URI of its next page; neither is
+// reconstructed from an Id or a last segment. It is admitted only when it is a same-origin
+// service path -- "/redfish/v1/..." with no scheme, no authority, no dot segment and no fragment --
+// because the request that follows it presents a credential, and a link that could name another
+// host would carry that credential there.
+type RedfishLinkReading
+  = RedfishLinkSameOrigin { path: NonEmptyStr }
+  | RedfishLinkRefused { cause: NonEmptyStr }
+
+fn redfish_same_origin_link(link: String) -> RedfishLinkReading {
+  if !starts_with(s: link, prefix: "/redfish/v1/") {
+    RedfishLinkRefused { cause: concat("link is not a same-origin /redfish/v1/ path: ", link) as NonEmptyStr }
+  } else if string_contains(s: link, pattern: "//") || string_contains(s: link, pattern: "/../") || ends_with(s: link, suffix: "/..")
+    || string_contains(s: link, pattern: "#") || string_contains(s: link, pattern: " ") || string_contains(s: link, pattern: "\\") {
+    RedfishLinkRefused { cause: concat("link carries a segment a same-origin path may not: ", link) as NonEmptyStr }
+  } else {
+    RedfishLinkSameOrigin { path: link as NonEmptyStr }
+  }
+}
+
+// ONE PAGE OF A RESOURCE COLLECTION (DSP0266, "Resource collections"): its `Members` links,
+// `Members@odata.count` (the total across every page), and `Members@odata.nextLink` when more
+// pages follow. A page without a `Members` array is refused: an absent array is not an empty
+// collection. The links are carried as published; whether they are same-origin is decided by the
+// consumer that will follow them.
+type RedfishCollectionPage {
+  member_links: List<String>
+  member_count: Int?
+  next_link: String?
+}
+
+fn redfish_collection_page_of(body: String) -> ObservationAttempt<RedfishCollectionPage, NonEmptyStr> {
+  match redfish_document(body: body) {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: doc } =>
+      match redfish_optional_int(obj: doc, key: "Members@odata.count") {
+        ObservationRefused { cause: c } => ObservationRefused { cause: c }
+        ObservationEstablished { observed: total } =>
+          match redfish_optional_string(obj: doc, key: "Members@odata.nextLink") {
+            RedfishStringBad { cause: c } => ObservationRefused { cause: c }
+            RedfishStringOk { value: next } =>
+              match json_field(obj: doc, key: "Members") {
+                FieldAbsent => ObservationRefused { cause: "collection page carries no Members array" }
+                FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+                FieldRead { value: members } =>
+                  match members {
+                    JsonArray { elements: elements } => {
+                      let empty: List<String> = []
+                      let initial: ObservationAttempt<List<String>, NonEmptyStr> = ObservationEstablished { observed: empty }
+                      let links = fold(elements, init: initial, f: (acc, member) => match acc {
+                        ObservationRefused { cause: c } => ObservationRefused { cause: c }
+                        ObservationEstablished { observed: ls } =>
+                          match redfish_optional_string(obj: member, key: "@odata.id") {
+                            RedfishStringBad { cause: c } => ObservationRefused { cause: c }
+                            RedfishStringOk { value: link } =>
+                              if link == "" { ObservationRefused { cause: "a collection member carries no @odata.id" } }
+                              else { ObservationEstablished { observed: concat(ls, [link]) } }
+                          }
+                      })
+                      match links {
+                        ObservationRefused { cause: c } => ObservationRefused { cause: c }
+                        ObservationEstablished { observed: ls } =>
+                          ObservationEstablished { observed: RedfishCollectionPage { member_links: ls, member_count: total, next_link: optional_text(s: next) } }
+                      }
+                    }
+                    _ => ObservationRefused { cause: "Members is not an array" }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// A ComputerSystem's links to its Memory and Processors collections (ComputerSystem schema
+// properties `Memory` and `Processors`, each a link object carrying `@odata.id`). A system that
+// publishes neither link has published no per-slot inventory.
+type RedfishSystemInventoryLinks {
+  memory: String?
+  processors: String?
+}
+
+fn redfish_link_property(doc: JsonValue, key: String) -> ObservationAttempt<String?, NonEmptyStr> {
+  match json_field(obj: doc, key: key) {
+    FieldAbsent => ObservationEstablished { observed: none }
+    FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+    FieldRead { value: link } =>
+      match redfish_optional_string(obj: link, key: "@odata.id") {
+        RedfishStringBad { cause: c } => ObservationRefused { cause: c }
+        RedfishStringOk { value: v } => ObservationEstablished { observed: optional_text(s: v) }
+      }
+  }
+}
+
+// THE SERVICE ROOT'S LINK TO THE ComputerSystem COLLECTION (ServiceRoot schema property `Systems`, a
+// link object carrying `@odata.id`). DSP0266 fixes exactly one URI a client may author, the service
+// root `/redfish/v1/`; every other resource is reached by following a link the service published, so
+// the Systems collection's path is read here and never assumed. Absent when the root publishes none.
+fn redfish_service_root_systems_link_of(body: String) -> ObservationAttempt<String?, NonEmptyStr> {
+  match redfish_document(body: body) {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: doc } => redfish_link_property(doc: doc, key: "Systems")
+  }
+}
+
+fn redfish_system_inventory_links_of(body: String) -> ObservationAttempt<RedfishSystemInventoryLinks, NonEmptyStr> {
+  match redfish_document(body: body) {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: doc } =>
+      match redfish_link_property(doc: doc, key: "Memory") {
+        ObservationRefused { cause: c } => ObservationRefused { cause: c }
+        ObservationEstablished { observed: memory } =>
+          match redfish_link_property(doc: doc, key: "Processors") {
+            ObservationRefused { cause: c } => ObservationRefused { cause: c }
+            ObservationEstablished { observed: processors } =>
+              ObservationEstablished { observed: RedfishSystemInventoryLinks { memory: memory, processors: processors } }
+          }
+      }
+  }
+}
+
+fn redfish_memory_location_of(obj: JsonValue) -> ObservationAttempt<RedfishMemoryLocation?, NonEmptyStr> {
+  match json_field(obj: obj, key: "MemoryLocation") {
+    FieldAbsent => ObservationEstablished { observed: none }
+    FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+    FieldRead { value: loc } =>
+      match redfish_optional_int(obj: loc, key: "Socket") {
+        ObservationRefused { cause: c } => ObservationRefused { cause: c }
+        ObservationEstablished { observed: socket } =>
+          match redfish_optional_int(obj: loc, key: "MemoryController") {
+            ObservationRefused { cause: c } => ObservationRefused { cause: c }
+            ObservationEstablished { observed: controller } =>
+              match redfish_optional_int(obj: loc, key: "Channel") {
+                ObservationRefused { cause: c } => ObservationRefused { cause: c }
+                ObservationEstablished { observed: channel } =>
+                  match redfish_optional_int(obj: loc, key: "Slot") {
+                    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+                    ObservationEstablished { observed: slot } =>
+                      ObservationEstablished { observed: Present { value: RedfishMemoryLocation {
+                        socket: socket, memory_controller: controller, channel: channel, slot: slot,
+                      } } }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn redfish_member_id(doc: JsonValue) -> ObservationAttempt<NonEmptyStr, NonEmptyStr> {
+  match redfish_optional_string(obj: doc, key: "Id") {
+    RedfishStringBad { cause: c } => ObservationRefused { cause: c }
+    RedfishStringOk { value: id } =>
+      if id == "" { ObservationRefused { cause: "member carries no Id, which the schema requires" } } else { ObservationEstablished { observed: id as NonEmptyStr } }
+  }
+}
+
+fn optional_text(s: String) -> String? {
+  if s == "" { none } else { Present { value: s } }
+}
+
+fn redfish_memory_member_of(body: String) -> ObservationAttempt<RedfishMemoryMember, NonEmptyStr> {
+  match redfish_document(body: body) {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: doc } =>
+      match redfish_member_id(doc: doc) {
+        ObservationRefused { cause: c } => ObservationRefused { cause: c }
+        ObservationEstablished { observed: id } =>
+          match redfish_optional_string(obj: doc, key: "DeviceLocator") {
+            RedfishStringBad { cause: c } => ObservationRefused { cause: c }
+            RedfishStringOk { value: locator } =>
+              match redfish_memory_location_of(obj: doc) {
+                ObservationRefused { cause: c } => ObservationRefused { cause: c }
+                ObservationEstablished { observed: location } =>
+                  match redfish_optional_int(obj: doc, key: "CapacityMiB") {
+                    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+                    ObservationEstablished { observed: capacity } =>
+                      match redfish_status_of(obj: doc) {
+                        ObservationRefused { cause: c } => ObservationRefused { cause: c }
+                        ObservationEstablished { observed: status } =>
+                          ObservationEstablished { observed: RedfishMemoryMember {
+                            id: id, device_locator: optional_text(s: locator), memory_location: location,
+                            capacity_mib: capacity, status: status,
+                          } }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn redfish_processor_member_of(body: String) -> ObservationAttempt<RedfishProcessorMember, NonEmptyStr> {
+  match redfish_document(body: body) {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: doc } =>
+      match redfish_member_id(doc: doc) {
+        ObservationRefused { cause: c } => ObservationRefused { cause: c }
+        ObservationEstablished { observed: id } =>
+          match redfish_optional_string(obj: doc, key: "Socket") {
+            RedfishStringBad { cause: c } => ObservationRefused { cause: c }
+            RedfishStringOk { value: socket } =>
+              match redfish_optional_int(obj: doc, key: "TotalCores") {
+                ObservationRefused { cause: c } => ObservationRefused { cause: c }
+                ObservationEstablished { observed: cores } =>
+                  match redfish_status_of(obj: doc) {
+                    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+                    ObservationEstablished { observed: status } =>
+                      ObservationEstablished { observed: RedfishProcessorMember {
+                        id: id, socket: optional_text(s: socket), total_cores: cores, status: status,
+                      } }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// A RESOURCE'S OWN `@odata.id`, as it returned it. DSP0266 makes this the resource's URI, so a
+// consumer that followed a link can check that the resource answering is the one the link named.
+fn redfish_resource_odata_id(body: String) -> ObservationAttempt<NonEmptyStr, NonEmptyStr> {
+  match redfish_document(body: body) {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: doc } =>
+      match redfish_optional_string(obj: doc, key: "@odata.id") {
+        RedfishStringBad { cause: c } => ObservationRefused { cause: c }
+        RedfishStringOk { value: v } =>
+          if v == "" { ObservationRefused { cause: "resource carries no @odata.id" } } else { ObservationEstablished { observed: v as NonEmptyStr } }
+      }
+  }
+}

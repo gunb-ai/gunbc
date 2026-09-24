@@ -1819,7 +1819,6 @@ fn live_custody_standing() -> CustodyStanding uses fs: std.resources.Filesystem 
 // over authored standings; what is not writable anywhere else is the step from its holding arm to
 // the receipt, and that step exists only here, over standings this function produced.
 fn census_app_acquisition_standing(record: GitHubAppAcquisitionRecord) -> CensusAppAcquisitionStanding
-  uses net: Network, fs: std.resources.Filesystem
 {
   let registration = registration_standing(
     record: record,
@@ -1830,10 +1829,12 @@ fn census_app_acquisition_standing(record: GitHubAppAcquisitionRecord) -> Census
       code: none,
     ),
   )
+  let population = live_installation_population()
+  let custody = live_custody_standing()
   match census_app_acquisition_judgment(
     registration: registration,
-    installation: installation_admission_disposition(registration: registration, population: live_installation_population()),
-    custody: live_custody_standing(),
+    installation: installation_admission_disposition(registration: registration, population: population),
+    custody: custody,
   ) {
     AcquisitionFactsMissing { missing: m } => AcquisitionIncomplete { missing: m }
     AcquisitionFactsHold { app_id: id, slug: slug, installation: i, key_custody: c } =>

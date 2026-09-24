@@ -7,10 +7,19 @@ import v1.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep, emit_car
 import v1.compiler.runtime_rust { rust_runtime_cargo_features }
 import extdeps.cargo { CargoDependency, CargoFeature, RegistryDep, LocalPathDep }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
-import gunbc.stage0_partition_package_graph {
-  stage0_partition_package_dependency_names,
-  stage0_partition_row_is_module_bearing_package
+import gunbc.rust_crate_package_ident {
+  PackageIdentBinding,
+  PackageIdentRefusalCause,
+  PackageIdentSetOk,
+  package_ident_bound,
+  package_ident_refusal_message,
+  PackageIdentSetRefused,
+  rust_crate_package_idents
 }
+import gunbc.stage0_partition_package_graph {
+  stage0_partition_package_dependency_names
+}
+import gunbc.stage0_emitted_edge_admission { stage0_partition_module_owner_packages }
 import gunbc.stage0_crate_partition_generated {
   GeneratedEmitCoreCrate,
   GeneratedFoundationCrate,
@@ -35,6 +44,7 @@ type Stage0CrateSpec {
   dependencies: List<CargoDependency>
   features: List<CargoFeature>
   carries_non_empty_wrappers: Bool
+  package_idents: List<PackageIdentBinding>
 }
 
 type Stage0CratePlan {
@@ -115,10 +125,6 @@ fn stage0_emit_core_header_doc() -> String {
   ] |> join(separator: "\n")
 }
 
-fn stage0_package_name_to_rust_ident(package_name: String) -> String {
-  replace(package_name, "-", "_")
-}
-
 fn stage0_crate_dir_to_sibling_dep_path(crate_dir: String) -> String {
   replace(crate_dir, "src/v1/", "../")
 }
@@ -144,6 +150,7 @@ type Stage0ReexportPathDepsOutcome
 type Stage0EmitShellReexportsOutcome
   = Stage0EmitShellReexportsOk { lines: List<String> }
   | Stage0EmitShellReexportsRefused { cause: Stage0ModuleOwnerRefusalCause }
+  | Stage0EmitShellReexportsIdentUnbound { package_name: String }
 
 type Stage0PartitionRowDepsOutcome
   = Stage0PartitionRowDepsOk { deps: List<CargoDependency> }
@@ -156,27 +163,29 @@ type Stage0PartitionRowSpecOutcome
 type Stage0CratePlanOutcome
   = Stage0CratePlanOk { plan: Stage0CratePlan }
   | Stage0CratePlanRefused { cause: Stage0PackageCrateDirRefusalCause }
+  | Stage0CratePlanIdentRefused { cause: PackageIdentRefusalCause }
 
 type Stage0CrateLibEmitOutcome
   = Stage0CrateLibEmitOk { file: TextFile }
   | Stage0CrateLibEmitRefused { cause: Stage0ModuleOwnerRefusalCause }
+  | Stage0CrateLibEmitIdentUnbound { package_name: String }
+
+type Stage0ReexportLinesOutcome
+  = Stage0ReexportLinesOk { lines: List<String> }
+  | Stage0ReexportLinesIdentUnbound { package_name: String }
 
 type Stage0CrateBoundaryEmitRefusalCause
   = Stage0CrateBoundaryEmitModuleOwnerMissing { module_basename: String }
   | Stage0CrateBoundaryEmitPackageCrateDirMissing { package_name: String }
+  | Stage0CrateBoundaryEmitPackageIdentRefused { cause: PackageIdentRefusalCause }
+  | Stage0CrateBoundaryEmitPackageIdentUnbound { package_name: String }
 
 type Stage0CrateBoundaryEmitOutcome
   = Stage0CrateBoundaryEmitOk { files: List<TextFile> }
   | Stage0CrateBoundaryEmitRefused { cause: Stage0CrateBoundaryEmitRefusalCause }
 
 fn stage0_lookup_module_owner_package_name(module_basename: String) -> Stage0ModuleOwnerLookup {
-  let matches = generated_partition_crate_rows
-    |> filter(row =>
-      stage0_partition_row_is_module_bearing_package(row: row)
-        && (row.modules |> any(m => m == module_basename))
-    )
-  let package_name = matches
-    |> map(row => row.package_name)
+  let package_name = stage0_partition_module_owner_packages(module_basename: module_basename)
     |> fold(init: "", f: fn(acc, pkg) { if acc == "" { pkg } else { acc } })
   if package_name == "" {
     Stage0ModuleOwnerRefused {
@@ -231,6 +240,13 @@ fn stage0_crate_boundary_emit_refusal_message(
     Stage0CrateBoundaryEmitPackageCrateDirMissing { package_name: package_name } =>
       concat(
         "stage0 partition emit refused: missing package crate_dir for ",
+        package_name
+      )
+    Stage0CrateBoundaryEmitPackageIdentRefused { cause: cause } =>
+      concat("stage0 partition emit refused: ", package_ident_refusal_message(cause: cause))
+    Stage0CrateBoundaryEmitPackageIdentUnbound { package_name: package_name } =>
+      concat(
+        "stage0 partition emit refused: package is referenced but not in the admitted ident set: ",
         package_name
       )
   }
@@ -332,7 +348,8 @@ fn stage0_partition_row_features(row: GeneratedPartitionCrateRow) -> List<CargoF
 }
 
 fn stage0_partition_row_to_spec_outcome(
-  row: GeneratedPartitionCrateRow
+  row: GeneratedPartitionCrateRow,
+  package_idents: List<PackageIdentBinding>
 ) -> Stage0PartitionRowSpecOutcome {
   match stage0_partition_row_dependencies_outcome(row: row) {
     Stage0PartitionRowDepsRefused { cause: cause } =>
@@ -348,7 +365,8 @@ fn stage0_partition_row_to_spec_outcome(
           reexport_packages: row.reexport_packages,
           dependencies: deps,
           features: stage0_partition_row_features(row: row),
-          carries_non_empty_wrappers: row.carries_non_empty_wrappers
+          carries_non_empty_wrappers: row.carries_non_empty_wrappers,
+          package_idents: package_idents
         }
       }
   }
@@ -399,17 +417,40 @@ fn render_stage0_foundation_lib(spec: Stage0CrateSpec) -> String {
   }
 }
 
-fn render_stage0_layered_core_lib(spec: Stage0CrateSpec) -> String {
-  let sorted_reexports = spec.reexport_packages
-    |> sort_by(pkg => stage0_package_name_to_rust_ident(package_name: pkg))
-  let reexports = sorted_reexports
-    |> map(pkg =>
-      concat(
-        "pub use ",
-        stage0_package_name_to_rust_ident(package_name: pkg),
-        "::*;"
-      )
-    )
+fn stage0_layered_core_reexport_lines_outcome(spec: Stage0CrateSpec) -> Stage0ReexportLinesOutcome {
+  spec.reexport_packages
+    |> fold(init: Stage0ReexportLinesOk { lines: [] }, f: fn(acc, pkg) {
+      match acc {
+        Stage0ReexportLinesIdentUnbound { package_name: missing } =>
+          Stage0ReexportLinesIdentUnbound { package_name: missing }
+        Stage0ReexportLinesOk { lines: lines } =>
+          match package_ident_bound(bindings: spec.package_idents, package_name: pkg) {
+            Absent => Stage0ReexportLinesIdentUnbound { package_name: pkg }
+            Present { value: ident } =>
+              Stage0ReexportLinesOk { lines: lines |> concat([ident]) }
+          }
+      }
+    })
+}
+
+fn render_stage0_layered_core_lib_outcome(spec: Stage0CrateSpec) -> Stage0CrateLibEmitOutcome {
+  match stage0_layered_core_reexport_lines_outcome(spec: spec) {
+    Stage0ReexportLinesIdentUnbound { package_name: package_name } =>
+      Stage0CrateLibEmitIdentUnbound { package_name: package_name }
+    Stage0ReexportLinesOk { lines: idents } =>
+      Stage0CrateLibEmitOk {
+        file: TextFile {
+          path: concat(spec.crate_dir, "/src/lib.rs"),
+          content: render_stage0_layered_core_lib(spec: spec, reexport_idents: idents)
+        }
+      }
+  }
+}
+
+fn render_stage0_layered_core_lib(spec: Stage0CrateSpec, reexport_idents: List<String>) -> String {
+  let reexports = reexport_idents
+    |> sort_by(ident => ident)
+    |> map(ident => concat("pub use ", ident, "::*;"))
     |> join(separator: "\n")
   let includes = spec.modules
     |> map(m => stage0_crate_mod_include(module_basename: m))
@@ -423,24 +464,31 @@ fn render_stage0_layered_core_lib(spec: Stage0CrateSpec) -> String {
 }
 
 fn stage0_emit_shell_module_reexports_outcome(
-  modules: List<String>
+  modules: List<String>,
+  package_idents: List<PackageIdentBinding>
 ) -> Stage0EmitShellReexportsOutcome {
   modules
     |> fold(init: Stage0EmitShellReexportsOk { lines: [] }, f: fn(acc, module_basename) {
       match acc {
         Stage0EmitShellReexportsRefused { cause: cause } =>
           Stage0EmitShellReexportsRefused { cause: cause }
+        Stage0EmitShellReexportsIdentUnbound { package_name: missing } =>
+          Stage0EmitShellReexportsIdentUnbound { package_name: missing }
         Stage0EmitShellReexportsOk { lines: lines } =>
           match stage0_lookup_module_owner_package_name(module_basename: module_basename) {
             Stage0ModuleOwnerFound { package_name: owner } =>
-              Stage0EmitShellReexportsOk {
-                lines: lines |> concat([
-                  concat(
-                    "pub mod ", module_basename, " {\n    pub use ",
-                    stage0_package_name_to_rust_ident(package_name: owner),
-                    "::", module_basename, "::*;\n}"
-                  )
-                ])
+              match package_ident_bound(bindings: package_idents, package_name: owner) {
+                Absent => Stage0EmitShellReexportsIdentUnbound { package_name: owner }
+                Present { value: ident } =>
+                  Stage0EmitShellReexportsOk {
+                    lines: lines |> concat([
+                      concat(
+                        "pub mod ", module_basename, " {\n    pub use ",
+                        ident,
+                        "::", module_basename, "::*;\n}"
+                      )
+                    ])
+                  }
               }
             Stage0ModuleOwnerRefused { cause: cause } =>
               Stage0EmitShellReexportsRefused { cause: cause }
@@ -450,9 +498,11 @@ fn stage0_emit_shell_module_reexports_outcome(
 }
 
 fn render_stage0_emit_core_lib_outcome(spec: Stage0CrateSpec) -> Stage0CrateLibEmitOutcome {
-  match stage0_emit_shell_module_reexports_outcome(modules: spec.modules) {
+  match stage0_emit_shell_module_reexports_outcome(modules: spec.modules, package_idents: spec.package_idents) {
     Stage0EmitShellReexportsRefused { cause: cause } =>
       Stage0CrateLibEmitRefused { cause: cause }
+    Stage0EmitShellReexportsIdentUnbound { package_name: package_name } =>
+      Stage0CrateLibEmitIdentUnbound { package_name: package_name }
     Stage0EmitShellReexportsOk { lines: lines } =>
       Stage0CrateLibEmitOk {
         file: TextFile {
@@ -486,25 +536,47 @@ fn emit_stage0_crate_lib_outcome(spec: Stage0CrateSpec) -> Stage0CrateLibEmitOut
           content: render_stage0_foundation_lib(spec)
         }
       }
-    LayeredCoreCrate =>
-      Stage0CrateLibEmitOk {
-        file: TextFile {
-          path: concat(spec.crate_dir, "/src/lib.rs"),
-          content: render_stage0_layered_core_lib(spec)
-        }
-      }
+    LayeredCoreCrate => render_stage0_layered_core_lib_outcome(spec: spec)
     EmitCoreCrate => render_stage0_emit_core_lib_outcome(spec)
   }
 }
 
+// THE IDENT PROJECTION IS ADMITTED ONCE, HERE, BECAUSE THIS IS THE ONE PLACE THE WHOLE PACKAGE-NAME
+// SET IS IN HAND. Each layered crate's lib.rs re-exports the crates below it as `pub use <ident>::*;`,
+// and that ident is the package name with hyphens carried to underscores -- a projection that is NOT
+// injective, since "a-b" and "a_b" share an image. Two packages colliding there means a facade
+// re-exporting the wrong crate, or the same `pub use` twice: a crate wrong at the reference level
+// while every row that produced it is individually well formed.
+//
+// A COLLISION IS A PAIRWISE PROPERTY OF THE SET, so no per-name check can see it -- each colliding
+// name is individually valid. That is why the admission is a fold over the whole set rather than a
+// predicate at each call site, and why it sits at the plan rather than in the renderer. The admitted
+// BINDINGS ride on every spec, and the renderers read idents from them through package_ident_bound
+// rather than re-projecting a name: there is one projection, and what is rendered is what was
+// admitted. A package a renderer asks for that is not in the set refuses, it is not re-derived.
+//
+// STATED AT ITS ACTUAL STRENGTH: on stage0 today this is LATENT, not live. All six authored package
+// names are hyphen-only and cannot collide, so this admission changes no rendered byte. It is landed
+// because the derived partition will supply names nobody reviewed one at a time.
 fn stage0_crate_plan_outcome() -> Stage0CratePlanOutcome {
+  match rust_crate_package_idents(
+    package_names: generated_partition_crate_rows |> map(row => row.package_name)
+  ) {
+    PackageIdentSetRefused { cause: cause } => Stage0CratePlanIdentRefused { cause: cause }
+    PackageIdentSetOk { bindings: bindings } => stage0_crate_plan_from_admitted_rows(package_idents: bindings)
+  }
+}
+
+fn stage0_crate_plan_from_admitted_rows(package_idents: List<PackageIdentBinding>) -> Stage0CratePlanOutcome {
   generated_partition_crate_rows
     |> fold(init: Stage0CratePlanOk { plan: Stage0CratePlan { crates: [] } }, f: fn(acc, row) {
       match acc {
         Stage0CratePlanRefused { cause: cause } =>
           Stage0CratePlanRefused { cause: cause }
+        Stage0CratePlanIdentRefused { cause: cause } =>
+          Stage0CratePlanIdentRefused { cause: cause }
         Stage0CratePlanOk { plan: plan } =>
-          match stage0_partition_row_to_spec_outcome(row: row) {
+          match stage0_partition_row_to_spec_outcome(row: row, package_idents: package_idents) {
             Stage0PartitionRowSpecRefused { cause: cause } =>
               Stage0CratePlanRefused { cause: cause }
             Stage0PartitionRowSpecOk { spec: spec } =>
@@ -532,6 +604,10 @@ fn emit_stage0_crate_boundary_files_outcome(
               Stage0CrateBoundaryEmitRefused {
                 cause: stage0_map_module_owner_refusal_to_boundary(cause: cause)
               }
+            Stage0CrateLibEmitIdentUnbound { package_name: package_name } =>
+              Stage0CrateBoundaryEmitRefused {
+                cause: Stage0CrateBoundaryEmitPackageIdentUnbound { package_name: package_name }
+              }
             Stage0CrateLibEmitOk { file: lib_file } =>
               Stage0CrateBoundaryEmitOk {
                 files: files |> concat([
@@ -549,6 +625,10 @@ fn stage0_crate_boundary_emit_outcome() -> Stage0CrateBoundaryEmitOutcome {
     Stage0CratePlanRefused { cause: cause } =>
       Stage0CrateBoundaryEmitRefused {
         cause: stage0_map_package_dir_refusal_to_boundary(cause: cause)
+      }
+    Stage0CratePlanIdentRefused { cause: cause } =>
+      Stage0CrateBoundaryEmitRefused {
+        cause: Stage0CrateBoundaryEmitPackageIdentRefused { cause: cause }
       }
     Stage0CratePlanOk { plan: plan } =>
       emit_stage0_crate_boundary_files_outcome(plan: plan)

@@ -60,7 +60,6 @@ fn mtcollins1_render_fetch(outcome: BootImageFetchOutcome) -> ProcessExit {
 }
 
 fn mtcollins1_fetch_boot_image() -> ProcessExit
-  uses net: std.resources.Network
 {
   return mtcollins1_render_fetch(
     outcome: fetch_verified_boot_image(
@@ -82,7 +81,6 @@ data mtcollins1_wrong_pin: NonEmptyStr = "00000000000000000000000000000000000000
 data mtcollins1_wrong_pin_export_dir: NonEmptyStr = "/var/tmp"
 
 fn mtcollins1_fetch_boot_image_wrong_pin_control() -> ProcessExit
-  uses net: std.resources.Network
 {
   return mtcollins1_render_fetch(
     outcome: fetch_verified_boot_image(
@@ -106,7 +104,6 @@ fn mtcollins1_fetch_boot_image_wrong_pin_control() -> ProcessExit
 data mtcollins1_unowned_export_dir: NonEmptyStr = "/var/tmp"
 
 fn mtcollins1_fetch_boot_image_unowned_export_control() -> ProcessExit
-  uses net: std.resources.Network
 {
   return mtcollins1_render_fetch(
     outcome: fetch_verified_boot_image(

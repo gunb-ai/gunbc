@@ -102,8 +102,8 @@ pub use native_lane_runner::{
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
-    floor_discovery_path_excluded, make_eval_context, make_eval_context_with_runtime_options,
-    run_claim_measured, run_required_floor,
+    floor_discovery_path_excluded, floor_seam, make_eval_context,
+    make_eval_context_with_runtime_options, run_claim_measured, run_required_floor,
 };
 pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
@@ -529,6 +529,44 @@ pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
 /// Single authority for workspace-root discovery (.git ancestor walk).
 /// `workspace_root()` memoizes from the process cwd; tests pass an explicit start path.
 pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
+    workspace_root_resolve(spawn_workspace_root_env().as_deref(), start_cwd)
+}
+
+/// THE CHECKOUT ROOT RECEIVED AT SPAWN, the dissolution this scaffold named from the start
+/// (`release bins receive checkout-root at spawn (env/argv)`), landed for the one population that
+/// needs it: a release locus (`gunbc.live_deploy.emit` `release_locus_install_steps` — the approval
+/// broker's and the microVM slot controller's) is dag/ + src/v2 + the binary + a tree receipt and
+/// is NOT a git checkout, so the walk below refused it and neither unit could start (parent ruling
+/// 2026-09-21, measured on srv1: `gunbc-microvm-slot@srv1-13` exit 101, `gunbc-approval-broker`
+/// dead). Authority for the name and the marker: `gunbc.cli_run_workspace_root_scaffold`
+/// `gunbc_workspace_root_env_name` / `release_locus_tree_receipt_name`, projected into the seed by
+/// `gunbc.release_locus_seed_constants_emit` and re-exported below. The seed does NOT transcribe
+/// them: a spelling that moves on the .dag side moves here at the next regen, and a hand edit of
+/// the generated file is refused by the generated-artifact drift wall.
+///
+/// ONE ENV, READ AT ONE SITE, CONSUMED BY BOTH ROOTS: `workspace_root()` and
+/// `process_workspace_root()` are the only readers, through this function, and no caller re-reads
+/// it. WHEN SET IT IS THE AUTHORITY: the git / Cargo.toml walk is not consulted, and a value that
+/// does not name a locus (no `dag/`, or no tree receipt) refuses naming the path and the missing
+/// member rather than falling back to the walk — a wrong root silently replaced by a walked one is
+/// the class the walk itself was written against. WHEN UNSET nothing changes.
+pub(crate) use crate::release_locus_seed_constants_generated::{
+    GUNBC_WORKSPACE_ROOT_ENV, RELEASE_LOCUS_TREE_RECEIPT_NAME,
+};
+
+fn spawn_workspace_root_env() -> Option<String> {
+    std::env::var(GUNBC_WORKSPACE_ROOT_ENV)
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+}
+
+/// The resolver over supplied values, so a test can drive the env arm without touching the
+/// process environment: `spawn` set → the locus or a refusal, never the walk; `spawn` unset → the
+/// `.git`-ancestor walk exactly as before.
+pub(crate) fn workspace_root_resolve(spawn: Option<&str>, start_cwd: &Path) -> PathBuf {
+    if let Some(named) = spawn {
+        return spawn_workspace_root_admitted(Path::new(named));
+    }
     for dir in start_cwd.ancestors() {
         if dir.join(".git").exists() {
             return dir.to_path_buf();
@@ -541,6 +579,34 @@ pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
          path is not a runtime fact)",
         start_cwd.display()
     )
+}
+
+fn spawn_workspace_root_admitted(named: &Path) -> PathBuf {
+    spawn_workspace_root_locus(named).unwrap_or_else(|refusal| panic!("{refusal}"))
+}
+
+/// The locus check as a typed refusal, so `bind_process_workspace_root` reports it through its
+/// own exit contract; `spawn_workspace_root_admitted` is the same check for the readers that
+/// still answer an absent root with a panic.
+fn spawn_workspace_root_locus(named: &Path) -> Result<PathBuf, String> {
+    if !named.join("dag").is_dir() {
+        return Err(format!(
+            "workspace_root: {}={} names no release locus: missing member dag/ (the walk is not \
+             consulted when the root is received at spawn)",
+            GUNBC_WORKSPACE_ROOT_ENV,
+            named.display()
+        ));
+    }
+    if !named.join(RELEASE_LOCUS_TREE_RECEIPT_NAME).is_file() {
+        return Err(format!(
+            "workspace_root: {}={} names no release locus: missing member {} (the tree receipt \
+             the locus install writes last; a locus without one was interrupted)",
+            GUNBC_WORKSPACE_ROOT_ENV,
+            named.display(),
+            RELEASE_LOCUS_TREE_RECEIPT_NAME
+        ));
+    }
+    Ok(named.to_path_buf())
 }
 
 /// Temporary TOML realization for `gunbc.stage0_cargo_manifest.CargoManifestBinParse`.
@@ -1304,13 +1370,28 @@ mod roadmap_acceptance_history_projection_tests {
 // (env/argv) or Step 5 deletes this Rust parallel and the v2 floor workflow owns path
 // resolution.
 pub fn workspace_root() -> PathBuf {
-    static ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-    ROOT.get_or_init(|| {
-        let cwd =
-            std::env::current_dir().expect("workspace_root: process working directory unavailable");
-        workspace_root_from(&cwd)
-    })
-    .clone()
+    CHECKOUT_ROOT
+        .get_or_init(|| {
+            let cwd = std::env::current_dir()
+                .expect("workspace_root: process working directory unavailable");
+            workspace_root_from(&cwd)
+        })
+        .clone()
+}
+
+static CHECKOUT_ROOT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Receive the checkout root from the request rather than walking up to find a `.git`.
+///
+/// This is the dissolution THIS SCAFFOLD ALREADY NAMES -- "release bins receive checkout-root at
+/// spawn (env/argv)" -- discharged for the population that can supply it: a `run` whose source
+/// roots name their own base. The walk stays for every caller that supplies nothing, so no
+/// existing invocation changes, and the two roots this file memoizes are bound to ONE derived
+/// directory rather than to two independent proxies for it (DESIGN section 3: one fact, one
+/// authority). They were never two facts -- in a checkout they are the same directory, and outside
+/// one the walk simply has no answer.
+pub(crate) fn bind_checkout_root(root: PathBuf) {
+    let _ = CHECKOUT_ROOT.set(root);
 }
 
 /// The process working directory is one mutable cell shared by every test thread in this binary,
@@ -2071,11 +2152,225 @@ pub(crate) const CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER: &str =
 /// walk up from cwd. Fail-closed panic when neither locates the workspace — no silent fallback
 /// to cwd-relative or absolute spellings as index keys.
 fn process_workspace_root() -> PathBuf {
-    static ROOT: OnceLock<PathBuf> = OnceLock::new();
-    ROOT.get_or_init(resolve_process_workspace_root).clone()
+    PROCESS_WORKSPACE_ROOT
+        .get_or_init(resolve_process_workspace_root)
+        .0
+        .clone()
 }
 
-fn resolve_process_workspace_root() -> PathBuf {
+/// THE ROOT AND THE RULE THAT NAMED IT ARE ONE CELL, so the report cannot disagree with the bind.
+///
+/// They were two facts in the first writing -- the root memoized here, the basis returned by
+/// `bind_process_workspace_root` -- and the already-bound path then answered `Declared` for ANY
+/// pre-set root, including one this `get_or_init` had just discovered on a read that happened
+/// before the bind. The verb printed `[workspace-root] declared <root>` for a root the request
+/// never named: a report that names the wrong rule, at the one boundary that exists to make the
+/// selection observable, which is worse than printing nothing (DESIGN section 5 -- no fabricated
+/// plausible output). Caught by review 69584 on gunbc#11960. Storing the pair makes the
+/// disagreement unconstructible rather than checked.
+static PROCESS_WORKSPACE_ROOT: OnceLock<(PathBuf, WorkspaceRootBasis)> = OnceLock::new();
+
+/// Why a request may NAME its workspace root, and why discovery is asked FIRST.
+///
+/// `resolve_process_workspace_root` answers "which tree am I in" by asking git for a checkout
+/// carrying Cargo.toml beside dag/. That is a proxy, correct inside a checkout and unable to say
+/// anything at all outside one -- which is not an exotic case: it is an executor handed an
+/// immutable source snapshot by content identity (`gunbc.fabric_source_snapshot`), the whole point
+/// of which is that no repository travelled with the bytes. Discovery answered that invocation with
+/// a PANIC before a single module was read, so "source without a repository" was unrunnable rather
+/// than unsupported.
+///
+/// WHAT THE ROOT ESTABLISHES, which is what the rule is derived from: a base such that every source
+/// root and module file has a stable repo-relative spelling, so module-graph facts and
+/// module-content indices key alike across processes.
+///
+/// DISCOVERY IS ASKED FIRST BECAUSE IT IS THE INCUMBENT AUTHORITY, AND THE FIRST WRITING OF THIS
+/// FUNCTION HAD IT THE OTHER WAY ROUND ON A FALSE PREMISE. That premise was that a relative
+/// `--source-root` spelling is relative to cwd. It is not: `anchor_source_root` anchors a relative
+/// root against the WORKSPACE ROOT, so `--source-root dag` names `<workspace>/dag` wherever the
+/// process stands. Preferring a cwd-derived base would therefore have re-keyed invocations that
+/// work today whenever cwd is a subdirectory that happens to contain a same-named root -- the same
+/// run, the same answer, different index keys, with nothing to notice it. Measured while checking
+/// this: from `src/` with `--source-root ../dag`, the cwd-first rule accepted `src` as the base and
+/// the claims PASSED, spelling every key against `src/` where the discovered root would have
+/// spelled them against the repository. Correct answer, divergent keys, no diagnostic.
+///
+/// SO THE TWO RULES PARTITION A POPULATION RATHER THAN RETRY ONE QUESTION. Where a checkout exists,
+/// it is the base, exactly as before this change -- no invocation that succeeds today resolves any
+/// differently. Where NONE exists, discovery has no answer to widen from, and the only party that
+/// can name a base is the request: every declared root must then be a relative path of ordinary
+/// components resolving under cwd, and a root that escapes cwd or is absolute disqualifies the rule
+/// rather than being reinterpreted. When neither rule applies the bind REFUSES, so the failure arm
+/// is a refusal and not a widen (DESIGN section 5). Which rule answered is returned and reported by
+/// the caller, because a selection nobody can observe is indistinguishable from a silent one.
+/// THE TWO WAYS THE REQUEST CAN FAIL TO NAME A BASE ARE DIFFERENT FACTS AND SEND A CALLER TO
+/// DIFFERENT PLACES. "You named no base" is a property of the SPELLINGS -- an absolute root, or one
+/// that escapes cwd, leaves nothing for this rule to read. "A root you named is not there" is a
+/// property of the TREE, and it is the state a typo produces. Answering both with one `None` made
+/// the refusal say "no workspace root" to someone whose real problem was a misspelled directory,
+/// and it is the conflation DESIGN section 5 refuses: the line must stop, and the stop must say
+/// where. Named by the side-chat review of gunbc#11960.
+pub(crate) enum DeclaredBase {
+    Named(PathBuf),
+    NotNamed,
+    RootAbsent { root: String },
+}
+
+/// The rule itself, over an EXPLICIT base, which is the only form there is.
+///
+/// A cwd-reading wrapper stood here and was deleted: once `bind_process_workspace_root` read the
+/// working directory itself -- it needs it for the refusal text either way -- the wrapper had no
+/// call site, and an uncalled `pub(crate)` item is what `dead_code` fires on in a required lane.
+/// It is also the shape DESIGN section 3c names: a declaration whose consumers are a doc comment.
+/// Taking the base as a parameter is what lets this rule be measured at all, since the tests in
+/// this lane may not chdir (the concurrent-cwd gate above), so a rule that could only be exercised
+/// by moving the process could not be exercised.
+pub(crate) fn declared_workspace_root_from(cwd: &Path, source_roots: &[String]) -> DeclaredBase {
+    if source_roots.is_empty() {
+        return DeclaredBase::NotNamed;
+    }
+    for root in source_roots {
+        let spelled = Path::new(root);
+        if spelled.is_absolute() {
+            return DeclaredBase::NotNamed;
+        }
+        // A ROOT THAT ESCAPES cwd MEANS cwd IS NOT THE BASE, and this clause is here because the
+        // rule without it was wrong in a way that still passed: run from `src/` with
+        // `--source-root ../dag`, and `src/../dag` is a directory, so cwd was accepted as the base
+        // and every module key was then spelled against `src/` -- `../dag/test/...` where the
+        // discovered root would have said `dag/test/...`. The run answered correctly and keyed
+        // differently, which is the silent divergence this whole derivation exists to prevent. A
+        // relative spelling names cwd as the base only when it stays inside it.
+        if spelled
+            .components()
+            .any(|c| !matches!(c, std::path::Component::Normal(_)))
+        {
+            return DeclaredBase::NotNamed;
+        }
+    }
+    for root in source_roots {
+        if !cwd.join(Path::new(root)).is_dir() {
+            return DeclaredBase::RootAbsent { root: root.clone() };
+        }
+    }
+    DeclaredBase::Named(cwd.to_path_buf())
+}
+
+/// Every RELATIVE source root must resolve under the base that was bound, whichever rule named it.
+///
+/// This is the (C) separation applied to the discovered arm as well: a misspelled root under a
+/// discoverable checkout previously reached `anchor_source_root` and PANICKED at exit 101, naming
+/// the right directory in a message with no exit contract. It now refuses here, typed, before any
+/// module is read -- and it does NOT refuse an absolute root, because `anchor_source_root` owns a
+/// re-anchoring rule for absolute spellings baked by another runner's checkout (sccache) and
+/// second-guessing it here would refuse invocations that legitimately work.
+fn relative_roots_resolve_under(base: &Path, source_roots: &[String]) -> Result<(), String> {
+    for root in source_roots {
+        let spelled = Path::new(root);
+        if spelled.is_absolute() {
+            continue;
+        }
+        if !base.join(spelled).is_dir() {
+            return Err(format!(
+                "source root {root} does not resolve under the workspace root {}.\n  \
+                 cause: a declared root is the subject of the run, so a root that is not there is \
+                 a refusal rather than a smaller corpus.\n  \
+                 remedy: correct the spelling, or run from the directory the roots are named \
+                 relative to.",
+                base.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Bind the process workspace root once, from the request, before anything reads it.
+///
+/// Returns `Err` with a located cause when neither the request nor discovery can name a base --
+/// the state `resolve_process_workspace_root` answers with a panic. A panic is not a refusal: it
+/// carries no exit contract and prints no diagnostic a caller can act on, which is precisely what
+/// DESIGN section 5 forbids at a boundary whose job is to refuse precisely.
+/// Which of the two rules named the base, so the choice is reported rather than inferred.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum WorkspaceRootBasis {
+    /// The request named it: every `--source-root` is relative and resolves under cwd.
+    Declared,
+    /// The request named no base, so the checkout walk answered.
+    Discovered,
+    /// The spawning unit named it through `GUNBC_WORKSPACE_ROOT`: a release locus, which is not a
+    /// checkout, so neither rule above is consulted and a locus that is not one refuses.
+    Spawned,
+}
+
+impl WorkspaceRootBasis {
+    pub fn wire(&self) -> &'static str {
+        match self {
+            WorkspaceRootBasis::Declared => "declared",
+            WorkspaceRootBasis::Discovered => "discovered",
+            WorkspaceRootBasis::Spawned => "spawned",
+        }
+    }
+}
+
+pub fn bind_process_workspace_root(
+    source_roots: &[String],
+) -> Result<(PathBuf, WorkspaceRootBasis), String> {
+    if let Some((root, basis)) = PROCESS_WORKSPACE_ROOT.get() {
+        return Ok((root.clone(), *basis));
+    }
+    let cwd = std::env::current_dir().map_err(|e| {
+        format!("no workspace root: the process working directory is unavailable ({e})")
+    })?;
+    // THE SPAWN ROOT IS ASKED FIRST AND ANSWERS ALONE: a release locus is not a checkout, so when
+    // the spawning unit names one, discovery and the declared rule are not consulted, and a named
+    // path that is not a locus refuses here rather than falling through to either of them.
+    let spawned = match spawn_workspace_root_env() {
+        Some(named) => Some(spawn_workspace_root_locus(Path::new(&named))?),
+        None => None,
+    };
+    let (root, basis) = match spawned {
+        Some(locus) => (locus, WorkspaceRootBasis::Spawned),
+        None => match try_resolve_process_workspace_root() {
+            Some(discovered) => (discovered, WorkspaceRootBasis::Discovered),
+            None => match declared_workspace_root_from(&cwd, source_roots) {
+                DeclaredBase::Named(declared) => (declared, WorkspaceRootBasis::Declared),
+                // THE TWO REFUSALS BELOW ARE THE POINT OF THE SPLIT. A caller whose root is misspelled
+                // is told which root; a caller who named no base at all is told that, and neither is
+                // told the other's story.
+                DeclaredBase::RootAbsent { root } => {
+                    return Err(format!(
+                        "no workspace root: there is no checkout to discover one from, and the \
+                     declared source root {root} does not resolve under the current directory \
+                     {}.\n  cause: with no checkout, the request is the only thing that can name \
+                     a base, and a root that is not there cannot name one.\n  remedy: correct the \
+                     spelling, or run from the directory the roots are named relative to.",
+                        cwd.display()
+                    ));
+                }
+                DeclaredBase::NotNamed => {
+                    return Err(format!(
+                        "no workspace root: none of the current directory {}'s ancestors is a git \
+                     checkout carrying Cargo.toml beside dag/, and the request names no base \
+                     either -- every --source-root would have to be a relative path of ordinary \
+                     components.\n  cause: the root is the base every repo-relative module key is \
+                     spelled against, so a run without one would key its module graph and its \
+                     content indices differently.\n  remedy: name the source roots relative to the \
+                     directory the run starts in.",
+                        cwd.display()
+                    ));
+                }
+            },
+        },
+    };
+    relative_roots_resolve_under(&root, source_roots)?;
+    let _ = PROCESS_WORKSPACE_ROOT.set((root.clone(), basis));
+    bind_checkout_root(root.clone());
+    Ok((root, basis))
+}
+
+/// The discovery half of [`resolve_process_workspace_root`], without the panic, so the boundary
+/// above can turn its absence into a typed refusal rather than an abort.
+fn try_resolve_process_workspace_root() -> Option<PathBuf> {
     if let Ok(output) = std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .output()
@@ -2085,28 +2380,41 @@ fn resolve_process_workspace_root() -> PathBuf {
             if !root.is_empty() {
                 let candidate = PathBuf::from(&root);
                 if candidate.join("Cargo.toml").is_file() && candidate.join("dag").is_dir() {
-                    return candidate;
+                    return Some(candidate);
                 }
             }
         }
     }
-    let mut dir = std::env::current_dir().expect("process_workspace_root: cwd unavailable");
+    let mut dir = std::env::current_dir().ok()?;
     loop {
         if dir.join("Cargo.toml").is_file() && dir.join("dag").is_dir() {
-            return dir;
+            return Some(dir);
         }
         if !dir.pop() {
-            let cwd = std::env::current_dir()
-                .map(|d| d.display().to_string())
-                .unwrap_or_else(|_| "<unavailable>".into());
-            panic!(
-                "process_workspace_root: cannot locate workspace — git rev-parse did not name \
-                 a Cargo.toml+dag/ tree and no such ancestor of cwd {cwd}; compiled-in root \
-                 was {}",
-                workspace_root().display()
-            );
+            return None;
         }
     }
+}
+
+fn resolve_process_workspace_root() -> (PathBuf, WorkspaceRootBasis) {
+    if let Some(named) = spawn_workspace_root_env() {
+        return (
+            spawn_workspace_root_admitted(Path::new(&named)),
+            WorkspaceRootBasis::Spawned,
+        );
+    }
+    let discovered = try_resolve_process_workspace_root().unwrap_or_else(|| {
+        let cwd = std::env::current_dir()
+            .map(|d| d.display().to_string())
+            .unwrap_or_else(|_| "<unavailable>".into());
+        panic!(
+            "process_workspace_root: cannot locate workspace — git rev-parse did not name \
+             a Cargo.toml+dag/ tree and no such ancestor of cwd {cwd}; compiled-in root \
+             was {}",
+            workspace_root().display()
+        )
+    });
+    (discovered, WorkspaceRootBasis::Discovered)
 }
 
 /// Repo-relative path under [`process_workspace_root`]. Fail-closed: returns a typed refusal
@@ -2423,6 +2731,52 @@ mod process_workspace_root_tests {
         workspace_root,
     };
     use std::path::Path;
+
+    #[test]
+    fn declared_workspace_root_names_cwd_when_every_root_is_under_it() {
+        // The base is PASSED, never entered: this lane's tests may not chdir. Both roots are
+        // ordinary relative spellings under it -- the shape an executor's invocation has.
+        let ws = super::workspace_root();
+        match super::declared_workspace_root_from(&ws, &["dag".to_string(), "src/v2".to_string()]) {
+            super::DeclaredBase::Named(named) => assert_eq!(named, ws),
+            _ => panic!("two ordinary roots under the base must name it"),
+        }
+    }
+
+    #[test]
+    fn declared_workspace_root_refuses_a_root_that_escapes_cwd() {
+        // `src/../dag` IS a directory, so an is_dir() guard admits it while it resolves
+        // outside cwd -- the input that made the first cut of this rule accept a
+        // subdirectory as the base and key every module against it. Disqualifying the
+        // rule is the point: the run then takes the discovered root, unchanged.
+        let src = super::workspace_root().join("src");
+        assert!(
+            src.join("../dag").is_dir(),
+            "the input must be one an is_dir() guard admits"
+        );
+        for spelling in ["../dag", "./v2", "/tmp"] {
+            assert!(
+                matches!(
+                    super::declared_workspace_root_from(&src, &[spelling.to_string()]),
+                    super::DeclaredBase::NotNamed
+                ),
+                "{spelling} must leave the request naming no base"
+            );
+        }
+        assert!(matches!(
+            super::declared_workspace_root_from(&src, &[]),
+            super::DeclaredBase::NotNamed
+        ));
+        // A ROOT THAT IS SIMPLY NOT THERE IS A DIFFERENT ANSWER, and keeping the two apart is what
+        // lets the refusal name the misspelled root instead of reporting a missing workspace.
+        assert!(matches!(
+            super::declared_workspace_root_from(
+                &super::workspace_root(),
+                &["no-such-root".to_string()]
+            ),
+            super::DeclaredBase::RootAbsent { .. }
+        ));
+    }
 
     #[test]
     fn process_workspace_root_locates_cargo_and_dag() {
@@ -2782,6 +3136,50 @@ mod workspace_root_discovery_tests {
         assert!(sub.is_dir(), "dag/ must exist under checkout");
         let got = workspace_root_from(&sub);
         assert_eq!(canonical(&got), canonical(&top));
+    }
+
+    /// THE ROOT RECEIVED AT SPAWN IS THE AUTHORITY AND THE WALK IS NOT REACHED: the start path
+    /// is a real checkout subdirectory the walk would resolve, and the answer is the locus anyway.
+    #[test]
+    fn spawn_root_is_authority_and_the_walk_is_not_consulted() {
+        let top = Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .expect("git rev-parse");
+        assert!(top.status.success(), "must run inside a git checkout");
+        let top = PathBuf::from(String::from_utf8(top.stdout).unwrap().trim());
+        let locus = fixture_root("locus");
+        std::fs::create_dir_all(locus.join("dag")).expect("dag dir");
+        std::fs::write(
+            locus.join(super::RELEASE_LOCUS_TREE_RECEIPT_NAME),
+            "candidate_revision=x\n",
+        )
+        .expect("receipt");
+        let got = super::workspace_root_resolve(Some(locus.to_str().unwrap()), &top.join("dag"));
+        let _ = std::fs::remove_dir_all(&locus);
+        assert_eq!(canonical(&got), canonical(&locus));
+        assert_ne!(canonical(&got), canonical(&top));
+    }
+
+    /// A SPAWN ROOT THAT IS NOT A LOCUS REFUSES NAMING THE MISSING MEMBER, and does not fall back
+    /// to the walk even though the start path is inside a checkout.
+    #[test]
+    fn spawn_root_without_receipt_refuses_instead_of_walking() {
+        let top = Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .expect("git rev-parse");
+        let top = PathBuf::from(String::from_utf8(top.stdout).unwrap().trim());
+        let locus = fixture_root("locus-no-receipt");
+        std::fs::create_dir_all(locus.join("dag")).expect("dag dir");
+        let result = std::panic::catch_unwind(|| {
+            super::workspace_root_resolve(Some(locus.to_str().unwrap()), &top.join("dag"))
+        });
+        let _ = std::fs::remove_dir_all(&locus);
+        assert!(
+            result.is_err(),
+            "a spawn root without the tree receipt must refuse, not walk"
+        );
     }
 
     /// Fail-closed: Cargo.toml+dag/ without a `.git` ancestor is not a checkout root.
@@ -9178,10 +9576,6 @@ fn visit_bare_reference_providers(
     // This does not under-pull. A module that uses a kernel type's CONSTRUCTORS references
     // those names (`True`, `False`) directly, and they resolve on their own; what is skipped
     // here is only the type spelling, which needs no declaring module.
-    let substrate_vocabulary = |name: &str| -> bool {
-        crate::std_types::kernel_type_set().contains_key(name)
-            || crate::std_types::container_type_arity().contains_key(name)
-    };
     let resolve_loop_started = std::time::Instant::now();
     let resolve_loop_pool_before = resolve_stage_slot_snapshot().pool_parse;
     for (name, service_head) in all_names {
@@ -9196,7 +9590,7 @@ fn visit_bare_reference_providers(
         if !service_head && explicit_imports.contains(&name) {
             continue;
         }
-        if !service_head && substrate_vocabulary(&name) {
+        if !service_head && is_substrate_vocabulary(&name) {
             continue;
         }
         let in_call_position = candidates.call_position.contains(&name);
@@ -32247,6 +32641,33 @@ fn collect_module_decl_names(module: &Rc<crate::v1_std_core::Node>) -> Vec<Strin
     names
 }
 
+/// SUBSTRATE VOCABULARY IS NOT A MODULE MEMBER: the kernel type names
+/// (`std_types::kernel_type_set`) and the container carrier spellings
+/// (`std_types::container_type_arity`) are resolved by the type env as primitives and pull no
+/// declaring module. ONE rule, read by every producer that turns a bare name into a module edge --
+/// the census pull and the reference-derived dependency producer -- so neither can bind `String`
+/// to whichever module happens to declare the spelling nearest the reader.
+pub(crate) fn is_substrate_vocabulary(name: &str) -> bool {
+    crate::std_types::kernel_type_set().contains_key(name)
+        || crate::std_types::container_type_arity().contains_key(name)
+}
+
+/// The head `ExprVar` of a dotted chain: the node `ref_field_chain` stops at, along the same
+/// receiver spine.
+fn ref_field_chain_head(
+    node: &Rc<crate::v1_std_core::Node>,
+) -> Option<Rc<crate::v1_std_core::Node>> {
+    use crate::v1_std_core::ExprData;
+    let mut cur = node.children.get(0).cloned()?;
+    loop {
+        match &*cur.expr_data {
+            ExprData::ExprFieldAccess { .. } => cur = cur.children.get(0).cloned()?,
+            ExprData::ExprVar { .. } => return Some(cur),
+            _ => return None,
+        }
+    }
+}
+
 /// Reconstruct a qualified-name segment list from a `FieldAccess` chain (`A.B.c` → `[A, B, c]`).
 /// `None` when the base is not a plain identifier (e.g. a call result `f(x).field` — that is a
 /// value field access, not a module-qualified name).
@@ -32401,6 +32822,14 @@ struct ExprVarClassification<'a> {
     /// empty map, because an empty map would answer "no module declares this name" to every
     /// question and silently collect nothing: ⊥-as-answer standing in for ⊥-as-ignorance.
     decl_index: Option<&'a HashMap<String, std::collections::BTreeSet<String>>>,
+    /// THE DECLARED MODULE NAMES, so a dotted chain can be asked whether its prefix IS a module
+    /// path. `None` where the caller holds no module set (the binder fixtures below).
+    module_names: Option<&'a std::collections::HashSet<String>>,
+    /// The head `ExprVar` of every dotted chain whose prefix names a declared module, marked when
+    /// the chain is recorded. Such a head is the ROOT SEGMENT OF A MODULE PATH -- `v2` in
+    /// `v2.std.node.Node` -- and never a reference to a declaration that happens to share its
+    /// spelling anywhere in the pool.
+    module_path_heads: std::collections::HashSet<*const crate::v1_std_core::Node>,
     tally: &'a mut BTreeMap<ExprVarClass, usize>,
     unclassified: &'a mut Vec<String>,
     /// The module currently being walked. ONE classification spans the whole index build so the
@@ -32439,7 +32868,13 @@ impl ExprVarClassification<'_> {
         ));
     }
 
-    fn classify(&mut self, name: &str, bound_as: Option<ExprVarClass>, chain_head: bool) -> bool {
+    fn classify(
+        &mut self,
+        name: &str,
+        bound_as: Option<ExprVarClass>,
+        chain_head: bool,
+        module_path_head: bool,
+    ) -> bool {
         self.occurrences += 1;
         // THE CHAIN HEAD ARM IS ORDERED LAST, AND THE ORDER IS THE WHOLE CORRECTNESS ARGUMENT.
         // A binder answers first: `fn f(cron: Tab) { cron.List }` reads the parameter. A
@@ -32447,12 +32882,21 @@ impl ExprVarClassification<'_> {
         // MODULE PATH — `some_data_row.field` is an ordinary value reference that merely looks
         // like one, and suppressing it here DELETES A REAL EDGE. Only a head that is neither
         // bound nor declared anywhere is the module-path segment this member is for.
+        //
+        // A HEAD WHOSE CHAIN NAMES A DECLARED MODULE IS A NAMESPACE ROOT, WHETHER OR NOT SOME
+        // DECLARATION SHARES ITS SPELLING. The declared-anywhere test above cannot see that case:
+        // `test.claim.secret_rotation_witness` declares `fn v2()`, so `v2` in `v2.std.node.Node`
+        // is "declared", and without this arm it became a bare reference that resolved to that
+        // test fn -- a dependency edge from production std modules into a test claim. The chain
+        // is already recorded whole and resolved Qualified by its module prefix; its head is that
+        // path's first segment. Only a binder outranks it, exactly as for the undeclared head.
         let head_is_undeclared = chain_head
             && bound_as.is_none()
-            && self
-                .decl_index
-                .map(|index| !index.contains_key(name))
-                .unwrap_or(false);
+            && (module_path_head
+                || self
+                    .decl_index
+                    .map(|index| !index.contains_key(name))
+                    .unwrap_or(false));
         if head_is_undeclared {
             *self
                 .tally
@@ -32621,6 +33065,13 @@ fn collect_node_refs_inner(
     let mut receiver_spine = false;
     if let ExprData::ExprFieldAccess { .. } = &*node.expr_data {
         if let Some(chain) = ref_field_chain(node) {
+            if let Some(module_names) = classify.module_names {
+                if longest_declared_module_prefix(&chain, module_names).is_some() {
+                    if let Some(head) = ref_field_chain_head(node) {
+                        classify.module_path_heads.insert(Rc::as_ptr(&head));
+                    }
+                }
+            }
             chains.push(chain);
             receiver_spine = true;
         }
@@ -32644,7 +33095,9 @@ fn collect_node_refs_inner(
                         .rev()
                         .find(|(n, _)| n == &node.name)
                         .map(|(_, class)| *class);
-                    if classify.classify(&node.name, bound_as, chain_receiver) {
+                    let module_path_head =
+                        chain_receiver && classify.module_path_heads.contains(&Rc::as_ptr(node));
+                    if classify.classify(&node.name, bound_as, chain_receiver, module_path_head) {
                         bare.insert(node.name.clone());
                         // A free `ExprVar` IS a value-position read: nothing binds it here, so
                         // the interpreter resolves it through the file's declarations, then the
@@ -40800,11 +41253,50 @@ pub fn assemble_prepared_subject_closure(
     exclude_substrings: &[String],
     closure: Option<(&MultiEntryIndex, &[String], &[String])>,
 ) -> Result<PreparedSubject, String> {
-    let full_index = build_module_index(source_roots);
-    let full_inventory = floor_source_inventory(&full_index);
+    let corpus = read_source_corpus_once(source_roots);
+    assemble_prepared_subject_from_corpus(&corpus, exclude_substrings, closure)
+}
+
+/// THE CORPUS READ, AS A VALUE A CALLER CAN OWN AND LEND TO MORE THAN ONE DEMAND.
+///
+/// `build_module_index` walks every source root and `read_to_string`s every `.dag` file; it is
+/// not memoised and nothing above it carried the result, so a caller that prepared two subjects
+/// read and indexed the WHOLE CORPUS TWICE. The floor is exactly that caller -- `run_required_floor`
+/// prepares the policy closure and then the gate closure, and both call sites pass IDENTICAL source
+/// roots, identical exclusions and the same entry index, differing only in their closure seeds.
+///
+/// So this is DESIGN §2's authored duplication, and the repair is the one §2 names: several demands
+/// with a shared-state least common ancestor CARRY the first value rather than caching the second.
+/// The ancestor reads once and lends; there is no key, no invalidation rule and no provider, because
+/// none of those is what was missing -- the value simply was not carried.
+pub struct SourceCorpusRead {
+    index: ModuleSourceIndex,
+    inventory: Vec<PreparedSourceView>,
+}
+
+pub fn read_source_corpus_once(source_roots: &[String]) -> SourceCorpusRead {
+    let index = build_module_index(source_roots);
+    let inventory = floor_source_inventory(&index);
+    SourceCorpusRead { index, inventory }
+}
+
+/// The subject fold over a corpus the CALLER read. Identical to the wrapper above in every respect
+/// except that it does not do the reading, so two subjects prepared from one read see one corpus.
+pub fn assemble_prepared_subject_from_corpus(
+    corpus: &SourceCorpusRead,
+    exclude_substrings: &[String],
+    closure: Option<(&MultiEntryIndex, &[String], &[String])>,
+) -> Result<PreparedSubject, String> {
+    let full_index = &corpus.index;
+    let full_inventory = corpus.inventory.clone();
     let mut discovery_exclusions: HashMap<String, String> = HashMap::new();
     let index: ModuleSourceIndex = match closure {
-        None => full_index,
+        // THE ONLY TWO PLACES THE INDEX WAS MOVED rather than read. Both now clone, and what they
+        // clone is `Rc<SourceFile>` pointers plus their keys -- not file contents, and for the
+        // closure arm only the KEPT subset, which on the floor is a small fraction of the corpus.
+        // That is the cost of carrying one read instead of doing a second one, and it is the trade
+        // the duplication was paying in full on every floor run.
+        None => full_index.clone(),
         Some((entry_index, prefixes, module_seeds)) => {
             let started = std::time::Instant::now();
             // THE CLOSURE IS THE LOADER'S BOTH-CLOSURE, NOT THE IMPORT HEADERS. A module in
@@ -40946,8 +41438,9 @@ pub fn assemble_prepared_subject_closure(
                 full_index.len()
             );
             full_index
-                .into_iter()
-                .filter(|(m, _)| keep.contains(m))
+                .iter()
+                .filter(|(m, _)| keep.contains(*m))
+                .map(|(m, sf)| (m.clone(), sf.clone()))
                 .collect()
         }
     };
@@ -41090,7 +41583,18 @@ pub fn prepare_repository_closure(
     exclude_substrings: &[String],
     closure: Option<(&MultiEntryIndex, &[String], &[String])>,
 ) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
-    let subject = assemble_prepared_subject_closure(source_roots, exclude_substrings, closure)?;
+    let corpus = read_source_corpus_once(source_roots);
+    prepare_repository_from_corpus(&corpus, exclude_substrings, closure)
+}
+
+/// The repository fold over a corpus the CALLER read; see `read_source_corpus_once` for why the
+/// read is a value rather than something each prepare does for itself.
+pub fn prepare_repository_from_corpus(
+    corpus: &SourceCorpusRead,
+    exclude_substrings: &[String],
+    closure: Option<(&MultiEntryIndex, &[String], &[String])>,
+) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
+    let subject = assemble_prepared_subject_from_corpus(corpus, exclude_substrings, closure)?;
     // THE SUBJECT IS STATED BY THE REFUSAL ITSELF, not only by the success path.
     //
     // The digest and the two counts are computed above, BEFORE the gate that can reject.
@@ -41644,6 +42148,8 @@ pub(crate) fn build_reference_closure_index(
     let mut unclassified: Vec<String> = Vec::new();
     let mut classify = ExprVarClassification {
         decl_index: Some(&decl_index),
+        module_names: Some(&module_names),
+        module_path_heads: std::collections::HashSet::new(),
         tally: &mut class_tally,
         unclassified: &mut unclassified,
         module: String::new(),
@@ -44556,7 +45062,7 @@ pub use emitted_closure_compile_host::{
     emit_compile_selection_universe_digest, lane_emit_compile_probe_root,
     local_emit_compile_probe_root, required_ci_emit_compile_probe_root,
     required_emit_compile_entries, retain_not_selected_identities, run_required_emit_compile,
-    CargoVerdict, EmitCompileOutcome, EmitCompileSelection, MutationVerdict,
+    CargoVerdict, EmitCompileOutcome, EmitCompileSelection, MutationVerdict, PrivateProbeRoot,
 };
 
 /// THE FIXTURE ROUTE IS TEST-FACING ONLY, AND THAT IS WHY IT HAS ITS OWN `use` RATHER THAN A LINE
@@ -44803,6 +45309,8 @@ mod reference_collector_binder_fixtures {
         let mut unclassified: Vec<String> = Vec::new();
         let mut classify = ExprVarClassification {
             decl_index,
+            module_names: None,
+            module_path_heads: std::collections::HashSet::new(),
             tally: &mut tally,
             unclassified: &mut unclassified,
             module: "fixture".to_string(),

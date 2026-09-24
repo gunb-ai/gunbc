@@ -27,7 +27,6 @@ data srv3_seeded_install_media_unattended_not_proven_marker: Disposition = Scaff
 }
 
 fn srv3_seeded_install_media_toolchain_ensure() -> ProcessExit
-  uses net: std.resources.Network
 {
   srv3_apply_to_process_exit(
     d: srv3_seeded_install_media_toolchain_ensure_apply(),
@@ -36,7 +35,6 @@ fn srv3_seeded_install_media_toolchain_ensure() -> ProcessExit
 }
 
 fn srv3_seeded_install_media_remaster() -> ProcessExit
-  uses net: std.resources.Network
 {
   let ensure_exit = srv3_apply_to_process_exit(
     d: srv3_seeded_install_media_toolchain_ensure_apply(),
@@ -60,7 +58,7 @@ fn srv3_seeded_install_media_actuator_host_is_srv1() -> Bool {
 }
 
 fn srv3_seeded_install_media_install_path_is_versioned() -> Bool {
-  string_contains(s: srv3_seeded_install_media_input.image_stem as String, pattern: "ubuntu-24.04.3-live-server-srv3-seeded")
+  string_contains(s: srv3_seeded_install_media_image_stem as String, pattern: "ubuntu-24.04.3-live-server-srv3-seeded")
 }
 
 fn srv3_seeded_autoinstall_delivery_is_on_iso() -> Bool {

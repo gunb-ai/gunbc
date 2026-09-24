@@ -13,6 +13,7 @@ import v2.std.compilers.compilation_unit {
   ModuleId,
   PolicyDerived,
   ByValueTypeCycle,
+  PartitionInputRejected,
   LinkageCycle,
   SccSplit,
   UnitGraphCycle,
@@ -21,6 +22,12 @@ import v2.std.compilers.compilation_unit {
   partition_provenance_policy_derived,
   partition_unit_by_id
 }
+import gunbc.rust_emitted_edge {
+  EmittedEdge,
+  EmittedModuleTarget,
+  RuntimePrelude,
+  rust_runtime_prelude_module
+}
 import v2.workflow.rust_crate_partition {
   AssignmentNamesModuleOutsideDag,
   AssignmentOmitsModule,
@@ -28,6 +35,7 @@ import v2.workflow.rust_crate_partition {
   ExplicitPartitionParam,
   PartitionParameter,
   PartitionRustAdmissibilityRefused,
+  PartitionEmittedEdgeRefused,
   PolicyPartitionParam,
   PolicyTargetCountNotPositive,
   PartitionPolicy,
@@ -38,8 +46,35 @@ import v2.workflow.rust_crate_partition {
   rust_crate_partition_declared_core_target,
   rust_crate_partition_module_bearing_unit_target,
   stage0_interim_explicit_assignment,
-  stage0_module_dag,
+  stage0_source_module_dag,
+  stage0_module_dag_merge,
+  stage0_resolve_partition_outcome,
+  Stage0PartitionResolved,
+  Stage0PartitionResolveRefused,
+  module_dag_with_emitted_edges,
+  module_dag_runtime_prelude_edges,
+  ModuleDagEmittedMerge,
+  ModuleDagEmittedMerged,
+  ModuleDagEmittedRefused,
+  EmitterReverseEdge,
+  EmittedEdgeEndpointOutsideDag,
+  Stage0PartitionCrateRow,
+  Stage0LayeredCoreCrate,
+  UnitDepEdge,
+  ReexportDisagreementScanOk,
+  ReexportDisagreementScanUnitHasNoRow,
+  Stage0ReexportDisagreementsDerived,
+  Stage0ReexportDisagreementsUnavailable,
+  reexport_derivation_disagreements_over,
+  stage0_reexport_derivation_disagreements,
+  stage0_reexport_derivation_known_divergent_packages,
+  stage0_reexport_derivation_repaired_divergences,
+  stage0_module_dag_interface_grounding,
+  InterfaceGroundingCapability,
+  Stage0ModuleDagInterfaceSourceGrounded,
+  Stage0ModuleDagInterfaceUngrounded,
   stage0_module_dag_interface_grounding_is_debt,
+  stage0_module_interface_grounding_target,
   stage0_module_bearing_unit_count,
   stage0_module_id,
   stage0_v1_infer_modules,
@@ -107,9 +142,11 @@ fn witness_refused_by_rust_rule(outcome: ResolvePartitionOutcome) -> String {
     ResolvePartitionRefused { cause: PartitionRustAdmissibilityRefused { cause: UnitGraphCycle { detail: _ } } } => "unit-graph-cycle"
     ResolvePartitionRefused { cause: PartitionRustAdmissibilityRefused { cause: LinkageCycle { detail: _ } } } => "linkage-cycle"
     ResolvePartitionRefused { cause: PartitionRustAdmissibilityRefused { cause: ByValueTypeCycle { detail: _ } } } => "by-value-type-cycle"
+    ResolvePartitionRefused { cause: PartitionRustAdmissibilityRefused { cause: PartitionInputRejected { cause: _ } } } => "partition-input-rejected"
     ResolvePartitionRefused { cause: PolicyTargetCountNotPositive { policy: _ } } => "target-not-positive"
     ResolvePartitionRefused { cause: AssignmentOmitsModule { module_id: _ } } => "omits-module"
     ResolvePartitionRefused { cause: AssignmentNamesModuleOutsideDag { module_id: _ } } => "outside-dag"
+    ResolvePartitionRefused { cause: PartitionEmittedEdgeRefused { cause: _ } } => "emitted-edge-refused"
     ResolvePartitionOk { assignment: _, provenance: _ } => "admitted"
   }
 }
@@ -359,12 +396,12 @@ test fn witness_partition_r4_valid_on_interim_holds() -> Bool {
 }
 
 test fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
-  match resolve_partition_outcome(parameter: stage0_partition_parameter(), module_dag: stage0_module_dag) {
-    ResolvePartitionOk { assignment: resolved, provenance: _ } => {
+  match stage0_resolve_partition_outcome {
+    Stage0PartitionResolved { module_dag: _, assignment: resolved } => {
       let expected = stage0_interim_explicit_assignment()
       (resolved |> count) == (expected |> count)
     }
-    ResolvePartitionRefused { cause: _ } => false
+    Stage0PartitionResolveRefused { cause: _ } => false
   }
 }
 
@@ -377,4 +414,196 @@ test fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> B
   stage0_module_dag_interface_grounding_is_debt()
 }
 
+// ── THE TWO AUTHORITIES FOR "WHAT DOES THIS CRATE DEPEND ON", AND WHY THE BOUND IS AN EQUALITY ──
+//
+// rust_crate_partition_dissolve_on declares stage0's edges authored rather than derived. The size
+// of that gap is DERIVED by stage0_reexport_derivation_disagreements rather than transcribed into
+// prose (DESIGN 6), and this pins its population at IDENTITY grain rather than by count: a count
+// equality would stay green if one unit were repaired while another began to diverge.
+//
+// EQUALITY AGAINST THE LEDGER, IN BOTH DIRECTIONS, plus the repaired roster. A one-way subset --
+// which this claim used to be -- catches a NEW divergence and nothing else: once
+// v1-stage0-v1-artifact is repaired the derived set empties, the subset still holds, and the ledger
+// keeps naming a unit that no longer diverges. A stale entry then silently re-admits that unit to
+// diverge again with this claim green, which is the regression DESIGN 4b(3) forbids.
+//
+// The objection to equality does not apply, because this is equality against the LEDGER rather than
+// against the derived set: it cannot stop a lane over debt the ledger already declares, and it reds
+// in exactly one situation -- the ledger disagreeing with reality.
+//
+// Three arms, each with its own red. no_new_divergence: a unit outside the ledger started
+// diverging. no_stale_ledger_entry: a ledger unit stopped diverging and nobody recorded it, which
+// is what forces the removal edit and its typed disposition (DESIGN section 5). And
+// no_repaired_divergence_returned: something recorded as repaired came back -- the 4b(4) regression
+// control, which keeps the climb real rather than retiring with it.
+test fn stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit() -> Bool {
+  match stage0_reexport_derivation_disagreements() {
+    Stage0ReexportDisagreementsUnavailable { cause: _ } => false
+    Stage0ReexportDisagreementsDerived { packages: packages } => {
+      let no_new_divergence = packages |> fold(init: true, f: fn(ok, pkg) {
+        ok && (stage0_reexport_derivation_known_divergent_packages |> any(known => known == pkg))
+      })
+      let no_stale_ledger_entry = stage0_reexport_derivation_known_divergent_packages
+        |> fold(init: true, f: fn(ok, known) {
+          ok && (packages |> any(pkg => pkg == known))
+        })
+      let no_repaired_divergence_returned = stage0_reexport_derivation_repaired_divergences
+        |> fold(init: true, f: fn(ok, repaired) {
+          ok && !(packages |> any(pkg => pkg == repaired.package_name))
+        })
+      no_new_divergence && no_stale_ledger_entry && no_repaired_divergence_returned
+    }
+  }
+}
 
+// THE VACUOUS-GREEN GUARD, and it is the claim that keeps the one above honest. Subset-of-known-bad
+// is green when the disagreement set is EMPTY and equally green when the detector is BROKEN and
+// finds nothing -- the same observation from two different worlds. Today v1-stage0-v1-artifact
+// inhabits the set and masks that; when the edge list is derived the set empties and the mask goes
+// with it, leaving a permanently green assertion with no evidence it can still see anything, which
+// is the inert lens DESIGN section 5 names. So the detector is run over SUPPLIED units and rows
+// carrying a PLANTED disagreement: "probe-diverging" authors a dependency the unit graph does not
+// give it, "probe-agreeing" authors exactly what it derives. Removing the comparison from
+// reexport_derivation_disagreements_over reds this and leaves the OTHER two claims untouched.
+fn probe_edge(from: String, to: String) -> UnitDepEdge {
+  UnitDepEdge { from: from as CompilationUnitId, to: to as CompilationUnitId }
+}
+
+fn probe_row(package: String, unit: String, reexports: List<String>) -> Stage0PartitionCrateRow {
+  Stage0PartitionCrateRow {
+    unit_id: unit as CompilationUnitId,
+    package_name: package,
+    crate_dir: "src/probe",
+    kind: Stage0LayeredCoreCrate,
+    modules: [],
+    reexport_packages: reexports,
+    carries_non_empty_wrappers: false,
+  }
+}
+
+test fn the_disagreement_detector_finds_a_planted_divergence() -> Bool {
+  let edges = [probe_edge(from: "u-agree", to: "u-base")]
+  let rows = [
+    probe_row(package: "probe-base", unit: "u-base", reexports: []),
+    probe_row(package: "probe-agreeing", unit: "u-agree", reexports: ["probe-base"]),
+    probe_row(package: "probe-diverging", unit: "u-diverge", reexports: ["probe-base"]),
+  ]
+  match reexport_derivation_disagreements_over(edges: edges, rows: rows) {
+    ReexportDisagreementScanUnitHasNoRow { unit_id: _ } => false
+    ReexportDisagreementScanOk { packages: found } =>
+      (found |> any(p => p == "probe-diverging"))
+        && !(found |> any(p => p == "probe-agreeing"))
+        && !(found |> any(p => p == "probe-base"))
+  }
+}
+
+// THE DISCRIMINATOR FOR THE FALSE GREEN, and it is the input the detector used to certify.
+// A FOUNDATION row authors reexport_packages: [] and has a derived edge to a unit that NO package
+// row covers. The old fold dropped that edge, leaving derived [] against authored [], and reported
+// AGREEMENT from a projection it could not complete -- the exact shape this declaration exists to
+// make impossible, reached through the arm rather than through the comparison.
+//
+// It must REFUSE. Restoring `Absent => acc` inside derived_dep_packages reds this claim and leaves
+// the planted-divergence guard above green, because that fixture pairs every edge destination with
+// a row and so never reaches the arm -- which is why this case needed its own claim rather than a
+// wider fixture.
+test fn a_dep_edge_to_a_unit_with_no_package_row_refuses() -> Bool {
+  let edges = [probe_edge(from: "u-foundation", to: "u-unrostered")]
+  let rows = [probe_row(package: "probe-foundation", unit: "u-foundation", reexports: [])]
+  match reexport_derivation_disagreements_over(edges: edges, rows: rows) {
+    ReexportDisagreementScanUnitHasNoRow { unit_id: unit_id } => (unit_id as String) == "u-unrostered"
+    ReexportDisagreementScanOk { packages: _ } => false
+  }
+}
+// The debt row's trigger has now been repointed twice, and BOTH previous targets named an
+// authority that could not carry the fact -- a roster row and then a module-to-location index.
+// This pins the third: the dissolve target must name the module-binding SUPPLY, whose contents
+// half is the capability, and not a carrier that merely sits near it. Repointing it back at
+// ModuleStorageIndex, or at any other declaration, reds this claim -- which is the whole point,
+// because nothing else in the corpus re-reads a dissolve target once it is written.
+test fn witness_interface_grounding_target_names_the_binding_supply_holds() -> Bool {
+  let target = stage0_module_interface_grounding_target()
+  ((target.module_path as String) == "v2.compiler.source_authority")
+    && ((target.decl_name as String) == "module_storage_bindings_for_source_roots")
+}
+
+// A DECLARATION REF NAMES A DECLARATION AND NOTHING ELSE, so the claim above pins only the supply.
+// DESIGN 4b(3) wants the trigger to name the CAPABILITY and what the artifact must be SUFFICIENT
+// FOR. Both debt carriers must hold the same typed capability: host emission JOINED to the supply's
+// existing dissolution, and the emitted-closure derivation as the population. Pointing either at
+// another declaration, or letting the two maps disagree, reds this claim.
+//
+// STATED AT ITS STRENGTH: this pins which declarations the trigger names. It does NOT evaluate
+// whether the supply is host-emitted or carries contents -- no program can yet, which is the debt.
+test fn witness_interface_grounding_trigger_states_both_capability_halves_holds() -> Bool {
+  match stage0_module_dag_interface_grounding() {
+    Stage0ModuleDagInterfaceSourceGrounded => false
+    Stage0ModuleDagInterfaceUngrounded { exports_map: exports_map, type_definitions_map: type_definitions_map } =>
+      interface_grounding_capability_is_the_declared_one(capability: exports_map.capability)
+        && interface_grounding_capability_is_the_declared_one(capability: type_definitions_map.capability)
+  }
+}
+
+fn interface_grounding_capability_is_the_declared_one(capability: InterfaceGroundingCapability) -> Bool {
+  ((capability.host_emission.module_path as String) == "v2.compiler.source_authority")
+    && ((capability.host_emission.decl_name as String) == "module_storage_supply_dissolution_trigger")
+    && ((capability.contents_supply.decl_name as String) == "module_storage_bindings_for_source_roots")
+    && ((capability.population.module_path as String) == "v2.workflow.emitted_closure_crate_partition")
+    && ((capability.population.decl_name as String) == "module_dag_from_dependency_facts")
+}
+
+
+
+// THE EMITTED RUNTIME EDGES REACH THE PARTITION FROM THE EMITTER'S OWN ROW PRODUCER. Positive
+// control: over the stage0 source DAG, the prelude rows merge, and every emitted member other than
+// the runtime module gains exactly one edge to it -- the hand-listed runtime edges are gone from
+// the source list, so every one of these was derived. If the merge stopped reading the rows, or
+// the rows stopped naming the runtime module, the count moves and this reds.
+test fn witness_stage0_runtime_edges_are_derived_from_the_emitter_rows_holds() -> Bool {
+  let source_runtime_edges = stage0_source_module_dag.edges
+    |> filter(edge => (edge.to as String) == rust_runtime_prelude_module)
+    |> count
+  match stage0_module_dag_merge {
+    ModuleDagEmittedRefused { cause: _ } => false
+    ModuleDagEmittedMerged { module_dag: merged } =>
+      source_runtime_edges == 0
+        && (merged.edges |> filter(edge => (edge.to as String) == rust_runtime_prelude_module) |> count)
+          == ((stage0_source_module_dag.modules |> count) - 1)
+        && (merged.edges |> count) == (stage0_source_module_dag.edges |> count) + ((stage0_source_module_dag.modules |> count) - 1)
+  }
+}
+
+// DISCRIMINATING RED: an emitted edge that reverses a source dependency is refused BY NAME, with
+// the provenance that produced it, not merged into a DAG whose R4 verdict would report an anonymous
+// cycle. v1_std_core imports std_algebra in the source edges, so an emitter-written
+// std_algebra -> v1_std_core path closes a cycle the source does not have.
+test fn witness_emitter_reverse_edge_is_refused_by_name_holds() -> Bool {
+  let reverse = EmittedEdge {
+    from: "std_algebra",
+    to: EmittedModuleTarget { module: "v1_std_core" },
+    provenance: RuntimePrelude
+  }
+  match module_dag_with_emitted_edges(
+    module_dag: stage0_source_module_dag,
+    emitted: module_dag_runtime_prelude_edges(module_dag: stage0_source_module_dag) |> list_push(reverse)
+  ) {
+    ModuleDagEmittedRefused { cause: EmitterReverseEdge { from: from, to: to, provenance: RuntimePrelude } } =>
+      (from as String) == "std_algebra" && (to as String) == "v1_std_core"
+    _ => false
+  }
+}
+
+// An emitted edge to a module the DAG does not declare is refused, never dropped: dropping it
+// answers for a smaller graph than the emitted code carries.
+test fn witness_emitted_edge_outside_dag_is_refused_holds() -> Bool {
+  let stranger = EmittedEdge {
+    from: "v1_std_core",
+    to: EmittedModuleTarget { module: "not_a_stage0_module" },
+    provenance: RuntimePrelude
+  }
+  match module_dag_with_emitted_edges(module_dag: stage0_source_module_dag, emitted: [stranger]) {
+    ModuleDagEmittedRefused { cause: EmittedEdgeEndpointOutsideDag { from: from, to: to } } =>
+      from == "v1_std_core" && to == "not_a_stage0_module"
+    _ => false
+  }
+}

@@ -4,7 +4,6 @@ import std.types { String, NonEmptyStr, Bool, List, FilePath }
 import std.algebra { trim }
 import std.measure { Mebibyte, mebibyte }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.shell
@@ -366,6 +365,24 @@ fn guest_console_observations(console: String) -> List<GuestObservationKind> {
       NotAGuestObservation => acc
     }
   })
+}
+
+// THE LABELS A READER OUTSIDE THIS MODULE JOINS ON, DERIVED HERE FROM THE CONSTRUCTORS. The host's
+// bring-up progression (gunbc.runner_microvm_lifecycle) names its own phases GuestBooted and
+// RunnerListening, and a closure cannot hold two types with the same variant names, so that module
+// cannot import GuestObservationKind. It reads these instead: the ordered labels of the console's
+// observations, and the label of each kind it maps -- all three computed by this module's own
+// guest_observation_kind_label, so the join has one spelling and no second author.
+fn guest_console_observation_labels(console: String) -> List<String> {
+  map(guest_console_observations(console: console), k => guest_observation_kind_label(kind: k))
+}
+
+fn guest_booted_observation_label() -> String {
+  guest_observation_kind_label(kind: GuestEmitted { event: GuestBooted })
+}
+
+fn runner_listening_observation_label() -> String {
+  guest_observation_kind_label(kind: RunnerListening)
 }
 
 fn guest_console_carries(console: String, kind: GuestObservationKind) -> Bool {
@@ -856,7 +873,6 @@ fn runner_guest_image_build_and_receipt_wet(
 // module's preference: it fetches the base artifacts if they are absent, reports what their bytes
 // hash to, and reports whether an image already stands. It never builds one.
 fn runner_guest_image_observe_wet() -> ProcessExit
-  uses net: Network
 {
   match executor_home_wet() {
     Absent => exit_failure(reason: "runner_guest_image_observe: HOME is unset, so the executor-owned image root cannot be named")
@@ -888,7 +904,6 @@ fn runner_guest_image_observe_wet() -> ProcessExit
 // a recorded expectation must not reach a filesystem this fleet then boots, and a check that ran
 // afterwards would be reporting on a VM image that already exists on disk.
 fn runner_guest_image_converge_wet() -> ProcessExit
-  uses net: Network
 {
   match executor_home_wet() {
     Absent => exit_failure(reason: "runner_guest_image_converge: HOME is unset, so the executor-owned image root cannot be named")

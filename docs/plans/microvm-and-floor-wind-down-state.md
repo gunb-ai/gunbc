@@ -91,8 +91,8 @@ not from here.
 | # | frontier | status | what is missing |
 |---|---|---|---|
 | 1 | `controller_main_pid_consumer_frontier` | **dispatchable, start here** | **nothing calls `run_controller`.** Until a slot unit execs it as MainPID the module is a library, not a controller. Every other frontier is worth less until this clears. |
-| 2 | `attempt_cleanup_realization_frontier` | dispatchable | no unmount, no delete of credential device / workspace / attempt root, no flush. The **only** host mutation in teardown is the `cgroup.kill` write. |
-| 3 | `guest_bring_up_channel_frontier` | dispatchable, spans host+guest | no guest→host readiness channel above `VmmStarted`. Decides only whether a slot is SERVING, never whether a cell is CLEAN. |
+| 2 | ~~`attempt_cleanup_realization_frontier`~~ | dissolved | `gunbc.runner_microvm_lifecycle_realize clean_attempt_resources` runs between the stop and the readbacks, only after a quiescent stop: it detaches every mount at or under the jail (deepest first, read from `/proc/self/mountinfo`), deletes the credential device, and removes the jail and attempt directory with `rm -rf --one-file-system`. It then runs the slot's own `runner_slot_teardown_flush_commands`. The existing absence readbacks and network lists stay the verdict, so an incomplete cleanup quarantines. |
+| 3 | ~~`guest_bring_up_channel_frontier`~~ | dissolved (channel); live half re-declared | The controller binds the console at launch: the unit's Environment must name this attempt's invocation_id, and the unit's systemd InvocationID is captured then. After the terminal trigger it reads only that invocation's journal entries (`journalctl -u … _SYSTEMD_INVOCATION_ID=…`) and advances GuestBooted / RunnerListening through `advance_bring_up`. The receipt carries the phase. Reading it live, to decide SERVING while the attempt runs, is `slot_serving_live_readiness_frontier`; its consumer is the deferred warm pool. |
 | 4 | `slot_network_readings_producer_frontier` | **BLOCKED — security** | no converged slot network on any host; every reading is `Unreadable`, which quarantines. |
 | 5 | `workflow_effect_sequencing_frontier` | **not a lane — a design question** | `std` carries **no** effect-sequencing authority. Bigger than microVM: every effect sequence in the corpus rests on the answer. |
 
@@ -169,9 +169,19 @@ before it can be removed, and no lane may narrow them silently.
 
 ### The floor's own job does not fit a cell
 
-`runner_microvm_floor_fit_stall` remains rostered: the floor's measured held-set peak exceeds
-`gunbc.runner_slot_allocation` `gunbc_runner_slot_memory_max_bytes` less the realization
-reserve. Both sides are derivable rather than transcribed — the cap is that declaration, and
+**Update 2026-09-23 — the stall retired.** `runner_microvm_floor_fit_stall` was deleted when its
+trigger held: `gunbc.floor_demand`'s standing moved to `gunbc_floor_memory_stat_receipt_2026_09_23`
+(a run carrying gunbc#12081 and gunbc#12088), and `gunbc_runner_microvm_shape` now resolves on
+production inputs at the unchanged 26 GiB cell row. The executed evidence is
+`test.claim.runner_microvm_witness_test`
+`the_production_shape_resolves_on_the_memory_remainder_since_the_2026_09_23_receipt` and the
+either-state witness beside it. The paragraphs below are the state as it stood before that and are
+kept as history; the demand is a single warm run's sampled maximum, so a later receipt can move it
+back over the line, and the either-state witness is what would say so.
+
+Before 2026-09-23: `runner_microvm_floor_fit_stall` remained rostered: the floor's measured held-set
+peak exceeded `gunbc.runner_slot_allocation` `gunbc_runner_slot_memory_max_bytes` less the
+realization reserve. Both sides are derivable rather than transcribed — the cap is that declaration, and
 the demand is produced by `gunbc.floor_memory_demand`, whose qualification against readable
 limits is what the stall cites. The stall row itself carries the figures it was written
 against; read them there, where they sit beside the reading that produced them.

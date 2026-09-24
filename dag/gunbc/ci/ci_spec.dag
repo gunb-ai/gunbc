@@ -5,6 +5,7 @@ import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import gunbc.spark.native_serving_apply { spark_native_apply_receipt_path }
+import gunbc.spark.v41_row_store_encode_run { v41_encode_run_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
 import gunbc.auth.ci_app_key_rotation {
@@ -99,7 +100,7 @@ import gunbc.commit_workflow {
   project_ci_floor_witness_entries
 }
 import std.realization_schedule { ScheduleWitnessEntry }
-import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.ci_diff_policy { DiffMergeBase, DiffTwoDot, DiffPolicy, gunbc_ci_diff_policy }
 import gunbc.auth.heal_publisher_federation {
   heal_publisher_installation_token_request_body,
   heal_publisher_key_unreadable_message,
@@ -139,8 +140,6 @@ import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { EmitDirective, SeverityWarning }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-
-type DiffMode = DiffMergeBase | DiffTwoDot
 
 type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
 
@@ -247,12 +246,6 @@ data gunbc_ci_floor_batch_stop_policy_claim_executor_seed_disposition: Dispositi
   }
 }
 
-type DiffPolicy {
-  base: String
-  head: String
-  mode: DiffMode
-}
-
 type DeployStage {
   id: String
   step_name: String
@@ -321,11 +314,7 @@ data gunbc_ci_spec: CiSpec = {
   gates: gunbc_ci_floor_gates,
   witness_entries: gunbc_ci_floor_witness_entries,
   discovery_scan_dirs: witness_discovery_scan_dirs,
-  diff_policy: {
-    base: gunbc_merge_target_ref as String,
-    head: "HEAD",
-    mode: DiffMergeBase
-  },
+  diff_policy: gunbc_ci_diff_policy,
   notice_title: "v2 claim corpus",
   deploy_stages: gunbc_ci_deploy_stages,
 }
@@ -854,7 +843,7 @@ data gunbc_ci_runner_microvm_host_converge_target: GunbcRunStepTarget = GunbcRun
 }
 
 data gunbc_ci_runner_microvm_network_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/runner/runner_microvm_network_converge.dag",
+  entry: "dag/gunbc/runner/runner_microvm_network_observe.dag",
   function: "runner_microvm_network_observe_wet",
 }
 
@@ -1008,6 +997,27 @@ data gunbc_ci_spark_v41_runtime_image_build_target: GunbcRunStepTarget = GunbcRu
   function: "v41_runtime_image_produce_ci_wet",
 }
 
+// THE PUBLISHED V4.1 CHECKPOINT ON ONE GROUP A SPARK (gunbc.spark.v41_checkpoint_materialize): the same
+// administrator credential as the runtime-image probe, because every leg runs privileged on the Spark.
+data gunbc_ci_spark_v41_checkpoint_materialize_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_checkpoint_materialize.dag",
+  function: "v41_checkpoint_materialize_ci_wet",
+}
+
+// THE EIGHT ENGRAM ROW STORES ON ONE GROUP A SPARK (gunbc.spark.v41_row_store_encode_run): the same
+// administrator credential, because every leg runs privileged on the Spark.
+data gunbc_ci_spark_v41_row_store_encode_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_row_store_encode_run.dag",
+  function: "v41_row_store_encode_ci_wet",
+}
+
+// ITS SECOND STEP, THE .engram. SELECTION OVER THE PINNED INDEX, run in its own process so a parse
+// stopped for memory cannot take the fetch's receipts with it.
+data gunbc_ci_spark_v41_index_selection_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/v41_checkpoint_materialize.dag",
+  function: "v41_index_selection_ci_wet",
+}
+
 data gunbc_ci_collect_fleet_convergence_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_receipt_collector.dag",
   function: "collect_fleet_convergence_wet",
@@ -1066,6 +1076,13 @@ data gunbc_ci_live_deploy_transaction_target: GunbcRunStepTarget = GunbcRunStepT
 data gunbc_ci_approval_broker_dark_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/live_deploy/apply.dag",
   function: "approval_broker_dark_install_srv1_wet",
+}
+
+// THE microVM SLOT CONTROLLER INSTALL follows the dark install's convention exactly: the wet fold
+// under ci_deploy_srv1_access, invoked on the host-pinned runner, never through apply_dispatch.
+data gunbc_ci_microvm_controller_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/live_deploy/apply.dag",
+  function: "microvm_controller_install_srv1_wet",
 }
 
 data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1195,6 +1212,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_live_deploy_apply_srv1_target,
     gunbc_ci_live_deploy_transaction_target,
     gunbc_ci_approval_broker_dark_install_target,
+    gunbc_ci_microvm_controller_install_target,
     gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
     gunbc_ci_heal_regen_target,
@@ -1255,6 +1273,16 @@ fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_approval_broker_dark_install_target.entry,
     function: gunbc_ci_approval_broker_dark_install_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_microvm_controller_install_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_microvm_controller_install_target.entry,
+    function: gunbc_ci_microvm_controller_install_target.function,
     claim_run: false,
     receipt_rel: none
   )
@@ -2521,6 +2549,39 @@ fn gunbc_ci_spark_v41_runtime_image_build_invoke() -> String {
     function: gunbc_ci_spark_v41_runtime_image_build_target.function,
     claim_run: false,
     receipt_rel: "target/v41-runtime-image-produce-receipt.txt"
+  )
+}
+
+fn gunbc_ci_spark_v41_checkpoint_materialize_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_v41_checkpoint_materialize_target.entry,
+    function: gunbc_ci_spark_v41_checkpoint_materialize_target.function,
+    claim_run: false,
+    receipt_rel: "target/v41-checkpoint-materialize-receipt.txt"
+  )
+}
+
+fn gunbc_ci_spark_v41_row_store_encode_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_v41_row_store_encode_target.entry,
+    function: gunbc_ci_spark_v41_row_store_encode_target.function,
+    claim_run: false,
+    receipt_rel: v41_encode_run_receipt_path
+  )
+}
+
+fn gunbc_ci_spark_v41_index_selection_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_v41_index_selection_target.entry,
+    function: gunbc_ci_spark_v41_index_selection_target.function,
+    claim_run: false,
+    receipt_rel: "target/v41-index-selection-receipt.txt"
   )
 }
 

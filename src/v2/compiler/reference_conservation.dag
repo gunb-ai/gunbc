@@ -1,0 +1,958 @@
+module v2.compiler.reference_conservation
+
+import v2.compiler.parse { ParseArtifact, PreparedGrammar }
+import v2.compiler.body_lowering_fold { body_lower_resolved_type_binding }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly {
+  program_assembly_phase_normalize,
+  program_assembly_phase_parse_measured_seeded,
+  program_assembly_phase_tokenize
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag {
+  dag_node_is_float_literal_atom,
+  dag_node_is_int_literal_atom,
+  dag_language_model,
+  parse_production_emitted_identity_optional,
+  qualified_name_from_module_node
+}
+import v2.std.algebra { fold_list, length, list_snoc_item }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import v2.std.compilers.lexing { ModeledLexRules, TokenRule, TriviaRule, AnnotationRule, VoidLexRules, symbol_lexeme }
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  Diagnostic,
+  Diagnostics,
+  Locus,
+  NodeLocus,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Textual,
+  WholeFile
+}
+import v2.std.language_model { LanguageModel }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.optional { Absent, Optional, Present, optional_present }
+import v2.std.provenance { SpanIndex, span_index_resolve_textual_locus }
+import v2.std.text { String }
+import v2.std.integer { Int, integer_int_to_decimal_string }
+import v2.std.witness { Holds, Violates }
+import std.algebra { Cons, Empty, FreeMonoid }
+import std.occurrence_identity { OccurrenceId, occurrence_id_allocator_initial, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+
+// REFERENCE CONSERVATION ACROSS LOWERING (XL-2).
+//
+// WHY ONE CHECK AND NOT ONE MORE SHAPE. Lowering has silently dropped a subtree three times -- call
+// arguments (#12108), the right-hand operand of a sequence (#12145), and a later statement of a
+// block -- and each was found one shape at a time by a probe that already knew what to look for.
+// A probe that names its shape can only ever confirm that shape; it cannot say the population is
+// complete. This module asks the question the other way round: it enumerates the population from
+// the PARSE tree, which is the thing lowering consumes, and asks the normalized tree to account for
+// every member. A member it cannot account for is a row, whatever shape dropped it.
+//
+// THE KEY IS THE LOCUS, NOT THE NAME. Every authored terminal the parser stamps carries a minted
+// OccurrenceId recorded in the parse's SpanIndex (v2.compiler.parse parse_mint_from_source), and
+// lowering that keeps a terminal keeps its node, occurrence and all. So "the normalized tree
+// contains this atom" is asked as: a node in the normalized tree carries the SAME minted occurrence
+// and the SAME atom identity. A name-keyed check could be satisfied by a different mention of the
+// same spelling elsewhere in the module; this one cannot.
+//
+// THE POPULATION IS DERIVED, NOT LISTED: see authored_atom_from_identity. No pattern over text is
+// involved anywhere; membership is symbol equality against the lexer's declared token classes.
+//
+// IMPORT DECLARATIONS ARE A SEPARATE, COUNTED DISPOSITION. v2.compiler.normalize normalize
+// consumes each `import` declaration into NormalizedTree.import_bindings, a channel whose rows carry
+// no occurrence, so its atoms are not in the tree by construction. They are counted as
+// `import_channel`, never folded into `conserved` and never silently skipped.
+
+// `context` is the chain of parse productions enclosing the atom, outermost first, read off the
+// parse tree's own production-identity projections. It is what a census groups rows by: two drops
+// under the same production chain are one shape, whatever their spellings.
+type AuthoredAtom {
+  occurrence: OccurrenceId
+  identity: Symbol
+  locus: Locus
+  context: FreeMonoid<Symbol>
+  item: Int
+}
+
+// Every way an authored atom can fail to be accounted for, and nothing else. `found` in the
+// respelled arm is the identity the normalized tree put at that same occurrence.
+type DroppedReferenceCause
+  = AbsentFromNormalizedTree
+  | DeclarationAbsentFromNormalizedTree { declaration: Symbol }
+  | RespelledInNormalizedTree { found: Symbol }
+  | RefusalNotAtOrAbove
+
+type DroppedReference {
+  atom: AuthoredAtom
+  cause: DroppedReferenceCause
+}
+
+// A module the check could not measure is its own typed outcome, never an empty (green) report:
+// a module that does not tokenize or parse has no parse tree to enumerate, and reporting it as
+// "zero drops" would be the fabricated green.
+type ReferenceConservationUnmeasured
+  = TokenizeOrParseRefused { diagnostics: NonEmptyDiagnostics }
+  | AtomExtentUnreadable { occurrence: OccurrenceId }
+
+// THREE SEPARATE NUMBERS, NEVER SUMMED: `conserved` (the atom's own occurrence survives with its
+// identity), `locus_erased` (the occurrence is gone but its declaration still holds an unconsumed
+// rebuilt copy of the spelling -- see conservation_against_tree), and `dropped` (neither).
+type ReferenceConservationReport {
+  path: String
+  authored: Int
+  conserved: Int
+  locus_erased: Int
+  refused: Int
+  import_channel: Int
+  test_marker_channel: Int
+  dropped: FreeMonoid<DroppedReference>
+  unmeasured: FreeMonoid<ReferenceConservationUnmeasured>
+}
+
+fn reference_conservation_holds(report: ReferenceConservationReport) -> Bool {
+  length(xs: report.dropped) == 0 && length(xs: report.unmeasured) == 0
+}
+
+// ---- the parse-side population -----------------------------------------------------------------
+
+// `items` counts the top-level items entered so far; `item_names` records each item's declaring
+// name (see population_name_item). An atom outside every item -- the module header -- carries
+// item -1.
+type AuthoredAtomPopulation {
+  atoms: FreeMonoid<AuthoredAtom>
+  import_channel: Int
+  test_marker_channel: Int
+  unreadable: FreeMonoid<ReferenceConservationUnmeasured>
+  items: Int
+  item_names: Map<Int, Symbol>
+}
+
+type PopulationFrame {
+  context: FreeMonoid<Symbol>
+  innermost: Symbol
+  item: Int
+}
+
+fn authored_atom_population_empty() -> AuthoredAtomPopulation {
+  AuthoredAtomPopulation { atoms: Empty, import_channel: 0, test_marker_channel: 0, unreadable: Empty, items: 0, item_names: empty_map() }
+}
+
+fn node_atom_identity_of(node: Node) -> Optional<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } => Present { value: sym }
+    _ => Absent
+  }
+}
+
+fn minted_occurrence_of(node: Node) -> Optional<OccurrenceId> {
+  match node.occurrence_id {
+    OccurrenceMinted { id: id } => Present { value: id }
+    OccurrenceProjected { id: _, caused_by: _ } => Absent
+    OccurrenceSynthetic => Absent
+  }
+}
+
+// THE POPULATION TEST IS A GRAMMAR FACT, NOT A TEXT COMPARISON. An earlier revision compared the
+// atom's identity with the interned source slice at its extent; on real corpus files the recorded
+// extents and the slice primitive disagree past the first multibyte character, so the comparison
+// silently EXCLUDED most atoms and the population shrank without a count -- the absorbing fallback
+// DESIGN section 5 forbids, in drop form. The test is now what the stamp mode means: a terminal
+// stamped with its token CLASS publishes a symbol the lexer declares (v2.std.compilers.lexing
+// TokenRule.token_class), so an atom whose identity is NOT a declared token class was stamped with
+// its lexeme and IS authored. An int / float literal publishes its class and carries its value
+// beneath, so it is admitted by its own predicate. An unknown identity therefore falls INTO the
+// population, where a drop is loud, never out of it.
+fn authored_atom_from_identity(
+  node: Node,
+  id: OccurrenceId,
+  identity: Symbol,
+  locus: Locus,
+  token_classes: Map<Symbol, Bool>,
+  frame: PopulationFrame
+) -> Optional<AuthoredAtom> {
+  let authored = match map_lookup(m: token_classes, key: identity) {
+    Absent => true
+    Present { value: _ } => dag_node_is_int_literal_atom(node: node) || dag_node_is_float_literal_atom(node: node)
+  }
+  match authored {
+    true => optional_present(value: AuthoredAtom { occurrence: id, identity: identity, locus: locus, context: frame.context, item: frame.item })
+    false => Absent
+  }
+}
+
+fn declared_token_classes(lm: LanguageModel) -> Map<Symbol, Bool> {
+  match lm.lex {
+    VoidLexRules => empty_map()
+    ModeledLexRules { root: rule_set } =>
+      fold_list(
+        xs: rule_set.rules,
+        empty: empty_map(),
+        cons: fn(acc, rule) {
+          match rule {
+            TokenRule { token_class: c, pattern: _ } => map_insert(m: acc, key: c, value: true)
+            TriviaRule { pattern: _ } => acc
+            AnnotationRule { annotation_class: _, pattern: _ } => acc
+          }
+        }
+      )
+  }
+}
+
+// THE TEST MARKER IS A CHANNEL, LIKE AN IMPORT. `test` is lexed as an identifier and stamped with
+// its lexeme (v2.extdeps.languages.dag dag_grammar_test_fn_decl_expr), and v2.compiler.normalize
+// normalize consumes it into NormalizedTree.test_markers, whose rows carry no occurrence. It is the
+// only authored atom the test_fn_decl production holds directly -- the declaration it marks is a
+// nested fn_decl / data_decl -- so "innermost production is test_fn_decl" names exactly it. Counted
+// as `test_marker_channel`, never folded into `conserved`.
+fn population_atom_is_test_marker(frame: PopulationFrame) -> Bool {
+  frame.innermost == ^dag_surface_test_fn_decl
+}
+
+// An item's declaring name is its first authored atom: every declaration production writes its
+// binder before anything else it holds, and keywords and marker words are class-stamped (or, for
+// `test`, routed to its channel above), so they never compete for it.
+fn population_name_item(acc: AuthoredAtomPopulation, frame: PopulationFrame, identity: Symbol) -> Map<Int, Symbol> {
+  if frame.item >= 0 {
+    match map_lookup(m: acc.item_names, key: frame.item) {
+      Present { value: _ } => acc.item_names
+      Absent => map_insert(m: acc.item_names, key: frame.item, value: identity)
+    }
+  } else {
+    acc.item_names
+  }
+}
+
+fn population_observe_atom(
+  acc: AuthoredAtomPopulation,
+  node: Node,
+  id: OccurrenceId,
+  identity: Symbol,
+  span_index: SpanIndex,
+  token_classes: Map<Symbol, Bool>,
+  frame: PopulationFrame
+) -> AuthoredAtomPopulation {
+  match span_index_resolve_textual_locus(index: span_index, id: id) {
+    Violates { diagnostic: _ } =>
+      AuthoredAtomPopulation {
+        atoms: acc.atoms,
+        import_channel: acc.import_channel,
+        test_marker_channel: acc.test_marker_channel,
+        unreadable: list_snoc_item(xs: acc.unreadable, item: AtomExtentUnreadable { occurrence: id }),
+        items: acc.items,
+        item_names: acc.item_names
+      }
+    Holds { value: locus } =>
+      match authored_atom_from_identity(node: node, id: id, identity: identity, locus: locus, token_classes: token_classes, frame: frame) {
+        Absent => acc
+        Present { value: atom } =>
+          if population_atom_is_test_marker(frame: frame) {
+            AuthoredAtomPopulation {
+              atoms: acc.atoms,
+              import_channel: acc.import_channel,
+              test_marker_channel: acc.test_marker_channel + 1,
+              unreadable: acc.unreadable,
+              items: acc.items,
+              item_names: acc.item_names
+            }
+          } else {
+            AuthoredAtomPopulation {
+              atoms: list_snoc_item(xs: acc.atoms, item: atom),
+              import_channel: acc.import_channel,
+              test_marker_channel: acc.test_marker_channel,
+              unreadable: acc.unreadable,
+              items: acc.items,
+              item_names: population_name_item(acc: acc, frame: frame, identity: identity)
+            }
+          }
+      }
+  }
+}
+
+fn population_enter_production(acc: AuthoredAtomPopulation, frame: PopulationFrame, emitted: Symbol) -> PopulationFrame {
+  if emitted == ^dag_surface_top_level_item {
+    PopulationFrame { context: list_snoc_item(xs: frame.context, item: emitted), innermost: emitted, item: acc.items }
+  } else {
+    PopulationFrame { context: list_snoc_item(xs: frame.context, item: emitted), innermost: emitted, item: frame.item }
+  }
+}
+
+fn population_count_item(acc: AuthoredAtomPopulation, emitted: Symbol) -> AuthoredAtomPopulation {
+  if emitted == ^dag_surface_top_level_item {
+    AuthoredAtomPopulation {
+      atoms: acc.atoms,
+      import_channel: acc.import_channel,
+      test_marker_channel: acc.test_marker_channel,
+      unreadable: acc.unreadable,
+      items: acc.items + 1,
+      item_names: acc.item_names
+    }
+  } else {
+    acc
+  }
+}
+
+// THE ACCUMULATOR IS THREADED, NEVER APPENDED (DESIGN section 6, bare minimum cost).
+fn population_walk(
+  acc: AuthoredAtomPopulation,
+  node: Node,
+  span_index: SpanIndex,
+  token_classes: Map<Symbol, Bool>,
+  frame: PopulationFrame
+) -> AuthoredAtomPopulation {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_import_decl {
+        let inner = population_walk_children(
+          acc: authored_atom_population_empty(),
+          node: node,
+          span_index: span_index,
+          token_classes: token_classes,
+          frame: frame
+        )
+        AuthoredAtomPopulation {
+          atoms: acc.atoms,
+          import_channel: acc.import_channel + length(xs: inner.atoms),
+          test_marker_channel: acc.test_marker_channel,
+          unreadable: fold_list(xs: inner.unreadable, empty: acc.unreadable, cons: fn(u, row) { list_snoc_item(xs: u, item: row) }),
+          items: acc.items,
+          item_names: acc.item_names
+        }
+      } else {
+        let entered = population_enter_production(acc: acc, frame: frame, emitted: emitted)
+        population_walk_node(
+          acc: population_count_item(acc: acc, emitted: emitted),
+          node: node,
+          span_index: span_index,
+          token_classes: token_classes,
+          frame: entered
+        )
+      }
+    Absent => population_walk_node(acc: acc, node: node, span_index: span_index, token_classes: token_classes, frame: frame)
+  }
+}
+
+fn population_walk_node(
+  acc: AuthoredAtomPopulation,
+  node: Node,
+  span_index: SpanIndex,
+  token_classes: Map<Symbol, Bool>,
+  frame: PopulationFrame
+) -> AuthoredAtomPopulation {
+  let observed = match node_atom_identity_of(node: node) {
+    Absent => acc
+    Present { value: identity } =>
+      match minted_occurrence_of(node: node) {
+        Absent => acc
+        Present { value: id } =>
+          population_observe_atom(
+            acc: acc,
+            node: node,
+            id: id,
+            identity: identity,
+            span_index: span_index,
+            token_classes: token_classes,
+            frame: frame
+          )
+      }
+  }
+  population_walk_children(acc: observed, node: node, span_index: span_index, token_classes: token_classes, frame: frame)
+}
+
+fn population_walk_children(
+  acc: AuthoredAtomPopulation,
+  node: Node,
+  span_index: SpanIndex,
+  token_classes: Map<Symbol, Bool>,
+  frame: PopulationFrame
+) -> AuthoredAtomPopulation {
+  fold(node.children, init: acc, f: fn(inner, edge) {
+    population_walk(acc: inner, node: edge.target, span_index: span_index, token_classes: token_classes, frame: frame)
+  })
+}
+
+fn authored_atom_population(artifact: ParseArtifact, token_classes: Map<Symbol, Bool>) -> AuthoredAtomPopulation {
+  population_walk(
+    acc: authored_atom_population_empty(),
+    node: artifact.tree,
+    span_index: artifact.span_index,
+    token_classes: token_classes,
+    frame: PopulationFrame { context: Empty, innermost: ^reference_conservation_outside_every_production, item: 0 - 1 }
+  )
+}
+
+// ---- the normalized-side index -----------------------------------------------------------------
+
+// One pass over the normalized tree, keyed by occurrence, so each authored atom is answered by a
+// lookup rather than a rescan (DESIGN section 6: a per-atom rescan is the quadratic this refuses).
+fn occurrence_identity_index(acc: Map<OccurrenceId, Symbol>, node: Node) -> Map<OccurrenceId, Symbol> {
+  let here = match node_atom_identity_of(node: node) {
+    Absent => acc
+    Present { value: identity } =>
+      match minted_occurrence_of(node: node) {
+        Absent => acc
+        Present { value: id } => map_insert(m: acc, key: id, value: identity)
+      }
+  }
+  fold(node.children, init: here, f: fn(inner, edge) {
+    occurrence_identity_index(acc: inner, node: edge.target)
+  })
+}
+
+// ---- the refusal side --------------------------------------------------------------------------
+
+// A refusal covers an atom only when it is LOCATED at or above it: a node locus whose subtree
+// carries the atom's occurrence, or a byte range enclosing the atom's extent. A diagnostic at an
+// invariant port or a declaration name locates nothing in this module's tree, so it covers nothing
+// -- an unlocated refusal that swallows a module is exactly the silence this check exists to count.
+type RefusalRange {
+  start: Int
+  end: Int
+}
+
+type RefusalCover {
+  anchored: Map<OccurrenceId, Bool>
+  ranges: FreeMonoid<RefusalRange>
+}
+
+fn refusal_cover_anchor(acc: Map<OccurrenceId, Bool>, node: Node) -> Map<OccurrenceId, Bool> {
+  let here = match minted_occurrence_of(node: node) {
+    Absent => acc
+    Present { value: id } => map_insert(m: acc, key: id, value: true)
+  }
+  fold(node.children, init: here, f: fn(inner, edge) {
+    refusal_cover_anchor(acc: inner, node: edge.target)
+  })
+}
+
+fn refusal_cover_add(cover: RefusalCover, d: Diagnostic) -> RefusalCover {
+  match d.at {
+    NodeLocus { anchor: anchor } =>
+      RefusalCover { anchored: refusal_cover_anchor(acc: cover.anchored, node: anchor.at), ranges: cover.ranges }
+    Textual { file: _, extent: extent } =>
+      match extent {
+        ByteRange { start: s, end: e } =>
+          RefusalCover { anchored: cover.anchored, ranges: list_snoc_item(xs: cover.ranges, item: ByteRange { start: s, end: e }) }
+        WholeFile => cover
+      }
+    _ => cover
+  }
+}
+
+fn refusal_cover_from(diagnostics: NonEmptyDiagnostics) -> RefusalCover {
+  fold_list(
+    xs: diagnostics.tail,
+    empty: refusal_cover_add(
+      cover: RefusalCover { anchored: empty_map(), ranges: Empty },
+      d: diagnostics.head
+    ),
+    cons: fn(acc, d) { refusal_cover_add(cover: acc, d: d) }
+  )
+}
+
+fn range_encloses_atom(range: RefusalRange, atom: AuthoredAtom) -> Bool {
+  match atom.locus {
+    Textual { file: _, extent: extent } =>
+      match extent {
+        ByteRange { start: s, end: e } => range.start <= s && e <= range.end
+        WholeFile => false
+      }
+    _ => false
+  }
+}
+
+fn refusal_covers(cover: RefusalCover, atom: AuthoredAtom) -> Bool {
+  match map_lookup(m: cover.anchored, key: atom.occurrence) {
+    Present { value: _ } => true
+    Absent =>
+      fold_list(xs: cover.ranges, empty: false, cons: fn(acc, r) { acc || range_encloses_atom(range: r, atom: atom) })
+  }
+}
+
+// ---- the verdict -------------------------------------------------------------------------------
+
+fn report_from_population(path: String, population: AuthoredAtomPopulation) -> ReferenceConservationReport {
+  ReferenceConservationReport {
+    path: path,
+    authored: length(xs: population.atoms),
+    conserved: 0,
+    locus_erased: 0,
+    refused: 0,
+    import_channel: population.import_channel,
+    test_marker_channel: population.test_marker_channel,
+    dropped: Empty,
+    unmeasured: population.unreadable
+  }
+}
+
+fn report_snoc_drop(report: ReferenceConservationReport, atom: AuthoredAtom, cause: DroppedReferenceCause) -> ReferenceConservationReport {
+  ReferenceConservationReport {
+    path: report.path,
+    authored: report.authored,
+    conserved: report.conserved,
+    locus_erased: report.locus_erased,
+    refused: report.refused,
+    import_channel: report.import_channel,
+    test_marker_channel: report.test_marker_channel,
+    dropped: list_snoc_item(xs: report.dropped, item: DroppedReference { atom: atom, cause: cause }),
+    unmeasured: report.unmeasured
+  }
+}
+
+fn report_count_conserved(report: ReferenceConservationReport) -> ReferenceConservationReport {
+  ReferenceConservationReport {
+    path: report.path,
+    authored: report.authored,
+    conserved: report.conserved + 1,
+    locus_erased: report.locus_erased,
+    refused: report.refused,
+    import_channel: report.import_channel,
+    test_marker_channel: report.test_marker_channel,
+    dropped: report.dropped,
+    unmeasured: report.unmeasured
+  }
+}
+
+fn report_count_refused(report: ReferenceConservationReport) -> ReferenceConservationReport {
+  ReferenceConservationReport {
+    path: report.path,
+    authored: report.authored,
+    conserved: report.conserved,
+    locus_erased: report.locus_erased,
+    refused: report.refused + 1,
+    import_channel: report.import_channel,
+    test_marker_channel: report.test_marker_channel,
+    dropped: report.dropped,
+    unmeasured: report.unmeasured
+  }
+}
+
+fn report_count_locus_erased(report: ReferenceConservationReport) -> ReferenceConservationReport {
+  ReferenceConservationReport {
+    path: report.path,
+    authored: report.authored,
+    conserved: report.conserved,
+    locus_erased: report.locus_erased + 1,
+    refused: report.refused,
+    import_channel: report.import_channel,
+    test_marker_channel: report.test_marker_channel,
+    dropped: report.dropped,
+    unmeasured: report.unmeasured
+  }
+}
+
+// ---- the declaration-scoped spelling pool (the LocusErased disposition) ------------------------
+//
+// WHY THIS EXISTS, AND WHY IT IS A SEPARATE COUNT. Measured at main fec339d561, most authored atoms
+// do NOT keep their occurrence through lowering (type-position atoms have kept theirs since
+// #11985; see occurrence_spelling_conserved): field projections, constructors and
+// dotted spines are rebuilt, and binders become Named edge labels, which carry no occurrence. Those
+// atoms are not dropped, but "same locus" cannot be decided for them on today's carrier. Reporting
+// them as drops would bury the real drops; reporting them as conserved would claim a locus the tree
+// does not hold. So they are their own disposition: an atom whose occurrence is gone is LocusErased
+// only when the SAME top-level declaration's normalized subtree still holds an unconsumed copy of
+// its spelling that no preserved occurrence accounts for -- a rebuilt (non-minted) atom or an edge
+// label. The pool is a multiset and each match consumes one copy, so a spelling that appears twice
+// and is dropped once leaves exactly one DroppedReference. The scope is the declaration, never the
+// module, so a same-spelled mention in another declaration cannot mask a drop.
+//
+// DISSOLUTION: when lowering projects occurrences (OccurrenceProjected { caused_by } in place of
+// node_synthetic; recorded by XL-2 as its own prerequisite), every LocusErased atom becomes either
+// conserved or dropped by occurrence alone, and this pool is deleted.
+
+fn pool_add(pool: Map<Symbol, Int>, sym: Symbol) -> Map<Symbol, Int> {
+  match map_lookup(m: pool, key: sym) {
+    Present { value: n } => map_insert(m: pool, key: sym, value: n + 1)
+    Absent => map_insert(m: pool, key: sym, value: 1)
+  }
+}
+
+fn rebuilt_spelling_pool(acc: Map<Symbol, Int>, node: Node) -> Map<Symbol, Int> {
+  let here = match node_atom_identity_of(node: node) {
+    Absent => acc
+    Present { value: identity } =>
+      match minted_occurrence_of(node: node) {
+        Present { value: _ } => acc
+        Absent => pool_add(pool: acc, sym: identity)
+      }
+  }
+  fold(node.children, init: here, f: fn(inner, edge) {
+    let labelled = match edge.label {
+      Named { name: name } => pool_add(pool: inner, sym: name)
+      Positional => inner
+    }
+    rebuilt_spelling_pool(acc: labelled, node: edge.target)
+  })
+}
+
+// THE MODULE BODY IS READ BY FOLLOWING THE MODULE'S OWN QUALIFIED NAME. Measured on the fixture
+// route, the normalized root is a production shell whose captured child carries the namespace
+// spine one Named edge per segment (v2 -> test -> <leaf>), and the declarations hang off the leaf.
+// The walk follows exactly those segment labels; a missing segment yields no body and therefore
+// empty pools, so every atom of the module whose occurrence was erased becomes a DroppedReference
+// -- loud, never an invented match.
+fn named_child_optional(node: Node, label: Symbol) -> Optional<Node> {
+  fold(node.children, init: Absent, f: fn(acc, edge) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match edge.label {
+          Named { name: name } => if name == label { optional_present(value: edge.target) } else { acc }
+          Positional => acc
+        }
+    }
+  })
+}
+
+fn module_body_optional(root: Node, module_qn: FreeMonoid<Symbol>) -> Optional<Node> {
+  let start = match named_child_optional(node: root, label: ^grammar_production_captured_node_projection) {
+    Present { value: captured } => captured
+    Absent => root
+  }
+  fold_list(xs: module_qn, empty: optional_present(value: start), cons: fn(acc, seg) {
+    match acc {
+      Absent => Absent
+      Present { value: n } => named_child_optional(node: n, label: seg)
+    }
+  })
+}
+
+// The module's declarations as the normalized tree names them: each Named edge of the module
+// body, keyed by its label. The label itself is in the pool, because it IS the rebuilt form
+// of the declaration's name binder.
+fn declaration_pools(tree: NormalizedTree, module_qn: Outcome<FreeMonoid<Symbol>>) -> Map<Symbol, Map<Symbol, Int>> {
+  match module_qn {
+    Rejected { diagnostics: _ } => empty_map()
+    Accepted { value: qn, diagnostics: _ } =>
+      match module_body_optional(root: tree.root, module_qn: qn) {
+        Absent => empty_map()
+        Present { value: body } =>
+          fold(body.children, init: empty_map(), f: fn(acc, edge) {
+            match edge.label {
+              Named { name: name } =>
+                map_insert(m: acc, key: name, value: rebuilt_spelling_pool(acc: pool_add(pool: empty_map(), sym: name), node: edge.target))
+              Positional => acc
+            }
+          })
+      }
+  }
+}
+
+// The module header's pool is its qualified name, read back by the same authority the namespace
+// graft is read by.
+fn header_pool(module_qn: Outcome<FreeMonoid<Symbol>>) -> Map<Symbol, Int> {
+  match module_qn {
+    Rejected { diagnostics: _ } => empty_map()
+    Accepted { value: qn, diagnostics: _ } =>
+      fold_list(xs: qn, empty: empty_map(), cons: fn(acc, seg) { pool_add(pool: acc, sym: seg) })
+  }
+}
+
+type ItemPools {
+  pools: Map<Int, Map<Symbol, Int>>
+}
+
+fn item_pool(
+  state: ItemPools,
+  item: Int,
+  item_names: Map<Int, Symbol>,
+  declarations: Map<Symbol, Map<Symbol, Int>>,
+  header: Map<Symbol, Int>
+) -> Map<Symbol, Int> {
+  match map_lookup(m: state.pools, key: item) {
+    Present { value: pool } => pool
+    Absent =>
+      if item < 0 {
+        header
+      } else {
+        match map_lookup(m: item_names, key: item) {
+          Absent => empty_map()
+          Present { value: name } =>
+            match map_lookup(m: declarations, key: name) {
+              Present { value: pool } => pool
+              Absent => empty_map()
+            }
+        }
+      }
+  }
+}
+
+// A REBUILT TYPE ATOM IS SPELLED BY LOWERING'S OWN CANONICAL BINDING, and the pool is asked in
+// that spelling: v2.compiler.body_lowering_fold body_lower_resolved_type_binding is the single
+// authority that rewrites `Int` / `Bool` to their canonical bindings when it rebuilds a type atom,
+// so the fallback consults that function rather than restating its table. The authored spelling
+// is asked first; the canonical one only when the authored spelling has no copy left.
+fn pool_spelling_of(pool: Map<Symbol, Int>, identity: Symbol) -> Symbol {
+  match map_lookup(m: pool, key: identity) {
+    Present { value: n } => if n > 0 { identity } else { body_lower_resolved_type_binding(sym: identity) }
+    Absent => body_lower_resolved_type_binding(sym: identity)
+  }
+}
+
+// An atom whose item names a declaration the normalized module body does not carry is not a
+// per-atom loss: the whole declaration is missing, so it is typed as that and the census can count
+// it once per declaration rather than once per atom.
+type ItemDeclarationStanding
+  = ItemDeclarationFound
+  | ItemDeclarationMissing { declaration: Symbol }
+
+fn item_declaration_found(
+  item: Int,
+  item_names: Map<Int, Symbol>,
+  declarations: Map<Symbol, Map<Symbol, Int>>
+) -> ItemDeclarationStanding {
+  if item < 0 {
+    ItemDeclarationFound
+  } else {
+    match map_lookup(m: item_names, key: item) {
+      Absent => ItemDeclarationFound
+      Present { value: name } =>
+        match map_lookup(m: declarations, key: name) {
+          Present { value: _ } => ItemDeclarationFound
+          Absent => ItemDeclarationMissing { declaration: name }
+        }
+    }
+  }
+}
+
+fn absent_cause(declared: ItemDeclarationStanding) -> DroppedReferenceCause {
+  match declared {
+    ItemDeclarationFound => AbsentFromNormalizedTree
+    ItemDeclarationMissing { declaration: d } => DeclarationAbsentFromNormalizedTree { declaration: d }
+  }
+}
+
+// THE SAME OCCURRENCE UNDER LOWERING'S CANONICAL SPELLING IS CONSERVED. Since #11985 a type atom
+// keeps its minted occurrence through lowering, and v2.compiler.body_lowering_fold
+// body_lower_resolved_type_binding rewrites its spelling (`Bool` -> `bool_node_symbol`, `Int` ->
+// `dag_binding_type_int`) at that same occurrence. That is the single authority the spelling pool
+// below already consults, so it is asked here too: the locus is held and the spelling is the one
+// the rewrite derives. Any other spelling at the occurrence is still RespelledInNormalizedTree.
+fn occurrence_spelling_conserved(found: Symbol, identity: Symbol) -> Bool {
+  found == identity || found == body_lower_resolved_type_binding(sym: identity)
+}
+
+type TreeConservationState {
+  report: ReferenceConservationReport
+  pools: ItemPools
+}
+
+// The module's qualified name is read ONCE here and handed to both pools, which previously each
+// re-derived it from the root (DESIGN section 2: one demand, one production).
+fn conservation_against_tree(path: String, population: AuthoredAtomPopulation, tree: NormalizedTree) -> ReferenceConservationReport {
+  let index = occurrence_identity_index(acc: empty_map(), node: tree.root)
+  let module_qn = qualified_name_from_module_node(root: tree.root)
+  let declarations = declaration_pools(tree: tree, module_qn: module_qn)
+  let header = header_pool(module_qn: module_qn)
+  fold_list(
+    xs: population.atoms,
+    empty: TreeConservationState {
+      report: report_from_population(path: path, population: population),
+      pools: ItemPools { pools: empty_map() }
+    },
+    cons: fn(state, atom) {
+      match map_lookup(m: index, key: atom.occurrence) {
+        Present { value: found } =>
+          if occurrence_spelling_conserved(found: found, identity: atom.identity) {
+            TreeConservationState { report: report_count_conserved(report: state.report), pools: state.pools }
+          } else {
+            TreeConservationState {
+              report: report_snoc_drop(report: state.report, atom: atom, cause: RespelledInNormalizedTree { found: found }),
+              pools: state.pools
+            }
+          }
+        Absent =>
+          let declared = item_declaration_found(item: atom.item, item_names: population.item_names, declarations: declarations)
+          let pool = item_pool(state: state.pools, item: atom.item, item_names: population.item_names, declarations: declarations, header: header)
+          let rebuilt = pool_spelling_of(pool: pool, identity: atom.identity)
+          match map_lookup(m: pool, key: rebuilt) {
+            Present { value: n } =>
+              if n > 0 {
+                TreeConservationState {
+                  report: report_count_locus_erased(report: state.report),
+                  pools: ItemPools { pools: map_insert(m: state.pools.pools, key: atom.item, value: map_insert(m: pool, key: rebuilt, value: n - 1)) }
+                }
+              } else {
+                TreeConservationState {
+                  report: report_snoc_drop(report: state.report, atom: atom, cause: absent_cause(declared: declared)),
+                  pools: state.pools
+                }
+              }
+            Absent =>
+              TreeConservationState {
+                report: report_snoc_drop(report: state.report, atom: atom, cause: absent_cause(declared: declared)),
+                pools: state.pools
+              }
+          }
+      }
+    }
+  ).report
+}
+
+fn conservation_against_refusal(path: String, population: AuthoredAtomPopulation, diagnostics: NonEmptyDiagnostics) -> ReferenceConservationReport {
+  let cover = refusal_cover_from(diagnostics: diagnostics)
+  fold_list(
+    xs: population.atoms,
+    empty: report_from_population(path: path, population: population),
+    cons: fn(report, atom) {
+      if refusal_covers(cover: cover, atom: atom) {
+        report_count_refused(report: report)
+      } else {
+        report_snoc_drop(report: report, atom: atom, cause: RefusalNotAtOrAbove)
+      }
+    }
+  )
+}
+
+fn reference_conservation_unmeasured(path: String, diagnostics: NonEmptyDiagnostics) -> ReferenceConservationReport {
+  ReferenceConservationReport {
+    path: path,
+    authored: 0,
+    conserved: 0,
+    locus_erased: 0,
+    refused: 0,
+    import_channel: 0,
+    test_marker_channel: 0,
+    dropped: Empty,
+    unmeasured: Cons { head: TokenizeOrParseRefused { diagnostics: diagnostics }, tail: Empty }
+  }
+}
+
+// THE SUBJECT IS THE PARSE AND THE NORMALIZE, CARRIED TOGETHER. Tokenize, parse and normalize are
+// the exact phase functions v2.compiler.program_assembly composes on the canonical route; the
+// subject only keeps the ParseArtifact that route discards, because the population is read from
+// it. It is split from the verdict so a fixture can share the production phases it is not about
+// (v2.workflow.floor_pure_producer_share enrols them warm) while every claim still executes the
+// check itself -- sharing the verdict would hand each claim its own answer.
+type ReferenceConservationSubject {
+  path: String
+  parsed: Outcome<ParseArtifact>
+  normalized: Outcome<NormalizedTree>
+}
+
+// ONE MODULE, ONE ALLOCATOR SCOPE. The check parses each module on its own, which is the
+// standalone-parse case std.occurrence_identity occurrence_identity_scope_law names: an isolated
+// allocator scope, so the seed is the initial allocator. Occurrence ids are compared only within
+// this one subject, never across modules.
+fn reference_conservation_subject_of_read(
+  read: DagSourceReadWitness,
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
+) -> ReferenceConservationSubject {
+  let parsed = program_assembly_phase_parse_measured_seeded(
+    tokens: program_assembly_phase_tokenize(read: read, lm: lm),
+    prepared: prepared,
+    residue: residue,
+    seed: occurrence_id_allocator_initial()
+  ).outcome
+  ReferenceConservationSubject {
+    path: read.artifact.file_path,
+    parsed: parsed,
+    normalized: program_assembly_phase_normalize(parsed: parsed)
+  }
+}
+
+// THE `.dag` LANGUAGE'S TOKEN CLASSES, AS ONE NULLARY VALUE. Deriving them re-evaluates
+// dag_language_model(), which costs more than the check it feeds; the result is a map of symbols to
+// bools and reifies totally, so it is enrolled WARM in v2.workflow.floor_pure_producer_share and
+// paid once per floor rather than once per claim.
+fn dag_declared_token_classes() -> Map<Symbol, Bool> {
+  declared_token_classes(lm: dag_language_model())
+}
+
+fn reference_conservation_of_subject(subject: ReferenceConservationSubject, token_classes: Map<Symbol, Bool>) -> ReferenceConservationReport {
+  match subject.parsed {
+    Rejected { diagnostics: d } => reference_conservation_unmeasured(path: subject.path, diagnostics: d)
+    Accepted { value: artifact, diagnostics: _ } =>
+      let population = authored_atom_population(artifact: artifact, token_classes: token_classes)
+      match subject.normalized {
+        Accepted { value: tree, diagnostics: _ } =>
+          conservation_against_tree(path: subject.path, population: population, tree: tree)
+        Rejected { diagnostics: d } =>
+          conservation_against_refusal(path: subject.path, population: population, diagnostics: d)
+      }
+  }
+}
+
+fn reference_conservation_of_read(
+  read: DagSourceReadWitness,
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
+) -> ReferenceConservationReport {
+  reference_conservation_of_subject(
+    subject: reference_conservation_subject_of_read(read: read, lm: lm, prepared: prepared, residue: residue),
+    token_classes: declared_token_classes(lm: lm)
+  )
+}
+
+fn reference_conservation_of_ingest(
+  ingest: SourceRootIngest,
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
+) -> FreeMonoid<ReferenceConservationReport> {
+  fold_list(
+    xs: ingest,
+    empty: Empty,
+    cons: fn(acc, read) {
+      list_snoc_item(
+        xs: acc,
+        item: reference_conservation_of_read(read: read, lm: lm, prepared: prepared, residue: residue)
+      )
+    }
+  )
+}
+
+// ---- the census rendering ----------------------------------------------------------------------
+
+// One line per dropped row: `<path>:<start>-<end> <identity> <cause> <production chain>`. A census reader groups the
+// lines into shapes by reading the source at the extent; the line never guesses the shape itself,
+// because a shape named by this module would be a second, unexecuted classification of a drop the
+// row already locates.
+fn dropped_reference_cause_word(cause: DroppedReferenceCause) -> String {
+  match cause {
+    AbsentFromNormalizedTree => "absent"
+    DeclarationAbsentFromNormalizedTree { declaration: d } => "declaration-absent:" + symbol_lexeme(sym: d)
+    RespelledInNormalizedTree { found: found } => "respelled:" + symbol_lexeme(sym: found)
+    RefusalNotAtOrAbove => "refusal-not-at-or-above"
+  }
+}
+
+fn authored_atom_extent_text(atom: AuthoredAtom) -> String {
+  match atom.locus {
+    Textual { file: _, extent: extent } =>
+      match extent {
+        ByteRange { start: s, end: e } =>
+          integer_int_to_decimal_string(value: s) + "-" + integer_int_to_decimal_string(value: e)
+        WholeFile => "whole-file"
+      }
+    _ => "unlocated"
+  }
+}
+
+fn authored_atom_context_text(atom: AuthoredAtom) -> String {
+  fold_list(
+    xs: atom.context,
+    empty: "",
+    cons: fn(acc, production) { acc + "/" + symbol_lexeme(sym: production) }
+  )
+}
+
+fn dropped_reference_line(path: String, row: DroppedReference) -> String {
+  path + ":" + authored_atom_extent_text(atom: row.atom) + " " + symbol_lexeme(sym: row.atom.identity) + " " + dropped_reference_cause_word(cause: row.cause) + " " + authored_atom_context_text(atom: row.atom)
+}
+
+fn reference_conservation_report_lines(report: ReferenceConservationReport) -> FreeMonoid<String> {
+  let summary = "module " + report.path + " authored=" + integer_int_to_decimal_string(value: report.authored) + " conserved=" + integer_int_to_decimal_string(value: report.conserved) + " locus_erased=" + integer_int_to_decimal_string(value: report.locus_erased) + " refused=" + integer_int_to_decimal_string(value: report.refused) + " import_channel=" + integer_int_to_decimal_string(value: report.import_channel) + " test_marker_channel=" + integer_int_to_decimal_string(value: report.test_marker_channel) + " dropped=" + integer_int_to_decimal_string(value: length(xs: report.dropped)) + " unmeasured=" + integer_int_to_decimal_string(value: length(xs: report.unmeasured))
+  fold_list(
+    xs: report.dropped,
+    empty: Cons { head: summary, tail: Empty },
+    cons: fn(acc, row) { list_snoc_item(xs: acc, item: dropped_reference_line(path: report.path, row: row)) }
+  )
+}

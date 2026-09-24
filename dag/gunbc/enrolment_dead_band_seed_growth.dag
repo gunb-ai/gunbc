@@ -1,0 +1,41 @@
+module gunbc.enrolment_dead_band_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust that renders the enrolment gate's dead-band ground
+// (gunbc#11989; side-chat ruling, PR comment 5795659115). gunbc.seed_growth_admission
+// seed_growth_forward_freeze_policy_note makes unenumerated hand growth in src/v1 a stop-line, so each
+// ADDED declaration is enumerated below. Modified items keep their names and are not netted
+// (ExistingSeedItemModified): EnrolmentMarginStanding (two arms, DeadBandStale and
+// DeadBandWrongGround, and their blocks / unpaired_pairing_hole / cause / name / detail arms),
+// EnrolmentExpensivenessGround (the DeadBand arm), enrolment_expensiveness_declaration (the
+// dead_band_holds parameter), enrolment_margin_standing_for (the DeadBand ground's self-staling
+// arms), run_required_floor (decodes the authority and passes membership), and the unit test
+// the unit test a_string_roster_append_does_not_declare_enrolment_expensiveness (its three calls gain the
+// fourth argument).
+//
+// WHY IT IS ADMITTED AGAINST THE v1 FREEZE, BY PURPOSE. gunbc.v1_maintenance_standing
+// v1_seed_standing admits a change when it serves the v2 self-host program. The required floor is the
+// instrument guarding that program, and this change keeps it CORRECT: without the arm, a newly enrolled
+// witness whose honest cost lies in (margin, per-subject line] has no standing that holds
+// (gunbc.recurring_failure_mode enrolment_dead_band_has_no_representable_standing), and the only moves
+// left delete or corrupt floor evidence.
+//
+// THE DECISION LIVES IN .dag; THE RUST IS ITS MIRROR, NOT A SECOND RULE. The ground, the interval, both
+// self-staling arms and their causes are v2.workflow.floor_enrolment_margin (enrolment_declared_measured_standing
+// and the standing coproduct), tested by v2.test.floor_enrolment_margin; the identities are
+// v2.workflow.floor_enrolment_dead_band, which the host decodes from the model and never restates.
+// test.claim.enrolment_margin_seed_mirror_witness_test pins the mirror's wire names and causes to
+// the model's, for every arm, so a model arm with no mirror or a drifted spelling reds.
+data enrolment_dead_band_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "floor_enrolment_dead_band_observed_identities", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "the_dead_band_ground_holds_only_an_exact_reading_inside_margin_and_line", field: WholeDeclaration },
+  ],
+  reason: "The required floor's host must render v2.workflow.floor_enrolment_margin's dead-band ground so a newly enrolled witness honestly costing between the enrolment margin and the per-subject line has a standing, observed only and self-staling, for exactly the identities v2.workflow.floor_enrolment_dead_band names (gunbc#11989). The decoder reads that authority from the model; the unit test is the seed-side RED for both self-staling arms.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "The enrolment-margin gate's host rendering migrates with required_floor_runner's other enrolment arms: when v2.workflow.floor_enrolment_margin's standing is evaluated from the model on the required path rather than mirrored in host Rust, the decoder and the mirror arms delete; independently, gunbc.rung_drop app_attest_verifier_enrolment_dead_band_observed_only's trigger retires the dead-band ground and this receipt with it.",
+  current_boundary: "Reachable only from run_required_floor's enrolment-margin gate (witnesses lane), for identities v2.workflow.floor_enrolment_dead_band names; decides no other gate and touches no other standing.",
+}
