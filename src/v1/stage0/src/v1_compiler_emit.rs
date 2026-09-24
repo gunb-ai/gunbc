@@ -1352,8 +1352,7 @@ pub fn test_file_path(module_name: String, target: RenderTarget) -> String {
             Some(dir) => dir.clone(),
             std::option::Option::None => "".to_string(),
         };
-        let filename =
-            crate::v1_compiler_emit_core_support::module_to_filename(module_name.clone());
+        let filename = crate::gunbc_rust_emitted_edge::module_to_filename(module_name.clone());
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
