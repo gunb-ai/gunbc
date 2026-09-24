@@ -241,6 +241,15 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 // that row is now restored on the production route. A row here must never be retired by a trigger
 // that does not restore it.
 
+// REACHABILITY, NOT COMPLETENESS. Every row below asks whether a spelling REACHES the normalized
+// tree or the collector; one surviving atom answers it green however much of the surrounding
+// expression was dropped, so none of them establishes that a call, operator or match was lowered
+// WHOLE. Four rows were renamed from "reaches the denominator" / "is in the tree" to "is reachable"
+// for that reason, and they are not to be cited as shape coverage. The whole-shape contracts --
+// exact arity, every operand in order at its authored occurrence, refusing on a partial read -- are
+// v2.test.claim.namespace_xl0.body_shape_contract, read through the admitted views in
+// v2.std.compilers.body_lowering.
+
 test fn the_call_argument_fixture_ingests_holds() -> Bool {
   fixture_ingest_accepted()
 }
@@ -274,14 +283,14 @@ test fn a_parameter_reference_reaches_the_collector_holds() -> Bool {
 // -- for positional arguments as well as named ones. The tree-grain row below is the control that
 // keeps the two grains apart: if it holds and this row reds, the collector is the defect, not
 // lowering.
-test fn a_call_argument_mention_reaches_the_denominator_holds() -> Bool {
+test fn a_call_argument_mention_is_reachable_by_the_collector_holds() -> Bool {
   sites_mention(sites: fixture_sites(), spelling: "xl0_call_only")
 }
 
 // THE POSITIONAL TWIN. `xl0_positional_only` is referenced once, as the sole POSITIONAL argument of
 // a call; the reader it replaced dropped this spelling too, so the repair is not specific to the
 // named form.
-test fn a_positional_call_argument_mention_reaches_the_denominator_holds() -> Bool {
+test fn a_positional_call_argument_mention_is_reachable_by_the_collector_holds() -> Bool {
   sites_mention(sites: fixture_sites(), spelling: "xl0_positional_only")
 }
 
@@ -300,7 +309,7 @@ fn fixture_atom_count(spelling: Symbol) -> Int {
 // THE TREE-GRAIN READING OF THE SAME FACT, independent of the collector: exactly one atom spells the
 // argument in the normalized roots. It was 0 at b8e0cc4eb9, beside 1 for the callee and 1 for the
 // out-of-call mention, which is what located the loss at lowering rather than at the collector.
-test fn a_call_argument_atom_is_in_the_normalized_tree_holds() -> Bool {
+test fn a_call_argument_atom_is_reachable_in_the_normalized_tree_holds() -> Bool {
   fixture_atom_count(spelling: ^xl0_call_only) == 1
     && fixture_atom_count(spelling: ^xl0_positional_only) == 1
     && fixture_atom_count(spelling: ^xl0_no_call) == 1
@@ -308,7 +317,7 @@ test fn a_call_argument_atom_is_in_the_normalized_tree_holds() -> Bool {
 
 // The brace-body call lowering repair keeps the callee in the normalized tree, so the collector
 // now sees it. The argument-only miss above is a separate class and stays asserted-absent.
-test fn a_callee_name_reaches_the_denominator_holds() -> Bool {
+test fn a_callee_name_is_reachable_by_the_collector_holds() -> Bool {
   sites_mention(sites: fixture_sites(), spelling: "xl0_callee")
 }
 
