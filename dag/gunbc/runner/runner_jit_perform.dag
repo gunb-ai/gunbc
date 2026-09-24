@@ -73,7 +73,7 @@ type JitDispatchRefusal
       unsatisfied: List<CredentialCapability>
     }
   | DispatchRefusedAttemptUnbound { cause: String }
-  | DispatchRefusedRunnerGroupUnrestricted { group: Int, cause: RunnerGroupRestrictionRefusal }
+  | DispatchRefusedRunnerGroupUnrestricted { group: NonEmptyStr, cause: RunnerGroupRestrictionRefusal }
   | DispatchRefusedNoInstallationCredential { cause: String }
 
 // THE FOURTH REFUSAL IS A TOTALITY ARM AND IS DELIBERATELY NOT ENROLLED AS COVERAGE.

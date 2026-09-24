@@ -7,8 +7,8 @@ import gunbc.fleet.org_actions_inspection { org_actions_organization, RunnerGrou
 import gunbc.runner_group_restriction_observation {
   ShakedownRunnerGroupRestriction, MicrovmRunnerGroupStanding,
   RunnerGroupRestrictedToShakedownWorkflow, RunnerGroupRestrictionRefused,
-  RunnerGroupNameReading, RunnerGroupNamed, RunnerGroupNameAbsent, RunnerGroupNameAmbiguous, RunnerGroupNameUnreadable,
-  observe_shakedown_runner_group_named, microvm_shakedown_selected_workflow, runner_group_restriction_refusal_text,
+  RunnerGroupAbsent, observe_shakedown_runner_group_restriction, microvm_shakedown_runner_group_name,
+  microvm_shakedown_selected_workflow, runner_group_restriction_refusal_text,
 }
 
 // THE MICROVM RUNNER GROUP, ENSURED: read first, create only when absent, read back after.
@@ -24,8 +24,6 @@ import gunbc.runner_group_restriction_observation {
 // (gunbc.runner_group_restriction_observation) must hold, or the create is refused: a 201 is
 // GitHub saying it accepted the request, and only the readback says the group is what the mint
 // needs.
-
-data microvm_shakedown_runner_group_name: NonEmptyStr = "microvm-shakedown"
 
 // Every member of the create body, as policy. Visibility is SELECTED with this repository alone,
 // public repositories are refused, and the workflow restriction names the shakedown file: three
@@ -69,22 +67,18 @@ type RunnerGroupEnsurePlan
   | GroupCreateRequired { subject: RunnerGroupCreateSubject }
   | GroupEnsureRefused { cause: NonEmptyStr }
 
+// Absent is the ONE refusal that plans the create; every other refusal of the observer -- an
+// unreadable list, a duplicated name, a group holding the name with another restriction -- refuses
+// the ensure, because the update is a different effect nobody has modeled or approved.
 fn plan_runner_group_ensure(subject: RunnerGroupCreateSubject, listed: RunnerGroupListDecode) -> RunnerGroupEnsurePlan {
-  match observe_shakedown_runner_group_named(name: subject.name, listed: listed) {
-    RunnerGroupNameAbsent => GroupCreateRequired { subject: subject }
-    RunnerGroupNameUnreadable { reason } =>
-      GroupEnsureRefused { cause: concat("RunnerGroupListUnreadable: ", reason as String) as NonEmptyStr }
-    RunnerGroupNameAmbiguous { count } =>
-      GroupEnsureRefused { cause: join(["RunnerGroupNameAmbiguous: ", to_string(count), " groups are named ", subject.name as String], "") as NonEmptyStr }
-    RunnerGroupNamed { standing } => match standing {
-      RunnerGroupRestrictedToShakedownWorkflow { restriction } => GroupAlreadyRestricted { restriction: restriction }
-      RunnerGroupRestrictionRefused { group, cause } =>
-        GroupEnsureRefused { cause: join([
-          "RunnerGroupExistsWithAnotherRestriction: group ", to_string(group.value), " is named ", subject.name as String,
-          " and ", runner_group_restriction_refusal_text(cause: cause),
-          "; updating it is an effect this module does not perform",
-        ], "") as NonEmptyStr }
-    }
+  match observe_shakedown_runner_group_restriction(name: subject.name, listed: listed) {
+    RunnerGroupRestrictedToShakedownWorkflow { restriction } => GroupAlreadyRestricted { restriction: restriction }
+    RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupAbsent } => GroupCreateRequired { subject: subject }
+    RunnerGroupRestrictionRefused { name, cause } =>
+      GroupEnsureRefused { cause: join([
+        "RunnerGroupNotEnsurable: ", name as String, ": ", runner_group_restriction_refusal_text(cause: cause),
+        "; updating an existing group is an effect this module does not perform",
+      ], "") as NonEmptyStr }
   }
 }
 

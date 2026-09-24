@@ -1,6 +1,9 @@
 module extdeps.github.org_actions
 
-import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.types { NonEmptyStr, String, Bool, Int, List, Secret }
+import extdeps.github.github { default_api_base }
+import extdeps.github.errors { GitHubErrorShape }
+import extdeps.transports.rest { RestOutcome }
 
 // ORG-LEVEL GITHUB ACTIONS SETTINGS - the upstream surface, cited. These are the org
 // settings that decide whether a repository's workflows can reach the org's self-hosted
@@ -49,25 +52,12 @@ type OrgRunnerGroup {
 // booleans) and `-f` sends strings; the `[]` suffix sends a one-element array.
 //
 // THE CLI TRANSPORT, one of N realizations and not a fact about the dependency -
-// consistent with extdeps.github.actions_runs github.CliActionsRuns. Both operations are
-// readonly observations; the repositories read exists because per-repo admission is only
-// decidable by joining a selected-visibility group to its repository list.
+// consistent with extdeps.github.actions_runs github.CliActionsRuns. It carries the per-group
+// repositories read (per-repo admission is only decidable by joining a selected-visibility group
+// to its repository list) and the create. The runner-groups LIST is NOT here: it has one
+// operation, github.OrgRunnerGroupsRest ListOrganizationRunnerGroups below, and every consumer
+// reads through it; a CLI copy of the same GET was a second authority whose page contract differed.
 service github.CliOrgRunnerGroups {
-  operation ListRunnerGroupsJson {
-    input {
-      org: NonEmptyStr
-    }
-    output {
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    readonly
-    transport shell {
-      argv: ["gh", "api", "orgs/{org}/actions/runner-groups"]
-    }
-  }
-
   operation ListRunnerGroupRepositoriesJson {
     input {
       org: NonEmptyStr
@@ -109,6 +99,63 @@ service github.CliOrgRunnerGroups {
         "-F", "restricted_to_workflows={restricted_to_workflows}",
         "-f", "selected_workflows[]={selected_workflow}"
       ]
+    }
+  }
+}
+
+// THE REST READ, FOR A CALLER WHOSE CREDENTIAL IS AN INSTALLATION ACCESS TOKEN rather than a gh
+// login -- the microVM slot controller, which mints one from the App key it custodies and holds no
+// CLI session. The body is the WIRE shape: strings and booleans exactly as GitHub sends them, with
+// no coproduct constructed inside the transport (the same separation as extdeps.github.app
+// GitHubAppInstallationRecord); a consumer projects it into its own modeled rows and refuses there.
+// per_page is the documented maximum (100), and total_count is carried so a consumer can refuse a
+// read that did not return every group rather than read a missing one as absent.
+type OrgRunnerGroupWire {
+  id: Int
+  name: String
+  visibility: String
+  allows_public_repositories: Bool
+  restricted_to_workflows: Bool
+  selected_workflows: List<String>
+  workflow_restrictions_read_only: Bool
+}
+
+type OrgRunnerGroupListWire {
+  total_count: Int
+  runner_groups: List<OrgRunnerGroupWire>
+}
+
+data org_runner_groups_max_per_page: Int = 100
+
+service github.OrgRunnerGroupsRest {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: installation_token
+  }
+
+  operation ListOrganizationRunnerGroups {
+    input {
+      installation_token: Secret
+      org: NonEmptyStr
+      per_page: Int = org_runner_groups_max_per_page
+    }
+    output {
+      result: OrgRunnerGroupListWire
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/orgs/\{org\}/actions/runner-groups",
+      query: { per_page: per_page }
+    }
+    response {
+      200 => OrgRunnerGroupListWire
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
     }
   }
 }
