@@ -256,7 +256,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     thread_local! {
             static CACHED: Rc<HashMap<String, Rc<BuiltinSignature>>> = {
                 let mut __m = HashMap::new();
-                __m.insert("count".to_string(), derived_signature(Rc::new(vec!["xs".to_string()]), "count".to_string(), crate::v1_compiler_infer_types::nominal_type_ref("Nat".to_string())));
+                __m.insert("count".to_string(), derived_signature(Rc::new(vec!["xs".to_string()]), "count".to_string(), crate::v1_compiler_infer_types::nominal_type_ref("std.nat.Nat".to_string())));
                 __m.insert("hmac_sha256_verify_hex".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "key_hex".to_string(),
@@ -723,7 +723,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: bool_type(),
     }));
-                __m.insert("length".to_string(), derived_signature(Rc::new(vec!["xs".to_string()]), "length".to_string(), crate::v1_compiler_infer_types::nominal_type_ref("Nat".to_string())));
+                __m.insert("length".to_string(), derived_signature(Rc::new(vec!["xs".to_string()]), "length".to_string(), crate::v1_compiler_infer_types::nominal_type_ref("std.nat.Nat".to_string())));
                 __m.insert("starts_with".to_string(), derived_signature(Rc::new(vec!["s".to_string(), "prefix".to_string()]), "starts_with".to_string(), bool_type()));
                 __m.insert("replace".to_string(), derived_signature(Rc::new(vec!["s".to_string(), "from".to_string(), "to".to_string()]), "replace".to_string(), string_type()));
                 __m.insert("filesystem_read".to_string(), Rc::new(BuiltinSignature {
