@@ -372,10 +372,49 @@ fn iasl_is_unbound(v: IaslVerdict) -> Bool {
   }
 }
 
-test fn a_match_binder_used_in_a_nested_if_in_an_if_arm_refuses_as_unbound() -> Bool {
+fn iasl_is_file_refused(v: IaslVerdict) -> Bool {
+  match v {
+    IaslFileRefused { fatal_reason: _ } => true
+    _ => false
+  }
+}
+
+fn iasl_is_resolve_refused(v: IaslVerdict) -> Bool {
+  match v {
+    IaslRefused { reason: _, at_atom: _ } => true
+    _ => false
+  }
+}
+
+// PROBE (temporary on this branch): which verdict the specimen reaches.
+test fn probe_match_if_binder_resolves() -> Bool {
   match iasl_outcomes() {
     IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: v } =>
-      iasl_is_unbound(v: v)
+      iasl_is_resolved(v: v)
+    IaslContextRefused => false
+  }
+}
+
+test fn probe_match_if_binder_file_refused() -> Bool {
+  match iasl_outcomes() {
+    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: v } =>
+      iasl_is_file_refused(v: v)
+    IaslContextRefused => false
+  }
+}
+
+test fn probe_match_if_binder_resolve_refused() -> Bool {
+  match iasl_outcomes() {
+    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: v } =>
+      iasl_is_resolve_refused(v: v)
+    IaslContextRefused => false
+  }
+}
+
+test fn probe_match_if_binder_unbound_at_binder() -> Bool {
+  match iasl_outcomes() {
+    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: v } =>
+      iasl_is_unbound_at(v: v, spelling: ^iasl_bound)
     IaslContextRefused => false
   }
 }
