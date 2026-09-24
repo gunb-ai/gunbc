@@ -1602,6 +1602,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_authorization_witness", function: "the_live_subject_exists_exactly_when_the_candidate_is_keyed_and_read_back" },
+      entry: "dag/test/claim/spark/pair_serving_d0_authorization_witness_test.dag",
+      function: "the_live_subject_exists_exactly_when_the_candidate_is_keyed_and_read_back",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.v41_engram_runtime_witness", function: "control_published_infeasibility_is_not_weakened_by_a_keyed_specification" },
+      entry: "dag/test/claim/spark/v41_engram_runtime_witness_test.dag",
+      function: "control_published_infeasibility_is_not_weakened_by_a_keyed_specification",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.spark.v41_runtime_candidate_witness", function: "the_live_candidate_is_keyed_end_to_end" },
       entry: "dag/test/claim/spark/v41_runtime_candidate_witness_test.dag",
       function: "the_live_candidate_is_keyed_end_to_end",
