@@ -1,6 +1,8 @@
 module v2.std.type_binder
 
 import v2.std.compilers.lexing { symbol_intern_lexeme }
+import std.algebra { Empty }
+import v2.std.algebra { list_snoc_item }
 import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
@@ -38,6 +40,25 @@ fn edge_is_type_params(e: Edge) -> Bool {
   }
 }
 
+// A TYPE MEMBER'S SEMANTIC EDGES: its Named children minus the binder edge -- the record's authored
+// fields, the coproduct's authored variants. THE ONE PROJECTION every reader that enumerates a
+// member's fields or variants goes through (v2.std.node_query node_labeled_child_edges and
+// declared_field_list, v2.std.compilers.coproduct_variant_shape, v2.compiler.symbol_index_fill),
+// so the binder roster can never be read as a field named `<type-parameters>` or a variant of that
+// name. Order is preserved.
+fn semantic_edges(edges: List<Edge>) -> List<Edge> {
+  fold(edges, init: Empty, f: fn(acc, e) { if edge_is_type_params(e: e) { acc } else { list_snoc_item(xs: acc, item: e) } })
+}
+
+fn semantic_labeled_edges(n: Node) -> List<Edge> {
+  fold(semantic_edges(edges: n.children), init: Empty, f: fn(acc, e) {
+    match e.label {
+      Named { name: _ } => list_snoc_item(xs: acc, item: e)
+      Positional => acc
+    }
+  })
+}
+
 // THE ONE PRODUCER of the edge (consumed by v2.compiler.body_lowering_fold).
 fn type_params_edge(conj: Node) -> Edge {
   Edge { label: Named { name: type_params_marker() }, target: conj }
@@ -46,20 +67,20 @@ fn type_params_edge(conj: Node) -> Edge {
 // The declared type-parameter names a node carries, in declaration order; empty when it carries none.
 // A node carrying two marker edges is malformed (type_binder_labels_conform) and answers empty here.
 fn type_param_names(n: Node) -> List<Symbol> {
-  let carried = fold(n.children, init: [], f: fn(acc, e) {
-    if edge_is_type_params(e: e) { concat(acc, [e.target]) } else { acc }
+  let carried = fold(n.children, init: Empty, f: fn(acc, e) {
+    if edge_is_type_params(e: e) { list_snoc_item(xs: acc, item: e.target) } else { acc }
   })
   if count(carried) == 1 {
-    fold(carried, init: [], f: fn(acc, t) { concat(acc, binder_conj_names(conj: t)) })
+    fold(carried, init: Empty, f: fn(acc, t) { binder_conj_names(conj: t) })
   } else {
-    []
+    Empty
   }
 }
 
 fn binder_conj_names(conj: Node) -> List<Symbol> {
-  fold(conj.children, init: [], f: fn(acc, e) {
+  fold(conj.children, init: Empty, f: fn(acc, e) {
     match e.label {
-      Named { name: sym } => concat(acc, [sym])
+      Named { name: sym } => list_snoc_item(xs: acc, item: sym)
       Positional => acc
     }
   })

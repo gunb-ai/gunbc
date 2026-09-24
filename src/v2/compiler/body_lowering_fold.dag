@@ -6902,8 +6902,9 @@ fn body_lower_find_where_host_conj(root: Node) -> Optional<Node> {
 // declared identities (module.R.f in the containment index) instead of a residual shell. The
 // block shell reaches this dispatch preserved by the child fold; after a coproduct's variants
 // have lowered no block shell remains under the unit, so a remaining one is the record spelling.
-// Generic parameters and the type-decl modifiers are not carried by this rehome, as they are
-// not by the where-alias rehome beside it: neither is modeled on this route yet.
+// Generic parameters ARE carried, on the member, by body_lower_type_decl_member below; the
+// type-decl modifiers are not carried by this rehome, as they are not by the where-alias rehome
+// beside it.
 // A RECORD REHOMES TO Conj{ R: payload }, AND THAT SHAPE DOES NOT SAY IT IS A RECORD. The graft
 // flattens this the same way it flattens a where-alias, so downstream of the graft a record
 // declaration and a where-alias are indistinguishable, and the record/where-alias distinction is

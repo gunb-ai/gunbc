@@ -16,6 +16,10 @@ import v2.compiler.infer { infer }
 import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
 import v2.extdeps.languages.rust { rust_target_model, rust_type_expression_projection }
 import v2.compiler.translate { translate_type_expression_project }
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
+import extdeps.communication.medium { Medium }
+import v2.std.node_query { coproduct_arm_list_from_node, declared_field_list }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
 import v2.std.node {
   Arrow,
@@ -498,4 +502,95 @@ fn tpb_type_decl_emit_generic() -> Outcome<Node> {
 test fn tpb_translator_refuses_a_generic_type_decl_member() -> Bool {
   tpb_accepts(o: tpb_type_decl_emit_twin())
     && tpb_refuses_with(o: tpb_type_decl_emit_generic(), reason: ^translate_reason_generic_type_decl_not_rendered)
+}
+
+// ONE PROJECTION FOR A TYPE MEMBER'S SEMANTIC EDGES (v2.std.type_binder semantic_edges /
+// semantic_labeled_edges). The member carries its binder edge beside its fields or variants, so every
+// reader that enumerates them must go through the projection or refuse first. (21)-(23) read the
+// REAL lowered member of (14)/(16)/(17) through the shared readers; (24) is the semantic-decl
+// emitter's refusal; (25) the uncarried generic alias. RED BEFORE THIS FIX (748535dabe1): (21) (22)
+// read `<type-parameters>` as an extra field / arm, and (24) emitted it as a variant.
+
+// The first node in the resolved tree carrying type binders that is not an Arrow: a type member.
+fn tpb_generic_member(o: Outcome<Node>) -> List<Node> {
+  match o {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: n, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: n), init: [], f: fn(acc, m) {
+        match m.kind {
+          TypeNode { connective: Arrow } => acc
+          _ => if (count(acc) == 0) && (count(type_param_names(n: m)) > 0) { [m] } else { acc }
+        }
+      })
+  }
+}
+
+fn tpb_field_names(members: List<Node>) -> List<Symbol> {
+  fold(members, init: [], f: fn(acc, m) {
+    fold(declared_field_list(payload: m), init: acc, f: fn(a, fld) { concat(a, [fld.name]) })
+  })
+}
+
+fn tpb_arm_labels(members: List<Node>) -> List<Symbol> {
+  fold(members, init: [], f: fn(acc, m) {
+    fold(coproduct_arm_list_from_node(node: m), init: acc, f: fn(a, arm) { concat(a, [arm.label]) })
+  })
+}
+
+// (21) A generic record's declared fields are its authored fields only.
+test fn tpb_generic_record_fields_are_authored_fields_only() -> Bool {
+  tpb_field_names(members: tpb_generic_member(o: tpb_type_decl_record())) == [^f]
+    && tpb_field_names(members: tpb_generic_member(o: tpb_type_decl_record_two())) == [^left, ^right]
+}
+
+// (22) A generic coproduct's arms are its authored variants only.
+test fn tpb_generic_coproduct_arms_are_authored_variants_only() -> Bool {
+  tpb_arm_labels(members: tpb_generic_member(o: tpb_type_decl_coproduct())) == [^Full, ^Empty]
+}
+
+// (23) The projection is the whole of the difference: the same member without its binder edge
+// reads the same fields and arms.
+test fn tpb_projection_drops_only_the_binder_edge() -> Bool {
+  tpb_arm_labels(members: [tpb_box_member(with_params: true)]) == tpb_arm_labels(members: [tpb_box_member(with_params: false)])
+    && count(tpb_arm_labels(members: [tpb_box_member(with_params: false)])) == 2
+}
+
+fn tpb_semantic_emit(with_params: Bool) -> Outcome<Medium<String>> {
+  emit_semantic_type_decl(
+    name: ^Box,
+    params: Empty,
+    node: tpb_box_member(with_params: with_params),
+    target: rust_semantic_decl_target_model_staging()
+  )
+}
+
+fn tpb_semantic_emit_twin() -> Bool {
+  match tpb_semantic_emit(with_params: false) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn tpb_semantic_emit_generic_reason() -> Symbol {
+  match tpb_semantic_emit(with_params: true) {
+    Accepted { value: _, diagnostics: _ } => ^accepted
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+  }
+}
+
+// (24) The semantic-decl emitter refuses a member carrying binders BEFORE projecting its variants,
+// with the translator's exact reason; its twin without the edge emits.
+test fn tpb_semantic_decl_emitter_refuses_a_generic_member() -> Bool {
+  tpb_semantic_emit_twin()
+    && tpb_semantic_emit_generic_reason() == ^translate_reason_generic_type_decl_not_rendered
+}
+
+fn tpb_type_decl_generic_alias() -> Outcome<Node> {
+  tpb_assemble(src: "module p\n\ntype Id<T> = T\n")
+}
+
+// (25) A generic alias whose right-hand side is not a member refuses with the exact
+// uncarried-member reason rather than dropping its binders.
+test fn tpb_generic_alias_without_a_member_refuses() -> Bool {
+  tpb_refuses_with(o: tpb_type_decl_generic_alias(), reason: ^body_lowering_reason_generic_type_decl_member_uncarried)
 }
