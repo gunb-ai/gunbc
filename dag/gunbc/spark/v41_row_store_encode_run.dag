@@ -6,6 +6,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.algebra { trim }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { sha256sum_argv, sha256sum_line_digest }
@@ -66,29 +67,32 @@ data v41_encode_run_receipt_path: String = "target/v41-row-store-encode-receipt.
 // ONE STORE'S OUTCOME, AS A CLOSED SUM (review 70572): present-and-read, encoded-and-read, encoded but
 // the digest read failed, or the encode itself failed. No arm carries a digest it did not read.
 type V41StoreRun
-  = V41StorePresent { store: V41StoreEncodeArgs, digest: Sha256Digest }
-  | V41StoreEncoded { store: V41StoreEncodeArgs, digest: Sha256Digest }
+  = V41StorePresent { store: V41StoreEncodeArgs, digest: Sha256Digest, size: ByteSize }
+  | V41StoreEncoded { store: V41StoreEncodeArgs, digest: Sha256Digest, size: ByteSize }
+  | V41StoreSizeMismatch { store: V41StoreEncodeArgs, digest: Sha256Digest, observed: ByteSize, derived: ByteSize }
+  | V41StoreSizeUnread { store: V41StoreEncodeArgs, digest: Sha256Digest, cause: NonEmptyStr }
   | V41StoreDigestUnread { store: V41StoreEncodeArgs, encoded: Bool, cause: NonEmptyStr }
   | V41StoreEncodeFailed { store: V41StoreEncodeArgs, cause: NonEmptyStr }
   | V41StorePresenceFailed { store: V41StoreEncodeArgs, cause: NonEmptyStr }
 
 fn v41_store_of(r: V41StoreRun) -> V41StoreEncodeArgs {
   match r {
-    V41StorePresent { store: a, digest: _ } => a
-    V41StoreEncoded { store: a, digest: _ } => a
+    V41StorePresent { store: a, digest: _, size: _ } => a
+    V41StoreEncoded { store: a, digest: _, size: _ } => a
+    V41StoreSizeMismatch { store: a, digest: _, observed: _, derived: _ } => a
+    V41StoreSizeUnread { store: a, digest: _, cause: _ } => a
     V41StoreDigestUnread { store: a, encoded: _, cause: _ } => a
     V41StoreEncodeFailed { store: a, cause: _ } => a
     V41StorePresenceFailed { store: a, cause: _ } => a
   }
 }
 
+// ONLY A STORE WHOSE DIGEST WAS READ AND WHOSE SIZE MATCHES THE LAYOUT counts as digested.
 fn v41_store_run_digest(r: V41StoreRun) -> Sha256Digest? {
   match r {
-    V41StorePresent { store: _, digest: d } => Present { value: d }
-    V41StoreEncoded { store: _, digest: d } => Present { value: d }
-    V41StoreDigestUnread { store: _, encoded: _, cause: _ } => none
-    V41StoreEncodeFailed { store: _, cause: _ } => none
-    V41StorePresenceFailed { store: _, cause: _ } => none
+    V41StorePresent { store: _, digest: d, size: _ } => Present { value: d }
+    V41StoreEncoded { store: _, digest: d, size: _ } => Present { value: d }
+    _ => none
   }
 }
 
@@ -134,17 +138,52 @@ fn v41_store_present(ctx: SparkMaterializeContext, out: NonEmptyStr) -> V41Store
 }
 
 // ONE STORE: encode if absent, then digest. A failed encode is its own arm and is not digested.
-fn v41_digested(a: V41StoreEncodeArgs, encoded: Bool, read: V41DigestRead) -> V41StoreRun {
+// THE SIZE A STORE MUST HAVE is the encode plan's (V41StoreEncodeArgs.expected_size, from
+// gunbc.spark.v41_engram_row_store v41_store_size): the same formula the key checks, never re-derived here.
+fn v41_store_expected_size(a: V41StoreEncodeArgs) -> ByteSize {
+  a.expected_size
+}
+
+type V41SizeRead
+  = V41SizeReadOk { size: ByteSize }
+  | V41SizeReadFailed { cause: NonEmptyStr }
+
+fn v41_store_size(ctx: SparkMaterializeContext, out: NonEmptyStr) -> V41SizeRead {
+  match spark_remote_run(ctx: ctx, argv: ["stat", "-c", "%s", "--", out as String]) {
+    RemoteUnreachable { cause: c } => V41SizeReadFailed { cause: join(["the stat leg did not run: ", c], "") as NonEmptyStr }
+    RemoteRan { exit_code: code, stdout: o, stderr: err } =>
+      if code != 0 { V41SizeReadFailed { cause: join(["stat exited ", to_string(code), ": ", trim(s: err)], "") as NonEmptyStr } } else {
+        match parse_int(s: trim(s: o)) {
+          Absent => V41SizeReadFailed { cause: join(["stat answered a size that is not a number: ", o], "") as NonEmptyStr }
+          Present { value: n } => if n < 0 { V41SizeReadFailed { cause: "stat answered a negative size" as NonEmptyStr } } else { V41SizeReadOk { size: byte_size(count: n) } }
+        }
+      }
+  }
+}
+
+// DIGEST, THEN SIZE, THEN THE LAYOUT CHECK (proud-deer-538, 2026-09-24): a store whose size is not the
+// derived size is refused with both figures, never reported as digested.
+fn v41_sized(a: V41StoreEncodeArgs, encoded: Bool, d: Sha256Digest, size: V41SizeRead) -> V41StoreRun {
+  match size {
+    V41SizeReadFailed { cause: c } => V41StoreSizeUnread { store: a, digest: d, cause: c }
+    V41SizeReadOk { size: n } =>
+      if byte_size_count(b: n) != byte_size_count(b: v41_store_expected_size(a: a)) {
+        V41StoreSizeMismatch { store: a, digest: d, observed: n, derived: v41_store_expected_size(a: a) }
+      } else if encoded { V41StoreEncoded { store: a, digest: d, size: n } } else { V41StorePresent { store: a, digest: d, size: n } }
+  }
+}
+
+fn v41_digested(ctx: SparkMaterializeContext, a: V41StoreEncodeArgs, encoded: Bool, read: V41DigestRead) -> V41StoreRun {
   match read {
     V41DigestReadFailed { cause: c } => V41StoreDigestUnread { store: a, encoded: encoded, cause: c }
-    V41DigestReadOk { digest: d } => if encoded { V41StoreEncoded { store: a, digest: d } } else { V41StorePresent { store: a, digest: d } }
+    V41DigestReadOk { digest: d } => v41_sized(a: a, encoded: encoded, d: d, size: v41_store_size(ctx: ctx, out: a.out))
   }
 }
 
 fn v41_run_store(ctx: SparkMaterializeContext, a: V41StoreEncodeArgs) -> V41StoreRun {
   match v41_store_present(ctx: ctx, out: a.out) {
     V41StorePresenceUnread { cause: c } => V41StorePresenceFailed { store: a, cause: c }
-    V41StoreFound => v41_digested(a: a, encoded: false, read: v41_store_digest(ctx: ctx, out: a.out))
+    V41StoreFound => v41_digested(ctx: ctx, a: a, encoded: false, read: v41_store_digest(ctx: ctx, out: a.out))
     V41StoreAbsent =>
       match spark_remote_run(ctx: ctx, argv: v41_store_encode_argv(shard_directory: v41_checkpoint_directory, a: a)) {
         RemoteUnreachable { cause: c } => V41StoreEncodeFailed { store: a, cause: join(["the encode leg did not run: ", c], "") as NonEmptyStr }
@@ -152,7 +191,7 @@ fn v41_run_store(ctx: SparkMaterializeContext, a: V41StoreEncodeArgs) -> V41Stor
           if code != 0 {
             V41StoreEncodeFailed { store: a, cause: join(["the host program exited ", to_string(code), ": ", trim(s: err)], "") as NonEmptyStr }
           } else {
-            v41_digested(a: a, encoded: true, read: v41_store_digest(ctx: ctx, out: a.out))
+            v41_digested(ctx: ctx, a: a, encoded: true, read: v41_store_digest(ctx: ctx, out: a.out))
           }
       }
   }
@@ -163,8 +202,10 @@ fn v41_store_line(r: V41StoreRun) -> String {
   let head = join(["store ", v41_store_key(layer: a.layer, rank: a.rank)], "")
   let tail = join([" path=", a.out as String, "\n"], "")
   match r {
-    V41StorePresent { store: _, digest: d } => join([head, " sha256=", d.hex as String, " present", tail], "")
-    V41StoreEncoded { store: _, digest: d } => join([head, " sha256=", d.hex as String, " encoded", tail], "")
+    V41StorePresent { store: _, digest: d, size: n } => join([head, " sha256=", d.hex as String, " size_bytes=", to_string(byte_size_count(b: n)), " present", tail], "")
+    V41StoreEncoded { store: _, digest: d, size: n } => join([head, " sha256=", d.hex as String, " size_bytes=", to_string(byte_size_count(b: n)), " encoded", tail], "")
+    V41StoreSizeMismatch { store: _, digest: d, observed: n, derived: e } => join([head, " SIZE-MISMATCH sha256=", d.hex as String, " size_bytes=", to_string(byte_size_count(b: n)), " derived_bytes=", to_string(byte_size_count(b: e)), " not keyed", tail], "")
+    V41StoreSizeUnread { store: _, digest: d, cause: c } => join([head, " UNREAD size sha256=", d.hex as String, " the size read failed: ", c as String, tail], "")
     V41StoreDigestUnread { store: _, encoded: e, cause: c } => join([head, " UNREAD ", if e { "encoded" } else { "present" }, " but the digest read failed: ", c as String, tail], "")
     V41StoreEncodeFailed { store: _, cause: c } => join([head, " UNREAD encode failed: ", c as String, tail], "")
     V41StorePresenceFailed { store: _, cause: c } => join([head, " UNREAD presence check failed, nothing encoded: ", c as String, tail], "")

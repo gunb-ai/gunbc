@@ -172,20 +172,19 @@ fn self_host_label() -> Label {
 // sentence -- a cause only this program's own `.dag` fold produces, so reaching it establishes that
 // the process started, read argv, parsed it, decided, rendered its own cause and set its own status.
 //
-// THE OTHER ARM EMITS, AND UNTIL 2026-09-23 IT EXPECTED RED. The built binary could not emit a
-// closure: over the fixture root it answered `translate_rejected_grounding_not_derived`, because v2
-// kept a `data` declaration as surface syntax and infer could not ground its tokens. The arm pinned
-// that limitation by name, and an exit 0 carried the instruction to flip it. It is flipped: the arm
-// now requires exit 0 and emitted text naming the fixture's declaration, and the old refusal is
-// reported as the regression it names. Over the real corpus the door still stops at a located
-// `parse_g0_tokens_remain` at the `service ... { operation ... }` form, which `v2.cli.compile_cli`
-// records.
-//
-// WHAT THE EMISSION DOES NOT ESTABLISH. The emitted text is not yet a Rust crate: on this route a
-// module renders as a record of its members, and an arrow's body is not rendered (the same holds
-// for `fn add(x: Int, y: Int) -> Int { x + y }`). So a green here says the door parsed, resolved,
-// inferred, grounded and translated the fixture and named its declaration, not that the output
-// compiles or keeps the value. The second generation is still unclaimed.
+// THE OTHER ARM EXPECTS RED AGAIN, AND THE GREEN IT REPLACED WAS AN OVER-CLAIM. Until 2026-09-23
+// the built binary could not ground the fixture (`translate_rejected_grounding_not_derived`); once v2
+// lowered a `data` declaration to a named member and grounded it, the arm was flipped to admit exit 0
+// plus the declaration's NAME. That emission was a record rendering with the member printed as its
+// type and the value `606060` dropped -- not Rust, and not the program (gunbc.recurring_failure_mode
+// closure_emit_renders_an_arrow_without_its_body). The translate now refuses that body at the arrow
+// instead of dropping it, so the arm pins `translate_arrow_body_not_a_type_expression` by name
+// (gunbc#12207). An exit 0 is judged by a stronger oracle than the one it replaced: the text must name
+// the declaration, carry its value, and be Rust the build's own compiler accepts. That arm reports the
+// instruction to flip the probe back -- the day the Rust grammar rows render a module and its members.
+// Over the real corpus the door still stops at a located `parse_g0_tokens_remain` at the
+// `service ... { operation ... }` form, which `v2.cli.compile_cli` records. The second generation is
+// still unclaimed.
 //
 // IT IS A SEPARATE LABEL BECAUSE IT IS A SEPARATE CLOSURE, not because the question is different.
 // The two closures are DIFFERENT rather than nested, and neither contains the other's
