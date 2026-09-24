@@ -1,5 +1,6 @@
 module v2.lens.no_dual_representation_test.scan
 
+import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.data_index {
@@ -16,6 +17,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
+  Named,
   Node,
   NodeFold,
   Positional,
@@ -44,7 +46,8 @@ data no_declared_pool_files: List<String> = []
 
 // EqOperandUnreadable: the left operand of an equality site is an application this scan could not
 // read -- application_slots refused it, its head is a resolved Arrow with no name to look the
-// callee up by, or its first argument is a residue operand with no content to inline -- so whether the site is BodyAlphaEquivalent is undecided. It is reported, not
+// callee up by, or its first argument's value is unprojected (empty) -- so whether the site is
+// BodyAlphaEquivalent is undecided. It is reported, not
 // read as "not a call" (DESIGN §5).
 type DualRepViolationKind
   = SameSymbolEquality
@@ -229,16 +232,36 @@ fn eq_sites_from_output(root: Node) -> List<EqNodeSite> {
 // calls that way. The marshal now emits the call carrier, and the one base reader over it is
 // v2.std.compilers.body_lowering `application_slots`.
 //
-// The first argument's name is inlined into the callee body, so it must be READ. A residue operand
-// -- in a skeleton, the empty Conj the marshal leaves where it did not project an expression --
-// has no content to read, and makes the equivalence undecided rather than false.
+// The first argument's name is inlined into the callee body, so its VALUE must be read. On a real
+// fn-arrow skeleton an argument is not a bare value: the host marshal wraps every argument, so
+// `f(x)` is Transform[f, Conj[Conj[Atom x]]] and an argument it does not project is
+// Transform[f, Conj[Conj[]]] (probe recorded in gunbc#12202). The read therefore descends through
+// single-child wrappers to the value. Where it bottoms out in an empty Conj the content is
+// unprojected and the equivalence is undecided, never inlined as if it were a name.
 type FirstArgRead
   = FirstArgName { name: String }
   | FirstArgUnreadable
 
+fn argument_value_read(n: Node) -> FirstArgRead {
+  match n.kind {
+    TypeNode { connective: Atom { identity: _ } } => FirstArgName { name: node_atom_name(n: n) }
+    TypeNode { connective: Conj } =>
+      match n.children {
+        Empty => FirstArgUnreadable
+        Cons { head: e, tail: Empty } =>
+          match e.label {
+            Positional => argument_value_read(n: e.target)
+            Named { name: _ } => FirstArgName { name: "" }
+          }
+        Cons { head: _, tail: _ } => FirstArgName { name: "" }
+      }
+    _ => FirstArgName { name: "" }
+  }
+}
+
 fn first_call_arg_read(slots: ApplicationSlots) -> FirstArgRead {
   match list_at_optional(xs: slots.operands, index: 0) {
-    Present { value: WholeOperand { node: arg } } => FirstArgName { name: node_atom_name(n: arg) }
+    Present { value: WholeOperand { node: arg } } => argument_value_read(n: arg)
     Present { value: ResidueOperand { node: _ } } => FirstArgUnreadable
     Absent => FirstArgName { name: "" }
   }

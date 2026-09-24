@@ -436,39 +436,34 @@ data determinism_obligation: V2CompileObligation = V2CompileObligation {
   related_drops: [rung_drop_ref(identity: "determinism_transitive_reachability")],
 }
 
-data single_constructor_obligation: V2CompileObligation = V2CompileObligation {
-  identity: "single_constructor_root_lens" as NonEmptyStr,
+data machine_shape_obligation: V2CompileObligation = V2CompileObligation {
+  identity: "machine_shape_root_lens" as NonEmptyStr,
   kind: RequiredRootLens,
-  home: HomeAuthority { authority: decl_ref(module_path: "v2.lens.single_constructor", decl_name: "single_constructor_compile_gate") },
+  home: HomeAuthority { authority: decl_ref(module_path: "v2.lens.machine_shape", decl_name: "machine_shape_compile_gate") },
   claimed_rung: MechanicallyPreventable,
-  discriminating_red: "a governed type (MachineShape, FnArrowDecl) constructed outside its sanctioned home and outside a witness, which the gate must reject: a synthetic MachineShape call, and a production-fed FnArrowDecl record literal parsed and normalized from source" as NonEmptyStr,
-  positive_control: "shape_from_catalog, the same FnArrowDecl literal in v2.std.fn_index, and an FnArrowDecl destructuring pattern, all in src/v2/test/claim/single_constructor_wall_test.dag, which must pass" as NonEmptyStr,
+  discriminating_red: "a tree carrying a flat machine-shape scalar where the modeled carrier is required, which the gate must reject" as NonEmptyStr,
+  positive_control: "the modeled-carrier fixture in src/v2/test/claim/machine_shape_construction_wall_test.dag, which must pass" as NonEmptyStr,
   witnesses: [
     witness_subject(
-      entry: "src/v2/test/claim/single_constructor_wall_test.dag",
+      entry: "src/v2/test/claim/machine_shape_construction_wall_test.dag",
       function: "gate_red_synthetic_machine_shape_call",
-      module_path: "v2.test.claim.single_constructor_wall"
+      module_path: "v2.test.claim.machine_shape_construction_wall"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/single_constructor_wall_test.dag",
+      entry: "src/v2/test/claim/machine_shape_construction_wall_test.dag",
       function: "gate_green_synthetic_shape_from_catalog_call",
-      module_path: "v2.test.claim.single_constructor_wall"
+      module_path: "v2.test.claim.machine_shape_construction_wall"
     ),
     witness_subject(
-      entry: "src/v2/test/claim/single_constructor_wall_test.dag",
-      function: "gate_red_fn_arrow_decl_record_literal_outside_its_home",
-      module_path: "v2.test.claim.single_constructor_wall"
-    ),
-    witness_subject(
-      entry: "src/v2/test/claim/single_constructor_wall_test.dag",
-      function: "gate_green_fn_arrow_decl_record_literal_in_its_home",
-      module_path: "v2.test.claim.single_constructor_wall"
+      entry: "src/v2/test/claim/machine_shape_construction_wall_test.dag",
+      function: "gate_red_machine_shape_record_literal_outside_its_home",
+      module_path: "v2.test.claim.machine_shape_construction_wall"
     ),
   ],
   ceiling: StructurallyGuaranteed,
   next_trigger: native_door_entry_trigger,
   seed_escape: SeedEscapeOpen {
-    what_the_seed_does: "stage0 Rust declares machine widths as host integer types with no modeled carrier, and no gate asks; the host fn-arrow marshal constructs FnArrowDecl in Rust, which is the sanctioned producer and never reaches this walk" as NonEmptyStr
+    what_the_seed_does: "stage0 Rust declares machine widths as host integer types with no modeled carrier, and no gate asks" as NonEmptyStr
   },
   related_drops: [],
 }
@@ -823,7 +818,7 @@ data v2_compile_obligation_census: List<V2CompileObligation> = [
   accumulator_copy_obligation,
   determinism_obligation,
   determinism_non_primitive_fold_obligation,
-  single_constructor_obligation,
+  machine_shape_obligation,
   mandatory_tag_obligation,
   undecidable_verdict_collapse_obligation,
   fact_density_obligation,

@@ -109,7 +109,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
 import v2.lens.determinism { determinism_compile_gate }
-import v2.lens.single_constructor { single_constructor_compile_gate }
+import v2.lens.machine_shape { machine_shape_compile_gate }
 import v2.lens.mandatory_tag { mandatory_tag_compile_gate }
 import v2.lens.undecidable_verdict_collapse { undecidable_verdict_collapse_compile_gate }
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
@@ -361,10 +361,10 @@ data determinism_lens: CompileLens = CompileLens {
   gate: determinism_root_gate
 }
 
-data single_constructor_lens: CompileLens = CompileLens {
-  identity: decl_ref(module_path: "v2.lens.single_constructor", decl_name: "single_constructor_compile_gate"),
+data machine_shape_lens: CompileLens = CompileLens {
+  identity: decl_ref(module_path: "v2.lens.machine_shape", decl_name: "machine_shape_compile_gate"),
   grain: CompileLensRoot,
-  gate: single_constructor_root_gate
+  gate: machine_shape_root_gate
 }
 
 data mandatory_tag_lens: CompileLens = CompileLens {
@@ -409,7 +409,7 @@ fn required_compile_lens_roster() -> List<CompileLens> {
     lifecycle_carrier_lens,
     accumulator_copy_lens,
     determinism_lens,
-    single_constructor_lens,
+    machine_shape_lens,
     mandatory_tag_lens,
     undecidable_verdict_collapse_lens
   ]
@@ -692,8 +692,8 @@ fn determinism_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   determinism_compile_gate(node: tree.root)
 }
 
-fn single_constructor_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
-  single_constructor_compile_gate(node: tree.root)
+fn machine_shape_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+  machine_shape_compile_gate(node: tree.root)
 }
 
 fn mandatory_tag_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {

@@ -36,7 +36,7 @@ import v2.lens.registry {
   lens_registry_v0_languages_consumer_census,
   lens_registry_v0_leaf_model_verification,
   lens_registry_v0_live_read_classification,
-  lens_registry_v0_single_constructor,
+  lens_registry_v0_machine_shape,
   lens_registry_v0_meta_exec_confinement,
   lens_registry_v0_mock_totality,
   lens_registry_v0_mutation_adequacy,
@@ -387,8 +387,8 @@ data lens_contract_live_read_classification: LensContract = {
   boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
 }
 
-data lens_contract_single_constructor: LensContract = {
-  entry: lens_registry_v0_single_constructor,
+data lens_contract_machine_shape: LensContract = {
+  entry: lens_registry_v0_machine_shape,
   mode: AuditOnly,
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
@@ -598,7 +598,7 @@ data lens_contract_registry: List<LensContract> = [
   lens_contract_languages_consumer_census,
   lens_contract_leaf_model_verification,
   lens_contract_live_read_classification,
-  lens_contract_single_constructor,
+  lens_contract_machine_shape,
   lens_contract_meta_exec_confinement,
   lens_contract_mock_totality,
   lens_contract_mutation_adequacy,
