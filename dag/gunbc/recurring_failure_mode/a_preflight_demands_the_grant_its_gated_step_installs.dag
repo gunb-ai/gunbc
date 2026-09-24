@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.a_preflight_demands_the_grant_its_gated_step_installs
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_preflight_demands_the_grant_its_gated_step_installs: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_preflight_demands_the_grant_its_gated_step_installs" as NonEmptyStr,
+
+  receipts: [
+    "**a preflight demands, before a step, a precondition that the step it gates is the one responsible for establishing -- so any growth of what the step establishes makes the preflight refuse forever** (INVALID STATE: the gate's demand set is derived from the step's OUTPUT (what the step will grant, install or create) rather than from the step's INPUT (what the step itself spends). On a converged host the two coincide, so the gate passes and looks right. The first time the output grows, the host lacks the new part, the gate refuses, the step that would supply it never runs, and nothing else ever will -- a self-sealing refusal on every host at once.)",
+
+    "WHY IT SURVIVES REVIEW AND TESTING. The gate is fail-closed and typed, which is exactly what review asks of it, and it is correct on every host that has already converged -- which is every host a fixture or a reviewer imagines. The defect is only reachable on the transition in which the step's output grows, and the change that grows it is reviewed as an addition to the output, not as a change to the gate. A fixture actor whose grant is one boolean over the whole roster cannot express 'granted except the new row' at all.",
+
+    "SPECIMEN, 2026-09-23 (#12124 -> srv1 dashboard_deploy run 35890035317). #12124 added SudoCp/SudoMv to gunbc.fleet_posix_accounts ci_runner_sudo_binaries. The deploy access preflight (sudo.NopasswdExecuteProbe over that whole roster, gunbc.ci_deploy_access_observe deploy_mutation_gate) ran before gunbc.live_deploy.emit deploy_apply_preamble_steps, whose first step, gunbc.ci_deploy_sudoers deploy_sudoers_install_shell, is the only thing that renders the roster into /etc/sudoers.d/gunbc-deploy. The run refused on `sudo -n /usr/bin/cp --version`; the pre-#12124 run 35620230080 passed all 8 probes. Every roster addition would have done the same on every host. The operator bootstrapped srv1 by hand.",
+
+    "THE REPAIR IS TO SPLIT THE DEMAND BY WHO ESTABLISHES IT, NOT TO WEAKEN IT. Before the step, demand only what the step spends (gunbc.fleet_posix_accounts ci_runner_sudoers_install_binaries: visudo and install -- the same rows the install reads its binaries from, so the spend and the demand are one value), built from that list rather than filtered from the principal's roster so a principal missing them still refuses (gunbc.ci_deploy_access deploy_access_sudoers_install_scope, selected per effect by gunbc.live_deploy.apply live_deploy_pre_mutation_access). After the step, demand the whole output, still refusing on a miss, before anything else mutates (gunbc.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_shell). What is NOT the repair: turning the preflight into a warning, or granting the new rows by hand -- the first is fail-open and the second leaves the next addition to refuse the same way.",
+
+    "RECOGNITION RULE: for every precondition a gate demands, name the step that establishes it. If that step is the one the gate guards (or runs after it), the demand belongs AFTER the step, and only the step's own inputs belong before it. The sibling shapes are the same class: a migration gate requiring the schema version the migration writes, a readiness gate requiring a unit the deploy creates, a key-presence check before the step that provisions the key.",
+
+    "RUNG FOUND AT: mitigatable -- found in production by a refused deploy. RUNG NOW: mechanically preventable for this site, by test.claim.deploy_mutation_gate_witness (the pre-install demand is exactly the install's spend; the full roster is probed after the install line and not before; a missing install/visudo still refuses before mutation). CEILING: structurally guaranteed. A gate's demand and a step's establishes-set are both derivable from the step's modeled effects, so a gate whose demand intersects the establishes-set of the step it gates can be refused at acceptance. NEXT-RUNG TRIGGER, at capability grain: deploy steps carrying a modeled establishes-set (grants, files, principals) rather than rendered shell, so the pre-step demand is DERIVED as demand minus establishes instead of authored as a list.",
+  ],
+
+  evidence: [],
+}
