@@ -83,9 +83,11 @@ data bool_as_int_source: String = "module probe_refinement_bool_as_int\nimport s
 
 // THE HOMONYM. v2.std.nat.Nat is spelled "Nat" and is not a refinement of Int (it is a Peano
 // Zero | Succ coproduct with its own typed nat_sub). The subtraction row is keyed on the resolved
-// DECLARATION, so a difference of two Peano Nats keeps its own typing and returns into a Peano Nat
-// position without a mismatch. Keyed on the last name segment, it would be typed Int and refuse.
-data peano_nat_difference_source: String = "module probe_refinement_peano_difference\nimport v2.std.nat { Nat }\nfn gap(a: Nat, b: Nat) -> Nat { a - b }\n"
+// DECLARATION, so a difference of two Peano Nats keeps its own typing and `as Nat` is an identity
+// cast. Keyed on the last name segment it would be typed Int, and `Int as Nat` is a refinement cast
+// that refuses. Observed through the cast, not a return position: a return would still admit the
+// wrong Int through the implicit grounded Int -> Nat identity, which matches by spelling.
+data peano_nat_difference_source: String = "module probe_refinement_peano_difference\nimport v2.std.nat { Nat }\nfn gap(a: Nat, b: Nat) -> Nat { (a - b) as Nat }\n"
 
 test fn w_peano_nat_difference_is_not_the_refinement() -> Bool {
   blocking_count(source: peano_nat_difference_source) == 0
@@ -112,6 +114,22 @@ data length_is_nat_source: String = "module probe_refinement_length_nat\nimport 
 data method_count_is_nat_source: String = "module probe_refinement_method_count_nat\nimport std.types { List, Int }\nimport std.nat { Nat }\nfn size_of(xs: List<Int>) -> Nat { (xs |> count) as Nat }\n"
 
 data method_length_is_nat_source: String = "module probe_refinement_method_length_nat\nimport std.types { String }\nimport std.nat { Nat }\nfn size_of(s: String) -> Nat { s.length() as Nat }\n"
+
+// THE REGISTRY ROUTE. A receiver with no method surface (a type parameter) fails known-method
+// resolution, so the free call is typed by the builtin registry's return -- derived from std.algebra
+// by algebra_named_return, which these two claims exercise and the container-receiver claims above
+// do not.
+data registry_count_is_nat_source: String = "module probe_refinement_registry_count\nimport std.nat { Nat }\nfn size_of<T>(xs: T) -> Nat { count(xs) as Nat }\n"
+
+data registry_length_is_nat_source: String = "module probe_refinement_registry_length\nimport std.nat { Nat }\nfn size_of<T>(xs: T) -> Nat { length(xs) as Nat }\n"
+
+test fn w_registry_count_is_a_nat() -> Bool {
+  blocking_count(source: registry_count_is_nat_source) == 0
+}
+
+test fn w_registry_length_is_a_nat() -> Bool {
+  blocking_count(source: registry_length_is_nat_source) == 0
+}
 
 test fn w_length_is_a_nat() -> Bool {
   blocking_count(source: length_is_nat_source) == 0
