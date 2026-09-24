@@ -1,6 +1,8 @@
 module extdeps.netfilter.iptables_legacy
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, FilePath }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { apt_sbin_dir, apt_installed_bin_path, package_iptables }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -41,3 +43,18 @@ data iptables_legacy_save_program: NonEmptyStr = "iptables-legacy-save"
 // stdout; the arguments it does accept (-t, -c) NARROW that, so the empty list is the complete
 // reading rather than a default.
 data iptables_legacy_save_arguments: List<NonEmptyStr> = []
+
+// WHERE iptables-legacy-save IS INSTALLED IS STATED ONCE, HERE. Ubuntu noble ships it in the `iptables` package
+// at /usr/sbin/iptables-legacy-save (packages.ubuntu.com/noble/amd64/iptables/filelist). The apt row below and
+// gunbc.fleet_posix_accounts' exec path both derive from iptables_legacy_save_bin_dir, so they cannot disagree.
+data iptables_legacy_save_bin_dir: FilePath = apt_sbin_dir
+
+fn iptables_legacy_save_installed_path() -> FilePath {
+  apt_installed_bin_path(bin_dir: iptables_legacy_save_bin_dir, binary: iptables_legacy_save_program)
+}
+
+data iptables_legacy_save_cli_tool: CliTool = CliTool {
+  name: iptables_legacy_save_program,
+  min_version: none,
+  installable_via: [SourceApt { package: package_iptables, bin_dir: iptables_legacy_save_bin_dir }],
+}
