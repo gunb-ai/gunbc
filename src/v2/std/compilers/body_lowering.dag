@@ -1,6 +1,6 @@
 module v2.std.compilers.body_lowering
 
-import std.algebra { FreeMonoid, list_append, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.diagnostic {
   Diagnostic,
@@ -11,6 +11,8 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
+import v2.std.optional { Optional, optional_absent, optional_present }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_spine_node }
 import v2.std.node {
   Bind,
   Branch,
@@ -25,7 +27,8 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  node_synthetic
+  node_synthetic,
+  node_with_occurrence_id
 }
 
 fn body_lowering_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
@@ -33,6 +36,62 @@ fn body_lowering_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
     reason: reason,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// THE LIST-LITERAL INTRODUCTION, ONE AUTHORITY FOR BOTH DIRECTIONS. A list literal `[e1, .., en]`
+// is ONE Transform whose head is the reference to the declaration of the free monoid, std.algebra
+// FreeMonoid, and whose remaining positional children are the elements in order; `[]` is the head
+// alone (the flat introduction std.literal_elaboration UnicodeScalarSequenceUnfold names). The head
+// path, the constructor and the reader live here together so the producer
+// (v2.compiler.body_lowering_fold body_lower_list_literal) and the consumer
+// (v2.compiler.infer infer_transform_freemonoid_introduction) cannot disagree about which
+// declaration heads a list: a second spelling of the path would let one side move while the other
+// silently stopped recognising the form (review 70960).
+fn list_introduction_head_path() -> QualifiedName {
+  [^std, ^algebra, ^FreeMonoid]
+}
+
+fn lower_list_introduction(elements: List<Node>, source: Node) -> Node {
+  node_with_occurrence_id(
+    kind: ComputationNode { behavior: Transform },
+    children: fold(
+      elements,
+      init: [
+        Edge {
+          label: Positional,
+          target: qualified_name_spine_node(qn: list_introduction_head_path(), occurrence_id: source.occurrence_id)
+        }
+      ],
+      f: fn(acc, element) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: element }) }
+    ),
+    occurrence_id: source.occurrence_id
+  )
+}
+
+// The elements of a list introduction, in order; Absent for any node that is not one. Every edge
+// must be positional and the first target must read back as the head path.
+fn list_introduction_elements_optional(node: Node) -> Optional<List<Node>> {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      if fold(node.children, init: true, f: fn(acc, e) { acc && (match e.label { Positional => true  Named { name: _ } => false }) }) {
+        match node.children {
+          Empty => optional_absent()
+          Cons { head: first, tail: rest } =>
+            match declaration_reference_path_optional(node: first.target) {
+              Present { value: path } =>
+                if path == list_introduction_head_path() {
+                  optional_present(value: fold(rest, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e.target) }))
+                } else {
+                  optional_absent()
+                }
+              Absent => optional_absent()
+            }
+        }
+      } else {
+        optional_absent()
+      }
+    _ => optional_absent()
   }
 }
 

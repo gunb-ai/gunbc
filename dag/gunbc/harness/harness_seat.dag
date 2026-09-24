@@ -1307,11 +1307,11 @@ fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, re
             retryable: retryable,
             incarnations: collected.incarnations,
           }
-        OfferSelected { candidate: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } =>
-          match harness_candidate_for_key(candidates: collected.candidates, key: o.offer.id.key) {
+        OfferSelected { candidate: sel, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } =>
+          match harness_candidate_for_key(candidates: collected.candidates, key: sel.candidate.offer.id.key) {
             Absent =>
               PlacementRound {
-                done: Present { value: HarnessSeatRefused { detail: join(["selection returned an offer key naming no candidate: ", o.offer.id.key as String], "") } },
+                done: Present { value: HarnessSeatRefused { detail: join(["selection returned an offer key naming no candidate: ", sel.candidate.offer.id.key as String], "") } },
                 excluded: acc.excluded,
                 notes: notes,
                 retryable: retryable,

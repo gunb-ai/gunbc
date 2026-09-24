@@ -1,0 +1,17 @@
+module gunbc.recurring_failure_mode.a_wildcard_match_arm_resolves_as_an_unbound_name
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_wildcard_match_arm_resolves_as_an_unbound_name: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_wildcard_match_arm_resolves_as_an_unbound_name" as NonEmptyStr,
+
+  receipts: [
+    "a match arm whose pattern is the wildcard `_` is refused at resolve as an unbound name at `_`: the native front end treats the wildcard pattern as a reference to a symbol spelled `_`, so a match that is exhaustive only through its wildcard arm cannot be accepted on the native route at all",
+    "SPECIMEN AND LOCUS, MEASURED ON MAIN 57f5b94e7f7 (2026-09-24), PRE-EXISTING: `fn blg_probe(c: Bool, s: BlgS) -> Bool { match s { BlgA => c \\n _ => c } }` with `type BlgS = BlgA | BlgB { r: Bool } | BlgC` refuses as `resolve_reason_unbound_symbol` whose NodeLocus atom is `_`. The same verdict holds with a record-construct first arm (`BlgA => BlgB { r: c }`) and with the match written across lines. The route is `v2.compiler.compile` `native_test_context_from_ingest` then `native_census_module_resolution` over an inline module, the same route `v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal` drives.",
+    "HOW IT SURFACED: the XL-2 if-arm repair (`v2.compiler.body_lowering_fold` `body_lower_if_arm_lowered`) made a match inside an if-arm reach resolve for the first time. On main such a match was dropped whole by the operand reader, so `if c { s } else { match s { BlgA => .. _ => .. } }` resolved; after the repair it refuses at `_`, the verdict the same match already had at the top level of a fn body. The repair did not create the refusal; it stopped hiding it.",
+    "CLASS: a resolve defect, not a lowering one: a wildcard pattern binds nothing and names nothing, and a resolver that looks it up as a symbol has conflated a pattern form with a reference. RUNG FOUND AT: a located refusal (mitigation) -- the wrong answer is loud, never silent, but a correct program is refused. CEILING: structurally guaranteed -- the wildcard is a distinct pattern constructor in the lowered tree, so the resolver can decline to look it up by construction. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the lowered pattern carries the wildcard as its own form that resolve does not treat as a reference, with a witness whose red is this specimen on main and whose control is a match exhaustive through named arms only.",
+  ],
+
+  evidence: [],
+}

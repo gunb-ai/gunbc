@@ -11,6 +11,9 @@ import v2.std.node { ComputationNode, Edge, Instantiation, Node, Positional, Tra
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.optional { Absent, Present }
 import v2.std.collection { List }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.text { String }
+import std.process { ProcessExit, exit_failure }
 import v2.std.qualified_name { qualified_name_from_node, qualified_name_spine_node }
 import v2.std.witness { Holds, Violates }
 import std.algebra { Cons, Empty, list_snoc_item }
@@ -20,7 +23,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE FREE-MONOID INTRODUCTION'S ONE INFER CASE (v2.compiler.infer
 // infer_transform_freemonoid_introduction), AT ITS OWN INTERFACE. The inputs are SUPPLIED: a flat
 // Transform whose head is the std.algebra FreeMonoid reference and whose operands are literals --
-// the shape v2.compiler.body_lowering_fold body_lower_list_construct produces, which
+// the shape v2.std.compilers.body_lowering lower_list_introduction builds, which
 // v2.test.claim.namespace_xl0.list_literal_value_lowering establishes on the production route
 // (DESIGN section 3: the inhabitance claim for this supplied boundary). Three cases, one each:
 // elements of one type derive FreeMonoid<T>; a differing element refuses AT that element, not at
@@ -103,9 +106,11 @@ test fn a_mixed_list_refuses_at_the_differing_element() -> Bool {
 
 // `[]` carries no element to derive T from, so this case derives no type for it: it stays on the
 // counted GroundingNotDerived frontier rather than receiving a guessed T.
+// It must still be ACCEPTED: a refusal would also "derive no type", so accepting Rejected here would
+// let one failure common to every list pass this claim while the other two went red.
 test fn an_empty_list_derives_no_type_here() -> Bool {
   match infer(tree: ilt_empty) {
-    Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match tree.facts.lookup(ilt_empty) {
         Absent => true
@@ -116,4 +121,36 @@ test fn an_empty_list_derives_no_type_here() -> Bool {
           }
       }
   }
+}
+
+// A REPORT, NOT A CLAIM: each case's infer outcome rendered through the process exit, so a run names
+// what refused and where (gunbc run maps only ProcessExit to an exit code).
+fn ilt_diagnostic_text(d: Diagnostic) -> String {
+  symbol_lexeme(sym: d.reason) + " at=" + (match d.at {
+    NodeLocus { anchor: a } =>
+      match node_atom_identity_optional(node: a.at) {
+        Present { value: id } => symbol_lexeme(sym: id)
+        Absent => "(non-atom node)"
+      }
+    _ => "(no node locus)"
+  })
+}
+
+fn ilt_outcome_text(tree: Node) -> String {
+  match infer(tree: tree) {
+    Rejected { diagnostics: r } => "rejected fatal=" + ilt_diagnostic_text(d: diagnostics_fatal(d: r)) + " head=" + ilt_diagnostic_text(d: r.head)
+    Accepted { value: t, diagnostics: _ } =>
+      match t.facts.lookup(tree) {
+        Absent => "accepted, no facts for the literal"
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Holds { value: _ } => "accepted with a derived type"
+            Violates { diagnostic: d } => "accepted, type not derived: " + ilt_diagnostic_text(d: d)
+          }
+      }
+  }
+}
+
+fn ilt_report() -> ProcessExit {
+  exit_failure(reason: "ints: " + ilt_outcome_text(tree: ilt_ints) + " | mixed: " + ilt_outcome_text(tree: ilt_mixed) + " | empty: " + ilt_outcome_text(tree: ilt_empty))
 }
