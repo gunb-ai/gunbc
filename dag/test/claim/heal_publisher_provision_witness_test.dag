@@ -227,6 +227,7 @@ data live_mtcollins1_providers_body: String = "{\"workloadIdentityPoolProviders\
 
 data live_mtcollins1_pool_body: String = "{\"name\":\"projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot\",\"displayName\":\"Mt. Collins boot (one job)\",\"state\":\"ACTIVE\"}"
 
+// The witness frame's return is generic, so the providers Optional is re-typed as the operation declares it.
 fn decoded_providers() -> ProvidersReading {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
@@ -237,7 +238,6 @@ fn decoded_providers() -> ProvidersReading {
   )
   match result {
     WitnessReturned { value } => {
-      // The witness frame's return is generic, so the Optional is re-typed here as the operation declares it.
       let providers: List<WifProviderWire>? = value.providers
       ProvidersObserved { providers: match providers { Present { value: ps } => ps  Absent => [] } }
     }
