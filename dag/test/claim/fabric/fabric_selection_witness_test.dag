@@ -265,7 +265,7 @@ fn t_select_for(
 
 fn selected_key(s: SupplySelection<NonEmptyStr>) -> NonEmptyStr {
   match s {
-    OfferSelected { candidate: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (o.offer.id.key as NonEmptyStr)
+    OfferSelected { candidate: sel, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (sel.candidate.offer.id.key as NonEmptyStr)
     NoAdmissibleOffer { considered: _ } => "none"
     EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => "tie-unresolved"
   }
@@ -1356,7 +1356,7 @@ test fn one_key_under_two_principals_refuses_rather_than_merging() -> Bool {
 test fn the_roster_arm_still_answers_for_one_key_under_two_principals() -> Bool {
   let shared = concat(t_candidate_under(principal: "tenant-a", key: "offer-shared"), t_candidate_under(principal: "tenant-b", key: "offer-shared"))
   match t_select_tie(candidates: shared, tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey) {
-    OfferSelected { candidate: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (o.offer.id.principal as String) == "tenant-a"
+    OfferSelected { candidate: sel, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (sel.candidate.offer.id.principal as String) == "tenant-a"
     _ => false
   }
 }
