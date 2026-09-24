@@ -16,7 +16,6 @@ pub use crate::extdeps_container_oci_digest::{
 };
 pub use crate::gunbc_structural_realization_bindings::literal_homomorphism_rows;
 pub use crate::std_algebra::carrier_container_equality_rows;
-pub use crate::std_algebra::AlgebraFieldTemplate;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
 pub use crate::std_coercion::{dag_can_cast, dag_cast_requires_proof, is_dag_cast_domain_type};
@@ -62,7 +61,6 @@ pub use crate::std_literal_elaboration::{
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
-pub use crate::std_occurrence_identity::OccurrenceId;
 pub use crate::std_operator_realization::OperandDeclaration;
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
@@ -193,9 +191,6 @@ use crate::v1_compiler_infer_sigs::ResolvedFormals::{
     DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext,
 };
 pub use crate::v1_compiler_infer_sigs::{
-    call_target_declared_sig, call_target_is_locally_bound, call_target_local_binding,
-};
-pub use crate::v1_compiler_infer_sigs::{
     callable_candidate_labels, callable_identity_label, flatten_parent_envs,
     func_sig_for_derivation, resolve_func_sigs,
 };
@@ -216,7 +211,6 @@ pub use crate::v1_compiler_infer_types::{
     structural_carrier_template_name, template_return_has_variables,
     template_return_is_receiver_self,
 };
-pub use crate::v1_compiler_ownership::fold_terminal_expr;
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
     ExposedTypeHead, MalformedApplicationHead, OpaqueTypeHead, StuckTypeHead,
@@ -310,9 +304,6 @@ pub use crate::v1_std_core::{
     return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
     string_type, type_name_compatible, type_reference_provenance, unaryop_operand, unit_type,
     with_optional_cardinality, with_required_cardinality,
-};
-pub use crate::v1_std_core::{
-    divergent_type, expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
 };
 pub use crate::v1_std_core::{
     AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic,
@@ -1026,6 +1017,21 @@ pub fn local_coproduct_owner_from_locals(scope: Rc<InferScope>, name: String) ->
 }
 
 pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option<String> {
+    match local_coproduct_owner_from_locals(scope.clone(), name.clone()) {
+        Some(owner) => Some(crate::v1_std_core::authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            owner.clone(),
+        )),
+        std::option::Option::None => {
+            lookup_variant_parent_enum_by_owner_name(scope.clone(), name.clone())
+        }
+    }
+}
+
+pub fn lookup_variant_parent_enum_by_owner_name(
+    scope: Rc<InferScope>,
+    name: String,
+) -> Option<String> {
     match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
         Some(binding) => match crate::v1_compiler_infer_env::lookup_type_for(
             scope.type_env.clone(),

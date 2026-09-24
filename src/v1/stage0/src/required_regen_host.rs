@@ -1115,6 +1115,30 @@ fn compile_stage0(
     {
         return Err(message);
     }
+    // EVERY EDGE THE EMITTER WROTE MUST RESOLVE IN THE CRATE ITS MODULE LANDS IN. The emitter
+    // returns its use-line and prelude edges beside the text (`gunbc.rust_emitted_edge`), and
+    // `gunbc.stage0_emitted_edge_admission` maps both ends through the partition rows and the
+    // package graph. This is the one emission whose population IS the stage0 seed, so the host
+    // shell's module roster is read from its lib.rs and supplied; a module in neither the rows
+    // nor the shell refuses as not covered rather than passing.
+    let host_shell_modules = super::emitted_closure_compile_host::closure_modules(
+        &workspace_root().join("src/v1/stage0/src/lib.rs"),
+    )?;
+    let admission = crate::gunbc_stage0_emitted_edge_admission::stage0_emitted_edge_admission(
+        result.emitted_edges.clone(),
+        Rc::new(host_shell_modules.into_iter().collect()),
+    );
+    if let crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedEdgeAdmission::Stage0EmittedEdgesAdmitted {
+        edge_count,
+    } = &*admission
+    {
+        eprintln!("required-regen: emitted-edge admission admitted edges={edge_count}");
+    }
+    if let Some(message) =
+        crate::gunbc_stage0_emitted_edge_admission::stage0_emitted_edge_admission_refusal(admission)
+    {
+        return Err(message);
+    }
     let mut out = HashMap::new();
     for file in result.files.iter() {
         out.insert(file.path.clone(), file.content.clone());
