@@ -17,9 +17,9 @@ import gunbc.rust_crate_package_ident {
   rust_crate_package_idents
 }
 import gunbc.stage0_partition_package_graph {
-  stage0_partition_package_dependency_names,
-  stage0_partition_row_is_module_bearing_package
+  stage0_partition_package_dependency_names
 }
+import gunbc.stage0_emitted_edge_admission { stage0_partition_module_owner_packages }
 import gunbc.stage0_crate_partition_generated {
   GeneratedEmitCoreCrate,
   GeneratedFoundationCrate,
@@ -185,13 +185,7 @@ type Stage0CrateBoundaryEmitOutcome
   | Stage0CrateBoundaryEmitRefused { cause: Stage0CrateBoundaryEmitRefusalCause }
 
 fn stage0_lookup_module_owner_package_name(module_basename: String) -> Stage0ModuleOwnerLookup {
-  let matches = generated_partition_crate_rows
-    |> filter(row =>
-      stage0_partition_row_is_module_bearing_package(row: row)
-        && (row.modules |> any(m => m == module_basename))
-    )
-  let package_name = matches
-    |> map(row => row.package_name)
+  let package_name = stage0_partition_module_owner_packages(module_basename: module_basename)
     |> fold(init: "", f: fn(acc, pkg) { if acc == "" { pkg } else { acc } })
   if package_name == "" {
     Stage0ModuleOwnerRefused {

@@ -21,7 +21,8 @@ import gunbc.machine_intake_mtcollins1_boot_run {
 }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_diagnostics_allowance }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
-import gunbc.fleet_converge_workflow { fleet_converge_mtcollins1_boot_job, fleet_converge_checkout_ref_expr, fleet_converge_mtcollins1_boot_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group }
+import gunbc.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_checkout_ref_expr, fleet_converge_mtcollins1_boot_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group }
+import gunbc.fleet_workflow_steps { ci_fleet_key_agent_step }
 import extdeps.github.actions { Step, RunStep, UsesStep, RunnerSpec, SelfHosted, RunsOnExpression, HostedRunner }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import std.process { ExitSuccess }
@@ -427,8 +428,11 @@ test fn boot_is_srv1_only_where_the_unit_hold_store_is() -> Bool {
 // identity is the dedicated mtcollins1-boot federation, gunbc.auth.mtcollins1_boot_federation), the
 // key step is a step of that job, taken under the dedicated account's pinned cell. The census
 // medium readback on srv2 runs over fleet ssh, so a boot job without it could not re-measure the
-// served image; drop the step and this claim goes red. The approval submission MAC key is asserted
-// ABSENT from the job's scripts: it existed only to sign the approval filing.
+// served image. The approval submission MAC key is asserted ABSENT from the boot's script: it existed
+// only to sign the approval filing.
+// Read at the interface (DESIGN section 3): each rendered credential script is read from its own
+// producer, and the composition is read with those two steps SUPPLIED, so no claim renders the
+// whole job. RED: drop the key step from the composition, or put the MAC key back in the boot script.
 fn step_run_text(s: Step) -> String {
   match s {
     RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => r
@@ -436,11 +440,33 @@ fn step_run_text(s: Step) -> String {
   }
 }
 
-test fn mtcollins1_boot_job_materializes_the_fleet_key_and_not_the_submission_key() -> Bool {
-  let runs = join(map(fleet_converge_mtcollins1_boot_job().steps, s => step_run_text(s: s)), "\n")
-  string_contains(s: runs, pattern: "fleet-automation-ssh-key")
-    && !string_contains(s: runs, pattern: "approval-submission-mac-key")
-    && string_contains(s: runs, pattern: "bmc-mtcollins1-gunbc")
+fn supplied_step(marker: String) -> Step {
+  RunStep { name: none, id: none, run: marker, shell: none, env: none, working_directory: none, if_condition: none, continue_on_error: none, timeout_minutes: none }
+}
+
+data supplied_fleet_key_marker: String = "SUPPLIED-FLEET-KEY-STEP"
+data supplied_boot_marker: String = "SUPPLIED-BOOT-STEP"
+
+fn supplied_boot_steps() -> List<Step> {
+  fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: supplied_step(marker: supplied_fleet_key_marker), boot_step: supplied_step(marker: supplied_boot_marker))
+}
+
+test fn the_boot_job_takes_the_fleet_key_step_before_the_boot_step() -> Bool {
+  let runs = map(supplied_boot_steps(), s => step_run_text(s: s))
+  filter(runs, r => r == supplied_fleet_key_marker || r == supplied_boot_marker) == [supplied_fleet_key_marker, supplied_boot_marker]
+}
+
+test fn the_fleet_key_step_materializes_the_fleet_key_and_never_names_expected_revision() -> Bool {
+  let inputs = step_inputs_text(s: ci_fleet_key_agent_step())
+  string_contains(s: inputs, pattern: "fleet-automation-ssh-key")
+    && !string_contains(s: inputs, pattern: "expected_revision")
+}
+
+test fn the_boot_step_reads_the_bmc_credential_and_never_the_submission_key_or_expected_revision() -> Bool {
+  let inputs = step_inputs_text(s: fleet_converge_mtcollins1_boot_step())
+  string_contains(s: inputs, pattern: "bmc-mtcollins1-gunbc")
+    && !string_contains(s: inputs, pattern: "approval-submission-mac-key")
+    && !string_contains(s: inputs, pattern: "expected_revision")
 }
 
 // THE MEDIUM GATE REFUSES BEFORE ANY CONTROLLER WRITE. A boot that attaches the stock installer can
@@ -538,7 +564,7 @@ test fn every_acquisition_that_reads_the_capture_binds_it_to_this_attempt() -> B
 // boot job's own checkout names only the event sha, and nothing in the rendered job mentions
 // expected_revision; the build job that produces the binaries it downloads checks out the event sha
 // FIRST for this mode, before expected_revision is consulted. RED: put expected_revision back in
-// either expression and this claim fails.
+// either expression, or in either supplied script's producer, and a claim fails.
 // Read at the interface (DESIGN §3): the boot job's own checkout ref, its steps' run texts and its
 // env/with values, not a YAML render of the whole job.
 fn kv_text(e: YamlKeyValue) -> String {
@@ -558,7 +584,7 @@ fn step_inputs_text(s: Step) -> String {
 }
 
 test fn another_expected_revision_cannot_change_a_byte_the_boot_job_executes() -> Bool {
-  let inputs = join(map(fleet_converge_mtcollins1_boot_job().steps, s => step_inputs_text(s: s)), "\n")
+  let inputs = join(map(supplied_boot_steps(), s => step_inputs_text(s: s)), "\n")
   fleet_converge_mtcollins1_boot_checkout_ref_expr == "${{ github.sha }}"
     && !string_contains(s: inputs, pattern: "expected_revision")
     && string_contains(s: inputs, pattern: "${{ github.sha }}")
@@ -578,8 +604,7 @@ fn runner_labels(r: RunnerSpec) -> List<String> {
 // mode=mtcollins1_boot host=srv2 never starts the job: no OIDC exchange and no secret fetch happen
 // anywhere. RED: the runner reading inputs.host, or the condition losing the host term.
 test fn a_boot_dispatch_naming_another_host_never_starts_the_job() -> Bool {
-  let j = fleet_converge_mtcollins1_boot_job()
-  runner_labels(r: j.runner) == ["self-hosted", "linux", "arm64", "srv1"]
+  runner_labels(r: fleet_converge_mtcollins1_boot_runner()) == ["self-hosted", "linux", "arm64", "srv1"]
     && string_contains(s: fleet_converge_mtcollins1_boot_job_if, pattern: "github.event.inputs.host == 'srv1'")
     && string_contains(s: fleet_converge_mtcollins1_boot_job_if, pattern: "github.event.inputs.mode == 'mtcollins1_boot'")
     && fleet_converge_mtcollins1_boot_concurrency_group == "gunbc-host-mutation-srv1"
