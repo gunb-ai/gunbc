@@ -30,7 +30,7 @@ Three separate places still say otherwise and are known-stale:
 - `docs/plans/v2-self-hosting.md` — "0/27 self-host-green" is still true, but its framing
   invites the emission reading.
 
-**A wrong root to avoid.** `v2.compiler.infer` `node_grounding_frontier_note` says v2 derives
+**A wrong root to avoid.** `v2.compiler.infer` once said (in a since-deleted prose row) that v2 derives
 only 3 of 12 node kinds; the other nine carry `infer_grounding_not_derived`. True, and NOT a
 blocker — `GroundingNotDerived` sits on the **Accepted** path (DESIGN §4b names it a live
 specimen of `FrontierAccepted`, "the typed-located-counted diagnostic whose phase result is
