@@ -5,7 +5,6 @@ use self::AuthScheme::*;
 use self::Bool::*;
 use self::DocSourceKind::*;
 use self::FermiDepth::*;
-use self::HttpMethod::*;
 use self::TopologyNodeKind::*;
 pub use crate::std_algebra::{
     algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows,
@@ -196,7 +195,7 @@ pub type Set<Element> = Rc<crate::std_algebra::FinitePowerSet<Element>>;
 pub type Map<Key, Value> = Rc<crate::std_algebra::FinitelySupportedFunction<Key, Value>>;
 
 pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
-    items.iter().fold(0, |acc: i64, _| (acc + 1))
+    items.iter().fold(0, |acc: i64, _| v1_rt::int_add(acc, 1))
 }
 
 pub type CommitSha = String;
@@ -442,20 +441,6 @@ pub type BinaryFilePath = String;
 
 pub type MimeType = String;
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum HttpMethod {
-    GET,
-    POST,
-    PUT,
-    PATCH,
-    DELETE,
-    HEAD,
-    OPTIONS,
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum AuthScheme {
@@ -487,21 +472,6 @@ pub type FilesystemHandle = String;
 pub type NetworkHandle = ();
 
 pub type ToolHandle = String;
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TransportRequest {
-    pub method: HttpMethod,
-    pub url: String,
-    pub headers: serde_json::Value,
-    pub body: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TransportResponse {
-    pub status: i64,
-    pub headers: serde_json::Value,
-    pub body: String,
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FileResponse {
@@ -640,17 +610,3 @@ pub struct M;
 pub struct L;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Xl;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct GET;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct POST;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct PUT;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct PATCH;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct DELETE;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct HEAD;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct OPTIONS;

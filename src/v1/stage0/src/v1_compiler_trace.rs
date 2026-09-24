@@ -104,7 +104,7 @@ pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
                         .clone()
                         .iter()
                         .cloned()
-                        .take((n.clone() - 1) as usize)
+                        .take(v1_rt::int_sub(n.clone(), 1) as usize)
                         .collect::<Vec<_>>(),
                 ),
             })

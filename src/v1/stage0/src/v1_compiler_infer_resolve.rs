@@ -869,7 +869,7 @@ pub fn resolve_alias_target(
             target.clone(),
             env.clone(),
             module_name.clone(),
-            (depth.clone() + 1),
+            v1_rt::int_add(depth.clone(), 1),
             false,
         )
         .resolved
@@ -1014,7 +1014,7 @@ pub fn resolve_node_bounded(
                                 authored_param_type.clone(),
                                 env.clone(),
                                 module_name.clone(),
-                                (depth.clone() + 1),
+                                v1_rt::int_add(depth.clone(), 1),
                                 masked.clone(),
                             );
                             Rc::new(ParamResolveResult {
@@ -1062,7 +1062,7 @@ pub fn resolve_node_bounded(
                             rt.clone(),
                             env.clone(),
                             module_name.clone(),
-                            (depth.clone() + 1),
+                            v1_rt::int_add(depth.clone(), 1),
                             masked.clone(),
                         );
                         Rc::new(NodeResolveResult {
@@ -1128,7 +1128,7 @@ pub fn resolve_node_bounded(
                                         base.clone(),
                                         env.clone(),
                                         module_name.clone(),
-                                        (depth.clone() + 1),
+                                        v1_rt::int_add(depth.clone(), 1),
                                         masked.clone(),
                                     );
                                     let base_resolved = base_result.resolved.clone();
@@ -1178,7 +1178,7 @@ pub fn resolve_node_bounded(
                                     } else {
                                         {
                                             let child_rt = crate::v1_compiler_infer_types::resolved_type(child.clone());
-let rt_result = resolve_node_bounded(child_rt.clone(), env.clone(), module_name.clone(), (depth.clone() + 1), masked.clone());
+let rt_result = resolve_node_bounded(child_rt.clone(), env.clone(), module_name.clone(), v1_rt::int_add(depth.clone(), 1), masked.clone());
 let rt_resolved = rt_result.resolved.clone();
 let rt_diags = rt_result.diagnostics.clone();
 Rc::new(NodeResolveResult {
@@ -1268,7 +1268,7 @@ Rc::new(NodeResolveResult {
                                         inner.clone(),
                                         env.clone(),
                                         module_name.clone(),
-                                        (depth.clone() + 1),
+                                        v1_rt::int_add(depth.clone(), 1),
                                         masked.clone(),
                                     );
                                     let inner_resolved = inner_result.resolved.clone();
@@ -1301,7 +1301,7 @@ let rt_result = if is_self_ref.clone() {
     diagnostics: Rc::new(vec![]),
 })
                                                     } else {
-                                                        resolve_node_bounded(field_rt.clone(), env.clone(), module_name.clone(), (depth.clone() + 1), masked.clone())
+                                                        resolve_node_bounded(field_rt.clone(), env.clone(), module_name.clone(), v1_rt::int_add(depth.clone(), 1), masked.clone())
                                                     };
 let rt_resolved = rt_result.resolved.clone();
 let rt_diags = rt_result.diagnostics.clone();
@@ -1450,7 +1450,7 @@ Rc::new(NodeResolveResult {
                                     child.clone(),
                                     env.clone(),
                                     module_name.clone(),
-                                    (depth.clone() + 1),
+                                    v1_rt::int_add(depth.clone(), 1),
                                     masked.clone(),
                                 ));
                             }
@@ -1551,7 +1551,7 @@ Rc::new(NodeResolveResult {
                                     alias_target.clone(),
                                     env.clone(),
                                     module_name.clone(),
-                                    (depth.clone() + 1),
+                                    v1_rt::int_add(depth.clone(), 1),
                                     false,
                                 );
                                 let is_recursive =
@@ -1736,7 +1736,7 @@ Rc::new(NodeResolveResult {
                                     key_type.clone(),
                                     env.clone(),
                                     module_name.clone(),
-                                    (depth.clone() + 1),
+                                    v1_rt::int_add(depth.clone(), 1),
                                     masked.clone(),
                                 );
                                 let key_resolved = key_result.resolved.clone();
@@ -1745,7 +1745,7 @@ Rc::new(NodeResolveResult {
                                     val_type.clone(),
                                     env.clone(),
                                     module_name.clone(),
-                                    (depth.clone() + 1),
+                                    v1_rt::int_add(depth.clone(), 1),
                                     masked.clone(),
                                 );
                                 let val_resolved = val_result.resolved.clone();
@@ -1892,7 +1892,7 @@ Rc::new(NodeResolveResult {
                                                 el_type.clone(),
                                                 env.clone(),
                                                 module_name.clone(),
-                                                (depth.clone() + 1),
+                                                v1_rt::int_add(depth.clone(), 1),
                                                 masked.clone(),
                                             );
                                             let el_resolved = el_result.resolved.clone();
@@ -2056,7 +2056,10 @@ Rc::new(NodeResolveResult {
                                                                         target.clone(),
                                                                         env.clone(),
                                                                         module_name.clone(),
-                                                                        (depth.clone() + 1),
+                                                                        v1_rt::int_add(
+                                                                            depth.clone(),
+                                                                            1,
+                                                                        ),
                                                                         false,
                                                                     )
                                                                     .resolved
@@ -3706,7 +3709,7 @@ pub fn has_duplicate_type_param_name(names: Rc<Vec<String>>) -> bool {
                             .clone()
                             .iter()
                             .cloned()
-                            .skip((idx.clone() + 1) as usize)
+                            .skip(v1_rt::int_add(idx.clone(), 1) as usize)
                             .collect::<Vec<_>>(),
                     )
                     .iter()

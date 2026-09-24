@@ -1302,6 +1302,79 @@ pub fn filesystem_read(path: String) -> FilesystemReadResult {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
     FilesystemReadResult { content }
 }
+/// Substrate `Int` arithmetic: the interpreter refuses on overflow and on a zero divisor
+/// (v1.interpreter eval_int_binop / eval_unaryop); release-profile i64 operators wrap. The emitter
+/// realizes every Int operator through these (extdeps.languages.rust.emit
+/// rust_refusing_int_operator_helper), and each refusal carries the interpreter's own text.
+#[cold]
+#[inline(never)]
+fn int_overflow(op: &str, lhs: i64, rhs: i64) -> ! {
+    panic!(
+        "integer overflow: {} {} {} does not fit in a 64-bit Int",
+        lhs, op, rhs
+    )
+}
+
+#[cold]
+#[inline(never)]
+fn int_division_by_zero() -> ! {
+    panic!("division by zero")
+}
+
+#[inline]
+pub fn int_add(lhs: i64, rhs: i64) -> i64 {
+    match lhs.checked_add(rhs) {
+        Some(v) => v,
+        None => int_overflow("+", lhs, rhs),
+    }
+}
+
+#[inline]
+pub fn int_sub(lhs: i64, rhs: i64) -> i64 {
+    match lhs.checked_sub(rhs) {
+        Some(v) => v,
+        None => int_overflow("-", lhs, rhs),
+    }
+}
+
+#[inline]
+pub fn int_mul(lhs: i64, rhs: i64) -> i64 {
+    match lhs.checked_mul(rhs) {
+        Some(v) => v,
+        None => int_overflow("*", lhs, rhs),
+    }
+}
+
+#[inline]
+pub fn int_div(lhs: i64, rhs: i64) -> i64 {
+    if rhs == 0 {
+        int_division_by_zero()
+    }
+    match lhs.checked_div(rhs) {
+        Some(v) => v,
+        None => int_overflow("/", lhs, rhs),
+    }
+}
+
+#[inline]
+pub fn int_rem(lhs: i64, rhs: i64) -> i64 {
+    if rhs == 0 {
+        int_division_by_zero()
+    }
+    match lhs.checked_rem(rhs) {
+        Some(v) => v,
+        None => int_overflow("%", lhs, rhs),
+    }
+}
+
+#[inline]
+pub fn int_neg(operand: i64) -> i64 {
+    match operand.checked_neg() {
+        Some(v) => v,
+        None => int_overflow("-", 0, operand),
+    }
+}
+
 fn int_relu(x: i64) -> i64 {
     if x > 0 {
         x
