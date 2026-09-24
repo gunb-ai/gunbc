@@ -53,6 +53,7 @@ import v2.std.diagnostic {
   Accepted,
   None,
   diagnostics_merge,
+  diagnostics_fatal_reason,
   diagnostics_singleton,
   rejected_with_pending
 }
@@ -102,6 +103,7 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
+  arrow_type_param_names,
   fold_node,
   match_arm_body,
   match_arm_pattern,
@@ -1400,15 +1402,7 @@ fn resolve_node_walk(
     TypeNode { connective: Atom { identity: id } } =>
       resolve_walk_of_outcome(o: resolve_atom(ctx: ctx, n: n, identity: id))
     TypeNode { connective: Arrow } =>
-      child_walk_node(n: n, w: resolve_edges_first_outer_then_inner(
-        ctx: ctx,
-        edges: n.children,
-        scope_outer: ctx.scope,
-        scope_inner: ScopeFrame {
-          locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
-          outer: ctx.scope
-        }
-      ))
+      resolve_arrow_node(ctx: ctx, n: n)
     ComputationNode { behavior: Bind } =>
       resolve_bind_node(ctx: ctx, n: n)
     ComputationNode { behavior: Match } =>
@@ -1527,29 +1521,113 @@ fn resolve_children_homogeneous_scope(
   }))
 }
 
+// AN ARROW'S TYPE PARAMETERS ARE A LEXICAL FRAME OVER ITS SIGNATURE. `fn f<T>(x: T) -> T` binds
+// `T` for the domain and the codomain -- the same frame mechanism as a value parameter, a `let`
+// binder and a match-arm binder, in the type role.
+//
+// THE BODY IS OUTSIDE IT, AND THAT IS MEASURED, NOT CHOSEN FOR TIDINESS. A frame answers a name
+// without knowing its position, and v2.compiler.body_lowering_fold carries no TYPE position into a
+// body today (a `let` lowers to Bind[binder, value, body], its annotation not carried; lambdas are
+// not lowered). So every `T` a body can contain is a VALUE-position use, and a frame over the body
+// admitted exactly one new program: `fn f<T>(x: T) -> T { T }`, a type used as a value, Accepted.
+// Kept off the body, that refuses as it did before. The trigger for widening the frame is the
+// first body type position the lowering carries, and it must arrive position-aware: a type-role
+// frame answering in type positions only. A lambda's own Arrow opens its own frame through this
+// same function, so a fresh type parameter scoped to a lambda does not wait on that trigger.
+//
+// Without the frame the domain resolved in the declaration's
+// OUTER scope, and `T` fell through to the ordinary name chain: refused as unbound where nothing
+// spelled it, and -- silent wrongness -- bound to whatever declaration did
+// (gunbc.recurring_failure_mode generic_type_parameter_resolved_as_an_ordinary_atom_in_v2). An
+// Arrow declaring no type parameters walks exactly as before: its type frame is empty.
+//
+// NO SHADOWING. A type parameter whose spelling already names something visible at the
+// declaration REFUSES resolve_reason_type_parameter_shadows_visible_name, located at the binder.
+// It is not a style rule: v2.compiler.infer recognizes a type variable by the callee Arrow's own
+// type-parameter edge (v2.std.node arrow_type_param_names), and that reading is sound only because
+// no `T` inside the Arrow can mean anything but its binder.
+fn resolve_type_param_frame(n: Node, outer: Scope) -> Scope {
+  match arrow_type_param_names(n: n) {
+    Empty => outer
+    Cons { head: _, tail: _ } =>
+      ScopeFrame {
+        locals: fold(arrow_type_param_names(n: n), init: empty_map(), f: fn(acc, name) {
+          map_insert(acc, name, name)
+        }),
+        outer: outer
+      }
+  }
+}
+
+fn type_param_shadows_visible_name_diagnostic(binder: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_reason_type_parameter_shadows_visible_name,
+    at: node_locus(node: binder),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+// A binder is admitted exactly when its spelling, looked up from the declaration's own scope,
+// is unbound. Any other answer -- a binding, an ambiguity, a test-code wall -- is a visible name.
+fn resolve_type_param_binder(ctx: ResolveContext, binder: Node) -> ResolveNodeWalk {
+  match binder.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      match resolve_atom(ctx: ctx, n: binder, identity: id) {
+        Rejected { diagnostics: d } =>
+          if diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol {
+            ResolveWalkAccepted { value: canonical_atom(identity: id, occurrence_id: binder.occurrence_id), diagnostics: None }
+          } else {
+            resolve_walk_refused_one(chain: diagnostics_singleton(d: type_param_shadows_visible_name_diagnostic(binder: binder)))
+          }
+        Accepted { value: _, diagnostics: _ } =>
+          resolve_walk_refused_one(chain: diagnostics_singleton(d: type_param_shadows_visible_name_diagnostic(binder: binder)))
+      }
+    _ => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: binder)))
+  }
+}
+
+fn resolve_type_params_conj(ctx: ResolveContext, conj: Node) -> ResolveNodeWalk {
+  child_walk_node(n: conj, w: fold(conj.children, init: child_walk_init(), f: fn(acc, e) {
+    child_walk_step(w: acc, e: e, r: resolve_type_param_binder(ctx: ctx, binder: e.target))
+  }))
+}
+
 // THE ARROW'S DOMAIN IS NOT A SCOPE-PRODUCING PREREQUISITE in the sense the Bind binder is: its
-// parameter names are read syntactically by add_arrow_domain_named_params, so a domain that refuses
+// parameter names are read syntactically by add_arrow_domain_named_params (and its type parameters by
+// v2.std.node arrow_type_param_names), so a domain that refuses
 // to RESOLVE a parameter's type still binds the parameter's name, and the codomain's scope is not
 // invented by that refusal.
-fn resolve_edges_first_outer_then_inner(
-  ctx: ResolveContext,
-  edges: List<Edge>,
-  scope_outer: Scope,
-  scope_inner: Scope
-) -> ChildWalk {
-  fold(edges, init: child_walk_init(), f: fn(acc, e) {
-    child_walk_step(
-      w: acc,
-      e: e,
-      r: resolve_node_walk(
-        ctx: resolve_ctx_with_scope(
-          ctx: ctx,
-          scope: if acc.ordinal == 0 { scope_outer } else { scope_inner }
-        ),
-        n: e.target
-      )
-    )
-  })
+fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
+  let value_params = add_arrow_domain_named_params(n: n, acc: empty_map())
+  let scope_codomain = ScopeFrame { locals: value_params, outer: scope_type }
+  let scope_body = ScopeFrame { locals: value_params, outer: ctx.scope }
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+    match e.label {
+      Named { name: sym } =>
+        if sym == ^arrow_type_params_edge {
+          child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: ctx, conj: e.target))
+        } else {
+          child_walk_step(
+            w: acc,
+            e: e,
+            r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_body), n: e.target)
+          )
+        }
+      Positional =>
+        child_walk_step(
+          w: acc,
+          e: e,
+          r: resolve_node_walk(
+            ctx: resolve_ctx_with_scope(
+              ctx: ctx,
+              scope: if acc.ordinal == 0 { scope_type } else { scope_codomain }
+            ),
+            n: e.target
+          )
+        )
+    }
+  }))
 }
 
 fn resolve_bind_binder_target(t: Node) -> ResolveNodeWalk {
