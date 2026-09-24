@@ -28,13 +28,10 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import v2.std.node {
   Edge,
-  Named,
   Node,
   NodeFoldTopDown,
-  Positional,
   Symbol,
-  fold_node_topdown,
-  match_arm_pattern
+  fold_node_topdown
 }
 import v2.std.node_query { construct_tag_optional }
 import v2.std.compilers.body_lowering {
@@ -60,8 +57,7 @@ import v2.std.witness { Holds, Witness }
 // `MachineShape { .. }` lowers to a construct (a Conj whose first edge names the tag,
 // v2.std.node_query construct_tag_optional), and a call-spelled `MachineShape(..)` to an
 // application whose head is the atom. Until MQ-2 (gunbc#12202) only the call spelling was read, so
-// a real record literal passed unseen. A match-arm pattern is a destructuring, not a construction,
-// so nothing below a match_arm_pattern edge is judged.
+// a real record literal passed unseen.
 
 // SCOPE: dag/test/claim and src/v2/test/claim are deliberately OUT OF SCOPE — a witness that
 // CONSTRUCTS MachineShape to exercise machine_shape_validate RED arms is building the escape hatch
@@ -168,7 +164,6 @@ fn local_machine_shape_findings(n: Node, module_qn: Optional<QualifiedName>) -> 
 
 type MachineShapeWalkCtx {
   module_qn: Optional<QualifiedName>
-  in_pattern: Bool
 }
 
 type MachineShapeWalkResult {
@@ -180,21 +175,17 @@ fn machine_shape_walk_init(n: Node, ctx: MachineShapeWalkCtx) -> MachineShapeWal
   let module_qn = module_qn_from_node(n: n, inherited: ctx.module_qn)
   MachineShapeWalkResult {
     module_qn: module_qn,
-    findings: if ctx.in_pattern { machine_shape_no_findings } else { local_machine_shape_findings(n: n, module_qn: module_qn) }
+    findings: local_machine_shape_findings(n: n, module_qn: module_qn)
   }
 }
 
 fn machine_shape_walk_child_context(
   n: Node,
   ctx: MachineShapeWalkCtx,
-  e: Edge
+  _: Edge
 ) -> MachineShapeWalkCtx {
   MachineShapeWalkCtx {
-    module_qn: module_qn_from_node(n: n, inherited: ctx.module_qn),
-    in_pattern: ctx.in_pattern || (match e.label {
-      Named { name: nm } => nm == match_arm_pattern
-      Positional => false
-    })
+    module_qn: module_qn_from_node(n: n, inherited: ctx.module_qn)
   }
 }
 
@@ -220,7 +211,7 @@ fn machine_shape_topdown_algebra() -> NodeFoldTopDown<MachineShapeWalkCtx, Machi
 fn machine_shape_construction_findings(root: Node) -> List<Diagnostic> {
   match fold_node_topdown(
     n: root,
-    ctx: MachineShapeWalkCtx { module_qn: optional_absent(), in_pattern: false },
+    ctx: MachineShapeWalkCtx { module_qn: optional_absent() },
     algebra: machine_shape_topdown_algebra()
   ) {
     MachineShapeWalkResult { module_qn: _, findings: findings } => findings

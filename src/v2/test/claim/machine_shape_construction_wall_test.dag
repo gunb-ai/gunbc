@@ -98,7 +98,6 @@ data machine_shape_record_literal_source: String = "module wall.forge\n\nfn forg
 
 data machine_shape_record_literal_home_source: String = "module std.machine_shape\n\nfn made() -> MachineShape = MachineShape { cores: 1 }\n"
 
-data machine_shape_destructured_source: String = "module wall.forge\n\nfn read(s: MachineShape) -> Int = match s {\n  MachineShape { cores: c } => c\n}\n"
 
 // Nullary and pure, enrolled WARM in v2.workflow.floor_pure_producer_share: the parse and normalize
 // of each fixture source are paid once, and each claim is charged only the admitted conservation
@@ -111,9 +110,6 @@ fn machine_shape_record_literal_home_subject() -> ReferenceConservationSubject {
   conservation_subject_of_text(path: "machine_shape_wall_record_literal_home", text: machine_shape_record_literal_home_source)
 }
 
-fn machine_shape_destructured_subject() -> ReferenceConservationSubject {
-  conservation_subject_of_text(path: "machine_shape_wall_destructured", text: machine_shape_destructured_source)
-}
 
 fn gate_over_subject(subject: ReferenceConservationSubject) -> Outcome<Witness<Node>> {
   match conserved_normalize(subject: subject, explained: no_explained_drops()) {
@@ -122,6 +118,11 @@ fn gate_over_subject(subject: ReferenceConservationSubject) -> Outcome<Witness<N
   }
 }
 
+// NO DESTRUCTURING CONTROL, deliberately. A match-arm pattern `MachineShape { .. } =>` lowers with
+// references the admitted conservation route reports dropped (conservation_reason_dropped_reference,
+// probed on srv1 for gunbc#12202), so no pattern reaches this gate on the admitted route today, and
+// the gate carries no pattern exemption it could not exercise. If patterns come to lower whole as
+// constructs, the gate refuses them loudly, and that is the trigger to model the exemption.
 test fn gate_red_machine_shape_record_literal_outside_its_home() -> Bool {
   match gate_over_subject(subject: machine_shape_record_literal_subject()) {
     Rejected { diagnostics: d } =>
@@ -133,8 +134,3 @@ test fn gate_red_machine_shape_record_literal_outside_its_home() -> Bool {
 test fn gate_green_machine_shape_record_literal_in_its_home() -> Bool {
   gate_accepts(o: gate_over_subject(subject: machine_shape_record_literal_home_subject()))
 }
-
-test fn gate_green_machine_shape_destructuring_pattern() -> Bool {
-  gate_accepts(o: gate_over_subject(subject: machine_shape_destructured_subject()))
-}
-
