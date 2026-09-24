@@ -46,14 +46,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // reference site. So the red arms below are red on BOTH earlier revisions, for two different reasons.
 //
 // THE MODULES VARY ONE THING EACH. An undeclared name as the argument of a call scrutinee must refuse
-// at resolve at its own atom (the scrutinee reached resolve whole); the declared twin resolves. A
-// lambda argument whose body uses its own parameter must RESOLVE -- not merely normalize: a carried
-// shell the resolver cannot scope would refuse the parameter as unbound, which is a refusal moved
-// from normalize to resolve, not a repair -- and an undeclared name inside a lambda body must refuse
-// at resolve at its own atom. An undeclared name inside a nested call argument must refuse at its
-// atom. Call arguments and scrutinees as such are gunbc#12173's subject
-// (v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal); they are here as the population
-// the shape claims below read. Operator operands are gunbc#12194's subject.
+// at resolve at its own atom (the scrutinee reached resolve whole); the declared twin resolves. An
+// undeclared name inside a nested call argument must refuse at its atom. Call arguments and
+// scrutinees as such are gunbc#12173's subject (v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal);
+// they are here as the population the shape claims below read, which assert the lowered call's SHAPE.
+//
+// THE LAMBDA CLAIMS ARE A NAMED FRONTIER, ENROLLED EXPECTED-RED. A lambda argument whose body uses its
+// own parameter must RESOLVE, and an undeclared name in a lambda body must refuse at its atom. Neither
+// holds today: a lambda argument refuses its module as call_argument_unread, which is gen-one's first
+// fatal (dag/examples/weather/weather.dag). Carrying the lambda's shell whole under the
+// value_carried_unlowered advisory was tried in gunbc#12198 and measured on srv1 at 8fc9f27377: the
+// module then normalizes, but BOTH claims stay red, because a carried shell gives the resolver no scope
+// for the parameter -- a refusal moved from normalize to resolve, not a repair, so it was dropped.
+// The repair is real lambda lowering in argument position, owned by the body-lowering modeling pass
+// (MQ lane, adhoc-1b3dbcdb-f9f); these two rows flip green when it lands and the floor reports them
+// for removal.
 data vpw_match_call_source: String = "module v2.test.vpw_match_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match vpw_id(p: vpw_undeclared_scrutinee) {\n    true => p\n    false => p\n  }\n}\n"
 
 data vpw_match_declared_source: String = "module v2.test.vpw_match_declared\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match vpw_id(p: p) {\n    true => p\n    false => p\n  }\n}\n"
@@ -219,8 +226,21 @@ test fn an_undeclared_name_inside_a_call_argument_refuses_at_resolve_at_its_atom
 // Narrowing (the pre-#12145 truncation to the callee atom) and refusal (the #12145 regression) both
 // fail these. Renaming the callee in the expected spelling makes them red. The ingest is enrolled warm
 // beside vpw_outcomes; the walk runs per claim.
+// The shape claims read their own ingest, WITHOUT the lambda fixtures: module_roots_from_source_root_ingest
+// refuses the whole ingest when one module refuses, and a lambda argument still refuses its module on
+// this route (the two lambda claims above are enrolled expected-red in v2.workflow.floor_expected_red).
+// A shared ingest would make every shape claim red for the lambda's reason and not its own -- the
+// collateral srv1 measured at 8fc9f27377 against main.
+data vpw_shape_ingest: SourceRootIngest = Cons {
+    head: vpw_read(source: vpw_match_call_source, id: ^vpw_match_call_artifact, unit: ^vpw_match_call_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_match_call.dag"),
+    tail: Cons {
+      head: vpw_read(source: vpw_arg_call_source, id: ^vpw_arg_call_artifact, unit: ^vpw_arg_call_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_call.dag"),
+      tail: Empty
+    }
+  }
+
 fn vpw_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
-  module_roots_from_source_root_ingest(ingest: vpw_ingest, lm: dag_language_model())
+  module_roots_from_source_root_ingest(ingest: vpw_shape_ingest, lm: dag_language_model())
 }
 
 fn vpw_roots() -> FreeMonoid<Node> {

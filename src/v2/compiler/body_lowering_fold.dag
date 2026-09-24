@@ -3168,25 +3168,7 @@ fn body_lower_arg_value_lowered(arg_capture: Node, value_capture: Node) -> Outco
   }
 }
 
-// A FUNCTION VALUE IN ARGUMENT POSITION IS CARRIED WHOLE, NOT READ AS ITS PARAMETER. `f => body`
-// and `fn(a) { body }` have no producer on this route (body_lower_value_is_function_value_shell), so
-// body_lower_value_lowered declines them. Before gunbc#12145 the operand reader then answered the
-// lambda with its parameter atom (`filter(f => g(f))` passed `f`); after it, the argument refused
-// its module as call_argument_unread -- gen-one's first fatal emitting v2.compiler.compile, at
-// dag/examples/weather/weather.dag. The argument is carried as its preserved shell under
-// body_lowering_reason_value_carried_unlowered, the disposition a field initializer already gives a
-// function value (body_lower_value_lowered_or_carried), for fold_lowering to consume. This is the
-// Carried arm of the closed value outcome the body-lowering modeling pass (MQ-1) will type; until
-// then the advisory is its located cause.
 fn body_lower_arg_value_read(arg_capture: Node, value_capture: Node) -> Outcome<Node> {
-  if body_lower_value_is_function_value_shell(node: value_capture) {
-    body_lower_value_lowered_or_carried(value: value_capture)
-  } else {
-    body_lower_arg_value_read_value(arg_capture: arg_capture, value_capture: value_capture)
-  }
-}
-
-fn body_lower_arg_value_read_value(arg_capture: Node, value_capture: Node) -> Outcome<Node> {
   match body_lower_value_lowered(node: value_capture) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: Present { value: lowered }, diagnostics: d } =>
