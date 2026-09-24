@@ -11,6 +11,7 @@ import v2.compiler.infer {
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.integer { integer_decimal_digit_type_node, integer_decimal_digits_type_node }
 import v2.extdeps.languages.dag {
   dag_int_literal_node_from_lexeme,
   dag_language_model,
@@ -307,21 +308,61 @@ test fn malformed_literal_payload_stays_on_the_frontier_holds() -> Bool {
   ddl_hand_grounding(tree: literal, n: bogus) == 1
 }
 
-// Its positive control: an accepted literal's payload derives, on the same hand-built route.
-test fn accepted_literal_payload_derives_holds() -> Bool {
+// THE RECORDED TYPE IS ASSERTED, NOT ONLY THE DERIVATION. The resolved-type field
+// (v2.compiler.infer inferred_facts_resolved_type) holds a node's TYPE. An earlier cut of the
+// payload rule stored the enclosing literal there, which recorded where the node came from under a
+// field that means what it is: a meaning fork. A check that only asked "derived?" was green over it.
+// So this control reads the type back: the digit list is a FreeMonoid<DecimalDigit> and its head a
+// DecimalDigit, in the integer authority's own nodes.
+fn ddl_resolved_type(tree: Node, n: Node) -> Optional<Node> {
+  match infer(tree: tree) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: inferred, diagnostics: _ } =>
+      match inferred.facts.lookup(n) {
+        Absent => optional_absent()
+        Present { value: facts } =>
+          match facts.grounding {
+            GroundingNotDerived { node: _ } => optional_absent()
+            DerivedGrounding { grounding: g } => optional_present(value: g.witness.structural.evidence)
+          }
+      }
+  }
+}
+
+fn ddl_type_is(t: Optional<Node>, want: Node) -> Bool {
+  match t {
+    Absent => false
+    Present { value: got } => got == want
+  }
+}
+
+fn ddl_edge_target(e: Edge) -> Node {
+  e.target
+}
+
+test fn accepted_literal_payload_is_typed_by_the_integer_authority_holds() -> Bool {
   match dag_int_literal_node_from_lexeme(lexeme: "42", occurrence_id: OccurrenceSynthetic) {
     Rejected { diagnostics: _ } => false
     Accepted { value: literal, diagnostics: _ } =>
       match list_at_optional(xs: literal.children, index: 0) {
         Absent => false
-        Present { value: magnitude } => ddl_hand_grounding(tree: literal, n: magnitude.target) == 0
+        Present { value: magnitude_edge } =>
+          let magnitude = ddl_edge_target(e: magnitude_edge)
+          match list_at_optional(xs: magnitude.children, index: 0) {
+            Absent => false
+            Present { value: head_edge } =>
+              ddl_type_is(t: ddl_resolved_type(tree: literal, n: magnitude), want: integer_decimal_digits_type_node())
+                && ddl_type_is(
+                  t: ddl_resolved_type(tree: literal, n: ddl_edge_target(e: head_edge)),
+                  want: integer_decimal_digit_type_node()
+                )
+          }
       }
   }
 }
 
 // The empty-domain rule is positional. The same childless Conj as an Arrow's CODOMAIN is not the
-// product of any parameters and stays frontier. As the DOMAIN of an otherwise identical Arrow it
-// derives.
+// product of any parameters and stays frontier.
 fn ddl_arrow_with(domain: Node, codomain: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
@@ -339,8 +380,48 @@ test fn childless_conj_in_codomain_stays_on_the_frontier_holds() -> Bool {
   ddl_hand_grounding(tree: tree, n: codomain) == 1
 }
 
-test fn childless_conj_in_domain_derives_holds() -> Bool {
-  let domain = ddl_childless_conj()
-  let tree = ddl_arrow_with(domain: domain, codomain: ddl_unauthorized_atom())
-  ddl_hand_grounding(tree: tree, n: domain) == 0
+// The positive half, on the real nullary-fn specimen: the lowered domain derives, and its recorded
+// type is the empty product (a childless Conj that is not the domain itself). It is never the
+// Arrow that holds it.
+fn ddl_member_arrow(member: Node) -> Optional<Node> {
+  fold_list(
+    xs: member.children,
+    empty: optional_absent(),
+    cons: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if ddl_edge_names_value_member(e: e) { optional_present(value: ddl_edge_target(e: e)) } else { acc }
+      }
+    }
+  )
+}
+
+fn ddl_domain_typed_as_empty_product(member: Node, arrow: Node) -> Bool {
+  match list_at_optional(xs: arrow.children, index: 0) {
+    Absent => false
+    Present { value: domain_edge } =>
+      let domain = ddl_edge_target(e: domain_edge)
+      match ddl_resolved_type(tree: member, n: domain) {
+        Absent => false
+        Present { value: t } =>
+          (length(xs: t.children) == 0) && (t != domain) && (t != arrow)
+            && (match t.kind { TypeNode { connective: Conj } => true  _ => false })
+      }
+  }
+}
+
+test fn nullary_arrow_domain_is_typed_as_the_empty_product_holds() -> Bool {
+  match ddl_fn_brace_resolved() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match ddl_value_member(tree: tree) {
+        Absent => false
+        Present { value: member } =>
+          match ddl_member_arrow(member: member) {
+            Absent => false
+            Present { value: arrow } => ddl_domain_typed_as_empty_product(member: member, arrow: arrow)
+          }
+      }
+  }
 }

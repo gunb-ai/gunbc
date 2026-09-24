@@ -31,6 +31,7 @@ import v2.extdeps.languages.dag {
 import v2.extdeps.languages.python { python_declared_inhabitants_root }
 import v2.extdeps.languages.typescript { ts_declared_inhabitants_root }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
+import v2.std.integer { integer_decimal_digit_type_node, integer_decimal_digits_type_node }
 import v2.std.collection {
   List,
   Map,
@@ -120,11 +121,11 @@ type AlgebraRef {
   witness: Node
 }
 
-// TWO POSITION-SCOPED DERIVATIONS SIT BESIDE THE KIND RULES THIS ROW LISTS, each grounded by its
-// enclosing node: an accepted int literal's magnitude payload (infer_literal_payload_entries, the
-// literal is the evidence) and a childless Conj in an Arrow's domain position
-// (infer_arrow_empty_domain_edge, the Arrow is the evidence). A node's KIND does not decide whether
-// it grounds, so a count of kinds covered does not measure how much of a closure grounds: gen-one's
+// TWO POSITION-SCOPED DERIVATIONS SIT BESIDE THE KIND RULES THIS ROW LISTS. An accepted int
+// literal's magnitude payload derives against the integer authority's own types
+// (infer_literal_payload_entries), and a childless Conj in an Arrow's domain position derives as
+// the empty product (infer_arrow_empty_domain_edge). A node's KIND does not decide whether it
+// grounds, so a count of kinds covered does not measure how much of a closure grounds: gen-one's
 // door probe (fixture.native_cli_door.door_probe) met this frontier only through Atom and Conj
 // nodes, because body lowering handed infer a data declaration's surface tokens (fixed at
 // v2.compiler.body_lowering_fold body_lower_data_decl_to_member).
@@ -2307,13 +2308,13 @@ fn infer_literal_edge_diagnostics_derived(parent: Node, edge: Edge) -> Bool {
 
 // THE EMPTY DOMAIN OF A NULLARY ARROW IS THE EMPTY PRODUCT, AND IT IS GROUNDED BY THE ARROW'S
 // POSITION, NOT BY ITS OWN SHAPE. body_lower_domain_from_param_list lowers `fn f()` to an Arrow
-// whose domain is a childless Conj: the product of zero parameters. The evidence is the ENCLOSING
-// ARROW, the same frame as a literal's payload taking its literal: the domain is grounded as that
-// arrow's parameter product and by nothing else. The empty product's own re-formed shape (a
-// synthetic childless Conj) is not usable as evidence: it is structurally EQUAL to a synthetic
-// empty domain, so the self-evidence wall in canonical_grounding_from_derived_type would refuse
-// it. The standalone childless-Conj rule
-// deliberately still refuses (v2.test.execution.infer_product_introduction
+// whose domain is a childless Conj: the product of zero parameters. Its resolved type is what
+// product introduction yields over zero children, the empty product: a fresh synthetic childless
+// Conj. The domain lowering produces carries its parameter list's occurrence, so it is never the
+// same node as that evidence. A domain that IS structurally the empty product (a synthetic
+// childless Conj) meets the self-evidence wall in canonical_grounding_from_derived_type, and infer
+// refuses it rather than typing a node as itself. The standalone childless-Conj rule deliberately
+// still refuses (v2.test.execution.infer_product_introduction
 // product_introduction_leaves_childless_conj_on_the_frontier_holds): a childless Conj elsewhere
 // is not known to be a product of anything, and parse residue has that shape too. What this adds
 // is the one position whose meaning the Arrow fixes: its first child, the domain. Before
@@ -2333,11 +2334,15 @@ fn infer_arrow_empty_domain_edge(parent: Node, edge: Edge, children_remaining: I
   }
 }
 
-fn infer_arrow_empty_domain_entry(arrow: Node, domain: Node) -> Outcome<InferredFactsEntry> {
+fn infer_arrow_empty_domain_entry(domain: Node) -> Outcome<InferredFactsEntry> {
   bind_outcome(
     o: inferred_facts_from_derived_type(
       node: domain,
-      derived_type: arrow,
+      derived_type: Node {
+        kind: TypeNode { connective: Conj },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      },
       descent: infer_descent_witness_for_node(n: domain)
     ),
     f: fn(facts) { admitted_inferred_facts_entry(node: domain, facts: facts) }
@@ -2350,12 +2355,38 @@ fn infer_arrow_empty_domain_entry(arrow: Node, domain: Node) -> Outcome<Inferred
 // every accepted int literal (its digit atoms and cons cells) refused emission at
 // translate_rejected_grounding_not_derived: gen-one could not emit `data x: Int = 606060`, nor
 // `fn f() -> Int { 606060 }`. The payload is the integer authority's canonical decimal
-// representation (v2.std.integer integer_decimal_magnitude_node), carried as a typed field of the
-// literal atom (v2.std.node atom_connective_edge_discipline). So each payload node derives with the
-// ACCEPTED LITERAL as its evidence: it is grounded exactly as the magnitude of that canonical
-// literal, and by nothing else. Only the edge infer_literal_edge_diagnostics_derived admits reaches
-// here, so a malformed literal keeps every child on the frontier.
-fn infer_literal_payload_entries(literal: Node, payload: Node) -> Outcome<List<InferredFactsEntry>> {
+// representation (v2.std.integer integer_decimal_magnitude_node): a fold_list_node of digit atoms.
+// So each payload node derives with ITS OWN TYPE in that authority as the resolved type: a digit
+// atom is a DecimalDigit (integer_decimal_digit_type_node), and a cons cell or the empty tail is a
+// FreeMonoid<DecimalDigit> (integer_decimal_digits_type_node). The resolved-type field
+// is never given the enclosing literal as a record of where the node came from (a meaning fork the
+// first cut of this rule had). A payload node of any other shape stays on the frontier. Only the
+// edge infer_literal_edge_diagnostics_derived admits reaches here, so a malformed literal keeps
+// every child on the frontier.
+fn infer_literal_payload_member_type(member: Node) -> Optional<Node> {
+  match member.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      optional_present(value: integer_decimal_digit_type_node())
+    TypeNode { connective: Conj } =>
+      optional_present(value: integer_decimal_digits_type_node())
+    _ => optional_absent()
+  }
+}
+
+fn infer_literal_payload_member_facts(member: Node) -> Outcome<InferredFacts> {
+  match infer_literal_payload_member_type(member: member) {
+    Present { value: member_type } =>
+      inferred_facts_from_derived_type(
+        node: member,
+        derived_type: member_type,
+        descent: infer_descent_witness_for_node(n: member)
+      )
+    Absent =>
+      inferred_facts_not_derived(node: member, descent: infer_descent_witness_for_node(n: member))
+  }
+}
+
+fn infer_literal_payload_entries(payload: Node) -> Outcome<List<InferredFactsEntry>> {
   fold(
     node_subtree_nodes(root: payload),
     init: Accepted { value: empty_inferred_facts_entry_list(), diagnostics: None },
@@ -2364,11 +2395,7 @@ fn infer_literal_payload_entries(literal: Node, payload: Node) -> Outcome<List<I
         o: acc,
         f: fn(entries) {
           bind_outcome(
-            o: inferred_facts_from_derived_type(
-              node: member,
-              derived_type: literal,
-              descent: infer_descent_witness_for_node(n: member)
-            ),
+            o: infer_literal_payload_member_facts(member: member),
             f: fn(facts) {
               bind_outcome(
                 o: admitted_inferred_facts_entry(node: member, facts: facts),
@@ -2470,7 +2497,7 @@ fn infer_gather_fold_step(
       children_remaining: acc.children_remaining
     )
   } else if infer_arrow_empty_domain_edge(parent: acc.node, edge: edge, children_remaining: acc.children_remaining) {
-    match infer_arrow_empty_domain_entry(arrow: acc.node, domain: edge.target) {
+    match infer_arrow_empty_domain_entry(domain: edge.target) {
       Rejected { diagnostics: r } =>
         infer_gather_fold_acc_failed(
           node: acc.node,
@@ -2491,7 +2518,7 @@ fn infer_gather_fold_step(
         )
     }
   } else if infer_literal_edge_diagnostics_derived(parent: acc.node, edge: edge) {
-    match infer_literal_payload_entries(literal: acc.node, payload: edge.target) {
+    match infer_literal_payload_entries(payload: edge.target) {
       Rejected { diagnostics: r } =>
         infer_gather_fold_acc_failed(
           node: acc.node,
