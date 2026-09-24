@@ -144,7 +144,8 @@ fn unsanctioned_construction_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   }
 }
 
-// WHAT THIS NODE CONSTRUCTS, IF ANYTHING, as the tag it names. Refused is a finding in its own
+// WHAT THIS NODE CONSTRUCTS, IF ANYTHING, as the tag it names. An Arrow head is a resolved
+// function reference, never a record constructor, so it constructs nothing. Refused is a finding in its own
 // right: a partial application may be exactly the construction a rule exists to catch.
 type ConstructedTag
   = NoConstruction
@@ -161,21 +162,24 @@ fn constructed_tag(n: Node) -> ConstructedTag {
         ApplicationSlotsFound { slots: v } =>
           match v.head_identity {
             AtomHead { identity: sym } => Constructs { tag: sym }
-            // A resolved callee is a function reference, never a record constructor.
             ArrowHead => NoConstruction
           }
       }
   }
 }
 
+fn diagnostics_as_list(d: NonEmptyDiagnostics) -> List<Diagnostic> {
+  Cons { head: d.head, tail: d.tail }
+}
+
+// Refusals are reported only where some rule would govern the module; a module every rule
+// sanctions has nothing this gate could forbid.
 fn local_single_constructor_findings(n: Node, module_qn: Optional<QualifiedName>) -> List<Diagnostic> {
   match constructed_tag(n: n) {
     NoConstruction => single_constructor_no_findings
     ConstructionUnreadable { diagnostics: d } =>
-      // Refusals are reported only where some rule would govern the module; a module every rule
-      // sanctions has nothing this gate could forbid.
       if any(xs: single_constructor_rules(), predicate: fn(rule) { !module_sanctions(rule: rule, qn: module_qn) }) {
-        Cons { head: d.head, tail: d.tail }
+        diagnostics_as_list(d: d)
       } else {
         single_constructor_no_findings
       }

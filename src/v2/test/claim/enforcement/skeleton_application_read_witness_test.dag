@@ -134,10 +134,10 @@ fn decl_has_call_with_one_unprojected_operand(decl: FnArrowDecl) -> Bool {
   )
 }
 
-// DISCRIMINATOR, skeleton route, REAL MARSHAL: `callee(x: 1)` reads as a call whose one operand is
-// SkeletonUnprojected, and the call walk names the callee with no refusal. Before the refinement
-// the literal's empty Conj refused the call and the walk could not see it.
-test fn a_real_skeleton_int_literal_argument_reads_as_unprojected() -> Bool {
+// DISCRIMINATOR, skeleton route, REAL MARSHAL: `count(skeleton_application_fixture_rows)` reads as
+// a call whose one operand is SkeletonUnprojected -- the data reference is unprojected -- and the
+// call walk names the callee with no refusal. Through the body route the same operand refuses.
+test fn a_real_skeleton_unprojected_positional_argument_reads_as_unprojected() -> Bool {
   let decls = skeleton_wall_caller_decls()
   length(xs: decls) == 1
     && any(xs: decls, predicate: fn(d) { decl_has_call_with_one_unprojected_operand(decl: d) })
@@ -149,6 +149,6 @@ test fn the_real_skeleton_call_walk_names_the_callee_without_refusal() -> Bool {
     && any(xs: decls, predicate: fn(d) {
       let scan = callees_from_decl(decl: d, terminal_callee_symbols: skeleton_wall_no_terminal_callees)
       length(xs: scan.refusals) == 0
-        && contains(xs: scan.texts, item: "skeleton_application_fixture_callee", eq: string_eq)
+        && contains(xs: scan.texts, item: "count", eq: string_eq)
     })
 }

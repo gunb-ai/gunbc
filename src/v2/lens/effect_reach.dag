@@ -493,6 +493,8 @@ fn flow_touched_by_path(flow: EffectReachFlow, path: String) -> Bool {
   }
 }
 
+// A refused reading carries no flow, so no path literal: "false" there is not "untouched". That
+// conclusion needs derived_host_reading or classification_is_local first, both false on a refusal.
 fn classification_has_path_literal(
   classification: EffectReachClassification,
   path: String
@@ -501,9 +503,6 @@ fn classification_has_path_literal(
     LocalEffect => false
     HostEffectReach { flows: flows } =>
       any(xs: flows, predicate: fn(flow) { flow_touched_by_path(flow: flow, path: path) })
-    // No flow was established, so no path literal is carried. A consumer must not read "false"
-    // here as "untouched": that conclusion needs derived_host_reading or classification_is_local
-    // first, both of which are false on a refused reading.
     EffectReachRefused { refusals: _ } => false
   }
 }
