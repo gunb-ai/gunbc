@@ -575,6 +575,9 @@ import v2.std.collection { List }
 // THE CLI TRAILING-TOKEN PROBE ROW: v2.test.cli.v2_native_cli drives v2_cli_run over a two-file
 // supplied ingest whose second file refuses at parse; two claims read one field each of the
 // CliRunOutcome. Stored value is a refused outcome (a Symbol and a String), portable.
+// THE ARROW-BODY REFUSAL PROBE ROW IS THE SAME GROUND: v2.test.emit.closure_emit_arrow_body_refusal
+// drives the closure emitter over a one-module supplied ingest whose fn has a body; two claims read
+// one field each. Stored value is a refused verdict (a Symbol and a String), portable.
 // THE NAMESPACE CANDIDATE RULE PROBE ROW IS THE SAME GROUND AGAIN, and the most expensive instance
 // of it: v2.test.claim.resolve.namespace_candidate_rule drives native_test_context_from_ingest over
 // a TWELVE-specimen supplied ingest TWICE -- once in declared order and once permuted -- because the
@@ -670,6 +673,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.value_position_whole_read.vpw_normalized",
   "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal.cav_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
+  "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_probe_verdict",
   "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",
   "v2.test.claim.native_census.whole_tree_census_resolve.census_probe_outcomes",
   "v2.test.native_decl_selection.collision_resolved",
