@@ -106,9 +106,11 @@ test fn a_mixed_list_refuses_at_the_differing_element() -> Bool {
 
 // `[]` carries no element to derive T from, so this case derives no type for it: it stays on the
 // counted GroundingNotDerived frontier rather than receiving a guessed T.
+// It must still be ACCEPTED: a refusal would also "derive no type", so accepting Rejected here would
+// let one failure common to every list pass this claim while the other two went red.
 test fn an_empty_list_derives_no_type_here() -> Bool {
   match infer(tree: ilt_empty) {
-    Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match tree.facts.lookup(ilt_empty) {
         Absent => true
