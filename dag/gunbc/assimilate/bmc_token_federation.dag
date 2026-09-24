@@ -200,6 +200,7 @@ fn bmc_token_smoke_job() -> Job {
     id: "bmc_token_smoke",
     name: none,
     runner: gunbc_ci_runner_spec(),
+    environment: none,
     steps: [bmc_checkout_step(), gcp_wif_auth_step(), gcp_token_smoke_step()],
     needs: [],
     env: none,

@@ -3,12 +3,13 @@ module extdeps.cloud.gcp.iam_admin
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, WifPoolWire, WifProviderWire, WifProviderListWire }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding }
-import std.types { Int, List, Map, NonEmptyStr, Secret, String }
+import std.types { Bool, Int, List, Map, NonEmptyStr, Secret, String }
 import extdeps.transports.rest { RestOutcome }
-import v2.std.network { POST }
 import extdeps.transports.rest { RestOutcome }
+import extdeps.ietf.http_semantics { POST }
+
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -54,6 +55,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // goes through. The WRITE carries the same optionality for the same reason and one nobody had hit:
 // setIamPolicy returns the policy it stored, so revoking the LAST binding answers with an etag alone.
 // Rostered as gunbc.recurring_failure_mode required_output_field_absent_for_an_empty_upstream_resource.
+// ListWorkloadIdentityPoolProviders READS THE WHOLE PROVIDER POPULATION OF ONE POOL, deleted ones
+// included: a soft-deleted provider can be undeleted into the pool within its retention window, so a
+// classification that could not see it would call a pool single-provider while a second admission
+// rule waits one call away. GetWorkloadIdentityPool and it are what a provisioning run reads before
+// it writes anything through an existing pool (gunbc.auth.heal_publisher_provision).
 service gcp.IamAdmin {
   config {
     endpoint: "https://iam.googleapis.com"
@@ -213,6 +219,43 @@ service gcp.IamAdmin {
       401 => GcpErrorShape
       403 => GcpErrorShape
       409 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation GetWorkloadIdentityPool {
+    input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr }
+    output { pool_name: String from "name", display_name: String?, disabled: Bool?, state: String?, outcome: RestOutcome }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}"
+    }
+    response {
+      200 => WifPoolWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation ListWorkloadIdentityPoolProviders {
+    input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr }
+    output { providers: List<WifProviderWire>? from "workloadIdentityPoolProviders", outcome: RestOutcome }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}/providers",
+      query: { showDeleted: true }
+    }
+    response {
+      200 => WifProviderListWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
       429 => GcpErrorShape
       5xx => GcpErrorShape
     }

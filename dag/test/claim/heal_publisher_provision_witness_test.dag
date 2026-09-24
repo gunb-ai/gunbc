@@ -9,10 +9,16 @@ import gunbc.gcp_estate_observation { role_iam_workload_identity_user }
 import gunbc.auth.heal_publisher_federation { heal_publisher_wif_principal_set, heal_publisher_wif_pool_display_name }
 import gunbc.auth.heal_publisher_provision {
   SubjectCreation, SubjectCreated, SubjectAlreadyPresentUnverified, SubjectCreateRefused,
-  subject_creation, FederationDisposition, FederationBindable, FederationStopped,
-  federation_verdict, unverified_subjects, bound_verdict,
-  heal_publisher_impersonation_cell, impersonation_binding_present
+  subject_creation, heal_publisher_impersonation_cell, impersonation_binding_present,
+  DedicatedFederation, heal_publisher_dedicated_federation,
+  PoolReading, PoolObservedAbsent, PoolObserved, ProvidersReading, ProvidersObserved, ProvidersUnreadable,
+  AccountObservedAbsent, AccountObserved,
+  FederationClassification, FederationClassified, FederationUnclassified,
+  classify_dedicated_federation, federation_fully_present,
 }
+import extdeps.cloud.gcp.gcp { WifPoolWire, WifProviderWire, WifOidcWire }
+import gunbc.auth.github_gcp_federation { github_wif_issuer_uri }
+import v2.std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -77,80 +83,79 @@ test fn witness_an_unreached_service_is_a_refusal_not_a_presence() -> Bool {
   }
 }
 
-// ── what the run does with three of them ────────────────────────────────────────────────────
+// ── what the run may do, decided from READINGS before any write (review 5286225278) ─────────
 
-fn disposition_stopped(d: FederationDisposition) -> Bool {
-  match d {
-    FederationStopped { reason: _ } => true
-    FederationBindable => false
+fn heal() -> DedicatedFederation {
+  heal_publisher_dedicated_federation()
+}
+
+fn declared_provider(f: DedicatedFederation) -> WifProviderWire {
+  WifProviderWire {
+    name: join(["projects/1/locations/global/workloadIdentityPools/", f.pool_id as String, "/providers/", f.provider_id as String], ""),
+    disabled: Present { value: false },
+    state: Present { value: "ACTIVE" },
+    attribute_mapping: Present { value: f.attribute_mapping },
+    attribute_condition: Present { value: f.attribute_condition },
+    oidc: Present { value: WifOidcWire { issuer_uri: github_wif_issuer_uri as String } },
   }
 }
 
-fn disposition_reason(d: FederationDisposition) -> String {
-  match d {
-    FederationStopped { reason } => reason
-    FederationBindable => ""
+fn declared_pool(f: DedicatedFederation) -> PoolReading {
+  PoolObserved { pool: WifPoolWire { name: join(["projects/1/locations/global/workloadIdentityPools/", f.pool_id as String], ""), display_name: Present { value: f.pool_display_name as String }, disabled: Present { value: false }, state: Present { value: "ACTIVE" } } }
+}
+
+fn classified(c: FederationClassification) -> Bool {
+  match c {
+    FederationClassified { create_pool: _, create_provider: _, create_account: _ } => true
+    FederationUnclassified { reasons: _ } => false
   }
 }
 
-// THREE CREATES, NO REFUSAL, SO THE BINDING IS REACHED. This is the control for every stop below.
-test fn witness_three_created_subjects_reach_the_binding() -> Bool {
-  !disposition_stopped(d: federation_verdict(
-    pool: SubjectCreated, provider: SubjectCreated, account: SubjectCreated
-  ))
+fn unclassified_naming(c: FederationClassification, pattern: String) -> Bool {
+  match c {
+    FederationUnclassified { reasons: rs } => string_contains(s: join(rs, "; "), pattern: pattern)
+    FederationClassified { create_pool: _, create_provider: _, create_account: _ } => false
+  }
 }
 
-// A CONFLICT DOES NOT STOP THE RUN, and that is the rerun this shape exists for: the operator's
-// second attempt must still reach the one step that is safe to repeat.
-test fn witness_a_conflict_still_reaches_the_binding() -> Bool {
-  !disposition_stopped(d: federation_verdict(
-    pool: SubjectAlreadyPresentUnverified, provider: SubjectAlreadyPresentUnverified, account: SubjectCreated
-  ))
+// NOTHING EXISTS: every subject is created, and nothing is granted until the readback matches.
+test fn witness_nothing_present_classifies_as_create_all() -> Bool {
+  match classify_dedicated_federation(f: heal(), pool: PoolObservedAbsent, providers: ProvidersObserved { providers: [] }, account: AccountObservedAbsent) {
+    FederationClassified { create_pool: a, create_provider: b, create_account: c } => a && b && c
+    FederationUnclassified { reasons: _ } => false
+  }
 }
 
-// A REFUSED CREATE STOPS BEFORE THE BINDING, naming the subject: binding a policy on an account this
-// run just failed to create is a call that can only fail, and its failure would be reported in place
-// of the create's, which is the cause the operator needs.
-test fn witness_a_refused_create_stops_and_names_its_subject() -> Bool {
-  let d = federation_verdict(
-    pool: SubjectCreated,
-    provider: SubjectCreateRefused { cause: "status 403: denied" },
-    account: SubjectCreated
-  )
-  disposition_stopped(d: d) && string_contains(s: disposition_reason(d: d), pattern: "the provider")
+// THE CONTROL FOR EVERY HALT BELOW: all three present and matching is fully present, so a rerun
+// reaches the bindings.
+test fn witness_present_and_matching_is_fully_present() -> Bool {
+  let f = heal()
+  let c = classify_dedicated_federation(f: f, pool: declared_pool(f: f), providers: ProvidersObserved { providers: [declared_provider(f: f)] }, account: AccountObserved { email: f.service_account as String })
+  classified(c: c) && federation_fully_present(c: c)
 }
 
-// ── what a reconciled binding may report when a subject was unread ──────────────────────────
-
-test fn witness_no_conflict_leaves_the_binding_result_alone() -> Bool {
-  succeeded(e: bound_verdict(
-    unverified: unverified_subjects(pool: SubjectCreated, provider: SubjectCreated, account: SubjectCreated),
-    bound: ExitSuccess
-  ))
+// THE RED THE REVIEW NAMED: an EXISTING provider whose condition is not the declared one halts the
+// run, and it halts in the classifier -- before bind_impersonation or any secret cell is reached.
+test fn witness_an_existing_provider_with_another_condition_halts_before_any_grant() -> Bool {
+  let f = heal()
+  let p = declared_provider(f: f)
+  let lax = WifProviderWire { name: p.name, disabled: p.disabled, state: p.state, attribute_mapping: p.attribute_mapping, attribute_condition: Present { value: "assertion.repository_owner == 'gunb-ai'" }, oidc: p.oidc }
+  unclassified_naming(c: classify_dedicated_federation(f: f, pool: declared_pool(f: f), providers: ProvidersObserved { providers: [lax] }, account: AccountObserved { email: f.service_account as String }), pattern: "not the declared one")
 }
 
-// THE CLAIM THIS MODULE EXISTS FOR. The binding succeeded and a subject's configuration was never
-// read, so the run REFUSES rather than reporting the federation provisioned. Reporting success here
-// would be this run asserting that a pre-existing provider carries the declared attribute condition,
-// which it has no observation of -- the provider could admit every workflow in the org.
-test fn witness_an_unverified_subject_refuses_even_when_the_binding_succeeded() -> Bool {
-  let e = bound_verdict(
-    unverified: unverified_subjects(pool: SubjectCreated, provider: SubjectAlreadyPresentUnverified, account: SubjectCreated),
-    bound: ExitSuccess
-  )
-  !succeeded(e: e)
-    && string_contains(s: refusal_text(e: e), pattern: "provider")
-    && string_contains(s: refusal_text(e: e), pattern: "attribute condition")
+// A SECOND PROVIDER IN THE POOL IS A SECOND ADMISSION RULE, and the pool-wide impersonation member
+// would admit it; so the population must be exactly the declared provider.
+test fn witness_an_extra_provider_in_the_pool_halts() -> Bool {
+  let f = heal()
+  let p = declared_provider(f: f)
+  let extra = WifProviderWire { name: concat(p.name, "-other"), disabled: p.disabled, state: p.state, attribute_mapping: p.attribute_mapping, attribute_condition: p.attribute_condition, oidc: p.oidc }
+  unclassified_naming(c: classify_dedicated_federation(f: f, pool: declared_pool(f: f), providers: ProvidersObserved { providers: [p, extra] }, account: AccountObserved { email: f.service_account as String }), pattern: "exactly one is declared")
 }
 
-// A FAILED BINDING IS NEVER UPGRADED. The unverified wording must not replace a real failure's cause,
-// or the operator loses the reason the write did not land.
-test fn witness_a_failed_binding_keeps_its_own_cause() -> Bool {
-  let e = bound_verdict(
-    unverified: unverified_subjects(pool: SubjectAlreadyPresentUnverified, provider: SubjectCreated, account: SubjectCreated),
-    bound: exit_failure(reason: "the service account's policy could not be read: status 404")
-  )
-  !succeeded(e: e) && string_contains(s: refusal_text(e: e), pattern: "404")
+// AN UNREADABLE SUBJECT IS NOT AN ABSENT ONE.
+test fn witness_an_unreadable_population_halts_rather_than_creating() -> Bool {
+  let f = heal()
+  unclassified_naming(c: classify_dedicated_federation(f: f, pool: declared_pool(f: f), providers: ProvidersUnreadable { cause: "status 403" }, account: AccountObserved { email: f.service_account as String }), pattern: "could not be read")
 }
 
 // ── the cell this run writes ────────────────────────────────────────────────────────────────

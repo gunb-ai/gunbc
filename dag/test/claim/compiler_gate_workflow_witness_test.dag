@@ -68,3 +68,56 @@ test fn w_RED_the_gate_floor_job_adjudicates_the_receipt_it_produces() -> Bool {
   let p = floor_step_positions(job: compiler_gate_floor_job())
   p.producer >= 0 && p.adjudicator >= 0 && p.producer < p.adjudicator
 }
+
+// ── THE STAGE0 MIRRORS ARE ADJUDICATED ON THE MERGE QUEUE, AND ONLY THERE ──────────────────────
+//
+// operator decision msg_6e36a6a2 (2026-09-23, superseding msg_4a9045fc and msg_f1ade7cf): the build
+// lane over the compile_stage0 mirrors, both generations, runs as a step of the floor job on merge_group and on no other
+// event. This claim reads the emitted job: some step runs `--required-lane` with no measurement receipt (the build lane's command; the witnesses lane is the one carrying a receipt),
+// its condition names the merge_group event, its condition carries a status function so a floor
+// red cannot disarm it, and it comes AFTER the floor's measurement producer (a separate process
+// after the floor exits, the measured memory constraint). Deleting the step, dropping its event
+// gate (a per-PR run the ruling declined), or binding it ahead of the floor reds this. Whether the
+// lane's own refusal discriminates is not this claim's subject: that is the binary's, and the
+// planted-drift control on the PR that added the step is its execution receipt.
+type Stage0RegenPositions {
+  next: Int
+  producer: Int
+  stage0: Int
+  gated: Bool
+}
+
+fn step_if_text(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c {
+      Present { value: v } => v
+      Absent => ""
+    }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+test fn w_RED_the_stage0_mirrors_are_adjudicated_on_merge_group_only_after_the_floor() -> Bool {
+  let p = fold_list(
+    xs: compiler_gate_floor_job().steps,
+    empty: Stage0RegenPositions { next: 0, producer: -1, stage0: -1, gated: false },
+    cons: fn(acc, step) {
+      let run = step_run_text(step: step)
+      let cond = step_if_text(step: step)
+      let is_producer = !string_contains(s: run, pattern: "--adjudicate-measurement-receipt")
+        && string_contains(s: run, pattern: "--measurement-receipt")
+      let is_stage0 = string_contains(s: run, pattern: "--required-lane")
+        && !string_contains(s: run, pattern: "--measurement-receipt")
+      Stage0RegenPositions {
+        next: acc.next + 1,
+        producer: if is_producer && acc.producer < 0 { acc.next } else { acc.producer },
+        stage0: if is_stage0 && acc.stage0 < 0 { acc.next } else { acc.stage0 },
+        gated: if is_stage0 && acc.stage0 < 0 {
+          string_contains(s: cond, pattern: "github.event_name == 'merge_group'")
+            && string_contains(s: cond, pattern: "!cancelled()")
+        } else { acc.gated },
+      }
+    }
+  )
+  p.producer >= 0 && p.stage0 > p.producer && p.gated
+}

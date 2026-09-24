@@ -48,6 +48,7 @@ import gunbc.gen_one_executable_keep_seed_growth { gen_one_executable_keep_seed_
 import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
+import gunbc.emitted_crate_workspace_seed_growth { emitted_crate_workspace_seed_growth_justification }
 import gunbc.bootstrap_operation_seed_growth {
   bootstrap_operation_seed_growth_justification,
   cli_dispatch_host_boundary_seed_growth_justification
@@ -288,6 +289,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     qualified_pipe_callee_seed_growth_justification,
     regen_digest_spelling_seed_growth_justification,
     target_invocation_seed_growth_justification,
+    emitted_crate_workspace_seed_growth_justification,
     bootstrap_operation_seed_growth_justification,
     cli_dispatch_host_boundary_seed_growth_justification,
     generated_artifact_boundary_seed_growth_justification,

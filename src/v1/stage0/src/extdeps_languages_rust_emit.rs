@@ -14,6 +14,8 @@ pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_emit_model::SimpleMethodSpec;
+pub use crate::std_syntax::BinOp;
+use crate::std_syntax::BinOp::*;
 use crate::std_trait_derive_shape::PairCompletionBody::{
     PairCompletionCanonicalQuotient, PairCompletionNegatedAddend, PairCompletionSumOfProducts,
 };
@@ -582,6 +584,35 @@ pub fn rust_visibility() -> String {
     thread_local! {
         static CACHED: String = {
             "pub ".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_refusing_int_target_type() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "i64".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rust_refusing_int_operator_helper(op: BinOp) -> Option<String> {
+    match op.clone() {
+        BinOp::Add => Some("v1_rt::int_add".to_string()),
+        BinOp::Sub => Some("v1_rt::int_sub".to_string()),
+        BinOp::Mul => Some("v1_rt::int_mul".to_string()),
+        BinOp::Div => Some("v1_rt::int_div".to_string()),
+        BinOp::Mod => Some("v1_rt::int_rem".to_string()),
+        _ => std::option::Option::None,
+    }
+}
+
+pub fn rust_refusing_int_negation_helper() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "v1_rt::int_neg".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
