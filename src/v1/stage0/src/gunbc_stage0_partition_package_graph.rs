@@ -30,11 +30,23 @@ pub fn stage0_partition_row_is_module_bearing_package(row: Rc<GeneratedPartition
 }
 
 pub fn stage0_partition_module_bearing_package_names() -> Rc<Vec<String>> {
+    partition_module_bearing_package_names_over(generated_partition_crate_rows())
+}
+
+pub fn stage0_partition_package_dependency_names(
+    row: Rc<GeneratedPartitionCrateRow>,
+) -> Rc<Vec<String>> {
+    partition_package_dependency_names_over(row.clone(), generated_partition_crate_rows())
+}
+
+pub fn partition_module_bearing_package_names_over(
+    rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
+) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for row in Rc::new({
             let mut __result = Vec::new();
-            for row in generated_partition_crate_rows().iter().cloned() {
+            for row in rows.iter().cloned() {
                 if stage0_partition_row_is_module_bearing_package(row.clone()) {
                     __result.push(row);
                 }
@@ -50,14 +62,15 @@ pub fn stage0_partition_module_bearing_package_names() -> Rc<Vec<String>> {
     })
 }
 
-pub fn stage0_partition_package_dependency_names(
+pub fn partition_package_dependency_names_over(
     row: Rc<GeneratedPartitionCrateRow>,
+    rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<Vec<String>> {
     match row.kind.clone() {
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => Rc::new(vec![]),
         GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => row.reexport_packages.clone(),
         GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => {
-            stage0_partition_module_bearing_package_names()
+            partition_module_bearing_package_names_over(rows.clone())
         }
     }
 }

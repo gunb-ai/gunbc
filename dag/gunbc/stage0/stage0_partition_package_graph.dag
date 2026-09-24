@@ -46,16 +46,27 @@ fn stage0_partition_row_is_module_bearing_package(row: GeneratedPartitionCrateRo
 }
 
 fn stage0_partition_module_bearing_package_names() -> List<String> {
-  generated_partition_crate_rows
+  partition_module_bearing_package_names_over(rows: generated_partition_crate_rows)
+}
+
+fn stage0_partition_package_dependency_names(row: GeneratedPartitionCrateRow) -> List<String> {
+  partition_package_dependency_names_over(row: row, rows: generated_partition_crate_rows)
+}
+
+// The same edges over ANY row set of this shape: the committed stage0 rows above, or rows a
+// derivation produced (v2.workflow.emitted_crate_workspace). The emit shell's edges are a property
+// of the set it sits in, so the set is a parameter rather than read from the committed one.
+fn partition_module_bearing_package_names_over(rows: List<GeneratedPartitionCrateRow>) -> List<String> {
+  rows
     |> filter(row => stage0_partition_row_is_module_bearing_package(row: row))
     |> map(row => row.package_name)
 }
 
-fn stage0_partition_package_dependency_names(row: GeneratedPartitionCrateRow) -> List<String> {
+fn partition_package_dependency_names_over(row: GeneratedPartitionCrateRow, rows: List<GeneratedPartitionCrateRow>) -> List<String> {
   match row.kind {
     GeneratedFoundationCrate => []
     GeneratedLayeredCoreCrate => row.reexport_packages
-    GeneratedEmitCoreCrate => stage0_partition_module_bearing_package_names()
+    GeneratedEmitCoreCrate => partition_module_bearing_package_names_over(rows: rows)
   }
 }
 
