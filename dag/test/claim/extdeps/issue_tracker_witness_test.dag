@@ -695,6 +695,6 @@ test fn w_issue_results_roster_is_the_capture() -> Bool {
 // actions slot last — so the header and every row share it by construction. The pin states the
 // derivation's bytes; the render-side witness pins the served CSS carries exactly them.
 test fn w_issue_results_row_tracks_derive_from_the_roster() -> Bool {
-  issue_results_row_tracks() == "max-content max-content minmax(0, 1fr) max-content max-content max-content max-content max-content max-content"
+  issue_results_row_tracks() == "max-content max-content minmax(0, 1fr) max-content minmax(0, 1fr) max-content max-content max-content max-content"
     && count(issue_results_columns) == 8
 }

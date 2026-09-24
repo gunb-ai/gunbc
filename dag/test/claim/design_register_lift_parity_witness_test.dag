@@ -346,7 +346,14 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // test.claim.roadmap_presentation_witness, the recomposed test.claim.roadmap_row_witness, the
 // register width-contract pin, and the register censuses. Derived by execution from this tree
 // (roadmap_css_derived_digest run 2026-09-22); this digest only pins bytes, never chosen.
-data roadmap_css_lift_parity_digest: String = "94a319f52570ab24"
+data roadmap_css_lift_parity_digest: String = "54d15f3c2d37cb52"
+// Re-pinned 2026-09-24 for the status-track fix (owner: overlapping text on the served page): the
+// STATUS column's max-content track sized to unbounded "blocked on <n ids>" text, inflating the
+// shared issue-table grid past the viewport and starving the title track to zero width. TITLE and
+// STATUS are now both flexible minmax(0, 1fr) in the extdeps roster, so the issue-cell containment
+// chain truncates instead of the track growing. Behavioral receipt: the extdeps roster witness
+// w_issue_results_row_tracks_derive_from_the_roster re-pinned to the new template. Derived by
+// execution (roadmap_css_derived_digest on this tree); this digest only pins bytes.
 // Re-pinned 2026-09-24 for the full-width ruling (operator: the page takes the full viewport like
 // the issue-tracker model — the centered measure column read as a ~50% lock). The MaxWidth/
 // auto-margin decls are retired from .header-inner, .roadmap, and .daily-workspace; side padding

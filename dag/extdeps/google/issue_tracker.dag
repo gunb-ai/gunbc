@@ -600,7 +600,12 @@ type IssueResultsColumnKind
   | IssueColumnLastModified
 
 // ONE DECLARATION PER COLUMN carries the two facts every surface needs, stated once, here: the
-// header's wire spelling and the column's grid track.
+// header's wire spelling and the column's grid track. The two text-bearing columns (TITLE,
+// STATUS) are flexible minmax(0, 1fr) tracks: a max-content track sizes to its content, and our
+// status strings are unbounded ("blocked on <n ids>"), which inflated the shared grid past the
+// viewport and starved the title track to zero (owner complaint 2026-09-24, overlapping text).
+// Flexible tracks bound both columns to a share of the container and let the issue-cell
+// containment chain (min-width 0, nowrap, ellipsis) truncate.
 type IssueResultsColumn {
   kind: IssueResultsColumnKind
   header: NonEmptyStr
@@ -612,7 +617,7 @@ data issue_results_columns: List<IssueResultsColumn> = [
   IssueResultsColumn { kind: IssueColumnType, header: "TYPE", track: "max-content" },
   IssueResultsColumn { kind: IssueColumnTitle, header: "TITLE", track: "minmax(0, 1fr)" },
   IssueResultsColumn { kind: IssueColumnAssignee, header: "ASSIGNEE", track: "max-content" },
-  IssueResultsColumn { kind: IssueColumnStatus, header: "STATUS", track: "max-content" },
+  IssueResultsColumn { kind: IssueColumnStatus, header: "STATUS", track: "minmax(0, 1fr)" },
   IssueResultsColumn { kind: IssueColumnDViews, header: "D VIEWS", track: "max-content" },
   IssueResultsColumn { kind: IssueColumnId, header: "ID", track: "max-content" },
   IssueResultsColumn { kind: IssueColumnLastModified, header: "LAST MODIFIED", track: "max-content" },
