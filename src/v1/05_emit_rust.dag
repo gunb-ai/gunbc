@@ -4705,6 +4705,17 @@ fn rust_code_outside_string_literals(s: String) -> String {
     |> join(separator: " ")
 }
 
+// A SEGMENT AFTER `::` IS PART OF A PATH, NOT A BARE REFERENCE. The emitted-text attestation asks
+// whether the code spells a name that a bare use-line would have to bind; `std::hash::Hash` in a
+// derive attribute spells the std trait by full path and binds nothing, yet the tokenizer split it
+// into `std`, `hash`, `Hash` and so attested a proposed `Hash`, emitting
+// `pub use crate::v2_std_node::\{Hash\};` into std_content_hash over the v2.compiler.compile closure.
+// Each segment that follows `::` is prefixed with `@`, which no identifier carries, so it never equals
+// a candidate; a path HEAD stays a token, so `Parent::Variant` still attests `Parent`.
+fn rust_qualified_segments_marked(s: String) -> String {
+  replace(s, "::", " @")
+}
+
 fn rust_identifier_tokens(s: String) -> List<String> {
   let spaced = replace(replace(replace(replace(replace(replace(replace(replace(replace(s,
     "<", " "), ">", " "), ",", " "), "(", " "), ")", " "), "[", " "), "]", " "), "&", " "), ":", " ")
@@ -5249,7 +5260,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
     let variant_payload_structs = expand_variant_payload_struct_imports(names: type_surface_names, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
     let emitter_attested_anon_heads = unique_strings(items: items |> flat_map(item => collect_anonymous_record_lit_heads(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries)))
     let realized_surface_names = unique_strings(items: items |> flat_map(item => collect_item_realized_surface_names(item: item, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)))
-    let emitted_source_tokens = rust_identifier_tokens(s: rust_code_outside_string_literals(s: emitted_source))
+    let emitted_source_tokens = rust_identifier_tokens(s: rust_qualified_segments_marked(s: rust_code_outside_string_literals(s: emitted_source)))
     let emitted_source_token_set = emitted_source_tokens
       |> fold(init: empty_map(), f: (acc, t) => map_insert(acc, t, true))
     let origin_candidates = repair_input_origin_candidates(
