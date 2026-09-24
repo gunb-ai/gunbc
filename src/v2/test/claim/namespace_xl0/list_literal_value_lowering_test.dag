@@ -292,15 +292,8 @@ test fn a_list_argument_is_not_its_first_element_or_a_truncation() -> Bool {
 // so an unbound refusal anywhere else in the module cannot pass for it. The head is a qualified-name
 // spine, not an atom, which is why the locus is read as a path rather than an atom identity. The
 // real file is covered by the srv closure run.
-data llv_self_source: String = "module std.algebra\n\ntype FreeMonoid\n  = Empty\n  | Cons { head: LlvBit, tail: FreeMonoid }\n\ntype LlvBit\n  = LlvZero\n  | LlvOne\n\ndata llv_self_pair: LlvBit = [LlvZero, LlvOne]\n\ndata llv_self_none: LlvBit = []\n"
+data llv_self_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n\ntype LlvBit\n  = LlvZero\n  | LlvOne\n\ndata llv_self_pair: LlvBit = [LlvZero, LlvOne]\n\ndata llv_self_none: LlvBit = []\n"
 
-// The fixture's FreeMonoid is NOT generic, and that is a stated boundary, not a convenience: v2
-// resolve does not yet scope a TYPE declaration's `<T>` (gunbc#12217 scoped it for fns only), so
-// `type FreeMonoid<T> = .. Cons { head: T, .. }` refuses unbound at `T` -- measured on srv1 at
-// cdabcf7dfd -- whatever the list lowering does. That is trigger (1) of
-// gunbc.recurring_failure_mode generic_type_parameter_resolved_as_an_ordinary_atom_in_v2; this
-// claim's subject is only that the list head binds to its own module's declaration, which needs the
-// declaration's NAME, so it does not wait on that trigger.
 // The twin drops ONLY the FreeMonoid declaration; nothing else in it names FreeMonoid, so the only
 // reference that can fail to bind is the lowered list's head.
 data llv_self_missing_source: String = "module std.algebra\n\ntype LlvBit\n  = LlvZero\n  | LlvOne\n\ndata llv_self_pair: LlvBit = [LlvZero, LlvOne]\n"
