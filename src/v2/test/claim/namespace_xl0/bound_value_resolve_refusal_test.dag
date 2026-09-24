@@ -1,0 +1,252 @@
+module v2.test.claim.namespace_xl0.bound_value_resolve_refusal
+
+import v2.compiler.compile {
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleOutcome,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN UNDECLARED NAME IN A LET'S BOUND VALUE REFUSES AT RESOLVE, AT ITS ATOM.
+//
+// THE SUBJECT IS THE LET-VALUE ROUTE OF v2.compiler.body_lowering_fold, observed where it matters:
+// native_test_context_from_ingest tokenizes, parses, normalizes and indexes the supplied sources,
+// and native_census_module_resolution resolves one module against it. body_lower_bound_value read a
+// bound value through the operand reader first, whose first-match readers answer a proper part for
+// the whole: `let x = b && (u)` bound `b` (the operator reader refused the group, the refusal read as
+// Absent, and the first-atom search behind it answered `b`), and `let x = g(p: u)` bound the callee
+// `g`. Either way `u` reached no reference site and the module RESOLVED on main. A bound value now
+// lowers whole through the fold, the authority the statement spine already uses for its last
+// statement (gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand).
+//
+// FOUR CANDIDATES, FOUR CONTROLS, VARYING ONE THING EACH. Each candidate puts an undeclared name in a
+// bound value in a shape main dropped: the parenthesised right operand of `&&`, a call argument, a
+// bare group, and an if-expression's arm. Each declared control is the same shape with a bound name,
+// so reaching resolve is not by itself a refusal and the route did not start refusing what it used
+// to accept; the chained-lets control carries one let's name into the next let's call argument.
+
+data bvr_paren_operand_source: String = "module v2.test.bvr_paren_operand\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = bvr_p && (bvr_undeclared)\n  bvr_bound\n}\n"
+
+data bvr_call_argument_source: String = "module v2.test.bvr_call_argument\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = bvr_g(bvr_q: bvr_undeclared)\n  bvr_bound\n}\n"
+
+data bvr_paren_group_source: String = "module v2.test.bvr_paren_group\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = (bvr_undeclared)\n  bvr_bound\n}\n"
+
+data bvr_if_value_source: String = "module v2.test.bvr_if_value\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = if bvr_p { bvr_undeclared } else { bvr_p }\n  bvr_bound\n}\n"
+
+data bvr_declared_paren_operand_source: String = "module v2.test.bvr_declared_paren_operand\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = bvr_p && (bvr_p)\n  bvr_bound\n}\n"
+
+data bvr_declared_call_argument_source: String = "module v2.test.bvr_declared_call_argument\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = bvr_g(bvr_q: bvr_p)\n  bvr_bound\n}\n"
+
+data bvr_declared_if_value_source: String = "module v2.test.bvr_declared_if_value\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = if bvr_p { bvr_p } else { false }\n  bvr_bound\n}\n"
+
+data bvr_chained_lets_source: String = "module v2.test.bvr_chained_lets\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = bvr_g(bvr_q: bvr_p)\n  let bvr_again = bvr_g(bvr_q: bvr_bound)\n  bvr_again\n}\n"
+
+fn bvr_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data bvr_ingest: SourceRootIngest = Cons {
+    head: bvr_read(source: bvr_paren_operand_source, id: ^bvr_paren_operand_artifact, unit: ^bvr_paren_operand_cu, path: "src/v2/test/fixture/namespace_xl0/bvr_paren_operand.dag"),
+    tail: Cons {
+    head: bvr_read(source: bvr_call_argument_source, id: ^bvr_call_argument_artifact, unit: ^bvr_call_argument_cu, path: "src/v2/test/fixture/namespace_xl0/bvr_call_argument.dag"),
+    tail: Cons {
+    head: bvr_read(source: bvr_paren_group_source, id: ^bvr_paren_group_artifact, unit: ^bvr_paren_group_cu, path: "src/v2/test/fixture/namespace_xl0/bvr_paren_group.dag"),
+    tail: Cons {
+    head: bvr_read(source: bvr_if_value_source, id: ^bvr_if_value_artifact, unit: ^bvr_if_value_cu, path: "src/v2/test/fixture/namespace_xl0/bvr_if_value.dag"),
+    tail: Cons {
+    head: bvr_read(source: bvr_declared_paren_operand_source, id: ^bvr_declared_paren_operand_artifact, unit: ^bvr_declared_paren_operand_cu, path: "src/v2/test/fixture/namespace_xl0/bvr_declared_paren_operand.dag"),
+    tail: Cons {
+    head: bvr_read(source: bvr_declared_call_argument_source, id: ^bvr_declared_call_argument_artifact, unit: ^bvr_declared_call_argument_cu, path: "src/v2/test/fixture/namespace_xl0/bvr_declared_call_argument.dag"),
+    tail: Cons {
+    head: bvr_read(source: bvr_declared_if_value_source, id: ^bvr_declared_if_value_artifact, unit: ^bvr_declared_if_value_cu, path: "src/v2/test/fixture/namespace_xl0/bvr_declared_if_value.dag"),
+    tail: Cons {
+    head: bvr_read(source: bvr_chained_lets_source, id: ^bvr_chained_lets_artifact, unit: ^bvr_chained_lets_cu, path: "src/v2/test/fixture/namespace_xl0/bvr_chained_lets.dag"),
+    tail: Empty
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+
+// ONE FRONT END FOR EVERY CLAIM, enrolled WARM in v2.workflow.floor_pure_producer_share for the
+// reason v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal sqo_outcomes is: the stored
+// value is a verdict per module -- a reason symbol and the atom the refusal names -- with no
+// resolution context, Node or closure in it.
+type BvrVerdict
+  = BvrResolved
+  | BvrRefused { reason: Symbol, at_atom: Optional<Symbol> }
+  | BvrFileRefused
+  | BvrAbsent
+
+type BvrOutcomes
+  = BvrContextRefused
+  | BvrOutcomesDecided {
+      paren_operand: BvrVerdict
+      call_argument: BvrVerdict
+      paren_group: BvrVerdict
+      if_value: BvrVerdict
+      declared_paren_operand: BvrVerdict
+      declared_call_argument: BvrVerdict
+      declared_if_value: BvrVerdict
+      chained_lets: BvrVerdict
+    }
+
+fn bvr_verdict_of(outcome: NativeCensusModuleOutcome) -> BvrVerdict {
+  match outcome {
+    NativeCensusModuleResolved => BvrResolved
+    NativeCensusModuleFileRefused => BvrFileRefused
+    NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+      BvrRefused {
+        reason: d.head.reason,
+        at_atom: match d.head.at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          _ => optional_absent()
+        }
+      }
+  }
+}
+
+fn bvr_verdict_in(context: NativeTestContext, module_name: String) -> BvrVerdict {
+  fold_list(
+    xs: native_census_modules(ingest: bvr_ingest),
+    empty: BvrAbsent,
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        bvr_verdict_of(
+          outcome: native_census_module_resolution(
+            context: context,
+            refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+            entry: entry
+          )
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn bvr_outcomes() -> BvrOutcomes {
+  match native_test_context_from_ingest(ingest: bvr_ingest) {
+    Rejected { diagnostics: _ } => BvrContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      BvrOutcomesDecided {
+        paren_operand: bvr_verdict_in(context: context, module_name: "v2.test.bvr_paren_operand"),
+        call_argument: bvr_verdict_in(context: context, module_name: "v2.test.bvr_call_argument"),
+        paren_group: bvr_verdict_in(context: context, module_name: "v2.test.bvr_paren_group"),
+        if_value: bvr_verdict_in(context: context, module_name: "v2.test.bvr_if_value"),
+        declared_paren_operand: bvr_verdict_in(context: context, module_name: "v2.test.bvr_declared_paren_operand"),
+        declared_call_argument: bvr_verdict_in(context: context, module_name: "v2.test.bvr_declared_call_argument"),
+        declared_if_value: bvr_verdict_in(context: context, module_name: "v2.test.bvr_declared_if_value"),
+        chained_lets: bvr_verdict_in(context: context, module_name: "v2.test.bvr_chained_lets")
+      }
+  }
+}
+
+fn bvr_is_resolved(v: BvrVerdict) -> Bool {
+  match v {
+    BvrResolved => true
+    _ => false
+  }
+}
+
+// Refused at resolve, the first refusal is unbound, and its locus is the undeclared name's own atom.
+fn bvr_is_unbound_at_the_undeclared_atom(v: BvrVerdict) -> Bool {
+  match v {
+    BvrRefused { reason: r, at_atom: Present { value: id } } =>
+      (r == ^resolve_reason_unbound_symbol) && (id == ^bvr_undeclared)
+    _ => false
+  }
+}
+
+test fn an_undeclared_parenthesised_operand_in_a_bound_value_refuses_at_resolve_at_its_atom() -> Bool {
+  match bvr_outcomes() {
+    BvrOutcomesDecided { paren_operand: v, call_argument: _, paren_group: _, if_value: _, declared_paren_operand: _, declared_call_argument: _, declared_if_value: _, chained_lets: _ } =>
+      bvr_is_unbound_at_the_undeclared_atom(v: v)
+    BvrContextRefused => false
+  }
+}
+
+test fn an_undeclared_call_argument_in_a_bound_value_refuses_at_resolve_at_its_atom() -> Bool {
+  match bvr_outcomes() {
+    BvrOutcomesDecided { paren_operand: _, call_argument: v, paren_group: _, if_value: _, declared_paren_operand: _, declared_call_argument: _, declared_if_value: _, chained_lets: _ } =>
+      bvr_is_unbound_at_the_undeclared_atom(v: v)
+    BvrContextRefused => false
+  }
+}
+
+test fn an_undeclared_parenthesised_bound_value_refuses_at_resolve_at_its_atom() -> Bool {
+  match bvr_outcomes() {
+    BvrOutcomesDecided { paren_operand: _, call_argument: _, paren_group: v, if_value: _, declared_paren_operand: _, declared_call_argument: _, declared_if_value: _, chained_lets: _ } =>
+      bvr_is_unbound_at_the_undeclared_atom(v: v)
+    BvrContextRefused => false
+  }
+}
+
+test fn an_undeclared_name_in_an_if_arm_of_a_bound_value_refuses_at_resolve_at_its_atom() -> Bool {
+  match bvr_outcomes() {
+    BvrOutcomesDecided { paren_operand: _, call_argument: _, paren_group: _, if_value: v, declared_paren_operand: _, declared_call_argument: _, declared_if_value: _, chained_lets: _ } =>
+      bvr_is_unbound_at_the_undeclared_atom(v: v)
+    BvrContextRefused => false
+  }
+}
+
+test fn a_declared_parenthesised_operand_in_a_bound_value_resolves() -> Bool {
+  match bvr_outcomes() {
+    BvrOutcomesDecided { paren_operand: _, call_argument: _, paren_group: _, if_value: _, declared_paren_operand: v, declared_call_argument: _, declared_if_value: _, chained_lets: _ } =>
+      bvr_is_resolved(v: v)
+    BvrContextRefused => false
+  }
+}
+
+test fn a_declared_call_argument_in_a_bound_value_resolves() -> Bool {
+  match bvr_outcomes() {
+    BvrOutcomesDecided { paren_operand: _, call_argument: _, paren_group: _, if_value: _, declared_paren_operand: _, declared_call_argument: v, declared_if_value: _, chained_lets: _ } =>
+      bvr_is_resolved(v: v)
+    BvrContextRefused => false
+  }
+}
+
+test fn a_declared_if_expression_bound_value_resolves() -> Bool {
+  match bvr_outcomes() {
+    BvrOutcomesDecided { paren_operand: _, call_argument: _, paren_group: _, if_value: _, declared_paren_operand: _, declared_call_argument: _, declared_if_value: v, chained_lets: _ } =>
+      bvr_is_resolved(v: v)
+    BvrContextRefused => false
+  }
+}
+
+test fn a_let_name_carried_into_the_next_lets_call_argument_resolves() -> Bool {
+  match bvr_outcomes() {
+    BvrOutcomesDecided { paren_operand: _, call_argument: _, paren_group: _, if_value: _, declared_paren_operand: _, declared_call_argument: _, declared_if_value: _, chained_lets: v } =>
+      bvr_is_resolved(v: v)
+    BvrContextRefused => false
+  }
+}
