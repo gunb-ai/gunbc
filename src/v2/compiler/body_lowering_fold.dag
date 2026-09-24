@@ -6041,10 +6041,25 @@ fn body_lower_let_statement_value_optional(captured: Node) -> Optional<Node> {
 // path is tried first because a literal or a plain reference has a settled
 // operand form; anything else is a real expression and goes through the same
 // fold every other expression does.
+// A LET-BOUND FUNCTION VALUE LOWERS WHOLE. The operand reader answers a sequence with its first
+// atom, so `let g = fn(y) -> Q { y }` was bound to the `fn` token and the literal -- its binder, its
+// return type, its body -- silently dropped (gunbc.recurring_failure_mode
+// body_type_annotation_dropped_before_resolve_in_v2). A function value is read by its own producer
+// first; one it cannot lower is its located refusal, never the operand reader's narrowing.
 fn body_lower_bound_value(node: Node) -> Outcome<Node> {
-  match body_lower_arm_operand_resolved_optional(arm: node) {
-    Present { value: operand } => outcome_accepted(value: operand)
-    Absent => body_lower_fold(node: node)
+  match body_lower_function_value_captured_optional(node: node) {
+    Present { value: capture } =>
+      match body_lower_function_value(shell: node, capture: capture) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: Present { value: arrow }, diagnostics: d } => outcome_with_diagnostics(value: arrow, diagnostics: d)
+        Accepted { value: Absent, diagnostics: _ } =>
+          outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_function_value_shape_unread, n: node))
+      }
+    Absent =>
+      match body_lower_arm_operand_resolved_optional(arm: node) {
+        Present { value: operand } => outcome_accepted(value: operand)
+        Absent => body_lower_fold(node: node)
+      }
   }
 }
 

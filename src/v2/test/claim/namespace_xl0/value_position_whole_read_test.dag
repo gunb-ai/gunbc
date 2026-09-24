@@ -104,6 +104,11 @@ data vpw_fn_literal_record_source: String = "module v2.test.vpw_fn_literal_recor
 // TWO LAMBDAS, ONE PARAMETER NAME: each must carry its OWN fresh type parameter, not share one.
 data vpw_two_lambdas_source: String = "module v2.test.vpw_two_lambdas\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_two(f: Bool, g: Bool) -> Bool { g }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply_two(f: x => x, g: x => p) }\n"
 
+// A LET-BOUND FN LITERAL WITH A WRITTEN RETURN TYPE (crisp-dove-95's specimen for
+// gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2): the let's value
+// once lowered to the literal's first token, dropping the literal and its `-> Bool`.
+data vpw_let_fn_literal_source: String = "module v2.test.vpw_let_fn_literal\n\nimport v2.std.logic { Bool }\n\nfn vpw_probe(x: Bool) -> Bool {\n  let g = fn(y) -> Bool { y }\n  x\n}\n"
+
 data vpw_arg_call_source: String = "module v2.test.vpw_arg_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_id(p: vpw_id(p: vpw_undeclared_argument)) }\n"
 
 fn vpw_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
@@ -281,7 +286,10 @@ data vpw_shape_ingest: SourceRootIngest = Cons {
             head: vpw_read(source: vpw_fn_literal_record_source, id: ^vpw_fn_literal_record_artifact, unit: ^vpw_fn_literal_record_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_fn_literal_record.dag"),
             tail: Cons {
               head: vpw_read(source: vpw_two_lambdas_source, id: ^vpw_two_lambdas_artifact, unit: ^vpw_two_lambdas_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_two_lambdas.dag"),
-              tail: Empty
+              tail: Cons {
+                head: vpw_read(source: vpw_let_fn_literal_source, id: ^vpw_let_fn_literal_artifact, unit: ^vpw_let_fn_literal_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_let_fn_literal.dag"),
+                tail: Empty
+              }
             }
           }
         }
@@ -570,5 +578,23 @@ test fn two_lambdas_with_one_parameter_name_each_carry_their_own_fresh_type_para
     acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
       a || vpw_two_distinct_type_binders(n: n, callee: ^vpw_apply_two)
     })
+  })
+}
+
+// The let's bound value is the literal's whole Arrow: binder `y`, its body the use of `y`, and the
+// authored return type carried as the codomain (so the literal declares a type parameter for `y` only).
+fn vpw_is_let_bound_arrow(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Bind } =>
+      fold_list(xs: node_positional_child_targets(node: n), empty: false, cons: fn(acc, c) {
+        acc || (vpw_is_lambda_using_its_binder(n: c, binder: ^y) && (length(xs: arrow_type_param_names(n: c)) == 1))
+      })
+    _ => false
+  }
+}
+
+test fn a_let_bound_fn_literal_lowers_whole_with_its_authored_return_type() -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) { a || vpw_is_let_bound_arrow(n: n) })
   })
 }
