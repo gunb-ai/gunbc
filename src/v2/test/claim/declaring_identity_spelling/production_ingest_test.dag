@@ -4,7 +4,7 @@ import v2.compiler.declaring_identity_spelling_census {
   DeclaringIdentitySpellingCensus,
   spelling_census_from_ingest
 }
-import v2.compiler.normalized_tree { normalized_tree_roots_to_nodes }
+import v2.compiler.normalized_tree { normalized_tree_roots_to_binding_sources }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.reference_site_collector { collect_reference_sites }
 import v2.compiler.resolution_provenance {
@@ -15,7 +15,8 @@ import v2.compiler.resolution_provenance {
   resolve_reference_provenance
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_root_nodes }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.std.namespace_alias { ModuleBindingSource, module_binding_source_roots }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { fold_list, is_empty }
 import v2.std.artifact { Artifact, SourceFile }
@@ -153,7 +154,7 @@ type Xl3PathCensus {
 type Xl3FixtureCensuses {
   by_path: List<Xl3PathCensus>
   two_module: Optional<DeclaringIdentitySpellingCensus>
-  value_outside_call_roots: Optional<FreeMonoid<Node>>
+  value_outside_call_roots: Optional<FreeMonoid<ModuleBindingSource>>
 }
 
 fn read_for_path(reads: SourceRootIngest, path: String) -> Optional<DagSourceReadWitness> {
@@ -219,7 +220,7 @@ fn xl3_fixture_censuses() -> Xl3FixtureCensuses {
         lm: dag_language_model()
       ) {
         Accepted { value: normalized, diagnostics: _ } =>
-          Present { value: normalized_tree_roots_to_nodes(roots: normalized) }
+          Present { value: normalized_tree_roots_to_binding_sources(roots: normalized) }
         Rejected { diagnostics: _ } => Absent
       }
   }
@@ -309,13 +310,13 @@ test fn enrolled_same_module_site_binds_on_the_resolution_path_holds() -> Bool {
   }
 }
 
-fn value_outside_call_roots() -> Optional<FreeMonoid<Node>> {
+fn value_outside_call_roots() -> Optional<FreeMonoid<ModuleBindingSource>> {
   xl3_fixture_censuses().value_outside_call_roots
 }
 
-fn marker_site_fill_lookup_is_present(roots: FreeMonoid<Node>) -> Bool {
-  let collected = collect_reference_sites(roots: roots)
-  let index = symbol_index_fill_module_root_nodes(index: empty_symbol_index(), roots: roots)
+fn marker_site_fill_lookup_is_present(roots: FreeMonoid<ModuleBindingSource>) -> Bool {
+  let collected = collect_reference_sites(roots: module_binding_source_roots(sources: roots))
+  let index = symbol_index_fill_module_roots(index: empty_symbol_index(), roots: roots)
   fold_list(
     xs: collected.sites,
     empty: false,
