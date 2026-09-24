@@ -1547,10 +1547,10 @@ fn resolve_children_homogeneous_scope(
 // Arrow declaring no type parameters walks exactly as before: its type frame is empty.
 //
 // A TYPE DECLARATION'S PARAMETERS ARE THE SAME FRAME OVER ITS MEMBER. `type Box<T> = Full { value: T }
-// | Empty` lowers its binders onto the member Disj (a record's onto its field Conj) under the same
-// edge (v2.compiler.body_lowering_fold body_lower_type_decl_member), and
-// resolve_children_homogeneous_scope opens this frame over that member and checks its binders
-// through resolve_type_params_conj -- the helpers below, shared with resolve_arrow_node, not copied.
+// | Empty` lowers to the wrapper Conj { <type-parameters>: binders, <type-body>: member }
+// (v2.std.type_binder type_decl_wrapper), and resolve_children_homogeneous_scope opens this frame over
+// the wrapper -- so over the member -- and checks its binders through resolve_type_params_conj: the
+// helpers below, shared with resolve_arrow_node, not copied.
 // A type declaration has no body of VALUE positions, so its frame covers the whole member.
 //
 // NO SHADOWING. A type parameter whose spelling already names something visible at the

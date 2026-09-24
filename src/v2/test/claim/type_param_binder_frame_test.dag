@@ -40,7 +40,7 @@ import v2.std.node {
   well_formed
 }
 import v2.std.text { String }
-import v2.std.type_binder { type_param_names, type_params_marker }
+import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_binder_labels_conform, type_decl_view, type_decl_wrapper, type_param_names, type_params_marker }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -471,26 +471,32 @@ test fn tpb_non_generic_type_decl_carries_no_type_params() -> Bool {
 // edge's. Both outcomes are nullary producers enrolled in v2.workflow.floor_pure_producer_share,
 // for the cost reason (13)'s are. (14) is the inhabitance claim that the real lowering puts exactly
 // this edge on exactly this member.
-fn tpb_box_member(with_params: Bool) -> Node {
+fn tpb_box_disj() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Disj },
-    children: concat(
-      [
-        Edge {
-          label: Named { name: ^Full },
-          target: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
-        },
-        Edge { label: Named { name: ^Empty }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
-      ],
-      if with_params {
-        [Edge {
-          label: Named { name: type_params_marker() },
-          target: node_synthetic(kind: TypeNode { connective: Conj }, children: [tpb_binder_edge(name: ^T)])
-        }]
-      } else {
-        []
-      }
-    )
+    children: [
+      Edge { label: Named { name: ^Full }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
+      Edge { label: Named { name: ^Empty }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
+    ]
+  )
+}
+
+fn tpb_t_binders() -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: [tpb_binder_edge(name: ^T)])
+}
+
+// The declaration target the real lowering writes (v2.std.type_binder type_decl_wrapper) for a
+// generic `Box<T>`, or the plain member for a non-generic `Box`.
+fn tpb_box_member(with_params: Bool) -> Node {
+  if with_params { type_decl_wrapper(binders: tpb_t_binders(), member: tpb_box_disj()) } else { tpb_box_disj() }
+}
+
+// The shape the wrapper replaced: the binder edge MIXED INTO the member's variants. No producer
+// writes it; (23) asserts it is refused where resolve checks the tree.
+fn tpb_box_member_mixed() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Disj },
+    children: concat(tpb_box_disj().children, [Edge { label: Named { name: type_params_marker() }, target: tpb_t_binders() }])
   )
 }
 
@@ -507,14 +513,16 @@ test fn tpb_translator_refuses_a_generic_type_decl_member() -> Bool {
     && tpb_refuses_with(o: tpb_type_decl_emit_generic(), reason: ^translate_reason_generic_type_decl_not_rendered)
 }
 
-// ONE PROJECTION FOR A TYPE MEMBER'S SEMANTIC EDGES (v2.std.type_binder semantic_edges /
-// semantic_labeled_edges). The member carries its binder edge beside its fields or variants, so every
-// reader that enumerates them must go through the projection or refuse first. (21)-(23) read the
-// REAL lowered member of (14)/(16)/(17) through the shared readers; (24) is the semantic-decl
-// emitter's refusal; (25) the uncarried generic alias. RED BEFORE THIS FIX (748535dabe1): (21) (22)
-// read `<type-parameters>` as an extra field / arm, and (24) emitted it as a variant.
+// A GENERIC DECLARATION'S BINDERS SIT BESIDE ITS MEMBER (v2.std.type_binder type_decl_wrapper), so a
+// member's children are its authored fields or variants by construction. (21) (22) (26) read the REAL
+// lowered member of (14)/(16)/(17)/`Tag<T>` through the shared readers, unfiltered; (23) asserts the
+// mixed-in shape is refused; (24) is the semantic-decl emitter's refusal; (25) the uncarried generic
+// alias. RED ON 748535dabe1 (binders mixed into the member, no filter): (21) (22) read
+// `<type-parameters>` as an extra field / arm, (24) emitted it as a variant, (26) classified the
+// all-nullary coproduct as payload-bearing.
 
-// The first node in the resolved tree carrying type binders that is not an Arrow: a type member.
+// The member of the first generic type declaration in the resolved tree: the first non-Arrow node
+// carrying type binders is its wrapper, read through the one typed unwrap.
 fn tpb_generic_member(o: Outcome<Node>) -> List<Node> {
   match o {
     Rejected { diagnostics: _ } => []
@@ -522,7 +530,15 @@ fn tpb_generic_member(o: Outcome<Node>) -> List<Node> {
       fold(node_subtree_nodes(root: n), init: [], f: fn(acc, m) {
         match m.kind {
           TypeNode { connective: Arrow } => acc
-          _ => if (count(acc) == 0) && (count(type_param_names(n: m)) > 0) { [m] } else { acc }
+          _ =>
+            if (count(acc) == 0) && (count(type_param_names(n: m)) > 0) {
+              match type_decl_view(target: m) {
+                GenericTypeDecl { binders: _, member: member } => [member]
+                PlainTypeDecl { member: _ } => acc
+              }
+            } else {
+              acc
+            }
         }
       })
   }
@@ -540,7 +556,8 @@ fn tpb_arm_labels(members: List<Node>) -> List<Symbol> {
   })
 }
 
-// (21) A generic record's declared fields are its authored fields only.
+// (21) A generic record's declared fields are its authored fields only -- by construction now: the
+// binders sit beside the member, never among its children.
 test fn tpb_generic_record_fields_are_authored_fields_only() -> Bool {
   tpb_field_names(members: tpb_generic_member(o: tpb_type_decl_record())) == [^f]
     && tpb_field_names(members: tpb_generic_member(o: tpb_type_decl_record_two())) == [^left, ^right]
@@ -551,11 +568,13 @@ test fn tpb_generic_coproduct_arms_are_authored_variants_only() -> Bool {
   tpb_arm_labels(members: tpb_generic_member(o: tpb_type_decl_coproduct())) == [^Full, ^Empty]
 }
 
-// (23) The projection is the whole of the difference: the same member without its binder edge
-// reads the same fields and arms.
-test fn tpb_projection_drops_only_the_binder_edge() -> Bool {
-  tpb_arm_labels(members: [tpb_box_member(with_params: true)]) == tpb_arm_labels(members: [tpb_box_member(with_params: false)])
-    && count(tpb_arm_labels(members: [tpb_box_member(with_params: false)])) == 2
+// (23) A BINDER AMONG A MEMBER'S CHILDREN IS UNWRITABLE, not filtered: the mixed-in shape is refused
+// by the conformance resolve checks beside well_formed (v2.std.type_binder
+// type_binder_labels_conform), and the wrapper the lowering writes conforms.
+test fn tpb_binder_mixed_into_a_member_is_refused() -> Bool {
+  !type_binder_labels_conform(root: tpb_box_member_mixed())
+    && type_binder_labels_conform(root: tpb_box_member(with_params: true))
+    && type_binder_labels_conform(root: tpb_box_member(with_params: false))
 }
 
 fn tpb_semantic_emit(with_params: Bool) -> Outcome<Medium<String>> {

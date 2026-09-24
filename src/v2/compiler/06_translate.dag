@@ -1922,9 +1922,8 @@ type TypeExprTranslateAcc
   | TypeExprTranslateDone { node: Node }
 
 // A GENERIC TYPE DECLARATION'S MEMBER IS REFUSED HERE for the reason a generic Arrow is refused at
-// target_serialize_bodied_arrow_from_model: its binders ride on the member Disj/Conj under the
-// type-parameter edge (v2.std.type_binder), and the sum/record forms below would render that edge as
-// a variant or field named `<type-parameters>` while dropping the parameter list. Until the target
+// target_serialize_bodied_arrow_from_model: its target is the v2.std.type_binder wrapper, and the
+// record form below would render the wrapper's two edges as fields while dropping the parameter list. Until the target
 // grammar carries a type-parameter row translate_type_expression_project refuses
 // translate_reason_generic_type_decl_not_rendered, located at the member.
 fn translate_generic_type_decl_not_rendered_diagnostic(member: Node) -> Diagnostic {

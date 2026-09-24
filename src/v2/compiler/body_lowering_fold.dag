@@ -103,7 +103,7 @@ import v2.std.node {
   node_synthetic,
   node_with_occurrence_id
 }
-import v2.std.type_binder { type_params_edge }
+import v2.std.type_binder { type_decl_wrapper, type_params_edge }
 import v2.std.node_query {
   construct_node,
   construct_tag_optional,
@@ -6927,23 +6927,18 @@ fn body_lower_record_type_decl(shell: Node, type_name: Symbol, block_shell: Node
   }
 }
 
-// A TYPE DECLARATION'S `<T>` RIDES ON ITS MEMBER, under the edge a fn's `<T>` rides on its Arrow
-// (v2.std.type_binder type_params_edge): one binder concept, one label. The member is the node the
-// graft keeps as the declaration's Named target -- the record's field Conj, the coproduct's variant
-// Disj -- so v2.compiler.resolve opens the binders' frame over exactly the declaration's fields and
-// variants, and the frame cannot reach a sibling declaration. The label is unauthorable, so it cannot
-// collide with a field or variant of any spelling. Without this the `<T>` list was dropped (records)
-// or left in the graft target as parse residue walked as ordinary names (coproducts), and `T`
-// resolved through the module's ordinary name chain (gunbc.recurring_failure_mode
+// A TYPE DECLARATION'S `<T>` RIDES ON THE DECLARATION, BESIDE ITS MEMBER: the graft keeps the Named
+// declaration edge, and for a generic declaration its target is v2.std.type_binder type_decl_wrapper
+// -- Conj { <type-parameters>: binders, <type-body>: member } -- so the member (the record's field
+// Conj, the coproduct's variant Disj) keeps exactly its authored children. v2.compiler.resolve opens
+// the binders' frame over the wrapper, so it covers the member and cannot reach a sibling
+// declaration. Both labels are unauthorable. Without this the `<T>` list was dropped (records) or
+// left in the graft target as parse residue walked as ordinary names (coproducts), and `T` resolved
+// through the module's ordinary name chain (gunbc.recurring_failure_mode
 // generic_type_parameter_resolved_as_an_ordinary_atom_in_v2).
 fn body_lower_type_decl_member_body(body: Node, type_params: DeclTypeParams) -> Node {
   match type_params {
-    TypeParams { conj: c } =>
-      node_with_occurrence_id(
-        kind: body.kind,
-        children: list_append(left: body.children, right: [type_params_edge(conj: c)]),
-        occurrence_id: body.occurrence_id
-      )
+    TypeParams { conj: c } => type_decl_wrapper(binders: c, member: body)
     NoTypeParams => body
     TypeParamsUnreadable => body
   }
