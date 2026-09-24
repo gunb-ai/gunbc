@@ -5353,9 +5353,18 @@ fn lambda_arrow_param(lambda_param: Node) -> Node {
 // an unbound type variable is not established.
 fn one_sided_callable_value_mismatch(declared: Node, produced: Node, type_env: TypeEnv) -> Bool {
   (type_node_is_arrow(n: declared) != type_node_is_arrow(n: produced))
-    && !direct_call_formal_has_unbound_type_variable(n: declared)
-    && !direct_call_formal_has_unbound_type_variable(n: produced)
+    && !one_sided_non_arrow_side_is_open(formal: declared, formal_basis: declared, actual: produced)
     && one_sided_callable_mismatch(formal: declared, actual: produced, type_env: type_env)
+}
+
+// WHETHER A VALUE IS A FUNCTION AT ALL IS THE ARROW CONNECTIVE, NOT THE ARROW'S LEAVES. A lambda
+// with an unannotated parameter (`let f = fn(x) { 1 }`) is an arrow whose parameter is a fresh type
+// variable; that leaf leaves its parameter type open and its function-ness closed, so it cannot hide
+// a function standing where an `Int` is declared. What keeps the one-sided arm from judging is an
+// open NON-arrow side -- a type variable there may yet be a function -- and that case stays unjudged.
+fn one_sided_non_arrow_side_is_open(formal: Node, formal_basis: Node, actual: Node) -> Bool {
+  if type_node_is_arrow(n: formal) { direct_call_formal_has_unbound_type_variable(n: actual) }
+  else { direct_call_formal_has_unbound_type_variable(n: formal_basis) }
 }
 
 fn one_sided_callable_mismatch(formal: Node, actual: Node, type_env: TypeEnv) -> Bool {
@@ -5392,10 +5401,12 @@ fn direct_call_arg_type_mismatch(
   else if type_node_is_arrow(n: formal) && type_node_is_arrow(n: actual) {
     callable_signature_mismatch(formal: formal, actual: actual, source_indices: source_indices)
   }
-  else if direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) { false }
   else if type_node_is_arrow(n: formal) || type_node_is_arrow(n: actual) {
-    one_sided_callable_mismatch(formal: formal, actual: actual, type_env: type_env)
+    !one_sided_non_arrow_side_is_open(
+      formal: formal, formal_basis: substitution_basis, actual: actual)
+      && one_sided_callable_mismatch(formal: formal, actual: actual, type_env: type_env)
   }
+  else if direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) { false }
   else if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
   else {
     nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)

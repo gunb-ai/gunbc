@@ -71,6 +71,8 @@ data map_local_lambda_elements_source: String = "module test.claim.tmp_fn_value_
 data map_named_function_wrong_elements_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn nm(p: String) -> String { p }\nfn host(xs: List<String>) -> List<Int> {\n  let ys: List<Int> = xs |> map(nm)\n  ys\n}\n"
 
 
+data generic_formal_non_function_source: String = "module test.claim.tmp_fn_value_arrow_probe\nimport std.types { Int, String }\nfn apply<T>(f: fn(T) -> T) -> Int { 0 }\nfn host() -> Int { apply(f: 7) }\n"
+
 fn refuses_as_type_mismatch(source: String) -> Bool {
   any_class_count_for(source: source, wanted_class: "TypeMismatch") > 0
 }
@@ -169,4 +171,8 @@ test fn map_named_function_elements_accepted() -> Bool {
 
 test fn map_local_lambda_elements_accepted() -> Bool {
   total_blocking_count_for(source: map_local_lambda_elements_source) == 0
+}
+
+test fn generic_formal_non_function_refuses() -> Bool {
+  refuses_as_type_mismatch(source: generic_formal_non_function_source)
 }
