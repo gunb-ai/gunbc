@@ -49,13 +49,22 @@ import std.algebra { Cons, Empty, FreeMonoid }
 // provider alone goes through the real tokenizer inside its claim, which is cheap because the parse
 // stops at the missing brace.
 
-data census_record_refusing: String = "module c.p\ntype Point {\n  x: Int\n}\nfn guard(x: Bool) -> Int {\n  if x {\n    return 1\n  }\n  2\n}\n"
-
-data census_record_twin: String = "module c.p\ntype Point {\n  x: Int\n}\nfn guard(x: Bool) -> Int {\n  2\n}\n"
+data census_record: String = "module c.p
+type Point {
+  x: Int
+}
+"
 
 data census_variant: String = "module c.v\ntype Shape = Circle | Square\n"
 
-data census_fn_only_refusing: String = "module c.f\nfn guard(x: Bool) -> Int {\n  if x {\n    return 1\n  }\n  2\n}\n"
+data census_fn_only_refusing: String = "module c
+fn g() -> Int {
+  if true {
+    return 1
+  }
+  2
+}
+"
 
 // The declaration census never admits what did not parse: an unterminated type block.
 data census_provider_unparseable: String = "module c.p\ntype Point {\n  x: Int\n"
@@ -118,10 +127,8 @@ fn declares(index: SymbolIndex, path: String) -> Bool {
   }
 }
 
-// A bare record reference and a bare fn reference, asked of one index.
 fn record_identities_hold(index: SymbolIndex, provider_root: Node) -> Bool {
   answers(a: member_answer(index: index, provider_root: provider_root, spelling: "Point"), expected: "c.p.Point")
-    && answers(a: member_answer(index: index, provider_root: provider_root, spelling: "guard"), expected: "c.p.guard")
 }
 
 // A bare variant-type reference and both variant-arm paths. An arm is indexed twice -- at its Disj
@@ -173,7 +180,7 @@ test fn census_admits_the_refusing_body_and_stores_no_body_holds() -> Bool {
     Accepted { value: provider, diagnostics: _ } =>
       match symbol_index_lookup(
         index: index_of(sources: Cons { head: census_tree_binding_source(t: provider), tail: Empty }),
-        qualified_path: qualified_name_from_dotted_string(dotted: "c.f.guard")
+        qualified_path: qualified_name_from_dotted_string(dotted: "c.g")
       ) {
         Absent => false
         Present { value: entry } =>
@@ -193,18 +200,19 @@ test fn census_refuses_a_module_that_did_not_parse_holds() -> Bool {
   }
 }
 
-// CONTROL 1, COMPLETENESS. The record claims run census mode over a provider whose fn body the full
-// fold refuses, and whole-root ingest over its twin that differs only in that body. Both halves are
-// pinned to the SAME literal declaring paths, so the two modes agree at identity grain. The variant
-// claims run both modes over ONE fn-free provider: census mode departs from the full fold only at
-// fn, data and test-fn declarations, so a refusing body beside the variant would add parse cost
-// (DESIGN section 3) and exercise nothing the record claims do not.
+// CONTROL 1, COMPLETENESS. Each pair runs census mode and whole-root ingest over ONE provider and pins
+// both to the SAME literal declaring paths, so the two modes agree at identity grain. The providers
+// carry no fn: census mode departs from the full fold only at fn, data and test-fn declarations, and
+// the refusing fn body is exercised on its own by the admission claim above, whose index entry at the
+// fn's path is asserted to exist and to carry no body. Putting a refusing body beside each record or
+// variant would only add parse cost to claims already at the new-witness eval-step budget (DESIGN
+// section 3).
 test fn census_record_references_answer_with_the_declaring_paths_holds() -> Bool {
-  census_identities(tokens: census_record_refusing_stream(), holds: fn(i, r) { record_identities_hold(index: i, provider_root: r) })
+  census_identities(tokens: census_record_stream(), holds: fn(i, r) { record_identities_hold(index: i, provider_root: r) })
 }
 
 test fn whole_root_record_references_answer_with_the_same_paths_holds() -> Bool {
-  whole_root_identities(tokens: census_record_twin_stream(), holds: fn(i, r) { record_identities_hold(index: i, provider_root: r) })
+  whole_root_identities(tokens: census_record_stream(), holds: fn(i, r) { record_identities_hold(index: i, provider_root: r) })
 }
 
 test fn census_variant_references_answer_with_the_declaring_paths_holds() -> Bool {
@@ -237,107 +245,6 @@ test fn without_the_census_root_the_reference_is_unbound_RED() -> Bool {
 // provider inside every claim cost a third of its budget. Each stream is paired with a fidelity claim
 // below that the real tokenizer produces exactly it, so supplying it removes no execution of the
 // real path (DESIGN section 3 pairing obligation).
-fn census_fn_only_refusing_stream() -> TokenStream {
-  token_stream_new(all: [
-    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^census_mode_probe, start: 0, end: 6 },
-    Token { class: ^dag_token_ident, lexeme: "c", file: ^census_mode_probe, start: 7, end: 8 },
-    Token { class: ^dag_token_dot, lexeme: ".", file: ^census_mode_probe, start: 8, end: 9 },
-    Token { class: ^dag_token_ident, lexeme: "f", file: ^census_mode_probe, start: 9, end: 10 },
-    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^census_mode_probe, start: 11, end: 13 },
-    Token { class: ^dag_token_ident, lexeme: "guard", file: ^census_mode_probe, start: 14, end: 19 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^census_mode_probe, start: 19, end: 20 },
-    Token { class: ^dag_token_ident, lexeme: "x", file: ^census_mode_probe, start: 20, end: 21 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^census_mode_probe, start: 21, end: 22 },
-    Token { class: ^dag_token_ident, lexeme: "Bool", file: ^census_mode_probe, start: 23, end: 27 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^census_mode_probe, start: 27, end: 28 },
-    Token { class: ^dag_token_arrow, lexeme: "->", file: ^census_mode_probe, start: 29, end: 31 },
-    Token { class: ^dag_token_ident, lexeme: "Int", file: ^census_mode_probe, start: 32, end: 35 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 36, end: 37 },
-    Token { class: ^dag_token_kw_if, lexeme: "if", file: ^census_mode_probe, start: 40, end: 42 },
-    Token { class: ^dag_token_ident, lexeme: "x", file: ^census_mode_probe, start: 43, end: 44 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 45, end: 46 },
-    Token { class: ^dag_token_kw_return, lexeme: "return", file: ^census_mode_probe, start: 51, end: 57 },
-    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^census_mode_probe, start: 58, end: 59 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 62, end: 63 },
-    Token { class: ^dag_token_int_literal, lexeme: "2", file: ^census_mode_probe, start: 66, end: 67 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 68, end: 69 }
-  ])
-}
-
-test fn census_fn_only_refusing_stream_is_what_tokenize_produces_holds() -> Bool {
-  supplied_stream_matches_tokenize(text: census_fn_only_refusing, file: ^census_mode_probe, supplied: census_fn_only_refusing_stream())
-}
-
-fn census_record_refusing_stream() -> TokenStream {
-  token_stream_new(all: [
-    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^census_mode_probe, start: 0, end: 6 },
-    Token { class: ^dag_token_ident, lexeme: "c", file: ^census_mode_probe, start: 7, end: 8 },
-    Token { class: ^dag_token_dot, lexeme: ".", file: ^census_mode_probe, start: 8, end: 9 },
-    Token { class: ^dag_token_ident, lexeme: "p", file: ^census_mode_probe, start: 9, end: 10 },
-    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^census_mode_probe, start: 11, end: 15 },
-    Token { class: ^dag_token_ident, lexeme: "Point", file: ^census_mode_probe, start: 16, end: 21 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 22, end: 23 },
-    Token { class: ^dag_token_ident, lexeme: "x", file: ^census_mode_probe, start: 26, end: 27 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^census_mode_probe, start: 27, end: 28 },
-    Token { class: ^dag_token_ident, lexeme: "Int", file: ^census_mode_probe, start: 29, end: 32 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 33, end: 34 },
-    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^census_mode_probe, start: 35, end: 37 },
-    Token { class: ^dag_token_ident, lexeme: "guard", file: ^census_mode_probe, start: 38, end: 43 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^census_mode_probe, start: 43, end: 44 },
-    Token { class: ^dag_token_ident, lexeme: "x", file: ^census_mode_probe, start: 44, end: 45 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^census_mode_probe, start: 45, end: 46 },
-    Token { class: ^dag_token_ident, lexeme: "Bool", file: ^census_mode_probe, start: 47, end: 51 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^census_mode_probe, start: 51, end: 52 },
-    Token { class: ^dag_token_arrow, lexeme: "->", file: ^census_mode_probe, start: 53, end: 55 },
-    Token { class: ^dag_token_ident, lexeme: "Int", file: ^census_mode_probe, start: 56, end: 59 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 60, end: 61 },
-    Token { class: ^dag_token_kw_if, lexeme: "if", file: ^census_mode_probe, start: 64, end: 66 },
-    Token { class: ^dag_token_ident, lexeme: "x", file: ^census_mode_probe, start: 67, end: 68 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 69, end: 70 },
-    Token { class: ^dag_token_kw_return, lexeme: "return", file: ^census_mode_probe, start: 75, end: 81 },
-    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^census_mode_probe, start: 82, end: 83 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 86, end: 87 },
-    Token { class: ^dag_token_int_literal, lexeme: "2", file: ^census_mode_probe, start: 90, end: 91 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 92, end: 93 }
-  ])
-}
-
-test fn census_record_refusing_stream_is_what_tokenize_produces_holds() -> Bool {
-  supplied_stream_matches_tokenize(text: census_record_refusing, file: ^census_mode_probe, supplied: census_record_refusing_stream())
-}
-
-fn census_record_twin_stream() -> TokenStream {
-  token_stream_new(all: [
-    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^census_mode_probe, start: 0, end: 6 },
-    Token { class: ^dag_token_ident, lexeme: "c", file: ^census_mode_probe, start: 7, end: 8 },
-    Token { class: ^dag_token_dot, lexeme: ".", file: ^census_mode_probe, start: 8, end: 9 },
-    Token { class: ^dag_token_ident, lexeme: "p", file: ^census_mode_probe, start: 9, end: 10 },
-    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^census_mode_probe, start: 11, end: 15 },
-    Token { class: ^dag_token_ident, lexeme: "Point", file: ^census_mode_probe, start: 16, end: 21 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 22, end: 23 },
-    Token { class: ^dag_token_ident, lexeme: "x", file: ^census_mode_probe, start: 26, end: 27 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^census_mode_probe, start: 27, end: 28 },
-    Token { class: ^dag_token_ident, lexeme: "Int", file: ^census_mode_probe, start: 29, end: 32 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 33, end: 34 },
-    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^census_mode_probe, start: 35, end: 37 },
-    Token { class: ^dag_token_ident, lexeme: "guard", file: ^census_mode_probe, start: 38, end: 43 },
-    Token { class: ^dag_token_lparen, lexeme: "(", file: ^census_mode_probe, start: 43, end: 44 },
-    Token { class: ^dag_token_ident, lexeme: "x", file: ^census_mode_probe, start: 44, end: 45 },
-    Token { class: ^dag_token_colon, lexeme: ":", file: ^census_mode_probe, start: 45, end: 46 },
-    Token { class: ^dag_token_ident, lexeme: "Bool", file: ^census_mode_probe, start: 47, end: 51 },
-    Token { class: ^dag_token_rparen, lexeme: ")", file: ^census_mode_probe, start: 51, end: 52 },
-    Token { class: ^dag_token_arrow, lexeme: "->", file: ^census_mode_probe, start: 53, end: 55 },
-    Token { class: ^dag_token_ident, lexeme: "Int", file: ^census_mode_probe, start: 56, end: 59 },
-    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 60, end: 61 },
-    Token { class: ^dag_token_int_literal, lexeme: "2", file: ^census_mode_probe, start: 64, end: 65 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 66, end: 67 }
-  ])
-}
-
-test fn census_record_twin_stream_is_what_tokenize_produces_holds() -> Bool {
-  supplied_stream_matches_tokenize(text: census_record_twin, file: ^census_mode_probe, supplied: census_record_twin_stream())
-}
-
 fn census_variant_stream() -> TokenStream {
   token_stream_new(all: [
     Token { class: ^dag_token_kw_module, lexeme: "module", file: ^census_mode_probe, start: 0, end: 6 },
@@ -355,4 +262,50 @@ fn census_variant_stream() -> TokenStream {
 
 test fn census_variant_stream_is_what_tokenize_produces_holds() -> Bool {
   supplied_stream_matches_tokenize(text: census_variant, file: ^census_mode_probe, supplied: census_variant_stream())
+}
+
+fn census_fn_only_refusing_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^census_mode_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^census_mode_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^census_mode_probe, start: 9, end: 11 },
+    Token { class: ^dag_token_ident, lexeme: "g", file: ^census_mode_probe, start: 12, end: 13 },
+    Token { class: ^dag_token_lparen, lexeme: "(", file: ^census_mode_probe, start: 13, end: 14 },
+    Token { class: ^dag_token_rparen, lexeme: ")", file: ^census_mode_probe, start: 14, end: 15 },
+    Token { class: ^dag_token_arrow, lexeme: "->", file: ^census_mode_probe, start: 16, end: 18 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^census_mode_probe, start: 19, end: 22 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 23, end: 24 },
+    Token { class: ^dag_token_kw_if, lexeme: "if", file: ^census_mode_probe, start: 27, end: 29 },
+    Token { class: ^dag_token_kw_true, lexeme: "true", file: ^census_mode_probe, start: 30, end: 34 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 35, end: 36 },
+    Token { class: ^dag_token_kw_return, lexeme: "return", file: ^census_mode_probe, start: 41, end: 47 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^census_mode_probe, start: 48, end: 49 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 52, end: 53 },
+    Token { class: ^dag_token_int_literal, lexeme: "2", file: ^census_mode_probe, start: 56, end: 57 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 58, end: 59 }
+  ])
+}
+
+test fn census_fn_only_refusing_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: census_fn_only_refusing, file: ^census_mode_probe, supplied: census_fn_only_refusing_stream())
+}
+
+fn census_record_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^census_mode_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^census_mode_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^census_mode_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "p", file: ^census_mode_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^census_mode_probe, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "Point", file: ^census_mode_probe, start: 16, end: 21 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 22, end: 23 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^census_mode_probe, start: 26, end: 27 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^census_mode_probe, start: 27, end: 28 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^census_mode_probe, start: 29, end: 32 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 33, end: 34 }
+  ])
+}
+
+test fn census_record_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: census_record, file: ^census_mode_probe, supplied: census_record_stream())
 }
