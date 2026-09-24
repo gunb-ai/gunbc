@@ -1,10 +1,12 @@
 module v2.std.compilers.body_lowering
 
-import std.algebra { FreeMonoid }
-import v2.std.algebra { list_append, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list, list_append, list_snoc_item }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.diagnostic {
+  Accepted,
   Diagnostic,
+  Rejected,
   ExternalContractUnknown,
   Outcome,
   Unavailable,
@@ -12,6 +14,9 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import v2.std.optional { Optional }
 import v2.std.node {
   Bind,
   Branch,
@@ -20,14 +25,18 @@ import v2.std.node {
   Edge,
   Loop,
   Match,
+  Atom,
   Named,
   Node,
   Positional,
   Symbol,
   Transform,
   TypeNode,
+  is_empty_conj_root,
   node_synthetic
 }
+import v2.std.compilers.sugar { sugar_sequence_pair_optional }
+import v2.std.node_query { find_named_child }
 
 fn body_lowering_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {
@@ -132,5 +141,312 @@ fn lower_block_body_atoms(atoms: List<Node>, witness: Node) -> Outcome<Node> {
       outcome_rejected(
         d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
       )
+  }
+}
+
+// ADMITTED SEMANTIC VIEWS OVER A LOWERED BODY. Each constructor above writes one shape; each view
+// below is that constructor read backwards, and it lives here, beside the constructor, so the shape
+// has one home. A view is NOT a second AST: it holds the very Node it was admitted from (`site`) and
+// the very child Nodes it names, with nothing rebuilt, so a consumer that wants provenance, an
+// occurrence or a locus still reads it from the Node.
+//
+// THE CONSTRUCTOR ESTABLISHES THE WHOLE SHAPE OR REFUSES. The piecewise readers in
+// v2.std.node_query (node_is_call, call_callee_target, call_argument_targets) answer one question
+// each and stay silent about the rest, so a call whose argument list was truncated still has a
+// callee and still has "arguments" -- fewer of them -- and every consumer that asked only for the
+// callee was green over a lost argument. A view refuses, typed and located at the offending node,
+// when ANY part is missing: an unexpected edge label, a wrong child count, or an empty-Conj residue
+// standing where a whole operand should be. The residue check is what makes a truncated read a
+// refusal rather than a shorter answer: an operand reader that stops early leaves exactly that
+// empty sequence tail behind.
+//
+// CALL AND OPERATOR ARE ONE SUBSTRATE SHAPE, and the substrate does not distinguish them: both are
+// Transform(head, operands...) with an atom head. What separates them is whether the head is one of
+// the language's operator terminals, which is a fact of the GRAMMAR, not of Node -- so both views
+// take the operator roster as a supplied value and never carry a copy of it. A caller over the .dag
+// language passes v2.compiler.body_lowering_fold body_lower_binary_operators and
+// body_lower_prefix_operators, which derive the roster from the grammar rows.
+
+type CallView {
+  site: Node
+  callee: Node
+  callee_identity: Symbol
+  arguments: List<Node>
+}
+
+type OperatorView {
+  site: Node
+  operator: Symbol
+  operands: List<Node>
+}
+
+type MatchArmView {
+  arm: Node
+  pattern: Node
+  body: Node
+}
+
+type MatchView {
+  site: Node
+  scrutinee: Node
+  arms: List<MatchArmView>
+}
+
+type BindView {
+  site: Node
+  key: Node
+  key_identity: Symbol
+  value: Node
+  body: Node
+}
+
+type BranchView {
+  site: Node
+  condition: Node
+  then_arm: Node
+  else_arm: Node
+}
+
+fn view_refusal<T>(reason: Symbol, at: Node) -> Outcome<T> {
+  outcome_rejected(d: body_lowering_diagnostic(reason: reason, n: at))
+}
+
+// An operand that is not lowered substrate: the empty sequence tail an early-stopping reader leaves
+// behind, a grammar sequence, or a production capture the fold never consumed. Each is surface
+// syntax standing where a lowered operand belongs, which is a partial read, not a shape.
+fn view_is_surface_residue(n: Node) -> Bool {
+  is_empty_conj_root(n: n)
+    || (match sugar_sequence_pair_optional(node: n) { Present { value: _ } => true  Absent => false })
+    || (match find_named_child(root: n, name: ^grammar_production_captured_node_projection) {
+          Accepted { value: _, diagnostics: _ } => true
+          Rejected { diagnostics: _ } => false
+        })
+}
+
+// Every child of `site`, in order, provided every edge is positional and no child is an
+// empty-Conj residue; the first defect refuses at the node that carries it.
+fn view_whole_positional_children(site: Node) -> Outcome<List<Node>> {
+  fold(site.children, init: outcome_accepted(value: Empty), f: fn(acc, e) {
+    match acc {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: xs, diagnostics: _ } =>
+        match e.label {
+          Named { name: _ } => view_refusal(reason: ^body_view_unexpected_named_edge, at: site)
+          Positional =>
+            if view_is_surface_residue(n: e.target) {
+              view_refusal(reason: ^body_view_operand_residue, at: e.target)
+            } else {
+              outcome_accepted(value: list_snoc_item(xs: xs, item: e.target))
+            }
+        }
+    }
+  })
+}
+
+fn view_atom_identity_optional(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      match n.children {
+        Empty => Present { value: id }
+        Cons { head: _, tail: _ } => Absent
+      }
+    _ => Absent
+  }
+}
+
+fn view_symbol_listed(id: Symbol, xs: List<Symbol>) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == id) })
+}
+
+type TransformHead {
+  head: Node
+  identity: Symbol
+  rest: List<Node>
+}
+
+fn view_transform_head(site: Node) -> Outcome<TransformHead> {
+  match site.kind {
+    ComputationNode { behavior: Transform } =>
+      match view_whole_positional_children(site: site) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: children, diagnostics: _ } =>
+          match children {
+            Empty => view_refusal(reason: ^body_view_transform_head_absent, at: site)
+            Cons { head: head, tail: rest } =>
+              match view_atom_identity_optional(n: head) {
+                Absent => view_refusal(reason: ^body_view_transform_head_not_atom, at: head)
+                Present { value: id } =>
+                  outcome_accepted(value: TransformHead { head: head, identity: id, rest: rest })
+              }
+          }
+      }
+    _ => view_refusal(reason: ^body_view_not_transform, at: site)
+  }
+}
+
+// A call: a Transform whose head is a non-operator atom, followed by zero or more whole arguments.
+fn call_view(site: Node, operators: List<Symbol>) -> Outcome<CallView> {
+  match view_transform_head(site: site) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: t, diagnostics: _ } =>
+      if view_symbol_listed(id: t.identity, xs: operators) {
+        view_refusal(reason: ^body_view_call_head_is_operator, at: t.head)
+      } else {
+        outcome_accepted(
+          value: CallView { site: site, callee: t.head, callee_identity: t.identity, arguments: t.rest }
+        )
+      }
+  }
+}
+
+// An operator application: the head is a binary terminal with exactly two whole operands, or a
+// prefix terminal with exactly one. A binary terminal carrying one operand is the truncation this
+// view exists to refuse, so arity is checked against the roster the head came from.
+fn operator_view(
+  site: Node,
+  binary_operators: List<Symbol>,
+  prefix_operators: List<Symbol>
+) -> Outcome<OperatorView> {
+  match view_transform_head(site: site) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: t, diagnostics: _ } =>
+      let arity = count(t.rest)
+      if (view_symbol_listed(id: t.identity, xs: binary_operators) && arity == 2)
+        || (view_symbol_listed(id: t.identity, xs: prefix_operators) && arity == 1) {
+        outcome_accepted(value: OperatorView { site: site, operator: t.identity, operands: t.rest })
+      } else if view_symbol_listed(id: t.identity, xs: binary_operators)
+        || view_symbol_listed(id: t.identity, xs: prefix_operators) {
+        view_refusal(reason: ^body_view_operator_arity, at: site)
+      } else {
+        view_refusal(reason: ^body_view_head_not_operator, at: t.head)
+      }
+  }
+}
+
+fn match_arm_view(arm: Node) -> Outcome<MatchArmView> {
+  match arm.kind {
+    TypeNode { connective: Conj } =>
+      if count(arm.children) == 2 {
+        match list_at_optional(xs: arm.children, index: 0) {
+          Present { value: p } =>
+            match list_at_optional(xs: arm.children, index: 1) {
+              Present { value: b } =>
+                match p.label {
+                  Named { name: pn } =>
+                    match b.label {
+                      Named { name: bn } =>
+                        if (pn == ^match_arm_pattern) && (bn == ^match_arm_body) {
+                          if view_is_surface_residue(n: b.target) {
+                            view_refusal(reason: ^body_view_operand_residue, at: b.target)
+                          } else {
+                            outcome_accepted(value: MatchArmView { arm: arm, pattern: p.target, body: b.target })
+                          }
+                        } else {
+                          view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
+                        }
+                      Positional => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
+                    }
+                  Positional => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
+                }
+              Absent => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
+            }
+          Absent => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
+        }
+      } else {
+        view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
+      }
+    _ => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
+  }
+}
+
+// A match: a whole scrutinee and at least one arm, each arm exactly (pattern, body).
+fn match_view(site: Node) -> Outcome<MatchView> {
+  match site.kind {
+    ComputationNode { behavior: Match } =>
+      match view_whole_positional_children(site: site) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: children, diagnostics: _ } =>
+          match children {
+            Empty => view_refusal(reason: ^body_view_match_scrutinee_absent, at: site)
+            Cons { head: scrutinee, tail: arm_nodes } =>
+              match arm_nodes {
+                Empty => view_refusal(reason: ^body_view_match_arms_absent, at: site)
+                Cons { head: _, tail: _ } =>
+                  match fold(arm_nodes, init: outcome_accepted(value: Empty), f: fn(acc, arm) {
+                    match acc {
+                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                      Accepted { value: xs, diagnostics: _ } =>
+                        match match_arm_view(arm: arm) {
+                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                          Accepted { value: a, diagnostics: _ } =>
+                            outcome_accepted(value: list_snoc_item(xs: xs, item: a))
+                        }
+                    }
+                  }) {
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                    Accepted { value: arms, diagnostics: _ } =>
+                      outcome_accepted(value: MatchView { site: site, scrutinee: scrutinee, arms: arms })
+                  }
+              }
+          }
+      }
+    _ => view_refusal(reason: ^body_view_not_match, at: site)
+  }
+}
+
+fn view_exactly_three(site: Node, reason: Symbol) -> Outcome<List<Node>> {
+  match view_whole_positional_children(site: site) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: children, diagnostics: _ } =>
+      if count(children) == 3 { outcome_accepted(value: children) } else { view_refusal(reason: reason, at: site) }
+  }
+}
+
+fn view_at(xs: List<Node>, index: Int, site: Node) -> Node {
+  match list_at_optional(xs: xs, index: index) {
+    Present { value: n } => n
+    Absent => site
+  }
+}
+
+// A bind: an atom key, a whole value, and a whole body in which the key is bound.
+fn bind_view(site: Node) -> Outcome<BindView> {
+  match site.kind {
+    ComputationNode { behavior: Bind } =>
+      match view_exactly_three(site: site, reason: ^body_view_bind_arity) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: children, diagnostics: _ } =>
+          let key = view_at(xs: children, index: 0, site: site)
+          match view_atom_identity_optional(n: key) {
+            Absent => view_refusal(reason: ^body_view_bind_key_not_atom, at: key)
+            Present { value: id } =>
+              outcome_accepted(value: BindView {
+                site: site,
+                key: key,
+                key_identity: id,
+                value: view_at(xs: children, index: 1, site: site),
+                body: view_at(xs: children, index: 2, site: site)
+              })
+          }
+      }
+    _ => view_refusal(reason: ^body_view_not_bind, at: site)
+  }
+}
+
+// A branch: a whole condition and both whole arms.
+fn branch_view(site: Node) -> Outcome<BranchView> {
+  match site.kind {
+    ComputationNode { behavior: Branch } =>
+      match view_exactly_three(site: site, reason: ^body_view_branch_arity) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: children, diagnostics: _ } =>
+          outcome_accepted(value: BranchView {
+            site: site,
+            condition: view_at(xs: children, index: 0, site: site),
+            then_arm: view_at(xs: children, index: 1, site: site),
+            else_arm: view_at(xs: children, index: 2, site: site)
+          })
+      }
+    _ => view_refusal(reason: ^body_view_not_branch, at: site)
   }
 }
