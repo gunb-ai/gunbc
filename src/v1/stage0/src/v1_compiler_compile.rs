@@ -1197,10 +1197,13 @@ pub fn test_reference_diagnostics(
                 v1_rt::rc_map_insert(
                     acc.clone(),
                     test_reference_occurrence_key(o.clone()),
-                    (observed_test_reference_count(
-                        acc.clone(),
-                        test_reference_occurrence_key(o.clone()),
-                    ) + 1),
+                    v1_rt::int_add(
+                        observed_test_reference_count(
+                            acc.clone(),
+                            test_reference_occurrence_key(o.clone()),
+                        ),
+                        1,
+                    ),
                 )
             },
         );

@@ -379,7 +379,7 @@ pub fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> Rc<OccurrenceIdAlloc
             value: alloc.next_id.clone(),
         },
         alloc: OccurrenceIdAllocator {
-            next_id: (alloc.next_id.clone() + 1),
+            next_id: v1_rt::int_add(alloc.next_id.clone(), 1),
         },
     })
 }
