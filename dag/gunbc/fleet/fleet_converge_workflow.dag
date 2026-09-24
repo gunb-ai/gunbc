@@ -1601,10 +1601,6 @@ fn fleet_converge_microvm_boot_probe_step() -> Step {
   }
 }
 
-// THE CONSOLE RECEIPT IS UPLOADED ON FAILURE TOO, and that is the point of uploading it at all. A
-// guest that did not boot wrote the reason to its serial console and nowhere else -- the VM is gone
-// and took its journal with it -- so an upload conditioned on success would discard the evidence in
-// exactly the case somebody needs it.
 // ONE START OF THE SHAKEDOWN SLOT'S CONTROLLER UNIT (gunbc.runner_microvm_slot_start). The step
 // outlasts the attempt by construction: its timeout is the slot unit's own stop bound -- the VMM
 // deadline plus every teardown bound -- rounded up to minutes, plus the step's own slack.
@@ -1626,6 +1622,8 @@ fn fleet_converge_microvm_slot_start_step() -> Step {
   }
 }
 
+// THE START RECEIPT IS UPLOADED ON FAILURE TOO: a refused or quarantined attempt is exactly the
+// start whose controller receipt someone needs to read.
 fn fleet_converge_microvm_slot_start_receipt_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload the microVM slot start receipt" },
@@ -1644,6 +1642,10 @@ fn fleet_converge_microvm_slot_start_receipt_upload_step() -> Step {
   }
 }
 
+// THE CONSOLE RECEIPT IS UPLOADED ON FAILURE TOO, and that is the point of uploading it at all. A
+// guest that did not boot wrote the reason to its serial console and nowhere else -- the VM is gone
+// and took its journal with it -- so an upload conditioned on success would discard the evidence in
+// exactly the case somebody needs it.
 fn fleet_converge_microvm_boot_probe_receipt_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload runner micro-VM boot probe console receipt" },
