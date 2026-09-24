@@ -17,7 +17,7 @@ import extdeps.standards.rfc_6979 {
 import extdeps.standards.rfc_7515 { rfc7515_a3_es256_public_key }
 import extdeps.wycheproof.ecdsa_secp256r1_sha256_p1363 {
   WycheproofEcdsaCase, WycheproofValid, WycheproofInvalid,
-  wycheproof_p256_sha256_p1363_group1_public_key, wycheproof_p256_sha256_p1363_group1_message,
+  wycheproof_p256_sha256_p1363_group1_public_key,
   wycheproof_p256_sha256_p1363_group1_cases,
 }
 
@@ -115,7 +115,7 @@ fn wycheproof_expected(c: WycheproofEcdsaCase) -> Bool? {
 fn wycheproof_case(c: WycheproofEcdsaCase) -> NativeCryptoCase {
   p256_case(
     identity: concat("p256_wycheproof_tc", to_string(value: c.tc_id)),
-    v: p256_ecdsa_verify_octets(key: wycheproof_p256_sha256_p1363_group1_public_key, signature: c.signature, message: wycheproof_p256_sha256_p1363_group1_message),
+    v: p256_ecdsa_verify_octets(key: wycheproof_p256_sha256_p1363_group1_public_key, signature: c.signature, message: c.message),
     expected: wycheproof_expected(c: c)
   )
 }
