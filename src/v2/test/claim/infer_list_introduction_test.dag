@@ -14,7 +14,7 @@ import v2.std.collection { List }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.text { String }
 import std.process { ProcessExit, exit_failure }
-import v2.std.qualified_name { qualified_name_from_node, qualified_name_spine_node }
+import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
 import v2.std.witness { Holds, Violates }
 import std.algebra { Cons, Empty, list_snoc_item }
 
@@ -28,8 +28,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (DESIGN section 3: the inhabitance claim for this supplied boundary). Three cases, one each:
 // elements of one type derive FreeMonoid<T>; a differing element refuses AT that element, not at
 // the literal; `[]` derives nothing here, because its T is its boundary's.
+// The head in its RESOLVED form: infer runs on resolved trees, where resolve mints a corpus
+// declaration reference as the marked carrier (v2.std.qualified_name declaration_reference_node),
+// never as the bare spine body lowering writes before resolution.
 fn ilt_head() -> Node {
-  qualified_name_spine_node(qn: [^std, ^algebra, ^FreeMonoid], occurrence_id: OccurrenceSynthetic)
+  declaration_reference_node(qn: [^std, ^algebra, ^FreeMonoid], occurrence_id: OccurrenceSynthetic)
 }
 
 fn ilt_list(elements: List<Node>) -> Node {
@@ -58,9 +61,9 @@ fn ilt_type_is_freemonoid(t: Node) -> Bool {
     TypeNode { connective: Instantiation } =>
       match node_positional_child_targets(node: t) {
         Cons { head: head, tail: Cons { head: _, tail: Empty } } =>
-          match qualified_name_from_node(root: head) {
-            Accepted { value: qn, diagnostics: _ } => qn == [^std, ^algebra, ^FreeMonoid]
-            Rejected { diagnostics: _ } => false
+          match declaration_reference_path_optional(node: head) {
+            Present { value: qn } => qn == [^std, ^algebra, ^FreeMonoid]
+            Absent => false
           }
         _ => false
       }
