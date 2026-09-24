@@ -1,0 +1,9 @@
+module v2.test.claim.enforcement.skeleton_application_fixture
+
+import v2.std.integer { Int }
+
+// The subject of v2.test.claim.enforcement.skeleton_application_read_witness: one call whose only
+// argument is an int literal, which the host fn-arrow marshal does not project.
+fn skeleton_application_fixture_callee(x: Int) -> Int = x
+
+fn skeleton_application_fixture_caller() -> Int = skeleton_application_fixture_callee(x: 1)
