@@ -165,6 +165,13 @@ import gunbc.roadmap_workflow_stage {
 }
 import gunbc.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges }
 import gunbc.worker_lifecycle { WorkerProcessUnobserved }
+import gunbc.roadmap.roadmap_attempt_occurrence {
+  ObservedContainerRow, DurableAttemptRecord,
+  AttemptContainer, AttemptContainerTmux, AttemptContainerSystemdUnit,
+  occurrence_population,
+}
+import gunbc.roadmap_launch_admission { occurrence_census_row }
+
 import gunbc.roadmap_belt_actuate {
   SupervisorConveneGate, ConveneClear, ConveneAlreadyLive, ConveneExitedNoVerdict, ConveneLivenessUnobserved,
   belt_supervisor_convene_gate, belt_supervisor_checkpoint_lines, belt_supervisor_convene_brief,
@@ -194,6 +201,7 @@ import gunbc.roadmap_launch_admission {
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   LaunchSessionsObserved,
+  LaunchCensusRow,
   LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
   launch_gate_live, launch_gate_revision,
   launch_identity_exemplar,
@@ -258,7 +266,7 @@ fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSes
   }
 }
 
-fn live_session_with_process(
+fn live_session_fat_with_process(
   node_id: String,
   process: WorkerProcessEvidence,
 ) -> DispatchLiveSession {
@@ -271,6 +279,25 @@ fn live_session_with_process(
       instance: dispatch_provider_instance_for_kind(kind: extdeps.llm.cli_lifecycle.CodexCliProvider),
       process: process,
     ),
+  }
+}
+
+fn live_row_unobserved(node_id: String) -> LaunchCensusRow {
+  LaunchCensusRow {
+    session_name: join(["gunbc-dispatch-", node_id], ""),
+    node_id: node_id,
+    process: WorkerProcessUnobserved { reason: "tmux name presence does not observe pane liveness or exit" as NonEmptyStr },
+  }
+}
+
+fn live_session_with_process(
+  node_id: String,
+  process: WorkerProcessEvidence,
+) -> LaunchCensusRow {
+  LaunchCensusRow {
+    session_name: join(["gunbc-dispatch-", node_id], ""),
+    node_id: node_id,
+    process: process,
   }
 }
 
@@ -591,7 +618,7 @@ test fn witness_find_node_first_wins_on_duplicate() -> Bool {
 // returned through the accepted band, and the operator got a positive acknowledgement with no
 // agent. RLM-1 re-homed the per-node verdict into the shared launch admission's no-live-attempt
 // gate (launch_gate_live); these witnesses follow it.
-fn live_gate(live: List<DispatchLiveSession>, node_id: String) -> LaunchGateVerdict {
+fn live_gate(live: List<LaunchCensusRow>, node_id: String) -> LaunchGateVerdict {
   launch_gate_live(sessions: LaunchSessionsObserved { live: live }, node_id: node_id)
 }
 
@@ -640,7 +667,7 @@ test fn witness_retained_dead_pane_is_not_live() -> Bool {
 // running agent) and it is not the absent path either.
 test fn witness_unobserved_liveness_is_not_live() -> Bool {
   match live_gate(
-    live: [live_session(node_id: "a", verdict: Converged)],
+    live: [live_row_unobserved(node_id: "a")],
     node_id: "a",
   ) {
     GateRefused { refusal } => match refusal { LaunchLivenessUnobserved { session_name: _, reason: _ } => true _ => false }
@@ -664,7 +691,7 @@ test fn witness_session_liveness_is_four_valued() -> Bool {
     node_id: "a",
   )
   let unobserved = live_gate(
-    live: [live_session(node_id: "a", verdict: Converged)],
+    live: [live_row_unobserved(node_id: "a")],
     node_id: "a",
   )
   let absent = live_gate(live: [], node_id: "a")
@@ -1993,12 +2020,12 @@ test fn witness_unobserved_receipt_names_its_cause() -> Bool {
 
 // Handback items 3 and 4 (review artifact 51237).
 
-fn dup_running() -> DispatchLiveSession {
+fn dup_running() -> LaunchCensusRow {
   live_session_with_process(
     node_id: "a", process: WorkerProcessRunning { command: "codex" as NonEmptyStr })
 }
 
-fn dup_stale() -> DispatchLiveSession {
+fn dup_stale() -> LaunchCensusRow {
   live_session_with_process(
     node_id: "a", process: WorkerProcessExited { exit_code: 0, last_command: "codex" })
 }
@@ -2063,9 +2090,9 @@ test fn witness_revision_admission_fold_drives_both_arms() -> Bool {
 // because tearing it down could kill live work and spawning beside it could double-run the node.
 test fn witness_tick_partition_is_lifecycle_aware_not_presence_aware() -> Bool {
   let part = belt_tick_classify_sessions(live: [
-    live_session_with_process(
+    live_session_fat_with_process(
       node_id: "run", process: WorkerProcessRunning { command: "codex" as NonEmptyStr }),
-    live_session_with_process(
+    live_session_fat_with_process(
       node_id: "dead", process: WorkerProcessExited { exit_code: 0, last_command: "codex" }),
     live_session(node_id: "unknown", verdict: Converged),
   ])
@@ -2097,9 +2124,9 @@ test fn witness_tick_defers_every_non_running_class() -> Bool {
 // ambiguity the click path refuses. Neither row may be classified running.
 test fn witness_tick_multiplicity_is_a_node_fact() -> Bool {
   let part = belt_tick_classify_sessions(live: [
-    live_session_with_process(
+    live_session_fat_with_process(
       node_id: "a", process: WorkerProcessRunning { command: "codex" as NonEmptyStr }),
-    live_session_with_process(
+    live_session_fat_with_process(
       node_id: "a", process: WorkerProcessExited { exit_code: 0, last_command: "codex" }),
   ])
   part.conflicted.length() == 2
@@ -2741,3 +2768,4 @@ test fn the_per_item_receipts_render_their_own_statuses() -> Bool {
     && serialize_json(v: belt_integrate_one_result_json(r: IntegrationCoreUnreadable { detail: "the envelope does not decode" }))
       .contains("\"status\": \"unreadable\"")
 }
+

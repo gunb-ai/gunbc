@@ -60,6 +60,7 @@ import gunbc.roadmap_launch_admission {
   launch_host_with_sessions, LaunchStagedAdmission, LaunchStageDecided, LaunchStageNeedsSessions, launch_admission_staged,
   LaunchGraphStanding, LaunchGraphProjected, LaunchGraphUnobserved, launch_graph_of_projection, launch_graph_of_document,
   LaunchIdentity, launch_identity_json, launch_identity_of_json, LaunchIdentityDecode, LaunchIdentityDecoded, LaunchIdentityUnreadable,
+  launch_cause_label, LaunchCensusRow, occurrence_census_row,
   launch_identity_exemplar,
   launch_admission, launch_refusal_label, launch_refusal_reason, launch_refusal_exemplars,
 }
@@ -442,6 +443,14 @@ import gunbc.roadmap.roadmap_fanin {
   IntegrationReceiptForHead, IntegrationReceiptAbsent, IntegrationReceiptUnreadable,
 }
 import gunbc.roadmap_authority { declared_roadmap_edges }
+import gunbc.roadmap.roadmap_attempt_occurrence {
+  DispatchAttemptOccurrence, AttemptOccurrenceObserved, AttemptOccurrenceUnclassified,
+  AttemptOccurrenceForeign, AttemptOccurrenceMalformed,
+  AttemptContainer, AttemptContainerTmux, AttemptContainerSystemdUnit, attempt_container_name,
+  ObservedContainerRow, DurableAttemptRecord,
+  occurrence_population, occurrence_population_conserved, occurrence_unit_identity,
+  OccurrenceIdentity, OccurrenceIdentityParsed, OccurrenceIdentityUnparseable,
+}
 import gunbc.roadmap.roadmap_submission {
   WorkerSubmission, SubmissionCapture,
   SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
@@ -1884,6 +1893,12 @@ fn belt_actuate_spawn_exec_for_instance(
   )
 }
 
+// The tmux creation boundary is explicit: worktree/state publication first; tmux new-session alone;
+// only after its success do session configuration, pipe attachment and provider respawn run. A
+// later staging failure reaps exactly the session this request created, no name-only ownership
+// guess. Worktree, branch and attempt evidence are retained for diagnosis and user work. The
+// located failure plus cleanup receipt is persisted under the published attempt before SpawnFailed
+// returns.
 // The tmux creation boundary is explicit: worktree/state publication first; tmux new-session alone;
 // only after its success do session configuration, pipe attachment and provider respawn run. A
 // later staging failure reaps exactly the session this request created, no name-only ownership
@@ -3536,12 +3551,18 @@ fn belt_tick_launch_pass_observed(
   }
 }
 
+// The launch pass's two populations are now distinct facts: the STANDING carries the census rows
+// (occurrence population: tmux and systemd attempts alike) that admission reads, and the reconcile
+// keeps the tmux population's own rows, because its teardown classification is the tmux session
+// machinery's subject. The tmux rows arrive as a parameter: the tick observes them once, and the
+// census observation's tmux leg reads the same host state.
 fn belt_tick_launch_pass(
   standing: LaunchHostStanding,
   state: SpawnMode,
   frontier: SpawnFrontier,
   graph: LaunchGraphStanding,
   merged: List<Int>,
+  tmux_live: List<DispatchLiveSession>,
 ) -> BeltLaunchPass {
   match launch_host_refusal(standing: standing) {
     Present { value: r } =>
@@ -3550,8 +3571,8 @@ fn belt_tick_launch_pass(
       match standing {
         LaunchHostObserved { instance_id: _, actuation: _, transition: _, revision: _, sessions, capacity: _, mode: _ } =>
           match sessions {
-            LaunchSessionsObserved { live } =>
-              belt_tick_launch_pass_observed(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, live: live)
+            LaunchSessionsObserved { live: _ } =>
+              belt_tick_launch_pass_observed(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, live: tmux_live)
             LaunchSessionsUnobserved { reason } =>
               belt_tick_launch_pass_refused(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, host_refusal: LaunchSessionsUnobservable { reason: reason })
             LaunchSessionsPending =>
@@ -3597,6 +3618,10 @@ fn belt_tick_for_instance(
     frontier: frontier,
     graph: launch_graph_of_projection(proj: roadmap_authority_projection()),
     merged: authored_merged_prs(),
+    tmux_live: match belt_sessions_observe_for_instance(instance: instance) {
+      BeltSessionsObserved { live } => live
+      ObserveRefused { reason: _ } => []
+    },
   )
   let spawn_outcomes = belt_tick_spawn_decided(decisions: pass.decisions, workdir: spawn_workdir)
   let teardown_outcomes = pass.teardowns |> map(m => belt_actuate_teardown_member(m: m))
@@ -4250,6 +4275,145 @@ fn belt_sessions_observe() -> BeltObserve {
     instance: srv1_live_dashboard_instance(),
   )
 }
+
+// ------------------------------------------------------------------------------------------------
+// THE REALIZATION-NEUTRAL OCCURRENCE POPULATION (branch review 2026-09-23, blocker 1). The launch
+// census ran the tmux observation alone, so a production attempt held by a systemd transient unit
+// was invisible to AlreadyLive and to capacity. This observer unions the tmux sessions, the
+// user-manager's gunbc-attempt-*/gunbc-supervisor-* units (each read through the same per-unit
+// observation the convene gate uses), and the durable attempt records (the attempts ledger joined
+// with each attempt's persisted launch identity), and the pure producer
+// (gunbc.roadmap.roadmap_attempt_occurrence) assigns every discovered container to exactly one
+// arm. Either probe's refusal refuses the population: a census computed over half the population
+// is the original defect wearing a new arm.
+// ------------------------------------------------------------------------------------------------
+
+type BeltOccurrencePopulation
+  = OccurrencePopulationObserved { occurrences: List<DispatchAttemptOccurrence> }
+  | OccurrencePopulationRefused { reason: String }
+
+// One unit name per gunbc attempt/supervisor unit, user manager, all loaded states.
+fn belt_occurrence_unit_names() -> List<String>? {
+  let attempts = systemd.Systemctl.ListUnitsUserAllLoaded(pattern: "gunbc-attempt-*" as NonEmptyStr)
+  if !attempts.success {
+    none
+  } else {
+    let supervisors = systemd.Systemctl.ListUnitsUserAllLoaded(pattern: "gunbc-supervisor-*" as NonEmptyStr)
+    if !supervisors.success {
+      none
+    } else {
+      Present {
+        value: concat(
+          systemctl_list_units_all_states_from_stdout(stdout: attempts.stdout),
+          systemctl_list_units_all_states_from_stdout(stdout: supervisors.stdout),
+        ),
+      }
+    }
+  }
+}
+
+fn systemctl_list_units_all_states_from_stdout(stdout: String) -> List<String> {
+  let t = trim(stdout)
+  if t == "" {
+    []
+  } else {
+    split(s: t, delimiter: "\n")
+      |> filter(l => trim(l) != "")
+      |> map(l => match split(s: trim(l), delimiter: " ").first() {
+        Present { value: name } => name
+        Absent => "systemctl-unit-line-empty"
+      })
+  }
+}
+
+// A unit's process evidence is the same per-unit read the convene gate and the progress observer
+// already make -- one observation, three consumers, no second reading of liveness.
+fn belt_occurrence_unit_row(unit: String) -> ObservedContainerRow {
+  ObservedContainerRow {
+    container: AttemptContainerSystemdUnit { unit: unit },
+    process: worker_process_from_attempt_unit(
+      observation: attempt_unit_observation(unit: unit as NonEmptyStr),
+      unit: unit as NonEmptyStr,
+    ),
+  }
+}
+
+// THE PERSISTED SPAWN IDENTITY IS THE RECORD'S CONTENT, not a current selection. The launch
+// identity the attempt was admitted under is read back from its own attempt-state path; an
+// attempt whose identity cannot be read produces no record, so a live container over it joins
+// nothing and reads Unclassified -- visible, occupying, never reaped -- rather than borrowing
+// today's selection as its meaning.
+fn belt_occurrence_record_for_attempt(instance: HostDashboardInstance, attempt: DispatchAttemptRef) -> List<DurableAttemptRecord> {
+  let path = dispatch_attempt_launch_path_for_instance(
+    instance: instance,
+    node_id: attempt.node_id as gunbc.roadmap_model.RoadmapNodeId,
+    attempt_key: attempt.attempt_key,
+  )
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    []
+  } else {
+    match parse_json_document(s: read.content) {
+      JsonDocumentUnreadable { gap: _ } => []
+      JsonDocumentParsed { value: doc } =>
+        match launch_identity_of_json(doc: doc) {
+          LaunchIdentityUnreadable { reason: _ } => []
+          LaunchIdentityDecoded { identity } =>
+            [DurableAttemptRecord {
+              node: attempt.node_id as String,
+              attempt: attempt.attempt_key,
+              spawn_identity: join([
+                "cause=", launch_cause_label(c: identity.cause),
+                " mode=", spawn_mode_label(m: identity.mode),
+                " instance=", identity.instance_id as String,
+                " revision=", git_object_id_wire_hex(oid: identity.revision) as String,
+              ], ""),
+            }]
+        }
+    }
+  }
+}
+
+fn belt_occurrence_records_for_instance(instance: HostDashboardInstance) -> List<DurableAttemptRecord>? {
+  match belt_attempts_observe_for_instance(instance: instance) {
+    AttemptsRefused { reason } => none
+    AttemptsObserved { attempts } =>
+      Present {
+        value: attempts |> flat_map(a => belt_occurrence_record_for_attempt(instance: instance, attempt: a)),
+      }
+  }
+}
+
+fn belt_attempt_occurrences_observe_for_instance(instance: HostDashboardInstance) -> BeltOccurrencePopulation {
+  match belt_sessions_observe_for_instance(instance: instance) {
+    ObserveRefused { reason } =>
+      OccurrencePopulationRefused { reason: join(["the tmux population is unobservable: ", reason], "") }
+    BeltSessionsObserved { live } =>
+      match belt_occurrence_unit_names() {
+        Absent =>
+          OccurrencePopulationRefused { reason: "the user manager's gunbc unit population is unobservable; the census over half the population is unknowable" }
+        Present { value: unit_names } =>
+          match belt_occurrence_records_for_instance(instance: instance) {
+            Absent =>
+              OccurrencePopulationRefused { reason: "the durable attempt records are unobservable; occurrence identity cannot be joined" }
+            Present { value: records } =>
+              OccurrencePopulationObserved {
+                occurrences: occurrence_population(
+                  containers: concat(
+                    map(live, s => ObservedContainerRow {
+                      container: AttemptContainerTmux { session: s.session_name },
+                      process: s.worker.process,
+                    }),
+                    map(unit_names, u => belt_occurrence_unit_row(unit: u)),
+                  ),
+                  records: records,
+                ),
+              }
+          }
+      }
+  }
+}
+
 
 // NO PANE MEANS ASK THE OTHER CONTAINER, NOT CONCLUDE ABSENCE. An attempt is held by exactly one
 // container -- a tmux pane for the vendor CLIs, a transient unit for the gunbc harness -- so these
@@ -8100,10 +8264,24 @@ fn belt_launch_host_standing_for_instance_with_capacity(
   }
 }
 
+// THE CENSUS READS THE OCCURRENCE POPULATION, not one realization's listing: tmux sessions, the
+// user manager's attempt/supervisor units, and the durable attempt records union into the
+// occurrence population (gunbc.roadmap.roadmap_attempt_occurrence), and only the lean census rows
+// reach the standing. A systemd-held attempt now answers AlreadyLive and occupies a capacity slot
+// exactly as a tmux-held one does; a population that cannot be fully observed refuses rather than
+// answering over half of it.
 fn belt_launch_sessions_for_instance(instance: HostDashboardInstance) -> LaunchSessionsStanding {
-  match belt_sessions_observe_for_instance(instance: instance) {
-    BeltSessionsObserved { live } => LaunchSessionsObserved { live: live }
-    ObserveRefused { reason } => LaunchSessionsUnobserved { reason: reason }
+  match belt_attempt_occurrences_observe_for_instance(instance: instance) {
+    OccurrencePopulationObserved { occurrences } =>
+      LaunchSessionsObserved {
+        live: fold(occurrences, init: [], f: fn(acc, o) {
+          match occurrence_census_row(o: o) {
+            Absent => acc
+            Present { value: row } => concat(acc, [row])
+          }
+        }),
+      }
+    OccurrencePopulationRefused { reason } => LaunchSessionsUnobserved { reason: reason }
   }
 }
 

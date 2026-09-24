@@ -608,6 +608,40 @@ service systemd.Systemctl {
     }
   }
 
+  operation ListUnitsUserAllLoaded {
+    input {
+      pattern: NonEmptyStr,
+      unit_type: String = "service",
+    }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "systemctl",
+        "--user",
+        "list-units",
+        "--type={unit_type}",
+        "--all",
+        "--no-legend",
+        "--plain",
+        "{pattern}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl --user list-units --all failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "gunbc-attempt-node-1-feedfacefeedface.service loaded active running gunbc attempt\n",
+        success: true,
+      } "hermetic systemd.Systemctl.ListUnitsUserAllLoaded (user-manager population -- the belt's transient units are user units, invisible to the system manager -- first field only)"
+    }
+  }
+
   operation Status {
     input { unit: NonEmptyStr }
     output {

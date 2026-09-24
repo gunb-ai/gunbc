@@ -1,0 +1,234 @@
+module test.claim.roadmap.roadmap_attempt_occurrence_witness_test
+
+// THE REALIZATION-NEUTRAL POPULATION (branch review 2026-09-23, blocker 1). The discriminating
+// case is a production attempt held by a systemd transient unit with zero matching tmux sessions:
+// before this producer the launch census answered as if nothing were running. Each witness authors
+// the raw population (the producer is pure) and asserts the classification, the conservation, and
+// the census the launch gate computes from it.
+
+import std.types { Bool, String, Int, List, NonEmptyStr }
+import gunbc.worker_lifecycle {
+  WorkerProcessEvidence, WorkerProcessRunning, WorkerProcessExited, WorkerProcessAbsent, WorkerProcessUnobserved,
+}
+import gunbc.roadmap.roadmap_attempt_occurrence {
+  AttemptContainer, AttemptContainerTmux, AttemptContainerSystemdUnit, attempt_container_name,
+  DispatchAttemptOccurrence,
+  AttemptOccurrenceObserved, AttemptOccurrenceUnclassified, AttemptOccurrenceForeign, AttemptOccurrenceMalformed,
+  ObservedContainerRow, DurableAttemptRecord,
+  occurrence_population, occurrence_population_conserved, occurrence_unit_identity,
+  OccurrenceIdentityParsed, OccurrenceIdentityUnparseable,
+}
+import gunbc.roadmap_launch_admission {
+  LaunchSessionsObserved, LaunchGateVerdict, GatePassed, GateRefused,
+  LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
+  launch_gate_live, launch_occupying_count, occurrence_census_row, LaunchCensusRow,
+}
+
+fn running_unit(unit: String) -> ObservedContainerRow {
+  ObservedContainerRow {
+    container: AttemptContainerSystemdUnit { unit: unit },
+    process: WorkerProcessRunning { command: "gunbc-harness" as NonEmptyStr },
+  }
+}
+
+fn running_tmux(session: String) -> ObservedContainerRow {
+  ObservedContainerRow {
+    container: AttemptContainerTmux { session: session },
+    process: WorkerProcessRunning { command: "codex" as NonEmptyStr },
+  }
+}
+
+fn record(node: String, attempt: String) -> DurableAttemptRecord {
+  DurableAttemptRecord {
+    node: node,
+    attempt: attempt,
+    spawn_identity: "cause=timer mode=manual instance=srv1 revision=abc",
+  }
+}
+
+fn census_rows(population: List<DispatchAttemptOccurrence>) -> List<LaunchCensusRow> {
+  fold(population, init: [], f: fn(acc, o) {
+    match occurrence_census_row(o: o) {
+      Absent => acc
+      Present { value: row } => concat(acc, [row])
+    }
+  })
+}
+
+// THE DISCRIMINATING CASE (the blocker's production shape): one active systemd attempt unit, zero
+// matching tmux sessions. The occurrence classifies against the durable record, the census row
+// carries the real process, the launch gate refuses AlreadyLive for the node, and the occupied
+// count is 1 -- the two facts the tmux-only census could not see.
+test fn a_systemd_held_attempt_is_live_and_occupies() -> Bool {
+  let population = occurrence_population(
+    containers: [running_unit(unit: "gunbc-attempt-node-a-cd172fe81b806160.service")],
+    records: [record(node: "node-a", attempt: "cd172fe81b806160")],
+  )
+  let rows = census_rows(population: population)
+  match population.first() {
+    Present { value: AttemptOccurrenceObserved { node, attempt, container, process, spawn_identity } } =>
+      node == "node-a"
+        && attempt == "cd172fe81b806160"
+        && spawn_identity == "cause=timer mode=manual instance=srv1 revision=abc"
+        && (match container {
+          Present { value: c } => attempt_container_name(c: c) == "gunbc-attempt-node-a-cd172fe81b806160.service"
+          Absent => false
+        })
+        && (match process {
+          WorkerProcessRunning { command: _ } => true
+          _ => false
+        })
+        && (match launch_gate_live(sessions: LaunchSessionsObserved { live: rows }, node_id: "node-a") {
+          GateRefused { refusal } =>
+            match refusal {
+              LaunchAlreadyLive { session_name } => session_name == "gunbc-attempt-node-a-cd172fe81b806160.service"
+              _ => false
+            }
+          _ => false
+        })
+        && launch_occupying_count(live: rows) == 1
+    _ => false
+  }
+}
+
+// THE MIXED POPULATION: a tmux-held attempt and a systemd-held attempt each classify and each
+// occupy, and the producer conserves -- every raw container lands in exactly one arm.
+test fn a_mixed_population_classifies_each_and_conserves() -> Bool {
+  let containers = [
+    running_tmux(session: "gunbc-dispatch-node-b"),
+    running_unit(unit: "gunbc-attempt-node-a-cd172fe81b806160.service"),
+  ]
+  let records = [record(node: "node-b", attempt: "bbbbbbbbbbbbbbbb"), record(node: "node-a", attempt: "cd172fe81b806160")]
+  let population = occurrence_population(containers: containers, records: records)
+  let rows = census_rows(population: population)
+  count(population) == 2
+    && occurrence_population_conserved(containers: containers, records: records, population: population)
+    && count(rows) == 2
+    && launch_occupying_count(live: rows) == 2
+    && (match launch_gate_live(sessions: LaunchSessionsObserved { live: rows }, node_id: "node-b") {
+      GateRefused { refusal } =>
+        match refusal {
+          LaunchAlreadyLive { session_name } => session_name == "gunbc-dispatch-node-b"
+          _ => false
+        }
+      _ => false
+    })
+}
+
+// AN UNREAD OCCURRENCE OCCUPIES CONSERVATIVELY AND REFUSES ITS NODE: the process read is
+// unobserved, so the census row counts against capacity and the gate refuses liveness-unobserved
+// rather than admitting a second attempt beside one it cannot read.
+test fn an_unread_occurrence_occupies_and_refuses_its_node() -> Bool {
+  let population = occurrence_population(
+    containers: [ObservedContainerRow {
+      container: AttemptContainerSystemdUnit { unit: "gunbc-attempt-node-a-cd172fe81b806160.service" },
+      process: WorkerProcessUnobserved { reason: "ExecMainStatus unreadable" as NonEmptyStr },
+    }],
+    records: [record(node: "node-a", attempt: "cd172fe81b806160")],
+  )
+  let rows = census_rows(population: population)
+  launch_occupying_count(live: rows) == 1
+    && (match launch_gate_live(sessions: LaunchSessionsObserved { live: rows }, node_id: "node-a") {
+      GateRefused { refusal } =>
+        match refusal {
+          LaunchLivenessUnobserved { session_name: _, reason } => reason.contains("ExecMainStatus")
+          _ => false
+        }
+      _ => false
+    })
+}
+
+// THE ORPHAN: a live unit whose name parses but no durable record establishes -- unclassified,
+// visible, occupying, its node still named so a launch for that node refuses.
+test fn an_orphan_unit_is_unclassified_visible_and_occupying() -> Bool {
+  let population = occurrence_population(
+    containers: [running_unit(unit: "gunbc-attempt-node-c-deadbeefdeadbeef.service")],
+    records: [],
+  )
+  match population.first() {
+    Present { value: AttemptOccurrenceUnclassified { observed_container, process, node_hint, cause } } =>
+      attempt_container_name(c: observed_container) == "gunbc-attempt-node-c-deadbeefdeadbeef.service"
+        && (match node_hint {
+          Present { value: n } => n == "node-c"
+          Absent => false
+        })
+        && cause.contains("no durable attempt record")
+        && launch_occupying_count(live: census_rows(population: population)) == 1
+    _ => false
+  }
+}
+
+// MALFORMED IS OURS-SHAPED BUT UNPARSEABLE, and foreign is not ours: both are arms, neither is
+// dropped, the malformed row still occupies (its process read is real), and the foreign container
+// never reaches the census.
+test fn malformed_and_foreign_containers_are_arms_never_drops() -> Bool {
+  let population = occurrence_population(
+    containers: [
+      running_unit(unit: "gunbc-attempt-node-d-not-hex.service"),
+      running_tmux(session: "unrelated-user-session"),
+    ],
+    records: [],
+  )
+  count(population) == 2
+    && (match (population |> filter(o => match o { AttemptOccurrenceMalformed { observed_container: _, process: _, cause: _ } => true  _ => false })).first() {
+      Present { value: AttemptOccurrenceMalformed { observed_container: _, process: _, cause } } => cause != ""
+      _ => false
+    })
+    && (match (population |> filter(o => match o { AttemptOccurrenceForeign { observed_container: _ } => true  _ => false })).first() {
+      Present { value: AttemptOccurrenceForeign { observed_container } } =>
+        attempt_container_name(c: observed_container) == "unrelated-user-session"
+      _ => false
+    })
+    && launch_occupying_count(live: census_rows(population: population)) == 1
+}
+
+// A HISTORICAL ATTEMPT (durable record, no live container) is population-visible with no census
+// row: it occupies nothing and refuses nothing.
+test fn a_records_only_occurrence_is_visible_but_never_a_census_row() -> Bool {
+  let population = occurrence_population(
+    containers: [],
+    records: [record(node: "node-old", attempt: "eeeeeeeeeeeeeeee")],
+  )
+  count(population) == 1
+    && (match population.first() {
+      Present { value: AttemptOccurrenceObserved { node: _, attempt: _, container, process, spawn_identity: _ } } =>
+        (match container { Absent => true  Present { value: _ } => false })
+          && (match process { WorkerProcessAbsent => true  _ => false })
+      _ => false
+    })
+    && count(census_rows(population: population)) == 0
+}
+
+// LAW 3: the occurrence reads its spawn identity from the persisted record, verbatim. There is no
+// selection input to this producer at all -- the control is that the classified occurrence carries
+// the record's identity string unchanged.
+test fn the_spawn_identity_is_the_persisted_record_never_a_current_selection() -> Bool {
+  let population = occurrence_population(
+    containers: [running_unit(unit: "gunbc-attempt-node-a-cd172fe81b806160.service")],
+    records: [record(node: "node-a", attempt: "cd172fe81b806160")],
+  )
+  match population.first() {
+    Present { value: AttemptOccurrenceObserved { node: _, attempt: _, container: _, process: _, spawn_identity } } =>
+      spawn_identity == "cause=timer mode=manual instance=srv1 revision=abc"
+    _ => false
+  }
+}
+
+// THE PARSE ITSELF: the unit identity split reads the key from the right over node ids that carry
+// dashes, reads the supervisor turn suffix, and refuses shapes that are neither.
+test fn the_unit_identity_parse_reads_dashed_nodes_and_the_turn_suffix() -> Bool {
+  match occurrence_unit_identity(unit: "gunbc-attempt-shell-dag-cron-entry-line-builder-21f8ff0a982557dc.service") {
+    OccurrenceIdentityParsed { node, attempt } =>
+      node == "shell-dag-cron-entry-line-builder" && attempt == "21f8ff0a982557dc"
+    _ => false
+  }
+  && (match occurrence_unit_identity(unit: "gunbc-supervisor-shell-dag-cron-entry-line-builder-21f8ff0a982557dc-t3.service") {
+    OccurrenceIdentityParsed { node, attempt } =>
+      node == "shell-dag-cron-entry-line-builder" && attempt == "21f8ff0a982557dc"
+    _ => false
+  })
+  && (match occurrence_unit_identity(unit: "gunbc-attempt-node-a-short.service") {
+    OccurrenceIdentityUnparseable { cause: _ } => true
+    _ => false
+  })
+}

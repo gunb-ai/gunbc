@@ -1,0 +1,256 @@
+module gunbc.roadmap.roadmap_attempt_occurrence
+
+import std.types { String, Int, Bool, List, NonEmptyStr }
+import gunbc.worker_lifecycle { WorkerProcessEvidence, WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited, WorkerProcessUnobserved }
+
+// ONE REALIZATION-NEUTRAL POPULATION PRODUCER (branch review 2026-09-23, blocker: the launch census
+// ran tmux ls only, so a production attempt held by a systemd transient unit was invisible -- no
+// AlreadyLive refusal, capacity excluded it). An attempt is held by exactly one container -- a tmux
+// session or a transient unit -- and this module's producer UNIONS the enumerated containers with
+// the durable attempt records, joined by the persisted attempt identity, into one occurrence
+// population with CONSERVATION: every raw discovered container lands in exactly one arm, never
+// dropped.
+//
+// THE ARMS. Observed: identity established (the container's name parses and a durable attempt
+// record joins it), so the occurrence reads its spawn identity from the PERSISTED record -- never
+// from the current provider selection, which moves (a historical session's meaning does not move
+// with today's selection). Unclassified: the container is ours-shaped and its liveness is observed,
+// but the durable record does not establish it (an orphan unit, an unreadable identity) -- it
+// stays visible, counts against capacity, and refuses teardown without established ownership.
+// Foreign: not ours at all. Malformed: ours-shaped but the name does not parse into an identity.
+// On Observed, container is Absent when only the durable record speaks (a historical attempt with
+// no live container): it is population-visible but never a census row.
+type AttemptContainer
+  = AttemptContainerTmux { session: String }
+  | AttemptContainerSystemdUnit { unit: String }
+
+fn attempt_container_name(c: AttemptContainer) -> String {
+  match c {
+    AttemptContainerTmux { session } => session
+    AttemptContainerSystemdUnit { unit } => unit
+  }
+}
+
+type DispatchAttemptOccurrence
+  = AttemptOccurrenceObserved {
+      node: String
+      attempt: String
+      container: AttemptContainer?
+      process: WorkerProcessEvidence
+      spawn_identity: String
+    }
+  | AttemptOccurrenceUnclassified {
+      observed_container: AttemptContainer
+      process: WorkerProcessEvidence
+      node_hint: String?
+      cause: String
+    }
+  | AttemptOccurrenceForeign { observed_container: AttemptContainer }
+  | AttemptOccurrenceMalformed {
+      observed_container: AttemptContainer
+      process: WorkerProcessEvidence
+      cause: String
+    }
+
+// THE PRODUCER'S INPUTS, as observed rows -- the producer itself is pure, so a witness authors the
+// population. The container rows carry the process evidence their realization's own observer
+// established (a pane read for tmux, a unit read for systemd); the records carry the persisted
+// spawn identity, which is the join's authority.
+type ObservedContainerRow {
+  container: AttemptContainer
+  process: WorkerProcessEvidence
+}
+
+type DurableAttemptRecord {
+  node: String
+  attempt: String
+  spawn_identity: String
+}
+
+// THE NAME PARSES, one per realization shape. The constructors that mint these names own them
+// (dispatch_tmux_session_name, dispatch_attempt_unit_name, dispatch_supervisor_unit_name); the
+// argv witnesses pin the minted shape and the occurrence witnesses pin this parse of it, so the
+// two ends cannot drift silently. A unit name that starts gunbc-attempt-/gunbc-supervisor- but
+// does not parse is malformed, never silently dropped.
+type OccurrenceIdentity
+  = OccurrenceIdentityParsed { node: String, attempt: String }
+  | OccurrenceIdentityUnparseable { cause: String }
+
+data occurrence_tmux_session_prefix: String = "gunbc-dispatch-"
+
+data occurrence_attempt_unit_prefix: String = "gunbc-attempt-"
+
+data occurrence_supervisor_unit_prefix: String = "gunbc-supervisor-"
+
+fn occurrence_hex16(s: String) -> Bool {
+  string_length(s: s) == 16
+    && all(chars(s: s), c => (c >= 48 && c <= 57) || (c >= 97 && c <= 102))
+}
+
+// A node id itself carries dashes, so the attempt key is split from the RIGHT: it is the last
+// dash-separated segment and it is exactly 16 lowercase hex characters. Anything else is not an
+// attempt key and the name does not parse.
+fn occurrence_unit_identity(unit: String) -> OccurrenceIdentity {
+  let base = if ends_with(s: unit, suffix: ".service") {
+    substring(s: unit, start: 0, end: string_length(s: unit) - 8)
+  } else {
+    unit
+  }
+  if starts_with(s: base, prefix: occurrence_supervisor_unit_prefix) {
+    let rest = substring(s: base, start: string_length(s: occurrence_supervisor_unit_prefix), end: string_length(s: base))
+    let segments = split(s: rest, delimiter: "-")
+    match segments.last() {
+      Absent => OccurrenceIdentityUnparseable { cause: "empty supervisor unit name" }
+      Present { value: turn_part } =>
+        if starts_with(s: turn_part, prefix: "t") && count(segments) >= 3 {
+          let node_and_key = split(s: join(segments |> take(count(segments) - 1), "-"), delimiter: "-")
+          match node_and_key.last() {
+            Absent => OccurrenceIdentityUnparseable { cause: "no attempt key segment" }
+            Present { value: key } =>
+              if occurrence_hex16(s: key) && count(node_and_key) >= 2 {
+                OccurrenceIdentityParsed {
+                  node: join(node_and_key |> take(count(node_and_key) - 1), "-"),
+                  attempt: key,
+                }
+              } else {
+                OccurrenceIdentityUnparseable { cause: "the segment before the turn is not a 16-hex attempt key" }
+              }
+          }
+        } else {
+          OccurrenceIdentityUnparseable { cause: "a supervisor unit name does not end in a turn segment" }
+        }
+    }
+  } else if starts_with(s: base, prefix: occurrence_attempt_unit_prefix) {
+    let rest = substring(s: base, start: string_length(s: occurrence_attempt_unit_prefix), end: string_length(s: base))
+    let segments = split(s: rest, delimiter: "-")
+    match segments.last() {
+      Absent => OccurrenceIdentityUnparseable { cause: "empty attempt unit name" }
+      Present { value: key } =>
+        if occurrence_hex16(s: key) && count(segments) >= 2 {
+          OccurrenceIdentityParsed {
+            node: join(segments |> take(count(segments) - 1), "-"),
+            attempt: key,
+          }
+        } else {
+          OccurrenceIdentityUnparseable { cause: "the last segment is not a 16-hex attempt key" }
+        }
+    }
+  } else {
+    OccurrenceIdentityUnparseable { cause: "not an attempt or supervisor unit name" }
+  }
+}
+
+fn occurrence_record_for(records: List<DurableAttemptRecord>, node: String, attempt: String) -> DurableAttemptRecord? {
+  (records |> filter(r => r.node == node && r.attempt == attempt)).first()
+}
+
+fn occurrence_record_for_node(records: List<DurableAttemptRecord>, node: String) -> DurableAttemptRecord? {
+  (records |> filter(r => r.node == node)).first()
+}
+
+// ONE CONTAINER, ONE OCCURRENCE. The arm assignment is total: parsed identity plus a joining
+// durable record is Observed; parsed identity without one is Unclassified (the liveness was read;
+// the ownership was not established); a name that does not parse is Malformed; a name that is not
+// ours is Foreign.
+fn occurrence_of_container(row: ObservedContainerRow, records: List<DurableAttemptRecord>) -> DispatchAttemptOccurrence {
+  match row.container {
+    AttemptContainerTmux { session } =>
+      if starts_with(s: session, prefix: occurrence_tmux_session_prefix) {
+        let node = substring(s: session, start: string_length(s: occurrence_tmux_session_prefix), end: string_length(s: session))
+        match occurrence_record_for_node(records: records, node: node) {
+          Present { value: record } =>
+            AttemptOccurrenceObserved {
+              node: node,
+              attempt: record.attempt,
+              container: Present { value: row.container },
+              process: row.process,
+              spawn_identity: record.spawn_identity,
+            }
+          Absent =>
+            AttemptOccurrenceUnclassified {
+              observed_container: row.container,
+              process: row.process,
+              node_hint: Present { value: node },
+              cause: "no durable attempt record names this session's node",
+            }
+        }
+      } else {
+        AttemptOccurrenceForeign { observed_container: row.container }
+      }
+    AttemptContainerSystemdUnit { unit } =>
+      match occurrence_unit_identity(unit: unit) {
+        OccurrenceIdentityUnparseable { cause } =>
+          if starts_with(s: unit, prefix: occurrence_attempt_unit_prefix) || starts_with(s: unit, prefix: occurrence_supervisor_unit_prefix) {
+            AttemptOccurrenceMalformed {
+              observed_container: row.container,
+              process: row.process,
+              cause: cause,
+            }
+          } else {
+            AttemptOccurrenceForeign { observed_container: row.container }
+          }
+        OccurrenceIdentityParsed { node, attempt } =>
+          match occurrence_record_for(records: records, node: node, attempt: attempt) {
+            Present { value: record } =>
+              AttemptOccurrenceObserved {
+                node: node,
+                attempt: attempt,
+                container: Present { value: row.container },
+                process: row.process,
+                spawn_identity: record.spawn_identity,
+              }
+            Absent =>
+              AttemptOccurrenceUnclassified {
+                observed_container: row.container,
+                process: row.process,
+                node_hint: Present { value: node },
+                cause: "no durable attempt record establishes this unit; it is not reaped and it occupies",
+              }
+          }
+      }
+  }
+}
+
+// THE UNION. Every container row produces exactly one occurrence; every durable record joins a
+// container or stands as its own occurrence with no live container (process absent, container
+// absent -- historical, never a census row). Conservation is therefore one clause: the population
+// is the containers plus the records no container joined.
+fn occurrence_population(containers: List<ObservedContainerRow>, records: List<DurableAttemptRecord>) -> List<DispatchAttemptOccurrence> {
+  let from_containers = map(containers, row => occurrence_of_container(row: row, records: records))
+  let joined = from_containers |> filter(o => match o {
+    AttemptOccurrenceObserved { node: _, attempt: _, container: _, process: _, spawn_identity: _ } => true
+    _ => false
+  })
+  let records_only = records |> filter(record =>
+    !any(joined, o => match o {
+      AttemptOccurrenceObserved { node, attempt, container: _, process: _, spawn_identity: _ } =>
+        node == record.node && attempt == record.attempt
+      _ => false
+    }))
+  concat(
+    from_containers,
+    map(records_only, record =>
+      AttemptOccurrenceObserved {
+        node: record.node,
+        attempt: record.attempt,
+        container: none,
+        process: WorkerProcessAbsent,
+        spawn_identity: record.spawn_identity,
+      }),
+  )
+}
+
+// CONSERVATION, AS A CHECKABLE FACT: every raw container lands in exactly one arm and every record
+// is joined once or stands once, so the population's size is the containers plus the records no
+// container joined. A producer that dropped a row breaks this.
+fn occurrence_population_conserved(containers: List<ObservedContainerRow>, records: List<DurableAttemptRecord>, population: List<DispatchAttemptOccurrence>) -> Bool {
+  let joined = population |> filter(o => match o {
+    AttemptOccurrenceObserved { node: _, attempt: _, container, process: _, spawn_identity: _ } =>
+      match container {
+        Present { value: _ } => true
+        Absent => false
+      }
+    _ => false
+  })
+  count(population) == count(containers) + (count(records) - count(joined))
+}

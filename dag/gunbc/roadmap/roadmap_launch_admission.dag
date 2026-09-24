@@ -17,11 +17,14 @@ import gunbc.roadmap_authority {
   RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
 }
 import gunbc.roadmap_dashboard_instance { DashboardActuationPosture, DashboardObserveOnly, DashboardActuating }
+import gunbc.roadmap.roadmap_attempt_occurrence {
+  DispatchAttemptOccurrence, AttemptOccurrenceObserved, AttemptOccurrenceUnclassified,
+  AttemptOccurrenceForeign, AttemptOccurrenceMalformed, attempt_container_name,
+}
 import gunbc.roadmap.roadmap_centering { node_centering, CenteringPresent, CenteringAbsent }
 import gunbc.deploy_transition { ActuationAdmission, ActuationAdmitted, ActuationRefused }
 import gunbc.fleet_desired_observe { LocalTreeRevision, LocalTreeRevisionObserved, LocalTreeRevisionUnobserved }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_object_id_wire_hex, git_object_id_from_untagged_hex }
-import gunbc.roadmap_dispatch_actuator { DispatchLiveSession }
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessRunning, WorkerProcessExited, WorkerProcessAbsent, WorkerProcessUnobserved,
 }
@@ -332,13 +335,50 @@ fn launch_refusal_exemplars() -> List<LaunchRefusal> {
   ]
 }
 
-// The observed live-session set, or the located reason it could not be observed. Unobservable is a
-// REFUSAL at the no-live-attempt gate, never an empty set: an empty set would license a second
-// attempt beside one the observer could not see.
+// THE CENSUS ROW IS REALIZATION-NEUTRAL (branch review 2026-09-23, blocker 1): the gate asks three
+// things of a live attempt -- which node, which container, whether a process holds it -- and the
+// tmux-shaped DispatchLiveSession was the population's own row, not the census's. A systemd-held
+// attempt has no lease verdict or window count to project, and fabricating them would be the
+// fabricated-field defect; the lean row carries exactly what the gates read. The rich session row
+// stays with the tmux population's own producers and the dashboard.
+type LaunchCensusRow {
+  session_name: String
+  node_id: String
+  process: WorkerProcessEvidence
+}
+
+// OCCURRENCE TO CENSUS ROW, the only projection the launch gate makes: a classified occurrence
+// with a live container is its node's row; an unclassified or malformed one keeps its real
+// process read (an observed process occupies; an unobserved one occupies conservatively) with the
+// node it hints at or none; a foreign container and a records-only occurrence (no live container)
+// produce no row -- the first is not ours, the second is history.
+fn occurrence_census_row(o: DispatchAttemptOccurrence) -> LaunchCensusRow? {
+  match o {
+    AttemptOccurrenceObserved { node, attempt: _, container, process, spawn_identity: _ } =>
+      match container {
+        Absent => none
+        Present { value: c } =>
+          Present { value: LaunchCensusRow { session_name: attempt_container_name(c: c), node_id: node, process: process } }
+      }
+    AttemptOccurrenceUnclassified { observed_container, process, node_hint, cause: _ } =>
+      Present { value: LaunchCensusRow {
+        session_name: attempt_container_name(c: observed_container),
+        node_id: match node_hint { Present { value: n } => n  Absent => "" },
+        process: process,
+      } }
+    AttemptOccurrenceForeign { observed_container: _ } => none
+    AttemptOccurrenceMalformed { observed_container, process, cause: _ } =>
+      Present { value: LaunchCensusRow {
+        session_name: attempt_container_name(c: observed_container),
+        node_id: "",
+        process: process,
+      } }
+  }
+}
 
 type LaunchSessionsStanding
   = LaunchSessionsPending
-  | LaunchSessionsObserved { live: List<DispatchLiveSession> }
+  | LaunchSessionsObserved { live: List<LaunchCensusRow> }
   | LaunchSessionsUnobserved { reason: String }
 
 // SESSION OBSERVATION IS THE LAST OBSERVATION, and it is lazy behind every model-only gate (review
@@ -825,7 +865,7 @@ fn launch_gate_live(sessions: LaunchSessionsStanding, node_id: String) -> Launch
       } else {
         match matched.first() {
           Absent => GatePassed
-          Present { value: s } => launch_session_liveness(session_name: s.session_name, process: s.worker.process)
+          Present { value: s } => launch_session_liveness(session_name: s.session_name, process: s.process)
         }
       }
     }
@@ -843,8 +883,8 @@ fn launch_gate_live(sessions: LaunchSessionsStanding, node_id: String) -> Launch
 // (LaunchSessionsUnobserved) never reaches this count: the live gate refuses SessionsUnobservable
 // first.
 
-fn launch_occupying_count(live: List<DispatchLiveSession>) -> Int {
-  count(filter(live, s => match s.worker.process {
+fn launch_occupying_count(live: List<LaunchCensusRow>) -> Int {
+  count(filter(live, s => match s.process {
     WorkerProcessRunning { command: _ } => true
     WorkerProcessUnobserved { reason: _ } => true
     WorkerProcessExited { exit_code: _, last_command: _ } => false
