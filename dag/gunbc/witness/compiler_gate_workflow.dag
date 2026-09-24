@@ -36,7 +36,8 @@ import extdeps.github.actions {
   Workflow, Job, Step, UsesStep, RunStep,
   WorkflowPermissions, PermRead,
   RunnerSpec, HostedRunner, Ubuntu2404Arm,
-  github_event_name_pull_request
+  github_event_name_pull_request,
+  github_event_name_merge_group
 }
 import gunbc.action_use_admission {
   checkout_action, upload_artifact_action,
@@ -61,6 +62,7 @@ import gunbc.witness_floor_workflow {
   witness_floor_build_step,
   witness_floor_required_bins,
   witness_floor_run_script,
+  build_lane_run_script,
   witness_floor_precondition,
   witness_toolchain_homes_isolated_guard_step,
   witness_step_status_guard,
@@ -412,6 +414,66 @@ fn compiler_gate_drift_step() -> Step {
   }
 }
 
+// THE STAGE0 MIRRORS ARE CHECKED ON THE QUEUE'S COMPOSED REVISION, AND ONLY THERE, BOTH
+// GENERATIONS DEEP. Operator decision msg_6e36a6a2 (2026-09-23), which supersedes msg_4a9045fc's
+// generation-1-only ruling and msg_f1ade7cf-77e4-4896-a8b3-476747692c37's ~20 min pricing.
+// The drift step above reads gunbc.generated_artifact alone; the ~158 compile_stage0 mirrors are
+// adjudicated by claim_executor's build lane -- the GeneratedArtifact phase (first generation) and
+// the RegenFixedPoint phase (second generation against the first's receipt) -- and no job had run
+// that lane since #11742, so std_measure.rs drifted onto main under a green required run
+// (gunbc#12067) and more mirrors had drifted by the time this step first executed.
+//
+// THE LANE'S OWN COMMAND, so which phases run is still decided by the binary's exhaustive
+// partition (gunbc.witness_floor_workflow build_lane_run_script over gunbc.fabric_witness_run
+// build_lane_run_command), never by this YAML. Measured on the fleet (run 35890770775, after
+// #12100 removed the field-name re-export leak that had inflated generation 1 to 30 min): the
+// whole lane, both generations, took 22.5 min, and the floor job ~58 min against
+// compiler_gate_floor_timeout_minutes.
+//
+// A STEP ON THIS JOB, NOT A NEW JOB. The floor lane already checks out and builds claim_executor
+// from this tree; a separate job would pay that prelude again on every queued landing.
+//
+// A SEPARATE PROCESS AFTER THE FLOOR EXITS, which is the measured constraint rather than a
+// preference: the floor process peaks at its slot's memory.high (run 35716368507) and the stage0
+// pass near 12.9 GiB, so the two fit sequentially and never additively.
+//
+// MERGE_GROUP ONLY BECAUSE A PULL REQUEST DOES NOT LAND. The queue's run judges the sha that
+// becomes main; the price is that an author learns of drift at queue time. `!cancelled()` rather
+// than the default success(): a floor red must not disarm this check (see witness_floor_workflow's
+// measured correction).
+//
+// gunbc.rung_drop.floor_cut_regen_second_generation_agreement IS NOT RETIRED BY THIS STEP. Its
+// trigger is second-generation refusal for EVERY phase that regenerates a committed population,
+// shown by a red on a generation-unstable fixture under this execution model. RegenFixedPoint
+// compares a second generation for the stage0 mirror population only (it reads
+// target/stage0-regen-receipt.json); the registry-rostered projections have no second
+// generation, and no unstable fixture has been run.
+data compiler_gate_stage0_regen_step_name: String = "Stage0 mirrors match what this seed emits, both generations (merge_group only): required CI build lane"
+
+fn compiler_gate_stage0_regen_condition() -> String {
+  concat(
+    witness_step_status_guard(),
+    concat(
+      concat("github.event_name == '", concat(github_event_name_merge_group, "' && ")),
+      "steps.build_witness_fold.outcome == 'success'"
+    )
+  )
+}
+
+fn compiler_gate_stage0_regen_step() -> Step {
+  RunStep {
+    name: Present { value: compiler_gate_stage0_regen_step_name },
+    id: Present { value: "stage0_regen" },
+    run: concat(wrap_command_with_floor_attempt_receipt(command: build_lane_run_script()), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: compiler_gate_stage0_regen_condition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn compiler_gate_repair_condition() -> String {
   concat(
     concat("failure() && steps.", concat(compiler_gate_drift_step_id, ".outcome == 'failure'")),
@@ -559,6 +621,11 @@ fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
       step_name: "Registry-rostered generated artifacts (gunbc.generated_artifact) match their authorities; the stage0 mirrors are NOT checked here",
     },
     CompilerGateBoundStep {
+      step: compiler_gate_stage0_regen_step(),
+      role: consumes_only(capabilities: [RustfmtCapability]),
+      step_name: compiler_gate_stage0_regen_step_name,
+    },
+    CompilerGateBoundStep {
       step: compiler_gate_repair_declaration_step(),
       role: capability_neutral,
       step_name: "Declare which ledger rows this repair covers",
@@ -608,6 +675,7 @@ fn compiler_gate_floor_capability_closure_holds() -> Bool {
 
 fn compiler_gate_floor_scripts_are_renderable() -> Bool {
   wrap_command_is_renderable(command: witness_floor_run_script())
+    && wrap_command_is_renderable(command: build_lane_run_script())
     && wrap_command_is_renderable(command: repo_self_build_command(bins: witness_floor_required_bins))
     && required_ci_measurement_scripts_are_renderable()
 }
