@@ -765,6 +765,34 @@ pub fn try_process_shared_index_for_pool(
     Ok(idx)
 }
 
+/// WHAT THE PROCESS-LIFETIME RESOLVE STORE HOLDS, as counts, for the floor's seam readings: the
+/// number of resolved entry graphs kept, and per shared-index slot its parse, typed-module and
+/// resolved-graph memo sizes. A seam that shows heap still in use after a step whose result is
+/// small needs to know whether these stores grew, and whether a later step ever reads them --
+/// the first says retention, the second says whether it is useful cache or dead weight. Counts,
+/// not bytes: an entry's size is not knowable without walking it, and a walk would perturb the
+/// run. Read-only.
+pub(crate) fn process_resolve_census() -> String {
+    let store = PROCESS_RESOLVE_STORE.with(|s| s.borrow().len());
+    let slots = PROCESS_RESOLVE_INDEX.with(|s| {
+        s.borrow()
+            .iter()
+            .map(|slot| match slot {
+                Some((_, idx)) => format!(
+                    "gen{}:parse={}:typed={}:graphs={}",
+                    idx.generation,
+                    idx.parse_cache.borrow().len(),
+                    idx.typed_module_cache.borrow().len(),
+                    idx.resolved_graph_memo.borrow().len()
+                ),
+                None => "empty".to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    });
+    format!("resolve_store_entries={store} shared_index=[{slots}]")
+}
+
 pub fn resolve_entry_graph_shared(
     source_roots: &[String],
     entry_file: &str,
@@ -2612,6 +2640,8 @@ pub fn reference_resolution_facts(
             let mut scratch_unclassified: Vec<String> = Vec::new();
             let mut classify = ExprVarClassification {
                 decl_index: None,
+                module_names: Some(&module_names),
+                module_path_heads: std::collections::HashSet::new(),
                 tally: &mut scratch_tally,
                 unclassified: &mut scratch_unclassified,
                 module: self_module.clone(),
@@ -2676,6 +2706,12 @@ pub fn reference_resolution_facts(
                 }
             }
             for name in &bare {
+                // A kernel or container spelling binds no module (`is_substrate_vocabulary`), so
+                // it is never an edge: `String` in `std.primitives` once resolved UniqueBare to
+                // std.string_type, a module the resolver never loads for that spelling.
+                if super::is_substrate_vocabulary(name) {
+                    continue;
+                }
                 if let Some(mods) = decl_index.get(name) {
                     // Same-module declaration wins by lexical scope (namespace-only): a bare name the
                     // referencing file itself declares resolves LOCALLY — no cross-module edge. This

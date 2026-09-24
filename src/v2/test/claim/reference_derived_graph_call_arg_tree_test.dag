@@ -54,16 +54,10 @@ fn ca_edge_count(edges: List<ModuleDependencyEdge>, path: String, target: String
 }
 
 fn ca_edges_from_pair(
-  provider_root: Node,
-  consumer_path: String,
-  consumer_root: Node
+  provider: LocatedModuleRoot,
+  consumer: LocatedModuleRoot
 ) -> List<ModuleDependencyEdge> {
-  reference_derived_edges_from_located_roots(
-    items: [
-      LocatedModuleRoot { path: provider_path, root: provider_root },
-      LocatedModuleRoot { path: consumer_path, root: consumer_root }
-    ]
-  ).edges
+  reference_derived_edges_from_located_roots(items: [provider, consumer]).edges
 }
 
 data ca_ingest_refused_count: Int = -1
@@ -82,11 +76,7 @@ fn ca_pair_edge_count_from_trees(
             Absent => ca_ingest_refused_count
             Present { value: consumer } =>
               ca_edge_count(
-                edges: ca_edges_from_pair(
-                  provider_root: provider.root,
-                  consumer_path: consumer_path,
-                  consumer_root: consumer.root
-                ),
+                edges: ca_edges_from_pair(provider: provider, consumer: consumer),
                 path: consumer_path,
                 target: provider_module
               )

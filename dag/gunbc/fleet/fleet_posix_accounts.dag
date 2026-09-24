@@ -5,6 +5,7 @@ import std.nat { Nat }
 import std.types { Timestamp }
 import gunbc.fleet_lifecycle_observation { ProcessReceipt }
 import extdeps.ssh { SshPublicKey }
+import extdeps.netfilter.nfct { nfct_installed_path }
 import std.content_hash { Fnv1a64Structural }
 import extdeps.sudo.nopasswd_execute_probe {
   SudoNopasswdProbeKind,
@@ -230,6 +231,10 @@ data fleet_tailscale_binary_path: NonEmptyStr = "/usr/bin/tailscale"
 
 data fleet_rm_binary_path: NonEmptyStr = "/usr/bin/rm"
 
+data fleet_cp_binary_path: NonEmptyStr = "/usr/bin/cp"
+
+data fleet_mv_binary_path: NonEmptyStr = "/usr/bin/mv"
+
 // nft LIVES IN sbin AND IS PRIVILEGED EVEN TO READ: listing a table needs CAP_NET_ADMIN, so a
 // readback of the installed ruleset is a granted command like any mutation.
 data fleet_nft_binary_path: NonEmptyStr = "/usr/sbin/nft"
@@ -243,7 +248,7 @@ data fleet_conntrack_binary_path: NonEmptyStr = "/usr/sbin/conntrack"
 // registered with the kernel rather than written in any ruleset, so each needs its own probe.
 data fleet_iptables_legacy_save_binary_path: NonEmptyStr = "/usr/sbin/iptables-legacy-save"
 
-data fleet_nfct_binary_path: NonEmptyStr = "/usr/sbin/nfct"
+data fleet_nfct_binary_path: NonEmptyStr = nfct_installed_path() as NonEmptyStr
 
 // A CLOSED VOCABULARY OF WHAT THIS PRINCIPAL MAY SUDO, so that emitting an ungranted sudo command
 // has no spelling rather than being a mistake something downstream has to notice.
@@ -279,6 +284,8 @@ type CiRunnerSudoBinary
   | SudoConntrack
   | SudoIptablesLegacySave
   | SudoNfct
+  | SudoCp
+  | SudoMv
 
 fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
   match b {
@@ -294,6 +301,8 @@ fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
     SudoConntrack => fleet_conntrack_binary_path
     SudoIptablesLegacySave => fleet_iptables_legacy_save_binary_path
     SudoNfct => fleet_nfct_binary_path
+    SudoCp => fleet_cp_binary_path
+    SudoMv => fleet_mv_binary_path
   }
 }
 
@@ -311,6 +320,8 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
     SudoConntrack => NopasswdExecuteCheck { check_argv: "--version" }
     SudoIptablesLegacySave => NopasswdExecuteCheck { check_argv: "--version" }
     SudoNfct => NopasswdExecuteCheck { check_argv: "--version" }
+    SudoCp => NopasswdExecuteCheck { check_argv: "--version" }
+    SudoMv => NopasswdExecuteCheck { check_argv: "--version" }
   }
 }
 
@@ -328,7 +339,31 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
 // binary like its siblings, probed with --help (exit 0); what it may change is decided by the one
 // operation that renders it, EnsureSupplementaryGroupMembership: append one named group to one
 // named login, never a primary-group, shell, home, or password change.
-data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm, SudoUseradd, SudoUsermod]
+// cp AND mv JOINED THE ROSTER 2026-09-23 WITH THE APPROVAL BROKER'S HELPER GRANT (#12124, parent
+// decision on escalation msg_14daeb59). They add NO PRIVILEGE CLASS: this roster already grants the
+// whole install and visudo binaries, and whole-binary install can write any file as root, so it is
+// root-equivalent. What they add is two operations install cannot express. mv -T is an atomic
+// rename(2), and it is the only way to swap a sudoers drop-in into place without a window where the
+// included path holds a partial file (GNU install unlinks the destination first). cp -R -P copies a
+// release's source tree into a ROOT-OWNED snapshot in one call, without following symlinks, so the
+// grantee of the helper grant cannot write the closure that grant executes
+// (gunbc.live_deploy.emit approval_broker_helper_snapshot_steps). Both are probed with --version.
+// This roster is what the deploy principal's drop-in (/etc/sudoers.d/gunbc-deploy, gunbc.ci_deploy_access
+// gunbc_deploy_sudoers_dropin) is rendered from, and the deploy preamble installs it
+// (gunbc.ci_deploy_sudoers deploy_sudoers_install_shell). So the new rows reach srv1 through the
+// operator-approved deploy that carries this change, not a hand edit.
+data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm, SudoUseradd, SudoUsermod, SudoCp, SudoMv]
+
+// THE GRANTS THE DROP-IN INSTALL ITSELF SPENDS, and so the only grants a deploy may demand BEFORE
+// the drop-in is installed. gunbc.ci_deploy_sudoers deploy_sudoers_install_shell is the one step that
+// renders ci_runner_sudo_binaries onto a host, and it runs `sudo -n visudo -cf` and `sudo -n install`
+// and nothing else under sudo; it reads its two binaries from this list, so the install and the
+// pre-install demand are one value. Every other roster row is probed AFTER the install, inside the
+// same script (deploy_sudoers_post_install_roster_probe_shell), still refusing on a miss. Demanding
+// the whole roster before the step that grants it made every roster addition refuse forever on every
+// host (#12124 -> srv1 deploy run 35890035317): gunbc.recurring_failure_mode
+// a_preflight_demands_the_grant_its_gated_step_installs.
+data ci_runner_sudoers_install_binaries: List<CiRunnerSudoBinary> = [SudoVisudo, SudoInstall]
 
 data fleet_useradd_binary_path: NonEmptyStr = "/usr/sbin/useradd"
 data fleet_usermod_binary_path: NonEmptyStr = "/usr/sbin/usermod"
@@ -1221,4 +1256,15 @@ fn automation_allocation_is_applied(a: FleetAutomationAllocationStanding) -> Boo
     AutomationAllocationApplied { host: _, user: _, source: _ } => true
     AutomationAllocationPending { host: _, cause: _ } => false
   }
+}
+
+// A LOGIN'S HOME DIRECTORY UNDER THE FLEET'S CONVENTION, SPELLED ONCE. Every fleet host creates its
+// accounts under /home/<login> (the provisioning rows above); a consumer that needs a home path --
+// the microVM slot controller reading the job user's guest image root -- derives it here rather
+// than joining the prefix itself. gunbc.spark.managed_access_bootstrap carries the same join and is
+// a consumer to move onto this row. It is the CONVENTION and not a readback: a host whose passwd
+// entry disagrees is a host this row is wrong about, and the reader's existence check is what
+// catches it.
+fn fleet_posix_home_directory(login: NonEmptyStr) -> NonEmptyStr {
+  join(["/home/", login as String], "") as NonEmptyStr
 }

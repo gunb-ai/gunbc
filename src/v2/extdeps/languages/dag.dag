@@ -754,7 +754,7 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lt),
     right: dag_grammar_sequence(
-      left: dag_grammar_comma_list_expr(item: dag_grammar_ident_or_type_decl_modifier_generic_ident_identity()),
+      left: dag_grammar_comma_list_expr(item: dag_grammar_ident_or_type_decl_modifier_name()),
       right: dag_grammar_terminal(token_class: ^dag_token_gt)
     )
   )
@@ -791,9 +791,7 @@ fn dag_grammar_qualified_type_expr() -> GrammarExpr {
           left: dag_grammar_terminal(token_class: ^dag_token_lt),
           right: dag_grammar_sequence(
             left: dag_grammar_optional(
-              element: dag_grammar_comma_list_expr(
-                item: dag_grammar_nonterminal(production: ^dag_production_type_expr)
-              )
+              element: dag_grammar_comma_list_expr(item: dag_grammar_generic_arg_expr())
             ),
             right: dag_grammar_terminal(token_class: ^dag_token_gt)
           )
@@ -803,6 +801,18 @@ fn dag_grammar_qualified_type_expr() -> GrammarExpr {
     right: dag_grammar_optional(
       element: dag_grammar_terminal(token_class: ^dag_token_question)
     )
+  )
+}
+
+// A generic argument is a type or a natural-number literal: `Compose<Int, MachineWidth<8>>`
+// (std.integer), the one axis DESIGN section 2 cites. v1.compiler.parse admits it because its
+// lexer gives a digit run the identifier shape, so parse_type_expr reads `8` as a leaf type named
+// "8"; the literal is lexeme-stamped here so it carries that same spelling as its atom. It is
+// admitted in the argument list only -- a bare `type T = 8` is not a type here.
+fn dag_grammar_generic_arg_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
+    right: dag_grammar_terminal_lexeme(token_class: ^dag_token_int_literal)
   )
 }
 
@@ -875,10 +885,20 @@ fn dag_grammar_where_refinement_clause_expr() -> GrammarExpr {
   )
 }
 
+// An anonymous record is a type expression: `type AxisScan = { prefix: List<DeclarationRef>, causes:
+// List<NonEmptyStr> }` (std.pareto), the ShLBrace arm of v1.compiler.parse parse_type_expr, which
+// admits it in any type position. It is the same field_decl_block production a named record uses,
+// so every consumer that classifies a fielded declaration (namespace_graft_type_decl_is_fielded,
+// body_lower_is_structure_preserved_emitted) sees one production for both, and its fields are
+// unlowered exactly as a named record's are (gunbc.rung_drop
+// variant_fields_unlowered_on_the_native_route).
 fn dag_grammar_type_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_qualified_type_expr(),
-    right: dag_grammar_nonterminal(production: ^dag_production_fn_type)
+    right: dag_grammar_choice(
+      left: dag_grammar_nonterminal(production: ^dag_production_fn_type),
+      right: dag_grammar_nonterminal(production: ^dag_production_field_decl_block)
+    )
   )
 }
 
@@ -947,15 +967,21 @@ fn dag_grammar_ident_or_type_decl_modifier_name() -> GrammarExpr {
   )
 }
 
-// The identity-preserving sibling, for the two name sites that were dag_grammar_terminal
+// The identity-preserving sibling, for the name site that was dag_grammar_terminal
 // (StampClass) before the modifier classes were admitted, and that must keep publishing
 // what StampClass published there BEFORE promotion: dag_grammar_caret_symbol_expr's
-// referenced identifier and dag_grammar_generic_params_expr's parameter names. Admitting
+// referenced identifier. dag_grammar_generic_params_expr's parameter names USED to share
+// this helper and no longer do: a type parameter is a BINDER, and a binder whose spelling
+// the tree does not carry cannot be lowered onto v2.std.node's ^arrow_type_params_edge, so
+// resolve had nothing to scope and `T` fell through to the ordinary name chain
+// (gunbc.recurring_failure_mode generic_type_parameter_resolved_as_an_ordinary_atom_in_v2).
+// Those names now go through dag_grammar_ident_or_type_decl_modifier_name -- the SAME three
+// token classes, lexeme-stamped, exactly as every other declared name. Admitting
 // two more token classes is the whole of this change, and PRESERVING THE STAMP MODE IS NOT
 // ENOUGH TO PRESERVE THE IDENTITY. Two distinct transitions have to be held out:
 //
 //   1. StampClass -> StampLexeme. Routing these sites through the lexeme-stamped helper
-//      would make every caret literal and generic parameter carry its own text as the
+//      would make every caret literal carry its own text as the
 //      node's atom identity (v2.compiler.02_parse symbol_intern_lexeme).
 //   2. The token CLASS a class stamp publishes. v2.compiler.02_parse resolves it as
 //      exactly `StampClass => tok.class`. Before promotion these spellings lexed as
@@ -1061,6 +1087,23 @@ fn dag_grammar_stmt_seq_expr() -> GrammarExpr {
   dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_stmt))
 }
 
+// An `if` with no `else` is a STATEMENT, never a value: `if count(parts) != 2 { return Malformed {..} }`
+// (extdeps.uri_path), the guard form v1.compiler.parse admits. Its meaning is an early exit -- the
+// branch leaves the function, otherwise execution falls through to the rest of the block -- which
+// the v2 core has no lowering for, so body_lower_after_children refuses this production with the
+// typed, located, counted body_lowering_reason_else_less_if_unlowered rather than dropping or
+// rewriting it. It is tried AFTER expr, so an `if` that has an `else` is the ordinary if-expression
+// and never reaches this row.
+fn dag_grammar_else_less_if_stmt_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_kw_if),
+    right: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: ^dag_production_expr),
+      right: dag_grammar_nonterminal(production: ^dag_production_fn_body)
+    )
+  )
+}
+
 fn dag_grammar_stmt_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
@@ -1069,7 +1112,10 @@ fn dag_grammar_stmt_expr() -> GrammarExpr {
     ),
     right: dag_grammar_choice(
       left: dag_grammar_nonterminal(production: ^dag_production_let_expr),
-      right: dag_grammar_nonterminal(production: ^dag_production_expr)
+      right: dag_grammar_choice(
+        left: dag_grammar_nonterminal(production: ^dag_production_expr),
+        right: dag_grammar_nonterminal(production: ^dag_production_else_less_if_stmt)
+      )
     )
   )
 }
@@ -1400,10 +1446,23 @@ fn dag_grammar_primary_expr_expr() -> GrammarExpr {
 // supersedes grammar-level lexeme stamping. Fixture pick tokens (dag_pick_concrete_tokens) retain
 // dag_grammar_pick_arm_literal_terminal with StampClass + branded bindings.
 
+// `module` names a value in expression position (std.cross_tree.resolution
+// `SourceRootBinding { module: module, root: root }`): it is already a binding name for
+// parameters, labels and members (dag_binding_name_keyword_tokens), and v1 reads it as an ordinary
+// identifier here. Only `module` is admitted -- it heads a module header, which is module-level
+// only, so nothing else can begin an expression with it; `if`, `match` and `let` head expressions
+// of their own and stay out.
+fn dag_grammar_primary_name_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_ident_or_type_decl_modifier_name(),
+    right: dag_grammar_terminal_lexeme(token_class: ^dag_token_kw_module)
+  )
+}
+
 fn dag_grammar_primary_expr_core() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_ident_or_type_decl_modifier_name(),
+      left: dag_grammar_primary_name_expr(),
       right: dag_grammar_primary_ident_suffix_expr()
     ),
     right: dag_grammar_choice(
@@ -1739,7 +1798,30 @@ fn dag_grammar_type_variant_expr() -> GrammarExpr {
       left: dag_grammar_optional(
         element: dag_grammar_nonterminal(production: ^dag_production_where_refinement_clause)
       ),
-      right: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_field_decl_block))
+      right: dag_grammar_optional(
+        element: dag_grammar_choice(
+          left: dag_grammar_nonterminal(production: ^dag_production_field_decl_block),
+          right: dag_grammar_nonterminal(production: ^dag_production_positional_variant_payload)
+        )
+      )
+    )
+  )
+}
+
+// A variant's payload has two spellings of one field list: `Name { f: T }` and the
+// positional `Name(T)`, which v1.compiler.parse parse_positional_variant_type_fields reads as
+// exactly one field named "0". Positional arity is ONE, as in v1: `Name(T, U)` still refuses
+// (tokens remain), so this row admits nothing the seed does not. It lives only in the
+// variant slot -- `type R(T)` is not a type_decl body in v1, and it is not one here. The two
+// consumers that treat a fielded variant as structure, namespace_graft_type_decl_named_edge
+// and body_lower_is_structure_preserved_emitted, name this production beside
+// dag_surface_field_decl_block.
+fn dag_grammar_positional_variant_payload_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_lparen),
+    right: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
+      right: dag_grammar_terminal(token_class: ^dag_token_rparen)
     )
   )
 }
@@ -1753,6 +1835,20 @@ fn dag_grammar_type_alias_rhs_expr() -> GrammarExpr {
         right: dag_grammar_nonterminal(production: ^dag_production_type_variant)
       )
     )
+  )
+}
+
+// The coproduct form may open with a separator: `type H =\n  | A\n  | B`, the layout most
+// multi-line sums in the corpus use and v1.compiler.parse admits. The leading `|` is consumed by
+// its own production, before the type_alias_rhs nonterminal, so the rhs production's captured
+// shape -- variant, then (pipe variant)* -- is the same with or without it; and sugar
+// (v2.std.compilers.sugar sugar_rule_type_alias_rhs_lead) lowers this production to that rhs, so
+// the separator leaves no trace after normalize. A bare `|` with no variant after it refuses: the
+// optional is a prefix of the rhs, never a substitute for it.
+fn dag_grammar_type_alias_rhs_lead_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_pipe)),
+    right: dag_grammar_nonterminal(production: ^dag_production_type_alias_rhs)
   )
 }
 
@@ -1793,7 +1889,7 @@ fn dag_grammar_type_decl_expr() -> GrammarExpr {
               left: dag_grammar_nonterminal(production: ^dag_production_field_decl_block),
               right: dag_grammar_sequence(
                 left: dag_grammar_terminal(token_class: ^dag_token_eq),
-                right: dag_grammar_nonterminal(production: ^dag_production_type_alias_rhs)
+                right: dag_grammar_nonterminal(production: ^dag_production_type_alias_rhs_lead)
               )
             )
           )
@@ -1822,6 +1918,41 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
   )
 }
 
+// `admit_callers: [decl_ref(..), ..]` between a fn's signature and its body names the only
+// declarations allowed to call it (std.integer qualified_octets). v1.compiler.parse
+// parse_optional_admit_callers reads it as a field-init on the fn node and refuses an empty list;
+// the list here requires a first element for the same reason, so `admit_callers: []` still refuses.
+// `admit_callers` is matched as an exact-word terminal and stays an ordinary identifier everywhere
+// else. The clause is consumed and then DISCARDED when the fn lowers to an Arrow: nothing on the
+// native route checks caller admission, and the stage that does adds its Arrow carrier together
+// with that consumer (gunbc.rung_drop admit_callers_discarded_on_the_native_route).
+fn dag_grammar_admit_callers_clause_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_literal_terminal(
+      token_class: ^dag_token_ident,
+      lexeme: symbol_intern_lexeme(lexeme: "admit_callers")
+    ),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_colon),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_lbracket),
+        right: dag_grammar_sequence(
+          left: dag_grammar_nonterminal(production: ^dag_production_expr),
+          right: dag_grammar_sequence(
+            left: dag_grammar_repeat(
+              element: dag_grammar_sequence(
+                left: dag_grammar_terminal(token_class: ^dag_token_comma),
+                right: dag_grammar_nonterminal(production: ^dag_production_expr)
+              )
+            ),
+            right: dag_grammar_terminal(token_class: ^dag_token_rbracket)
+          )
+        )
+      )
+    )
+  )
+}
+
 // A POSITIONAL READER DEPENDS ON THIS SPINE, so adding or reordering a constituent here is a
 // change to that reader's contract and not a local grammar edit.
 // v2.compiler.body_lowering_fold `body_lower_fn_decl_return_clause_optional` reaches the return
@@ -1831,13 +1962,15 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
 // is gunbc.recurring_failure_mode a_positional_fact_is_obtained_by_searching_for_its_shape.
 //
 // WHAT THAT READER RELIES ON, stated so it is checkable rather than folded into its own comment:
-// this production has exactly TWO optionals, and only generic_params precedes the return clause,
-// so generic_params is the entire risk surface for the depth. An elided optional still occupies
+// this production has THREE optionals, and only generic_params precedes the return clause, so
+// generic_params is the entire risk surface for the depth. The admit_callers clause is the third
+// and sits AFTER the return clause, so it does not shift the depth this reader walks.
+// An elided optional still occupies
 // its slot -- v2.compiler.parse `parse_expr_optional` returns grammar_empty_node on the rejected
 // arm -- so the depth does not shift when it is absent. Both arms are held by executing claims in
-// v2.test.manual.normalize_fn_body_cost_probe
+// test.claim.parse_test_fn_decl_return_clause
 // (`nfbcp_falsifier_generic_fn_return_type_holds`, `nfbcp_falsifier_eq_body_fn_return_type_holds`),
-// so INSERTING A THIRD OPTIONAL AHEAD OF THE RETURN CLAUSE REDDENS THEM rather than silently
+// so INSERTING ANY FURTHER OPTIONAL AHEAD OF THE RETURN CLAUSE REDDENS THEM rather than silently
 // shifting the read by one. That is the wall; this note is the reason it exists.
 fn dag_grammar_fn_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
@@ -1855,11 +1988,16 @@ fn dag_grammar_fn_decl_expr() -> GrammarExpr {
                 right: dag_grammar_nonterminal(production: ^dag_production_type_expr)
               )
             ),
-            right: dag_grammar_choice(
-              left: dag_grammar_nonterminal(production: ^dag_production_fn_body),
-              right: dag_grammar_sequence(
-                left: dag_grammar_terminal(token_class: ^dag_token_eq),
-                right: dag_grammar_nonterminal(production: ^dag_production_expr)
+            right: dag_grammar_sequence(
+              left: dag_grammar_optional(
+                element: dag_grammar_nonterminal(production: ^dag_production_admit_callers_clause)
+              ),
+              right: dag_grammar_choice(
+                left: dag_grammar_nonterminal(production: ^dag_production_fn_body),
+                right: dag_grammar_sequence(
+                  left: dag_grammar_terminal(token_class: ^dag_token_eq),
+                  right: dag_grammar_nonterminal(production: ^dag_production_expr)
+                )
               )
             )
           )
@@ -2470,6 +2608,11 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_type_alias_rhs_expr(),
     emitted: ^dag_surface_type_alias_rhs
   )
+  let type_alias_rhs_lead = dag_grammar_production(
+    name: ^dag_production_type_alias_rhs_lead,
+    expression: dag_grammar_type_alias_rhs_lead_expr(),
+    emitted: ^dag_surface_type_alias_rhs_lead
+  )
   let import_block = dag_grammar_production(
     name: ^dag_production_import_block,
     expression: dag_grammar_import_block_expr(),
@@ -2479,6 +2622,21 @@ fn dag_grammar_root() -> GrammarRoot {
     name: ^dag_production_field_decl_block,
     expression: dag_grammar_field_decl_block_expr(),
     emitted: ^dag_surface_field_decl_block
+  )
+  let else_less_if_stmt = dag_grammar_production(
+    name: ^dag_production_else_less_if_stmt,
+    expression: dag_grammar_else_less_if_stmt_expr(),
+    emitted: ^dag_surface_else_less_if_stmt
+  )
+  let admit_callers_clause = dag_grammar_production(
+    name: ^dag_production_admit_callers_clause,
+    expression: dag_grammar_admit_callers_clause_expr(),
+    emitted: ^dag_surface_admit_callers_clause
+  )
+  let positional_variant_payload = dag_grammar_production(
+    name: ^dag_production_positional_variant_payload,
+    expression: dag_grammar_positional_variant_payload_expr(),
+    emitted: ^dag_surface_positional_variant_payload
   )
   let fn_body = dag_grammar_production(
     name: ^dag_production_fn_body,
@@ -2619,8 +2777,12 @@ fn dag_grammar_root() -> GrammarRoot {
       fn_type,
       type_variant,
       type_alias_rhs,
+      type_alias_rhs_lead,
       import_block,
       field_decl_block,
+      positional_variant_payload,
+      admit_callers_clause,
+      else_less_if_stmt,
       fn_body,
       stmt_seq,
       stmt,

@@ -12,6 +12,7 @@ import extdeps.github.action.download_artifact { download_artifact_v6_0_0, downl
 import extdeps.github.action.checkout { checkout_v4_4_0 }
 import extdeps.github.action.setup_rust_toolchain { setup_rust_toolchain_v1_16_0 }
 import extdeps.github.action.rust_cache { rust_cache_v2_9_1 }
+import v2.workflow.floor_naming_hygiene { floor_discovery_scan_test_decl_names }
 import gunbc.action_use_admission {
   ActionUseAdmission, AdmittedExact, RefusedForcedSubstitution, RefusedByPlatform,
   RefusedUnmodeledPlatformDisposition, RefusedUnobservedDeclaration, RefusedConflictingDeclarations,
@@ -19,9 +20,10 @@ import gunbc.action_use_admission {
   ActionUseSite, StepActionUse, JobReusableWorkflowUse,
   RealizedActionUse, RealizedWorkflowReading, RealizedWorkflowUses, RealizedWorkflowUnreadable,
   WorkflowActionUsesAdmission, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused,
+  realized_census_cost_standing,
   action_use_admitted, action_use_admission_reason, admit_action_release, admit_action_release_against, admit_realized_action_use,
-  admit_workflow_action_uses, realized_workflow_action_uses,
-  upload_artifact_action, checkout_action, github_script_action,
+  admit_workflow_action_uses, realized_workflow_reading, realized_distinct_uses,
+  upload_artifact_action, checkout_action, github_script_action, setup_rust_action,
   realized_use_is_a_repository_selection,
 }
 import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
@@ -32,7 +34,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // producer releases: the two refusals that matter most are releases this repository actually ran,
 // read from their own action.yml, not a fixture spelled to look like one. The census half reads
 // every workflow file GitHub would execute from this checkout (.github/workflows, which is committed
-// input to this build like any .dag source) and admits every `uses:` in it.
+// input to this build like any .dag source) through the modeled YAML reader, one claim per file,
+// and admits every `uses` at the two places GitHub reads one.
 
 fn is_forced_substitution(a: ActionUseAdmission) -> Bool {
   match a {
@@ -179,13 +182,13 @@ test fn green_pinned_selected_release_realized_is_admitted() -> Bool {
 }
 
 // ---------------------------------------------------------------------------------------------
-// THE WORKFLOW PARSER finds uses at both places GitHub reads them, and refuses what it cannot read
+// THE WORKFLOW READING finds uses at both places GitHub reads them, and refuses what it cannot read
 // ---------------------------------------------------------------------------------------------
 
 data parser_fixture: String = "name: f\non:\n  push:\njobs:\n  call:\n    uses: org/repo/.github/workflows/w.yml@5555555555555555555555555555555555555555\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - name: a\n        run: |\n          echo not-an-action\n      - uses: actions/upload-artifact@v4\n        with:\n          name: x\n"
 
 test fn parser_classifies_job_and_step_uses_and_refuses_both() -> Bool {
-  match realized_workflow_action_uses(path: "fixture.yml", source: parser_fixture) {
+  match realized_workflow_reading(path: "fixture.yml", source: parser_fixture) {
     RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => false
     RealizedWorkflowUses { workflow_path: _, uses: us } =>
       (us |> count) == 2
@@ -199,7 +202,7 @@ test fn parser_classifies_job_and_step_uses_and_refuses_both() -> Bool {
 }
 
 test fn red_unparseable_workflow_is_unreadable_not_empty() -> Bool {
-  match realized_workflow_action_uses(path: "fixture.yml", source: "name: f\non:\n  push:\n") {
+  match realized_workflow_reading(path: "fixture.yml", source: "name: f\non:\n  push:\n") {
     RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => true
     RealizedWorkflowUses { workflow_path: _, uses: _ } => false
   }
@@ -243,60 +246,132 @@ test fn fleet_desired_workflow_action_uses_are_admitted() -> Bool {
 data realized_workflow_directory: String = ".github/workflows"
 
 type RealizedCensus {
-  files: Int
   uses: Int
   refused: List<String>
   admitted_texts: List<String>
 }
 
-fn census_one_file(acc: RealizedCensus, path: String) -> RealizedCensus {
+// ONE FILE, READ BY THE MODELED READER, EVERY DISTINCT USE ADMITTED. A file the reader refuses is a
+// refusal of the census, never an empty file.
+fn census_file(name: String) -> RealizedCensus {
+  let path = join([realized_workflow_directory, "/", name], "")
   let read = filesystem_read(path: path)
-  match realized_workflow_action_uses(path: path, source: read.content) {
+  match realized_workflow_reading(path: path, source: read.content) {
     RealizedWorkflowUnreadable { workflow_path: p, reason: r } =>
-      RealizedCensus { files: acc.files + 1, uses: acc.uses, refused: concat(acc.refused, [join([p, ": unreadable: ", r], "")]), admitted_texts: acc.admitted_texts }
+      RealizedCensus { uses: 0, refused: [join([p, ": unreadable: ", r], "")], admitted_texts: [] }
     RealizedWorkflowUses { workflow_path: p, uses: us } =>
-      fold(us, init: RealizedCensus { files: acc.files + 1, uses: acc.uses, refused: acc.refused, admitted_texts: acc.admitted_texts }, f: fn(c, u) {
+      fold(realized_distinct_uses(uses: us), init: RealizedCensus { uses: us |> count, refused: [], admitted_texts: [] }, f: fn(c, u) {
         if action_use_admitted(a: admit_realized_action_use(u: u)) {
-          RealizedCensus { files: c.files, uses: c.uses + 1, refused: c.refused, admitted_texts: concat(c.admitted_texts, [u.uses_text]) }
+          RealizedCensus { uses: c.uses, refused: c.refused, admitted_texts: concat(c.admitted_texts, [u.uses_text]) }
         } else {
-          RealizedCensus { files: c.files, uses: c.uses + 1, refused: concat(c.refused, [join([p, " job ", u.job_id, ": ", u.uses_text], "")]), admitted_texts: c.admitted_texts }
+          RealizedCensus { uses: c.uses, refused: concat(c.refused, [join([p, " job ", u.job_id, ": ", u.uses_text], "")]), admitted_texts: c.admitted_texts }
         }
       })
   }
 }
 
-// GitHub executes the .yml and .yaml files directly inside .github/workflows; subdirectories and
-// other files are not workflows.
-fn realized_census() -> RealizedCensus {
+fn census_holds(c: RealizedCensus) -> Bool {
+  ((c.refused |> count) == 0) && (c.uses > 0)
+}
+
+// THE POPULATION: every .yml and .yaml file directly inside .github/workflows is a workflow GitHub
+// executes; subdirectories and other files are not. Each has its own claim below, because the
+// census must read every executed file and one claim per file keeps each within the new-witness
+// eval-step budget. This join is what makes the per-file claims the census: a workflow added without
+// a claim, or a claim naming a file that is gone, refuses here, by name.
+data realized_workflow_files: List<String> = [
+  "fleet-converge.yml", "fleet-desired.yml", "heal-publish.yml", "heal.yml", "microvm-shakedown.yml", "mtcollins-canary.yml", "witnesses.yml"
+]
+
+fn listed_workflow_files() -> List<String> {
   let listed = Filesystem.List(path: realized_workflow_directory, expect: ExpectSuccess)
-  let empty = RealizedCensus { files: 0, uses: 0, refused: [], admitted_texts: [] }
   if !listed.success {
-    RealizedCensus { files: 0, uses: 0, refused: [concat("listing refused: ", listed.error)], admitted_texts: [] }
+    [concat("listing refused: ", listed.error)]
   } else {
-    fold(split(s: listed.entries, delimiter: "\n"), init: empty, f: fn(acc, name) {
-      let path = join([realized_workflow_directory, "/", name], "")
-      if !(name.ends_with(suffix: ".yml") || name.ends_with(suffix: ".yaml")) {
-        acc
-      } else {
-        census_one_file(acc: acc, path: path)
-      }
-    })
+    filter(split(s: listed.entries, delimiter: "\n"), name => name.ends_with(suffix: ".yml") || name.ends_with(suffix: ".yaml"))
   }
 }
 
-// EVERY FILE GITHUB EXECUTES FROM THIS CHECKOUT, GENERATED AND HAND-AUTHORED: ZERO forced
-// substitutions, ZERO unmodeled uses, ZERO unresolved producers, ZERO unreadable workflows, ZERO
-// node20 runner overrides, and every use IS a repository selection. The population is not empty and
-// the join demonstrably ran over real lines: the generated floor workflow's upload-artifact step and
-// the hand-authored canary's checkout and github-script steps are all among the admitted uses.
-test fn every_realized_workflow_action_use_is_modeled_and_executed_exactly() -> Bool {
-  let c = realized_census()
-  (c.refused |> count) == 0
-    && c.files > 1
-    && c.uses > 0
+// THE CLAIM NAME PROMISES A CENSUS CLAIM PER FILE, SO THE CLAIM LOOKS FOR ONE. Joining the roster
+// to the directory listing alone would leave a hole with exactly the shape this census exists to
+// close (review 69151): a lane adds a workflow, this claim reds, the author adds the NAME to the
+// roster, this claim greens -- and that file's `uses:` are admitted by nobody while a claim called
+// "has a census claim" reports success. That is a silent widen, so the third join below reads this
+// module's own test declarations through the floor's own scanner and requires the per-file claim to
+// exist, by the name the file derives. Adding a roster row without its claim now reds here.
+fn census_claim_name_for(file: String) -> String {
+  join(["census_", replace(replace(replace(file, ".yaml", ""), ".yml", ""), "-", "_"), "_uses_are_modeled_and_executed_exactly"], "")
+}
+
+data census_claim_module_path: String = "dag/test/claim/action_use_admission_witness_test.dag"
+
+test fn every_executed_workflow_file_has_a_census_claim_and_no_claim_names_a_missing_file() -> Bool {
+  let listed = listed_workflow_files()
+  let own_source = Filesystem.Read(path: census_claim_module_path, expect: ExpectSuccess)
+  let declared = floor_discovery_scan_test_decl_names(content: own_source.content)
+  ((listed |> count) == (realized_workflow_files |> count))
+    && all(listed, name => any(realized_workflow_files, f => f == name))
+    && all(realized_workflow_files, f => any(listed, name => name == f))
+    && all(realized_workflow_files, f => any(declared, n => n == census_claim_name_for(file: f)))
+}
+
+// THE COST STANDING NAMES THE FILE THIS CLAIM READS. gunbc.action_use_admission
+// realized_census_cost_standing records that the claim below sits close under the floor's
+// new-witness budget, that its subject grows outside this lane, and what the remedy is when it stops
+// fitting; this join keeps that row pointing at a file the census actually reads.
+test fn the_cost_standing_names_a_file_this_census_reads() -> Bool {
+  any(realized_workflow_files, f => f == (realized_census_cost_standing.subject as String))
+    && ((realized_census_cost_standing.refused_remedies |> count) > 0)
+}
+
+// Every use of the largest generated workflow is read through the modeled reader and admitted, in
+// one claim (the trigger the retired line projection waited for).
+test fn census_fleet_converge_uses_are_modeled_and_executed_exactly() -> Bool {
+  census_holds(c: census_file(name: "fleet-converge.yml"))
+}
+
+test fn census_fleet_desired_uses_are_modeled_and_executed_exactly() -> Bool {
+  census_holds(c: census_file(name: "fleet-desired.yml"))
+}
+
+test fn census_heal_publish_uses_are_modeled_and_executed_exactly() -> Bool {
+  census_holds(c: census_file(name: "heal-publish.yml"))
+}
+
+// The heal workflow carries the upload-artifact step the floor's receipts are published through.
+test fn census_heal_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "heal.yml")
+  census_holds(c: c)
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: upload_artifact_action))
+}
+
+// THE SHAKEDOWN WORKFLOW USES NO ACTION, AND ZERO IS THE READING, NOT AN EMPTY FILE. Its one job is a
+// run step by design (gunbc.runner_microvm_shakedown_workflow: no checkout and no action, so a proof
+// about whether the guest can run a step does not depend on the action-download path). census_file
+// turns an unreadable file into a refusal, so no refusals and zero uses is the modeled reader's
+// reading of a real file; and the claim is a wall, not a vacuous pass: a `uses:` added to that
+// workflow reds it, because the job's no-action shape is what the workflow's own proof relies on.
+test fn census_microvm_shakedown_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "microvm-shakedown.yml")
+  ((c.refused |> count) == 0) && (c.uses == 0)
+}
+
+// The hand-authored canary: its checkout and github-script steps are among the admitted uses, so
+// the join ran over real structure, not an empty file.
+test fn census_mtcollins_canary_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "mtcollins-canary.yml")
+  census_holds(c: c)
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: github_script_action))
+}
+
+// The generated floor workflow: its checkout and setup-rust-toolchain steps are among the admitted
+// uses.
+test fn census_witnesses_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "witnesses.yml")
+  census_holds(c: c)
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: setup_rust_action))
 }
 
 // ADMITTED IS NOT SELECTED. Swatinem/rust-cache v2.9.1 declares node24 and is admitted exactly, but
@@ -319,11 +394,18 @@ test fn red_modeled_workflow_with_an_unselected_exact_release_is_refused() -> Bo
   }
 }
 
-// THE SCAN REFUSES WHAT IT DOES NOT MODEL, AND SKIPS WHAT IS NOT STRUCTURE.
+// THE READING REFUSES WHAT THE READER DOES NOT MODEL, AND READS WHAT IT DOES.
 fn unreadable_scan(source: String) -> Bool {
-  match realized_workflow_action_uses(path: "fixture.yml", source: source) {
+  match realized_workflow_reading(path: "fixture.yml", source: source) {
     RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => true
     RealizedWorkflowUses { workflow_path: _, uses: _ } => false
+  }
+}
+
+fn step_uses_read(source: String) -> List<String> {
+  match realized_workflow_reading(path: "fixture.yml", source: source) {
+    RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => ["unreadable"]
+    RealizedWorkflowUses { workflow_path: _, uses: us } => map(us, u => u.uses_text)
   }
 }
 
@@ -332,31 +414,113 @@ test fn red_node20_runner_override_refuses_in_env_and_in_a_script() -> Bool {
     && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - run: |\n          echo ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true >> $GITHUB_ENV\n")
 }
 
-test fn red_unmodeled_uses_spellings_refuse() -> Bool {
-  unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - { uses: actions/checkout@v4 }\n")
-    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - \"uses\": actions/checkout@v4\n")
+// Outside the reader's subset, or not a string where GitHub needs one: unreadable, never "no uses".
+test fn red_unmodeled_or_malformed_uses_refuse() -> Bool {
+  unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - \{ uses: actions/checkout@v4 }\n")
     && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses: *pinned\n")
     && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses:\n")
-    && unreadable_scan(source: "jobs:\n  b:\n    steps: [{ uses: actions/checkout@v4 }]\n")
+    && unreadable_scan(source: "jobs:\n  b:\n    steps: [\{ uses: actions/checkout@v4 }]\n")
     && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses:\tactions/checkout@v4\n")
-    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses : actions/checkout@v4\n")
-    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses  : actions/checkout@v4\n")
-    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - \"us\\u0065s\": actions/checkout@v4\n")
-    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - name: x\n        with: { uses: y }\n")
-    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - run: |\n          echo uses: not-a-key\n")
+    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - name: x\n        with: \{ uses: y }\n")
+    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses: 'actions/checkout@v4' # pinned\n")
+    && unreadable_scan(source: "jobs:\n  b:\n    steps:\n      - uses: [a, b]\n")
+    && unreadable_scan(source: "jobs:\n  b: [x]\n")
+    && unreadable_scan(source: "name: no jobs here\n")
 }
 
-// A quoted value and a trailing comment are read to the ref; the site comes from the value's own
-// shape; and a script line spelled exactly as a `uses:` key IS read as a use (fail-closed: it must
-// then be admitted).
-test fn scan_reads_quoted_and_commented_values_and_classifies_by_shape() -> Bool {
-  match realized_workflow_action_uses(path: "fixture.yml", source: "jobs:\n  a:\n    steps:\n      - run: |\n          echo not-a-key\n          uses: script/line@v1\n      - uses: 'actions/checkout@v4' # pinned below\n  b:\n    uses: org/repo/.github/workflows/w.yml@v1\n") {
+// The spellings a line projection could not decode are read for what they mean: a quoted key, an
+// escaped key and a space before the colon all name `uses`; a quoted value is its text; and a
+// script line spelled like a `uses:` key is script content, not a use.
+test fn quoted_escaped_and_spaced_uses_keys_are_read_and_script_text_is_not() -> Bool {
+  (step_uses_read(source: "jobs:\n  b:\n    steps:\n      - \"uses\": actions/checkout@v4\n") == ["actions/checkout@v4"])
+    && (step_uses_read(source: "jobs:\n  b:\n    steps:\n      - \"us\\u0065s\": actions/checkout@v4\n") == ["actions/checkout@v4"])
+    && (step_uses_read(source: "jobs:\n  b:\n    steps:\n      - uses : actions/checkout@v4\n") == ["actions/checkout@v4"])
+    && (step_uses_read(source: "jobs:\n  b:\n    steps:\n      - uses: 'actions/checkout@v4'\n") == ["actions/checkout@v4"])
+    && (step_uses_read(source: "jobs:\n  b:\n    steps:\n      - run: |\n          echo not-a-key\n          uses: script/line@v1\n") == [])
+}
+
+// THE ROUTE TEST OVER A REAL WORKFLOW: the first `uses:` line of a committed workflow is rewritten
+// into each spelling a line projection would have mis-read, and the census is run over the whole
+// rewritten file. Three spellings are outside the reader's subset or not a string where GitHub needs
+// one -- a flow sequence, an alias, an empty value -- and each must make the file UNREADABLE: never
+// an empty population, and never the unrewritten one. The other two -- a quoted key and a space
+// before the colon -- are YAML for the same key, so the correct reading is the ORIGINAL population,
+// exactly; refusing them would be the wrong-meaning reader this module replaced. Asserting the
+// original population also rules out the rewrite having been missed: every spelling is checked to
+// have changed the file.
+data route_rewrite_subject: String = "heal-publish.yml"
+
+fn route_rewrite_source() -> String {
+  filesystem_read(path: join([realized_workflow_directory, "/", route_rewrite_subject], "")).content
+}
+
+type RouteRewrite {
+  source: String
+  seen: Bool
+}
+
+// The first line holding `uses: `, respelled: `before` is everything ahead of `uses: ` on that line
+// (its indentation and any `- `), `value` everything after it.
+fn with_first_uses_line(source: String, spell: String) -> String {
+  let rewritten = fold(split(s: source, delimiter: "\n"), init: RouteRewrite { source: "", seen: false }, f: fn(acc, line) {
+    let next = if acc.seen {
+      line
+    } else if string_contains(s: line, pattern: "uses: ") {
+      let parts = split(s: line, delimiter: "uses: ")
+      respelled_uses_line(before: join(parts.take(n: 1), ""), value: join(parts.skip(n: 1), "uses: "), spell: spell)
+    } else {
+      line
+    }
+    RouteRewrite {
+      source: if acc.source == "" { next } else { join([acc.source, next], "\n") },
+      seen: acc.seen || string_contains(s: line, pattern: "uses: "),
+    }
+  })
+  rewritten.source
+}
+
+fn respelled_uses_line(before: String, value: String, spell: String) -> String {
+  if spell == "flow" {
+    join([before, "uses: [", value, ", ", value, "]"], "")
+  } else if spell == "alias" {
+    join([before, "uses: *pinned"], "")
+  } else if spell == "empty" {
+    join([before, "uses:"], "")
+  } else if spell == "quoted_key" {
+    join([before, "\"uses\": ", value], "")
+  } else {
+    join([before, "uses : ", value], "")
+  }
+}
+
+fn route_uses_texts(source: String) -> List<String> {
+  match realized_workflow_reading(path: "rewritten.yml", source: source) {
+    RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => ["unreadable"]
+    RealizedWorkflowUses { workflow_path: _, uses: us } => map(us, u => u.uses_text)
+  }
+}
+
+test fn a_real_uses_line_respelled_outside_the_subset_refuses_and_respelled_inside_it_reads_the_same() -> Bool {
+  let original = route_rewrite_source()
+  let expected = route_uses_texts(source: original)
+  let refusing = ["flow", "alias", "empty"]
+  let equivalent = ["quoted_key", "spaced_colon"]
+  ((expected |> count) > 0)
+    && !any(expected, t => t == "unreadable")
+    && all(concat(refusing, equivalent), sp => with_first_uses_line(source: original, spell: sp) != original)
+    && all(refusing, sp => unreadable_scan(source: with_first_uses_line(source: original, spell: sp)))
+    && all(equivalent, sp => route_uses_texts(source: with_first_uses_line(source: original, spell: sp)) == expected)
+}
+
+// The site comes from where the key sits, not from the value's shape: a job-level `uses` naming a
+// plain action is still job-level (and refused as an unmodeled reusable-workflow call).
+test fn the_site_is_where_the_key_sits() -> Bool {
+  match realized_workflow_reading(path: "fixture.yml", source: "jobs:\n  a:\n    steps:\n      - uses: actions/checkout@v4\n  b:\n    uses: actions/checkout@v4\n") {
     RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => false
     RealizedWorkflowUses { workflow_path: _, uses: us } =>
-      (us |> count) == 3
-        && any(us, u => u.uses_text == "script/line@v1" && match u.site { StepActionUse => true  JobReusableWorkflowUse => false })
-        && any(us, u => u.uses_text == "actions/checkout@v4" && match u.site { StepActionUse => true  JobReusableWorkflowUse => false })
-        && any(us, u => u.uses_text == "org/repo/.github/workflows/w.yml@v1" && match u.site { JobReusableWorkflowUse => true  StepActionUse => false })
+      ((us |> count) == 2)
+        && any(us, u => (u.job_id == "a") && match u.site { StepActionUse => true  JobReusableWorkflowUse => false })
+        && any(us, u => (u.job_id == "b") && match u.site { JobReusableWorkflowUse => true  StepActionUse => false })
   }
 }
 
@@ -368,23 +532,4 @@ test fn forced_substitution_reason_cites_the_producer_manifest_at_the_commit() -
     s: action_use_admission_reason(a: admit_action_release(action_release: upload_artifact_v4_6_2)),
     pattern: "github.com/actions/upload-artifact/blob/ea165f8d65b6e75b540449e92b4886f43607fa02/action.yml",
   )
-}
-
-// THE ESCAPED-KEY REFUSAL IS ABOUT KEYS: a quoted script argument carrying a backslash, with no `":`
-// key delimiter, is not a key, so the workflow reads normally.
-test fn quoted_script_text_with_a_backslash_is_not_an_escaped_key() -> Bool {
-  quoted_value_with_escaped_quotes_is_not_an_escaped_key() &&
-  match realized_workflow_action_uses(path: "fixture.yml", source: "jobs:\n  b:\n    steps:\n      - run: |\n          \"$HOME/bin/tool\" --re '\\d+'\n      - uses: actions/checkout@v4\n") {
-    RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => false
-    RealizedWorkflowUses { workflow_path: _, uses: us } => (us |> count) == 1
-  }
-}
-
-// A VALUE carrying escaped quotes is not a key: the committed fleet-converge workflow has
-// `group: "...${{ fromJSON('{\\"srv1\\": ...}') }}"`, whose `{` is followed by an ESCAPED quote.
-fn quoted_value_with_escaped_quotes_is_not_an_escaped_key() -> Bool {
-  match realized_workflow_action_uses(path: "fixture.yml", source: "jobs:\n  b:\n    group: \"g-${{ fromJSON('{\\\"srv1\\\": \\\"a\\\"}')[x] }}\"\n    steps:\n      - uses: actions/checkout@v4\n") {
-    RealizedWorkflowUnreadable { workflow_path: _, reason: _ } => false
-    RealizedWorkflowUses { workflow_path: _, uses: us } => (us |> count) == 1
-  }
 }

@@ -151,21 +151,16 @@ pub fn collect_type_node_import_surface_occurrences(
             for ch in peeled.children.clone().iter().cloned() {
                 __result.extend(
                     (*{
-                        let resolved_names = collect_type_node_import_surface_occurrences(
-                            crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                        let walked = if children_are_applied_arguments.clone() {
+                            ch.clone()
+                        } else {
+                            crate::v1_compiler_infer_types::child_type_node(ch.clone())
+                        };
+                        collect_type_node_import_surface_occurrences(
+                            walked.clone(),
                             children_are_applied_arguments.clone(),
                             source_indices.clone(),
-                        );
-                        let authored_names = if (ch.inferred.clone() != std::option::Option::None) {
-                            collect_type_node_import_surface_occurrences(
-                                ch.clone(),
-                                children_are_applied_arguments.clone(),
-                                source_indices.clone(),
-                            )
-                        } else {
-                            Rc::new(vec![])
-                        };
-                        v1_rt::concat(resolved_names.clone(), authored_names.clone())
+                        )
                     })
                     .iter()
                     .cloned(),
@@ -183,34 +178,9 @@ pub fn collect_type_node_import_surface_occurrences(
             }
             _ => Rc::new(vec![]),
         };
-        let applied_names = match crate::v1_std_core::find_property(
-            peeled.properties.clone(),
-            "__applied_type_args".to_string(),
-            source_indices.clone(),
-        ) {
-            Some(applied) => Rc::new({
-                let mut __result = Vec::new();
-                for arg in applied.children.clone().iter().cloned() {
-                    __result.extend(
-                        (*collect_type_node_import_surface_occurrences(
-                            arg.clone(),
-                            true,
-                            source_indices.clone(),
-                        ))
-                        .iter()
-                        .cloned(),
-                    );
-                }
-                __result
-            }),
-            None => Rc::new(vec![]),
-        };
         v1_rt::concat(
             own.clone(),
-            v1_rt::concat(
-                child_names.clone(),
-                v1_rt::concat(applied_names.clone(), inferred_names.clone()),
-            ),
+            v1_rt::concat(child_names.clone(), inferred_names.clone()),
         )
     })
 }
@@ -1296,7 +1266,7 @@ pub fn add_emit_item_summary(
 pub fn emit_dependency_registration_dissolve_on_note() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("dissolve-on (FreeMonoid pass 2026-07-20): collect emitted cross-module type/path refs during emit into one authority; derive (a) use-lines via build_shared_types + emit_faithful_text_carrier_import_lines and (b) closure pub-mod membership via emit_lib_rs_from_paths from that set. Instance-patch interim: faithful corpus emits carrier import lines per module unless locally defined (FreeMonoid/Char/NonEmptyStr/Int); closure projections (v1.compiler.closure_stub_v2_std_text_rust and closure_stub_v2_std_integer_rust) when refs exist but the real v2.std.text or v2.std.integer module is absent from narrow typed.modules — projections are NOT parallel modeling authorities (see each stub module dissolve_on_note); they dissolve when the ref set includes the real module in the closure.".to_string())
+            crate::std_dissolution::unbound_dissolution("dissolve-on (FreeMonoid pass 2026-07-20): collect emitted cross-module type/path refs during emit into one authority; derive (a) use-lines via build_shared_types + reference_derived_use_line_plan and (b) closure pub-mod membership via emit_lib_rs_from_paths from that set. Instance-patch interim: closure projections (v1.compiler.closure_stub_v2_std_text_rust and closure_stub_v2_std_integer_rust) when refs exist but the real v2.std.text or v2.std.integer module is absent from narrow typed.modules — projections are NOT parallel modeling authorities (see each stub module dissolve_on_note); they dissolve when the ref set includes the real module in the closure.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())

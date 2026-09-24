@@ -233,6 +233,22 @@ fn checked_int_magnitude(a: Int) -> CheckedNat {
 // record-field-position crossing (which makes the guard and the crossing one expression) or
 // sole_constructor over the magnitude carrier.
 
+// THE NONNEGATIVE CROSSING, distinct from the magnitude above: an Int that IS a Nat crosses, a
+// negative Int is ABSENT rather than mapped to its distance from zero. This is what an `n as Nat`
+// was asserting without evidence, and it is the conversion std.coercion refinement_cast_rules names
+// in the refusal an `Int as Nat` cast now receives. Promoted from gunbc.spark.serving_load_probe,
+// where it was the only definition of this fact.
+fn checked_int_to_nat(n: Int) -> Nat? {
+  if n < 0 {
+    none
+  } else {
+    match checked_int_magnitude(a: n) {
+      CheckedNatOverflow { cause: _ } => none
+      CheckedNatReady { value: v } => Present { value: v }
+    }
+  }
+}
+
 fn nat_magnitude(a: Int) -> Nat {
   if a < 0 { 0 - a } else { a }
 }

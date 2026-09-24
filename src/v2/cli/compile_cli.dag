@@ -5,14 +5,17 @@ import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.self_host.compiler_closure_emit {
-  emit_compiler_import_closure_from_ingest
+  emit_compiler_import_closure_from_ingest_located
 }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.algebra { fold_list, length, list_reverse }
 
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal, diagnostics_fatal_reason }
-import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text, lens_verdict_diagnostics_located_chain_text }
+import v2.std.lens_verdict {
+  lens_verdict_diagnostic_locus_text_in_spans,
+  lens_verdict_diagnostics_located_chain_text_in_spans
+}
 import v2.std.node { Symbol }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
@@ -290,10 +293,16 @@ type CliRunOutcome
 // `parse_grammar_choice_overlap_residue` for every entry tried; that is a grammar-global ADVISORY
 // and never the fatal. The fatal diagnostic is the last one, and `parse_g0_tokens_remain_diagnostic`
 // builds its locus from the first remaining token. The fatal pick is `v2.std.diagnostic`
-// `diagnostics_fatal`, the chain is `lens_verdict_diagnostics_located_chain_text` (every link with
-// its locus, so thirty-five advisories in front of the fatal each say where they are), and
-// file+extent is `lens_verdict_diagnostic_locus_text` — none a second spelling here (DESIGN
-// section 3).
+// `diagnostics_fatal`, the chain is `lens_verdict_diagnostics_located_chain_text_in_spans` (every
+// link with its locus, so thirty-five advisories in front of the fatal each say where they are),
+// and file+extent is `lens_verdict_diagnostic_locus_text_in_spans` — none a second spelling here
+// (DESIGN section 3).
+//
+// BOTH ARE THE `_in_spans` DOORS, WHICH IS THE POINT OF THIS PACKAGE: they take the ingest's
+// SpanIndex, so a NodeLocus resolves to a file and byte range instead of rendering as an
+// occurrence. An earlier revision of this paragraph named the index-free spellings, which this
+// module stopped calling in the same diff -- prose naming symbols its own code does not use
+// (review 70138).
 
 // THE EMPTY INGEST IS A REFUSAL AND NOT AN EMPTY PROGRAM, and this arm is the whole reason
 // `v2_cli_run` does not call the emitter first and ask questions after.
@@ -316,11 +325,12 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
               detail: "the source roots walked to zero .dag files; an empty closure is not an empty program"
             }
           } else {
-            match emit_compiler_import_closure_from_ingest(
+            let emitted = emit_compiler_import_closure_from_ingest_located(
               ingest: ingest,
               admission: v2_cli_closure_admission(entry: entry),
               target: rust_target_model()
-            ) {
+            )
+            match emitted.outcome {
               Accepted { value: receipt, diagnostics: _ } =>
                 CliEmitted {
                   text: receipt.source.carried,
@@ -332,8 +342,17 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
                 CliRunRefused {
                   reason: diagnostics_fatal_reason(d: d),
                   detail: concat(
-                    concat("the closure did not emit; diagnostic chain: ", lens_verdict_diagnostics_located_chain_text(d: d)),
-                    concat(" | FATAL AT ", lens_verdict_diagnostic_locus_text(d: diagnostics_fatal(d: d)))
+                    concat(
+                      "the closure did not emit; diagnostic chain: ",
+                      lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: emitted.spans)
+                    ),
+                    concat(
+                      " | FATAL AT ",
+                      lens_verdict_diagnostic_locus_text_in_spans(
+                        d: diagnostics_fatal(d: d),
+                        index: emitted.spans
+                      )
+                    )
                   )
                 }
             }

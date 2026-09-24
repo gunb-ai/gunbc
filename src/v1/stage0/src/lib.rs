@@ -147,6 +147,17 @@ pub mod gunbc_reference_derived_candidate;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod gunbc_rust_crate_package_ident;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod gunbc_rust_decl_type_overlay;
 #[allow(
     unused_imports,
@@ -170,6 +181,17 @@ pub mod gunbc_stage0_crate_layout_generated;
     clippy::all
 )]
 pub mod gunbc_stage0_crate_partition_generated;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod gunbc_stage0_emitted_edge_admission;
 #[allow(
     unused_imports,
     unused_variables,
@@ -777,6 +799,7 @@ pub mod memory_governor;
 pub mod module_path_index;
 pub mod process_group;
 pub mod recorded_fixture;
+pub mod release_locus_seed_constants_generated;
 pub mod resolved_graph_cache;
 pub mod shared_typecheck_store;
 pub mod std_logic;

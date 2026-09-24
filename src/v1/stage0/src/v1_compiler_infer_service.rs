@@ -487,7 +487,9 @@ pub fn expand_transitive_services_once(
                                                 module_name: info.module_name.clone(),
                                                 kind: info.kind.clone(),
                                                 service_names: merged.clone(),
-                                                resource_names: info.resource_names.clone(),
+                                                resource_requirements: info
+                                                    .resource_requirements
+                                                    .clone(),
                                                 params: info.params.clone(),
                                                 is_self_recursive: info.is_self_recursive.clone(),
                                                 has_non_tail_self_call: info

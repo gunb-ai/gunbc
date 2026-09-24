@@ -61,8 +61,12 @@ import gunbc.fleet_intent_network { operator_host_srv1 }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import extdeps.bmc.ipmi
 import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_shell_emit_dissolution_trigger }
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_probes }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootDiagnosticBundle, SelSnapshotReading, SelSnapshotNotTaken, inventory_not_taken,
+  SdrCacheReading, SdrCacheNotTaken, mtcollins1_boot_sdr_cache,
+  SensorsNotTaken, mtcollins1_boot_sensors, SmproProbed, SmproNotTaken,
+  mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after,
   mtcollins1_boot_sel_snapshot, mtcollins1_boot_inventory, mtcollins1_boot_console,
   mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_bundle_findings, bundle_write_receipt_line,
   mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
@@ -245,7 +249,6 @@ fn mtcollins1_sol_release(
   username: NonEmptyStr,
   password_file: NonEmptyStr,
 ) -> Bool
-  uses net: std.resources.Network
 {
   dropped = diagnostic.ipmi.Tool.SolDeactivate(
     bmc_host: mtcollins1_endpoint.host,
@@ -308,7 +311,6 @@ fn mtcollins1_sol_acquire_after_grant(
   pid_path: String,
   capture_path: String,
 ) -> ProcessExit
-  uses net: std.resources.Network
 {
   match mtcollins1_bmc_username {
     Absent =>
@@ -349,7 +351,6 @@ fn mtcollins1_sol_activate_held(
   pid_path: String,
   capture_path: String,
 ) -> ProcessExit
-  uses net: std.resources.Network
 {
   if pid_path == "" {
     return exit_failure(reason: "mtcollins1 boot: SOL pid path unset; refusing acquire")
@@ -755,7 +756,6 @@ fn mtcollins1_boot_await_capture_terminal(
 }
 
 fn mtcollins1_boot_release_sol(password_file: String, pid_path: String) -> HeldLeaseObservedState
-  uses net: std.resources.Network
 {
   match mtcollins1_bmc_username {
     Absent => LeaseInaccessible
@@ -772,7 +772,6 @@ fn mtcollins1_boot_settle_from_fresh_clock(
   attempt: AttemptIdentity,
   held_at: CasGeneration,
 ) -> ProcessExit
-  uses fs: std.resources.Filesystem
 {
   match approval_instant_now() {
     Absent =>
@@ -801,7 +800,6 @@ fn mtcollins1_boot_after_gate(
   sol_pid_path: String,
   sol_capture_path: String,
 ) -> ProcessExit
-  uses net: std.resources.Network
 {
   match gate {
     GateAdmitted { authorization: auth } =>
@@ -897,9 +895,14 @@ fn mtcollins1_boot_refuses_off_srv1(host: String) -> ProcessExit {
 // credential was read carries that reason, and the bundle says the BMC sections were NOT TAKEN and
 // why, rather than leaving them out (brief, 2026-09-23: accepted, refused, timed out, approval
 // expired and pre-OS refusal each upload a bundle).
+// THE SDR CACHE SITS BESIDE THE CREDENTIAL FILE, under the runner's per-job temporary directory,
+// because it is dumped with that credential and lives exactly as long as the attempt that reads it.
+// It is not secret (sensor names and thresholds), so it needs no shred.
+data mtcollins1_boot_sdr_cache_suffix: String = ".sdr-cache"
+
 type MtCollins1BootBmcAccess
   = BmcAccessNotReached { reason: NonEmptyStr }
-  | BmcAccessHeld { username: NonEmptyStr, password_file: NonEmptyStr, password: String, sel_before: SelSnapshotReading }
+  | BmcAccessHeld { username: NonEmptyStr, password_file: NonEmptyStr, password: String, sdr_cache: SdrCacheReading, sel_before: SelSnapshotReading }
 
 type MtCollins1BootAttempt {
   outcome: ProcessExit
@@ -923,7 +926,6 @@ fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit, escalation_id: NonEmpt
 }
 
 fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: AttemptIdentityReading, capture_path: String) -> MtCollins1BootDiagnosticBundle
-  uses net: std.resources.Network
 {
   match attempt.bmc {
     BmcAccessNotReached { reason: why } =>
@@ -932,15 +934,21 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         outcome: mtcollins1_boot_exit_reason(outcome: attempt.outcome),
         sel_before: SelSnapshotNotTaken { reason: why },
         sel_after: SelSnapshotNotTaken { reason: why },
+        sdr_cache: SdrCacheNotTaken { reason: why },
+        sensors: SensorsNotTaken { reason: why },
+        smpro: SmproNotTaken { reason: why },
         inventory: inventory_not_taken(reason: why),
         console: mtcollins1_boot_console(path: capture_path),
       }
-    BmcAccessHeld { username: user, password_file: pf, password: pw, sel_before: before } =>
+    BmcAccessHeld { username: user, password_file: pf, password: pw, sdr_cache: sdr, sel_before: before } =>
       MtCollins1BootDiagnosticBundle {
         attempt: run,
         outcome: mtcollins1_boot_exit_reason(outcome: attempt.outcome),
         sel_before: before,
-        sel_after: mtcollins1_boot_sel_snapshot(username: user, password_file: pf),
+        sel_after: mtcollins1_boot_sel_snapshot(username: user, password_file: pf, sdr: sdr),
+        sdr_cache: sdr,
+        sensors: mtcollins1_boot_sensors(username: user, password_file: pf, sdr: sdr),
+        smpro: SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) },
         inventory: mtcollins1_boot_inventory(username: user, password: pw),
         console: mtcollins1_boot_console(path: capture_path),
       }
@@ -957,8 +965,17 @@ fn mtcollins1_boot_attempt_identity(read: ActionsVariableRead) -> AttemptIdentit
   }
 }
 
+// A DECLARED FRONTIER ON "EVERY TERMINAL ARM WRITES THE BUNDLE": it holds for every arm the
+// attempt can RETURN, and not for an evaluation refusal inside the conclusion. A read that fails is a
+// value here (BmcReadCause, SdrCacheUnread, ConsoleUnread) and cannot abort the bundle; an evaluator
+// refusal (run 35871654468: `n as Nat` in console_size_of_stat, "cannot cast Int to Nat") is not a
+// value, and no .dag construct lets this fold receive one as a typed cause -- it ends the whole
+// evaluation before the bundle or the receipt is written. So the wall today is that the conclusion
+// contains no expression the evaluator refuses, held by claims that EXECUTE its real crossings
+// (a_stat_size_crosses_to_its_byte_size), not by a catch. TRIGGER: the typechecker refuses what the
+// evaluator refuses (the Int-to-Nat cast is the known instance), which makes that class unwritable
+// here rather than caught.
 fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
-  uses net: std.resources.Network
 {
   let run = mtcollins1_boot_attempt_identity(read: actions_variable_read(name: github_run_id_variable_name))
   let bundle = mtcollins1_boot_bundle_of_attempt(attempt: attempt, run: run, capture_path: actions_variable_trimmed(name: mtcollins1_boot_sol_capture_path_env))
@@ -984,7 +1001,6 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
 }
 
 fn mtcollins1_boot_wet() -> ProcessExit
-  uses net: std.resources.Network
 {
   let attempt = match actions_variable_read(name: fleet_converge_expected_host_env_name) {
     ActionsVariableAbsent { variable: v, detail: d } =>
@@ -1003,7 +1019,6 @@ fn mtcollins1_boot_wet() -> ProcessExit
 // taking it on a refused gate (approval expired or denied) still records what the BMC logged over
 // the approval window.
 fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
-  uses net: std.resources.Network
 {
   let cred = actions_variable_trimmed(name: host_reset_bmc_credential_path_env)
   if cred == "" {
@@ -1073,7 +1088,8 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
                 bmc: BmcAccessNotReached { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" },
               }
             Present { value: user } => {
-              let before = mtcollins1_boot_sel_snapshot(username: user, password_file: cred as NonEmptyStr)
+              let sdr = mtcollins1_boot_sdr_cache(username: user, password_file: cred as NonEmptyStr, path: concat(cred, mtcollins1_boot_sdr_cache_suffix) as NonEmptyStr)
+              let before = mtcollins1_boot_sel_snapshot(username: user, password_file: cred as NonEmptyStr, sdr: sdr)
               let actuated = mtcollins1_boot_after_gate(
                 gate: gate,
                 request: request,
@@ -1085,7 +1101,7 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
               MtCollins1BootAttempt {
                 outcome: actuated,
                 escalation_id: Present { value: escalation },
-                bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sel_before: before },
+                bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sdr_cache: sdr, sel_before: before },
               }
             }
           }

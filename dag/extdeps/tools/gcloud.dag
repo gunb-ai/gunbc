@@ -5,7 +5,7 @@ import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { package_google_cloud_cli }
+import extdeps.apt { apt_bin_dir, package_google_cloud_cli }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -19,5 +19,5 @@ data gcloud_pinned_version: VersionConstraint = ">= 470.0.0"
 data gcloud_cli_tool: CliTool = CliTool {
   name: "gcloud",
   min_version: Present { value: gcloud_pinned_version },
-  installable_via: [SourceApt { package: package_google_cloud_cli }],
+  installable_via: [SourceApt { package: package_google_cloud_cli, bin_dir: apt_bin_dir }],
 }

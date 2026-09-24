@@ -5,13 +5,16 @@ import std.algebra { trim }
 import std.decimal { decimal_digits_only }
 import std.list { distinct_by_key }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_first, cas_generation_next, cas_generation_count }
+import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_exhausted, cas_generation_first, cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
+import std.checked_arithmetic { int_inclusive_max }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
   FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
   FilesystemFailureKind,   filesystem_create_new, filesystem_exact_read, filesystem_failure_kind_name,
   filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, filesystem_listing_entry_names,
+  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+  filesystem_entry_presence,
 }
 
 data authorization_claim_store_root: NonEmptyStr = "/var/lib/gunbc/authorization-claims" as NonEmptyStr
@@ -218,23 +221,76 @@ fn admit_cas_attempt_for_derived_payload(
 // The path a slot's generation occupies. The generation is IN the path, which
 // is what lets an exclusive create serve as the conditional write: two
 // generations of one slot are two different files, so the OS decides the race.
+fn cas_file_slot_name(key: NonEmptyStr, generation: CasGeneration) -> String {
+  concat(concat(key as String, "."), cas_generation_count(g: generation) as String)
+}
+
 fn cas_file_slot_path(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> String {
-  concat(concat(concat(concat(root as String, "/"), key as String), "."), cas_generation_count(g: generation) as String)
+  concat(concat(root as String, "/"), cas_file_slot_name(key: key, generation: generation))
 }
 
 // HOW THE SLOT IS OBSERVED, AND THE BOUND IS PART OF THE CONTRACT.
 //
-// Generations are contiguous and append-only, so the head is found by probing
-// upward from 1 until a generation is absent. That needs only Read, no
-// directory listing and no parsing of names back into numbers -- a filesystem
-// layout that had to be re-parsed to be understood would be a second identity
-// authority beside the key.
+// Generations are contiguous and append-only -- a generation N+1 is published only by a writer that
+// observed head N, and this store offers no delete -- so presence is a PREFIX of the generation line:
+// every generation at or below the head exists and none above it does. The head is therefore the
+// boundary of a monotone predicate, and it is found by GALLOPING (read 1, 2, 4, 8 ... until one is
+// absent) and then BISECTING between the last present and the first absent generation. The head
+// search needs only Read and no parsing of names back into numbers -- a filesystem layout that had to
+// be re-parsed to be understood would be a second identity authority beside the key. The one listing
+// this store takes is cas_first_generation_absent's, on the single arm where generation 1 reads absent,
+// to tell an EMPTY slot from an UNINITIALIZED store; it establishes absence, it never finds a head.
 //
-// THE PROBE IS BOUNDED AND THE BOUND REFUSES RATHER THAN TRUNCATING. Running off
-// the end returns a typed refusal, not "the head is wherever I stopped looking":
-// a walk that silently reported its own patience as the answer would be the
-// bound-shaped closure DESIGN names, where a real number satisfies a question it
-// never measured.
+// WHY NOT A LINEAR WALK FROM 1, which is what this was. The walk read every superseded generation on
+// every observation, so its cost grew with the slot's whole history, and its bound was denominated in
+// GENERATIONS: past 4096 of them every observation of the slot refused, permanently, for a slot whose
+// head was perfectly well formed. The first consumer that advances a slot once per request --
+// gunbc.auth.approval_assertion_counter, one generation per admitted App Attest assertion -- turned
+// that into an availability cliff: an operator phone stopped being able to read after ~4096 admitted
+// requests, and only re-enrolment recovered it. Raising the bound would have moved that cliff and
+// kept it. Nothing reads a superseded generation -- the interface's fact is the HEAD, and
+// std.durable_compare_and_set promises a monotone version, not a history -- so the walk was paying,
+// per observation, for information no consumer demands.
+//
+// WHY THE CHAIN ITSELF STAYS. The chain is not an obligation of the interface; it is THIS
+// realization's exclusion mechanism. An in-place conditional overwrite is not honestly available on a
+// plain filesystem: rename replaces unconditionally, so a compare-then-rename is a check-then-act race
+// that only a lock closes, and flock is exactly the single-host exclusion the interface module exists
+// to replace. O_EXCL on a DISTINCT name per generation is what lets the OS decide the race, so the
+// generations are the price of the exclusion and are kept. What was an artifact is only the READ.
+//
+// THE SEARCH IS TOTAL OVER THE WHOLE GENERATION LINE, SO IT HAS NO OBSERVATION BOUND. CasGeneration is
+// realized as a machine Int, so the line is 1 ..= int_inclusive_max. The gallop doubles while doubling
+// stays inside that range; past half of it, it probes the maximum itself instead of doubling. Every
+// step is overflow-free: the doubling is taken only at or below max / 2, and the bisection midpoint
+// is lo + (hi - lo) / 2. So an observation reads at most ~2 x 63 generations and ALWAYS answers --
+// absent, a head, or a typed read refusal -- and there is no ProbedBeyondBound arm left to produce.
+// The end of the line is a WRITE fact, not a read fact: a head at the maximum is readable, and the
+// write that would follow it refuses with CasGenerationSpaceExhausted (std.durable_compare_and_set
+// cas_generation_successor), because that head has no successor to publish.
+//
+// THE CONTRACT IS LINEARIZABILITY: an observation returns the head the slot held AT SOME INSTANT
+// DURING THE INVOCATION, not merely some generation that was once committed. It follows from two
+// facts this store guarantees. Presence is a prefix (a generation is published only after its
+// predecessor was observed, and nothing is deleted), and presence is never retracted. So the head,
+// as a function of time, is non-decreasing and moves in steps of exactly one generation.
+//
+// The search ends with generation h read present at some instant t1 and h+1 read absent at some
+// instant t2, both inside the invocation. At t1 the head is at least h. At t2 the head is at most h,
+// because h+1 is absent and presence is a prefix. Whichever read came first, the head moves through
+// every integer between those two values, so there is an instant between t1 and t2 at which the head
+// is exactly h. An empty answer is one read of generation 1 absent, which is the head at that
+// instant. The value reported is generation h's content, which is written once and never rewritten.
+// test.claim.approval_assertion_counter_wet_witness_test places an append between the search's reads
+// and shows the reported head is a real generation and the stale writer is refused by the exclusive
+// create.
+//
+// WHAT THE SEARCH NO LONGER OBSERVES: superseded generations it does not land on. The linear walk
+// read every one and would refuse on an unreadable generation below the head; this reads O(log n) of
+// them. No consumer reads a superseded generation, so none of this store's answers depends on them.
+// A HISTORY-INTEGRITY instrument -- every generation present, readable and well formed -- is
+// therefore a separate concern with its own subject, not a side effect of reading the head, and this
+// store does not claim to provide it.
 //
 // READ CLASSIFICATION IS THE HOST KIND CHANNEL, NEVER THE ERROR TEXT.
 // filesystem_exact_read already partitions NotFound from PermissionDenied /
@@ -244,54 +300,114 @@ fn cas_file_slot_path(root: NonEmptyStr, key: NonEmptyStr, generation: CasGenera
 // and a decision caller would try to occupy it.
 type CasSlotProbe
   = ProbedAbsent
+  | ProbedAbsenceUnestablished { cause: String }
   | ProbedHead { generation: CasGeneration, value: NonEmptyStr }
-  | ProbedBeyondBound { bound: Int }
   | ProbedUnreadable { generation: CasGeneration, kind: FilesystemFailureKind }
   | ProbedReadKindUnrecognized { generation: CasGeneration, observed: String }
 
-data cas_max_generation_probe: Int = 4096
+// One generation read, classified: present with its content, absent, or a typed refusal.
+type CasGenerationRead
+  = GenerationPresent { content: NonEmptyStr }
+  | GenerationAbsent
+  | GenerationRefused { probe: CasSlotProbe }
 
-fn cas_probe_from(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration, previous: NonEmptyStr) -> CasSlotProbe {
-  if cas_generation_count(g: generation) > cas_max_generation_probe {
-    ProbedBeyondBound { bound: cas_max_generation_probe }
-  } else {
-    let path = cas_file_slot_path(root: root, key: key, generation: generation)
-    let read = Filesystem.Read(path: path)
-    cas_probe_from_exact(
-      root: root,
-      key: key,
-      generation: generation,
-      previous: previous,
-      exact: filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind),
-    )
+fn cas_read_generation(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> CasGenerationRead {
+  let path = cas_file_slot_path(root: root, key: key, generation: generation)
+  let read = Filesystem.Read(path: path)
+  cas_classify_generation_read(
+    generation: generation,
+    exact: filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind),
+  )
+}
+
+fn cas_classify_generation_read(generation: CasGeneration, exact: FilesystemExactRead) -> CasGenerationRead {
+  match exact {
+    FilesystemExactPathRead { path: _, content: c } => GenerationPresent { content: c as NonEmptyStr }
+    FilesystemExactPathAbsent { path: _ } => GenerationAbsent
+    FilesystemExactPathUnreadable { path: _, kind: k, error: _ } =>
+      GenerationRefused { probe: ProbedUnreadable { generation: generation, kind: k } }
+    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: _ } =>
+      GenerationRefused { probe: ProbedReadKindUnrecognized { generation: generation, observed: o } }
   }
 }
 
-fn cas_probe_from_exact(
-  root: NonEmptyStr,
-  key: NonEmptyStr,
-  generation: CasGeneration,
-  previous: NonEmptyStr,
-  exact: FilesystemExactRead,
-) -> CasSlotProbe {
-  match exact {
-    FilesystemExactPathRead { path: _, content: c } =>
-      cas_probe_from(root: root, key: key, generation: cas_generation_next(g: generation), previous: c as NonEmptyStr)
-    FilesystemExactPathAbsent { path: _ } =>
-      if cas_generation_count(g: generation) == 1 {
-        ProbedAbsent
-      } else {
-        ProbedHead { generation: cas_generation_count(g: generation) - 1, value: previous }
-      }
-    FilesystemExactPathUnreadable { path: _, kind: k, error: _ } =>
-      ProbedUnreadable { generation: generation, kind: k }
-    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: _ } =>
-      ProbedReadKindUnrecognized { generation: generation, observed: o }
+// INVARIANT: `present` was read present. Double until a generation reads absent; past half of the
+// Int range, probe the maximum instead of doubling, so no step overflows.
+fn cas_probe_gallop(root: NonEmptyStr, key: NonEmptyStr, present: CasGeneration, present_value: NonEmptyStr) -> CasSlotProbe {
+  let p = cas_generation_count(g: present)
+  if p >= int_inclusive_max() {
+    ProbedHead { generation: present, value: present_value }
+  } else {
+    let next = if p <= int_inclusive_max() / 2 { p * 2 } else { int_inclusive_max() }
+    match cas_read_generation(root: root, key: key, generation: next) {
+      GenerationRefused { probe: r } => r
+      GenerationPresent { content: c } =>
+        cas_probe_gallop(root: root, key: key, present: next, present_value: c)
+      GenerationAbsent =>
+        cas_probe_bisect(root: root, key: key, present: present, present_value: present_value, absent: next)
+    }
+  }
+}
+
+// INVARIANT: `present` read present, `absent` read absent, present < absent. The head is the last
+// present generation, reached when the two are adjacent.
+fn cas_probe_bisect(root: NonEmptyStr, key: NonEmptyStr, present: CasGeneration, present_value: NonEmptyStr, absent: CasGeneration) -> CasSlotProbe {
+  let lo = cas_generation_count(g: present)
+  let hi = cas_generation_count(g: absent)
+  if hi - lo <= 1 {
+    ProbedHead { generation: present, value: present_value }
+  } else {
+    let mid = lo + (hi - lo) / 2
+    match cas_read_generation(root: root, key: key, generation: mid) {
+      GenerationRefused { probe: p } => p
+      GenerationPresent { content: c } =>
+        cas_probe_bisect(root: root, key: key, present: mid, present_value: c, absent: absent)
+      GenerationAbsent =>
+        cas_probe_bisect(root: root, key: key, present: present, present_value: present_value, absent: mid)
+    }
+  }
+}
+
+// AN ABSENT FIRST GENERATION IS AN EMPTY SLOT ONLY IN AN ESTABLISHED STORE. The host answers
+// NotFound for the generation path both when the file is missing and when the slot ROOT is
+// (extdeps.filesystem.filesystem_io FilesystemExactPathAbsent disclaims the directory), so reading
+// that answer as ProbedAbsent turned an UNINITIALIZED store into an EMPTY one: every reader saw "no
+// holder" and a decision caller admitted against a store it had never observed -- the absorbing
+// fallback DESIGN section 5 names, which hid fleet-converge run 35818578751's missing fabric store
+// until the first write.
+//
+// Absence is established by the filesystem authority's own route, not a second one beside it:
+// a listing of the slot root, asked through filesystem_entry_presence, is the only producer of
+// FilesystemEstablishedAbsence. A root that cannot be listed carries the host's cause into the
+// refusal; a listing that NAMES the generation the read just missed is two instants disagreeing,
+// and is refused rather than resolved in either direction. The listing is taken only on this arm
+// -- a slot with any generation never reaches it.
+fn cas_first_generation_absent(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe {
+  let name = cas_file_slot_name(key: key, generation: cas_generation_first())
+  let listed = Filesystem.List(path: root as String)
+  match filesystem_entry_presence(listing: filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error), name: name) {
+    FilesystemEntryAbsent(_) => ProbedAbsent
+    FilesystemEntryPresenceIndeterminate { cause: c } => ProbedAbsenceUnestablished { cause: c }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } => ProbedAbsenceUnestablished { cause: c }
+    FilesystemEntryListed { directory: d, name: n } =>
+      ProbedAbsenceUnestablished { cause: join(["the read of ", n, " answered not found while the listing of ", d as String, " names it; the slot moved while it was being observed"], "") }
+  }
+}
+
+fn cas_absence_unestablished(cause: String) -> CasUnreadableSlot {
+  CasUnreadableReadRefused {
+    detail: join(["an absent first generation is not an empty slot here: ", cause], "") as NonEmptyStr
   }
 }
 
 fn cas_observe_slot(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe {
-  cas_probe_from(root: root, key: key, generation: cas_generation_first(), previous: "unread" as NonEmptyStr)
+  let first = cas_generation_first()
+  match cas_read_generation(root: root, key: key, generation: first) {
+    GenerationRefused { probe: p } => p
+    GenerationAbsent => cas_first_generation_absent(root: root, key: key)
+    GenerationPresent { content: c } =>
+      cas_probe_gallop(root: root, key: key, present: first, present_value: c)
+  }
 }
 
 // THE PROJECTION TAKES A HEAD, NOT A PROBE, AND THE DELETED ARM IS THE REPAIR.
@@ -315,12 +431,6 @@ fn cas_head_as_readable(generation: CasGeneration, value: NonEmptyStr) -> CasRea
       value: value,
     }
   }
-}
-
-// ONE AUTHORITY FOR WHAT BOUND EXHAUSTION IS. Three sites spelled it independently, twice as a
-// malformed head, and a fourth spelling would have arrived with the next caller.
-fn cas_slot_observation_bound_exceeded(bound: Int) -> CasUnreadableSlot {
-  CasUnreadableObservationBoundExceeded { bound: bound }
 }
 
 // AN UNREADABLE GENERATION IS A SLOT-OBSERVATION REFUSAL, NEVER AN ABSENT SLOT.
@@ -351,13 +461,12 @@ fn cas_generation_read_kind_unrecognized(generation: CasGeneration, observed: St
 
 fn cas_probe_as_observation(probe: CasSlotProbe) -> CasSlotObservation<NonEmptyStr> {
   match probe {
-    ProbedBeyondBound { bound: b } =>
-      CasObservedUnreadable { cause: cas_slot_observation_bound_exceeded(bound: b) }
     ProbedUnreadable { generation: g, kind: k } =>
       CasObservedUnreadable { cause: cas_generation_unreadable(generation: g, kind: k) }
     ProbedReadKindUnrecognized { generation: g, observed: o } =>
       CasObservedUnreadable { cause: cas_generation_read_kind_unrecognized(generation: g, observed: o) }
     ProbedAbsent => CasObservedReadable { readable: CasReadableAbsent }
+    ProbedAbsenceUnestablished { cause: c } => CasObservedUnreadable { cause: cas_absence_unestablished(cause: c) }
     ProbedHead { generation: h, value: v } =>
       CasObservedReadable { readable: cas_head_as_readable(generation: h, value: v) }
   }
@@ -607,43 +716,13 @@ fn cas_owner_only_failed_publication(
         cas_publication_refused(detail: detail)
       }
     ProbedAbsent => cas_publication_refused(detail: detail)
-    ProbedBeyondBound { bound: b } => cas_publication_beyond_bound(bound: b)
+    ProbedAbsenceUnestablished { cause: c } => CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_absence_unestablished(cause: c) } }
     ProbedUnreadable { generation: g, kind: k } =>
       CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_generation_unreadable(generation: g, kind: k) } }
     ProbedReadKindUnrecognized { generation: g, observed: o } =>
       CasStoreRefused {
         cause: CasSlotObservationRefused { cause: cas_generation_read_kind_unrecognized(generation: g, observed: o) }
       }
-  }
-}
-
-// THE BOUND ARM CANNOT SAY THE STORE REFUSED TO PUBLISH, AND A FIRST CUT SAID IT ANYWAY.
-//
-// It routed `ProbedBeyondBound` to the publication refusal along with the other two, on the reasoning
-// that the write had failed and the target had not appeared. The second half does not follow. Consider
-// a slot whose head is 4095 and two writers targeting 4096:
-//
-//   the other writer wins 4096; this writer's create fails
-//   the re-observation reads 4096 successfully and probes 4097
-//   4097 exceeds the bound, so the probe answers ProbedBeyondBound
-//
-// Another writer DID publish. Reporting a publication refusal there invents the wrong cause -- the
-// same fabrication the lost-race repair one screen up exists to remove, reappearing in the arm that
-// repair did not consider. Found by external review.
-//
-// SO THIS ANSWERS WHAT IS ACTUALLY KNOWN: the slot could not be observed. It is a slot-observation
-// refusal, not a publication refusal and not a precondition failure, because the probe no longer holds
-// a readable head to report as the winner. The ordinary two-writer control runs far below the bound
-// and cannot discriminate this arm, so it has its own control.
-//
-// AND THE CAUSE IS BOUND EXHAUSTION, NOT A MALFORMED HEAD, which the first version of this repair got
-// wrong in the other direction: it stopped claiming the publication failed and then said the slot's
-// contents were garbage. A slot holding 4096 contiguous, perfectly well formed generations is not
-// malformed, and telling an operator it is sends them to repair bytes that are fine. Found by external
-// review, on this function's own repair.
-fn cas_publication_beyond_bound(bound: Int) -> CasOutcome<NonEmptyStr> {
-  CasStoreRefused {
-    cause: CasSlotObservationRefused { cause: cas_slot_observation_bound_exceeded(bound: bound) }
   }
 }
 
@@ -668,16 +747,14 @@ fn file_compare_and_set(
   let attempt = verified.attempt
   let probe = cas_observe_slot(root: root, key: attempt.key)
   match probe {
-    ProbedBeyondBound { bound: b } =>
-      CasStoreRefused {
-        cause: CasSlotObservationRefused { cause: cas_slot_observation_bound_exceeded(bound: b) }
-      }
     ProbedUnreadable { generation: g, kind: k } =>
       CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_generation_unreadable(generation: g, kind: k) } }
     ProbedReadKindUnrecognized { generation: g, observed: o } =>
       CasStoreRefused {
         cause: CasSlotObservationRefused { cause: cas_generation_read_kind_unrecognized(generation: g, observed: o) }
       }
+    ProbedAbsenceUnestablished { cause: c } =>
+      CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_absence_unestablished(cause: c) } }
     ProbedAbsent =>
       match attempt.expected {
         ExpectSlotAbsent =>
@@ -696,12 +773,16 @@ fn file_compare_and_set(
           CasPreconditionFailed { expected: attempt.expected, observed: cas_head_as_readable(generation: h, value: v) }
         ExpectSlotGeneration { generation: g } =>
           if cas_generation_count(g: g) == cas_generation_count(g: h) {
-            cas_commit_at(
-              admitted: AdmittedCasPublication {
-                root: root, publication: publication, attempt: attempt,
-                target: cas_generation_next(g: h),
-              }
-            )
+            match cas_generation_successor(g: h) {
+              CasSuccessorExhausted { head: last } => cas_generation_exhausted(head: last)
+              CasSuccessorGeneration { generation: next } =>
+                cas_commit_at(
+                  admitted: AdmittedCasPublication {
+                    root: root, publication: publication, attempt: attempt,
+                    target: next,
+                  }
+                )
+            }
           } else {
             CasPreconditionFailed { expected: attempt.expected, observed: cas_head_as_readable(generation: h, value: v) }
           }

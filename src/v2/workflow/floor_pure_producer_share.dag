@@ -575,6 +575,9 @@ import v2.std.collection { List }
 // THE CLI TRAILING-TOKEN PROBE ROW: v2.test.cli.v2_native_cli drives v2_cli_run over a two-file
 // supplied ingest whose second file refuses at parse; two claims read one field each of the
 // CliRunOutcome. Stored value is a refused outcome (a Symbol and a String), portable.
+// THE ARROW-BODY REFUSAL PROBE ROW IS THE SAME GROUND: v2.test.emit.closure_emit_arrow_body_refusal
+// drives the closure emitter over a one-module supplied ingest whose fn has a body; two claims read
+// one field each. Stored value is a refused verdict (a Symbol and a String), portable.
 // THE NAMESPACE CANDIDATE RULE PROBE ROW IS THE SAME GROUND AGAIN, and the most expensive instance
 // of it: v2.test.claim.resolve.namespace_candidate_rule drives native_test_context_from_ingest over
 // a TWELVE-specimen supplied ingest TWICE -- once in declared order and once permuted -- because the
@@ -591,6 +594,20 @@ import v2.std.collection { List }
 // ENROLMENT-MARGIN-REFUSED at ~1.4s CPU. The stored value is verdict arms carrying a reason symbol
 // and an optional atom symbol -- no resolution context, no Node, no closure -- portable for the same
 // reason ncr_outcomes is.
+// THE OPERATOR-SET ROWS ARE A PRODUCTION PRODUCER, THE SAME GROUND AS dag_prepared_grammar:
+// v2.compiler.body_lowering_fold body_lower_binary_operator_tokens / body_lower_prefix_operator_tokens
+// fold the grammar's binary and unary expressions to their terminal symbols. Every claim that lowers
+// an operator expression reads them, and building them per frame cost ~11.4k eval steps. The value
+// is a list of symbols.
+// THE XL-2 SEQUENCE-OPERAND RESOLVE ROW IS THE SAME GROUND AT FIVE SPECIMENS:
+// v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal sqo_outcomes drives one front end
+// over five inline modules and stores one verdict arm per module, portable for the same reason.
+// THE XL-2 CALL-ARGUMENT VALUE RESOLVE ROW IS THE SAME GROUND AT TWENTY-ONE SPECIMENS:
+// v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal cav_outcomes drives one front end
+// over twenty-one inline modules and stores one verdict arm per module, portable for the same reason.
+// THE XL-2 IF-ARM AND STATEMENT-SPINE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
+// v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal iasl_outcomes drives one front
+// end over thirteen inline modules and stores one verdict arm per module, portable for the same reason.
 // THE BODY-LOWERING NORMALIZE ROW IS THE SAME GROUND, FOUND BY BEING EXPOSED RATHER THAN BY BEING
 // NEW. v2.test.manual.body_lowering_normalize_add calls body_lowering_normalized_module() -- one
 // front end over a source literal -- from NINETEEN sites, and the value is an Optional<NormalizedTree>:
@@ -604,21 +621,166 @@ import v2.std.collection { List }
 // The verdict did NOT move: it returns true on origin/main and on that head, same interpreter,
 // sources the only variable. So this is not a regression to revert but a pre-existing recompute the
 // change surfaced, and the honest repair is the one this roster exists for rather than re-hiding it.
+// THE LOADED-CARRIER INGESTS ARE THE SAME GROUND. v2.test.claim.provenance.loaded_carrier_receipts
+// runs one front end over two inline modules and every claim in it reads that value: lcr_loaded_roots
+// (a FreeMonoid<NormalizedTree>) and lcr_located_roots (the located projection of the same ingest,
+// an Outcome<List<LocatedModuleRoot>>) -- roots, marker channels, binding and record rows, no
+// resolution context and no closure. adhoc-68dc5afb-a90 changed lcr_index, so the file's identities
+// read as changed and each claim was judged at ~210,000 eval steps against the 72,300 new-witness
+// budget, almost all of it the ingest the claims are not about.
+// THE XL-2 REHEARSAL CONTROL ROW IS THE census_probe_outcomes GROUND AGAIN: test.claim
+// .namespace_xl2_rehearsal_census drives native_test_context_from_ingest once per field of
+// Xl2ControlRuns (read the type for the roster, not a count here) over two- and three-specimen ingests, and its
+// claims each read one field of the resulting Xl2ControlRuns (GitObjectIds, diagnostics chains, strip coordinate rows -- no resolution context,
+// no closure). WARM for the same arithmetic: one front end is more than one claim's budget.
+//
+// THE OCCURRENCE-ATTRIBUTION ROWS ARE THE SAME GROUND A FIFTH TIME, AND THE LEDGER NAMED THE ROW.
+// v2.test.provenance.occurrence_file_attribution establishes that an occurrence resolves to a file
+// and byte range; its seven claims each inspect ONE field of a value produced by driving the whole
+// front end over a supplied two-file ingest -- which is DESIGN section 3's "a claim whose evaluation
+// is dominated by ONE call whose RESULT SHAPE is all it inspects", and section 2's several demands
+// for one computation identity with a shared ancestor. The front end each claim rebuilt is work no
+// row is about.
+//
+// THE INSTRUMENT DECIDED THIS ROW RATHER THAN A PREFERENCE: the required floor (the `witnesses`
+// lane of `gunbc.witness_floor_workflow`) refused
+// `refused_assembly_still_locates_the_files_it_parsed_holds` as both ENROLMENT-MARGIN-REFUSED and
+// COMPLETED-OVER-COST-REQUIREMENT; re-derive the figures by running that lane on the claim. The lane's own guidance was checked
+// before reducing anything: the cause is not a nested membership scan and not contention at
+// constant eval steps -- it is one front end per claim, so the share point is the producer.
+//
+// THE STORED VALUES ARE PORTABLE, which is the publication rule this roster enforces. None carries
+// a ResolutionContext or a closure: `attribution_roots` and `native_route_roots` carry normalized
+// trees plus a SpanIndex (a Map of OccurrenceId to OriginEvent -- loci, symbols and nodes),
+// `attribution_refused_assembly` carries a SpanIndex and an Outcome<Node>, and
+// `door_probe_cli_detail` carries a String. `native_route_roots` deliberately publishes
+// `ctx.roots.roots` and NOT the NativeTestContext it came from, for the reason census_probe_outcomes
+// gives: the context is the origin-bound shape this roster refuses.
+//
+// WARM, NEVER CLAIM-FORCED, by the same ceiling arithmetic as every row above: the fill is a front
+// end over two files, which is more than one claim's budget on this lane, so an in-fold first touch
+// would die mid-flight and be abandoned un-stored exactly as prepare_grammar's did.
 data floor_cross_claim_pure_producers_warm: List<String> = [
+  "test.claim.namespace_xl2_rehearsal_census.xl2_control_runs",
+  "v2.test.claim.provenance.loaded_carrier_receipts.lcr_loaded_roots",
+  "v2.test.claim.provenance.loaded_carrier_receipts.lcr_located_roots",
+  "v2.test.provenance.occurrence_file_attribution.attribution_roots",
+  "v2.test.provenance.occurrence_file_attribution.attribution_refused_assembly",
+  "v2.test.provenance.occurrence_file_attribution.door_probe_cli_detail",
+  "v2.test.provenance.occurrence_file_attribution.native_route_roots",
   "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_module",
   "v2.test.claim.resolve.namespace_candidate_rule.ncr_outcomes",
   "v2.test.claim.namespace_xl0.call_argument_resolve_refusal.xl2_outcomes",
+  "v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal.sqo_outcomes",
+  "v2.test.claim.namespace_xl0.value_position_whole_read.vpw_outcomes",
+  "v2.test.claim.namespace_xl0.value_position_whole_read.vpw_normalized",
+  "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal.cav_outcomes",
+  "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal.iasl_outcomes",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
+  "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_probe_verdict",
   "v2.test.claim.native_route.native_refusal_detail.ndp_resolutions",
   "v2.test.claim.native_census.whole_tree_census_resolve.census_probe_outcomes",
   "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
   "v2.compiler.program_assembly.dag_prepared_grammar",
+  "v2.compiler.body_lowering_fold.body_lower_binary_operator_tokens",
+  "v2.compiler.body_lowering_fold.body_lower_prefix_operator_tokens",
   "v2.test.long.emit_host_produced_module_equals_eval.produced_add_module_source",
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_arrow_with_body",
   "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_swapped_arrow_with_body",
   "v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_specimen_resolved",
+  "v2.test.execution.data_decl_lowering_grounding.ddl_data_resolved",
+  "v2.test.execution.data_decl_lowering_grounding.ddl_fn_eq_resolved",
+  "v2.test.execution.data_decl_lowering_grounding.ddl_fn_brace_resolved",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_0",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_1",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_2",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_3",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_4",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_5",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_6",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_7",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_8",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_9",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_10",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_11",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_12",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_13",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_14",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_15",
+  "v2.test.parse.variant_field_lowering.vfs_normalized_16",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_parsed_0",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_parsed_1",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_parsed_2",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_parsed_3",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_parsed_4",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_parsed_5",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_parsed_6",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_parsed_7",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_parsed_8",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_parsed_9",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_parsed_10",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_parsed_11",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_0",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_1",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_2",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_3",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_4",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_5",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_6",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_7",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_8",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_9",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_10",
+  "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse.cps_normalized_11",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_0",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_1",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_2",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_3",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_4",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_5",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_6",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_7",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_8",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_9",
+  "v2.test.parse.closure_parse_batch_two.cb2_parsed_10",
+  "v2.test.parse.closure_parse_batch_two.cb2_normalized_5",
+  "v2.test.parse.closure_parse_batch_two.cb2_normalized_7",
+  "v2.test.parse.closure_parse_batch_two.cb2_normalized_8",
+  "v2.test.parse.closure_parse_batch_two.cb2_normalized_9",
+  "v2.test.parse.closure_parse_batch_two.cb2_normalized_10",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_0",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_1",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_2",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_3",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_4",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_5",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_6",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_7",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_8",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_9",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_where_alias_binder",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_unshadowed_binder",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_record_data_binder",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_ambiguous_binder",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_module_named_binder",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_unimported_constructor",
+  "v2.test.claim.match_arm_binder_frame.mab_resolved_two_module_variant",
+  "v2.test.claim.match_arm_binder_frame.mab_record_declarations_specimen",
+  "v2.test.claim.type_param_binder_frame.tpb_identity",
+  "v2.test.claim.type_param_binder_frame.tpb_colliding",
+  "v2.test.claim.type_param_binder_frame.tpb_used_outside",
+  "v2.test.claim.type_param_binder_frame.tpb_same_name_twice",
+  "v2.test.claim.type_param_binder_frame.tpb_sibling_binder_leak",
+  "v2.test.claim.type_param_binder_frame.tpb_two_params",
+  "v2.test.claim.type_param_binder_frame.tpb_undeclared_type_name",
+  "v2.test.claim.type_param_binder_frame.tpb_non_generic",
+  "v2.test.claim.type_param_binder_frame.tpb_type_param_as_value",
+  "v2.test.claim.type_param_binder_frame.tpb_emitted_add_twin",
+  "v2.test.claim.type_param_binder_frame.tpb_emitted_add_generic",
+  "v2.test.claim.body_lowering_qualified_path.body_lowering_qualified_value_normalized",
+  "v2.test.manual.body_lowering_projection_call.body_lowering_parsed_module",
   "v2.test.execution.emit_on_demand_match_loop_fold_family_witness.mlf_family_primary_emitted",
   "v2.test.execution.emit_on_demand_family_crate_witness.logic_family_primary_emitted",
   "v2.test.self_host.stage0_production_target.stage0_boundary_profile_emitted_source",
@@ -640,6 +802,31 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
   "v2.test.claim.body_lowering_block_body_call.body_lowering_block_call_parsed",
   "v2.test.claim.namespace_xl0.call_argument_mention_survival.call_argument_fixture_normalized",
+  "v2.compiler.reference_conservation.dag_declared_token_classes",
+  "v2.test.claim.namespace_xl0.reference_conservation.clean_control_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.block_second_statement_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.if_arm_call_argument_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.infix_right_operand_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.repeated_spelling_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.named_argument_label_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.list_literal_argument_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.where_refinement_predicate_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.match_later_arm_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation.statement_let_binder_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.two_same_spelled_labels_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.operator_call_argument_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.operator_if_arm_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.scope_member_dropping_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.scope_outsider_dropping_subject",
+  "v2.test.claim.namespace_xl0.reference_conservation_admission.scope_member_clean_subject",
+  "v2.test.claim.body_lowering.declaration_structure_preserved.where_refinement_alias_subject",
+  "v2.test.claim.body_lowering.single_arm_match.three_arm_subject",
+  "v2.test.claim.body_lowering.single_arm_match.zero_arm_subject",
+  "v2.test.claim.body_lowering.statement_let_bind.let_then_reference_subject",
+  "v2.test.claim.body_lowering.statement_let_bind.let_chain_subject",
+  "v2.test.claim.body_lowering.statement_let_bind.let_in_form_subject",
+  "v2.test.claim.body_lowering.statement_let_bind.typed_let_subject",
+  "v2.test.claim.body_lowering_block_body_call.body_lowering_block_call_subject",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_fixture_normalized",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_local_consumer",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_declared_consumer",
@@ -653,6 +840,15 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_import_consumer_a",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_import_consumer_b",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_relay_consumer",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_imported_param_type_consumer",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_unimported_param_type_consumer",
+  "v2.test.claim.reference_closure.rc_fixture_normalized",
+  "v2.test.claim.reference_closure.rc_resolved_entry",
+  "v2.test.claim.reference_closure.rc_resolved_imported",
+  "v2.test.claim.reference_closure.rc_resolved_dotted",
+  "v2.test.claim.reference_closure.rc_resolved_transitive",
+  "v2.test.claim.reference_closure.rc_resolved_logic",
+  "v2.test.claim.reference_closure.rc_resolved_broken_entry",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_normalized",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_parsed",
   "v2.extdeps.languages.dag.dag_canonical_symbol_map",

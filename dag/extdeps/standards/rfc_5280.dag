@@ -12,11 +12,12 @@ import extdeps.standards.x690_der {
   der_read_document, DerDocumentRead, DerDocumentRefused,
   der_children, DerChildrenRead, DerChildrenRefused, der_child_at, der_expect, der_expect_sequence,
   der_element_expect, der_element_expect_sequence, der_element_expect_universal,
-  der_value, der_tlv, der_unsigned_integer, DerUnsignedRead, DerUnsignedRefused,
+  der_value, der_tlv, der_unsigned_integer, der_big_endian, DerUnsignedRead, DerUnsignedRefused,
   der_object_identifier, DerOidRead, DerOidRefused, der_bit_string_octets, DerBitsRead, DerBitsRefused,
   der_boolean, DerBoolRead, DerBoolRefused,
   der_tag_integer, der_tag_bit_string, der_tag_octet_string, der_tag_object_identifier, der_tag_boolean, der_tag_utc_time, der_tag_generalized_time, der_tag_sequence,
   DerElementAbsent, DerChildCountUnexpected, DerTagUnexpected,
+  DerBooleanMalformed, DerBitStringUnusedBitsRefused, DerTruncated,
 }
 
 // RFC 5280, Internet X.509 PKI Certificate and CRL Profile, §4.1 (the Certificate, TBSCertificate,
@@ -28,7 +29,10 @@ import extdeps.standards.x690_der {
 // This reader decodes the structure and hands out its facts; it does not validate a path. Chain
 // verification (issuer/subject join, validity against a clock, signature under the issuer's key)
 // is the consumer's fold, because which anchors are trusted and which clock is authoritative are
-// the consumer's facts, not the profile's.
+// the consumer's facts, not the profile's. What the PROFILE owns here is narrower than path
+// validation: the RFC 5280 CA-authority checks modeled here (§6.1.4 (k), (l)/(m), (n):
+// basicConstraints cA, pathLenConstraint, keyUsage keyCertSign) are x509_ca_authority, which a
+// consumer's chain fold applies to every intermediate it accepts.
 data rfc_5280_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -488,6 +492,210 @@ fn x509_extension(cert: X509Certificate, oid: String) -> X509ExtensionLookup {
       null => X509ExtensionAbsent { oid: oid }
       h => X509ExtensionFound { extension: h }
     }
+  }
+}
+
+// ── Authority to act as a CA (§4.2.1.3, §4.2.1.9, §6.1.4) ────────────────────────────────────
+data oid_basic_constraints: String = "2.5.29.19"
+data oid_key_usage: String = "2.5.29.15"
+
+// keyCertSign is KeyUsage bit 5 (§4.2.1.3); named bits count from the high bit of the first
+// contents octet after the unused-bits count, so bit 5 is 0x04 of that octet.
+data key_usage_key_cert_sign_bit: Int = 5
+
+// pathLenConstraint is INTEGER (0..MAX) (§4.2.1.9): the profile sets no upper bound, so the reader
+// may not invent one. A value the Int carrier represents is PathLengthRepresentable; a larger one
+// is PathLengthAboveCarrier, which exceeds every Int and so can never be exceeded by a count of
+// intermediates.
+type X509PathLength
+  = PathLengthRepresentable { value: Int }
+  | PathLengthAboveCarrier
+
+// Why a certificate may not sign certificates below it. §6.1.4 (k): basicConstraints must be
+// PRESENT with cA TRUE; (l)/(m): a pathLenConstraint bounds the non-self-issued intermediates that
+// may follow; (n): IF keyUsage is present, keyCertSign must be set -- an ABSENT keyUsage does not
+// refuse, because the validation algorithm does not require one.
+type X509CaRefusal
+  = X509BasicConstraintsAbsent
+  | X509BasicConstraintsDuplicated
+  | X509BasicConstraintsMalformed { cause: DerRefusal }
+  | X509NotACa
+  | X509PathLengthExceeded { path_len_constraint: Int, intermediates_below: Int }
+  | X509KeyUsageDuplicated
+  | X509KeyUsageMalformed { cause: DerRefusal }
+  | X509KeyCertSignAbsent
+  | X509IntermediatesBelowNegative { intermediates_below: Int }
+
+type X509CaStanding
+  = X509CaAuthorized { path_len_constraint: X509PathLength? }
+  | X509CaRefused { cause: X509CaRefusal }
+
+type X509BasicConstraintsRead
+  = X509BasicConstraintsOk { ca: Bool, path_len_constraint: X509PathLength? }
+  | X509BasicConstraintsRefused { cause: X509CaRefusal }
+
+// BasicConstraints ::= SEQUENCE { cA BOOLEAN DEFAULT FALSE, pathLenConstraint INTEGER (0..MAX)
+// OPTIONAL }. Under DER a DEFAULT value is omitted (X.690 §11.5), so an encoded FALSE refuses.
+fn read_basic_constraints(octets: List<UInt8>) -> X509BasicConstraintsRead {
+  match der_read_document(octets: octets) {
+    DerDocumentRefused { cause: c } => X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: c } }
+    DerDocumentRead { element: seq } =>
+      match der_element_expect_sequence(e: seq) {
+        Present { value: c } => X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: c } }
+        Absent =>
+          match der_children(octets: octets, parent: seq) {
+            DerChildrenRefused { cause: c } => X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: c } }
+            DerChildrenRead { elements: kids } =>
+              if count(kids) > 2 { X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: DerChildCountUnexpected { at: seq.value_at, expected: 2, found: count(kids) } } } }
+              else {
+                match kids |> get(0) {
+                  null => X509BasicConstraintsOk { ca: false, path_len_constraint: none }
+                  first =>
+                    if first.tag_number == der_tag_boolean {
+                      match der_element_expect_universal(e: first, tag_number: der_tag_boolean) {
+                        Present { value: c } => X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: c } }
+                        Absent =>
+                          match der_boolean(octets: octets, e: first) {
+                            DerBoolRefused { cause: c } => X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: c } }
+                            DerBoolRead { value: ca } =>
+                              if !ca { X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: DerBooleanMalformed { at: first.value_at } } } }
+                              else {
+                                match kids |> get(1) {
+                                  null => X509BasicConstraintsOk { ca: true, path_len_constraint: none }
+                                  second => basic_constraints_path_len(octets: octets, e: second, ca: true)
+                                }
+                              }
+                          }
+                      }
+                    }
+                    else if count(kids) == 1 { basic_constraints_path_len(octets: octets, e: first, ca: false) }
+                    else { X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: DerTagUnexpected { at: first.header_at, expected: der_tag_boolean, found: first.tag_number } } } }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn basic_constraints_path_len(octets: List<UInt8>, e: DerElement, ca: Bool) -> X509BasicConstraintsRead {
+  match der_element_expect_universal(e: e, tag_number: der_tag_integer) {
+    Present { value: c } => X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: c } }
+    Absent =>
+      match der_unsigned_integer(octets: octets, e: e) {
+        DerUnsignedRefused { cause: c } => X509BasicConstraintsRefused { cause: X509BasicConstraintsMalformed { cause: c } }
+        DerUnsignedRead { magnitude: m } =>
+          X509BasicConstraintsOk { ca: ca, path_len_constraint: Present { value: path_length_of_magnitude(m: m) } }
+      }
+  }
+}
+
+// The carrier is a signed 64-bit Int: a magnitude of at most 8 octets whose top bit is clear
+// fits it; anything wider is above it.
+fn path_length_of_magnitude(m: List<UInt8>) -> X509PathLength {
+  let top = match m |> get(0) {
+    null => 0
+    o => o
+  }
+  if count(m) < 8 || (count(m) == 8 && top < 128) { PathLengthRepresentable { value: der_big_endian(octets: m, at: 0, n: count(m), acc: 0) } }
+  else { PathLengthAboveCarrier }
+}
+
+type X509KeyUsageRead
+  = X509KeyUsageBits { meaningful: Int, bits: List<UInt8> }
+  | X509KeyUsageRefused { cause: DerRefusal }
+
+// KeyUsage ::= BIT STRING. Unlike a key or a signature, a named-bit list legitimately carries
+// unused trailing bits, so this reads the unused count (0..7, X.690 §8.6.2.2) rather than refusing
+// it the way der_bit_string_octets does -- and then holds the rest of DER to it: the unused bits
+// are zero (X.690 §11.2.1), and a named-bit list ends at its last asserted bit with no trailing
+// zero octet (X.690 §11.2.2), so the lowest meaningful bit of the last octet is set. What it hands
+// out is the MEANINGFUL bit count, so a padding bit can never be read as a named bit.
+fn read_key_usage(octets: List<UInt8>) -> X509KeyUsageRead {
+  match der_read_document(octets: octets) {
+    DerDocumentRefused { cause: c } => X509KeyUsageRefused { cause: c }
+    DerDocumentRead { element: e } =>
+      match der_element_expect_universal(e: e, tag_number: der_tag_bit_string) {
+        Present { value: c } => X509KeyUsageRefused { cause: c }
+        Absent => {
+          let v = der_value(octets: octets, e: e)
+          match v |> get(0) {
+            null => X509KeyUsageRefused { cause: DerTruncated { at: e.value_at, needed: 1, available: 0 } }
+            unused =>
+              if unused > 7 || (count(v) == 1 && unused != 0) { X509KeyUsageRefused { cause: DerBitStringUnusedBitsRefused { at: e.value_at, unused: unused } } }
+              else if count(v) == 1 { X509KeyUsageBits { meaningful: 0, bits: [] } }
+              else {
+                let last = match v |> get(count(v) - 1) {
+                  null => 0
+                  o => o
+                }
+                let pad = key_usage_bit_weight(position: unused)
+                if last % pad != 0 || (last / pad) % 2 != 1 { X509KeyUsageRefused { cause: DerBitStringUnusedBitsRefused { at: e.value_at, unused: unused } } }
+                else { X509KeyUsageBits { meaningful: 8 * (count(v) - 1) - unused, bits: v |> skip(1) } }
+              }
+          }
+        }
+      }
+  }
+}
+
+// 2^position for a bit position 0..7 counted from the LOW end of an octet.
+fn key_usage_bit_weight(position: Int) -> Int {
+  if position == 0 { 1 } else if position == 1 { 2 } else if position == 2 { 4 } else if position == 3 { 8 } else if position == 4 { 16 } else if position == 5 { 32 } else if position == 6 { 64 } else { 128 }
+}
+
+// Named bit `bit` counts from the HIGH bit of the first octet; a bit at or beyond the meaningful
+// count is not asserted, whatever the padding holds.
+fn key_usage_bit_set(meaningful: Int, bits: List<UInt8>, bit: Int) -> Bool {
+  if bit < 0 || bit >= meaningful { false }
+  else {
+    match bits |> get(bit / 8) {
+      null => false
+      o => (o / key_usage_bit_weight(position: 7 - bit % 8)) % 2 == 1
+    }
+  }
+}
+
+// §6.1.4 (k), (m), (n) for one intermediate, with `intermediates_below` the number of
+// non-self-issued intermediate certificates that follow it in the path (0 when it issued the
+// end-entity directly). The trust anchor is not a subject of this check (§6.1: its information is
+// an input to the algorithm, not a certificate the path validates).
+fn x509_ca_authority(cert: X509Certificate, intermediates_below: Int) -> X509CaStanding {
+  if intermediates_below < 0 { X509CaRefused { cause: X509IntermediatesBelowNegative { intermediates_below: intermediates_below } } }
+  else { x509_ca_authority_counted(cert: cert, intermediates_below: intermediates_below) }
+}
+
+fn x509_ca_authority_counted(cert: X509Certificate, intermediates_below: Int) -> X509CaStanding {
+  match x509_extension(cert: cert, oid: oid_basic_constraints) {
+    X509ExtensionAbsent { oid: _ } => X509CaRefused { cause: X509BasicConstraintsAbsent }
+    X509ExtensionDuplicated { oid: _ } => X509CaRefused { cause: X509BasicConstraintsDuplicated }
+    X509ExtensionFound { extension: bc } =>
+      match read_basic_constraints(octets: bc.value) {
+        X509BasicConstraintsRefused { cause: c } => X509CaRefused { cause: c }
+        X509BasicConstraintsOk { ca: ca, path_len_constraint: plc } =>
+          if !ca { X509CaRefused { cause: X509NotACa } }
+          else {
+            let path_refusal = match plc {
+              Absent => none
+              Present { value: PathLengthAboveCarrier } => none
+              Present { value: PathLengthRepresentable { value: n } } => if intermediates_below > n { Present { value: X509PathLengthExceeded { path_len_constraint: n, intermediates_below: intermediates_below } } } else { none }
+            }
+            match path_refusal {
+              Present { value: r } => X509CaRefused { cause: r }
+              Absent =>
+                match x509_extension(cert: cert, oid: oid_key_usage) {
+                  X509ExtensionAbsent { oid: _ } => X509CaAuthorized { path_len_constraint: plc }
+                  X509ExtensionDuplicated { oid: _ } => X509CaRefused { cause: X509KeyUsageDuplicated }
+                  X509ExtensionFound { extension: ku } =>
+                    match read_key_usage(octets: ku.value) {
+                      X509KeyUsageRefused { cause: c } => X509CaRefused { cause: X509KeyUsageMalformed { cause: c } }
+                      X509KeyUsageBits { meaningful: m, bits: bits } =>
+                        if key_usage_bit_set(meaningful: m, bits: bits, bit: key_usage_key_cert_sign_bit) { X509CaAuthorized { path_len_constraint: plc } }
+                        else { X509CaRefused { cause: X509KeyCertSignAbsent } }
+                    }
+                }
+            }
+          }
+      }
   }
 }
 

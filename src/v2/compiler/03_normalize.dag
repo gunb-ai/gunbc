@@ -38,9 +38,11 @@ import v2.std.compilers.sugar {
 }
 import v2.compiler.body_lowering_fold {
   body_lower_finish_for_normalize,
-  body_lower_is_deferred_lower_at_normalize
+  body_lower_fn_decl_to_census_arrow,
+  body_lower_is_deferred_lower_at_normalize,
+  body_lower_type_decl_record_name_optional
 }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
+import v2.compiler.normalized_tree { CensusTree, NormalizedTree, admit_census_tree, admit_normalized_tree }
 import v2.compiler.test_marker_capture { test_marker_capture }
 import v2.compiler.namespace_graft {
   module_header_containment_graft,
@@ -168,8 +170,14 @@ fn normalize_node(n: Node) -> Outcome<Node> {
   normalize_node_ctx(n: n, under_fn_decl: false)
 }
 
+// A `data` DECLARATION OPENS THE SAME BODY SCOPE A `fn` DECLARATION DOES. Both lower to a named
+// Arrow whose body the declaration arm reads from the raw parse (v2.compiler.body_lowering_fold
+// body_lower_fn_decl_to_arrow, body_lower_data_decl_to_member), so a fn_body nested in either, such
+// as a fn literal in a record initializer, is deferred to that reader rather than folded here
+// half-way. Before 2026-09-23 a data declaration was preserved unlowered and nothing read its
+// initializer as a body, so the question did not arise.
 fn normalize_scope_under_fn_decl(under_fn_decl: Bool, emitted: Symbol) -> Bool {
-  under_fn_decl || (emitted == ^dag_surface_fn_decl)
+  under_fn_decl || (emitted == ^dag_surface_fn_decl) || (emitted == ^dag_surface_data_decl)
 }
 
 fn normalize_fn_body_pass_through_at_seam(emitted: Symbol, under_fn_decl: Bool) -> Bool {
@@ -259,9 +267,14 @@ fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Nod
 // One import decl yields one row per name in its block; a decl this reader cannot understand
 // REFUSES rather than contributing nothing, because a silently empty row set is indistinguishable
 // from a module that imports nothing and would surface far away as unbound references.
-fn import_binding_capture(tree: ParseTree) -> Outcome<FreeMonoid<AliasBindingRow>> {
+// ONE WALK, TWO READERS (review 70175). Both captures ask the same question of the same tree --
+// every node, filtered by its emitted production identity -- so the subtree list is bound ONCE by
+// the caller and passed to each, rather than each folding node_subtree_nodes itself. DESIGN section
+// 2: two demands whose least common ancestor holds the value share it rather than recomputing it,
+// and this stage is one the floor already measures as over-budget.
+fn import_binding_capture(tree: ParseTree, nodes: List<Node>) -> Outcome<FreeMonoid<AliasBindingRow>> {
   fold_list(
-    xs: node_subtree_nodes(root: tree),
+    xs: nodes,
     empty: Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, n) {
       match acc {
@@ -292,6 +305,33 @@ fn import_binding_capture(tree: ParseTree) -> Outcome<FreeMonoid<AliasBindingRow
   )
 }
 
+// WHICH OF THIS MODULE'S TYPES ARE RECORDS, read from the parse tree for the reason
+// import_binding_capture reads imports there: after lowering, a record is a bare
+// `Conj { R: payload }` that no reader can tell from a where-alias or a module spine. The question is
+// answered by the rehome's own predicate (v2.compiler.body_lowering_fold
+// body_lower_type_decl_record_name_optional), so what is carried and what was rehomed are one
+// decision, not two.
+fn record_declaration_capture(nodes: List<Node>) -> FreeMonoid<Symbol> {
+  fold_list(
+    xs: nodes,
+    empty: Empty,
+    cons: fn(acc, n) {
+      match parse_production_emitted_identity_optional(node: n) {
+        Absent => acc
+        Present { value: id } =>
+          if id != ^dag_surface_type_decl {
+            acc
+          } else {
+            match body_lower_type_decl_record_name_optional(shell: n) {
+              Absent => acc
+              Present { value: name } => list_snoc_item(xs: acc, item: name)
+            }
+          }
+      }
+    }
+  )
+}
+
 fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
   match normalize_node(n: parse_tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -300,11 +340,12 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: grafted, diagnostics: d1 } =>
           if well_formed(n: grafted) {
+            let parse_nodes = node_subtree_nodes(root: parse_tree)
             match test_marker_capture(tree: parse_tree) {
               Rejected { diagnostics: r } =>
                 Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
               Accepted { value: markers, diagnostics: _ } =>
-                match import_binding_capture(tree: parse_tree) {
+                match import_binding_capture(tree: parse_tree, nodes: parse_nodes) {
                   Rejected { diagnostics: r } =>
                     Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
                   Accepted { value: bindings, diagnostics: _ } =>
@@ -312,9 +353,118 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
                       root: grafted,
                       test_markers: markers,
                       import_bindings: bindings,
+                      record_declarations: record_declaration_capture(nodes: parse_nodes),
                       diagnostics: d1
                     )
                 }
+            }
+          } else {
+            Rejected {
+              diagnostics: rejected_with_pending(
+                pending: d1,
+                rejected: diagnostics_singleton(
+                  d: post_normalize_not_well_formed_diagnostic(n: grafted)
+                )
+              )
+            }
+          }
+      }
+  }
+}
+
+// CENSUS MODE: A MODULE OUTSIDE THE COMPILED CLOSURE, NORMALIZED TO WHAT RESOLUTION READS OF IT.
+// Every file is parsed -- a parse refusal stays fatal, because this entry takes a ParseTree and a
+// file that did not parse has none -- but only closure members are lowered. A non-member is read by
+// resolution for its declaration paths and payload kinds alone (v2.compiler.symbol_index_fill walks
+// an Arrow's domain and never its body), so the census fold keeps every declaration and lowers no
+// body:
+//   - a fn declaration becomes its signature-only Arrow (body_lower_fn_decl_to_census_arrow); its
+//     params and return type are folded exactly as the full fold folds them, so the domain a closure
+//     member resolves against is the one whole-root ingest builds;
+//   - a data declaration and a test fn declaration keep their parse shells unlowered: the graft keys
+//     both by their keyword-then-ident edge, which the shell still carries, and their value and body
+//     expressions -- the ones that refuse today (body_lowering_reason_call_argument_unread in
+//     dag/examples/weather/weather.dag) -- are never entered. A non-member therefore contributes NO
+//     TestCodeIndex rows; that is by design, since a module outside the closure has no tests run;
+//   - every other node (module spine, type, variant, record, import and alias declarations) takes the
+//     full fold unchanged, so the declaration-level Disjs the variant-alias and alias scans read are
+//     the same Disjs whole-root ingest produces.
+// The result is a CensusTree, not a NormalizedTree, so no emission or body-resolution consumer can be
+// handed one: a census-grade module is never emitted BY TYPE rather than by a check at the emitter.
+fn normalize_census_node(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: emitted } =>
+      if (emitted == ^dag_surface_data_decl) || (emitted == ^dag_surface_test_fn_decl) {
+        Accepted { value: n, diagnostics: None }
+      } else if emitted == ^dag_surface_fn_decl {
+        match normalize_census_fold_children(n: n, under_fn_decl: true) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: edges, diagnostics: cd } =>
+            match body_lower_fn_decl_to_census_arrow(shell: node_rebuild(n: n, children: edges)) {
+              Rejected { diagnostics: r } =>
+                Rejected { diagnostics: rejected_with_pending(pending: cd, rejected: r) }
+              Accepted { value: arrow, diagnostics: d } =>
+                Accepted { value: arrow, diagnostics: diagnostics_merge(outer: cd, inner: d) }
+            }
+        }
+      } else if body_lower_is_deferred_lower_at_normalize(
+        emitted: emitted,
+        under_fn_decl: normalize_scope_under_fn_decl(under_fn_decl: under_fn_decl, emitted: emitted)
+      ) {
+        normalize_node_ctx(n: n, under_fn_decl: under_fn_decl)
+      } else {
+        normalize_census_finish(n: n, under_fn_decl: under_fn_decl)
+      }
+    Absent => normalize_census_finish(n: n, under_fn_decl: under_fn_decl)
+  }
+}
+
+fn normalize_census_fold_children(n: Node, under_fn_decl: Bool) -> Outcome<List<Edge>> {
+  fold(n.children, init: normalize_children_init(), f: fn(acc, e) {
+    normalize_children_step(
+      acc: acc,
+      edge: e,
+      child: normalize_census_node(n: e.target, under_fn_decl: under_fn_decl)
+    )
+  })
+}
+
+fn normalize_census_finish(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
+  match normalize_census_fold_children(n: n, under_fn_decl: under_fn_decl) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: edges, diagnostics: cd } =>
+      match body_lower_finish_for_normalize(
+        n: n,
+        folded: node_rebuild(n: n, children: edges),
+        cd: cd,
+        fn_body_pass_through: false
+      ) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: after_body, diagnostics: cd0 } =>
+          normalize_sugar_finish(n: n, folded: after_body, cd: cd0)
+      }
+  }
+}
+
+fn normalize_census(parse_tree: ParseTree) -> Outcome<CensusTree> {
+  match normalize_census_node(n: parse_tree, under_fn_decl: false) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: normalized, diagnostics: d } =>
+      match normalize_module_graft_finish(folded: normalized, cd: d) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: grafted, diagnostics: d1 } =>
+          if well_formed(n: grafted) {
+            let parse_nodes = node_subtree_nodes(root: parse_tree)
+            match import_binding_capture(tree: parse_tree, nodes: parse_nodes) {
+              Rejected { diagnostics: r } =>
+                Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
+              Accepted { value: bindings, diagnostics: _ } =>
+                admit_census_tree(
+                  root: grafted,
+                  import_bindings: bindings,
+                  record_declarations: record_declaration_capture(nodes: parse_nodes),
+                  diagnostics: d1
+                )
             }
           } else {
             Rejected {

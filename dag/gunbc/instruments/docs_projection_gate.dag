@@ -17,6 +17,7 @@ import gunbc.generated_artifact {
   WitnessFloorYamlArtifact,
   FleetConvergeYamlArtifact,
   FleetDesiredAdmissionYamlArtifact,
+  MicrovmShakedownYamlArtifact,
   HealWorkflowYamlArtifact,
   HealPublisherWorkflowYamlArtifact,
   GitignoreArtifact,
@@ -33,7 +34,7 @@ import gunbc.generated_artifact {
   Stage0LinkedPartitionCratesArtifact,
   SeedRetentionFrontierGeneratedRsArtifact,
   V1InterpreterDispatchGeneratedRsArtifact,
-  EvaluationBudgetConsequenceGeneratedRsArtifact,
+  EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact,
   FileTransportRealizationGeneratedRsArtifact,
   Fci1BoundedExecutionContextArtifact,
   AutoinstallUserDataArtifact,
@@ -83,6 +84,7 @@ fn docs_projection_producer(a: GeneratedArtifact) -> Optional<String> {
     WitnessFloorYamlArtifact => Absent
     FleetConvergeYamlArtifact => Absent
     FleetDesiredAdmissionYamlArtifact => Absent
+    MicrovmShakedownYamlArtifact => Absent
     HealWorkflowYamlArtifact => Absent
     HealPublisherWorkflowYamlArtifact => Absent
     GitignoreArtifact => Absent
@@ -100,6 +102,7 @@ fn docs_projection_producer(a: GeneratedArtifact) -> Optional<String> {
     SeedRetentionFrontierGeneratedRsArtifact => Absent
     V1InterpreterDispatchGeneratedRsArtifact => Absent
     EvaluationBudgetConsequenceGeneratedRsArtifact => Absent
+    ReleaseLocusSeedConstantsGeneratedRsArtifact => Absent
     FileTransportRealizationGeneratedRsArtifact => Absent
     Fci1BoundedExecutionContextArtifact => Absent
     CouponCadQueryProgramArtifact => Absent

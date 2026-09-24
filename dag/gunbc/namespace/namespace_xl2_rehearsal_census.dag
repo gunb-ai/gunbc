@@ -1,0 +1,391 @@
+module gunbc.namespace_xl2_rehearsal_census
+
+import std.types { Int, List, String }
+import std.import { ImportStripCoordinateSegment }
+import extdeps.git.object_store { GitObjectId }
+import extdeps.communication.medium { Lossless, Medium }
+import tools.multi_module_compile_fixture { FixtureSource }
+import gunbc.namespace_step0_subject_collector {
+  Step0SubjectCollected,
+  Step0SubjectCollectionRefused,
+  Step0SubjectMember,
+  Step0SubjectPinRefusal,
+  Step0SubjectVector,
+  collect_step0_subject_vector_at
+}
+import gunbc.namespace_step0_strip_producer {
+  Step0SourceStripped,
+  Step0SourceStripRefused,
+  Step0StripProductionRefusalCause,
+  namespace_step0_strip_source
+}
+import v2.compiler.compile {
+  NativeCensusModule,
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.native_test_vocabulary { NativeTestFileRefusal }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
+import v2.compiler.resolve { ObservationComplete, ObservationCompleteness, ObservationIncomplete }
+import v2.std.node { Symbol }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import v2.std.optional { Absent, Present }
+import v2.std.algebra { fold_list }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import std.algebra { Cons, Empty }
+import gunbc.compiler_frontend_program_status { Xl2Prerequisite, xl2_prerequisites_outstanding }
+
+// XL-2'S REHEARSAL INSTRUMENT: THE CUT EXECUTED IN A THROWAWAY TREE, ITS RESIDUAL OBSERVED ON THE
+// PRODUCTION ROUTE. Every stage is an existing authority composed, not restated: the exact base is
+// gunbc.namespace_step0_subject_collector (every byte read out of the git object store at one pinned
+// revision, a failed read refusing the collection), the cut is the typed import strip through
+// gunbc.namespace_step0_strip_producer, and the observation is v2.compiler.compile's whole-tree
+// census-resolve (gunbc#11738) over the stripped sources. THE THROWAWAY TREE IS AN INGEST, NOT A
+// DIRECTORY: each stripped member keeps its base path as its artifact path and compilation unit, so
+// the tree is path-faithful without a single write, and the live source tree cannot be touched
+// because nothing here holds a handle to it.
+
+// ONE RESIDUAL ROW IS ONE INDEPENDENT FAILURE CHAIN, NOT ONE DIAGNOSTIC. A resolve refusal is an
+// ordered chain whose advisories precede the refusal that fired; fanning it out per diagnostic
+// counts the advisories as residual sites. The row carries the resolver's chain whole and NO stored
+// fatal: a reader derives it with std.diagnostic diagnostics_fatal(chain), the one home of that
+// ordering, so the row cannot hold a fatal that disagrees with its chain. Loci are carried as the
+// resolver produced them -- minted and synthetic alike, never re-keyed -- and beside them the
+// file's strip coordinate map, which is what joins a stripped-source extent back to the base.
+type Xl2ResidualChain {
+  module: String
+  path: Symbol
+  chain: NonEmptyDiagnostics
+  base_join: Xl2BaseJoin
+}
+
+// THE JOIN BACK TO THE BASE IS TYPED, because an empty segment list is also what a strip that
+// removed nothing legitimately produces: a missing map rendered as [] would claim a one-to-one
+// join nobody established. A missing join is also an unobserved scope (below).
+type Xl2BaseJoin
+  = Xl2BaseCoordinates { segments: List<ImportStripCoordinateSegment> }
+  | Xl2BaseJoinMissing
+
+// WHAT THE RUN COULD NOT OBSERVE. Each arm is a scope whose occurrences may be missing from the
+// residual, so any one of them refuses completeness.
+//   - a member the strip refused never entered the tree;
+//   - a file the front end refused never reached resolve;
+//   - a module whose resolve observation P4 reports INCOMPLETE (v2.compiler.resolve
+//     ObservationIncomplete, carried on v2.compiler.compile NativeCensusModuleResolveRefused since
+//     gunbc#12116): its failure chains are a lower bound, and the reason is the resolver's own. A
+//     module P4 reports ObservationComplete raises nothing here, however many chains it refused with;
+//   - two members at one path cannot be told apart by any locus, so EVERY member at that path is
+//     kept out of the ingest and the index -- neither is picked;
+//   - a residual whose file has no coordinate map cannot be joined to the base.
+type Xl2UnobservedScope
+  = Xl2MemberNotStripped { cause: Step0StripProductionRefusalCause }
+  | Xl2FileRefusedBeforeResolve { refusal: NativeTestFileRefusal }
+  | Xl2ModuleObservationIncomplete { module: String, path: Symbol, reason: Symbol }
+  | Xl2MemberPathDuplicated { path: Symbol }
+  | Xl2BaseJoinMissingFor { module: String, path: Symbol }
+
+// WHY COMPLETENESS IS REFUSED: ONE CAUSE PER OUTSTANDING XL-2 PREREQUISITE. The lowering
+// undercounts that keep this census from being complete are not minted here; their one home is
+// gunbc.compiler_frontend_program_status Xl2Prerequisite, and every arm that carrier types
+// OUTSTANDING heads this roster as its own cause (xl2_prerequisites_outstanding). An arm leaving
+// that list is the only thing that removes its cause, so this module cannot drift from the carrier.
+// They stay REFUSALS rather than excluded populations by the namespace-cut manager's ruling of
+// 2026-09-23: those references depend on imports and XL-5 must rewrite them, so omitting them
+// undercounts the cut's own population.
+// Xl2CompleteArmNotAdmitted is the refusal for the state with NO outstanding prerequisite: the
+// Complete arm is a separate change that must discriminate it by execution, and until it lands no
+// input constructs Xl2CensusComplete.
+type Xl2CompletenessRefusal
+  = Xl2PrerequisiteOutstanding { prerequisite: Xl2Prerequisite }
+  | Xl2ScopeUnobserved { scope: Xl2UnobservedScope }
+  | Xl2CompleteArmNotAdmitted
+
+// COMPLETENESS IS A COPRODUCT, NOT A FLAG BESIDE THE ROWS. Only xl2_completeness decides it, and
+// today that decision has no complete arm at all, so a complete census is unconstructible until the
+// change that admits it adds the arm there.
+type Xl2CensusCompleteness
+  = Xl2CensusComplete
+  | Xl2CensusCompletenessRefused { first: Xl2CompletenessRefusal, rest: List<Xl2CompletenessRefusal> }
+
+// A SEPARATE AXIS: WHICH ROUTE CAN EXECUTE THIS INSTRUMENT. These walls stand between the
+// interpreter route this composition runs on and a native (emitted) requalification of it. They are
+// not reasons the census is incomplete -- a census observed completely on the interpreter is
+// complete -- so they are never folded into Xl2CompletenessRefusal.
+// Xl2ImportHygieneWall: import hygiene of the emitted closure (sleek-cat-104's lane) -- the composed
+// closure does not yet emit clean natively. Xl2DiagnosticFieldReadWall: v2.std.diagnostic field
+// reads on the native route (gunbc#12033 step 2) -- the chain is read by field, which the native
+// route does not yet requalify.
+type Xl2NativeRequalificationWall
+  = Xl2ImportHygieneWall
+  | Xl2DiagnosticFieldReadWall
+
+data xl2_native_requalification_walls: List<Xl2NativeRequalificationWall> = [
+  Xl2ImportHygieneWall,
+  Xl2DiagnosticFieldReadWall
+]
+
+// A POPULATION THE CUT CANNOT REACH, NAMED SO ITS SILENCE IS NOT READ AS COVERAGE. A reference whose
+// leaf is a kernel canonical symbol binds with no import at all (v2.compiler.resolve
+// resolved_reference_identity, ResolvedToKernelSymbol), so stripping its import leaves nothing
+// unresolved: no residual row for Bool is NOT evidence the cut covers Bool. It is carried UNCOUNTED,
+// because the census's resolved arm (v2.compiler.compile NativeCensusModuleResolved) keeps no
+// resolved tree to count from; counting it needs the census to carry ResolvedToKernelSymbol
+// occurrences, which is the trigger for adding a count here.
+type Xl2ExcludedPopulation = | Xl2KernelCanonicalReferencesUncounted
+
+data xl2_excluded_populations: List<Xl2ExcludedPopulation> = [Xl2KernelCanonicalReferencesUncounted]
+
+type Xl2RehearsalRun
+  = Xl2RehearsalBaseUnobserved { cause: Step0SubjectPinRefusal }
+  | Xl2RehearsalContextRefused { source_commit: GitObjectId, diagnostics: NonEmptyDiagnostics }
+  | Xl2RehearsalObserved {
+      source_commit: GitObjectId
+      source_tree: GitObjectId
+      residual: List<Xl2ResidualChain>
+      resolved_module_count: Int
+      completeness: Xl2CensusCompleteness
+      native_requalification: List<Xl2NativeRequalificationWall>
+      excluded: List<Xl2ExcludedPopulation>
+    }
+
+// ---------------------------------------------------------------------------------------------
+// The cut, per member.
+
+type Xl2StrippedMember {
+  source: FixtureSource
+  base_coordinates: List<ImportStripCoordinateSegment>
+}
+
+type Xl2Strip {
+  members: List<Xl2StrippedMember>
+  unobserved: List<Xl2UnobservedScope>
+}
+
+fn xl2_strip_members(sources: List<FixtureSource>) -> Xl2Strip {
+  fold(sources, init: Xl2Strip { members: [], unobserved: [] }, f: fn(acc, source) {
+    match namespace_step0_strip_source(source: source) {
+      Step0SourceStripRefused { cause: cause } =>
+        Xl2Strip { members: acc.members, unobserved: acc.unobserved |> list_push(Xl2MemberNotStripped { cause: cause }) }
+      Step0SourceStripped { source: stripped, removed_statements: _, coordinate_map: coordinates } =>
+        Xl2Strip {
+          members: acc.members |> list_push(Xl2StrippedMember { source: stripped, base_coordinates: coordinates }),
+          unobserved: acc.unobserved
+        }
+    }
+  })
+}
+
+// PATH-FAITHFUL: the base path is the artifact path and the compilation unit, so every locus the
+// front end mints names the file it names at the base revision.
+fn xl2_member_read(member: Xl2StrippedMember) -> DagSourceReadWitness {
+  let path = member.source.path as String
+  DagSourceReadWitness {
+    source: Medium { carried: member.source.content, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
+    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    source_root: DagTree
+  }
+}
+
+fn xl2_stripped_ingest(members: List<Xl2StrippedMember>) -> SourceRootIngest {
+  fold(members, init: Empty, f: fn(acc, member) { Cons { head: xl2_member_read(member: member), tail: acc } })
+}
+
+// PATH ADMISSION, BEFORE THE INGEST. Paths are counted once; every member at a path held by more
+// than one member is withheld from BOTH the ingest and the coordinate index and reported once as
+// Xl2MemberPathDuplicated, so no residual row can carry another file's join and no module can be
+// resolved under a path two files claim.
+fn xl2_path_of(member: Xl2StrippedMember) -> Symbol {
+  symbol_intern_lexeme(lexeme: member.source.path as String)
+}
+
+fn xl2_path_counts(members: List<Xl2StrippedMember>) -> Map<Symbol, Int> {
+  fold(members, init: empty_map(), f: fn(acc, member) {
+    let path = xl2_path_of(member: member)
+    match map_lookup(acc, path) {
+      Present { value: n } => map_insert(acc, path, n + 1)
+      Absent => map_insert(acc, path, 1)
+    }
+  })
+}
+
+type Xl2PathAdmission {
+  admitted: List<Xl2StrippedMember>
+  reported: Map<Symbol, Int>
+  unobserved: List<Xl2UnobservedScope>
+}
+
+fn xl2_admit_unique_paths(strip: Xl2Strip) -> Xl2Strip {
+  let counts = xl2_path_counts(members: strip.members)
+  let admission = fold(strip.members, init: Xl2PathAdmission { admitted: [], reported: empty_map(), unobserved: strip.unobserved }, f: fn(acc, member) {
+    let path = xl2_path_of(member: member)
+    match map_lookup(counts, path) {
+      Present { value: 1 } =>
+        Xl2PathAdmission { admitted: acc.admitted |> list_push(member), reported: acc.reported, unobserved: acc.unobserved }
+      _ =>
+        match map_lookup(acc.reported, path) {
+          Present { value: _ } => acc
+          Absent =>
+            Xl2PathAdmission {
+              admitted: acc.admitted,
+              reported: map_insert(acc.reported, path, 1),
+              unobserved: acc.unobserved |> list_push(Xl2MemberPathDuplicated { path: path })
+            }
+        }
+    }
+  })
+  Xl2Strip { members: admission.admitted, unobserved: admission.unobserved }
+}
+
+// ONE PATH-KEYED INDEX, BUILT ONCE (DESIGN section 6, bare minimum cost), over admitted members
+// only, whose paths are unique by the admission above.
+fn xl2_coordinate_index(members: List<Xl2StrippedMember>) -> Map<Symbol, List<ImportStripCoordinateSegment>> {
+  fold(members, init: empty_map(), f: fn(acc, member) {
+    map_insert(acc, xl2_path_of(member: member), member.base_coordinates)
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// The observation, per module, on the production census route.
+
+type Xl2Observation {
+  residual: List<Xl2ResidualChain>
+  resolved: Int
+  unobserved: List<Xl2UnobservedScope>
+}
+
+// A file-refused module adds nothing here: its refusal is reported once, from the context's own
+// refusal roster in xl2_observe.
+fn xl2_observe_module(
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  coordinates: Map<Symbol, List<ImportStripCoordinateSegment>>,
+  acc: Xl2Observation,
+  entry: NativeCensusModule
+) -> Xl2Observation {
+  match native_census_module_resolution(
+    context: context,
+    refusal_index: refusal_index,
+    entry: entry
+  ) {
+    NativeCensusModuleFileRefused => acc
+    NativeCensusModuleResolved =>
+      Xl2Observation { residual: acc.residual, resolved: acc.resolved + 1, unobserved: acc.unobserved }
+    NativeCensusModuleResolveRefused { first: first_chain, rest: rest_chains, observation: o } => {
+      let join = match map_lookup(coordinates, entry.path) {
+        Present { value: c } => Xl2BaseCoordinates { segments: c }
+        Absent => Xl2BaseJoinMissing
+      }
+      let rows = fold(rest_chains, init: [Xl2ResidualChain { module: entry.module, path: entry.path, chain: first_chain, base_join: join }], f: fn(rows_acc, chain) {
+        rows_acc |> list_push(Xl2ResidualChain { module: entry.module, path: entry.path, chain: chain, base_join: join })
+      })
+      let observation_scopes = match o {
+        ObservationComplete => []
+        ObservationIncomplete { reason: reason } => [Xl2ModuleObservationIncomplete { module: entry.module, path: entry.path, reason: reason }]
+      }
+      let join_scopes = match join {
+        Xl2BaseCoordinates { segments: _ } => []
+        Xl2BaseJoinMissing => [Xl2BaseJoinMissingFor { module: entry.module, path: entry.path }]
+      }
+      Xl2Observation {
+        residual: concat(acc.residual, rows),
+        resolved: acc.resolved,
+        unobserved: concat(acc.unobserved, concat(observation_scopes, join_scopes))
+      }
+    }
+  }
+}
+
+fn xl2_observe(context: NativeTestContext, ingest: SourceRootIngest, members: List<Xl2StrippedMember>) -> Xl2Observation {
+  let file_refused = fold_list(xs: context.file_refusals, empty: [], cons: fn(acc, r) {
+    acc |> list_push(Xl2FileRefusedBeforeResolve { refusal: r })
+  })
+  let refusal_index = native_lane_file_refusal_index(refusals: context.file_refusals)
+  let coordinates = xl2_coordinate_index(members: members)
+  fold_list(
+    xs: native_census_modules(ingest: ingest),
+    empty: Xl2Observation { residual: [], resolved: 0, unobserved: file_refused },
+    cons: fn(acc, entry) {
+      xl2_observe_module(context: context, refusal_index: refusal_index, coordinates: coordinates, acc: acc, entry: entry)
+    }
+  )
+}
+
+// THE ONLY COMPLETENESS DECISION, AND TODAY IT HAS NO COMPLETE ARM. Every outstanding XL-2
+// prerequisite heads the roster in the carrier's order, then every unobserved scope. With neither,
+// the answer is still refused, as Xl2CompleteArmNotAdmitted: Xl2CensusComplete has no constructor
+// anywhere, and the change that adds one adds it here.
+fn xl2_completeness(unobserved: List<Xl2UnobservedScope>) -> Xl2CensusCompleteness {
+  let prerequisites = fold(xl2_prerequisites_outstanding(), init: [], f: fn(acc, p) {
+    acc |> list_push(Xl2PrerequisiteOutstanding { prerequisite: p })
+  })
+  let roster = fold(unobserved, init: prerequisites, f: fn(acc, scope) { acc |> list_push(Xl2ScopeUnobserved { scope: scope }) })
+  match roster {
+    Cons { head: first, tail: rest } => Xl2CensusCompletenessRefused { first: first, rest: rest }
+    Empty => Xl2CensusCompletenessRefused { first: Xl2CompleteArmNotAdmitted, rest: [] }
+  }
+}
+
+fn xl2_member_source(member: Step0SubjectMember) -> FixtureSource {
+  FixtureSource { path: member.path, content: member.content }
+}
+
+// THE COMPOSITION OVER A SUPPLIED EXACT-BASE VECTOR. The vector's sole constructor is the
+// object-store collector, so what arrives here is a pinned tree, never an authored population.
+fn xl2_rehearse_vector(vector: Step0SubjectVector) -> Xl2RehearsalRun {
+  let strip = xl2_strip_members(sources: fold(vector.members, init: [], f: fn(acc, m) { acc |> list_push(xl2_member_source(member: m)) }))
+  xl2_rehearse_stripped(source_commit: vector.source_commit, source_tree: vector.source_tree, supplied: strip)
+}
+
+fn xl2_rehearse_stripped(source_commit: GitObjectId, source_tree: GitObjectId, supplied: Xl2Strip) -> Xl2RehearsalRun {
+  let strip = xl2_admit_unique_paths(strip: supplied)
+  let ingest = xl2_stripped_ingest(members: strip.members)
+  match native_test_context_from_ingest(ingest: ingest) {
+    Rejected { diagnostics: d } => Xl2RehearsalContextRefused { source_commit: source_commit, diagnostics: d }
+    Accepted { value: context, diagnostics: _ } => {
+      let observed = xl2_observe(context: context, ingest: ingest, members: strip.members)
+      Xl2RehearsalObserved {
+        source_commit: source_commit,
+        source_tree: source_tree,
+        residual: observed.residual,
+        resolved_module_count: observed.resolved,
+        completeness: xl2_completeness(unobserved: concat(strip.unobserved, observed.unobserved)),
+        native_requalification: xl2_native_requalification_walls,
+        excluded: xl2_excluded_populations
+      }
+    }
+  }
+}
+
+// THE ENTRY: the exact base is pinned by the ref the collector resolves, in the same dispatch.
+// DECLARED FRONTIER, NOT EXECUTED IN THIS CHANGE. Consumer: the XL-2 rehearsal run whose receipt is
+// the RehearsalInstrumentDelivered StageDeliveryReceipt read by gunbc.compiler_frontend_program_status
+// xl2_stage_standing. Its first trigger, P1 and P4 delivered (gunbc#12108, gunbc#12116), HAS FIRED.
+// Execution is deferred by the namespace-cut manager's ruling of 2026-09-23 to ONE further
+// state: gunbc.compiler_frontend_program_status xl2_prerequisites_outstanding empty. Until then every
+// run can only answer refusals already known, so a whole-tree run today buys nothing.
+// The run itself is a one-shot `gunbc run --function` on a host with an enforceable cgroup limit
+// (never a shared session container; the whole-tree resolve is tens of GB), receipt on the delivering
+// change. Until then the stages below the collector execute in test.claim.namespace_xl2_rehearsal_census,
+// and the collector's live half carries the route deficit its own module states.
+// NO INHABITANCE CLAIM OVER A PINNED FIXTURE, AND WHY: the collector's subject IS the repository's
+// tree at the ref, and gunbc.namespace_step0_subject_collector states that a mocked revision would let
+// a collector reading the WRONG tree pass -- the one defect it exists to make unrepresentable. So
+// the collector-to-census link executes for the first time in the one-shot run above, whose trigger
+// is the same state, and that run's receipt is the link's executing evidence (DESIGN section 3c: a
+// declared frontier, consumer and trigger named).
+fn run_xl2_rehearsal_at(ref: String) -> Xl2RehearsalRun {
+  match collect_step0_subject_vector_at(ref: ref) {
+    Step0SubjectCollectionRefused { cause: cause } => Xl2RehearsalBaseUnobserved { cause: cause }
+    Step0SubjectCollected { vector: vector } => xl2_rehearse_vector(vector: vector)
+  }
+}

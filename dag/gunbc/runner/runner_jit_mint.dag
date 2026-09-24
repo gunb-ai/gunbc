@@ -2,6 +2,7 @@ module gunbc.runner_jit_mint
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.github.effect { GitHubEffect, GenerateOrganizationJitConfig, GitHubOrganizationRef }
 import extdeps.github.actions_jit_runner {
   JitRunnerConfigRequest, JitRunnerName, JitRunnerGroupId, JitRunnerLabel, JitWorkFolder,
@@ -13,9 +14,7 @@ import gunbc.auth.github_apps { GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
 }
-import gunbc.runner_registration_labels {
-  runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
-}
+import extdeps.github.actions { self_hosted_provenance_label }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, MicroVmCellBinding, VmBoundToOwnedCell, VmUnboundCellNotOwned,
   runner_microvm_attempt_unit_name,
@@ -46,7 +45,7 @@ type JitMintPlan
       unsatisfied: List<CredentialCapability>
     }
   | JitMintRefusedAttemptUnbound { cause: String }
-  | JitMintRefusedLabelsUnresolved { cause: String }
+  | JitMintRefusedRunnerGroupUnrestricted { group: Int }
 
 // THE RUNNER NAME IS THE UNIT NAME, not a fresh identifier minted beside it. A second naming scheme
 // for one attempt is a nickname (DESIGN §3), and it is the expensive kind: an orphaned GitHub runner
@@ -60,20 +59,49 @@ fn jit_runner_name_for(attempt: MicroVmAttempt) -> JitRunnerName {
 // inside the VM, and handing it over would be a path from one namespace asserted in another.
 data jit_guest_work_folder: JitWorkFolder = JitWorkFolder { value: "_work" as NonEmptyStr }
 
-// THE LABELS ARE DERIVED FROM THE ATTEMPT'S OWN SLOT, not handed in by the caller. A JIT mint is a
-// registration like any other, so it answers to gunbc.runner_registration_labels of the host the
-// microVM executes on -- the slot's host, which is the only host this function can see, so no
-// caller can mint an srv3 attempt under srv4's label. A host whose labels do not resolve refuses
-// the mint rather than minting a runner no selector can reach.
+// THE LABELS ARE THE ATTEMPT'S OWN, AND NO CALLER CAN HAND IN ANY OTHERS. A microVM attempt answers
+// to exactly two labels: the provenance label every self-hosted runner carries, and its OWN
+// registration name, which is the attempt's unit name and so names this attempt and no other. It
+// does NOT answer to the host's registration set (gunbc.runner_registration_labels), because that
+// set is what production jobs target: `[self-hosted, linux, arm64, srv1]` is fleet-desired.yml and
+// every srv1-pinned fleet-converge job, and a guest registered under it could take a production
+// converge job into a trusted-shakedown VM. So the list is not a parameter: the request is derived
+// from the attempt alone, and a job reaches this runner only by naming the attempt in its runs-on --
+// the binding gunbc.runner_bound_attempt_receipt already relies on for the mtcollins canary.
+//
+// WHAT THIS DOES NOT CLOSE, declared rather than assumed. GitHub documents that the runner agent
+// applies default labels (self-hosted, OS, architecture) at registration (extdeps.github.actions
+// self_hosted_provenance_label's directory row); whether a JIT registration also receives the OS and
+// architecture defaults is not modeled here. If it does, this runner would ALSO match
+// `[self-hosted, linux, arm64]`, which witnesses.yml, heal.yml and a fleet-converge job use. That arm
+// is closed by the runner group, not the label: see microvm_jit_runner_group_restriction_frontier.
+fn microvm_attempt_registration_labels(attempt: MicroVmAttempt) -> List<String> {
+  [self_hosted_provenance_label, jit_runner_name_for(attempt: attempt).value as String]
+}
+
+// THE RUNNER GROUP IS A STANDING, NOT A BARE ID, and the mint refuses every standing but one. The
+// shakedown mints into the org's Default group today (gunbc.runner_microvm_shakedown
+// microvm_shakedown_runner_group, id 1), which every workflow may use; if a JIT registration also
+// receives GitHub's OS and architecture defaults, a runner there would match witnesses.yml, heal.yml
+// and a fleet-converge job. So a mint is authorized only into a group OBSERVED restricted to the
+// shakedown workflow file, and until an observer produces that arm every real attempt is refused
+// here -- the block the frontier row below states is this match, not a sentence.
+type MicrovmRunnerGroupStanding
+  = RunnerGroupRestrictedToShakedownWorkflow { group: JitRunnerGroupId }
+  | RunnerGroupRestrictionUnobserved { group: JitRunnerGroupId }
+
+data microvm_jit_runner_group_restriction_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: plan_jit_mint, which refuses RunnerGroupRestrictionUnobserved (JitMintRefusedRunnerGroupUnrestricted) and is handed that arm by gunbc.runner_microvm_slot_controller mint_attempt_credential today. TRIGGER: an observer of the org's runner groups that constructs RunnerGroupRestrictedToShakedownWorkflow only on reading restricted_to_workflows with selected_workflows naming .github/workflows/microvm-shakedown.yml, and the controller passes its result. SUFFICIENT FOR deleting this row: a JIT registration that received the OS and architecture defaults still cannot take a witnesses.yml, heal.yml or fleet-converge job. Until then every real attempt refuses at the mint." as NonEmptyStr,
+)
+
 fn jit_config_request_for(
   attempt: MicroVmAttempt,
   runner_group_id: JitRunnerGroupId,
-  labels: List<String>
 ) -> JitRunnerConfigRequest {
   JitRunnerConfigRequest {
     name: jit_runner_name_for(attempt: attempt),
     runner_group_id: runner_group_id,
-    labels: map(labels, l => JitRunnerLabel { value: l as NonEmptyStr }),
+    labels: map(microvm_attempt_registration_labels(attempt: attempt), l => JitRunnerLabel { value: l as NonEmptyStr }),
     work_folder: jit_guest_work_folder,
   }
 }
@@ -83,7 +111,7 @@ fn plan_jit_mint(
   authority: GitHubCredentialAuthority,
   control_plane: GitHubAppControlPlaneState,
   organization: GitHubOrganizationRef,
-  runner_group_id: JitRunnerGroupId,
+  runner_group: MicrovmRunnerGroupStanding,
   attempt_binding: JitAdmissionAxisStanding
 ) -> JitMintPlan {
   match binding {
@@ -101,17 +129,13 @@ fn plan_jit_mint(
            effect: GenerateOrganizationJitConfig { organization: organization }
          ) {
         if attempt_binding_admits_mint_name(standing: attempt_binding) {
-          match runner_registration_labels(host: attempt.slot.host) {
-            RegistrationLabelsRefused { host: _, cause: c } =>
-              JitMintRefusedLabelsUnresolved { cause: c as String }
-            RegistrationLabelsResolved { labels: labels } =>
+          match runner_group {
+            RunnerGroupRestrictionUnobserved { group: g } =>
+              JitMintRefusedRunnerGroupUnrestricted { group: g.value }
+            RunnerGroupRestrictedToShakedownWorkflow { group: g } =>
               JitMintAuthorized {
                 attempt: attempt,
-                request: jit_config_request_for(
-                  attempt: attempt,
-                  runner_group_id: runner_group_id,
-                  labels: labels,
-                ),
+                request: jit_config_request_for(attempt: attempt, runner_group_id: g),
               }
           }
         } else {

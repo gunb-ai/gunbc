@@ -1,0 +1,511 @@
+module v2.compiler.reference_conservation_census
+
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_read_outcome,
+  FilesystemReadSucceeded,
+  FilesystemReadRefused,
+}
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.reference_conservation {
+  reference_conservation_of_read,
+  reference_conservation_report_lines
+}
+import v2.compiler.reference_conservation_admission {
+  ChangedScopeObservedConserved,
+  ChangedScopeConservationObservation,
+  ChangedScopeReadInput,
+  ChangedScopeRow,
+  ChangedScopeObservedDropped,
+  NoBodyLoweringChange,
+  ScopeConserved,
+  ScopeDropped,
+  ScopeMembershipUnreadable,
+  ScopeOutside,
+  changed_scope_observation,
+  changed_scope_observation_conserves,
+  conservation_read_of
+}
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.integer { integer_int_to_decimal_string }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+
+// THE CORPUS ENTRY FOR v2.compiler.reference_conservation: the host reads the file, the pure check
+// does everything else. It is kept out of the check's own module so the check stays a pure
+// function of its read witness, which is what lets the fixture controls exercise the exact code the
+// census runs.
+//
+// ONE PATH LIST PER PROCESS, AND THE LINES ARE THE VALUE. The driver (`gunbc run --function
+// reference_conservation_census_for_paths --arg <csv>`) prints the returned String; a batch is a
+// comma-separated path list sized by the driver so no single process holds the whole corpus. The
+// same shape as v2.lens.complexity_accumulator_copy.corpus_census census_tsv_line_for_path, and for
+// the same recorded reason: a whole-corpus fold in one process is the load this route exists to
+// avoid. An unreadable path is its own line, never an omission.
+
+fn reference_conservation_census_for_path(path: String) -> String {
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: _ } => "unreadable " + path
+    FilesystemReadSucceeded { content: text } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: _ } => "grammar-unprepared " + path
+        Accepted { value: prepared, diagnostics: residue } =>
+          fold_list(
+            xs: reference_conservation_report_lines(
+              report: reference_conservation_of_read(
+                read: conservation_read_of(path: path, text: text),
+                lm: dag_language_model(),
+                prepared: prepared,
+                residue: residue
+              )
+            ),
+            empty: "",
+            cons: fn(acc, line) { acc + line + "\n" }
+          )
+      }
+  }
+}
+
+fn reference_conservation_census_for_paths(paths_csv: String) -> String {
+  fold_list(
+    xs: split(s: paths_csv, delimiter: ","),
+    empty: "",
+    cons: fn(acc, path) { acc + reference_conservation_census_for_path(path: path) }
+  )
+}
+
+// THE CHANGED-SCOPE ENTRY (MQ-6). The host hands the change's path list (for a PR, the files
+// `git diff --name-only <base>...<head>` names; a deleted path is its own unreadable line) and this
+// reads each one, lets v2.compiler.reference_conservation_admission changed_scope_observation decide
+// which are in the body-lowering scope from their own imports, and renders the typed observation. The
+// first line is the verdict; one line per path follows, and a refused path carries one line per
+// refusal, so the observation is reviewable without re-running it.
+fn changed_scope_read_inputs(paths_csv: String) -> ChangedScopeReadInputs {
+  fold_list(
+    xs: split(s: paths_csv, delimiter: ","),
+    empty: ChangedScopeReadInputs { inputs: Empty, unreadable: Empty },
+    cons: fn(acc, path) {
+      let read = Filesystem.Read(path: path)
+      match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+        FilesystemReadRefused { error: _ } => ChangedScopeReadInputs { inputs: acc.inputs, unreadable: list_snoc_item(xs: acc.unreadable, item: path) }
+        FilesystemReadSucceeded { content: text } =>
+          ChangedScopeReadInputs { inputs: list_snoc_item(xs: acc.inputs, item: ChangedScopeReadInput { path: path, text: text }), unreadable: acc.unreadable }
+      }
+    }
+  )
+}
+
+type ChangedScopeReadInputs {
+  inputs: FreeMonoid<ChangedScopeReadInput>
+  unreadable: FreeMonoid<String>
+}
+
+fn changed_scope_row_lines(rows: FreeMonoid<ChangedScopeRow>) -> String {
+  fold_list(
+    xs: rows,
+    empty: "",
+    cons: fn(acc, row) {
+      match row {
+        ScopeOutside { path: p } => acc + "outside " + p + "\n"
+        ScopeMembershipUnreadable { path: p, diagnostics: d } => acc + "membership-unreadable " + p + " " + symbol_lexeme(sym: d.head.reason) + "\n"
+        ScopeConserved { path: p, report: r } =>
+          fold_list(xs: reference_conservation_report_lines(report: r), empty: acc + "conserved " + p + "\n", cons: fn(a, line) { a + "  " + line + "\n" })
+        ScopeDropped { path: p, report: r, refusals: _ } =>
+          fold_list(xs: reference_conservation_report_lines(report: r), empty: acc + "dropped " + p + "\n", cons: fn(a, line) { a + "  " + line + "\n" })
+      }
+    }
+  )
+}
+
+fn changed_scope_verdict_line(observation: ChangedScopeConservationObservation) -> String {
+  match observation {
+    NoBodyLoweringChange { rows: _ } => "observation no-body-lowering-change"
+    ChangedScopeObservedConserved { rows: _, in_scope: n } => "observation conserved in_scope=" + integer_int_to_decimal_string(value: n)
+    ChangedScopeObservedDropped { rows: _, in_scope: n, refused: k } =>
+      "observation dropped in_scope=" + integer_int_to_decimal_string(value: n) + " refused=" + integer_int_to_decimal_string(value: k)
+  }
+}
+
+fn changed_scope_observation_rows(observation: ChangedScopeConservationObservation) -> FreeMonoid<ChangedScopeRow> {
+  match observation {
+    NoBodyLoweringChange { rows: r } => r
+    ChangedScopeObservedConserved { rows: r, in_scope: _ } => r
+    ChangedScopeObservedDropped { rows: r, in_scope: _, refused: _ } => r
+  }
+}
+
+// An unreadable path refuses the observation outright: a change's scope that could not be read is not
+// a change that reached no body-lowering module.
+type ChangedScopeRun {
+  conserved: Bool
+  text: String
+}
+
+fn changed_scope_run(paths_csv: String) -> ChangedScopeRun {
+  let read = changed_scope_read_inputs(paths_csv: paths_csv)
+  let observation = changed_scope_observation(inputs: read.inputs)
+  let rows = changed_scope_row_lines(rows: changed_scope_observation_rows(observation: observation))
+  match read.unreadable {
+    Empty => ChangedScopeRun { conserved: changed_scope_observation_conserves(observation: observation), text: changed_scope_verdict_line(observation: observation) + "\n" + rows }
+    Cons { head: _, tail: _ } =>
+      ChangedScopeRun {
+        conserved: false,
+        text: "observation refused-unreadable\n" + fold_list(xs: read.unreadable, empty: "", cons: fn(acc, p) { acc + "unreadable " + p + "\n" }) + rows
+      }
+  }
+}
+
+// The rendered observation, for a reader.
+fn reference_conservation_changed_scope_observation(paths_csv: String) -> String {
+  changed_scope_run(paths_csv: paths_csv).text
+}
+
+// The same observation as a process verdict (`gunbc run --function
+// reference_conservation_changed_scope_observation_exit --arg <csv>`): a refused observation exits non-zero and
+// carries the rendered observation as its reason, so a caller cannot read a refusal as success.
+fn reference_conservation_changed_scope_observation_exit(paths_csv: String) -> ProcessExit {
+  let run = changed_scope_run(paths_csv: paths_csv)
+  if run.conserved { ExitSuccess } else { exit_failure(reason: run.text) }
+}
+
+
+// THE PINNED STRATIFIED SAMPLE (XL-2, 2026-09-23, main fec339d561). The whole-corpus census is
+// about 55 CPU-hours on the interpreter, so the drop shapes are first read off this sample. The
+// selection is a rule, not a hand pick: every `.dag` file under dag/ and src/v2/ is put in a
+// stratum (its first two path segments under dag/, its first three under src/v2/); files of at
+// most 8,000 bytes are sorted by path, and each stratum takes max(6, round(300 * its share of the
+// corpus)) of them at evenly spaced indices. The 8,000-byte cap bounds the run and biases the
+// sample toward small files; a shape that only appears in large files is not in it, and the full
+// census is what closes that gap. The list is kept here so the sample re-runs byte-for-byte.
+data reference_conservation_stratified_sample_paths: List<String> = [
+  "dag/examples/blackjack/cards.dag",
+  "dag/examples/blackjack/hand.dag",
+  "dag/examples/blackjack/round.dag",
+  "dag/examples/blackjack/shuffle.dag",
+  "dag/examples/blackjack/simulation.dag",
+  "dag/examples/weather/weather.dag",
+  "dag/extdeps/abi.dag",
+  "dag/extdeps/ampere/mt_collins_product_brief/bmc.dag",
+  "dag/extdeps/bazel/build_event_stream.dag",
+  "dag/extdeps/bmc/redfish.dag",
+  "dag/extdeps/browser/google_chrome.dag",
+  "dag/extdeps/ci_runner/buildjet.dag",
+  "dag/extdeps/cloud/gcp/adc_document.dag",
+  "dag/extdeps/colo/evocative.dag",
+  "dag/extdeps/colo/vastnet.dag",
+  "dag/extdeps/container/oci/runtime_config.dag",
+  "dag/extdeps/crypto/nist_p256.dag",
+  "dag/extdeps/docker/hub.dag",
+  "dag/extdeps/editor/visual_studio_code.dag",
+  "dag/extdeps/firmware/openbmc/subject.dag",
+  "dag/extdeps/git/versioning.dag",
+  "dag/extdeps/github/ci.dag",
+  "dag/extdeps/github/org_actions.dag",
+  "dag/extdeps/gpu/machine_shape.dag",
+  "dag/extdeps/iputils/arping.dag",
+  "dag/extdeps/languages/go/emit.dag",
+  "dag/extdeps/languages/lean/subject.dag",
+  "dag/extdeps/languages/rust/syntax.dag",
+  "dag/extdeps/linux/mlx5_core.dag",
+  "dag/extdeps/llm/cli_lifecycle.dag",
+  "dag/extdeps/memory/sk_hynix.dag",
+  "dag/extdeps/network/mcx4421a_acan.dag",
+  "dag/extdeps/ollama/gpu_support.dag",
+  "dag/extdeps/pci/identity.dag",
+  "dag/extdeps/pricing/gitlab_subscription.dag",
+  "dag/extdeps/rack/navepoint.dag",
+  "dag/extdeps/render/tier_glyphs.dag",
+  "dag/extdeps/rust/std_process.dag",
+  "dag/extdeps/securities.dag",
+  "dag/extdeps/standards/ocp_nic_3_0.dag",
+  "dag/extdeps/systems/nvidia.dag",
+  "dag/extdeps/time/rfc3339.dag",
+  "dag/extdeps/tools/id.dag",
+  "dag/extdeps/tools/tar.dag",
+  "dag/extdeps/units/iso8601.dag",
+  "dag/extdeps/vendor/atlassian.dag",
+  "dag/extdeps/vendor/micron.dag",
+  "dag/extdeps/vendor/tyco_electronics.dag",
+  "dag/gunbc/accelerator_demo/accelerator_demo_eval.dag",
+  "dag/gunbc/auth/access_request.dag",
+  "dag/gunbc/auth/optional_impersonation.dag",
+  "dag/gunbc/bmc/bmc_fan_program_decode_witness.dag",
+  "dag/gunbc/bootstrap.dag",
+  "dag/gunbc/ci/ci_compile_jobs.dag",
+  "dag/gunbc/ci/ci_render.dag",
+  "dag/gunbc/claim_unwind_seed_growth.dag",
+  "dag/gunbc/closure_edge_demand_seed_growth.dag",
+  "dag/gunbc/cursor_sdk_provider_standing.dag",
+  "dag/gunbc/design/archetype.dag",
+  "dag/gunbc/dispatch_pipe_pane_emit.dag",
+  "dag/gunbc/evaluation_budget_consequence_emit.dag",
+  "dag/gunbc/fabric/fabric_executor_class.dag",
+  "dag/gunbc/fleet/fleet_acoustic_intent.dag",
+  "dag/gunbc/fleet/fleet_host_power.dag",
+  "dag/gunbc/floor/floor_cost_debt_edit_seed_growth.dag",
+  "dag/gunbc/frontend_eval/experiment.dag",
+  "dag/gunbc/git_use_census/roadmap_publication_pull_create.dag",
+  "dag/gunbc/githooks/githooks_pre_push_plan.dag",
+  "dag/gunbc/guarantee_stall/builtin_parameter_name_forked_across_hand_authored_sites_stall.dag",
+  "dag/gunbc/guarantee_stall/external_model_scope_live_cover_stall.dag",
+  "dag/gunbc/guarantee_stall/information_retrieval_transport_cannot_report_status_stall.dag",
+  "dag/gunbc/guarantee_stall/pci_address_rendering_equivalence_stall.dag",
+  "dag/gunbc/guarantee_stall/trigger_capability_referent_free_by_construction_stall.dag",
+  "dag/gunbc/host/host_authorized_keys_reconcile.dag",
+  "dag/gunbc/host/host_effect_plan.dag",
+  "dag/gunbc/host/host_resource.dag",
+  "dag/gunbc/infer_occurrence_binding_scaffold.dag",
+  "dag/gunbc/instruments/cheap_gate_pool.dag",
+  "dag/gunbc/instruments/dag_compile_clean_shard_transport.dag",
+  "dag/gunbc/instruments/fabric_ci_evidence_projection_fixture.dag",
+  "dag/gunbc/instruments/parse_witness_transport.dag",
+  "dag/gunbc/instruments/self_host_03_normalize_declared_source_refs.dag",
+  "dag/gunbc/live_deploy/deployed_tree_report.dag",
+  "dag/gunbc/machine_intake/factory_segment_lease.dag",
+  "dag/gunbc/machine_intake/mtcollins1_handoff_probe.dag",
+  "dag/gunbc/machine_intake/sol_collector_observation.dag",
+  "dag/gunbc/namespace/namespace_structural_observation_bridge_seed_growth.dag",
+  "dag/gunbc/namespace/transition_admission/gunbc_ci_runner_placement_host_fixed_overhead_bytes_hostfixedoverheadmeasured.dag",
+  "dag/gunbc/namespace/transition_admission/gunbc_ci_runner_placement_host_usable_ram_or_refusal_hostusableramunmeasured.dag",
+  "dag/gunbc/namespace/transition_admission/gunbc_roadmap_serve_serve_page_response_with_status_page_render_refusal_body.dag",
+  "dag/gunbc/namespace/transition_admission/test_claim_fleet_host_budget_witness_headroom_below_floor_unsound_oomd_actuation_floor.dag",
+  "dag/gunbc/namespace/transition_admission/test_claim_host_allocation_conservation_unclassified_host_refuses_rather_than_borrowing_gunbc_ci_host_usable_ram_for.dag",
+  "dag/gunbc/namespace/transition_admission/v2_test_lens_disposition_redundancy_disposition_redundancy_test_redundancy_region_budget_marks_gunbc_ci_legacy_host_fixed_overhead_disposition.dag",
+  "dag/gunbc/p1_retention_cohort_receipt.dag",
+  "dag/gunbc/plan_registry_batch_f.dag",
+  "dag/gunbc/plans/merge_admission_gate_shape_proposal.dag",
+  "dag/gunbc/procurement/hetzner_supply_observation.dag",
+  "dag/gunbc/product/fabric/envelope.dag",
+  "dag/gunbc/product/supplier/hetzner_path_reading.dag",
+  "dag/gunbc/recurring_failure_mode/a_bare_type_name_binds_the_wrong_declaration.dag",
+  "dag/gunbc/recurring_failure_mode/a_control_that_shares_its_derivation_with_its_subject.dag",
+  "dag/gunbc/recurring_failure_mode/a_payload_admits_a_variant_its_producer_never_makes.dag",
+  "dag/gunbc/recurring_failure_mode/a_result_filter_admits_only_anticipated_failures.dag",
+  "dag/gunbc/recurring_failure_mode/ad_hoc_hardware_probe_produces_no_receipt.dag",
+  "dag/gunbc/recurring_failure_mode/an_unreached_entry_body_is_never_typechecked.dag",
+  "dag/gunbc/recurring_failure_mode/binder_renaming_changes_variant_field_lookup.dag",
+  "dag/gunbc/recurring_failure_mode/claim_edit_changes_execution_policy_outside_reported_cost_delta.dag",
+  "dag/gunbc/recurring_failure_mode/constructor_equality_consumes_the_branch_brace.dag",
+  "dag/gunbc/recurring_failure_mode/declared_return_disagrees_with_the_generic_it_returns.dag",
+  "dag/gunbc/recurring_failure_mode/dollar_dollar_in_a_subshell_writes_the_invoking_shell.dag",
+  "dag/gunbc/recurring_failure_mode/enforcement_exhibits_the_shape_it_refuses.dag",
+  "dag/gunbc/recurring_failure_mode/fabric_object_identity_is_a_structural_locator.dag",
+  "dag/gunbc/recurring_failure_mode/git_execution_bypasses_direct_import_policy.dag",
+  "dag/gunbc/recurring_failure_mode/identity_absent_graph_traversal.dag",
+  "dag/gunbc/recurring_failure_mode/kind_carried_but_its_fields_stay_optional.dag",
+  "dag/gunbc/recurring_failure_mode/mandatory_gate_refuses_the_corpus_it_is_mandatory_on.dag",
+  "dag/gunbc/recurring_failure_mode/mistyped_body_radiates_nonlocal_diagnostics.dag",
+  "dag/gunbc/recurring_failure_mode/one_refusal_two_destinations.dag",
+  "dag/gunbc/recurring_failure_mode/prose_repealed_by_the_change_that_wrote_it.dag",
+  "dag/gunbc/recurring_failure_mode/receipt_subject_surface_outlives_its_own_production_time.dag",
+  "dag/gunbc/recurring_failure_mode/repair_job_red_is_attributed_to_the_content_it_repaired.dag",
+  "dag/gunbc/recurring_failure_mode/restored_bytes_reviewed_as_authorship.dag",
+  "dag/gunbc/recurring_failure_mode/shape_predicate_reads_only_the_head_so_a_container_passes_as_its_element.dag",
+  "dag/gunbc/recurring_failure_mode/supervisor_liveness_consumed_as_participation.dag",
+  "dag/gunbc/recurring_failure_mode/transport_mock_success_independent_of_request.dag",
+  "dag/gunbc/recurring_failure_mode/unhandled_state_falls_to_the_not_yet_arm.dag",
+  "dag/gunbc/recurring_failure_mode/verified_candidate_installed_as_a_subset_before_rebuild.dag",
+  "dag/gunbc/regen_receipt.dag",
+  "dag/gunbc/required_lane_resolution_census_seed_growth.dag",
+  "dag/gunbc/roadmap/roadmap_event_cli.dag",
+  "dag/gunbc/roadmap/roadmap_site_surface_witness.dag",
+  "dag/gunbc/rung_drop/concat_binary_signature_exempt_from_arg_binding.dag",
+  "dag/gunbc/rung_drop/floor_cost_high_cpu_withheld.dag",
+  "dag/gunbc/rung_drop/heal_healed_head_executed_verdict_without_human.dag",
+  "dag/gunbc/rung_drop/native_lane_closure_walk_unkeyed_membership.dag",
+  "dag/gunbc/rung_drop/roadmap_page_style_new_witness_eval_step_cost.dag",
+  "dag/gunbc/rung_drop/source_root_ingest_gate_rung_drop.dag",
+  "dag/gunbc/rung_drop/v2_native_route_off_the_merge_path.dag",
+  "dag/gunbc/runner/runner_cpu_bandwidth_receipt.dag",
+  "dag/gunbc/runner/runner_registration_labels.dag",
+  "dag/gunbc/scm/integration.dag",
+  "dag/gunbc/session_admission_policy.dag",
+  "dag/gunbc/site/starlight.dag",
+  "dag/gunbc/spark/pinned_base_env_classification.dag",
+  "dag/gunbc/spark/vllm_image_identity.dag",
+  "dag/gunbc/srv3/srv3_seeded_install_media.dag",
+  "dag/gunbc/stage0/stage0_emitted_population_manifest.dag",
+  "dag/gunbc/systemctl_status_read.dag",
+  "dag/gunbc/tools/card_intake.dag",
+  "dag/gunbc/uefi_shell_over_sol.dag",
+  "dag/std/access.dag",
+  "dag/std/constructors.dag",
+  "dag/std/execution_mode.dag",
+  "dag/std/key_relation.dag",
+  "dag/std/minted_identity.dag",
+  "dag/std/rational.dag",
+  "dag/std/stack.dag",
+  "dag/test/claim/accelerator_demo_execution_witness_test.dag",
+  "dag/test/claim/advertising_interface_witness_test.dag",
+  "dag/test/claim/annotation_carrier_witness_test.dag",
+  "dag/test/claim/auth/approval_gate_witness_test.dag",
+  "dag/test/claim/bmc/bmc_netboot_serve_witness_test.dag",
+  "dag/test/claim/branded_list_first_optional_witness_test.dag",
+  "dag/test/claim/cache_layer_planner_test.dag",
+  "dag/test/claim/char_at_unicode_witness_test.dag",
+  "dag/test/claim/ci/ci_oom_reclassify_witness_test.dag",
+  "dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag",
+  "dag/test/claim/codex_package_delivery_wet_witness_test.dag",
+  "dag/test/claim/computation_demand_duplication_witness_test.dag",
+  "dag/test/claim/cpu_l2_l3_cache_geometry_witness_test.dag",
+  "dag/test/claim/dag_collect_fingerprint_witness_test.dag",
+  "dag/test/claim/data_reference_kind_from_resolved_node_witness_test.dag",
+  "dag/test/claim/design_argument_witness_test.dag",
+  "dag/test/claim/docker_container_stats_witness_test.dag",
+  "dag/test/claim/effect_axes_witness_test.dag",
+  "dag/test/claim/emitted_lib_rs_module_declaration_witness_test.dag",
+  "dag/test/claim/empty_list_element_fabrication_witness_test.dag",
+  "dag/test/claim/extdeps/apt_package_of_witness_test.dag",
+  "dag/test/claim/external_model_scope_live_cover_witness_test.dag",
+  "dag/test/claim/fabric/jurisdiction_drop_accounting_witness_test.dag",
+  "dag/test/claim/fleet/fleet_cap_observation_witness_test.dag",
+  "dag/test/claim/fleet/fleet_observation_producers_witness_test.dag",
+  "dag/test/claim/floor/floor_non_verdict_classification_witness_test.dag",
+  "dag/test/claim/gate_receipt_witness_test.dag",
+  "dag/test/claim/github_app_control_plane_observe_witness_test.dag",
+  "dag/test/claim/grub_console_witness_test.dag",
+  "dag/test/claim/hermetic_fixture_realization_test.dag",
+  "dag/test/claim/host/host_disk_reclaim_witness_test.dag",
+  "dag/test/claim/html_markup_xss_witness_test.dag",
+  "dag/test/claim/information_retrieval_witness_test.dag",
+  "dag/test/claim/lambda_capture_clone_required_witness_test.dag",
+  "dag/test/claim/lifecycle_survivor_scan_witness_test.dag",
+  "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
+  "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
+  "dag/test/claim/machine_intake/mtjade1_coverage_frontier_witness_test.dag",
+  "dag/test/claim/markdown_inline_render_test.dag",
+  "dag/test/claim/measure_magnitude_carrier_test.dag",
+  "dag/test/claim/method_arg_declared_contract_cross_module_alias_witness_test.dag",
+  "dag/test/claim/namespace_import_closure_witness_test.dag",
+  "dag/test/claim/non_fold_residue_witness_test.dag",
+  "dag/test/claim/opaque_census_declaration_scan_witness_test.dag",
+  "dag/test/claim/os_install_actuator_selection_witness_test.dag",
+  "dag/test/claim/plain_call_result_wrap_roster_test.dag",
+  "dag/test/claim/prose_row_introduction_witness_test.dag",
+  "dag/test/claim/qualified_spelling_identity_witness_test.dag",
+  "dag/test/claim/reconcile_in_process_cache_test.dag",
+  "dag/test/claim/render_glyphs_ansi_witness_test.dag",
+  "dag/test/claim/required_lane_resolution_census_witness_test.dag",
+  "dag/test/claim/roadmap/dispatch_worker_confinement_witness_test.dag",
+  "dag/test/claim/roadmap/roadmap_gate_test.dag",
+  "dag/test/claim/roadmap/roadmap_static_site_witness_test.dag",
+  "dag/test/claim/runner/runner_connectivity_repair_plan_witness_test.dag",
+  "dag/test/claim/runner_jit_admission_witness_test.dag",
+  "dag/test/claim/scm/scm_compatibility_mercurial_witness_test.dag",
+  "dag/test/claim/seed_debt_bundle_item_2_floor_scope.dag",
+  "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag",
+  "dag/test/claim/self_host_regen_affected_set_witness_test.dag",
+  "dag/test/claim/serving/router_realization_witness_test.dag",
+  "dag/test/claim/shell_stream_capture_witness_test.dag",
+  "dag/test/claim/spark/rank_memory_path_join_witness_test.dag",
+  "dag/test/claim/spark/spark_secret_access_ensure_witness_test.dag",
+  "dag/test/claim/srv3/srv3_network_identity_subsumption_witness_test.dag",
+  "dag/test/claim/srv3/srv3_unobservable_probe_refuses_witness_test.dag",
+  "dag/test/claim/state_response_totality_witness_test.dag",
+  "dag/test/claim/tailscale_acl_witness_test.dag",
+  "dag/test/claim/type_ref_hit_ne_bind_measure_witness_test.dag",
+  "dag/test/claim/unicode_ident_xid_grounding_test.dag",
+  "dag/test/claim/vllm/recipe_deepseek_v4_1_flash_witness_test.dag",
+  "dag/test/claim/witness_execution_class_test.dag",
+  "dag/test/ctl/pos_emit2.dag",
+  "dag/test/fixture/decl_facts_reflection/ambiguous_b_specimen.dag",
+  "dag/test/fixture/effect_reach_conjunction/sink_and_path_entry.dag",
+  "dag/test/fixture/evaluation_store_address_alias/aliased.dag",
+  "dag/test/fixture/glm_group_b_captures.dag",
+  "dag/test/fixture/leaf_key_collision/module_b.dag",
+  "dag/test/fixture/phantom_marker_identity/plain_consumer.dag",
+  "dag/test/fixture/reference_derived_graph/consumer_body_value.dag",
+  "dag/test/fixture/rest_exchange_replay_probe.dag",
+  "dag/test/fixture/sole_constructor_sealed/admitted_caller.dag",
+  "dag/test/probe/data_effect_permit_forged_probe.dag",
+  "src/v2/compiler/03_body_producer.dag",
+  "src/v2/compiler/build_workspace_grant.dag",
+  "src/v2/compiler/inferred_tree.dag",
+  "src/v2/compiler/parse_diagnostic.dag",
+  "src/v2/compiler/self_host/compiler_closure_emit_driver.dag",
+  "src/v2/compiler/self_host/seed_emitter_behavioral_wet_module_bindings.dag",
+  "src/v2/extdeps/bmc/lifecycle_fidelity.dag",
+  "src/v2/extdeps/formats/icestorm_pcf.dag",
+  "src/v2/extdeps/formatters/google_java_format.dag",
+  "src/v2/extdeps/github/diagnostic_emit.dag",
+  "src/v2/extdeps/languages/c_bool_literal_emit.dag",
+  "src/v2/extdeps/languages/rust_sg2_mode2_fixtures.dag",
+  "src/v2/lens/affected_set/entry_selection.dag",
+  "src/v2/lens/complexity_accumulator_copy/compile_gate.dag",
+  "src/v2/lens/duplicate_computation.dag",
+  "src/v2/lens/grounding_ledger.dag",
+  "src/v2/lens/mandatory_tag/corpus_scan.dag",
+  "src/v2/lens/simulated_relationship.dag",
+  "src/v2/native_lane_fixture/control.dag",
+  "src/v2/std/anti_unification.dag",
+  "src/v2/std/cross_tree/resolution.dag",
+  "src/v2/std/float.dag",
+  "src/v2/std/live_read.dag",
+  "src/v2/std/occurrence_id.dag",
+  "src/v2/std/report.dag",
+  "src/v2/test/algebra_laws/field_patch_monoid_test.dag",
+  "src/v2/test/claim/body_lowering/match_as_field_name_test.dag",
+  "src/v2/test/claim/build_artifact_verification_witness_test.dag",
+  "src/v2/test/claim/complexity_contract_subject_partition_witness_test.dag",
+  "src/v2/test/claim/construction_justification/outside_modeled_guarantee_witness_test.dag",
+  "src/v2/test/claim/emit/rust_body_add_emit_test.dag",
+  "src/v2/test/claim/emit/semantic_decl_binding_keys_parity_test.dag",
+  "src/v2/test/claim/enforcement/cost_coverage_witness_test.dag",
+  "src/v2/test/claim/execution/emit_ingest_typescript_same_language_round_trip_test.dag",
+  "src/v2/test/claim/extdeps/spice_element_letter_test.dag",
+  "src/v2/test/claim/extdeps_shape_transport_policy/lens_unit/clean_git_diff_test.dag",
+  "src/v2/test/claim/floor_discovery_source_authority_test.dag",
+  "src/v2/test/claim/graph_invariant/lens_unit/reach_kernel_test.dag",
+  "src/v2/test/claim/impossible_bug/nested_optional_flatten.dag",
+  "src/v2/test/claim/lean_overflow_semantics_witness_test.dag",
+  "src/v2/test/claim/long/direct_rust_door_production_group_test.dag",
+  "src/v2/test/claim/long/parse_table_memo_amortization_test.dag",
+  "src/v2/test/claim/long/typescript_import_pipeline_test.dag",
+  "src/v2/test/claim/manual/body_lowering_projection_call_test.dag",
+  "src/v2/test/claim/manual/cross_tree_constructor_binding_test.dag",
+  "src/v2/test/claim/manual/generic_instantiation_runtime_test.dag",
+  "src/v2/test/claim/manual/lean_language_model_anchor.dag",
+  "src/v2/test/claim/manual/outcome_diagnostics_eq.dag",
+  "src/v2/test/claim/manual/rust_language_model_anchor.dag",
+  "src/v2/test/claim/manual/typescript_bind_let_iife_emit_test.dag",
+  "src/v2/test/claim/manual/wasm_language_model_anchor.dag",
+  "src/v2/test/claim/namespace_graft/zero_metadata_test.dag",
+  "src/v2/test/claim/parse/parse_token_first_empty_semantics_test.dag",
+  "src/v2/test/claim/qualified_name/path_algebra_test.dag",
+  "src/v2/test/claim/round_trip/source_authority_contract.dag",
+  "src/v2/test/claim/self_host/native_routing_frontier_test.dag",
+  "src/v2/test/claim/sql_create_table_fold_test.dag",
+  "src/v2/test/claim/vacuity_consumer_witness_test.dag",
+  "src/v2/test/fixture/coercion_fold_int_rust_fixture.dag",
+  "src/v2/test/fixture/fn_family/planted_family.dag",
+  "src/v2/test/fixture/realization_vocab_scan/leak/plant.dag",
+  "src/v2/test/lens_application/enforce_rejecting_gate_fires_test.dag",
+  "src/v2/test/lens_cost/arrow_body_cost_domain_excluded.dag",
+  "src/v2/test/lens_coverage/parallel_authority_defect_key_test.dag",
+  "src/v2/test/lens_idempotency/write_effect_test.dag",
+  "src/v2/test/lens_ownership/resource_dependency.dag",
+  "src/v2/test/lens_table_decision_tree/sg_claims_test.dag",
+  "src/v2/test/lens_visibility/visibility_test.dag",
+  "src/v2/test/runtimes/effect_io_host_mode_test.dag",
+  "src/v2/workflow/bash_emit.dag",
+  "src/v2/workflow/ci_release_build_emit.dag",
+  "src/v2/workflow/compiler_closure_ingest_transport.dag",
+  "src/v2/workflow/floor_non_verdict_admission.dag",
+  "src/v2/workflow/module_binding_supply_transport.dag",
+  "src/v2/workflow/phase_profile_proof_plan.dag"
+]
+
+fn reference_conservation_stratified_sample_census() -> String {
+  fold_list(
+    xs: reference_conservation_stratified_sample_paths,
+    empty: "",
+    cons: fn(acc, path) { acc + reference_conservation_census_for_path(path: path) }
+  )
+}

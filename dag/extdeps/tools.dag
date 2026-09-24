@@ -8,7 +8,7 @@ import extdeps.shell
 import extdeps.tools.gnu_coreutils
 import extdeps.rustup { rustup_install_url }
 import extdeps.brew   { brew_install_url }
-import extdeps.apt
+import extdeps.apt { apt_installed_bin_path }
 import extdeps.version { VersionConstraint }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -22,7 +22,7 @@ type InstallSource
   = SourceCoreutils
   | SourceRustup
   | SourceBrew { formula: NonEmptyStr }
-  | SourceApt { package: NonEmptyStr }
+  | SourceApt { package: NonEmptyStr, bin_dir: FilePath }
   | SourceGitHubRelease {
       repo: NonEmptyStr
       tag: NonEmptyStr
@@ -51,7 +51,7 @@ fn one_hint(source: InstallSource) -> String {
     SourceCoreutils => "expected from system coreutils (GNU on Linux, BSD on macOS)"
     SourceRustup => concat("install rustup from ", rustup_install_url)
     SourceBrew { formula: f } => concat("brew install ", f)
-    SourceApt { package: p } => concat("apt install ", p)
+    SourceApt { package: p, bin_dir: _ } => concat("apt install ", p)
     SourceGitHubRelease { repo: r, tag: t, install_path: p, asset_aarch64: _, asset_x86_64: _ } =>
       concat(
         concat(concat(concat("install ", p as String), " from github.com/"), r as String),
@@ -92,7 +92,38 @@ fn apt_package_of(tool: CliTool) -> NonEmptyStr? {
         Present { value: found } => Present { value: found }
         Absent =>
           match source {
-            SourceApt { package: p } => Present { value: p }
+            SourceApt { package: p, bin_dir: _ } => Present { value: p }
+            SourceCoreutils => none
+            SourceRustup => none
+            SourceBrew { formula: _ } => none
+            SourceGitHubRelease {
+              repo: _, tag: _, asset_aarch64: _, asset_x86_64: _, install_path: _
+            } => none
+          }
+      }
+    },
+  )
+}
+
+// WHERE THE PACKAGE PUTS THE BINARY IS A FACT ABOUT THE PACKAGE, STATED ON THE ROW. A reader
+// that probes an apt-acquired tool by path must probe the path the package installs, and that is
+// not always /usr/bin: nfct (Ubuntu package `nfct`, from the conntrack-tools project) ships at
+// /usr/sbin/nfct. The directory used to be a
+// single constant every probe assumed, so an sbin tool read absent after a successful install and
+// no row could say otherwise. Each SourceApt now states its bin_dir, and this fold derives the
+// path from it. Absent means the tool declares no apt source -- the caller refuses rather than
+// guessing a directory, and nothing here searches PATH or tries a second directory.
+fn apt_binary_path_of(tool: CliTool) -> FilePath? {
+  fold_list(
+    xs: tool.installable_via,
+    empty: none,
+    cons: fn(acc, source) {
+      match acc {
+        Present { value: found } => Present { value: found }
+        Absent =>
+          match source {
+            SourceApt { package: _, bin_dir: d } =>
+              Present { value: apt_installed_bin_path(bin_dir: d, binary: tool.name) }
             SourceCoreutils => none
             SourceRustup => none
             SourceBrew { formula: _ } => none

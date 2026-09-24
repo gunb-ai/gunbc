@@ -31,11 +31,14 @@ import v2.std.node {
 }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
 import v2.std.symbol_index {
+  RecordTypePayload,
   SymbolIndex,
+  VariantArmPayload,
   symbol_index_bind_at,
   symbol_index_declaring_path_of,
   symbol_index_insert,
-  symbol_index_lookup
+  symbol_index_lookup,
+  symbol_index_mark_declared_payload
 }
 import v2.std.namespace_alias { ModuleBindingSource, PendingBinding }
 import v2.extdeps.languages.dag {
@@ -44,9 +47,7 @@ import v2.extdeps.languages.dag {
   namespace_graft_spine_segment_edge_optional,
   qualified_name_from_module_node
 }
-import v2.compiler.namespace_graft {
-  namespace_graft_parse_projection_edge
-}
+import v2.compiler.parse { parse_tree_projection_edge }
 
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -79,7 +80,7 @@ fn symbol_index_fill_containment_edge(
           path: path,
           node: edge.target
         )
-      } else if namespace_graft_parse_projection_edge(name: sym) {
+      } else if parse_tree_projection_edge(name: sym) {
         symbol_index_fill_containment_node(
           index: index,
           path: path,
@@ -140,10 +141,14 @@ fn symbol_index_fill_containment_node(
         match edge.label {
           Named { name: sym } =>
             let variant_path = qualified_name_snoc(qn: path, segment: sym)
-            let with_variant = symbol_index_insert(
-              index: acc,
+            let with_variant = symbol_index_mark_declared_payload(
+              index: symbol_index_insert(
+                index: acc,
+                qualified_path: variant_path,
+                resolved: edge.target
+              ),
               qualified_path: variant_path,
-              resolved: edge.target
+              kind: VariantArmPayload
             )
             symbol_index_fill_containment_node(
               index: with_variant,
@@ -340,10 +345,14 @@ fn symbol_index_fill_unique_variant_aliases(
             match e.label {
               Named { name: sym } =>
                 if disj_variant_count_of(counts: counts, sym: sym) == 1 {
-                  symbol_index_insert(
-                    index: a2,
+                  symbol_index_mark_declared_payload(
+                    index: symbol_index_insert(
+                      index: a2,
+                      qualified_path: qualified_name_snoc(qn: module_qn, segment: sym),
+                      resolved: e.target
+                    ),
                     qualified_path: qualified_name_snoc(qn: module_qn, segment: sym),
-                    resolved: e.target
+                    kind: VariantArmPayload
                   )
                 } else {
                   a2
@@ -359,35 +368,74 @@ fn symbol_index_fill_unique_variant_aliases(
 
 // PASS A -- WHAT THIS ROOT DECLARES. Every path here is rooted at this module's own qualified name,
 // so no other root can write it and the result does not depend on when this root is visited.
-fn symbol_index_fill_module_declarations(index: SymbolIndex, root: Node) -> SymbolIndex {
+// A RECORD IS MARKED FROM THE CARRIER, AND BY THE ARM THAT ALREADY DECIDED THE MODULE'S NAME.
+// Pass A cannot tell a record from a module container or a where-alias -- all three arrive through
+// symbol_index_fill_containment_edge as a Named edge to a Conj -- so the record half of the
+// declared-payload fact rides on ModuleBindingSource record_declarations (captured at normalize,
+// where the rehome still holds it) and is qualified here by the module's own name.
+//
+// IT IS MARKED INSIDE THIS FUNCTION, NOT BESIDE IT (review 70226). The first cut qualified the
+// records in its own fold, which re-asked qualified_name_from_module_node and therefore carried a
+// SECOND arm for a root whose name does not resolve -- a place to drop records for a module whose
+// declarations this arm had already dropped. Two arms deciding one thing is the fork; there is now
+// one. A root whose qualified name does not resolve contributes NOTHING here, records included,
+// which is this function's existing behaviour rather than a new drop: no entry is inserted for it,
+// so no reference can reach it and no binder can be widened by its absence.
+fn symbol_index_fill_module_declarations(
+  index: SymbolIndex,
+  root: Node,
+  record_declarations: FreeMonoid<Symbol>
+) -> SymbolIndex {
   match qualified_name_from_module_node(root: root) {
     Accepted { value: module_qn, diagnostics: _ } =>
-      symbol_index_fill_unique_variant_aliases(
-        index: symbol_index_fill_containment_node(
-          index: index,
-          path: module_qn,
-          node: root
+      fold_list(
+        xs: record_declarations,
+        empty: symbol_index_fill_unique_variant_aliases(
+          index: symbol_index_fill_containment_node(
+            index: index,
+            path: module_qn,
+            node: root
+          ),
+          module_qn: module_qn,
+          root: root
         ),
-        module_qn: module_qn,
-        root: root
+        cons: fn(acc, name) {
+          symbol_index_mark_declared_payload(
+            index: acc,
+            qualified_path: qualified_name_snoc(qn: module_qn, segment: name),
+            kind: RecordTypePayload
+          )
+        }
       )
     Rejected { diagnostics: _ } => index
   }
 }
 
-// THE NODE-ONLY DOOR, AND ITS NAME SAYS WHAT IT CANNOT DO. A caller holding only a grafted Node has
-// no import rows to offer -- the graft dissolved them and they are not recoverable from what is
-// left -- so this fills declarations and the alias rows still present in the tree, and no import
-// bindings. That is a statement about the input, not a default: a caller holding NormalizedTrees
-// goes through symbol_index_fill_module_roots, which projects them to ModuleBindingSource and gets
-// all three. Single-root and whole-corpus are not symmetric doors here, and deliberately so: a
-// binding row's target may be another root's declaration, so binding ONE root in isolation can only
-// ever see what that root itself declares.
-fn symbol_index_fill_module_root(index: SymbolIndex, root: Node) -> SymbolIndex {
+// THE SINGLE-ROOT DOOR: DECLARATIONS, RECORDS, AND THE ALIAS ROWS STILL IN THE TREE -- NO IMPORT
+// BINDINGS. Import rows are left out because a binding row's target may be another root's
+// declaration, so binding ONE root in isolation can only ever see what that root itself declares;
+// a caller holding the whole corpus goes through symbol_index_fill_module_roots, which binds them
+// to a fixed point. The records are NOT optional here (adhoc-68dc5afb-a90, from review 70544): an
+// index built without them answers Absent from v2.std.symbol_index symbol_index_declared_payload_at
+// for a RECORD, and a resolve-style reader would take the record for a binder. The grafted root
+// cannot supply them -- the record rehome erased the distinction -- so the caller hands over the
+// carrier captured at normalize (NormalizedTree record_declarations), and there is no door that
+// fills declarations without being handed it. The former multi-root Node door was deleted rather
+// than given the same parameter: it was symbol_index_fill_module_roots with import rows dropped,
+// and every caller of it held the NormalizedTrees that carry both.
+fn symbol_index_fill_module_root(
+  index: SymbolIndex,
+  root: Node,
+  record_declarations: FreeMonoid<Symbol>
+) -> SymbolIndex {
   match qualified_name_from_module_node(root: root) {
     Accepted { value: module_qn, diagnostics: _ } =>
       symbol_index_fill_alias_bindings(
-        index: symbol_index_fill_module_declarations(index: index, root: root),
+        index: symbol_index_fill_module_declarations(
+          index: index,
+          root: root,
+          record_declarations: record_declarations
+        ),
         module_qn: module_qn,
         root: root
       )
@@ -410,35 +458,6 @@ fn symbol_index_fill_module_root(index: SymbolIndex, root: Node) -> SymbolIndex 
 // decided by when a root was visited -- and the permutation control
 // (v2.test.claim.resolve.namespace_candidate_rule) carries a chained specimen so the claim is not
 // larger than its evidence.
-fn symbol_index_fill_module_root_nodes(
-  index: SymbolIndex,
-  roots: FreeMonoid<Node>
-) -> SymbolIndex {
-  symbol_index_fill_bindings_to_fixed_point(
-    index: fold_list(
-      xs: roots,
-      empty: index,
-      cons: fn(acc, root) {
-        symbol_index_fill_module_declarations(index: acc, root: root)
-      }
-    ),
-    pending: fold_list(
-      xs: roots,
-      empty: Empty,
-      cons: fn(acc, root) {
-        match qualified_name_from_module_node(root: root) {
-          Accepted { value: module_qn, diagnostics: _ } =>
-            list_append(
-              left: acc,
-              right: symbol_index_alias_rows_of(module_qn: module_qn, root: root)
-            )
-          Rejected { diagnostics: _ } => acc
-        }
-      }
-    )
-  )
-}
-
 fn symbol_index_fill_module_roots(
   index: SymbolIndex,
   roots: FreeMonoid<ModuleBindingSource>
@@ -448,7 +467,11 @@ fn symbol_index_fill_module_roots(
       xs: roots,
       empty: index,
       cons: fn(acc, tree) {
-        symbol_index_fill_module_declarations(index: acc, root: tree.root)
+        symbol_index_fill_module_declarations(
+          index: acc,
+          root: tree.root,
+          record_declarations: tree.record_declarations
+        )
       }
     ),
     pending: fold_list(
