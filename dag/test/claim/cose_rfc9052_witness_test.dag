@@ -2,7 +2,6 @@ module test.claim.cose_rfc9052_witness_test
 
 import std.logic { Bool }
 import std.types { Int, List }
-import std.integer { UInt8 }
 import std.measure { byte_size_count }
 import extdeps.standards.rfc_8949 { CborValue, CborUnsigned, CborNegative, CborByteString, CborMap, CborArray, CborEntry }
 import extdeps.standards.rfc_9052 {
@@ -15,7 +14,7 @@ import extdeps.standards.rfc_9052 {
 // The real-producer inhabitance is test.claim.app_attest_sample_decode_witness_test
 // the_sample_credential_key_hashes_to_the_key_id, over Apple's bytes.
 
-fn coordinate(n: Int, fill: Int, acc: List<UInt8>) -> List<UInt8> {
+fn coordinate(n: Int, fill: Int, acc: List<Int>) -> List<Int> {
   if n <= 0 { acc } else { coordinate(n: n - 1, fill: fill, acc: acc |> list_push(fill)) }
 }
 
@@ -27,7 +26,7 @@ fn cose_entry(k: Int, v: CborValue) -> CborEntry {
   CborEntry { key: label(n: k), value: v }
 }
 
-fn ec2_key(kty: Int, alg: Int, crv: Int, x: List<UInt8>, y: List<UInt8>) -> CborValue {
+fn ec2_key(kty: Int, alg: Int, crv: Int, x: List<Int>, y: List<Int>) -> CborValue {
   CborMap { entries: [
     cose_entry(k: 1, v: label(n: kty)),
     cose_entry(k: 3, v: label(n: alg)),
