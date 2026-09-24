@@ -98,6 +98,16 @@ fn rm_recursive_force_command(path: String) -> ArgvCommand {
   argv_command(program: coreutils_rm_binary_name, arguments: [coreutils_rm_force_recursive_flags as String, path])
 }
 
+// THE RECURSIVE DELETE THAT STAYS ON ONE FILE SYSTEM. GNU rm's --one-file-system: "when removing a
+// hierarchy recursively, skip any directory that is on a file system different from that of the
+// corresponding command line argument" (coreutils manual, rm invocation). A delete of a directory
+// something is still mounted under would otherwise descend into the mount and remove the mounted
+// file system's contents; with this flag rm skips it, fails, and leaves the directory present --
+// which an absence readback then reports, rather than a host path being emptied through a mount.
+fn rm_recursive_force_one_file_system_command(path: String) -> ArgvCommand {
+  argv_command(program: coreutils_rm_binary_name, arguments: [coreutils_rm_force_recursive_flags as String, coreutils_rm_one_file_system_flag as String, path])
+}
+
 // ln(1) -- GNU coreutils, "ln: Make links between files". -s makes a SYMBOLIC link, -f removes an
 // existing destination first, -n treats a destination that is itself a symlink to a directory as a
 // file to replace, and -T (--no-target-directory) makes ln REFUSE when the destination is a real
@@ -227,6 +237,8 @@ data coreutils_rm_binary_name: NonEmptyStr = "rm"
 data coreutils_rm_force_flag: NonEmptyStr = "-f"
 data coreutils_rm_empty_directory_flag: NonEmptyStr = "-d"
 data coreutils_rm_force_recursive_flags: NonEmptyStr = "-rf"
+
+data coreutils_rm_one_file_system_flag: NonEmptyStr = "--one-file-system"
 
 fn coreutils_rm_force_argv(paths: List<String>) -> List<String> {
   concat([coreutils_rm_binary_name as String, coreutils_rm_force_flag as String], paths)

@@ -1,0 +1,68 @@
+module test.claim.named_argument_binding_two_route_witness_test
+
+import std.types { String, Bool, Int }
+import gunbc.compile_census_probe { total_blocking_count_for }
+
+// WHAT THIS FILE ESTABLISHES, AND WHAT IT DELIBERATELY NO LONGER CLAIMS.
+//
+// It establishes ONE HALF of a two-route question by execution: v1 binds a named call argument by
+// NAME. `nab_inorder_source` and `nab_reordered_source` differ in NOTHING but the order the two
+// named arguments are written in, and `nab_pick` declares them at DIFFERENT types (`a: Int`,
+// `b: Bool`), so a position-keyed binding would be type-discriminating rather than silent. v1
+// carries zero blocking diagnostics on both, which is what binding by parameter identity looks like
+// from outside. That matches the two v1 routes read in source: `v1.compiler.emit`
+// `order_typed_call_args_from_semantics` selects each argument by `matched_argument_index` from the
+// `application_plan` that `v1.compiler.infer` built by parameter identity, and
+// `v1_compiler.interpreter` `eval_call` binds a LABELLED actual by its name after
+// `param_name_matches_declared`, keying only an UNLABELLED actual by position.
+//
+// THE v2 HALF IS NOT HERE, AND ITS ABSENCE IS A MEASURED RESULT RATHER THAN AN OMISSION. An earlier
+// version of this file compiled the same two fixtures through `v2.compiler.compile`
+// `compile_dag_source_to_target_text` and asserted a divergence. On the required floor the v2
+// POSITIVE CONTROL returned false: v2 refused the IN-DECLARATION-ORDER call as well. A witness whose
+// control fails cannot tell `v2 binds by position` apart from `v2's standalone driver cannot compile
+// this fixture at all`, so it established nothing about binding and was removed rather than
+// reinterpreted. The same run measured that arm at 220565 eval steps against a 72300 budget and
+// 567ms against a 302ms enrolment margin, so the interpreted whole-corpus compile is not viable as a
+// floor witness even once it reaches its subject -- the v2 half needs a different home, not a tweak.
+// LEADING HYPOTHESIS FOR THE CONTROL FAILURE, UNVERIFIED AND RECORDED AS A HYPOTHESIS:
+// `compile_dag_source_to_target_text` admits a standalone source with `peer_roots: Empty` and
+// `imports: Empty`, and the fixtures name `Int` and `Bool`.
+//
+// SO THE BINDING DIVERGENCE IS A DECLARED FRONTIER (DESIGN section 3c), NOT A CLAIM THIS FILE MAKES.
+// Its TRIGGER is the capability: a v2 acceptance harness that admits peer roots for a fixture source
+// AND whose cost fits a declared ceiling, at which point the v2 arms land here beside the v1 ones and
+// this paragraph deletes. Until then the v2 side of the argument rests on the source derivation
+// carried by the class row, which needs no run and claims no execution.
+//
+// THE DERIVATION THE ROW CARRIES, stated once so this file is readable on its own: a function's
+// parameter set is the Arrow DOMAIN, a `TypeNode { connective: Conj }` whose children carry
+// `Edge { label: Named { name } }`; `v2.std.node` `connective_edge_discipline` gives Conj
+// `LabeledEdges`, and `canonicalize_labeled_for_content_hash` SORTS those before hashing. A parameter
+// list therefore has NO identity-bearing sequence: the parameter set is name-keyed and the NAME is
+// the binding key.
+//
+// ONE ARM PER ROUTE PER FIXTURE (review 70029): a conjunction would make one budget pay two compiles
+// and a red would not say which fixture regressed. THE v1 COUNT IS ASKED AS A TOTAL, NOT PER CLASS --
+// `total_blocking_count_for` returns -1 when the census is not runnable, so a census that never ran
+// cannot read as a clean compile, and asking for the TOTAL means an upstream refusal cannot satisfy
+// an arm by leaving the class it was looking for at zero.
+//
+// NO COUNT OF CORPUS CALL SITES IS CARRIED HERE (DESIGN section 6: name the instrument, never
+// transcribe its output -- and declaring a figure un-instrumented makes it the rotting number the
+// rule forbids rather than exempting it). No producer re-derives that population today; when one
+// exists it is named here.
+//
+// THE CLASS is `gunbc.recurring_failure_mode.an_application_binds_by_position_where_the_model_binds_by_name`.
+
+data nab_inorder_source: String = "module nab_inorder\n\nfn nab_pick(a: Int, b: Bool) -> Int \{\n  a\n}\n\nfn nab_use() -> Int \{\n  nab_pick(a: 1, b: true)\n}\n"
+
+data nab_reordered_source: String = "module nab_reordered\n\nfn nab_pick(a: Int, b: Bool) -> Int \{\n  a\n}\n\nfn nab_use() -> Int \{\n  nab_pick(b: true, a: 1)\n}\n"
+
+test fn the_v1_routes_accept_the_declaration_order_call_which_is_their_positive_control() -> Bool {
+  total_blocking_count_for(source: nab_inorder_source) == 0
+}
+
+test fn the_v1_routes_bind_out_of_declaration_order_by_name_which_is_the_contract() -> Bool {
+  total_blocking_count_for(source: nab_reordered_source) == 0
+}
