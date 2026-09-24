@@ -567,7 +567,7 @@ fn s_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<No
 
 fn s_selected_key(s: SupplySelection<NonEmptyStr>) -> NonEmptyStr {
   match s {
-    OfferSelected { candidate: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (o.offer.id.key as NonEmptyStr)
+    OfferSelected { candidate: sel, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (sel.candidate.offer.id.key as NonEmptyStr)
     NoAdmissibleOffer { considered: _ } => "none"
     EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => "tie-unresolved"
   }
@@ -575,7 +575,7 @@ fn s_selected_key(s: SupplySelection<NonEmptyStr>) -> NonEmptyStr {
 
 fn s_selected_permit(s: SupplySelection<NonEmptyStr>) -> List<ProviderUsePermit<NonEmptyStr>> {
   match s {
-    OfferSelected { candidate: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => [o.permit]
+    OfferSelected { candidate: sel, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => [sel.candidate.permit]
     NoAdmissibleOffer { considered: _ } => []
     EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => []
   }

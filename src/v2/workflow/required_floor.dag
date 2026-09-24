@@ -736,14 +736,22 @@ fn required_gate_prefixes() -> List<String> {
 // module declares SubstrateInputsOnly and adds no preparation beyond gunbc.rust_emitted_edge and
 // the stage0 partition rows.
 //
-// THE FIFTH ROW IS THE STATEMENT-SEQUENCE LOWERING'S CLAIMS (adhoc-9d86ad93-96c, gunbc#12230; parent
+// THE EMITTED-WORKSPACE PLAN'S WITNESSES (gunbc#12214, parent ruling msg_d375b91d from
+// loyal-swift-608). They run v2.workflow.emitted_crate_workspace emitted_workspace_plan_over over a
+// SUPPLIED three-module DAG and supplied edges -- the plan's RED selection, its transitive re-export
+// derivation and its ClosuresDisagree / NoDiscriminatingEdge refusals -- so the refusals keep
+// executing after merge (DESIGN 4b(4)). They never derive the live closure: that run, with the
+// emission and both cargo builds, stays in the author-run instrument
+// //gunbc/instruments:emitted-crate-workspace. SubstrateInputsOnly.
+//
+// THE SIXTH ROW IS THE STATEMENT-SEQUENCE LOWERING'S CLAIMS (adhoc-9d86ad93-96c, gunbc#12230; parent
 // ruling from neat-boar-16). They guard a SILENT-LOSS class: a body whose non-final statement does
 // not bind lost every statement but one, with no diagnostic (repaired on main by gunbc#12221). The
 // discriminating red, `unbound_statement_prefix_refuses_holds`, was red on main and no lane saw it,
 // because the module matched no family prefix AND all six identities were withheld as cost debt in
 // `v2.workflow.floor_cost_debt`, so even an admitted run would have declined them. For a silent-loss
 // class the red has to execute where merges are decided, so the six leave the cost-debt roster in
-// the same change. Their four parse-and-normalize subjects are WARM in
+// the same change. All six claims read parse-and-normalize subjects that are WARM in
 // `v2.workflow.floor_pure_producer_share`. The module declares SubstrateInputsOnly.
 fn required_gate_authored_modules() -> List<String> {
   [
@@ -751,6 +759,7 @@ fn required_gate_authored_modules() -> List<String> {
     "test.claim.runner_capacity_realize_witness",
     "test.claim.corpus_census_allowance_witness_test",
     "test.claim.stage0_emitted_edge_admission_witness",
+    "test.claim.emitted_crate_workspace_witness",
     "v2.test.claim.body_lowering.statement_let_bind",
   ]
 }
