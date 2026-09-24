@@ -1,0 +1,76 @@
+module test.claim.http_method_set_witness
+
+import std.types { String, Bool }
+import extdeps.ietf.http_semantics { HttpMethod, GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH }
+import extdeps.http.server { HttpMethodParse, KnownMethod, UnknownMethod, parse_http_method_label, http_method_label }
+import extdeps.transports.rest { rest_method_verb }
+import std.effect_grant { Read, Write, verb_eq }
+import extdeps.uri_path { ParsedPathTemplate, MalformedPathTemplate, parse_path_template }
+import std.effects {
+  DeriveOpEffectResult, DerivedEffect, MalformedPathInput, MethodHasNoOperationEffect,
+  ReadEffect, derive_op_effect
+}
+
+// THE ONE METHOD SET, read through its real consumers. Before extdeps.ietf.http_semantics, the
+// wire parser, the label renderer, the grant verb and the effect derivation were all written over
+// std.types HttpMethod's seven arms, so a request labelled "CONNECT" or "TRACE" parsed as
+// UnknownMethod: the witness below that those two labels now parse as KnownMethod is red against
+// that tree and green on this one.
+
+fn label_round_trips(m: HttpMethod) -> Bool {
+  match parse_http_method_label(label: http_method_label(method: m)) {
+    KnownMethod { method: back } => http_method_label(method: back) == http_method_label(method: m)
+    UnknownMethod { label: _ } => false
+  }
+}
+
+fn label_is_known(label: String) -> Bool {
+  match parse_http_method_label(label: label) {
+    KnownMethod { method: _ } => true
+    UnknownMethod { label: _ } => false
+  }
+}
+
+test fn connect_and_trace_parse_as_known_methods() -> Bool {
+  label_is_known(label: "CONNECT")
+    && label_is_known(label: "TRACE")
+    && !label_is_known(label: "PROPFIND")
+}
+
+test fn every_method_label_round_trips() -> Bool {
+  label_round_trips(m: GET)
+    && label_round_trips(m: HEAD)
+    && label_round_trips(m: POST)
+    && label_round_trips(m: PUT)
+    && label_round_trips(m: DELETE)
+    && label_round_trips(m: CONNECT)
+    && label_round_trips(m: OPTIONS)
+    && label_round_trips(m: TRACE)
+    && label_round_trips(m: PATCH)
+}
+
+test fn trace_reads_and_connect_needs_write() -> Bool {
+  verb_eq(a: rest_method_verb(method: TRACE), b: Read)
+    && verb_eq(a: rest_method_verb(method: CONNECT), b: Write)
+}
+
+test fn connect_derives_no_operation_effect_and_trace_reads() -> Bool {
+  match parse_path_template(raw: "/tunnel") {
+    ParsedPathTemplate { template: path } =>
+      (match derive_op_effect(operation_name: "Tunnel", method: CONNECT, path: path) {
+        MethodHasNoOperationEffect { operation_name: _, method: _ } => true
+        DerivedEffect { effect: _ } => false
+        MalformedPathInput => false
+      })
+      && (match derive_op_effect(operation_name: "Trace", method: TRACE, path: path) {
+        DerivedEffect { effect: e } =>
+          match e.shape {
+            ReadEffect => true
+            _ => false
+          }
+        MethodHasNoOperationEffect { operation_name: _, method: _ } => false
+        MalformedPathInput => false
+      })
+    MalformedPathTemplate => false
+  }
+}

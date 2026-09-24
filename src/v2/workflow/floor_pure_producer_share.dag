@@ -829,6 +829,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.body_lowering.statement_let_bind.let_chain_subject",
   "v2.test.claim.body_lowering.statement_let_bind.let_in_form_subject",
   "v2.test.claim.body_lowering.statement_let_bind.typed_let_subject",
+  "v2.test.claim.body_lowering.statement_let_bind.unbound_prefix_subject",
+  "v2.test.claim.body_lowering.statement_let_bind.single_statement_subject",
   "v2.test.claim.body_lowering_block_body_call.body_lowering_block_call_subject",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_fixture_normalized",
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_local_consumer",
