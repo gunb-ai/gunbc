@@ -404,6 +404,46 @@ test fn an_observation_of_another_purpose_does_not_place_the_durable_origin() ->
     )
 }
 
+fn t_durable_observation(location: String) -> CloudflareR2BucketLocationObservation {
+  CloudflareR2BucketLocationObservation {
+    purpose: FabricDurableOrigin {},
+    read: t_origin_read(name: "gunbai-fabric-origin", jurisdiction: "default", location: Present { value: location }),
+    observed_at: "2026-09-24T00:00:00Z",
+    receipt: "r2-witness-receipt",
+  }
+}
+
+fn t_region_ambiguous(r: ProviderRegionObservation) -> Bool {
+  match r {
+    ProviderRegionRead { region } => false,
+    ProviderRegionUnread { obligation } => declaration_ref_eq(
+      a: obligation,
+      b: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_region_observation_ambiguous_obligation"),
+    ),
+  }
+}
+
+// Two valid, conflicting same-purpose reads refuse in BOTH orders: neither enam nor weur by position.
+test fn conflicting_same_purpose_observations_refuse_in_either_order() -> Bool {
+  let enam = t_durable_observation(location: "enam")
+  let weur = t_durable_observation(location: "weur")
+  t_region_ambiguous(r: cloudflare_r2_region_from_observations(purpose: FabricDurableOrigin {}, observations: [enam, weur]))
+    && t_region_ambiguous(r: cloudflare_r2_region_from_observations(purpose: FabricDurableOrigin {}, observations: [weur, enam]))
+}
+
+// A stale row beside a fresh one is the same ambiguity: agreement does not clear it either.
+test fn a_duplicated_observation_refuses_even_when_the_rows_agree() -> Bool {
+  let enam = t_durable_observation(location: "enam")
+  t_region_ambiguous(r: cloudflare_r2_region_from_observations(purpose: FabricDurableOrigin {}, observations: [enam, enam]))
+}
+
+test fn a_single_observation_is_read() -> Bool {
+  t_region_is(
+    r: cloudflare_r2_region_from_observations(purpose: FabricDurableOrigin {}, observations: [t_durable_observation(location: "enam")]),
+    decl: "r2_location_enam",
+  )
+}
+
 // THE CONSULTED CITATIONS ARE THE READINGS THE OBLIGATION NAMES, so durable storage is
 // researched-and-unanswered rather than never-looked.
 test fn durable_storage_cites_the_get_bucket_location_reading_as_consulted() -> Bool {

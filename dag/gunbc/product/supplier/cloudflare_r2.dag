@@ -119,25 +119,31 @@ fn cloudflare_r2_region_from_read(purpose: BucketPurpose, read: R2BucketRead) ->
   }
 }
 
-// THE FIRST RECORDED OBSERVATION FOR THE PURPOSE DECIDES; none recorded is Unread with the same
-// obligation. A later observation is a new row, and a second row for one purpose is not merged here.
+// EXACTLY ONE OBSERVATION PER PURPOSE, OR THE REGION IS NOT READ. List position is not evidence, so
+// two rows for one purpose are never resolved by picking one: conflicting reads (enam and weur) would
+// otherwise answer by whichever was transcribed first, and a stale read would survive a recreated
+// bucket. More than one row refuses with its own obligation, whatever the rows say, and is cleared
+// by retiring the superseded row rather than by an ordering rule over observed_at.
+data cloudflare_r2_region_observation_ambiguous_obligation: NonEmptyStr = "More than one bucket-location observation is recorded for this purpose in product.supplier.cloudflare_r2 cloudflare_r2_bucket_location_observations, so the region is UNREAD rather than chosen by list position. RESOLVED BY leaving exactly one row for the purpose: the observation from the most recent converge receipt, with the superseded rows removed in the same change. It is NOT resolved by reordering the rows or by agreeing locations."
+
 fn cloudflare_r2_region_from_observations(
   purpose: BucketPurpose,
   observations: List<CloudflareR2BucketLocationObservation>,
 ) -> ProviderRegionObservation {
   let mine = filter(observations, o => bucket_purpose_key(purpose: o.purpose) == bucket_purpose_key(purpose: purpose))
-  fold(
-    mine,
-    init: ProviderRegionUnread {
-      obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_region_unread_obligation"),
-    },
-    f: fn(acc, o) {
-      match acc {
-        ProviderRegionRead { region: _ } => acc,
-        ProviderRegionUnread { obligation: _ } => cloudflare_r2_region_from_read(purpose: purpose, read: o.read),
-      }
-    },
-  )
+  if count(mine) > 1 {
+    ProviderRegionUnread {
+      obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_region_observation_ambiguous_obligation"),
+    }
+  } else {
+    fold(
+      mine,
+      init: ProviderRegionUnread {
+        obligation: decl_ref(module_path: "product.supplier.cloudflare_r2", decl_name: "cloudflare_r2_region_unread_obligation"),
+      },
+      f: fn(acc, o) { cloudflare_r2_region_from_read(purpose: purpose, read: o.read) },
+    )
+  }
 }
 
 fn cloudflare_r2_durable_origin_region() -> ProviderRegionObservation {
