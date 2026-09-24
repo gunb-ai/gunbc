@@ -96,3 +96,9 @@ test fn a_retirement_naming_no_base_identity_is_refused() -> Bool {
   })
     && unimported_bare_provider_roster_edit_refusal(edit: carried) == ""
 }
+
+// PLANTED RED (reverted in the next commit): a bare call to a declaration outside this file's
+// import closure, so the required floor's unimported-bare-provider gate must refuse this file.
+test fn planted_unimported_bare_provider_is_refused_by_the_floor() -> Bool {
+  srv3_install_hang_no_router_lease_ms == srv3_install_hang_no_router_lease_ms
+}
