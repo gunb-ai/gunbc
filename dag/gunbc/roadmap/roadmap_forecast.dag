@@ -892,9 +892,9 @@ fn capacity_constrained_minimum(
 ) -> CapacityConstrainedMinimum {
   CapacityConstrainedMinimum {
     duration: DurationEstimateInterval {
-      minimum: millisecond(count: if millisecond_count(m: critical.duration.minimum) > (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.minimum) } else { (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap }),
-      median: millisecond(count: if millisecond_count(m: critical.duration.median) > (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.median) } else { (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap }),
-      maximum: millisecond(count: if millisecond_count(m: critical.duration.maximum) > (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.maximum) } else { (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap }),
+      minimum: millisecond(count: if millisecond_count(m: critical.duration.minimum) > (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.minimum) as Int } else { (millisecond_count(m: total.duration.minimum) + worker_cap - 1) / worker_cap }),
+      median: millisecond(count: if millisecond_count(m: critical.duration.median) > (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.median) as Int } else { (millisecond_count(m: total.duration.median) + worker_cap - 1) / worker_cap }),
+      maximum: millisecond(count: if millisecond_count(m: critical.duration.maximum) > (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap { millisecond_count(m: critical.duration.maximum) as Int } else { (millisecond_count(m: total.duration.maximum) + worker_cap - 1) / worker_cap }),
     },
     under_belt_slot_occupancy: belt_slot_occupancy,
   }
