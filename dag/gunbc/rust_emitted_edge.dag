@@ -32,6 +32,21 @@ type EmittedEdge {
   provenance: EmittedEdgeProvenance
 }
 
+// THE ENDPOINT NAME. An edge row names a module by the basename of the file the emitter writes for
+// it, so the projection from a module's dotted name to that basename is this module's fact, not the
+// emitter's private one: v1.compiler.emit_rust renders files and paths with it, and a partition
+// derived over dotted module names (v2.workflow.emitted_crate_workspace) maps onto edge endpoints
+// with the same function. `main` renders as `main_mod` because it collides with the crate's own
+// entry file.
+fn module_to_filename(name: String) -> String {
+  name |> split(delimiter: ".") |> join(separator: "_")
+}
+
+fn rust_module_emit_filename(module_name: String) -> String {
+  let raw = module_to_filename(name: module_name)
+  if raw == "main" { "main_mod" } else { raw }
+}
+
 // The runtime-support module every emitted module paths into. emit_prelude renders its prelude
 // lines from the rows below, so the module named in the text and the module named by the edge are
 // the same value.

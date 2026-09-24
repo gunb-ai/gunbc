@@ -209,8 +209,9 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 }
 
 // THE COUNT IS KEPT BESIDE THE NAMES DELIBERATELY, and it moved from 2 to 3 because a
-// `dashboard-deploy` job was added (and on to 7 with the broker dark install, the microVM controller
-// install and the launch-deployment receipt) -- not because the check was in the way. Naming each job without
+// `dashboard-deploy` job was added (and on to 8 with the broker dark install, the microVM controller
+// install, the launch-deployment receipt and the mtcollins1 boot, its own job because it federates as
+// its own identity, gunbc.auth.mtcollins1_boot_federation) -- not because the check was in the way. Naming each job without
 // pinning the total would let a fourth job appear unobserved; pinning the total without naming them
 // would pass for any set of jobs at all. Together they are an exact partition, which is the identity
 // join DESIGN section 5 asks for rather than a count standing in for one.
@@ -229,7 +230,7 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // extracting_a_collection_whose_elements_are_the_cost.
 //
 // gunbc.fleet_converge_workflow fleet_converge_job_edges is ids and lists of strings, built
-// independently of any Job and CONSUMED BY the seven builders for their `needs`, so reading it
+// independently of any Job and CONSUMED BY the eight builders for their `needs`, so reading it
 // forces no job body. The partition is still exact -- every row named, and the count pinned so an
 // eighth cannot appear unobserved -- and the property the witness is really about is unchanged:
 // every job that touches a host waits for `build`, because the release binaries are produced once
@@ -260,6 +261,7 @@ test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
   map(edges, e => e.id as String) == [
     "build",
     "fleet-converge",
+    "mtcollins1-boot",
     "host-reset-return",
     "dashboard-deploy",
     "approval-broker-dark-install",
