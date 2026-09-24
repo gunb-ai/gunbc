@@ -2,13 +2,14 @@ module test.claim.spark.v41_row_store_encode_run_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { byte_size }
+import std.measure { byte_size, byte_size_count }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.v41_row_store_encode { V41StoreEncodeArgs }
 import gunbc.spark.v41_row_store_encode_run {
   V41StoreRun, V41StorePresent, V41StoreEncoded, V41StoreDigestUnread, V41StoreEncodeFailed, V41StorePresenceFailed,
   V41StoreFound, V41StoreAbsent, V41StorePresenceUnread, v41_store_presence_of,
+  V41StoreSizeMismatch, V41StoreSizeUnread, V41SizeReadOk, V41SizeReadFailed, v41_sized, v41_store_expected_size,
   V41EncodeRan, V41EncodeRefusedBeforeRun, v41_encode_succeeded, v41_store_line,
 }
 
@@ -29,7 +30,7 @@ fn w_sha() -> Sha256Digest {
 }
 
 fn w_read(layer: Nat, rank: Nat) -> V41StoreRun {
-  V41StoreEncoded { store: w_args(layer: layer, rank: rank), digest: w_sha() }
+  V41StoreEncoded { store: w_args(layer: layer, rank: rank), digest: w_sha(), size: byte_size(count: 270) }
 }
 
 fn w_planned() -> List<V41StoreEncodeArgs> {
@@ -38,12 +39,12 @@ fn w_planned() -> List<V41StoreEncodeArgs> {
 }
 
 fn w_eight() -> List<V41StoreRun> {
-  map(w_planned(), a => V41StoreEncoded { store: a, digest: w_sha() })
+  map(w_planned(), a => V41StoreEncoded { store: a, digest: w_sha(), size: byte_size(count: 270) })
 }
 
 test fn every_planned_store_digested_succeeds() -> Bool {
   v41_encode_succeeded(run: V41EncodeRan { planned: w_planned(), stores: w_eight() })
-    && v41_encode_succeeded(run: V41EncodeRan { planned: w_planned(), stores: concat(w_eight() |> take(n: 7), [V41StorePresent { store: w_args(layer: 14, rank: 3), digest: w_sha() }]) })
+    && v41_encode_succeeded(run: V41EncodeRan { planned: w_planned(), stores: concat(w_eight() |> take(n: 7), [V41StorePresent { store: w_args(layer: 14, rank: 3), digest: w_sha(), size: byte_size(count: 270) }]) })
 }
 
 // RED: completeness is an identity join against the PLAN, not a count -- a store whose digest read
@@ -81,4 +82,21 @@ test fn a_failed_presence_check_is_not_absent_and_encodes_nothing() -> Bool {
       _ => false
     })
     && v41_store_line(r: V41StorePresenceFailed { store: w_args(layer: 1, rank: 2), cause: "the presence check did not run: timeout" as NonEmptyStr }).contains("presence check failed, nothing encoded")
+}
+
+// THE SIZE CHECK (proud-deer-538, 2026-09-24): one row of 256 + 8 bytes after the 6-byte magic is 270
+// bytes; a store of any other size is a SIZE-MISMATCH carrying both figures and is not digested, and a
+// size that could not be read is not digested either.
+test fn a_store_of_the_wrong_size_is_refused_with_both_figures() -> Bool {
+  let a = w_args(layer: 1, rank: 0)
+  byte_size_count(b: v41_store_expected_size(a: a)) == 270
+    && (match v41_sized(a: a, encoded: true, d: w_sha(), size: V41SizeReadOk { size: byte_size(count: 270) }) { V41StoreEncoded { store: _, digest: _, size: _ } => true  _ => false })
+    && (match v41_sized(a: a, encoded: true, d: w_sha(), size: V41SizeReadOk { size: byte_size(count: 269) }) {
+      V41StoreSizeMismatch { store: _, digest: _, observed: n, derived: e } => byte_size_count(b: n) == 269 && byte_size_count(b: e) == 270
+      _ => false
+    })
+    && (match v41_sized(a: a, encoded: false, d: w_sha(), size: V41SizeReadFailed { cause: "stat exited 1: gone" as NonEmptyStr }) { V41StoreSizeUnread { store: _, digest: _, cause: _ } => true  _ => false })
+    && !v41_encode_succeeded(run: V41EncodeRan { planned: w_planned(), stores: concat(w_eight() |> take(n: 7), [V41StoreSizeMismatch { store: w_args(layer: 14, rank: 3), digest: w_sha(), observed: byte_size(count: 269), derived: byte_size(count: 270) }]) })
+    && v41_store_line(r: V41StoreSizeMismatch { store: a, digest: w_sha(), observed: byte_size(count: 269), derived: byte_size(count: 270) }).contains("SIZE-MISMATCH")
+    && v41_store_line(r: w_read(layer: 1, rank: 0)).contains("size_bytes=270")
 }
