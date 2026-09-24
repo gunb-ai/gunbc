@@ -905,6 +905,24 @@ fn shape_git_config_local_get_argv(key: String) -> List<String> {
   ["git", "config", "--local", "--get", key]
 }
 
+fn shape_git_config_global_get_all_argv(key: String) -> List<String> {
+  ["git", "config", "--global", "--get-all", key]
+}
+
+fn shape_git_config_global_add_argv(key: String, value: String) -> List<String> {
+  ["git", "config", "--global", "--add", key, value]
+}
+
+// ConfigGlobalGetAll / ConfigGlobalAdd address the EXECUTING principal's global config. `--get-all`
+// prints one value per line and exits 1 when the key has no value, which is an answer, not a failure
+// (extdeps.git.inspect config_reading); `--add` appends one value to a multi-valued key without
+// touching the others, where a set would replace every existing value.
+//
+// git-config(1) safe.directory: the multi-valued global key naming repositories git will operate on
+// although the executing user does not own them. "*" disables the ownership check entirely.
+data git_safe_directory_key: String = "safe.directory"
+data git_safe_directory_wildcard: String = "*"
+
 fn shape_git_config_local_in_repo_argv(repo: FilePath, key: String, value: String) -> List<String> {
   ["git", "-C", repo as String, "config", "--local", key, value]
 }
@@ -1324,6 +1342,26 @@ service git.Core {
       0 => Unit
       nonzero => String "Config set failed"
     }
+  }
+
+  operation ConfigGlobalGetAll {
+    input { key: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "config", "--global", "--get-all", "{key}"] }
+  }
+
+  operation ConfigGlobalAdd {
+    input { key: String, value: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "config", "--global", "--add", "{key}", "{value}"] }
   }
 
   operation InitInRepo {

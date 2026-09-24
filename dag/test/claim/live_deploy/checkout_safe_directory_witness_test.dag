@@ -1,0 +1,70 @@
+module test.claim.live_deploy.checkout_safe_directory_witness
+
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.ci_deploy_access { ci_deploy_srv1_access }
+import extdeps.git.inspect { config_reading }
+import gunbc.live_deploy.checkout_safe_directory {
+  SafeDirectoryGrant, deploy_checkout_safe_directory_grant, safe_directory_standing, safe_directory_after_add,
+  SafeDirectoryGranted, SafeDirectoryAbsent, SafeDirectoryUnreadable, SafeDirectoryAdded, SafeDirectoryRefused,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The grant is derived, so the fixture is the production derivation over srv1's spec and CI access.
+fn srv1_grant() -> SafeDirectoryGrant {
+  deploy_checkout_safe_directory_grant(access: ci_deploy_srv1_access, spec: deployment_spec_srv1())
+}
+
+test fn witness_grant_is_the_spec_checkout_and_the_access_principal() -> Bool {
+  let g = srv1_grant()
+  g.path as String == deployment_spec_srv1().service.repo_root as String
+    && g.principal as String == ci_deploy_srv1_access.principal.posix.name as String
+}
+
+// A host lacking the entry (key unset, exit 1) is Absent -- the arm that adds it -- never Granted.
+test fn witness_unset_key_is_absent() -> Bool {
+  match safe_directory_standing(grant: srv1_grant(), reading: config_reading(exit_code: 1, stdout: "", stderr: "")) {
+    SafeDirectoryAbsent => true
+    _ => false
+  }
+}
+
+test fn witness_exact_path_among_others_is_granted() -> Bool {
+  let raw = join(["/srv/other\n", srv1_grant().path as String, "\n"], "")
+  match safe_directory_standing(grant: srv1_grant(), reading: config_reading(exit_code: 0, stdout: raw, stderr: "")) {
+    SafeDirectoryGranted => true
+    _ => false
+  }
+}
+
+// RED: readback refuses a wildcard, even beside the exact path.
+test fn witness_readback_refuses_a_wildcard() -> Bool {
+  let raw = join(["*\n", srv1_grant().path as String], "")
+  match safe_directory_after_add(grant: srv1_grant(), after: safe_directory_standing(grant: srv1_grant(), reading: config_reading(exit_code: 0, stdout: raw, stderr: ""))) {
+    SafeDirectoryRefused { grant: _, cause } => string_contains(s: cause, pattern: "wildcard")
+    _ => false
+  }
+}
+
+// RED: readback refuses a different path -- a prefix of the checkout is not the checkout.
+test fn witness_readback_refuses_a_different_path() -> Bool {
+  let raw = join([srv1_grant().path as String, "/sub\n/opt\n"], "")
+  match safe_directory_after_add(grant: srv1_grant(), after: safe_directory_standing(grant: srv1_grant(), reading: config_reading(exit_code: 0, stdout: raw, stderr: ""))) {
+    SafeDirectoryRefused { grant: _, cause } => string_contains(s: cause, pattern: "did not show")
+    _ => false
+  }
+}
+
+test fn witness_readback_of_the_exact_path_converges() -> Bool {
+  match safe_directory_after_add(grant: srv1_grant(), after: SafeDirectoryGranted) {
+    SafeDirectoryAdded { grant: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_unreadable_config_refuses() -> Bool {
+  match safe_directory_standing(grant: srv1_grant(), reading: config_reading(exit_code: 128, stdout: "", stderr: "fatal")) {
+    SafeDirectoryUnreadable { cause } => string_contains(s: cause, pattern: "128")
+    _ => false
+  }
+}
