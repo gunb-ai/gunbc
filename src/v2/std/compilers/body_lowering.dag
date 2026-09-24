@@ -14,7 +14,7 @@ import v2.std.diagnostic {
 import v2.std.optional { Optional, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_spine_node }
 import v2.std.node_query { node_positional_child_targets }
-import v2.std.algebra { TailAbsent, TailFound, list_tail }
+import v2.std.algebra { skip }
 import v2.std.node {
   Bind,
   Branch,
@@ -85,10 +85,7 @@ fn list_introduction_elements_optional(node: Node) -> Optional<List<Node>> {
             match declaration_reference_path_optional(node: head) {
               Present { value: path } =>
                 if path == list_introduction_head_path() {
-                  match list_tail(xs: targets) {
-                    TailFound { tail: elements } => optional_present(value: elements)
-                    TailAbsent => optional_present(value: [])
-                  }
+                  optional_present(value: skip(xs: targets, n: 1))
                 } else {
                   optional_absent()
                 }
