@@ -297,7 +297,8 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "is_emoji_ident",     bridge_name: "is_emoji_ident",   passes_by_ref: false, wraps_result: false },
 
   { name: "symbol_lexeme",        bridge_name: "symbol_lexeme",        passes_by_ref: false, wraps_result: false },
-  { name: "symbol_intern_lexeme", bridge_name: "symbol_intern_lexeme", passes_by_ref: false, wraps_result: false }
+  { name: "symbol_intern_lexeme", bridge_name: "symbol_intern_lexeme", passes_by_ref: false, wraps_result: false },
+  { name: "bytes_octets",         bridge_name: "bytes_octets",         passes_by_ref: false, wraps_result: false }
 ]
 
 fn rt_functions() -> Map<String, Bool> {

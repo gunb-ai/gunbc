@@ -75,8 +75,19 @@ type HostRealizationReason
   | GenericTypeParameter
   | HostContainer
   | UnnamedSynthesizedType
+  | HostTextCarrier
 
-// AN OPERAND WITHOUT A READABLE DECLARATION decides BY OPERATOR CLASS, never by guessing a
+// THE HOST TEXT CARRIER is the type the target's type renderer realizes as its native string (on
+// Rust, v1.compiler.emit_rust is_host_text_carrier_type: the String spelling whose declaration is not
+// a structural FreeMonoid<Char>). The operator decision reads the SAME predicate the renderer reads,
+// so an operand rendered as a host String is judged as one: its ordering is the host string's, which
+// is the interpreter's (Value::Str, Value::Str) arm exactly -- byte-lexicographic over UTF-8. Before
+// this arm the corpus String reached the ordering operators as an unreadable declaration and refused
+// (extdeps.standards.rfc_5280 x509_validity_at, over the String alias Timestamp), while `==` on the
+// same operand passed by operator class: one operand, two answers about whether it has a host
+// realization.
+
+, never by guessing a
 // declaration. Equality and the connectives do not depend on the declaration at all: every
 // structural declaration realizes equality structurally and every host value realizes it natively,
 // and on the target these are one token (the emitted enum derives PartialEq), so `==`/`!=`/`&&`/

@@ -47,8 +47,21 @@ fn pure_dag_seam_unreachable_string() -> String {
   if pure_dag_seam_unreachable() == 0 { "" } else { "" }
 }
 
-fn bytes_octets(b: Bytes) -> List<UInt8> {
-  [pure_dag_seam_unreachable()]
+// A HOST SEAM, AND ITS BODY SAYS SO. The octets of a Bytes value are the host's (the interpreter's
+// free_call.bytes_octets arm; on the Rust target v1_rt::bytes_octets over the Vec<u8> the carrier
+// realizes as), rostered in std.primitive_projection as a HostRealizedSeam so resolution routes a
+// call to the realization and never to this body. The body is the self-call that shape requires.
+// It was `[pure_dag_seam_unreachable()]`, which is not a seam at all to an emitter: it emitted as
+// ordinary code, a one-element list holding `1 / 0` -- a fabricated value in emitted code (DESIGN
+// section 5), where the interpreter answered the real octets.
+//
+// THE RESULT IS List<Int>, NOT List<UInt8>, for the reason gunbc.recurring_failure_mode
+// bounded_natural_arithmetic_evaluated_as_unbounded_int rules every such site: a value is typed as
+// what it holds, and nothing in the corpus establishes this value's range -- bytes_qualified_octets
+// below is the one boundary that observes it. The brand also had no emitted realization that
+// could hold an octet (UInt8 renders as a phantom Compose), so the typed value was unemittable.
+fn bytes_octets(b: Bytes) -> List<Int> {
+  bytes_octets(b: b)
 }
 
 // THE ONE PLACE A HOST-PRODUCED BYTE LIST IS QUALIFIED, AND IT OBSERVES RATHER THAN ASSERTS.
