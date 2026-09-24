@@ -11,11 +11,7 @@ import v2.std.runtime { RuntimeOutcome }
 type RustPrimitive
   = RustPrimitiveI32 {}
 
-type AlgebraCarrier
-  = AlgebraCarrierOrderedRing {}
-
 data rust_leaf_phase1_primitive_i32: RustPrimitive = RustPrimitiveI32 {}
-data rust_leaf_phase1_algebra_carrier_ordered_ring: AlgebraCarrier = AlgebraCarrierOrderedRing {}
 
 type RustClaimSubject
   = RustPrimitiveTypeSubject { primitive: RustPrimitive }
