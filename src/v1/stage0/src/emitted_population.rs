@@ -7,6 +7,7 @@
 // src/extdeps_currency_currency.rs
 // src/extdeps_external_authority.rs
 // src/extdeps_filesystem_rust_realization.rs
+// src/extdeps_ietf_http_semantics.rs
 // src/extdeps_languages_dag_emit.rs
 // src/extdeps_languages_dag_syntax.rs
 // src/extdeps_languages_dag_types.rs
@@ -34,7 +35,9 @@
 // src/gunbc_cli_dispatch_surface.rs
 // src/gunbc_namespace_reference_derived_closure_admission.rs
 // src/gunbc_reference_derived_candidate.rs
+// src/gunbc_rust_crate_package_ident.rs
 // src/gunbc_rust_decl_type_overlay.rs
+// src/gunbc_rust_emitted_edge.rs
 // src/gunbc_rust_source_type_bindings.rs
 // src/gunbc_stage0_crate_layout_generated.rs
 // src/gunbc_stage0_crate_partition_generated.rs

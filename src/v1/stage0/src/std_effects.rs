@@ -7,12 +7,16 @@ use self::DeriveOpEffectResult::*;
 use self::EffectShape::*;
 use self::IdempotencyEvidence::*;
 use self::KeySource::*;
+use self::MethodEffectShape::*;
 use self::ModifierAgreement::*;
+pub use crate::extdeps_ietf_http_semantics::HttpMethod;
+use crate::extdeps_ietf_http_semantics::HttpMethod::{
+    CONNECT, DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT, TRACE,
+};
 pub use crate::extdeps_uri_path::PathTemplate;
 pub use crate::extdeps_uri_path::{has_path_params, last_path_param};
 pub use crate::std_realization_schedule::string_list_eq;
-use crate::std_types::HttpMethod::{DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT};
-pub use crate::std_types::{HttpMethod, List};
+pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -239,6 +243,10 @@ pub enum DeriveOpEffectResult {
     DerivedEffect {
         effect: Rc<DerivedOpEffect>,
     },
+    MethodHasNoOperationEffect {
+        operation_name: String,
+        method: HttpMethod,
+    },
     MalformedPathInput {
         operation_name: String,
         method: HttpMethod,
@@ -248,44 +256,82 @@ pub enum DeriveOpEffectResult {
     },
 }
 
-pub fn derive_effect_shape(
-    method: HttpMethod,
-    path: Rc<PathTemplate>,
-) -> Rc<EffectShape<Rc<KeySource>>> {
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum MethodEffectShape {
+    MethodShaped {
+        shape: Rc<EffectShape<Rc<KeySource>>>,
+    },
+    MethodHasNoEffectShape,
+}
+impl MethodEffectShape {
+    pub fn shape(&self) -> Rc<EffectShape<Rc<KeySource>>> {
+        match self {
+            MethodEffectShape::MethodShaped { shape: __val, .. } => __val.clone(),
+            MethodEffectShape::MethodHasNoEffectShape => panic!("no shape on unit variant"),
+        }
+    }
+}
+
+pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<MethodEffectShape> {
     match method.clone() {
-        HttpMethod::GET => Rc::new(EffectShape::ReadEffect),
-        HttpMethod::HEAD => Rc::new(EffectShape::ReadEffect),
-        HttpMethod::OPTIONS => Rc::new(EffectShape::ReadEffect),
-        HttpMethod::POST => Rc::new(EffectShape::CreateEffect {
-            cause: Rc::new(CreateCause::PostAlways),
+        HttpMethod::GET => Rc::new(MethodEffectShape::MethodShaped {
+            shape: Rc::new(EffectShape::ReadEffect),
+        }),
+        HttpMethod::HEAD => Rc::new(MethodEffectShape::MethodShaped {
+            shape: Rc::new(EffectShape::ReadEffect),
+        }),
+        HttpMethod::OPTIONS => Rc::new(MethodEffectShape::MethodShaped {
+            shape: Rc::new(EffectShape::ReadEffect),
+        }),
+        HttpMethod::TRACE => Rc::new(MethodEffectShape::MethodShaped {
+            shape: Rc::new(EffectShape::ReadEffect),
+        }),
+        HttpMethod::CONNECT => Rc::new(MethodEffectShape::MethodHasNoEffectShape),
+        HttpMethod::POST => Rc::new(MethodEffectShape::MethodShaped {
+            shape: Rc::new(EffectShape::CreateEffect {
+                cause: Rc::new(CreateCause::PostAlways),
+            }),
         }),
         HttpMethod::DELETE => match crate::extdeps_uri_path::last_path_param(path.clone()) {
-            Some(p) => Rc::new(EffectShape::DeleteEffect {
-                key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
+            Some(p) => Rc::new(MethodEffectShape::MethodShaped {
+                shape: Rc::new(EffectShape::DeleteEffect {
+                    key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
+                }),
             }),
-            std::option::Option::None => Rc::new(EffectShape::CreateEffect {
-                cause: Rc::new(CreateCause::KeylessFallback {
-                    method: HttpMethod::DELETE,
+            std::option::Option::None => Rc::new(MethodEffectShape::MethodShaped {
+                shape: Rc::new(EffectShape::CreateEffect {
+                    cause: Rc::new(CreateCause::KeylessFallback {
+                        method: HttpMethod::DELETE,
+                    }),
                 }),
             }),
         },
         HttpMethod::PUT => match crate::extdeps_uri_path::last_path_param(path.clone()) {
-            Some(p) => Rc::new(EffectShape::UpsertEffect {
-                key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
+            Some(p) => Rc::new(MethodEffectShape::MethodShaped {
+                shape: Rc::new(EffectShape::UpsertEffect {
+                    key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
+                }),
             }),
-            std::option::Option::None => Rc::new(EffectShape::CreateEffect {
-                cause: Rc::new(CreateCause::KeylessFallback {
-                    method: HttpMethod::PUT,
+            std::option::Option::None => Rc::new(MethodEffectShape::MethodShaped {
+                shape: Rc::new(EffectShape::CreateEffect {
+                    cause: Rc::new(CreateCause::KeylessFallback {
+                        method: HttpMethod::PUT,
+                    }),
                 }),
             }),
         },
         HttpMethod::PATCH => match crate::extdeps_uri_path::last_path_param(path.clone()) {
-            Some(p) => Rc::new(EffectShape::UpsertEffect {
-                key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
+            Some(p) => Rc::new(MethodEffectShape::MethodShaped {
+                shape: Rc::new(EffectShape::UpsertEffect {
+                    key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
+                }),
             }),
-            std::option::Option::None => Rc::new(EffectShape::CreateEffect {
-                cause: Rc::new(CreateCause::KeylessFallback {
-                    method: HttpMethod::PATCH,
+            std::option::Option::None => Rc::new(MethodEffectShape::MethodShaped {
+                shape: Rc::new(EffectShape::CreateEffect {
+                    cause: Rc::new(CreateCause::KeylessFallback {
+                        method: HttpMethod::PATCH,
+                    }),
                 }),
             }),
         },
@@ -297,16 +343,23 @@ pub fn derive_op_effect(
     method: HttpMethod,
     path: Rc<PathTemplate>,
 ) -> Rc<DeriveOpEffectResult> {
-    {
-        let shape = derive_effect_shape(method.clone(), path.clone());
-        Rc::new(DeriveOpEffectResult::DerivedEffect {
-            effect: Rc::new(DerivedOpEffect {
+    match (*derive_effect_shape(method.clone(), path.clone())).clone() {
+        MethodEffectShape::MethodShaped { shape: shape, .. } => {
+            Rc::new(DeriveOpEffectResult::DerivedEffect {
+                effect: Rc::new(DerivedOpEffect {
+                    operation_name: operation_name.clone(),
+                    method: method.clone(),
+                    path_template: path.clone(),
+                    shape: shape.clone(),
+                }),
+            })
+        }
+        MethodEffectShape::MethodHasNoEffectShape => {
+            Rc::new(DeriveOpEffectResult::MethodHasNoOperationEffect {
                 operation_name: operation_name.clone(),
                 method: method.clone(),
-                path_template: path.clone(),
-                shape: shape.clone(),
-            }),
-        })
+            })
+        }
     }
 }
 
@@ -397,9 +450,11 @@ pub fn check_modifier_vs_derivation(
                             HttpMethod::GET => Rc::new(ModifierAgreement::Agrees),
                             HttpMethod::HEAD => Rc::new(ModifierAgreement::Agrees),
                             HttpMethod::OPTIONS => Rc::new(ModifierAgreement::Agrees),
+                            HttpMethod::TRACE => Rc::new(ModifierAgreement::Agrees),
                             _ => Rc::new(ModifierAgreement::Disagrees {
-                                reason: "readonly declared but method is not GET/HEAD/OPTIONS"
-                                    .to_string(),
+                                reason:
+                                    "readonly declared but method is not GET/HEAD/OPTIONS/TRACE"
+                                        .to_string(),
                             }),
                         }
                     } else {
