@@ -58,6 +58,8 @@ import extdeps.bmc.ipmi
 import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_shell_emit_dissolution_trigger }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootDiagnosticBundle, SelSnapshotReading, SelSnapshotNotTaken, inventory_not_taken,
+  SdrCacheReading, SdrCacheNotTaken, mtcollins1_boot_sdr_cache,
+  SensorsNotTaken, mtcollins1_boot_sensors,
   mtcollins1_boot_sel_snapshot, mtcollins1_boot_inventory, mtcollins1_boot_console,
   mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_bundle_findings, bundle_write_receipt_line,
   mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
@@ -858,9 +860,14 @@ fn mtcollins1_boot_refuses_off_srv1(host: String) -> ProcessExit {
 // RECORD of how far it got with the BMC instead of a bare exit, so a refusal before the credential
 // was read -- including the standing ruling unconfirmed or the unit held -- still uploads a bundle
 // saying the BMC sections were NOT TAKEN and why.
+// THE SDR CACHE SITS BESIDE THE CREDENTIAL FILE, under the runner's per-job temporary directory,
+// because it is dumped with that credential and lives exactly as long as the attempt that reads it.
+// It is not secret (sensor names and thresholds), so it needs no shred.
+data mtcollins1_boot_sdr_cache_suffix: String = ".sdr-cache"
+
 type MtCollins1BootBmcAccess
   = BmcAccessNotReached { reason: NonEmptyStr }
-  | BmcAccessHeld { username: NonEmptyStr, password_file: NonEmptyStr, password: String, sel_before: SelSnapshotReading }
+  | BmcAccessHeld { username: NonEmptyStr, password_file: NonEmptyStr, password: String, sdr_cache: SdrCacheReading, sel_before: SelSnapshotReading }
 
 type MtCollins1BootAttempt {
   outcome: ProcessExit
@@ -890,15 +897,19 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         outcome: mtcollins1_boot_exit_reason(outcome: attempt.outcome),
         sel_before: SelSnapshotNotTaken { reason: why },
         sel_after: SelSnapshotNotTaken { reason: why },
+        sdr_cache: SdrCacheNotTaken { reason: why },
+        sensors: SensorsNotTaken { reason: why },
         inventory: inventory_not_taken(reason: why),
         console: mtcollins1_boot_console(path: capture_path),
       }
-    BmcAccessHeld { username: user, password_file: pf, password: pw, sel_before: before } =>
+    BmcAccessHeld { username: user, password_file: pf, password: pw, sdr_cache: sdr, sel_before: before } =>
       MtCollins1BootDiagnosticBundle {
         attempt: run,
         outcome: mtcollins1_boot_exit_reason(outcome: attempt.outcome),
         sel_before: before,
-        sel_after: mtcollins1_boot_sel_snapshot(username: user, password_file: pf),
+        sel_after: mtcollins1_boot_sel_snapshot(username: user, password_file: pf, sdr: sdr),
+        sdr_cache: sdr,
+        sensors: mtcollins1_boot_sensors(username: user, password_file: pf, sdr: sdr),
         inventory: mtcollins1_boot_inventory(username: user, password: pw),
         console: mtcollins1_boot_console(path: capture_path),
       }
@@ -915,6 +926,16 @@ fn mtcollins1_boot_attempt_identity(read: ActionsVariableRead) -> AttemptIdentit
   }
 }
 
+// A DECLARED FRONTIER ON "EVERY TERMINAL ARM WRITES THE BUNDLE": it holds for every arm the
+// attempt can RETURN, and not for an evaluation refusal inside the conclusion. A read that fails is a
+// value here (BmcReadCause, SdrCacheUnread, ConsoleUnread) and cannot abort the bundle; an evaluator
+// refusal (run 35871654468: `n as Nat` in console_size_of_stat, "cannot cast Int to Nat") is not a
+// value, and no .dag construct lets this fold receive one as a typed cause -- it ends the whole
+// evaluation before the bundle or the receipt is written. So the wall today is that the conclusion
+// contains no expression the evaluator refuses, held by claims that EXECUTE its real crossings
+// (a_stat_size_crosses_to_its_byte_size), not by a catch. TRIGGER: the typechecker refuses what the
+// evaluator refuses (the Int-to-Nat cast is the known instance), which makes that class unwritable
+// here rather than caught.
 fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
 {
   let run = mtcollins1_boot_attempt_identity(read: actions_variable_read(name: github_run_id_variable_name))
@@ -1003,10 +1024,11 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
         bmc: BmcAccessNotReached { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" },
       }
     Present { value: user } => {
-      let before = mtcollins1_boot_sel_snapshot(username: user, password_file: cred as NonEmptyStr)
+      let sdr = mtcollins1_boot_sdr_cache(username: user, password_file: cred as NonEmptyStr, path: concat(cred, mtcollins1_boot_sdr_cache_suffix) as NonEmptyStr)
+      let before = mtcollins1_boot_sel_snapshot(username: user, password_file: cred as NonEmptyStr, sdr: sdr)
       MtCollins1BootAttempt {
         outcome: mtcollins1_boot_under_live_unit_hold(ruling: ruling, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path),
-        bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sel_before: before },
+        bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sdr_cache: sdr, sel_before: before },
       }
     }
   }
