@@ -18,6 +18,7 @@ use std::rc::Rc;
 pub enum EmittedEdgeProvenance {
     RuntimePrelude,
     ReexportFacade,
+    SemanticSourceReference,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -76,6 +77,16 @@ pub fn rust_prelude_emitted_edges(module: String) -> Rc<Vec<Rc<EmittedEdge>>> {
     }
 }
 
+pub fn semantic_source_reference_edge(from: String, to_module: String) -> Rc<EmittedEdge> {
+    Rc::new(EmittedEdge {
+        from: from.clone(),
+        to: Rc::new(EmittedEdgeTarget::EmittedModuleTarget {
+            module: to_module.clone(),
+        }),
+        provenance: EmittedEdgeProvenance::SemanticSourceReference,
+    })
+}
+
 pub fn emitted_edge_target_module(edge: Rc<EmittedEdge>) -> Rc<Vec<String>> {
     match (*edge.to.clone()).clone() {
         EmittedEdgeTarget::EmittedModuleTarget { module: target, .. } => {
@@ -89,3 +100,5 @@ pub fn emitted_edge_target_module(edge: Rc<EmittedEdge>) -> Rc<Vec<String>> {
 pub struct RuntimePrelude;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReexportFacade;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SemanticSourceReference;
