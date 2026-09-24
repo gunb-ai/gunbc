@@ -592,8 +592,8 @@ fn floor_expected_red_chunk_14() -> List<String> {
 //
 // The arm stays in the witness file as a permanent regression control over that fact. Nothing is
 // enrolled here because there is nothing red to enrol.
-// TWO IDENTITIES ENROLLED 2026-09-24 with the admitted body views (MQ-2/3). Each reads one lowered
-// body through a whole-shape view over source text on the real front end, and each is red on the
+// TWO IDENTITIES ENROLLED 2026-09-24 with the admitted body views (MQ-2/3). Each compares one
+// lowered body against its authored source on the real front end, and each is red on the
 // producer, not the view: a call in a let value or an if arm lowers to its bare callee atom, and the
 // statement after a `let` stays an unlowered grammar sequence. The cause is the value-position
 // operand read in v2.compiler.body_lowering_fold, the class
