@@ -1,0 +1,29 @@
+module gunbc.recurring_failure_mode.closure_emit_renders_an_arrow_without_its_body
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data closure_emit_renders_an_arrow_without_its_body: RecurringFailureMode = RecurringFailureMode {
+  identity: "closure_emit_renders_an_arrow_without_its_body" as NonEmptyStr,
+
+  receipts: [
+    "**closure emit renders an arrow without its body** (INVALID STATE: the v2 closure emitter reports Accepted for a module holding a function with a body, and its emitted text carries that function's SIGNATURE and not its body.",
+
+    "HARM: section 5 fabricated plausible output on the source-to-target path. The program's substance is gone and nothing refuses, so gen-one emitting v2.compiler.compile would hand over a crate whose functions have no bodies -- it fails to build, or builds as something that is not the compiler.",
+
+    "FOUND 2026-09-23 by warm-cat-318 on the self-host gen-two frontier; reproduced on main for a plain `fn add(x: Int, y: Int) -> Int { x + y }`, whose emission through `v2.compiler.self_host.compiler_closure_emit` was a record rendering of the module with `add: ( { x: i32, y: i32 }) -> (i32) -> i32`.",
+
+    "WHERE THE BODY WAS DROPPED (chain re-derivation, section 6b): the Rust target carries a type-expression projection, so `v2.compiler.translate` `translate_node_with_projection` routes the module root through `translate_type_expression_tree`, which checks for a bodied arrow only at the root and otherwise type-projects the whole subtree. The nested function reached `translate_type_expression_arrow_project`, which reads only the positional parameter and result children -- the body edge was discarded by that link's own contract, the earliest unjustified boundary.",
+
+    "RUNG: found silent (below the ladder); now rung 1, mitigated -- the arrow projection refuses a bodied arrow with `translate_arrow_body_not_a_type_expression`, located at the arrow, so the emit rejects rather than printing a bodiless function. The discriminating RED is the Accept on the old tree; the claim is `v2.test.emit.closure_emit_arrow_body_refusal`.",
+
+    "CEILING: structurally guaranteed -- a bodied arrow is a declaration, and a translate whose type-expression projection has no constructor for one cannot drop a body. NEXT-RUNG TRIGGER, named as a capability: the Rust target's grammar rows render a dag module and its nested fn declarations backward (DESIGN section 4, one grammar read in both directions), so a closure holding `fn add` emits text that contains its body. Until then the refusal is the answer, and the record-rendering fallback in `translate_type_expression_tree` (type-projecting any node no relation row matches) is the same class's upstream sibling -- it widens where it should refuse, and still renders a body-free module as a record.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.translate", decl_name: "translate_type_expression_arrow_project", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.translate", decl_name: "translate_type_expression_tree", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.emit.closure_emit_arrow_body_refusal", decl_name: "a_function_body_the_emitter_cannot_render_refuses_rather_than_dropping_holds", field: WholeDeclaration },
+  ],
+}

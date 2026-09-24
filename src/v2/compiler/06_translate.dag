@@ -92,6 +92,7 @@ import v2.std.node {
   well_formed,
 }
 import v2.std.node_query {
+  find_arrow_body_child,
   find_named_child,
   node_positional_child_targets
 }
@@ -1478,6 +1479,26 @@ fn translate_type_expression_shape_missing_diagnostic(node: Node) -> Diagnostic 
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
+// AN ARROW THAT CARRIES A BODY IS A DECLARATION, NOT A TYPE EXPRESSION. The type-expression
+// arrow projection reads only the positional parameter and result children, so projecting a
+// bodied arrow through it renders the signature and discards the body: a function with no
+// substance, printed as though it were the program (gunbc.recurring_failure_mode
+// closure_emit_renders_an_arrow_without_its_body). The projection refuses here, located at the
+// arrow, rather than dropping the body; a bodied arrow is rendered only by the bodied-arrow route,
+// which reads the same grammar rows backward.
+fn translate_arrow_body_not_a_type_expression_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_arrow_body_not_a_type_expression,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn translate_arrow_carries_body(node: Node) -> Bool {
+  match find_arrow_body_child(root: node) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: r } => r.head.reason == ^arrow_body_child_ambiguous
+  }
+}
 fn translate_type_expr_kind_authority_invalid_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^translate_type_expr_kind_authority_invalid,
@@ -1957,6 +1978,22 @@ fn translate_algebra_finalize(
 }
 
 fn translate_type_expression_arrow_project(
+  node: Node,
+  target: TargetModel,
+  projection: TargetTypeExpressionProjection
+) -> Outcome<Node> {
+  if translate_arrow_carries_body(node: node) {
+    outcome_rejected(translate_arrow_body_not_a_type_expression_diagnostic(node: node))
+  } else {
+    translate_type_expression_arrow_project_signature(
+      node: node,
+      target: target,
+      projection: projection
+    )
+  }
+}
+
+fn translate_type_expression_arrow_project_signature(
   node: Node,
   target: TargetModel,
   projection: TargetTypeExpressionProjection
@@ -4281,6 +4318,7 @@ type TranslateDiagnosticReason
   | TargetAtomRealizationLookupMiss
   | TargetFunctionSignatureRealizationLookupMiss
   | TargetTypeExprEmittedShapeMalformed
+  | ArrowBodyNotATypeExpression
 
 fn translate_diagnostic_reason_variants() -> List<TranslateDiagnosticReason> {
   [
@@ -4300,7 +4338,8 @@ fn translate_diagnostic_reason_variants() -> List<TranslateDiagnosticReason> {
     TypeExprKindAuthorityInvalid,
     TargetAtomRealizationLookupMiss,
     TargetFunctionSignatureRealizationLookupMiss,
-    TargetTypeExprEmittedShapeMalformed
+    TargetTypeExprEmittedShapeMalformed,
+    ArrowBodyNotATypeExpression
   ]
 }
 
@@ -4323,6 +4362,7 @@ fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> Symb
     TargetAtomRealizationLookupMiss => ^target_atom_realization_lookup_miss
     TargetFunctionSignatureRealizationLookupMiss => ^target_function_signature_realization_lookup_miss
     TargetTypeExprEmittedShapeMalformed => ^target_type_expr_emitted_shape_malformed
+    ArrowBodyNotATypeExpression => ^translate_arrow_body_not_a_type_expression
   }
 }
 
