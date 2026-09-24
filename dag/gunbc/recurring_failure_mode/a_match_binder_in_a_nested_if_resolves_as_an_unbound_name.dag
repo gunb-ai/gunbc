@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.a_match_binder_in_a_nested_if_resolves_as_an_unbound_name
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_match_binder_in_a_nested_if_resolves_as_an_unbound_name: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_match_binder_in_a_nested_if_resolves_as_an_unbound_name" as NonEmptyStr,
+
+  receipts: [
+    "a pattern binder introduced by a match arm, used inside an `if` nested in that arm, inside an if-arm, is refused at resolve as `resolve_reason_unbound_symbol`: the binder's scope does not reach the nested if on the native route, so a correct program is refused. Found by zesty-dove-429 (2026-09-24), pre-existing on main.",
+    "SPECIMEN AND CONTROL: `v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal` `iasl_ifarm_match_if_binder_source` -- `if c { match s { IaslB { r: iasl_bound } => if iasl_bound { iasl_bound } else { c } .. } } else { c }` -- refuses as unbound; its neighbour `iasl_ifarm_match_ctl`, where the binder is the arm's value directly, resolves (`a_match_in_an_if_arm_resolves`). So the defect is the binder's scope across the nested if, not the match or the if-arm alone.",
+    "CLASS: a resolve-scope defect, and a sibling of `gunbc.recurring_failure_mode.a_wildcard_match_arm_resolves_as_an_unbound_name`: loud, never silent, and it drops no other reference (independent refusals still reach the census), but it puts a row in the XL-2 residual that names no rewritable occurrence and is indistinguishable by cause from a real unbound name, so the residual is not exact while it stands. RUNG FOUND AT: a located refusal (mitigation) over a correct program. CEILING: structurally guaranteed -- a pattern binder's scope is the whole arm body, every nested construct included. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: resolve scopes a match-arm pattern binder over every construct of its arm body, nested ifs included, on the native route, so the specimen resolves and its pinning claim flips to a positive control.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal", decl_name: "a_match_binder_used_in_a_nested_if_in_an_if_arm_refuses_as_unbound", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal", decl_name: "a_match_in_an_if_arm_resolves", field: WholeDeclaration },
+  ],
+}
