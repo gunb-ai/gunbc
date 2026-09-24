@@ -933,10 +933,11 @@ data git_safe_directory_key: String = "safe.directory"
 data git_safe_directory_wildcard: String = "*"
 
 // ONE SAFE.DIRECTORY TRUST: the principal git runs as, and the exact repository path it may operate on
-// although it does not own it. The carrier is shared by every realization of that trust -- a
-// persisted global entry (gunbc.live_deploy.checkout_safe_directory) and an invocation-scoped
-// `-c safe.directory=<path>` on one command line -- so the two differ in lifetime, never in what
-// they grant.
+// although it does not own it. Its consumer today is the persisted global entry
+// (gunbc.live_deploy.checkout_safe_directory). It lives here rather than there because a second
+// realization is declared: the invocation-scoped `-c safe.directory=<path>` form, landing in gunbc#12246
+// (tree-sync's fetch from the runner checkout). The two realizations will differ in how long the trust
+// lasts, never in what it grants.
 type SafeDirectoryGrant {
   principal: NonEmptyStr
   path: NonEmptyStr
