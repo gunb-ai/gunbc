@@ -21,7 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // emitted text unchanged, so a repair that rounded or suffixed it would also fail.
 //
 // WHAT THIS DOES NOT ESTABLISH, stated because it is a text claim: that the emitted crate BUILDS and
-// READS 3144134277 back. That was measured once, in gunbc#<this PR> (a fixture crate built and
+// READS 3144134277 back. That was measured once, in gunbc#12219 (a fixture crate built and
 // printed the exact value on a remote runner), and the durable executing consumer is the native
 // crypto instrument: SHA-256's initial hash words are exactly such a row, and a wrong read changes
 // every digest (gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier).
