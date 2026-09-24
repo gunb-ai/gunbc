@@ -110,7 +110,6 @@ import gunbc.compiler_frontend_program_status {
   AsCastOperandLowering,
   ElseLessIfStatementLowering,
   WildcardMatchArmResolution,
-  MatchBinderNestedScopeResolution,
   PrerequisiteDelivered,
   PrerequisiteOutstanding,
   xl2_prerequisites,
@@ -697,8 +696,8 @@ fn xl2_label_is(p: Xl2Prerequisite, want: Xl2Prerequisite) -> Bool {
   xl2_prerequisite_label(p: p) == xl2_prerequisite_label(p: want)
 }
 
-test fn xl2_prerequisites_partition_into_ten_delivered_and_nine_outstanding() -> Bool {
-  count(xl2_prerequisites) == 19
+test fn xl2_prerequisites_partition_into_ten_delivered_and_eight_outstanding() -> Bool {
+  count(xl2_prerequisites) == 18
     && xl2_delivered_by(p: PlainCallArgumentReferenceVisibility, pr: 12108, merge_sha: "b0d307c31b")
     && xl2_delivered_by(p: BareFieldTypeVisibility, pr: 11574, merge_sha: "b705d17c45")
     && xl2_delivered_by(p: WholeTreeResolveCensus, pr: 11738, merge_sha: "c6b4e7ed2c")
@@ -717,8 +716,7 @@ test fn xl2_prerequisites_partition_into_ten_delivered_and_nine_outstanding() ->
     && xl2_outstanding_tracked_by(p: AsCastOperandLowering, decl_name: "as_cast_has_no_lowered_form")
     && xl2_outstanding_tracked_by(p: ElseLessIfStatementLowering, decl_name: "else_less_if_statement_has_no_lowered_form")
     && xl2_outstanding_tracked_by(p: WildcardMatchArmResolution, decl_name: "a_wildcard_match_arm_resolves_as_an_unbound_name")
-    && xl2_outstanding_tracked_by(p: MatchBinderNestedScopeResolution, decl_name: "a_match_binder_in_a_nested_if_resolves_as_an_unbound_name")
-    && count(xl2_prerequisites_outstanding()) == 9
+    && count(xl2_prerequisites_outstanding()) == 8
     && all(xl2_prerequisites_outstanding(),
          p => xl2_label_is(p: p, want: OptionalAccessorLocatedRefusal)
            || xl2_label_is(p: p, want: LoweringOccurrenceProjection)
@@ -727,15 +725,14 @@ test fn xl2_prerequisites_partition_into_ten_delivered_and_nine_outstanding() ->
            || xl2_label_is(p: p, want: CaretSymbolOperandLowering)
            || xl2_label_is(p: p, want: AsCastOperandLowering)
            || xl2_label_is(p: p, want: ElseLessIfStatementLowering)
-           || xl2_label_is(p: p, want: WildcardMatchArmResolution)
-           || xl2_label_is(p: p, want: MatchBinderNestedScopeResolution))
+           || xl2_label_is(p: p, want: WildcardMatchArmResolution))
     && all(xl2_prerequisites,
          p => count(xl2_prerequisites |> filter(q => xl2_prerequisite_label(p: q) == xl2_prerequisite_label(p: p))) == 1)
 }
 
 // THE INVARIANT THE PARTITION MUST NOT MOVE: prerequisites are necessary, not sufficient, so
-// XL-2 stays NotDerivable and the producer literal stays Unavailable with ten of nineteen delivered
-// -- and would stay so with nineteen of nineteen, because the producer is its own deliverable.
+// XL-2 stays NotDerivable and the producer literal stays Unavailable with ten of eighteen delivered
+// -- and would stay so with eighteen of eighteen, because the producer is its own deliverable.
 test fn xl2_stays_not_derivable_with_its_prerequisites_mostly_delivered() -> Bool {
   count(xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p))) == 10
     && standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL2RootDeletionRehearsal))

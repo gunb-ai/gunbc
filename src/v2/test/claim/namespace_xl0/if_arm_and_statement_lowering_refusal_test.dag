@@ -77,11 +77,9 @@ data iasl_ifarm_bare_und_source: String = "module v2.test.iasl_ifarm_bare_und\n\
 
 data iasl_ifarm_match_ctl_source: String = "module v2.test.iasl_ifarm_match_ctl\n\nimport v2.std.logic { Bool }\n\ntype IaslS = IaslA | IaslB { r: Bool } | IaslC\n\nfn iasl_probe(c: Bool, s: IaslS) -> Bool { if c {\n    match s {\n      IaslA => c\n      IaslB { r: x } => x\n      IaslC => c\n    }\n  } else {\n    c\n  }\n}\n"
 
-// A PRE-EXISTING RESOLVE DEFECT, PINNED AS FOUND (reported by zesty-dove-429): a pattern binder used
-// in a nested if, inside a match, inside an if-arm, refuses as an unbound name. Its neighbour
-// iasl_ifarm_match_ctl, where the binder is used directly as the arm's value, resolves. Tracked by
-// gunbc.recurring_failure_mode.a_match_binder_in_a_nested_if_resolves_as_an_unbound_name; this
-// claim is expected to go red when that defect is fixed, and then flips to its positive control.
+// A MATCH BINDER USED IN A NESTED IF, INSIDE A MATCH, INSIDE AN IF-ARM, RESOLVES. Written to pin a
+// reported resolve-scope refusal (zesty-dove-429); on CI this shape resolves, so it is kept as the
+// positive control for binder scope across a nested if, beside iasl_ifarm_match_ctl.
 data iasl_ifarm_match_if_binder_source: String = "module v2.test.iasl_ifarm_match_if_binder\n\nimport v2.std.logic { Bool }\n\ntype IaslS = IaslA | IaslB { r: Bool } | IaslC\n\nfn iasl_probe(c: Bool, s: IaslS) -> Bool { if c {\n    match s {\n      IaslA => c\n      IaslB { r: iasl_bound } => if iasl_bound { iasl_bound } else { c }\n      IaslC => c\n    }\n  } else {\n    c\n  }\n}\n"
 
 fn iasl_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
@@ -365,56 +363,10 @@ test fn a_match_in_an_if_arm_resolves() -> Bool {
   }
 }
 
-fn iasl_is_unbound(v: IaslVerdict) -> Bool {
-  match v {
-    IaslRefused { reason: r, at_atom: _ } => r == ^resolve_reason_unbound_symbol
-    _ => false
-  }
-}
-
-fn iasl_is_file_refused(v: IaslVerdict) -> Bool {
-  match v {
-    IaslFileRefused { fatal_reason: _ } => true
-    _ => false
-  }
-}
-
-fn iasl_is_resolve_refused(v: IaslVerdict) -> Bool {
-  match v {
-    IaslRefused { reason: _, at_atom: _ } => true
-    _ => false
-  }
-}
-
-// PROBE (temporary on this branch): which verdict the specimen reaches.
-test fn probe_match_if_binder_resolves() -> Bool {
+test fn a_match_binder_used_in_a_nested_if_in_an_if_arm_resolves() -> Bool {
   match iasl_outcomes() {
     IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: v } =>
       iasl_is_resolved(v: v)
-    IaslContextRefused => false
-  }
-}
-
-test fn probe_match_if_binder_file_refused() -> Bool {
-  match iasl_outcomes() {
-    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: v } =>
-      iasl_is_file_refused(v: v)
-    IaslContextRefused => false
-  }
-}
-
-test fn probe_match_if_binder_resolve_refused() -> Bool {
-  match iasl_outcomes() {
-    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: v } =>
-      iasl_is_resolve_refused(v: v)
-    IaslContextRefused => false
-  }
-}
-
-test fn probe_match_if_binder_unbound_at_binder() -> Bool {
-  match iasl_outcomes() {
-    IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: v } =>
-      iasl_is_unbound_at(v: v, spelling: ^iasl_bound)
     IaslContextRefused => false
   }
 }

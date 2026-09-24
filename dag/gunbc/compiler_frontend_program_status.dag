@@ -215,7 +215,6 @@ type Xl2Prerequisite
   | AsCastOperandLowering
   | ElseLessIfStatementLowering
   | WildcardMatchArmResolution
-  | MatchBinderNestedScopeResolution
 
 type Xl2PrerequisiteEvidence {
   pr: Int
@@ -255,7 +254,6 @@ data xl2_prerequisites: List<Xl2Prerequisite> = [
   AsCastOperandLowering,
   ElseLessIfStatementLowering,
   WildcardMatchArmResolution,
-  MatchBinderNestedScopeResolution,
 ]
 
 fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
@@ -277,7 +275,6 @@ fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
     AsCastOperandLowering => "an `as` cast `e as T` has a lowered form on every route, so its operand and its target type both reach resolve"
     ElseLessIfStatementLowering => "an else-less statement `if` (an early-return guard) lowers with the rest of the statement spine as its else, so every later statement reaches resolve"
     WildcardMatchArmResolution => "a wildcard match arm `_` is a pattern form resolve does not look up, so a correct match is not refused as an unbound name"
-    MatchBinderNestedScopeResolution => "a match-arm pattern binder is in scope in every construct of its arm body, so its use in a nested if is not refused as an unbound name"
     LoweringOccurrenceProjection => "every lowered node built from an authored atom keeps that atom's minted occurrence, so a census row locates back to one source occurrence"
   }
 }
@@ -361,10 +358,6 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
     WildcardMatchArmResolution => PrerequisiteOutstanding {
       tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.a_wildcard_match_arm_resolves_as_an_unbound_name", decl_name: "a_wildcard_match_arm_resolves_as_an_unbound_name"),
       why: "a pre-existing resolve defect surfaced by gunbc#12221: a wildcard arm `_` is looked up as a symbol and refuses as resolve_reason_unbound_symbol at `_`. It is RED-LOUD, not a drop -- independent refusals in the same declaration still reach the census (ResolveOccurrenceCompleteness) -- but it puts rows in the residual that name no rewritable occurrence and are indistinguishable by cause from a real unbound name, so the residual this stage exists to take is not exact while it stands. No fix has merged." as NonEmptyStr,
-    }
-    MatchBinderNestedScopeResolution => PrerequisiteOutstanding {
-      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.a_match_binder_in_a_nested_if_resolves_as_an_unbound_name", decl_name: "a_match_binder_in_a_nested_if_resolves_as_an_unbound_name"),
-      why: "a pre-existing resolve-scope defect (found by zesty-dove-429): a match-arm binder used in an if nested in that arm, inside an if-arm, refuses as resolve_reason_unbound_symbol. Like WildcardMatchArmResolution it is loud, not a drop, but each such row in the residual names no rewritable occurrence, so the residual is not exact while it stands. No fix has merged." as NonEmptyStr,
     }
     LoweringOccurrenceProjection => PrerequisiteOutstanding {
       tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_rebuilds_an_authored_atom_without_its_occurrence", decl_name: "lowering_rebuilds_an_authored_atom_without_its_occurrence"),
