@@ -153,9 +153,9 @@ fn lower_block_body_atoms(atoms: List<Node>, witness: Node) -> Outcome<Node> {
 // the very child Nodes it names, with nothing rebuilt, so a consumer that wants provenance, an
 // occurrence or a locus still reads it from the Node.
 //
-// THE CONSTRUCTOR ESTABLISHES THE WHOLE SHAPE OR REFUSES. The piecewise readers in
-// v2.std.node_query (node_is_call, call_callee_target, call_argument_targets) answer one question
-// each and stay silent about the rest, so a call whose argument list was truncated still has a
+// THE CONSTRUCTOR ESTABLISHES THE WHOLE SHAPE OR REFUSES. The piecewise readers this replaced
+// (v2.std.node_query node_is_call, call_callee_target, call_argument_targets, now deleted) answered
+// one question each and stayed silent about the rest, so a call whose argument list was truncated still has a
 // callee and still has "arguments" -- fewer of them -- and every consumer that asked only for the
 // callee was green over a lost argument. A view refuses, typed and located at the offending node,
 // when ANY part is missing: an unexpected edge label, a wrong child count, or an empty-Conj residue
@@ -248,16 +248,11 @@ fn view_symbol_listed(id: Symbol, xs: List<Symbol>) -> Bool {
   fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == id) })
 }
 
-// DECLARED FRONTIER (DESIGN section 3c), stated here because this is where a reader meets the two
-// authorities: v2.std.node_query node_is_call / call_callee_target / call_argument_targets answer
-// the same question piecewise and are still read by six production consumers (v2.std.fn_index and
-// the determinism, machine_shape, fn_index_depth_agreement, production_qualification_origin_probe
-// and no_dual_representation lenses). They are cut over to application_read, each surfacing
-// ApplicationRefused through its own refusal channel, and the node_query readers are DELETED, by the
-// MQ-2 cutover work item "MQ-2 cutover: node_query call readers -> application_read"
-// (warm-ram-650). Until it lands, the consumer of these views is
-// v2.test.claim.namespace_xl0.body_shape_contract, and no new consumer may be added to the
-// node_query readers.
+// ONE CALL READER. application_read replaced v2.std.node_query node_is_call / call_callee_target /
+// call_argument_targets, which were deleted in the same change that cut their six production
+// consumers over (v2.std.fn_index and the determinism, machine_shape, fn_index_depth_agreement,
+// production_qualification_origin_probe and no_dual_representation lenses); each surfaces
+// ApplicationRefused through its own refusal channel rather than reading it as "not a call".
 
 // THE SHARED BASE: AN APPLICATION, READ WITHOUT ANY OPERATOR ROSTER. Every call and every operator
 // lowers to Transform(head, operands...), so "what is applied here, to what" is a question about
