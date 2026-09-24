@@ -32,18 +32,21 @@ import extdeps.communication.medium { Lossless, Medium }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// A CALL OR A FUNCTION VALUE IN SCRUTINEE OR ARGUMENT POSITION LOWERS WHOLE AND REACHES RESOLVE.
+// A CALL IN SCRUTINEE OR ARGUMENT POSITION LOWERS WHOLE AND REACHES RESOLVE (HOLDS); A FUNCTION VALUE
+// IN ARGUMENT POSITION DOES NOT YET (EXPECTED-RED, THE LAMBDA FRONTIER BELOW).
 //
 // THE SUBJECT IS THE TWO VALUE-POSITION READERS OF v2.compiler.body_lowering_fold on the route the
 // native lane runs (native_test_context_from_ingest, then native_census_module_resolution): the match
-// scrutinee (body_lower_match_scrutinee) and the call argument (body_lower_arg_value). Both read
-// through body_lower_operand_ref_optional until gunbc#12145 stopped that reader narrowing a sequence
-// to its left element; a call `f(x)` and a lambda `x => body` are sequences, so from #12145 until this
-// change the match refused the WHOLE FILE as body_lowering_reason_match_arm_navigation_refused and the
-// argument as body_lowering_reason_call_argument_unread -- 81 files on the native lane, measured by
-// the parent-versus-child identity diff. Before #12145 they "lowered" by narrowing: the scrutinee to
-// the callee atom, the lambda to its parameter, which is why an undeclared name inside them reached no
-// reference site. So the red arms below are red on BOTH earlier revisions, for two different reasons.
+// scrutinee and the call argument. Both read through body_lower_operand_ref_optional, whose sequence
+// arm narrowed a call `f(x)` to `f` and a lambda `x => body` to `x` -- a silent truncation, which is
+// why an undeclared name inside them reached no reference site. gunbc#12145 removed that truncation
+// and thereby EXPOSED these consumers: from then on the match refused its whole file as
+// body_lowering_reason_match_arm_navigation_refused and the argument as
+// body_lowering_reason_call_argument_unread (with operator_operand_unread, 85 added and 4 removed
+// (cause, path) identities on the native lane against #12145's parent). gunbc#12173 repaired both
+// readers by reading the value whole through body_lower_value_lowered; the claims below that hold are
+// its permanent regression controls: measured red on the refusing fold (main before #12173), and red
+// on the truncating fold by construction, since truncation drops the atom they look for (not run).
 //
 // THE MODULES VARY ONE THING EACH. An undeclared name as the argument of a call scrutinee must refuse
 // at resolve at its own atom (the scrutinee reached resolve whole); the declared twin resolves. An
@@ -223,7 +226,7 @@ test fn an_undeclared_name_inside_a_call_argument_refuses_at_resolve_at_its_atom
 // resolver (program_assembly module_roots_from_source_root_ingest, projected through
 // normalized_tree_roots_to_nodes) and assert the call's shape: a Transform whose operator is the
 // authored callee, with exactly one argument, whose argument is the authored inner call or atom.
-// Narrowing (the pre-#12145 truncation to the callee atom) and refusal (the #12145 regression) both
+// Narrowing (the pre-#12145 truncation to the callee atom) and refusal (the fail-closed exposure after #12145) both
 // fail these. Renaming the callee in the expected spelling makes them red. The ingest is enrolled warm
 // beside vpw_outcomes; the walk runs per claim.
 // The shape claims read their own ingest, WITHOUT the lambda fixtures: module_roots_from_source_root_ingest
