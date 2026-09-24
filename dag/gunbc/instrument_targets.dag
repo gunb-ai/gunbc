@@ -15,6 +15,7 @@ import gunbc.target_binding {
   FloorMemoryQualificationProducer,
   CompileCleanDiagnosticCensusProducer,
   EvaluationStoreAddressExactHeadProducer,
+  EmittedCrateWorkspaceProducer,
   CompileCleanDiagnosticCensusStanding,
   CompileCleanDiagnosticCensusCompleted,
   CompileCleanDiagnosticCensusRefused,
@@ -199,6 +200,28 @@ fn v2_native_cli_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-cli" } }
 }
 
+// THE EMITTED CLOSURE AS A MULTI-CRATE WORKSPACE (Pkg7e). The seed emits `v2.compiler.compile`'s
+// closure, `v2.workflow.emitted_crate_workspace` `emitted_workspace_plan` partitions it into crate
+// rows from the derived module DAG, the emission's returned edges and the transitive unit
+// dependencies, `v1.compiler.stage0_crates` renders those rows with the one partition renderer,
+// and cargo builds the workspace -- the POSITIVE CONTROL. In the same invocation one derived
+// dependency is dropped from one crate, chosen from the transitive reduction so no other crate's
+// glob facade can re-export it, and the build must fail with an error naming the dropped target
+// module -- the RED. The receipt names the head, the closure's module count, the crate count, the
+// rustc identity, both verdicts and whether the facade degenerated to the whole closure.
+//
+// WHAT A GREEN DOES NOT ESTABLISH. The facade re-exports each crate's TRANSITIVE dependency closure,
+// an over-approximation of the direct edges, because the inline crate::<module>:: paths the
+// expression emitter writes are not returned as edges (gunbc.guarantee_stall
+// emitted_inline_crate_path_edges_unreturned_stall). And the crates carry no grounded interface
+// maps: that waits on host-effect emission of v2.compiler.source_authority
+// module_storage_bindings_for_source_roots (v2.workflow.rust_crate_partition
+// stage0_module_dag_interface_grounding). So a green says the derived partition compiles through
+// glob facades; it does not say each crate's public surface is minimal or grounded.
+fn emitted_crate_workspace_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "emitted-crate-workspace" } }
+}
+
 // O(corpus) exact-head join of evaluation_store_address callers plus the fail-closed src/v2
 // call-form scan. Not a DiscoverySelection floor witness (enrolment_bound_without_ceiling);
 // not a required CI job. `gunbc test //gunbc/instruments:evaluation-store-address-exact-head`.
@@ -327,6 +350,10 @@ fn primitive_egress_census_seed_target() -> BuildTarget {
 
 fn required_lane_resolution_census_target() -> BuildTarget {
   instrument_test_target(label: required_lane_resolution_census_label())
+}
+
+fn emitted_crate_workspace_binding() -> TargetBinding {
+  TargetBinding { target: emitted_crate_workspace_label() producer: EmittedCrateWorkspaceProducer {} }
 }
 
 fn v2_native_cli_binding() -> TargetBinding {
@@ -459,7 +486,8 @@ fn instrument_targets() -> List<Label> {
     evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), floor_memory_qualification_label(),
-    required_lane_resolution_census_label(), bare_reference_channel_outcome_label()
+    required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
+    emitted_crate_workspace_label()
   ]
 }
 
@@ -471,7 +499,8 @@ fn instrument_bindings() -> List<TargetBinding> {
     evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), floor_memory_qualification_binding(),
-    required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding()
+    required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
+    emitted_crate_workspace_binding()
   ]
 }
 

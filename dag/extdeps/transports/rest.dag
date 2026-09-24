@@ -2,7 +2,7 @@ module extdeps.transports.rest
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, FermiDepth, NonEmptyStr, HttpStatus, Bool, String, Int, List }
+import std.types { FermiDepth, NonEmptyStr, HttpStatus, Bool, String, Int, List }
 import std.content_hash { Fnv1a64Structural }
 import std.serialization { WireFormat }
 import std.fidelity { TransportFidelity }
@@ -11,6 +11,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, Http, Https, Tftp, File, Ftp, Javascript, Data, Vbscript, Mailto }
 import v2.std.operation_argv { OperationRef }
 import v2.std.optional { Absent, Present }
+import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, CONNECT, TRACE }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -343,15 +344,20 @@ fn rest_exchange_fixture_lookup(
   }
 }
 
+// TRACE is a safe method (RFC 9110 section 9.3.8), so it reads. CONNECT (9.3.6) is neither safe
+// nor idempotent and opens a tunnel whose traffic the grant cannot see, so it demands the stronger
+// verb rather than being admitted as a read.
 fn rest_method_verb(method: HttpMethod) -> std.effect_grant.Verb {
   match method {
     GET => Read
     HEAD => Read
     OPTIONS => Read
+    TRACE => Read
     POST => Write
     PUT => Write
     PATCH => Write
     DELETE => Write
+    CONNECT => Write
   }
 }
 

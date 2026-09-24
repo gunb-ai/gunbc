@@ -367,6 +367,7 @@ fn heal_publisher_job() -> Job {
     id: heal_publisher_workflow_job_id,
     name: none,
     runner: HostedRunner { label: Ubuntu2404Arm },
+    environment: none,
     steps: list_map(xs: heal_publisher_bound_steps(), f: fn(b) { b.step }),
     needs: [],
     env: none,

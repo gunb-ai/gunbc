@@ -1,8 +1,9 @@
 module gunbc.machine_intake_mtcollins1_media_attach
 
 import std.types { NonEmptyStr, String }
+import std.decl_ref { decl_ref }
+import gunbc.machine_intake_mtcollins1_maintenance_hold { UnitHoldProof, unit_hold_proof_refusal, mtcollins1_unit_hold_key }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import std.scoped_authorization { ScopedAuthorization, AuthorizationGranted }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secured_account }
 import gunbc.machine_intake_mtcollins1_boot_authorization {
@@ -102,75 +103,52 @@ fn mtcollins1_render_release(standing: SessionRelease) -> String {
   }
 }
 
-// THE DISCRIMINATING CONTROL, and it is the arm this operation most needs one for. Every other
-// refusal here is reachable only by breaking the controller or the network; this one is reachable
-// on a healthy unit and it is the arm that decides whether a name that is NOT present can be
-// reported as attached. Without it, "the attach succeeded" is a claim about a run in which nothing
-// could have failed — the specification-without-execution shape DESIGN §5 names.
-//
-// IT RUNS AGAINST THE SAME LIVE CONTROLLER AS THE POSITIVE PATH, differing in exactly one input,
-// so a green positive and a red control together establish that the confirmation reads the name
-// rather than reporting whatever the controller happens to be presenting. Running it costs one
-// session and performs no write: the absent name is refused after the two reads, before start.
-fn mtcollins1_attach_absent_image_control(password_file: String, attempt: String) -> ProcessExit
-{
-  match mtcollins1_media_username {
-    Absent =>
-      exit_failure(reason: "mtcollins1 media attach control: BMC is not BmcSecured; refusing before any request")
-    Present { value: username } =>
-      if password_file == "" {
-        exit_failure(reason: "mtcollins1 media attach control: no controller password file supplied; refusing before any request")
-      } else {
-        mtcollins1_render_attach_result(
-          result: megarac_attach_remote_image(
-            bmc_host: mtcollins1_endpoint.host,
-            username: username,
-            password_file: password_file as NonEmptyStr,
-            cookie_jar: mtcollins1_media_cookie_jar(attempt: attempt as NonEmptyStr),
-            image_name: "gunbc-absent-control-image.iso",
-            firmware: mtcollins1_firmware,
-          )
-        )
-      }
-  }
-}
-
+// THE ABSENT-IMAGE CONTROL IS GONE (gunbc#12101, side-chat review 5286225278): it opened a media
+// session on this unit from an operator session with no interlock, and nothing consumed it. The
+// attach below is the one route to this unit's virtual media: it takes the unit-hold proof, whose
+// only mint is the live acquire in gunbc.machine_intake_mtcollins1_maintenance_hold, and it is sealed
+// to the boot's actuation. The proof is the authorization the scoped approval grant used to be: it
+// names the unit's hold, and a caller that does not hold the unit cannot construct one.
 fn mtcollins1_attach_diskless_image(
-  authorization: ScopedAuthorization<MtCollins1BootSubject>,
+  proof: UnitHoldProof,
+  subject: MtCollins1BootSubject,
   password_file: String,
   attempt: String,
 ) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+  ]
 {
-  match authorization {
-    AuthorizationGranted { grant: g, claim: _ } =>
-      if g.subject.image_name != mtcollins1_boot_medium_image_name(medium: mtcollins1_boot_medium) {
-        exit_failure(reason: "mtcollins1 media attach: the stored grant is for a different image; controller untouched")
-      } else if g.subject.image_sha256 != mtcollins1_boot_medium_image_sha256(medium: mtcollins1_boot_medium) {
-        exit_failure(reason: "mtcollins1 media attach: the stored grant is for a different image digest; controller untouched")
-      } else {
-        match mtcollins1_media_username {
-          Absent =>
-            exit_failure(reason: "mtcollins1 media attach: BMC is not BmcSecured; refusing before any request")
-          Present { value: username } =>
-            if password_file == "" {
-              exit_failure(reason: "mtcollins1 media attach: no controller password file supplied; refusing before any request")
-            } else if attempt == "" {
-              exit_failure(reason: "mtcollins1 media attach: no attempt identifier supplied; the cookie jar is attempt-owned and a shared jar is what lets two runs consume one session")
-            } else {
-              mtcollins1_render_attach_result(
-                result: megarac_attach_remote_image(
-                  bmc_host: mtcollins1_endpoint.host,
-                  username: username,
-                  password_file: password_file as NonEmptyStr,
-                  cookie_jar: mtcollins1_media_cookie_jar(attempt: attempt as NonEmptyStr),
-                  image_name: g.subject.image_name,
-                  firmware: mtcollins1_firmware,
-                )
-              )
-            }
+  match unit_hold_proof_refusal(proof: proof, key: mtcollins1_unit_hold_key, label: "mtcollins1 media attach") {
+    Present { value: why } => return exit_failure(reason: why)
+    Absent => {}
+  }
+  if subject.image_name != mtcollins1_boot_medium_image_name(medium: mtcollins1_boot_medium) {
+    exit_failure(reason: "mtcollins1 media attach: the boot subject names a different image than the medium row; controller untouched")
+  } else if subject.image_sha256 != mtcollins1_boot_medium_image_sha256(medium: mtcollins1_boot_medium) {
+    exit_failure(reason: "mtcollins1 media attach: the boot subject names a different image digest than the medium row; controller untouched")
+  } else {
+    match mtcollins1_media_username {
+      Absent =>
+        exit_failure(reason: "mtcollins1 media attach: BMC is not BmcSecured; refusing before any request")
+      Present { value: username } =>
+        if password_file == "" {
+          exit_failure(reason: "mtcollins1 media attach: no controller password file supplied; refusing before any request")
+        } else if attempt == "" {
+          exit_failure(reason: "mtcollins1 media attach: no attempt identifier supplied; the cookie jar is attempt-owned and a shared jar is what lets two runs consume one session")
+        } else {
+          mtcollins1_render_attach_result(
+            result: megarac_attach_remote_image(
+              bmc_host: mtcollins1_endpoint.host,
+              username: username,
+              password_file: password_file as NonEmptyStr,
+              cookie_jar: mtcollins1_media_cookie_jar(attempt: attempt as NonEmptyStr),
+              image_name: subject.image_name,
+              firmware: mtcollins1_firmware,
+            )
+          )
         }
-      }
-    _ => exit_failure(reason: "mtcollins1 media attach: no operator grant; controller untouched")
+    }
   }
 }
 
