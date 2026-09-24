@@ -318,15 +318,6 @@ fn non_empty_diagnostics_list(d: NonEmptyDiagnostics) -> List<Diagnostic> {
   Cons { head: d.head, tail: d.tail }
 }
 
-fn callee_scan_of(read: CalleeTextRead) -> CalleeScan {
-  match read {
-    NoCallee => CalleeScan { texts: empty_fn_arrow_string_list, refusals: empty_diagnostic_list }
-    CalleeText { text: text } =>
-      CalleeScan { texts: Cons { head: text, tail: Empty }, refusals: empty_diagnostic_list }
-    CalleeUnreadable { diagnostics: d } =>
-      CalleeScan { texts: empty_fn_arrow_string_list, refusals: non_empty_diagnostics_list(d: d) }
-  }
-}
 
 // EXTRACTED DURING TRAVERSAL, NOT FILTERED OUT OF A MATERIALIZED SUBTREE.
 //
@@ -363,19 +354,48 @@ fn callee_scan_of(read: CalleeTextRead) -> CalleeScan {
 // The cost figures that motivated this shape are not transcribed here. They are re-derived by the
 // arms named in gunbc.rung_drop.determinism_transitive_reachability, which cites the instrument that
 // produces them.
-fn callee_texts_in_decl(decl: FnArrowDecl) -> CalleeScan {
-  fold_node(
-    n: decl.output,
-    algebra: NodeFold {
-      init: fn(self) { callee_scan_of(read: callee_text_read(node: self)) },
-      step: fn(acc, _edge, sub) {
-        CalleeScan {
-          texts: list_append(left: acc.texts, right: sub.texts),
-          refusals: list_append(left: acc.refusals, right: sub.refusals)
-        }
+// ONE LIST THROUGH THE FOLD, SPLIT ONCE AT THE END. Carrying texts and refusals as two lists would
+// append twice per edge; the walk is paid on every reached body, so it carries one list of tagged
+// items -- one append per edge, as the walk had before refusals existed -- and partitions the
+// (short) result once.
+type CalleeItem
+  = CalleeItemText { text: String }
+  | CalleeItemRefusal { diagnostic: Diagnostic }
+
+data empty_callee_items: List<CalleeItem> = []
+
+fn callee_items_of(read: CalleeTextRead) -> List<CalleeItem> {
+  match read {
+    NoCallee => empty_callee_items
+    CalleeText { text: text } => Cons { head: CalleeItemText { text: text }, tail: Empty }
+    CalleeUnreadable { diagnostics: d } =>
+      fold_list(xs: non_empty_diagnostics_list(d: d), empty: empty_callee_items, cons: fn(acc, x) {
+        list_snoc_item(xs: acc, item: CalleeItemRefusal { diagnostic: x })
+      })
+  }
+}
+
+fn callee_scan_of_items(items: List<CalleeItem>) -> CalleeScan {
+  fold_list(
+    xs: items,
+    empty: CalleeScan { texts: empty_fn_arrow_string_list, refusals: empty_diagnostic_list },
+    cons: fn(acc, item) {
+      match item {
+        CalleeItemText { text: t } => CalleeScan { texts: list_snoc_item(xs: acc.texts, item: t), refusals: acc.refusals }
+        CalleeItemRefusal { diagnostic: d } => CalleeScan { texts: acc.texts, refusals: list_snoc_item(xs: acc.refusals, item: d) }
       }
     }
   )
+}
+
+fn callee_texts_in_decl(decl: FnArrowDecl) -> CalleeScan {
+  callee_scan_of_items(items: fold_node(
+    n: decl.output,
+    algebra: NodeFold {
+      init: fn(self) { callee_items_of(read: callee_text_read(node: self)) },
+      step: fn(acc, _edge, sub) { list_append(left: acc, right: sub) }
+    }
+  ))
 }
 
 // The refusals ride beside the callee lexemes unfiltered: a terminal roster names callees whose
