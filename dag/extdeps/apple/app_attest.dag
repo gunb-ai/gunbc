@@ -948,13 +948,42 @@ fn assertion_version_refusal(extensions: CborValue?, expected: NonEmptyStr) -> A
   }
 }
 
-// THE CHECKS ARE THUNKS, SO THE FIRST REFUSAL ENDS THE FOLD: a list of values evaluates every
-// check -- several of them SHA-256s -- even after an earlier step has already refused, which is
-// work no consumer reads (the same shape review 69668 of gunbc#11989 removed from the chain links).
-fn first_assertion_refusal(rs: List<fn() -> AssertionRefusal?>) -> AssertionRefusal? {
-  fold(rs, init: none, f: (acc, r) => match acc {
+// THE STRUCTURAL CHECKS ARE NAMED STEPS FOLDED IN A DECLARED ORDER, the same shape the attestation
+// half uses (AttestationStep, attestation_step_order): a step is evaluated only while nothing has
+// refused, so an earlier refusal buys no later SHA-256 (review 69668 of gunbc#11989). An earlier cut
+// folded a List<fn() -> AssertionRefusal?> of thunks, which the interpreter ran but the Rust
+// emission refused ("function 'r' not found in scope" at the thunk application) when the native
+// App Attest program (gunbc.instruments.native_app_attest) first emitted this closure; one step
+// vocabulary for both halves is also one idiom where there were two.
+type AssertionStep
+  = AssertionAppIdStep
+  | AssertionValidationCategoryStep
+  | AssertionBundleVersionStep
+
+fn assertion_step_order() -> List<AssertionStep> {
+  [AssertionAppIdStep, AssertionValidationCategoryStep, AssertionBundleVersionStep]
+}
+
+fn assertion_app_id_refused(e: AssertionExpectation) -> AssertionRefusal? {
+  Present { value: AssertionAppIdMismatch { expected_app_id: e.app_id } }
+}
+
+fn assertion_app_id_step(parts: AssertionParts, e: AssertionExpectation) -> AssertionRefusal? {
+  if parts.auth.prefix.rp_id_hash == sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.app_id as String))) { none } else { assertion_app_id_refused(e: e) }
+}
+
+fn assertion_step_refusal(step: AssertionStep, parts: AssertionParts, e: AssertionExpectation) -> AssertionRefusal? {
+  match step {
+    AssertionAppIdStep => assertion_app_id_step(parts: parts, e: e)
+    AssertionValidationCategoryStep => assertion_category_refusal(extensions: parts.auth.extensions, admitted: e.admitted_validation_categories)
+    AssertionBundleVersionStep => assertion_version_refusal(extensions: parts.auth.extensions, expected: e.expected_bundle_version)
+  }
+}
+
+fn assertion_structural_refusal(parts: AssertionParts, e: AssertionExpectation) -> AssertionRefusal? {
+  fold(assertion_step_order(), init: none, f: (acc, step) => match acc {
     Present { value: a } => Present { value: a }
-    Absent => r()
+    Absent => assertion_step_refusal(step: step, parts: parts, e: e)
   })
 }
 
@@ -962,11 +991,7 @@ fn first_assertion_refusal(rs: List<fn() -> AssertionRefusal?>) -> AssertionRefu
 // out for the consumer's step 5 and the client data for its step 6. As with attestations the
 // P-256 verification (step 3) runs after the structural checks.
 fn assertion_refusal(parts: AssertionParts, e: AssertionExpectation) -> AssertionRefusal? {
-  match first_assertion_refusal(rs: [
-    fn() { if parts.auth.prefix.rp_id_hash == sha256(message: bytes_octets(b: utf8_encode_bytes(s: e.app_id as String))) { none } else { Present { value: AssertionAppIdMismatch { expected_app_id: e.app_id } } } },
-    fn() { assertion_category_refusal(extensions: parts.auth.extensions, admitted: e.admitted_validation_categories) },
-    fn() { assertion_version_refusal(extensions: parts.auth.extensions, expected: e.expected_bundle_version) },
-  ]) {
+  match assertion_structural_refusal(parts: parts, e: e) {
     Present { value: r } => Present { value: r }
     Absent =>
       match assertion_signature_verifies(parts: parts, e: e) {

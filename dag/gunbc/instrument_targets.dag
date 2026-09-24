@@ -238,6 +238,20 @@ fn native_crypto_vectors_entry() -> String {
   "dag/gunbc/instruments/native_crypto_vectors.dag"
 }
 
+// THE NATIVE APP ATTEST PROGRAM: extdeps.apple.app_attest verify_attestation and verify_assertion
+// executed natively over Apple's published sample rows by the NativeClaimDriver program
+// gunbc.instruments.native_app_attest -- the P-384 chain links and the P-256 assertion signature on
+// real bytes, the sample's owed verdict, and the discriminating REDs. The executing consumer
+// gunbc.auth.approval_device_redemption ecdsa_verification_realization_frontier names for the
+// verifier half; run by name, not a merge gate. `gunbc test //gunbc/instruments:native-app-attest`.
+fn native_app_attest_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-app-attest" } }
+}
+
+fn native_app_attest_entry() -> String {
+  "dag/gunbc/instruments/native_app_attest.dag"
+}
+
 // O(corpus) exact-head join of evaluation_store_address callers plus the fail-closed src/v2
 // call-form scan. Not a DiscoverySelection floor witness (enrolment_bound_without_ceiling);
 // not a required CI job. `gunbc test //gunbc/instruments:evaluation-store-address-exact-head`.
@@ -380,6 +394,10 @@ fn v2_native_cli_binding() -> TargetBinding {
   TargetBinding { target: v2_native_cli_label() producer: V2NativeCliProducer {} }
 }
 
+fn native_app_attest_binding() -> TargetBinding {
+  TargetBinding { target: native_app_attest_label() producer: NativeClaimProgramProducer { entry: native_app_attest_entry() } }
+}
+
 fn self_host_binding() -> TargetBinding {
   TargetBinding { target: self_host_label() producer: SelfHostProducer {} }
 }
@@ -508,7 +526,7 @@ fn instrument_targets() -> List<Label> {
     primitive_egress_census_seed_label(), floor_memory_qualification_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
     emitted_crate_workspace_label(),
-    native_crypto_vectors_label()
+    native_crypto_vectors_label(), native_app_attest_label()
   ]
 }
 
@@ -522,7 +540,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_seed_binding(), floor_memory_qualification_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
     emitted_crate_workspace_binding(),
-    native_crypto_vectors_binding()
+    native_crypto_vectors_binding(), native_app_attest_binding()
   ]
 }
 
