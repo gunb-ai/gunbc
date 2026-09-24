@@ -1,0 +1,96 @@
+module gunbc.machine_intake_mtcollins1_bmc_sensor_observation
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import v2.std.optional { Present }
+import extdeps.bmc.ipmi_sdr { SdrLineResult, SdrLineDecoded, SdrLineUnstructured, SdrTypeLine }
+
+// WHAT mtcollins1's BMC SENSOR TABLE SAYS ABOUT EACH SOCKET, from one `sdr elist` read
+// (extdeps.bmc.ipmi SdrElistAuthenticatedCached, decoded by extdeps.bmc.ipmi_sdr). This is the
+// per-socket channel that needs IPMI alone: gunbc.machine_intake_mtcollins1_access_observation
+// records that this MegaRAC answers 404 at the Redfish service root itself.
+//
+// WHICH SOCKET A SENSOR BELONGS TO ON THIS CONTROLLER IS ITS NAME, NOT ITS ENTITY. The IPMI entity
+// field would be the specification's answer, and this MegaRAC does not give it: in its own
+// `sdr elist` (gunbc.machine_intake_mtcollins1_32dimm_bringup_observation mtcollins1_sdr_capture)
+// CPU0_0V75_PCP and CPU1_0V75_PCP are both entity 19.0 and CPU0_Hightemp and CPU1_Hightemp both 3.1,
+// while each of its 38 CPU0_ and 38 CPU1_ sensors carries its socket in a "CPU<n>_" name prefix.
+// That prefix is this controller's naming, observed in that capture and in no specification, so it
+// is declared here, in the mtcollins1 receipt layer, and a sensor without it belongs to no socket.
+
+data mtcollins1_sensor_socket_prefix: String = "CPU"
+
+fn mtcollins1_sensor_socket(name: String) -> Int? {
+  if !starts_with(s: name, prefix: mtcollins1_sensor_socket_prefix) { none } else {
+    let rest = join(split(s: name, delimiter: mtcollins1_sensor_socket_prefix).skip(n: 1), mtcollins1_sensor_socket_prefix)
+    let parts = split(s: rest, delimiter: "_")
+    let head = match parts.first() { Absent => "" Present { value: h } => h }
+    if count(parts) < 2 || head == "" { none } else { parse_int(s: head) }
+  }
+}
+
+fn decoded_sensor_lines(lines: List<SdrLineResult>) -> List<SdrTypeLine> {
+  flat_map(lines, r => match r { SdrLineDecoded { line: l } => [l] SdrLineUnstructured { text: _ } => [] })
+}
+
+fn mtcollins1_socket_sensor_lines(lines: List<SdrLineResult>, socket: Int) -> List<SdrTypeLine> {
+  filter(decoded_sensor_lines(lines: lines), l => match mtcollins1_sensor_socket(name: l.name as String) { Present { value: k } => k == socket Absent => false })
+}
+
+fn pipe_field(text: String, index: Int) -> String {
+  trim(match split(s: text, delimiter: "|").skip(n: index).first() { Absent => "" Present { value: f } => f })
+}
+
+// A DISCRETE SENSOR PRINTS AN EMPTY READING FIELD ("CPU1_CPU_Status | DAh | ok | 3.2 |"), which
+// extdeps.bmc.ipmi_sdr refuses to decode rather than fill. Its line still names its socket, so the
+// per-socket view carries it verbatim beside the decoded ones instead of losing it.
+fn mtcollins1_socket_unstructured_lines(lines: List<SdrLineResult>, socket: Int) -> List<String> {
+  flat_map(lines, r => match r {
+    SdrLineDecoded { line: _ } => []
+    SdrLineUnstructured { text: t } => match mtcollins1_sensor_socket(name: pipe_field(text: t, index: 0)) {
+      Present { value: k } => if k == socket { [trim(t)] } else { [] }
+      Absent => []
+    }
+  })
+}
+
+// PER SOCKET, TWO KINDS OF FINDING. A socket sensor whose status is not "ok" is quoted as the tool
+// printed it ("ns" is no reading), decoded or not; and a socket with NO sensor in the table at all is
+// its own finding. Either on socket 1 beside a clean socket 0 is what the socket-1 investigation
+// asked the BMC for (gunbc.machine_intake_mtcollins1_socket1_investigation_observation
+// mtcollins1_socket1_open_hypotheses, the VRM row). No status or reading is interpreted further.
+fn mtcollins1_sensor_findings(lines: List<SdrLineResult>, sockets: List<Int>) -> List<String> {
+  flat_map(sockets, k => {
+    let decoded = mtcollins1_socket_sensor_lines(lines: lines, socket: k)
+    let discrete = mtcollins1_socket_unstructured_lines(lines: lines, socket: k)
+    if count(decoded) == 0 && count(discrete) == 0 {
+      [concat("bmc sensors: no ", mtcollins1_sensor_socket_prefix, to_string(k), "_ sensor in the table")]
+    } else {
+      concat(
+        map(filter(decoded, l => (l.status as String) != "ok"), l =>
+          concat("bmc sensor ", l.name as String, " status ", l.status as String, ": ", l.reading_text as String)),
+        map(filter(discrete, t => pipe_field(text: t, index: 2) != "ok"), t => concat("bmc sensor line (no reading field): ", t)),
+      )
+    }
+  })
+}
+
+fn sensor_line_text(l: SdrTypeLine) -> String {
+  concat("  ", l.name as String, " | ", l.sensor_number as String, " | ", l.status as String, " | ", l.entity_id as String, " | ", l.reading_text as String)
+}
+
+// PER SOCKET FIRST, in the order the controller lists them, then every line as read.
+fn mtcollins1_sensor_table_text(lines: List<SdrLineResult>, sockets: List<Int>) -> String {
+  let unstructured = filter(lines, r => match r { SdrLineUnstructured { text: _ } => true _ => false })
+  join([
+    concat(to_string(count(lines)), " line(s), ", to_string(count(unstructured)), " without a reading field"),
+    join(map(sockets, k => {
+      let decoded = mtcollins1_socket_sensor_lines(lines: lines, socket: k)
+      let discrete = mtcollins1_socket_unstructured_lines(lines: lines, socket: k)
+      concat("socket ", to_string(k), " (", mtcollins1_sensor_socket_prefix, to_string(k), "_ sensors: ", to_string(count(decoded)), " with a reading, ", to_string(count(discrete)), " without):\n",
+        join(concat(map(decoded, l => sensor_line_text(l: l)), map(discrete, t => concat("  ", t))), "\n"))
+    }), "\n"),
+    "all sensors:",
+    join(map(lines, r => match r { SdrLineDecoded { line: l } => sensor_line_text(l: l) SdrLineUnstructured { text: t } => concat("  ", trim(t)) }), "\n"),
+  ], "\n")
+}

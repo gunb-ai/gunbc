@@ -1,0 +1,3 @@
+module svk.rows
+
+type SvkRow { tag: Int }

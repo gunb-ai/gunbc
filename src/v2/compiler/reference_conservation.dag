@@ -624,11 +624,11 @@ fn module_body_optional(root: Node, module_qn: FreeMonoid<Symbol>) -> Optional<N
 // The module's declarations as the normalized tree names them: each Named edge of the module
 // body, keyed by its label. The label itself is in the pool, because it IS the rebuilt form
 // of the declaration's name binder.
-fn declaration_pools(tree: NormalizedTree) -> Map<Symbol, Map<Symbol, Int>> {
-  match qualified_name_from_module_node(root: tree.root) {
+fn declaration_pools(tree: NormalizedTree, module_qn: Outcome<FreeMonoid<Symbol>>) -> Map<Symbol, Map<Symbol, Int>> {
+  match module_qn {
     Rejected { diagnostics: _ } => empty_map()
-    Accepted { value: module_qn, diagnostics: _ } =>
-      match module_body_optional(root: tree.root, module_qn: module_qn) {
+    Accepted { value: qn, diagnostics: _ } =>
+      match module_body_optional(root: tree.root, module_qn: qn) {
         Absent => empty_map()
         Present { value: body } =>
           fold(body.children, init: empty_map(), f: fn(acc, edge) {
@@ -644,11 +644,11 @@ fn declaration_pools(tree: NormalizedTree) -> Map<Symbol, Map<Symbol, Int>> {
 
 // The module header's pool is its qualified name, read back by the same authority the namespace
 // graft is read by.
-fn header_pool(tree: NormalizedTree) -> Map<Symbol, Int> {
-  match qualified_name_from_module_node(root: tree.root) {
+fn header_pool(module_qn: Outcome<FreeMonoid<Symbol>>) -> Map<Symbol, Int> {
+  match module_qn {
     Rejected { diagnostics: _ } => empty_map()
-    Accepted { value: module_qn, diagnostics: _ } =>
-      fold_list(xs: module_qn, empty: empty_map(), cons: fn(acc, seg) { pool_add(pool: acc, sym: seg) })
+    Accepted { value: qn, diagnostics: _ } =>
+      fold_list(xs: qn, empty: empty_map(), cons: fn(acc, seg) { pool_add(pool: acc, sym: seg) })
   }
 }
 
@@ -741,10 +741,13 @@ type TreeConservationState {
   pools: ItemPools
 }
 
+// The module's qualified name is read ONCE here and handed to both pools, which previously each
+// re-derived it from the root (DESIGN section 2: one demand, one production).
 fn conservation_against_tree(path: String, population: AuthoredAtomPopulation, tree: NormalizedTree) -> ReferenceConservationReport {
   let index = occurrence_identity_index(acc: empty_map(), node: tree.root)
-  let declarations = declaration_pools(tree: tree)
-  let header = header_pool(tree: tree)
+  let module_qn = qualified_name_from_module_node(root: tree.root)
+  let declarations = declaration_pools(tree: tree, module_qn: module_qn)
+  let header = header_pool(module_qn: module_qn)
   fold_list(
     xs: population.atoms,
     empty: TreeConservationState {
