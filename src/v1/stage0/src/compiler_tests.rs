@@ -4527,7 +4527,7 @@ mod compiler_tests {
             module_name: "v2.std.diagnostic".to_string(),
             kind: crate::v1_compiler_infer_items::ItemKind::FnItem,
             service_names: std::rc::Rc::new(im::Vector::new()),
-            resource_names: std::rc::Rc::new(im::Vector::new()),
+            resource_requirements: std::rc::Rc::new(im::Vector::new()),
             params: std::rc::Rc::new(vec![param].into()),
             is_self_recursive: false,
             has_non_tail_self_call: false,
