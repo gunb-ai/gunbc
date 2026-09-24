@@ -4398,7 +4398,7 @@ fn translate_diagnostic_reason_variants() -> List<TranslateDiagnosticReason> {
     TargetAtomRealizationLookupMiss,
     TargetFunctionSignatureRealizationLookupMiss,
     TargetTypeExprEmittedShapeMalformed,
-    ArrowBodyNotATypeExpression
+    ArrowBodyNotATypeExpression,
     ModuleNotATypeExpression
   ]
 }

@@ -144,6 +144,14 @@ fn decode_fidelity_from_target(target: TargetModel) -> Outcome<DecodeFidelity> {
   )
 }
 
+// THE SEPARATOR EVERY EMITTED MODULE PLACES AFTER EACH DECLARATION, including the last. It lives here,
+// beside `target_source_medium`, because both module folds read it -- `v2.compiler.emit_module` and
+// `v2.compiler.emit_produced` -- and a home in either would make the other import that fold's whole
+// module for one literal. `emit_produced` did import `emit_module` for it, which put
+// `std.emission_provenance` in the v2-native CLI's closure, where the seed cannot yet build its
+// generic `EmissionAppendOperation<R>` (gunbc.guarantee_stall emission_apply_generic_r_uninstantiated_stall).
+data emit_module_decl_separator: String = "\n\n"
+
 fn target_source_medium(text: String, target: TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(
     o: decode_fidelity_from_target(target: target),
