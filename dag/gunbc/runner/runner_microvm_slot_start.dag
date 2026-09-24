@@ -12,7 +12,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.command_runner { run_shell_command_capture }
 import gunbc.build_cache_instance { runner_slot_instance_name }
 import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
-import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_slot_unit_timeout_stop }
+import gunbc.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path }
 import gunbc.runner_microvm_slot_controller { slot_controller_receipt_path }
 import gunbc.runner_microvm_host_ready { microvm_host_binding_wet, MicrovmHostBound, MicrovmHostBindingRefused, microvm_host_binding_refusal_text }
 import gunbc.executor_privileged_operation { SystemdStartUnit }
@@ -44,8 +44,6 @@ fn microvm_slot_start_unit() -> NonEmptyStr {
 }
 
 data microvm_slot_start_poll_interval: Second = second(count: 5)
-
-data microvm_slot_start_receipt_path: String = "target/microvm-slot-start-receipt.txt"
 
 type MicrovmSlotStartRun
   = SlotStartWrongHost { detail: String }

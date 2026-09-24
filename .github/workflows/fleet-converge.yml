@@ -902,7 +902,7 @@ jobs:
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'microvm_slot_start'
-        timeout-minutes: 40
+        timeout-minutes: 41
       - name: Upload the microVM slot start receipt
         id: microvm_slot_start_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

@@ -1,7 +1,6 @@
 module gunbc.fleet_converge_workflow
 
-import gunbc.runner_microvm_slot_start { microvm_slot_start_receipt_path }
-import gunbc.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop }
+import gunbc.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path }
 import std.measure { minute_count, second_count }
 
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, kv }
@@ -1623,7 +1622,7 @@ fn fleet_converge_microvm_slot_start_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_microvm_slot_start_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: second_count(s: microvm_slot_unit_timeout_stop()) / 60 + gunbc_ci_runner_guest_image_step_timeout_minutes }
+    timeout_minutes: Present { value: (second_count(s: microvm_slot_unit_timeout_stop()) + 59) / 60 + gunbc_ci_runner_guest_image_step_timeout_minutes }
   }
 }
 

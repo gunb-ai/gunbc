@@ -1,4 +1,5 @@
 module gunbc.ci_spec
+import gunbc.runner_microvm_slot_unit { microvm_slot_start_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
@@ -2483,7 +2484,7 @@ fn gunbc_ci_microvm_slot_start_invoke() -> String {
     entry: gunbc_ci_microvm_slot_start_target.entry,
     function: gunbc_ci_microvm_slot_start_target.function,
     claim_run: false,
-    receipt_rel: "target/microvm-slot-start-receipt.txt"
+    receipt_rel: microvm_slot_start_receipt_path
   )
 }
 
