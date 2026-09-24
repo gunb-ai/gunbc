@@ -1127,6 +1127,7 @@ fn compile_stage0(
     let admission = crate::gunbc_stage0_emitted_edge_admission::stage0_emitted_edge_admission(
         result.emitted_edges.clone(),
         Rc::new(host_shell_modules.into_iter().collect()),
+        emitted_tree_partition_rows(&workspace_root())?,
     );
     if let crate::gunbc_stage0_emitted_edge_admission::Stage0EmittedEdgeAdmission::Stage0EmittedEdgesAdmitted {
         edge_count,
@@ -1144,6 +1145,135 @@ fn compile_stage0(
         out.insert(file.path.clone(), file.content.clone());
     }
     Ok(out)
+}
+
+/// THE PARTITION THE EMITTED TREE WILL BE BUILT UNDER, READ FROM THAT TREE.
+///
+/// The admission above maps each emitted edge through partition rows. The rows it must use are the
+/// ones this emission's own corpus declares -- `gunbc.stage0_crate_partition_generated`
+/// `generated_partition_crate_rows`, read from the same source roots `regen_input_sources` walks --
+/// because those are the rows the candidate mirror is rendered from and the crate layout it will be
+/// built under. The rows compiled into THIS binary are the predecessor's: reading them admitted a
+/// candidate against the partition it was replacing, so a change adding a seed module refused
+/// NotCovered until a regen had already installed the row it was refusing to produce (#12171's
+/// bootstrap deadlock, broken on #12185 only by hand-seeding the mirror). An unreadable or
+/// ill-shaped row set refuses; it never falls back to the compiled rows.
+fn emitted_tree_partition_rows(
+    workspace: &Path,
+) -> Result<
+    Rc<Vec<Rc<crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRow>>>,
+    String,
+> {
+    use crate::gunbc_stage0_crate_partition_generated::{
+        GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
+    };
+    use crate::v1_interpreter::{self, ExecutionMode};
+    const ROWS: &str = "generated_partition_crate_rows";
+    let roots: Vec<String> = super::regen_source_roots()
+        .all()
+        .iter()
+        .map(|root| {
+            workspace
+                .join(root.repo_relative_path())
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    let entry = roots
+        .iter()
+        .map(|root| Path::new(root).join("gunbc/stage0/stage0_crate_partition_generated.dag"))
+        .find(|path| path.is_file())
+        .ok_or_else(|| {
+            format!(
+                "refusal: gunbc.stage0_crate_partition_generated is under no regen source root \
+                 {roots:?}, so the emitted edges have no partition to be admitted against"
+            )
+        })?;
+    let index = super::process_shared_index(&roots);
+    let (graph, indices) =
+        super::resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy())
+            .map_err(|e| {
+                format!("refusal: the emitted tree's partition rows did not resolve: {e}")
+            })?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let value = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(&ctx, ROWS, &[], false)
+    })
+    .map_err(|e| format!("refusal: {ROWS} did not evaluate: {e}"))?;
+    let field = |fields: &[(v1_interpreter::Symbol, ModelValue)], name: &str| {
+        fields
+            .iter()
+            .find(|(sym, _)| ctx.sym_eq(*sym, name))
+            .map(|(_, v)| v.clone())
+            .ok_or_else(|| format!("refusal: a {ROWS} row carries no field {name}"))
+    };
+    let string = |value: ModelValue, name: &str| match value {
+        ModelValue::Str(s) => Ok(s.to_string()),
+        other => Err(format!(
+            "refusal: {ROWS} field {name} is a {} where a String was expected",
+            other.type_label_public()
+        )),
+    };
+    let ModelValue::List(items) = value else {
+        return Err(format!(
+            "refusal: {ROWS} evaluated to a {} where a List was expected",
+            value.type_label_public()
+        ));
+    };
+    let mut rows = Vec::new();
+    for item in items.iter() {
+        let ModelValue::Record { fields, .. } = item else {
+            return Err(format!(
+                "refusal: a {ROWS} member is a {} where a GeneratedPartitionCrateRow was expected",
+                item.type_label_public()
+            ));
+        };
+        let kind = match field(fields, "kind")? {
+            ModelValue::Variant { variant_name, .. } => {
+                if ctx.sym_eq(variant_name, "GeneratedFoundationCrate") {
+                    GeneratedPartitionCrateKind::GeneratedFoundationCrate
+                } else if ctx.sym_eq(variant_name, "GeneratedLayeredCoreCrate") {
+                    GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate
+                } else if ctx.sym_eq(variant_name, "GeneratedEmitCoreCrate") {
+                    GeneratedPartitionCrateKind::GeneratedEmitCoreCrate
+                } else {
+                    return Err(format!(
+                        "refusal: a {ROWS} row names a crate kind this binary does not know"
+                    ));
+                }
+            }
+            other => {
+                return Err(format!(
+                    "refusal: {ROWS} field kind is a {} where a variant was expected",
+                    other.type_label_public()
+                ))
+            }
+        };
+        let carries_non_empty_wrappers = match field(fields, "carries_non_empty_wrappers")? {
+            ModelValue::Bool(b) => b,
+            other => {
+                return Err(format!(
+                    "refusal: {ROWS} field carries_non_empty_wrappers is a {} where a Bool was expected",
+                    other.type_label_public()
+                ))
+            }
+        };
+        rows.push(Rc::new(GeneratedPartitionCrateRow {
+            package_name: string(field(fields, "package_name")?, "package_name")?,
+            crate_dir: string(field(fields, "crate_dir")?, "crate_dir")?,
+            kind,
+            modules: Rc::new(model_value_to_string_list(
+                &field(fields, "modules")?,
+                ROWS,
+            )?),
+            reexport_packages: Rc::new(model_value_to_string_list(
+                &field(fields, "reexport_packages")?,
+                ROWS,
+            )?),
+            carries_non_empty_wrappers,
+        }));
+    }
+    Ok(Rc::new(rows))
 }
 
 // ONE AUTHORITY FOR "WHAT THE REGEN COMPARES", read from both sides.
