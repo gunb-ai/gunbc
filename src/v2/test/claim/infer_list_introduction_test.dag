@@ -3,7 +3,7 @@ module v2.test.claim.infer_list_introduction
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.infer { infer, inferred_facts_resolved_type }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
-import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -80,20 +80,24 @@ test fn a_list_of_ints_infers_to_freemonoid_of_int() -> Bool {
   }
 }
 
-// The refusal names the element-type mismatch and is located at the `true` atom -- the element
-// that differs -- not at the literal or its first element.
+// The FATAL diagnostic (v2.std.diagnostic diagnostics_fatal: the last one; rejected_with_pending
+// prepends the advisories pending before it) names the element-type mismatch and is located at the
+// `true` atom -- the element that differs -- not at the literal or its first element.
+fn ilt_is_mismatch_at_true(d: Diagnostic) -> Bool {
+  (d.reason == ^infer_list_element_type_mismatch) && (match d.at {
+    NodeLocus { anchor: a } =>
+      match node_atom_identity_optional(node: a.at) {
+        Present { value: id } => id == ^dag_token_kw_true
+        Absent => false
+      }
+    _ => false
+  })
+}
+
 test fn a_mixed_list_refuses_at_the_differing_element() -> Bool {
   match infer(tree: ilt_mixed) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: r } =>
-      (r.head.reason == ^infer_list_element_type_mismatch) && (match r.head.at {
-        NodeLocus { anchor: a } =>
-          match node_atom_identity_optional(node: a.at) {
-            Present { value: id } => id == ^dag_token_kw_true
-            Absent => false
-          }
-        _ => false
-      })
+    Rejected { diagnostics: r } => ilt_is_mismatch_at_true(d: diagnostics_fatal(d: r))
   }
 }
 

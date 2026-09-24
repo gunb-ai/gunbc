@@ -17,7 +17,7 @@ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.algebra { fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -308,7 +308,7 @@ fn llv_self_ingest(source: String, tail: String) -> SourceRootIngest {
 
 type LlvSelfVerdict
   = LlvSelfResolved
-  | LlvSelfResolveRefused
+  | LlvSelfResolveRefused { reason: Symbol, at_atom: Optional<Symbol> }
   | LlvSelfFileRefused
   | LlvSelfAbsent
   | LlvSelfContextRefused
@@ -317,7 +317,14 @@ fn llv_self_verdict_of(outcome: NativeCensusModuleOutcome) -> LlvSelfVerdict {
   match outcome {
     NativeCensusModuleResolved => LlvSelfResolved
     NativeCensusModuleFileRefused => LlvSelfFileRefused
-    NativeCensusModuleResolveRefused { first: _, rest: _, observation: _ } => LlvSelfResolveRefused
+    NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+      LlvSelfResolveRefused {
+        reason: d.head.reason,
+        at_atom: match d.head.at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          _ => optional_absent()
+        }
+      }
   }
 }
 
@@ -362,7 +369,7 @@ test fn std_algebra_own_list_literals_bind_to_its_own_qualified_names() -> Bool 
 
 test fn std_algebra_without_freemonoid_refuses_its_own_list_literal_at_resolve() -> Bool {
   match llv_self_missing_outcome() {
-    LlvSelfResolveRefused => true
+    LlvSelfResolveRefused { reason: _, at_atom: _ } => true
     _ => false
   }
 }
