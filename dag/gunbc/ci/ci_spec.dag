@@ -929,6 +929,11 @@ data gunbc_ci_mtcollins1_boot_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "mtcollins1_boot_wet",
 }
 
+data gunbc_ci_mtcollins1_boot_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
+  function: "mtcollins1_boot_admit_executor",
+}
+
 // THE DISPATCH ADMISSION TARGET. It takes no arguments: both values it reads -- the mode and the
 // observer label -- arrive by environment on the step, which is the same route the reset entry uses
 // for the label. It runs in the BUILD job, after the release binaries exist, because the reset job
@@ -1223,6 +1228,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_heal_publication_publish_target,
     gunbc_ci_approval_keyring_converge_target,
     gunbc_ci_mtcollins1_boot_target,
+    gunbc_ci_mtcollins1_boot_admit_target,
     gunbc_ci_pair_serving_d0_target,
     gunbc_ci_pair_serving_d0_admit_target
   ]
@@ -2719,6 +2725,18 @@ fn gunbc_ci_pair_serving_d0_prelude() -> List<PipelineStep> {
       "; then chmod 600 \"$SUB_FILE\"; export ", approval_submission_mac_key_path_env as String, "=\"$SUB_FILE\"; else rm -f \"$SUB_FILE\"; echo 'submission MAC key not materialized: a run that must file will refuse there; a held lifecycle resumes without it'; fi",
     ], "")) },
   ]
+}
+
+// The mtcollins1 boot's credential-free host admission: no prelude, no secret, the same fold the
+// boot's wet entry re-runs.
+fn gunbc_ci_mtcollins1_boot_admit_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_mtcollins1_boot_admit_target.entry,
+    function: gunbc_ci_mtcollins1_boot_admit_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
 }
 
 // The credential-free admission: no prelude, no secret, just the door's pure fold over the

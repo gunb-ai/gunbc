@@ -599,13 +599,25 @@ fn runner_labels(r: RunnerSpec) -> List<String> {
   }
 }
 
-// WALL 2: THE CREDENTIALS NEVER REACH A CALLER-SELECTED RUNNER. runs-on is srv1's literal labels, the
-// concurrency domain is srv1's, and the job-level condition refuses any other host, so a dispatch of
-// mode=mtcollins1_boot host=srv2 never starts the job: no OIDC exchange and no secret fetch happen
-// anywhere. RED: the runner reading inputs.host, or the condition losing the host term.
-test fn a_boot_dispatch_naming_another_host_never_starts_the_job() -> Bool {
+// WALL 2: THE CREDENTIALS NEVER REACH A CALLER-SELECTED RUNNER, AND ANOTHER HOST IS REFUSED, NEVER
+// SKIPPED. runs-on is srv1's literal labels and the concurrency domain is srv1's, so the job only ever
+// starts on srv1. The job condition reads the mode and NOT the host: a host term there skips the job,
+// and GitHub reports a skipped job as success (review 70894). The host is instead refused by the
+// credential-free admission step, which runs before the WIF token exists. The admission fold's own
+// refusal of srv2 is boot_is_srv1_only_where_the_unit_hold_store_is's subject. RED: the runner reading inputs.host,
+// the condition regaining a host term, or the admission moving after (or out of) the WIF step.
+fn step_id(s: Step) -> String {
+  match s {
+    RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  _ => "" }
+    UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  _ => "" }
+  }
+}
+
+test fn a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_credential() -> Bool {
+  let ids = map(supplied_boot_steps(), s => step_id(s: s))
   runner_labels(r: fleet_converge_mtcollins1_boot_runner()) == ["self-hosted", "linux", "arm64", "srv1"]
-    && string_contains(s: fleet_converge_mtcollins1_boot_job_if, pattern: "github.event.inputs.host == 'srv1'")
+    && !string_contains(s: fleet_converge_mtcollins1_boot_job_if, pattern: "inputs.host")
     && string_contains(s: fleet_converge_mtcollins1_boot_job_if, pattern: "github.event.inputs.mode == 'mtcollins1_boot'")
     && fleet_converge_mtcollins1_boot_concurrency_group == "gunbc-host-mutation-srv1"
+    && filter(ids, i => i == "mtcollins1_boot_admit" || i == "wif_auth") == ["mtcollins1_boot_admit", "wif_auth"]
 }

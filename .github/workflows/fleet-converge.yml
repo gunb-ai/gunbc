@@ -1224,8 +1224,8 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
     environment: mtcollins1-boot
-    timeout-minutes: 75
-    if: github.event.inputs.mode == 'mtcollins1_boot' && github.event.inputs.host == 'srv1'
+    timeout-minutes: 80
+    if: github.event.inputs.mode == 'mtcollins1_boot'
     permissions:
       contents: read
       actions: read
@@ -1253,6 +1253,14 @@ jobs:
           tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
           rm -f "$ROOT/release-bins.tgz"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+        timeout-minutes: 5
+      - name: "Mt. Collins boot admission (credential-free): the dispatch names the unit hold store host"
+        id: mtcollins1_boot_admit
+        run: |-
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_boot_run.dag --function mtcollins1_boot_admit_executor
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         timeout-minutes: 5
       - name: WIF auth (OIDC -> dedicated mtcollins1-boot pool -> mtcollins1-boot SA, access token only)
         id: wif_auth

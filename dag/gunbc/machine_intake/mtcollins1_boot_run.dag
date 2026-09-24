@@ -961,16 +961,28 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
   concluded
 }
 
+// THE HOST ADMISSION, ONE FOLD FOR BOTH SEAMS: the dispatch's host input must name the store host.
+// The boot job always starts on srv1's runner (its labels never read the input), so a dispatch naming
+// another host is REFUSED there with a typed reason -- never skipped, since a skipped job reports
+// success (review 70894) -- by mtcollins1_boot_admit_executor, a credential-free step before the WIF
+// token and the fleet key. The wet entry re-runs the same fold, so neither seam can drift.
+fn mtcollins1_boot_host_admission() -> ProcessExit {
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      exit_failure(reason: concat("mtcollins1 boot: ", concat(v, concat(" ", concat(d, "; the unit hold store is srv1 only")))))
+    ActionsVariablePresent { value: host } => mtcollins1_boot_refuses_off_srv1(host: host)
+  }
+}
+
+fn mtcollins1_boot_admit_executor() -> ProcessExit {
+  mtcollins1_boot_host_admission()
+}
+
 fn mtcollins1_boot_wet() -> ProcessExit
 {
-  let attempt = match actions_variable_read(name: fleet_converge_expected_host_env_name) {
-    ActionsVariableAbsent { variable: v, detail: d } =>
-      mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: concat("mtcollins1 boot: ", concat(v, concat(" ", concat(d, "; the unit hold store is srv1 only"))))))
-    ActionsVariablePresent { value: host } =>
-      match mtcollins1_boot_refuses_off_srv1(host: host) {
-        ExitSuccess => mtcollins1_boot_wet_on_srv1()
-        other => mtcollins1_boot_ended_before_bmc(outcome: other)
-      }
+  let attempt = match mtcollins1_boot_host_admission() {
+    ExitSuccess => mtcollins1_boot_wet_on_srv1()
+    other => mtcollins1_boot_ended_before_bmc(outcome: other)
   }
   mtcollins1_boot_conclude(attempt: attempt)
 }

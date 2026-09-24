@@ -108,6 +108,7 @@ import gunbc.ci_spec {
   gunbc_ci_r2_object_write_mint_invoke,
   gunbc_ci_approval_keyring_converge_invoke,
   gunbc_ci_mtcollins1_boot_invoke,
+  gunbc_ci_mtcollins1_boot_admit_invoke,
   gunbc_ci_pair_serving_d0_invoke,
   gunbc_ci_pair_serving_d0_admit_invoke,
   gunbc_ci_org_runner_roster_observe_invoke,
@@ -2091,6 +2092,24 @@ fn fleet_converge_approval_keyring_converge_step() -> Step {
   }
 }
 
+// THE HOST ADMISSION RUNS BEFORE ANY CREDENTIAL: after the release bins are verified and before the
+// WIF token and the fleet key, it refuses a dispatch naming any host but the store host.
+fn fleet_converge_mtcollins1_boot_admit_step() -> Step {
+  RunStep {
+    name: Present { value: "Mt. Collins boot admission (credential-free): the dispatch names the unit hold store host" },
+    id: Present { value: "mtcollins1_boot_admit" },
+    run: gunbc_ci_mtcollins1_boot_admit_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+    ] },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_mtcollins1_boot_step() -> Step {
   RunStep {
     name: Present { value: "Mt. Collins unit 1 diskless boot under the unit hold (hold, SOL, attach, CD handoff, release)" },
@@ -2827,16 +2846,16 @@ fn fleet_converge_consumer_prelude_steps() -> List<Step> {
 // that version and for the BMC credential, and nothing else.
 data fleet_converge_shared_job_if: String = join(["github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: MtCollins1Boot), "'"], "")
 
-// THE RUNNER, THE CONCURRENCY DOMAIN AND THE ADMISSION ARE FIXED TO THE STORE HOST, never read from
-// the dispatch's `host` input (side-chat review 5286225278): runs-on names srv1's labels as literals
-// derived from the hold store host, the concurrency group is srv1's mutation domain, and the job-level
-// condition refuses a dispatch naming any other host, so such a dispatch never starts the job -- no
-// OIDC exchange, no secret fetch, on any runner. The in-run srv1 check in mtcollins1_boot_wet stays
-// as the second wall, not the first.
-data fleet_converge_mtcollins1_boot_job_if: String = join([
-  fleet_converge_mtcollins1_boot_step_if, " && github.event.inputs.host == '", mtcollins1_unit_hold_store_host as String, "'",
-], "")
-
+// THE RUNNER AND THE CONCURRENCY DOMAIN ARE FIXED TO THE STORE HOST, never read from the dispatch's
+// `host` input (side-chat review 5286225278): runs-on names srv1's labels as literals derived from
+// the hold store host, and the concurrency group is srv1's mutation domain. The job condition reads
+// ONLY the mode. A host term here would SKIP the job for a dispatch naming another host, and GitHub
+// reports a skipped job as success -- a green run standing in for a refusal (review 70894, DESIGN
+// section 5). Instead the job starts on srv1 and its credential-free admission step
+// (fleet_converge_mtcollins1_boot_admit_step, gunbc.machine_intake_mtcollins1_boot_run
+// mtcollins1_boot_admit_executor) refuses such a dispatch with a typed reason before the WIF token
+// or the fleet key exist; the wet entry re-runs the same fold.
+data fleet_converge_mtcollins1_boot_job_if: String = fleet_converge_mtcollins1_boot_step_if
 data fleet_converge_mtcollins1_boot_concurrency_group: String = join([fleet_host_mutation_group_prefix, mtcollins1_unit_hold_store_host as String], "")
 
 // THE BOOT JOB'S RUNNER AND STEPS ARE THEIR OWN PRODUCERS for the same reason as the credential
@@ -2854,6 +2873,7 @@ fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: 
     fleet_converge_mtcollins1_boot_checkout_step(),
     ci_release_bins_download_step(),
     ci_release_bins_unpack_verify_step(),
+    fleet_converge_mtcollins1_boot_admit_step(),
     ci_wif_auth_step_for(
       name: "WIF auth (OIDC -> dedicated mtcollins1-boot pool -> mtcollins1-boot SA, access token only)",
       provider_resource: mtcollins1_boot_wif_provider_resource(),

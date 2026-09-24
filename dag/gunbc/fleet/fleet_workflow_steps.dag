@@ -747,12 +747,13 @@ fn gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() -> Int {
     + gunbc_ci_live_deploy_step_timeout_minutes
 }
 
-// The Mt. Collins boot job: checkout prelude, release download (transfer) and unpack (aux), WIF auth
-// (aux), fleet key agent (aux) and its cleanup (aux), the boot step, and the receipt upload (transfer).
+// The Mt. Collins boot job: checkout prelude, release download (transfer) and unpack (aux), the host
+// admission (aux), WIF auth (aux), fleet key agent (aux) and its cleanup (aux), the boot step, and the
+// receipt upload (transfer).
 fn gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes(boot_step_minutes: Int) -> Int {
   gunbc_ci_prelude_allowance_minutes
     + (2 * gunbc_ci_artifact_transfer_step_timeout_minutes)
-    + (4 * gunbc_ci_aux_step_timeout_minutes)
+    + (5 * gunbc_ci_aux_step_timeout_minutes)
     + boot_step_minutes
 }
 
