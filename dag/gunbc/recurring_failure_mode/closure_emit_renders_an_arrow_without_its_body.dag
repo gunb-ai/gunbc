@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.closure_emit_renders_an_arrow_without_its_body
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data closure_emit_renders_an_arrow_without_its_body: RecurringFailureMode = RecurringFailureMode {
+  identity: "closure_emit_renders_an_arrow_without_its_body" as NonEmptyStr,
+
+  receipts: [
+    "**the v2 closure emitter (v2.compiler.self_host.compiler_closure_emit emit_compiler_import_closure_from_ingest, the route v2.cli.compile_cli emits through) reports Accepted and returns text in which a module is a record of its members and a member Arrow is rendered as its domain and codomain with NO BODY** (INVALID STATE: `fn add(x: Int, y: Int) -> Int { x + y }` emits `add: ( { x: i32, y: i32 }) -> (i32) -> i32`, and `data native_cli_door_probe_value: Int = 606060` emits `native_cli_door_probe_value: ( {  }) -> (i32) -> i32`. The `x + y` and the `606060` appear nowhere in the output, and no diagnostic of any severity is carried).",
+
+    "HARM. An Accepted emission that has lost every body is a silent wrong answer, below the ordinary compiler floor (DESIGN section 4b). The emitted text is not a Rust crate, and nothing that reads the door's exit status can tell. `//gunbc/instruments:v2-native-cli` admits its emit arm on exit 0 plus the declaration's NAME in the emitted text. That is what the flip instruction asked for, and it is green over this loss. So a green on that arm establishes that the door parsed, resolved, inferred, grounded and translated the fixture, and establishes nothing about the value.",
+
+    "DISTINGUISHING FACTS. This is not `call_expression_erased_at_v2_body_lowering`. There, the body is lost before resolve, in normalize. Here, the inferred tree still carries the body under `arrow_body_edge`: v2.test.execution.data_decl_lowering_grounding data_decl_lowers_to_a_nullary_named_member_holds reads the literal atom at that edge on the resolved tree, and translate's grounding gate walks it. The loss is at rendering. Found 2026-09-23 while lowering `data` declarations for gen-one's door probe, by running the same emit route interpretively over `fn add` on HEAD and on the change: both drop the body, so the class predates that change.",
+
+    "WHERE THE BODY WAS DROPPED (chain re-derivation, DESIGN section 6b), gunbc#12207. The Rust target carries a type-expression projection, so `v2.compiler.translate` `translate_node_with_projection` routes the module root through `translate_type_expression_tree`, which checks for a bodied arrow only at the root and otherwise type-projects the whole subtree. The member arrow reached `translate_type_expression_arrow_project`, which reads only the positional parameter and result children, so the `arrow_body_edge` was discarded by that link's own contract -- the earliest unjustified boundary. The record rendering of the module is the same subtree's fallback: `translate_type_expression_tree` type-projects any node no grammar relation row matches, widening where it should refuse.",
+
+    "RUNG FOUND AT: outside the ladder (silent). RUNG NOW: 1, mitigated, since gunbc#12207. `translate_type_expression_arrow_project` refuses an arrow carrying an `arrow_body_edge` with `translate_arrow_body_not_a_type_expression`, located at the arrow, and an arrow with no body edge (a function-typed field or parameter) passes unchanged. The discriminating RED is the old tree's Accept: `v2.test.emit.closure_emit_arrow_body_refusal` asserts the `fn add` closure refuses with that reason and locates it in the authored file, and both rows are false on an Accept. On the door, measured through `v2_cli_run` over the fixture's module and declaration lines (its annotation header omitted, so byte offsets are of that text and not of the committed file): with #12197 alone the door EMITTED `native_cli_door_probe_value: ( {  }) -> (i32) -> i32`; with #12207 on top it REFUSES `translate_arrow_body_not_a_type_expression` located at the `data` declaration. So `//gunbc/instruments:v2-native-cli` pins that refusal again, and its exit-0 arm now requires the declaration's name, its value `606060` and Rust the build's own compiler accepts -- the name-only oracle was the over-claim that let this class stand green.",
+
+    "CEILING: structurally guaranteed -- whether an emission renders every arrow's body edge is decidable over the target tree. NEXT-RUNG TRIGGER, named as a capability: the Rust target's grammar rows render a dag module and its member arrows' bodies backward (DESIGN section 4, one grammar read in both directions), so the door's emission of this fixture is Rust carrying `606060` and the emit arm flips back to an emission control holding the value oracle. The record-rendering fallback in `translate_type_expression_tree` refuses rather than widens in the same change.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.translate", decl_name: "translate_type_expression_arrow_project", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.translate", decl_name: "translate_type_expression_tree", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.emit.closure_emit_arrow_body_refusal", decl_name: "a_function_body_the_emitter_cannot_render_refuses_rather_than_dropping_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.emit.closure_emit_arrow_body_refusal", decl_name: "the_body_refusal_is_located_in_the_authored_file_holds", field: WholeDeclaration },
+  ],
+}

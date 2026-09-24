@@ -1,0 +1,261 @@
+module gunbc.runner_microvm_shakedown_workflow
+
+import std.types { String, List, NonEmptyStr }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha2 { sha256_hex }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
+import extdeps.languages.yaml.types { yaml_string, kv }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep, SelfHosted, Bash,
+  WorkflowDispatch, DispatchInput, InputString,
+  WorkflowPermissions, PermRead,
+  self_hosted_provenance_label,
+}
+import gunbc.action_use_admission {
+  admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused,
+  workflow_action_uses_refusal_reason,
+}
+import gunbc.toolchain_home_standing {
+  admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused,
+  toolchain_home_refusal_reason,
+}
+import v2.std.optional { Present }
+import v2.std.node { Node }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_word_concat_from_nodes,
+  bash_build_assign, bash_build_pipe, bash_build_command_from_lits, bash_build_command_with_words,
+  bash_build_if_else, bash_build_test_bracket, bash_build_stmt_list_from_nodes,
+  bash_build_with_redir, bash_build_with_redir_to_file, bash_build_exit,
+}
+
+// THE ONE JOB A MICROVM SLOT'S GUEST RUNNER EXISTS TO SERVE DURING THE SHAKEDOWN.
+//
+// gunbc.runner_microvm_shakedown microvm_shakedown_work names the step "serve-one-dispatched-job"
+// and nothing dispatched one. This is that job, and it is its OWN workflow file rather than a mode of
+// fleet-converge.yml for a reason GitHub imposes: a runner group is restricted by WORKFLOW FILE, so
+// the group a microVM runner registers into can admit this file and nothing else only if this file
+// contains nothing else (gunbc.runner_jit_mint microvm_jit_runner_group_restriction_frontier).
+//
+// IT RUNS ONLY WHERE THE ATTEMPT IS. runs-on is the provenance label plus the attempt's own
+// registration name -- exactly the two labels gunbc.runner_jit_mint microvm_attempt_registration_labels
+// mints -- so no other registration can take it, and GitHub's record of which runner ran it is the
+// join between this job and the attempt (the binding gunbc.runner_bound_attempt_receipt relies on).
+// The operator passes the attempt's unit name as the `attempt` input; a wrong name queues forever
+// rather than running somewhere else.
+//
+// THE KNOWN TASK IS A COMPUTATION WHOSE ANSWER THE MODEL ALREADY HAS. The guest hashes a fixed
+// payload with its own sha256sum, and the job fails unless the result equals the digest this module
+// derives from the same payload through extdeps.crypto.sha2. A boot line or an echo proves a shell
+// ran; this proves the guest computed something and got the answer the repository predicted.
+//
+// NO CHECKOUT AND NO ACTION. A JS action would pull node from the runner's externals and put the
+// action-download path into a proof about whether the guest can run a step at all, and a checkout
+// needs the slot network's egress policy to be right -- a later receipt, not this one.
+
+data microvm_shakedown_workflow_name: String = "microvm-shakedown"
+
+data microvm_shakedown_workflow_job_id: String = "shakedown"
+
+data microvm_shakedown_attempt_input: String = "attempt"
+
+// THE PAYLOAD IS THE ONLY AUTHORED FACT OF THE KNOWN TASK. It is plain ASCII with no shell
+// metacharacters, so the guest's printf spells exactly these bytes, and the expected digest below is
+// derived from them rather than transcribed beside them.
+data microvm_shakedown_known_task_payload: NonEmptyStr = "gunbc-microvm-shakedown-known-task-v1" as NonEmptyStr
+
+fn microvm_shakedown_known_task_digest() -> String {
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: microvm_shakedown_known_task_payload as String)))
+}
+
+fn microvm_shakedown_attempt_expression() -> String {
+  join(["${{ inputs.", microvm_shakedown_attempt_input, " }}"], "")
+}
+
+fn microvm_shakedown_runs_on() -> List<String> {
+  [self_hosted_provenance_label, microvm_shakedown_attempt_expression()]
+}
+
+// THE SCRIPT IS A BASH NODE TREE RENDERED BY v2.workflow.bash_emit, NOT SHELL SYNTAX JOINED AS
+// STRINGS (review 70427). The first writing concatenated bash text and carried a dissolution row
+// naming bash-emit; but that capability exists (bash_build constructors folded through the grammar
+// serializer), so the scaffold was never needed and the finished construction is used instead.
+//
+// THE COMPARISON IS WRITTEN SO EVERY FAILURE TAKES THE REFUSING ARM. bash_emit supplies `set -e` and
+// not `pipefail`, so a pipeline that produced nothing does not stop the script by itself; the test is
+// therefore `[ observed = expected ]` with the report in the THEN arm and the refusal in the ELSE arm.
+// An empty or malformed digest makes `[` fail or compare unequal, and either way the job exits 1 --
+// the inverse spelling (`!=` guarding the refusal) would let an erroring `[` skip the refusal and
+// report success.
+//
+// THE RESULT LINE READS ONLY THE RUNNER'S OWN ENVIRONMENT: GITHUB_SHA, GITHUB_RUN_ID,
+// GITHUB_RUN_ATTEMPT and RUNNER_NAME are set by the runner for every step, and the attempt arrives
+// through the step's env. No ${{ }} expression is evaluated into the script text. The line goes to
+// the job summary, a fresh file per step, which GitHub keeps with the run.
+fn microvm_shakedown_word_line(parts: List<Node>) -> Node {
+  bash_build_word_concat_from_nodes(parts: parts)
+}
+
+fn microvm_shakedown_result_line() -> Node {
+  microvm_shakedown_word_line(parts: [
+    bash_build_word_lit(text: "microvm-shakedown known-task=held attempt="),
+    bash_build_word_var(name: "MICROVM_SHAKEDOWN_ATTEMPT"),
+    bash_build_word_lit(text: " runner="),
+    bash_build_word_var(name: "RUNNER_NAME"),
+    bash_build_word_lit(text: " revision="),
+    bash_build_word_var(name: "GITHUB_SHA"),
+    bash_build_word_lit(text: " run="),
+    bash_build_word_var(name: "GITHUB_RUN_ID"),
+    bash_build_word_lit(text: " attempt_number="),
+    bash_build_word_var(name: "GITHUB_RUN_ATTEMPT"),
+    bash_build_word_lit(text: " digest="),
+    bash_build_word_var(name: "observed"),
+  ])
+}
+
+fn microvm_shakedown_known_task_statements() -> List<Node> {
+  [
+    bash_build_assign(
+      name: "observed",
+      value: bash_build_word_cmdsubst(body: bash_build_pipe(
+        left: bash_build_pipe(
+          left: bash_build_command_from_lits(lits: ["printf", "%s", microvm_shakedown_known_task_payload as String]),
+          right: bash_build_command_from_lits(lits: ["sha256sum"]),
+        ),
+        right: bash_build_command_from_lits(lits: ["cut", "-d", " ", "-f1"]),
+      )),
+    ),
+    bash_build_if_else(
+      cond: bash_build_test_bracket(words: [
+        bash_build_word_var(name: "observed"),
+        bash_build_word_lit(text: "="),
+        bash_build_word_lit(text: microvm_shakedown_known_task_digest()),
+      ]),
+      then_body: bash_build_stmt_list_from_nodes(stmts: [
+        bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), microvm_shakedown_result_line()]),
+        bash_build_with_redir_to_file(
+          inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), microvm_shakedown_result_line()]),
+          path: bash_build_word_var(name: "GITHUB_STEP_SUMMARY"),
+        ),
+      ]),
+      else_body: bash_build_stmt_list_from_nodes(stmts: [
+        bash_build_with_redir(
+          inner: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "echo"),
+            microvm_shakedown_word_line(parts: [
+              bash_build_word_lit(text: "microvm-shakedown known-task=REFUSED expected="),
+              bash_build_word_lit(text: microvm_shakedown_known_task_digest()),
+              bash_build_word_lit(text: " observed="),
+              bash_build_word_var(name: "observed"),
+            ]),
+          ]),
+          redir: ^bash_production_fold_redir_stdout_to_stderr,
+        ),
+        bash_build_exit(code: "1"),
+      ]),
+    ),
+  ]
+}
+
+fn microvm_shakedown_known_task_script() -> Outcome<String> {
+  bash_emit_stmts(statements: microvm_shakedown_known_task_statements(), set_e: true)
+}
+
+// THE INPUT REACHES THE SCRIPT THROUGH THE ENVIRONMENT, NEVER BY INTERPOLATION INTO IT: an
+// expression spliced into `run:` is evaluated before the shell parses it, so a crafted input would
+// become script text.
+fn microvm_shakedown_known_task_step(script: String) -> Step {
+  RunStep {
+    name: Present { value: "Known task: hash the fixed payload and compare with the model's digest" },
+    id: Present { value: "known_task" },
+    run: script,
+    shell: Present { value: Bash },
+    env: Present { value: [kv(key: "MICROVM_SHAKEDOWN_ATTEMPT", value: yaml_string(s: microvm_shakedown_attempt_expression()))] },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: 5 },
+  }
+}
+
+fn microvm_shakedown_job(script: String) -> Job {
+  Job {
+    id: microvm_shakedown_workflow_job_id,
+    name: none,
+    runner: SelfHosted { labels: microvm_shakedown_runs_on() },
+    steps: [microvm_shakedown_known_task_step(script: script)],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: 10 },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermRead },
+        pull_requests: none,
+        issues: none,
+        actions: none,
+        id_token: none,
+      }
+    }
+  }
+}
+
+fn microvm_shakedown_workflow(script: String) -> Workflow {
+  Workflow {
+  name: microvm_shakedown_workflow_name,
+  run_name: Present { value: join(["microvm-shakedown ", microvm_shakedown_attempt_expression()], "") },
+  on: [
+    WorkflowDispatch {
+      inputs: [
+        DispatchInput {
+          name: microvm_shakedown_attempt_input,
+          description: Present { value: "The attempt's registration name (its transient unit name, gunbc.runner_jit_mint jit_runner_name_for). It is REQUIRED in runs-on, so a wrong name queues forever rather than running on any other runner." },
+          required: true,
+          default: none,
+          type: InputString,
+        },
+      ]
+    }
+  ],
+  concurrency: none,
+  env: none,
+  permissions: none,
+  jobs: [microvm_shakedown_job(script: script)],
+  }
+}
+
+type MicrovmShakedownWorkflowGenerationOutcome
+  = MicrovmShakedownWorkflowGenerated { content: String }
+  | MicrovmShakedownWorkflowGenerationRefused { reason: String }
+
+fn expected_microvm_shakedown_yml() -> MicrovmShakedownWorkflowGenerationOutcome {
+  match microvm_shakedown_known_task_script() {
+    Rejected { diagnostics: _ } =>
+      MicrovmShakedownWorkflowGenerationRefused { reason: "gunbc.runner_microvm_shakedown_workflow: v2.workflow.bash_emit refused the known-task script, so no workflow is emitted" }
+    Accepted { value: script, diagnostics: _ } =>
+      expected_microvm_shakedown_yml_with(workflow: microvm_shakedown_workflow(script: script))
+  }
+}
+
+fn expected_microvm_shakedown_yml_with(workflow: Workflow) -> MicrovmShakedownWorkflowGenerationOutcome {
+  match admit_workflow_action_uses(workflow: workflow) {
+    WorkflowActionUsesRefused { refusals: rs } =>
+      MicrovmShakedownWorkflowGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.runner_microvm_shakedown_workflow", refusals: rs) }
+    WorkflowActionUsesAdmitted =>
+      match admit_workflow_toolchain_homes(workflow: workflow) {
+        WorkflowToolchainHomesAdmitted =>
+          match emit_yaml(v: project_workflow_to_yaml(workflow: workflow)) {
+            EmittedYaml { text: t } => MicrovmShakedownWorkflowGenerated { content: t }
+            YamlEmitRefused { path: p, reason: r } =>
+              MicrovmShakedownWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.runner_microvm_shakedown_workflow", path: p, reason: r) }
+          }
+        WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+          MicrovmShakedownWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+      }
+  }
+}
