@@ -1493,10 +1493,15 @@ fn translate_arrow_body_not_a_type_expression_diagnostic(node: Node) -> Diagnost
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
+// ONLY THE TWO REJECTIONS THAT MEAN "NO BODY" ADMIT THE SIGNATURE PROJECTION: a missing body edge,
+// and a node that is not an arrow. Every other outcome -- a found body, an ambiguous one, or a
+// rejection reason `find_arrow_body_child` grows later -- counts as carrying a body and refuses,
+// so a new reason cannot silently widen into dropping a body.
 fn translate_arrow_carries_body(node: Node) -> Bool {
   match find_arrow_body_child(root: node) {
     Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: r } => r.head.reason == ^arrow_body_child_ambiguous
+    Rejected { diagnostics: r } =>
+      !((r.head.reason == ^arrow_body_child_missing) || (r.head.reason == ^arrow_body_child_not_arrow))
   }
 }
 fn translate_type_expr_kind_authority_invalid_diagnostic(node: Node) -> Diagnostic {
