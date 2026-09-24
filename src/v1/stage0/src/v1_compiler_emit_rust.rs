@@ -80,7 +80,6 @@ pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_measure::millisecond_count;
-pub use crate::std_measure::second;
 pub use crate::std_nat::Nat;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
@@ -122,7 +121,6 @@ pub use crate::std_target_representation::ExactBindingResolution;
 use crate::std_target_representation::ExactBindingResolution::{
     ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable, ResolvedExactBinding,
 };
-pub use crate::std_types::NonEmptyStr;
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_template_algebra, is_container_type, is_kernel_type};
 use crate::v1_compiler_artifact::RenderTarget::Rust;
@@ -132,7 +130,6 @@ use crate::v1_compiler_artifact::RustModuleRenderSelection::{
 pub use crate::v1_compiler_artifact::{RenderTarget, RustModuleRenderSelection};
 pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::closure_stub_v2_std_integer_source;
 pub use crate::v1_compiler_closure_stub_v2_std_text_rust::closure_stub_v2_std_text_source;
-pub use crate::v1_compiler_coercion::literal_suffix;
 pub use crate::v1_compiler_coercion::{
     coerce_primitive_type, declaration_realization, declaration_realizes_natively_on_rust, is_copy,
     provenance_declares_structurally, realization_host_numeric_spelling,
@@ -210,25 +207,25 @@ pub use crate::v1_compiler_infer_emit_info::{
 use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
 };
+use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
+    UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable, UnitVariantPhantomPresent,
+};
 pub use crate::v1_compiler_infer_env::{
-    authored_name, binding_declares_span, empty_symbol_index, lookup_type_by_name, lookup_type_for,
+    authored_name, binding_declares_span, empty_symbol_index, lookup_binding_by_name,
+    lookup_type_by_name, lookup_type_for, lookup_unit_variant_phantom_type,
     type_reference_declaration_ref,
 };
-pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
-pub use crate::v1_compiler_infer_items::item_kind;
+pub use crate::v1_compiler_infer_env::{
+    GlobalBareLookupState, TypeBinding, TypeEnv, UnitVariantPhantomLookup,
+};
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 use crate::v1_compiler_infer_items::ItemLookup::{ItemFound, ItemLeafAmbiguous, ItemNotFound};
+pub use crate::v1_compiler_infer_items::{item_is_effectful_callee, item_kind};
 pub use crate::v1_compiler_infer_items::{
     ItemInfo, ItemKind, ItemLookup, ResolvedGraph, TypedModule,
 };
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
-pub use crate::v1_compiler_infer_resolve::UnitVariantPhantomLookup;
-use crate::v1_compiler_infer_resolve::UnitVariantPhantomLookup::{
-    UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable, UnitVariantPhantomPresent,
-};
-pub use crate::v1_compiler_infer_resolve::{
-    is_width_nat_type_literal, lookup_unit_variant_phantom_type, resolve_node,
-};
+pub use crate::v1_compiler_infer_resolve::{is_width_nat_type_literal, resolve_node};
 pub use crate::v1_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
 };
@@ -2020,7 +2017,7 @@ pub fn rust_type_arg_identity_spelling(
         } {
             std::option::Option::None
         } else {
-            match (*crate::v1_compiler_infer_resolve::lookup_unit_variant_phantom_type(
+            match (*crate::v1_compiler_infer_env::lookup_unit_variant_phantom_type(
                 env.clone(),
                 name.clone(),
             ))
@@ -11123,16 +11120,19 @@ pub fn emit_module_full(
             }),
             reference_rows: reference_plan.rows.clone(),
             emitted_edges: v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        crate::gunbc_rust_emitted_edge::rust_prelude_emitted_edges(
-                            this_mod_filename.clone(),
-                        ),
-                        rendered_imports.edges.clone(),
-                    ),
-                    reference_plan.edges.clone(),
+                crate::gunbc_rust_emitted_edge::rust_prelude_emitted_edges(
+                    this_mod_filename.clone(),
                 ),
-                rust_use_line_edges(this_mod_filename.clone(), uncovered_svc_use_lines.clone()),
+                rust_use_line_edges_surviving(
+                    v1_rt::concat(
+                        v1_rt::concat(rendered_imports.edges.clone(), reference_plan.edges.clone()),
+                        rust_use_line_edges(
+                            this_mod_filename.clone(),
+                            uncovered_svc_use_lines.clone(),
+                        ),
+                    ),
+                    v1_rt::concat(merged_import_lines.clone(), uncovered_svc_imports.clone()),
+                ),
             ),
             module_refusals: v1_rt::concat(
                 reference_derived_row_diagnostics(reference_plan.rows.clone(), m.span.clone()),
@@ -13071,7 +13071,7 @@ pub fn type_item_has_rust_nominal_shell_authority(
 }
 
 pub fn is_phantom_unit_variant_type_arg(env: Rc<TypeEnv>, variant_name: String) -> bool {
-    match (*crate::v1_compiler_infer_resolve::lookup_unit_variant_phantom_type(
+    match (*crate::v1_compiler_infer_env::lookup_unit_variant_phantom_type(
         env.clone(),
         variant_name.clone(),
     ))
@@ -13625,6 +13625,156 @@ pub fn rust_use_line_edges(
     })
 }
 
+pub fn authored_import_binds_provider_declaration(
+    name: String,
+    import_module: String,
+    module_env: Option<Rc<TypeEnv>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> bool {
+    match module_env.clone() {
+        std::option::Option::None => false,
+        Some(env) => {
+            match crate::v1_compiler_infer_env::lookup_binding_by_name(env.clone(), name.clone()) {
+                std::option::Option::None => false,
+                Some(binding) => {
+                    let defining_module = match reexport_source_module_name(
+                        name.clone(),
+                        import_module.clone(),
+                        typed_modules.clone(),
+                        export_sets.clone(),
+                        source_indices.clone(),
+                        module_index.clone(),
+                    ) {
+                        Some(src) => src.clone(),
+                        std::option::Option::None => import_module.clone(),
+                    };
+                    match typed_module_by_name(
+                        defining_module.clone(),
+                        typed_modules.clone(),
+                        source_indices.clone(),
+                        module_index.clone(),
+                    ) {
+                        std::option::Option::None => false,
+                        Some(tm) => {
+                            let mut __found = false;
+                            for item in tm.items.clone().iter().cloned() {
+                                if (((crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    item.clone(),
+                                ) == name.clone())
+                                    && ((crate::v1_compiler_emit_core_support::is_type_def_item(
+                                        item.clone(),
+                                    )
+                                        || crate::v1_compiler_emit_core_support::is_type_alias_item(
+                                            item.clone(),
+                                            source_indices.clone(),
+                                        ))
+                                        || crate::v1_compiler_emit_core_support::is_type_decl_item(
+                                            item.clone(),
+                                            source_indices.clone(),
+                                        )))
+                                    && match item.ident_span.clone() {
+                                        Some(sp) => {
+                                            crate::v1_compiler_infer_env::binding_declares_span(
+                                                binding.clone(),
+                                                sp.clone(),
+                                            )
+                                        }
+                                        std::option::Option::None => false,
+                                    })
+                                {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn rust_use_line_edges_surviving(
+    edges: Rc<Vec<Rc<EmittedEdge>>>,
+    final_lines: Rc<Vec<String>>,
+) -> Rc<Vec<Rc<EmittedEdge>>> {
+    {
+        let named = Rc::new({
+            let mut __result = Vec::new();
+            for rest in Rc::new({
+                let mut __result = Vec::new();
+                for rest in Rc::new({
+                    let mut __result = Vec::new();
+                    for l in final_lines.iter().cloned() {
+                        __result.push(rust_use_after_crate(l.clone()));
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    if (rest.clone() != "".to_string()) {
+                        __result.push(rest);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(
+                    match Rc::new(
+                        rest.clone()
+                            .split(&"::".to_string())
+                            .map(|s| s.to_string())
+                            .collect::<Vec<_>>(),
+                    )
+                    .first()
+                    .cloned()
+                    {
+                        Some(m) => m.clone(),
+                        std::option::Option::None => "".to_string(),
+                    },
+                );
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, m: String| v1_rt::rc_map_insert(acc, m.clone(), true),
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for e in edges.iter().cloned() {
+                if {
+                    let mut __all = true;
+                    for m in crate::gunbc_rust_emitted_edge::emitted_edge_target_module(e.clone())
+                        .iter()
+                        .cloned()
+                    {
+                        if !(crate::v1_compiler_infer_types::emit_map_has(named.clone(), m.clone()))
+                        {
+                            __all = false;
+                            break;
+                        }
+                    }
+                    __all
+                } {
+                    __result.push(e);
+                }
+            }
+            __result
+        })
+    }
+}
+
 pub fn emit_specific_import_block(
     import_module: String,
     mod_name: String,
@@ -13876,10 +14026,19 @@ pub fn emit_specific_import_use_lines(
                         {
                             false
                         } else {
-                            if crate::v1_compiler_infer_emit_info::is_known_variant(
+                            if (crate::v1_compiler_infer_emit_info::is_known_variant(
                                 type_summaries.clone(),
                                 n.clone(),
-                            ) {
+                            ) && (authored_import_binds_provider_declaration(
+                                n.clone(),
+                                import_module.clone(),
+                                module_env.clone(),
+                                typed_modules.clone(),
+                                export_sets.clone(),
+                                source_indices.clone(),
+                                module_index.clone(),
+                            ) == false))
+                            {
                                 {
                                     let mut __found = false;
                                     for e in import_module_enums.iter().cloned() {
@@ -16163,8 +16322,7 @@ pub fn emit_typed_item(
                         }),
                     ) {
                         Some(info) => {
-                            (((info.service_names.clone().len() as i64) > 0)
-                                || ((info.resource_names.clone().len() as i64) > 0))
+                            crate::v1_compiler_infer_items::item_is_effectful_callee(info.clone())
                         }
                         std::option::Option::None => false,
                     };
@@ -25762,8 +25920,8 @@ pub fn emit_typed_call(
         });
         let extra_args = match callee.clone() {
             Some(info) => {
-                let has_effects = (((info.service_names.clone().len() as i64) > 0)
-                    || ((info.resource_names.clone().len() as i64) > 0));
+                let has_effects =
+                    crate::v1_compiler_infer_items::item_is_effectful_callee(info.clone());
                 if has_effects.clone() {
                     {
                         let resource_args = Rc::new({
@@ -25928,8 +26086,8 @@ pub fn emit_typed_call(
         };
         match callee.clone() {
             Some(info) => {
-                let has_effects = (((info.service_names.clone().len() as i64) > 0)
-                    || ((info.resource_names.clone().len() as i64) > 0));
+                let has_effects =
+                    crate::v1_compiler_infer_items::item_is_effectful_callee(info.clone());
                 if has_effects.clone() {
                     v1_rt::concat(call_str.clone(), ".await?".to_string())
                 } else {
