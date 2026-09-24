@@ -1,13 +1,23 @@
 module std.bitwise
 
 import std.types { Int, List }
-import std.integer { UInt32 }
 
 // BITWISE OPERATIONS OVER BOUNDED NATURALS, emulated with the only integer operations the substrate
-// has (+ - * / %, over a 64-bit Int that refuses on overflow). The operands are std.integer's
-// bounded naturals -- UInt32 here, and Word64 below as its two halves, because a 64-bit unsigned
-// value does not fit a signed 64-bit Int. std.bit's Word32 is the same width read as a list of
-// bits; this module is the arithmetic reading of it, not a second word type.
+// has (+ - * / %, over a 64-bit Int that refuses on overflow). The operands are 32-bit words held
+// in Int, and Word64 below is two of them, because a 64-bit unsigned value does not fit a signed
+// 64-bit Int. std.bit's Word32 is the same width read as a list of bits; this module is the
+// arithmetic reading of it, not a second word type.
+//
+// THE OPERANDS ARE TYPED Int, NOT std.integer UInt32, BECAUSE Int IS WHAT THEY HOLD. UInt32 is
+// Compose<UInt, MachineWidth<32>>, a Phantom with no inhabitant, so typing a value with it asserts a
+// width that nothing checks. The arithmetic here also passes THROUGH values outside [0, 2^32):
+// word32_xor forms a + b (up to 2^33 - 2) before subtracting, and word32_add reduces (a + b) only at
+// the end. Under the interpreter the brand was transparent and the claim went unnoticed. Under
+// emission the Rust realization refused every infix operator on the structural operand
+// (gunbc.recurring_failure_mode bounded_natural_arithmetic_evaluated_as_unbounded_int, whose ruling
+// is that the emitter was right and the SITES should stop claiming the phantom). No enforced rung
+// drops: a phantom brand checks nothing. The width fact these operations DO keep is the explicit
+// % 2^32 at each word boundary; stating it in a type is that row's newtype climb, not this module's.
 //
 // WHICH OPERATIONS ARE ARITHMETIC AND WHICH ARE NOT. Shifts, rotations, complement and addition
 // modulo 2^w are exact integer identities (x / 2^n, x % 2^n, (2^w - 1) - x, (a + b) % 2^w). Only
@@ -96,7 +106,7 @@ fn nibbles_xor(a: Int, b: Int, digits: Int) -> Int {
   if digits <= 0 { 0 } else { nibble_xor_lookup(a: a % 16, b: b % 16) + 16 * nibbles_xor(a: a / 16, b: b / 16, digits: digits - 1) }
 }
 
-fn word32_and(a: UInt32, b: UInt32) -> UInt32 {
+fn word32_and(a: Int, b: Int) -> Int {
   nibbles_and(a: a, b: b, digits: 8)
 }
 
@@ -110,15 +120,15 @@ fn word32_and(a: UInt32, b: UInt32) -> UInt32 {
 // is over values below 16 and the accumulator is bounded by the digits consumed, exactly as
 // word32_and already worked. Disjunction is then xor plus and, which are disjoint bit sets, so
 // their sum IS the disjunction and is bounded by it -- no wider than the result.
-fn word32_xor(a: UInt32, b: UInt32) -> UInt32 {
+fn word32_xor(a: Int, b: Int) -> Int {
   nibbles_xor(a: a, b: b, digits: 8)
 }
 
-fn word32_or(a: UInt32, b: UInt32) -> UInt32 {
+fn word32_or(a: Int, b: Int) -> Int {
   word32_xor(a: a, b: b) + word32_and(a: a, b: b)
 }
 
-fn word32_not(a: UInt32) -> UInt32 {
+fn word32_not(a: Int) -> Int {
   word32_modulus - 1 - a
 }
 
@@ -126,7 +136,7 @@ fn word32_not(a: UInt32) -> UInt32 {
 // recovered from an oversized value: when a would carry past the modulus, the answer is the
 // distance it travelled past it. `word32_modulus - b` is at least 1 for every b in range, and both
 // branches stay strictly below the modulus.
-fn word32_add(a: UInt32, b: UInt32) -> UInt32 {
+fn word32_add(a: Int, b: Int) -> Int {
   if a >= word32_modulus - b {
     a - (word32_modulus - b)
   } else {
@@ -134,16 +144,16 @@ fn word32_add(a: UInt32, b: UInt32) -> UInt32 {
   }
 }
 
-fn word32_shr(a: UInt32, n: Int) -> UInt32 {
+fn word32_shr(a: Int, n: Int) -> Int {
   a / bitwise_pow2(n: n)
 }
 
-fn word32_shl(a: UInt32, n: Int) -> UInt32 {
+fn word32_shl(a: Int, n: Int) -> Int {
   (a % bitwise_pow2(n: 32 - n)) * bitwise_pow2(n: n)
 }
 
 // Rotate right by n in [0, 32): the low n bits move to the top.
-fn word32_rotr(a: UInt32, n: Int) -> UInt32 {
+fn word32_rotr(a: Int, n: Int) -> Int {
   a / bitwise_pow2(n: n) + (a % bitwise_pow2(n: n)) * bitwise_pow2(n: 32 - n)
 }
 
@@ -152,8 +162,8 @@ fn word32_rotr(a: UInt32, n: Int) -> UInt32 {
 // operation on each half, except where bits cross the boundary (addition's carry, shifts and
 // rotations), which are stated explicitly.
 type Word64 {
-  hi: UInt32
-  lo: UInt32
+  hi: Int
+  lo: Int
 }
 
 fn word64_and(a: Word64, b: Word64) -> Word64 {
