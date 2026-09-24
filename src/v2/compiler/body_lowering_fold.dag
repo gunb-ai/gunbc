@@ -51,7 +51,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.compilers.body_lowering { lower_binary_infix, lower_branch, lower_bind, lower_loop, lower_match, lower_unary_prefix }
+import v2.std.compilers.body_lowering { lower_binary_infix, lower_list_introduction, lower_branch, lower_bind, lower_loop, lower_match, lower_unary_prefix }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
@@ -6784,7 +6784,9 @@ fn body_lower_paren_group_lowered(group: Node, inner: Node) -> Outcome<Node> {
 // imports v2.std.node, so a list literal in v2.std.node referring to v2.std.algebra would close a
 // node -> algebra -> node cycle, and v2 collapses onto dag/std, not the reverse. The Transform is
 // not an application: 04_infer types it by its one introduction case
-// (v2.compiler.infer infer_transform_freemonoid_introduction), every element unifying to one T.
+// (v2.compiler.infer infer_transform_freemonoid_introduction), every element unifying to one T. The
+// shape itself -- head path, constructor and reader -- is v2.std.compilers.body_lowering
+// lower_list_introduction and list_introduction_elements_optional, one authority for both sides.
 // The grammar writes the literal as seq(`[`, seq(optional comma_list(expr), `]`))
 // (v2.extdeps.languages.dag dag_grammar_primary_expr_core); its items are read by the one
 // comma-list walker. Every element is lowered WHOLE through body_lower_value_lowered, the value
@@ -6825,23 +6827,6 @@ fn body_lower_list_literal_element(item: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_list_construct(elements: List<Node>, source: Node) -> Node {
-  node_lowered_from(
-    kind: ComputationNode { behavior: Transform },
-    children: fold(
-      elements,
-      init: [
-        Edge {
-          label: Positional,
-          target: body_lower_qualified_name_spine_node(segments: [^std, ^algebra, ^FreeMonoid], source: source)
-        }
-      ],
-      f: fn(acc, element) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: element }) }
-    ),
-    source: source
-  )
-}
-
 fn body_lower_list_literal(literal: Node, items_capture: Node) -> Outcome<Node> {
   bind_outcome(
     o: body_lower_comma_list_items(
@@ -6857,7 +6842,7 @@ fn body_lower_list_literal(literal: Node, items_capture: Node) -> Outcome<Node> 
             })
           })
         }),
-        f: fn(elements) { outcome_accepted(value: body_lower_list_construct(elements: elements, source: literal)) }
+        f: fn(elements) { outcome_accepted(value: lower_list_introduction(elements: elements, source: literal)) }
       )
     }
   )

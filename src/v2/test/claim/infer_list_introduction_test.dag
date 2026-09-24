@@ -20,7 +20,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE FREE-MONOID INTRODUCTION'S ONE INFER CASE (v2.compiler.infer
 // infer_transform_freemonoid_introduction), AT ITS OWN INTERFACE. The inputs are SUPPLIED: a flat
 // Transform whose head is the std.algebra FreeMonoid reference and whose operands are literals --
-// the shape v2.compiler.body_lowering_fold body_lower_list_construct produces, which
+// the shape v2.std.compilers.body_lowering lower_list_introduction builds, which
 // v2.test.claim.namespace_xl0.list_literal_value_lowering establishes on the production route
 // (DESIGN section 3: the inhabitance claim for this supplied boundary). Three cases, one each:
 // elements of one type derive FreeMonoid<T>; a differing element refuses AT that element, not at
