@@ -1,0 +1,14 @@
+module probe.emit_probe
+
+import std.types { Timestamp, Bytes }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+
+fn ts_before(a: Timestamp, b: Timestamp) -> Bool {
+  a < b
+}
+
+fn main() -> String {
+  let o = bytes_octets(b: utf8_encode_bytes(s: "aé€"))
+  concat(a: concat(a: if ts_before(a: "2026-01-02T00:00:00Z", b: "2026-01-10T00:00:00Z") { "lt " } else { "ge " },
+    b: if ts_before(a: "b", b: "a") { "lt " } else { "ge " }), b: to_string(value: count(items: o)))
+}
