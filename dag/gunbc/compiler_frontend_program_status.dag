@@ -204,6 +204,8 @@ type Xl2Prerequisite
   | ResolveOccurrenceCompleteness
   | OperatorExpressionLoweredWhole
   | OptionalAccessorLocatedRefusal
+  | MatchOnCallScrutineeNavigation
+  | CompoundCallArgumentValueLowering
   | StrippedTreeRehearsalComposition
   | BlockStatementReferenceVisibility
   | LoweringOccurrenceProjection
@@ -236,6 +238,8 @@ data xl2_prerequisites: List<Xl2Prerequisite> = [
   ResolveOccurrenceCompleteness,
   OperatorExpressionLoweredWhole,
   OptionalAccessorLocatedRefusal,
+  MatchOnCallScrutineeNavigation,
+  CompoundCallArgumentValueLowering,
   StrippedTreeRehearsalComposition,
   BlockStatementReferenceVisibility,
   LoweringOccurrenceProjection,
@@ -250,6 +254,8 @@ fn xl2_prerequisite_label(p: Xl2Prerequisite) -> String {
     WholeTreeResolveCensus => "a whole-tree v2 census that RESOLVES per module"
     ResolveOccurrenceCompleteness => "occurrence completeness: every independent refusal reaches the census"
     OperatorExpressionLoweredWhole => "an operator expression is lowered whole, so every operand reaches resolve"
+    MatchOnCallScrutineeNavigation => "a match whose scrutinee is a call has its arms navigated, not refused"
+    CompoundCallArgumentValueLowering => "a compound call-argument value (nested call, record, caret symbol, group, list) is lowered as a value, not refused as unread"
     OptionalAccessorLocatedRefusal => "the Optional operand accessor carries a located refusal instead of answering Absent"
     StrippedTreeRehearsalComposition => "the stripped-tree rehearsal composition: import strip over a throwaway tree fed through the census-resolve route"
     BlockStatementReferenceVisibility => "every statement of a brace body, not only its first expression, reaches resolve"
@@ -287,7 +293,15 @@ fn xl2_prerequisite_standing(p: Xl2Prerequisite) -> Xl2PrerequisiteStanding {
     OperatorExpressionLoweredWhole => PrerequisiteDelivered {
       owner: decl_ref(module_path: "v2.test.claim.namespace_xl0.sequence_operand_resolve_refusal", decl_name: "an_undeclared_third_operand_of_a_chain_refuses_at_resolve_at_its_atom"),
       evidence: Xl2PrerequisiteEvidence { pr: 12145, merge_sha: "ada85b9452" as NonEmptyStr, measured_at: "ada85b9452" as NonEmptyStr },
-      qualification: "v2.compiler.body_lowering_fold body_lower_read_operator_expression reads the grammar's precedence tower whole, so every operand of a chained or comparison expression (`a == b`, `a + b * c > d`) reaches the normalized tree and resolve, and on the Outcome lowering routes an unreadable operand refuses at its position. Bounded to the Outcome routes: the Optional accessor still answers Absent (OptionalAccessorLocatedRefusal)." as NonEmptyStr,
+      qualification: "v2.compiler.body_lowering_fold body_lower_read_operator_expression reads the grammar's precedence tower whole, so every operand of a chained or comparison expression (`a == b`, `a + b * c > d`) reaches the normalized tree and resolve, and on the Outcome lowering routes an unreadable operand refuses at its position. Bounded to the Outcome routes: the Optional accessor still answers Absent (OptionalAccessorLocatedRefusal). Its two collateral regressions are separate outstanding arms, MatchOnCallScrutineeNavigation and CompoundCallArgumentValueLowering." as NonEmptyStr,
+    }
+    MatchOnCallScrutineeNavigation => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.match_on_a_call_scrutinee_refused_as_arm_navigation", decl_name: "match_on_a_call_scrutinee_refused_as_arm_navigation"),
+      why: "a collateral regression of gunbc#12145, kept explicit beside that arm's narrow delivery: a match whose scrutinee is a call refuses its module at normalize as body_lowering_reason_match_arm_navigation_refused (one-commit differential 2de78893dfe -> ada85b9452, recorded on the tracking row), so its references never reach resolve. No fix has merged." as NonEmptyStr,
+    }
+    CompoundCallArgumentValueLowering => PrerequisiteOutstanding {
+      tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.compound_call_argument_value_refused_as_unread", decl_name: "compound_call_argument_value_refused_as_unread"),
+      why: "a collateral regression of gunbc#12145, kept explicit beside that arm's narrow delivery: a call argument whose value is a nested call, record literal, caret symbol, parenthesised group or list literal refuses its whole module at normalize as body_lowering_reason_call_argument_unread, so its references never reach resolve. No fix has merged." as NonEmptyStr,
     }
     OptionalAccessorLocatedRefusal => PrerequisiteOutstanding {
       tracked_by: decl_ref(module_path: "gunbc.recurring_failure_mode.lowering_accessor_collapses_a_sequence_operand", decl_name: "lowering_accessor_collapses_a_sequence_operand"),
