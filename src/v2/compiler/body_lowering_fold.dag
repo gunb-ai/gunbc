@@ -6214,7 +6214,10 @@ fn body_lower_if_arm_lowered(arm_capture: Node) -> Outcome<Optional<Node>> {
       if emitted == ^dag_surface_if_expr {
         match body_lower_unwrap_captured(shell: arm_capture) {
           Present { value: captured } => body_lower_try_if_from_captured(captured: captured)
-          Absent => outcome_accepted(value: optional_absent())
+          Absent =>
+            outcome_rejected(
+              d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: arm_capture)
+            )
         }
       } else {
         body_lower_if_arm_statements_lowered(arm_capture: arm_capture)
