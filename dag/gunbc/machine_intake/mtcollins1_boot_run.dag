@@ -57,7 +57,8 @@ import gunbc.fleet_intent_network { operator_host_srv1 }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import extdeps.bmc.ipmi
 import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_shell_emit_dissolution_trigger }
-import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_probes }
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_probes, mtcollins1_smpro_probe_count }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootDiagnosticBundle, SelSnapshotReading, SelSnapshotNotTaken, inventory_not_taken,
   SdrCacheReading, SdrCacheNotTaken, mtcollins1_boot_sdr_cache,
@@ -66,6 +67,8 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   mtcollins1_boot_sel_snapshot, mtcollins1_boot_inventory, mtcollins1_boot_console,
   mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_bundle_findings, bundle_write_receipt_line,
   mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
+  SmproReading, BootParam5Reading, MtCollins1BootRunRecord, run_record_not_taken, mtcollins1_boot_param5, mtcollins1_boot_chassis_power,
+  PowerAfterAttempt, PoweredOffAfterCensusEnd, power_after_attempt, OverrideNotHandedOff, boot_override_consumption,
 }
 import std.dissolution { dissolution_description }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -100,6 +103,7 @@ fn mtcollins1_boot_step_timeout_minutes() -> Minute {
   let secs = second_count(s: mtcollins1_boot_prelude_allowance)
     + second_count(s: mtcollins1_boot_issue_allowance)
     + second_count(s: oob_power_readback_allowance())
+    + second_count(s: mtcollins1_boot_in_run_smpro_allowance())
     + second_count(s: mtcollins1_boot_actuation_allowance)
     + second_count(s: mtcollins1_boot_cleanup_allowance)
     + second_count(s: mtcollins1_boot_diagnostics_allowance())
@@ -720,24 +724,96 @@ fn mtcollins1_boot_await_capture_terminal(
   remaining: Int,
   capture_path: String,
   subject: MtCollins1BootSubject,
-) -> ProcessExit {
+  password_file: String,
+  smpro_census: SmproReading,
+) -> TerminalWatch {
   let capture = Filesystem.Read(path: capture_path)
+  let phase = if capture.success { mtcollins1_census_phase(capture: capture.content, subject: subject) } else { CensusPhaseUnread }
+  let census_pass = match smpro_census {
+    SmproNotTaken { reason: _ } => match phase {
+      CensusRunning => mtcollins1_boot_smpro_pass(password_file: password_file)
+      _ => smpro_census
+    }
+    taken => taken
+  }
+  let ended = match phase { CensusEnded => true _ => false }
   let verdict = if capture.success { mtcollins1_boot_terminal_verdict(capture: capture.content, subject: subject, medium: mtcollins1_boot_medium) } else { TerminalPending { reason: "capture unreadable" } }
   match verdict {
-    TerminalAccepted { run: _, threads: _ } => ExitSuccess
-    TerminalRefused { causes: causes } => exit_failure(reason: mtcollins1_boot_terminal_refusal_text(causes: causes))
+    TerminalAccepted { run: _, threads: _ } => TerminalWatch { outcome: ExitSuccess, census_ended: ended, smpro_census: census_pass }
+    TerminalRefused { causes: causes } => TerminalWatch { outcome: exit_failure(reason: mtcollins1_boot_terminal_refusal_text(causes: causes)), census_ended: ended, smpro_census: census_pass }
     TerminalPending { reason: why } =>
       if remaining <= 0 {
-        exit_failure(reason: concat("mtcollins1 boot: deadline reached without a host-capture terminal; last observation: ", why, "; capture preserved; claim will abort, not complete"))
+        TerminalWatch { outcome: exit_failure(reason: concat("mtcollins1 boot: deadline reached without a host-capture terminal; last observation: ", why, "; capture preserved; claim will abort, not complete")), census_ended: ended, smpro_census: census_pass }
       } else {
         let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_poll_cadence)
         mtcollins1_boot_await_capture_terminal(
           remaining: remaining - 1,
           capture_path: capture_path,
           subject: subject,
+          password_file: password_file,
+          smpro_census: census_pass,
         )
       }
   }
+}
+
+// WHERE THE CENSUS IS, READ FROM THE SAME ENVELOPE BINDING THE VERDICT USES. Running means the BEGIN
+// marker for this machine and no END yet: the host OS is up, so the sockets are powered. Ended means
+// the END marker: the image's next act is poweroff -f.
+type CensusPhase
+  = CensusNotBegun
+  | CensusRunning
+  | CensusEnded
+  | CensusUnbound
+  | CensusPhaseUnread
+
+fn mtcollins1_census_phase(capture: String, subject: MtCollins1BootSubject) -> CensusPhase {
+  match host_capture_bind(capture: capture, machine: subject.machine) {
+    HostCaptureNotBegun => CensusNotBegun
+    HostCaptureOpen { envelope: _ } => CensusRunning
+    HostCaptureBound { envelope: _ } => CensusEnded
+    HostCaptureUnbound { reason: _ } => CensusUnbound
+  }
+}
+
+type TerminalWatch {
+  outcome: ProcessExit
+  census_ended: Bool
+  smpro_census: SmproReading
+}
+
+// ONE SMpro PASS, READ-ONLY AND FOLD-SEQUENCED (mtcollins1_smpro_probes). Taken only where the run
+// has established the host is powered on.
+fn mtcollins1_boot_smpro_pass(password_file: String) -> SmproReading {
+  match mtcollins1_bmc_username {
+    Absent => SmproNotTaken { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }
+    Present { value: user } =>
+      SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: password_file as NonEmptyStr, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
+  }
+}
+
+// THE TWO IN-RUN PASSES ARE PAID INSIDE THE ACTUATION, beside the terminal ticks rather than out of
+// them, so the step timeout carries them explicitly: each probe runs under the coreutils bound.
+fn mtcollins1_boot_in_run_smpro_allowance() -> Second {
+  second(count: 2 * mtcollins1_smpro_probe_count() * ((second_count(s: mtcollins1_boot_ipmi_read_deadline) as Int) + (second_count(s: mtcollins1_boot_ipmi_kill_after) as Int)))
+}
+
+// HOW FAR THE ACTUATION GOT, as a closed choice rather than flags. The terminal deadline is reachable
+// only from the powered-on arms: gunbc.machine_intake_oob_boot_handoff returns success only after a
+// chassis read-back observed the power transition, so the boot deadline never starts on an ipmitool
+// exit code.
+type MtCollins1BootActuationStage
+  = ActuationNotPoweredOn { reason: NonEmptyStr }
+  | ActuationPoweredOn { selection: IpmiBootSelection, smpro_power_on: SmproReading, smpro_census: SmproReading }
+  | ActuationCensusEnded { selection: IpmiBootSelection, smpro_power_on: SmproReading, smpro_census: SmproReading }
+
+type MtCollins1BootActuation {
+  outcome: ProcessExit
+  stage: MtCollins1BootActuationStage
+}
+
+fn actuation_not_powered_on(outcome: ProcessExit, reason: NonEmptyStr) -> MtCollins1BootActuation {
+  MtCollins1BootActuation { outcome: outcome, stage: ActuationNotPoweredOn { reason: reason } }
 }
 
 fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_path: String) -> HeldLeaseObservedState
@@ -765,13 +841,13 @@ fn mtcollins1_boot_actuate(
   attempt: String,
   sol_pid_path: String,
   sol_capture_path: String,
-) -> ProcessExit
+) -> MtCollins1BootActuation
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
   ]
 {
   match mtcollins1_sol_acquire_under_unit_hold(proof: proof, password_file: password_file as NonEmptyStr, pid_path: sol_pid_path, capture_path: sol_capture_path) {
-    ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
+    ExitFailure { code: c, reason: r } => actuation_not_powered_on(outcome: ExitFailure { code: c, reason: r }, reason: "the SOL lease was not acquired, so nothing was written")
     ExitSuccess => {
       let issued = match mtcollins1_census_readback_refusal_before_attach(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
         Present { value: why } => exit_failure(reason: why)
@@ -789,25 +865,40 @@ fn mtcollins1_boot_actuate(
           }
       }
       let observed = match issued {
-        ExitSuccess =>
-          mtcollins1_boot_await_capture_terminal(
+        ExitSuccess => {
+          let at_power_on = mtcollins1_boot_smpro_pass(password_file: password_file)
+          let watch = mtcollins1_boot_await_capture_terminal(
             remaining: mtcollins1_boot_terminal_tick_budget(),
             capture_path: sol_capture_path,
             subject: subject,
+            password_file: password_file,
+            smpro_census: SmproNotTaken { reason: "no poll saw the census envelope open: it never began, or began and ended between polls" },
           )
-        other => other
+          MtCollins1BootActuation {
+            outcome: watch.outcome,
+            stage: if watch.census_ended {
+              ActuationCensusEnded { selection: subject.selection, smpro_power_on: at_power_on, smpro_census: watch.smpro_census }
+            } else {
+              ActuationPoweredOn { selection: subject.selection, smpro_power_on: at_power_on, smpro_census: watch.smpro_census }
+            },
+          }
+        }
+        other => actuation_not_powered_on(outcome: other, reason: "the attach or the handoff refused, so power on was never observed")
       }
       let teardown = mtcollins1_boot_release_sol(proof: proof, password_file: password_file, pid_path: sol_pid_path)
-      match observed {
-        ExitSuccess =>
-          match teardown {
-            LeaseRunningExpected =>
-              exit_failure(reason: "mtcollins1 boot: SOL collector still held after deactivate")
-            LeaseRunningStale =>
-              exit_failure(reason: "mtcollins1 boot: SOL pid file stale after deactivate")
-            _ => ExitSuccess
-          }
-        other => other
+      MtCollins1BootActuation {
+        outcome: match observed.outcome {
+          ExitSuccess =>
+            match teardown {
+              LeaseRunningExpected =>
+                exit_failure(reason: "mtcollins1 boot: SOL collector still held after deactivate")
+              LeaseRunningStale =>
+                exit_failure(reason: "mtcollins1 boot: SOL pid file stale after deactivate")
+              _ => ExitSuccess
+            }
+          other => other
+        },
+        stage: observed.stage,
       }
     }
   }
@@ -824,25 +915,24 @@ fn mtcollins1_boot_under_live_unit_hold(
   password_file: String,
   sol_pid_path: String,
   sol_capture_path: String,
-) -> ProcessExit
+) -> MtCollins1BootActuation
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet_on_srv1"),
   ]
 {
   match mtcollins1_boot_acquire_unit_hold(ruling: ruling, run_id: run_id) {
-    UnitHoldRefused { reason: r } => exit_failure(reason: concat("mtcollins1 boot: ", r as String))
-    UnitHeld { proof: p } =>
-      unit_hold_release(
+    UnitHoldRefused { reason: r } => actuation_not_powered_on(outcome: exit_failure(reason: concat("mtcollins1 boot: ", r as String)), reason: "the unit hold was refused, so nothing was written")
+    UnitHeld { proof: p } => {
+      let act = mtcollins1_boot_actuate(
         proof: p,
-        outcome: mtcollins1_boot_actuate(
-          proof: p,
-          subject: subject,
-          password_file: password_file,
-          attempt: run_id as String,
-          sol_pid_path: sol_pid_path,
-          sol_capture_path: sol_capture_path,
-        ),
+        subject: subject,
+        password_file: password_file,
+        attempt: run_id as String,
+        sol_pid_path: sol_pid_path,
+        sol_capture_path: sol_capture_path,
       )
+      MtCollins1BootActuation { outcome: unit_hold_release(proof: p, outcome: act.outcome), stage: act.stage }
+    }
   }
 }
 
@@ -871,11 +961,12 @@ data mtcollins1_boot_sdr_cache_suffix: String = ".sdr-cache"
 
 type MtCollins1BootBmcAccess
   = BmcAccessNotReached { reason: NonEmptyStr }
-  | BmcAccessHeld { username: NonEmptyStr, password_file: NonEmptyStr, password: String, sdr_cache: SdrCacheReading, sel_before: SelSnapshotReading }
+  | BmcAccessHeld { username: NonEmptyStr, password_file: NonEmptyStr, password: String, sdr_cache: SdrCacheReading, sel_before: SelSnapshotReading, override_before: BootParam5Reading }
 
 type MtCollins1BootAttempt {
   outcome: ProcessExit
   bmc: MtCollins1BootBmcAccess
+  stage: MtCollins1BootActuationStage
 }
 
 fn mtcollins1_boot_exit_reason(outcome: ProcessExit) -> String {
@@ -889,6 +980,7 @@ fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit) -> MtCollins1BootAttem
   MtCollins1BootAttempt {
     outcome: outcome,
     bmc: BmcAccessNotReached { reason: concat("the attempt ended before the BMC credential was read (", mtcollins1_boot_exit_reason(outcome: outcome), ")") as NonEmptyStr },
+    stage: ActuationNotPoweredOn { reason: "the attempt ended before the unit hold" },
   }
 }
 
@@ -906,18 +998,62 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         smpro: SmproNotTaken { reason: why },
         inventory: inventory_not_taken(reason: why),
         console: mtcollins1_boot_console(path: capture_path),
+        run: run_record_not_taken(reason: why),
       }
-    BmcAccessHeld { username: user, password_file: pf, password: pw, sdr_cache: sdr, sel_before: before } =>
+    BmcAccessHeld { username: user, password_file: pf, password: pw, sdr_cache: sdr, sel_before: before, override_before: p5_before } => {
+      let sel_after = mtcollins1_boot_sel_snapshot(username: user, password_file: pf, sdr: sdr)
+      let p5_after = mtcollins1_boot_param5(username: user, password_file: pf)
+      let power_after = power_after_attempt(
+        observation: mtcollins1_boot_chassis_power(username: user, password_file: pf),
+        census_ended: match attempt.stage { ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => true _ => false },
+      )
       MtCollins1BootDiagnosticBundle {
         attempt: run,
         outcome: mtcollins1_boot_exit_reason(outcome: attempt.outcome),
         sel_before: before,
-        sel_after: mtcollins1_boot_sel_snapshot(username: user, password_file: pf, sdr: sdr),
+        sel_after: sel_after,
         sdr_cache: sdr,
         sensors: mtcollins1_boot_sensors(username: user, password_file: pf, sdr: sdr),
-        smpro: SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) },
+        smpro: match power_after {
+          PoweredOffAfterCensusEnd => SmproNotTaken { reason: "the host powered off after the census END marker, as the census image intends; the in-run passes are this attempt's socket-local record" }
+          _ => SmproProbed { outcomes: mtcollins1_smpro_probes(username: user, password_file: pf, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
+        },
         inventory: mtcollins1_boot_inventory(username: user, password: pw),
         console: mtcollins1_boot_console(path: capture_path),
+        run: mtcollins1_boot_run_record(stage: attempt.stage, before: p5_before, after: p5_after, power_after: power_after),
+      }
+    }
+  }
+}
+
+fn mtcollins1_boot_run_record(stage: MtCollins1BootActuationStage, before: BootParam5Reading, after: BootParam5Reading, power_after: PowerAfterAttempt) -> MtCollins1BootRunRecord {
+  match stage {
+    ActuationNotPoweredOn { reason: why } =>
+      MtCollins1BootRunRecord {
+        smpro_power_on: SmproNotTaken { reason: why },
+        smpro_census: SmproNotTaken { reason: why },
+        override_before: before,
+        override_after: after,
+        override: OverrideNotHandedOff { reason: why },
+        power_after: power_after,
+      }
+    ActuationPoweredOn { selection: sel, smpro_power_on: on, smpro_census: census } =>
+      MtCollins1BootRunRecord {
+        smpro_power_on: on,
+        smpro_census: census,
+        override_before: before,
+        override_after: after,
+        override: boot_override_consumption(before: before, after: after, handed_off: Present { value: sel }, not_handed_off_reason: "unreachable: the handoff observed power on"),
+        power_after: power_after,
+      }
+    ActuationCensusEnded { selection: sel, smpro_power_on: on, smpro_census: census } =>
+      MtCollins1BootRunRecord {
+        smpro_power_on: on,
+        smpro_census: census,
+        override_before: before,
+        override_after: after,
+        override: boot_override_consumption(before: before, after: after, handed_off: Present { value: sel }, not_handed_off_reason: "unreachable: the handoff observed power on"),
+        power_after: power_after,
       }
   }
 }
@@ -1036,17 +1172,23 @@ fn mtcollins1_boot_wet_on_srv1() -> MtCollins1BootAttempt
   }
   let subject = mtcollins1_boot_subject(execution_revision: sha as NonEmptyStr)
   match mtcollins1_bmc_username {
-    Absent =>
+    Absent => {
+      let act = mtcollins1_boot_under_live_unit_hold(ruling: ruling, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path)
       MtCollins1BootAttempt {
-        outcome: mtcollins1_boot_under_live_unit_hold(ruling: ruling, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path),
+        outcome: act.outcome,
         bmc: BmcAccessNotReached { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" },
+        stage: act.stage,
       }
+    }
     Present { value: user } => {
       let sdr = mtcollins1_boot_sdr_cache(username: user, password_file: cred as NonEmptyStr, path: concat(cred, mtcollins1_boot_sdr_cache_suffix) as NonEmptyStr)
       let before = mtcollins1_boot_sel_snapshot(username: user, password_file: cred as NonEmptyStr, sdr: sdr)
+      let p5_before = mtcollins1_boot_param5(username: user, password_file: cred as NonEmptyStr)
+      let act = mtcollins1_boot_under_live_unit_hold(ruling: ruling, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path)
       MtCollins1BootAttempt {
-        outcome: mtcollins1_boot_under_live_unit_hold(ruling: ruling, run_id: run_id as NonEmptyStr, subject: subject, password_file: cred, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path),
-        bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sdr_cache: sdr, sel_before: before },
+        outcome: act.outcome,
+        bmc: BmcAccessHeld { username: user, password_file: cred as NonEmptyStr, password: pw_read.content, sdr_cache: sdr, sel_before: before, override_before: p5_before },
+        stage: act.stage,
       }
     }
   }
