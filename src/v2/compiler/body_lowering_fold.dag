@@ -3129,6 +3129,27 @@ fn body_lower_fn_decl_to_arrow_admitted(shell: Node, captured: Node) -> Outcome<
   }
 }
 
+// A LITERAL READER ANSWERS ONLY A NODE THAT IS THE LITERAL WHOLE. It descends only where the node and
+// its inner node are one value -- a production shell's captured child, a one-element sequence -- and
+// never into a proper part. The descent was a first-match search over every child, so any node with a
+// `true`, `false` or int literal anywhere under it read as that literal: the `else if` chain of
+// `if a { a } else if a { false } else { u }` lowered to `false`, and `u` reached no reference site.
+fn body_lower_whole_inner_optional(node: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: node) {
+    Present { value: captured } => optional_present(value: captured)
+    Absent =>
+      match sugar_sequence_pair_optional(node: node) {
+        Present { value: pair } =>
+          if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+            optional_present(value: pair.left)
+          } else {
+            optional_absent()
+          }
+        Absent => optional_absent()
+      }
+  }
+}
+
 fn body_lower_literal_bool_atom_optional(node: Node) -> Optional<Node> {
   let unwrapped = body_lower_deep_unwrap_optional(node: node)
   match node_atom_identity_optional(node: unwrapped) {
@@ -3139,12 +3160,10 @@ fn body_lower_literal_bool_atom_optional(node: Node) -> Optional<Node> {
         body_lower_int_literal_with_magnitude_optional(node: unwrapped)
       }
     Absent =>
-      fold(node.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => body_lower_literal_bool_atom_optional(node: e.target)
-        }
-      })
+      match body_lower_whole_inner_optional(node: unwrapped) {
+        Present { value: inner } => body_lower_literal_bool_atom_optional(node: inner)
+        Absent => optional_absent()
+      }
   }
 }
 
@@ -3152,17 +3171,10 @@ fn body_lower_literal_int_atom_optional(node: Node) -> Optional<Node> {
   match body_lower_int_literal_with_magnitude_optional(node: node) {
     Present { value: lit } => Present { value: lit }
     Absent =>
-      fold(node.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent =>
-            if body_lower_is_identity_projection_edge(edge: e) {
-              Absent
-            } else {
-              body_lower_literal_int_atom_optional(node: e.target)
-            }
-        }
-      })
+      match body_lower_whole_inner_optional(node: body_lower_deep_unwrap_optional(node: node)) {
+        Present { value: inner } => body_lower_literal_int_atom_optional(node: inner)
+        Absent => optional_absent()
+      }
   }
 }
 
@@ -5287,6 +5299,10 @@ fn body_lower_if_then_fn_body_optional(captured: Node) -> Optional<Node> {
   }
 }
 
+// AN `else if` ARM IS ANSWERED AS ITS if_expr SHELL, so body_lower_if_arm_lowered can see it is an
+// if and lower it whole. Answering the shell's captured content instead hid the if_expr identity, and
+// the arm's statement-sequence search found the nested then-arm: `if a { b } else if c { d } else { u }`
+// lowered to Branch(a, b, d), and both the nested condition and its else reached no reference site.
 fn body_lower_if_else_capture_optional(captured: Node) -> Optional<Node> {
   let spine = body_lower_unwrap_surface_shell(node: captured)
   match is_empty_conj_root(n: spine) {
@@ -5300,9 +5316,9 @@ fn body_lower_if_else_capture_optional(captured: Node) -> Optional<Node> {
               Present { value: id } =>
                 match id == ^dag_token_kw_else {
                   true =>
-                    match body_lower_find_captured(root: right, emitted: ^dag_surface_if_expr) {
-                      ParseSubtreeFound { captured: nested } => Present { value: nested }
-                      ParseSubtreeAbsent =>
+                    match body_lower_find_production_shell_optional(root: right, emitted: ^dag_surface_if_expr) {
+                      Present { value: nested } => Present { value: nested }
+                      Absent =>
                         match body_lower_if_fn_body_capture_optional(spine: right) {
                           Present { value: body } => Present { value: body }
                           Absent =>
@@ -6182,13 +6198,18 @@ fn body_lower_if_condition_lowered(condition_capture: Node) -> Outcome<Optional<
 // statement sequence: one statement is folded whole, a let binds the rest, and any other statement
 // followed by another refuses located. Its refusal is the arm's refusal. An `else if` arm is an
 // if_expr, not a brace body -- a statement-sequence search there would find the nested then-arm --
-// so it keeps the if reader. The operand reader stays the fallback for an arm whose lowered
-// statement leaves no lowered node behind its shells.
+// so it lowers through the if reader, and the nested if's refusal is the arm's refusal. It was read
+// through body_lower_if_arm_operand_optional, which answers a refused nested if as Absent, so
+// `else if a && (u) { .. }` lost `u` and the module resolved. The operand reader stays the fallback
+// for an arm whose lowered statement leaves no lowered node behind its shells.
 fn body_lower_if_arm_lowered(arm_capture: Node) -> Outcome<Optional<Node>> {
   match parse_production_emitted_identity_optional(node: arm_capture) {
     Present { value: emitted } =>
       if emitted == ^dag_surface_if_expr {
-        outcome_accepted(value: body_lower_if_arm_operand_resolved_optional(arm_capture: arm_capture))
+        match body_lower_unwrap_captured(shell: arm_capture) {
+          Present { value: captured } => body_lower_try_if_from_captured(captured: captured)
+          Absent => outcome_accepted(value: optional_absent())
+        }
       } else {
         body_lower_if_arm_statements_lowered(arm_capture: arm_capture)
       }
