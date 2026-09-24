@@ -5,7 +5,7 @@ import gunbc.auth.approval_device_redemption_fixtures { approval_device_vectors_
 import product.printed_chassis.cadquery_realization { CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused, expected_coupon_cadquery_program }
 import gunbc.generated_artifact {
   GeneratedArtifact,
-  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact,
   RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
@@ -33,6 +33,7 @@ import gunbc.generated_workflow_provenance {
 }
 import gunbc.fleet_converge_workflow { expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerationOutcome, FleetDesiredGenerated, FleetDesiredGenerationRefused }
+import gunbc.runner_microvm_shakedown_workflow { expected_microvm_shakedown_yml, MicrovmShakedownWorkflowGenerated, MicrovmShakedownWorkflowGenerationRefused }
 import gunbc.heal_workflow { expected_heal_workflow_yml, HealWorkflowGenerated, HealWorkflowGenerationRefused }
 import gunbc.heal_publisher_workflow { expected_heal_publisher_workflow_yml, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused }
 import gunbc.witness_floor_workflow { WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
@@ -106,6 +107,10 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
     FleetDesiredAdmissionYamlArtifact => match expected_fleet_desired_yml() {
       FleetDesiredGenerated { content } => artifact_generated(content: content)
       FleetDesiredGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
+    MicrovmShakedownYamlArtifact => match expected_microvm_shakedown_yml() {
+      MicrovmShakedownWorkflowGenerated { content } => artifact_generated(content: content)
+      MicrovmShakedownWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
     HealWorkflowYamlArtifact => match expected_heal_workflow_yml() {
       HealWorkflowGenerated { content } => artifact_generated(content: content)
@@ -240,6 +245,7 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     WitnessFloorYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     FleetConvergeYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     FleetDesiredAdmissionYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
+    MicrovmShakedownYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     HealWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     HealPublisherWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     GitignoreArtifact => true
