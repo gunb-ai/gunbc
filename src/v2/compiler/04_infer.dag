@@ -84,6 +84,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool, bool_node }
 import v2.std.node {
+  node_is_type_annotation_elided,
   Arrow,
   Atom,
   Bind,
@@ -232,6 +233,18 @@ fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
 fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^infer_canonical_grounding_incoherent,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// A LAMBDA'S ELIDED TYPE IS A LOCATED REFUSAL, NOT A GUESS. The source wrote no type for a lambda
+// binder or return (v2.std.node type_annotation_elided_node), and this fold does not yet derive a
+// function value's types from its use. Refusing at the elided position keeps the parameter from
+// being typed as anything at all; function-value typing is the capability that retires this arm.
+fn infer_type_annotation_elided_uninferred_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_reason_type_annotation_elided_uninferred,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -2228,7 +2241,20 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, tree: Node) -> InferGat
         )
       }
     ComputationNode { behavior: Bind } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
-    TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
+    TypeNode { connective: Atom { identity: _ } } =>
+      if node_is_type_annotation_elided(node: n) {
+        infer_gather_fold_acc_failed(
+          node: n,
+          pending: diagnostics_singleton(d: infer_type_annotation_elided_uninferred_diagnostic(node: n)),
+          await_branch_row: false,
+          await_match_row: false,
+          await_loop_row: false,
+          await_transform_row: false,
+          children_remaining: 0
+        )
+      } else {
+        infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)
+      }
     TypeNode { connective: Conj } =>
       match declaration_reference_path_optional(node: n) {
         Present { value: _ } => infer_gather_fold_not_derived(n: n, partials: partials, tree: tree)

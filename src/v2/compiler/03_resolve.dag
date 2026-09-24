@@ -87,6 +87,7 @@ import v2.std.symbol_index {
   symbol_index_lexical_lookup
 }
 import v2.std.node {
+  node_is_type_annotation_elided,
   Arrow,
   Atom,
   Bind,
@@ -832,8 +833,10 @@ fn resolve_atom_bound(
   }
 }
 
+// An elided type annotation (v2.std.node type_annotation_elided_node) names nothing, so there is
+// nothing to look up: it is accepted as itself, as an integer literal is. Its refusal is infer's.
 fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
-  if dag_node_is_int_literal_atom(node: n) {
+  if dag_node_is_int_literal_atom(node: n) || node_is_type_annotation_elided(node: n) {
     Accepted { value: n, diagnostics: None }
   } else if dag_node_is_float_literal_atom(node: n) {
     Rejected {

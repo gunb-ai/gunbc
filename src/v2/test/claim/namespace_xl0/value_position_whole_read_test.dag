@@ -21,7 +21,19 @@ import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.node {
+  Arrow,
+  Found,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  arrow_body_target_lookup,
+  named_edge_target_lookup,
+  node_is_type_annotation_elided,
+  node_subtree_nodes
+}
 import v2.std.node_query { call_argument_targets, call_callee_target }
 import v2.std.collection { List, list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
@@ -51,16 +63,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // scrutinees as such are gunbc#12173's subject (v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal);
 // they are here as the population the shape claims below read, which assert the lowered call's SHAPE.
 //
-// THE LAMBDA CLAIMS ARE A NAMED FRONTIER, ENROLLED EXPECTED-RED. A lambda argument whose body uses its
-// own parameter must RESOLVE, and an undeclared name in a lambda body must refuse at its atom. Neither
-// holds today: a lambda argument refuses its module as call_argument_unread, which is gen-one's first
-// fatal (dag/examples/weather/weather.dag). Carrying the lambda's shell whole under the
-// value_carried_unlowered advisory was tried in gunbc#12198 and measured on srv1 at 8fc9f27377: the
-// module then normalizes, but BOTH claims stay red, because a carried shell gives the resolver no scope
-// for the parameter -- a refusal moved from normalize to resolve, not a repair, so it was dropped.
-// The repair is real lambda lowering in argument position, owned by the body-lowering modeling pass
-// (MQ lane, adhoc-1b3dbcdb-f9f); these two rows flip green when it lands and the floor reports them
-// for removal.
+// THE LAMBDA CLAIMS. A lambda argument whose body uses its own parameter must RESOLVE, and an
+// undeclared name in a lambda body must refuse at its atom. Both were enrolled expected-red by
+// gunbc#12198 (a lambda argument refused its module as call_argument_unread, gen-one's first fatal at
+// dag/examples/weather/weather.dag, and carrying its shell whole left the parameter unscoped at
+// resolve). They hold now that the lambda lowers to the Arrow a named fn lowers to
+// (body_lowering_fold body_lower_arrow_lambda_value), its binder a Named edge of the Arrow's domain
+// that resolve scopes through the one Arrow binder model.
 data vpw_match_call_source: String = "module v2.test.vpw_match_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match vpw_id(p: vpw_undeclared_scrutinee) {\n    true => p\n    false => p\n  }\n}\n"
 
 data vpw_match_declared_source: String = "module v2.test.vpw_match_declared\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match vpw_id(p: p) {\n    true => p\n    false => p\n  }\n}\n"
@@ -226,16 +235,17 @@ test fn an_undeclared_name_inside_a_call_argument_refuses_at_resolve_at_its_atom
 // Narrowing (the pre-#12145 truncation to the callee atom) and refusal (the #12145 regression) both
 // fail these. Renaming the callee in the expected spelling makes them red. The ingest is enrolled warm
 // beside vpw_outcomes; the walk runs per claim.
-// The shape claims read their own ingest, WITHOUT the lambda fixtures: module_roots_from_source_root_ingest
-// refuses the whole ingest when one module refuses, and a lambda argument still refuses its module on
-// this route (the two lambda claims above are enrolled expected-red in v2.workflow.floor_expected_red).
-// A shared ingest would make every shape claim red for the lambda's reason and not its own -- the
-// collateral srv1 measured at 8fc9f27377 against main.
+// The shape ingest carries the lambda fixture too: module_roots_from_source_root_ingest refuses the
+// whole ingest when one module refuses, so a lambda argument that stopped lowering reds every shape
+// claim here, not only its own.
 data vpw_shape_ingest: SourceRootIngest = Cons {
     head: vpw_read(source: vpw_match_call_source, id: ^vpw_match_call_artifact, unit: ^vpw_match_call_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_match_call.dag"),
     tail: Cons {
       head: vpw_read(source: vpw_arg_call_source, id: ^vpw_arg_call_artifact, unit: ^vpw_arg_call_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_call.dag"),
-      tail: Empty
+      tail: Cons {
+        head: vpw_read(source: vpw_arg_lambda_source, id: ^vpw_arg_lambda_artifact, unit: ^vpw_arg_lambda_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_arg_lambda.dag"),
+        tail: Empty
+      }
     }
   }
 
@@ -292,11 +302,13 @@ fn vpw_nested_call_shape(n: Node, callee: Symbol, inner: Symbol) -> Bool {
 type VpwShape
   = VpwNestedCall { callee: Symbol, inner: Symbol }
   | VpwSingleCall { callee: Symbol, inner: Symbol }
+  | VpwLambdaArgument { callee: Symbol, binder: Symbol }
 
 fn vpw_node_has_shape(n: Node, shape: VpwShape) -> Bool {
   match shape {
     VpwNestedCall { callee: c, inner: i } => vpw_nested_call_shape(n: n, callee: c, inner: i)
     VpwSingleCall { callee: c, inner: i } => vpw_single_call_shape(n: n, callee: c, inner: i)
+    VpwLambdaArgument { callee: c, binder: b } => vpw_lambda_argument_shape(n: n, callee: c, binder: b)
   }
 }
 
@@ -327,4 +339,53 @@ fn vpw_single_call_shape(n: Node, callee: Symbol, inner: Symbol) -> Bool {
     Present { value: a } => vpw_is_atom(n: a, id: inner)
     Absent => false
   })
+}
+
+// THE LAMBDA ARGUMENT'S SHAPE: a call to `callee` one of whose arguments is an Arrow whose first
+// positional child (the domain) has the Named edge `binder` targeting the elided type, and whose
+// arrow_body_edge target is the atom `binder` at its AUTHORED occurrence -- the body's own use, not
+// the binder's position (the elided type carries the binder's occurrence). Dropping the binder
+// edge, narrowing the lambda to its parameter, carrying its shell, or typing the binder as anything
+// but the elided annotation each fail it.
+fn vpw_domain_binds(arrow: Node, binder: Symbol) -> Optional<Node> {
+  match list_at_optional(xs: arrow.children, index: 0) {
+    Present { value: e } =>
+      match e.label {
+        Positional =>
+          match named_edge_target_lookup(children: e.target.children, name: binder) {
+            Found { target: t } =>
+              if node_is_type_annotation_elided(node: t) { optional_present(value: t) } else { optional_absent() }
+            _ => optional_absent()
+          }
+        Named { name: _ } => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn vpw_is_lambda_using_its_binder(n: Node, binder: Symbol) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } =>
+      match vpw_domain_binds(arrow: n, binder: binder) {
+        Present { value: elided } =>
+          match arrow_body_target_lookup(children: n.children) {
+            Found { target: body } =>
+              vpw_is_atom(n: body, id: binder) && (body.occurrence_id != elided.occurrence_id)
+            _ => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn vpw_lambda_argument_shape(n: Node, callee: Symbol, binder: Symbol) -> Bool {
+  vpw_is_call_to(n: n, callee: callee)
+    && fold_list(xs: call_argument_targets(node: n), empty: false, cons: fn(acc, a) {
+      acc || vpw_is_lambda_using_its_binder(n: a, binder: binder)
+    })
+}
+
+test fn a_lambda_argument_lowers_to_an_arrow_binding_its_parameter_for_its_body() -> Bool {
+  vpw_any_node(shape: VpwLambdaArgument { callee: ^vpw_apply, binder: ^x })
 }

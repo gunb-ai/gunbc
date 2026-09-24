@@ -144,6 +144,30 @@ fn node_lowered_from(kind: NodeKind, children: List<Edge>, source: Node) -> Node
   )
 }
 
+// THE SOURCE WROTE NO TYPE AT THIS POSITION. A lambda binder `p => body` or `(a, b) => body`
+// declares a parameter and states no type for it, and states no return type. The lambda lowers to
+// the same Arrow a named fn lowers to, so its binder is a Named edge of the Arrow's Conj domain and
+// resolve scopes it through the one Arrow binder model; this atom is that edge's target (and the
+// codomain's), carrying the occurrence of the position it stands for. It is NOT a type and NOT a
+// name: resolve accepts it as itself, the way it accepts an integer literal, and infer refuses it
+// located at that occurrence (infer_reason_type_annotation_elided_uninferred) until function-value
+// typing derives the elided type from the lambda's use. Reading it as the empty Conj instead would
+// type every lambda parameter as Unit, silently.
+fn type_annotation_elided_node(at: Node) -> Node {
+  node_lowered_from(
+    kind: TypeNode { connective: Atom { identity: ^type_annotation_elided } },
+    children: [],
+    source: at
+  )
+}
+
+fn node_is_type_annotation_elided(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == ^type_annotation_elided
+    _ => false
+  }
+}
+
 fn node_synthetic(kind: NodeKind, children: List<Edge>) -> Node {
   node_with_occurrence_id(
     kind: kind,
