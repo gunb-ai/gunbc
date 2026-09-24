@@ -1,0 +1,231 @@
+module gunbc.runner_microvm_slot_reserve
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.measure { money_amount_micro, MoneyPerSecond }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.disposition { Disposition, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.currency.currency { Usd }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import product.fabric.candidate_field { CandidateField }
+import product.fabric.selection { CandidateOffer }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric_executor_class { fleet_cell_sanction, capacity_admission_wire }
+import gunbc.fabric_control_plane {
+  CellReservation, CellReserved, NoCellAdmissible, CellSelectionTieUnresolved, BudgetRefused,
+  ReservationLost, PermitNamesAnotherUseForCell, StoreUnavailable, AttemptRefused,
+  FabricCellCandidate, CellCandidateBound, OfferExecutorIsNotTheCell,
+  bind_fabric_cell_candidate, broker_reserve_for_demand, fabric_cell_allocation_key,
+  fabric_hold_owner, fabric_money_reservation_ref,
+  permit_standing_wire, money_refusal_wire, cas_store_failure_wire, offer_candidacy_wire,
+}
+import gunbc.runner_microvm_shakedown {
+  microvm_shakedown_demand, microvm_shakedown_offer, microvm_shakedown_account,
+  microvm_shakedown_maximum_buy_order,
+}
+import gunbc.runner_microvm_slot_unit {
+  microvm_slot_reserve_unit_name, microvm_slot_reserve_receipt_prefix, microvm_slot_reserve_wait_bound,
+  microvm_slot_reserve_receipt_path,
+}
+import gunbc.runner_microvm_slot_start {
+  MicrovmUnitStartSubject, MicrovmSlotStartRun, microvm_unit_start_run, microvm_slot_start_text,
+  microvm_slot_start_admitted,
+}
+
+data runner_microvm_slot_reserve_disposition: Disposition = SingleAuthority
+
+// THE SHAKEDOWN CELL IS RESERVED BY A BROKER, AND THE SLOT CONTROLLER ONLY OBSERVES IT.
+//
+// The slot controller (gunbc.runner_microvm_slot_controller observe_reservation) re-reads the
+// allocation store for the shakedown demand and offer and refuses every attempt as
+// ReservationNotObserved when nothing holds the cell. Nothing did: gunbc.fabric_control_plane's
+// route -- partition, priced selection, money encumbrance, hold CAS -- had no production caller.
+// This module is that caller, and it calls the route as it stands: broker_reserve_for_demand, with
+// no second reservation path and no hand-written slot file.
+//
+// THE BROKER IS NOT THE CONTROLLER (DESIGN 3b keeps broker and tenant distinct parties on the
+// fabric route): it runs as its own root unit, gunbc-microvm-slot-reserve.service
+// (gunbc.runner_microvm_slot_unit), started by the fleet-converge mode microvm_slot_reserve BEFORE
+// microvm_slot_start. It is root because the store is root-only (gunbc.fabric_allocation_store_substrate)
+// and a job-user-writable reservation would be one the root controller believes.
+//
+// EVERYTHING IT RESERVES IS DERIVED HERE, INSIDE THE ROOT PROCESS: the slot from the shakedown slot
+// row, the demand and the offer from gunbc.runner_microvm_shakedown -- the same authority the
+// controller reads, so the hold owner written here is the one the controller compares against -- the
+// sanction from the slot, the account from the demand. The starter supplies nothing but the request
+// to start one fixed unit.
+
+// THE ROSTER IS THE FIELD'S ADMITTED OFFERS, EACH BOUND TO THE SHAKEDOWN CELL, AND A BINDING THAT
+// FAILS REFUSES RATHER THAN DROPPING THE OFFER. The FCI-1 probe's roster fold drops an unbound
+// candidate silently; here that would narrow the roster the broker ranks, so an offer whose executor
+// is not the cell would surface as NoCellAdmissible -- "nothing offered" -- when the actual answer is
+// that the offer and the cell disagree about which executor this is. Those remedies differ.
+type ShakedownRosterBinding
+  = ShakedownRosterBound { roster: List<FabricCellCandidate> }
+  | ShakedownOfferIsNotTheCell { slot_key: NonEmptyStr, executor: NonEmptyStr }
+
+fn bind_shakedown_roster(slot: RunnerSlotIdentity, admitted: List<CandidateOffer<NonEmptyStr>>) -> ShakedownRosterBinding {
+  fold(
+    admitted,
+    init: ShakedownRosterBound { roster: [] },
+    f: (acc, candidate) =>
+      match acc {
+        ShakedownOfferIsNotTheCell { slot_key: k, executor: e } => ShakedownOfferIsNotTheCell { slot_key: k, executor: e }
+        ShakedownRosterBound { roster: r } =>
+          match bind_fabric_cell_candidate(slot: slot, candidate: candidate) {
+            CellCandidateBound { bound: b } => ShakedownRosterBound { roster: r + [b] }
+            OfferExecutorIsNotTheCell { slot_key: k, executor: e } => ShakedownOfferIsNotTheCell { slot_key: k, executor: e }
+          }
+      },
+  )
+}
+
+type ShakedownBrokerOutcome
+  = ShakedownBrokerDecided { reservation: CellReservation }
+  | ShakedownBrokerRosterRefused { binding: ShakedownRosterBinding }
+
+// THE BROKER'S DECISION FOR ONE SLOT OVER A CANDIDATE FIELD. The field is the one input this function
+// does not derive, because its producer -- the fleet CI cell's first-party provider-use posture, which
+// mints the permit every candidate carries -- is an operator assertion that lands with its own row.
+// The money terms are the demand's: its maximum buy order bounds the selection and the account is
+// appropriated at the same figure; the delay valuation is zero because the shakedown has no deadline
+// (microvm_shakedown_demand deadline: none), so waiting costs it nothing.
+fn microvm_shakedown_broker_decide(
+  root: NonEmptyStr,
+  slot: RunnerSlotIdentity,
+  field: CandidateField<NonEmptyStr>,
+) -> ShakedownBrokerOutcome {
+  match bind_shakedown_roster(slot: slot, admitted: field.admitted) {
+    ShakedownOfferIsNotTheCell { slot_key: k, executor: e } =>
+      ShakedownBrokerRosterRefused { binding: ShakedownOfferIsNotTheCell { slot_key: k, executor: e } }
+    ShakedownRosterBound { roster: roster } =>
+      ShakedownBrokerDecided {
+        reservation: broker_reserve_for_demand(
+          root: root,
+          demand: microvm_shakedown_demand(slot: slot),
+          roster: roster,
+          sanctions: [fleet_cell_sanction(slot: slot)],
+          account: microvm_shakedown_account(),
+          maximum_buy_order: microvm_shakedown_maximum_buy_order(),
+          delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
+        ),
+      }
+  }
+}
+
+// ── the receipt ─────────────────────────────────────────────────────────────────────────────────
+
+// THE RECEIPT NAMES WHO THE CELL IS HELD FOR, NOT ONLY THAT IT IS HELD: the demand identity and the
+// hold owner derived from it, which is exactly the value observe_required_build_cell_wet compares the
+// slot's holder against. A reader can therefore check, from this receipt alone, that the controller
+// will recognise the hold -- a committed reservation for any other demand is the controller's
+// ReservationPayloadWorkMismatch.
+fn shakedown_broker_subject_text(slot: RunnerSlotIdentity) -> String {
+  let demand = microvm_shakedown_demand(slot: slot)
+  let offer = microvm_shakedown_offer(slot: slot)
+  join([
+    "broker slot=", fabric_cell_allocation_key(slot: slot) as String,
+    " demand=", demand.id.principal as String, "/", demand.id.key as String,
+    " work=", demand.work.key as String,
+    " offer=", offer.id.key as String,
+    " hold-owner=", fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: demand.id, offer: offer.id)) as String,
+  ], "")
+}
+
+fn cell_reservation_text(r: CellReservation) -> String {
+  match r {
+    CellReserved { offer: o, slot_key: k, generation: g, account: _ } =>
+      join(["reservation=committed slot=", k as String, " generation=", to_string(g), " offer=", o.key as String], "")
+    NoCellAdmissible { considered: c, refused: f } =>
+      join([
+        "reservation=no-cell-admissible considered=[", join(map(c, x => offer_candidacy_wire(candidacy: x) as String), ","),
+        "] refused=[", join(map(f, x => capacity_admission_wire(admission: x) as String), ","), "]",
+      ], "")
+    CellSelectionTieUnresolved { digest: d, considered: c } =>
+      join(["reservation=tie-unresolved digest=", d as String, " considered=[", join(map(c, x => offer_candidacy_wire(candidacy: x) as String), ","), "]"], "")
+    BudgetRefused { slot_key: k, refusal: m } =>
+      join(["reservation=budget-refused slot=", k as String, " cause=", money_refusal_wire(refusal: m) as String], "")
+    ReservationLost { slot_key: k } =>
+      join(["reservation=lost slot=", k as String, " -- the cell is already held; it is released by its holder, not by a second reserve"], "")
+    PermitNamesAnotherUseForCell { standing: s } =>
+      join(["reservation=permit-names-another-use ", permit_standing_wire(standing: s)], "")
+    StoreUnavailable { slot_key: k, cause: c } =>
+      join(["reservation=store-unavailable slot=", k as String, " cause=", cas_store_failure_wire(cause: c) as String], "")
+    AttemptRefused { slot_key: k, detail: d } =>
+      join(["reservation=attempt-refused slot=", k as String, " detail=", d as String], "")
+  }
+}
+
+fn shakedown_broker_outcome_text(slot: RunnerSlotIdentity, outcome: ShakedownBrokerOutcome) -> String {
+  let body = match outcome {
+    ShakedownBrokerDecided { reservation: r } => cell_reservation_text(r: r)
+    ShakedownBrokerRosterRefused { binding: b } =>
+      match b {
+        ShakedownRosterBound { roster: _ } => "roster=bound"
+        ShakedownOfferIsNotTheCell { slot_key: k, executor: e } =>
+          join(["roster=refused offer-executor=", e as String, " is not the cell ", k as String], "")
+      }
+  }
+  join([shakedown_broker_subject_text(slot: slot), "\n", body], "")
+}
+
+// ONLY A COMMITTED RESERVATION IS SUCCESS. Every other arm -- a held cell included -- exits the unit
+// non-zero, so systemd's failed state is the first signal no reservation was made by this start, and
+// the receipt says which of the route's answers it was.
+fn shakedown_broker_reserved(outcome: ShakedownBrokerOutcome) -> Bool {
+  match outcome {
+    ShakedownBrokerDecided { reservation: CellReserved { offer: _, slot_key: _, generation: _, account: _ } } => true
+    _ => false
+  }
+}
+
+// ── the start, from the job ─────────────────────────────────────────────────────────────────────
+
+// THE STARTER IS THE SLOT START'S DISCIPLINE OVER THE BROKER UNIT (gunbc.runner_microvm_slot_start
+// microvm_unit_start_run): refuse if the unit is already active, bind to the NEW InvocationID the start
+// produced, wait bounded, and read the receipt that invocation wrote. It checks the job is on the
+// shakedown slot's host first, because the unit exists only there.
+fn microvm_slot_reserve_subject() -> MicrovmUnitStartSubject {
+  MicrovmUnitStartSubject {
+    unit: microvm_slot_reserve_unit_name,
+    receipt_prefix: microvm_slot_reserve_receipt_prefix(),
+    bound: microvm_slot_reserve_wait_bound,
+  }
+}
+
+// THE STEP SUCCEEDS ONLY WHEN THE BROKER'S RECEIPT FOR THIS START WAS READ AND IT RECORDS A COMMITTED
+// RESERVATION. Unlike the slot start, whose job is to obtain the controller's receipt whatever it says,
+// this step's job is the reservation itself: the next step (microvm_slot_start) is meaningful only if
+// the cell is held, so a broker that refused must fail the dispatch rather than let it read as done.
+fn microvm_slot_reserve_admitted(run: MicrovmSlotStartRun) -> Bool {
+  microvm_slot_start_admitted(r: run) && string_contains(s: microvm_slot_start_text(r: run), pattern: "\nreservation=committed ")
+}
+
+fn microvm_slot_reserve_ci_wet() -> ProcessExit {
+  let run = microvm_unit_start_run(subject: microvm_slot_reserve_subject())
+  let body = concat(microvm_slot_start_text(r: run), "\n")
+  let w = Filesystem.Write(path: microvm_slot_reserve_receipt_path, content: body)
+  if !w.success {
+    exit_failure(reason: join(["microvm_slot_reserve: receipt write failed: ", w.error, "\n", body], ""))
+  } else if !microvm_slot_reserve_admitted(run: run) {
+    exit_failure(reason: body)
+  } else {
+    ExitSuccess
+  }
+}
+
+// ── how the reservation ends ────────────────────────────────────────────────────────────────────
+
+// THE RESERVATION IS NOT RELEASED BY THIS CHANGE, AND THE REASON IS A MISSING FACT, NOT A MISSING CALL.
+// gunbc.fabric_control_plane release_reserved_cell_at releases the money encumbrance before it frees
+// the cell, and it must be handed the account the reservation ADVANCED -- the one carrying this
+// reservation's encumbrance entry. No ledger for the fleet-ci account is persisted anywhere: the
+// broker's advanced account lives in its receipt and dies with its process. A release run in a later
+// process could only present a fresh account, which carries no entry for this reservation, and the
+// budget would refuse it; freeing the cell anyway would be the partial commit fabric_control_plane
+// makes unconstructible. The shakedown does not need a release to proceed: every attempt derives the
+// same demand and offer, so the controller recognises the one standing hold for each attempt, and
+// re-use of the cell is re-use of the hold.
+data microvm_shakedown_reservation_release_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the slot controller's teardown (gunbc.runner_microvm_slot_controller, after run_controller settles the cell) or an operator release mode, calling gunbc.fabric_control_plane release_reserved_cell_at -- or settle_reserved_cell_at once an attempt produces a SettlementReceipt -- for the shakedown reservation this module commits. WHAT REMAINS: the fleet-ci money account is not persisted, so no later process can present the account carrying this reservation's encumbrance, and release_money refuses a fresh one. TRIGGER: a persisted fleet-ci account ledger that the broker writes on commit and the releaser reads back, and a release path that calls release_reserved_cell_at with that account and the acquired generation, executed on srv1 with a receipt showing the cell freed. SUFFICIENT FOR deleting this row. NOT satisfied by a release that frees the cell without the money step, by a hand-deleted slot file, or by a witness over a supplied account." as NonEmptyStr,
+)

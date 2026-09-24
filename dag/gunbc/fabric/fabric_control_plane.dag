@@ -1,11 +1,15 @@
 module gunbc.fabric_control_plane
 
 import std.types { Int, List, NonEmptyStr, String, Bool, Timestamp }
-import std.content_hash { Fnv1a64StructuralDigestHex }
+import std.content_hash { Fnv1a64StructuralDigestHex, serialize_content_hash }
 import std.decl_ref { decl_ref }
 import std.measure { MoneyAmountMicro, MoneyPerSecond }
 import extdeps.currency.currency { CurrencyCode }
-import std.durable_compare_and_set { CasStoreFailure, CasSlotObservationRefused, cas_generation_count }
+import std.durable_compare_and_set {
+  CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_count,
+  CasUnreadableSlot, CasUnreadableMalformed, CasUnreadableContentMissing, CasUnreadableReadRefused,
+  CasUnreadableObservationBoundExceeded,
+}
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef,
   DurableHoldReleaseRefusal, HoldReleaseSlotAbsent, HoldReleaseAlreadyFree,
@@ -20,7 +24,11 @@ import product.fabric.provider_admission {
   permit_standing, PermitStanding, PermitAuthorizesUse, PermitNamesAnotherOfferThan,
   PermitNamesAnotherRouteThan, PermitNamesAnotherWorkThan, PermitNamesAnotherDemandThan,
 }
-import product.fabric.selection { CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, SelectionCost, OfferCandidacy, selection_liability }
+import product.fabric.selection {
+  CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, SelectionCost, OfferCandidacy, selection_liability,
+  OfferPriced, OfferNotFungible, OfferUnavailableForGrant, OfferCannotHoldAnUnboundedGrant, OfferNotPriceable,
+  OfferWrongCurrency, OfferUnaffordable, OfferLiabilityOverBuyOrder,
+}
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
@@ -33,6 +41,7 @@ import gunbc.durable_exclusive_hold_file_store {
 import gunbc.fabric_floor_dispatch { floor_supply_selection, floor_execution_requirements }
 import product.fabric.budget {
   MoneyAccount, MoneyReservationRequest, MoneySettlementRequest, MoneyRefusal, MoneyOutcome,
+  CurrencyMismatch, LedgerRefused, StaleLeaseGeneration,
   AccountAdvanced, MoneyRefused, reserve_money, release_money, settle_money,
 }
 import product.fabric.execution {
@@ -926,5 +935,67 @@ fn settle_reserved_cell_at<P>(
           reason: reason,
         ),
       }
+  }
+}
+
+// ── RECEIPT WIRES FOR THE ROUTE'S OUTCOMES ──────────────────────────────────────────────────────
+//
+// THE LEAF RENDERINGS OF WHAT THE BROKER RETURNS LIVE WITH THE BROKER. They were first written inside
+// the FCI-1 live probe, when that instrument was the only caller of the route; the shakedown broker
+// (gunbc.runner_microvm_slot_reserve) is the first production caller and must render the same
+// outcomes, and a production module importing an instrument is the layer inversion DESIGN 3 refuses.
+// So they moved here, and the probe reads them from here.
+fn permit_standing_wire(standing: PermitStanding<NonEmptyStr>) -> String {
+  match standing {
+    PermitAuthorizesUse => "authorizes"
+    PermitNamesAnotherOfferThan { permit_names: n } => join(["another-offer|permit-names=", n.key as String], "")
+    PermitNamesAnotherRouteThan => "another-route"
+    PermitNamesAnotherWorkThan { permit_work: pw, subject_work: sw } =>
+      join(["another-work|permit=", pw.key as String, "|subject=", sw.key as String], "")
+    PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } =>
+      join(["another-demand|permit=", pd.key as String, "|subject=", sd.key as String], "")
+  }
+}
+
+fn money_refusal_wire(refusal: MoneyRefusal) -> NonEmptyStr {
+  match refusal {
+    CurrencyMismatch { account: _, account_currency: _, presented_currency: _ } => "money-currency-mismatch"
+    LedgerRefused { account: _, refusal: _ } => "money-ledger-refused"
+    StaleLeaseGeneration { reference: _, presented: generation } =>
+      join(["money-stale-generation|presented=", to_string(generation)], "") as NonEmptyStr
+  }
+}
+
+fn cas_unreadable_wire(cause: CasUnreadableSlot) -> NonEmptyStr {
+  match cause {
+    CasUnreadableMalformed { detail: _ } => "cas-malformed"
+    CasUnreadableContentMissing { referenced: hash } =>
+      join(["cas-content-missing|hash=", serialize_content_hash(hash: hash) as String], "") as NonEmptyStr
+    CasUnreadableReadRefused { detail: _ } => "cas-read-refused"
+    CasUnreadableObservationBoundExceeded { bound: b } =>
+      join(["cas-observation-bound-exceeded|bound=", b as String], "") as NonEmptyStr
+  }
+}
+
+// THE TWO WAYS A STORE CAN FAIL RENDER AS TWO WIRES. The FCI-1 probe once rendered the reservation
+// and hold store-failure arms through the UNREADABLE wire after their carriers had been widened to
+// `CasStoreFailure`, and nothing found it because nothing ran that instrument.
+fn cas_store_failure_wire(cause: CasStoreFailure) -> NonEmptyStr {
+  match cause {
+    CasSlotObservationRefused { cause: c } => cas_unreadable_wire(cause: c)
+    CasGenerationPublicationRefused { detail: _ } => "cas-publication-refused"
+  }
+}
+
+fn offer_candidacy_wire(candidacy: OfferCandidacy<NonEmptyStr>) -> NonEmptyStr {
+  match candidacy {
+    OfferPriced { offer: o, cost: _, basis: _, horizon: _ } => join(["priced|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
+    OfferNotFungible { offer: o, fungibility: _ } => join(["not-fungible|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
+    OfferUnavailableForGrant { offer: o, needed: _, available: _ } => join(["unavailable|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
+    OfferCannotHoldAnUnboundedGrant { offer: o, available: _ } => join(["unbounded-refused|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
+    OfferNotPriceable { offer: o, unpriced: _ } => join(["not-priceable|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
+    OfferWrongCurrency { offer: o, mismatch: _ } => join(["wrong-currency|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
+    OfferUnaffordable { offer: o, affordability: _ } => join(["unaffordable|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
+    OfferLiabilityOverBuyOrder { offer: o, liability: _, maximum: _ } => join(["over-buy-order|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
   }
 }

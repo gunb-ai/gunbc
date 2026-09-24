@@ -27,7 +27,7 @@ import gunbc.runner_microvm_host_ready {
 import gunbc.runner_microvm_slot_unit {
   microvm_slot_env_name, microvm_release_dir_env_name,
   microvm_controller_vmm_binary, microvm_controller_jailer_binary,
-  microvm_slot_controller_receipt_dir,
+  microvm_slot_controller_receipt_dir, microvm_unit_receipt_path,
 }
 import gunbc.runner_guest_image {
   runner_guest_image_root, runner_guest_image_path, runner_guest_base_artifact_path, runner_guest_kernel_artifact,
@@ -462,8 +462,12 @@ fn slot_controller_launch(
 
 // ── the entry the unit execs, and its receipt ───────────────────────────────────────────────────
 
+fn slot_controller_receipt_prefix(instance: String) -> String {
+  join([microvm_slot_controller_receipt_dir, "/", instance, "-"], "")
+}
+
 fn slot_controller_receipt_path(instance: String, invocation_id: NonEmptyStr) -> String {
-  join([microvm_slot_controller_receipt_dir, "/", instance, "-", invocation_id as String, ".txt"], "")
+  microvm_unit_receipt_path(prefix: slot_controller_receipt_prefix(instance: instance), invocation_id: invocation_id)
 }
 
 fn refusal_text(r: SlotControllerRefusal) -> String {
