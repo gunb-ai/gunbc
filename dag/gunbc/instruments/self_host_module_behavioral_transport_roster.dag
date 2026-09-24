@@ -89,8 +89,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
         source_rel: "dag/gunbc/instruments/self_host_std_bridge_shims/v2_std_node.rs"
       },
       CuratedSeedLinkedShimWrite {
-        dest_rel: "v2_std_algebra.rs",
-        source_rel: "dag/gunbc/instruments/self_host_std_bridge_shims/v2_std_algebra.rs"
+        dest_rel: "std_algebra.rs",
+        source_rel: "dag/gunbc/instruments/self_host_std_bridge_shims/std_algebra.rs"
       },
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_diagnostic.rs",
@@ -120,10 +120,6 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     module_path: "src/v2/compiler/03_normalize.dag",
     shim_lib_rel: "dag/gunbc/instruments/self_host_03_normalize_shims/lib.rs",
     shim_writes: [
-      CuratedSeedLinkedShimWrite {
-        dest_rel: "v2_std_algebra.rs",
-        source_rel: "dag/gunbc/instruments/self_host_std_bridge_shims/v2_std_algebra.rs"
-      },
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_collection.rs",
         source_rel: "dag/gunbc/instruments/self_host_std_bridge_shims/v2_std_collection.rs"
@@ -158,7 +154,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
       },
       CuratedSeedLinkedShimWrite {
         dest_rel: "std_algebra.rs",
-        source_rel: "dag/gunbc/instruments/self_host_03_normalize_shims/std_algebra.rs"
+        source_rel: "dag/gunbc/instruments/self_host_std_bridge_shims/std_algebra.rs"
       },
       CuratedSeedLinkedShimWrite {
         dest_rel: "std_types.rs",
@@ -293,8 +289,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
         source_rel: "dag/gunbc/instruments/self_host_std_bridge_shims/v2_std_node.rs"
       },
       CuratedSeedLinkedShimWrite {
-        dest_rel: "v2_std_algebra.rs",
-        source_rel: "dag/gunbc/instruments/self_host_std_bridge_shims/v2_std_algebra.rs"
+        dest_rel: "std_algebra.rs",
+        source_rel: "dag/gunbc/instruments/self_host_std_bridge_shims/std_algebra.rs"
       },
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_collection.rs",

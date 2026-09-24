@@ -1,6 +1,7 @@
 module gunbc.rust_item_scan
 
 import extdeps.languages.rust.syntax { rust_item_forms }
+import std.decimal { decimal_digit_char }
 import gunbc.rust_item_identity {
   RustConst,
   RustEnum,
@@ -16,9 +17,9 @@ import gunbc.rust_item_identity {
   RustTypeAlias,
   rust_item_identity_key
 }
-import std.algebra { trim }
+import std.algebra { trim, list_snoc_item }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import v2.std.algebra { any, filter, fold_list, length, list_map, list_snoc_item }
+import v2.std.algebra { any, filter, fold_list, length, list_map }
 
 // WHY THIS READER EXISTS, AND WHAT CAPABILITY IT RESTORES.
 //
@@ -196,7 +197,7 @@ fn rust_item_kind_keyword_mapping_is_total() -> Bool {
 fn char_is_ident(c: String) -> Bool {
   (c >= "a" && c <= "z")
     || (c >= "A" && c <= "Z")
-    || (c >= "0" && c <= "9")
+    || decimal_digit_char(ch: c)
     || c == "_"
 }
 

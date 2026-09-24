@@ -1,0 +1,529 @@
+module v2.compiler.reference_conservation_admission
+
+import v2.compiler.normalize { import_binding_capture }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.parse { ParseArtifact }
+import v2.std.namespace_alias { AliasBindingRow }
+import v2.std.node { node_subtree_nodes }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.reference_conservation {
+  DroppedReference,
+  ReferenceConservationReport,
+  ReferenceConservationSubject,
+  dag_declared_token_classes,
+  reference_conservation_of_subject,
+  reference_conservation_subject_of_read
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
+import v2.std.algebra { fold_list, length }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  Textual,
+  WholeFile,
+  Diagnostic,
+  DeclarationLocus,
+  None,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Unavailable,
+  UserInputBoundary
+}
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { qualified_name_init, qualified_name_to_dotted_string }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import std.decl_ref { CitationIndexCoverage, DeclarationRef, OutsideDeclIndexTestWitnessModule, WholeDeclaration }
+import extdeps.communication.medium { Lossless, Medium }
+
+// REFERENCE CONSERVATION (MQ-6): an ADMISSION property at the fixture grain, and a FRONTIER
+// OBSERVATION at the changed-scope grain (see changed_scope_observation_frontier).
+//
+// THE FIXTURE GRAIN IS A ROUTE, NOT A REPORT. v2.compiler.reference_conservation measures; nothing
+// before this module was admitted BY it, so a body-lowering fixture could reach a green verdict over
+// a normalized tree that had lost half its source and never know. conserved_normalize is the
+// production normalize (the same tokenize / parse / normalize phases v2.compiler.program_assembly
+// composes) with the conservation verdict standing in its acceptance path: a tree that does not
+// account for every authored atom is Rejected, located at each atom it lost, and a fixture whose
+// assertions read that tree cannot run them. A fixture that keeps its own hand-rolled
+// normalize call is outside this admission; the body-lowering fixtures are routed here.
+//
+// AN EXPECTED DROP IS DECLARED, NEVER ABSORBED. Lowering loses some shapes today, each pinned by its
+// own discriminating fixture in v2.test.claim.namespace_xl0.reference_conservation. A fixture whose
+// source necessarily contains one of those shapes names it in `explained`, one row per lost atom;
+// each row consumes exactly one DroppedReference of that identity. An explanation that consumes
+// nothing is itself a refusal (conservation_reason_explanation_stale): when lowering is repaired the
+// fixture reds and the row is deleted, so an explanation cannot outlive the drop it excused
+// (DESIGN section 5: no escape hatch that outlives its refusal).
+
+// The shapes lowering is known to lose THAT A FIXTURE NEEDS TO EXCUSE, each pinned by its own
+// discriminating claim in v2.test.claim.namespace_xl0.reference_conservation. Closed on purpose: a
+// new shape is a new pinned claim first, then a row here, and a row enters only with the fixture
+// that consumes it (the block-later-statement and if-arm-argument drops are pinned there too, and
+// no admitted fixture's source contains them yet).
+type KnownDropShape
+  = NamedArgumentLabel
+  | WhereRefinementPredicate
+  | MatchLaterArm
+  | StatementLetBinder
+
+// EACH SHAPE IS A DECLARED, BOUNDED DROP, NOT A STANDING ALLOWANCE. The match is exhaustive, so a
+// shape cannot enter without naming, as declaration references, the lowering authority whose repair
+// retires it and the claim that pins it. Retirement is mechanical, not remembered: once the capability lands, the drop
+// stops happening, every explanation of it consumes nothing and refuses
+// (conservation_reason_explanation_stale), and the arm and its explanations are deleted. The bound
+// is the same in the other direction: deleting an explanation while the drop still happens reds its
+// fixture with conservation_reason_dropped_reference.
+// `retired_by` is the lowering declaration whose repair retires the drop -- the owning authority,
+// not a lane or a session. `pinned_by` is the discriminating claim that measures the drop; it lives
+// in a witness module, which v2.std.decl_index does not index, so its coverage is
+// OutsideDeclIndexTestWitnessModule (std.decl_ref CitationIndexCoverage) and is carried, not dropped.
+type DropRestorationTrigger {
+  retired_by: DeclarationRef
+  pinned_by: DeclarationRef
+}
+
+data known_drop_shape_pin_coverage: CitationIndexCoverage = OutsideDeclIndexTestWitnessModule
+
+fn known_drop_shape_restoration_trigger(shape: KnownDropShape) -> DropRestorationTrigger {
+  match shape {
+    NamedArgumentLabel => DropRestorationTrigger {
+      retired_by: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_call_arg_value", field: WholeDeclaration },
+      pinned_by: DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "a_named_argument_label_is_reported_dropped_holds", field: WholeDeclaration }
+    }
+    WhereRefinementPredicate => DropRestorationTrigger {
+      retired_by: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_where_predicate_atom", field: WholeDeclaration },
+      pinned_by: DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "the_where_refinement_predicate_is_reported_dropped_holds", field: WholeDeclaration }
+    }
+    MatchLaterArm => DropRestorationTrigger {
+      retired_by: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_match_arms_optional", field: WholeDeclaration },
+      pinned_by: DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "the_third_match_arm_is_reported_dropped_holds", field: WholeDeclaration }
+    }
+    StatementLetBinder => DropRestorationTrigger {
+      retired_by: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_stmt_spine", field: WholeDeclaration },
+      pinned_by: DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "a_statement_let_binder_is_reported_dropped_holds", field: WholeDeclaration }
+    }
+  }
+}
+
+// AN EXPLANATION NAMES ONE OCCURRENCE, NOT A SPELLING. `start` / `end` are the lost atom's byte
+// extent in the fixture's own source (the same extent the DroppedReference's Textual locus carries),
+// and `shape` is the shape it claims that atom was lost to. A spelling-keyed join would let an
+// explanation consume a different occurrence, or a different shape, that happens to share the
+// name; this one consumes a drop only when the exact extent is dropped AND the drop's classified
+// shape (dropped_reference_shape) equals the declared one.
+type ExplainedDrop {
+  start: Int
+  end: Int
+  shape: KnownDropShape
+}
+
+fn no_explained_drops() -> FreeMonoid<ExplainedDrop> {
+  Empty
+}
+
+// ---- the read (shared with v2.compiler.reference_conservation_census) --------------------------
+
+fn conservation_read_of(path: String, text: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: symbol_intern_lexeme(lexeme: "reference_conservation:" + path),
+      file_path: path
+    },
+    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    source_root: DagTree
+  }
+}
+
+// THE GRAMMAR'S VALIDATION RESIDUE IS NOT CARRIED INTO A FIXTURE'S OUTCOME. It is a fact about the
+// prepared grammar, reported where the grammar is prepared (dag_prepared_grammar's own Accepted
+// diagnostics), and threaded into a module's parse it stands at the HEAD of every refusal, so a
+// fixture asserting its refusal's cause would read the grammar's residue instead of its own. The
+// parse is the same prepared parse either way; only that one module-independent diagnostic is not
+// attached.
+fn conservation_subject_of_text(path: String, text: String) -> ReferenceConservationSubject {
+  match dag_prepared_grammar() {
+    Accepted { value: prepared, diagnostics: _grammar_residue } =>
+      reference_conservation_subject_of_read(
+        read: conservation_read_of(path: path, text: text),
+        lm: dag_language_model(),
+        prepared: prepared,
+        residue: None
+      )
+    Rejected { diagnostics: d } =>
+      ReferenceConservationSubject { path: path, parsed: Rejected { diagnostics: d }, normalized: Rejected { diagnostics: d } }
+  }
+}
+
+// ---- the explanation join ----------------------------------------------------------------------
+
+// THE SHAPE IS CLASSIFIED FROM THE DROP'S OWN PARSE CONTEXT, the chain of productions enclosing the
+// lost atom (AuthoredAtom.context), never from its spelling. A drop under no known shape's
+// production classifies Absent and no explanation can consume it.
+fn context_contains(context: FreeMonoid<Symbol>, production: Symbol) -> Bool {
+  fold_list(xs: context, empty: false, cons: fn(acc, p) { acc || p == production })
+}
+
+fn context_innermost(context: FreeMonoid<Symbol>) -> Optional<Symbol> {
+  fold_list(xs: context, empty: Absent, cons: fn(_acc, p) { Present { value: p } })
+}
+
+fn shape_of_innermost(context: FreeMonoid<Symbol>) -> Optional<KnownDropShape> {
+  match context_innermost(context: context) {
+    Present { value: p } =>
+      match p == ^dag_surface_arg {
+        true => optional_present(value: NamedArgumentLabel)
+        false => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn dropped_reference_shape(row: DroppedReference) -> Optional<KnownDropShape> {
+  let c = row.atom.context
+  match context_contains(context: c, production: ^dag_surface_where_refinement_clause) {
+    true => optional_present(value: WhereRefinementPredicate)
+    false =>
+      match context_contains(context: c, production: ^dag_surface_match_arm) {
+        true => optional_present(value: MatchLaterArm)
+        false =>
+          match context_contains(context: c, production: ^dag_surface_let_expr) {
+            true => optional_present(value: StatementLetBinder)
+            false => shape_of_innermost(context: c)
+          }
+      }
+  }
+}
+
+fn known_drop_shape_eq(a: KnownDropShape, b: KnownDropShape) -> Bool {
+  match a {
+    NamedArgumentLabel =>
+      match b {
+        NamedArgumentLabel => true
+        _ => false
+      }
+    WhereRefinementPredicate =>
+      match b {
+        WhereRefinementPredicate => true
+        _ => false
+      }
+    MatchLaterArm =>
+      match b {
+        MatchLaterArm => true
+        _ => false
+      }
+    StatementLetBinder =>
+      match b {
+        StatementLetBinder => true
+        _ => false
+      }
+  }
+}
+
+type AtomExtent {
+  start: Int
+  end: Int
+}
+
+fn dropped_reference_extent(row: DroppedReference) -> Optional<AtomExtent> {
+  match row.atom.locus {
+    Textual { file: _, extent: extent } =>
+      match extent {
+        ByteRange { start: s, end: e } => optional_present(value: AtomExtent { start: s, end: e })
+        WholeFile => Absent
+      }
+    _ => Absent
+  }
+}
+
+// Explanations keyed by start offset; `consumed` records which ones a drop matched.
+type ExplanationJoin {
+  by_start: Map<Int, ExplainedDrop>
+  consumed: Map<Int, Bool>
+  unexplained: FreeMonoid<DroppedReference>
+}
+
+fn explanation_index(explained: FreeMonoid<ExplainedDrop>) -> Map<Int, ExplainedDrop> {
+  fold_list(xs: explained, empty: empty_map(), cons: fn(acc, row) { map_insert(m: acc, key: row.start, value: row) })
+}
+
+fn explanation_matches(row: DroppedReference, candidate: ExplainedDrop, extent: AtomExtent) -> Bool {
+  extent.end == candidate.end && match dropped_reference_shape(row: row) {
+    Present { value: shape } => known_drop_shape_eq(a: shape, b: candidate.shape)
+    Absent => false
+  }
+}
+
+fn explanation_join(report: ReferenceConservationReport, explained: FreeMonoid<ExplainedDrop>) -> ExplanationJoin {
+  fold_list(
+    xs: report.dropped,
+    empty: ExplanationJoin { by_start: explanation_index(explained: explained), consumed: empty_map(), unexplained: Empty },
+    cons: fn(acc, row) {
+      let unmatched = ExplanationJoin { by_start: acc.by_start, consumed: acc.consumed, unexplained: list_snoc_item(xs: acc.unexplained, item: row) }
+      match dropped_reference_extent(row: row) {
+        Absent => unmatched
+        Present { value: extent } =>
+          match map_lookup(m: acc.by_start, key: extent.start) {
+            Absent => unmatched
+            Present { value: candidate } =>
+              if explanation_matches(row: row, candidate: candidate, extent: extent) {
+                ExplanationJoin { by_start: acc.by_start, consumed: map_insert(m: acc.consumed, key: extent.start, value: true), unexplained: acc.unexplained }
+              } else {
+                unmatched
+              }
+          }
+      }
+    }
+  )
+}
+
+// ---- the refusal -------------------------------------------------------------------------------
+
+fn dropped_reference_diagnostic(row: DroppedReference) -> Diagnostic {
+  Diagnostic {
+    reason: ^conservation_reason_dropped_reference,
+    at: row.atom.locus,
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn module_diagnostic(path: String, reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: DeclarationLocus { declaration: Cons { head: symbol_intern_lexeme(lexeme: path), tail: Empty } },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+// An explanation no drop consumed names a drop that no longer happens (or never happened at that
+// extent under that shape).
+fn stale_explanation_diagnostics(path: String, join: ExplanationJoin, explained: FreeMonoid<ExplainedDrop>) -> FreeMonoid<Diagnostic> {
+  fold_list(
+    xs: explained,
+    empty: Empty,
+    cons: fn(acc, row) {
+      match map_lookup(m: join.consumed, key: row.start) {
+        Present { value: _ } => acc
+        Absent => list_snoc_item(xs: acc, item: module_diagnostic(path: path, reason: ^conservation_reason_explanation_stale))
+      }
+    }
+  )
+}
+
+fn conservation_refusals(report: ReferenceConservationReport, explained: FreeMonoid<ExplainedDrop>) -> FreeMonoid<Diagnostic> {
+  let join = explanation_join(report: report, explained: explained)
+  let unmeasured = fold_list(
+    xs: report.unmeasured,
+    empty: Empty,
+    cons: fn(acc, _u) { list_snoc_item(xs: acc, item: module_diagnostic(path: report.path, reason: ^conservation_reason_unmeasured)) }
+  )
+  let dropped = fold_list(
+    xs: join.unexplained,
+    empty: unmeasured,
+    cons: fn(acc, row) { list_snoc_item(xs: acc, item: dropped_reference_diagnostic(row: row)) }
+  )
+  fold_list(
+    xs: stale_explanation_diagnostics(path: report.path, join: join, explained: explained),
+    empty: dropped,
+    cons: fn(acc, d) { list_snoc_item(xs: acc, item: d) }
+  )
+}
+
+// ---- the fixture-grain route -------------------------------------------------------------------
+
+// THE ADMITTED NORMALIZE. A parse or normalize refusal passes through unchanged (it is already a
+// refusal, and conservation_against_refusal only relocates what it lost); an accepted tree is
+// admitted only when the conservation verdict over the same subject holds after the declared
+// explanations are consumed.
+fn conserved_normalize(subject: ReferenceConservationSubject, explained: FreeMonoid<ExplainedDrop>) -> Outcome<NormalizedTree> {
+  match subject.normalized {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: tree, diagnostics: residue } =>
+      match conservation_refusals(report: reference_conservation_of_subject(subject: subject, token_classes: dag_declared_token_classes()), explained: explained) {
+        Empty => Accepted { value: tree, diagnostics: residue }
+        Cons { head: first, tail: rest } => Rejected { diagnostics: NonEmptyDiagnostics { head: first, tail: rest } }
+      }
+  }
+}
+
+// The route a production-fed body-lowering fixture calls with its inline source.
+fn conserved_normalize_of_text(path: String, text: String, explained: FreeMonoid<ExplainedDrop>) -> Outcome<NormalizedTree> {
+  conserved_normalize(subject: conservation_subject_of_text(path: path, text: text), explained: explained)
+}
+
+// ---- the changed-scope grain -------------------------------------------------------------------
+
+// THE SCOPE IS DERIVED FROM THE MODULES, NOT LISTED. A changed file is in the body-lowering scope
+// when it IS v2.compiler.body_lowering_fold or its own import declarations import from that module.
+// Both are read off the PARSE, by the same authorities normalize reads them with --
+// v2.compiler.normalize import_binding_capture and qualified_name_from_module_node -- because a real
+// corpus module usually does not yet normalize natively, and a membership that waited on normalize
+// would be unreadable for exactly the files a change touches. An import row targets the imported
+// symbol, so its module is the row target without its leaf.
+//
+// THE SCOPE IS DIRECT-IMPORT ONLY, and that is a stated under-approximation: a module reaching
+// body_lowering_fold through an intermediate import is outside it. Its replacement is the
+// transitive affected set over v2.std.dependency DependencyView -- every changed module whose
+// dependency closure reaches the body-lowering root -- which this observation does not yet compute. A file whose membership still cannot
+// be read (it does not parse, or an import decl refuses) is its own arm and the observation does not
+// admit; it is never dropped from the scope.
+data body_lowering_root_module: String = "v2.compiler.body_lowering_fold"
+
+type ScopeMembership
+  = InBodyLoweringScope
+  | OutsideBodyLoweringScope
+  | MembershipUnreadable { diagnostics: NonEmptyDiagnostics }
+
+fn parse_module_is_body_lowering_root(artifact: ParseArtifact) -> Bool {
+  match qualified_name_from_module_node(root: artifact.tree) {
+    Accepted { value: qn, diagnostics: _ } => qualified_name_to_dotted_string(qn: qn) == body_lowering_root_module
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn imports_reach_body_lowering_root(rows: FreeMonoid<AliasBindingRow>) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: false,
+    cons: fn(acc, row) { acc || qualified_name_to_dotted_string(qn: qualified_name_init(qn: row.target)) == body_lowering_root_module }
+  )
+}
+
+fn subject_scope_membership(subject: ReferenceConservationSubject) -> ScopeMembership {
+  match subject.parsed {
+    Rejected { diagnostics: d } => MembershipUnreadable { diagnostics: d }
+    Accepted { value: artifact, diagnostics: _ } =>
+      match import_binding_capture(tree: artifact.tree, nodes: node_subtree_nodes(root: artifact.tree)) {
+        Rejected { diagnostics: d } => MembershipUnreadable { diagnostics: d }
+        Accepted { value: rows, diagnostics: _ } =>
+          if parse_module_is_body_lowering_root(artifact: artifact) || imports_reach_body_lowering_root(rows: rows) {
+            InBodyLoweringScope
+          } else {
+            OutsideBodyLoweringScope
+          }
+      }
+  }
+}
+
+// One changed file's standing in the observation.
+type ChangedScopeRow
+  = ScopeConserved { path: String, report: ReferenceConservationReport }
+  | ScopeDropped { path: String, report: ReferenceConservationReport, refusals: NonEmptyDiagnostics }
+  | ScopeMembershipUnreadable { path: String, diagnostics: NonEmptyDiagnostics }
+  | ScopeOutside { path: String }
+
+type ChangedScopeReadInput {
+  path: String
+  text: String
+}
+
+// THE TYPED OBSERVATION -- A FRONTIER READING, NOT AN ADMISSION. It is named for what it is today:
+// on its first real specimen (this module's own sibling v2.compiler.reference_conservation) it
+// observes the whole module dropped, because v2 normalize does not yet accept real corpus modules.
+// An instrument whose only real reading is a refusal cannot be an admission gate; it becomes one
+// when a positive PRODUCTION control -- a real, changed body-lowering module observed conserved --
+// exists beside the fixture controls. Until then it is read, not enforced.
+// `NoBodyLoweringChange` is a positive statement that the change reaches no body-lowering module,
+// never an empty green: it still lists every path it looked at.
+type ChangedScopeConservationObservation
+  = NoBodyLoweringChange { rows: FreeMonoid<ChangedScopeRow> }
+  | ChangedScopeObservedConserved { rows: FreeMonoid<ChangedScopeRow>, in_scope: Int }
+  | ChangedScopeObservedDropped { rows: FreeMonoid<ChangedScopeRow>, in_scope: Int, refused: Int }
+
+// THE OBSERVATION IS OVER SUBJECTS, the parse + normalize of each changed file, so a witness can
+// supply a subject its floor enrols warm and be charged only the observation it names; the host
+// entry builds the subjects from the files it read (changed_scope_observation).
+fn changed_scope_row(subject: ReferenceConservationSubject) -> ChangedScopeRow {
+  match subject_scope_membership(subject: subject) {
+    OutsideBodyLoweringScope => ScopeOutside { path: subject.path }
+    MembershipUnreadable { diagnostics: d } => ScopeMembershipUnreadable { path: subject.path, diagnostics: d }
+    InBodyLoweringScope =>
+      let report = reference_conservation_of_subject(subject: subject, token_classes: dag_declared_token_classes())
+      match conservation_refusals(report: report, explained: no_explained_drops()) {
+        Empty => ScopeConserved { path: subject.path, report: report }
+        Cons { head: first, tail: rest } =>
+          ScopeDropped { path: subject.path, report: report, refusals: NonEmptyDiagnostics { head: first, tail: rest } }
+      }
+  }
+}
+
+type ChangedScopeTally {
+  rows: FreeMonoid<ChangedScopeRow>
+  in_scope: Int
+  refused: Int
+}
+
+fn changed_scope_observation(inputs: FreeMonoid<ChangedScopeReadInput>) -> ChangedScopeConservationObservation {
+  changed_scope_observation_of_subjects(
+    subjects: fold_list(
+      xs: inputs,
+      empty: Empty,
+      cons: fn(acc, changed) { list_snoc_item(xs: acc, item: conservation_subject_of_text(path: changed.path, text: changed.text)) }
+    )
+  )
+}
+
+fn changed_scope_observation_of_subjects(subjects: FreeMonoid<ReferenceConservationSubject>) -> ChangedScopeConservationObservation {
+  let tally = fold_list(
+    xs: subjects,
+    empty: ChangedScopeTally { rows: Empty, in_scope: 0, refused: 0 },
+    cons: fn(acc, subject) {
+      let row = changed_scope_row(subject: subject)
+      match row {
+        ScopeOutside { path: _ } => ChangedScopeTally { rows: list_snoc_item(xs: acc.rows, item: row), in_scope: acc.in_scope, refused: acc.refused }
+        ScopeConserved { path: _, report: _ } => ChangedScopeTally { rows: list_snoc_item(xs: acc.rows, item: row), in_scope: acc.in_scope + 1, refused: acc.refused }
+        _ => ChangedScopeTally { rows: list_snoc_item(xs: acc.rows, item: row), in_scope: acc.in_scope + 1, refused: acc.refused + 1 }
+      }
+    }
+  )
+  if tally.in_scope == 0 {
+    NoBodyLoweringChange { rows: tally.rows }
+  } else {
+    if tally.refused == 0 {
+      ChangedScopeObservedConserved { rows: tally.rows, in_scope: tally.in_scope }
+    } else {
+      ChangedScopeObservedDropped { rows: tally.rows, in_scope: tally.in_scope, refused: tally.refused }
+    }
+  }
+}
+
+// THE DECLARED FRONTIER OF THIS OBSERVATION (DESIGN section 3c). Nothing gates on it yet. Two
+// capabilities are required, neither of which is a declaration today, and both are named for what
+// they are:
+// - a positive production control, which is what makes the observation eligible to be an
+//   admission. `required_consumer` cites the constructor a new instrument row is built with
+//   (gunbc.instrument_targets instrument_test_target, the extension shape DESIGN "Building &
+//   checks" gives for a new measurement); the row itself does not exist yet, and a citation of an
+//   absent declaration is refused by the declarations phase, so the constructor is what is cited.
+// - the transitive affected set over v2.std.dependency DependencyView, which replaces the
+//   direct-import scope.
+type ObservationFrontier {
+  observation: DeclarationRef
+  required_consumer: DeclarationRef
+  required_scope: DeclarationRef
+}
+
+data changed_scope_observation_frontier: ObservationFrontier = ObservationFrontier {
+  observation: DeclarationRef { module_path: "v2.compiler.reference_conservation_admission", decl_name: "changed_scope_observation", field: WholeDeclaration },
+  required_consumer: DeclarationRef { module_path: "gunbc.instrument_targets", decl_name: "instrument_test_target", field: WholeDeclaration },
+  required_scope: DeclarationRef { module_path: "v2.std.dependency", decl_name: "DependencyView", field: WholeDeclaration }
+}
+
+fn changed_scope_observation_conserves(observation: ChangedScopeConservationObservation) -> Bool {
+  match observation {
+    NoBodyLoweringChange { rows: _ } => true
+    ChangedScopeObservedConserved { rows: _, in_scope: _ } => true
+    ChangedScopeObservedDropped { rows: _, in_scope: _, refused: _ } => false
+  }
+}

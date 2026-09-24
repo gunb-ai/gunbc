@@ -1,0 +1,503 @@
+module gunbc.machine_intake_ampere_socket_console_observation
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import v2.std.optional { Present }
+import extdeps.languages.json.parse { json_hex_nibble }
+import extdeps.ampere.ras_error_section {
+  AmpereRasSectionHeader, AmpereRasErrorTypeReading, AmpereRasTypeDefined, AmpereRasTypeUndefined,
+  ampere_ras_section_guid, ampere_ras_section_header_of, ampere_ras_error_type_code, ampere_ras_error_type_reading_text,
+}
+import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_console_line, text_after }
+
+// WHAT ONE BOOT'S CONSOLE SAYS ABOUT EACH SOCKET, from two independent printers, as an observation
+// receipt of this repository.
+//
+// THE FIRMWARE BOOT SUMMARY is the block Ampere's UEFI prints after DRAM initialisation. Its grammar
+// is TRANSCRIBED FROM CAPTURES, not cited: the mtcollins1 SOL capture of fleet-converge run
+// 35810323032 (one socket) and artifacts/bmc/mtcollins1-run-a-sparse-reference-j1-j17-2026-09-13.txt
+// (two sockets). Its shape:
+//
+//   UEFI RC version: 1.08
+//   SCP FW version    : 1.08
+//   Reset status                    : 3
+//       Number of active sockets    : 2
+//       Number of active cores      : 160
+//       Inter Socket Connection 0   : Width: x16 / Speed 25 GT/s
+//       Socket[1]: Core voltage     : 1035
+//
+// A field is kept as its printed name and value text. No value is interpreted here: "Warranty",
+// "RC disable mask" and the voltages have no cited meaning in this corpus, so a difference between
+// two boots is reported as a difference and never as a verdict. A reset loop prints the summary once
+// per boot, and the LAST one is read, for the reason the DRAM block's last one is.
+//
+// THE CPER RECORDS are the Linux kernel's rendering of APEI GHES and BERT error sections
+// (drivers/firmware/efi/cper.c: "section type: unknown, <guid>" then a hex dump). Only a section
+// whose type is Ampere's vendor GUID is decoded, and only its header, through
+// extdeps.ampere.ras_error_section; every other section is counted and not read. A record keeps its
+// first printed dword verbatim beside the decode, so the decode can be re-derived from the receipt.
+
+data ampere_summary_rc_marker: String = "UEFI RC version:"
+
+data ampere_summary_active_sockets: String = "Number of active sockets"
+
+data ampere_summary_active_cores: String = "Number of active cores"
+
+data ampere_summary_inter_socket: String = "Inter Socket Connection "
+
+data kernel_hardware_error_marker: String = "[Hardware Error]:"
+
+data kernel_ghes_source_marker: String = "Generic Hardware Error Source: "
+
+data kernel_bert_marker: String = "BERT: Error records from previous boot"
+
+type AmpereSummarySocketField {
+  socket: Int
+  name: NonEmptyStr
+  value: NonEmptyStr
+}
+
+// "Inter Socket Connection <n> : <value>", printed only when a second socket is up. The value is
+// kept as text: its "Width: x16 / Speed 25 GT/s" shape is transcribed, not cited.
+type AmpereSummaryInterSocketLink {
+  link: Int
+  value: NonEmptyStr
+}
+
+type AmpereFirmwareBootSummary {
+  rc_version: NonEmptyStr
+  active_sockets: Int?
+  active_cores: Int?
+  inter_socket_links: List<AmpereSummaryInterSocketLink>
+  socket_fields: List<AmpereSummarySocketField>
+}
+
+type AmpereFirmwareSummaryObservation
+  = AmpereSummaryNotPrinted
+  | AmpereSummaryObserved { summary: AmpereFirmwareBootSummary, summaries_printed: Int }
+
+// WHERE A RECORD CAME FROM. GHES is this boot's firmware-first report; BERT is the firmware's record
+// of the PREVIOUS boot's end, so the two are never pooled into one "this boot" count.
+type CperRecordSource
+  = CperFromGhes { source_index: Int }
+  | CperFromBert
+  | CperSourceUnstated
+
+type AmpereCperRecord {
+  source: CperRecordSource
+  severity: String
+  first_dword: NonEmptyStr
+  header: AmpereRasSectionHeader
+}
+
+// A section of Ampere's type whose first dword did not parse is kept, never dropped (DESIGN §5).
+type AmpereCperMalformed {
+  source: CperRecordSource
+  line: String
+}
+
+type AmpereCperObservation {
+  records: List<AmpereCperRecord>
+  malformed: List<AmpereCperMalformed>
+  other_sections: Int
+}
+
+type AmpereSocketConsoleObservation {
+  summary: AmpereFirmwareSummaryObservation
+  cper: AmpereCperObservation
+}
+
+// ── the firmware boot summary ──────────────────────────────────────────────────────────────────
+
+type SummaryReadState {
+  summaries: List<AmpereFirmwareBootSummary>
+  current: AmpereFirmwareBootSummary?
+}
+
+fn colon_value(line: String) -> String {
+  let parts = split(s: line, delimiter: ":")
+  trim(join(parts.skip(n: count(parts) - 1), ":"))
+}
+
+// "Socket[<n>]: <name> : <value>"
+fn summary_socket_field_of(stripped: String) -> AmpereSummarySocketField? {
+  match text_after(line: stripped, marker: "Socket[") {
+    Absent => none
+    Present { value: rest } => {
+      let close = split(s: rest, delimiter: "]: ")
+      let nv = split(s: join(close.skip(n: 1), "]: "), delimiter: " : ")
+      let name = trim(match nv.first() { Absent => "" Present { value: n } => n })
+      let value = trim(join(nv.skip(n: 1), " : "))
+      if !starts_with(s: stripped, prefix: "Socket[") || count(close) < 2 || count(nv) < 2 || name == "" || value == "" { none } else {
+        match parse_int(s: match close.first() { Absent => "" Present { value: s } => s }) {
+          Absent => none
+          Present { value: socket } => Present { value: AmpereSummarySocketField { socket: socket, name: name as NonEmptyStr, value: value as NonEmptyStr } }
+        }
+      }
+    }
+  }
+}
+
+fn summary_with(s: AmpereFirmwareBootSummary, sockets: Int?, cores: Int?, fields: List<AmpereSummarySocketField>) -> AmpereFirmwareBootSummary {
+  AmpereFirmwareBootSummary { rc_version: s.rc_version, active_sockets: sockets, active_cores: cores, inter_socket_links: s.inter_socket_links, socket_fields: fields }
+}
+
+fn summary_with_link(s: AmpereFirmwareBootSummary, l: AmpereSummaryInterSocketLink) -> AmpereFirmwareBootSummary {
+  AmpereFirmwareBootSummary { rc_version: s.rc_version, active_sockets: s.active_sockets, active_cores: s.active_cores, inter_socket_links: concat(s.inter_socket_links, [l]), socket_fields: s.socket_fields }
+}
+
+fn inter_socket_link_of(stripped: String) -> AmpereSummaryInterSocketLink? {
+  match text_after(line: stripped, marker: ampere_summary_inter_socket) {
+    Absent => none
+    Present { value: rest } => {
+      let parts = split(s: rest, delimiter: " : ")
+      let value = trim(join(parts.skip(n: 1), " : "))
+      if count(parts) < 2 || value == "" { none } else {
+        match parse_int(s: trim(match parts.first() { Absent => "" Present { value: p } => p })) {
+          Absent => none
+          Present { value: n } => Present { value: AmpereSummaryInterSocketLink { link: n, value: value as NonEmptyStr } }
+        }
+      }
+    }
+  }
+}
+
+fn summary_read_step(state: SummaryReadState, line: String) -> SummaryReadState {
+  let stripped = trim(line)
+  match text_after(line: stripped, marker: ampere_summary_rc_marker) {
+    Present { value: v } => {
+      let version = trim(v)
+      let done = match state.current { Absent => state.summaries Present { value: c } => concat(state.summaries, [c]) }
+      SummaryReadState {
+        summaries: done,
+        current: Present { value: AmpereFirmwareBootSummary { rc_version: (if version == "" { "unrendered" } else { version }) as NonEmptyStr, active_sockets: none, active_cores: none, inter_socket_links: [], socket_fields: [] } },
+      }
+    }
+    Absent => match state.current {
+      Absent => state
+      Present { value: c } =>
+        if starts_with(s: stripped, prefix: ampere_summary_active_sockets) {
+          SummaryReadState { summaries: state.summaries, current: Present { value: summary_with(s: c, sockets: parse_int(s: colon_value(line: stripped)), cores: c.active_cores, fields: c.socket_fields) } }
+        } else if starts_with(s: stripped, prefix: ampere_summary_active_cores) {
+          SummaryReadState { summaries: state.summaries, current: Present { value: summary_with(s: c, sockets: c.active_sockets, cores: parse_int(s: colon_value(line: stripped)), fields: c.socket_fields) } }
+        } else if starts_with(s: stripped, prefix: ampere_summary_inter_socket) {
+          match inter_socket_link_of(stripped: stripped) {
+            Absent => state
+            Present { value: l } => SummaryReadState { summaries: state.summaries, current: Present { value: summary_with_link(s: c, l: l) } }
+          }
+        } else {
+          match summary_socket_field_of(stripped: stripped) {
+            Absent => state
+            Present { value: f } => SummaryReadState { summaries: state.summaries, current: Present { value: summary_with(s: c, sockets: c.active_sockets, cores: c.active_cores, fields: concat(c.socket_fields, [f])) } }
+          }
+        }
+    }
+  }
+}
+
+fn ampere_firmware_summary_observation(lines: List<String>) -> AmpereFirmwareSummaryObservation {
+  let empty: List<AmpereFirmwareBootSummary> = []
+  let done = fold(lines, init: SummaryReadState { summaries: empty, current: none }, f: (st, raw) => summary_read_step(state: st, line: ampere_dram_console_line(raw: raw)))
+  let all = match done.current { Absent => done.summaries Present { value: c } => concat(done.summaries, [c]) }
+  match reverse(all).first() {
+    Absent => AmpereSummaryNotPrinted
+    Present { value: last } => AmpereSummaryObserved { summary: last, summaries_printed: count(all) }
+  }
+}
+
+// ── the CPER records ───────────────────────────────────────────────────────────────────────────
+
+type CperReadState {
+  source: CperRecordSource
+  severity: String
+  in_ampere_section: Bool
+  observation: AmpereCperObservation
+}
+
+// Eight hex digits, parsed through the one hex-nibble authority the corpus already has.
+fn dword_of(text: String) -> Int? {
+  if text.length() != 8 { none } else {
+    let values = map([0, 1, 2, 3, 4, 5, 6, 7], i => json_hex_nibble(c: char_at(s: text, pos: i)))
+    if any(values, v => v < 0) { none } else {
+      Present { value: fold(values, init: 0, f: (acc, v) => acc * 16 + v) }
+    }
+  }
+}
+
+fn cper_with_record(o: AmpereCperObservation, r: AmpereCperRecord) -> AmpereCperObservation {
+  AmpereCperObservation { records: concat(o.records, [r]), malformed: o.malformed, other_sections: o.other_sections }
+}
+
+fn cper_with_malformed(o: AmpereCperObservation, m: AmpereCperMalformed) -> AmpereCperObservation {
+  AmpereCperObservation { records: o.records, malformed: concat(o.malformed, [m]), other_sections: o.other_sections }
+}
+
+fn cper_with_other_section(o: AmpereCperObservation) -> AmpereCperObservation {
+  AmpereCperObservation { records: o.records, malformed: o.malformed, other_sections: o.other_sections + 1 }
+}
+
+fn cper_state(s: CperReadState, source: CperRecordSource, severity: String, in_ampere: Bool, o: AmpereCperObservation) -> CperReadState {
+  CperReadState { source: source, severity: severity, in_ampere_section: in_ampere, observation: o }
+}
+
+// The first row of the section's hex dump: "00000000: <dword> <dword> ...".
+fn cper_first_row(s: CperReadState, body: String) -> CperReadState {
+  let tokens = filter(split(s: trim(join(split(s: body, delimiter: "00000000:").skip(n: 1), "")), delimiter: " "), t => t != "")
+  let word = match tokens.first() { Absent => "" Present { value: w } => w }
+  let parsed = match dword_of(text: word) { Absent => none Present { value: d } => ampere_ras_section_header_of(dword: d) }
+  match parsed {
+    Absent => cper_state(s: s, source: s.source, severity: s.severity, in_ampere: false, o: cper_with_malformed(o: s.observation, m: AmpereCperMalformed { source: s.source, line: trim(body) }))
+    Present { value: h } => cper_state(s: s, source: s.source, severity: s.severity, in_ampere: false, o: cper_with_record(o: s.observation, r: AmpereCperRecord { source: s.source, severity: s.severity, first_dword: word as NonEmptyStr, header: h }))
+  }
+}
+
+fn cper_read_step(state: CperReadState, line: String) -> CperReadState {
+  if string_contains(s: line, pattern: kernel_bert_marker) {
+    cper_state(s: state, source: CperFromBert, severity: "", in_ampere: false, o: state.observation)
+  } else {
+    match text_after(line: line, marker: kernel_hardware_error_marker) {
+      Absent => state
+      Present { value: after } => {
+        let body = trim(after)
+        match text_after(line: body, marker: kernel_ghes_source_marker) {
+          Present { value: k } => match parse_int(s: trim(k)) {
+            Present { value: i } => cper_state(s: state, source: CperFromGhes { source_index: i }, severity: "", in_ampere: false, o: state.observation)
+            Absent => cper_state(s: state, source: CperSourceUnstated, severity: "", in_ampere: false, o: state.observation)
+          }
+          Absent =>
+            if starts_with(s: body, prefix: "event severity:") {
+              cper_state(s: state, source: state.source, severity: trim(join(split(s: body, delimiter: "event severity:"), "")), in_ampere: false, o: state.observation)
+            } else if starts_with(s: body, prefix: "section type:") {
+              if string_contains(s: body, pattern: ampere_ras_section_guid as String) {
+                cper_state(s: state, source: state.source, severity: state.severity, in_ampere: true, o: state.observation)
+              } else {
+                cper_state(s: state, source: state.source, severity: state.severity, in_ampere: false, o: cper_with_other_section(o: state.observation))
+              }
+            } else if state.in_ampere_section && starts_with(s: body, prefix: "00000000:") {
+              cper_first_row(s: state, body: body)
+            } else {
+              state
+            }
+        }
+      }
+    }
+  }
+}
+
+fn ampere_cper_observation(lines: List<String>) -> AmpereCperObservation {
+  let empty_records: List<AmpereCperRecord> = []
+  let empty_malformed: List<AmpereCperMalformed> = []
+  let init = CperReadState { source: CperSourceUnstated, severity: "", in_ampere_section: false, observation: AmpereCperObservation { records: empty_records, malformed: empty_malformed, other_sections: 0 } }
+  fold(lines, init: init, f: (st, raw) => cper_read_step(state: st, line: ampere_dram_console_line(raw: raw))).observation
+}
+
+// ONE PASS SELECTS THE LINES EITHER FOLD CAN ACT ON. A booted capture is thousands of kernel lines
+// and both folds leave every other line's state untouched, so dropping those lines before the
+// folds changes no result and saves two per-line CR/NUL rewrites on each of them.
+// A line that opens with the kernel's "[    t]" timestamp can only be a CPER line, so it is tested
+// against the two kernel markers alone, both of which contain "Error". Every other line is tested against all six, so a kernel line
+// prefixed by stray console bytes is still seen: the shortcut only narrows, it never drops.
+fn socket_console_relevant(raw: String) -> Bool {
+  if starts_with(s: raw, prefix: "[") {
+    string_contains(s: raw, pattern: "Error") && (string_contains(s: raw, pattern: kernel_hardware_error_marker) || string_contains(s: raw, pattern: kernel_bert_marker))
+  } else {
+    string_contains(s: raw, pattern: kernel_hardware_error_marker)
+      || string_contains(s: raw, pattern: kernel_bert_marker)
+      || string_contains(s: raw, pattern: ampere_summary_rc_marker)
+      || string_contains(s: raw, pattern: "Number of active ")
+      || string_contains(s: raw, pattern: ampere_summary_inter_socket)
+      || string_contains(s: raw, pattern: "Socket[")
+  }
+}
+
+fn ampere_socket_console_observation(lines: List<String>) -> AmpereSocketConsoleObservation {
+  let relevant = filter(lines, l => socket_console_relevant(raw: l))
+  AmpereSocketConsoleObservation { summary: ampere_firmware_summary_observation(lines: relevant), cper: ampere_cper_observation(lines: relevant) }
+}
+
+// ── per-socket projections ─────────────────────────────────────────────────────────────────────
+
+// First-seen order: firmware prints Socket[0] before Socket[1], and GHES sources are numbered.
+fn distinct_in_order(xs: List<Int>) -> List<Int> {
+  let empty: List<Int> = []
+  fold(xs, init: empty, f: (acc, k) => if any(acc, j => j == k) { acc } else { concat(acc, [k]) })
+}
+
+fn ampere_summary_sockets(s: AmpereFirmwareBootSummary) -> List<Int> {
+  distinct_in_order(xs: map(s.socket_fields, f => f.socket))
+}
+
+fn ampere_cper_is_this_boot(r: AmpereCperRecord) -> Bool {
+  match r.source { CperFromBert => false _ => true }
+}
+
+// The sockets that raised at least one of THIS boot's Ampere records (BERT excluded).
+fn ampere_cper_sockets_this_boot(o: AmpereCperObservation) -> List<Int> {
+  distinct_in_order(xs: map(filter(o.records, r => ampere_cper_is_this_boot(r: r)), r => r.header.socket))
+}
+
+fn error_type_key(r: AmpereRasErrorTypeReading) -> Int {
+  match r {
+    AmpereRasTypeDefined { error_type: t } => ampere_ras_error_type_code(t: t)
+    AmpereRasTypeUndefined { code: c } => c
+  }
+}
+
+// One identity per this-boot record: socket, type code and subtype. Severity and the payload are
+// deliberately outside the key, so the same source reporting a different status is still the same
+// record for the purpose of "which sockets reported what".
+type AmpereCperRecordKey {
+  socket: Int
+  type_code: Int
+  type_text: String
+  subtype: Int
+}
+
+fn ampere_cper_record_key(r: AmpereCperRecord) -> AmpereCperRecordKey {
+  AmpereCperRecordKey { socket: r.header.socket, type_code: error_type_key(r: r.header.error_type), type_text: ampere_ras_error_type_reading_text(r: r.header.error_type), subtype: r.header.subtype }
+}
+
+fn same_key(a: AmpereCperRecordKey, b: AmpereCperRecordKey) -> Bool {
+  a.socket == b.socket && a.type_code == b.type_code && a.subtype == b.subtype
+}
+
+fn this_boot_keys(o: AmpereCperObservation) -> List<AmpereCperRecordKey> {
+  map(filter(o.records, r => ampere_cper_is_this_boot(r: r)), r => ampere_cper_record_key(r: r))
+}
+
+// ── the comparison against a reference boot ────────────────────────────────────────────────────
+
+// WHAT DIFFERS FROM THE REFERENCE, one typed arm per kind. A difference is an observation, not a
+// cause: nothing here says which difference explains a missing socket.
+type AmpereSocketConsoleDifference
+  = ActiveSocketsDiffer { reference: Int?, subject: Int? }
+  | SummarySocketAbsent { socket: Int }
+  | InterSocketLinkAbsent { link: Int, reference: NonEmptyStr }
+  | SummaryFieldDiffers { socket: Int, name: NonEmptyStr, reference: NonEmptyStr, subject: NonEmptyStr }
+  | CperRecordAbsent { key: AmpereCperRecordKey }
+  | CperRecordAdded { key: AmpereCperRecordKey }
+  | SummaryUnavailable { side: NonEmptyStr }
+
+fn field_differences(reference: AmpereFirmwareBootSummary, subject: AmpereFirmwareBootSummary) -> List<AmpereSocketConsoleDifference> {
+  flat_map(subject.socket_fields, sf =>
+    match filter(reference.socket_fields, rf => rf.socket == sf.socket && rf.name == sf.name).first() {
+      Absent => []
+      Present { value: rf } => if rf.value == sf.value { [] } else { [SummaryFieldDiffers { socket: sf.socket, name: sf.name, reference: rf.value, subject: sf.value }] }
+    })
+}
+
+fn same_optional_count(a: Int?, b: Int?) -> Bool {
+  match a {
+    Absent => match b { Absent => true Present { value: _ } => false }
+    Present { value: x } => match b { Absent => false Present { value: y } => x == y }
+  }
+}
+
+fn summary_differences(reference: AmpereFirmwareSummaryObservation, subject: AmpereFirmwareSummaryObservation) -> List<AmpereSocketConsoleDifference> {
+  match reference {
+    AmpereSummaryNotPrinted => [SummaryUnavailable { side: "reference" }]
+    AmpereSummaryObserved { summary: r, summaries_printed: _ } => match subject {
+      AmpereSummaryNotPrinted => [SummaryUnavailable { side: "subject" }]
+      AmpereSummaryObserved { summary: s, summaries_printed: _ } => {
+        let sockets = if same_optional_count(a: r.active_sockets, b: s.active_sockets) { [] } else { [ActiveSocketsDiffer { reference: r.active_sockets, subject: s.active_sockets }] }
+        let subject_sockets = ampere_summary_sockets(s: s)
+        let absent = map(filter(ampere_summary_sockets(s: r), k => !any(subject_sockets, j => j == k)), k => SummarySocketAbsent { socket: k })
+        let links = map(filter(r.inter_socket_links, rl => !any(s.inter_socket_links, sl => sl.link == rl.link)), rl => InterSocketLinkAbsent { link: rl.link, reference: rl.value })
+        concat(concat(concat(sockets, absent), links), field_differences(reference: r, subject: s))
+      }
+    }
+  }
+}
+
+fn cper_differences(reference: AmpereCperObservation, subject: AmpereCperObservation) -> List<AmpereSocketConsoleDifference> {
+  let rk = this_boot_keys(o: reference)
+  let sk = this_boot_keys(o: subject)
+  let absent = map(filter(rk, k => !any(sk, j => same_key(a: j, b: k))), k => CperRecordAbsent { key: k })
+  let added = map(filter(sk, k => !any(rk, j => same_key(a: j, b: k))), k => CperRecordAdded { key: k })
+  concat(absent, added)
+}
+
+fn ampere_socket_console_differences(reference: AmpereSocketConsoleObservation, subject: AmpereSocketConsoleObservation) -> List<AmpereSocketConsoleDifference> {
+  concat(summary_differences(reference: reference.summary, subject: subject.summary), cper_differences(reference: reference.cper, subject: subject.cper))
+}
+
+// THE COMPARISON AS A READING: the reference is a committed capture read at run time, and a read
+// that failed is carried with its detail rather than rendered as "no difference".
+type AmpereSocketReferenceComparison
+  = ComparedWithReference { reference: NonEmptyStr, differences: List<AmpereSocketConsoleDifference> }
+  | ReferenceUnavailable { reference: NonEmptyStr, detail: String }
+
+fn ampere_socket_reference_comparison(reference_path: NonEmptyStr, reference_text: String, read_ok: Bool, read_error: String, subject: AmpereSocketConsoleObservation) -> AmpereSocketReferenceComparison {
+  if !read_ok {
+    ReferenceUnavailable { reference: reference_path, detail: read_error }
+  } else if trim(reference_text) == "" {
+    ReferenceUnavailable { reference: reference_path, detail: "the reference capture read as empty" }
+  } else {
+    ComparedWithReference { reference: reference_path, differences: ampere_socket_console_differences(reference: ampere_socket_console_observation(lines: split(s: reference_text, delimiter: "\n")), subject: subject) }
+  }
+}
+
+// ── rendering ──────────────────────────────────────────────────────────────────────────────────
+
+fn optional_count_text(n: Int?) -> String {
+  match n { Present { value: v } => to_string(v) Absent => "not-printed" }
+}
+
+fn cper_source_text(s: CperRecordSource) -> String {
+  match s {
+    CperFromGhes { source_index: i } => concat("GHES ", to_string(i))
+    CperFromBert => "BERT (previous boot)"
+    CperSourceUnstated => "source not printed"
+  }
+}
+
+fn ampere_cper_record_text(r: AmpereCperRecord) -> String {
+  concat(
+    "  ", cper_source_text(s: r.source), " severity=", r.severity, " dword0=", r.first_dword as String,
+    " -> socket ", to_string(r.header.socket), " ", ampere_ras_error_type_reading_text(r: r.header.error_type),
+    " subtype ", to_string(r.header.subtype), " instance ", to_string(r.header.instance),
+  )
+}
+
+fn ampere_socket_console_text(o: AmpereSocketConsoleObservation) -> String {
+  let summary = match o.summary {
+    AmpereSummaryNotPrinted => "firmware boot summary: NOT PRINTED\n"
+    AmpereSummaryObserved { summary: s, summaries_printed: n } => concat(
+      "firmware boot summary (last of ", to_string(n), "): RC ", s.rc_version as String,
+      ", active sockets ", optional_count_text(n: s.active_sockets), ", active cores ", optional_count_text(n: s.active_cores),
+      ", sockets printed ", join(map(ampere_summary_sockets(s: s), k => to_string(k)), ","), "\n",
+      join(map(s.inter_socket_links, l => concat("  Inter Socket Connection ", to_string(l.link), " = ", l.value as String, "\n")), ""),
+      join(map(s.socket_fields, f => concat("  Socket[", to_string(f.socket), "] ", f.name as String, " = ", f.value as String, "\n")), ""),
+    )
+  }
+  let records = join(map(o.cper.records, r => concat(ampere_cper_record_text(r: r), "\n")), "")
+  let malformed = join(map(o.cper.malformed, m => concat("  MALFORMED Ampere section (", cper_source_text(s: m.source), "): ", m.line, "\n")), "")
+  concat(
+    summary,
+    "Ampere CPER records (", to_string(count(o.cper.records)), ", sockets this boot ",
+    join(map(ampere_cper_sockets_this_boot(o: o.cper), k => to_string(k)), ","), "; other sections ", to_string(o.cper.other_sections), "):\n",
+    records, malformed,
+  )
+}
+
+fn ampere_socket_console_difference_text(d: AmpereSocketConsoleDifference) -> String {
+  match d {
+    ActiveSocketsDiffer { reference: r, subject: s } => concat("active sockets: reference ", optional_count_text(n: r), ", this boot ", optional_count_text(n: s))
+    InterSocketLinkAbsent { link: l, reference: r } => concat("Inter Socket Connection ", to_string(l), " (reference: ", r as String, ") not printed by this boot")
+    SummarySocketAbsent { socket: k } => concat("Socket[", to_string(k), "] printed in the reference summary, absent from this boot's")
+    SummaryFieldDiffers { socket: k, name: n, reference: r, subject: s } => concat("Socket[", to_string(k), "] ", n as String, ": reference ", r as String, ", this boot ", s as String)
+    CperRecordAbsent { key: k } => concat("CPER socket ", to_string(k.socket), " ", k.type_text, " subtype ", to_string(k.subtype), " raised by the reference boot, not by this one")
+    CperRecordAdded { key: k } => concat("CPER socket ", to_string(k.socket), " ", k.type_text, " subtype ", to_string(k.subtype), " raised by this boot, not by the reference")
+    SummaryUnavailable { side: s } => concat("firmware boot summary not printed on the ", s as String, " side; no summary comparison")
+  }
+}
+
+fn ampere_socket_reference_comparison_text(c: AmpereSocketReferenceComparison) -> String {
+  match c {
+    ComparedWithReference { reference: r, differences: ds } => concat(
+      "against the two-socket reference boot ", r as String, ": ",
+      if count(ds) == 0 { "no difference" } else { concat(to_string(count(ds)), " difference(s)\n", join(map(ds, d => concat("  ", ampere_socket_console_difference_text(d: d))), "\n")) },
+    )
+    ReferenceUnavailable { reference: r, detail: d } => concat("against the two-socket reference boot ", r as String, ": UNREAD: ", d)
+  }
+}

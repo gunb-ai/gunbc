@@ -1,9 +1,9 @@
 module v2.std.integer
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, OrderedRing, Ordering, Less, Equal, Greater }
+import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, OrderedRing, Ordering, Less, Equal, Greater, list_snoc_item }
 import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
-import v2.std.algebra { TailAbsent, TailFound, fold_list, fold_list_node, length, list_map, list_snoc_item }
+import v2.std.algebra { TailAbsent, TailFound, fold_list, fold_list_node, length, list_map }
 import v2.std.collection {
   List,
   list_at_optional
@@ -831,6 +831,20 @@ fn integer_range_endpoint_node(endpoint: IntegerRangeEndpoint) -> Node {
     IntegerRangeInclusiveMin => integer_inhabitant_atom(id: ^integer_tag_range_inclusive_min)
     IntegerRangeInclusiveMax => integer_inhabitant_atom(id: ^integer_tag_range_inclusive_max)
   }
+}
+
+// THE TYPES OF A DECIMAL MAGNITUDE'S NODE ENCODING, AS NODES. integer_decimal_magnitude_node encodes
+// a magnitude as fold_list_node over integer_decimal_digit_node: each digit atom is a DecimalDigit and
+// each cons cell (and the empty tail) is a FreeMonoid<DecimalDigit>. v2.compiler.infer
+// infer_literal_payload_entries grounds an accepted int literal's magnitude payload against these,
+// so the resolved type it records for a payload node is that node's type in this authority, and not
+// the literal that carries it.
+fn integer_decimal_digit_type_node() -> Node {
+  integer_inhabitant_atom(id: ^integer_type_decimal_digit)
+}
+
+fn integer_decimal_digits_type_node() -> Node {
+  integer_inhabitant_atom(id: ^integer_type_decimal_digits)
 }
 
 fn integer_decimal_digit_node(digit: DecimalDigit) -> Node {

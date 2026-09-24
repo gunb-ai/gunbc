@@ -1,7 +1,7 @@
 module v2.std.text
 
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup }
-import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, any, contains, fold_list, for_all, is_empty, length, list_append, list_head, list_reverse, list_starts_with, list_tail, skip }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append }
+import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, any, contains, fold_list, for_all, is_empty, length, list_head, list_reverse, list_starts_with, list_tail, skip }
 import v2.std.logic { Bool }
 import std.types { Char }
 type String = FreeMonoid<Char>

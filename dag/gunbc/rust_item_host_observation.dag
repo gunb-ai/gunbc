@@ -1,6 +1,7 @@
 module gunbc.rust_item_host_observation
 
 import extdeps.git
+import std.decimal { decimal_digit_char }
 import extdeps.git.inspect
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.repo_identity { gunbc_merge_target_ref }
@@ -32,10 +33,10 @@ import gunbc.rust_item_scan {
   line_is_attribute_or_comment,
   scan_rust_source
 }
-import std.algebra { trim }
+import std.algebra { trim, list_append, list_snoc_item }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, FilePath, GitRef, Int, List, NonEmptyStr, Set, String }
-import v2.std.algebra { HeadAbsent, HeadFound, any, filter, fold_list, length, list_append, list_head, list_map, list_snoc_item }
+import v2.std.algebra { HeadAbsent, HeadFound, any, filter, fold_list, length, list_head, list_map }
 
 // TWO POPULATIONS, TWO FUNCTIONS, AND THEY MAY NOT BE COLLAPSED.
 //
@@ -295,7 +296,7 @@ fn digits_from(s: String, at: Int, acc: String) -> String {
     acc
   } else {
     let c = char_at(s: s, pos: at)
-    if c >= "0" && c <= "9" {
+    if decimal_digit_char(ch: c) {
       digits_from(s: s, at: at + 1, acc: concat(acc, c))
     } else {
       acc

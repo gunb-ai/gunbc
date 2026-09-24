@@ -11,16 +11,31 @@ import v2.compiler.reference_conservation {
   reference_conservation_of_read,
   reference_conservation_report_lines
 }
-import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.reference_conservation_admission {
+  ChangedScopeObservedConserved,
+  ChangedScopeConservationObservation,
+  ChangedScopeReadInput,
+  ChangedScopeRow,
+  ChangedScopeObservedDropped,
+  NoBodyLoweringChange,
+  ScopeConserved,
+  ScopeDropped,
+  ScopeMembershipUnreadable,
+  ScopeOutside,
+  changed_scope_observation,
+  changed_scope_observation_conserves,
+  conservation_read_of
+}
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { fold_list }
-import v2.std.artifact { Artifact, SourceFile }
-import v2.std.compilers.lexing { symbol_intern_lexeme }
-import v2.std.cross_tree.import_model { DagTree }
+import v2.std.integer { integer_int_to_decimal_string }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.collection { List }
 import v2.std.text { String }
-import extdeps.communication.medium { Lossless, Medium }
+import v2.std.logic { Bool }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
 
 // THE CORPUS ENTRY FOR v2.compiler.reference_conservation: the host reads the file, the pure check
 // does everything else. It is kept out of the check's own module so the check stays a pure
@@ -34,19 +49,6 @@ import extdeps.communication.medium { Lossless, Medium }
 // the same recorded reason: a whole-corpus fold in one process is the load this route exists to
 // avoid. An unreadable path is its own line, never an omission.
 
-fn reference_conservation_read_of(path: String, text: String) -> DagSourceReadWitness {
-  DagSourceReadWitness {
-    source: Medium { carried: text, fidelity: Lossless },
-    artifact: Artifact {
-      kind: SourceFile,
-      id: symbol_intern_lexeme(lexeme: "reference_conservation_census:" + path),
-      file_path: path
-    },
-    compilation_unit: symbol_intern_lexeme(lexeme: path),
-    source_root: DagTree
-  }
-}
-
 fn reference_conservation_census_for_path(path: String) -> String {
   let read = Filesystem.Read(path: path)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
@@ -58,7 +60,7 @@ fn reference_conservation_census_for_path(path: String) -> String {
           fold_list(
             xs: reference_conservation_report_lines(
               report: reference_conservation_of_read(
-                read: reference_conservation_read_of(path: path, text: text),
+                read: conservation_read_of(path: path, text: text),
                 lm: dag_language_model(),
                 prepared: prepared,
                 residue: residue
@@ -78,6 +80,101 @@ fn reference_conservation_census_for_paths(paths_csv: String) -> String {
     cons: fn(acc, path) { acc + reference_conservation_census_for_path(path: path) }
   )
 }
+
+// THE CHANGED-SCOPE ENTRY (MQ-6). The host hands the change's path list (for a PR, the files
+// `git diff --name-only <base>...<head>` names; a deleted path is its own unreadable line) and this
+// reads each one, lets v2.compiler.reference_conservation_admission changed_scope_observation decide
+// which are in the body-lowering scope from their own imports, and renders the typed observation. The
+// first line is the verdict; one line per path follows, and a refused path carries one line per
+// refusal, so the observation is reviewable without re-running it.
+fn changed_scope_read_inputs(paths_csv: String) -> ChangedScopeReadInputs {
+  fold_list(
+    xs: split(s: paths_csv, delimiter: ","),
+    empty: ChangedScopeReadInputs { inputs: Empty, unreadable: Empty },
+    cons: fn(acc, path) {
+      let read = Filesystem.Read(path: path)
+      match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+        FilesystemReadRefused { error: _ } => ChangedScopeReadInputs { inputs: acc.inputs, unreadable: list_snoc_item(xs: acc.unreadable, item: path) }
+        FilesystemReadSucceeded { content: text } =>
+          ChangedScopeReadInputs { inputs: list_snoc_item(xs: acc.inputs, item: ChangedScopeReadInput { path: path, text: text }), unreadable: acc.unreadable }
+      }
+    }
+  )
+}
+
+type ChangedScopeReadInputs {
+  inputs: FreeMonoid<ChangedScopeReadInput>
+  unreadable: FreeMonoid<String>
+}
+
+fn changed_scope_row_lines(rows: FreeMonoid<ChangedScopeRow>) -> String {
+  fold_list(
+    xs: rows,
+    empty: "",
+    cons: fn(acc, row) {
+      match row {
+        ScopeOutside { path: p } => acc + "outside " + p + "\n"
+        ScopeMembershipUnreadable { path: p, diagnostics: d } => acc + "membership-unreadable " + p + " " + symbol_lexeme(sym: d.head.reason) + "\n"
+        ScopeConserved { path: p, report: r } =>
+          fold_list(xs: reference_conservation_report_lines(report: r), empty: acc + "conserved " + p + "\n", cons: fn(a, line) { a + "  " + line + "\n" })
+        ScopeDropped { path: p, report: r, refusals: _ } =>
+          fold_list(xs: reference_conservation_report_lines(report: r), empty: acc + "dropped " + p + "\n", cons: fn(a, line) { a + "  " + line + "\n" })
+      }
+    }
+  )
+}
+
+fn changed_scope_verdict_line(observation: ChangedScopeConservationObservation) -> String {
+  match observation {
+    NoBodyLoweringChange { rows: _ } => "observation no-body-lowering-change"
+    ChangedScopeObservedConserved { rows: _, in_scope: n } => "observation conserved in_scope=" + integer_int_to_decimal_string(value: n)
+    ChangedScopeObservedDropped { rows: _, in_scope: n, refused: k } =>
+      "observation dropped in_scope=" + integer_int_to_decimal_string(value: n) + " refused=" + integer_int_to_decimal_string(value: k)
+  }
+}
+
+fn changed_scope_observation_rows(observation: ChangedScopeConservationObservation) -> FreeMonoid<ChangedScopeRow> {
+  match observation {
+    NoBodyLoweringChange { rows: r } => r
+    ChangedScopeObservedConserved { rows: r, in_scope: _ } => r
+    ChangedScopeObservedDropped { rows: r, in_scope: _, refused: _ } => r
+  }
+}
+
+// An unreadable path refuses the observation outright: a change's scope that could not be read is not
+// a change that reached no body-lowering module.
+type ChangedScopeRun {
+  conserved: Bool
+  text: String
+}
+
+fn changed_scope_run(paths_csv: String) -> ChangedScopeRun {
+  let read = changed_scope_read_inputs(paths_csv: paths_csv)
+  let observation = changed_scope_observation(inputs: read.inputs)
+  let rows = changed_scope_row_lines(rows: changed_scope_observation_rows(observation: observation))
+  match read.unreadable {
+    Empty => ChangedScopeRun { conserved: changed_scope_observation_conserves(observation: observation), text: changed_scope_verdict_line(observation: observation) + "\n" + rows }
+    Cons { head: _, tail: _ } =>
+      ChangedScopeRun {
+        conserved: false,
+        text: "observation refused-unreadable\n" + fold_list(xs: read.unreadable, empty: "", cons: fn(acc, p) { acc + "unreadable " + p + "\n" }) + rows
+      }
+  }
+}
+
+// The rendered observation, for a reader.
+fn reference_conservation_changed_scope_observation(paths_csv: String) -> String {
+  changed_scope_run(paths_csv: paths_csv).text
+}
+
+// The same observation as a process verdict (`gunbc run --function
+// reference_conservation_changed_scope_observation_exit --arg <csv>`): a refused observation exits non-zero and
+// carries the rendered observation as its reason, so a caller cannot read a refusal as success.
+fn reference_conservation_changed_scope_observation_exit(paths_csv: String) -> ProcessExit {
+  let run = changed_scope_run(paths_csv: paths_csv)
+  if run.conserved { ExitSuccess } else { exit_failure(reason: run.text) }
+}
+
 
 // THE PINNED STRATIFIED SAMPLE (XL-2, 2026-09-23, main fec339d561). The whole-corpus census is
 // about 55 CPU-hours on the interpreter, so the drop shapes are first read off this sample. The

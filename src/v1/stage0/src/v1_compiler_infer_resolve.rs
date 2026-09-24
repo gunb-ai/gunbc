@@ -29,7 +29,6 @@ pub use crate::v1_compiler_infer_types::{
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::divergent_type;
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     ArityMismatch, InternalError, TypeArgumentKindMismatch, UnlistedImportUse, UnresolvedType,

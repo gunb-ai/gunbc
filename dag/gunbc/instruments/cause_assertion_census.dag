@@ -7,8 +7,7 @@ import gunbc.parsed_import_statement_production { parsed_import_observation_live
 import v2.std.compilers.lexing { Token }
 import v2.workflow.floor_discovery_producer { FloorDiscoverySource, FloorDiscoverySourcesObserved, FloorDiscoverySourcesRefused, floor_discovery_source_inventory_live }
 import v2.workflow.floor_naming_hygiene { floor_entry_requires_test_sidecar }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { list_snoc_item }
+import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.optional { Present, Absent }
 import v2.std.decl_index { DataDeclTypeFact, data_decl_type_facts }

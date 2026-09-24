@@ -10,7 +10,6 @@ pub use v1_compiler::v1_rt;
 pub mod std_algebra;
 pub mod std_types;
 pub mod v2_std_integer;
-pub mod v2_std_algebra;
 pub mod v2_std_collection;
 pub mod v2_std_grammar;
 pub mod v2_std_diagnostic;

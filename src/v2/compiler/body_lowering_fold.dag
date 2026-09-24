@@ -2,7 +2,7 @@ module v2.compiler.body_lowering_fold
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
 import v2.compiler.fold_lowering {
   FoldCallLowered,
   FoldCallNotAFold,
@@ -39,7 +39,7 @@ import v2.extdeps.languages.dag {
   parse_qualified_name_segments_from_capture,
   qualified_name_from_module_node,
 }
-import v2.std.algebra { fold_list, list_append, list_snoc_item, length, zip_eq }
+import v2.std.algebra { fold_list, length, zip_eq }
 import v2.std.collection {
   List,
   list_at_optional
@@ -423,12 +423,21 @@ fn body_lower_wrapper_retained_shell(shell: Node) -> Outcome<Node> {
 // first -- must pass it through as it passes an Arrow or a Transform; the first-atom fallback
 // they otherwise take would answer the construct's tag and drop its fields, which is exactly how
 // `data d: R = R { .. }` reached the graft as the atom R before this arm.
+// A LOWERED INT LITERAL IS SUBSTRATE, AND ITS PAYLOAD IS NOT A NAME. body_lower_int_literal_with_magnitude_optional
+// produces an Atom(dag_token_int_literal) carrying the integer authority's decimal digit list as
+// its magnitude field, and that list is a FreeMonoid cons spine: the same head/tail shape
+// qualified_name_spine_shape_present recognizes. Until 2026-09-23 the literal atom was not
+// recognized here and its payload was, so a deep search from a `= expr` body (a data initializer,
+// or `fn f() -> Int = 606060`) stepped past the literal and returned its digit list as the body,
+// which resolve then refused as an unbound qualified name. Recognizing the literal stops every
+// search at the literal, before it reaches the payload.
 fn body_lower_is_core_substrate(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
     ComputationNode { behavior: _ } => true
     _ =>
-      qualified_name_spine_shape_present(root: node)
+      (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
+        || qualified_name_spine_shape_present(root: node)
         || (match construct_tag_optional(n: node) { Present { value: _ } => true  Absent => false })
   }
 }
@@ -499,7 +508,6 @@ fn body_lower_is_metadata_preserved_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_param_list)
     || (emitted == ^dag_surface_type_expr)
     || (emitted == ^dag_surface_type_decl)
-    || (emitted == ^dag_surface_data_decl)
     || (emitted == ^dag_surface_import_block)
 }
 
@@ -2214,6 +2222,8 @@ fn body_lower_reduce_emitted(folded: Node, emitted: Symbol) -> Outcome<Node> {
     body_lower_reduce_or_keep(o: body_lower_fn_decl_to_arrow(shell: folded), folded: folded)
   } else if emitted == ^dag_surface_test_fn_decl {
     body_lower_reduce_or_keep(o: body_lower_test_fn_decl_to_member(shell: folded), folded: folded)
+  } else if emitted == ^dag_surface_data_decl {
+    body_lower_reduce_or_keep(o: body_lower_data_decl_to_member(shell: folded), folded: folded)
   } else {
     outcome_accepted(value: folded)
   }
@@ -2733,52 +2743,205 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_fn_decl_to_arrow_admitted(shell: Node, captured: Node) -> Outcome<Node> {
+// THE SIGNATURE OF A FN DECLARATION, READ ONCE FOR BOTH GRADES. The full arm and the census arm build
+// one Arrow from one set of reads; only whether a body edge follows differs. So the reads live here
+// and the Arrow is built by body_lower_fn_decl_arrow -- its ONE child list, with the body edge
+// present or absent -- and "census grade is the same signature" holds
+// by construction rather than by two copies staying in step. Absent means a signature this lowering
+// cannot read, which both arms retain as the shell.
+type BodyLowerFnSignature {
+  domain: Node,
+  return_type: Node,
+  fn_name: Symbol,
+}
+
+fn body_lower_fn_signature_optional(captured: Node) -> Optional<BodyLowerFnSignature> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
-    ParseSubtreeAbsent => body_lower_wrapper_retained_shell(shell: shell)
+    ParseSubtreeAbsent => Absent
     ParseSubtreeFound { captured: param_list } =>
       match body_lower_domain_from_param_list(param_list: param_list) {
-        Absent => body_lower_wrapper_retained_shell(shell: shell)
+        Absent => Absent
         Present { value: domain } =>
-          match body_lower_body_from_fn_captured(captured: captured) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: body_opt, diagnostics: bd0 } =>
-              match body_opt {
+          match body_lower_return_type_from_fn_captured(captured: captured) {
+            Absent => Absent
+            Present { value: return_type } =>
+              match dag_surface_kw_then_ident_from_captured(captured: captured) {
+                Absent => Absent
+                Present { value: fn_name } =>
+                  Present {
+                    value: BodyLowerFnSignature {
+                      domain: domain,
+                      return_type: return_type,
+                      fn_name: fn_name
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// A `data` DECLARATION LOWERS TO THE SAME NAMED MEMBER A NULLARY `fn` DOES: `data x: T = e` is
+// Conj { x: Arrow(<empty domain>, T, T, body: e) }. Until 2026-09-23 dag_surface_data_decl sat in
+// body_lower_is_metadata_preserved_emitted, so the declaration's interior reached infer as SURFACE
+// SYNTAX -- namespace_graft named the member `x -> <the parse tail ': T = e'>` -- and infer was
+// asked to ground `:` and `=` tokens and the type's spelling. Nothing could ground those, so every
+// data declaration stayed on the grounding frontier and gen-one's translate gate refused the
+// one-line door probe (fixture.native_cli_door.door_probe). A constant is the nullary function that
+// returns it: that is the seed's own realization (v1.compiler.emit_rust emits a data item as a
+// nullary fn and calls it at every reference), and it lets the existing Arrow, product and literal
+// derivations ground the member with no data-specific infer rule. The data-versus-fn distinction a
+// reference site needs is not carried by this shape; it lives in the declaration index
+// (v2.std.decl_index data_decl_type_facts), which reads the parse, not this tree. A shell whose
+// name, declared type or value is not reachable is retained as the counted frontier, exactly as
+// the fn arm retains, never guessed.
+// THE INITIALIZER IS ALREADY LOWERED WHEN THIS ARM RUNS. normalize_node_ctx folds a declaration's
+// children before it dispatches the declaration, so the node after `=` is the folded initializer: a
+// literal atom, a construct, a Transform. It is taken as it stands. Re-lowering it through
+// body_lower_eq_expr_to_body would walk an already-lowered tree with the deep first-match searches,
+// which retain on shapes they do not recognize (a record literal whose field is a fn literal).
+// Only an initializer that is not yet substrate goes through that reader.
+fn body_lower_data_initializer_body(expr: Node) -> Outcome<Optional<Node>> {
+  if body_lower_is_core_substrate(node: expr) {
+    outcome_accepted(value: optional_present(value: expr))
+  } else {
+    body_lower_eq_expr_to_body(expr: expr)
+  }
+}
+
+fn body_lower_data_decl_to_member(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent => body_lower_wrapper_retained_shell(shell: shell)
+    Present { value: captured } =>
+      match body_lower_find_captured(root: captured, emitted: ^dag_surface_type_expr) {
+        ParseSubtreeAbsent => body_lower_wrapper_retained_shell(shell: shell)
+        ParseSubtreeFound { captured: type_expr } =>
+          match body_lower_type_expr_lowered_optional(node: type_expr) {
+            Absent => body_lower_wrapper_retained_shell(shell: shell)
+            Present { value: declared_type } =>
+              match body_lower_body_after_eq_token(captured: captured) {
                 Absent => body_lower_wrapper_retained_shell(shell: shell)
-                Present { value: body } =>
-                  match body_lower_reify_arrow_body(body: body) {
+                Present { value: expr } =>
+                  match body_lower_data_initializer_body(expr: expr) {
                     Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                    Accepted { value: reified_body, diagnostics: bd } =>
-                      match body_lower_return_type_from_fn_captured(captured: captured) {
+                    Accepted { value: body_opt, diagnostics: bd0 } =>
+                      match body_opt {
                         Absent => body_lower_wrapper_retained_shell(shell: shell)
-                        Present { value: return_type } =>
-                          match dag_surface_kw_then_ident_from_captured(captured: captured) {
-                            Absent => body_lower_wrapper_retained_shell(shell: shell)
-                            Present { value: fn_name } =>
-                              let arrow = node_lowered_from(
-                                source: shell,
-                                kind: TypeNode { connective: Arrow },
-                                children: [
-                                  Edge { label: Positional, target: domain },
-                                  Edge { label: Positional, target: return_type },
-                                  Edge { label: Positional, target: return_type },
-                                  Edge {
-                                    label: Named { name: ^arrow_body_edge },
-                                    target: reified_body
-                                  }
-                                ]
-                              )
-                              outcome_with_diagnostics(
-                                value: body_lower_fn_decl_named_member_wrap(
-                                  arrow: arrow,
-                                  fn_name: fn_name,
-                                  source: shell
-                                ),
-                                diagnostics: diagnostics_merge(outer: bd0, inner: bd)
-                              )
+                        Present { value: body } =>
+                          match body_lower_reify_arrow_body(body: body) {
+                            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                            Accepted { value: reified_body, diagnostics: bd } =>
+                              match dag_surface_kw_then_ident_from_captured(captured: captured) {
+                                Absent => body_lower_wrapper_retained_shell(shell: shell)
+                                Present { value: data_name } =>
+                                  let arrow = node_lowered_from(
+                                    source: shell,
+                                    kind: TypeNode { connective: Arrow },
+                                    children: [
+                                      Edge {
+                                        label: Positional,
+                                        target: node_lowered_from(
+                                          kind: TypeNode { connective: Conj },
+                                          children: [],
+                                          source: type_expr
+                                        )
+                                      },
+                                      Edge { label: Positional, target: declared_type },
+                                      Edge { label: Positional, target: declared_type },
+                                      Edge {
+                                        label: Named { name: ^arrow_body_edge },
+                                        target: reified_body
+                                      }
+                                    ]
+                                  )
+                                  outcome_with_diagnostics(
+                                    value: body_lower_fn_decl_named_member_wrap(
+                                      arrow: arrow,
+                                      fn_name: data_name,
+                                      source: shell
+                                    ),
+                                    diagnostics: diagnostics_merge(outer: bd0, inner: bd)
+                                  )
+                              }
                           }
                       }
                   }
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Optional<Node>) -> Node {
+  body_lower_fn_decl_named_member_wrap(
+    arrow: node_lowered_from(
+      source: shell,
+      kind: TypeNode { connective: Arrow },
+      children: match body {
+        Absent => [
+          Edge { label: Positional, target: sig.domain },
+          Edge { label: Positional, target: sig.return_type },
+          Edge { label: Positional, target: sig.return_type }
+        ]
+        Present { value: b } => [
+          Edge { label: Positional, target: sig.domain },
+          Edge { label: Positional, target: sig.return_type },
+          Edge { label: Positional, target: sig.return_type },
+          Edge { label: Named { name: ^arrow_body_edge }, target: b }
+        ]
+      }
+    ),
+    fn_name: sig.fn_name,
+    source: shell
+  )
+}
+
+// CENSUS GRADE: THE SIGNATURE, NEVER THE BODY. A module outside the compiled closure is read only for
+// what resolution asks of it -- declaration paths and payload kinds -- and the symbol-index fill
+// descends into an Arrow's domain alone. So the census arm builds the full arm's Arrow from the same
+// signature and omits the ^arrow_body_edge: the body subtree is never lowered, so a body the
+// lowering cannot yet read cannot refuse a module nobody compiles. What it does NOT relax: a
+// signature this arm cannot read still retains, which the census door
+// (v2.compiler.normalized_tree admit_census_tree) refuses exactly as the full door does. Omitting the
+// edge rather than lowering the body tolerantly also removes the three incidental body reads a
+// census root would otherwise feed: the subtree-wide Disj count, the alias scan, and the Arrow the
+// index stores at the fn's path.
+fn body_lower_fn_decl_to_census_arrow(shell: Node) -> Outcome<Node> {
+  match body_lower_unwrap_captured(shell: shell) {
+    Absent => body_lower_wrapper_retained_shell(shell: shell)
+    Present { value: captured } =>
+      match body_lower_fn_signature_optional(captured: captured) {
+        Absent => body_lower_wrapper_retained_shell(shell: shell)
+        Present { value: sig } =>
+          outcome_accepted(value: body_lower_fn_decl_arrow(shell: shell, sig: sig, body: Absent))
+      }
+  }
+}
+
+// The signature is read before the body is lowered. A declaration whose signature cannot be read
+// AND whose body refuses therefore now reports retention rather than the body's cause; both refuse,
+// and the signature is the earlier fact.
+fn body_lower_fn_decl_to_arrow_admitted(shell: Node, captured: Node) -> Outcome<Node> {
+  match body_lower_fn_signature_optional(captured: captured) {
+    Absent => body_lower_wrapper_retained_shell(shell: shell)
+    Present { value: sig } =>
+      match body_lower_body_from_fn_captured(captured: captured) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: body_opt, diagnostics: bd0 } =>
+          match body_opt {
+            Absent => body_lower_wrapper_retained_shell(shell: shell)
+            Present { value: body } =>
+              match body_lower_reify_arrow_body(body: body) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: reified_body, diagnostics: bd } =>
+                  outcome_with_diagnostics(
+                    value: body_lower_fn_decl_arrow(
+                      shell: shell,
+                      sig: sig,
+                      body: Present { value: reified_body }
+                    ),
+                    diagnostics: diagnostics_merge(outer: bd0, inner: bd)
+                  )
               }
           }
       }
@@ -6387,7 +6550,7 @@ fn body_lower_try_match_from_captured(captured: Node) -> Outcome<Optional<Node>>
           n: captured
         )
       )
-    Accepted { value: Present { value: scrutinee }, diagnostics: sd } =>
+    Accepted { value: Present { value: scrutinee }, diagnostics: _ } =>
       match body_lower_match_arms_optional(captured: captured) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: arms_opt, diagnostics: d } =>
@@ -6396,7 +6559,7 @@ fn body_lower_try_match_from_captured(captured: Node) -> Outcome<Optional<Node>>
               if count(arms) > 0 {
                 Accepted {
                   value: optional_present(value: lower_match(scrutinee: scrutinee, arms: arms)),
-                  diagnostics: diagnostics_merge(outer: sd, inner: d)
+                  diagnostics: d
                 }
               } else {
                 outcome_rejected(
@@ -6780,23 +6943,29 @@ fn body_lower_paren_group_lowered(group: Node, inner: Node) -> Outcome<Node> {
   }
 }
 
-// A LIST LITERAL IS SUGAR FOR ITS FREE-MONOID CONSTRUCTION (DESIGN section 4). `List<T>` is
-// v2.std.algebra FreeMonoid<T>, and the literal is lowered through that module's own operations,
-// as ordinary calls, in ONE canonical form: `[]` is freemonoid_empty(), `[e]` is
-// freemonoid_singleton(item: e) -- the generator embedding T -> FreeMonoid<T> -- and
-// `[e1, e2, .., en]` is the right-nested list_append(left: freemonoid_singleton(item: e1), right:
-// <the lowering of [e2, .., en]>). No new node kind, atom or constructor: each head is the
-// declaring qualified name (a spine, which resolve binds through its qualified door and mints as a
-// resolved reference), so resolve, infer and eval read calls they already read. Element order IS
-// the nesting and every element keeps its authored occurrence, so the lowered form cannot reorder,
-// truncate or drop an element without changing its shape. The grammar writes the literal as
-// seq(`[`, seq(optional comma_list(expr), `]`)) (v2.extdeps.languages.dag
-// dag_grammar_primary_expr_core); its items are read by the one comma-list walker. Every element is
-// lowered WHOLE through body_lower_value_lowered, the value reader every value position uses, so a
-// call, record, nested list or operator expression in element position lowers as it would
-// anywhere else. An element that reader cannot lower refuses located at that element. Before this
-// producer body_lower_primary_expr answered the literal with its `[` atom and every element was
-// dropped; call arguments refused the whole module instead (body_lowering_reason_list_literal_unlowered).
+// A LIST LITERAL IS THE FLAT FREE-MONOID INTRODUCTION (DESIGN section 4). `List<T>` is
+// std.algebra FreeMonoid<T> (dag/std/algebra.dag), and `[e1, .., en]` lowers to ONE Transform whose
+// head is the reference to that declaration and whose remaining positional children are the
+// elements in order; `[]` is the Transform with the head alone. The authority for the shape is
+// std.literal_elaboration UnicodeScalarSequenceUnfold, which carries a text's image as "the
+// language's canonical FreeMonoid introduction (the list-literal node)" with one element per
+// operand and REJECTS a cons^n nesting: O(n^2) under a sequence-backed carrier, and n deep it
+// exceeds the emitter's bounded recursion fuel on ordinary literals. (gunbc#12208 first lowered to a
+// right-nested list_append over singletons; that forked this authority and was reversed.) The head
+// is the declaring qualified name as a spine -- resolve binds it through its qualified door and
+// mints it as a resolved reference -- and it names std.algebra, NOT v2.std.algebra: v2.std.algebra
+// imports v2.std.node, so a list literal in v2.std.node referring to v2.std.algebra would close a
+// node -> algebra -> node cycle, and v2 collapses onto dag/std, not the reverse. The Transform is
+// not an application: 04_infer types it by its one introduction case
+// (v2.compiler.infer infer_transform_freemonoid_introduction), every element unifying to one T.
+// The grammar writes the literal as seq(`[`, seq(optional comma_list(expr), `]`))
+// (v2.extdeps.languages.dag dag_grammar_primary_expr_core); its items are read by the one
+// comma-list walker. Every element is lowered WHOLE through body_lower_value_lowered, the value
+// reader every value position uses, so a call, record, nested list or operator expression in
+// element position lowers as it would anywhere else. An element that reader cannot lower refuses
+// located at that element. Before this producer body_lower_primary_expr answered the literal with
+// its `[` atom and every element was dropped; call arguments refused the whole module instead
+// (body_lowering_reason_list_literal_unlowered).
 fn body_lower_list_literal_items_capture_optional(captured: Node) -> Optional<Node> {
   match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: captured)) {
     Absent => optional_absent()
@@ -6829,39 +6998,21 @@ fn body_lower_list_literal_element(item: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_list_algebra_head(operation: Symbol, source: Node) -> Node {
-  body_lower_qualified_name_spine_node(segments: [^v2, ^std, ^algebra, operation], source: source)
-}
-
-fn body_lower_list_algebra_call(operation: Symbol, operands: List<Node>, source: Node) -> Node {
+fn body_lower_list_construct(elements: List<Node>, source: Node) -> Node {
   node_lowered_from(
     kind: ComputationNode { behavior: Transform },
     children: fold(
-      operands,
-      init: [Edge { label: Positional, target: body_lower_list_algebra_head(operation: operation, source: source) }],
-      f: fn(acc, operand) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: operand }) }
+      elements,
+      init: [
+        Edge {
+          label: Positional,
+          target: body_lower_qualified_name_spine_node(segments: [^std, ^algebra, ^FreeMonoid], source: source)
+        }
+      ],
+      f: fn(acc, element) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: element }) }
     ),
     source: source
   )
-}
-
-fn body_lower_list_construct(elements: List<Node>, source: Node) -> Node {
-  match elements {
-    Empty => body_lower_list_algebra_call(operation: ^freemonoid_empty, operands: Empty, source: source)
-    Cons { head: element, tail: rest } =>
-      match rest {
-        Empty => body_lower_list_algebra_call(operation: ^freemonoid_singleton, operands: [element], source: source)
-        Cons { head: _, tail: _ } =>
-          body_lower_list_algebra_call(
-            operation: ^list_append,
-            operands: [
-              body_lower_list_algebra_call(operation: ^freemonoid_singleton, operands: [element], source: source),
-              body_lower_list_construct(elements: rest, source: source)
-            ],
-            source: source
-          )
-      }
-  }
 }
 
 fn body_lower_list_literal(literal: Node, items_capture: Node) -> Outcome<Node> {
@@ -6984,6 +7135,8 @@ fn body_lower_forward_row_apply(shell: Node, emitted: Symbol) -> Outcome<Node> {
     body_lower_fn_decl_to_arrow(shell: shell)
   } else if emitted == ^dag_surface_test_fn_decl {
     body_lower_test_fn_decl_to_member(shell: shell)
+  } else if emitted == ^dag_surface_data_decl {
+    body_lower_data_decl_to_member(shell: shell)
   } else if emitted == ^dag_surface_fn_body {
     body_lower_fn_body_shell(shell: shell)
   } else if emitted == ^dag_surface_match_expr {
